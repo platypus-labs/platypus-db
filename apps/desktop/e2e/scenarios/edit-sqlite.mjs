@@ -9,8 +9,8 @@ import { CTRL } from "../cdp.mjs";
 
 const NAME = "E2E edit";
 const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
-const status = `${visibleTab}?.querySelector('.statusbar span')?.textContent ?? ''`;
-const editBar = `${visibleTab}?.querySelector('.edit-bar')?.textContent ?? ''`;
+const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ?? '')`;
+const editBar = `(${visibleTab}?.querySelector('.edit-bar')?.textContent ?? '')`;
 const treeRow = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
 
@@ -53,9 +53,8 @@ async function finishEdit(page, text) {
 
 export default async function (page) {
   await page.waitFor(`${treeRow(NAME)} !== undefined`);
+  // The current schema opens by itself.
   await page.eval(`${treeRow(NAME)}.click()`);
-  await page.waitFor(`${treeRow("main")} !== undefined`);
-  await page.eval(`${treeRow("main")}.click()`);
 
   await openTable(page, "items");
   await page.waitFor(`${status} === '3 rows'`);
