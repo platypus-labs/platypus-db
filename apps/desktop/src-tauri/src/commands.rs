@@ -11,11 +11,12 @@ use std::time::SystemTime;
 
 use platypus_core::{
     Connection, ConnectionConfig, Driver, DriverKind, Error, ObjectMeta, SchemaMeta, Secret,
-    ServerInfo, TableDetails,
+    ServerInfo, TableDetails, TransactionState,
 };
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
 use platypus_driver_sqlite::SqliteDriver;
+use platypus_export::ExportOptions;
 use platypus_sql::Dialect;
 use platypus_store::{
     ConnectionStore, HistoryEntry, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry,
@@ -28,6 +29,7 @@ use uuid::Uuid;
 
 use crate::display;
 use crate::error::{CommandError, CommandResult};
+use crate::export::{Export, ExportEvent};
 use crate::jobs::{Job, Outcome, QueryEvent};
 
 #[derive(Debug)]
@@ -38,6 +40,7 @@ pub struct AppState {
     history: Arc<Mutex<Result<HistoryStore, String>>>,
     sessions: Mutex<HashMap<u64, Session>>,
     jobs: Mutex<HashMap<u64, Arc<Job>>>,
+    exports: Mutex<HashMap<u64, Arc<Export>>>,
     next_id: AtomicU64,
 }
 
@@ -45,6 +48,8 @@ pub struct AppState {
 struct Session {
     connection_id: Uuid,
     conn: Arc<dyn Connection>,
+    /// How the session was opened, password included: exports open their own connection.
+    config: ConnectionConfig,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -61,6 +66,7 @@ impl AppState {
             history: Arc::new(Mutex::new(history)),
             sessions: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
+            exports: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(1),
         }
     }
@@ -104,7 +110,7 @@ impl AppState {
     }
 }
 
-async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, Error> {
+pub(crate) async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, Error> {
     match config.driver {
         DriverKind::Postgres => PgDriver.connect(config).await,
         DriverKind::MySql => MySqlDriver.connect(config).await,
@@ -222,6 +228,7 @@ pub async fn open_session(
         Ok(saved.config(secret))
     })?;
     let conn: Arc<dyn Connection> = Arc::from(connect(&config).await?);
+    let session_config = config;
     let server = conn.server_info().clone();
     let session_id = state.next_id();
     lock(&state.sessions).insert(
@@ -229,6 +236,7 @@ pub async fn open_session(
         Session {
             connection_id,
             conn,
+            config: session_config,
         },
     );
     Ok(SessionInfo { session_id, server })
@@ -278,7 +286,7 @@ pub fn run_query(
             });
         }
     };
-    let job = Job::start(session.conn, sql, limit, on_event, record);
+    let job = Job::start(session_id, session.conn, sql, limit, on_event, record);
     let job_id = state.next_id();
     lock(&state.jobs).insert(job_id, job);
     Ok(job_id)
@@ -321,6 +329,56 @@ pub fn close_query(state: State<'_, AppState>, job_id: u64) {
     }
 }
 
+/// Stops fetching every unfinished result of a session, so it can run another statement.
+fn stop_jobs(state: &AppState, session_id: u64) {
+    let jobs: Vec<_> = lock(&state.jobs)
+        .values()
+        .filter(|j| j.session_id == session_id)
+        .cloned()
+        .collect();
+    for job in jobs {
+        job.stop();
+    }
+}
+
+#[tauri::command]
+pub fn transaction_state(
+    state: State<'_, AppState>,
+    session_id: u64,
+) -> CommandResult<TransactionState> {
+    Ok(state.session(session_id)?.conn.transaction())
+}
+
+#[tauri::command]
+pub async fn set_autocommit(
+    state: State<'_, AppState>,
+    session_id: u64,
+    on: bool,
+) -> CommandResult<TransactionState> {
+    let conn = state.session(session_id)?.conn;
+    stop_jobs(&state, session_id);
+    conn.set_autocommit(on).await?;
+    Ok(conn.transaction())
+}
+
+/// Commits (`commit: true`) or rolls back the session's transaction. Results still being
+/// fetched are stopped first: they hold the session.
+#[tauri::command]
+pub async fn end_transaction(
+    state: State<'_, AppState>,
+    session_id: u64,
+    commit: bool,
+) -> CommandResult<TransactionState> {
+    let conn = state.session(session_id)?.conn;
+    stop_jobs(&state, session_id);
+    if commit {
+        conn.commit().await?;
+    } else {
+        conn.rollback().await?;
+    }
+    Ok(conn.transaction())
+}
+
 /// Schemas for the navigator. Navigator sessions are separate from editor sessions, so
 /// browsing never waits behind a running query.
 #[tauri::command]
@@ -351,6 +409,67 @@ pub async fn table_details(
 ) -> CommandResult<TableDetails> {
     let session = state.session(session_id)?;
     Ok(session.conn.table_details(&schema, &table).await?)
+}
+
+/// The first value of a small query, as text (`None` for NULL or no rows); used for row
+/// counts. Run on the navigator session, which is never held by a paused result.
+#[tauri::command]
+pub async fn query_value(
+    state: State<'_, AppState>,
+    session_id: u64,
+    sql: String,
+) -> CommandResult<Option<String>> {
+    let conn = state.session(session_id)?.conn;
+    let rows = platypus_core::query_text(conn.as_ref(), &sql).await?;
+    Ok(rows
+        .into_iter()
+        .next()
+        .and_then(|r| r.into_iter().next().flatten()))
+}
+
+/// Re-runs `sql` on a new connection and streams all its rows to `path`. Returns an id for
+/// `cancel_export`; progress and the outcome arrive on `on_event`.
+#[tauri::command]
+pub fn export_query(
+    state: State<'_, AppState>,
+    session_id: u64,
+    sql: String,
+    path: PathBuf,
+    options: ExportOptions,
+    on_event: Channel<ExportEvent>,
+) -> CommandResult<u64> {
+    let config = state.session(session_id)?.config;
+    let export = Export::start(config, sql, path, options, on_event);
+    let id = state.next_id();
+    lock(&state.exports).insert(id, export);
+    Ok(id)
+}
+
+#[tauri::command]
+pub fn cancel_export(state: State<'_, AppState>, export_id: u64) {
+    if let Some(export) = lock(&state.exports).remove(&export_id) {
+        export.cancel();
+    }
+}
+
+/// Writes the rows a result has loaded so far; returns how many.
+#[tauri::command]
+pub async fn export_rows(
+    state: State<'_, AppState>,
+    job_id: u64,
+    path: PathBuf,
+    options: ExportOptions,
+) -> CommandResult<u64> {
+    let (schema, batches) = state
+        .job(job_id)?
+        .snapshot()
+        .ok_or_else(|| CommandError::new("not_ready", "the result has no rows"))?;
+    tokio::task::spawn_blocking(move || {
+        crate::export::write_batches(&path, &schema, &batches, &options)
+    })
+    .await
+    .map_err(|e| CommandError::new("export", e.to_string()))?
+    .map_err(Into::into)
 }
 
 /// A statement range in UTF-16 code units, the unit JavaScript strings use.

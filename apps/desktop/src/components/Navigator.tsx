@@ -8,7 +8,8 @@ import {
   type SchemaMeta,
   type TableDetails,
 } from "../api";
-import { OPEN_DATA_LIMIT, qualifiedName, selectSql } from "../sqlNames";
+import { OPEN_DATA_LIMIT, qualifiedName, selectSql, viewerSql } from "../sqlNames";
+import type { TabModel } from "./QueryTab";
 
 type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ok"; data: T };
 
@@ -21,8 +22,8 @@ interface Props {
   onNew: () => void;
   onEdit: (c: SavedConnection) => void;
   onDelete: (c: SavedConnection) => void;
-  /** Opens a new editor tab, optionally running its SQL at once. */
-  onOpenTab: (c: SavedConnection, sql?: string, autorun?: boolean, title?: string) => void;
+  /** Opens a new editor tab: optionally with SQL, run at once, or as a data viewer. */
+  onOpenTab: (c: SavedConnection, init?: Partial<TabModel>) => void;
   /** The connection's navigator session, opened on first use; `null` if cancelled. */
   session: (c: SavedConnection) => Promise<number | null>;
   /** Drops the navigator session, e.g. after the connection broke. */
@@ -166,17 +167,15 @@ export function Navigator(props: Props) {
     const details = loaded<TableDetails>(key) ?? (await loadDetails(c, schema.name, object.name));
     if (!details) return;
     const target = qualifiedName(c.driver, schema, object.name);
-    onOpenTab(
-      c,
-      selectSql(
+    onOpenTab(c, {
+      sql: selectSql(
         c.driver,
         target,
         details.columns.map((col) => col.name),
         OPEN_DATA_LIMIT,
       ),
-      false,
-      object.name,
-    );
+      title: object.name,
+    });
   }
 
   const needle = filter.trim().toLowerCase();
@@ -299,7 +298,12 @@ export function Navigator(props: Props) {
       ];
     }
     const openData = () =>
-      onOpenTab(c, selectSql(c.driver, target, null, OPEN_DATA_LIMIT), true, object.name);
+      onOpenTab(c, {
+        sql: viewerSql(c.driver, target, "", null),
+        autorun: true,
+        title: object.name,
+        table: target,
+      });
     const open = expanded.has(okey);
     const out: Row[] = [
       {

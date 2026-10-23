@@ -1,10 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { api, toCommandError, type QueryEvent, type SavedConnection } from "../api";
+import {
+  api,
+  toCommandError,
+  type ExportOptions,
+  type QueryEvent,
+  type SavedConnection,
+  type TransactionState,
+} from "../api";
 import { type RunMode, SqlEditor, type SqlEditorHandle } from "../editor/SqlEditor";
+import { type Sort, viewerSql } from "../sqlNames";
 import { basename } from "../workspace";
+import { ExportDialog, type ExportSource } from "./ExportDialog";
 import { HistoryPanel } from "./HistoryPanel";
-import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, formatMs } from "./ResultPanel";
+import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
 
 /** Rows fetched per statement when running a script; the rest is cancelled. */
 const SCRIPT_ROW_LIMIT = 1000;
@@ -19,6 +28,14 @@ export interface TabModel {
   autorun?: boolean;
   /** Shown instead of the file name, e.g. the table opened from the navigator. */
   title?: string | null;
+  /** Data viewer: the table or view the tab browses, as a quoted, qualified name. */
+  table?: string | null;
+  /** Data viewer: `WHERE` clause typed by the user. */
+  filter?: string;
+  /** Data viewer: server-side sort. */
+  sort?: Sort | null;
+  /** Uncommitted changes are pending; not persisted. */
+  txOpen?: boolean;
 }
 
 interface Props {
@@ -27,6 +44,8 @@ interface Props {
   active: boolean;
   /** Opens the tab's session on first use; `null` if the user cancelled. */
   ensureSession: () => Promise<number | null>;
+  /** The connection's navigator session, for side queries such as row counts. */
+  sideSession: () => Promise<number | null>;
   onChange: (patch: Partial<TabModel>) => void;
   onOpenFile: (path: string, sql: string) => void;
   onError: (message: string) => void;
@@ -53,8 +72,30 @@ function isTerminal(status: ResultStatus, limited: boolean) {
   }
 }
 
-export function QueryTab({ tab, connection, active, ensureSession, onChange, onOpenFile, onError }: Props) {
+interface ExportProgress {
+  exportId: number | null;
+  rows: number;
+  /** Final message; `null` while running. */
+  done: string | null;
+  failed: boolean;
+}
+
+export function QueryTab({
+  tab,
+  connection,
+  active,
+  ensureSession,
+  sideSession,
+  onChange,
+  onOpenFile,
+  onError,
+}: Props) {
   const editor = useRef<SqlEditorHandle>(null);
+  const [tx, setTx] = useState<TransactionState | null>(null);
+  const [filter, setFilter] = useState(tab.filter ?? "");
+  const [count, setCount] = useState<string | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState<ExportProgress | null>(null);
   const [results, setResults] = useState<Result[]>([]);
   const [activeResult, setActiveResult] = useState(0);
   const [running, setRunning] = useState(false);
@@ -128,7 +169,13 @@ export function QueryTab({ tab, connection, active, ensureSession, onChange, onO
             update(result.id, { rows: event.rows });
             break;
           case "finished":
-            status = { kind: "rows", finished: true, complete: event.complete, elapsedMs: event.elapsed_ms };
+            status = {
+              kind: "rows",
+              finished: true,
+              complete: event.complete,
+              stopped: event.stopped,
+              elapsedMs: event.elapsed_ms,
+            };
             update(result.id, { rows: event.rows, status });
             break;
           case "affected":
@@ -231,6 +278,117 @@ export function QueryTab({ tab, connection, active, ensureSession, onChange, onO
     setRunning(false);
     currentJob.current = null;
     setHistoryVersion((v) => v + 1);
+    await refreshTx(sessionId);
+  }
+
+  async function refreshTx(sessionId: number) {
+    try {
+      const state = await api.transactionState(sessionId);
+      setTx(state);
+      if (state.open !== !!tab.txOpen) onChange({ txOpen: state.open });
+    } catch (e) {
+      onError(toCommandError(e).message);
+    }
+  }
+
+  async function toggleAutocommit() {
+    const sessionId = await ensureSession();
+    if (sessionId === null) return;
+    try {
+      const current = tx ?? (await api.transactionState(sessionId));
+      setTx(await api.setAutocommit(sessionId, !current.autocommit));
+    } catch (e) {
+      onError(toCommandError(e).message);
+    }
+  }
+
+  async function endTransaction(commit: boolean) {
+    const sessionId = await ensureSession();
+    if (sessionId === null) return;
+    try {
+      const state = await api.endTransaction(sessionId, commit);
+      setTx(state);
+      onChange({ txOpen: state.open });
+    } catch (e) {
+      onError(toCommandError(e).message);
+      await refreshTx(sessionId);
+    }
+  }
+
+  /** Data viewer: rebuilds the query from filter and sort, then runs it. */
+  function applyViewer(patch: { filter?: string; sort?: Sort | null }) {
+    if (!tab.table) return;
+    const next = { filter: patch.filter ?? tab.filter ?? "", sort: patch.sort !== undefined ? patch.sort : (tab.sort ?? null) };
+    onChange(next);
+    setCount(null);
+    editor.current!.setText(viewerSql(connection.driver, tab.table, next.filter, next.sort));
+    void run("statement");
+  }
+
+  /** Header clicks cycle a column through ascending, descending and unsorted. */
+  function sortBy(column: string) {
+    const sort = tab.sort ?? null;
+    if (sort?.column !== column) applyViewer({ sort: { column, desc: false } });
+    else if (!sort.desc) applyViewer({ sort: { column, desc: true } });
+    else applyViewer({ sort: null });
+  }
+
+  async function countRows() {
+    if (!tab.table) return;
+    setCount("counting…");
+    const sessionId = await sideSession();
+    if (sessionId === null) return setCount(null);
+    const where = tab.filter?.trim() ? ` WHERE ${tab.filter.trim()}` : "";
+    try {
+      const value = await api.queryValue(sessionId, `SELECT COUNT(*) FROM ${tab.table}${where}`);
+      setCount(value === null ? null : `${fmt.format(Number(value))} rows`);
+    } catch (e) {
+      setCount(null);
+      onError(toCommandError(e).message);
+    }
+  }
+
+  async function startExport(result: Result, path: string, options: ExportOptions, source: ExportSource) {
+    setExportOpen(false);
+    const file = basename(path);
+    const started = performance.now();
+    const finish = (done: string, failed = false) =>
+      setExporting((e) => ({ exportId: null, rows: e?.rows ?? 0, done, failed }));
+    if (source === "loaded") {
+      if (result.jobId === null) return;
+      setExporting({ exportId: null, rows: result.rows, done: null, failed: false });
+      try {
+        const rows = await api.exportRows(result.jobId, path, options);
+        finish(`Exported ${fmt.format(rows)} rows to ${file} in ${formatMs(Math.round(performance.now() - started))}`);
+      } catch (e) {
+        finish(`Export failed: ${toCommandError(e).message}`, true);
+      }
+      return;
+    }
+    const sessionId = await ensureSession();
+    if (sessionId === null) return;
+    setExporting({ exportId: null, rows: 0, done: null, failed: false });
+    try {
+      const exportId = await api.exportQuery(sessionId, result.sql, path, options, (event) => {
+        switch (event.type) {
+          case "progress":
+            setExporting((e) => e && { ...e, rows: event.rows });
+            break;
+          case "done":
+            finish(`Exported ${fmt.format(event.rows)} rows to ${file} in ${formatMs(event.elapsed_ms)}`);
+            break;
+          case "failed":
+            finish(`Export failed: ${event.error.message}`, true);
+            break;
+          case "cancelled":
+            finish("Export cancelled");
+            break;
+        }
+      });
+      setExporting((e) => e && e.done === null ? { ...e, exportId } : e);
+    } catch (e) {
+      finish(`Export failed: ${toCommandError(e).message}`, true);
+    }
   }
 
   async function cancel() {
@@ -284,10 +442,16 @@ export function QueryTab({ tab, connection, active, ensureSession, onChange, onO
 
   const current = results[activeResult];
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
+  const rowsResult = current?.status.kind === "rows" && current.columns ? current : null;
+  const manual = tx !== null && !tx.autocommit;
+  const exportBusy = exporting !== null && exporting.done === null;
 
   return (
     <div className="query-tab" style={{ display: active ? "flex" : "none" }}>
-      <div className="query-main" style={{ gridTemplateRows: `auto ${editorHeight}px 6px 1fr auto` }}>
+      <div
+        className="query-main"
+        style={{ gridTemplateRows: `auto ${tab.table ? "auto " : ""}${editorHeight}px 6px 1fr auto` }}
+      >
         <div className="toolbar">
           <button className="primary" onClick={() => void run("statement")} title="Run statement (Ctrl+Enter)">
             ▶ Run
@@ -298,6 +462,36 @@ export function QueryTab({ tab, connection, active, ensureSession, onChange, onO
           <button onClick={() => void cancel()} disabled={!running}>
             ■ Cancel
           </button>
+          <span className="divider" />
+          <button
+            className={manual ? "toggled" : ""}
+            onClick={() => void toggleAutocommit()}
+            disabled={running || !!tx?.open}
+            title={
+              tx?.open
+                ? "Commit or roll back before switching"
+                : manual
+                  ? "Manual commit: changes wait for Commit"
+                  : "Auto-commit: every statement commits on its own"
+            }
+          >
+            {manual ? "Manual commit" : "Auto-commit"}
+          </button>
+          {manual && (
+            <>
+              <button onClick={() => void endTransaction(true)} disabled={running || !tx.open}>
+                Commit
+              </button>
+              <button onClick={() => void endTransaction(false)} disabled={running || !tx.open}>
+                Rollback
+              </button>
+            </>
+          )}
+          {tx?.open && (
+            <span className="tx-open" title="A transaction is open: changes are not visible to others yet">
+              ● Transaction open
+            </span>
+          )}
           <span className="divider" />
           <button onClick={() => void openFile()} title="Open script (Ctrl+O)">
             Open
@@ -311,6 +505,39 @@ export function QueryTab({ tab, connection, active, ensureSession, onChange, onO
             History
           </button>
         </div>
+        {tab.table && (
+          <form
+            className="viewer-bar"
+            onSubmit={(e) => {
+              e.preventDefault();
+              applyViewer({ filter });
+            }}
+          >
+            <span className="muted small">WHERE</span>
+            <input
+              value={filter}
+              placeholder="e.g. total > 100 AND status = 'paid'"
+              onChange={(e) => setFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && filter) {
+                  setFilter("");
+                  applyViewer({ filter: "" });
+                }
+              }}
+            />
+            <button type="submit">Apply</button>
+            {tab.sort && (
+              <button type="button" className="link" onClick={() => applyViewer({ sort: null })}>
+                Sorted by {tab.sort.column} {tab.sort.desc ? "▼" : "▲"} ×
+              </button>
+            )}
+            <span className="spacer" />
+            {count && <span className="muted small">{count}</span>}
+            <button type="button" onClick={() => void countRows()} title="Runs SELECT COUNT(*) with the filter">
+              Count rows
+            </button>
+          </form>
+        )}
         <SqlEditor
           ref={editor}
           initialValue={tab.sql}
@@ -342,7 +569,14 @@ export function QueryTab({ tab, connection, active, ensureSession, onChange, onO
               ))}
             </div>
           )}
-          {current && <ResultPanel key={current.id} result={current} />}
+          {current && (
+            <ResultPanel
+              key={current.id}
+              result={current}
+              sort={tab.table ? (tab.sort ?? null) : null}
+              onHeaderClick={tab.table && !running ? sortBy : undefined}
+            />
+          )}
         </div>
         <div className="statusbar">
           {current && (
@@ -359,12 +593,30 @@ export function QueryTab({ tab, connection, active, ensureSession, onChange, onO
                   Fetch all
                 </button>
               )}
+              {rowsResult && !exportBusy && (
+                <button className="link" onClick={() => setExportOpen(true)}>
+                  Export…
+                </button>
+              )}
             </>
           )}
+          {exporting && (
+            <span className={exporting.failed ? "error-text" : "muted"}>
+              {exporting.done ?? `Exporting… ${fmt.format(exporting.rows)} rows`}
+              {exportBusy && exporting.exportId !== null && (
+                <button className="link" onClick={() => void api.cancelExport(exporting.exportId!)}>
+                  Cancel
+                </button>
+              )}
+              {!exportBusy && (
+                <button className="link" onClick={() => setExporting(null)} title="Dismiss">
+                  ×
+                </button>
+              )}
+            </span>
+          )}
           <span className="spacer" />
-          <span className="muted">
-            Ctrl+Enter statement · Alt+X script · {connection.name}
-          </span>
+          <span className="muted">Ctrl+Enter statement · Alt+X script · {connection.name}</span>
         </div>
       </div>
       {showHistory && (
@@ -373,6 +625,16 @@ export function QueryTab({ tab, connection, active, ensureSession, onChange, onO
           refresh={historyVersion}
           onInsert={(sql) => editor.current?.insert(sql)}
           onClose={() => setShowHistory(false)}
+        />
+      )}
+      {exportOpen && rowsResult && (
+        <ExportDialog
+          name={tab.title ?? "result"}
+          loadedRows={rowsResult.rows}
+          complete={rowsResult.status.kind === "rows" && rowsResult.status.finished && rowsResult.status.complete}
+          transactionOpen={!!tx?.open}
+          onExport={(path, options, source) => void startExport(rowsResult, path, options, source)}
+          onClose={() => setExportOpen(false)}
         />
       )}
     </div>

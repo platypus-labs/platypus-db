@@ -8,6 +8,7 @@ mod config;
 mod connection;
 mod error;
 mod metadata;
+mod transaction;
 
 pub use config::{ConnectionConfig, DriverKind, Secret, SslMode};
 pub use connection::{
@@ -18,6 +19,9 @@ pub use error::{DbError, Error, Result};
 pub use metadata::{
     ColumnMeta, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, SchemaMeta, TableDetails,
     TextRow, TextRowExt, group_sorted, query_text,
+};
+pub use transaction::{
+    TransactionState, TxEffect, TxTracker, classify, leading_words, open_transaction_error,
 };
 
 /// Re-exported so frontends use the same Arrow version as the drivers.

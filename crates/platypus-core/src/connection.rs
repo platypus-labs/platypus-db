@@ -9,7 +9,9 @@ use async_trait::async_trait;
 use futures::Stream;
 use futures::stream::BoxStream;
 
-use crate::{ConnectionConfig, DriverKind, ObjectMeta, Result, SchemaMeta, TableDetails};
+use crate::{
+    ConnectionConfig, DriverKind, ObjectMeta, Result, SchemaMeta, TableDetails, TransactionState,
+};
 
 #[async_trait]
 pub trait Driver: Send + Sync + fmt::Debug {
@@ -43,6 +45,17 @@ pub trait Connection: Send + Sync + fmt::Debug {
 
     /// Columns, indexes and foreign keys of a table or view.
     async fn table_details(&self, schema: &str, table: &str) -> Result<TableDetails>;
+
+    fn transaction(&self) -> TransactionState;
+
+    /// Switches between autocommit and manual commit; fails while a transaction is open.
+    async fn set_autocommit(&self, on: bool) -> Result<()>;
+
+    /// Commits the open transaction, if any.
+    async fn commit(&self) -> Result<()>;
+
+    /// Rolls back the open transaction, if any.
+    async fn rollback(&self) -> Result<()>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

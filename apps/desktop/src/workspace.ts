@@ -11,6 +11,10 @@ export interface PersistedTab {
   savedSql: string | null;
   /** Tab label, e.g. the table opened from the navigator. */
   title?: string | null;
+  /** Data viewer state, see `TabModel`. */
+  table?: string | null;
+  filter?: string;
+  sort?: { column: string; desc: boolean } | null;
 }
 
 export interface Workspace {

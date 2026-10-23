@@ -28,6 +28,10 @@ interface Props {
   cache: RowCache;
   /** Bumped whenever the cache receives rows. */
   version: number;
+  /** Server-side sort shown in the header (data viewer). */
+  sort?: { column: string; desc: boolean } | null;
+  /** Makes headers clickable, e.g. to sort. */
+  onHeaderClick?: (column: number) => void;
 }
 
 interface Theme {
@@ -56,7 +60,7 @@ function readTheme(el: Element): Theme {
   };
 }
 
-export function DataGrid({ columns, rowCount, cache, version }: Props) {
+export function DataGrid({ columns, rowCount, cache, version, sort = null, onHeaderClick }: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -70,8 +74,8 @@ export function DataGrid({ columns, rowCount, cache, version }: Props) {
   const theme = useRef<Theme | null>(null);
   const frame = useRef(0);
   // Latest props for the imperative draw loop.
-  const props = useRef({ columns, rowCount, cache });
-  props.current = { columns, rowCount, cache };
+  const props = useRef({ columns, rowCount, cache, sort, onHeaderClick });
+  props.current = { columns, rowCount, cache, sort, onHeaderClick };
 
   const measure = useCallback((text: string, font: string) => {
     const ctx = canvasRef.current?.getContext("2d");
@@ -266,6 +270,13 @@ export function DataGrid({ columns, rowCount, cache, version }: Props) {
         ctx.font = FONT_BOLD;
         ctx.fillStyle = t.fg;
         ctx.fillText(column.name, x + PAD, 14);
+        const sorted = props.current.sort;
+        if (sorted?.column === column.name) {
+          ctx.fillStyle = t.focus;
+          ctx.textAlign = "right";
+          ctx.fillText(sorted.desc ? "▼" : "▲", x + cw - PAD, 14);
+          ctx.textAlign = "left";
+        }
         ctx.font = FONT_SMALL;
         ctx.fillStyle = t.muted;
         ctx.fillText(column.db_type, x + PAD, 29);
@@ -301,7 +312,7 @@ export function DataGrid({ columns, rowCount, cache, version }: Props) {
   }
 
   // Redraw on data, size and theme changes.
-  useEffect(schedule, [schedule, version, rowCount, columns]);
+  useEffect(schedule, [schedule, version, rowCount, columns, sort]);
   useEffect(() => {
     const outer = outerRef.current;
     if (!outer) return;
@@ -406,6 +417,10 @@ export function DataGrid({ columns, rowCount, cache, version }: Props) {
       };
       return;
     }
+    if (h.inHeader && h.col >= 0 && !h.inGutter) {
+      props.current.onHeaderClick?.(h.col);
+      return;
+    }
     if (h.inHeader || h.row < 0 || h.row >= props.current.rowCount) return;
     if (h.inGutter) {
       anchor.current = { row: h.row, col: 0 };
@@ -426,7 +441,12 @@ export function DataGrid({ columns, rowCount, cache, version }: Props) {
       return;
     }
     const h = hit(e);
-    scroller.style.cursor = h.inHeader && h.border >= 0 ? "col-resize" : "default";
+    scroller.style.cursor =
+      h.inHeader && h.border >= 0
+        ? "col-resize"
+        : h.inHeader && h.col >= 0 && props.current.onHeaderClick
+          ? "pointer"
+          : "default";
     if (selecting.current && e.buttons === 1 && h.col >= 0 && !h.inHeader) {
       setFocus({ row: h.row, col: h.col }, true);
     }

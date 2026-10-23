@@ -8,6 +8,7 @@
 
 #[doc(hidden)]
 pub mod columns;
+mod cursor;
 #[doc(hidden)]
 pub mod decode;
 mod meta;
@@ -15,6 +16,7 @@ mod tls;
 
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
@@ -23,7 +25,7 @@ use futures::StreamExt;
 use platypus_core::{
     CancelHandle, Canceller, Connection, ConnectionConfig, DbError, Driver, DriverKind, Error,
     ExecOptions, ExecResult, ObjectMeta, RecordBatchStream, Result, SchemaMeta, ServerInfo,
-    TableDetails,
+    TableDetails, TransactionState, TxTracker, classify,
 };
 use tokio::sync::{Mutex, OwnedMutexGuard};
 use tokio_postgres::error::{ErrorPosition, SqlState};
@@ -50,12 +52,15 @@ impl Driver for PgDriver {
 
 #[derive(Debug)]
 pub struct PgConnection {
-    client: Client,
+    client: Arc<Client>,
     canceller: PgCanceller,
     server: ServerInfo,
     /// Held for the lifetime of a statement, including its result stream, so a new
     /// statement never starts while an abandoned one is still being cancelled.
     busy: Arc<Mutex<()>>,
+    tx: TxTracker,
+    /// Names cursors, which carry results inside transactions.
+    next_cursor: AtomicU64,
 }
 
 impl PgConnection {
@@ -112,13 +117,15 @@ impl PgConnection {
                 token: client.cancel_token(),
                 tls,
             },
-            client,
+            client: Arc::new(client),
             server: ServerInfo {
                 product: "PostgreSQL".to_owned(),
                 version,
                 encrypted,
             },
             busy: Arc::new(Mutex::new(())),
+            tx: TxTracker::default(),
+            next_cursor: AtomicU64::new(1),
         })
     }
 }
@@ -145,7 +152,88 @@ where
 #[async_trait]
 impl Connection for PgConnection {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
+        let effect = classify(sql);
         let guard = Arc::clone(&self.busy).lock_owned().await;
+        if self.tx.needs_begin(effect) {
+            self.client
+                .batch_execute("BEGIN")
+                .await
+                .map_err(map_error)?;
+            self.tx.set_open(true);
+        }
+        let result = self.execute_locked(sql, options, guard).await;
+        self.tx.after(effect, false);
+        result
+    }
+
+    fn cancel_handle(&self) -> CancelHandle {
+        CancelHandle::new(self.canceller.clone())
+    }
+
+    fn server_info(&self) -> &ServerInfo {
+        &self.server
+    }
+
+    fn is_closed(&self) -> bool {
+        self.client.is_closed()
+    }
+
+    async fn schemas(&self) -> Result<Vec<SchemaMeta>> {
+        meta::schemas(self).await
+    }
+
+    async fn objects(&self, schema: &str) -> Result<Vec<ObjectMeta>> {
+        meta::objects(self, schema).await
+    }
+
+    async fn table_details(&self, schema: &str, table: &str) -> Result<TableDetails> {
+        meta::table_details(self, schema, table).await
+    }
+
+    fn transaction(&self) -> TransactionState {
+        self.tx.state()
+    }
+
+    async fn set_autocommit(&self, on: bool) -> Result<()> {
+        self.tx.ensure_closed()?;
+        self.tx.set_autocommit(on);
+        Ok(())
+    }
+
+    async fn commit(&self) -> Result<()> {
+        self.end_transaction("COMMIT").await
+    }
+
+    async fn rollback(&self) -> Result<()> {
+        self.end_transaction("ROLLBACK").await
+    }
+}
+
+impl PgConnection {
+    async fn end_transaction(&self, sql: &str) -> Result<()> {
+        let _guard = self.busy.lock().await;
+        if !self.tx.state().open {
+            return Ok(());
+        }
+        let result = self.client.batch_execute(sql).await.map_err(map_error);
+        // Even a failed COMMIT ends the transaction in PostgreSQL.
+        self.tx.set_open(false);
+        result
+    }
+
+    async fn execute_locked(
+        &self,
+        sql: &str,
+        options: &ExecOptions,
+        guard: OwnedMutexGuard<()>,
+    ) -> Result<ExecResult> {
+        if self.tx.state().open && cursor::eligible(sql) {
+            let name = format!(
+                "platypus_cursor_{}",
+                self.next_cursor.fetch_add(1, Ordering::Relaxed)
+            );
+            return cursor::open(Arc::clone(&self.client), &name, sql, options, guard).await;
+        }
         let statement = self.client.prepare(sql).await.map_err(map_error)?;
 
         if statement.columns().is_empty() {
@@ -184,30 +272,6 @@ impl Connection for PgConnection {
             schema,
             stream.boxed(),
         )))
-    }
-
-    fn cancel_handle(&self) -> CancelHandle {
-        CancelHandle::new(self.canceller.clone())
-    }
-
-    fn server_info(&self) -> &ServerInfo {
-        &self.server
-    }
-
-    fn is_closed(&self) -> bool {
-        self.client.is_closed()
-    }
-
-    async fn schemas(&self) -> Result<Vec<SchemaMeta>> {
-        meta::schemas(self).await
-    }
-
-    async fn objects(&self, schema: &str) -> Result<Vec<ObjectMeta>> {
-        meta::objects(self, schema).await
-    }
-
-    async fn table_details(&self, schema: &str, table: &str) -> Result<TableDetails> {
-        meta::table_details(self, schema, table).await
     }
 }
 
@@ -248,6 +312,30 @@ impl<'a> FromSql<'a> for Raw<'a> {
     }
 }
 
+/// Decodes one row into the column builders.
+pub(crate) fn append_row(
+    builders: &mut [ColumnBuilder],
+    schema: &Schema,
+    row: &tokio_postgres::Row,
+) -> Result<()> {
+    for (i, builder) in builders.iter_mut().enumerate() {
+        let value = row.try_get::<_, Option<Raw<'_>>>(i).map_err(map_error)?;
+        builder.append(value.map(|r| r.0)).map_err(|e| {
+            let field = schema.field(i);
+            Error::Decode {
+                column: field.name().clone(),
+                db_type: field
+                    .metadata()
+                    .get(platypus_core::META_DB_TYPE)
+                    .cloned()
+                    .unwrap_or_default(),
+                message: e.to_string(),
+            }
+        })?;
+    }
+    Ok(())
+}
+
 async fn next_batch(mut state: BatchState) -> Result<Option<(RecordBatch, BatchState)>> {
     let Some(rows) = state.rows.as_mut() else {
         return Ok(None);
@@ -265,21 +353,7 @@ async fn next_batch(mut state: BatchState) -> Result<Option<(RecordBatch, BatchS
                 break;
             }
         };
-        for (i, builder) in state.builders.iter_mut().enumerate() {
-            let value = row.try_get::<_, Option<Raw<'_>>>(i).map_err(map_error)?;
-            builder.append(value.map(|r| r.0)).map_err(|e| {
-                let field = state.schema.field(i);
-                Error::Decode {
-                    column: field.name().clone(),
-                    db_type: field
-                        .metadata()
-                        .get(platypus_core::META_DB_TYPE)
-                        .cloned()
-                        .unwrap_or_default(),
-                    message: e.to_string(),
-                }
-            })?;
-        }
+        append_row(&mut state.builders, &state.schema, &row)?;
         len += 1;
     }
     if len == 0 {

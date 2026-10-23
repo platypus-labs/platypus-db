@@ -496,6 +496,40 @@ button.toggled {
   border-bottom: 1px solid var(--border);
 }
 
+.viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.viewer-bar input {
+  flex: 1;
+  max-width: 640px;
+  font-family: var(--mono);
+}
+
+.tx-open {
+  color: var(--warn, #e8590c);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.error-text {
+  color: var(--error);
+}
+
+.choices {
+  border: none;
+  margin: 4px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .editor {
   min-height: 0;
   overflow: hidden;

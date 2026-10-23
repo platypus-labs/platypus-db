@@ -6,7 +6,7 @@ import { RowCache } from "../grid/RowCache";
 export type ResultStatus =
   | { kind: "pending" }
   | { kind: "running" }
-  | { kind: "rows"; finished: boolean; complete: boolean; elapsedMs: number }
+  | { kind: "rows"; finished: boolean; complete: boolean; stopped?: boolean; elapsedMs: number }
   | { kind: "affected"; rows: number; elapsedMs: number }
   | { kind: "error"; error: CommandError }
   | { kind: "skipped" };
@@ -42,6 +42,7 @@ export function describe(result: Result): string {
     case "rows": {
       const rows = `${fmt.format(result.rows)} ${result.rows === 1 ? "row" : "rows"}`;
       if (!s.finished) return `${rows} loaded · more available`;
+      if (s.stopped) return `${rows} · fetching stopped`;
       if (!s.complete && result.limit !== null && result.rows >= result.limit) {
         return `first ${rows} (script limit)`;
       }
@@ -58,7 +59,14 @@ export function describe(result: Result): string {
 }
 
 /** Grid (or message) for one statement's result. */
-export function ResultPanel({ result }: { result: Result }) {
+interface PanelProps {
+  result: Result;
+  sort?: { column: string; desc: boolean } | null;
+  /** Header clicks with the column name; the data viewer sorts with them. */
+  onHeaderClick?: (column: string) => void;
+}
+
+export function ResultPanel({ result, sort, onHeaderClick }: PanelProps) {
   const [cache, setCache] = useState<RowCache | null>(null);
   const [version, setVersion] = useState(0);
   const { jobId, columns, status } = result;
@@ -98,7 +106,16 @@ export function ResultPanel({ result }: { result: Result }) {
     return <div className="notice muted">Not executed: an earlier statement failed.</div>;
   }
   if (columns && cache) {
-    return <DataGrid columns={columns} rowCount={result.rows} cache={cache} version={version} />;
+    return (
+      <DataGrid
+        columns={columns}
+        rowCount={result.rows}
+        cache={cache}
+        version={version}
+        sort={sort}
+        onHeaderClick={onHeaderClick && ((i) => onHeaderClick(columns[i]!.name))}
+      />
+    );
   }
   return null;
 }

@@ -4,6 +4,7 @@
 //! then pauses (the driver applies backpressure, so the server waits too); scrolling the
 //! grid raises the target. A memory cap stops runaway results.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -64,6 +65,8 @@ pub enum QueryEvent {
         rows: usize,
         elapsed_ms: u64,
         complete: bool,
+        /// Fetching was stopped to free the session (COMMIT, ROLLBACK).
+        stopped: bool,
     },
     Affected {
         rows: u64,
@@ -125,12 +128,26 @@ impl Buffer {
     }
 }
 
-#[derive(Debug)]
 pub struct Job {
+    /// The session the statement runs on.
+    pub session_id: u64,
     buffer: Mutex<Buffer>,
+    events: Channel<QueryEvent>,
+    started: Instant,
+    /// Set once the background task has sent its last event.
+    done: AtomicBool,
     target: watch::Sender<usize>,
     cancel: CancelHandle,
     task: Mutex<Option<JoinHandle<()>>>,
+}
+
+impl std::fmt::Debug for Job {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Job")
+            .field("session_id", &self.session_id)
+            .field("done", &self.done)
+            .finish_non_exhaustive()
+    }
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -166,6 +183,7 @@ impl Job {
     /// Starts `sql` in the background. With `limit`, at most that many rows are fetched and
     /// the rest of the result is cancelled (used for scripts, which must free the session).
     pub fn start(
+        session_id: u64,
         conn: Arc<dyn Connection>,
         sql: String,
         limit: Option<usize>,
@@ -173,12 +191,22 @@ impl Job {
         on_outcome: impl FnOnce(Outcome) + Send + 'static,
     ) -> Arc<Self> {
         let job = Arc::new(Self {
+            session_id,
             buffer: Mutex::new(Buffer::default()),
+            events: events.clone(),
+            started: Instant::now(),
+            done: AtomicBool::new(false),
             target: watch::Sender::new(limit.unwrap_or(PREFETCH_ROWS)),
             cancel: conn.cancel_handle(),
             task: Mutex::new(None),
         });
-        let run = Arc::clone(&job).run(conn, sql, limit, events, on_outcome);
+        let task = Arc::clone(&job);
+        let run = async move {
+            Arc::clone(&task)
+                .run(conn, sql, limit, events, on_outcome)
+                .await;
+            task.done.store(true, Ordering::Release);
+        };
         *lock(&job.task) = Some(tauri::async_runtime::spawn(run));
         job
     }
@@ -287,6 +315,7 @@ impl Job {
             rows,
             elapsed_ms: millis(started),
             complete,
+            stopped: false,
         });
     }
 
@@ -315,6 +344,29 @@ impl Job {
 
     pub async fn cancel(&self) -> Result<(), CommandError> {
         self.cancel.cancel().await.map_err(Into::into)
+    }
+
+    /// Stops fetching but keeps the rows already buffered: the result stays browsable while
+    /// the session is freed (for COMMIT, ROLLBACK or an export).
+    pub fn stop(&self) {
+        if self.done.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        if let Some(task) = lock(&self.task).take() {
+            task.abort();
+        }
+        let _ = self.events.send(QueryEvent::Finished {
+            rows: lock(&self.buffer).rows,
+            elapsed_ms: millis(self.started),
+            complete: false,
+            stopped: true,
+        });
+    }
+
+    /// The buffered result, for exporting the rows already loaded.
+    pub fn snapshot(&self) -> Option<(SchemaRef, Vec<RecordBatch>)> {
+        let buffer = lock(&self.buffer);
+        Some((Arc::clone(buffer.schema.as_ref()?), buffer.batches.clone()))
     }
 
     /// Stops the background task; its stream is dropped, which cancels the query.

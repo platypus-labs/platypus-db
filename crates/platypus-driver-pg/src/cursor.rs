@@ -1,0 +1,171 @@
+//! Queries inside a transaction run through a server-side cursor.
+//!
+//! Outside a transaction an abandoned result is cancelled, which is harmless. Inside one, a
+//! cancel would abort the whole transaction, so queries are declared as cursors and read
+//! with `FETCH`: abandoning the result just closes the cursor.
+
+use std::sync::Arc;
+
+use arrow_array::RecordBatch;
+use arrow_schema::Schema;
+use futures::StreamExt;
+use platypus_core::{ExecOptions, ExecResult, RecordBatchStream, Result, leading_words};
+use platypus_sql::Dialect;
+use tokio::sync::OwnedMutexGuard;
+use tokio_postgres::{Client, Statement};
+
+use crate::columns::{ColumnBuilder, column_builder};
+use crate::{append_row, map_error, no_params};
+
+/// Whether `sql` can be declared as a cursor: a plain query with no side effects
+/// (`DECLARE` rejects data-modifying statements, and a failed `DECLARE` would abort the
+/// transaction).
+pub fn eligible(sql: &str) -> bool {
+    let first = leading_words(sql, 1);
+    matches!(
+        first.first().map(String::as_str),
+        Some("SELECT" | "WITH" | "VALUES" | "TABLE")
+    ) && platypus_sql::is_read_only(sql, Dialect::Postgres)
+}
+
+pub async fn open(
+    client: Arc<Client>,
+    name: &str,
+    sql: &str,
+    options: &ExecOptions,
+    guard: OwnedMutexGuard<()>,
+) -> Result<ExecResult> {
+    let query = sql.trim().trim_end_matches(';');
+    client
+        .batch_execute(&format!("DECLARE {name} NO SCROLL CURSOR FOR {query}"))
+        .await
+        .map_err(map_error)?;
+    let batch_size = options.batch_size.max(1);
+    let fetch = client
+        .prepare(&format!("FETCH {batch_size} FROM {name}"))
+        .await
+        .map_err(map_error)?;
+    let (fields, builders): (Vec<_>, Vec<_>) = fetch
+        .columns()
+        .iter()
+        .map(column_builder)
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .unzip();
+    let schema = Arc::new(Schema::new(fields));
+    let state = CursorState {
+        client,
+        fetch,
+        name: name.to_owned(),
+        builders,
+        schema: Arc::clone(&schema),
+        batch_size,
+        guard: Some(guard),
+    };
+    let stream = futures::stream::try_unfold(state, next_batch);
+    Ok(ExecResult::Rows(RecordBatchStream::new(
+        schema,
+        stream.boxed(),
+    )))
+}
+
+struct CursorState {
+    client: Arc<Client>,
+    fetch: Statement,
+    name: String,
+    builders: Vec<ColumnBuilder>,
+    schema: Arc<Schema>,
+    batch_size: usize,
+    /// `None` once the cursor is closed.
+    guard: Option<OwnedMutexGuard<()>>,
+}
+
+impl CursorState {
+    async fn close(&mut self) {
+        if self.guard.is_some() {
+            let _ = self
+                .client
+                .batch_execute(&format!("CLOSE {}", self.name))
+                .await;
+            self.guard = None;
+        }
+    }
+}
+
+async fn next_batch(mut state: CursorState) -> Result<Option<(RecordBatch, CursorState)>> {
+    if state.guard.is_none() {
+        return Ok(None);
+    }
+    let rows = match state.client.query_raw(&state.fetch, no_params()).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            // The transaction is aborted; the cursor is gone with it.
+            state.guard = None;
+            return Err(map_error(e));
+        }
+    };
+    let mut rows = std::pin::pin!(rows);
+    let mut len = 0;
+    while let Some(row) = rows.next().await {
+        let row = match row {
+            Ok(row) => row,
+            Err(e) => {
+                state.guard = None;
+                return Err(map_error(e));
+            }
+        };
+        append_row(&mut state.builders, &state.schema, &row)?;
+        len += 1;
+    }
+    if len < state.batch_size {
+        state.close().await;
+    }
+    if len == 0 {
+        return Ok(None);
+    }
+    let columns = state
+        .builders
+        .iter_mut()
+        .map(ColumnBuilder::finish)
+        .collect();
+    let batch = RecordBatch::try_new(Arc::clone(&state.schema), columns)?;
+    Ok(Some((batch, state)))
+}
+
+impl Drop for CursorState {
+    /// An abandoned cursor is closed in the background; the connection stays busy until
+    /// then, so the next statement cannot interleave with the `CLOSE`.
+    fn drop(&mut self) {
+        let Some(guard) = self.guard.take() else {
+            return;
+        };
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        let client = Arc::clone(&self.client);
+        let close = format!("CLOSE {}", self.name);
+        runtime.spawn(async move {
+            let _ = client.batch_execute(&close).await;
+            drop(guard);
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn declares_only_plain_queries() {
+        assert!(eligible("select * from t"));
+        assert!(eligible("  with x as (select 1) select * from x"));
+        assert!(eligible("values (1), (2)"));
+        assert!(!eligible(
+            "with d as (delete from t returning *) select * from d"
+        ));
+        assert!(!eligible("insert into t values (1) returning id"));
+        assert!(!eligible("explain select 1"));
+        assert!(!eligible("show search_path"));
+        assert!(!eligible("select * from t for update"));
+    }
+}

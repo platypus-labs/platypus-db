@@ -20,7 +20,7 @@ use mysql_async::{Conn, DriverError, Opts, OptsBuilder, Row, SslOpts, Value};
 use platypus_core::{
     CancelHandle, Canceller, Connection, ConnectionConfig, DbError, Driver, DriverKind, Error,
     ExecOptions, ExecResult, ObjectMeta, RecordBatchStream, Result, SchemaMeta, ServerInfo,
-    SslMode, TableDetails,
+    SslMode, TableDetails, TransactionState, TxTracker, classify,
 };
 use tokio::sync::{Mutex, mpsc, oneshot};
 
@@ -53,6 +53,8 @@ pub struct MySqlConnection {
     server: ServerInfo,
     /// With `NO_BACKSLASH_ESCAPES`, `\` is an ordinary character in string literals.
     no_backslash_escapes: bool,
+    /// Manual mode is `SET autocommit = 0`; the server opens transactions by itself.
+    tx: TxTracker,
 }
 
 fn ssl_opts(config: &ConnectionConfig) -> Option<SslOpts> {
@@ -156,6 +158,7 @@ impl MySqlConnection {
                 encrypted: cipher.is_some_and(|(_, c)| !c.is_empty()),
             },
             no_backslash_escapes: sql_mode.contains("NO_BACKSLASH_ESCAPES"),
+            tx: TxTracker::default(),
         })
     }
 
@@ -178,24 +181,10 @@ enum Started {
 #[async_trait]
 impl Connection for MySqlConnection {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
-        let mut conn = Arc::clone(&self.conn).lock_owned().await;
-        let (reply, started) = oneshot::channel();
-        let sql = sql.to_owned();
-        let batch_size = options.batch_size.max(1);
-        let canceller = self.canceller.clone();
-        tokio::spawn(async move {
-            run(&mut conn, &sql, batch_size, reply, &canceller).await;
-        });
-        match started.await.map_err(|_| Error::Closed)?? {
-            Started::Affected(rows) => Ok(ExecResult::Affected { rows }),
-            Started::Rows(schema, mut rx) => {
-                let stream = futures::stream::poll_fn(move |cx| rx.poll_recv(cx));
-                Ok(ExecResult::Rows(RecordBatchStream::new(
-                    schema,
-                    stream.boxed(),
-                )))
-            }
-        }
+        let effect = classify(sql);
+        let result = self.start(sql, options).await;
+        self.tx.after(effect, true);
+        result
     }
 
     fn cancel_handle(&self) -> CancelHandle {
@@ -220,6 +209,68 @@ impl Connection for MySqlConnection {
 
     async fn table_details(&self, schema: &str, table: &str) -> Result<TableDetails> {
         meta::table_details(self, schema, table).await
+    }
+
+    fn transaction(&self) -> TransactionState {
+        self.tx.state()
+    }
+
+    async fn set_autocommit(&self, on: bool) -> Result<()> {
+        self.tx.ensure_closed()?;
+        let sql = if on {
+            "SET autocommit = 1"
+        } else {
+            "SET autocommit = 0"
+        };
+        self.conn
+            .lock()
+            .await
+            .query_drop(sql)
+            .await
+            .map_err(map_error)?;
+        self.tx.set_autocommit(on);
+        Ok(())
+    }
+
+    async fn commit(&self) -> Result<()> {
+        self.end_transaction("COMMIT").await
+    }
+
+    async fn rollback(&self) -> Result<()> {
+        self.end_transaction("ROLLBACK").await
+    }
+}
+
+impl MySqlConnection {
+    async fn end_transaction(&self, sql: &str) -> Result<()> {
+        let mut conn = self.conn.lock().await;
+        if !self.tx.state().open {
+            return Ok(());
+        }
+        let result = conn.query_drop(sql).await.map_err(map_error);
+        self.tx.set_open(false);
+        result
+    }
+
+    async fn start(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
+        let mut conn = Arc::clone(&self.conn).lock_owned().await;
+        let (reply, started) = oneshot::channel();
+        let sql = sql.to_owned();
+        let batch_size = options.batch_size.max(1);
+        let canceller = self.canceller.clone();
+        tokio::spawn(async move {
+            run(&mut conn, &sql, batch_size, reply, &canceller).await;
+        });
+        match started.await.map_err(|_| Error::Closed)?? {
+            Started::Affected(rows) => Ok(ExecResult::Affected { rows }),
+            Started::Rows(schema, mut rx) => {
+                let stream = futures::stream::poll_fn(move |cx| rx.poll_recv(cx));
+                Ok(ExecResult::Rows(RecordBatchStream::new(
+                    schema,
+                    stream.boxed(),
+                )))
+            }
+        }
     }
 }
 

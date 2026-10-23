@@ -3,6 +3,7 @@
 mod commands;
 mod display;
 mod error;
+mod export;
 mod jobs;
 
 use std::sync::Arc;
@@ -58,6 +59,13 @@ pub fn run() {
             commands::fetch_all,
             commands::cancel_query,
             commands::close_query,
+            commands::query_value,
+            commands::export_query,
+            commands::export_rows,
+            commands::cancel_export,
+            commands::transaction_state,
+            commands::set_autocommit,
+            commands::end_transaction,
             commands::list_schemas,
             commands::list_objects,
             commands::table_details,

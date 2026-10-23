@@ -432,3 +432,67 @@ async fn navigates_metadata() {
         );
     }
 }
+
+async fn count(b: &Backend, conn: &dyn Connection) -> String {
+    let rows = collect(b, conn, "SELECT count(*) FROM conf_tx").await;
+    cell(&rows[0], 0, 0).unwrap()
+}
+
+#[tokio::test]
+async fn manual_commit_and_rollback() {
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        affected(&b, conn, "CREATE TEMPORARY TABLE conf_tx (id INT)").await;
+        assert!(conn.transaction().autocommit, "{}", b.name);
+
+        conn.set_autocommit(false).await.unwrap();
+        assert!(!conn.transaction().open, "{}: nothing ran yet", b.name);
+        affected(&b, conn, "INSERT INTO conf_tx VALUES (1)").await;
+        assert!(
+            conn.transaction().open,
+            "{}: insert opens a transaction",
+            b.name
+        );
+        assert!(
+            conn.set_autocommit(true).await.is_err(),
+            "{}: switching with pending changes",
+            b.name
+        );
+        assert_eq!(count(&b, conn).await, "1", "{}", b.name);
+        conn.rollback().await.unwrap();
+        assert!(!conn.transaction().open, "{}", b.name);
+        assert_eq!(count(&b, conn).await, "0", "{}: rolled back", b.name);
+        conn.rollback().await.unwrap();
+
+        // A result abandoned inside a transaction must not abort it.
+        affected(&b, conn, "INSERT INTO conf_tx VALUES (2)").await;
+        let options = ExecOptions { batch_size: 100 };
+        let ExecResult::Rows(mut stream) = conn.execute(&b.series_sql, &options).await.unwrap()
+        else {
+            panic!("{}: expected rows", b.name);
+        };
+        stream.next().await.unwrap().unwrap();
+        drop(stream);
+        affected(&b, conn, "INSERT INTO conf_tx VALUES (3)").await;
+        conn.commit().await.unwrap();
+        assert!(!conn.transaction().open, "{}", b.name);
+
+        conn.set_autocommit(true).await.unwrap();
+        assert_eq!(
+            count(&b, conn).await,
+            "2",
+            "{}: both inserts committed",
+            b.name
+        );
+        assert!(!conn.transaction().open, "{}: autocommit again", b.name);
+
+        // Transaction statements typed by the user are tracked too.
+        affected(&b, conn, "BEGIN").await;
+        assert!(conn.transaction().open, "{}: typed BEGIN", b.name);
+        affected(&b, conn, "DELETE FROM conf_tx").await;
+        affected(&b, conn, "ROLLBACK").await;
+        assert!(!conn.transaction().open, "{}: typed ROLLBACK", b.name);
+        assert_eq!(count(&b, conn).await, "2", "{}", b.name);
+    }
+}

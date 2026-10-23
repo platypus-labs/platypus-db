@@ -45,3 +45,16 @@ export function selectSql(
   const list = columns?.length ? columns.map((c) => quoteIdent(c, driver)).join(",\n       ") : "*";
   return `SELECT ${list}\nFROM ${target}${limit === null ? "" : `\nLIMIT ${limit}`};`;
 }
+
+export interface Sort {
+  column: string;
+  desc: boolean;
+}
+
+/** The data viewer's query for a table (already quoted), a `WHERE` filter and a sort. */
+export function viewerSql(driver: DriverKind, table: string, filter: string, sort: Sort | null): string {
+  let sql = `SELECT *\nFROM ${table}`;
+  if (filter.trim()) sql += `\nWHERE ${filter.trim()}`;
+  if (sort) sql += `\nORDER BY ${quoteIdent(sort.column, driver)} ${sort.desc ? "DESC" : "ASC"}`;
+  return sql;
+}

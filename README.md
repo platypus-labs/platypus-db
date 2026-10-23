@@ -2,7 +2,7 @@
 
 Fast, lightweight desktop SQL client. Rust core, Tauri 2 + React UI.
 
-> Status: **M4 — Navigator, MySQL/MariaDB and SQLite**: lazy schema tree with columns, indexes and foreign keys, "Open data" from the tree, MySQL/MariaDB and SQLite drivers checked by one conformance suite. Built on M3 (CodeMirror editor, script execution, history) and M2 (TLS connections, keychain, virtualized Arrow grid). See [docs/MVP_PLAN.md](docs/MVP_PLAN.md) for scope and roadmap.
+> Status: **M5 — Data viewer, export, transactions**: tables open in a viewer with server-side sort, filter and row count; results export to CSV, JSON, NDJSON or Parquet in streaming (5M rows to Parquet in about 3 s with ~30 MB of memory); manual-commit mode with Commit/Rollback on all drivers. Built on M4 (navigator, MySQL/MariaDB and SQLite drivers, conformance suite), M3 (CodeMirror editor, script execution, history) and M2 (TLS connections, keychain, virtualized Arrow grid). See [docs/MVP_PLAN.md](docs/MVP_PLAN.md) for scope and roadmap.
 
 ## Layout
 
@@ -40,10 +40,11 @@ npm run tauri dev
 # PLATYPUS_TEST_MYSQL_URL or PLATYPUS_TEST_MARIADB_URL to make them mandatory
 cargo test --workspace --exclude platypus-desktop
 
-# CLI: table (first 200 rows), csv or ndjson; Ctrl+C or --timeout cancel server-side
+# CLI: table (first 200 rows), csv, ndjson, json or parquet (json and parquet need -o); Ctrl+C or --timeout cancel server-side
 export PLATYPUS_URL="postgres://platypus:platypus@localhost:55432/platypus?sslmode=disable"
 cargo run -p platypus-cli -- query "select * from demo.type_zoo"
 cargo run --release -p platypus-cli -- query -f csv -o big.csv --stats "select * from demo.big_table"
+cargo run --release -p platypus-cli -- query -f parquet -o big.parquet --stats "select * from demo.big_table"
 cargo run -p platypus-cli -- query -u mysql://platypus:platypus@localhost:53306/platypus "select * from type_zoo"
 cargo run -p platypus-cli -- query -u sqlite:///C:/data/app.db "select * from sqlite_master"
 

@@ -14,14 +14,10 @@ interface PasswordRequest {
 
 let nextTabKey = 1;
 
-function newTab(
-  connectionId: string,
-  sql = "",
-  filePath: string | null = null,
-  autorun = false,
-  title: string | null = null,
-): TabModel {
-  return { key: nextTabKey++, connectionId, sql, filePath, savedSql: filePath ? sql : null, autorun, title };
+function newTab(connectionId: string, init: Partial<Omit<TabModel, "key" | "connectionId">> = {}): TabModel {
+  const filePath = init.filePath ?? null;
+  const sql = init.sql ?? "";
+  return { savedSql: filePath ? sql : null, ...init, key: nextTabKey++, connectionId, sql, filePath };
 }
 
 export function App() {
@@ -57,7 +53,7 @@ export function App() {
     const known = new Set(connections.map((c) => c.id));
     const restoredTabs = saved.tabs
       .filter((t) => known.has(t.connectionId))
-      .map((t) => ({ ...newTab(t.connectionId, t.sql, t.filePath, false, t.title ?? null), savedSql: t.savedSql }));
+      .map(({ connectionId, ...rest }) => newTab(connectionId, rest));
     setTabs(restoredTabs);
     setActiveTab(restoredTabs[Math.min(saved.active, restoredTabs.length - 1)]?.key ?? null);
   }, [connections]);
@@ -65,12 +61,15 @@ export function App() {
   useEffect(() => {
     if (!restored.current) return;
     saveWorkspace({
-      tabs: tabs.map(({ connectionId, sql, filePath, savedSql, title }) => ({
+      tabs: tabs.map(({ connectionId, sql, filePath, savedSql, title, table, filter, sort }) => ({
         connectionId,
         sql,
         filePath,
         savedSql,
         title,
+        table,
+        filter,
+        sort,
       })),
       active: Math.max(0, tabs.findIndex((t) => t.key === activeTab)),
     });
@@ -86,7 +85,7 @@ export function App() {
     if (!window.confirm(`Delete the connection "${c.name}"?`)) return;
     try {
       setConnections(await api.deleteConnection(c.id));
-      for (const t of tabs.filter((t) => t.connectionId === c.id)) closeTab(t);
+      for (const t of tabs.filter((t) => t.connectionId === c.id)) closeTab(t, true);
       disconnectNavigator(c);
     } catch (e) {
       setToast(toCommandError(e).message);
@@ -148,7 +147,14 @@ export function App() {
     });
   }
 
-  function closeTab(tab: TabModel) {
+  function closeTab(tab: TabModel, confirmed = false) {
+    if (
+      tab.txOpen &&
+      !confirmed &&
+      !window.confirm("This tab has an open transaction. Close it and roll back the uncommitted changes?")
+    ) {
+      return;
+    }
     const session = sessions.current.get(tab.key);
     sessions.current.delete(tab.key);
     void session?.then((id) => {
@@ -180,7 +186,7 @@ export function App() {
         onNew={() => void newConnection()}
         onEdit={(c) => setDialog({ kind: "connection", connection: c, existing: true })}
         onDelete={(c) => void deleteConnection(c)}
-        onOpenTab={(c, sql, autorun, title) => addTab(newTab(c.id, sql, null, autorun, title))}
+        onOpenTab={(c, init) => addTab(newTab(c.id, init))}
         session={navigatorSession}
         disconnect={disconnectNavigator}
         onError={setToast}
@@ -226,7 +232,8 @@ export function App() {
                 active={t.key === activeTab}
                 ensureSession={() => ensureSession(t)}
                 onChange={(patch) => patchTab(t.key, patch)}
-                onOpenFile={(path, sql) => addTab(newTab(t.connectionId, sql, path))}
+                sideSession={() => navigatorSession(connection)}
+                onOpenFile={(path, sql) => addTab(newTab(t.connectionId, { sql, filePath: path }))}
                 onError={setToast}
               />
             )

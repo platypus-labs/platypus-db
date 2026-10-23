@@ -49,7 +49,7 @@ export interface ColumnInfo {
 export type QueryEvent =
   | { type: "started"; columns: ColumnInfo[]; elapsed_ms: number }
   | { type: "progress"; rows: number }
-  | { type: "finished"; rows: number; elapsed_ms: number; complete: boolean }
+  | { type: "finished"; rows: number; elapsed_ms: number; complete: boolean; stopped: boolean }
   | { type: "affected"; rows: number; elapsed_ms: number }
   | { type: "failed"; error: CommandError };
 
@@ -128,6 +128,25 @@ export interface TableDetails {
   foreign_keys: ForeignKeyMeta[];
 }
 
+export interface TransactionState {
+  autocommit: boolean;
+  open: boolean;
+}
+
+export type ExportFormat = "csv" | "json" | "ndjson" | "parquet";
+
+export interface ExportOptions {
+  format: ExportFormat;
+  delimiter: string;
+  header: boolean;
+}
+
+export type ExportEvent =
+  | { type: "progress"; rows: number }
+  | { type: "done"; rows: number; elapsed_ms: number }
+  | { type: "failed"; error: CommandError }
+  | { type: "cancelled" };
+
 export interface AppInfo {
   name: string;
   version: string;
@@ -175,6 +194,29 @@ export const api = {
     invoke<ObjectMeta[]>("list_objects", { sessionId, schema }),
   tableDetails: (sessionId: number, schema: string, table: string) =>
     invoke<TableDetails>("table_details", { sessionId, schema, table }),
+  transactionState: (sessionId: number) => invoke<TransactionState>("transaction_state", { sessionId }),
+  setAutocommit: (sessionId: number, on: boolean) =>
+    invoke<TransactionState>("set_autocommit", { sessionId, on }),
+  /** Commits (`commit`) or rolls back; unfinished results of the session stop fetching. */
+  endTransaction: (sessionId: number, commit: boolean) =>
+    invoke<TransactionState>("end_transaction", { sessionId, commit }),
+  queryValue: (sessionId: number, sql: string) => invoke<string | null>("query_value", { sessionId, sql }),
+  /** Re-runs `sql` on its own connection, streaming every row to `path`. */
+  exportQuery: (
+    sessionId: number,
+    sql: string,
+    path: string,
+    options: ExportOptions,
+    onEvent: (e: ExportEvent) => void,
+  ) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("export_query", { sessionId, sql, path, options, onEvent: channel });
+  },
+  /** Writes the rows a result has already loaded. */
+  exportRows: (jobId: number, path: string, options: ExportOptions) =>
+    invoke<number>("export_rows", { jobId, path, options }),
+  cancelExport: (exportId: number) => invoke<void>("cancel_export", { exportId }),
   analyzeSql: (sql: string, driver: DriverKind, cursor: number) =>
     invoke<SqlAnalysis>("analyze_sql", { sql, driver, cursor }),
   searchHistory: (query: {

@@ -11,6 +11,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use futures::StreamExt;
 use platypus_core::{
     Connection, ConnectionConfig, Driver, DriverKind, Error, ExecOptions, ExecResult,
+    RecordBatchStream,
 };
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
@@ -71,6 +72,47 @@ enum OutputFormat {
     Table,
     Csv,
     Ndjson,
+    /// A JSON array; needs `--output`.
+    Json,
+    /// Parquet with zstd; needs `--output`.
+    Parquet,
+}
+
+/// Writes the result with `platypus-export`, which handles the file formats.
+async fn export(
+    mut stream: RecordBatchStream,
+    path: &std::path::Path,
+    format: platypus_export::Format,
+    max_rows: Option<usize>,
+    stats: bool,
+    started: Instant,
+) -> Result<(), Error> {
+    let options = platypus_export::ExportOptions {
+        format,
+        ..Default::default()
+    };
+    let export_error = |e: platypus_export::ExportError| Error::Other(e.to_string());
+    let mut exporter = platypus_export::Exporter::create(path, &stream.schema(), &options)
+        .map_err(export_error)?;
+    let max = max_rows.unwrap_or(usize::MAX);
+    let mut rows = 0;
+    while rows < max
+        && let Some(batch) = stream.next().await
+    {
+        let batch = batch?;
+        let batch = batch.slice(0, batch.num_rows().min(max - rows));
+        rows += batch.num_rows();
+        exporter.write(&batch).map_err(export_error)?;
+    }
+    drop(stream);
+    exporter.finish().map_err(export_error)?;
+    if stats {
+        let elapsed = started.elapsed();
+        #[allow(clippy::cast_precision_loss)]
+        let rate = rows as f64 / elapsed.as_secs_f64();
+        eprintln!("{rows} rows in {elapsed:.2?} ({rate:.0} rows/s)");
+    }
+    Ok(())
 }
 
 #[tokio::main]
@@ -147,6 +189,18 @@ async fn query(args: QueryArgs) -> Result<(), Error> {
         OutputFormat::Table => Format::Table,
         OutputFormat::Csv => Format::Csv,
         OutputFormat::Ndjson => Format::Ndjson,
+        OutputFormat::Json | OutputFormat::Parquet => {
+            let path = args
+                .output
+                .as_deref()
+                .ok_or_else(|| Error::Config("json and parquet output need --output".to_owned()))?;
+            let format = if matches!(args.format, OutputFormat::Json) {
+                platypus_export::Format::Json
+            } else {
+                platypus_export::Format::Parquet
+            };
+            return export(stream, path, format, args.max_rows, args.stats, started).await;
+        }
     };
     let max_rows = args
         .max_rows

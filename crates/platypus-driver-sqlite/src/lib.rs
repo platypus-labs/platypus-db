@@ -10,7 +10,7 @@ pub mod columns;
 mod meta;
 
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, mpsc as std_mpsc};
 use std::time::Duration;
 
@@ -21,7 +21,7 @@ use futures::StreamExt;
 use platypus_core::{
     CancelHandle, Canceller, Connection, ConnectionConfig, DbError, Driver, DriverKind, Error,
     ExecOptions, ExecResult, ObjectMeta, RecordBatchStream, Result, SchemaMeta, ServerInfo,
-    TableDetails,
+    TableDetails, TransactionState, TxEffect, classify, open_transaction_error,
 };
 use rusqlite::types::ValueRef;
 use rusqlite::{ErrorCode, InterruptHandle, OpenFlags};
@@ -51,6 +51,9 @@ pub struct SqliteConnection {
     canceller: SqliteCanceller,
     server: ServerInfo,
     next_job: AtomicU64,
+    autocommit: AtomicBool,
+    /// `!sqlite3_get_autocommit()`, published by the worker after each statement.
+    in_transaction: Arc<AtomicBool>,
 }
 
 struct Command {
@@ -104,12 +107,14 @@ impl SqliteConnection {
         let (ready, opened) = oneshot::channel();
         let running = Arc::new(Mutex::new(None));
         let worker_running = Arc::clone(&running);
+        let in_transaction = Arc::new(AtomicBool::new(false));
+        let worker_in_transaction = Arc::clone(&in_transaction);
         std::thread::Builder::new()
             .name("platypus-sqlite".to_owned())
             .spawn(move || match open(&config) {
                 Ok(conn) => {
                     let _ = ready.send(Ok(conn.get_interrupt_handle()));
-                    worker(&conn, &inbox, &worker_running);
+                    worker(&conn, &inbox, &worker_running, &worker_in_transaction);
                 }
                 Err(e) => {
                     let _ = ready.send(Err(e));
@@ -130,6 +135,8 @@ impl SqliteConnection {
                 encrypted: false,
             },
             next_job: AtomicU64::new(1),
+            autocommit: AtomicBool::new(true),
+            in_transaction,
         })
     }
 }
@@ -137,17 +144,12 @@ impl SqliteConnection {
 #[async_trait]
 impl Connection for SqliteConnection {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
-        let job = self.next_job.fetch_add(1, Ordering::Relaxed);
-        let (reply, started) = oneshot::channel();
-        self.commands
-            .send(Command {
-                job,
-                sql: sql.to_owned(),
-                batch_size: options.batch_size.max(1),
-                reply,
-            })
-            .map_err(|_| Error::Closed)?;
-        match started.await.map_err(|_| Error::Closed)?? {
+        let state = self.transaction();
+        if !state.autocommit && !state.open && classify(sql) == TxEffect::None {
+            self.send("BEGIN", 1).await?;
+        }
+        let (job, started) = self.send(sql, options.batch_size.max(1)).await?;
+        match started {
             Started::Affected(rows) => Ok(ExecResult::Affected { rows }),
             Started::Rows(schema, batches) => {
                 let batches = Batches {
@@ -189,6 +191,52 @@ impl Connection for SqliteConnection {
 
     async fn table_details(&self, schema: &str, table: &str) -> Result<TableDetails> {
         meta::table_details(self, schema, table).await
+    }
+
+    fn transaction(&self) -> TransactionState {
+        TransactionState {
+            autocommit: self.autocommit.load(Ordering::Acquire),
+            open: self.in_transaction.load(Ordering::Acquire),
+        }
+    }
+
+    async fn set_autocommit(&self, on: bool) -> Result<()> {
+        if self.transaction().open {
+            return Err(open_transaction_error());
+        }
+        self.autocommit.store(on, Ordering::Release);
+        Ok(())
+    }
+
+    async fn commit(&self) -> Result<()> {
+        if self.transaction().open {
+            self.send("COMMIT", 1).await?;
+        }
+        Ok(())
+    }
+
+    async fn rollback(&self) -> Result<()> {
+        if self.transaction().open {
+            self.send("ROLLBACK", 1).await?;
+        }
+        Ok(())
+    }
+}
+
+impl SqliteConnection {
+    /// Queues a statement on the worker and waits until it starts returning.
+    async fn send(&self, sql: &str, batch_size: usize) -> Result<(u64, Started)> {
+        let job = self.next_job.fetch_add(1, Ordering::Relaxed);
+        let (reply, started) = oneshot::channel();
+        self.commands
+            .send(Command {
+                job,
+                sql: sql.to_owned(),
+                batch_size,
+                reply,
+            })
+            .map_err(|_| Error::Closed)?;
+        Ok((job, started.await.map_err(|_| Error::Closed)??))
     }
 }
 
@@ -253,16 +301,17 @@ fn worker(
     conn: &rusqlite::Connection,
     inbox: &std_mpsc::Receiver<Command>,
     running: &Mutex<Option<u64>>,
+    in_transaction: &AtomicBool,
 ) {
     // Ends when the connection, and with it the sender, is dropped.
     for command in inbox {
         *lock(running) = Some(command.job);
-        run(conn, command);
+        run(conn, command, in_transaction);
         *lock(running) = None;
     }
 }
 
-fn run(conn: &rusqlite::Connection, command: Command) {
+fn run(conn: &rusqlite::Connection, command: Command, in_transaction: &AtomicBool) {
     let Command {
         sql,
         batch_size,
@@ -282,6 +331,7 @@ fn run(conn: &rusqlite::Connection, command: Command) {
         let result = stmt.raw_execute().map_err(|e| map_error(e, &sql));
         // `changes()` keeps the last DML's count across DDL statements.
         let changed = conn.total_changes() != before;
+        in_transaction.store(!conn.is_autocommit(), Ordering::Release);
         let _ =
             reply.send(result.map(|_| Started::Affected(if changed { conn.changes() } else { 0 })));
         return;
