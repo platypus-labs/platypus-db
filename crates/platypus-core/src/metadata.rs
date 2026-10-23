@@ -59,6 +59,8 @@ pub struct ColumnMeta {
     pub default: Option<String>,
     pub primary_key: bool,
     pub comment: Option<String>,
+    /// The values an enum column accepts, in declaration order; empty for other types.
+    pub enum_values: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

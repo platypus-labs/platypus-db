@@ -5,6 +5,7 @@
 #![allow(clippy::needless_pass_by_value)]
 
 pub mod connections;
+pub mod data;
 pub mod export;
 pub mod files;
 pub mod history;

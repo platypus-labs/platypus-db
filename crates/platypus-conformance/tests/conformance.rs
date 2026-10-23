@@ -598,3 +598,125 @@ async fn capabilities_match_optional_methods() {
         );
     }
 }
+
+/// Data editor statements round-trip on every driver: quoting, NULL, defaults, binary
+/// values, timestamps with a time zone as row keys, and all-or-nothing saving.
+#[tokio::test]
+async fn edits_table_data() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{self, ApplyError, Column, Table, Value, ValueKind};
+
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let ddl = match b.config.driver {
+            DriverKind::Postgres => {
+                "CREATE TEMPORARY TABLE conf_edit (id INT PRIMARY KEY, name TEXT, \
+                 amount NUMERIC(10, 2), data BYTEA, at TIMESTAMPTZ, n INT DEFAULT 7)"
+            }
+            DriverKind::MySql => {
+                "CREATE TEMPORARY TABLE conf_edit (id INT PRIMARY KEY, name TEXT, \
+                 amount DECIMAL(10, 2), data BLOB, at TIMESTAMP NULL, n INT DEFAULT 7)"
+            }
+            DriverKind::Sqlite => {
+                "CREATE TEMPORARY TABLE conf_edit (id INTEGER PRIMARY KEY, name TEXT, \
+                 amount NUMERIC, data BLOB, at TEXT, n INT DEFAULT 7)"
+            }
+        };
+        affected(&b, conn, ddl).await;
+        let ExecResult::Rows(stream) = conn
+            .execute("SELECT * FROM conf_edit", &ExecOptions::default())
+            .await
+            .unwrap()
+        else {
+            panic!("{}: expected rows", b.name);
+        };
+        let schema = stream.schema();
+        drop(stream);
+        let columns: Vec<Column<'_>> = schema
+            .fields()
+            .iter()
+            .map(|f| Column {
+                name: f.name(),
+                kind: ValueKind::of(f.data_type()),
+                default: (f.name() == "n").then_some("7"),
+            })
+            .collect();
+        let d = Dialect::from(b.config.driver);
+        let t = Table {
+            schema: None,
+            name: "conf_edit",
+        };
+        let at = "2024-03-01 10:00:00+00:00";
+        let name = "it's \ \"q\"";
+
+        let inserts = [
+            dml::insert(
+                d,
+                t,
+                &columns,
+                &[
+                    (0, Value::Text("1")),
+                    (1, Value::Text(name)),
+                    (2, Value::Text("12.50")),
+                    (3, Value::Text("00ff10")),
+                    (4, Value::Text(at)),
+                    (5, Value::Default),
+                ],
+            )
+            .unwrap(),
+            dml::insert(d, t, &columns, &[(0, Value::Text("2"))]).unwrap(),
+        ];
+        dml::apply(conn, &inserts)
+            .await
+            .unwrap_or_else(|e| panic!("{}: insert: {e}", b.name));
+        let rows = collect(&b, conn, "SELECT id, name, amount, data, n FROM conf_edit ORDER BY id").await;
+        let batch = &rows[0];
+        assert_eq!(batch.num_rows(), 2, "{}", b.name);
+        assert_eq!(cell(batch, 1, 0).as_deref(), Some(name), "{}: quoting", b.name);
+        let amount: f64 = cell(batch, 2, 0).unwrap().parse().unwrap();
+        assert!((amount - 12.5).abs() < f64::EPSILON, "{}: {amount}", b.name);
+        assert_eq!(cell(batch, 3, 0).as_deref(), Some("00ff10"), "{}: binary", b.name);
+        assert_eq!(cell(batch, 1, 1), None, "{}: NULL", b.name);
+        assert_eq!(cell(batch, 4, 1).as_deref(), Some("7"), "{}: default", b.name);
+
+        // The timestamp is part of the key, so its literal must match the stored value.
+        let update = dml::update(
+            d,
+            t,
+            &columns,
+            &[(1, Value::Null), (5, Value::Default)],
+            &[(0, Some("1")), (4, Some(at))],
+        )
+        .unwrap();
+        dml::apply(conn, &[update])
+            .await
+            .unwrap_or_else(|e| panic!("{}: update: {e}", b.name));
+
+        // A statement that misses its row rolls back the ones before it.
+        let ok = dml::update(d, t, &columns, &[(1, Value::Text("x"))], &[(0, Some("2"))]).unwrap();
+        let missing =
+            dml::update(d, t, &columns, &[(1, Value::Text("y"))], &[(0, Some("99"))]).unwrap();
+        let err = dml::apply(conn, &[ok, missing]).await.unwrap_err();
+        assert!(
+            matches!(err, ApplyError::RowCount { index: 1, rows: 0 }),
+            "{}: {err}",
+            b.name
+        );
+        let rows = collect(&b, conn, "SELECT count(*) FROM conf_edit WHERE name IS NULL").await;
+        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("2"), "{}: rolled back", b.name);
+        assert!(!conn.transaction().open, "{}", b.name);
+
+        // In manual-commit mode the changes join the session's transaction.
+        conn.set_autocommit(false).await.unwrap();
+        let delete = dml::delete(d, t, &columns, &[(0, Some("2"))]).unwrap();
+        dml::apply(conn, &[delete])
+            .await
+            .unwrap_or_else(|e| panic!("{}: delete: {e}", b.name));
+        assert!(conn.transaction().open, "{}: left uncommitted", b.name);
+        conn.rollback().await.unwrap();
+        conn.set_autocommit(true).await.unwrap();
+        let rows = collect(&b, conn, "SELECT count(*) FROM conf_edit").await;
+        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("2"), "{}", b.name);
+    }
+}

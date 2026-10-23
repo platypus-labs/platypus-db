@@ -173,13 +173,12 @@ export function App() {
   }
 
   function closeTab(tab: TabModel, confirmed = false) {
-    if (
-      tab.txOpen &&
-      !confirmed &&
-      !window.confirm("This tab has an open transaction. Close it and roll back the uncommitted changes?")
-    ) {
-      return;
-    }
+    const question = tab.unsaved
+      ? "This tab has unsaved changes. Close it and discard them?"
+      : tab.txOpen
+        ? "This tab has an open transaction. Close it and roll back the uncommitted changes?"
+        : null;
+    if (question && !confirmed && !window.confirm(question)) return;
     const session = sessions.current.get(tab.key);
     sessions.current.delete(tab.key);
     void session?.then((id) => {

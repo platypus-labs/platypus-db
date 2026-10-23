@@ -1,5 +1,5 @@
 //! What differs between SQL dialects when generating SQL: quoting of identifiers and
-//! literals, row limits, `EXPLAIN`. Features that build SQL (data editing, DDL, import,
+//! literals, boolean and binary values, defaults, row limits, `EXPLAIN`. Features that build SQL (data editing, DDL, import,
 //! the data viewer) go through these methods instead of matching on the driver.
 //!
 //! `apps/desktop/src/sqlNames.ts` mirrors [`Dialect::quote_ident`] for the UI; keep the two
@@ -176,6 +176,42 @@ impl Dialect {
         out
     }
 
+    /// A boolean literal; SQLite has no boolean type and stores 1 and 0.
+    #[must_use]
+    pub const fn bool_literal(self, value: bool) -> &'static str {
+        match (self, value) {
+            (Self::Sqlite, true) => "1",
+            (Self::Sqlite, false) => "0",
+            (_, true) => "TRUE",
+            (_, false) => "FALSE",
+        }
+    }
+
+    /// A binary literal from lower-case hex digits. PostgreSQL's `decode` does not depend on
+    /// `standard_conforming_strings`, unlike `'\x…'`.
+    #[must_use]
+    pub fn binary_literal(self, hex: &str) -> String {
+        match self {
+            Self::Postgres => format!("decode('{hex}', 'hex')"),
+            Self::MySql | Self::Sqlite => format!("X'{hex}'"),
+        }
+    }
+
+    /// Whether `SET column = DEFAULT` works; SQLite needs the default expression instead.
+    #[must_use]
+    pub const fn has_default_keyword(self) -> bool {
+        !matches!(self, Self::Sqlite)
+    }
+
+    /// An `INSERT` of a row where every column takes its default.
+    #[must_use]
+    pub fn insert_defaults(self, table: &str) -> String {
+        match self {
+            Self::MySql => format!("INSERT INTO {table} () VALUES ()"),
+            Self::Postgres | Self::Sqlite => format!("INSERT INTO {table} DEFAULT VALUES"),
+        }
+    }
+
     /// The clause that caps a query's rows, appended after `ORDER BY`.
     #[must_use]
     pub fn limit_clause(self, limit: u64) -> String {
@@ -238,5 +274,15 @@ mod tests {
         assert!(Dialect::Postgres.explain_json_prefix(true).is_some());
         assert_eq!(Dialect::Sqlite.explain_json_prefix(false), None);
         assert_eq!(Dialect::MySql.limit_clause(5), "LIMIT 5");
+    }
+
+    #[test]
+    fn value_literals() {
+        assert_eq!(Dialect::Postgres.bool_literal(true), "TRUE");
+        assert_eq!(Dialect::Sqlite.bool_literal(false), "0");
+        assert_eq!(Dialect::Postgres.binary_literal("00ff"), "decode('00ff', 'hex')");
+        assert_eq!(Dialect::MySql.binary_literal(""), "X''");
+        assert!(!Dialect::Sqlite.has_default_keyword());
+        assert_eq!(Dialect::MySql.insert_defaults("t"), "INSERT INTO t () VALUES ()");
     }
 }

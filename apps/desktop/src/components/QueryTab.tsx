@@ -5,8 +5,11 @@ import {
   toCommandError,
   type ExportOptions,
   type QueryEvent,
+  type TableDetails,
   type TransactionState,
 } from "../api";
+import type { TableRef } from "../grid/edit/meta";
+import type { TableEditTarget } from "../grid/edit/TableEditor";
 import { type RunMode, SqlEditor, type SqlEditorHandle } from "../editor/SqlEditor";
 import { defineSetting, getSetting } from "../settings";
 import { type Sort, viewerSql } from "../sqlNames";
@@ -39,6 +42,8 @@ export interface QueryTabModel extends TabBase {
   autorun?: boolean;
   /** Data viewer: the table or view the tab browses, as a quoted, qualified name. */
   table?: string | null;
+  /** Data viewer: the same table by schema and name, for the data editor. */
+  tableRef?: TableRef | null;
   /** Data viewer: `WHERE` clause typed by the user. */
   filter?: string;
   /** Data viewer: server-side sort. */
@@ -109,6 +114,10 @@ export function QueryTab({
   const runToken = useRef(0);
   const jobs = useRef<number[]>([]);
   const currentJob = useRef<number | null>(null);
+  /** The data editor has changes that running again would lose. */
+  const unsaved = useRef(false);
+  /** Data viewer: the table's keys, loaded once and again after DDL. */
+  const details = useRef<Promise<TableDetails> | null>(null);
 
   const closeJobs = () => {
     for (const id of jobs.current) void api.closeQuery(id);
@@ -227,6 +236,7 @@ export function QueryTab({
 
   async function run(mode: RunMode, force = false) {
     if (running && !force) return;
+    if (unsaved.current && !window.confirm("Discard the changes to the data that are not saved?")) return;
     let planned: Planned[];
     try {
       planned = await plan(mode);
@@ -292,7 +302,10 @@ export function QueryTab({
     setActiveResult(failed >= 0 ? failed : lastRows >= 0 ? lastRows : initial.length - 1);
     setRunning(false);
     currentJob.current = null;
-    if (planned.some((p) => DDL.test(p.sql))) onNeedCatalog(true);
+    if (planned.some((p) => DDL.test(p.sql))) {
+      onNeedCatalog(true);
+      details.current = null;
+    }
     setHistoryVersion((v) => v + 1);
     await refreshTx(sessionId);
   }
@@ -334,6 +347,10 @@ export function QueryTab({
   /** Data viewer: rebuilds the query from filter and sort, then runs it. */
   function applyViewer(patch: { filter?: string; sort?: Sort | null }) {
     if (!tab.table) return;
+    if (unsaved.current) {
+      if (!window.confirm("Discard the changes to the data that are not saved?")) return;
+      unsaved.current = false;
+    }
     const next = { filter: patch.filter ?? tab.filter ?? "", sort: patch.sort !== undefined ? patch.sort : (tab.sort ?? null) };
     onChange(next);
     setCount(null);
@@ -455,6 +472,36 @@ export function QueryTab({
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  }
+
+  function setUnsaved(dirty: boolean) {
+    unsaved.current = dirty;
+    if (dirty !== !!tab.unsaved) onChange({ unsaved: dirty });
+  }
+
+  /** Data viewer: lets the grid edit the table when the result is the viewer's own query. */
+  function editTarget(result: Result): TableEditTarget | null {
+    const ref = tab.tableRef;
+    if (!tab.table || !ref) return null;
+    const own = result.sql === viewerSql(connection.driver, tab.table, tab.filter ?? "", tab.sort ?? null);
+    return {
+      connection,
+      table: ref,
+      readOnly: own ? null : "the query was changed; only the table's own query can be edited",
+      loadDetails: () =>
+        (details.current ??= sideSession().then((id) => {
+          if (id === null) throw new Error("no connection");
+          return api.tableDetails(id, ref.schema, ref.name);
+        })).catch((e: unknown) => {
+          details.current = null;
+          throw e;
+        }),
+      onSaved: () => {
+        setUnsaved(false);
+        void run("statement");
+      },
+      onDirtyChange: setUnsaved,
+    };
   }
 
   const current = results[activeResult];
@@ -594,6 +641,7 @@ export function QueryTab({
               sort={tab.table ? (tab.sort ?? null) : null}
               onHeaderClick={tab.table && !running ? sortBy : undefined}
               source={{ connection, sql: current.sql, jobId: current.jobId, table: tab.table ?? null }}
+              edit={editTarget(current)}
             />
           )}
         </div>

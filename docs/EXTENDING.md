@@ -10,7 +10,7 @@ a small separate change rather than adding feature logic to a shared file.
 ### Tauri commands
 
 `apps/desktop/src-tauri/src/commands/` has one module per area: `connections`, `query`,
-`meta`, `transactions`, `export`, `sql`, `history`, `files` and `settings`. Shared state
+`meta`, `data`, `transactions`, `export`, `sql`, `history`, `files` and `settings`. Shared state
 (`AppState`, sessions, `live`) is in `commands/mod.rs`.
 
 To add commands:
@@ -42,8 +42,12 @@ A driver that implements the method sets its flag in `fn capabilities`.
 Anything that builds SQL goes through `platypus_sql::Dialect` (`crates/platypus-sql/src/dialect.rs`)
 rather than checking the driver. It provides:
 - `quote_ident`, `qualified`, `quote_literal`
+- `bool_literal`, `binary_literal`, `has_default_keyword`, `insert_defaults`
 - `limit_clause`
 - `explain_json_prefix`
+
+`platypus_sql::dml` builds the data editor's `UPDATE`, `INSERT` and `DELETE` statements from
+text values and the columns' Arrow types, and `dml::apply` runs them all or none.
 
 Add dialect rules there, with tests. `apps/desktop/src/sqlNames.ts` mirrors `quote_ident`
 for the UI.
@@ -149,7 +153,13 @@ loaded before the first render.
 | `decorate(row, col)` | Background, colour or replacement text for a cell, e.g. edited values or search hits. It runs for every visible cell on each frame, so keep it cheap. |
 | `overlay` | Elements positioned over the grid, e.g. an inline editor placed with `GridApi.cellRect`. |
 | `onCellDoubleClick` | Called when a cell is double-clicked. |
+| `topRows` | Rows drawn above the result's, e.g. new rows; their cells come from `decorate`. |
+| `onScroll` | Called when the grid scrolls, e.g. to move an overlay. |
 | `ref` | Gives the `GridApi`. |
+
+A decoration can set `background`, `color`, replacement `text` and `strike`. Features that
+need their own object in grid actions add a field to `GridSource` by augmenting
+`GridSourceExtensions`, as the data editor does with `edit` (`grid/edit/TableEditor.tsx`).
 
 The `GridApi` reads values and the selection, moves the selection, gives cell boxes,
 redraws and gives the keyboard back to the grid. It is also what `grid` actions receive,

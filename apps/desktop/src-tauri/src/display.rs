@@ -44,6 +44,23 @@ fn render(array: &ArrayRef, options: &FormatOptions<'_>) -> Result<ArrayRef, Arr
     Ok(Arc::new(builder.finish()))
 }
 
+/// The full text of each value in `row` of `batch`, uncut and with line breaks kept;
+/// `None` for NULL. The data editor edits these and identifies rows by them.
+pub fn row_text(batch: &RecordBatch, row: usize) -> Result<Vec<Option<String>>, ArrowError> {
+    let options = format_options();
+    batch
+        .columns()
+        .iter()
+        .map(|array| {
+            if array.is_null(row) {
+                return Ok(None);
+            }
+            let formatter = ArrayFormatter::try_new(array.as_ref(), &options)?;
+            Ok(Some(formatter.value(row).to_string()))
+        })
+        .collect()
+}
+
 /// Renders `batches` (consecutive slices of one result) and writes them as an IPC stream.
 pub fn to_ipc(schema: &Schema, batches: &[RecordBatch]) -> Result<Vec<u8>, ArrowError> {
     let options = format_options();

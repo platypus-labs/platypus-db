@@ -113,6 +113,8 @@ export interface ColumnMeta {
   default: string | null;
   primary_key: boolean;
   comment: string | null;
+  /** Values an enum column accepts; empty for other types. */
+  enum_values: string[];
 }
 
 export interface IndexMeta {
@@ -145,6 +147,27 @@ export interface CompletionCatalog {
 export interface TransactionState {
   autocommit: boolean;
   open: boolean;
+}
+
+/** A value the data editor writes: typed text, NULL or the column default. */
+export type CellInput = { kind: "value"; text: string } | { kind: "null" } | { kind: "default" };
+
+export interface ColumnValue {
+  /** Result column index. */
+  column: number;
+  value: CellInput;
+}
+
+/** Pending changes to a data viewer result; see `commands/data.rs`. */
+export interface TableChanges {
+  table: { schema: string; name: string };
+  /** Result columns that identify a row. */
+  key: number[];
+  /** Default expressions by result column. */
+  defaults: (string | null)[];
+  updates: { row: number; values: ColumnValue[] }[];
+  inserts: ColumnValue[][];
+  deletes: number[];
 }
 
 export type ExportFormat = "csv" | "json" | "ndjson" | "parquet";
@@ -264,6 +287,14 @@ export const api = {
   getSettings: () => invoke<Record<string, unknown>>("get_settings"),
   /** `null` removes the key, restoring the default. */
   setSetting: (key: string, value: unknown) => invoke<void>("set_setting", { key, value }),
+  /** The UPDATE, INSERT and DELETE statements that saving `changes` would run. */
+  previewChanges: (jobId: number, changes: TableChanges) =>
+    invoke<string[]>("preview_changes", { jobId, changes }),
+  /** Saves `changes` on the result's session, all or none; returns the statement count. */
+  saveChanges: (jobId: number, changes: TableChanges) =>
+    invoke<number>("save_changes", { jobId, changes }),
+  /** A loaded row's values in full, not cut to one line like the grid's. */
+  rowValues: (jobId: number, row: number) => invoke<(string | null)[]>("row_values", { jobId, row }),
   fetchAll: (jobId: number) => invoke<void>("fetch_all", { jobId }),
   cancelQuery: (jobId: number) => invoke<void>("cancel_query", { jobId }),
   closeQuery: (jobId: number) => invoke<void>("close_query", { jobId }),

@@ -98,6 +98,7 @@ pub async fn table_details(
         default: r.opt(3),
         primary_key: r.text(4) != "0",
         comment: None,
+        enum_values: Vec::new(),
     })
     .collect();
 

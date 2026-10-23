@@ -112,7 +112,9 @@ pub async fn table_details(
             "SELECT a.attname, format_type(a.atttypid, a.atttypmod), NOT a.attnotnull,
                     pg_get_expr(d.adbin, d.adrelid),
                     coalesce(a.attnum = ANY (i.indkey), false),
-                    col_description(a.attrelid, a.attnum)
+                    col_description(a.attrelid, a.attnum),
+                    (SELECT string_agg(e.enumlabel, E'\\n' ORDER BY e.enumsortorder)
+                     FROM pg_enum e WHERE e.enumtypid = a.atttypid)
              FROM pg_attribute a
              LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
              LEFT JOIN pg_index i ON i.indrelid = a.attrelid AND i.indisprimary
@@ -129,6 +131,10 @@ pub async fn table_details(
         default: r.opt(3),
         primary_key: r.flag(4),
         comment: r.opt(5),
+        enum_values: r
+            .opt(6)
+            .map(|labels| labels.split('\n').map(str::to_owned).collect())
+            .unwrap_or_default(),
     })
     .collect();
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type ColumnInfo, type CommandError } from "../api";
 import { DataGrid, type GridSource } from "../grid/DataGrid";
 import { RowCache } from "../grid/RowCache";
+import { TableEditor, type TableEditTarget } from "../grid/edit/TableEditor";
 
 export type ResultStatus =
   | { kind: "pending" }
@@ -66,9 +67,11 @@ interface PanelProps {
   onHeaderClick?: (column: string) => void;
   /** Passed to the grid's actions. */
   source?: GridSource | null;
+  /** Data viewer: the table whose rows can be edited. */
+  edit?: TableEditTarget | null;
 }
 
-export function ResultPanel({ result, sort, onHeaderClick, source }: PanelProps) {
+export function ResultPanel({ result, sort, onHeaderClick, source, edit }: PanelProps) {
   const [cache, setCache] = useState<RowCache | null>(null);
   const [version, setVersion] = useState(0);
   const { jobId, columns, status } = result;
@@ -106,6 +109,21 @@ export function ResultPanel({ result, sort, onHeaderClick, source }: PanelProps)
   }
   if (status.kind === "skipped") {
     return <div className="notice muted">Not executed: an earlier statement failed.</div>;
+  }
+  if (columns && cache && edit && jobId !== null) {
+    return (
+      <TableEditor
+        target={edit}
+        jobId={jobId}
+        columns={columns}
+        rowCount={result.rows}
+        cache={cache}
+        version={version}
+        sort={sort}
+        onHeaderClick={onHeaderClick && ((i) => onHeaderClick(columns[i]!.name))}
+        source={source}
+      />
+    );
   }
   if (columns && cache) {
     return (

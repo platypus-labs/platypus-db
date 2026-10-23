@@ -66,12 +66,21 @@ Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i
 - Le funzionalità di database passano dal `Dialect` o dalle capacità del driver, mai da
   `if driver === "postgres"` sparsi nella UI.
 - Ogni gruppo aggiunge test alla conformance suite per ciò che tocca nei driver.
+- **Refactor continuo, qualità e performance prima di tutto.** Chi tocca un'area la lascia
+  migliore di come l'ha trovata: rimuove duplicazioni, semplifica, rinomina ciò che è poco
+  chiaro e sceglie la soluzione più efficiente (niente allocazioni, copie, query o render
+  superflui; nessun lavoro per riga dove basta un lavoro per blocco). Un refactor che rende il
+  codice più leggibile o più veloce è sempre benvenuto, anche dentro una PR di feature, purché
+  resti nell'area del gruppo e non cambi il comportamento senza test.
 
 ---
 
 ## 2. Gruppi di lavoro
 
 ### Gruppo A — Modifica dei dati
+
+**Stato: P1 completati** (modifica, righe nuove/duplicate/eliminate, anteprima SQL, chiave
+obbligatoria, NULL/default ed editor per tipo, salvataggio tutto-o-niente). Restano i P2/P3.
 
 **Area:** `apps/desktop/src/grid/edit/`, `commands/data.rs`, `platypus-sql/src/dml.rs`
 **Dipende da:** 0.3, 0.4, 0.5
@@ -430,4 +439,5 @@ Per ogni gruppo, la Definition of Done segue quella dell'MVP:
 - test di conformance o E2E per ciò che è stato aggiunto;
 - clippy e fmt puliti;
 - nessuna regressione sui target di [BENCHMARKS.md](BENCHMARKS.md);
+- codice rivisto per semplicità e performance: refactor fatti, non rimandati;
 - funzionalità documentata nel README o nella documentazione utente.

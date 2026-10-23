@@ -28,6 +28,8 @@ export interface TabBase {
   title?: string | null;
   /** Uncommitted changes are pending: closing asks first. Not persisted. */
   txOpen?: boolean;
+  /** Edits not saved yet, e.g. in the data editor: closing asks first. Not persisted. */
+  unsaved?: boolean;
 }
 
 type OwnFields<T> = Omit<T, "key" | "kind" | "connectionId">;
