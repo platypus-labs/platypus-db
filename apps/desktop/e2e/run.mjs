@@ -50,12 +50,23 @@ for (const file of scenarios) {
       WEBVIEW2_USER_DATA_FOLDER: join(dir, "webview"),
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
     },
-    stdio: "ignore",
+    stdio: ["ignore", "pipe", "pipe"],
   });
+  const output = [];
+  app.stdout.on("data", (d) => output.push(d));
+  app.stderr.on("data", (d) => output.push(d));
+  let exit = null;
+  app.on("exit", (code, signal) => (exit = { code, signal }));
   const started = performance.now();
   let page;
   try {
-    page = await connect(port);
+    try {
+      page = await connect(port, 60_000);
+    } catch (e) {
+      // Say why the page never appeared: the app may have died or WebView2 never started.
+      console.log(diagnose(exit, Buffer.concat(output).toString()));
+      throw e;
+    }
     await scenario.default(page, ctx);
     passed++;
     console.log(`ok   ${file} (${Math.round(performance.now() - started)} ms)`);
@@ -70,6 +81,26 @@ for (const file of scenarios) {
     await new Promise((r) => setTimeout(r, 300));
     rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
+}
+
+/** Why the app has no DevTools page: its state, output and the WebView2 runtime. */
+function diagnose(exit, output) {
+  const run = (cmd, args) => spawnSync(cmd, args, { encoding: "utf8" }).stdout?.trim() ?? "";
+  const webviews = run("tasklist", ["/fi", "imagename eq msedgewebview2.exe", "/fo", "csv", "/nh"])
+    .split("\n")
+    .filter((l) => l.includes("msedgewebview2")).length;
+  const runtime =
+    run("reg", [
+      "query",
+      "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+      "/v",
+      "pv",
+    ]).match(/pv\s+REG_SZ\s+(\S+)/)?.[1] ?? "not found";
+  return [
+    `     app: ${exit ? `exited (code ${exit.code}, signal ${exit.signal})` : "still running"}`,
+    `     msedgewebview2 processes: ${webviews}, WebView2 runtime: ${runtime}`,
+    `     app output: ${output.trim() || "(none)"}`,
+  ].join("\n");
 }
 
 console.log(`${passed} passed, ${failed} failed, ${scenarios.length - passed - failed} skipped`);
