@@ -293,8 +293,9 @@ export const api = {
   /** Saves `changes` on the result's session, all or none; returns the statement count. */
   saveChanges: (jobId: number, changes: TableChanges) =>
     invoke<number>("save_changes", { jobId, changes }),
-  /** A loaded row's values in full, not cut to one line like the grid's. */
-  rowValues: (jobId: number, row: number) => invoke<(string | null)[]>("row_values", { jobId, row }),
+  /** Loaded rows' values in full, not cut to one line like the grid's. */
+  rowValues: (jobId: number, offset: number, limit: number) =>
+    invoke<(string | null)[][]>("row_values", { jobId, offset, limit }),
   fetchAll: (jobId: number) => invoke<void>("fetch_all", { jobId }),
   cancelQuery: (jobId: number) => invoke<void>("cancel_query", { jobId }),
   closeQuery: (jobId: number) => invoke<void>("close_query", { jobId }),

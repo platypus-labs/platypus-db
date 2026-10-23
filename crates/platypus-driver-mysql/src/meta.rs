@@ -205,7 +205,7 @@ mod tests {
     #[test]
     fn parses_enum_values() {
         assert_eq!(enum_values("enum('a','it''s','x,y')"), ["a", "it's", "x,y"]);
-        assert!(enum_values("varchar(10)").is_empty());
+        assert_eq!(enum_values("varchar(10)"), Vec::<String>::new());
         assert_eq!(enum_values("enum('')"), [""]);
     }
 }

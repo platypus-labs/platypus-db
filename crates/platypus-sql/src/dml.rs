@@ -24,7 +24,9 @@ pub enum ValueKind {
     /// Hex text, e.g. `deadbeef`.
     Binary,
     /// `zoned` timestamps are shown with their UTC offset.
-    Timestamp { zoned: bool },
+    Timestamp {
+        zoned: bool,
+    },
     Text,
 }
 
@@ -40,7 +42,9 @@ impl ValueKind {
             | DataType::LargeBinary
             | DataType::BinaryView
             | DataType::FixedSizeBinary(_) => Self::Binary,
-            DataType::Timestamp(_, tz) => Self::Timestamp { zoned: tz.is_some() },
+            DataType::Timestamp(_, tz) => Self::Timestamp {
+                zoned: tz.is_some(),
+            },
             _ => Self::Text,
         }
     }
@@ -62,13 +66,6 @@ pub struct Column<'a> {
     pub kind: ValueKind,
     /// The default expression, written where the dialect has no `DEFAULT` keyword.
     pub default: Option<&'a str>,
-}
-
-/// The table being edited; `schema: None` is the session's current schema.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Table<'a> {
-    pub schema: Option<&'a str>,
-    pub name: &'a str,
 }
 
 /// A value the column cannot take, e.g. letters in a number column.
@@ -128,7 +125,7 @@ fn parse_hex(s: &str) -> Option<String> {
         .strip_prefix("\\x")
         .or_else(|| s.strip_prefix("0x"))
         .unwrap_or(s);
-    (hex.len() % 2 == 0 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+    (hex.len().is_multiple_of(2) && hex.bytes().all(|b| b.is_ascii_hexdigit()))
         .then(|| hex.to_ascii_lowercase())
 }
 
@@ -141,14 +138,16 @@ impl Column<'_> {
     }
 
     /// `text` as a literal of the column's type; `None` is NULL.
-    fn literal(&self, dialect: Dialect, text: Option<&str>) -> Result<String> {
+    pub fn literal(&self, dialect: Dialect, text: Option<&str>) -> Result<String> {
         let Some(text) = text else {
             return Ok("NULL".to_owned());
         };
         let trimmed = text.trim();
         Ok(match self.kind {
             ValueKind::Integer if is_integer(trimmed) => trimmed.to_owned(),
-            ValueKind::Integer => return Err(self.invalid(format!("'{text}' is not a whole number"))),
+            ValueKind::Integer => {
+                return Err(self.invalid(format!("'{text}' is not a whole number")));
+            }
             ValueKind::Decimal | ValueKind::Float if is_number(trimmed) => trimmed.to_owned(),
             ValueKind::Float
                 if ["nan", "infinity", "+infinity", "-infinity", "inf", "-inf"]
@@ -167,9 +166,9 @@ impl Column<'_> {
             ValueKind::Binary => match parse_hex(trimmed) {
                 Some(hex) => dialect.binary_literal(&hex),
                 None => {
-                    return Err(self.invalid(format!(
-                        "'{text}' is not hexadecimal bytes (e.g. 0a1b)"
-                    )));
+                    return Err(
+                        self.invalid(format!("'{text}' is not hexadecimal bytes (e.g. 0a1b)"))
+                    );
                 }
             },
             // MySQL sessions run in UTC and MariaDB rejects offsets in datetime literals.
@@ -202,10 +201,6 @@ fn column<'c, 'a>(columns: &'c [Column<'a>], index: usize) -> Result<&'c Column<
     })
 }
 
-fn qualified(dialect: Dialect, table: Table<'_>) -> String {
-    dialect.qualified(table.schema, table.name)
-}
-
 /// `WHERE k1 = … AND k2 IS NULL`; `key` pairs column indexes with the row's current values.
 fn where_clause(
     dialect: Dialect,
@@ -225,26 +220,25 @@ fn where_clause(
             out.push_str(" AND ");
         }
         out.push_str(&dialect.quote_ident(c.name));
-        match value {
-            None => out.push_str(" IS NULL"),
-            Some(_) => {
-                out.push_str(" = ");
-                out.push_str(&c.literal(dialect, value)?);
-            }
+        if value.is_none() {
+            out.push_str(" IS NULL");
+        } else {
+            out.push_str(" = ");
+            out.push_str(&c.literal(dialect, value)?);
         }
     }
     Ok(out)
 }
 
-/// `UPDATE table SET … WHERE key`.
+/// `UPDATE table SET … WHERE key`; `table` is quoted already, e.g. by [`Dialect::qualified`].
 pub fn update(
     dialect: Dialect,
-    table: Table<'_>,
+    table: &str,
     columns: &[Column<'_>],
     set: &[(usize, Value<'_>)],
     key: &[(usize, Option<&str>)],
 ) -> Result<String> {
-    let mut sql = format!("UPDATE {} SET ", qualified(dialect, table));
+    let mut sql = format!("UPDATE {table} SET ");
     for (i, &(index, value)) in set.iter().enumerate() {
         let c = column(columns, index)?;
         if i > 0 {
@@ -261,11 +255,10 @@ pub fn update(
 /// `INSERT INTO table (…) VALUES (…)`. Columns left at their default are omitted.
 pub fn insert(
     dialect: Dialect,
-    table: Table<'_>,
+    table: &str,
     columns: &[Column<'_>],
     values: &[(usize, Value<'_>)],
 ) -> Result<String> {
-    let target = qualified(dialect, table);
     let mut names = Vec::with_capacity(values.len());
     let mut literals = Vec::with_capacity(values.len());
     for &(index, value) in values {
@@ -279,10 +272,10 @@ pub fn insert(
         literals.push(c.literal(dialect, text)?);
     }
     if names.is_empty() {
-        return Ok(dialect.insert_defaults(&target));
+        return Ok(dialect.insert_defaults(table));
     }
     Ok(format!(
-        "INSERT INTO {target} ({}) VALUES ({})",
+        "INSERT INTO {table} ({}) VALUES ({})",
         names.join(", "),
         literals.join(", ")
     ))
@@ -291,13 +284,12 @@ pub fn insert(
 /// `DELETE FROM table WHERE key`.
 pub fn delete(
     dialect: Dialect,
-    table: Table<'_>,
+    table: &str,
     columns: &[Column<'_>],
     key: &[(usize, Option<&str>)],
 ) -> Result<String> {
     Ok(format!(
-        "DELETE FROM {}{}",
-        qualified(dialect, table),
+        "DELETE FROM {table}{}",
         where_clause(dialect, columns, key)?
     ))
 }
@@ -357,7 +349,11 @@ pub async fn apply(conn: &dyn Connection, statements: &[String]) -> Result<(), A
             ],
         )
     } else {
-        ("BEGIN".to_owned(), vec!["COMMIT".to_owned()], vec!["ROLLBACK".to_owned()])
+        (
+            "BEGIN".to_owned(),
+            vec!["COMMIT".to_owned()],
+            vec!["ROLLBACK".to_owned()],
+        )
     };
     exec_one(conn, &begin)
         .await
@@ -398,11 +394,8 @@ mod tests {
         }
     }
 
-    fn table() -> Table<'static> {
-        Table {
-            schema: Some("demo"),
-            name: "Items",
-        }
+    fn table(dialect: Dialect) -> String {
+        dialect.qualified(Some("demo"), "Items")
     }
 
     fn columns() -> Vec<Column<'static>> {
@@ -446,18 +439,31 @@ mod tests {
         ];
         let key = [(0, Some("7"))];
         assert_eq!(
-            update(Dialect::Postgres, table(), &cols, &set, &key).unwrap(),
+            update(
+                Dialect::Postgres,
+                &table(Dialect::Postgres),
+                &cols,
+                &set,
+                &key
+            )
+            .unwrap(),
             "UPDATE demo.\"Items\" SET name = 'it''s', price = 12.50, active = TRUE, \
              data = decode('dead', 'hex'), \"order\" = DEFAULT WHERE id = 7"
         );
         assert_eq!(
-            update(Dialect::Sqlite, table(), &cols, &set, &key).unwrap(),
+            update(Dialect::Sqlite, &table(Dialect::Sqlite), &cols, &set, &key).unwrap(),
             "UPDATE demo.Items SET name = 'it''s', price = 12.50, active = 1, \
              data = X'dead', \"order\" = 0 WHERE id = 7"
         );
         assert_eq!(
-            update(Dialect::MySql, table(), &cols, &[(1, Value::Null)], &[(0, Some("1")), (1, None)])
-                .unwrap(),
+            update(
+                Dialect::MySql,
+                &table(Dialect::MySql),
+                &cols,
+                &[(1, Value::Null)],
+                &[(0, Some("1")), (1, None)]
+            )
+            .unwrap(),
             "UPDATE demo.Items SET name = NULL WHERE id = 1 AND name IS NULL"
         );
     }
@@ -465,14 +471,57 @@ mod tests {
     #[test]
     fn rejects_values_of_the_wrong_type() {
         let cols = columns();
-        let err = update(Dialect::Postgres, table(), &cols, &[(0, Value::Text("x1"))], &[(0, Some("1"))])
-            .unwrap_err();
+        let err = update(
+            Dialect::Postgres,
+            &table(Dialect::Postgres),
+            &cols,
+            &[(0, Value::Text("x1"))],
+            &[(0, Some("1"))],
+        )
+        .unwrap_err();
         assert_eq!(err.column, "id");
         assert!(err.message.contains("whole number"), "{err}");
-        assert!(update(Dialect::Postgres, table(), &cols, &[(3, Value::Text("maybe"))], &[(0, Some("1"))]).is_err());
-        assert!(update(Dialect::Postgres, table(), &cols, &[(4, Value::Text("abc"))], &[(0, Some("1"))]).is_err());
-        assert!(update(Dialect::Postgres, table(), &cols, &[(1, Value::Text("x"))], &[]).is_err(), "no key");
-        assert!(update(Dialect::Postgres, table(), &cols, &[(9, Value::Null)], &[(0, Some("1"))]).is_err());
+        assert!(
+            update(
+                Dialect::Postgres,
+                &table(Dialect::Postgres),
+                &cols,
+                &[(3, Value::Text("maybe"))],
+                &[(0, Some("1"))]
+            )
+            .is_err()
+        );
+        assert!(
+            update(
+                Dialect::Postgres,
+                &table(Dialect::Postgres),
+                &cols,
+                &[(4, Value::Text("abc"))],
+                &[(0, Some("1"))]
+            )
+            .is_err()
+        );
+        assert!(
+            update(
+                Dialect::Postgres,
+                &table(Dialect::Postgres),
+                &cols,
+                &[(1, Value::Text("x"))],
+                &[]
+            )
+            .is_err(),
+            "no key"
+        );
+        assert!(
+            update(
+                Dialect::Postgres,
+                &table(Dialect::Postgres),
+                &cols,
+                &[(9, Value::Null)],
+                &[(0, Some("1"))]
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -481,12 +530,18 @@ mod tests {
         let set = [(5, Value::Text("2024-03-01 10:00:00.5+00:00"))];
         let key = [(0, Some("1"))];
         assert!(
-            update(Dialect::Postgres, table(), &cols, &set, &key)
-                .unwrap()
-                .contains("seen = '2024-03-01 10:00:00.5+00:00'")
+            update(
+                Dialect::Postgres,
+                &table(Dialect::Postgres),
+                &cols,
+                &set,
+                &key
+            )
+            .unwrap()
+            .contains("seen = '2024-03-01 10:00:00.5+00:00'")
         );
         assert!(
-            update(Dialect::MySql, table(), &cols, &set, &key)
+            update(Dialect::MySql, &table(Dialect::MySql), &cols, &set, &key)
                 .unwrap()
                 .contains("seen = '2024-03-01 10:00:00.5'")
         );
@@ -498,7 +553,7 @@ mod tests {
         assert_eq!(
             insert(
                 Dialect::Postgres,
-                table(),
+                &table(Dialect::Postgres),
                 &cols,
                 &[(0, Value::Default), (1, Value::Text("a")), (2, Value::Null)]
             )
@@ -506,15 +561,27 @@ mod tests {
             "INSERT INTO demo.\"Items\" (name, price) VALUES ('a', NULL)"
         );
         assert_eq!(
-            insert(Dialect::Postgres, table(), &cols, &[(0, Value::Default)]).unwrap(),
+            insert(
+                Dialect::Postgres,
+                &table(Dialect::Postgres),
+                &cols,
+                &[(0, Value::Default)]
+            )
+            .unwrap(),
             "INSERT INTO demo.\"Items\" DEFAULT VALUES"
         );
         assert_eq!(
-            insert(Dialect::MySql, Table { schema: None, name: "t" }, &cols, &[]).unwrap(),
+            insert(Dialect::MySql, "t", &cols, &[]).unwrap(),
             "INSERT INTO t () VALUES ()"
         );
         assert_eq!(
-            delete(Dialect::MySql, table(), &cols, &[(0, Some("3")), (1, Some("a`b"))]).unwrap(),
+            delete(
+                Dialect::MySql,
+                &table(Dialect::MySql),
+                &cols,
+                &[(0, Some("3")), (1, Some("a`b"))]
+            )
+            .unwrap(),
             "DELETE FROM demo.Items WHERE id = 3 AND name = 'a`b'"
         );
     }

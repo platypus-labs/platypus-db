@@ -158,7 +158,7 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
     let original: string | null | undefined;
     if ("row" in ref) {
       try {
-        original = (await api.rowValues(jobId, ref.row))[cell.col];
+        original = (await api.rowValues(jobId, ref.row, 1))[0]?.[cell.col];
       } catch (e) {
         return fail(e);
       }
@@ -230,7 +230,7 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
           selectedRows().map(async (gridRow): Promise<edits.Cells> => {
             const ref = edits.rowRef(s, gridRow);
             if ("insert" in ref) return s.inserts[ref.insert]!;
-            const values = await api.rowValues(jobId, ref.row);
+            const [values = []] = await api.rowValues(jobId, ref.row, 1);
             const cells = new Map<number, CellInput>(
               values.map((v, c) => [c, v === null ? { kind: "null" } : { kind: "value", text: v }]),
             );

@@ -280,9 +280,15 @@ mod tests {
     fn value_literals() {
         assert_eq!(Dialect::Postgres.bool_literal(true), "TRUE");
         assert_eq!(Dialect::Sqlite.bool_literal(false), "0");
-        assert_eq!(Dialect::Postgres.binary_literal("00ff"), "decode('00ff', 'hex')");
+        assert_eq!(
+            Dialect::Postgres.binary_literal("00ff"),
+            "decode('00ff', 'hex')"
+        );
         assert_eq!(Dialect::MySql.binary_literal(""), "X''");
         assert!(!Dialect::Sqlite.has_default_keyword());
-        assert_eq!(Dialect::MySql.insert_defaults("t"), "INSERT INTO t () VALUES ()");
+        assert_eq!(
+            Dialect::MySql.insert_defaults("t"),
+            "INSERT INTO t () VALUES ()"
+        );
     }
 }

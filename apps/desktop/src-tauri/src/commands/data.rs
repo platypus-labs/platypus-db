@@ -2,8 +2,9 @@
 //! turn them into UPDATE, INSERT and DELETE statements for a preview, or run them all or
 //! none on the session of the result being edited.
 
+use arrow_array::RecordBatch;
 use platypus_sql::Dialect;
-use platypus_sql::dml::{self, ApplyError, Column, Table, Value, ValueKind};
+use platypus_sql::dml::{self, ApplyError, Column, Value, ValueKind};
 use serde::Deserialize;
 use tauri::State;
 
@@ -22,7 +23,7 @@ pub enum CellInput {
 }
 
 impl CellInput {
-    fn value(&self) -> Value<'_> {
+    fn as_value(&self) -> Value<'_> {
         match self {
             Self::Value { text } => Value::Text(text),
             Self::Null => Value::Null,
@@ -67,22 +68,32 @@ pub struct Changes {
 }
 
 fn pairs(values: &[ColumnValue]) -> Vec<(usize, Value<'_>)> {
-    values.iter().map(|v| (v.column, v.value())).collect()
+    values
+        .iter()
+        .map(|v| (v.column, v.value.as_value()))
+        .collect()
 }
 
 fn borrowed(key: &[(usize, Option<String>)]) -> Vec<(usize, Option<&str>)> {
     key.iter().map(|(c, v)| (*c, v.as_deref())).collect()
 }
 
-/// The full text of a buffered result row.
-fn row_text(job: &Job, row: usize) -> CommandResult<Vec<Option<String>>> {
+/// The full text of the buffered result rows `offset..offset + limit`.
+fn rows_text(job: &Job, offset: usize, limit: usize) -> CommandResult<Vec<Vec<Option<String>>>> {
     let (_, batches) = job
-        .window(row, 1)
+        .window(offset, limit)
         .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;
-    let batch = batches
-        .first()
-        .ok_or_else(|| CommandError::not_found("row", row + 1))?;
-    Ok(display::row_text(batch, 0)?)
+    let mut rows = Vec::with_capacity(limit.min(batches.iter().map(RecordBatch::num_rows).sum()));
+    for batch in &batches {
+        display::rows_text(batch, &mut rows)?;
+    }
+    Ok(rows)
+}
+
+fn row_text(job: &Job, row: usize) -> CommandResult<Vec<Option<String>>> {
+    rows_text(job, row, 1)?
+        .pop()
+        .ok_or_else(|| CommandError::not_found("row", row + 1))
 }
 
 /// The statements for `changes`: deletes first, which frees unique values for the updates
@@ -102,10 +113,7 @@ fn statements(state: &AppState, job: &Job, changes: &Changes) -> CommandResult<V
             default: changes.defaults.get(i).and_then(Option::as_deref),
         })
         .collect();
-    let table = Table {
-        schema: Some(&changes.table.schema),
-        name: &changes.table.name,
-    };
+    let table = dialect.qualified(Some(&changes.table.schema), &changes.table.name);
     let invalid = |e: dml::InvalidValue| CommandError::new("invalid_value", e.to_string());
     let key_of = |row: usize| -> CommandResult<Vec<(usize, Option<String>)>> {
         let text = row_text(job, row)?;
@@ -125,15 +133,15 @@ fn statements(state: &AppState, job: &Job, changes: &Changes) -> CommandResult<V
         Vec::with_capacity(changes.deletes.len() + changes.updates.len() + changes.inserts.len());
     for &row in &changes.deletes {
         let key = key_of(row)?;
-        out.push(dml::delete(dialect, table, &columns, &borrowed(&key)).map_err(invalid)?);
+        out.push(dml::delete(dialect, &table, &columns, &borrowed(&key)).map_err(invalid)?);
     }
     for update in &changes.updates {
         let key = key_of(update.row)?;
         let set = pairs(&update.values);
-        out.push(dml::update(dialect, table, &columns, &set, &borrowed(&key)).map_err(invalid)?);
+        out.push(dml::update(dialect, &table, &columns, &set, &borrowed(&key)).map_err(invalid)?);
     }
     for values in &changes.inserts {
-        out.push(dml::insert(dialect, table, &columns, &pairs(values)).map_err(invalid)?);
+        out.push(dml::insert(dialect, &table, &columns, &pairs(values)).map_err(invalid)?);
     }
     Ok(out)
 }
@@ -173,13 +181,14 @@ pub async fn save_changes(
     Ok(statements.len())
 }
 
-/// The full values of a loaded row, as text (`None` for NULL): the grid shows them cut to
-/// one line, the editor needs them whole.
+/// The full values of loaded rows `offset..offset + limit`, as text (`None` for NULL): the
+/// grid shows them cut to one line, editing and copying need them whole.
 #[tauri::command]
 pub fn row_values(
     state: State<'_, AppState>,
     job_id: u64,
-    row: usize,
-) -> CommandResult<Vec<Option<String>>> {
-    row_text(&state.job(job_id)?, row)
+    offset: usize,
+    limit: usize,
+) -> CommandResult<Vec<Vec<Option<String>>>> {
+    rows_text(&*state.job(job_id)?, offset, limit)
 }
