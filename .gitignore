@@ -1,0 +1,6 @@
+/target/
+.DS_Store
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json

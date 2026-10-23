@@ -1,0 +1,55 @@
+# Local databases for development and integration tests.
+# Test-only credentials: user `platypus`, password `platypus`, database `platypus`.
+# Host ports are offset from the defaults to avoid clashing with local installs.
+name: platypus-db
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: platypus
+      POSTGRES_PASSWORD: platypus
+      POSTGRES_DB: platypus
+    ports:
+      - "55432:5432"
+    volumes:
+      - ./postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platypus -d platypus"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_USER: platypus
+      MYSQL_PASSWORD: platypus
+      MYSQL_DATABASE: platypus
+      MYSQL_ROOT_PASSWORD: platypus
+    ports:
+      - "53306:3306"
+    volumes:
+      - ./mysql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uplatypus", "-pplatypus"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
+
+  mariadb:
+    image: mariadb:11.4
+    environment:
+      MARIADB_USER: platypus
+      MARIADB_PASSWORD: platypus
+      MARIADB_DATABASE: platypus
+      MARIADB_ROOT_PASSWORD: platypus
+    ports:
+      - "53307:3306"
+    volumes:
+      - ./mysql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
