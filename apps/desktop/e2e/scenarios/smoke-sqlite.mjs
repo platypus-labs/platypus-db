@@ -82,7 +82,14 @@ export default async function (page, { dir }) {
   // Grid menu and shortcuts come from the "grid" actions.
   await page.waitFor(`${visibleTab}.querySelector('.grid-scroll') !== null`);
   await page.eval(`${visibleTab}.querySelector('.grid-scroll').id = 'e2e-grid'`);
-  assert.deepEqual(await rightClick(page, "#e2e-grid"), ["Copy", "Select all"]);
+  assert.deepEqual(await rightClick(page, "#e2e-grid"), [
+    "Copy",
+    "Copy with headers",
+    "Copy as",
+    "Select all",
+    "Find…",
+    "Value panel",
+  ]);
   // The page may not read the clipboard back: record what is written instead.
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
   await page.eval(`document.getElementById('e2e-grid').focus()`);

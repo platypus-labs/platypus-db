@@ -8,6 +8,7 @@ pub mod connections;
 pub mod data;
 pub mod export;
 pub mod files;
+pub mod grid;
 pub mod history;
 pub mod meta;
 pub mod query;

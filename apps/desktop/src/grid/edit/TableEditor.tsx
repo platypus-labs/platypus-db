@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { api, type CellInput, type ColumnInfo, type SavedConnection, toCommandError } from "../../api";
-import { type Cell, type CellDecoration, DataGrid, type GridApi, type GridSource } from "../DataGrid";
+import type { Cell, CellDecoration, GridApi } from "../DataGrid";
 import type { RowCache } from "../RowCache";
 import { CellEditor, type Move } from "./CellEditor";
 import { Dictionary } from "./dictionary";
@@ -58,16 +58,35 @@ declare module "../DataGrid" {
   }
 }
 
-interface Props {
-  target: TableEditTarget;
+interface Options {
+  /** `null` when the result is not a table's data. */
+  target: TableEditTarget | null;
   jobId: number;
   columns: ColumnInfo[];
-  rowCount: number;
+  /** The result's rows, for the labels of foreign keys. */
   cache: RowCache;
+  /** Bumped whenever the cache receives rows. */
   version: number;
-  sort?: { column: string; desc: boolean } | null;
-  onHeaderClick?: (column: number) => void;
-  source?: GridSource | null;
+  grid: RefObject<GridApi | null>;
+  /** The element holding the grid: bounds the editors and receives the typed keys. */
+  box: RefObject<HTMLDivElement | null>;
+}
+
+/** What the editor adds to a result grid. */
+export interface TableEditorHost {
+  /** Given to grid actions as `source.edit`; `undefined` when the result is not a table's. */
+  edit: TableEdit | undefined;
+  /** The edit bar above the grid. */
+  bar: ReactNode;
+  /** Dialogs, e.g. the SQL preview. */
+  dialog: ReactNode;
+  /** New rows, shown above the result's. */
+  topRows: number;
+  decorate?: (row: number, col: number) => CellDecoration | undefined;
+  overlay: ReactNode;
+  onCellDoubleClick?: (cell: Cell) => void;
+  onScroll: () => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
 }
 
 interface Editing {
@@ -110,10 +129,8 @@ function decoration(value: CellInput, background: string): CellDecoration {
 
 const columnsOf = (meta: EditMeta) => meta.columns.flatMap((c, i) => (c ? [i] : []));
 
-/** The grid of a result of one table, with editing: inline editors, new and deleted rows, save. */
-export function TableEditor({ target, jobId, columns, rowCount, cache, version, sort, onHeaderClick, source }: Props) {
-  const grid = useRef<GridApi>(null);
-  const box = useRef<HTMLDivElement>(null);
+/** Editing of a result of one table: inline editors, new and deleted rows, save. */
+export function useTableEditor({ target, jobId, columns, cache, version, grid, box }: Options): TableEditorHost {
   const [meta, setMeta] = useState<EditMeta | ReadOnly | null>(null);
   const [state, setState] = useState(edits.EMPTY);
   const current = useRef(state);
@@ -129,13 +146,18 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
   const latest = useRef(target);
   latest.current = target;
 
-  const reason = target.connection.read_only ? "the connection is read-only" : target.readOnly;
-  const virtualKeys = target.connection.virtual_keys ?? [];
+  const reason = !target
+    ? "not a table"
+    : target.connection.read_only
+      ? "the connection is read-only"
+      : target.readOnly;
+  const virtualKeys = target?.connection.virtual_keys ?? [];
   const virtualSignature = JSON.stringify(virtualKeys);
   useEffect(() => {
-    if (reason !== null) return;
+    const t = latest.current;
+    if (reason !== null || !t) return;
     let live = true;
-    latest.current.load().then(
+    t.load().then(
       (source) => {
         if (!live) return;
         setMeta(source ? editMeta(source, columns, virtualKeys) : { reason: "the rows are not one table's", hidden: true });
@@ -146,19 +168,20 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
       live = false;
     };
     // `virtualKeys` changes with its signature.
-  }, [columns, reason, target.key, virtualSignature]);
+  }, [columns, reason, target?.key, virtualSignature]);
   const keys = meta && "key" in meta ? meta : null;
   const readOnly = reason ?? (meta && "reason" in meta ? meta.reason : null);
   const editable = readOnly === null && keys !== null && !busy;
   const dirty = !edits.isEmpty(state);
 
-  useEffect(() => latest.current.onDirtyChange(dirty), [dirty]);
-  useEffect(() => () => latest.current.onDirtyChange(false), []);
+  useEffect(() => latest.current?.onDirtyChange(dirty), [dirty]);
+  useEffect(() => () => latest.current?.onDirtyChange(false), []);
 
   // Foreign keys show the rows they point to.
   useEffect(() => {
-    if (!keys) return;
-    const dict = new Dictionary(latest.current.session, () => setLabels((n) => n + 1));
+    const t = latest.current;
+    if (!keys || !t) return;
+    const dict = new Dictionary(t.session, () => setLabels((n) => n + 1));
     dictionary.current = dict;
     void dict.init(keys);
     return () => {
@@ -371,7 +394,7 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
         undoStack.current = [];
         current.current = edits.EMPTY;
         setState(edits.EMPTY);
-        latest.current.onSaved(saved.undo);
+        latest.current?.onSaved(saved.undo);
       } catch (e) {
         fail(e);
       } finally {
@@ -455,102 +478,98 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
   );
 
   const noKey = meta && "reason" in meta ? meta.noKey : undefined;
-  const showBar = !target.quiet || (meta !== null && !("hidden" in meta && meta.hidden));
+  const showBar = !target?.quiet || (meta !== null && !("hidden" in meta && meta.hidden));
   const keyTable = keys?.table ?? noKey?.table;
 
-  return (
-    <div className="table-editor">
-      <div className="edit-bar" hidden={!showBar}>
-        {readOnly !== null ? (
-          <>
-            <span className="muted small">Read-only: {readOnly}.</span>
-            {noKey && (
-              <button onClick={() => setKeyDialog(true)} title="Columns that tell the rows apart">
-                Set a virtual key…
+  const bar = target && (
+    <div className="edit-bar" hidden={!showBar}>
+      {readOnly !== null ? (
+        <>
+          <span className="muted small">Read-only: {readOnly}.</span>
+          {noKey && (
+            <button onClick={() => setKeyDialog(true)} title="Columns that tell the rows apart">
+              Set a virtual key…
+            </button>
+          )}
+        </>
+      ) : meta === null ? (
+        <span className="muted small">Checking the table's keys…</span>
+      ) : (
+        <>
+          <button onClick={edit.addRow} disabled={!editable} title="Add a row (Insert)">
+            + Row
+          </button>
+          <button onClick={edit.deleteSelection} disabled={!editable} title="Delete the selected rows (Delete)">
+            − Row
+          </button>
+          {dirty ? (
+            <>
+              <span className="edit-count">
+                {edits.changedRows(state)} {edits.changedRows(state) === 1 ? "row" : "rows"} changed
+              </span>
+              <button className="primary" onClick={() => void edit.save()} disabled={!editable} title="Save (Ctrl+S)">
+                {busy ? "Saving…" : "Save"}
               </button>
-            )}
-          </>
-        ) : meta === null ? (
-          <span className="muted small">Checking the table's keys…</span>
-        ) : (
-          <>
-            <button onClick={edit.addRow} disabled={!editable} title="Add a row (Insert)">
-              + Row
-            </button>
-            <button onClick={edit.deleteSelection} disabled={!editable} title="Delete the selected rows (Delete)">
-              − Row
-            </button>
-            {dirty ? (
-              <>
-                <span className="edit-count">
-                  {edits.changedRows(state)} {edits.changedRows(state) === 1 ? "row" : "rows"} changed
-                </span>
-                <button className="primary" onClick={() => void edit.save()} disabled={!editable} title="Save (Ctrl+S)">
-                  {busy ? "Saving…" : "Save"}
-                </button>
-                <button onClick={() => void edit.preview()} disabled={busy}>
-                  Preview SQL
-                </button>
-                <button onClick={edit.undo} disabled={busy || !edit.canUndo} title="Undo (Ctrl+Z)">
-                  Undo
-                </button>
-                <button onClick={edit.discard} disabled={busy}>
-                  Discard
-                </button>
-              </>
-            ) : (
-              <span className="muted small">Double-click, F2 or type to edit a cell</span>
-            )}
-            {keys?.virtualKey && (
-              <button className="link small" onClick={() => setKeyDialog(true)} title="Change the virtual key">
-                Virtual key: {keys.virtualKey.join(", ")}
+              <button onClick={() => void edit.preview()} disabled={busy}>
+                Preview SQL
               </button>
-            )}
-          </>
-        )}
-        {error && (
-          <span className="error-text small edit-error" title={error}>
-            {error}
-            <button className="link" onClick={() => setError(null)} title="Dismiss">
-              ×
+              <button onClick={edit.undo} disabled={busy || !edit.canUndo} title="Undo (Ctrl+Z)">
+                Undo
+              </button>
+              <button onClick={edit.discard} disabled={busy}>
+                Discard
+              </button>
+            </>
+          ) : (
+            <span className="muted small">Double-click, F2 or type to edit a cell</span>
+          )}
+          {keys?.virtualKey && (
+            <button className="link small" onClick={() => setKeyDialog(true)} title="Change the virtual key">
+              Virtual key: {keys.virtualKey.join(", ")}
             </button>
-          </span>
-        )}
-      </div>
-      <div className="table-editor-grid" ref={box} onKeyDown={onKeyDown}>
-        <DataGrid
-          ref={grid}
-          columns={columns}
-          rowCount={rowCount}
-          topRows={state.inserts.length}
-          cache={cache}
-          version={version}
-          sort={sort}
-          onHeaderClick={onHeaderClick}
-          source={source ? { ...source, edit } : null}
-          decorate={decorated ? decorate : undefined}
-          overlay={overlay || null}
-          onCellDoubleClick={editable ? (cell) => void editCell(cell) : undefined}
-          onScroll={onScroll}
-        />
-      </div>
-      {preview && (
-        <PreviewDialog
-          statements={preview}
-          busy={busy}
-          onSave={() => void edit.save()}
-          onClose={() => setPreview(null)}
-        />
+          )}
+        </>
       )}
-      {keyDialog && keyTable && (
-        <VirtualKeyDialog
-          connection={target.connection}
-          table={keyTable}
-          columns={keys ? keys.details.columns.map((c) => c.name) : (noKey?.columns ?? [])}
-          current={keys?.virtualKey ?? null}
-          onClose={() => setKeyDialog(false)}
-        />
+      {error && (
+        <span className="error-text small edit-error" title={error}>
+          {error}
+          <button className="link" onClick={() => setError(null)} title="Dismiss">
+            ×
+          </button>
+        </span>
       )}
     </div>
   );
+
+  return {
+    edit: target ? edit : undefined,
+    bar,
+    dialog: (
+      <>
+        {preview && (
+          <PreviewDialog
+            statements={preview}
+            busy={busy}
+            onSave={() => void edit.save()}
+            onClose={() => setPreview(null)}
+          />
+        )}
+        {keyDialog && keyTable && target && (
+          <VirtualKeyDialog
+            connection={target.connection}
+            table={keyTable}
+            columns={keys ? keys.details.columns.map((c) => c.name) : (noKey?.columns ?? [])}
+            current={keys?.virtualKey ?? null}
+            onClose={() => setKeyDialog(false)}
+          />
+        )}
+      </>
+    ),
+    topRows: state.inserts.length,
+    decorate: decorated ? decorate : undefined,
+    overlay: overlay || null,
+    onCellDoubleClick: editable ? (cell) => void editCell(cell) : undefined,
+    onScroll,
+    onKeyDown,
+  };
 }

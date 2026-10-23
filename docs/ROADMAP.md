@@ -109,6 +109,9 @@ conformance per la DML generata (quoting, NULL, binari, timestamp con fuso).
 
 ### Gruppo B — Griglia avanzata (sola lettura)
 
+**Stato: P1 completati** (copia avanzata, ricerca Ctrl+F, pannello valori F7, filtri rapidi).
+Restano i P2/P3.
+
 **Area:** `apps/desktop/src/grid/features/`, `apps/desktop/src/panels/`
 **Dipende da:** 0.4
 

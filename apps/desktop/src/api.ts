@@ -61,6 +61,8 @@ export interface ColumnInfo {
   name: string;
   db_type: string;
   numeric: boolean;
+  /** Bytes, shown as hex. */
+  binary: boolean;
 }
 
 export type QueryEvent =
@@ -199,6 +201,16 @@ export interface Lookup {
   label: string;
 }
 
+/** Clipboard formats of `copyRows`. */
+export type CopyFormat = "tsv" | "csv" | "json" | "markdown" | "html" | "insert" | "in_list";
+
+export interface SearchResult {
+  /** `[row, column]` of the matching cells, row by row. */
+  matches: [number, number][];
+  /** More cells matched than were reported. */
+  truncated: boolean;
+}
+
 export type ExportFormat = "csv" | "json" | "ndjson" | "parquet";
 
 export interface ExportOptions {
@@ -334,6 +346,34 @@ export const api = {
   /** Loaded rows' values in full, not cut to one line like the grid's. */
   rowValues: (jobId: number, offset: number, limit: number) =>
     invoke<(string | null)[][]>("row_values", { jobId, offset, limit }),
+  /** Loaded rows of a result in a clipboard format; `table` names the table in INSERTs. */
+  copyRows: (
+    jobId: number,
+    offset: number,
+    limit: number,
+    columns: number[],
+    format: CopyFormat,
+    options: { header?: boolean; table?: string | null } = {},
+  ) =>
+    invoke<string>("copy_rows", {
+      jobId,
+      offset,
+      limit,
+      columns,
+      format,
+      header: options.header ?? false,
+      table: options.table ?? null,
+    }),
+  /** A column's loaded values as SQL literals, `NULL` included. */
+  sqlLiterals: (jobId: number, offset: number, limit: number, column: number) =>
+    invoke<string[]>("sql_literals", { jobId, offset, limit, column }),
+  /** A cell's raw bytes (UTF-8 text for non-binary columns); empty for NULL. */
+  cellBytes: async (jobId: number, row: number, column: number) =>
+    new Uint8Array(await invoke<ArrayBuffer>("cell_bytes", { jobId, row, column })),
+  saveCell: (jobId: number, row: number, column: number, path: string) =>
+    invoke<void>("save_cell", { jobId, row, column, path }),
+  /** Loaded cells containing `text`, ignoring case. */
+  searchRows: (jobId: number, text: string) => invoke<SearchResult>("search_rows", { jobId, text }),
   fetchAll: (jobId: number) => invoke<void>("fetch_all", { jobId }),
   cancelQuery: (jobId: number) => invoke<void>("cancel_query", { jobId }),
   closeQuery: (jobId: number) => invoke<void>("close_query", { jobId }),

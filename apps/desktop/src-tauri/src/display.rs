@@ -12,7 +12,7 @@ use arrow_schema::{ArrowError, DataType, Field, Schema};
 /// Longer values are cut for the grid; the full value is fetched on demand.
 const MAX_CELL_CHARS: usize = 500;
 
-fn format_options() -> FormatOptions<'static> {
+pub fn format_options() -> FormatOptions<'static> {
     FormatOptions::default()
         .with_date_format(Some("%Y-%m-%d"))
         .with_timestamp_format(Some("%Y-%m-%d %H:%M:%S%.f"))

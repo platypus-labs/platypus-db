@@ -695,7 +695,21 @@ export function QueryTab({
               result={current}
               sort={tab.table ? (tab.sort ?? null) : null}
               onHeaderClick={tab.table && !running ? sortBy : undefined}
-              source={{ connection, sql: current.sql, jobId: current.jobId, table: tab.table ?? null }}
+              source={{
+                connection,
+                sql: current.sql,
+                jobId: current.jobId,
+                table: tab.table ?? null,
+                viewer: tab.table
+                  ? {
+                      filter: tab.filter ?? "",
+                      setFilter: (next) => {
+                        setFilter(next);
+                        applyViewer({ filter: next });
+                      },
+                    }
+                  : undefined,
+              }}
               edit={editTarget(current)}
             />
           )}

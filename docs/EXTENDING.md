@@ -71,6 +71,7 @@ as described under [Settings](#settings).
 - optionally a shortcut, a menu group and order, and a `when` condition.
 
 Context menus and shortcuts read from the registry, and so will the command palette.
+Actions with the same `submenu` title are listed together under that entry, e.g. `Copy as`.
 
 ```ts
 registerAction({
@@ -157,7 +158,13 @@ loaded before the first render.
 | `onCellDoubleClick` | Called when a cell is double-clicked. |
 | `topRows` | Rows drawn above the result's, e.g. new rows; their cells come from `decorate`. |
 | `onScroll` | Called when the grid scrolls, e.g. to move an overlay. |
+| `onFocusChange` | Called when the focused cell changes, e.g. for the value panel. |
 | `ref` | Gives the `GridApi`. |
+
+`GridApi.dataRow` maps a grid row to the result's row (`null` for the top rows).
+`grid/ResultGrid.tsx` hosts a result's features around the grid: the data editor
+(`grid/edit/`), search and the copy and filter actions (`grid/features/`), the value panel
+(`panels/`). It combines their decorations, so each feature keeps its own.
 
 A decoration can set `background`, `color`, replacement `text`, `strike` and a muted `hint`
 after the value (the data editor's foreign key labels). Features that

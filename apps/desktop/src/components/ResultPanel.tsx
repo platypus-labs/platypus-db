@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, type ColumnInfo, type CommandError } from "../api";
-import { DataGrid, type GridSource } from "../grid/DataGrid";
+import type { GridSource } from "../grid/DataGrid";
+import { ResultGrid } from "../grid/ResultGrid";
 import { RowCache } from "../grid/RowCache";
-import { TableEditor, type TableEditTarget } from "../grid/edit/TableEditor";
+import type { TableEditTarget } from "../grid/edit/TableEditor";
 
 export type ResultStatus =
   | { kind: "pending" }
@@ -110,10 +111,9 @@ export function ResultPanel({ result, sort, onHeaderClick, source, edit }: Panel
   if (status.kind === "skipped") {
     return <div className="notice muted">Not executed: an earlier statement failed.</div>;
   }
-  if (columns && cache && edit && jobId !== null) {
+  if (columns && cache && jobId !== null) {
     return (
-      <TableEditor
-        target={edit}
+      <ResultGrid
         jobId={jobId}
         columns={columns}
         rowCount={result.rows}
@@ -122,19 +122,7 @@ export function ResultPanel({ result, sort, onHeaderClick, source, edit }: Panel
         sort={sort}
         onHeaderClick={onHeaderClick && ((i) => onHeaderClick(columns[i]!.name))}
         source={source}
-      />
-    );
-  }
-  if (columns && cache) {
-    return (
-      <DataGrid
-        columns={columns}
-        rowCount={result.rows}
-        cache={cache}
-        version={version}
-        sort={sort}
-        onHeaderClick={onHeaderClick && ((i) => onHeaderClick(columns[i]!.name))}
-        source={source}
+        edit={edit}
       />
     );
   }

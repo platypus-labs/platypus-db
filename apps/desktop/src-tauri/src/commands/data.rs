@@ -104,7 +104,11 @@ fn key_in<'a>(
 }
 
 /// The full text of the buffered result rows `offset..offset + limit`.
-fn rows_text(job: &Job, offset: usize, limit: usize) -> CommandResult<Vec<Vec<Option<String>>>> {
+pub(super) fn rows_text(
+    job: &Job,
+    offset: usize,
+    limit: usize,
+) -> CommandResult<Vec<Vec<Option<String>>>> {
     let (_, batches) = job
         .window(offset, limit)
         .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;

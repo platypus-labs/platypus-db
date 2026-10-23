@@ -69,6 +69,8 @@ export interface GridApi {
   value(row: number, col: number): string | null | undefined;
   selection(): GridSelection | null;
   focused(): Cell | null;
+  /** The result row shown at a grid row; `null` for the `topRows`. */
+  dataRow(row: number): number | null;
   select(anchor: Cell, focus?: Cell): void;
   /** A cell's box relative to the grid element, or `null` while scrolled out of view. */
   cellRect(row: number, col: number): { left: number; top: number; width: number; height: number } | null;
@@ -120,6 +122,8 @@ interface Props {
   onCellDoubleClick?: (cell: Cell) => void;
   /** Called when the grid scrolls, e.g. to close an overlay placed over a cell. */
   onScroll?: () => void;
+  /** Called when the focused cell changes, e.g. for the value panel. */
+  onFocusChange?: (cell: Cell | null) => void;
   ref?: Ref<GridApi>;
 }
 
@@ -162,6 +166,7 @@ export function DataGrid({
   overlay,
   onCellDoubleClick,
   onScroll,
+  onFocusChange,
   ref,
 }: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
@@ -177,8 +182,8 @@ export function DataGrid({
   const theme = useRef<Theme | null>(null);
   const frame = useRef(0);
   // Latest props for the imperative draw loop.
-  const props = useRef({ columns, rowCount, topRows, cache, sort, onHeaderClick, decorate });
-  props.current = { columns, rowCount, topRows, cache, sort, onHeaderClick, decorate };
+  const props = useRef({ columns, rowCount, topRows, cache, sort, onHeaderClick, decorate, onFocusChange });
+  props.current = { columns, rowCount, topRows, cache, sort, onHeaderClick, decorate, onFocusChange };
   /** Rows shown: the top rows, then the result's. */
   const total = () => props.current.rowCount + props.current.topRows;
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -196,6 +201,7 @@ export function DataGrid({
     widths.current = columns.map((c) => headerWidth(c));
     sizedToData.current = false;
     anchor.current = focus.current = null;
+    props.current.onFocusChange?.(null);
     // headerWidth only depends on measure.
   }, [columns, measure]);
 
@@ -452,6 +458,7 @@ export function DataGrid({
     value: (row, col) => cellText(row, col, props.current.decorate?.(row, col)),
     selection: selectionRect,
     focused: () => focus.current,
+    dataRow: (row) => (row < props.current.topRows ? null : row - props.current.topRows),
     select: (a, f = a) => {
       anchor.current = a;
       setFocus(f, true);
@@ -549,7 +556,9 @@ export function DataGrid({
       col: Math.max(0, Math.min(columns.length - 1, cell.col)),
     };
     if (rowCount === 0 || columns.length === 0) return;
+    const previous = focus.current;
     focus.current = clamped;
+    if (previous?.row !== clamped.row || previous.col !== clamped.col) props.current.onFocusChange?.(clamped);
     if (!extend || !anchor.current) anchor.current = clamped;
     scrollIntoView(clamped);
     schedule();
