@@ -159,7 +159,8 @@ together with `source`: the connection, the SQL, the job and the data-viewer tab
 
 `apps/desktop/e2e/` drives the release build through the WebView2 DevTools protocol, on
 Windows only. Each scenario runs against a fresh profile: `PLATYPUS_DATA_DIR` and a separate
-WebView2 folder. The user's data is never touched.
+WebView2 folder. The user's data is never touched. The runner sets `PLATYPUS_DEVTOOLS_PORT`,
+which makes the app open the protocol port itself.
 
 ```bash
 npm run tauri build -- --no-bundle

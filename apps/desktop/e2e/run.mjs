@@ -48,7 +48,7 @@ for (const file of scenarios) {
       ...process.env,
       PLATYPUS_DATA_DIR: dir,
       WEBVIEW2_USER_DATA_FOLDER: join(dir, "webview"),
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
+      PLATYPUS_DEVTOOLS_PORT: String(port),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

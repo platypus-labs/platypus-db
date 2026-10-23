@@ -76,6 +76,25 @@ fn open_history(app: &tauri::App) -> Result<HistoryStore, String> {
     Ok(history)
 }
 
+/// Creates the window declared in `tauri.conf.json` (with `create: false`).
+/// `PLATYPUS_DEVTOOLS_PORT` opens the web view's developer tools protocol on that port for the
+/// end-to-end tests: WebView2 does not always honour `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`
+/// when the app passes browser arguments of its own.
+fn open_main_window(app: &tauri::App) -> tauri::Result<()> {
+    let Some(mut config) = app.config().app.windows.first().cloned() else {
+        return Ok(());
+    };
+    if let Some(port) = std::env::var("PLATYPUS_DEVTOOLS_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+    {
+        let args = config.additional_browser_args.unwrap_or_default();
+        config.additional_browser_args = Some(format!("{args} --remote-debugging-port={port}"));
+    }
+    tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?.build()?;
+    Ok(())
+}
+
 /// Builds and runs the Tauri application.
 ///
 /// # Panics
@@ -90,6 +109,7 @@ pub fn run() {
         .setup(|app| {
             let state = AppState::new(open_store(app), open_history(app), open_settings(app));
             app.manage(state);
+            open_main_window(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
