@@ -9,6 +9,8 @@ export interface PersistedTab {
   filePath: string | null;
   /** File contents at the last open/save, to show unsaved changes. */
   savedSql: string | null;
+  /** Tab label, e.g. the table opened from the navigator. */
+  title?: string | null;
 }
 
 export interface Workspace {

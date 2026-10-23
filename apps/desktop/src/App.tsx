@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, toCommandError, type SavedConnection } from "./api";
 import { ConnectionDialog } from "./components/ConnectionDialog";
 import { QueryTab, type TabModel } from "./components/QueryTab";
-import { Sidebar } from "./components/Sidebar";
+import { Navigator } from "./components/Navigator";
 import { basename, loadWorkspace, saveWorkspace } from "./workspace";
 
 type Dialog = { kind: "connection"; connection: SavedConnection; existing: boolean } | null;
@@ -14,8 +14,14 @@ interface PasswordRequest {
 
 let nextTabKey = 1;
 
-function newTab(connectionId: string, sql = "", filePath: string | null = null): TabModel {
-  return { key: nextTabKey++, connectionId, sql, filePath, savedSql: filePath ? sql : null };
+function newTab(
+  connectionId: string,
+  sql = "",
+  filePath: string | null = null,
+  autorun = false,
+  title: string | null = null,
+): TabModel {
+  return { key: nextTabKey++, connectionId, sql, filePath, savedSql: filePath ? sql : null, autorun, title };
 }
 
 export function App() {
@@ -29,6 +35,9 @@ export function App() {
   const [version, setVersion] = useState("");
   /** Open sessions by tab key; opened on a tab's first run. */
   const sessions = useRef(new Map<number, Promise<number | null>>());
+  /** Navigator sessions by connection id, separate from the editors' so browsing never
+   *  waits behind a running query. */
+  const navSessions = useRef(new Map<string, Promise<number | null>>());
   const restored = useRef(false);
 
   useEffect(() => {
@@ -48,7 +57,7 @@ export function App() {
     const known = new Set(connections.map((c) => c.id));
     const restoredTabs = saved.tabs
       .filter((t) => known.has(t.connectionId))
-      .map((t) => ({ ...newTab(t.connectionId, t.sql, t.filePath), savedSql: t.savedSql }));
+      .map((t) => ({ ...newTab(t.connectionId, t.sql, t.filePath, false, t.title ?? null), savedSql: t.savedSql }));
     setTabs(restoredTabs);
     setActiveTab(restoredTabs[Math.min(saved.active, restoredTabs.length - 1)]?.key ?? null);
   }, [connections]);
@@ -56,7 +65,13 @@ export function App() {
   useEffect(() => {
     if (!restored.current) return;
     saveWorkspace({
-      tabs: tabs.map(({ connectionId, sql, filePath, savedSql }) => ({ connectionId, sql, filePath, savedSql })),
+      tabs: tabs.map(({ connectionId, sql, filePath, savedSql, title }) => ({
+        connectionId,
+        sql,
+        filePath,
+        savedSql,
+        title,
+      })),
       active: Math.max(0, tabs.findIndex((t) => t.key === activeTab)),
     });
   }, [tabs, activeTab]);
@@ -72,6 +87,7 @@ export function App() {
     try {
       setConnections(await api.deleteConnection(c.id));
       for (const t of tabs.filter((t) => t.connectionId === c.id)) closeTab(t);
+      disconnectNavigator(c);
     } catch (e) {
       setToast(toCommandError(e).message);
     }
@@ -86,30 +102,50 @@ export function App() {
     return new Promise<string | null>((resolve) => setPasswordRequest({ connection, resolve }));
   }
 
-  function ensureSession(tab: TabModel): Promise<number | null> {
-    const existing = sessions.current.get(tab.key);
+  /** Opens a session, asking for the password when it is not saved; `null` on failure. */
+  async function connect(connection: SavedConnection): Promise<number | null> {
+    let password: string | undefined;
+    if (!connection.save_password && connection.driver !== "sqlite") {
+      const entered = await askPassword(connection);
+      if (entered === null) return null;
+      password = entered;
+    }
+    try {
+      const { session_id } = await api.openSession(connection.id, password);
+      return session_id;
+    } catch (e) {
+      setToast(`${connection.name}: ${toCommandError(e).message}`);
+      return null;
+    }
+  }
+
+  /** Caches a session promise; failed or cancelled attempts are retried on next use. */
+  function cached<K>(map: Map<K, Promise<number | null>>, key: K, open: () => Promise<number | null>) {
+    const existing = map.get(key);
     if (existing) return existing;
-    const opening = (async () => {
-      const connection = connectionById(tab.connectionId);
-      if (!connection) return null;
-      let password: string | undefined;
-      if (!connection.save_password) {
-        const entered = await askPassword(connection);
-        if (entered === null) return null;
-        password = entered;
-      }
-      try {
-        const { session_id } = await api.openSession(connection.id, password);
-        return session_id;
-      } catch (e) {
-        setToast(`${connection.name}: ${toCommandError(e).message}`);
-        return null;
-      }
-    })();
-    sessions.current.set(tab.key, opening);
-    // Failed or cancelled attempts are retried on the next run.
-    void opening.then((id) => id === null && sessions.current.delete(tab.key));
+    const opening = open();
+    map.set(key, opening);
+    void opening.then((id) => id === null && map.delete(key));
     return opening;
+  }
+
+  function ensureSession(tab: TabModel): Promise<number | null> {
+    return cached(sessions.current, tab.key, async () => {
+      const connection = connectionById(tab.connectionId);
+      return connection ? connect(connection) : null;
+    });
+  }
+
+  function navigatorSession(connection: SavedConnection) {
+    return cached(navSessions.current, connection.id, () => connect(connection));
+  }
+
+  function disconnectNavigator(connection: SavedConnection) {
+    const session = navSessions.current.get(connection.id);
+    navSessions.current.delete(connection.id);
+    void session?.then((id) => {
+      if (id !== null) void api.closeSession(id);
+    });
   }
 
   function closeTab(tab: TabModel) {
@@ -131,20 +167,23 @@ export function App() {
 
   function tabTitle(tab: TabModel) {
     const name = connectionById(tab.connectionId)?.name ?? "?";
-    if (!tab.filePath) return name;
+    if (!tab.filePath) return tab.title ? `${tab.title} — ${name}` : name;
     const dirty = tab.sql !== tab.savedSql ? " •" : "";
     return `${basename(tab.filePath)}${dirty} — ${name}`;
   }
 
   return (
     <div className="shell">
-      <Sidebar
+      <Navigator
         connections={connections ?? []}
         error={storeError}
         onNew={() => void newConnection()}
         onEdit={(c) => setDialog({ kind: "connection", connection: c, existing: true })}
         onDelete={(c) => void deleteConnection(c)}
-        onOpen={(c) => addTab(newTab(c.id))}
+        onOpenTab={(c, sql, autorun, title) => addTab(newTab(c.id, sql, null, autorun, title))}
+        session={navigatorSession}
+        disconnect={disconnectNavigator}
+        onError={setToast}
       />
       <main className="workspace">
         {tabs.length > 0 && (
@@ -199,7 +238,7 @@ export function App() {
             <p className="muted">
               {connections?.length === 0
                 ? "Add a connection to get started."
-                : "Double-click a connection to open a SQL editor."}
+                : "Double-click a connection to open a SQL editor, or expand it to browse."}
             </p>
             <p className="muted small">v{version}</p>
           </div>

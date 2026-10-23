@@ -1,12 +1,15 @@
 import { useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   api,
   toCommandError,
+  type DriverKind,
   type PasswordInput,
   type SavedConnection,
   type ServerInfo,
   type SslMode,
 } from "../api";
+import { basename } from "../workspace";
 
 interface Props {
   initial: SavedConnection;
@@ -26,7 +29,16 @@ const SSL_MODES: { value: SslMode; label: string }[] = [
 
 const COLORS = ["", "#2f9e44", "#1c7ed6", "#f08c00", "#d6336c", "#c92a2a"];
 
-/** Turns a `postgres://` URL into form fields. */
+const DEFAULT_PORTS: Record<DriverKind, number | null> = { postgres: 5432, mysql: 3306, sqlite: null };
+
+const SCHEMES: Record<string, DriverKind> = {
+  "postgres:": "postgres",
+  "postgresql:": "postgres",
+  "mysql:": "mysql",
+  "mariadb:": "mysql",
+};
+
+/** Turns a `postgres://` or `mysql://` URL into form fields. */
 function applyUrl(conn: SavedConnection, input: string): SavedConnection | null {
   let url: URL;
   try {
@@ -34,12 +46,14 @@ function applyUrl(conn: SavedConnection, input: string): SavedConnection | null 
   } catch {
     return null;
   }
-  if (!/^postgres(ql)?:$/.test(url.protocol)) return null;
-  const ssl = url.searchParams.get("sslmode") as SslMode | null;
+  const driver = SCHEMES[url.protocol];
+  if (!driver) return null;
+  const ssl = (url.searchParams.get("sslmode") ?? url.searchParams.get("ssl-mode")) as SslMode | null;
   return {
     ...conn,
+    driver,
     host: decodeURIComponent(url.hostname.replace(/^\[|\]$/g, "")) || conn.host,
-    port: url.port ? Number(url.port) : 5432,
+    port: url.port ? Number(url.port) : DEFAULT_PORTS[driver],
     database: decodeURIComponent(url.pathname.replace(/^\//, "")),
     user: decodeURIComponent(url.username),
     ssl_mode: ssl && SSL_MODES.some((m) => m.value === ssl) ? ssl : conn.ssl_mode,
@@ -88,6 +102,28 @@ export function ConnectionDialog({ initial, existing, onSaved, onClose }: Props)
     }
   }
 
+  function changeDriver(driver: DriverKind) {
+    setConn((c) => ({
+      ...c,
+      driver,
+      // Keep a custom port, but follow the default one when switching drivers.
+      port: c.port === DEFAULT_PORTS[c.driver] ? DEFAULT_PORTS[driver] : c.port,
+      database: c.driver === "sqlite" || driver === "sqlite" ? "" : c.database,
+    }));
+  }
+
+  async function browseFile() {
+    const path = await open({
+      multiple: false,
+      filters: [
+        { name: "SQLite database", extensions: ["db", "sqlite", "sqlite3", "db3"] },
+        { name: "All files", extensions: ["*"] },
+      ],
+    });
+    if (typeof path !== "string") return;
+    setConn((c) => ({ ...c, database: path, name: c.name || basename(path) }));
+  }
+
   function onPaste(e: React.ClipboardEvent<HTMLInputElement>) {
     const parsed = applyUrl(conn, e.clipboardData.getData("text"));
     if (parsed) {
@@ -111,21 +147,17 @@ export function ConnectionDialog({ initial, existing, onSaved, onClose }: Props)
             value={conn.name}
             onChange={(e) => set("name", e.target.value)}
             onPaste={onPaste}
-            placeholder="My database — or paste a postgres:// URL"
+            placeholder="My database — or paste a postgres:// or mysql:// URL"
           />
         </label>
 
         <div className="row">
           <label className="field">
             <span>Driver</span>
-            <select value={conn.driver} onChange={(e) => set("driver", e.target.value as never)}>
+            <select value={conn.driver} onChange={(e) => changeDriver(e.target.value as DriverKind)}>
               <option value="postgres">PostgreSQL</option>
-              <option value="mysql" disabled>
-                MySQL / MariaDB (soon)
-              </option>
-              <option value="sqlite" disabled>
-                SQLite (soon)
-              </option>
+              <option value="mysql">MySQL / MariaDB</option>
+              <option value="sqlite">SQLite</option>
             </select>
           </label>
           <label className="field">
@@ -145,78 +177,98 @@ export function ConnectionDialog({ initial, existing, onSaved, onClose }: Props)
           </label>
         </div>
 
-        <div className="row">
-          <label className="field grow">
-            <span>Host</span>
-            <input required value={conn.host} onChange={(e) => set("host", e.target.value)} />
-          </label>
-          <label className="field port">
-            <span>Port</span>
-            <input
-              type="number"
-              min={1}
-              max={65535}
-              value={conn.port ?? ""}
-              onChange={(e) => set("port", e.target.value ? Number(e.target.value) : null)}
-            />
-          </label>
-        </div>
-
-        <label className="field">
-          <span>Database</span>
-          <input value={conn.database} onChange={(e) => set("database", e.target.value)} />
-        </label>
-
-        <div className="row">
-          <label className="field grow">
-            <span>User</span>
-            <input value={conn.user} onChange={(e) => set("user", e.target.value)} />
-          </label>
-          <label className="field grow">
-            <span>Password</span>
-            <input
-              type="password"
-              value={password}
-              placeholder={existing && conn.save_password ? "•••••• (saved)" : ""}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="off"
-            />
-          </label>
-        </div>
-
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={conn.save_password}
-            onChange={(e) => set("save_password", e.target.checked)}
-          />
-          Save password in the system keychain
-        </label>
-
-        <div className="row">
-          <label className="field grow">
-            <span>SSL mode</span>
-            <select
-              value={conn.ssl_mode}
-              onChange={(e) => set("ssl_mode", e.target.value as SslMode)}
-            >
-              {SSL_MODES.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        {(conn.ssl_mode === "verify-ca" || conn.ssl_mode === "verify-full") && (
+        {conn.driver === "sqlite" ? (
           <label className="field">
-            <span>CA certificate (PEM) — empty uses the system trust store</span>
-            <input
-              value={conn.ssl_root_cert ?? ""}
-              onChange={(e) => set("ssl_root_cert", e.target.value || null)}
-              placeholder="C:\certs\root.crt"
-            />
+            <span>Database file</span>
+            <div className="row tight">
+              <input
+
+                required
+                value={conn.database}
+                onChange={(e) => set("database", e.target.value)}
+                placeholder="C:\data\app.db"
+              />
+              <button type="button" onClick={() => void browseFile()}>
+                Browse…
+              </button>
+            </div>
           </label>
+        ) : (
+          <>
+            <div className="row">
+              <label className="field grow">
+                <span>Host</span>
+                <input required value={conn.host} onChange={(e) => set("host", e.target.value)} />
+              </label>
+              <label className="field port">
+                <span>Port</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={conn.port ?? ""}
+                  onChange={(e) => set("port", e.target.value ? Number(e.target.value) : null)}
+                />
+              </label>
+            </div>
+
+            <label className="field">
+              <span>Database{conn.driver === "mysql" ? " (optional)" : ""}</span>
+              <input value={conn.database} onChange={(e) => set("database", e.target.value)} />
+            </label>
+
+            <div className="row">
+              <label className="field grow">
+                <span>User</span>
+                <input value={conn.user} onChange={(e) => set("user", e.target.value)} />
+              </label>
+              <label className="field grow">
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={password}
+                  placeholder={existing && conn.save_password ? "•••••• (saved)" : ""}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="off"
+                />
+              </label>
+            </div>
+
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={conn.save_password}
+                onChange={(e) => set("save_password", e.target.checked)}
+              />
+              Save password in the system keychain
+            </label>
+
+            <div className="row">
+              <label className="field grow">
+                <span>SSL mode</span>
+                <select value={conn.ssl_mode} onChange={(e) => set("ssl_mode", e.target.value as SslMode)}>
+                  {SSL_MODES.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {(conn.ssl_mode === "verify-ca" || conn.ssl_mode === "verify-full") && (
+              <label className="field">
+                <span>
+                  CA certificate (PEM) — empty uses the{" "}
+                  {conn.driver === "mysql" ? "built-in Mozilla roots" : "system trust store"}
+                </span>
+                <input
+                  value={conn.ssl_root_cert ?? ""}
+                  onChange={(e) => set("ssl_root_cert", e.target.value || null)}
+                  placeholder="C:\certs\root.crt"
+                />
+              </label>
+            )}
+          </>
         )}
 
         <label className="check">
@@ -232,7 +284,7 @@ export function ConnectionDialog({ initial, existing, onSaved, onClose }: Props)
           <div className={result.ok ? "notice ok" : "notice error"}>
             {result.ok
               ? `Connected: ${result.server.product} ${result.server.version}${
-                  result.server.encrypted ? " · TLS" : " · not encrypted"
+                  conn.driver === "sqlite" ? "" : result.server.encrypted ? " · TLS" : " · not encrypted"
                 }`
               : result.message}
           </div>

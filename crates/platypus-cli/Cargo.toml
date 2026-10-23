@@ -20,7 +20,9 @@ arrow-schema.workspace = true
 clap.workspace = true
 futures.workspace = true
 platypus-core.workspace = true
+platypus-driver-mysql.workspace = true
 platypus-driver-pg.workspace = true
+platypus-driver-sqlite.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time"] }
 
 [lints]

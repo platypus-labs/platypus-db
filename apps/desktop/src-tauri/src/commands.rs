@@ -9,8 +9,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::SystemTime;
 
-use platypus_core::{Connection, ConnectionConfig, Driver, DriverKind, Error, Secret, ServerInfo};
+use platypus_core::{
+    Connection, ConnectionConfig, Driver, DriverKind, Error, ObjectMeta, SchemaMeta, Secret,
+    ServerInfo, TableDetails,
+};
+use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
+use platypus_driver_sqlite::SqliteDriver;
 use platypus_sql::Dialect;
 use platypus_store::{
     ConnectionStore, HistoryEntry, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry,
@@ -102,9 +107,8 @@ impl AppState {
 async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, Error> {
     match config.driver {
         DriverKind::Postgres => PgDriver.connect(config).await,
-        other => Err(Error::Unsupported(format!(
-            "{other:?} driver (lands in M4)"
-        ))),
+        DriverKind::MySql => MySqlDriver.connect(config).await,
+        DriverKind::Sqlite => SqliteDriver.connect(config).await,
     }
 }
 
@@ -315,6 +319,38 @@ pub fn close_query(state: State<'_, AppState>, job_id: u64) {
     if let Some(job) = lock(&state.jobs).remove(&job_id) {
         job.close();
     }
+}
+
+/// Schemas for the navigator. Navigator sessions are separate from editor sessions, so
+/// browsing never waits behind a running query.
+#[tauri::command]
+pub async fn list_schemas(
+    state: State<'_, AppState>,
+    session_id: u64,
+) -> CommandResult<Vec<SchemaMeta>> {
+    let session = state.session(session_id)?;
+    Ok(session.conn.schemas().await?)
+}
+
+#[tauri::command]
+pub async fn list_objects(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: String,
+) -> CommandResult<Vec<ObjectMeta>> {
+    let session = state.session(session_id)?;
+    Ok(session.conn.objects(&schema).await?)
+}
+
+#[tauri::command]
+pub async fn table_details(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: String,
+    table: String,
+) -> CommandResult<TableDetails> {
+    let session = state.session(session_id)?;
+    Ok(session.conn.table_details(&schema, &table).await?)
 }
 
 /// A statement range in UTF-16 code units, the unit JavaScript strings use.

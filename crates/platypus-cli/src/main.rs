@@ -12,7 +12,9 @@ use futures::StreamExt;
 use platypus_core::{
     Connection, ConnectionConfig, Driver, DriverKind, Error, ExecOptions, ExecResult,
 };
+use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
+use platypus_driver_sqlite::SqliteDriver;
 
 use crate::output::{Format, Sink};
 
@@ -31,7 +33,8 @@ enum Command {
 
 #[derive(Debug, clap::Args)]
 struct QueryArgs {
-    /// Connection URL, e.g. `postgres://user:pass@localhost:5432/db?sslmode=disable`
+    /// Connection URL, e.g. `postgres://user:pass@localhost:5432/db?sslmode=disable`,
+    /// `mysql://user:pass@localhost:3306/db` or `sqlite:///path/to/file.db`
     #[arg(short, long, env = "PLATYPUS_URL", hide_env_values = true)]
     url: String,
 
@@ -93,9 +96,8 @@ async fn main() -> ExitCode {
 async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, Error> {
     match config.driver {
         DriverKind::Postgres => PgDriver.connect(config).await,
-        other => Err(Error::Unsupported(format!(
-            "{other:?} driver (lands in M4)"
-        ))),
+        DriverKind::MySql => MySqlDriver.connect(config).await,
+        DriverKind::Sqlite => SqliteDriver.connect(config).await,
     }
 }
 

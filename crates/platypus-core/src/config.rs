@@ -129,7 +129,16 @@ impl ConnectionConfig {
 
         if driver == DriverKind::Sqlite {
             config.host.clear();
-            config.database = decode(url.path())?;
+            let path = decode(url.path())?;
+            // `sqlite:///C:/data/app.db` has the path `/C:/data/app.db`.
+            let windows_drive = path.len() > 2
+                && path.as_bytes()[2] == b':'
+                && path.as_bytes()[1].is_ascii_alphabetic();
+            config.database = if windows_drive {
+                path[1..].to_owned()
+            } else {
+                path
+            };
             return Ok(config);
         }
 
@@ -208,6 +217,8 @@ mod tests {
         let c = ConnectionConfig::from_url("sqlite:///tmp/test.db").unwrap();
         assert_eq!(c.driver, DriverKind::Sqlite);
         assert_eq!(c.database, "/tmp/test.db");
+        let c = ConnectionConfig::from_url("sqlite:///C:/data/my%20app.db").unwrap();
+        assert_eq!(c.database, "C:/data/my app.db");
     }
 
     #[test]

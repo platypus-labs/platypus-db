@@ -2,7 +2,7 @@
 
 Fast, lightweight desktop SQL client. Rust core, Tauri 2 + React UI.
 
-> Status: **M3 — SQL editor**: CodeMirror editor, statement/script execution with dialect-aware splitting, query history, restored workspace. Built on M2 (PostgreSQL connections with TLS and keychain, virtualized Arrow grid). See [docs/MVP_PLAN.md](docs/MVP_PLAN.md) for scope and roadmap.
+> Status: **M4 — Navigator, MySQL/MariaDB and SQLite**: lazy schema tree with columns, indexes and foreign keys, "Open data" from the tree, MySQL/MariaDB and SQLite drivers checked by one conformance suite. Built on M3 (CodeMirror editor, script execution, history) and M2 (TLS connections, keychain, virtualized Arrow grid). See [docs/MVP_PLAN.md](docs/MVP_PLAN.md) for scope and roadmap.
 
 ## Layout
 
@@ -35,14 +35,17 @@ cd apps/desktop
 npm install
 npm run tauri dev
 
-# core crates (PostgreSQL integration tests skip if the dev database is down;
-# set PLATYPUS_TEST_PG_URL to make them mandatory)
+# core crates; the conformance suite (crates/platypus-conformance) runs the same scenarios on
+# every driver. Server databases that are down are skipped; set PLATYPUS_TEST_PG_URL,
+# PLATYPUS_TEST_MYSQL_URL or PLATYPUS_TEST_MARIADB_URL to make them mandatory
 cargo test --workspace --exclude platypus-desktop
 
 # CLI: table (first 200 rows), csv or ndjson; Ctrl+C or --timeout cancel server-side
 export PLATYPUS_URL="postgres://platypus:platypus@localhost:55432/platypus?sslmode=disable"
 cargo run -p platypus-cli -- query "select * from demo.type_zoo"
 cargo run --release -p platypus-cli -- query -f csv -o big.csv --stats "select * from demo.big_table"
+cargo run -p platypus-cli -- query -u mysql://platypus:platypus@localhost:53306/platypus "select * from type_zoo"
+cargo run -p platypus-cli -- query -u sqlite:///C:/data/app.db "select * from sqlite_master"
 
 # dev databases (PostgreSQL 17, MySQL 8.4, MariaDB 11.4)
 docker compose -f docker/compose.yml up -d --wait

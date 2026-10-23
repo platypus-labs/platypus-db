@@ -7,6 +7,7 @@
 mod config;
 mod connection;
 mod error;
+mod metadata;
 
 pub use config::{ConnectionConfig, DriverKind, Secret, SslMode};
 pub use connection::{
@@ -14,6 +15,10 @@ pub use connection::{
     ServerInfo,
 };
 pub use error::{DbError, Error, Result};
+pub use metadata::{
+    ColumnMeta, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, SchemaMeta, TableDetails,
+    TextRow, TextRowExt, group_sorted, query_text,
+};
 
 /// Re-exported so frontends use the same Arrow version as the drivers.
 pub use arrow_array;

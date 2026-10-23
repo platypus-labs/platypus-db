@@ -1,0 +1,193 @@
+//! Database object metadata for the navigator, shared by every driver.
+//!
+//! The navigator works on three levels: schemas (PostgreSQL schemas, MySQL databases,
+//! SQLite attached databases), the objects in a schema, and the details of one table.
+
+use arrow_array::{Array, StringArray};
+use arrow_schema::DataType;
+use futures::TryStreamExt;
+use serde::Serialize;
+
+use crate::{Connection, Error, ExecOptions, ExecResult, Result};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SchemaMeta {
+    pub name: String,
+    /// Catalog schemas such as `pg_catalog` or `information_schema`.
+    pub system: bool,
+    /// The schema unqualified names resolve to.
+    pub current: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ObjectKind {
+    Table,
+    View,
+    MaterializedView,
+    ForeignTable,
+    Sequence,
+    Function,
+    Procedure,
+}
+
+impl ObjectKind {
+    /// Whether the object has columns that can be queried with `SELECT`.
+    #[must_use]
+    pub const fn is_relation(self) -> bool {
+        matches!(
+            self,
+            Self::Table | Self::View | Self::MaterializedView | Self::ForeignTable
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ObjectMeta {
+    /// Functions include their argument types, e.g. `add(integer, integer)`.
+    pub name: String,
+    pub kind: ObjectKind,
+    pub comment: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ColumnMeta {
+    pub name: String,
+    /// Declared type as the database prints it, e.g. `numeric(12,2)`.
+    pub data_type: String,
+    pub nullable: bool,
+    pub default: Option<String>,
+    pub primary_key: bool,
+    pub comment: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct IndexMeta {
+    pub name: String,
+    /// Column names, or the expression for expression indexes.
+    pub columns: Vec<String>,
+    pub unique: bool,
+    pub primary: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ForeignKeyMeta {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub ref_schema: String,
+    pub ref_table: String,
+    pub ref_columns: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct TableDetails {
+    pub columns: Vec<ColumnMeta>,
+    pub indexes: Vec<IndexMeta>,
+    pub foreign_keys: Vec<ForeignKeyMeta>,
+}
+
+/// One result row with every value rendered as text.
+pub type TextRow = Vec<Option<String>>;
+
+/// Runs a catalog query and returns all its rows as text. Meant for small results.
+pub async fn query_text(conn: &dyn Connection, sql: &str) -> Result<Vec<TextRow>> {
+    let ExecResult::Rows(stream) = conn.execute(sql, &ExecOptions::default()).await? else {
+        return Err(Error::Other("catalog query returned no rows".to_owned()));
+    };
+    let batches: Vec<_> = stream.try_collect().await?;
+    let mut rows = Vec::new();
+    for batch in &batches {
+        let columns = batch
+            .columns()
+            .iter()
+            .map(|c| arrow_cast::cast(c, &DataType::Utf8))
+            .collect::<Result<Vec<_>, _>>()?;
+        let columns: Vec<&StringArray> = columns
+            .iter()
+            .map(|c| {
+                c.as_any()
+                    .downcast_ref::<StringArray>()
+                    .ok_or_else(|| Error::Other("text cast did not produce strings".to_owned()))
+            })
+            .collect::<Result<_>>()?;
+        for i in 0..batch.num_rows() {
+            rows.push(
+                columns
+                    .iter()
+                    .map(|c| (!c.is_null(i)).then(|| c.value(i).to_owned()))
+                    .collect(),
+            );
+        }
+    }
+    Ok(rows)
+}
+
+/// Accessors for [`TextRow`] cells, tolerant of the ways drivers render booleans.
+pub trait TextRowExt {
+    fn text(&self, i: usize) -> String;
+    fn opt(&self, i: usize) -> Option<String>;
+    fn flag(&self, i: usize) -> bool;
+}
+
+impl TextRowExt for TextRow {
+    fn text(&self, i: usize) -> String {
+        self.opt(i).unwrap_or_default()
+    }
+
+    fn opt(&self, i: usize) -> Option<String> {
+        self.get(i).cloned().flatten()
+    }
+
+    fn flag(&self, i: usize) -> bool {
+        matches!(
+            self.get(i).and_then(Option::as_deref),
+            Some("t" | "true" | "1" | "YES")
+        )
+    }
+}
+
+/// Groups `(group key, item)` rows that arrive sorted by key, keeping the first row of each
+/// group: catalogs that return one row per index or foreign key column.
+pub fn group_sorted<T>(
+    rows: impl IntoIterator<Item = (String, T)>,
+    mut push: impl FnMut(&mut T, T),
+) -> Vec<T> {
+    let mut groups: Vec<(String, T)> = Vec::new();
+    for (key, item) in rows {
+        match groups.last_mut() {
+            Some((last, group)) if *last == key => push(group, item),
+            _ => groups.push((key, item)),
+        }
+    }
+    groups.into_iter().map(|(_, group)| group).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn groups_consecutive_keys() {
+        let rows = [("a", 1), ("a", 2), ("b", 3), ("a", 4)]
+            .into_iter()
+            .map(|(k, v)| (k.to_owned(), vec![v]));
+        let groups = group_sorted(rows, Extend::extend);
+        assert_eq!(groups, [vec![1, 2], vec![3], vec![4]]);
+    }
+
+    #[test]
+    fn reads_flags() {
+        let row: TextRow = vec![
+            Some("t".into()),
+            Some("1".into()),
+            Some("false".into()),
+            None,
+        ];
+        assert!(row.flag(0));
+        assert!(row.flag(1));
+        assert!(!row.flag(2));
+        assert!(!row.flag(3));
+        assert_eq!(row.opt(3), None);
+        assert_eq!(row.text(9), "");
+    }
+}

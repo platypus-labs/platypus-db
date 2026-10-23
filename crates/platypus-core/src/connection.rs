@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use futures::Stream;
 use futures::stream::BoxStream;
 
-use crate::{ConnectionConfig, DriverKind, Result};
+use crate::{ConnectionConfig, DriverKind, ObjectMeta, Result, SchemaMeta, TableDetails};
 
 #[async_trait]
 pub trait Driver: Send + Sync + fmt::Debug {
@@ -34,6 +34,15 @@ pub trait Connection: Send + Sync + fmt::Debug {
     fn server_info(&self) -> &ServerInfo;
 
     fn is_closed(&self) -> bool;
+
+    /// Schemas (MySQL databases, SQLite attached databases) visible to the session.
+    async fn schemas(&self) -> Result<Vec<SchemaMeta>>;
+
+    /// Tables, views, sequences and routines in `schema`, sorted by name.
+    async fn objects(&self, schema: &str) -> Result<Vec<ObjectMeta>>;
+
+    /// Columns, indexes and foreign keys of a table or view.
+    async fn table_details(&self, schema: &str, table: &str) -> Result<TableDetails>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

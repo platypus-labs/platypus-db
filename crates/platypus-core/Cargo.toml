@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 arrow-array.workspace = true
+arrow-cast.workspace = true
 arrow-schema.workspace = true
 async-trait.workspace = true
 futures.workspace = true

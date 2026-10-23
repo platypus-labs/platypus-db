@@ -82,6 +82,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PLATYPUS_TEST_PG_URL: postgres://platypus:platypus@localhost:55432/platypus?sslmode=disable
+      PLATYPUS_TEST_MYSQL_URL: mysql://platypus:platypus@localhost:53306/platypus
+      PLATYPUS_TEST_MARIADB_URL: mysql://platypus:platypus@localhost:53307/platypus
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -95,7 +97,8 @@ jobs:
             mysql -uplatypus -pplatypus platypus -NBe "select count(*) from big_table" | grep -x 1000000
           docker compose -f docker/compose.yml exec -T mariadb \
             mariadb -uplatypus -pplatypus platypus -NBe "select count(*) from big_table" | grep -x 1000000
-      # With PLATYPUS_TEST_PG_URL set, the driver tests fail instead of skipping.
+      # With the PLATYPUS_TEST_*_URL variables set, the tests fail instead of skipping.
       - run: cargo test -p platypus-driver-pg --test pg
+      - run: cargo test -p platypus-conformance
       - if: failure()
         run: docker compose -f docker/compose.yml logs

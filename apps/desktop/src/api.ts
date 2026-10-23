@@ -77,6 +77,57 @@ export interface HistoryEntry {
   error: string | null;
 }
 
+export interface SchemaMeta {
+  name: string;
+  system: boolean;
+  current: boolean;
+}
+
+export type ObjectKind =
+  | "table"
+  | "view"
+  | "materialized_view"
+  | "foreign_table"
+  | "sequence"
+  | "function"
+  | "procedure";
+
+export interface ObjectMeta {
+  name: string;
+  kind: ObjectKind;
+  comment: string | null;
+}
+
+export interface ColumnMeta {
+  name: string;
+  data_type: string;
+  nullable: boolean;
+  default: string | null;
+  primary_key: boolean;
+  comment: string | null;
+}
+
+export interface IndexMeta {
+  name: string;
+  columns: string[];
+  unique: boolean;
+  primary: boolean;
+}
+
+export interface ForeignKeyMeta {
+  name: string;
+  columns: string[];
+  ref_schema: string;
+  ref_table: string;
+  ref_columns: string[];
+}
+
+export interface TableDetails {
+  columns: ColumnMeta[];
+  indexes: IndexMeta[];
+  foreign_keys: ForeignKeyMeta[];
+}
+
 export interface AppInfo {
   name: string;
   version: string;
@@ -119,6 +170,11 @@ export const api = {
     channel.onmessage = onEvent;
     return invoke<number>("run_query", { sessionId, sql, limit, onEvent: channel });
   },
+  listSchemas: (sessionId: number) => invoke<SchemaMeta[]>("list_schemas", { sessionId }),
+  listObjects: (sessionId: number, schema: string) =>
+    invoke<ObjectMeta[]>("list_objects", { sessionId, schema }),
+  tableDetails: (sessionId: number, schema: string, table: string) =>
+    invoke<TableDetails>("table_details", { sessionId, schema, table }),
   analyzeSql: (sql: string, driver: DriverKind, cursor: number) =>
     invoke<SqlAnalysis>("analyze_sql", { sql, driver, cursor }),
   searchHistory: (query: {

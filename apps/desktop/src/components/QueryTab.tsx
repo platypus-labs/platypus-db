@@ -15,6 +15,10 @@ export interface TabModel {
   sql: string;
   filePath: string | null;
   savedSql: string | null;
+  /** Runs the SQL once when the tab opens ("Open data"); not persisted. */
+  autorun?: boolean;
+  /** Shown instead of the file name, e.g. the table opened from the navigator. */
+  title?: string | null;
 }
 
 interface Props {
@@ -68,6 +72,12 @@ export function QueryTab({ tab, connection, active, ensureSession, onChange, onO
   };
   // Release results when the tab closes.
   useEffect(() => closeJobs, []);
+
+  useEffect(() => {
+    if (!tab.autorun) return;
+    onChange({ autorun: false });
+    void run("statement");
+  }, []);
 
   const update = (id: number, patch: Partial<Result>) =>
     setResults((all) => all.map((r) => (r.id === id ? { ...r, ...patch } : r)));
