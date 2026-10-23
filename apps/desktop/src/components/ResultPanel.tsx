@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type ColumnInfo, type CommandError } from "../api";
-import { DataGrid } from "../grid/DataGrid";
+import { DataGrid, type GridSource } from "../grid/DataGrid";
 import { RowCache } from "../grid/RowCache";
 
 export type ResultStatus =
@@ -64,9 +64,11 @@ interface PanelProps {
   sort?: { column: string; desc: boolean } | null;
   /** Header clicks with the column name; the data viewer sorts with them. */
   onHeaderClick?: (column: string) => void;
+  /** Passed to the grid's actions. */
+  source?: GridSource | null;
 }
 
-export function ResultPanel({ result, sort, onHeaderClick }: PanelProps) {
+export function ResultPanel({ result, sort, onHeaderClick, source }: PanelProps) {
   const [cache, setCache] = useState<RowCache | null>(null);
   const [version, setVersion] = useState(0);
   const { jobId, columns, status } = result;
@@ -114,6 +116,7 @@ export function ResultPanel({ result, sort, onHeaderClick }: PanelProps) {
         version={version}
         sort={sort}
         onHeaderClick={onHeaderClick && ((i) => onHeaderClick(columns[i]!.name))}
+        source={source}
       />
     );
   }

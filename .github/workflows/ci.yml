@@ -76,6 +76,11 @@ jobs:
       - run: npm run build
       - run: cargo clippy -p platypus-desktop --all-targets
       - run: npm run tauri build -- --no-bundle
+      # Drives the built app through the WebView2 DevTools protocol; scenarios that need
+      # the dev databases skip themselves here.
+      - name: End-to-end tests
+        if: runner.os == 'Windows'
+        run: npm run e2e
 
   integration:
     name: Integration (dev databases)

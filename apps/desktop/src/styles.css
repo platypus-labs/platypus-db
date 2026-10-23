@@ -325,11 +325,26 @@ button:focus-visible {
 }
 
 .context-menu button {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
   border: none;
   background: none;
   text-align: left;
   padding: 5px 10px;
   border-radius: 4px;
+}
+
+.context-menu .shortcut {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.context-menu hr {
+  width: 100%;
+  margin: 4px 0;
+  border: none;
+  border-top: 1px solid var(--border);
 }
 
 .context-menu button:hover {
@@ -767,4 +782,36 @@ button.toggled {
   padding: 6px 10px;
   background: var(--ok-bg);
   border-bottom: 1px solid var(--border);
+}
+
+.modal.settings section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal.settings h3 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 8px 0 0;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.setting {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.setting > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setting input[type="number"] {
+  width: 90px;
 }

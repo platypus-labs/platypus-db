@@ -1,7 +1,20 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import type { ColumnInfo } from "../api";
+import {
+  type ReactNode,
+  type Ref,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { dispatchKey } from "../actions";
+import { type ColumnInfo, type SavedConnection, toCommandError } from "../api";
+import { ContextMenu, type MenuState } from "../components/ContextMenu";
 import { THEME_EVENT } from "../theme";
+import { workbench } from "../workbench";
 import type { RowCache } from "./RowCache";
+import "./actions";
 
 const ROW_H = 24;
 const HEADER_H = 40;
@@ -18,9 +31,59 @@ const FONT_BOLD = "600 12px system-ui, -apple-system, 'Segoe UI', sans-serif";
 const FONT_SMALL = "11px system-ui, -apple-system, 'Segoe UI', sans-serif";
 const FONT_NULL = "italic 12px system-ui, -apple-system, 'Segoe UI', sans-serif";
 
-interface Cell {
+export interface Cell {
   row: number;
   col: number;
+}
+
+/** Inclusive row and column ranges. */
+export interface GridSelection {
+  r0: number;
+  r1: number;
+  c0: number;
+  c1: number;
+}
+
+/** How a feature changes a cell's look, e.g. an edited value or a search match. */
+export interface CellDecoration {
+  background?: string;
+  color?: string;
+  /** Shown instead of the fetched value; `null` shows NULL. */
+  text?: string | null;
+}
+
+/**
+ * What features can do with a grid: read values and the selection, move the selection,
+ * place overlays (inline editors) over cells. Given to "grid" actions and through `ref`.
+ */
+export interface GridApi {
+  columns(): ColumnInfo[];
+  rowCount(): number;
+  /** The fetched text of a cell: `null` for SQL NULL, `undefined` while not loaded. */
+  value(row: number, col: number): string | null | undefined;
+  selection(): GridSelection | null;
+  focused(): Cell | null;
+  select(anchor: Cell, focus?: Cell): void;
+  /** A cell's box relative to the grid element, or `null` while scrolled out of view. */
+  cellRect(row: number, col: number): { left: number; top: number; width: number; height: number } | null;
+  redraw(): void;
+  /** Gives the keyboard back to the grid, e.g. after an overlay closes. */
+  focus(): void;
+}
+
+/** Where the rows come from, for actions that need more than the values. */
+export interface GridSource {
+  connection: SavedConnection;
+  sql: string;
+  jobId: number | null;
+  /** Data viewer: the quoted, qualified table the rows come from. */
+  table: string | null;
+}
+
+/** The argument of actions in the "grid" scope. */
+export interface GridActionContext {
+  grid: GridApi;
+  source: GridSource | null;
 }
 
 interface Props {
@@ -33,6 +96,13 @@ interface Props {
   sort?: { column: string; desc: boolean } | null;
   /** Makes headers clickable, e.g. to sort. */
   onHeaderClick?: (column: number) => void;
+  source?: GridSource | null;
+  /** Called for every visible cell on each frame: keep it cheap. */
+  decorate?: (row: number, col: number) => CellDecoration | undefined;
+  /** Positioned over the grid, e.g. an inline editor placed with `GridApi.cellRect`. */
+  overlay?: ReactNode;
+  onCellDoubleClick?: (cell: Cell) => void;
+  ref?: Ref<GridApi>;
 }
 
 interface Theme {
@@ -61,7 +131,19 @@ function readTheme(el: Element): Theme {
   };
 }
 
-export function DataGrid({ columns, rowCount, cache, version, sort = null, onHeaderClick }: Props) {
+export function DataGrid({
+  columns,
+  rowCount,
+  cache,
+  version,
+  sort = null,
+  onHeaderClick,
+  source = null,
+  decorate,
+  overlay,
+  onCellDoubleClick,
+  ref,
+}: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -75,8 +157,10 @@ export function DataGrid({ columns, rowCount, cache, version, sort = null, onHea
   const theme = useRef<Theme | null>(null);
   const frame = useRef(0);
   // Latest props for the imperative draw loop.
-  const props = useRef({ columns, rowCount, cache, sort, onHeaderClick });
-  props.current = { columns, rowCount, cache, sort, onHeaderClick };
+  const props = useRef({ columns, rowCount, cache, sort, onHeaderClick, decorate });
+  props.current = { columns, rowCount, cache, sort, onHeaderClick, decorate };
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
 
   const measure = useCallback((text: string, font: string) => {
     const ctx = canvasRef.current?.getContext("2d");
@@ -139,7 +223,7 @@ export function DataGrid({ columns, rowCount, cache, version, sort = null, onHea
     const scroller = scrollRef.current;
     const outer = outerRef.current;
     if (!canvas || !scroller || !outer) return;
-    const { columns, rowCount, cache } = props.current;
+    const { columns, rowCount, cache, decorate } = props.current;
     const t = (theme.current ??= readTheme(outer));
     sizeToData();
     // Column resizes change the scrollable width without a React render.
@@ -188,6 +272,17 @@ export function DataGrid({ columns, rowCount, cache, version, sort = null, onHea
         ctx.beginPath();
         ctx.rect(Math.max(x, gutter), HEADER_H, cw - (x < gutter ? gutter - x : 0), h - HEADER_H);
         ctx.clip();
+        const decorations: (CellDecoration | undefined)[] = [];
+        if (decorate) {
+          for (let r = firstRow; r <= lastRow; r++) {
+            const d = decorate(r, c);
+            decorations[r - firstRow] = d;
+            if (d?.background) {
+              ctx.fillStyle = d.background;
+              ctx.fillRect(x, rowY(r), cw, ROW_H);
+            }
+          }
+        }
         if (sel && c >= sel.c0 && c <= sel.c1) {
           const y0 = Math.max(rowY(sel.r0), HEADER_H);
           const y1 = Math.min(rowY(sel.r1 + 1), h);
@@ -198,7 +293,8 @@ export function DataGrid({ columns, rowCount, cache, version, sort = null, onHea
         }
         for (let r = firstRow; r <= lastRow; r++) {
           const y = rowY(r) + ROW_H / 2;
-          const value = cache.get(r, c);
+          const d = decorations[r - firstRow];
+          const value = d?.text !== undefined ? d.text : cache.get(r, c);
           if (value === undefined) {
             ctx.fillStyle = t.border;
             ctx.fillRect(x + PAD, y - 2, Math.min(cw - PAD * 2, 40), 4);
@@ -212,7 +308,7 @@ export function DataGrid({ columns, rowCount, cache, version, sort = null, onHea
             continue;
           }
           ctx.font = FONT;
-          ctx.fillStyle = t.fg;
+          ctx.fillStyle = d?.color ?? t.fg;
           if (column?.numeric) {
             ctx.textAlign = "right";
             ctx.fillText(value, x + cw - PAD, y);
@@ -311,6 +407,34 @@ export function DataGrid({ columns, rowCount, cache, version, sort = null, onHea
       c1: Math.max(a.col, f.col),
     };
   }
+
+  const api: GridApi = {
+    columns: () => props.current.columns,
+    rowCount: () => props.current.rowCount,
+    value: (row, col) => props.current.cache.get(row, col),
+    selection: selectionRect,
+    focused: () => focus.current,
+    select: (a, f = a) => {
+      anchor.current = a;
+      setFocus(f, true);
+    },
+    cellRect: (row, col) => {
+      const scroller = scrollRef.current;
+      if (!scroller || col < 0 || col >= props.current.columns.length) return null;
+      const gutter = gutterWidth();
+      const left = gutter - scroller.scrollLeft + columnX(col);
+      const top = HEADER_H + row * ROW_H - logicalScrollTop();
+      const width = widths.current[col] ?? MIN_COL_W;
+      if (top < HEADER_H || top + ROW_H > scroller.clientHeight || left + width <= gutter) return null;
+      return { left, top, width, height: ROW_H };
+    },
+    redraw: schedule,
+    focus: () => scrollRef.current?.focus(),
+  };
+  const context = (): GridActionContext => ({ grid: api, source });
+  useImperativeHandle(ref, () => api);
+  // Decorations come from outside the grid: redraw when they change.
+  useEffect(schedule, [schedule, decorate]);
 
   // Redraw on data, size and theme changes.
   useEffect(schedule, [schedule, version, rowCount, columns, sort]);
@@ -463,20 +587,24 @@ export function DataGrid({ columns, rowCount, cache, version, sort = null, onHea
   function onDoubleClick(e: React.MouseEvent) {
     const h = hit(e);
     if (h.inHeader && h.border >= 0) autosize(h.border);
+    else if (!h.inHeader && !h.inGutter && h.col >= 0 && h.row >= 0 && h.row < props.current.rowCount) {
+      onCellDoubleClick?.({ row: h.row, col: h.col });
+    }
   }
 
-  async function copySelection() {
-    const sel = selectionRect();
-    if (!sel) return;
-    const { cache } = props.current;
-    const lines: string[] = [];
-    for (let r = sel.r0; r <= sel.r1; r++) {
-      const cells: string[] = [];
-      for (let c = sel.c0; c <= sel.c1; c++) cells.push(cache.get(r, c) ?? "");
-      lines.push(cells.join("\t"));
+  function onContextMenu(e: React.MouseEvent) {
+    e.preventDefault();
+    const h = hit(e);
+    if (!h.inHeader && h.row >= 0 && h.row < props.current.rowCount && h.col >= 0) {
+      // Right-clicking outside the selection selects the cell under the mouse.
+      const sel = selectionRect();
+      const inside = sel && h.row >= sel.r0 && h.row <= sel.r1 && h.col >= sel.c0 && h.col <= sel.c1;
+      if (!inside) setFocus({ row: h.row, col: h.col }, false);
     }
-    await navigator.clipboard.writeText(lines.join("\n"));
+    setMenu({ x: e.clientX, y: e.clientY, target: { scope: "grid", arg: context() } });
   }
+
+  const showError = (e: unknown) => workbench().showError(toCommandError(e).message);
 
   function onKeyDown(e: React.KeyboardEvent) {
     const f = focus.current;
@@ -501,17 +629,8 @@ export function DataGrid({ columns, rowCount, cache, version, sort = null, onHea
       e.preventDefault();
       const next = move() ?? { row: 0, col: 0 };
       setFocus(next, e.shiftKey);
-    } else if (ctrl && e.key.toLowerCase() === "a") {
-      e.preventDefault();
-      anchor.current = { row: 0, col: 0 };
-      focus.current = {
-        row: props.current.rowCount - 1,
-        col: props.current.columns.length - 1,
-      };
-      schedule();
-    } else if (ctrl && e.key.toLowerCase() === "c") {
-      e.preventDefault();
-      void copySelection();
+    } else {
+      dispatchKey("grid", context(), e.nativeEvent, showError);
     }
   }
 
@@ -530,10 +649,13 @@ export function DataGrid({ columns, rowCount, cache, version, sort = null, onHea
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseUp}
         onDoubleClick={onDoubleClick}
+        onContextMenu={onContextMenu}
         onKeyDown={onKeyDown}
       >
         <div ref={spacerRef} style={{ height: spacerHeight }} />
       </div>
+      {overlay}
+      {menu && <ContextMenu menu={menu} onClose={closeMenu} onError={showError} />}
     </div>
   );
 }

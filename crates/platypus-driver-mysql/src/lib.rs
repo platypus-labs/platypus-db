@@ -247,6 +247,14 @@ impl Connection for MySqlConnection {
     async fn rollback(&self) -> Result<()> {
         self.end_transaction("ROLLBACK").await
     }
+
+    fn capabilities(&self) -> platypus_core::Capabilities {
+        platypus_core::Capabilities {
+            transactions: true,
+            cancel: true,
+            ..Default::default()
+        }
+    }
 }
 
 impl MySqlConnection {

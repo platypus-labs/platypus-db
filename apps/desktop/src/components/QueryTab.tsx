@@ -2,15 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   api,
-  type CompletionCatalog,
   toCommandError,
   type ExportOptions,
   type QueryEvent,
-  type SavedConnection,
   type TransactionState,
 } from "../api";
 import { type RunMode, SqlEditor, type SqlEditorHandle } from "../editor/SqlEditor";
+import { defineSetting, getSetting } from "../settings";
 import { type Sort, viewerSql } from "../sqlNames";
+import type { TabBase, TabProps } from "../tabs/registry";
+import { workbench } from "../workbench";
 import { basename } from "../workspace";
 import { ExportDialog, type ExportSource } from "./ExportDialog";
 import { HistoryPanel } from "./HistoryPanel";
@@ -19,44 +20,38 @@ import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, f
 /** Statements that change which tables and columns exist. */
 const DDL = /^\s*(create|alter|drop|rename)\b/i;
 
-/** Rows fetched per statement when running a script; the rest is cancelled. */
-const SCRIPT_ROW_LIMIT = 1000;
+const scriptRowLimit = defineSetting({
+  key: "editor.script_row_limit",
+  section: "SQL editor",
+  label: "Rows fetched per statement when running a script",
+  description: "The rest of each result is not fetched, so long scripts stay fast.",
+  default: 1000,
+  control: { type: "number", min: 1, step: 100 },
+});
 
-export interface TabModel {
-  key: number;
-  connectionId: string;
+/** A SQL editor, or with `table` set, the data viewer of a table. */
+export interface QueryTabModel extends TabBase {
+  kind: "query";
   sql: string;
   filePath: string | null;
   savedSql: string | null;
   /** Runs the SQL once when the tab opens ("Open data"); not persisted. */
   autorun?: boolean;
-  /** Shown instead of the file name, e.g. the table opened from the navigator. */
-  title?: string | null;
   /** Data viewer: the table or view the tab browses, as a quoted, qualified name. */
   table?: string | null;
   /** Data viewer: `WHERE` clause typed by the user. */
   filter?: string;
   /** Data viewer: server-side sort. */
   sort?: Sort | null;
-  /** Uncommitted changes are pending; not persisted. */
-  txOpen?: boolean;
 }
 
-interface Props {
-  tab: TabModel;
-  connection: SavedConnection;
-  active: boolean;
-  /** Opens the tab's session on first use; `null` if the user cancelled. */
-  ensureSession: () => Promise<number | null>;
-  /** The connection's navigator session, for side queries such as row counts. */
-  sideSession: () => Promise<number | null>;
-  catalog: CompletionCatalog | null;
-  /** Asks for the autocompletion catalog; `force` reloads it after schema changes. */
-  onNeedCatalog: (force: boolean) => void;
-  onChange: (patch: Partial<TabModel>) => void;
-  onOpenFile: (path: string, sql: string) => void;
-  onError: (message: string) => void;
+declare module "../tabs/registry" {
+  interface TabKinds {
+    query: QueryTabModel;
+  }
 }
+
+type Props = TabProps<QueryTabModel>;
 
 interface Planned {
   sql: string;
@@ -96,7 +91,6 @@ export function QueryTab({
   catalog,
   onNeedCatalog,
   onChange,
-  onOpenFile,
   onError,
 }: Props) {
   const editor = useRef<SqlEditorHandle>(null);
@@ -261,7 +255,7 @@ export function QueryTab({
       columns: null,
       rows: 0,
       status: { kind: i === 0 ? "running" : "pending" },
-      limit: script ? SCRIPT_ROW_LIMIT : null,
+      limit: script ? getSetting(scriptRowLimit) : null,
     }));
     setResults(initial);
     setActiveResult(0);
@@ -442,7 +436,8 @@ export function QueryTab({
     const path = await open({ filters: [{ name: "SQL", extensions: ["sql", "txt"] }], multiple: false });
     if (typeof path !== "string") return;
     try {
-      onOpenFile(path, await api.readTextFile(path));
+      const sql = await api.readTextFile(path);
+      workbench().openTab("query", connection.id, { sql, filePath: path });
     } catch (e) {
       onError(toCommandError(e).message);
     }
@@ -598,6 +593,7 @@ export function QueryTab({
               result={current}
               sort={tab.table ? (tab.sort ?? null) : null}
               onHeaderClick={tab.table && !running ? sortBy : undefined}
+              source={{ connection, sql: current.sql, jobId: current.jobId, table: tab.table ?? null }}
             />
           )}
         </div>

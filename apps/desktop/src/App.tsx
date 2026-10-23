@@ -1,24 +1,20 @@
-import { useEffect, useRef, useState } from "react";
+import { type ComponentType, useEffect, useRef, useState } from "react";
+import { dispatchKey, registerAction } from "./actions";
 import { api, type CompletionCatalog, toCommandError, type SavedConnection } from "./api";
 import { ConnectionDialog } from "./components/ConnectionDialog";
-import { QueryTab, type TabModel } from "./components/QueryTab";
 import { Navigator } from "./components/Navigator";
+import { SettingsDialog } from "./components/SettingsDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
-import { basename, loadWorkspace, saveWorkspace } from "./workspace";
+import "./tabs";
+import { type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
+import { provideWorkbench, workbench } from "./workbench";
+import { type PersistedTab, loadWorkspace, saveWorkspace } from "./workspace";
 
 type Dialog = { kind: "connection"; connection: SavedConnection; existing: boolean } | null;
 
 interface PasswordRequest {
   connection: SavedConnection;
   resolve: (password: string | null) => void;
-}
-
-let nextTabKey = 1;
-
-function newTab(connectionId: string, init: Partial<Omit<TabModel, "key" | "connectionId">> = {}): TabModel {
-  const filePath = init.filePath ?? null;
-  const sql = init.sql ?? "";
-  return { savedSql: filePath ? sql : null, ...init, key: nextTabKey++, connectionId, sql, filePath };
 }
 
 export function App() {
@@ -29,6 +25,7 @@ export function App() {
   const [tabs, setTabs] = useState<TabModel[]>([]);
   const [activeTab, setActiveTab] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [version, setVersion] = useState("");
   /** Open sessions by tab key; opened on a tab's first run. */
   const sessions = useRef(new Map<number, Promise<number | null>>());
@@ -56,27 +53,26 @@ export function App() {
     const saved = loadWorkspace();
     if (!saved) return;
     const known = new Set(connections.map((c) => c.id));
-    const restoredTabs = saved.tabs
-      .filter((t) => known.has(t.connectionId))
-      .map(({ connectionId, ...rest }) => newTab(connectionId, rest));
+    const restoredTabs = saved.tabs.flatMap((t) => {
+      // Tabs saved before tab kinds existed are SQL editors.
+      const kind = tabKind(t.kind ?? "query");
+      if (!kind || !known.has(t.connectionId)) return [];
+      return [createTab(kind.kind, t.connectionId, kind.restore(t))];
+    });
     setTabs(restoredTabs);
     setActiveTab(restoredTabs[Math.min(saved.active, restoredTabs.length - 1)]?.key ?? null);
   }, [connections]);
 
   useEffect(() => {
     if (!restored.current) return;
+    const kept = tabs.flatMap((tab) => {
+      const state = tabKind(tab.kind)?.persist(tab);
+      const saved: PersistedTab | null = state ? { ...state, kind: tab.kind, connectionId: tab.connectionId } : null;
+      return saved ? [{ key: tab.key, saved }] : [];
+    });
     saveWorkspace({
-      tabs: tabs.map(({ connectionId, sql, filePath, savedSql, title, table, filter, sort }) => ({
-        connectionId,
-        sql,
-        filePath,
-        savedSql,
-        title,
-        table,
-        filter,
-        sort,
-      })),
-      active: Math.max(0, tabs.findIndex((t) => t.key === activeTab)),
+      tabs: kept.map((k) => k.saved),
+      active: Math.max(0, kept.findIndex((k) => k.key === activeTab)),
     });
   }, [tabs, activeTab]);
 
@@ -196,33 +192,26 @@ export function App() {
     });
   }
 
-  // Tab shortcuts, captured before the editor sees them. The handler reads the latest
-  // state through a ref so it is registered once.
-  const shortcuts = useRef<(e: KeyboardEvent) => void>(() => {});
-  shortcuts.current = (e) => {
-    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-    const index = tabs.findIndex((t) => t.key === activeTab);
-    const move = (delta: number) => {
-      if (tabs.length === 0) return;
-      setActiveTab(tabs[(index + delta + tabs.length) % tabs.length]!.key);
-    };
-    const key = e.key.toLowerCase();
-    if (key === "t" && !e.shiftKey) {
-      const connectionId = tabs[index]?.connectionId ?? connections?.[0]?.id;
-      if (connectionId) addTab(newTab(connectionId));
-    } else if (key === "w" && !e.shiftKey) {
-      const tab = tabs[index];
-      if (tab) closeTab(tab);
-    } else if (key === "tab" || key === "pagedown" || key === "pageup") {
-      move(key === "pageup" || (key === "tab" && e.shiftKey) ? -1 : 1);
-    } else {
-      return;
-    }
-    e.preventDefault();
-    e.stopPropagation();
-  };
+  // What the shell's actions and the workbench need, refreshed every render so they
+  // always see the latest state while being registered once.
+  const shell = useRef({ tabs, activeTab, connections, addTab, closeTab, setActiveTab, navigatorSession });
+  shell.current = { tabs, activeTab, connections, addTab, closeTab, setActiveTab, navigatorSession };
+
+  provideWorkbench({
+    connections: () => shell.current.connections ?? [],
+    openTab: (kind, connectionId, init) => shell.current.addTab(createTab(kind, connectionId, init)),
+    sideSession: (connection) => shell.current.navigatorSession(connection),
+    showError: setToast,
+    openSettings: () => setSettingsOpen(true),
+  });
+
+  useEffect(() => registerShellActions(shell), []);
+
+  // Global shortcuts, captured before the editor sees them.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => shortcuts.current(e);
+    const onKey = (e: KeyboardEvent) => {
+      dispatchKey("global", undefined, e, (err) => setToast(toCommandError(err).message));
+    };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, []);
@@ -233,9 +222,8 @@ export function App() {
 
   function tabTitle(tab: TabModel) {
     const name = connectionById(tab.connectionId)?.name ?? "?";
-    if (!tab.filePath) return tab.title ? `${tab.title} — ${name}` : name;
-    const dirty = tab.sql !== tab.savedSql ? " •" : "";
-    return `${basename(tab.filePath)}${dirty} — ${name}`;
+    const label = tabKind(tab.kind)?.label(tab);
+    return label ? `${label} — ${name}` : name;
   }
 
   return (
@@ -246,7 +234,7 @@ export function App() {
         onNew={() => void newConnection()}
         onEdit={(c) => setDialog({ kind: "connection", connection: c, existing: true })}
         onDelete={(c) => void deleteConnection(c)}
-        onOpenTab={(c, init) => addTab(newTab(c.id, init))}
+        onOpenTab={(c, init) => addTab(createTab("query", c.id, init))}
         session={navigatorSession}
         disconnect={disconnectNavigator}
         onRefresh={(c) => requestCatalog(c, true)}
@@ -285,9 +273,11 @@ export function App() {
         )}
         {tabs.map((t) => {
           const connection = connectionById(t.connectionId);
+          const Component = tabKind(t.kind)?.component as ComponentType<TabProps<TabModel>> | undefined;
           return (
-            connection && (
-              <QueryTab
+            connection &&
+            Component && (
+              <Component
                 key={t.key}
                 tab={t}
                 connection={connection}
@@ -297,7 +287,6 @@ export function App() {
                 sideSession={() => navigatorSession(connection)}
                 catalog={catalogs[connection.id] ?? null}
                 onNeedCatalog={(force) => requestCatalog(connection, force)}
-                onOpenFile={(path, sql) => addTab(newTab(t.connectionId, { sql, filePath: path }))}
                 onError={setToast}
               />
             )
@@ -327,6 +316,7 @@ export function App() {
           }}
         />
       )}
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {passwordRequest && (
         <PasswordPrompt
           connection={passwordRequest.connection}
@@ -338,6 +328,70 @@ export function App() {
       )}
     </div>
   );
+}
+
+interface ShellApi {
+  tabs: TabModel[];
+  activeTab: number | null;
+  connections: SavedConnection[] | null;
+  addTab: (tab: TabModel) => void;
+  closeTab: (tab: TabModel) => void;
+  setActiveTab: (key: number) => void;
+  navigatorSession: (connection: SavedConnection) => Promise<number | null>;
+}
+
+/** Tab and window commands; their shortcuts work everywhere, the editor included. */
+function registerShellActions(shell: { current: ShellApi }) {
+  const s = () => shell.current;
+  const index = () => s().tabs.findIndex((t) => t.key === s().activeTab);
+  const move = (delta: number) => {
+    const { tabs } = s();
+    if (tabs.length > 0) s().setActiveTab(tabs[(index() + delta + tabs.length) % tabs.length]!.key);
+  };
+  const unregister = [
+    registerAction({
+      id: "tab.new",
+      scope: "global",
+      title: "New SQL editor",
+      shortcut: "Mod+T",
+      run: () => {
+        const connectionId = s().tabs[index()]?.connectionId ?? s().connections?.[0]?.id;
+        if (connectionId) s().addTab(createTab("query", connectionId));
+      },
+    }),
+    registerAction({
+      id: "tab.close",
+      scope: "global",
+      title: "Close tab",
+      shortcut: "Mod+W",
+      run: () => {
+        const tab = s().tabs[index()];
+        if (tab) s().closeTab(tab);
+      },
+    }),
+    registerAction({
+      id: "tab.next",
+      scope: "global",
+      title: "Next tab",
+      shortcut: ["Mod+Tab", "Mod+PageDown"],
+      run: () => move(1),
+    }),
+    registerAction({
+      id: "tab.previous",
+      scope: "global",
+      title: "Previous tab",
+      shortcut: ["Mod+Shift+Tab", "Mod+PageUp"],
+      run: () => move(-1),
+    }),
+    registerAction({
+      id: "app.settings",
+      scope: "global",
+      title: "Settings",
+      shortcut: "Mod+,",
+      run: () => workbench().openSettings(),
+    }),
+  ];
+  return () => unregister.forEach((u) => u());
 }
 
 function PasswordPrompt({

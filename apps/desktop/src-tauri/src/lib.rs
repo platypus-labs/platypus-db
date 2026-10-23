@@ -6,9 +6,10 @@ mod error;
 mod export;
 mod jobs;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use platypus_store::{ConnectionStore, HistoryStore, KeyringSecrets};
+use platypus_store::{ConnectionStore, HistoryStore, KeyringSecrets, SettingsStore};
 use tauri::Manager;
 
 use crate::commands::AppState;
@@ -38,8 +39,24 @@ fn migrate_legacy_dirs() {
     }
 }
 
+/// Where connections and settings (`config: true`) or history live. `PLATYPUS_DATA_DIR`
+/// puts everything in that one folder instead of the OS locations; the end-to-end tests
+/// use it to run against a throwaway profile.
+fn dir(app: &tauri::App, config: bool) -> Result<PathBuf, String> {
+    if let Some(dir) = std::env::var_os("PLATYPUS_DATA_DIR") {
+        return Ok(PathBuf::from(dir));
+    }
+    let path = app.path();
+    if config {
+        path.app_config_dir()
+    } else {
+        path.app_data_dir()
+    }
+    .map_err(|e| e.to_string())
+}
+
 fn open_store(app: &tauri::App) -> Result<ConnectionStore, String> {
-    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let dir = dir(app, true)?;
     ConnectionStore::open(
         dir.join("connections.toml"),
         Arc::new(KeyringSecrets::default()),
@@ -47,8 +64,13 @@ fn open_store(app: &tauri::App) -> Result<ConnectionStore, String> {
     .map_err(|e| e.to_string())
 }
 
+fn open_settings(app: &tauri::App) -> Result<SettingsStore, String> {
+    let dir = dir(app, true)?;
+    SettingsStore::open(dir.join("settings.toml")).map_err(|e| e.to_string())
+}
+
 fn open_history(app: &tauri::App) -> Result<HistoryStore, String> {
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let dir = dir(app, false)?;
     let history = HistoryStore::open(&dir.join("history.db")).map_err(|e| e.to_string())?;
     history.prune(HISTORY_LIMIT).map_err(|e| e.to_string())?;
     Ok(history)
@@ -66,40 +88,42 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            let state = AppState::new(open_store(app), open_history(app));
+            let state = AppState::new(open_store(app), open_history(app), open_settings(app));
             app.manage(state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
-            commands::list_connections,
-            commands::default_connection,
-            commands::save_connection,
-            commands::delete_connection,
-            commands::test_connection,
-            commands::open_session,
-            commands::close_session,
-            commands::run_query,
-            commands::fetch_rows,
-            commands::fetch_all,
-            commands::cancel_query,
-            commands::close_query,
-            commands::completion_catalog,
-            commands::query_value,
-            commands::export_query,
-            commands::export_rows,
-            commands::cancel_export,
-            commands::transaction_state,
-            commands::set_autocommit,
-            commands::end_transaction,
-            commands::list_schemas,
-            commands::list_objects,
-            commands::table_details,
-            commands::analyze_sql,
-            commands::search_history,
-            commands::delete_history,
-            commands::read_text_file,
-            commands::write_text_file,
+            commands::connections::list_connections,
+            commands::connections::default_connection,
+            commands::connections::save_connection,
+            commands::connections::delete_connection,
+            commands::connections::test_connection,
+            commands::connections::open_session,
+            commands::connections::close_session,
+            commands::query::run_query,
+            commands::query::fetch_rows,
+            commands::query::fetch_all,
+            commands::query::cancel_query,
+            commands::query::close_query,
+            commands::meta::completion_catalog,
+            commands::meta::query_value,
+            commands::meta::list_schemas,
+            commands::meta::list_objects,
+            commands::meta::table_details,
+            commands::export::export_query,
+            commands::export::export_rows,
+            commands::export::cancel_export,
+            commands::transactions::transaction_state,
+            commands::transactions::set_autocommit,
+            commands::transactions::end_transaction,
+            commands::sql::analyze_sql,
+            commands::history::search_history,
+            commands::history::delete_history,
+            commands::files::read_text_file,
+            commands::files::write_text_file,
+            commands::settings::get_settings,
+            commands::settings::set_setting,
         ])
         .run(tauri::generate_context!())
         .expect("error while running PlatypusDB");

@@ -10,8 +10,8 @@ use futures::Stream;
 use futures::stream::BoxStream;
 
 use crate::{
-    CatalogColumn, ConnectionConfig, DriverKind, ObjectMeta, Result, SchemaMeta, TableDetails,
-    TransactionState,
+    Capabilities, CatalogColumn, ConnectionConfig, DriverKind, Explain, ObjectMeta, ObjectRef,
+    Result, SchemaMeta, TableDetails, TransactionState, unsupported,
 };
 
 #[async_trait]
@@ -60,6 +60,22 @@ pub trait Connection: Send + Sync + fmt::Debug {
 
     /// Rolls back the open transaction, if any.
     async fn rollback(&self) -> Result<()>;
+
+    /// Which optional methods below the driver implements.
+    fn capabilities(&self) -> Capabilities;
+
+    /// The plan of `sql`; with `analyze` the statement is executed to get real timings.
+    /// Optional: see [`Capabilities::explain`].
+    async fn explain(&self, sql: &str, analyze: bool) -> Result<Explain> {
+        let _ = (sql, analyze);
+        Err(unsupported("explain"))
+    }
+
+    /// The `CREATE` statement of an object. Optional: see [`Capabilities::object_ddl`].
+    async fn object_ddl(&self, object: &ObjectRef<'_>) -> Result<String> {
+        let _ = object;
+        Err(unsupported("object DDL"))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

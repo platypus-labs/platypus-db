@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
   toCommandError,
@@ -8,9 +8,13 @@ import {
   type SchemaMeta,
   type TableDetails,
 } from "../api";
-import { OPEN_DATA_LIMIT, qualifiedName, selectSql, viewerSql } from "../sqlNames";
-import type { TabModel } from "./QueryTab";
+import { getSetting } from "../settings";
+import { qualifiedName, selectLimit, selectSql, viewerSql } from "../sqlNames";
+import type { TabInit } from "../tabs/registry";
 import { type ThemePref, applyTheme, loadTheme, nextTheme } from "../theme";
+import { registerAction } from "../actions";
+import { workbench } from "../workbench";
+import { ContextMenu, type MenuState, type MenuTarget } from "./ContextMenu";
 
 type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ok"; data: T };
 
@@ -24,7 +28,7 @@ interface Props {
   onEdit: (c: SavedConnection) => void;
   onDelete: (c: SavedConnection) => void;
   /** Opens a new editor tab: optionally with SQL, run at once, or as a data viewer. */
-  onOpenTab: (c: SavedConnection, init?: Partial<TabModel>) => void;
+  onOpenTab: (c: SavedConnection, init?: TabInit<"query">) => void;
   /** The connection's navigator session, opened on first use; `null` if cancelled. */
   session: (c: SavedConnection) => Promise<number | null>;
   /** Drops the navigator session, e.g. after the connection broke. */
@@ -60,23 +64,18 @@ interface Row {
   expanded?: boolean;
   onToggle?: () => void;
   onOpen?: () => void;
-  menu?: MenuItem[];
+  /** Its context menu lists the actions registered for this scope. */
+  menu?: MenuTarget;
   actions?: React.ReactNode;
   status?: "loading" | "error";
 }
 
-interface MenuItem {
-  label: string;
-  run: () => void;
-}
-
 export function Navigator(props: Props) {
-  const { connections, error, onNew, onEdit, onDelete, onOpenTab, session, disconnect, onRefresh, onError } =
-    props;
+  const { connections, error, onNew, onEdit, onOpenTab, session, disconnect, onError } = props;
   const [cache, setCache] = useState<Cache>(new Map());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
-  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [menu, setMenu] = useState<MenuState | null>(null);
   const signatures = useRef(new Map<string, string>());
 
   // Forget what was loaded through a connection whose target changed.
@@ -88,18 +87,6 @@ export function Navigator(props: Props) {
       if (previous !== undefined && previous !== signature) closeConnection(c);
     }
   }, [connections]);
-
-  useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
-    window.addEventListener("mousedown", close);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", close);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [menu]);
 
   const setLoad = (key: string, value: Load<unknown>) => setCache((m) => new Map(m).set(key, value));
   const loaded = <T,>(key: string) => {
@@ -176,11 +163,32 @@ export function Navigator(props: Props) {
         c.driver,
         target,
         details.columns.map((col) => col.name),
-        OPEN_DATA_LIMIT,
+        getSetting(selectLimit),
       ),
       title: object.name,
     });
   }
+
+  // What the navigator's own actions need, refreshed every render.
+  const nav = useRef<NavigatorApi>(null!);
+  nav.current = {
+    props,
+    refresh,
+    loadSchemas,
+    loadObjects,
+    loadDetails,
+    closeConnection,
+    generateSelect,
+    openData: (c, object, target) =>
+      onOpenTab(c, {
+        sql: viewerSql(c.driver, target, "", null),
+        autorun: true,
+        title: object.name,
+        table: target,
+      }),
+  };
+  useEffect(() => registerNavigatorActions(nav), []);
+  const closeMenu = useCallback(() => setMenu(null), []);
 
   const needle = filter.trim().toLowerCase();
   const rows: Row[] = [];
@@ -204,19 +212,7 @@ export function Navigator(props: Props) {
       onToggle: () => toggle(ckey, () => loadSchemas(c)),
       onOpen: () => onOpenTab(c),
       ...status(ckey),
-      menu: [
-        { label: "New SQL script", run: () => onOpenTab(c) },
-        {
-          label: "Refresh",
-          run: () => {
-            refresh(ckey, () => loadSchemas(c));
-            onRefresh(c);
-          },
-        },
-        { label: "Disconnect", run: () => closeConnection(c) },
-        { label: "Edit…", run: () => onEdit(c) },
-        { label: "Delete…", run: () => onDelete(c) },
-      ],
+      menu: { scope: "navigator.connection", arg: { connection: c } },
       actions: (
         <>
           <button className="icon" title="Open SQL editor" onClick={() => onOpenTab(c)}>
@@ -248,10 +244,7 @@ export function Navigator(props: Props) {
         expanded: sOpen,
         onToggle: () => toggle(skey, () => loadObjects(c, schema.name)),
         ...status(skey),
-        menu: [
-          { label: "New SQL script", run: () => onOpenTab(c) },
-          { label: "Refresh", run: () => refresh(skey, () => loadObjects(c, schema.name)) },
-        ],
+        menu: { scope: "navigator.schema", arg: { connection: c, schema } },
       });
       if (!sOpen || !matches) continue;
       if (matches.length === 0) {
@@ -303,17 +296,11 @@ export function Navigator(props: Props) {
           label: object.name,
           icon,
           title: object.comment ?? undefined,
-          menu: [{ label: "Copy name", run: () => void navigator.clipboard.writeText(object.name) }],
+          menu: { scope: "navigator.object", arg: { connection: c, schema, object, target } },
         },
       ];
     }
-    const openData = () =>
-      onOpenTab(c, {
-        sql: viewerSql(c.driver, target, "", null),
-        autorun: true,
-        title: object.name,
-        table: target,
-      });
+    const openData = () => nav.current.openData(c, object, target);
     const open = expanded.has(okey);
     const out: Row[] = [
       {
@@ -326,12 +313,7 @@ export function Navigator(props: Props) {
         onToggle: () => toggle(okey, () => void loadDetails(c, schema.name, object.name)),
         onOpen: openData,
         ...status(okey),
-        menu: [
-          { label: "Open data", run: openData },
-          { label: "Generate SELECT", run: () => void generateSelect(c, schema, object) },
-          { label: "Copy name", run: () => void navigator.clipboard.writeText(target) },
-          { label: "Refresh", run: () => refresh(okey, () => void loadDetails(c, schema.name, object.name)) },
-        ],
+        menu: { scope: "navigator.object", arg: { connection: c, schema, object, target } },
       },
     ];
     const details = open ? loaded<TableDetails>(okey) : null;
@@ -368,7 +350,7 @@ export function Navigator(props: Props) {
         icon: col.primary_key ? "⚿" : "·",
         detail: `${col.data_type}${col.nullable ? "" : " · not null"}`,
         title: [col.default && `default ${col.default}`, col.comment].filter(Boolean).join("\n") || undefined,
-        menu: [{ label: "Copy name", run: () => void navigator.clipboard.writeText(col.name) }],
+        menu: { scope: "navigator.column", arg: { connection: c, schema, object, column: col.name } },
       })),
     );
     section(
@@ -401,6 +383,9 @@ export function Navigator(props: Props) {
       <div className="sidebar-header">
         <span className="sidebar-title">Connections</span>
         <ThemeButton />
+        <button className="icon" title="Settings (Ctrl+,)" onClick={() => workbench().openSettings()}>
+          ⚙
+        </button>
         <button className="icon" title="New connection" onClick={onNew}>
           +
         </button>
@@ -441,7 +426,7 @@ export function Navigator(props: Props) {
             onContextMenu={(e) => {
               if (!row.menu) return;
               e.preventDefault();
-              setMenu({ x: e.clientX, y: e.clientY, items: row.menu });
+              setMenu({ x: e.clientX, y: e.clientY, target: row.menu });
             }}
           >
             <span className="twisty">{row.expanded === undefined ? "" : row.expanded ? "▾" : "▸"}</span>
@@ -461,27 +446,7 @@ export function Navigator(props: Props) {
         ))}
       </ul>
       {menu && (
-        <div
-          className="context-menu"
-          style={{ left: menu.x, top: menu.y }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          {menu.items.map((item) => (
-            <button
-              key={item.label}
-              onClick={() => {
-                setMenu(null);
-                try {
-                  item.run();
-                } catch (e) {
-                  onError(toCommandError(e).message);
-                }
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <ContextMenu menu={menu} onClose={closeMenu} onError={(e) => onError(toCommandError(e).message)} />
       )}
     </aside>
   );
@@ -516,4 +481,131 @@ function withoutPrefix(set: Set<string>, key: string, children = false): Set<str
   return new Set(
     [...set].filter((k) => k !== key && !(children && (k.startsWith(`${key}/`) || k.startsWith(`${key}#`)))),
   );
+}
+
+interface NavigatorApi {
+  props: Props;
+  refresh: (key: string, reload: () => void) => void;
+  loadSchemas: (c: SavedConnection) => void;
+  loadObjects: (c: SavedConnection, schema: string) => void;
+  loadDetails: (c: SavedConnection, schema: string, name: string) => Promise<TableDetails | null>;
+  closeConnection: (c: SavedConnection) => void;
+  generateSelect: (c: SavedConnection, schema: SchemaMeta, object: ObjectMeta) => Promise<void>;
+  openData: (c: SavedConnection, object: ObjectMeta, target: string) => void;
+}
+
+/** The navigator's built-in menu entries; features add theirs to the same scopes. */
+function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
+  const n = () => nav.current;
+  const copy = (text: string) => void navigator.clipboard.writeText(text);
+  const unregister = [
+    registerAction({
+      id: "connection.new_script",
+      scope: "navigator.connection",
+      title: "New SQL script",
+      group: "open",
+      order: 10,
+      run: ({ connection }) => n().props.onOpenTab(connection),
+    }),
+    registerAction({
+      id: "connection.refresh",
+      scope: "navigator.connection",
+      title: "Refresh",
+      group: "refresh",
+      order: 50,
+      run: ({ connection }) => {
+        n().refresh(connection.id, () => n().loadSchemas(connection));
+        n().props.onRefresh(connection);
+      },
+    }),
+    registerAction({
+      id: "connection.disconnect",
+      scope: "navigator.connection",
+      title: "Disconnect",
+      group: "refresh",
+      order: 51,
+      run: ({ connection }) => n().closeConnection(connection),
+    }),
+    registerAction({
+      id: "connection.edit",
+      scope: "navigator.connection",
+      title: "Edit…",
+      group: "manage",
+      order: 90,
+      run: ({ connection }) => n().props.onEdit(connection),
+    }),
+    registerAction({
+      id: "connection.delete",
+      scope: "navigator.connection",
+      title: "Delete…",
+      group: "manage",
+      order: 91,
+      run: ({ connection }) => n().props.onDelete(connection),
+    }),
+    registerAction({
+      id: "schema.new_script",
+      scope: "navigator.schema",
+      title: "New SQL script",
+      group: "open",
+      order: 10,
+      run: ({ connection }) => n().props.onOpenTab(connection),
+    }),
+    registerAction({
+      id: "schema.refresh",
+      scope: "navigator.schema",
+      title: "Refresh",
+      group: "refresh",
+      order: 50,
+      run: ({ connection, schema }) =>
+        n().refresh(`${connection.id}/${schema.name}`, () => n().loadObjects(connection, schema.name)),
+    }),
+    registerAction({
+      id: "object.open_data",
+      scope: "navigator.object",
+      title: "Open data",
+      group: "open",
+      order: 10,
+      when: ({ object }) => isRelation(object.kind),
+      run: ({ connection, object, target }) => n().openData(connection, object, target),
+    }),
+    registerAction({
+      id: "object.generate_select",
+      scope: "navigator.object",
+      title: "Generate SELECT",
+      group: "open",
+      order: 20,
+      when: ({ object }) => isRelation(object.kind),
+      run: ({ connection, schema, object }) => n().generateSelect(connection, schema, object),
+    }),
+    registerAction({
+      id: "object.copy_name",
+      scope: "navigator.object",
+      title: "Copy name",
+      group: "copy",
+      order: 40,
+      // Routines are copied bare, as before: their call syntax differs from a table's.
+      run: ({ object, target }) => copy(isRelation(object.kind) ? target : object.name),
+    }),
+    registerAction({
+      id: "object.refresh",
+      scope: "navigator.object",
+      title: "Refresh",
+      group: "refresh",
+      order: 50,
+      when: ({ object }) => isRelation(object.kind),
+      run: ({ connection, schema, object }) =>
+        n().refresh(`${connection.id}/${schema.name}/${object.name}`, () => {
+          void n().loadDetails(connection, schema.name, object.name);
+        }),
+    }),
+    registerAction({
+      id: "column.copy_name",
+      scope: "navigator.column",
+      title: "Copy name",
+      group: "copy",
+      order: 40,
+      run: ({ column }) => copy(column),
+    }),
+  ];
+  return () => unregister.forEach((u) => u());
 }

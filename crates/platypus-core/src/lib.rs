@@ -4,12 +4,14 @@
 //! variant is a [`RecordBatchStream`] of Arrow record batches. Frontends never see
 //! driver-specific types.
 
+mod capabilities;
 mod config;
 mod connection;
 mod error;
 mod metadata;
 mod transaction;
 
+pub use capabilities::{Capabilities, Explain, ExplainFormat, ObjectRef, unsupported};
 pub use config::{ConnectionConfig, DriverKind, Secret, SslMode};
 pub use connection::{
     CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, RecordBatchStream,

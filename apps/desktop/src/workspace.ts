@@ -1,20 +1,13 @@
-/** Open editor tabs, restored on the next start. Sessions are not persisted. */
+/** Open tabs, restored on the next start. Sessions are not persisted. */
 
 const KEY = "platypus.workspace.v1";
 
+/** A tab's kind and connection plus whatever its kind persists (`TabKind.persist`).
+ *  Tabs saved before tab kinds existed have no `kind`: they are SQL editors. */
 export interface PersistedTab {
+  kind?: string;
   connectionId: string;
-  sql: string;
-  /** Script file the tab was opened from or saved to. */
-  filePath: string | null;
-  /** File contents at the last open/save, to show unsaved changes. */
-  savedSql: string | null;
-  /** Tab label, e.g. the table opened from the navigator. */
-  title?: string | null;
-  /** Data viewer state, see `TabModel`. */
-  table?: string | null;
-  filter?: string;
-  sort?: { column: string; desc: boolean } | null;
+  [field: string]: unknown;
 }
 
 export interface Workspace {

@@ -1,26 +1,12 @@
-//! Dialect-aware SQL utilities for editors: statement splitting, the statement under the
-//! cursor, and a conservative read-only check. All offsets are byte offsets into the input.
+//! Dialect-aware SQL utilities: statement splitting, the statement under the cursor, a
+//! conservative read-only check, and the [`Dialect`] rules for generating SQL. All offsets
+//! are byte offsets into the input.
 
+mod dialect;
 mod lexer;
 
+pub use dialect::Dialect;
 pub use lexer::{Lexer, Token, TokenKind};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Dialect {
-    Postgres,
-    MySql,
-    Sqlite,
-}
-
-impl From<platypus_core::DriverKind> for Dialect {
-    fn from(kind: platypus_core::DriverKind) -> Self {
-        match kind {
-            platypus_core::DriverKind::Postgres => Self::Postgres,
-            platypus_core::DriverKind::MySql => Self::MySql,
-            platypus_core::DriverKind::Sqlite => Self::Sqlite,
-        }
-    }
-}
 
 /// A statement's byte range: from its first token to its last, excluding surrounding
 /// comments, whitespace and the delimiter.

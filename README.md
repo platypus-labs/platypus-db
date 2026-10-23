@@ -43,6 +43,7 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | `Ctrl+S`, `Ctrl+O` | Save / open a `.sql` file |
 | `Ctrl+T`, `Ctrl+W` | New tab / close tab |
 | `Ctrl+Tab`, `Ctrl+Shift+Tab` | Next / previous tab |
+| `Ctrl+,` | Settings |
 
 On macOS use `Cmd` instead of `Ctrl`.
 
@@ -91,6 +92,9 @@ docker/                    dev databases with seed data
 
 ## Development
 
+What comes next is planned in [docs/ROADMAP.md](docs/ROADMAP.md); [docs/EXTENDING.md](docs/EXTENDING.md)
+explains how features plug in (actions, tab kinds, settings, driver capabilities).
+
 ```bash
 # desktop app with hot reload
 cd apps/desktop
@@ -109,6 +113,11 @@ cargo run --release -p platypus-cli -- query -f csv -o big.csv --stats "select *
 cargo run --release -p platypus-cli -- query -f parquet -o big.parquet --stats "select * from demo.big_table"
 cargo run -p platypus-cli -- query -u mysql://platypus:platypus@localhost:53306/platypus "select * from type_zoo"
 cargo run -p platypus-cli -- query -u sqlite:///C:/data/app.db "select * from sqlite_master"
+
+# end-to-end tests (Windows): drive the release build on a throwaway profile
+cd apps/desktop
+npm run tauri build -- --no-bundle
+npm run e2e
 
 # dev databases (PostgreSQL 17, MySQL 8.4, MariaDB 11.4)
 docker compose -f docker/compose.yml up -d --wait

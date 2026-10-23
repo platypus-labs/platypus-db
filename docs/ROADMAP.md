@@ -41,7 +41,9 @@ Questi punti non vanno ripianificati: al massimo si migliorano dentro il gruppo 
 
 ## 1. Fase 0 — Fondamenta per il lavoro in parallelo (1 persona, circa 1 settimana)
 
-Oggi alcuni file fanno da collo di bottiglia: [commands.rs](../apps/desktop/src-tauri/src/commands.rs),
+**Stato: completata.** Come usare i punti di estensione: [EXTENDING.md](EXTENDING.md).
+
+Alcuni file facevano da collo di bottiglia: [commands.rs](../apps/desktop/src-tauri/src/commands/mod.rs),
 [QueryTab.tsx](../apps/desktop/src/components/QueryTab.tsx),
 [DataGrid.tsx](../apps/desktop/src/grid/DataGrid.tsx),
 [Navigator.tsx](../apps/desktop/src/components/Navigator.tsx) e [App.tsx](../apps/desktop/src/App.tsx).

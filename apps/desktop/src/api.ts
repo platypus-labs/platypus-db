@@ -31,6 +31,14 @@ export interface ServerInfo {
   encrypted: boolean;
 }
 
+/** Optional driver features; see `platypus_core::Capabilities`. */
+export interface Capabilities {
+  transactions: boolean;
+  cancel: boolean;
+  explain: boolean;
+  object_ddl: boolean;
+}
+
 export interface CommandError {
   kind: string;
   message: string;
@@ -179,7 +187,7 @@ export const api = {
   testConnection: (connection: SavedConnection, password: PasswordInput) =>
     invoke<ServerInfo>("test_connection", { connection, password }),
   openSession: (connectionId: string, password?: string) =>
-    invoke<{ session_id: number; server: ServerInfo }>("open_session", {
+    invoke<{ session_id: number; server: ServerInfo; capabilities: Capabilities }>("open_session", {
       connectionId,
       password: password ?? null,
     }),
@@ -252,6 +260,10 @@ export const api = {
     }
     return { rows: table.numRows, columns };
   },
+  /** Stored preferences as nested objects; see `settings.ts`. */
+  getSettings: () => invoke<Record<string, unknown>>("get_settings"),
+  /** `null` removes the key, restoring the default. */
+  setSetting: (key: string, value: unknown) => invoke<void>("set_setting", { key, value }),
   fetchAll: (jobId: number) => invoke<void>("fetch_all", { jobId }),
   cancelQuery: (jobId: number) => invoke<void>("cancel_query", { jobId }),
   closeQuery: (jobId: number) => invoke<void>("close_query", { jobId }),

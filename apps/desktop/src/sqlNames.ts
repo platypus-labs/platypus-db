@@ -1,4 +1,5 @@
 import type { DriverKind } from "./api";
+import { defineSetting } from "./settings";
 
 /** Words that cannot be bare identifiers in at least one supported dialect. */
 const RESERVED = new Set(
@@ -12,7 +13,8 @@ const RESERVED = new Set(
   ).split(" "),
 );
 
-/** Quotes an identifier only when the dialect requires it. */
+/** Quotes an identifier only when the dialect requires it. Mirrors `Dialect::quote_ident`
+ *  in `crates/platypus-sql/src/dialect.rs`; keep the two in sync. */
 export function quoteIdent(name: string, driver: DriverKind): string {
   const reserved = RESERVED.has(name.toUpperCase());
   if (driver === "mysql") {
@@ -33,8 +35,13 @@ export function qualifiedName(
   return schema.current ? table : `${quoteIdent(schema.name, driver)}.${table}`;
 }
 
-/** Rows shown by "Open data". */
-export const OPEN_DATA_LIMIT = 200;
+export const selectLimit = defineSetting({
+  key: "navigator.select_limit",
+  section: "Navigator",
+  label: "LIMIT of Generate SELECT",
+  default: 200,
+  control: { type: "number", min: 1, step: 100 },
+});
 
 export function selectSql(
   driver: DriverKind,

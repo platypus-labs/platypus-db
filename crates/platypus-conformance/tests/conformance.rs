@@ -12,6 +12,7 @@ use arrow_cast::display::array_value_to_string;
 use futures::{StreamExt, TryStreamExt};
 use platypus_core::{
     Connection, ConnectionConfig, Driver, DriverKind, Error, ExecOptions, ExecResult, ObjectKind,
+    ObjectRef,
 };
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
@@ -561,6 +562,38 @@ async fn reports_lost_connections() {
         assert!(
             conn.is_closed(),
             "{}: connection reported as closed",
+            b.name
+        );
+    }
+}
+
+/// Every optional method agrees with its capability flag: unsupported ones fail with
+/// `Error::Unsupported`, supported ones never do.
+#[tokio::test]
+async fn capabilities_match_optional_methods() {
+    for b in backends().await {
+        let conn = b.connect().await;
+        let caps = conn.capabilities();
+        assert!(caps.transactions && caps.cancel, "{}", b.name);
+
+        let explain = conn.explain("SELECT 1", false).await;
+        assert_eq!(
+            matches!(explain, Err(Error::Unsupported(_))),
+            !caps.explain,
+            "{}: explain vs capabilities.explain: {explain:?}",
+            b.name
+        );
+
+        let object = ObjectRef {
+            schema: &b.schema,
+            name: "customers",
+            kind: ObjectKind::Table,
+        };
+        let ddl = conn.object_ddl(&object).await;
+        assert_eq!(
+            matches!(ddl, Err(Error::Unsupported(_))),
+            !caps.object_ddl,
+            "{}: object_ddl vs capabilities.object_ddl: {ddl:?}",
             b.name
         );
     }

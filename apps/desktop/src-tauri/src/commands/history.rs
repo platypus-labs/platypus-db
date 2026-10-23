@@ -1,0 +1,31 @@
+//! Query history.
+
+use platypus_store::{HistoryEntry, HistoryQuery};
+use tauri::State;
+use uuid::Uuid;
+
+use super::AppState;
+use crate::error::CommandResult;
+
+#[tauri::command]
+pub fn search_history(
+    state: State<'_, AppState>,
+    connection_id: Option<Uuid>,
+    text: Option<String>,
+    before_id: Option<i64>,
+    limit: usize,
+) -> CommandResult<Vec<HistoryEntry>> {
+    state.with_history(|h| {
+        h.search(&HistoryQuery {
+            connection_id,
+            text,
+            before_id,
+            limit: limit.min(1000),
+        })
+    })
+}
+
+#[tauri::command]
+pub fn delete_history(state: State<'_, AppState>, id: i64) -> CommandResult<()> {
+    state.with_history(|h| h.delete(id))
+}
