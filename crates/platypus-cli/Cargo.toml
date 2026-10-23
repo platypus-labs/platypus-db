@@ -12,7 +12,16 @@ name = "platypus"
 path = "src/main.rs"
 
 [dependencies]
+arrow-array.workspace = true
+arrow-cast = { workspace = true, features = ["prettyprint"] }
+arrow-csv.workspace = true
+arrow-json.workspace = true
+arrow-schema.workspace = true
+clap.workspace = true
+futures.workspace = true
 platypus-core.workspace = true
+platypus-driver-pg.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time"] }
 
 [lints]
 workspace = true

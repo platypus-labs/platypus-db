@@ -1,0 +1,217 @@
+use std::fmt;
+use std::str::FromStr;
+use std::time::Duration;
+
+use url::Url;
+
+use crate::{Error, Result};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DriverKind {
+    Postgres,
+    MySql,
+    Sqlite,
+}
+
+impl DriverKind {
+    #[must_use]
+    pub const fn default_port(self) -> Option<u16> {
+        match self {
+            Self::Postgres => Some(5432),
+            Self::MySql => Some(3306),
+            Self::Sqlite => None,
+        }
+    }
+}
+
+/// TLS behaviour, following libpq `sslmode` semantics.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SslMode {
+    Disable,
+    /// Use TLS when the server offers it, fall back to plaintext otherwise.
+    #[default]
+    Prefer,
+    /// Require TLS without verifying the server certificate.
+    Require,
+    /// Require TLS and verify the certificate chain, but not the host name.
+    VerifyCa,
+    /// Require TLS and verify both certificate chain and host name.
+    VerifyFull,
+}
+
+impl FromStr for SslMode {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "disable" => Ok(Self::Disable),
+            "prefer" | "allow" => Ok(Self::Prefer),
+            "require" => Ok(Self::Require),
+            "verify-ca" => Ok(Self::VerifyCa),
+            "verify-full" => Ok(Self::VerifyFull),
+            other => Err(Error::Config(format!("unknown sslmode `{other}`"))),
+        }
+    }
+}
+
+/// A password or token. Never printed by `Debug`.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Secret(String);
+
+impl Secret {
+    #[must_use]
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    #[must_use]
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for Secret {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Secret(***)")
+    }
+}
+
+/// Everything a driver needs to open a connection.
+///
+/// For SQLite, `database` is the file path and the network fields are ignored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectionConfig {
+    pub driver: DriverKind,
+    pub host: String,
+    pub port: Option<u16>,
+    pub database: String,
+    pub user: String,
+    pub password: Option<Secret>,
+    pub ssl_mode: SslMode,
+    pub application_name: Option<String>,
+    pub connect_timeout: Option<Duration>,
+}
+
+impl ConnectionConfig {
+    #[must_use]
+    pub fn new(driver: DriverKind) -> Self {
+        Self {
+            driver,
+            host: "localhost".to_owned(),
+            port: driver.default_port(),
+            database: String::new(),
+            user: String::new(),
+            password: None,
+            ssl_mode: SslMode::default(),
+            application_name: Some("PlatypusDB".to_owned()),
+            connect_timeout: Some(Duration::from_secs(10)),
+        }
+    }
+
+    /// Parses a connection URL such as `postgres://user:pass@host:5432/db?sslmode=require`,
+    /// `mysql://user@host/db` or `sqlite:///path/to/file.db`.
+    pub fn from_url(input: &str) -> Result<Self> {
+        let url = Url::parse(input).map_err(|e| Error::Config(format!("invalid URL: {e}")))?;
+        let driver = match url.scheme() {
+            "postgres" | "postgresql" => DriverKind::Postgres,
+            "mysql" | "mariadb" => DriverKind::MySql,
+            "sqlite" => DriverKind::Sqlite,
+            other => return Err(Error::Config(format!("unsupported URL scheme `{other}`"))),
+        };
+        let mut config = Self::new(driver);
+
+        if driver == DriverKind::Sqlite {
+            config.host.clear();
+            config.database = decode(url.path())?;
+            return Ok(config);
+        }
+
+        if let Some(host) = url.host_str() {
+            host.trim_matches(['[', ']']).clone_into(&mut config.host);
+        }
+        if let Some(port) = url.port() {
+            config.port = Some(port);
+        }
+        config.database = decode(url.path().trim_start_matches('/'))?;
+        config.user = decode(url.username())?;
+        config.password = url.password().map(decode).transpose()?.map(Secret::new);
+
+        for (key, value) in url.query_pairs() {
+            match &*key {
+                "sslmode" | "ssl-mode" => config.ssl_mode = value.parse()?,
+                "application_name" => config.application_name = Some(value.into_owned()),
+                "connect_timeout" => {
+                    let secs = value
+                        .parse()
+                        .map_err(|_| Error::Config(format!("invalid connect_timeout `{value}`")))?;
+                    config.connect_timeout = Some(Duration::from_secs(secs));
+                }
+                other => return Err(Error::Config(format!("unknown URL parameter `{other}`"))),
+            }
+        }
+        Ok(config)
+    }
+}
+
+fn decode(s: &str) -> Result<String> {
+    percent_encoding::percent_decode_str(s)
+        .decode_utf8()
+        .map(Into::into)
+        .map_err(|e| Error::Config(format!("invalid percent-encoding: {e}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_postgres_url() {
+        let c = ConnectionConfig::from_url(
+            "postgres://us%40er:p%3Ass@db.example.com:6543/my%20db?sslmode=require&application_name=x",
+        )
+        .unwrap();
+        assert_eq!(c.driver, DriverKind::Postgres);
+        assert_eq!(c.host, "db.example.com");
+        assert_eq!(c.port, Some(6543));
+        assert_eq!(c.database, "my db");
+        assert_eq!(c.user, "us@er");
+        assert_eq!(c.password, Some(Secret::new("p:ss")));
+        assert_eq!(c.ssl_mode, SslMode::Require);
+        assert_eq!(c.application_name.as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn defaults_port_and_ssl() {
+        let c = ConnectionConfig::from_url("mysql://root@localhost/app").unwrap();
+        assert_eq!(c.driver, DriverKind::MySql);
+        assert_eq!(c.port, Some(3306));
+        assert_eq!(c.ssl_mode, SslMode::Prefer);
+        assert_eq!(c.password, None);
+    }
+
+    #[test]
+    fn parses_ipv6_host() {
+        let c = ConnectionConfig::from_url("postgres://u@[::1]:5432/db").unwrap();
+        assert_eq!(c.host, "::1");
+    }
+
+    #[test]
+    fn parses_sqlite_path() {
+        let c = ConnectionConfig::from_url("sqlite:///tmp/test.db").unwrap();
+        assert_eq!(c.driver, DriverKind::Sqlite);
+        assert_eq!(c.database, "/tmp/test.db");
+    }
+
+    #[test]
+    fn rejects_unknown_scheme_and_params() {
+        assert!(ConnectionConfig::from_url("oracle://x/y").is_err());
+        assert!(ConnectionConfig::from_url("postgres://x/y?foo=1").is_err());
+        assert!(ConnectionConfig::from_url("postgres://x/y?sslmode=nope").is_err());
+    }
+
+    #[test]
+    fn secret_is_not_printed() {
+        let c = ConnectionConfig::from_url("postgres://u:hunter2@h/d").unwrap();
+        assert!(!format!("{c:?}").contains("hunter2"));
+    }
+}

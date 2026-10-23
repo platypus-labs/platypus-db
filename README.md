@@ -2,7 +2,7 @@
 
 Fast, lightweight desktop SQL client. Rust core, Tauri 2 + React UI.
 
-> Status: **M0 — foundations**. See [docs/MVP_PLAN.md](docs/MVP_PLAN.md) for scope and roadmap.
+> Status: **M1 — core + PostgreSQL driver** (CLI only, no UI integration yet). See [docs/MVP_PLAN.md](docs/MVP_PLAN.md) for scope and roadmap.
 
 ## Layout
 
@@ -35,9 +35,14 @@ cd apps/desktop
 npm install
 npm run tauri dev
 
-# core crates
+# core crates (PostgreSQL integration tests skip if the dev database is down;
+# set PLATYPUS_TEST_PG_URL to make them mandatory)
 cargo test --workspace --exclude platypus-desktop
-cargo run -p platypus-cli
+
+# CLI: table (first 200 rows), csv or ndjson; Ctrl+C or --timeout cancel server-side
+export PLATYPUS_URL="postgres://platypus:platypus@localhost:55432/platypus?sslmode=disable"
+cargo run -p platypus-cli -- query "select * from demo.type_zoo"
+cargo run --release -p platypus-cli -- query -f csv -o big.csv --stats "select * from demo.big_table"
 
 # dev databases (PostgreSQL 17, MySQL 8.4, MariaDB 11.4)
 docker compose -f docker/compose.yml up -d --wait

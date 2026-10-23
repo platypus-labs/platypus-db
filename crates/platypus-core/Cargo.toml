@@ -8,7 +8,13 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-
+arrow-array.workspace = true
+arrow-schema.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+percent-encoding.workspace = true
+thiserror.workspace = true
+url.workspace = true
 
 [lints]
 workspace = true

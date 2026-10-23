@@ -8,7 +8,24 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+arrow-array.workspace = true
+arrow-schema.workspace = true
+async-trait.workspace = true
+fallible-iterator.workspace = true
+futures.workspace = true
 platypus-core.workspace = true
+postgres-protocol.workspace = true
+tokio = { workspace = true, features = ["rt", "sync"] }
+tokio-postgres.workspace = true
+
+[dev-dependencies]
+arrow-cast.workspace = true
+criterion.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+
+[[bench]]
+name = "decode"
+harness = false
 
 [lints]
 workspace = true

@@ -17,8 +17,27 @@ platypus-driver-sqlite = { path = "crates/platypus-driver-sqlite" }
 platypus-sql = { path = "crates/platypus-sql" }
 platypus-store = { path = "crates/platypus-store" }
 
+arrow = { version = "60", default-features = false }
+arrow-array = "60"
+arrow-cast = "60"
+arrow-csv = "60"
+arrow-json = "60"
+arrow-schema = "60"
+async-trait = "0.1"
+bytes = "1"
+clap = { version = "4", features = ["derive", "env"] }
+criterion = "0.8"
+fallible-iterator = "0.2"
+futures = "0.3"
+percent-encoding = "2"
+postgres-protocol = "0.6"
+postgres-types = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+thiserror = "2"
+tokio = "1"
+tokio-postgres = "0.7"
+url = "2"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

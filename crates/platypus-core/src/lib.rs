@@ -1,6 +1,27 @@
 //! Core abstractions shared by every PlatypusDB driver and frontend.
 //!
-//! Populated in M1: `Driver`, `Connection`, `MetadataProvider`, `ResultStream`.
+//! A [`Driver`] opens a [`Connection`]; executing SQL yields an [`ExecResult`], whose row
+//! variant is a [`RecordBatchStream`] of Arrow record batches. Frontends never see
+//! driver-specific types.
+
+mod config;
+mod connection;
+mod error;
+
+pub use config::{ConnectionConfig, DriverKind, Secret, SslMode};
+pub use connection::{
+    CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, RecordBatchStream,
+    ServerInfo,
+};
+pub use error::{DbError, Error, Result};
+
+/// Re-exported so frontends use the same Arrow version as the drivers.
+pub use arrow_array;
+pub use arrow_schema;
 
 /// Version of the PlatypusDB core, shared by the CLI and the desktop app.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Arrow field metadata key holding the column's original database type name
+/// (e.g. `jsonb`, `numeric(12,2)`), so the UI can show it even when the Arrow type is `Utf8`.
+pub const META_DB_TYPE: &str = "platypus.db_type";
