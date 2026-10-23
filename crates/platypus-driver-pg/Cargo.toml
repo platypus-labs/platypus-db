@@ -17,6 +17,9 @@ platypus-core.workspace = true
 postgres-protocol.workspace = true
 tokio = { workspace = true, features = ["rt", "sync"] }
 tokio-postgres.workspace = true
+tokio-postgres-rustls.workspace = true
+rustls.workspace = true
+rustls-platform-verifier.workspace = true
 
 [dev-dependencies]
 arrow-cast.workspace = true

@@ -13,6 +13,7 @@ arrow-schema.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 percent-encoding.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 url.workspace = true
 

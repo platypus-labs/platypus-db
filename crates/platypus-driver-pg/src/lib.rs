@@ -4,13 +4,13 @@
 //! batch at a time: the next batch is only read from the socket when the consumer polls for
 //! it, so memory stays flat regardless of result size.
 //!
-//! TLS is not supported yet: `sslmode=disable` and `prefer` connect in plaintext,
-//! stricter modes are rejected.
+//! TLS follows libpq `sslmode` semantics, see [`tls`].
 
 #[doc(hidden)]
 pub mod columns;
 #[doc(hidden)]
 pub mod decode;
+mod tls;
 
 use std::pin::Pin;
 use std::sync::Arc;
@@ -21,12 +21,14 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use platypus_core::{
     CancelHandle, Canceller, Connection, ConnectionConfig, DbError, Driver, DriverKind, Error,
-    ExecOptions, ExecResult, RecordBatchStream, Result, ServerInfo, SslMode,
+    ExecOptions, ExecResult, RecordBatchStream, Result, ServerInfo,
 };
 use tokio::sync::{Mutex, OwnedMutexGuard};
 use tokio_postgres::error::{ErrorPosition, SqlState};
+use tokio_postgres::tls::MakeTlsConnect;
 use tokio_postgres::types::{FromSql, ToSql, Type};
-use tokio_postgres::{CancelToken, Client, NoTls, RowStream, SimpleQueryMessage};
+use tokio_postgres::{CancelToken, Client, NoTls, RowStream, SimpleQueryMessage, Socket};
+use tokio_postgres_rustls::MakeRustlsConnect;
 
 use crate::columns::{ColumnBuilder, column_builder};
 
@@ -47,6 +49,7 @@ impl Driver for PgDriver {
 #[derive(Debug)]
 pub struct PgConnection {
     client: Client,
+    canceller: PgCanceller,
     server: ServerInfo,
     /// Held for the lifetime of a statement, including its result stream, so a new
     /// statement never starts while an abandoned one is still being cancelled.
@@ -75,45 +78,66 @@ impl PgConnection {
         if let Some(timeout) = config.connect_timeout {
             pg.connect_timeout(timeout);
         }
-        pg.ssl_mode(match config.ssl_mode {
-            SslMode::Disable => tokio_postgres::config::SslMode::Disable,
-            SslMode::Prefer => tokio_postgres::config::SslMode::Prefer,
-            mode => {
-                return Err(Error::Unsupported(format!(
-                    "sslmode {mode:?} (TLS lands in M2)"
-                )));
-            }
-        });
+        let (ssl_mode, tls) = tls::connector(config)?;
+        pg.ssl_mode(ssl_mode);
 
-        let (client, connection) = pg.connect(NoTls).await.map_err(|e| match e.as_db_error() {
-            Some(_) => map_error(e),
-            None => Error::Connect(e.to_string()),
-        })?;
-        // The connection future drives the socket; it ends when the client is dropped.
-        tokio::spawn(async move {
-            let _ = connection.await;
-        });
+        let client = match &tls {
+            Some(tls) => spawn_connection(&pg, tls.clone()).await?,
+            None => spawn_connection(&pg, NoTls).await?,
+        };
 
-        let version = client
-            .simple_query("SHOW server_version")
+        let row = client
+            .simple_query(
+                "SELECT current_setting('server_version'), \
+                 coalesce((SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()), false)",
+            )
             .await
             .map_err(map_error)?
             .into_iter()
             .find_map(|m| match m {
-                SimpleQueryMessage::Row(row) => row.get(0).map(str::to_owned),
+                SimpleQueryMessage::Row(row) => Some(row),
                 _ => None,
-            })
-            .unwrap_or_default();
+            });
+        let version = row
+            .as_ref()
+            .and_then(|r| r.get(0))
+            .unwrap_or_default()
+            .to_owned();
+        let encrypted = row.as_ref().and_then(|r| r.get(1)) == Some("t");
 
         Ok(Self {
+            canceller: PgCanceller {
+                token: client.cancel_token(),
+                tls,
+            },
             client,
             server: ServerInfo {
                 product: "PostgreSQL".to_owned(),
                 version,
+                encrypted,
             },
             busy: Arc::new(Mutex::new(())),
         })
     }
+}
+
+async fn spawn_connection<T>(config: &tokio_postgres::Config, tls: T) -> Result<Client>
+where
+    T: MakeTlsConnect<Socket> + Send + 'static,
+    T::Stream: Send + 'static,
+{
+    let (client, connection) = config
+        .connect(tls)
+        .await
+        .map_err(|e| match e.as_db_error() {
+            Some(_) => map_error(e),
+            None => Error::Connect(error_chain(&e)),
+        })?;
+    // The connection future drives the socket; it ends when the client is dropped.
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    Ok(client)
 }
 
 #[async_trait]
@@ -150,7 +174,7 @@ impl Connection for PgConnection {
             builders,
             schema: Arc::clone(&schema),
             batch_size: options.batch_size.max(1),
-            cancel: self.client.cancel_token(),
+            canceller: self.canceller.clone(),
             guard: Some(guard),
         };
         let stream = futures::stream::try_unfold(state, next_batch);
@@ -161,7 +185,7 @@ impl Connection for PgConnection {
     }
 
     fn cancel_handle(&self) -> CancelHandle {
-        CancelHandle::new(PgCanceller(self.client.cancel_token()))
+        CancelHandle::new(self.canceller.clone())
     }
 
     fn server_info(&self) -> &ServerInfo {
@@ -183,7 +207,7 @@ struct BatchState {
     builders: Vec<ColumnBuilder>,
     schema: Arc<Schema>,
     batch_size: usize,
-    cancel: CancelToken,
+    canceller: PgCanceller,
     guard: Option<OwnedMutexGuard<()>>,
 }
 
@@ -266,24 +290,38 @@ impl Drop for BatchState {
         let Ok(runtime) = tokio::runtime::Handle::try_current() else {
             return;
         };
-        let cancel = self.cancel.clone();
+        let canceller = self.canceller.clone();
         runtime.spawn(async move {
-            let _ = cancel.cancel_query(NoTls).await;
+            let _ = canceller.cancel().await;
             while rows.next().await.is_some() {}
             drop(guard);
         });
     }
 }
 
-struct PgCanceller(CancelToken);
+/// Cancel requests open a new connection, so they need the same TLS setup as the session.
+#[derive(Clone)]
+struct PgCanceller {
+    token: CancelToken,
+    tls: Option<MakeRustlsConnect>,
+}
+
+impl std::fmt::Debug for PgCanceller {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PgCanceller")
+            .field("tls", &self.tls.is_some())
+            .finish_non_exhaustive()
+    }
+}
 
 #[async_trait]
 impl Canceller for PgCanceller {
     async fn cancel(&self) -> Result<()> {
-        self.0
-            .cancel_query(NoTls)
-            .await
-            .map_err(|e| Error::Connect(format!("cancel request failed: {e}")))
+        let result = match &self.tls {
+            Some(tls) => self.token.cancel_query(tls.clone()).await,
+            None => self.token.cancel_query(NoTls).await,
+        };
+        result.map_err(|e| Error::Connect(format!("cancel request failed: {e}")))
     }
 }
 
@@ -310,5 +348,17 @@ fn map_error(e: tokio_postgres::Error) -> Error {
     if e.is_closed() {
         return Error::Closed;
     }
-    Error::Other(e.to_string())
+    Error::Other(error_chain(&e))
+}
+
+/// `tokio-postgres` errors keep the useful part (e.g. the TLS failure) in their sources.
+fn error_chain(e: &dyn std::error::Error) -> String {
+    let mut message = e.to_string();
+    let mut source = e.source();
+    while let Some(cause) = source {
+        message.push_str(": ");
+        message.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    message
 }

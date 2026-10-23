@@ -83,6 +83,35 @@ async fn reports_server_version() {
 }
 
 #[tokio::test]
+async fn honours_ssl_modes() {
+    let Some(plain) = connect().await else { return };
+    assert!(!plain.server_info().encrypted);
+
+    let url = std::env::var("PLATYPUS_TEST_PG_URL").unwrap_or_else(|_| DEFAULT_URL.to_owned());
+    let with_mode = |mode: &str| {
+        let mut config = ConnectionConfig::from_url(&url).unwrap();
+        config.ssl_mode = mode.parse().unwrap();
+        config
+    };
+
+    for mode in ["prefer", "require"] {
+        let conn = PgConnection::connect(&with_mode(mode)).await.unwrap();
+        assert!(conn.server_info().encrypted, "{mode} should negotiate TLS");
+        // Cancel requests go through TLS too.
+        conn.cancel_handle().cancel().await.unwrap();
+    }
+
+    // The dev server uses a self-signed certificate the OS does not trust.
+    for mode in ["verify-ca", "verify-full"] {
+        let err = PgConnection::connect(&with_mode(mode)).await.unwrap_err();
+        assert!(
+            matches!(&err, Error::Connect(msg) if msg.contains("certificate")),
+            "{mode}: {err:?}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn maps_every_type_in_type_zoo() {
     let Some(conn) = connect().await else { return };
     let batches = collect(&conn, "SELECT * FROM demo.type_zoo ORDER BY id").await;

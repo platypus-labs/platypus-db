@@ -5,7 +5,15 @@ name: platypus-db
 
 services:
   postgres:
-    image: postgres:17-alpine
+    # Debian image: ships a self-signed "snakeoil" certificate, so TLS can be tested.
+    image: postgres:17
+    command:
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+      - -c
+      - ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
     environment:
       POSTGRES_USER: platypus
       POSTGRES_PASSWORD: platypus

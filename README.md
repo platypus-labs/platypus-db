@@ -2,7 +2,7 @@
 
 Fast, lightweight desktop SQL client. Rust core, Tauri 2 + React UI.
 
-> Status: **M1 — core + PostgreSQL driver** (CLI only, no UI integration yet). See [docs/MVP_PLAN.md](docs/MVP_PLAN.md) for scope and roadmap.
+> Status: **M2 — desktop shell**: saved PostgreSQL connections (TLS, keychain), SQL tab, virtualized Arrow grid. See [docs/MVP_PLAN.md](docs/MVP_PLAN.md) for scope and roadmap.
 
 ## Layout
 
@@ -50,7 +50,7 @@ docker compose -f docker/compose.yml up -d --wait
 
 | Database   | Host port | User / password / db           |
 |------------|-----------|--------------------------------|
-| PostgreSQL | 55432     | `platypus` / `platypus` / `platypus` (schema `demo`) |
+| PostgreSQL | 55432     | `platypus` / `platypus` / `platypus` (schema `demo`, TLS with a self-signed cert) |
 | MySQL      | 53306     | `platypus` / `platypus` / `platypus` |
 | MariaDB    | 53307     | `platypus` / `platypus` / `platypus` |
 

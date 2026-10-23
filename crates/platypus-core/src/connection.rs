@@ -36,12 +36,14 @@ pub trait Connection: Send + Sync + fmt::Debug {
     fn is_closed(&self) -> bool;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ServerInfo {
     /// Product name, e.g. `PostgreSQL`.
     pub product: String,
     /// Server version string as reported by the server.
     pub version: String,
+    /// Whether the session is TLS-encrypted.
+    pub encrypted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

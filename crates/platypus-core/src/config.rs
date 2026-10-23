@@ -1,12 +1,15 @@
 use std::fmt;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{Error, Result};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum DriverKind {
     Postgres,
     MySql,
@@ -25,7 +28,8 @@ impl DriverKind {
 }
 
 /// TLS behaviour, following libpq `sslmode` semantics.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum SslMode {
     Disable,
     /// Use TLS when the server offers it, fall back to plaintext otherwise.
@@ -88,6 +92,8 @@ pub struct ConnectionConfig {
     pub user: String,
     pub password: Option<Secret>,
     pub ssl_mode: SslMode,
+    /// PEM file with the CA certificates to trust; the OS trust store is used when `None`.
+    pub ssl_root_cert: Option<PathBuf>,
     pub application_name: Option<String>,
     pub connect_timeout: Option<Duration>,
 }
@@ -103,6 +109,7 @@ impl ConnectionConfig {
             user: String::new(),
             password: None,
             ssl_mode: SslMode::default(),
+            ssl_root_cert: None,
             application_name: Some("PlatypusDB".to_owned()),
             connect_timeout: Some(Duration::from_secs(10)),
         }
@@ -139,6 +146,7 @@ impl ConnectionConfig {
         for (key, value) in url.query_pairs() {
             match &*key {
                 "sslmode" | "ssl-mode" => config.ssl_mode = value.parse()?,
+                "sslrootcert" => config.ssl_root_cert = Some(PathBuf::from(&*value)),
                 "application_name" => config.application_name = Some(value.into_owned()),
                 "connect_timeout" => {
                     let secs = value
