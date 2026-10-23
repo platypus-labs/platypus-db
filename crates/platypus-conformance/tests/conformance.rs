@@ -11,8 +11,8 @@ use arrow_array::RecordBatch;
 use arrow_cast::display::array_value_to_string;
 use futures::{StreamExt, TryStreamExt};
 use platypus_core::{
-    Connection, ConnectionConfig, Driver, DriverKind, Error, ExecOptions, ExecResult, ObjectKind,
-    ObjectRef,
+    Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, Error, ExecOptions,
+    ExecResult, ObjectKind, ObjectRef,
 };
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
@@ -588,6 +588,7 @@ async fn capabilities_match_optional_methods() {
             schema: &b.schema,
             name: "customers",
             kind: ObjectKind::Table,
+            parent: None,
         };
         let ddl = conn.object_ddl(&object).await;
         assert_eq!(
@@ -596,5 +597,182 @@ async fn capabilities_match_optional_methods() {
             "{}: object_ddl vs capabilities.object_ddl: {ddl:?}",
             b.name
         );
+    }
+}
+
+/// Constraints, incoming references, triggers and DDL, on a probe table created for the
+/// test (with a primary key, a unique column, a check and a trigger) and on the fixtures.
+#[tokio::test]
+async fn describes_objects_and_their_ddl() {
+    for b in backends().await {
+        let conn = b.connect().await;
+        let suffix = std::process::id();
+        let (table, trigger) = (format!("probe_t{suffix}"), format!("probe_trg{suffix}"));
+        let (setup, teardown) = probe_sql(&b, &table, &trigger, suffix);
+        for sql in teardown.iter().chain(&setup) {
+            run(&*conn, sql)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name));
+        }
+        check_probe(&b, &*conn, &table, &trigger).await;
+        check_fixture_objects(&b, &*conn).await;
+        for sql in &teardown {
+            run(&*conn, sql).await.unwrap();
+        }
+    }
+}
+
+/// `(setup, teardown)` statements for the probe table and its trigger.
+fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<String>, Vec<String>) {
+    let s = &b.schema;
+    let columns = match b.config.driver {
+        DriverKind::Postgres => "id int PRIMARY KEY, code text UNIQUE, qty int CHECK (qty >= 0)",
+        DriverKind::MySql => {
+            "id INT PRIMARY KEY, code VARCHAR(10) UNIQUE, qty INT CHECK (qty >= 0)"
+        }
+        DriverKind::Sqlite => "id INTEGER PRIMARY KEY, code TEXT UNIQUE, qty INT CHECK (qty >= 0)",
+    };
+    let create = format!("CREATE TABLE {s}.{table} ({columns})");
+    let drop = format!("DROP TABLE IF EXISTS {s}.{table}");
+    match b.config.driver {
+        DriverKind::Postgres => {
+            let function = format!("{s}.probe_fn{suffix}()");
+            (
+                vec![
+                    create,
+                    format!(
+                        "CREATE FUNCTION {function} RETURNS trigger LANGUAGE plpgsql AS $$BEGIN RETURN NEW; END$$"
+                    ),
+                    format!(
+                        "CREATE TRIGGER {trigger} BEFORE INSERT ON {s}.{table} FOR EACH ROW EXECUTE FUNCTION {function}"
+                    ),
+                ],
+                vec![drop, format!("DROP FUNCTION IF EXISTS {function}")],
+            )
+        }
+        DriverKind::MySql => (
+            vec![
+                create,
+                format!(
+                    "CREATE TRIGGER {s}.{trigger} BEFORE INSERT ON {s}.{table} FOR EACH ROW SET NEW.qty = NEW.qty"
+                ),
+            ],
+            vec![drop],
+        ),
+        DriverKind::Sqlite => (
+            vec![
+                create,
+                format!(
+                    "CREATE TRIGGER {s}.{trigger} BEFORE INSERT ON {table} BEGIN SELECT 1; END"
+                ),
+            ],
+            vec![drop],
+        ),
+    }
+}
+
+async fn check_probe(b: &Backend, conn: &dyn Connection, table: &str, trigger: &str) {
+    let s = &b.schema;
+    let details = conn.table_details(s, table).await.unwrap();
+    let has = |kind| details.constraints.iter().any(|c| c.kind == kind);
+    assert!(
+        has(ConstraintKind::PrimaryKey),
+        "{}: {:?}",
+        b.name,
+        details.constraints
+    );
+    assert!(
+        has(ConstraintKind::Unique),
+        "{}: {:?}",
+        b.name,
+        details.constraints
+    );
+    // SQLite keeps checks only in the table's SQL.
+    if b.config.driver != DriverKind::Sqlite {
+        let check = details
+            .constraints
+            .iter()
+            .find(|c| c.kind == ConstraintKind::Check);
+        assert!(
+            check.is_some_and(|c| c.definition.contains("qty")),
+            "{}: {:?}",
+            b.name,
+            details.constraints
+        );
+    }
+
+    let objects = conn.objects(s).await.unwrap();
+    let found = objects.iter().find(|o| o.name == trigger);
+    assert_eq!(
+        found.map(|o| o.kind),
+        Some(ObjectKind::Trigger),
+        "{}",
+        b.name
+    );
+    assert_eq!(
+        found.and_then(|o| o.parent.as_deref()),
+        Some(table),
+        "{}",
+        b.name
+    );
+
+    let object = |name, kind, parent| ObjectRef {
+        schema: s,
+        name,
+        kind,
+        parent,
+    };
+    let ddl = conn
+        .object_ddl(&object(table, ObjectKind::Table, None))
+        .await
+        .unwrap();
+    for part in ["CREATE TABLE", "code", "qty"] {
+        assert!(ddl.contains(part), "{}: {part} in {ddl}", b.name);
+    }
+    let ddl = conn
+        .object_ddl(&object(trigger, ObjectKind::Trigger, Some(table)))
+        .await
+        .unwrap();
+    assert!(
+        ddl.to_uppercase().contains("CREATE") && ddl.contains(trigger),
+        "{}: {ddl}",
+        b.name
+    );
+}
+
+async fn check_fixture_objects(b: &Backend, conn: &dyn Connection) {
+    let object = |name, kind| ObjectRef {
+        schema: &b.schema,
+        name,
+        kind,
+        parent: None,
+    };
+    let ddl = conn
+        .object_ddl(&object("orders", ObjectKind::Table))
+        .await
+        .unwrap();
+    assert!(ddl.contains("customers"), "{}: FK missing in {ddl}", b.name);
+    let ddl = conn
+        .object_ddl(&object("customer_totals", ObjectKind::View))
+        .await
+        .unwrap();
+    assert!(ddl.contains("customer_totals"), "{}: {ddl}", b.name);
+
+    let customers = conn.table_details(&b.schema, "customers").await.unwrap();
+    let incoming = customers.referenced_by.iter().find(|r| r.table == "orders");
+    assert!(
+        incoming.is_some_and(|r| r.columns == ["customer_id"] && r.ref_columns == ["id"]),
+        "{}: {:?}",
+        b.name,
+        customers.referenced_by
+    );
+
+    let props = conn
+        .object_properties(&object("customers", ObjectKind::Table))
+        .await
+        .unwrap();
+    // SQLite has no catalog of owners or sizes.
+    if b.config.driver != DriverKind::Sqlite {
+        assert!(!props.is_empty(), "{}: no properties", b.name);
     }
 }

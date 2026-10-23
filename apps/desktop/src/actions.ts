@@ -17,10 +17,25 @@ export interface ActionScopes {
   /** Anywhere in the window; shortcuts are captured before the editor sees them. */
   global: undefined;
   "navigator.connection": { connection: SavedConnection };
-  "navigator.schema": { connection: SavedConnection; schema: SchemaMeta };
-  /** A table, view, sequence or routine; `target` is its quoted, qualified name. */
-  "navigator.object": { connection: SavedConnection; schema: SchemaMeta; object: ObjectMeta; target: string };
-  "navigator.column": { connection: SavedConnection; schema: SchemaMeta; object: ObjectMeta; column: string };
+  /** A database of the server; `database` is `null` for the saved one, `name` is its name. */
+  "navigator.database": { connection: SavedConnection; database: string | null; name: string };
+  /** `database`: `null` for the connection's saved database, else another one of the server. */
+  "navigator.schema": { connection: SavedConnection; database: string | null; schema: SchemaMeta };
+  /** A table, view, routine, trigger, ...; `target` is its quoted, qualified name. */
+  "navigator.object": {
+    connection: SavedConnection;
+    database: string | null;
+    schema: SchemaMeta;
+    object: ObjectMeta;
+    target: string;
+  };
+  "navigator.column": {
+    connection: SavedConnection;
+    database: string | null;
+    schema: SchemaMeta;
+    object: ObjectMeta;
+    column: string;
+  };
   /** A result grid with focus or a context menu. */
   grid: GridActionContext;
 }

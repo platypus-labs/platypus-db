@@ -197,6 +197,10 @@ impl Connection for SqliteConnection {
         meta::catalog_columns(self).await
     }
 
+    async fn object_ddl(&self, object: &platypus_core::ObjectRef<'_>) -> Result<String> {
+        meta::object_ddl(self, object).await
+    }
+
     fn transaction(&self) -> TransactionState {
         TransactionState {
             autocommit: self.autocommit.load(Ordering::Acquire),
@@ -230,6 +234,7 @@ impl Connection for SqliteConnection {
         platypus_core::Capabilities {
             transactions: true,
             cancel: true,
+            object_ddl: true,
             ..Default::default()
         }
     }

@@ -23,6 +23,9 @@ pub struct Capabilities {
     pub explain: bool,
     /// [`Connection::object_ddl`](crate::Connection::object_ddl).
     pub object_ddl: bool,
+    /// [`Connection::databases`](crate::Connection::databases): other databases of the
+    /// server can be opened from the same saved connection.
+    pub multiple_databases: bool,
 }
 
 /// The error a `Connection` method returns when the driver does not implement it.
@@ -52,4 +55,6 @@ pub struct ObjectRef<'a> {
     pub schema: &'a str,
     pub name: &'a str,
     pub kind: ObjectKind,
+    /// The table of a trigger.
+    pub parent: Option<&'a str>,
 }

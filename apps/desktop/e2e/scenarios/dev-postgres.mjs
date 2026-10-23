@@ -45,8 +45,10 @@ save_password = false
   );
 }
 
+/** Waits until no statement runs (Cancel is disabled) and the status passes `test`. */
 async function waitStatus(page, test) {
-  await page.waitFor(`(() => { const s = ${status}; return s !== '' && !s.includes('Executing') && (${test}); })()`, 15_000);
+  const idle = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.textContent.includes('Cancel'))?.disabled`;
+  await page.waitFor(`(() => { const s = ${status}; return ${idle} && s !== '' && !s.includes('Executing') && (${test}); })()`, 15_000);
   return page.eval(status);
 }
 
@@ -73,7 +75,10 @@ export default async function (page) {
   await page.waitFor(`${row("orders")} !== undefined`, 15_000);
 
   await page.eval(`${row("orders")}.id = 'e2e-orders'`);
-  assert.deepEqual(await menu(page, "#e2e-orders"), ["Open data", "Generate SELECT", "Copy name", "Refresh"]);
+  const items = await menu(page, "#e2e-orders");
+  for (const item of ["Open data", "Open details", "Generate SELECT", "Copy name", "Refresh", "Drop…"]) {
+    assert.ok(items.includes(item), `${item} in ${items}`);
+  }
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent === 'Open data').click()`);
 
   // Data viewer: autorun, header sort and filter.

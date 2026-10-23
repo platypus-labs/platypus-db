@@ -37,6 +37,7 @@ export interface Capabilities {
   cancel: boolean;
   explain: boolean;
   object_ddl: boolean;
+  multiple_databases: boolean;
 }
 
 export interface CommandError {
@@ -98,12 +99,19 @@ export type ObjectKind =
   | "foreign_table"
   | "sequence"
   | "function"
-  | "procedure";
+  | "procedure"
+  | "trigger"
+  | "type"
+  | "domain"
+  | "extension"
+  | "event";
 
 export interface ObjectMeta {
   name: string;
   kind: ObjectKind;
   comment: string | null;
+  /** The table of a trigger. */
+  parent: string | null;
 }
 
 export interface ColumnMeta {
@@ -130,10 +138,64 @@ export interface ForeignKeyMeta {
   ref_columns: string[];
 }
 
+export interface ConstraintMeta {
+  name: string;
+  kind: "primary_key" | "unique" | "check" | "exclusion";
+  columns: string[];
+  definition: string;
+}
+
+/** A foreign key of another table that points at this one. */
+export interface ReferenceMeta {
+  name: string;
+  schema: string;
+  table: string;
+  columns: string[];
+  ref_columns: string[];
+}
+
 export interface TableDetails {
   columns: ColumnMeta[];
   indexes: IndexMeta[];
   foreign_keys: ForeignKeyMeta[];
+  constraints: ConstraintMeta[];
+  referenced_by: ReferenceMeta[];
+}
+
+export interface Property {
+  name: string;
+  value: string;
+}
+
+/** An object as the backend identifies it. */
+export interface ObjectTarget {
+  schema: string;
+  name: string;
+  kind: ObjectKind;
+  parent: string | null;
+}
+
+/** What to generate SQL for; columns and keys apply to DML. */
+export interface GenerateTarget {
+  /** `null` for the session's current schema. */
+  schema: string | null;
+  name: string;
+  kind: ObjectKind;
+  parent: string | null;
+  columns?: string[];
+  keys?: string[];
+}
+
+export type GenerateRequest =
+  | { statement: "select"; limit: number | null }
+  | { statement: "insert" | "update" | "delete" | "upsert" | "truncate" }
+  | { statement: "drop"; cascade: boolean }
+  | { statement: "rename"; new_name: string };
+
+export interface DialectSupport {
+  cascade: boolean;
+  droppable: ObjectKind[];
+  renamable: ObjectKind[];
 }
 
 /** Tables and columns by schema, for autocompletion. */
@@ -186,10 +248,12 @@ export const api = {
   deleteConnection: (id: string) => invoke<SavedConnection[]>("delete_connection", { id }),
   testConnection: (connection: SavedConnection, password: PasswordInput) =>
     invoke<ServerInfo>("test_connection", { connection, password }),
-  openSession: (connectionId: string, password?: string) =>
+  /** `database` opens another database of the same server instead of the saved one. */
+  openSession: (connectionId: string, password?: string, database?: string | null) =>
     invoke<{ session_id: number; server: ServerInfo; capabilities: Capabilities }>("open_session", {
       connectionId,
       password: password ?? null,
+      database: database ?? null,
     }),
   closeSession: (sessionId: number) => invoke<void>("close_session", { sessionId }),
   /** `limit` caps fetched rows and frees the session afterwards (script mode). */
@@ -264,6 +328,16 @@ export const api = {
   getSettings: () => invoke<Record<string, unknown>>("get_settings"),
   /** `null` removes the key, restoring the default. */
   setSetting: (key: string, value: unknown) => invoke<void>("set_setting", { key, value }),
+  objectDdl: (sessionId: number, object: ObjectTarget) => invoke<string>("object_ddl", { sessionId, object }),
+  objectProperties: (sessionId: number, object: ObjectTarget) =>
+    invoke<Property[]>("object_properties", { sessionId, object }),
+  listDatabases: (sessionId: number) => invoke<string[]>("list_databases", { sessionId }),
+  /** Runs DDL or DML whose result is not shown; the affected rows when reported. */
+  executeStatement: (sessionId: number, sql: string) => invoke<number | null>("execute_statement", { sessionId, sql }),
+  /** `null` when the dialect has no such statement for the object. */
+  generateSql: (driver: DriverKind, target: GenerateTarget, request: GenerateRequest) =>
+    invoke<string | null>("generate_sql", { driver, target, request }),
+  dialectSupport: (driver: DriverKind) => invoke<DialectSupport>("dialect_support", { driver }),
   fetchAll: (jobId: number) => invoke<void>("fetch_all", { jobId }),
   cancelQuery: (jobId: number) => invoke<void>("cancel_query", { jobId }),
   closeQuery: (jobId: number) => invoke<void>("close_query", { jobId }),

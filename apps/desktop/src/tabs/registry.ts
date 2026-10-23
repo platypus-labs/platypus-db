@@ -26,6 +26,8 @@ export interface TabBase {
   connectionId: string;
   /** Shown before the connection name, e.g. the table opened from the navigator. */
   title?: string | null;
+  /** Another database of the server than the saved one (PostgreSQL). */
+  database?: string | null;
   /** Uncommitted changes are pending: closing asks first. Not persisted. */
   txOpen?: boolean;
 }

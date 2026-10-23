@@ -3870,6 +3870,7 @@ dependencies = [
  "futures",
  "mysql_async",
  "platypus-core",
+ "platypus-sql",
  "tokio",
 ]
 
@@ -3903,6 +3904,7 @@ dependencies = [
  "async-trait",
  "futures",
  "platypus-core",
+ "platypus-sql",
  "rusqlite",
  "tempfile",
  "tokio",

@@ -1,10 +1,13 @@
 //! Navigator metadata from `sqlite_master` and the `pragma_*` table-valued functions.
 
+use std::fmt::Write as _;
+
 use platypus_core::{
-    CATALOG_LIMIT, CatalogColumn, ColumnMeta, Connection, ForeignKeyMeta, IndexMeta, ObjectKind,
-    ObjectMeta, Result, SchemaMeta, TableDetails, TextRowExt, group_sorted, query_catalog,
-    query_text,
+    CATALOG_LIMIT, CatalogColumn, ColumnMeta, Connection, ConstraintKind, ConstraintMeta, Error,
+    ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ObjectRef, ReferenceMeta, Result,
+    SchemaMeta, TableDetails, TextRowExt, group_sorted, query_catalog, query_text, unsupported,
 };
+use platypus_sql::Dialect;
 
 fn literal(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
@@ -52,8 +55,9 @@ pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMe
     let rows = query_text(
         conn,
         &format!(
-            "SELECT name, type FROM {}.sqlite_master
-             WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'
+            "SELECT name, type, CASE WHEN type = 'trigger' THEN tbl_name END
+             FROM {}.sqlite_master
+             WHERE type IN ('table', 'view', 'trigger') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'
              ORDER BY name",
             ident(schema)
         ),
@@ -61,16 +65,54 @@ pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMe
     .await?;
     Ok(rows
         .iter()
-        .map(|r| ObjectMeta {
-            name: r.text(0),
-            kind: if r.text(1) == "view" {
-                ObjectKind::View
-            } else {
-                ObjectKind::Table
-            },
-            comment: None,
+        .map(|r| {
+            let kind = match r.text(1).as_str() {
+                "view" => ObjectKind::View,
+                "trigger" => ObjectKind::Trigger,
+                _ => ObjectKind::Table,
+            };
+            ObjectMeta {
+                parent: r.opt(2),
+                ..ObjectMeta::new(r.text(0), kind, None)
+            }
         })
         .collect())
+}
+
+/// The stored `CREATE` statement; for a table followed by its indexes and triggers.
+pub async fn object_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<String> {
+    let kind = match o.kind {
+        ObjectKind::Table => "table",
+        ObjectKind::View => "view",
+        ObjectKind::Trigger => "trigger",
+        other => return Err(unsupported(&format!("{other:?} objects in SQLite"))),
+    };
+    let master = format!("{}.sqlite_master", ident(o.schema));
+    let mut sql = format!(
+        "SELECT sql FROM {master} WHERE type = {} AND name = {}",
+        literal(kind),
+        literal(o.name)
+    );
+    if o.kind == ObjectKind::Table {
+        // Automatic indexes (for UNIQUE and PRIMARY KEY) have no SQL.
+        let _ = write!(
+            sql,
+            " UNION ALL SELECT sql FROM (SELECT sql FROM {master}
+               WHERE type IN ('index', 'trigger') AND tbl_name = {} AND sql IS NOT NULL
+               ORDER BY type, name)",
+            literal(o.name)
+        );
+    }
+    let statements: Vec<String> = query_text(conn, &sql)
+        .await?
+        .iter()
+        .filter_map(|r| r.opt(0))
+        .map(|s| format!("{};", s.trim_end().trim_end_matches(';')))
+        .collect();
+    if statements.is_empty() {
+        return Err(Error::Other(format!("{}.{} not found", o.schema, o.name)));
+    }
+    Ok(statements.join("\n\n"))
 }
 
 pub async fn table_details(
@@ -171,9 +213,80 @@ pub async fn table_details(
         },
     );
 
+    let constraints = key_constraints(&indexes);
+    let referenced_by = referenced_by(conn, schema, table).await?;
+
     Ok(TableDetails {
         columns,
         indexes,
         foreign_keys,
+        constraints,
+        referenced_by,
     })
+}
+
+/// Primary and unique keys. SQLite keeps CHECK constraints only in the table's SQL.
+fn key_constraints(indexes: &[IndexMeta]) -> Vec<ConstraintMeta> {
+    let quoted = |cols: &[String]| {
+        cols.iter()
+            .map(|c| Dialect::Sqlite.quote_ident(c))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    indexes
+        .iter()
+        .filter(|i| i.primary || i.unique)
+        .map(|i| {
+            let (kind, keyword) = if i.primary {
+                (ConstraintKind::PrimaryKey, "PRIMARY KEY")
+            } else {
+                (ConstraintKind::Unique, "UNIQUE")
+            };
+            ConstraintMeta {
+                name: i.name.clone(),
+                kind,
+                columns: i.columns.clone(),
+                definition: format!("{keyword} ({})", quoted(&i.columns)),
+            }
+        })
+        .collect()
+}
+
+/// Foreign keys of the other tables of `schema` that point at `table`.
+async fn referenced_by(
+    conn: &dyn Connection,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<ReferenceMeta>> {
+    let rows = query_text(
+        conn,
+        &format!(
+            "SELECT m.name, f.id, f.\"from\", coalesce(f.\"to\", '')
+             FROM {}.sqlite_master m JOIN pragma_foreign_key_list(m.name, {}) f
+             WHERE m.type = 'table' AND f.\"table\" = {} COLLATE NOCASE
+             ORDER BY m.name, f.id, f.seq",
+            ident(schema),
+            literal(schema),
+            literal(table)
+        ),
+    )
+    .await?;
+    Ok(group_sorted(
+        rows.iter().map(|r| {
+            (
+                format!("{}{}", r.text(0), r.text(1)),
+                ReferenceMeta {
+                    name: format!("fk_{}_{}", r.text(0), r.text(1)),
+                    schema: schema.to_owned(),
+                    table: r.text(0),
+                    columns: vec![r.text(2)],
+                    ref_columns: vec![r.text(3)],
+                },
+            )
+        }),
+        |reference, row| {
+            reference.columns.extend(row.columns);
+            reference.ref_columns.extend(row.ref_columns);
+        },
+    ))
 }
