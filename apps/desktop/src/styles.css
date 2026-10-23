@@ -29,8 +29,9 @@
   color-scheme: light dark;
 }
 
+/* Dark colors follow the system unless the user picked a theme (data-theme on <html>). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #1b1d21;
     --bg-sidebar: #23262b;
     --bg-input: #15171a;
@@ -56,6 +57,38 @@
     --syn-type: #66d9e8;
     --syn-ident: #74c0fc;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1b1d21;
+  --bg-sidebar: #23262b;
+  --bg-input: #15171a;
+  --fg: #e6e8eb;
+  --fg-muted: #8b919a;
+  --border: #33373d;
+  --accent: #4dabf7;
+  --accent-fg: #0b1621;
+  --hover: rgba(255, 255, 255, 0.06);
+  --error: #ff8a80;
+  --error-bg: #3b1f1f;
+  --ok: #8ce99a;
+  --ok-bg: #1f3324;
+  --warn-bg: #3b2f1a;
+  --grid-bg: #1b1d21;
+  --grid-bg-alt: #202328;
+  --grid-header: #25282d;
+  --grid-selection: rgba(77, 171, 247, 0.22);
+  --syn-keyword: #c4a7ff;
+  --syn-string: #8ce99a;
+  --syn-number: #ffa94d;
+  --syn-comment: #6c727b;
+  --syn-type: #66d9e8;
+  --syn-ident: #74c0fc;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 * {
@@ -725,4 +758,13 @@ button.toggled {
   display: flex;
   gap: 8px;
   margin-top: 6px;
+}
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--ok-bg);
+  border-bottom: 1px solid var(--border);
 }

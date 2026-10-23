@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   api,
+  type CompletionCatalog,
   toCommandError,
   type ExportOptions,
   type QueryEvent,
@@ -14,6 +15,9 @@ import { basename } from "../workspace";
 import { ExportDialog, type ExportSource } from "./ExportDialog";
 import { HistoryPanel } from "./HistoryPanel";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
+
+/** Statements that change which tables and columns exist. */
+const DDL = /^\s*(create|alter|drop|rename)\b/i;
 
 /** Rows fetched per statement when running a script; the rest is cancelled. */
 const SCRIPT_ROW_LIMIT = 1000;
@@ -46,6 +50,9 @@ interface Props {
   ensureSession: () => Promise<number | null>;
   /** The connection's navigator session, for side queries such as row counts. */
   sideSession: () => Promise<number | null>;
+  catalog: CompletionCatalog | null;
+  /** Asks for the autocompletion catalog; `force` reloads it after schema changes. */
+  onNeedCatalog: (force: boolean) => void;
   onChange: (patch: Partial<TabModel>) => void;
   onOpenFile: (path: string, sql: string) => void;
   onError: (message: string) => void;
@@ -86,6 +93,8 @@ export function QueryTab({
   active,
   ensureSession,
   sideSession,
+  catalog,
+  onNeedCatalog,
   onChange,
   onOpenFile,
   onError,
@@ -113,6 +122,11 @@ export function QueryTab({
   };
   // Release results when the tab closes.
   useEffect(() => closeJobs, []);
+
+  // Without a password prompt the catalog can load right away; otherwise on first run.
+  useEffect(() => {
+    if (connection.save_password || connection.driver === "sqlite") onNeedCatalog(false);
+  }, [connection.id]);
 
   useEffect(() => {
     if (!tab.autorun) return;
@@ -234,6 +248,7 @@ export function QueryTab({
     setBlocked(null);
     const sessionId = await ensureSession();
     if (sessionId === null) return;
+    onNeedCatalog(false);
 
     const token = ++runToken.current;
     closeJobs();
@@ -263,7 +278,13 @@ export function QueryTab({
       update(result.id, { status: { kind: "running" } });
       setActiveResult(i);
       editor.current!.flash(p.offset, p.offset + p.sql.length);
-      const status = await runOne(sessionId, result, token);
+      let status = await runOne(sessionId, result, token);
+      // A dropped connection fails before the statement reaches the server; the second
+      // attempt runs on a reopened connection.
+      if (status.kind === "error" && status.error.kind === "closed" && token === runToken.current) {
+        update(result.id, { status: { kind: "running" } });
+        status = await runOne(sessionId, result, token);
+      }
       if (token !== runToken.current) return;
       if (status.kind === "rows") lastRows = i;
       if (status.kind === "error") {
@@ -277,6 +298,7 @@ export function QueryTab({
     setActiveResult(failed >= 0 ? failed : lastRows >= 0 ? lastRows : initial.length - 1);
     setRunning(false);
     currentJob.current = null;
+    if (planned.some((p) => DDL.test(p.sql))) onNeedCatalog(true);
     setHistoryVersion((v) => v + 1);
     await refreshTx(sessionId);
   }
@@ -542,6 +564,7 @@ export function QueryTab({
           ref={editor}
           initialValue={tab.sql}
           driver={connection.driver}
+          catalog={catalog}
           onChange={(sql) => onChange({ sql })}
           onRun={(mode) => void run(mode)}
           onSave={() => void saveFile()}

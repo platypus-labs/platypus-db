@@ -128,6 +128,12 @@ export interface TableDetails {
   foreign_keys: ForeignKeyMeta[];
 }
 
+/** Tables and columns by schema, for autocompletion. */
+export interface CompletionCatalog {
+  default_schema: string | null;
+  schemas: Record<string, Record<string, string[]>>;
+}
+
 export interface TransactionState {
   autocommit: boolean;
   open: boolean;
@@ -200,6 +206,7 @@ export const api = {
   /** Commits (`commit`) or rolls back; unfinished results of the session stop fetching. */
   endTransaction: (sessionId: number, commit: boolean) =>
     invoke<TransactionState>("end_transaction", { sessionId, commit }),
+  completionCatalog: (sessionId: number) => invoke<CompletionCatalog>("completion_catalog", { sessionId }),
   queryValue: (sessionId: number, sql: string) => invoke<string | null>("query_value", { sessionId, sql }),
   /** Re-runs `sql` on its own connection, streaming every row to `path`. */
   exportQuery: (

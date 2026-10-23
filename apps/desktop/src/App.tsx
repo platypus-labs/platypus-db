@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { api, toCommandError, type SavedConnection } from "./api";
+import { api, type CompletionCatalog, toCommandError, type SavedConnection } from "./api";
 import { ConnectionDialog } from "./components/ConnectionDialog";
 import { QueryTab, type TabModel } from "./components/QueryTab";
 import { Navigator } from "./components/Navigator";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { basename, loadWorkspace, saveWorkspace } from "./workspace";
 
 type Dialog = { kind: "connection"; connection: SavedConnection; existing: boolean } | null;
@@ -34,6 +35,10 @@ export function App() {
   /** Navigator sessions by connection id, separate from the editors' so browsing never
    *  waits behind a running query. */
   const navSessions = useRef(new Map<string, Promise<number | null>>());
+  /** Passwords typed this run, in memory only, so a second session does not ask again. */
+  const passwords = useRef(new Map<string, string>());
+  const [catalogs, setCatalogs] = useState<Record<string, CompletionCatalog>>({});
+  const catalogLoads = useRef(new Map<string, Promise<unknown>>());
   const restored = useRef(false);
 
   useEffect(() => {
@@ -105,17 +110,39 @@ export function App() {
   async function connect(connection: SavedConnection): Promise<number | null> {
     let password: string | undefined;
     if (!connection.save_password && connection.driver !== "sqlite") {
-      const entered = await askPassword(connection);
-      if (entered === null) return null;
-      password = entered;
+      password = passwords.current.get(connection.id);
+      if (password === undefined) {
+        const entered = await askPassword(connection);
+        if (entered === null) return null;
+        password = entered;
+      }
     }
     try {
       const { session_id } = await api.openSession(connection.id, password);
+      if (password !== undefined) passwords.current.set(connection.id, password);
       return session_id;
     } catch (e) {
+      passwords.current.delete(connection.id);
       setToast(`${connection.name}: ${toCommandError(e).message}`);
       return null;
     }
+  }
+
+  /** Loads (or with `force` reloads) the tables and columns the editors complete. */
+  function requestCatalog(connection: SavedConnection, force = false) {
+    if (!force && catalogLoads.current.has(connection.id)) return;
+    const loading = (async () => {
+      const sessionId = await navigatorSession(connection);
+      if (sessionId === null) return catalogLoads.current.delete(connection.id);
+      try {
+        const catalog = await api.completionCatalog(sessionId);
+        setCatalogs((all) => ({ ...all, [connection.id]: catalog }));
+      } catch (e) {
+        catalogLoads.current.delete(connection.id);
+        console.warn("autocompletion catalog", e);
+      }
+    })();
+    catalogLoads.current.set(connection.id, loading);
   }
 
   /** Caches a session promise; failed or cancelled attempts are retried on next use. */
@@ -140,6 +167,8 @@ export function App() {
   }
 
   function disconnectNavigator(connection: SavedConnection) {
+    passwords.current.delete(connection.id);
+    catalogLoads.current.delete(connection.id);
     const session = navSessions.current.get(connection.id);
     navSessions.current.delete(connection.id);
     void session?.then((id) => {
@@ -167,6 +196,37 @@ export function App() {
     });
   }
 
+  // Tab shortcuts, captured before the editor sees them. The handler reads the latest
+  // state through a ref so it is registered once.
+  const shortcuts = useRef<(e: KeyboardEvent) => void>(() => {});
+  shortcuts.current = (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const index = tabs.findIndex((t) => t.key === activeTab);
+    const move = (delta: number) => {
+      if (tabs.length === 0) return;
+      setActiveTab(tabs[(index + delta + tabs.length) % tabs.length]!.key);
+    };
+    const key = e.key.toLowerCase();
+    if (key === "t" && !e.shiftKey) {
+      const connectionId = tabs[index]?.connectionId ?? connections?.[0]?.id;
+      if (connectionId) addTab(newTab(connectionId));
+    } else if (key === "w" && !e.shiftKey) {
+      const tab = tabs[index];
+      if (tab) closeTab(tab);
+    } else if (key === "tab" || key === "pagedown" || key === "pageup") {
+      move(key === "pageup" || (key === "tab" && e.shiftKey) ? -1 : 1);
+    } else {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => shortcuts.current(e);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
   function patchTab(key: number, patch: Partial<TabModel>) {
     setTabs((all) => all.map((t) => (t.key === key ? { ...t, ...patch } : t)));
   }
@@ -189,9 +249,11 @@ export function App() {
         onOpenTab={(c, init) => addTab(newTab(c.id, init))}
         session={navigatorSession}
         disconnect={disconnectNavigator}
+        onRefresh={(c) => requestCatalog(c, true)}
         onError={setToast}
       />
       <main className="workspace">
+        <UpdateBanner />
         {tabs.length > 0 && (
           <div className="tabs">
             {tabs.map((t) => (
@@ -233,6 +295,8 @@ export function App() {
                 ensureSession={() => ensureSession(t)}
                 onChange={(patch) => patchTab(t.key, patch)}
                 sideSession={() => navigatorSession(connection)}
+                catalog={catalogs[connection.id] ?? null}
+                onNeedCatalog={(force) => requestCatalog(connection, force)}
                 onOpenFile={(path, sql) => addTab(newTab(t.connectionId, { sql, filePath: path }))}
                 onError={setToast}
               />

@@ -3,7 +3,7 @@
 // Tauri injects `State` and deserialized arguments by value.
 #![allow(clippy::needless_pass_by_value)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -100,6 +100,31 @@ impl AppState {
             .get(&id)
             .cloned()
             .ok_or_else(|| CommandError::not_found("session", id))
+    }
+
+    /// The session's connection, reopened first if the server dropped it. Manual-commit
+    /// mode carries over; a transaction that was open is lost, which is reported as an
+    /// error instead of running the statement outside it.
+    async fn live(&self, id: u64) -> CommandResult<Arc<dyn Connection>> {
+        let session = self.session(id)?;
+        if !session.conn.is_closed() {
+            return Ok(session.conn);
+        }
+        let previous = session.conn.transaction();
+        let conn: Arc<dyn Connection> = Arc::from(connect(&session.config).await?);
+        if !previous.autocommit {
+            conn.set_autocommit(false).await?;
+        }
+        if let Some(s) = lock(&self.sessions).get_mut(&id) {
+            s.conn = Arc::clone(&conn);
+        }
+        if previous.open {
+            return Err(CommandError::new(
+                "reconnected",
+                "The connection was lost and has been reopened; the open transaction was rolled back.",
+            ));
+        }
+        Ok(conn)
     }
 
     fn job(&self, id: u64) -> CommandResult<Arc<Job>> {
@@ -250,13 +275,14 @@ pub fn close_session(state: State<'_, AppState>, session_id: u64) {
 /// Starts a statement and returns its job id at once; progress arrives on `on_event`.
 /// `limit` caps the rows fetched and frees the session afterwards (script mode).
 #[tauri::command]
-pub fn run_query(
+pub async fn run_query(
     state: State<'_, AppState>,
     session_id: u64,
     sql: String,
     limit: Option<usize>,
     on_event: Channel<QueryEvent>,
 ) -> CommandResult<u64> {
+    let conn = state.live(session_id).await?;
     let session = state.session(session_id)?;
     let history = Arc::clone(&state.history);
     let started_at = SystemTime::now();
@@ -286,7 +312,7 @@ pub fn run_query(
             });
         }
     };
-    let job = Job::start(session_id, session.conn, sql, limit, on_event, record);
+    let job = Job::start(session_id, conn, sql, limit, on_event, record);
     let job_id = state.next_id();
     lock(&state.jobs).insert(job_id, job);
     Ok(job_id)
@@ -329,6 +355,41 @@ pub fn close_query(state: State<'_, AppState>, job_id: u64) {
     }
 }
 
+/// Tables and columns for editor autocompletion: `schemas[schema][table]` lists the
+/// columns in declaration order.
+#[derive(Debug, Serialize)]
+pub struct CompletionCatalog {
+    default_schema: Option<String>,
+    schemas: BTreeMap<String, BTreeMap<String, Vec<String>>>,
+}
+
+#[tauri::command]
+pub async fn completion_catalog(
+    state: State<'_, AppState>,
+    session_id: u64,
+) -> CommandResult<CompletionCatalog> {
+    let conn = state.live(session_id).await?;
+    let default_schema = conn
+        .schemas()
+        .await?
+        .into_iter()
+        .find(|s| s.current)
+        .map(|s| s.name);
+    let mut schemas: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
+    for c in conn.catalog_columns().await? {
+        schemas
+            .entry(c.schema)
+            .or_default()
+            .entry(c.table)
+            .or_default()
+            .push(c.column);
+    }
+    Ok(CompletionCatalog {
+        default_schema,
+        schemas,
+    })
+}
+
 /// Stops fetching every unfinished result of a session, so it can run another statement.
 fn stop_jobs(state: &AppState, session_id: u64) {
     let jobs: Vec<_> = lock(&state.jobs)
@@ -355,7 +416,7 @@ pub async fn set_autocommit(
     session_id: u64,
     on: bool,
 ) -> CommandResult<TransactionState> {
-    let conn = state.session(session_id)?.conn;
+    let conn = state.live(session_id).await?;
     stop_jobs(&state, session_id);
     conn.set_autocommit(on).await?;
     Ok(conn.transaction())
@@ -369,7 +430,7 @@ pub async fn end_transaction(
     session_id: u64,
     commit: bool,
 ) -> CommandResult<TransactionState> {
-    let conn = state.session(session_id)?.conn;
+    let conn = state.live(session_id).await?;
     stop_jobs(&state, session_id);
     if commit {
         conn.commit().await?;
@@ -386,8 +447,8 @@ pub async fn list_schemas(
     state: State<'_, AppState>,
     session_id: u64,
 ) -> CommandResult<Vec<SchemaMeta>> {
-    let session = state.session(session_id)?;
-    Ok(session.conn.schemas().await?)
+    let conn = state.live(session_id).await?;
+    Ok(conn.schemas().await?)
 }
 
 #[tauri::command]
@@ -396,8 +457,8 @@ pub async fn list_objects(
     session_id: u64,
     schema: String,
 ) -> CommandResult<Vec<ObjectMeta>> {
-    let session = state.session(session_id)?;
-    Ok(session.conn.objects(&schema).await?)
+    let conn = state.live(session_id).await?;
+    Ok(conn.objects(&schema).await?)
 }
 
 #[tauri::command]
@@ -407,8 +468,8 @@ pub async fn table_details(
     schema: String,
     table: String,
 ) -> CommandResult<TableDetails> {
-    let session = state.session(session_id)?;
-    Ok(session.conn.table_details(&schema, &table).await?)
+    let conn = state.live(session_id).await?;
+    Ok(conn.table_details(&schema, &table).await?)
 }
 
 /// The first value of a small query, as text (`None` for NULL or no rows); used for row
@@ -419,7 +480,7 @@ pub async fn query_value(
     session_id: u64,
     sql: String,
 ) -> CommandResult<Option<String>> {
-    let conn = state.session(session_id)?.conn;
+    let conn = state.live(session_id).await?;
     let rows = platypus_core::query_text(conn.as_ref(), &sql).await?;
     Ok(rows
         .into_iter()

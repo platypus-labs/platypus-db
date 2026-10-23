@@ -79,6 +79,30 @@ pub struct ForeignKeyMeta {
     pub ref_columns: Vec<String>,
 }
 
+/// One column of the catalog, for editor autocompletion.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CatalogColumn {
+    pub schema: String,
+    pub table: String,
+    pub column: String,
+}
+
+/// Columns read for autocompletion at most; larger catalogs are cut.
+pub const CATALOG_LIMIT: usize = 200_000;
+
+/// Runs a catalog query returning `(schema, table, column)` rows.
+pub async fn query_catalog(conn: &dyn Connection, sql: &str) -> Result<Vec<CatalogColumn>> {
+    Ok(query_text(conn, sql)
+        .await?
+        .iter()
+        .map(|r| CatalogColumn {
+            schema: r.text(0),
+            table: r.text(1),
+            column: r.text(2),
+        })
+        .collect())
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct TableDetails {
     pub columns: Vec<ColumnMeta>,

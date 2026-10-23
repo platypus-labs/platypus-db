@@ -1,8 +1,8 @@
 //! Navigator metadata from `information_schema`, valid for MySQL and MariaDB.
 
 use platypus_core::{
-    ColumnMeta, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, Result, SchemaMeta,
-    TableDetails, TextRowExt, group_sorted, query_text,
+    CATALOG_LIMIT, CatalogColumn, ColumnMeta, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta,
+    Result, SchemaMeta, TableDetails, TextRowExt, group_sorted, query_catalog, query_text,
 };
 
 use crate::MySqlConnection;
@@ -25,6 +25,20 @@ pub async fn schemas(conn: &MySqlConnection) -> Result<Vec<SchemaMeta>> {
             current: r.flag(2),
         })
         .collect())
+}
+
+pub async fn catalog_columns(conn: &MySqlConnection) -> Result<Vec<CatalogColumn>> {
+    query_catalog(
+        conn,
+        &format!(
+            "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME
+             FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
+             ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION
+             LIMIT {CATALOG_LIMIT}"
+        ),
+    )
+    .await
 }
 
 pub async fn objects(conn: &MySqlConnection, schema: &str) -> Result<Vec<ObjectMeta>> {

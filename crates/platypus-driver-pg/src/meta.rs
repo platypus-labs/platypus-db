@@ -1,8 +1,8 @@
 //! Navigator metadata from `pg_catalog`.
 
 use platypus_core::{
-    ColumnMeta, Connection, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, Result, SchemaMeta,
-    TableDetails, TextRowExt, query_text,
+    CATALOG_LIMIT, CatalogColumn, ColumnMeta, Connection, ForeignKeyMeta, IndexMeta, ObjectKind,
+    ObjectMeta, Result, SchemaMeta, TableDetails, TextRowExt, query_catalog, query_text,
 };
 
 /// Separates list items aggregated into one text cell.
@@ -38,6 +38,24 @@ pub async fn schemas(conn: &dyn Connection) -> Result<Vec<SchemaMeta>> {
             current: r.flag(2),
         })
         .collect())
+}
+
+pub async fn catalog_columns(conn: &dyn Connection) -> Result<Vec<CatalogColumn>> {
+    query_catalog(
+        conn,
+        &format!(
+            "SELECT n.nspname, c.relname, a.attname
+             FROM pg_class c
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             JOIN pg_attribute a ON a.attrelid = c.oid
+             WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f') AND a.attnum > 0 AND NOT a.attisdropped
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+               AND n.nspname NOT LIKE 'pg\\_toast%' AND n.nspname NOT LIKE 'pg\\_temp\\_%'
+             ORDER BY 1, 2, a.attnum
+             LIMIT {CATALOG_LIMIT}"
+        ),
+    )
+    .await
 }
 
 pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMeta>> {

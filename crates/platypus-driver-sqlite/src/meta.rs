@@ -1,8 +1,9 @@
 //! Navigator metadata from `sqlite_master` and the `pragma_*` table-valued functions.
 
 use platypus_core::{
-    ColumnMeta, Connection, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, Result, SchemaMeta,
-    TableDetails, TextRowExt, group_sorted, query_text,
+    CATALOG_LIMIT, CatalogColumn, ColumnMeta, Connection, ForeignKeyMeta, IndexMeta, ObjectKind,
+    ObjectMeta, Result, SchemaMeta, TableDetails, TextRowExt, group_sorted, query_catalog,
+    query_text,
 };
 
 fn literal(s: &str) -> String {
@@ -23,6 +24,28 @@ pub async fn schemas(conn: &dyn Connection) -> Result<Vec<SchemaMeta>> {
             system: false,
         })
         .collect())
+}
+
+pub async fn catalog_columns(conn: &dyn Connection) -> Result<Vec<CatalogColumn>> {
+    let mut columns = Vec::new();
+    for schema in schemas(conn).await? {
+        let (lit, id) = (literal(&schema.name), ident(&schema.name));
+        columns.extend(
+            query_catalog(
+                conn,
+                &format!(
+                    "SELECT {lit}, m.name, p.name
+                     FROM {id}.sqlite_master m JOIN pragma_table_info(m.name, {lit}) p
+                     WHERE m.type IN ('table', 'view') AND m.name NOT LIKE 'sqlite\\_%' ESCAPE '\\'
+                     ORDER BY m.name, p.cid
+                     LIMIT {CATALOG_LIMIT}"
+                ),
+            )
+            .await?,
+        );
+    }
+    columns.truncate(CATALOG_LIMIT);
+    Ok(columns)
 }
 
 pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMeta>> {

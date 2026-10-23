@@ -9,6 +9,7 @@ pub mod columns;
 mod meta;
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use arrow_array::RecordBatch;
@@ -18,9 +19,9 @@ use futures::StreamExt;
 use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, DriverError, Opts, OptsBuilder, Row, SslOpts, Value};
 use platypus_core::{
-    CancelHandle, Canceller, Connection, ConnectionConfig, DbError, Driver, DriverKind, Error,
-    ExecOptions, ExecResult, ObjectMeta, RecordBatchStream, Result, SchemaMeta, ServerInfo,
-    SslMode, TableDetails, TransactionState, TxTracker, classify,
+    CancelHandle, Canceller, CatalogColumn, Connection, ConnectionConfig, DbError, Driver,
+    DriverKind, Error, ExecOptions, ExecResult, ObjectMeta, RecordBatchStream, Result, SchemaMeta,
+    ServerInfo, SslMode, TableDetails, TransactionState, TxTracker, classify,
 };
 use tokio::sync::{Mutex, mpsc, oneshot};
 
@@ -55,6 +56,8 @@ pub struct MySqlConnection {
     no_backslash_escapes: bool,
     /// Manual mode is `SET autocommit = 0`; the server opens transactions by itself.
     tx: TxTracker,
+    /// Set once an error shows the server connection is gone.
+    closed: Arc<AtomicBool>,
 }
 
 fn ssl_opts(config: &ConnectionConfig) -> Option<SslOpts> {
@@ -159,6 +162,7 @@ impl MySqlConnection {
             },
             no_backslash_escapes: sql_mode.contains("NO_BACKSLASH_ESCAPES"),
             tx: TxTracker::default(),
+            closed: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -196,7 +200,7 @@ impl Connection for MySqlConnection {
     }
 
     fn is_closed(&self) -> bool {
-        false
+        self.closed.load(Ordering::Acquire)
     }
 
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {
@@ -209,6 +213,10 @@ impl Connection for MySqlConnection {
 
     async fn table_details(&self, schema: &str, table: &str) -> Result<TableDetails> {
         meta::table_details(self, schema, table).await
+    }
+
+    async fn catalog_columns(&self) -> Result<Vec<CatalogColumn>> {
+        meta::catalog_columns(self).await
     }
 
     fn transaction(&self) -> TransactionState {
@@ -258,8 +266,9 @@ impl MySqlConnection {
         let sql = sql.to_owned();
         let batch_size = options.batch_size.max(1);
         let canceller = self.canceller.clone();
+        let closed = Arc::clone(&self.closed);
         tokio::spawn(async move {
-            run(&mut conn, &sql, batch_size, reply, &canceller).await;
+            run(&mut conn, &sql, batch_size, reply, &canceller, &closed).await;
         });
         match started.await.map_err(|_| Error::Closed)?? {
             Started::Affected(rows) => Ok(ExecResult::Affected { rows }),
@@ -283,22 +292,20 @@ async fn run(
     batch_size: usize,
     reply: oneshot::Sender<Result<Started>>,
     canceller: &MySqlCanceller,
+    closed: &AtomicBool,
 ) {
+    let fail = |e: mysql_async::Error| lost(map_error_in(e, sql), closed);
     let mut result = match conn.query_iter(sql).await {
         Ok(result) => result,
         Err(e) => {
-            let _ = reply.send(Err(map_error_in(e, sql)));
+            let _ = reply.send(Err(fail(e)));
             return;
         }
     };
     if result.columns_ref().is_empty() {
         let rows = result.affected_rows();
         let drained = result.drop_result().await;
-        let _ = reply.send(
-            drained
-                .map(|()| Started::Affected(rows))
-                .map_err(|e| map_error_in(e, sql)),
-        );
+        let _ = reply.send(drained.map(|()| Started::Affected(rows)).map_err(fail));
         return;
     }
     let mut stream = match result.stream::<Row>().await {
@@ -308,7 +315,7 @@ async fn run(
             return;
         }
         Err(e) => {
-            let _ = reply.send(Err(map_error_in(e, sql)));
+            let _ = reply.send(Err(fail(e)));
             return;
         }
     };
@@ -345,7 +352,7 @@ async fn run(
                 }
                 Err(e) => (Err(e), true, true),
             },
-            Some(Err(e)) => (Err(map_error_in(e, sql)), true, false),
+            Some(Err(e)) => (Err(fail(e)), true, false),
             None if len > 0 => (finish(&mut builders, &schema), true, false),
             None => break,
         };
@@ -425,6 +432,14 @@ fn connect_error(e: mysql_async::Error) -> Error {
     }
 }
 
+/// Records errors that mean the connection is gone, so the session can reconnect.
+fn lost(error: Error, closed: &AtomicBool) -> Error {
+    if matches!(error, Error::Connect(_) | Error::Closed) {
+        closed.store(true, Ordering::Release);
+    }
+    error
+}
+
 fn map_error(e: mysql_async::Error) -> Error {
     map_error_in(e, "")
 }
@@ -441,6 +456,7 @@ fn map_error_in(e: mysql_async::Error, sql: &str) -> Error {
             hint: None,
         }),
         mysql_async::Error::Io(e) => Error::Connect(e.to_string()),
+        mysql_async::Error::Driver(DriverError::ConnectionClosed) => Error::Closed,
         other => Error::Other(other.to_string()),
     }
 }

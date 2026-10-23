@@ -30,6 +30,8 @@ struct Backend {
     series_sql: String,
     /// A statement that runs for far longer than the tests wait.
     endless_sql: &'static str,
+    /// `(session id query, kill statement prefix)`; `None` for SQLite, which has no server.
+    kill: Option<(&'static str, &'static str)>,
     /// Keeps the SQLite file alive.
     _dir: Option<TempDir>,
 }
@@ -116,6 +118,7 @@ async fn sqlite_backend() -> Backend {
         ),
         endless_sql: "WITH RECURSIVE s(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM s) \
                       SELECT count(*) FROM s",
+        kill: None,
         _dir: Some(dir),
     }
 }
@@ -138,6 +141,7 @@ async fn backends() -> Vec<Backend> {
                 "SELECT g AS id, 'row ' || g AS label FROM generate_series(1, {SERIES_ROWS}) g"
             ),
             endless_sql: "SELECT pg_sleep(600)",
+            kill: Some(("SELECT pg_backend_pid()", "SELECT pg_terminate_backend")),
             _dir: None,
         });
     }
@@ -163,6 +167,7 @@ async fn backends() -> Vec<Backend> {
                 schema: "platypus".to_owned(),
                 series_sql: MYSQL_SERIES.to_owned(),
                 endless_sql: MYSQL_ENDLESS,
+                kill: Some(("SELECT CONNECTION_ID()", "KILL CONNECTION")),
                 _dir: None,
             });
         }
@@ -494,5 +499,69 @@ async fn manual_commit_and_rollback() {
         affected(&b, conn, "ROLLBACK").await;
         assert!(!conn.transaction().open, "{}: typed ROLLBACK", b.name);
         assert_eq!(count(&b, conn).await, "2", "{}", b.name);
+    }
+}
+
+#[tokio::test]
+async fn lists_catalog_columns_for_completion() {
+    for b in backends().await {
+        let conn = b.connect().await;
+        let catalog = conn.catalog_columns().await.unwrap();
+        let has = |table: &str, column: &str| {
+            catalog
+                .iter()
+                .any(|c| c.schema == b.schema && c.table == table && c.column == column)
+        };
+        assert!(has("orders", "customer_id"), "{}", b.name);
+        assert!(has("customer_totals", "id"), "{}: views too", b.name);
+        assert!(
+            !catalog
+                .iter()
+                .any(|c| c.schema == "information_schema" || c.schema == "pg_catalog"),
+            "{}: no system schemas",
+            b.name
+        );
+        // Columns of a table stay in declaration order.
+        let orders: Vec<_> = catalog
+            .iter()
+            .filter(|c| c.schema == b.schema && c.table == "orders")
+            .map(|c| c.column.as_str())
+            .collect();
+        assert_eq!(orders.first(), Some(&"id"), "{}", b.name);
+    }
+}
+
+#[tokio::test]
+async fn reports_lost_connections() {
+    for b in backends().await {
+        let Some((id_sql, kill)) = b.kill else {
+            continue;
+        };
+        let conn = b.connect().await;
+        assert!(!conn.is_closed(), "{}", b.name);
+        let rows = collect(&b, &*conn, id_sql).await;
+        let id = cell(&rows[0], 0, 0).unwrap();
+        let killer = b.connect().await;
+        let kill_sql = if kill.starts_with("SELECT") {
+            format!("{kill}({id})")
+        } else {
+            format!("{kill} {id}")
+        };
+        run(&*killer, &kill_sql).await.unwrap();
+
+        assert!(
+            run(&*conn, "SELECT 1").await.is_err(),
+            "{}: query on a dead connection",
+            b.name
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !conn.is_closed() && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(
+            conn.is_closed(),
+            "{}: connection reported as closed",
+            b.name
+        );
     }
 }

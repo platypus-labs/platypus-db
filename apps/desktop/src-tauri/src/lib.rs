@@ -16,6 +16,28 @@ use crate::commands::AppState;
 /// History entries kept across restarts.
 const HISTORY_LIMIT: usize = 50_000;
 
+/// Builds before 0.1.0 used the identifier `dev.platypusdb.app`, which macOS bundles reject.
+/// Their folders (connections, history, the web view's storage) move over once, before the
+/// web view creates the new ones. Those builds only ever ran on Windows.
+fn migrate_legacy_dirs() {
+    if !cfg!(windows) {
+        return;
+    }
+    for base in ["APPDATA", "LOCALAPPDATA"]
+        .into_iter()
+        .filter_map(std::env::var_os)
+    {
+        let base = std::path::PathBuf::from(base);
+        let (legacy, current) = (
+            base.join("dev.platypusdb.app"),
+            base.join("dev.platypusdb.desktop"),
+        );
+        if legacy.is_dir() && !current.exists() {
+            let _ = std::fs::rename(&legacy, &current);
+        }
+    }
+}
+
 fn open_store(app: &tauri::App) -> Result<ConnectionStore, String> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     ConnectionStore::open(
@@ -38,8 +60,11 @@ fn open_history(app: &tauri::App) -> Result<HistoryStore, String> {
 ///
 /// Panics if the Tauri runtime fails to start (e.g. missing WebView2 on Windows).
 pub fn run() {
+    migrate_legacy_dirs();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let state = AppState::new(open_store(app), open_history(app));
             app.manage(state);
@@ -59,6 +84,7 @@ pub fn run() {
             commands::fetch_all,
             commands::cancel_query,
             commands::close_query,
+            commands::completion_catalog,
             commands::query_value,
             commands::export_query,
             commands::export_rows,

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import type { ColumnInfo } from "../api";
+import { THEME_EVENT } from "../theme";
 import type { RowCache } from "./RowCache";
 
 const ROW_H = 24;
@@ -324,9 +325,11 @@ export function DataGrid({ columns, rowCount, cache, version, sort = null, onHea
       schedule();
     };
     media.addEventListener("change", onTheme);
+    window.addEventListener(THEME_EVENT, onTheme);
     return () => {
       observer.disconnect();
       media.removeEventListener("change", onTheme);
+      window.removeEventListener(THEME_EVENT, onTheme);
       cancelAnimationFrame(frame.current);
       frame.current = 0;
     };

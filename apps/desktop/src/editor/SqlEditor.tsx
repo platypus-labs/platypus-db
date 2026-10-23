@@ -23,7 +23,7 @@ import {
   lineNumbers,
 } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
-import type { DriverKind } from "../api";
+import type { CompletionCatalog, DriverKind } from "../api";
 
 export type RunMode = "statement" | "script";
 
@@ -48,6 +48,8 @@ interface Props {
   onRun: (mode: RunMode) => void;
   onSave: () => void;
   onOpen: () => void;
+  /** Tables and columns to complete; keywords complete without it. */
+  catalog?: CompletionCatalog | null;
 }
 
 const highlight = HighlightStyle.define([
@@ -92,6 +94,15 @@ const theme = EditorView.theme({
 
 const dialects = { postgres: PostgreSQL, mysql: MySQL, sqlite: SQLite };
 
+function language(driver: DriverKind, catalog: CompletionCatalog | null | undefined) {
+  return sql({
+    dialect: dialects[driver],
+    upperCaseKeywords: true,
+    schema: catalog?.schemas,
+    defaultSchema: catalog?.default_schema ?? undefined,
+  });
+}
+
 const flashEffect = StateEffect.define<{ from: number; to: number } | null>();
 const flashField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
@@ -113,7 +124,7 @@ const flashField = StateField.define<DecorationSet>({
 export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(props, ref) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  const language = useRef(new Compartment());
+  const languageConf = useRef(new Compartment());
   // Keymaps read the latest callbacks without rebuilding the editor.
   const callbacks = useRef(props);
   callbacks.current = props;
@@ -141,7 +152,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         lintGutter(),
         flashField,
         syntaxHighlighting(highlight),
-        language.current.of(sql({ dialect: dialects[props.driver], upperCaseKeywords: true })),
+        languageConf.current.of(language(props.driver, props.catalog)),
         keymap.of([
           { key: "Mod-Enter", run: run("statement"), preventDefault: true },
           { key: "Mod-Shift-Enter", run: run("script"), preventDefault: true },
@@ -185,11 +196,9 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
 
   useEffect(() => {
     view.current?.dispatch({
-      effects: language.current.reconfigure(
-        sql({ dialect: dialects[props.driver], upperCaseKeywords: true }),
-      ),
+      effects: languageConf.current.reconfigure(language(props.driver, props.catalog)),
     });
-  }, [props.driver]);
+  }, [props.driver, props.catalog]);
 
   useImperativeHandle(ref, () => ({
     getText: () => view.current?.state.doc.toString() ?? "",

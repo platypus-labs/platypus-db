@@ -17,8 +17,8 @@ pub use connection::{
 };
 pub use error::{DbError, Error, Result};
 pub use metadata::{
-    ColumnMeta, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, SchemaMeta, TableDetails,
-    TextRow, TextRowExt, group_sorted, query_text,
+    CATALOG_LIMIT, CatalogColumn, ColumnMeta, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta,
+    SchemaMeta, TableDetails, TextRow, TextRowExt, group_sorted, query_catalog, query_text,
 };
 pub use transaction::{
     TransactionState, TxEffect, TxTracker, classify, leading_words, open_transaction_error,

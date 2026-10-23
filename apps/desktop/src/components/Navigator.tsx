@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { OPEN_DATA_LIMIT, qualifiedName, selectSql, viewerSql } from "../sqlNames";
 import type { TabModel } from "./QueryTab";
+import { type ThemePref, applyTheme, loadTheme, nextTheme } from "../theme";
 
 type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ok"; data: T };
 
@@ -28,6 +29,8 @@ interface Props {
   session: (c: SavedConnection) => Promise<number | null>;
   /** Drops the navigator session, e.g. after the connection broke. */
   disconnect: (c: SavedConnection) => void;
+  /** A connection was refreshed: cached metadata elsewhere (autocompletion) is stale. */
+  onRefresh: (c: SavedConnection) => void;
   onError: (message: string) => void;
 }
 
@@ -68,7 +71,8 @@ interface MenuItem {
 }
 
 export function Navigator(props: Props) {
-  const { connections, error, onNew, onEdit, onDelete, onOpenTab, session, disconnect, onError } = props;
+  const { connections, error, onNew, onEdit, onDelete, onOpenTab, session, disconnect, onRefresh, onError } =
+    props;
   const [cache, setCache] = useState<Cache>(new Map());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
@@ -202,7 +206,13 @@ export function Navigator(props: Props) {
       ...status(ckey),
       menu: [
         { label: "New SQL script", run: () => onOpenTab(c) },
-        { label: "Refresh", run: () => refresh(ckey, () => loadSchemas(c)) },
+        {
+          label: "Refresh",
+          run: () => {
+            refresh(ckey, () => loadSchemas(c));
+            onRefresh(c);
+          },
+        },
         { label: "Disconnect", run: () => closeConnection(c) },
         { label: "Edit…", run: () => onEdit(c) },
         { label: "Delete…", run: () => onDelete(c) },
@@ -390,6 +400,7 @@ export function Navigator(props: Props) {
     <aside className="sidebar">
       <div className="sidebar-header">
         <span className="sidebar-title">Connections</span>
+        <ThemeButton />
         <button className="icon" title="New connection" onClick={onNew}>
           +
         </button>
@@ -473,6 +484,30 @@ export function Navigator(props: Props) {
         </div>
       )}
     </aside>
+  );
+}
+
+const THEME_LABELS: Record<ThemePref, { icon: string; label: string }> = {
+  system: { icon: "◐", label: "System" },
+  light: { icon: "☀", label: "Light" },
+  dark: { icon: "☾", label: "Dark" },
+};
+
+function ThemeButton() {
+  const [pref, setPref] = useState(loadTheme);
+  const { icon, label } = THEME_LABELS[pref];
+  return (
+    <button
+      className="icon"
+      title={`Theme: ${label} (click to change)`}
+      onClick={() => {
+        const next = nextTheme[pref];
+        applyTheme(next);
+        setPref(next);
+      }}
+    >
+      {icon}
+    </button>
   );
 }
 

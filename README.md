@@ -1,8 +1,68 @@
 # PlatypusDB
 
-Fast, lightweight desktop SQL client. Rust core, Tauri 2 + React UI.
+Fast, lightweight desktop SQL client for **PostgreSQL**, **MySQL/MariaDB** and **SQLite**.
+Rust core, Tauri 2 + React UI: a 5 MB installer that starts in under half a second and
+scrolls through millions of rows.
 
-> Status: **M5 — Data viewer, export, transactions**: tables open in a viewer with server-side sort, filter and row count; results export to CSV, JSON, NDJSON or Parquet in streaming (5M rows to Parquet in about 3 s with ~30 MB of memory); manual-commit mode with Commit/Rollback on all drivers. Built on M4 (navigator, MySQL/MariaDB and SQLite drivers, conformance suite), M3 (CodeMirror editor, script execution, history) and M2 (TLS connections, keychain, virtualized Arrow grid). See [docs/MVP_PLAN.md](docs/MVP_PLAN.md) for scope and roadmap.
+![Data viewer](docs/screenshots/data-viewer.png)
+
+## Features
+
+- **Connections** with TLS (libpq `sslmode` semantics), passwords in the system keychain,
+  colors and a read-only flag; paste a `postgres://` or `mysql://` URL to fill the form.
+- **Navigator**: schemas, tables, views, routines, columns, indexes and foreign keys, loaded
+  lazily, with a filter.
+- **SQL editor** (CodeMirror): run the statement under the cursor (`Ctrl+Enter`) or the
+  whole script (`Alt+X`), errors pointed out in the text, autocompletion of keywords,
+  tables and columns (including `alias.column`), query history, `.sql` files.
+- **Results grid** on canvas: millions of rows fetched on demand, cancellable queries.
+- **Data viewer**: open a table, sort by clicking a header, filter with a `WHERE`, count rows.
+- **Export** to CSV, JSON, NDJSON or Parquet, streamed straight to the file.
+- **Transactions**: auto-commit or manual commit with Commit/Rollback.
+- Light and dark theme, automatic reconnection, in-app updates.
+
+| | |
+|---|---|
+| ![Autocomplete](docs/screenshots/autocomplete.png) | ![Transactions](docs/screenshots/transaction.png) |
+
+## Install
+
+Download the installer for your system from the
+[releases page](https://github.com/PaoloCisly/platypus-db/releases): `.exe`/`.msi` for
+Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates itself.
+
+### Keyboard shortcuts
+
+| Keys | Action |
+|---|---|
+| `Ctrl+Enter` | Run the statement under the cursor (or the selection) |
+| `Alt+X`, `Ctrl+Shift+Enter` | Run the script |
+| `Ctrl+Space` | Autocomplete |
+| `Ctrl+/` | Comment / uncomment |
+| `Ctrl+F` | Find and replace |
+| `Ctrl+S`, `Ctrl+O` | Save / open a `.sql` file |
+| `Ctrl+T`, `Ctrl+W` | New tab / close tab |
+| `Ctrl+Tab`, `Ctrl+Shift+Tab` | Next / previous tab |
+
+On macOS use `Cmd` instead of `Ctrl`.
+
+## Performance
+
+| | PlatypusDB 0.1.0 | Target |
+|---|---|---|
+| Start to interactive window | 430–500 ms | < 500 ms |
+| Memory at rest, 1 connection | about 130 MB | < 150 MB |
+| Scrolling 1M rows | 178 fps | 60 fps |
+| 5M rows to Parquet | 3.2 s, 31 MB peak | streaming |
+| Installer | 5.4 MB | < 20 MB |
+
+Windows 11, Ryzen 7 9700X; details and method in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
+---
+
+The rest of this file is for contributors. Scope and roadmap: [docs/MVP_PLAN.md](docs/MVP_PLAN.md);
+releases: [docs/RELEASING.md](docs/RELEASING.md).
+
 
 ## Layout
 
@@ -14,6 +74,8 @@ crates/
   platypus-driver-sqlite/  SQLite (rusqlite)
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check
   platypus-store/          connections (TOML + OS keychain), query history (SQLite)
+  platypus-export/         streaming CSV, JSON, NDJSON and Parquet writers
+  platypus-conformance/    integration suite run on every driver
   platypus-cli/            `platypus` CLI for exercising the core
 apps/desktop/              Tauri app: React UI in src/, Rust shell in src-tauri/
 docker/                    dev databases with seed data
