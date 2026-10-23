@@ -25,9 +25,11 @@ arrow-schema.workspace = true
 futures.workspace = true
 platypus-core.workspace = true
 platypus-driver-pg.workspace = true
+platypus-sql.workspace = true
 platypus-store.workspace = true
 serde.workspace = true
 tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
 tokio = { workspace = true, features = ["sync", "time"] }
 uuid.workspace = true
 

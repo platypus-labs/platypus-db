@@ -34,6 +34,20 @@ pub struct ColumnInfo {
     numeric: bool,
 }
 
+impl ColumnInfo {
+    fn from_schema(schema: &arrow_schema::Schema) -> Vec<Self> {
+        schema
+            .fields()
+            .iter()
+            .map(|f| Self {
+                name: f.name().clone(),
+                db_type: f.metadata().get(META_DB_TYPE).cloned().unwrap_or_default(),
+                numeric: f.data_type().is_numeric(),
+            })
+            .collect()
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum QueryEvent {
@@ -78,6 +92,18 @@ impl Buffer {
         self.batches.push(batch);
     }
 
+    /// Drops rows beyond `cap` from the last batch.
+    fn truncate(&mut self, cap: usize) {
+        if self.rows <= cap {
+            return;
+        }
+        let (Some(last), Some(&start)) = (self.batches.last_mut(), self.starts.last()) else {
+            return;
+        };
+        *last = last.slice(0, cap - start);
+        self.rows = cap;
+    }
+
     /// Zero-copy slices covering rows `offset..offset + limit` (clamped to what is buffered).
     fn window(&self, offset: usize, limit: usize) -> Vec<RecordBatch> {
         let end = offset.saturating_add(limit).min(self.rows);
@@ -119,16 +145,41 @@ fn millis(since: Instant) -> u64 {
     since.elapsed().as_millis() as u64
 }
 
+/// How a statement went, reported once: when it fails, when it reports affected rows, or
+/// when its first rows arrive (scrolling may fetch more long after that).
+#[derive(Debug)]
+pub enum Outcome {
+    Rows {
+        elapsed: Duration,
+    },
+    Affected {
+        rows: u64,
+        elapsed: Duration,
+    },
+    Failed {
+        error: platypus_core::Error,
+        elapsed: Duration,
+    },
+}
+
 impl Job {
-    pub fn start(conn: Arc<dyn Connection>, sql: String, events: Channel<QueryEvent>) -> Arc<Self> {
+    /// Starts `sql` in the background. With `limit`, at most that many rows are fetched and
+    /// the rest of the result is cancelled (used for scripts, which must free the session).
+    pub fn start(
+        conn: Arc<dyn Connection>,
+        sql: String,
+        limit: Option<usize>,
+        events: Channel<QueryEvent>,
+        on_outcome: impl FnOnce(Outcome) + Send + 'static,
+    ) -> Arc<Self> {
         let job = Arc::new(Self {
             buffer: Mutex::new(Buffer::default()),
-            target: watch::Sender::new(PREFETCH_ROWS),
+            target: watch::Sender::new(limit.unwrap_or(PREFETCH_ROWS)),
             cancel: conn.cancel_handle(),
             task: Mutex::new(None),
         });
-        let task = tauri::async_runtime::spawn(Arc::clone(&job).run(conn, sql, events));
-        *lock(&job.task) = Some(task);
+        let run = Arc::clone(&job).run(conn, sql, limit, events, on_outcome);
+        *lock(&job.task) = Some(tauri::async_runtime::spawn(run));
         job
     }
 
@@ -136,7 +187,9 @@ impl Job {
         self: Arc<Self>,
         conn: Arc<dyn Connection>,
         sql: String,
+        limit: Option<usize>,
         events: Channel<QueryEvent>,
+        on_outcome: impl FnOnce(Outcome) + Send + 'static,
     ) {
         // A closed channel only means the UI went away; the job is closed separately.
         let send = |event| {
@@ -147,29 +200,36 @@ impl Job {
             batch_size: BATCH_SIZE,
         };
         let mut stream = match conn.execute(&sql, &options).await {
-            Err(e) => return send(QueryEvent::Failed { error: e.into() }),
+            Err(error) => {
+                send(QueryEvent::Failed {
+                    error: CommandError::from(&error),
+                });
+                return on_outcome(Outcome::Failed {
+                    error,
+                    elapsed: started.elapsed(),
+                });
+            }
             Ok(ExecResult::Affected { rows }) => {
-                return send(QueryEvent::Affected {
+                send(QueryEvent::Affected {
                     rows,
                     elapsed_ms: millis(started),
+                });
+                return on_outcome(Outcome::Affected {
+                    rows,
+                    elapsed: started.elapsed(),
                 });
             }
             Ok(ExecResult::Rows(stream)) => stream,
         };
+        on_outcome(Outcome::Rows {
+            elapsed: started.elapsed(),
+        });
+        let cap = limit.unwrap_or(usize::MAX);
 
         let schema = stream.schema();
         lock(&self.buffer).schema = Some(Arc::clone(&schema));
-        let columns = schema
-            .fields()
-            .iter()
-            .map(|f| ColumnInfo {
-                name: f.name().clone(),
-                db_type: f.metadata().get(META_DB_TYPE).cloned().unwrap_or_default(),
-                numeric: f.data_type().is_numeric(),
-            })
-            .collect();
         send(QueryEvent::Started {
-            columns,
+            columns: ColumnInfo::from_schema(&schema),
             elapsed_ms: millis(started),
         });
 
@@ -179,21 +239,35 @@ impl Job {
         let mut complete = true;
         loop {
             let rows = lock(&self.buffer).rows;
-            if !demand.borrow().gt(&rows) {
+            if rows >= cap {
+                // Complete only if the server had nothing beyond the limit.
+                complete = stream.next().await.is_none();
+                break;
+            }
+            if (*demand.borrow()).min(cap) <= rows {
                 if rows != reported {
                     send(QueryEvent::Progress { rows });
                     reported = rows;
                 }
-                if demand.wait_for(|target| *target > rows).await.is_err() {
+                if demand
+                    .wait_for(|target| (*target).min(cap) > rows)
+                    .await
+                    .is_err()
+                {
                     break;
                 }
             }
             match stream.next().await {
                 None => break,
-                Some(Err(e)) => return send(QueryEvent::Failed { error: e.into() }),
+                Some(Err(e)) => {
+                    return send(QueryEvent::Failed {
+                        error: CommandError::from(&e),
+                    });
+                }
                 Some(Ok(batch)) => {
                     let mut buffer = lock(&self.buffer);
                     buffer.push(batch);
+                    buffer.truncate(cap);
                     if buffer.bytes > MEMORY_LIMIT_BYTES {
                         complete = false;
                         break;
@@ -292,6 +366,16 @@ mod tests {
         assert_eq!(values(&b.window(1, 100)), [1, 2, 3, 4, 5, 6, 7, 8]);
         assert_eq!(values(&b.window(7, 2)), [7, 8]);
         assert_eq!(b.window(3, 4).len(), 1, "exactly one batch");
+    }
+
+    #[test]
+    fn truncates_the_last_batch_to_a_cap() {
+        let mut b = buffer(&[3, 4]);
+        b.truncate(5);
+        assert_eq!(b.rows, 5);
+        assert_eq!(values(&b.window(0, 100)), [0, 1, 2, 3, 4]);
+        b.truncate(10);
+        assert_eq!(b.rows, 5, "a larger cap changes nothing");
     }
 
     #[test]

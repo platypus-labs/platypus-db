@@ -1,36 +1,67 @@
-import { useEffect, useState } from "react";
-import { api, toCommandError, type SavedConnection, type ServerInfo } from "./api";
+import { useEffect, useRef, useState } from "react";
+import { api, toCommandError, type SavedConnection } from "./api";
 import { ConnectionDialog } from "./components/ConnectionDialog";
-import { QueryTab } from "./components/QueryTab";
+import { QueryTab, type TabModel } from "./components/QueryTab";
 import { Sidebar } from "./components/Sidebar";
+import { basename, loadWorkspace, saveWorkspace } from "./workspace";
 
-interface Tab {
-  key: number;
+type Dialog = { kind: "connection"; connection: SavedConnection; existing: boolean } | null;
+
+interface PasswordRequest {
   connection: SavedConnection;
-  sessionId: number;
-  server: ServerInfo;
+  resolve: (password: string | null) => void;
 }
-
-type Dialog =
-  | { kind: "connection"; connection: SavedConnection; existing: boolean }
-  | { kind: "password"; connection: SavedConnection }
-  | null;
 
 let nextTabKey = 1;
 
+function newTab(connectionId: string, sql = "", filePath: string | null = null): TabModel {
+  return { key: nextTabKey++, connectionId, sql, filePath, savedSql: filePath ? sql : null };
+}
+
 export function App() {
-  const [connections, setConnections] = useState<SavedConnection[]>([]);
+  const [connections, setConnections] = useState<SavedConnection[] | null>(null);
   const [storeError, setStoreError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
-  const [tabs, setTabs] = useState<Tab[]>([]);
+  const [passwordRequest, setPasswordRequest] = useState<PasswordRequest | null>(null);
+  const [tabs, setTabs] = useState<TabModel[]>([]);
   const [activeTab, setActiveTab] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [version, setVersion] = useState("");
+  /** Open sessions by tab key; opened on a tab's first run. */
+  const sessions = useRef(new Map<number, Promise<number | null>>());
+  const restored = useRef(false);
 
   useEffect(() => {
-    api.listConnections().then(setConnections, (e: unknown) => setStoreError(toCommandError(e).message));
+    api.listConnections().then(setConnections, (e: unknown) => {
+      setConnections([]);
+      setStoreError(toCommandError(e).message);
+    });
     api.appInfo().then((i) => setVersion(i.version), console.error);
   }, []);
+
+  // Restore the previous workspace once connections are known.
+  useEffect(() => {
+    if (!connections || restored.current) return;
+    restored.current = true;
+    const saved = loadWorkspace();
+    if (!saved) return;
+    const known = new Set(connections.map((c) => c.id));
+    const restoredTabs = saved.tabs
+      .filter((t) => known.has(t.connectionId))
+      .map((t) => ({ ...newTab(t.connectionId, t.sql, t.filePath), savedSql: t.savedSql }));
+    setTabs(restoredTabs);
+    setActiveTab(restoredTabs[Math.min(saved.active, restoredTabs.length - 1)]?.key ?? null);
+  }, [connections]);
+
+  useEffect(() => {
+    if (!restored.current) return;
+    saveWorkspace({
+      tabs: tabs.map(({ connectionId, sql, filePath, savedSql }) => ({ connectionId, sql, filePath, savedSql })),
+      active: Math.max(0, tabs.findIndex((t) => t.key === activeTab)),
+    });
+  }, [tabs, activeTab]);
+
+  const connectionById = (id: string) => connections?.find((c) => c.id === id);
 
   async function newConnection() {
     setDialog({ kind: "connection", connection: await api.defaultConnection("postgres"), existing: false });
@@ -40,45 +71,80 @@ export function App() {
     if (!window.confirm(`Delete the connection "${c.name}"?`)) return;
     try {
       setConnections(await api.deleteConnection(c.id));
+      for (const t of tabs.filter((t) => t.connectionId === c.id)) closeTab(t);
     } catch (e) {
       setToast(toCommandError(e).message);
     }
   }
 
-  async function openTab(connection: SavedConnection, password?: string) {
-    if (!connection.save_password && password === undefined) {
-      setDialog({ kind: "password", connection });
-      return;
-    }
-    setToast(null);
-    try {
-      const { session_id, server } = await api.openSession(connection.id, password);
-      const key = nextTabKey++;
-      setTabs((t) => [...t, { key, connection, sessionId: session_id, server }]);
-      setActiveTab(key);
-    } catch (e) {
-      setToast(`${connection.name}: ${toCommandError(e).message}`);
-    }
+  function addTab(tab: TabModel) {
+    setTabs((all) => [...all, tab]);
+    setActiveTab(tab.key);
   }
 
-  function closeTab(tab: Tab) {
-    void api.closeSession(tab.sessionId);
+  function askPassword(connection: SavedConnection) {
+    return new Promise<string | null>((resolve) => setPasswordRequest({ connection, resolve }));
+  }
+
+  function ensureSession(tab: TabModel): Promise<number | null> {
+    const existing = sessions.current.get(tab.key);
+    if (existing) return existing;
+    const opening = (async () => {
+      const connection = connectionById(tab.connectionId);
+      if (!connection) return null;
+      let password: string | undefined;
+      if (!connection.save_password) {
+        const entered = await askPassword(connection);
+        if (entered === null) return null;
+        password = entered;
+      }
+      try {
+        const { session_id } = await api.openSession(connection.id, password);
+        return session_id;
+      } catch (e) {
+        setToast(`${connection.name}: ${toCommandError(e).message}`);
+        return null;
+      }
+    })();
+    sessions.current.set(tab.key, opening);
+    // Failed or cancelled attempts are retried on the next run.
+    void opening.then((id) => id === null && sessions.current.delete(tab.key));
+    return opening;
+  }
+
+  function closeTab(tab: TabModel) {
+    const session = sessions.current.get(tab.key);
+    sessions.current.delete(tab.key);
+    void session?.then((id) => {
+      if (id !== null) void api.closeSession(id);
+    });
     setTabs((all) => {
       const rest = all.filter((t) => t.key !== tab.key);
-      if (activeTab === tab.key) setActiveTab(rest.at(-1)?.key ?? null);
+      setActiveTab((active) => (active === tab.key ? (rest.at(-1)?.key ?? null) : active));
       return rest;
     });
+  }
+
+  function patchTab(key: number, patch: Partial<TabModel>) {
+    setTabs((all) => all.map((t) => (t.key === key ? { ...t, ...patch } : t)));
+  }
+
+  function tabTitle(tab: TabModel) {
+    const name = connectionById(tab.connectionId)?.name ?? "?";
+    if (!tab.filePath) return name;
+    const dirty = tab.sql !== tab.savedSql ? " •" : "";
+    return `${basename(tab.filePath)}${dirty} — ${name}`;
   }
 
   return (
     <div className="shell">
       <Sidebar
-        connections={connections}
+        connections={connections ?? []}
         error={storeError}
         onNew={() => void newConnection()}
         onEdit={(c) => setDialog({ kind: "connection", connection: c, existing: true })}
         onDelete={(c) => void deleteConnection(c)}
-        onOpen={(c) => void openTab(c)}
+        onOpen={(c) => addTab(newTab(c.id))}
       />
       <main className="workspace">
         {tabs.length > 0 && (
@@ -87,12 +153,11 @@ export function App() {
               <div
                 key={t.key}
                 className={`tab${t.key === activeTab ? " active" : ""}`}
-                style={{ borderTopColor: t.connection.color ?? "transparent" }}
+                style={{ borderTopColor: connectionById(t.connectionId)?.color ?? "transparent" }}
                 onClick={() => setActiveTab(t.key)}
                 onAuxClick={(e) => e.button === 1 && closeTab(t)}
-                title={`${t.server.product} ${t.server.version}${t.server.encrypted ? " · TLS" : ""}`}
               >
-                <span>{t.connection.name}</span>
+                <span>{tabTitle(t)}</span>
                 <button
                   className="icon"
                   onClick={(e) => {
@@ -111,19 +176,28 @@ export function App() {
             {toast}
           </div>
         )}
-        {tabs.map((t) => (
-          <QueryTab
-            key={t.key}
-            sessionId={t.sessionId}
-            connection={t.connection}
-            active={t.key === activeTab}
-          />
-        ))}
+        {tabs.map((t) => {
+          const connection = connectionById(t.connectionId);
+          return (
+            connection && (
+              <QueryTab
+                key={t.key}
+                tab={t}
+                connection={connection}
+                active={t.key === activeTab}
+                ensureSession={() => ensureSession(t)}
+                onChange={(patch) => patchTab(t.key, patch)}
+                onOpenFile={(path, sql) => addTab(newTab(t.connectionId, sql, path))}
+                onError={setToast}
+              />
+            )
+          );
+        })}
         {tabs.length === 0 && (
           <div className="welcome">
             <h1>PlatypusDB</h1>
             <p className="muted">
-              {connections.length === 0
+              {connections?.length === 0
                 ? "Add a connection to get started."
                 : "Double-click a connection to open a SQL editor."}
             </p>
@@ -143,13 +217,12 @@ export function App() {
           }}
         />
       )}
-      {dialog?.kind === "password" && (
+      {passwordRequest && (
         <PasswordPrompt
-          connection={dialog.connection}
-          onCancel={() => setDialog(null)}
-          onSubmit={(password) => {
-            setDialog(null);
-            void openTab(dialog.connection, password);
+          connection={passwordRequest.connection}
+          onDone={(password) => {
+            passwordRequest.resolve(password);
+            setPasswordRequest(null);
           }}
         />
       )}
@@ -159,12 +232,10 @@ export function App() {
 
 function PasswordPrompt({
   connection,
-  onCancel,
-  onSubmit,
+  onDone,
 }: {
   connection: SavedConnection;
-  onCancel: () => void;
-  onSubmit: (password: string) => void;
+  onDone: (password: string | null) => void;
 }) {
   const [password, setPassword] = useState("");
   return (
@@ -173,25 +244,20 @@ function PasswordPrompt({
         className="modal small"
         onSubmit={(e) => {
           e.preventDefault();
-          onSubmit(password);
+          onDone(password);
         }}
-        onKeyDown={(e) => e.key === "Escape" && onCancel()}
+        onKeyDown={(e) => e.key === "Escape" && onDone(null)}
       >
         <h2>Password for {connection.name}</h2>
         <label className="field">
           <span>
             {connection.user}@{connection.host}
           </span>
-          <input
-            autoFocus
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <input autoFocus type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </label>
         <div className="actions">
           <span className="spacer" />
-          <button type="button" onClick={onCancel}>
+          <button type="button" onClick={() => onDone(null)}>
             Cancel
           </button>
           <button type="submit" className="primary">

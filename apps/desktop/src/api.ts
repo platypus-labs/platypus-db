@@ -53,6 +53,30 @@ export type QueryEvent =
   | { type: "affected"; rows: number; elapsed_ms: number }
   | { type: "failed"; error: CommandError };
 
+/** Offsets are UTF-16 code units, like JavaScript string indices. */
+export interface StatementSpan {
+  start: number;
+  end: number;
+  read_only: boolean;
+}
+
+export interface SqlAnalysis {
+  statements: StatementSpan[];
+  at_cursor: number | null;
+}
+
+export interface HistoryEntry {
+  id: number;
+  connection_id: string;
+  sql: string;
+  /** Unix epoch milliseconds. */
+  started_at: number;
+  duration_ms: number;
+  rows: number | null;
+  status: "ok" | "error" | "cancelled";
+  error: string | null;
+}
+
 export interface AppInfo {
   name: string;
   version: string;
@@ -84,11 +108,35 @@ export const api = {
       password: password ?? null,
     }),
   closeSession: (sessionId: number) => invoke<void>("close_session", { sessionId }),
-  runQuery: (sessionId: number, sql: string, onEvent: (e: QueryEvent) => void) => {
+  /** `limit` caps fetched rows and frees the session afterwards (script mode). */
+  runQuery: (
+    sessionId: number,
+    sql: string,
+    limit: number | null,
+    onEvent: (e: QueryEvent) => void,
+  ) => {
     const channel = new Channel<QueryEvent>();
     channel.onmessage = onEvent;
-    return invoke<number>("run_query", { sessionId, sql, onEvent: channel });
+    return invoke<number>("run_query", { sessionId, sql, limit, onEvent: channel });
   },
+  analyzeSql: (sql: string, driver: DriverKind, cursor: number) =>
+    invoke<SqlAnalysis>("analyze_sql", { sql, driver, cursor }),
+  searchHistory: (query: {
+    connectionId?: string;
+    text?: string;
+    beforeId?: number;
+    limit: number;
+  }) =>
+    invoke<HistoryEntry[]>("search_history", {
+      connectionId: query.connectionId ?? null,
+      text: query.text || null,
+      beforeId: query.beforeId ?? null,
+      limit: query.limit,
+    }),
+  deleteHistory: (id: number) => invoke<void>("delete_history", { id }),
+  readTextFile: (path: string) => invoke<string>("read_text_file", { path }),
+  writeTextFile: (path: string, contents: string) =>
+    invoke<void>("write_text_file", { path, contents }),
   /** Rows as column-major text arrays (`null` = SQL NULL). */
   fetchRows: async (jobId: number, offset: number, limit: number) => {
     const bytes = await invoke<ArrayBuffer>("fetch_rows", { jobId, offset, limit });

@@ -7,10 +7,13 @@ mod jobs;
 
 use std::sync::Arc;
 
-use platypus_store::{ConnectionStore, KeyringSecrets};
+use platypus_store::{ConnectionStore, HistoryStore, KeyringSecrets};
 use tauri::Manager;
 
 use crate::commands::AppState;
+
+/// History entries kept across restarts.
+const HISTORY_LIMIT: usize = 50_000;
 
 fn open_store(app: &tauri::App) -> Result<ConnectionStore, String> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
@@ -21,6 +24,13 @@ fn open_store(app: &tauri::App) -> Result<ConnectionStore, String> {
     .map_err(|e| e.to_string())
 }
 
+fn open_history(app: &tauri::App) -> Result<HistoryStore, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let history = HistoryStore::open(&dir.join("history.db")).map_err(|e| e.to_string())?;
+    history.prune(HISTORY_LIMIT).map_err(|e| e.to_string())?;
+    Ok(history)
+}
+
 /// Builds and runs the Tauri application.
 ///
 /// # Panics
@@ -28,9 +38,10 @@ fn open_store(app: &tauri::App) -> Result<ConnectionStore, String> {
 /// Panics if the Tauri runtime fails to start (e.g. missing WebView2 on Windows).
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let store = open_store(app);
-            app.manage(AppState::new(store));
+            let state = AppState::new(open_store(app), open_history(app));
+            app.manage(state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -47,6 +58,11 @@ pub fn run() {
             commands::fetch_all,
             commands::cancel_query,
             commands::close_query,
+            commands::analyze_sql,
+            commands::search_history,
+            commands::delete_history,
+            commands::read_text_file,
+            commands::write_text_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running PlatypusDB");

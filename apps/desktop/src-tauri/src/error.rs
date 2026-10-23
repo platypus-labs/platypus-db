@@ -32,23 +32,29 @@ impl CommandError {
     }
 }
 
-impl From<Error> for CommandError {
-    fn from(e: Error) -> Self {
+impl From<&Error> for CommandError {
+    fn from(e: &Error) -> Self {
         match e {
             Error::Database(db) => Self {
                 kind: "database",
-                message: db.message,
-                code: db.code,
-                detail: db.detail,
-                hint: db.hint,
+                message: db.message.clone(),
+                code: db.code.clone(),
+                detail: db.detail.clone(),
+                hint: db.hint.clone(),
                 position: db.position,
             },
             Error::Cancelled => Self::new("cancelled", "Query cancelled"),
-            Error::Connect(m) => Self::new("connect", m),
-            Error::Config(m) => Self::new("config", m),
+            Error::Connect(m) => Self::new("connect", m.clone()),
+            Error::Config(m) => Self::new("config", m.clone()),
             Error::Closed => Self::new("closed", "Connection closed"),
             other => Self::new("other", other.to_string()),
         }
+    }
+}
+
+impl From<Error> for CommandError {
+    fn from(e: Error) -> Self {
+        Self::from(&e)
     }
 }
 

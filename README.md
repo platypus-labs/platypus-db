@@ -2,7 +2,7 @@
 
 Fast, lightweight desktop SQL client. Rust core, Tauri 2 + React UI.
 
-> Status: **M2 — desktop shell**: saved PostgreSQL connections (TLS, keychain), SQL tab, virtualized Arrow grid. See [docs/MVP_PLAN.md](docs/MVP_PLAN.md) for scope and roadmap.
+> Status: **M3 — SQL editor**: CodeMirror editor, statement/script execution with dialect-aware splitting, query history, restored workspace. Built on M2 (PostgreSQL connections with TLS and keychain, virtualized Arrow grid). See [docs/MVP_PLAN.md](docs/MVP_PLAN.md) for scope and roadmap.
 
 ## Layout
 
@@ -12,8 +12,8 @@ crates/
   platypus-driver-pg/      PostgreSQL (tokio-postgres)
   platypus-driver-mysql/   MySQL / MariaDB (mysql_async)
   platypus-driver-sqlite/  SQLite (rusqlite)
-  platypus-sql/            statement splitting, autocomplete
-  platypus-store/          connection config, keychain, query history
+  platypus-sql/            dialect-aware lexer, statement splitting, read-only check
+  platypus-store/          connections (TOML + OS keychain), query history (SQLite)
   platypus-cli/            `platypus` CLI for exercising the core
 apps/desktop/              Tauri app: React UI in src/, Rust shell in src-tauri/
 docker/                    dev databases with seed data

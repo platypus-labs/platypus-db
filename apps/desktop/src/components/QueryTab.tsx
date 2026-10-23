@@ -1,171 +1,260 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  api,
-  toCommandError,
-  type ColumnInfo,
-  type CommandError,
-  type QueryEvent,
-  type SavedConnection,
-} from "../api";
-import { DataGrid } from "../grid/DataGrid";
-import { RowCache } from "../grid/RowCache";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import { api, toCommandError, type QueryEvent, type SavedConnection } from "../api";
+import { type RunMode, SqlEditor, type SqlEditorHandle } from "../editor/SqlEditor";
+import { basename } from "../workspace";
+import { HistoryPanel } from "./HistoryPanel";
+import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, formatMs } from "./ResultPanel";
+
+/** Rows fetched per statement when running a script; the rest is cancelled. */
+const SCRIPT_ROW_LIMIT = 1000;
+
+export interface TabModel {
+  key: number;
+  connectionId: string;
+  sql: string;
+  filePath: string | null;
+  savedSql: string | null;
+}
 
 interface Props {
-  sessionId: number;
+  tab: TabModel;
   connection: SavedConnection;
   active: boolean;
+  /** Opens the tab's session on first use; `null` if the user cancelled. */
+  ensureSession: () => Promise<number | null>;
+  onChange: (patch: Partial<TabModel>) => void;
+  onOpenFile: (path: string, sql: string) => void;
+  onError: (message: string) => void;
 }
 
-type Status =
-  | { kind: "idle" }
-  | { kind: "running" }
-  | { kind: "rows"; finished: boolean; complete: boolean; elapsedMs: number }
-  | { kind: "affected"; rows: number; elapsedMs: number }
-  | { kind: "error"; error: CommandError; sql: string; offset: number };
-
-/** Statements allowed on read-only connections without confirmation. */
-const READ_ONLY_SAFE = /^\s*(select|with|show|explain|values|table)\b/i;
-
-const fmt = new Intl.NumberFormat();
-
-function formatMs(ms: number) {
-  return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s`;
+interface Planned {
+  sql: string;
+  offset: number;
+  readOnly: boolean;
 }
 
-/** 1-based line and column of a 1-based character position. */
-function lineCol(text: string, position: number) {
-  const before = text.slice(0, position - 1).split("\n");
-  return { line: before.length, col: (before.at(-1)?.length ?? 0) + 1 };
+let nextResultId = 1;
+
+function isTerminal(status: ResultStatus, limited: boolean) {
+  switch (status.kind) {
+    case "affected":
+    case "error":
+      return true;
+    case "rows":
+      // Without a limit the job pauses on demand, so the first rows are the end of "running".
+      return limited ? status.finished : true;
+    default:
+      return false;
+  }
 }
 
-export function QueryTab({ sessionId, connection, active }: Props) {
-  const [sql, setSql] = useState("SELECT * FROM demo.big_table");
-  const [status, setStatus] = useState<Status>({ kind: "idle" });
-  const [columns, setColumns] = useState<ColumnInfo[] | null>(null);
-  const [rowCount, setRowCount] = useState(0);
-  const [jobId, setJobId] = useState<number | null>(null);
-  const [cache, setCache] = useState<RowCache | null>(null);
-  const [version, setVersion] = useState(0);
-  const [blocked, setBlocked] = useState<string | null>(null);
-  const [editorHeight, setEditorHeight] = useState(180);
-  const editorRef = useRef<HTMLTextAreaElement>(null);
+export function QueryTab({ tab, connection, active, ensureSession, onChange, onOpenFile, onError }: Props) {
+  const editor = useRef<SqlEditorHandle>(null);
+  const [results, setResults] = useState<Result[]>([]);
+  const [activeResult, setActiveResult] = useState(0);
+  const [running, setRunning] = useState(false);
+  const [blocked, setBlocked] = useState<RunMode | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const [editorHeight, setEditorHeight] = useState(200);
   const runToken = useRef(0);
-  const jobRef = useRef<number | null>(null);
+  const jobs = useRef<number[]>([]);
+  const currentJob = useRef<number | null>(null);
 
-  // One cache per result, created once both the job id and the schema are known.
-  useEffect(() => {
-    if (jobId === null || columns === null) return;
-    const c = new RowCache(jobId, () => setVersion((v) => v + 1));
-    setCache(c);
-    return () => c.dispose();
-  }, [jobId, columns]);
+  const closeJobs = () => {
+    for (const id of jobs.current) void api.closeQuery(id);
+    jobs.current = [];
+  };
+  // Release results when the tab closes.
+  useEffect(() => closeJobs, []);
 
-  // Release the last result when the tab closes.
-  useEffect(
-    () => () => {
-      if (jobRef.current !== null) void api.closeQuery(jobRef.current);
-    },
-    [],
-  );
+  const update = (id: number, patch: Partial<Result>) =>
+    setResults((all) => all.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
-  function selectedSql() {
-    const el = editorRef.current;
-    if (el && el.selectionStart !== el.selectionEnd) {
-      return { text: sql.slice(el.selectionStart, el.selectionEnd), offset: el.selectionStart };
+  /** What to run: the selection, the statement under the cursor, or every statement. */
+  async function plan(mode: RunMode): Promise<Planned[]> {
+    const ed = editor.current!;
+    const text = ed.getText();
+    const { from, to } = ed.getSelection();
+    const scope = from !== to ? { text: text.slice(from, to), offset: from } : { text, offset: 0 };
+    const analysis = await api.analyzeSql(scope.text, connection.driver, from - scope.offset);
+    const toPlanned = (s: { start: number; end: number; read_only: boolean }) => ({
+      sql: scope.text.slice(s.start, s.end),
+      offset: scope.offset + s.start,
+      readOnly: s.read_only,
+    });
+    if (mode === "script") return analysis.statements.map(toPlanned);
+    if (from !== to) {
+      // A selection runs as typed, even if it holds several statements.
+      const readOnly = analysis.statements.every((s) => s.read_only);
+      return scope.text.trim() ? [{ sql: scope.text, offset: from, readOnly }] : [];
     }
-    return { text: sql, offset: 0 };
+    const at = analysis.at_cursor;
+    const statement = at === null ? undefined : analysis.statements[at];
+    return statement ? [toPlanned(statement)] : [];
   }
 
-  async function run(force = false) {
-    const { text, offset } = selectedSql();
-    if (!text.trim()) return;
-    if (connection.read_only && !force && !READ_ONLY_SAFE.test(text)) {
-      setBlocked(text);
+  /** Runs one statement and resolves with its first terminal status. */
+  function runOne(sessionId: number, result: Result, token: number): Promise<ResultStatus> {
+    const limited = result.limit !== null;
+    return new Promise((resolve) => {
+      let settled = false;
+      const settle = (status: ResultStatus) => {
+        if (!settled && isTerminal(status, limited)) {
+          settled = true;
+          resolve(status);
+        }
+      };
+      const onEvent = (event: QueryEvent) => {
+        if (token !== runToken.current) return settle({ kind: "skipped" });
+        let status: ResultStatus | null = null;
+        switch (event.type) {
+          case "started":
+            status = { kind: "rows", finished: false, complete: true, elapsedMs: event.elapsed_ms };
+            update(result.id, { columns: event.columns, status });
+            break;
+          case "progress":
+            update(result.id, { rows: event.rows });
+            break;
+          case "finished":
+            status = { kind: "rows", finished: true, complete: event.complete, elapsedMs: event.elapsed_ms };
+            update(result.id, { rows: event.rows, status });
+            break;
+          case "affected":
+            status = { kind: "affected", rows: event.rows, elapsedMs: event.elapsed_ms };
+            update(result.id, { status });
+            break;
+          case "failed":
+            status = { kind: "error", error: event.error };
+            update(result.id, { status });
+            break;
+        }
+        if (status) settle(status);
+      };
+      api.runQuery(sessionId, result.sql, result.limit, onEvent).then(
+        (jobId) => {
+          jobs.current.push(jobId);
+          currentJob.current = jobId;
+          update(result.id, { jobId });
+        },
+        (e: unknown) => {
+          const status: ResultStatus = { kind: "error", error: toCommandError(e) };
+          update(result.id, { status });
+          settle(status);
+        },
+      );
+    });
+  }
+
+  function showError(planned: Planned, status: ResultStatus) {
+    if (status.kind !== "error" || status.error.kind === "cancelled") return;
+    const text = editor.current!.getText();
+    const position = status.error.position;
+    const from = position ? planned.offset + position - 1 : planned.offset;
+    const word = /^[\w$"]+/.exec(text.slice(from));
+    editor.current!.setError({
+      from,
+      to: position ? from + (word?.[0].length ?? 1) : planned.offset + planned.sql.length,
+      message: status.error.message,
+    });
+  }
+
+  async function run(mode: RunMode, force = false) {
+    if (running && !force) return;
+    let planned: Planned[];
+    try {
+      planned = await plan(mode);
+    } catch (e) {
+      onError(toCommandError(e).message);
+      return;
+    }
+    if (planned.length === 0) return;
+    if (connection.read_only && !force && planned.some((p) => !p.readOnly)) {
+      setBlocked(mode);
       return;
     }
     setBlocked(null);
-    if (jobRef.current !== null) void api.closeQuery(jobRef.current);
+    const sessionId = await ensureSession();
+    if (sessionId === null) return;
+
     const token = ++runToken.current;
-    jobRef.current = null;
-    setJobId(null);
-    setColumns(null);
-    setCache(null);
-    setRowCount(0);
-    setStatus({ kind: "running" });
+    closeJobs();
+    const script = mode === "script" && planned.length > 1;
+    const initial: Result[] = planned.map((p, i) => ({
+      id: nextResultId++,
+      sql: p.sql,
+      offset: p.offset,
+      jobId: null,
+      columns: null,
+      rows: 0,
+      status: { kind: i === 0 ? "running" : "pending" },
+      limit: script ? SCRIPT_ROW_LIMIT : null,
+    }));
+    setResults(initial);
+    setActiveResult(0);
+    setRunning(true);
+    editor.current!.setError(null);
 
-    const onEvent = (event: QueryEvent) => {
+    // Afterwards show the failed statement, else the last result set, else the last result.
+    let failed = -1;
+    let lastRows = -1;
+    for (let i = 0; i < initial.length; i++) {
+      const result = initial[i]!;
+      const p = planned[i]!;
       if (token !== runToken.current) return;
-      switch (event.type) {
-        case "started":
-          setColumns(event.columns);
-          setStatus({ kind: "rows", finished: false, complete: true, elapsedMs: event.elapsed_ms });
-          break;
-        case "progress":
-          setRowCount(event.rows);
-          break;
-        case "finished":
-          setRowCount(event.rows);
-          setStatus({
-            kind: "rows",
-            finished: true,
-            complete: event.complete,
-            elapsedMs: event.elapsed_ms,
-          });
-          break;
-        case "affected":
-          setStatus({ kind: "affected", rows: event.rows, elapsedMs: event.elapsed_ms });
-          break;
-        case "failed":
-          setStatus({ kind: "error", error: event.error, sql: text, offset });
-          break;
-      }
-    };
-
-    try {
-      const id = await api.runQuery(sessionId, text, onEvent);
-      if (token !== runToken.current) {
-        void api.closeQuery(id);
-        return;
-      }
-      jobRef.current = id;
-      setJobId(id);
-    } catch (e) {
-      if (token === runToken.current) {
-        setStatus({ kind: "error", error: toCommandError(e), sql: text, offset });
+      update(result.id, { status: { kind: "running" } });
+      setActiveResult(i);
+      editor.current!.flash(p.offset, p.offset + p.sql.length);
+      const status = await runOne(sessionId, result, token);
+      if (token !== runToken.current) return;
+      if (status.kind === "rows") lastRows = i;
+      if (status.kind === "error") {
+        failed = i;
+        showError(p, status);
+        const skipped = new Set(initial.slice(i + 1).map((r) => r.id));
+        setResults((all) => all.map((r) => (skipped.has(r.id) ? { ...r, status: { kind: "skipped" } } : r)));
+        break;
       }
     }
+    setActiveResult(failed >= 0 ? failed : lastRows >= 0 ? lastRows : initial.length - 1);
+    setRunning(false);
+    currentJob.current = null;
+    setHistoryVersion((v) => v + 1);
   }
 
   async function cancel() {
-    if (jobRef.current !== null) {
-      try {
-        await api.cancelQuery(jobRef.current);
-      } catch (e) {
-        console.error(e);
-      }
+    const job = currentJob.current;
+    if (job === null) return;
+    try {
+      await api.cancelQuery(job);
+    } catch (e) {
+      onError(toCommandError(e).message);
     }
   }
 
-  // Put the cursor on the error position in the editor.
-  useEffect(() => {
-    if (status.kind !== "error" || !status.error.position) return;
-    const el = editorRef.current;
-    if (!el) return;
-    const at = status.offset + status.error.position - 1;
-    el.focus();
-    el.setSelectionRange(at, at + 1);
-  }, [status]);
+  async function saveFile() {
+    const sql = editor.current!.getText();
+    let path = tab.filePath;
+    if (!path) {
+      path = await save({ filters: [{ name: "SQL", extensions: ["sql"] }], defaultPath: "query.sql" });
+      if (!path) return;
+    }
+    try {
+      await api.writeTextFile(path, sql);
+      onChange({ filePath: path, savedSql: sql });
+    } catch (e) {
+      onError(toCommandError(e).message);
+    }
+  }
 
-  function onEditorKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-      e.preventDefault();
-      void run();
-    } else if (e.key === "Tab") {
-      e.preventDefault();
-      const el = e.currentTarget;
-      const { selectionStart: s, selectionEnd: end } = el;
-      setSql(sql.slice(0, s) + "  " + sql.slice(end));
-      requestAnimationFrame(() => el.setSelectionRange(s + 2, s + 2));
+  async function openFile() {
+    const path = await open({ filters: [{ name: "SQL", extensions: ["sql", "txt"] }], multiple: false });
+    if (typeof path !== "string") return;
+    try {
+      onOpenFile(path, await api.readTextFile(path));
+    } catch (e) {
+      onError(toCommandError(e).message);
     }
   }
 
@@ -183,85 +272,99 @@ export function QueryTab({ sessionId, connection, active }: Props) {
     window.addEventListener("mouseup", onUp);
   }
 
-  const running = status.kind === "running" || (status.kind === "rows" && !status.finished);
+  const current = results[activeResult];
+  const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
 
   return (
-    <div className="query-tab" style={{ display: active ? "grid" : "none", gridTemplateRows: `auto ${editorHeight}px 6px 1fr auto` }}>
-      <div className="toolbar">
-        <button className="primary" onClick={() => void run()} title="Run (Ctrl+Enter)">
-          ▶ Run
-        </button>
-        <button onClick={cancel} disabled={!running}>
-          ■ Cancel
-        </button>
-        <span className="spacer" />
-        <span className="muted">Ctrl+Enter runs the selection, or everything</span>
-      </div>
-      <textarea
-        ref={editorRef}
-        className="editor"
-        spellCheck={false}
-        value={sql}
-        onChange={(e) => setSql(e.target.value)}
-        onKeyDown={onEditorKeyDown}
-      />
-      <div className="splitter" onMouseDown={startResize} />
-      <div className="results">
-        {blocked !== null && (
-          <div className="notice warn">
-            <strong>{connection.name}</strong> is read-only and this statement may modify data.
-            <button onClick={() => void run(true)}>Run anyway</button>
-          </div>
-        )}
-        {status.kind === "error" && (
-          <div className="notice error result-error">
-            <div>
-              <strong>{status.error.code ? `${status.error.code}: ` : ""}</strong>
-              {status.error.message}
+    <div className="query-tab" style={{ display: active ? "flex" : "none" }}>
+      <div className="query-main" style={{ gridTemplateRows: `auto ${editorHeight}px 6px 1fr auto` }}>
+        <div className="toolbar">
+          <button className="primary" onClick={() => void run("statement")} title="Run statement (Ctrl+Enter)">
+            ▶ Run
+          </button>
+          <button onClick={() => void run("script")} title="Run script (Alt+X, Ctrl+Shift+Enter)">
+            ▶▶ Script
+          </button>
+          <button onClick={() => void cancel()} disabled={!running}>
+            ■ Cancel
+          </button>
+          <span className="divider" />
+          <button onClick={() => void openFile()} title="Open script (Ctrl+O)">
+            Open
+          </button>
+          <button onClick={() => void saveFile()} title="Save script (Ctrl+S)">
+            Save{dirty ? " •" : ""}
+          </button>
+          <span className="spacer" />
+          {tab.filePath && <span className="muted small">{basename(tab.filePath)}</span>}
+          <button className={showHistory ? "toggled" : ""} onClick={() => setShowHistory((s) => !s)}>
+            History
+          </button>
+        </div>
+        <SqlEditor
+          ref={editor}
+          initialValue={tab.sql}
+          driver={connection.driver}
+          onChange={(sql) => onChange({ sql })}
+          onRun={(mode) => void run(mode)}
+          onSave={() => void saveFile()}
+          onOpen={() => void openFile()}
+        />
+        <div className="splitter" onMouseDown={startResize} />
+        <div className="results">
+          {blocked !== null && (
+            <div className="notice warn">
+              <strong>{connection.name}</strong> is read-only and this may modify data.
+              <button onClick={() => void run(blocked, true)}>Run anyway</button>
             </div>
-            {status.error.detail && <div>DETAIL: {status.error.detail}</div>}
-            {status.error.hint && <div>HINT: {status.error.hint}</div>}
-            {status.error.position && (
-              <div className="muted">
-                {(() => {
-                  const { line, col } = lineCol(status.sql, status.error.position);
-                  return `at line ${line}, column ${col}`;
-                })()}
-              </div>
-            )}
-          </div>
-        )}
-        {status.kind === "affected" && (
-          <div className="notice ok">
-            {fmt.format(status.rows)} row(s) affected in {formatMs(status.elapsedMs)}
-          </div>
-        )}
-        {columns && cache && (
-          <DataGrid columns={columns} rowCount={rowCount} cache={cache} version={version} />
-        )}
+          )}
+          {results.length > 1 && (
+            <div className="result-tabs">
+              {results.map((r, i) => (
+                <button
+                  key={r.id}
+                  className={`result-tab ${r.status.kind}${i === activeResult ? " active" : ""}`}
+                  onClick={() => setActiveResult(i)}
+                  title={r.sql}
+                >
+                  {i + 1}. {describe(r)}
+                </button>
+              ))}
+            </div>
+          )}
+          {current && <ResultPanel key={current.id} result={current} />}
+        </div>
+        <div className="statusbar">
+          {current && (
+            <>
+              <span>{describe(current)}</span>
+              {(current.status.kind === "rows" || current.status.kind === "affected") && (
+                <span className="muted">
+                  {current.status.kind === "rows" && !current.status.finished ? "first rows" : "took"}{" "}
+                  {formatMs(current.status.elapsedMs)}
+                </span>
+              )}
+              {current.status.kind === "rows" && !current.status.finished && (
+                <button className="link" onClick={() => fetchAll(current)}>
+                  Fetch all
+                </button>
+              )}
+            </>
+          )}
+          <span className="spacer" />
+          <span className="muted">
+            Ctrl+Enter statement · Alt+X script · {connection.name}
+          </span>
+        </div>
       </div>
-      <div className="statusbar">
-        {status.kind === "running" && <span>Executing…</span>}
-        {status.kind === "rows" && (
-          <>
-            <span>
-              {fmt.format(rowCount)} rows
-              {!status.finished && " loaded · more available"}
-              {status.finished && !status.complete && " · stopped at the memory limit"}
-            </span>
-            <span className="muted">
-              {status.finished ? "total" : "first rows"} {formatMs(status.elapsedMs)}
-            </span>
-            {!status.finished && jobId !== null && (
-              <button className="link" onClick={() => void api.fetchAll(jobId)}>
-                Fetch all
-              </button>
-            )}
-          </>
-        )}
-        <span className="spacer" />
-        <span className="muted">{connection.name}</span>
-      </div>
+      {showHistory && (
+        <HistoryPanel
+          connectionId={connection.id}
+          refresh={historyVersion}
+          onInsert={(sql) => editor.current?.insert(sql)}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
     </div>
   );
 }
