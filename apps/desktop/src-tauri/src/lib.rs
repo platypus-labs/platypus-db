@@ -138,6 +138,7 @@ pub fn run() {
             commands::transactions::set_autocommit,
             commands::transactions::end_transaction,
             commands::sql::analyze_sql,
+            commands::sql::format_sql,
             commands::history::search_history,
             commands::history::delete_history,
             commands::files::read_text_file,

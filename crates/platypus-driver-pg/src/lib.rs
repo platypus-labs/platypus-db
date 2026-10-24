@@ -196,6 +196,10 @@ impl Connection for PgConnection {
         meta::catalog_columns(self).await
     }
 
+    async fn catalog_foreign_keys(&self) -> Result<Vec<platypus_core::CatalogForeignKey>> {
+        meta::catalog_foreign_keys(self).await
+    }
+
     async fn object_ddl(&self, object: &platypus_core::ObjectRef<'_>) -> Result<String> {
         ddl::object_ddl(self, object).await
     }

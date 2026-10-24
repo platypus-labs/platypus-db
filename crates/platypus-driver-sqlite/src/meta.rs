@@ -3,9 +3,10 @@
 use std::fmt::Write as _;
 
 use platypus_core::{
-    CATALOG_LIMIT, CatalogColumn, ColumnMeta, Connection, ConstraintKind, ConstraintMeta, Error,
-    ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ObjectRef, ReferenceMeta, Result,
-    SchemaMeta, TableDetails, TextRowExt, group_sorted, query_catalog, query_text, unsupported,
+    CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, Connection, ConstraintKind,
+    ConstraintMeta, Error, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ObjectRef,
+    ReferenceMeta, Result, SchemaMeta, TableDetails, TextRowExt, group_sorted, query_catalog,
+    query_text, unsupported,
 };
 use platypus_sql::Dialect;
 
@@ -49,6 +50,48 @@ pub async fn catalog_columns(conn: &dyn Connection) -> Result<Vec<CatalogColumn>
     }
     columns.truncate(CATALOG_LIMIT);
     Ok(columns)
+}
+
+pub async fn catalog_foreign_keys(conn: &dyn Connection) -> Result<Vec<CatalogForeignKey>> {
+    let mut keys = Vec::new();
+    for schema in schemas(conn).await? {
+        let (lit, id) = (literal(&schema.name), ident(&schema.name));
+        // A key without target columns references the parent's primary key.
+        let rows = query_text(
+            conn,
+            &format!(
+                "SELECT m.name, f.id, f.\"from\", f.\"table\",
+                        coalesce(f.\"to\", (SELECT p.name FROM pragma_table_info(f.\"table\", {lit}) p
+                                            WHERE p.pk = f.seq + 1), '')
+                 FROM {id}.sqlite_master m JOIN pragma_foreign_key_list(m.name, {lit}) f
+                 WHERE m.type = 'table'
+                 ORDER BY m.name, f.id, f.seq
+                 LIMIT {CATALOG_LIMIT}"
+            ),
+        )
+        .await?;
+        keys.extend(group_sorted(
+            rows.iter().map(|r| {
+                (
+                    format!("{}\u{0}{}", r.text(0), r.text(1)),
+                    CatalogForeignKey {
+                        schema: schema.name.clone(),
+                        table: r.text(0),
+                        columns: vec![r.text(2)],
+                        ref_schema: schema.name.clone(),
+                        ref_table: r.text(3),
+                        ref_columns: vec![r.text(4)],
+                    },
+                )
+            }),
+            |fk, row| {
+                fk.columns.extend(row.columns);
+                fk.ref_columns.extend(row.ref_columns);
+            },
+        ));
+    }
+    keys.truncate(CATALOG_LIMIT);
+    Ok(keys)
 }
 
 pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMeta>> {

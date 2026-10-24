@@ -151,6 +151,8 @@ conformance per la DML generata (quoting, NULL, binari, timestamp con fuso).
 **Area:** `apps/desktop/src/editor/`, `platypus-sql` (formatter, parser), `apps/desktop/src/scripts/`
 **Dipende da:** 0.2, 0.5
 
+**Stato:** le P1 sono fatte. Il formatter lavora sui token (`platypus-sql/src/format.rs`): cambia solo spazi e maiuscole delle parole chiave, e lascia com'è il corpo di funzioni, procedure e trigger. Le opzioni sono il case delle parole chiave e l'indentazione. I comandi dell'editor sono azioni dello scope `editor`. L'autocomplete dei JOIN usa le FK del catalogo (`Connection::catalog_foreign_keys`). Le P2/P3 sono da fare.
+
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | Formattatore SQL (Ctrl+Shift+F) per dialetto, configurabile | P1 | D |

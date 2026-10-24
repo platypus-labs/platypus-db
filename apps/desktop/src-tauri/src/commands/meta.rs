@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use platypus_core::{ObjectMeta, SchemaMeta, TableDetails};
+use platypus_core::{CatalogForeignKey, ObjectMeta, SchemaMeta, TableDetails};
 use serde::Serialize;
 use tauri::State;
 
@@ -11,11 +11,12 @@ use super::AppState;
 use crate::error::CommandResult;
 
 /// Tables and columns for editor autocompletion: `schemas[schema][table]` lists the
-/// columns in declaration order.
+/// columns in declaration order. `foreign_keys` complete JOIN conditions.
 #[derive(Debug, Serialize)]
 pub struct CompletionCatalog {
     default_schema: Option<String>,
     schemas: BTreeMap<String, BTreeMap<String, Vec<String>>>,
+    foreign_keys: Vec<CatalogForeignKey>,
 }
 
 #[tauri::command]
@@ -39,9 +40,12 @@ pub async fn completion_catalog(
             .or_default()
             .push(c.column);
     }
+    // Completion works without JOIN conditions when the keys cannot be read.
+    let foreign_keys = conn.catalog_foreign_keys().await.unwrap_or_default();
     Ok(CompletionCatalog {
         default_schema,
         schemas,
+        foreign_keys,
     })
 }
 

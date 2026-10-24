@@ -198,10 +198,27 @@ export interface DialectSupport {
   renamable: ObjectKind[];
 }
 
-/** Tables and columns by schema, for autocompletion. */
+/** A foreign key of the catalog: `schema.table (columns)` references `ref_*`. */
+export interface CatalogForeignKey {
+  schema: string;
+  table: string;
+  columns: string[];
+  ref_schema: string;
+  ref_table: string;
+  ref_columns: string[];
+}
+
+/** Tables and columns by schema, and the foreign keys between them, for autocompletion. */
 export interface CompletionCatalog {
   default_schema: string | null;
   schemas: Record<string, Record<string, string[]>>;
+  foreign_keys: CatalogForeignKey[];
+}
+
+export interface FormatSettings {
+  keyword_case: "upper" | "lower" | "preserve";
+  /** Spaces per level. */
+  indent: number;
 }
 
 export interface TransactionState {
@@ -298,6 +315,8 @@ export const api = {
   cancelExport: (exportId: number) => invoke<void>("cancel_export", { exportId }),
   analyzeSql: (sql: string, driver: DriverKind, cursor: number) =>
     invoke<SqlAnalysis>("analyze_sql", { sql, driver, cursor }),
+  formatSql: (sql: string, driver: DriverKind, settings: FormatSettings) =>
+    invoke<string>("format_sql", { sql, driver, settings }),
   searchHistory: (query: {
     connectionId?: string;
     text?: string;

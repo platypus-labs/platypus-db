@@ -1,8 +1,8 @@
 //! SQL text analysis for the editor.
 
 use platypus_core::DriverKind;
-use platypus_sql::Dialect;
-use serde::Serialize;
+use platypus_sql::{Dialect, FormatOptions, KeywordCase};
+use serde::{Deserialize, Serialize};
 
 /// A statement range in UTF-16 code units, the unit JavaScript strings use.
 #[derive(Debug, Serialize)]
@@ -68,6 +68,32 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
             })
             .collect(),
     }
+}
+
+/// The formatter settings, as the editor sends them.
+#[derive(Debug, Deserialize)]
+pub struct FormatSettings {
+    /// `upper`, `lower` or `preserve`.
+    keyword_case: String,
+    indent: usize,
+}
+
+/// Formats `sql` for the editor; only whitespace and the case of keywords change.
+#[tauri::command]
+pub fn format_sql(sql: String, driver: DriverKind, settings: FormatSettings) -> String {
+    let keyword_case = match settings.keyword_case.as_str() {
+        "lower" => KeywordCase::Lower,
+        "preserve" => KeywordCase::Preserve,
+        _ => KeywordCase::Upper,
+    };
+    platypus_sql::format(
+        &sql,
+        Dialect::from(driver),
+        FormatOptions {
+            keyword_case,
+            indent: settings.indent.clamp(1, 8),
+        },
+    )
 }
 
 #[cfg(test)]

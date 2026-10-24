@@ -3,10 +3,12 @@
 //! are byte offsets into the input.
 
 mod dialect;
+mod format;
 mod generate;
 mod lexer;
 
 pub use dialect::Dialect;
+pub use format::{FormatOptions, KeywordCase, format};
 pub use generate::ObjectName;
 pub use lexer::{Lexer, Token, TokenKind};
 

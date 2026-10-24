@@ -18,6 +18,10 @@ scrolls through millions of rows.
 - **SQL editor** (CodeMirror): run the statement under the cursor (`Ctrl+Enter`) or the
   whole script (`Alt+X`), errors pointed out in the text, autocompletion of keywords,
   tables and columns (including `alias.column`), query history, `.sql` files.
+  `JOIN` completes from foreign keys: `JOIN ` offers the related tables with alias and
+  condition, `JOIN t ON ` offers the condition. A formatter (`Ctrl+Shift+F`) with
+  configurable keyword case and indentation. Line commands, multiple cursors, and a
+  context menu with every editor command.
 - **Results grid** on canvas: millions of rows fetched on demand, cancellable queries.
 - **Data viewer**: open a table, sort by clicking a header, filter with a `WHERE`, count rows.
 - **Export** to CSV, JSON, NDJSON or Parquet, streamed straight to the file.
@@ -42,6 +46,14 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | `Alt+X`, `Ctrl+Shift+Enter` | Run the script |
 | `Ctrl+Space` | Autocomplete |
 | `Ctrl+/` | Comment / uncomment |
+| `Ctrl+Shift+F` | Format the script (or the selection) |
+| `Ctrl+Shift+A` | Select the statement under the cursor |
+| `Shift+Alt+Down`, `Shift+Alt+Up` | Duplicate the line |
+| `Alt+Up`, `Alt+Down` | Move the line |
+| `Ctrl+Shift+K` | Delete the line |
+| `Ctrl+Alt+Up`, `Ctrl+Alt+Down` | Add a cursor above / below |
+| `Ctrl+D`, `Ctrl+Shift+L` | Select the next / every occurrence |
+| `Alt+drag` | Rectangular selection |
 | `Ctrl+F` | Find and replace |
 | `Ctrl+S`, `Ctrl+O` | Save / open a `.sql` file |
 | `Ctrl+T`, `Ctrl+W` | New tab / close tab |

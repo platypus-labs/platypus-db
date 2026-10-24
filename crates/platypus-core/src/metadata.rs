@@ -111,6 +111,17 @@ pub struct CatalogColumn {
     pub column: String,
 }
 
+/// One foreign key of the catalog, for completing JOIN conditions in the editor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CatalogForeignKey {
+    pub schema: String,
+    pub table: String,
+    pub columns: Vec<String>,
+    pub ref_schema: String,
+    pub ref_table: String,
+    pub ref_columns: Vec<String>,
+}
+
 /// Columns read for autocompletion at most; larger catalogs are cut.
 pub const CATALOG_LIMIT: usize = 200_000;
 
