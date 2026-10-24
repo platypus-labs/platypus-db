@@ -4,13 +4,23 @@
  * it mounts; actions and tab kinds call `workbench()`.
  */
 import type { ReactNode } from "react";
-import type { Capabilities, SavedConnection } from "./api";
+import type { Capabilities, Project, SavedConnection } from "./api";
 import type { TabInit, TabKindName } from "./tabs/registry";
 
 export interface Workbench {
   connections(): SavedConnection[];
   /** Replaces the saved connections, e.g. with what a command that changed one returned. */
   setConnections(all: SavedConnection[]): void;
+  projects(): Project[];
+  /** Replaces the projects with what a command that changed them returned. */
+  setProjects(all: Project[]): void;
+  /** The project shown, `null` for All connections. */
+  activeProject(): Project | null;
+  switchProject(id: string | null): void;
+  /** Opens the project dialog; `null` makes a new project. */
+  editProject(project: Project | null): void;
+  /** Deletes a project after asking, closing its tabs; its connections stay. */
+  deleteProject(project: Project): Promise<void>;
   /** Opens a new tab of `kind` and makes it active. */
   openTab<K extends TabKindName>(kind: K, connectionId: string, init?: TabInit<K>): void;
   /** The navigator session of the connection (and database, `null` for the saved one),

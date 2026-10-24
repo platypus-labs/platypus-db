@@ -82,6 +82,20 @@ table's, so the editor can change the results of such queries too.
 Add dialect rules there, with tests. `apps/desktop/src/sqlNames.ts` mirrors `quote_ident`
 for the UI.
 
+### Connections file
+
+`platypus_store::ConnectionStore` keeps `connections.toml`, now `version = 2`: a list of
+`[[projects]]` (`id`, `name`, `color` as `#rrggbb`, `initials`, `connections`, the ids of
+its connections) before the `[[connections]]`. A connection can be in several projects, or
+in none. Version 1 files (no projects) are read and written back as version 2; a file with a
+newer version is refused, so an older app never drops what it cannot read. Ids of
+connections that no longer exist are dropped when the file is opened, and deleting a
+connection removes it from every project.
+
+The projects' commands are in `commands/projects.rs`: `list_projects`, `save_project`,
+`delete_project`, `set_project_membership` and `project_initials`. `save_connection` and
+`save_imported` take the projects a connection joins.
+
 ### Settings storage
 
 `platypus_store::SettingsStore` stores `settings.toml` under dotted keys. Rust code reads a
@@ -129,6 +143,7 @@ registerAction({
 database of the same server (PostgreSQL), and sessions and tabs opened from there use it.
 | `grid` | `{ grid: GridApi, source }` | grid menu, and shortcuts while the grid has focus |
 | `editor` | `{ view: EditorView, driver, readOnly }` | editor menu, and shortcuts while the editor has focus (before CodeMirror's own keymaps) |
+| `project` | `Project` | menu of a project's square in the rail |
 
 To add a scope, augment `ActionScopes` from the feature's own module:
 `declare module "../actions" { interface ActionScopes { … } }`.
@@ -163,7 +178,23 @@ without props. It provides:
 - `capabilities`, what an open session's driver supports;
 - `showError`;
 - `openSettings`;
-- `openDialog`, which shows a dialog from an action. Its `render(close)` returns the dialog.
+- `openDialog`, which shows a dialog from an action. Its `render(close)` returns the dialog;
+- `projects`, `setProjects`, `activeProject` and `switchProject`, and `editProject` and
+  `deleteProject`, which open the project dialog or ask before deleting.
+
+### Projects
+
+`apps/desktop/src/projects/` holds the rail (`ProjectRail.tsx`), the project dialog, the
+dialog that adds saved connections to a project, and the actions (`actions.ts`): the
+`Ctrl+1`… switches, next and previous project, the `project` scope of a square's menu, and
+"Add to project" and "Remove from this project" in the navigator. `state.ts` filters the
+connections of a project and remembers the active one.
+
+Every tab has a `project` (`TabBase.project`, `null` for All connections). All tabs stay
+mounted; the tab bar shows those of the active project, and each project remembers its
+active tab. The workspace is saved as `platypus.workspace.v2` in `localStorage`, with the
+active tab per project; a v1 workspace is read once and its tabs go to All connections. A
+new tab joins the active project, so features that open tabs need nothing more.
 
 ### Navigator refresh
 
@@ -264,7 +295,8 @@ together with `source`: the connection, the SQL, the job and the data-viewer tab
 `apps/desktop/e2e/` drives the release build through the WebView2 DevTools protocol, on
 Windows only. Each scenario runs against a fresh profile: `PLATYPUS_DATA_DIR` and a separate
 WebView2 folder. The user's data is never touched. The runner sets `PLATYPUS_DEVTOOLS_PORT`,
-which makes the app open the protocol port itself.
+which makes the app open the protocol port itself. With it set, `app_info().devtools` is
+true and the app exposes test hooks on `window.__platypus`, such as `switchProject(id)`.
 
 ```bash
 npm run tauri build -- --no-bundle

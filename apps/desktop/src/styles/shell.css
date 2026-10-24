@@ -4,7 +4,8 @@
 
 .shell {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  /* The project rail, the navigator, the workspace. */
+  grid-template-columns: 52px 260px 1fr;
   height: 100%;
 }
 

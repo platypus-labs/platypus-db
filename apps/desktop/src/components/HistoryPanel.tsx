@@ -31,7 +31,7 @@ export function HistoryPanel({ connectionId, refresh, onInsert, onClose }: Props
     async (beforeId?: number) => {
       const token = ++search.current;
       try {
-        const page = await api.searchHistory({ connectionId, text, beforeId, limit: PAGE });
+        const page = await api.searchHistory({ connectionIds: [connectionId], text, beforeId, limit: PAGE });
         if (token !== search.current) return;
         setEntries((prev) => (beforeId === undefined ? page : [...prev, ...page]));
         setMore(page.length === PAGE);

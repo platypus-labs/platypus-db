@@ -69,7 +69,9 @@ pub fn save_connection(
     connection: SavedConnection,
     password: PasswordInput,
     ssh_secrets: Option<SshSecrets>,
+    projects: Option<Vec<Uuid>>,
 ) -> CommandResult<Vec<SavedConnection>> {
+    let id = connection.id;
     let update = match password {
         PasswordInput::Keep => PasswordUpdate::Keep,
         PasswordInput::Set(p) => PasswordUpdate::Set(Secret::new(p)),
@@ -102,6 +104,10 @@ pub fn save_connection(
                 PasswordInput::Keep => {}
             }
         }
+        // `None` leaves the connection in the projects it is in.
+        if let Some(projects) = projects {
+            s.set_projects_of(id, &projects)?;
+        }
         Ok(s.list().to_vec())
     })
 }
@@ -118,15 +124,27 @@ pub fn read_import(source: ImportSource, path: PathBuf) -> CommandResult<Vec<Sav
     Ok(platypus_store::import_connections(source, &path)?)
 }
 
-/// Saves imported connections; they ask for their passwords on first use.
+/// Saves imported connections, into `project` when one is given; they ask for their
+/// passwords on first use.
 #[tauri::command]
 pub fn save_imported(
     state: State<'_, AppState>,
     connections: Vec<SavedConnection>,
+    project: Option<Uuid>,
 ) -> CommandResult<Vec<SavedConnection>> {
     state.with_store(|s| {
+        // A project deleted meanwhile is refused before anything is saved.
+        if let Some(project) = project
+            && !s.projects().iter().any(|p| p.id == project)
+        {
+            return Err(platypus_store::StoreError::NotFound(project));
+        }
+        let ids: Vec<Uuid> = connections.iter().map(|c| c.id).collect();
         for connection in connections {
             s.save(connection, PasswordUpdate::Clear)?;
+        }
+        if let Some(project) = project {
+            s.add_to_project(project, &ids)?;
         }
         Ok(s.list().to_vec())
     })

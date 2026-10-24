@@ -17,7 +17,6 @@ export interface SavedConnection {
   save_password: boolean;
   read_only: boolean;
   color: string | null;
-  folder: string | null;
   /** Production asks before changes and starts in manual commit. */
   connection_type?: ConnectionType | null;
   /** The SSH server the connection goes through. */
@@ -380,9 +379,22 @@ export type ExportEvent =
   | { type: "failed"; error: CommandError }
   | { type: "cancelled" };
 
+/** A set of connections worked on together; a connection can be in several. */
+export interface Project {
+  id: string;
+  name: string;
+  /** `#rrggbb`. */
+  color: string;
+  /** One or two characters on the project's square. */
+  initials: string;
+  connections: string[];
+}
+
 export interface AppInfo {
   name: string;
   version: string;
+  /** Developer tools are open, as for the end-to-end tests: the page gets test hooks. */
+  devtools: boolean;
   os: string;
   arch: string;
 }
@@ -400,12 +412,27 @@ export const api = {
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
   defaultConnection: (driver: DriverKind) =>
     invoke<SavedConnection>("default_connection", { driver }),
-  saveConnection: (connection: SavedConnection, password: PasswordInput, sshSecrets: SshSecrets = {}) =>
-    invoke<SavedConnection[]>("save_connection", { connection, password, sshSecrets }),
+  /** `projects` replaces the projects the connection is in; `null` leaves them. */
+  saveConnection: (
+    connection: SavedConnection,
+    password: PasswordInput,
+    sshSecrets: SshSecrets = {},
+    projects: string[] | null = null,
+  ) => invoke<SavedConnection[]>("save_connection", { connection, password, sshSecrets, projects }),
   detectImports: () => invoke<ImportFile[]>("detect_imports"),
   /** The connections in another tool's file; nothing is saved yet. */
   readImport: (source: ImportSource, path: string) => invoke<SavedConnection[]>("read_import", { source, path }),
-  saveImported: (connections: SavedConnection[]) => invoke<SavedConnection[]>("save_imported", { connections }),
+  /** Saves imported connections, into `project` when given. */
+  saveImported: (connections: SavedConnection[], project: string | null = null) =>
+    invoke<SavedConnection[]>("save_imported", { connections, project }),
+  listProjects: () => invoke<Project[]>("list_projects"),
+  saveProject: (project: Project) => invoke<Project[]>("save_project", { project }),
+  /** Deletes a project; its connections stay. */
+  deleteProject: (id: string) => invoke<Project[]>("delete_project", { id }),
+  setProjectMembership: (connectionId: string, projectId: string, member: boolean) =>
+    invoke<Project[]>("set_project_membership", { connectionId, projectId, member }),
+  /** The initials a project gets from its name. */
+  projectInitials: (name: string) => invoke<string>("project_initials", { name }),
   deleteConnection: (id: string) => invoke<SavedConnection[]>("delete_connection", { id }),
   /** Sets a table's virtual key; no columns remove it. */
   setVirtualKey: (connectionId: string, schema: string, table: string, columns: string[]) =>
@@ -478,14 +505,15 @@ export const api = {
     invoke<string>("format_sql", { sql, driver, settings }),
   /** The table a query reads, when its rows are that table's rows. */
   querySource: (sql: string, driver: DriverKind) => invoke<QuerySource | null>("query_source", { sql, driver }),
+  /** `connectionIds` limits the entries to those connections, e.g. a project's. */
   searchHistory: (query: {
-    connectionId?: string;
+    connectionIds?: string[];
     text?: string;
     beforeId?: number;
     limit: number;
   }) =>
     invoke<HistoryEntry[]>("search_history", {
-      connectionId: query.connectionId ?? null,
+      connectionIds: query.connectionIds ?? null,
       text: query.text || null,
       beforeId: query.beforeId ?? null,
       limit: query.limit,

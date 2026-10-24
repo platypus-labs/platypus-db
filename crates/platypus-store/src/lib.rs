@@ -12,8 +12,8 @@ mod secrets;
 mod settings;
 
 pub use connections::{
-    ConnectionStore, ConnectionType, PasswordUpdate, SavedConnection, SavedSsh, SshAuthKind,
-    VirtualKey,
+    ConnectionStore, ConnectionType, PasswordUpdate, Project, SavedConnection, SavedSsh,
+    SshAuthKind, VirtualKey, initials_of,
 };
 pub use history::{HistoryEntry, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry};
 pub use import::{

@@ -85,7 +85,7 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 
 | Gruppo | Lock |
 |---|---|
-| A — Modifica dei dati | ✅ fatto (P1, P2) |
+| A — Modifica dei dati | 🔒 Delfa · group-a-arrays · 2026-10-24 |
 | B — Griglia avanzata | ✅ fatto (P1, P2) |
 | C — Navigator e oggetti | 🔒 Paolo · group-c-navigator · 2026-10-24 |
 | D — Editor SQL | ✅ fatto (P1) |
@@ -101,7 +101,7 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 | N — Accesso per agenti (MCP) | libero |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
-| Progetti (spazi di lavoro) | 🔒 Delfa · group-projects · 2026-10-24 |
+| Progetti (spazi di lavoro) | ✅ fatto (parte B) |
 
 ### Gruppo A — Modifica dei dati
 
@@ -202,7 +202,7 @@ Restano i P3.
 | **Parametri e variabili** (`:id`, `?`, `${var}`) con un dialog dei valori e un **pannello variabili** | P2 | D |
 | **Comandi client-side**: `@set`, `@include file.sql`, `@export`, `@echo` | P2 | D |
 | Template e snippet con Tab, modificabili | P2 | D |
-| Script salvati in un pannello progetti: cartelle, link a una connessione, rinomina | P2 | D |
+| Script salvati in un pannello progetti: cartelle, link a una connessione, rinomina. Gli script vanno nei progetti del gruppo K (`apps/desktop/src/projects/`) | P2 | D |
 | **Modalità terminale SQL**: output testuale invece della griglia | P3 | D |
 | **Query builder visuale**: tabelle trascinate, JOIN sulle FK, SQL generato | P3 | D+ |
 | Autocomplete dei JOIN dalle FK (`JOIN orders o ON` completa la condizione) | P1 | N |
@@ -343,8 +343,10 @@ connessioni, tabelle e query recenti, riapertura del tab chiuso, pagina Impostaz
 sezioni, scorciatoie personalizzabili, barra degli strumenti configurabile). Restano i P2/P3.
 Fatta anche la **nuova grafica**: temi Platypus Dark e Light, font Inter e JetBrains Mono
 inclusi, icone Lucide, navigator, tab, toolbar e dialog ridisegnati
-([spec](superpowers/specs/2026-10-24-grafica-e-progetti-design.md), parte A). I **progetti
-come spazi di lavoro** (parte B della stessa spec) sono il prossimo passo.
+([spec](superpowers/specs/2026-10-24-grafica-e-progetti-design.md), parte A). Fatti anche i
+**progetti come spazi di lavoro** (parte B): barra dei progetti a sinistra, connessioni in
+più progetti, tab, cronologia, palette e titolo della finestra per progetto, `Ctrl+1`…
+per cambiare progetto, `connections.toml` versione 2.
 
 **Area:** `App.tsx`, `apps/desktop/src/shell/` (tab bar, palette, impostazioni), `styles.css`, `theme.ts`
 **Dipende da:** 0.2, 0.3, 0.7

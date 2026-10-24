@@ -12,6 +12,7 @@ pub mod grid;
 pub mod history;
 pub mod meta;
 pub mod objects;
+pub mod projects;
 pub mod query;
 pub mod search;
 pub mod settings;
@@ -169,6 +170,9 @@ pub struct AppInfo {
     version: &'static str,
     os: &'static str,
     arch: &'static str,
+    /// The developer tools port is open (`PLATYPUS_DEVTOOLS_PORT`), as for the end-to-end
+    /// tests, which then get test hooks in the page.
+    devtools: bool,
 }
 
 #[tauri::command]
@@ -178,5 +182,6 @@ pub fn app_info() -> AppInfo {
         version: platypus_core::VERSION,
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
+        devtools: std::env::var_os("PLATYPUS_DEVTOOLS_PORT").is_some(),
     }
 }

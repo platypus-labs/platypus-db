@@ -63,8 +63,12 @@ scrolls through millions of rows.
   contrast; your own accent, background, sidebar and text colors, interface size, grid row
   density, corner radius and the SQL editor's font size. Inter and JetBrains Mono are
   bundled, so the app looks the same everywhere and works offline.
+- **Projects** as workspaces: a rail of colored squares on the left, one per project
+  (a client, an environment, a side job). A project shows only its connections, its own tabs
+  and its recent queries; the window title names it. A connection can be in several
+  projects; `Ctrl+1` is All connections, `Ctrl+2`… the projects in rail order.
 - **Command palette** (`Ctrl+K` or `Ctrl+Shift+P`): actions, connections, tables and recent
-  queries, found by typing a few letters of them.
+  queries, found by typing a few letters of them. In a project it lists only the project's.
 - **Shell**: `Ctrl+Shift+T` reopens the last closed tab, the mouse wheel scrolls the tab bar,
   every shortcut can be changed in the Settings and the toolbar's buttons hidden or shown as
   icons only.
@@ -74,6 +78,7 @@ scrolls through millions of rows.
 |---|---|
 | ![Autocomplete](docs/screenshots/autocomplete.png) | ![Transactions](docs/screenshots/transaction.png) |
 | ![Platypus Light](docs/screenshots/light-theme.png) | ![Command palette](docs/screenshots/palette.png) |
+| ![Projects](docs/screenshots/projects.png) | |
 
 ## Install
 
@@ -102,6 +107,8 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | `Ctrl+K`, `Ctrl+Shift+P` | Command palette |
 | `Ctrl+T`, `Ctrl+W`, `Ctrl+Shift+T` | New tab / close tab / reopen the closed tab |
 | `Ctrl+Tab`, `Ctrl+Shift+Tab` | Next / previous tab |
+| `Ctrl+1`, `Ctrl+2`… `Ctrl+9` | All connections / the projects in rail order |
+| `Ctrl+Alt+PageDown`, `Ctrl+Alt+PageUp` | Next / previous project |
 | `Ctrl+,` | Settings |
 | `F2`, `Enter`, typing | Edit the cell (data viewer, one-table queries) |
 | `Insert`, `Ctrl+D`, `Delete` | Add, duplicate, delete rows |
