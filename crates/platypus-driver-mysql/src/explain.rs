@@ -276,7 +276,7 @@ mod tests {
             (Some(3.0), Some(2.0), Some(0.5))
         );
         // Statistics are a property, not a step.
-        assert!(a.children.is_empty());
+        assert_eq!(a.children, Vec::new());
         assert!(a.properties.iter().any(|(k, _)| k == "r_engine_stats"));
         assert!(
             a.properties

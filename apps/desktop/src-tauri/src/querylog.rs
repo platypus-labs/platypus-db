@@ -124,10 +124,15 @@ impl QueryLog {
         entry.rev = self.rev.fetch_add(1, Ordering::Relaxed) + 1;
     }
 
-    fn finish(&self, id: u64, started: Instant, status: LogStatus, error: Option<String>) {
+    /// Done, or failed with `error`.
+    fn finish(&self, id: u64, started: Instant, error: Option<String>) {
         self.update(id, |e| {
-            e.elapsed_ms = Some(started.elapsed().as_secs_f64() * 1000.0);
-            e.status = status;
+            e.elapsed_ms = Some(millis_since(started));
+            e.status = if error.is_some() {
+                LogStatus::Failed
+            } else {
+                LogStatus::Done
+            };
             e.error = error;
         });
     }
@@ -144,6 +149,10 @@ impl QueryLog {
     pub fn clear(&self) {
         lock(&self.entries).clear();
     }
+}
+
+fn millis_since(started: Instant) -> f64 {
+    started.elapsed().as_secs_f64() * 1000.0
 }
 
 /// A connection whose requests go to the log.
@@ -171,18 +180,14 @@ impl Logged {
     async fn track<T>(
         &self,
         kind: LogKind,
-        text: String,
+        text: impl Into<String>,
         request: impl Future<Output = Result<T>>,
     ) -> Result<T> {
-        let id = self.log.start(&self.connection, kind, text);
+        let id = self.log.start(&self.connection, kind, text.into());
         let started = Instant::now();
         let result = request.await;
-        match &result {
-            Ok(_) => self.log.finish(id, started, LogStatus::Done, None),
-            Err(e) => self
-                .log
-                .finish(id, started, LogStatus::Failed, Some(e.to_string())),
-        }
+        let error = result.as_ref().err().map(ToString::to_string);
+        self.log.finish(id, started, error);
         result
     }
 }
@@ -197,7 +202,7 @@ impl Connection for Logged {
         match self.inner.execute(sql, options).await {
             Ok(ExecResult::Affected { rows }) => {
                 self.log.update(id, |e| e.rows = Some(rows));
-                self.log.finish(id, started, LogStatus::Done, None);
+                self.log.finish(id, started, None);
                 Ok(ExecResult::Affected { rows })
             }
             Ok(ExecResult::Rows(stream)) => {
@@ -220,8 +225,7 @@ impl Connection for Logged {
                 )))
             }
             Err(e) => {
-                self.log
-                    .finish(id, started, LogStatus::Failed, Some(e.to_string()));
+                self.log.finish(id, started, Some(e.to_string()));
                 Err(e)
             }
         }
@@ -240,12 +244,8 @@ impl Connection for Logged {
     }
 
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {
-        self.track(
-            LogKind::Metadata,
-            "schemas".to_owned(),
-            self.inner.schemas(),
-        )
-        .await
+        self.track(LogKind::Metadata, "schemas", self.inner.schemas())
+            .await
     }
 
     async fn objects(&self, schema: &str) -> Result<Vec<ObjectMeta>> {
@@ -275,15 +275,21 @@ impl Connection for Logged {
     }
 
     async fn catalog_columns(&self) -> Result<Vec<CatalogColumn>> {
-        let text = "catalog columns".to_owned();
-        self.track(LogKind::Metadata, text, self.inner.catalog_columns())
-            .await
+        self.track(
+            LogKind::Metadata,
+            "catalog columns",
+            self.inner.catalog_columns(),
+        )
+        .await
     }
 
     async fn catalog_foreign_keys(&self) -> Result<Vec<CatalogForeignKey>> {
-        let text = "catalog foreign keys".to_owned();
-        self.track(LogKind::Metadata, text, self.inner.catalog_foreign_keys())
-            .await
+        self.track(
+            LogKind::Metadata,
+            "catalog foreign keys",
+            self.inner.catalog_foreign_keys(),
+        )
+        .await
     }
 
     fn transaction(&self) -> TransactionState {
@@ -297,21 +303,13 @@ impl Connection for Logged {
     }
 
     async fn commit(&self) -> Result<()> {
-        self.track(
-            LogKind::Transaction,
-            "commit".to_owned(),
-            self.inner.commit(),
-        )
-        .await
+        self.track(LogKind::Transaction, "commit", self.inner.commit())
+            .await
     }
 
     async fn rollback(&self) -> Result<()> {
-        self.track(
-            LogKind::Transaction,
-            "rollback".to_owned(),
-            self.inner.rollback(),
-        )
-        .await
+        self.track(LogKind::Transaction, "rollback", self.inner.rollback())
+            .await
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -341,12 +339,8 @@ impl Connection for Logged {
     }
 
     async fn databases(&self) -> Result<Vec<String>> {
-        self.track(
-            LogKind::Metadata,
-            "databases".to_owned(),
-            self.inner.databases(),
-        )
-        .await
+        self.track(LogKind::Metadata, "databases", self.inner.databases())
+            .await
     }
 
     async fn search_metadata(&self, needle: &str) -> Result<Vec<MetadataMatch>> {
@@ -378,22 +372,16 @@ impl Stream for Counted {
                 let (rows, started) = (this.rows, this.started);
                 this.log.update(this.id, |e| {
                     e.rows = Some(rows);
-                    e.elapsed_ms = Some(started.elapsed().as_secs_f64() * 1000.0);
+                    e.elapsed_ms = Some(millis_since(started));
                 });
             }
             Poll::Ready(Some(Err(e))) => {
                 this.over = true;
-                this.log.finish(
-                    this.id,
-                    this.started,
-                    LogStatus::Failed,
-                    Some(e.to_string()),
-                );
+                this.log.finish(this.id, this.started, Some(e.to_string()));
             }
             Poll::Ready(None) => {
                 this.over = true;
-                this.log
-                    .finish(this.id, this.started, LogStatus::Done, None);
+                this.log.finish(this.id, this.started, None);
             }
             Poll::Pending => {}
         }
@@ -422,7 +410,7 @@ mod tests {
         assert_eq!(page.entries.len(), 1);
         assert!(log.page(page.rev).entries.is_empty());
 
-        log.finish(first, Instant::now(), LogStatus::Done, None);
+        log.finish(first, Instant::now(), None);
         let changed = log.page(page.rev).entries;
         assert_eq!((changed.len(), changed[0].status), (1, LogStatus::Done));
 
@@ -433,7 +421,7 @@ mod tests {
         assert_eq!(all.len(), CAPACITY);
         assert_ne!(all[0].id, first);
         // An entry no longer kept is ignored.
-        log.finish(first, Instant::now(), LogStatus::Failed, None);
+        log.finish(first, Instant::now(), Some("gone".to_owned()));
         assert!(
             log.page(0)
                 .entries

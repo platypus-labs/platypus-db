@@ -86,12 +86,8 @@ impl PlanNode {
         let own = |total: Option<f64>, of: fn(&Self) -> Option<f64>| {
             total.map(|t| (t - self.children.iter().filter_map(of).sum::<f64>()).max(0.0))
         };
-        let (cost, ms) = (
-            own(self.cost, |c| c.cost),
-            own(self.total_ms(), Self::total_ms),
-        );
-        self.self_cost = cost;
-        self.self_ms = ms;
+        self.self_cost = own(self.cost, |c| c.cost);
+        self.self_ms = own(self.total_ms(), Self::total_ms);
     }
 }
 
