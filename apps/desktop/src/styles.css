@@ -1005,6 +1005,128 @@ button.toggled {
   width: 90px;
 }
 
+button.primary.danger {
+  background: var(--error);
+  border-color: var(--error);
+  /* --error is dark in the light theme and light in the dark one. */
+  color: var(--bg);
+}
+
+button.primary.danger:hover:not(:disabled) {
+  background: var(--error);
+}
+
+/* Object tab: header, section bar, then the section's content. */
+.object-tab {
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.object-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.object-icon {
+  font-size: 20px;
+  color: var(--fg-muted);
+}
+
+.object-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.object-sections {
+  display: flex;
+  gap: 2px;
+  padding: 4px 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.object-sections button {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  padding: 6px 10px;
+}
+
+.object-sections button.active {
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.object-sections .count {
+  margin-left: 6px;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.object-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+.object-ddl {
+  flex: 1;
+  min-height: 200px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.meta-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  align-self: flex-start;
+  min-width: 50%;
+}
+
+.meta-table th,
+.meta-table td {
+  text-align: left;
+  padding: 4px 12px 4px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.meta-table th {
+  color: var(--fg-muted);
+  font-weight: 600;
+}
+
+.meta-table td:last-child {
+  word-break: break-word;
+}
+
+.modal.sql-action {
+  width: min(640px, calc(100vw - 32px));
+  gap: 10px;
+}
+
+.sql-preview {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 260px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
 /* Grid: totals, record view, grouping and references panels, columns dialog */
 
 .grid-summary {

@@ -16,7 +16,7 @@ futures.workspace = true
 platypus-core.workspace = true
 platypus-sql.workspace = true
 postgres-protocol.workspace = true
-tokio = { workspace = true, features = ["rt", "sync"] }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 tokio-postgres.workspace = true
 tokio-postgres-rustls.workspace = true
 rustls.workspace = true

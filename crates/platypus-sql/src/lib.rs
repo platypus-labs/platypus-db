@@ -5,10 +5,12 @@
 
 mod dialect;
 pub mod dml;
+mod generate;
 mod lexer;
 mod source;
 
 pub use dialect::Dialect;
+pub use generate::ObjectName;
 pub use lexer::{Lexer, Token, TokenKind};
 pub use source::{SelectItem, SourceTable, source_table};
 
