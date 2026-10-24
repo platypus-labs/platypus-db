@@ -77,6 +77,7 @@ export interface Capabilities {
   explain: boolean;
   object_ddl: boolean;
   multiple_databases: boolean;
+  metadata_search: boolean;
 }
 
 export interface CommandError {
@@ -154,8 +155,28 @@ export interface ObjectMeta {
   name: string;
   kind: ObjectKind;
   comment: string | null;
-  /** The table of a trigger. */
+  /** The table of a trigger, or the partitioned table of a partition. */
   parent: string | null;
+  /** Estimated rows of a table, from the statistics. */
+  rows: number | null;
+  /** Bytes on disk of a table with its indexes. */
+  size: number | null;
+}
+
+export interface MetadataMatch {
+  schema: string;
+  name: string;
+  kind: ObjectKind;
+  parent: string | null;
+  matched: "name" | "column" | "source";
+  column: string | null;
+}
+
+/** Rows of a table that hold the searched text, at most 1000. */
+export interface TableHits {
+  rows: number;
+  /** The WHERE condition that selects them. */
+  condition: string;
 }
 
 export interface ColumnMeta {
@@ -174,6 +195,7 @@ export interface IndexMeta {
   columns: string[];
   unique: boolean;
   primary: boolean;
+  size: number | null;
 }
 
 export interface ForeignKeyMeta {
@@ -411,6 +433,10 @@ export const api = {
   listSchemas: (sessionId: number) => invoke<SchemaMeta[]>("list_schemas", { sessionId }),
   listObjects: (sessionId: number, schema: string) =>
     invoke<ObjectMeta[]>("list_objects", { sessionId, schema }),
+  searchMetadata: (sessionId: number, needle: string) =>
+    invoke<MetadataMatch[]>("search_metadata", { sessionId, needle }),
+  searchTableData: (sessionId: number, schema: string, table: string, needle: string) =>
+    invoke<TableHits>("search_table_data", { sessionId, schema, table, needle }),
   tableDetails: (sessionId: number, schema: string, table: string) =>
     invoke<TableDetails>("table_details", { sessionId, schema, table }),
   referencingKeys: (sessionId: number, schema: string, table: string) =>
