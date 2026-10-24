@@ -52,6 +52,8 @@ export interface CellDecoration {
   text?: string | null;
   /** Struck through, e.g. a row marked for deletion. */
   strike?: boolean;
+  /** Muted text after the value, e.g. the name of the row a foreign key points to. */
+  hint?: string;
 }
 
 /**
@@ -337,12 +339,17 @@ export function DataGrid({
           }
           ctx.font = FONT;
           ctx.fillStyle = d?.color ?? t.fg;
-          const right = !!column?.numeric;
+          // A hint follows the value, so both start on the left.
+          const right = !!column?.numeric && !d?.hint;
           ctx.textAlign = right ? "right" : "left";
           ctx.fillText(value, right ? x + cw - PAD : x + PAD, y);
           if (d?.strike) {
             const tw = Math.min(ctx.measureText(value).width, cw - PAD * 2);
             ctx.fillRect(right ? x + cw - PAD - tw : x + PAD, y, tw, 1);
+          }
+          if (d?.hint) {
+            ctx.fillStyle = t.muted;
+            ctx.fillText(d.hint, x + PAD * 2 + ctx.measureText(value).width, y);
           }
         }
         // Column separator.
@@ -557,8 +564,9 @@ export function DataGrid({
     if (!column) return;
     let max = Math.max(measure(column.name, FONT_BOLD), measure(column.db_type, FONT_SMALL));
     for (let r = first; r < first + visible * 3; r++) {
-      const v = cellText(r, col, props.current.decorate?.(r, col));
-      if (v) max = Math.max(max, measure(v, FONT));
+      const d = props.current.decorate?.(r, col);
+      const v = cellText(r, col, d);
+      if (v) max = Math.max(max, measure(v, FONT) + (d?.hint ? measure(d.hint, FONT) + PAD : 0));
     }
     widths.current[col] = Math.max(MIN_COL_W, Math.ceil(max) + PAD * 2);
     schedule();

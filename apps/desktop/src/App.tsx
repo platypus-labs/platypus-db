@@ -198,6 +198,7 @@ export function App() {
 
   provideWorkbench({
     connections: () => shell.current.connections ?? [],
+    setConnections,
     openTab: (kind, connectionId, init) => shell.current.addTab(createTab(kind, connectionId, init)),
     sideSession: (connection) => shell.current.navigatorSession(connection),
     showError: setToast,

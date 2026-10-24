@@ -18,6 +18,15 @@ export interface SavedConnection {
   read_only: boolean;
   color: string | null;
   folder: string | null;
+  /** Logical keys set by the user for tables without a primary key. */
+  virtual_keys?: VirtualKey[];
+}
+
+/** Columns that identify a table's rows, set by the user instead of a primary key. */
+export interface VirtualKey {
+  schema: string;
+  table: string;
+  columns: string[];
 }
 
 export type PasswordInput =
@@ -158,16 +167,36 @@ export interface ColumnValue {
   value: CellInput;
 }
 
-/** Pending changes to a data viewer result; see `commands/data.rs`. */
+/** Pending changes to a result of one table; see `commands/data.rs`. */
 export interface TableChanges {
   table: { schema: string; name: string };
   /** Result columns that identify a row. */
   key: number[];
+  /** Result columns that are the table's own, not expressions. */
+  table_columns: number[];
   /** Default expressions by result column. */
   defaults: (string | null)[];
   updates: { row: number; values: ColumnValue[] }[];
   inserts: ColumnValue[][];
   deletes: number[];
+}
+
+/** An item of a query's select list; see `commands/sql.rs`. */
+export type SourceItem = { kind: "all" } | { kind: "column"; name: string } | { kind: "other" };
+
+/** The one table a query reads; `schema` is `null` when left to the session. */
+export interface QuerySource {
+  schema: string | null;
+  name: string;
+  items: SourceItem[];
+}
+
+/** A table a foreign key points to: its key column and the column describing a row. */
+export interface Lookup {
+  schema: string;
+  table: string;
+  key: string;
+  label: string;
 }
 
 export type ExportFormat = "csv" | "json" | "ndjson" | "parquet";
@@ -207,6 +236,9 @@ export const api = {
   saveConnection: (connection: SavedConnection, password: PasswordInput) =>
     invoke<SavedConnection[]>("save_connection", { connection, password }),
   deleteConnection: (id: string) => invoke<SavedConnection[]>("delete_connection", { id }),
+  /** Sets a table's virtual key; no columns remove it. */
+  setVirtualKey: (connectionId: string, schema: string, table: string, columns: string[]) =>
+    invoke<SavedConnection[]>("set_virtual_key", { connectionId, schema, table, columns }),
   testConnection: (connection: SavedConnection, password: PasswordInput) =>
     invoke<ServerInfo>("test_connection", { connection, password }),
   openSession: (connectionId: string, password?: string) =>
@@ -239,6 +271,9 @@ export const api = {
     invoke<TransactionState>("end_transaction", { sessionId, commit }),
   completionCatalog: (sessionId: number) => invoke<CompletionCatalog>("completion_catalog", { sessionId }),
   queryValue: (sessionId: number, sql: string) => invoke<string | null>("query_value", { sessionId, sql }),
+  /** `[key, label]` pairs of `values`, or with `null` the first `limit` rows by label. */
+  lookupValues: (sessionId: number, lookup: Lookup, values: string[] | null, limit: number) =>
+    invoke<[string | null, string | null][]>("lookup_values", { sessionId, lookup, values, limit }),
   /** Re-runs `sql` on its own connection, streaming every row to `path`. */
   exportQuery: (
     sessionId: number,
@@ -257,6 +292,8 @@ export const api = {
   cancelExport: (exportId: number) => invoke<void>("cancel_export", { exportId }),
   analyzeSql: (sql: string, driver: DriverKind, cursor: number) =>
     invoke<SqlAnalysis>("analyze_sql", { sql, driver, cursor }),
+  /** The table a query reads, when its rows are that table's rows. */
+  querySource: (sql: string, driver: DriverKind) => invoke<QuerySource | null>("query_source", { sql, driver }),
   searchHistory: (query: {
     connectionId?: string;
     text?: string;
@@ -273,6 +310,7 @@ export const api = {
   readTextFile: (path: string) => invoke<string>("read_text_file", { path }),
   writeTextFile: (path: string, contents: string) =>
     invoke<void>("write_text_file", { path, contents }),
+  readClipboard: () => invoke<string>("read_clipboard"),
   /** Rows as column-major text arrays (`null` = SQL NULL). */
   fetchRows: async (jobId: number, offset: number, limit: number) => {
     const bytes = await invoke<ArrayBuffer>("fetch_rows", { jobId, offset, limit });
@@ -290,9 +328,9 @@ export const api = {
   /** The UPDATE, INSERT and DELETE statements that saving `changes` would run. */
   previewChanges: (jobId: number, changes: TableChanges) =>
     invoke<string[]>("preview_changes", { jobId, changes }),
-  /** Saves `changes` on the result's session, all or none; returns the statement count. */
+  /** Saves `changes` on the result's session, all or none; `undo` puts the rows back. */
   saveChanges: (jobId: number, changes: TableChanges) =>
-    invoke<number>("save_changes", { jobId, changes }),
+    invoke<{ statements: number; undo: string }>("save_changes", { jobId, changes }),
   /** Loaded rows' values in full, not cut to one line like the grid's. */
   rowValues: (jobId: number, offset: number, limit: number) =>
     invoke<(string | null)[][]>("row_values", { jobId, offset, limit }),

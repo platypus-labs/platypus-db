@@ -1,4 +1,4 @@
-//! Script files picked by the user in the native dialogs.
+//! Script files picked by the user in the native dialogs, and the clipboard.
 
 use std::path::PathBuf;
 
@@ -16,4 +16,16 @@ pub fn read_text_file(path: PathBuf) -> CommandResult<String> {
 pub fn write_text_file(path: PathBuf, contents: String) -> CommandResult<()> {
     std::fs::write(&path, contents)
         .map_err(|e| CommandError::new("io", format!("cannot write {}: {e}", path.display())))
+}
+
+/// The clipboard's text, for pasting rows. Read here: the web view would ask the user for
+/// permission first.
+#[tauri::command]
+pub fn read_clipboard() -> CommandResult<String> {
+    let unreadable = |e: arboard::Error| {
+        CommandError::new("clipboard", format!("cannot read the clipboard: {e}"))
+    };
+    arboard::Clipboard::new()
+        .and_then(|mut c| c.get_text())
+        .map_err(unreadable)
 }

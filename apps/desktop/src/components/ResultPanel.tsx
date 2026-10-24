@@ -67,7 +67,7 @@ interface PanelProps {
   onHeaderClick?: (column: string) => void;
   /** Passed to the grid's actions. */
   source?: GridSource | null;
-  /** Data viewer: the table whose rows can be edited. */
+  /** The table whose rows the result shows, to edit them. */
   edit?: TableEditTarget | null;
 }
 

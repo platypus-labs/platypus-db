@@ -48,6 +48,8 @@ rather than checking the driver. It provides:
 
 `platypus_sql::dml` builds the data editor's `UPDATE`, `INSERT` and `DELETE` statements from
 text values and the columns' Arrow types, and `dml::apply` runs them all or none.
+`platypus_sql::source_table` tells which table a `SELECT` reads, when its rows are that
+table's, so the editor can change the results of such queries too.
 
 Add dialect rules there, with tests. `apps/desktop/src/sqlNames.ts` mirrors `quote_ident`
 for the UI.
@@ -118,7 +120,7 @@ editor (`kind: "query"`) is the reference implementation, in `components/QueryTa
 
 `workbench()` (`apps/desktop/src/workbench.ts`) is how actions and tabs reach the shell
 without props. It provides:
-- the connections;
+- the connections, and `setConnections` for commands that return the changed list;
 - `openTab`;
 - `sideSession`, the connection's navigator session;
 - `showError`;
@@ -157,7 +159,8 @@ loaded before the first render.
 | `onScroll` | Called when the grid scrolls, e.g. to move an overlay. |
 | `ref` | Gives the `GridApi`. |
 
-A decoration can set `background`, `color`, replacement `text` and `strike`. Features that
+A decoration can set `background`, `color`, replacement `text`, `strike` and a muted `hint`
+after the value (the data editor's foreign key labels). Features that
 need their own object in grid actions add a field to `GridSource` by augmenting
 `GridSourceExtensions`, as the data editor does with `edit` (`grid/edit/TableEditor.tsx`).
 

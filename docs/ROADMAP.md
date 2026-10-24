@@ -79,8 +79,10 @@ Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i
 
 ### Gruppo A — Modifica dei dati
 
-**Stato: P1 completati** (modifica, righe nuove/duplicate/eliminate, anteprima SQL, chiave
-obbligatoria, NULL/default ed editor per tipo, salvataggio tutto-o-niente). Restano i P2/P3.
+**Stato: P1 e P2 completati** (modifica, righe nuove/duplicate/eliminate, anteprima SQL,
+chiave obbligatoria o virtuale, NULL/default ed editor per tipo, salvataggio tutto-o-niente,
+incolla da foglio di calcolo, risultati di query di una tabella, dictionary delle FK, script
+di undo). Resta il P3.
 
 **Area:** `apps/desktop/src/grid/edit/`, `commands/data.rs`, `platypus-sql/src/dml.rs`
 **Dipende da:** 0.3, 0.4, 0.5

@@ -10,7 +10,7 @@ mod history;
 mod secrets;
 mod settings;
 
-pub use connections::{ConnectionStore, PasswordUpdate, SavedConnection};
+pub use connections::{ConnectionStore, PasswordUpdate, SavedConnection, VirtualKey};
 pub use history::{HistoryEntry, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry};
 pub use secrets::{KeyringSecrets, MemorySecrets, SecretStore};
 pub use settings::SettingsStore;

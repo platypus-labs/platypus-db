@@ -1,23 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type CellInput, type ColumnInfo, type SavedConnection, type TableDetails, toCommandError } from "../../api";
+import { api, type CellInput, type ColumnInfo, type SavedConnection, toCommandError } from "../../api";
 import { type Cell, type CellDecoration, DataGrid, type GridApi, type GridSource } from "../DataGrid";
 import type { RowCache } from "../RowCache";
 import { CellEditor, type Move } from "./CellEditor";
-import { type EditMeta, type EditorKind, editMeta, editorKind, isJson, type TableRef } from "./meta";
+import { Dictionary } from "./dictionary";
+import { type EditMeta, type EditSource, type EditorKind, editMeta, editorKind, isJson, type ReadOnly } from "./meta";
+import { mapFields, parseClipboard } from "./paste";
 import { PreviewDialog } from "./PreviewDialog";
 import * as edits from "./state";
+import { VirtualKeyDialog } from "./VirtualKeyDialog";
 import "./actions";
 
-/** A data viewer result the editor may change. */
+/** A result the editor may change: the data viewer's, or a query's of one table. */
 export interface TableEditTarget {
   connection: SavedConnection;
-  table: TableRef;
-  /** Why this result cannot be edited even if the table can, e.g. the query was changed. */
+  /** Identifies the source, e.g. the query; the editor loads the table again when it changes. */
+  key: string;
+  /** Hides the edit bar until the result turns out to be editable: results in the SQL
+   *  editor, most of which are not of one table. */
+  quiet: boolean;
+  /** Why this result cannot be edited even if the table can. */
   readOnly: string | null;
-  /** The table's columns and keys, cached by the tab. */
-  loadDetails: () => Promise<TableDetails>;
-  /** Called after saving, to reload the data. */
-  onSaved: () => void;
+  /** The table behind the result; `null` when the result is not one table's rows. */
+  load: () => Promise<EditSource | null>;
+  /** The navigator session, for the tables foreign keys point to. */
+  session: () => Promise<number | null>;
+  /** Called after saving, to reload the data; `undo` puts the rows back. */
+  onSaved: (undo: string) => void;
   onDirtyChange: (dirty: boolean) => void;
 }
 
@@ -33,6 +42,9 @@ export interface TableEdit {
   addRow(): void;
   duplicateSelection(): Promise<void>;
   deleteSelection(): void;
+  /** Pastes the clipboard (spreadsheet cells or CSV) over the cells from the focused one,
+   *  or with `asRows` as new rows. */
+  paste(asRows: boolean): Promise<void>;
   undo(): void;
   save(): Promise<void>;
   preview(): Promise<void>;
@@ -41,7 +53,7 @@ export interface TableEdit {
 
 declare module "../DataGrid" {
   interface GridSourceExtensions {
-    /** The data editor, on data viewer results. */
+    /** The data editor, on results of one table. */
     edit?: TableEdit;
   }
 }
@@ -65,6 +77,8 @@ interface Editing {
   typed?: string;
   /** The loaded value, for result rows. */
   original?: string | null;
+  /** Rows of the table a foreign key points to, once loaded. */
+  options?: [string, string | null][];
 }
 
 // Translucent, so they read on light and dark grids alike.
@@ -94,11 +108,13 @@ function decoration(value: CellInput, background: string): CellDecoration {
   return { background, text, color: value.kind === "default" ? MUTED : undefined };
 }
 
-/** The data viewer's grid with editing: inline editors, new and deleted rows, save. */
+const columnsOf = (meta: EditMeta) => meta.columns.flatMap((c, i) => (c ? [i] : []));
+
+/** The grid of a result of one table, with editing: inline editors, new and deleted rows, save. */
 export function TableEditor({ target, jobId, columns, rowCount, cache, version, sort, onHeaderClick, source }: Props) {
   const grid = useRef<GridApi>(null);
   const box = useRef<HTMLDivElement>(null);
-  const [meta, setMeta] = useState<EditMeta | string | null>(null);
+  const [meta, setMeta] = useState<EditMeta | ReadOnly | null>(null);
   const [state, setState] = useState(edits.EMPTY);
   const current = useRef(state);
   const undoStack = useRef<edits.EditState[]>([]);
@@ -106,29 +122,50 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string[] | null>(null);
+  const [keyDialog, setKeyDialog] = useState(false);
   const [, setLayout] = useState(0);
+  const dictionary = useRef<Dictionary | null>(null);
+  const [labels, setLabels] = useState(0);
   const latest = useRef(target);
   latest.current = target;
 
   const reason = target.connection.read_only ? "the connection is read-only" : target.readOnly;
+  const virtualKeys = target.connection.virtual_keys ?? [];
+  const virtualSignature = JSON.stringify(virtualKeys);
   useEffect(() => {
     if (reason !== null) return;
     let live = true;
-    latest.current.loadDetails().then(
-      (details) => live && setMeta(editMeta(latest.current.table, columns, details)),
-      (e) => live && setMeta(`its keys could not be read (${toCommandError(e).message})`),
+    latest.current.load().then(
+      (source) => {
+        if (!live) return;
+        setMeta(source ? editMeta(source, columns, virtualKeys) : { reason: "the rows are not one table's", hidden: true });
+      },
+      (e) => live && setMeta({ reason: `its keys could not be read (${toCommandError(e).message})` }),
     );
     return () => {
       live = false;
     };
-  }, [columns, reason]);
-  const keys = typeof meta === "object" ? meta : null;
-  const readOnly = reason ?? (typeof meta === "string" ? meta : null);
+    // `virtualKeys` changes with its signature.
+  }, [columns, reason, target.key, virtualSignature]);
+  const keys = meta && "key" in meta ? meta : null;
+  const readOnly = reason ?? (meta && "reason" in meta ? meta.reason : null);
   const editable = readOnly === null && keys !== null && !busy;
   const dirty = !edits.isEmpty(state);
 
   useEffect(() => latest.current.onDirtyChange(dirty), [dirty]);
   useEffect(() => () => latest.current.onDirtyChange(false), []);
+
+  // Foreign keys show the rows they point to.
+  useEffect(() => {
+    if (!keys) return;
+    const dict = new Dictionary(latest.current.session, () => setLabels((n) => n + 1));
+    dictionary.current = dict;
+    void dict.init(keys);
+    return () => {
+      dict.dispose();
+      dictionary.current = null;
+    };
+  }, [keys]);
 
   function apply(change: (s: edits.EditState) => edits.EditState) {
     const prev = current.current;
@@ -150,8 +187,15 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
     return Array.from({ length: sel.r1 - sel.r0 + 1 }, (_, i) => sel.r0 + i);
   }
 
+  /** Whether a result column is one of the table's, so it can be written. */
+  const writable = (col: number) => keys?.columns[col] !== undefined;
+
   async function editCell(cell: Cell, typed?: string) {
     if (!editable || !keys) return;
+    if (!writable(cell.col)) {
+      setError(`${columns[cell.col]?.name ?? "This column"} is not a column of ${keys.table.name}: it cannot be edited`);
+      return;
+    }
     const s = current.current;
     const ref = edits.rowRef(s, cell.row);
     if ("row" in ref && s.deletes.has(ref.row)) return;
@@ -173,7 +217,16 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
       : (original ?? null);
     grid.current?.select(cell);
     const column = columns[cell.col]!;
-    setEditing({ cell, initial, typed, original, kind: editorKind(column, keys.columns[cell.col], typed ?? initial) });
+    const dict = dictionary.current;
+    const lookup = dict?.has(cell.col) ?? false;
+    const kind = editorKind(column, keys.columns[cell.col], typed ?? initial, lookup);
+    setEditing({ cell, initial, typed, original, kind });
+    if (lookup && dict) {
+      dict.options(cell.col).then(
+        (options) => setEditing((e) => (e?.cell === cell ? { ...e, options } : e)),
+        fail,
+      );
+    }
   }
 
   function commit(value: CellInput, move: Move) {
@@ -201,6 +254,60 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
     grid.current?.focus();
   }
 
+  async function paste(asRows: boolean) {
+    if (!editable || !keys) return;
+    let text: string;
+    try {
+      text = await api.readClipboard();
+    } catch (e) {
+      return fail(e);
+    }
+    const focused = grid.current?.focused() ?? { row: 0, col: 0 };
+    const { targets, rows } = mapFields(
+      parseClipboard(text),
+      columns.map((c) => c.name),
+      focused.col,
+    );
+    const fields = (row: string[]) =>
+      row.flatMap((value, i) => {
+        const col = targets[i] ?? -1;
+        return col >= 0 && writable(col) ? [{ col, value }] : [];
+      });
+    if (asRows) {
+      // Empty fields take the column's default.
+      const added = rows.map(
+        (row) =>
+          new Map<number, CellInput>(
+            fields(row)
+              .filter((f) => f.value !== "")
+              .map((f) => [f.col, { kind: "value", text: f.value }]),
+          ),
+      );
+      apply((s) => edits.addRows(s, added));
+      grid.current?.select({ row: 0, col: focused.col }, { row: added.length - 1, col: focused.col });
+      return;
+    }
+    // Over the cells from the focused one; empty fields are NULL.
+    const total = grid.current?.rowCount() ?? 0;
+    const cells: edits.CellChange[] = rows.slice(0, Math.max(0, total - focused.row)).flatMap((row, r) =>
+      fields(row).map(({ col, value }) => ({
+        gridRow: focused.row + r,
+        col,
+        value: value === "" ? { kind: "null" } : { kind: "value", text: value },
+      })),
+    );
+    apply((s) => edits.setCells(s, cells));
+  }
+
+  function changes(meta: EditMeta) {
+    return edits.toChanges(current.current, {
+      table: { schema: meta.table.schema, name: meta.table.name },
+      key: meta.key,
+      table_columns: columnsOf(meta),
+      defaults: meta.columns.map((c) => c?.default ?? null),
+    });
+  }
+
   const edit: TableEdit = {
     editable,
     dirty,
@@ -211,7 +318,7 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
       if (!editable || !sel) return;
       const cells: edits.CellChange[] = [];
       for (let r = sel.r0; r <= sel.r1; r++) {
-        for (let c = sel.c0; c <= sel.c1; c++) cells.push({ gridRow: r, col: c, value });
+        for (let c = sel.c0; c <= sel.c1; c++) if (writable(c)) cells.push({ gridRow: r, col: c, value });
       }
       apply((s) => edits.setCells(s, cells));
     },
@@ -232,7 +339,9 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
             if ("insert" in ref) return s.inserts[ref.insert]!;
             const [values = []] = await api.rowValues(jobId, ref.row, 1);
             const cells = new Map<number, CellInput>(
-              values.map((v, c) => [c, v === null ? { kind: "null" } : { kind: "value", text: v }]),
+              values.flatMap((v, c) =>
+                writable(c) ? [[c, v === null ? { kind: "null" } : { kind: "value", text: v }] as const] : [],
+              ),
             );
             for (const c of generated) cells.set(c, { kind: "default" });
             return cells;
@@ -246,6 +355,7 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
     deleteSelection: () => {
       if (editable) apply((s) => edits.deleteRows(s, selectedRows()));
     },
+    paste,
     undo: () => {
       const prev = undoStack.current.pop();
       if (!prev) return;
@@ -254,20 +364,14 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
     },
     save: async () => {
       if (!editable || !keys || edits.isEmpty(current.current)) return;
-      const t = latest.current;
-      const changes = edits.toChanges(current.current, {
-        table: { schema: t.table.schema, name: t.table.name },
-        key: keys.key,
-        defaults: keys.columns.map((c) => c?.default ?? null),
-      });
       setBusy(true);
       setPreview(null);
       try {
-        await api.saveChanges(jobId, changes);
+        const saved = await api.saveChanges(jobId, changes(keys));
         undoStack.current = [];
         current.current = edits.EMPTY;
         setState(edits.EMPTY);
-        t.onSaved();
+        latest.current.onSaved(saved.undo);
       } catch (e) {
         fail(e);
       } finally {
@@ -276,18 +380,8 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
     },
     preview: async () => {
       if (!keys || edits.isEmpty(current.current)) return;
-      const t = latest.current;
       try {
-        setPreview(
-          await api.previewChanges(
-            jobId,
-            edits.toChanges(current.current, {
-              table: { schema: t.table.schema, name: t.table.name },
-              key: keys.key,
-              defaults: keys.columns.map((c) => c?.default ?? null),
-            }),
-          ),
-        );
+        setPreview(await api.previewChanges(jobId, changes(keys)));
       } catch (e) {
         fail(e);
       }
@@ -298,16 +392,28 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
   const decorate = useCallback(
     (row: number, col: number): CellDecoration | undefined => {
       const n = state.inserts.length;
+      const dict = dictionary.current;
+      let d: CellDecoration | undefined;
+      let value: string | null | undefined;
       if (row < n) {
-        const value = state.inserts[row]!.get(col);
-        return value ? decoration(value, INSERTED) : INSERTED_DEFAULT;
+        const input = state.inserts[row]!.get(col);
+        d = input ? decoration(input, INSERTED) : INSERTED_DEFAULT;
+        value = input?.kind === "value" ? input.text : null;
+      } else if (state.deletes.has(row - n)) {
+        return DELETED;
+      } else {
+        const input = state.updates.get(row - n)?.get(col);
+        d = input && decoration(input, CHANGED);
+        value = input ? (input.kind === "value" ? input.text : null) : cache.get(row - n, col);
       }
-      if (state.deletes.has(row - n)) return DELETED;
-      const value = state.updates.get(row - n)?.get(col);
-      return value && decoration(value, CHANGED);
+      if (!dict?.has(col) || value == null) return d;
+      const label = dict.label(col, value);
+      return label ? { ...d, hint: label } : d;
     },
-    [state],
+    // `labels` and `version` change what the dictionary and the cache hold.
+    [state, labels, version, cache],
   );
+  const decorated = dirty || (dictionary.current?.size ?? 0) > 0;
 
   /** Typing on a cell starts editing it with that key. */
   function onKeyDown(e: React.KeyboardEvent) {
@@ -342,16 +448,28 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
       nullable={columnMeta?.nullable ?? true}
       json={isJson(column, columnMeta)}
       numeric={column.numeric}
+      options={editing.options}
       onCommit={commit}
       onCancel={cancelEdit}
     />
   );
 
+  const noKey = meta && "reason" in meta ? meta.noKey : undefined;
+  const showBar = !target.quiet || (meta !== null && !("hidden" in meta && meta.hidden));
+  const keyTable = keys?.table ?? noKey?.table;
+
   return (
     <div className="table-editor">
-      <div className="edit-bar">
+      <div className="edit-bar" hidden={!showBar}>
         {readOnly !== null ? (
-          <span className="muted small">Read-only: {readOnly}.</span>
+          <>
+            <span className="muted small">Read-only: {readOnly}.</span>
+            {noKey && (
+              <button onClick={() => setKeyDialog(true)} title="Columns that tell the rows apart">
+                Set a virtual key…
+              </button>
+            )}
+          </>
         ) : meta === null ? (
           <span className="muted small">Checking the table's keys…</span>
         ) : (
@@ -383,6 +501,11 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
             ) : (
               <span className="muted small">Double-click, F2 or type to edit a cell</span>
             )}
+            {keys?.virtualKey && (
+              <button className="link small" onClick={() => setKeyDialog(true)} title="Change the virtual key">
+                Virtual key: {keys.virtualKey.join(", ")}
+              </button>
+            )}
           </>
         )}
         {error && (
@@ -405,7 +528,7 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
           sort={sort}
           onHeaderClick={onHeaderClick}
           source={source ? { ...source, edit } : null}
-          decorate={dirty ? decorate : undefined}
+          decorate={decorated ? decorate : undefined}
           overlay={overlay || null}
           onCellDoubleClick={editable ? (cell) => void editCell(cell) : undefined}
           onScroll={onScroll}
@@ -417,6 +540,15 @@ export function TableEditor({ target, jobId, columns, rowCount, cache, version, 
           busy={busy}
           onSave={() => void edit.save()}
           onClose={() => setPreview(null)}
+        />
+      )}
+      {keyDialog && keyTable && (
+        <VirtualKeyDialog
+          connection={target.connection}
+          table={keyTable}
+          columns={keys ? keys.details.columns.map((c) => c.name) : (noKey?.columns ?? [])}
+          current={keys?.virtualKey ?? null}
+          onClose={() => setKeyDialog(false)}
         />
       )}
     </div>

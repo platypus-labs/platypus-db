@@ -1,5 +1,5 @@
 // The data editor's grid actions: in the grid's context menu and on its shortcuts, for
-// data viewer results whose table can be edited.
+// results of one table that can be edited.
 import { registerAction } from "../../actions";
 import type { GridActionContext } from "../DataGrid";
 
@@ -37,6 +37,28 @@ registerAction({
   order: 22,
   when: withSelection,
   run: ({ source }) => source!.edit!.setSelection({ kind: "default" }),
+});
+
+registerAction({
+  id: "grid.paste",
+  scope: "grid",
+  title: "Paste",
+  shortcut: "Mod+V",
+  group: "edit",
+  order: 23,
+  when: (ctx) => editable(ctx) && ctx.grid.focused() !== null,
+  run: ({ source }) => source!.edit!.paste(false),
+});
+
+registerAction({
+  id: "grid.paste_rows",
+  scope: "grid",
+  title: "Paste as new rows",
+  shortcut: "Mod+Shift+V",
+  group: "rows",
+  order: 33,
+  when: editable,
+  run: ({ source }) => source!.edit!.paste(true),
 });
 
 registerAction({

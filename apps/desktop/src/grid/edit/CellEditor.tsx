@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { CellInput } from "../../api";
 import type { EditorKind } from "./meta";
 
@@ -20,6 +20,8 @@ interface Props {
   json: boolean;
   /** Number columns: an empty value means NULL. */
   numeric: boolean;
+  /** Foreign keys: `[key, label]` rows of the table they point to, offered while typing. */
+  options?: [string, string | null][];
   onCommit: (value: CellInput, move: Move) => void;
   onCancel: () => void;
 }
@@ -39,10 +41,12 @@ export function CellEditor({
   nullable,
   json,
   numeric,
+  options,
   onCommit,
   onCancel,
 }: Props) {
   const [text, setText] = useState(typed ?? initial ?? "");
+  const listId = useId();
   const [problem, setProblem] = useState<string | null>(null);
   const done = useRef(false);
 
@@ -67,7 +71,7 @@ export function CellEditor({
     done.current = true;
     const empty = value.trim() === "";
     onCommit(
-      value === NULL_OPTION || (numeric && empty) ? { kind: "null" } : { kind: "value", text: value },
+      value === NULL_OPTION || ((numeric || kind === "lookup") && empty) ? { kind: "null" } : { kind: "value", text: value },
       move,
     );
   }
@@ -167,17 +171,33 @@ export function CellEditor({
     );
   }
   return (
-    <input
-      autoFocus
-      onFocus={onFocus}
-      className="cell-editor"
-      style={style}
-      type={kind === "date" ? "date" : "text"}
-      value={text}
-      spellCheck={false}
-      onChange={(e) => setText(e.target.value)}
-      onKeyDown={onKeyDown}
-      onBlur={onBlur}
-    />
+    <>
+      <input
+        autoFocus
+        onFocus={onFocus}
+        className="cell-editor"
+        style={style}
+        type={kind === "date" ? "date" : "text"}
+        value={text}
+        spellCheck={false}
+        list={kind === "lookup" ? listId : undefined}
+        onChange={(e) => {
+          setText(e.target.value);
+          // Picking a row from the list is an input without an input type: apply it.
+          if (kind === "lookup" && !(e.nativeEvent as InputEvent).inputType) commit(null, e.target.value);
+        }}
+        onKeyDown={onKeyDown}
+        onBlur={onBlur}
+      />
+      {kind === "lookup" && (
+        <datalist id={listId}>
+          {options?.map(([key, label]) => (
+            <option key={key} value={key}>
+              {label ?? ""}
+            </option>
+          ))}
+        </datalist>
+      )}
+    </>
   );
 }

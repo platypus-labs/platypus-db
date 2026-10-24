@@ -11,7 +11,8 @@ export type Cells = ReadonlyMap<number, CellInput>;
 export interface EditState {
   /** Changed cells of result rows: result row → column → value. */
   readonly updates: ReadonlyMap<number, Cells>;
-  /** New rows, newest first: column → value; columns left out take their default. */
+  /** New rows, in grid order (added ones go on top): column → value; columns left out
+   *  take their default. */
   readonly inserts: readonly Cells[];
   /** Result rows to delete. */
   readonly deletes: ReadonlySet<number>;
@@ -103,15 +104,16 @@ export function deleteRows(state: EditState, gridRows: Iterable<number>): EditSt
 
 const values = (cells: Cells): ColumnValue[] => [...cells].map(([column, value]) => ({ column, value }));
 
-/** The request for `api.saveChanges`; inserts go oldest first. */
+/** The request for `api.saveChanges`; new rows are inserted in grid order, so pasted rows
+ *  keep theirs. */
 export function toChanges(
   state: EditState,
-  target: Pick<TableChanges, "table" | "key" | "defaults">,
+  target: Pick<TableChanges, "table" | "key" | "table_columns" | "defaults">,
 ): TableChanges {
   return {
     ...target,
     updates: [...state.updates].map(([row, cells]) => ({ row, values: values(cells) })),
-    inserts: [...state.inserts].reverse().map(values),
+    inserts: state.inserts.map(values),
     deletes: [...state.deletes],
   };
 }
