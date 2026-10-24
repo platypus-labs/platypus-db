@@ -74,14 +74,25 @@ export default async function (page, { dir }) {
   await page.eval(`[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.textContent.includes('Script')).click()`);
   await waitDone(page);
 
-  await setEditor(page, "SELECT * FROM t ORDER BY id");
+  // DISTINCT keeps the result read-only: a plain query of one table would be editable.
+  await setEditor(page, "SELECT DISTINCT * FROM t ORDER BY id");
   await page.key("Enter", "Enter", 13, CTRL);
   assert.equal(await waitDone(page), "2 rows");
 
   // Grid menu and shortcuts come from the "grid" actions.
   await page.waitFor(`${visibleTab}.querySelector('.grid-scroll') !== null`);
   await page.eval(`${visibleTab}.querySelector('.grid-scroll').id = 'e2e-grid'`);
-  assert.deepEqual(await rightClick(page, "#e2e-grid"), ["Copy", "Select all"]);
+  assert.deepEqual(await rightClick(page, "#e2e-grid"), [
+    "Copy",
+    "Copy with headers",
+    "Copy as",
+    "Select all",
+    "Find…",
+    "Value panel",
+    "Record view",
+    "Count by value",
+    "Columns",
+  ]);
   // The page may not read the clipboard back: record what is written instead.
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
   await page.eval(`document.getElementById('e2e-grid').focus()`);

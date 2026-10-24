@@ -83,6 +83,8 @@ pub struct ColumnMeta {
     pub default: Option<String>,
     pub primary_key: bool,
     pub comment: Option<String>,
+    /// The values an enum column accepts, in declaration order; empty for other types.
+    pub enum_values: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -100,6 +102,18 @@ pub struct ForeignKeyMeta {
     pub columns: Vec<String>,
     pub ref_schema: String,
     pub ref_table: String,
+    pub ref_columns: Vec<String>,
+}
+
+/// A foreign key of another table that points at a table: the rows that reference it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ReferencingKey {
+    pub schema: String,
+    pub table: String,
+    pub name: String,
+    /// Columns of the referencing table.
+    pub columns: Vec<String>,
+    /// The referenced table's columns they hold, in the same order.
     pub ref_columns: Vec<String>,
 }
 
@@ -147,26 +161,14 @@ pub struct ConstraintMeta {
     pub definition: String,
 }
 
-/// A foreign key in another table that points at this one.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ReferenceMeta {
-    pub name: String,
-    /// The referencing table.
-    pub schema: String,
-    pub table: String,
-    /// Columns of the referencing table.
-    pub columns: Vec<String>,
-    /// Columns of this table.
-    pub ref_columns: Vec<String>,
-}
-
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct TableDetails {
     pub columns: Vec<ColumnMeta>,
     pub indexes: Vec<IndexMeta>,
     pub foreign_keys: Vec<ForeignKeyMeta>,
     pub constraints: Vec<ConstraintMeta>,
-    pub referenced_by: Vec<ReferenceMeta>,
+    /// Foreign keys of other tables that point at this one.
+    pub referenced_by: Vec<ReferencingKey>,
 }
 
 /// One line of an object's properties, e.g. `Owner: platypus`.

@@ -1,9 +1,11 @@
 //! Tauri shell for PlatypusDB: exposes the core crates to the web UI as commands.
 
 mod commands;
+mod copy;
 mod display;
 mod error;
 mod export;
+mod formats;
 mod jobs;
 
 use std::path::PathBuf;
@@ -118,6 +120,7 @@ pub fn run() {
             commands::connections::default_connection,
             commands::connections::save_connection,
             commands::connections::delete_connection,
+            commands::connections::set_virtual_key,
             commands::connections::test_connection,
             commands::connections::open_session,
             commands::connections::close_session,
@@ -131,6 +134,18 @@ pub fn run() {
             commands::meta::list_schemas,
             commands::meta::list_objects,
             commands::meta::table_details,
+            commands::meta::referencing_keys,
+            commands::meta::lookup_values,
+            commands::data::preview_changes,
+            commands::data::save_changes,
+            commands::data::row_values,
+            commands::grid::copy_rows,
+            commands::grid::sql_literals,
+            commands::grid::cell_bytes,
+            commands::grid::save_cell,
+            commands::grid::search_rows,
+            commands::summary::selection_stats,
+            commands::summary::group_counts,
             commands::export::export_query,
             commands::export::export_rows,
             commands::export::cancel_export,
@@ -138,10 +153,12 @@ pub fn run() {
             commands::transactions::set_autocommit,
             commands::transactions::end_transaction,
             commands::sql::analyze_sql,
+            commands::sql::query_source,
             commands::history::search_history,
             commands::history::delete_history,
             commands::files::read_text_file,
             commands::files::write_text_file,
+            commands::files::read_clipboard,
             commands::settings::get_settings,
             commands::settings::set_setting,
             commands::objects::object_ddl,

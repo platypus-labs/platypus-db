@@ -1,14 +1,18 @@
 //! Dialect-aware SQL utilities: statement splitting, the statement under the cursor, a
-//! conservative read-only check, and the [`Dialect`] rules for generating SQL. All offsets
-//! are byte offsets into the input.
+//! conservative read-only check, the [`Dialect`] rules for generating SQL, the table a query
+//! reads ([`source_table`]) and the [`dml`] that saves edited table data. All offsets are byte
+//! offsets into the input.
 
 mod dialect;
+pub mod dml;
 mod generate;
 mod lexer;
+mod source;
 
 pub use dialect::Dialect;
 pub use generate::ObjectName;
 pub use lexer::{Lexer, Token, TokenKind};
+pub use source::{SelectItem, SourceTable, source_table};
 
 /// A statement's byte range: from its first token to its last, excluding surrounding
 /// comments, whitespace and the delimiter.

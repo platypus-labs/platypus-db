@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { api, type ColumnInfo, type CommandError } from "../api";
-import { DataGrid, type GridSource } from "../grid/DataGrid";
+import type { GridSource } from "../grid/DataGrid";
+import { useFormatSignature } from "../grid/formats";
+import { ResultGrid } from "../grid/ResultGrid";
 import { RowCache } from "../grid/RowCache";
+import type { TableEditTarget } from "../grid/edit/TableEditor";
 
 export type ResultStatus =
   | { kind: "pending" }
@@ -66,14 +69,18 @@ interface PanelProps {
   onHeaderClick?: (column: string) => void;
   /** Passed to the grid's actions. */
   source?: GridSource | null;
+  /** The table whose rows the result shows, to edit them. */
+  edit?: TableEditTarget | null;
 }
 
-export function ResultPanel({ result, sort, onHeaderClick, source }: PanelProps) {
+export function ResultPanel({ result, sort, onHeaderClick, source, edit }: PanelProps) {
   const [cache, setCache] = useState<RowCache | null>(null);
   const [version, setVersion] = useState(0);
   const { jobId, columns, status } = result;
 
-  // One cache per result, created once both the job id and the schema are known.
+  const formats = useFormatSignature();
+  // One cache per result, created once both the job id and the schema are known, and again
+  // when the display formats change the rendered text.
   useEffect(() => {
     if (jobId === null || columns === null) return;
     const c = new RowCache(jobId, () => setVersion((v) => v + 1));
@@ -82,7 +89,7 @@ export function ResultPanel({ result, sort, onHeaderClick, source }: PanelProps)
       c.dispose();
       setCache(null);
     };
-  }, [jobId, columns]);
+  }, [jobId, columns, formats]);
 
   if (status.kind === "error") {
     const e = status.error;
@@ -107,9 +114,10 @@ export function ResultPanel({ result, sort, onHeaderClick, source }: PanelProps)
   if (status.kind === "skipped") {
     return <div className="notice muted">Not executed: an earlier statement failed.</div>;
   }
-  if (columns && cache) {
+  if (columns && cache && jobId !== null) {
     return (
-      <DataGrid
+      <ResultGrid
+        jobId={jobId}
         columns={columns}
         rowCount={result.rows}
         cache={cache}
@@ -117,6 +125,7 @@ export function ResultPanel({ result, sort, onHeaderClick, source }: PanelProps)
         sort={sort}
         onHeaderClick={onHeaderClick && ((i) => onHeaderClick(columns[i]!.name))}
         source={source}
+        edit={edit}
       />
     );
   }

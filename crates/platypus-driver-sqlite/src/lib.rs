@@ -20,8 +20,9 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use platypus_core::{
     CancelHandle, Canceller, CatalogColumn, Connection, ConnectionConfig, DbError, Driver,
-    DriverKind, Error, ExecOptions, ExecResult, ObjectMeta, RecordBatchStream, Result, SchemaMeta,
-    ServerInfo, TableDetails, TransactionState, TxEffect, classify, open_transaction_error,
+    DriverKind, Error, ExecOptions, ExecResult, ObjectMeta, RecordBatchStream, ReferencingKey,
+    Result, SchemaMeta, ServerInfo, TableDetails, TransactionState, TxEffect, classify,
+    open_transaction_error,
 };
 use rusqlite::types::ValueRef;
 use rusqlite::{ErrorCode, InterruptHandle, OpenFlags};
@@ -191,6 +192,10 @@ impl Connection for SqliteConnection {
 
     async fn table_details(&self, schema: &str, table: &str) -> Result<TableDetails> {
         meta::table_details(self, schema, table).await
+    }
+
+    async fn referencing_keys(&self, schema: &str, table: &str) -> Result<Vec<ReferencingKey>> {
+        meta::referencing_keys(self, schema, table).await
     }
 
     async fn catalog_columns(&self) -> Result<Vec<CatalogColumn>> {

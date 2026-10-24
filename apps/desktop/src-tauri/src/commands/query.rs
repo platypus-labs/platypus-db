@@ -11,6 +11,7 @@ use tauri::ipc::{Channel, Response};
 use super::{AppState, lock};
 use crate::display;
 use crate::error::{CommandError, CommandResult};
+use crate::formats::DisplayFormat;
 use crate::jobs::{Job, Outcome, QueryEvent};
 
 /// Starts a statement and returns its job id at once; progress arrives on `on_event`.
@@ -73,7 +74,11 @@ pub fn fetch_rows(
     let (schema, batches) = job
         .window(offset, limit)
         .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;
-    Ok(Response::new(display::to_ipc(&schema, &batches)?))
+    // A store that cannot be read leaves the plain formats.
+    let format = state
+        .with_settings(|s| Ok(DisplayFormat::from_settings(s)))
+        .unwrap_or_default();
+    Ok(Response::new(display::to_ipc(&schema, &batches, &format)?))
 }
 
 #[tauri::command]

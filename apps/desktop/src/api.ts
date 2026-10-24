@@ -18,6 +18,15 @@ export interface SavedConnection {
   read_only: boolean;
   color: string | null;
   folder: string | null;
+  /** Logical keys set by the user for tables without a primary key. */
+  virtual_keys?: VirtualKey[];
+}
+
+/** Columns that identify a table's rows, set by the user instead of a primary key. */
+export interface VirtualKey {
+  schema: string;
+  table: string;
+  columns: string[];
 }
 
 export type PasswordInput =
@@ -53,6 +62,8 @@ export interface ColumnInfo {
   name: string;
   db_type: string;
   numeric: boolean;
+  /** Bytes, shown as hex. */
+  binary: boolean;
 }
 
 export type QueryEvent =
@@ -121,6 +132,8 @@ export interface ColumnMeta {
   default: string | null;
   primary_key: boolean;
   comment: string | null;
+  /** Values an enum column accepts; empty for other types. */
+  enum_values: string[];
 }
 
 export interface IndexMeta {
@@ -146,20 +159,13 @@ export interface ConstraintMeta {
 }
 
 /** A foreign key of another table that points at this one. */
-export interface ReferenceMeta {
-  name: string;
-  schema: string;
-  table: string;
-  columns: string[];
-  ref_columns: string[];
-}
-
 export interface TableDetails {
   columns: ColumnMeta[];
   indexes: IndexMeta[];
   foreign_keys: ForeignKeyMeta[];
   constraints: ConstraintMeta[];
-  referenced_by: ReferenceMeta[];
+  /** Foreign keys of other tables that point at this one. */
+  referenced_by: ReferencingKey[];
 }
 
 export interface Property {
@@ -209,6 +215,84 @@ export interface TransactionState {
   open: boolean;
 }
 
+/** A value the data editor writes: typed text, NULL or the column default. */
+export type CellInput = { kind: "value"; text: string } | { kind: "null" } | { kind: "default" };
+
+export interface ColumnValue {
+  /** Result column index. */
+  column: number;
+  value: CellInput;
+}
+
+/** Pending changes to a result of one table; see `commands/data.rs`. */
+export interface TableChanges {
+  table: { schema: string; name: string };
+  /** Result columns that identify a row. */
+  key: number[];
+  /** Result columns that are the table's own, not expressions. */
+  table_columns: number[];
+  /** Default expressions by result column. */
+  defaults: (string | null)[];
+  updates: { row: number; values: ColumnValue[] }[];
+  inserts: ColumnValue[][];
+  deletes: number[];
+}
+
+/** An item of a query's select list; see `commands/sql.rs`. */
+export type SourceItem = { kind: "all" } | { kind: "column"; name: string } | { kind: "other" };
+
+/** The one table a query reads; `schema` is `null` when left to the session. */
+export interface QuerySource {
+  schema: string | null;
+  name: string;
+  items: SourceItem[];
+}
+
+/** A table a foreign key points to: its key column and the column describing a row. */
+export interface Lookup {
+  schema: string;
+  table: string;
+  key: string;
+  label: string;
+}
+
+/** A foreign key of another table that points at a table. */
+export interface ReferencingKey {
+  schema: string;
+  table: string;
+  name: string;
+  columns: string[];
+  /** The referenced table's columns they hold. */
+  ref_columns: string[];
+}
+
+/** Totals of a selection; the number ones cover the number columns only. */
+export interface SelectionStats {
+  cells: number;
+  values: number;
+  numbers: number;
+  sum: number | null;
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+}
+
+export interface GroupCounts {
+  groups: { values: (string | null)[]; count: number }[];
+  rows: number;
+  distinct: number;
+}
+
+/** Clipboard formats of `copyRows`. */
+export type CopyFormat = "tsv" | "csv" | "json" | "markdown" | "html" | "insert" | "in_list";
+
+export interface SearchResult {
+  /** `[row, column]` of the matching cells, row by row. */
+  matches: [number, number][];
+  /** More cells matched than were reported. */
+  truncated: boolean;
+}
+
 export type ExportFormat = "csv" | "json" | "ndjson" | "parquet";
 
 export interface ExportOptions {
@@ -246,6 +330,9 @@ export const api = {
   saveConnection: (connection: SavedConnection, password: PasswordInput) =>
     invoke<SavedConnection[]>("save_connection", { connection, password }),
   deleteConnection: (id: string) => invoke<SavedConnection[]>("delete_connection", { id }),
+  /** Sets a table's virtual key; no columns remove it. */
+  setVirtualKey: (connectionId: string, schema: string, table: string, columns: string[]) =>
+    invoke<SavedConnection[]>("set_virtual_key", { connectionId, schema, table, columns }),
   testConnection: (connection: SavedConnection, password: PasswordInput) =>
     invoke<ServerInfo>("test_connection", { connection, password }),
   /** `database` opens another database of the same server instead of the saved one. */
@@ -272,6 +359,8 @@ export const api = {
     invoke<ObjectMeta[]>("list_objects", { sessionId, schema }),
   tableDetails: (sessionId: number, schema: string, table: string) =>
     invoke<TableDetails>("table_details", { sessionId, schema, table }),
+  referencingKeys: (sessionId: number, schema: string, table: string) =>
+    invoke<ReferencingKey[]>("referencing_keys", { sessionId, schema, table }),
   transactionState: (sessionId: number) => invoke<TransactionState>("transaction_state", { sessionId }),
   setAutocommit: (sessionId: number, on: boolean) =>
     invoke<TransactionState>("set_autocommit", { sessionId, on }),
@@ -280,6 +369,9 @@ export const api = {
     invoke<TransactionState>("end_transaction", { sessionId, commit }),
   completionCatalog: (sessionId: number) => invoke<CompletionCatalog>("completion_catalog", { sessionId }),
   queryValue: (sessionId: number, sql: string) => invoke<string | null>("query_value", { sessionId, sql }),
+  /** `[key, label]` pairs of `values`, or with `null` the first `limit` rows by label. */
+  lookupValues: (sessionId: number, lookup: Lookup, values: string[] | null, limit: number) =>
+    invoke<[string | null, string | null][]>("lookup_values", { sessionId, lookup, values, limit }),
   /** Re-runs `sql` on its own connection, streaming every row to `path`. */
   exportQuery: (
     sessionId: number,
@@ -298,6 +390,8 @@ export const api = {
   cancelExport: (exportId: number) => invoke<void>("cancel_export", { exportId }),
   analyzeSql: (sql: string, driver: DriverKind, cursor: number) =>
     invoke<SqlAnalysis>("analyze_sql", { sql, driver, cursor }),
+  /** The table a query reads, when its rows are that table's rows. */
+  querySource: (sql: string, driver: DriverKind) => invoke<QuerySource | null>("query_source", { sql, driver }),
   searchHistory: (query: {
     connectionId?: string;
     text?: string;
@@ -314,6 +408,7 @@ export const api = {
   readTextFile: (path: string) => invoke<string>("read_text_file", { path }),
   writeTextFile: (path: string, contents: string) =>
     invoke<void>("write_text_file", { path, contents }),
+  readClipboard: () => invoke<string>("read_clipboard"),
   /** Rows as column-major text arrays (`null` = SQL NULL). */
   fetchRows: async (jobId: number, offset: number, limit: number) => {
     const bytes = await invoke<ArrayBuffer>("fetch_rows", { jobId, offset, limit });
@@ -338,6 +433,47 @@ export const api = {
   generateSql: (driver: DriverKind, target: GenerateTarget, request: GenerateRequest) =>
     invoke<string | null>("generate_sql", { driver, target, request }),
   dialectSupport: (driver: DriverKind) => invoke<DialectSupport>("dialect_support", { driver }),
+  /** The UPDATE, INSERT and DELETE statements that saving `changes` would run. */
+  previewChanges: (jobId: number, changes: TableChanges) =>
+    invoke<string[]>("preview_changes", { jobId, changes }),
+  /** Saves `changes` on the result's session, all or none; `undo` puts the rows back. */
+  saveChanges: (jobId: number, changes: TableChanges) =>
+    invoke<{ statements: number; undo: string }>("save_changes", { jobId, changes }),
+  /** Loaded rows' values in full, not cut to one line like the grid's. */
+  rowValues: (jobId: number, offset: number, limit: number) =>
+    invoke<(string | null)[][]>("row_values", { jobId, offset, limit }),
+  /** Loaded rows of a result in a clipboard format; `table` names the table in INSERTs. */
+  copyRows: (
+    jobId: number,
+    offset: number,
+    limit: number,
+    columns: number[],
+    format: CopyFormat,
+    options: { header?: boolean; table?: string | null } = {},
+  ) =>
+    invoke<string>("copy_rows", {
+      jobId,
+      offset,
+      limit,
+      columns,
+      format,
+      header: options.header ?? false,
+      table: options.table ?? null,
+    }),
+  /** A column's loaded values as SQL literals, `NULL` included. */
+  sqlLiterals: (jobId: number, offset: number, limit: number, column: number) =>
+    invoke<string[]>("sql_literals", { jobId, offset, limit, column }),
+  /** A cell's raw bytes (UTF-8 text for non-binary columns); empty for NULL. */
+  cellBytes: async (jobId: number, row: number, column: number) =>
+    new Uint8Array(await invoke<ArrayBuffer>("cell_bytes", { jobId, row, column })),
+  saveCell: (jobId: number, row: number, column: number, path: string) =>
+    invoke<void>("save_cell", { jobId, row, column, path }),
+  /** Loaded cells containing `text`, ignoring case. */
+  selectionStats: (jobId: number, offset: number, limit: number, columns: number[]) =>
+    invoke<SelectionStats>("selection_stats", { jobId, offset, limit, columns }),
+  /** Loaded rows by value of `columns`, most frequent first. */
+  groupCounts: (jobId: number, columns: number[]) => invoke<GroupCounts>("group_counts", { jobId, columns }),
+  searchRows: (jobId: number, text: string) => invoke<SearchResult>("search_rows", { jobId, text }),
   fetchAll: (jobId: number) => invoke<void>("fetch_all", { jobId }),
   cancelQuery: (jobId: number) => invoke<void>("cancel_query", { jobId }),
   closeQuery: (jobId: number) => invoke<void>("close_query", { jobId }),

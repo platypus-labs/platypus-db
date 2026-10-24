@@ -30,6 +30,15 @@ impl CommandError {
     pub fn not_found(what: &str, id: impl std::fmt::Display) -> Self {
         Self::new("not_found", format!("{what} {id} not found"))
     }
+
+    /// Says where the error happened, e.g. which generated statement failed. The position
+    /// is dropped: it points into SQL the user did not type.
+    #[must_use]
+    pub fn context(mut self, context: impl std::fmt::Display) -> Self {
+        self.message = format!("{context}: {}", self.message);
+        self.position = None;
+        self
+    }
 }
 
 impl From<&Error> for CommandError {

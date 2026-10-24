@@ -5,8 +5,11 @@ import {
   toCommandError,
   type ExportOptions,
   type QueryEvent,
+  type TableDetails,
   type TransactionState,
 } from "../api";
+import type { EditSource, TableRef } from "../grid/edit/meta";
+import type { TableEditTarget } from "../grid/edit/TableEditor";
 import { type RunMode, SqlEditor, type SqlEditorHandle } from "../editor/SqlEditor";
 import { defineSetting, getSetting } from "../settings";
 import { type Sort, viewerSql } from "../sqlNames";
@@ -39,6 +42,8 @@ export interface QueryTabModel extends TabBase {
   autorun?: boolean;
   /** Data viewer: the table or view the tab browses, as a quoted, qualified name. */
   table?: string | null;
+  /** Data viewer: the same table by schema and name, for the data editor. */
+  tableRef?: TableRef | null;
   /** Data viewer: `WHERE` clause typed by the user. */
   filter?: string;
   /** Data viewer: server-side sort. */
@@ -109,6 +114,16 @@ export function QueryTab({
   const runToken = useRef(0);
   const jobs = useRef<number[]>([]);
   const currentJob = useRef<number | null>(null);
+  /** The data editor has changes that running again would lose. */
+  const unsaved = useRef(false);
+  /** Data viewer: the table's keys, loaded once and again after DDL. */
+  const details = useRef<Promise<TableDetails> | null>(null);
+  /** The table each query reads, for editing its results; cleared after DDL. */
+  const sources = useRef(new Map<string, Promise<EditSource | null>>());
+  /** What the last run ran, run again after saving edited rows. */
+  const lastPlanned = useRef<Planned[]>([]);
+  /** SQL that undoes the last saved edits. */
+  const [undoScript, setUndoScript] = useState<string | null>(null);
 
   const closeJobs = () => {
     for (const id of jobs.current) void api.closeQuery(id);
@@ -225,16 +240,20 @@ export function QueryTab({
     });
   }
 
-  async function run(mode: RunMode, force = false) {
+  /** Runs what `mode` selects in the editor, or `again` (the statements of the last run). */
+  async function run(mode: RunMode, force = false, again?: Planned[]) {
     if (running && !force) return;
+    if (unsaved.current && !window.confirm("Discard the changes to the data that are not saved?")) return;
     let planned: Planned[];
     try {
-      planned = await plan(mode);
+      planned = again ?? (await plan(mode));
     } catch (e) {
       onError(toCommandError(e).message);
       return;
     }
     if (planned.length === 0) return;
+    if (!again) setUndoScript(null);
+    lastPlanned.current = planned;
     if (connection.read_only && !force && planned.some((p) => !p.readOnly)) {
       setBlocked(mode);
       return;
@@ -292,7 +311,11 @@ export function QueryTab({
     setActiveResult(failed >= 0 ? failed : lastRows >= 0 ? lastRows : initial.length - 1);
     setRunning(false);
     currentJob.current = null;
-    if (planned.some((p) => DDL.test(p.sql))) onNeedCatalog(true);
+    if (planned.some((p) => DDL.test(p.sql))) {
+      onNeedCatalog(true);
+      details.current = null;
+      sources.current.clear();
+    }
     setHistoryVersion((v) => v + 1);
     await refreshTx(sessionId);
   }
@@ -334,6 +357,10 @@ export function QueryTab({
   /** Data viewer: rebuilds the query from filter and sort, then runs it. */
   function applyViewer(patch: { filter?: string; sort?: Sort | null }) {
     if (!tab.table) return;
+    if (unsaved.current) {
+      if (!window.confirm("Discard the changes to the data that are not saved?")) return;
+      unsaved.current = false;
+    }
     const next = { filter: patch.filter ?? tab.filter ?? "", sort: patch.sort !== undefined ? patch.sort : (tab.sort ?? null) };
     onChange(next);
     setCount(null);
@@ -455,6 +482,81 @@ export function QueryTab({
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  }
+
+  function setUnsaved(dirty: boolean) {
+    unsaved.current = dirty;
+    if (dirty !== !!tab.unsaved) onChange({ unsaved: dirty });
+  }
+
+  async function sideId(): Promise<number> {
+    const id = await sideSession();
+    if (id === null) throw new Error("no connection");
+    return id;
+  }
+
+  /** The table a query reads, found on the navigator session; `null` when there is none. */
+  async function querySource(sql: string): Promise<EditSource | null> {
+    const query = await api.querySource(sql, connection.driver);
+    if (!query) return null;
+    const id = await sideId();
+    const schema = query.schema ?? (await api.listSchemas(id)).find((s) => s.current)?.name;
+    if (!schema) return null;
+    const objects = await api.listObjects(id, schema);
+    const object =
+      objects.find((o) => o.name === query.name) ??
+      objects.find((o) => o.name.toLowerCase() === query.name.toLowerCase());
+    if (!object) return null;
+    const table: TableRef = { schema, name: object.name, kind: object.kind };
+    return { table, details: await api.tableDetails(id, schema, object.name), items: query.items };
+  }
+
+  /**
+   * Lets the grid edit the result's table: the data viewer's own query, or a query in the
+   * editor that reads one table. Results of scripts stay read-only.
+   */
+  function editTarget(result: Result): TableEditTarget | null {
+    const ref = tab.tableRef;
+    const viewer =
+      !!tab.table &&
+      !!ref &&
+      result.sql === viewerSql(connection.driver, tab.table, tab.filter ?? "", tab.sort ?? null);
+    if (!viewer && results.length !== 1) return null;
+    const forget = <T,>(p: Promise<T>, drop: () => void) =>
+      p.catch((e: unknown) => {
+        drop();
+        throw e;
+      });
+    const load = (): Promise<EditSource | null> => {
+      if (viewer) {
+        details.current ??= sideId().then((id) => api.tableDetails(id, ref.schema, ref.name));
+        return forget(details.current, () => (details.current = null)).then((d) => ({
+          table: ref,
+          details: d,
+          items: null,
+        }));
+      }
+      let source = sources.current.get(result.sql);
+      if (!source) {
+        source = querySource(result.sql);
+        sources.current.set(result.sql, source);
+      }
+      return forget(source, () => sources.current.delete(result.sql));
+    };
+    return {
+      connection,
+      key: viewer ? `table:${tab.table}` : `sql:${result.sql}`,
+      quiet: !viewer,
+      readOnly: null,
+      load,
+      session: sideSession,
+      onSaved: (undo) => {
+        setUnsaved(false);
+        setUndoScript(undo);
+        void run("statement", false, lastPlanned.current);
+      },
+      onDirtyChange: setUnsaved,
+    };
   }
 
   const current = results[activeResult];
@@ -593,7 +695,22 @@ export function QueryTab({
               result={current}
               sort={tab.table ? (tab.sort ?? null) : null}
               onHeaderClick={tab.table && !running ? sortBy : undefined}
-              source={{ connection, sql: current.sql, jobId: current.jobId, table: tab.table ?? null }}
+              source={{
+                connection,
+                sql: current.sql,
+                jobId: current.jobId,
+                table: tab.table ?? null,
+                viewer: tab.table
+                  ? {
+                      filter: tab.filter ?? "",
+                      setFilter: (next) => {
+                        setFilter(next);
+                        applyViewer({ filter: next });
+                      },
+                    }
+                  : undefined,
+              }}
+              edit={editTarget(current)}
             />
           )}
         </div>
@@ -632,6 +749,21 @@ export function QueryTab({
                   ×
                 </button>
               )}
+            </span>
+          )}
+          {undoScript && (
+            <span className="muted">
+              Changes saved.
+              <button
+                className="link"
+                onClick={() => workbench().openTab("query", connection.id, { sql: undoScript })}
+                title="Opens the SQL that puts the rows back as they were"
+              >
+                Undo script
+              </button>
+              <button className="link" onClick={() => setUndoScript(null)} title="Dismiss">
+                ×
+              </button>
             </span>
           )}
           <span className="spacer" />

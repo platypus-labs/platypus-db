@@ -18,10 +18,12 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+arboard = { version = "3", default-features = false }
 arrow-array.workspace = true
 arrow-cast.workspace = true
 arrow-ipc.workspace = true
 arrow-schema.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 futures.workspace = true
 platypus-core.workspace = true
 platypus-driver-mysql.workspace = true
