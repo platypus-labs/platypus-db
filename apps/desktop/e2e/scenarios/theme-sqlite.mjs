@@ -1,5 +1,5 @@
 // The Appearance settings: a theme preset, a custom accent color, grid density and interface
-// size apply at once and are saved; the sidebar button cycles system, light and dark.
+// size apply at once and are saved; the sidebar button cycles system, Platypus Light and Dark.
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -60,6 +60,43 @@ export default async function (page, { dir, shots }) {
   // Appearance comes first.
   assert.equal(await page.eval(`document.querySelector('.modal.settings h3').textContent`), "Appearance");
 
+  // First start, theme "System": one of the two Platypus themes, whatever Windows uses.
+  const css = (name) => page.eval(cssVar(name));
+  assert.ok(["#141519", "#ffffff"].includes(await css("--bg")), await css("--bg"));
+
+  // Every preset sets the variables added with the Platypus themes.
+  const pick = (label) =>
+    page.eval(`[...document.querySelectorAll('.theme-card')].find(c => c.textContent === ${JSON.stringify(label)}).click()`);
+  const NEW_VARS = ["--bg-rail", "--bg-tabbar", "--fg-strong", "--border-strong", "--active",
+    "--obj-db", "--obj-table", "--obj-view", "--obj-routine", "--obj-trigger",
+    "--type-dev", "--type-dev-bg", "--type-test", "--type-test-bg", "--type-prod", "--type-prod-bg"];
+  const labels = JSON.parse(await page.eval(`JSON.stringify([...document.querySelectorAll('.theme-card')].map(c => c.textContent))`));
+  assert.ok(labels.includes("Platypus Dark") && labels.includes("Classic Dark"), labels.join(", "));
+  for (const label of labels) {
+    await pick(label);
+    await page.waitFor(`document.querySelector('.theme-card.selected')?.textContent === ${JSON.stringify(label)}`);
+    for (const v of NEW_VARS) assert.notEqual(await css(v), "", `${label} ${v}`);
+  }
+
+  await pick("Platypus Dark");
+  await page.waitFor(`${cssVar("--bg")} === '#141519'`);
+  assert.deepEqual(
+    [await css("--bg-sidebar"), await css("--bg-rail"), await css("--border"), await css("--accent")],
+    ["#17181d", "#0d0e11", "#23252c", "#6c63ff"],
+  );
+  await pick("Classic Dark");
+  await page.waitFor(`${cssVar("--bg")} === '#1b1d21'`); // the former "Dark"
+
+  // A custom background on Platypus Dark: the colors derived from it follow.
+  await pick("Platypus Dark");
+  await page.eval(change(`${setting("Background")}.querySelector('input[type=color]')`, "#202020"));
+  await page.waitFor(`${cssVar("--bg")} === '#202020'`);
+  assert.notEqual(await css("--bg-rail"), "#0d0e11");
+  assert.notEqual(await css("--bg-tabbar"), "#0f1013");
+  assert.notEqual(await css("--active"), "#24262e");
+  await page.eval(`[...${setting("Background")}.querySelectorAll('button')].find(b => b.textContent === 'Reset').click()`);
+  await page.waitFor(`${cssVar("--bg")} === '#141519'`);
+
   await page.eval(`[...document.querySelectorAll('.theme-card')].find(c => c.textContent === 'Nord').click()`);
   await page.waitFor(`${cssVar("--bg")} === '#2e3440'`);
   assert.equal(await page.eval(`document.documentElement.style.colorScheme`), "dark");
@@ -88,12 +125,15 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`${cssVar("--accent")} === '#88c0d0'`);
   await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);
 
-  // The sidebar button leaves a preset for the system theme, then light.
+  // The sidebar button leaves a preset for the system theme, then Platypus Light and Dark.
   const toggle = `document.querySelector('button[title^="Theme:"]')`;
   await page.eval(`${toggle}.click()`);
   await page.waitFor(`${toggle}.title.startsWith('Theme: System')`);
   await page.eval(`${toggle}.click()`);
-  await page.waitFor(`${toggle}.title.startsWith('Theme: Light')`);
+  await page.waitFor(`${toggle}.title.startsWith('Theme: Platypus Light')`);
   await page.waitFor(`${cssVar("--bg")} === '#ffffff'`);
-  await saved(dir, /theme = "light"/);
+  await saved(dir, /theme = "platypus_light"/);
+  await page.eval(`${toggle}.click()`);
+  await page.waitFor(`${toggle}.title.startsWith('Theme: Platypus Dark')`);
+  await page.waitFor(`${cssVar("--bg")} === '#141519'`);
 }

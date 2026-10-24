@@ -597,9 +597,9 @@ export function Navigator(props: Props) {
   );
 }
 
-const THEME_ICONS: Record<string, string> = { system: "◐", light: "☀", dark: "☾" };
+const THEME_ICONS: Record<string, string> = { system: "◐", platypus_light: "☀", platypus_dark: "☾" };
 
-/** Cycles system, light and dark; the other themes are in the Settings. */
+/** Cycles system, Platypus Light and Platypus Dark; the other themes are in the Settings. */
 function ThemeButton() {
   useSetting(themeSetting);
   const name = themeName();
