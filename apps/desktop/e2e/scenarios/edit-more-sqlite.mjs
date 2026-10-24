@@ -162,7 +162,7 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`${editBar}.includes('2 rows changed')`);
   assert.equal(
     await previewSql(page),
-    "UPDATE main.log SET msg = 'q' WHERE at = 't1';\nUPDATE main.log SET msg = 'r' WHERE at = 't2';",
+    "UPDATE main.log SET msg = 'q' WHERE \"at\" = 't1';\nUPDATE main.log SET msg = 'r' WHERE \"at\" = 't2';",
   );
   await page.key("Escape", "Escape", 27);
 
