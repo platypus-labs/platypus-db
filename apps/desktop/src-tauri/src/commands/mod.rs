@@ -22,6 +22,7 @@ pub mod settings;
 pub mod sql;
 pub mod summary;
 pub mod transactions;
+pub mod vault;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -32,7 +33,7 @@ use platypus_core::{Connection, ConnectionConfig, Driver, DriverKind, Error};
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
 use platypus_driver_sqlite::SqliteDriver;
-use platypus_store::{ConnectionStore, HistoryStore, SettingsStore};
+use platypus_store::{ConnectionStore, HistoryStore, SettingsStore, VaultSecrets};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -44,6 +45,10 @@ use crate::jobs::Job;
 pub struct AppState {
     /// `Err` when the connections file exists but cannot be read; shown instead of wiping it.
     store: Mutex<Result<ConnectionStore, String>>,
+    /// The encrypted passwords file, when a master password is set; the store reads it.
+    vault: Mutex<Option<Arc<VaultSecrets>>>,
+    /// Where a vault goes when the master password is turned on.
+    vault_path: Result<PathBuf, String>,
     /// Shared with job tasks, which record outcomes as they happen.
     history: Arc<Mutex<Result<HistoryStore, String>>>,
     settings: Mutex<Result<SettingsStore, String>>,
@@ -69,13 +74,16 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 
 impl AppState {
     pub fn new(
-        store: Result<ConnectionStore, String>,
+        (store, vault): (Result<ConnectionStore, String>, Option<Arc<VaultSecrets>>),
+        vault_path: Result<PathBuf, String>,
         history: Result<HistoryStore, String>,
         settings: Result<SettingsStore, String>,
         scripts: Result<PathBuf, String>,
     ) -> Self {
         Self {
             store: Mutex::new(store),
+            vault: Mutex::new(vault),
+            vault_path,
             history: Arc::new(Mutex::new(history)),
             settings: Mutex::new(settings),
             scripts,

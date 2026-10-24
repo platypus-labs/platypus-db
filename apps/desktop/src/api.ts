@@ -45,6 +45,13 @@ export interface SavedInit {
   statements: string;
 }
 
+/** Whether saved passwords are in the file encrypted with a master password. */
+export interface VaultStatus {
+  enabled: boolean;
+  /** The master password was entered in this run of the app. */
+  unlocked: boolean;
+}
+
 /** An SSH tunnel and SSL settings shared by several connections. */
 export interface NetworkProfile {
   id: string;
@@ -562,6 +569,15 @@ export const api = {
       database: database ?? null,
     }),
   closeSession: (sessionId: number) => invoke<void>("close_session", { sessionId }),
+  vaultStatus: () => invoke<VaultStatus>("vault_status"),
+  unlockVault: (password: string) => invoke<VaultStatus>("unlock_vault", { password }),
+  lockVault: () => invoke<VaultStatus>("lock_vault"),
+  /** Moves the saved passwords from the keychain into a file encrypted with `password`. */
+  enableVault: (password: string) => invoke<VaultStatus>("enable_vault", { password }),
+  /** Moves them back to the keychain; `password` is the current master password. */
+  disableVault: (password: string) => invoke<VaultStatus>("disable_vault", { password }),
+  changeVaultPassword: (current: string, password: string) =>
+    invoke<VaultStatus>("change_vault_password", { current, password }),
   listNetworkProfiles: () => invoke<NetworkProfile[]>("list_network_profiles"),
   saveNetworkProfile: (profile: NetworkProfile, sshSecrets: SshSecrets = {}) =>
     invoke<NetworkProfile[]>("save_network_profile", { profile, sshSecrets }),

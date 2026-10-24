@@ -69,7 +69,13 @@ impl From<Error> for CommandError {
 
 impl From<StoreError> for CommandError {
     fn from(e: StoreError) -> Self {
-        Self::new("store", e.to_string())
+        // The UI asks for the master password on `locked`, then tries again.
+        let kind = if matches!(e, StoreError::Locked) {
+            "locked"
+        } else {
+            "store"
+        };
+        Self::new(kind, e.to_string())
     }
 }
 

@@ -4528,8 +4528,10 @@ dependencies = [
 name = "platypus-store"
 version = "0.2.0"
 dependencies = [
+ "argon2",
  "keyring",
  "platypus-core",
+ "ring",
  "rusqlite",
  "serde",
  "serde_json",

@@ -4,6 +4,7 @@ import { api, type Capabilities, type CompletionCatalog, type Project, toCommand
 import { onNavigatorRefresh } from "./navigatorEvents";
 import { ConnectionDialog } from "./components/ConnectionDialog";
 import { ImportDialog } from "./components/ImportDialog";
+import { UnlockDialog } from "./components/MasterPassword";
 import { asksPassword, connectionColor } from "./connections";
 import { Navigator } from "./components/Navigator";
 import { SettingsDialog } from "./components/SettingsDialog";
@@ -48,6 +49,7 @@ export function App() {
   const [storeError, setStoreError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [passwordRequest, setPasswordRequest] = useState<PasswordRequest | null>(null);
+  const [unlockRequest, setUnlockRequest] = useState<{ resolve: (unlocked: boolean) => void } | null>(null);
   const [tabs, setTabs] = useState<TabModel[]>([]);
   const [activeTab, setActiveTab] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -80,6 +82,11 @@ export function App() {
       setConnections([]);
       setStoreError(toCommandError(e).message);
     });
+    // Saved passwords behind a master password: asked for once at start.
+    api.vaultStatus().then(
+      (s) => s.enabled && !s.unlocked && void askUnlock(),
+      () => {},
+    );
     api.listProjects().then(
       (all) => {
         setProjects(all);
@@ -251,6 +258,11 @@ export function App() {
     setActiveTab(placed.key);
   }
 
+  /** Asks for the master password; true once the saved passwords are unlocked. */
+  function askUnlock() {
+    return new Promise<boolean>((resolve) => setUnlockRequest({ resolve }));
+  }
+
   function askPassword(connection: SavedConnection) {
     return new Promise<string | null>((resolve) => setPasswordRequest({ connection, resolve }));
   }
@@ -268,7 +280,14 @@ export function App() {
       }
     }
     try {
-      const session = await api.openSession(connection.id, password, database);
+      let session;
+      try {
+        session = await api.openSession(connection.id, password, database);
+      } catch (e) {
+        // Saved passwords behind a master password not entered yet: ask, then try again.
+        if (toCommandError(e).kind !== "locked" || !(await askUnlock())) throw e;
+        session = await api.openSession(connection.id, password, database);
+      }
       if (password !== undefined) passwords.current.set(connection.id, password);
       capabilities.current.set(session.session_id, session.capabilities);
       return session.session_id;
@@ -626,6 +645,14 @@ export function App() {
       {dialogs.map((d) => (
         <Fragment key={d.id}>{d.node}</Fragment>
       ))}
+      {unlockRequest && (
+        <UnlockDialog
+          onDone={(unlocked) => {
+            unlockRequest.resolve(unlocked);
+            setUnlockRequest(null);
+          }}
+        />
+      )}
       {passwordRequest && (
         <PasswordPrompt
           connection={passwordRequest.connection}

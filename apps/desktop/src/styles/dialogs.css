@@ -549,6 +549,18 @@ button.primary.danger:hover:not(:disabled) {
   display: none;
 }
 
+/* The master password in the Settings. */
+.master-password,
+.master-password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.master-password-form {
+  max-width: 360px;
+}
+
 /* The connection's bootstrap statements. */
 .field textarea.init-script {
   background: var(--bg-input);

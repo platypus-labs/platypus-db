@@ -643,6 +643,40 @@ impl ConnectionStore {
         self.secrets.delete(id)
     }
 
+    /// The ids under which secrets may be saved: connections that keep their password, and
+    /// the SSH servers of connections and network profiles.
+    #[must_use]
+    pub fn secret_ids(&self) -> Vec<Uuid> {
+        let ssh = self
+            .connections
+            .iter()
+            .filter_map(|c| c.ssh.as_ref())
+            .chain(self.network_profiles.iter().filter_map(|p| p.ssh.as_ref()))
+            .flat_map(SavedSsh::chain)
+            .map(|s| s.secret_id);
+        self.connections
+            .iter()
+            .filter(|c| c.save_password)
+            .map(|c| c.id)
+            .chain(ssh)
+            .collect()
+    }
+
+    /// Moves every saved secret to `to` and uses it from now on; the old store keeps none.
+    pub fn move_secrets(&mut self, to: Arc<dyn SecretStore>) -> Result<()> {
+        let ids = self.secret_ids();
+        for &id in &ids {
+            if let Some(secret) = self.secrets.get(id)? {
+                to.set(id, &secret)?;
+            }
+        }
+        for &id in &ids {
+            self.secrets.delete(id)?;
+        }
+        self.secrets = to;
+        Ok(())
+    }
+
     /// Sets (`Some`) or removes (`None`) an SSH password or passphrase by its `secret_id`.
     pub fn set_ssh_secret(&self, secret_id: Uuid, secret: Option<&Secret>) -> Result<()> {
         match secret {
@@ -829,6 +863,39 @@ SET b = 2;"
         assert_eq!(s.network_profiles(), []);
         conn.network_profile = Some(shared.id);
         assert!(s.save(conn, PasswordUpdate::Keep).is_err());
+    }
+
+    #[test]
+    fn moves_every_saved_secret() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, old) = store(dir.path());
+        let conn = sample();
+        s.save(conn.clone(), PasswordUpdate::Set(Secret::new("pw")))
+            .unwrap();
+        let mut shared = profile("Shared");
+        let ssh = SavedSsh {
+            host: "bastion".to_owned(),
+            port: 22,
+            user: "ops".to_owned(),
+            auth: SshAuthKind::Password,
+            key_path: None,
+            secret_id: Uuid::new_v4(),
+            jump: None,
+        };
+        shared.ssh = Some(ssh.clone());
+        s.save_network_profile(shared).unwrap();
+        s.set_ssh_secret(ssh.secret_id, Some(&Secret::new("ssh")))
+            .unwrap();
+
+        let new = Arc::new(MemorySecrets::default());
+        s.move_secrets(new.clone()).unwrap();
+        assert_eq!(old.get(conn.id).unwrap(), None);
+        assert_eq!(old.get(ssh.secret_id).unwrap(), None);
+        assert_eq!(new.get(conn.id).unwrap().unwrap().expose(), "pw");
+        assert_eq!(
+            s.ssh_secret(ssh.secret_id).unwrap().unwrap().expose(),
+            "ssh"
+        );
     }
 
     #[test]
