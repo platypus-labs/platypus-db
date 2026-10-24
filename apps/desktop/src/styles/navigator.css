@@ -219,3 +219,48 @@
   color: var(--type-prod);
   background: var(--type-prod-bg);
 }
+
+/* The navigator and the Scripts panel share the sidebar column. */
+
+.sidebar-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+}
+
+.sidebar-column > .sidebar {
+  flex: 1;
+  border-right: none;
+}
+
+.scripts-panel {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+}
+
+.scripts-panel.open {
+  max-height: 40%;
+}
+
+.scripts-header {
+  padding: 6px 8px 4px 6px;
+}
+
+.scripts-tree {
+  flex: 1;
+}
+
+.script-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 4px;
+}
+
+.scripts-empty {
+  padding: 4px 12px;
+}
