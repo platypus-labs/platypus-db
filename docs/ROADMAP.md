@@ -90,13 +90,13 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 | C — Navigator e oggetti | ✅ fatto (P1) |
 | D — Editor SQL | ✅ fatto (P1) |
 | E — Explain e performance | libero |
-| F — Connettività e credenziali | libero |
+| F — Connettività e credenziali | ✅ fatto (P1) |
 | G — Nuovi driver | libero |
 | H — Import, export e trasferimento | libero |
 | I — Strumenti di schema | libero |
 | J — Amministrazione del server | libero |
-| K — Shell ed ergonomia | libero |
-| L — Sicurezza operativa | libero |
+| K — Shell ed ergonomia | ✅ fatto (P1) |
+| L — Sicurezza operativa | ✅ fatto (P1) |
 | M — Analisi dei dati | libero |
 | N — Accesso per agenti (MCP) | libero |
 | O — Collaborazione e sync | libero |
