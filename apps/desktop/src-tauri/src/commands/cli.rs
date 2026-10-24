@@ -2,7 +2,7 @@
 //! `mysql` or `sqlite3`), with the settings and password of the editor's session, for
 //! scripts that rely on the client's own commands such as `\copy` or `source`.
 
-use std::process::Stdio;
+use std::process::{Output, Stdio};
 use std::time::Instant;
 
 use platypus_core::{ConnectionConfig, DriverKind, SslMode};
@@ -10,9 +10,10 @@ use platypus_net::Tunnel;
 use serde::Serialize;
 use tauri::State;
 use tokio::io::AsyncWriteExt;
-use tokio::process::Command;
+use tokio::process::{Child, Command};
+use tokio::sync::oneshot;
 
-use super::AppState;
+use super::{AppState, lock};
 use crate::error::{CommandError, CommandResult};
 
 #[derive(Debug, Serialize)]
@@ -120,11 +121,26 @@ fn invocation(
     (args, env)
 }
 
-/// Runs `script` with the client of the session's database and waits for it to end.
+/// Waits for the client to end, or (`None`) for `cancel`: the client is then killed, as
+/// dropping its wait drops the child, spawned with `kill_on_drop`.
+async fn wait_or_cancel(
+    child: Child,
+    cancel: oneshot::Receiver<()>,
+) -> Option<std::io::Result<Output>> {
+    let wait = Box::pin(child.wait_with_output());
+    match futures::future::select(wait, cancel).await {
+        futures::future::Either::Left((out, _)) => Some(out),
+        futures::future::Either::Right(_) => None,
+    }
+}
+
+/// Runs `script` with the client of the session's database and waits for it to end;
+/// `cancel_cli` with the same `run_id` stops it.
 #[tauri::command]
 pub async fn run_cli(
     state: State<'_, AppState>,
     session_id: u64,
+    run_id: u64,
     script: String,
 ) -> CommandResult<CliOutput> {
     let config = state.session(session_id)?.config;
@@ -167,11 +183,14 @@ pub async fn run_cli(
             let _ = stdin.write_all(script.as_bytes()).await;
         });
     }
-    let out = child
-        .wait_with_output()
-        .await
-        .map_err(|e| CommandError::new("cli", format!("{program}: {e}")))?;
+    let (stop, cancel) = oneshot::channel();
+    lock(&state.clis).insert(run_id, stop);
+    let out = wait_or_cancel(child, cancel).await;
+    lock(&state.clis).remove(&run_id);
     drop(tunnel);
+    let out = out
+        .ok_or_else(|| CommandError::new("cancelled", format!("{program} was stopped")))?
+        .map_err(|e| CommandError::new("cli", format!("{program}: {e}")))?;
     let mut output = String::from_utf8_lossy(&out.stdout).into_owned();
     output.push_str(&String::from_utf8_lossy(&out.stderr));
     Ok(CliOutput {
@@ -182,11 +201,35 @@ pub async fn run_cli(
     })
 }
 
+/// Stops a script running in a command-line client; nothing when it has ended.
+#[tauri::command]
+pub fn cancel_cli(state: State<'_, AppState>, run_id: u64) {
+    if let Some(stop) = lock(&state.clis).remove(&run_id) {
+        let _ = stop.send(());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use platypus_core::Secret;
 
     use super::*;
+
+    #[test]
+    fn cancelling_kills_the_client() {
+        // `sort` waits for the end of its input, which stays open: it only ends when killed.
+        let child = Command::new("sort")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .expect("sort is on every PATH");
+        let (stop, cancel) = oneshot::channel();
+        stop.send(()).unwrap();
+        let out = tauri::async_runtime::block_on(wait_or_cancel(child, cancel));
+        assert!(out.is_none());
+    }
 
     #[test]
     fn passes_the_password_in_the_environment() {
