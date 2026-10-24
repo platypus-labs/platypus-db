@@ -11,6 +11,7 @@ pub mod export;
 pub mod files;
 pub mod geometry;
 pub mod grid;
+pub mod health;
 pub mod history;
 pub mod meta;
 pub mod objects;

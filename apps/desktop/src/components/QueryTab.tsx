@@ -32,6 +32,7 @@ import { basename } from "../workspace";
 import { type CheckedStatement, type GuardRequest, check, elapsed, transactionWarning } from "../guards/guards";
 import { GuardDialog } from "../guards/GuardDialog";
 import { ExportDialog, type ExportSource } from "./ExportDialog";
+import { HealthBadge, useSessionHealth } from "./health";
 import { HistoryPanel } from "./HistoryPanel";
 import { useToolbar } from "./toolbar";
 import { Icon } from "../ui/Icon";
@@ -175,6 +176,7 @@ export function QueryTab({
   connection,
   active,
   ensureSession,
+  currentSession,
   sideSession,
   catalog,
   onNeedCatalog,
@@ -966,6 +968,7 @@ export function QueryTab({
     return () => clearInterval(timer);
   }, [refreshEvery, active]);
 
+  const health = useSessionHealth(currentSession, active && !running && !guard);
   const toolbar = useToolbar();
   const current = results[activeResult];
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
@@ -1276,6 +1279,7 @@ export function QueryTab({
             </span>
           )}
           <span className="spacer" />
+          <HealthBadge health={health} />
           <span className="muted">Ctrl+Enter statement · Alt+X script · {connection.name}</span>
         </div>
       </div>

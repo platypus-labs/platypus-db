@@ -569,6 +569,11 @@ export const api = {
       database: database ?? null,
     }),
   closeSession: (sessionId: number) => invoke<void>("close_session", { sessionId }),
+  /** Checks an idle session, reopening it if the server dropped it. */
+  pingSession: (sessionId: number) =>
+    invoke<{ state: "ok"; latency_ms: number; reconnected: boolean } | { state: "busy" }>("ping_session", {
+      sessionId,
+    }),
   vaultStatus: () => invoke<VaultStatus>("vault_status"),
   unlockVault: (password: string) => invoke<VaultStatus>("unlock_vault", { password }),
   lockVault: () => invoke<VaultStatus>("lock_vault"),

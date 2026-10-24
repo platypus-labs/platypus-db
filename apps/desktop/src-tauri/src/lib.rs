@@ -157,6 +157,7 @@ pub fn run() {
             commands::connections::list_network_profiles,
             commands::connections::save_network_profile,
             commands::connections::delete_network_profile,
+            commands::health::ping_session,
             commands::vault::vault_status,
             commands::vault::unlock_vault,
             commands::vault::lock_vault,

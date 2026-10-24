@@ -566,6 +566,7 @@ export function App() {
                 connection={connection}
                 active={t.key === activeTab}
                 ensureSession={() => ensureSession(t)}
+                currentSession={() => sessions.current.get(t.key) ?? null}
                 onChange={(patch) => patchTab(t.key, patch)}
                 sideSession={() => navigatorSession(connection, t.database)}
                 catalog={catalogs[dbKey(connection.id, t.database)] ?? null}

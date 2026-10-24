@@ -47,6 +47,8 @@ export interface TabProps<T> {
   active: boolean;
   /** Opens the tab's own session on first use; `null` if the user cancelled. */
   ensureSession: () => Promise<number | null>;
+  /** The tab's session if it has one already, without opening it; `null` otherwise. */
+  currentSession: () => Promise<number | null> | null;
   /** The connection's navigator session, for side queries such as row counts. */
   sideSession: () => Promise<number | null>;
   catalog: CompletionCatalog | null;

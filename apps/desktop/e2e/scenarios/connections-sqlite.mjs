@@ -91,6 +91,8 @@ export default async function (page, { dir, shots }) {
   await page.key("Enter", "Enter", 13, 2);
   await page.waitFor(`${visibleTab}.querySelector('.statusbar span')?.textContent === '1 row'`, 15_000);
   await page.waitFor(`${button(visibleTab, "Manual commit")} !== undefined`);
+  // An idle session is checked: its latency shows in the status bar.
+  await page.waitFor(`(${visibleTab}.querySelector('.statusbar .health.ok')?.textContent ?? '').endsWith(' ms')`, 15_000);
 
   // The dialog of the imported connection shows its SSH server.
   await page.eval(`[...${treeRow("Remote PG")}.querySelectorAll('button')].find(b => b.title === 'Edit').click()`);
