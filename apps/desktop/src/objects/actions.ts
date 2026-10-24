@@ -127,16 +127,15 @@ registerAction({
   group: "copy",
   order: 41,
   multiple: true,
-  run: (arg) => {
-    const qualified = ({ connection, schema, object }: ObjectArg) => {
-      const name = connection.driver === "postgres" && object.name.includes("(")
-        ? `${quoteIdent(object.name.slice(0, object.name.indexOf("(")), connection.driver)}${object.name.slice(object.name.indexOf("("))}`
-        : quoteIdent(object.name, connection.driver);
-      return `${quoteIdent(schema.name, connection.driver)}.${name}`;
-    };
-    return navigator.clipboard.writeText((arg.selection ?? [arg]).map(qualified).join("\n"));
-  },
+  run: (arg) => navigator.clipboard.writeText((arg.selection ?? [arg]).map(qualified).join("\n")),
 });
+
+/** `schema.name`, quoted; a PostgreSQL routine keeps its argument list unquoted. */
+function qualified({ connection: { driver }, schema, object: { name } }: ObjectArg): string {
+  const paren = driver === "postgres" ? name.indexOf("(") : -1;
+  const quoted = paren >= 0 ? `${quoteIdent(name.slice(0, paren), driver)}${name.slice(paren)}` : quoteIdent(name, driver);
+  return `${quoteIdent(schema.name, driver)}.${quoted}`;
+}
 
 /** Opens the confirmation dialog for a statement that changes an object. */
 function confirmStatement(

@@ -234,6 +234,7 @@ impl Job {
         let send = |event| {
             let _ = events.send(event);
         };
+        let progress = |rows, fetching| send(QueryEvent::Progress { rows, fetching });
         let started = Instant::now();
         let options = ExecOptions {
             batch_size: BATCH_SIZE,
@@ -284,10 +285,7 @@ impl Job {
                 break;
             }
             if (*demand.borrow()).min(cap) <= rows {
-                send(QueryEvent::Progress {
-                    rows,
-                    fetching: false,
-                });
+                progress(rows, false);
                 if demand
                     .wait_for(|target| (*target).min(cap) > rows)
                     .await
@@ -295,10 +293,7 @@ impl Job {
                 {
                     break;
                 }
-                send(QueryEvent::Progress {
-                    rows,
-                    fetching: true,
-                });
+                progress(rows, true);
             }
             match stream.next().await {
                 None => break,
@@ -318,10 +313,7 @@ impl Job {
                 }
             }
             if last_report.elapsed() >= PROGRESS_INTERVAL {
-                send(QueryEvent::Progress {
-                    rows: lock(&self.buffer).rows,
-                    fetching: true,
-                });
+                progress(lock(&self.buffer).rows, true);
                 last_report = Instant::now();
             }
         }
