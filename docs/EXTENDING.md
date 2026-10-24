@@ -78,6 +78,9 @@ text values and the columns' Arrow types, and `dml::apply` runs them all or none
 unfiltered `UPDATE`, `DELETE` or `TRUNCATE` changes in every row; the checks before running
 (`apps/desktop/src/guards/`) use it. `platypus_sql::source_table` tells which table a `SELECT` reads, when its rows are that
 table's, so the editor can change the results of such queries too.
+`platypus_sql::pg_literal` splits PostgreSQL array and composite literals into their
+elements and joins them back, for the data editor's list of elements; `ColumnMeta.fields`
+names a composite type's fields.
 
 Add dialect rules there, with tests. `apps/desktop/src/sqlNames.ts` mirrors `quote_ident`
 for the UI.

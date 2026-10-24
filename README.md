@@ -35,7 +35,8 @@ scrolls through millions of rows.
   why it is read-only. Results of a query that reads one table edit the same way, with
   computed columns read-only. Paste cells from a spreadsheet or CSV over the grid or as new
   rows; foreign keys show the name of the row they point to and edit with a list of those
-  rows; every save leaves an undo script that puts the rows back.
+  rows; PostgreSQL arrays and composite values edit one element or field per line, each
+  with its own NULL; every save leaves an undo script that puts the rows back.
 - **Results**: copy with headers or as CSV, JSON, Markdown, HTML, SQL `INSERT` or an `IN`
   list; find in the loaded rows (`Ctrl+F`); a value panel (`F7`) with long text, JSON and XML
   formatted, hex and images from binary columns, and save to file; quick filters on the
