@@ -13,6 +13,9 @@ const STATUS_LABELS: Record<LogEntry["status"], string> = {
   failed: "Failed",
 };
 
+/** Below 10 ms the tenths tell fast from instant. */
+const duration = (ms: number) => (ms < 10 ? `${ms.toFixed(1)} ms` : formatMs(Math.round(ms)));
+
 const time = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
   minute: "2-digit",
@@ -118,7 +121,7 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
                   <td className="query-manager-text" title={e.text}>
                     {e.text}
                   </td>
-                  <td>{e.elapsed_ms === null ? "" : formatMs(Math.round(e.elapsed_ms))}</td>
+                  <td>{e.elapsed_ms === null ? "" : duration(e.elapsed_ms)}</td>
                   <td>{e.rows === null ? "" : fmt.format(e.rows)}</td>
                   <td title={e.error ?? undefined}>{STATUS_LABELS[e.status]}</td>
                 </tr>
