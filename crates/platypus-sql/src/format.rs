@@ -813,7 +813,13 @@ pub fn format(src: &str, dialect: Dialect, options: FormatOptions) -> String {
     let mut pos = 0;
     for (n, statement) in split(src, dialect).iter().enumerate() {
         push_gap(&mut out, &src[pos..statement.start], n > 0, true);
-        out.push_str(&format_statement(statement.text(src), dialect, options));
+        let text = statement.text(src);
+        // Client commands such as `@include file.sql` stay as typed.
+        if text.starts_with('@') {
+            out.push_str(text);
+        } else {
+            out.push_str(&format_statement(text, dialect, options));
+        }
         pos = statement.end;
     }
     push_gap(&mut out, &src[pos..], pos > 0, false);
@@ -942,6 +948,10 @@ mod tests {
         assert_eq!(
             format(mysql, Dialect::MySql, FormatOptions::default()),
             "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END//\n\nDELIMITER ;\nSELECT\n  1"
+        );
+        assert_eq!(
+            pg("@include select.sql\nselect 1"),
+            "@include select.sql\n\nSELECT\n  1"
         );
     }
 

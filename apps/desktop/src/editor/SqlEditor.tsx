@@ -5,10 +5,13 @@ import { MySQL, PostgreSQL, SQLite, sql } from "@codemirror/lang-sql";
 import {
   HighlightStyle,
   bracketMatching,
+  foldGutter,
+  foldKeymap,
   indentOnInput,
   syntaxHighlighting,
+  syntaxTree,
 } from "@codemirror/language";
-import { type Diagnostic, lintGutter, setDiagnostics } from "@codemirror/lint";
+import { type Diagnostic, forceLinting, lintGutter, linter, setDiagnostics } from "@codemirror/lint";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState, Prec, StateEffect, StateField } from "@codemirror/state";
 import {
@@ -28,11 +31,27 @@ import { tags as t } from "@lezer/highlight";
 import { dispatchKey } from "../actions";
 import { type CompletionCatalog, type DriverKind, toCommandError } from "../api";
 import { ContextMenu, type MenuState } from "../components/ContextMenu";
+import { useSetting } from "../settings";
 import { workbench } from "../workbench";
 import "./actions";
+import { functionCompletion } from "./functions";
 import { joinCompletion } from "./joinCompletion";
+import { lintSql } from "./lint";
+import { expandSnippet, snippetSource } from "./snippets";
+import { spellcheck, spellcheckSetting } from "./spellcheck";
 
-export type RunMode = "statement" | "script";
+/** `append` runs the statement into a new result tab, keeping the others. */
+export type RunMode = "statement" | "script" | "append";
+
+/** What the tab around the editor offers its actions. */
+export interface EditorHost {
+  /** Opens the object a name in the SQL refers to (Ctrl+click); `schema` when qualified. */
+  openObject?: (schema: string | null, name: string) => void;
+  /** Runs the editor's script with the database's command-line client. */
+  runCli?: () => void;
+  /** Runs the statement into a new result tab, keeping the others. */
+  runAppend?: () => void;
+}
 
 export interface SqlEditorHandle {
   getText(): string;
@@ -46,6 +65,8 @@ export interface SqlEditorHandle {
   setError(error: { from: number; to: number; message: string } | null): void;
   /** Briefly highlights the statement being executed. */
   flash(from: number, to: number): void;
+  /** Selects `from..to` and scrolls to it. */
+  select(from: number, to: number): void;
 }
 
 interface Props {
@@ -59,6 +80,27 @@ interface Props {
   readOnly?: boolean;
   /** Tables and columns to complete; keywords complete without it. */
   catalog?: CompletionCatalog | null;
+  /** The connection is a production one: the linter warns about `SELECT *`. */
+  production?: boolean;
+  host?: EditorHost;
+}
+
+/** The name under `pos` as `[schema, name]` when it is an identifier, e.g. a table. */
+function nameAt(state: EditorState, pos: number): [string | null, string] | null {
+  const node = syntaxTree(state).resolveInner(pos, 1);
+  if (node.name !== "Identifier" && node.name !== "QuotedIdentifier") return null;
+  const unquote = (n: { from: number; to: number; name: string }) => {
+    const text = state.sliceDoc(n.from, n.to);
+    return n.name === "QuotedIdentifier" ? text.slice(1, -1) : text;
+  };
+  const parent = node.parent;
+  if (parent?.name !== "CompositeIdentifier") return [null, unquote(node)];
+  const parts: { from: number; to: number; name: string }[] = [];
+  for (let c = parent.firstChild; c; c = c.nextSibling) {
+    if (c.name === "Identifier" || c.name === "QuotedIdentifier") parts.push({ from: c.from, to: c.to, name: c.name });
+  }
+  const i = parts.findIndex((p) => p.from === node.from);
+  return [i > 0 ? unquote(parts[i - 1]!) : null, unquote(node)];
 }
 
 const highlight = HighlightStyle.define([
@@ -110,7 +152,12 @@ function language(driver: DriverKind, catalog: CompletionCatalog | null | undefi
     schema: catalog?.schemas,
     defaultSchema: catalog?.default_schema ?? undefined,
   });
-  return [support, support.language.data.of({ autocomplete: joinCompletion(catalog, driver) })];
+  return [
+    support,
+    support.language.data.of({ autocomplete: joinCompletion(catalog, driver) }),
+    support.language.data.of({ autocomplete: functionCompletion(driver) }),
+    support.language.data.of({ autocomplete: snippetSource }),
+  ];
 }
 
 const reportError = (e: unknown) => workbench().showError(toCommandError(e).message);
@@ -137,6 +184,8 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const languageConf = useRef(new Compartment());
+  const spellConf = useRef(new Compartment());
+  const spellMode = useSetting(spellcheckSetting);
   // Keymaps read the latest callbacks without rebuilding the editor.
   const callbacks = useRef(props);
   callbacks.current = props;
@@ -148,6 +197,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
       view,
       driver: callbacks.current.driver,
       readOnly: !!callbacks.current.readOnly,
+      host: callbacks.current.host,
     });
     const run = (mode: RunMode) => () => {
       callbacks.current.onRun?.(mode);
@@ -162,7 +212,10 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         history(),
         drawSelection(),
         EditorState.allowMultipleSelections.of(true),
-        rectangularSelection(),
+        // Ctrl+click opens the object under it, so Alt+click adds a cursor and
+        // Shift+Alt+drag selects a rectangle, as in VS Code.
+        EditorView.clickAddsSelectionRange.of((e) => e.altKey && !e.shiftKey),
+        rectangularSelection({ eventFilter: (e) => e.altKey && e.shiftKey }),
         crosshairCursor(),
         indentOnInput(),
         bracketMatching(),
@@ -171,7 +224,18 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         highlightActiveLine(),
         highlightSelectionMatches(),
         search({ top: true }),
+        foldGutter(),
         lintGutter(),
+        linter(
+          (view) =>
+            lintSql(view, {
+              driver: callbacks.current.driver,
+              catalog: callbacks.current.catalog,
+              production: !!callbacks.current.production,
+            }).catch(() => []),
+          { delay: 600 },
+        ),
+        spellConf.current.of(spellcheck(spellMode)),
         flashField,
         EditorState.readOnly.of(!!props.readOnly),
         syntaxHighlighting(highlight),
@@ -180,6 +244,17 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         Prec.highest(
           EditorView.domEventHandlers({
             keydown: (e, view) => dispatchKey("editor", target(view), e, reportError),
+            // Ctrl+click on a name opens its object; elsewhere it adds a cursor as usual.
+            mousedown: (e, view) => {
+              const open = callbacks.current.host?.openObject;
+              if (!(e.ctrlKey || e.metaKey) || e.button !== 0 || !open) return false;
+              const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+              const name = pos === null ? null : nameAt(view.state, pos);
+              if (!name) return false;
+              e.preventDefault();
+              open(...name);
+              return true;
+            },
             contextmenu: (e, view) => {
               e.preventDefault();
               // A right-click outside the selection moves the cursor there first.
@@ -196,6 +271,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
           { key: "Mod-Enter", run: run("statement"), preventDefault: true },
           { key: "Mod-Shift-Enter", run: run("script"), preventDefault: true },
           { key: "Alt-x", run: run("script"), preventDefault: true },
+          { key: "Mod-\\", run: run("append"), preventDefault: true },
           {
             key: "Mod-s",
             run: () => (callbacks.current.onSave?.(), true),
@@ -211,6 +287,8 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
           ...searchKeymap,
           ...historyKeymap,
           ...completionKeymap,
+          ...foldKeymap,
+          { key: "Tab", run: (view) => !view.state.readOnly && expandSnippet(view) },
           indentWithTab,
         ]),
         EditorView.updateListener.of((u) => {
@@ -236,7 +314,13 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
     view.current?.dispatch({
       effects: languageConf.current.reconfigure(language(props.driver, props.catalog)),
     });
+    // Columns are checked against the catalog, which may arrive after the text.
+    if (view.current) forceLinting(view.current);
   }, [props.driver, props.catalog]);
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: spellConf.current.reconfigure(spellcheck(spellMode)) });
+  }, [spellMode]);
 
   useImperativeHandle(ref, () => ({
     getText: () => view.current?.state.doc.toString() ?? "",
@@ -290,6 +374,13 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
       if (!v) return;
       v.dispatch({ effects: flashEffect.of({ from, to }) });
       setTimeout(() => view.current?.dispatch({ effects: flashEffect.of(null) }), 600);
+    },
+    select: (from, to) => {
+      const v = view.current;
+      if (!v) return;
+      const len = v.state.doc.length;
+      v.dispatch({ selection: { anchor: Math.min(from, len), head: Math.min(to, len) }, scrollIntoView: true });
+      v.focus();
     },
   }));
 

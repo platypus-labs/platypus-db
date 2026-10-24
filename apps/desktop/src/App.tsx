@@ -1,4 +1,4 @@
-import { type ComponentType, Fragment, type ReactNode, useEffect, useRef, useState } from "react";
+import { type ComponentType, Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { dispatchKey, registerAction } from "./actions";
 import { api, type Capabilities, type CompletionCatalog, type Project, toCommandError, type SavedConnection } from "./api";
 import { onNavigatorRefresh } from "./navigatorEvents";
@@ -20,6 +20,7 @@ import { ProjectRail } from "./projects/ProjectRail";
 import { ProjectDialog } from "./projects/ProjectDialog";
 import { AddConnectionsDialog } from "./projects/AddConnectionsDialog";
 import { registerAddToProject } from "./projects/actions";
+import { ScriptsPanel } from "./scripts/ScriptsPanel";
 import { ContextMenu, type MenuState } from "./components/ContextMenu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -141,6 +142,7 @@ export function App() {
   }, [workspaceReady, tabs, activeTab, activeProject]);
 
   const project = projects?.find((p) => p.id === activeProject) ?? null;
+  const projectConnections = useMemo(() => connectionsOf(project, connections ?? []), [project, connections]);
   // The window says which project is shown.
   useEffect(() => {
     const title = project ? `${project.name} — PlatypusDB` : "PlatypusDB";
@@ -466,29 +468,32 @@ export function App() {
         onNew={() => setDialog({ kind: "project", project: null })}
         onMenu={(p, e) => setRailMenu({ x: e.clientX, y: e.clientY, target: { scope: "project", arg: p } })}
       />
-      <Navigator
-        connections={connectionsOf(project, connections ?? [])}
-        project={project}
-        onAddExisting={() => setDialog({ kind: "add-connections" })}
-        error={storeError}
-        onNew={() => void newConnection()}
-        onImport={() => setDialog({ kind: "import" })}
-        onEdit={(c) =>
-          setDialog({
-            kind: "connection",
-            connection: c,
-            existing: true,
-            memberOf: (projects ?? []).filter((p) => p.connections.includes(c.id)).map((p) => p.id),
-          })
-        }
-        onDelete={(c) => void deleteConnection(c)}
-        onOpenTab={(c, init) => addTab(createTab("query", c.id, init))}
-        session={navigatorSession}
-        capabilities={(sessionId) => capabilities.current.get(sessionId)}
-        disconnect={disconnectNavigator}
-        onRefresh={(c, database) => requestCatalog(c, true, database)}
-        onError={setToast}
-      />
+      <div className="sidebar-column">
+        <Navigator
+          connections={projectConnections}
+          project={project}
+          onAddExisting={() => setDialog({ kind: "add-connections" })}
+          error={storeError}
+          onNew={() => void newConnection()}
+          onImport={() => setDialog({ kind: "import" })}
+          onEdit={(c) =>
+            setDialog({
+              kind: "connection",
+              connection: c,
+              existing: true,
+              memberOf: (projects ?? []).filter((p) => p.connections.includes(c.id)).map((p) => p.id),
+            })
+          }
+          onDelete={(c) => void deleteConnection(c)}
+          onOpenTab={(c, init) => addTab(createTab("query", c.id, init))}
+          session={navigatorSession}
+          capabilities={(sessionId) => capabilities.current.get(sessionId)}
+          disconnect={disconnectNavigator}
+          onRefresh={(c, database) => requestCatalog(c, true, database)}
+          onError={setToast}
+        />
+        <ScriptsPanel project={project} connections={projectConnections} onError={setToast} />
+      </div>
       <main className="workspace">
         <UpdateBanner />
         {visibleTabs.length > 0 && (
@@ -638,6 +643,7 @@ export function App() {
 /** A tab's icon: what it shows. */
 function tabIcon(t: TabModel): IconName {
   if (t.kind === "object") return "object";
+  if (t.kind === "builder") return "builder";
   return "tableRef" in t && t.tableRef ? "table" : "sql";
 }
 

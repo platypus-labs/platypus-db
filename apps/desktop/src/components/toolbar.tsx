@@ -13,6 +13,7 @@ export const toolbarSettings = {
   files: show("show_files", "Open and Save script"),
   history: show("show_history", "History"),
   refresh: show("show_refresh", "Auto-refresh"),
+  panels: show("show_panels", "Variables, Outline and Terminal"),
 };
 
 export const toolbarLabels = defineSetting<string>({
@@ -38,6 +39,7 @@ export function useToolbar() {
     files: useSetting(toolbarSettings.files),
     history: useSetting(toolbarSettings.history),
     refresh: useSetting(toolbarSettings.refresh),
+    panels: useSetting(toolbarSettings.panels),
   };
   const iconsOnly = useSetting(toolbarLabels) === "icons";
   /** The icon and the words, or the icon alone: the button's `aria-label` and tooltip keep

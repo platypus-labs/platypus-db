@@ -13,6 +13,8 @@ pub enum StatementKind {
     Ddl,
     /// Neither, e.g. `BEGIN`, `SET`, `USE`.
     Other,
+    /// A command the app runs itself, e.g. `@set x = 1`; the database never sees it.
+    Command,
 }
 
 /// A table as a statement names it; `schema` is `None` when left to the session.
@@ -66,28 +68,38 @@ const MODIFIERS: &[&str] = &[
     "FAIL",
 ];
 
-struct Words<'a> {
+pub(crate) struct Words<'a> {
     src: &'a str,
-    tokens: Vec<Token>,
+    pub(crate) tokens: Vec<Token>,
 }
 
-impl Words<'_> {
-    fn word(&self, i: usize) -> Option<String> {
+impl<'a> Words<'a> {
+    /// The tokens of `sql` without whitespace and comments.
+    pub(crate) fn new(sql: &'a str, dialect: Dialect) -> Self {
+        Words {
+            src: sql,
+            tokens: Lexer::new(sql, dialect)
+                .filter(|t| !t.is_trivia())
+                .collect(),
+        }
+    }
+
+    pub(crate) fn word(&self, i: usize) -> Option<String> {
         let t = self.tokens.get(i)?;
         (t.kind == TokenKind::Word).then(|| t.text(self.src).to_ascii_uppercase())
     }
 
-    fn is(&self, i: usize, words: &[&str]) -> bool {
+    pub(crate) fn is(&self, i: usize, words: &[&str]) -> bool {
         self.word(i).is_some_and(|w| words.contains(&w.as_str()))
     }
 
-    fn symbol(&self, i: usize, s: &str) -> bool {
+    pub(crate) fn symbol(&self, i: usize, s: &str) -> bool {
         self.tokens
             .get(i)
             .is_some_and(|t| t.kind == TokenKind::Symbol && t.text(self.src) == s)
     }
 
-    fn ident(&self, i: usize, dialect: Dialect) -> Option<String> {
+    pub(crate) fn ident(&self, i: usize, dialect: Dialect) -> Option<String> {
         let t = self.tokens.get(i)?;
         let text = t.text(self.src);
         match t.kind {
@@ -107,7 +119,7 @@ impl Words<'_> {
     }
 
     /// `name` or `schema.name` at `i`.
-    fn table(&self, i: usize, dialect: Dialect) -> Option<TableName> {
+    pub(crate) fn table(&self, i: usize, dialect: Dialect) -> Option<TableName> {
         let first = self.ident(i, dialect)?;
         if self.symbol(i + 1, ".") {
             let name = self.ident(i + 2, dialect)?;
@@ -123,7 +135,7 @@ impl Words<'_> {
     }
 
     /// Whether one of `words` appears after `from`, outside parentheses.
-    fn at_top(&self, from: usize, words: &[&str]) -> bool {
+    pub(crate) fn at_top(&self, from: usize, words: &[&str]) -> bool {
         let mut depth = 0usize;
         (from..self.tokens.len()).any(|i| {
             if self.symbol(i, "(") {
@@ -136,7 +148,7 @@ impl Words<'_> {
     }
 
     /// The first word at top level from `from` that is one of `words`.
-    fn find_top(&self, from: usize, words: &[&str]) -> Option<usize> {
+    pub(crate) fn find_top(&self, from: usize, words: &[&str]) -> Option<usize> {
         let mut depth = 0usize;
         (from..self.tokens.len()).find(|&i| {
             if self.symbol(i, "(") {
@@ -187,12 +199,13 @@ fn unfiltered(w: &Words<'_>, at: usize, dialect: Dialect) -> Option<TableName> {
 
 #[must_use]
 pub fn analyze(sql: &str, dialect: Dialect) -> Analysis {
-    let w = Words {
-        src: sql,
-        tokens: Lexer::new(sql, dialect)
-            .filter(|t| !t.is_trivia())
-            .collect(),
-    };
+    if sql.trim_start().starts_with('@') {
+        return Analysis {
+            kind: StatementKind::Command,
+            unfiltered: None,
+        };
+    }
+    let w = Words::new(sql, dialect);
     let first = w.word(0).unwrap_or_default();
     // A `WITH` names its main statement after the common table expressions.
     let main = if first == "WITH" {
@@ -286,5 +299,6 @@ mod tests {
         assert_eq!(kind("drop table t"), StatementKind::Ddl);
         assert_eq!(kind("begin"), StatementKind::Other);
         assert_eq!(kind("set search_path = x"), StatementKind::Other);
+        assert_eq!(kind("@set x = 1"), StatementKind::Command);
     }
 }

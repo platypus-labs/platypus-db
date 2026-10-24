@@ -1,0 +1,187 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { dispatchKey } from "../actions";
+import { type Project, type SavedConnection, type ScriptEntry, type ScriptList, api, toCommandError } from "../api";
+import { ContextMenu, type MenuState } from "../components/ContextMenu";
+import { Icon } from "../ui/Icon";
+import { moveScript, registerScriptConnections } from "./actions";
+import { connectionFor, nameOf, onScriptsChanged, openScript, parentOf, scriptsChanged } from "./scripts";
+
+interface Props {
+  project: Project | null;
+  /** The project's connections: the ones a script can open on. */
+  connections: SavedConnection[];
+  onError: (message: string) => void;
+}
+
+/** The active project's saved scripts, under the navigator. */
+export function ScriptsPanel({ project, connections, onError }: Props) {
+  const projectId = project?.id ?? null;
+  const [list, setList] = useState<ScriptList | null>(null);
+  const [open, setOpen] = useState(true);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  // Escape leaves the name as it was; the blur that follows must not save it.
+  const cancelled = useRef(false);
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+  const fail = (e: unknown) => onError(toCommandError(e).message);
+
+  const load = useCallback(() => {
+    api.listScripts(projectId).then(setList, fail);
+  }, [projectId]);
+  useEffect(load, [load]);
+  useEffect(() => onScriptsChanged(load), [load]);
+  useEffect(() => registerScriptConnections(connections), [connections]);
+
+  function rename(path: string) {
+    setEditing(path);
+    setName(nameOf(path).replace(/\.sql$/i, ""));
+    // A new entry may be inside a collapsed folder.
+    setCollapsed((c) => new Set([...c].filter((f) => !path.startsWith(`${f}/`))));
+  }
+
+  async function commitRename(entry: ScriptEntry) {
+    setEditing(null);
+    if (cancelled.current) {
+      cancelled.current = false;
+      return;
+    }
+    const typed = name.trim();
+    if (!typed) return;
+    const file = entry.folder || /\.sql$/i.test(typed) ? typed : `${typed}.sql`;
+    const parent = parentOf(entry.path);
+    const to = parent ? `${parent}/${file}` : file;
+    if (to === entry.path) return;
+    try {
+      await api.renameScript(projectId, entry.path, to);
+      scriptsChanged();
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function create(folder: boolean) {
+    try {
+      let path: string;
+      if (folder) {
+        path = "New folder";
+        for (let n = 2; list?.entries.some((e) => e.path === path); n++) path = `New folder ${n}`;
+        await api.createScriptFolder(projectId, path);
+      } else {
+        const only = connections.length === 1 ? connections[0]!.id : null;
+        path = await api.createScript(projectId, "", "Script", only);
+      }
+      setOpen(true);
+      scriptsChanged();
+      rename(path);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  const entries = list?.entries ?? [];
+  const hidden = (path: string) => [...collapsed].some((f) => path.startsWith(`${f}/`));
+  const drop = (folder: string) => (e: React.DragEvent) => {
+    const path = e.dataTransfer.getData("application/x-platypus-script");
+    if (!path) return;
+    e.preventDefault();
+    e.stopPropagation();
+    moveScript(projectId, path, folder).catch(fail);
+  };
+  const allowDrop = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes("application/x-platypus-script")) e.preventDefault();
+  };
+
+  return (
+    <section className={`scripts-panel${open ? " open" : ""}`} aria-label="Scripts">
+      <div className="sidebar-header scripts-header" onDragOver={allowDrop} onDrop={drop("")}>
+        <button className="icon twisty-button" onClick={() => setOpen((o) => !o)} aria-expanded={open} title={open ? "Hide scripts" : "Show scripts"}>
+          <Icon name={open ? "chevron-down" : "chevron-right"} size={12} />
+        </button>
+        <span className="sidebar-title">Scripts</span>
+        <button className="icon" title="New script" aria-label="New script" onClick={() => void create(false)}>
+          <Icon name="new-file" />
+        </button>
+        <button className="icon" title="New folder" aria-label="New folder" onClick={() => void create(true)}>
+          <Icon name="new-folder" />
+        </button>
+      </div>
+      {open && (
+        <ul className="tree scripts-tree">
+          {entries.map((entry) => {
+            if (hidden(entry.path)) return null;
+            const depth = entry.path.split("/").length - 1;
+            const isCollapsed = collapsed.has(entry.path);
+            const linked = connections.find((c) => c.id === entry.connection);
+            const arg = { entry, project: projectId, root: list!.root, connections, rename };
+            return (
+              <li
+                key={entry.path}
+                className="tree-row script-row"
+                style={{ paddingLeft: 6 + depth * 14 }}
+                tabIndex={0}
+                draggable={editing !== entry.path}
+                onKeyDown={(e) => editing !== entry.path && dispatchKey("script", arg, e.nativeEvent, fail)}
+                data-path={entry.path}
+                onDragStart={(e) => e.dataTransfer.setData("application/x-platypus-script", entry.path)}
+                onDragOver={entry.folder ? allowDrop : undefined}
+                onDrop={entry.folder ? drop(entry.path) : undefined}
+                onClick={() =>
+                  entry.folder &&
+                  setCollapsed((c) => {
+                    const next = new Set(c);
+                    if (next.has(entry.path)) next.delete(entry.path);
+                    else next.add(entry.path);
+                    return next;
+                  })
+                }
+                onDoubleClick={() => {
+                  const c = connectionFor(entry, connections);
+                  if (!entry.folder && c) openScript(list!.root, entry, c).catch(fail);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMenu({ x: e.clientX, y: e.clientY, target: { scope: "script", arg } });
+                }}
+              >
+                <span className="twisty">
+                  {entry.folder && <Icon name={isCollapsed ? "chevron-right" : "chevron-down"} size={12} />}
+                </span>
+                <span className="tree-icon">
+                  <Icon name={entry.folder ? "folder" : "file"} />
+                </span>
+                {editing === entry.path ? (
+                  <input
+                    className="script-rename"
+                    autoFocus
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onBlur={() => void commitRename(entry)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
+                      if (e.key === "Escape") {
+                        cancelled.current = true;
+                        e.currentTarget.blur();
+                      }
+                    }}
+                  />
+                ) : (
+                  <span className="tree-label">{entry.folder ? nameOf(entry.path) : nameOf(entry.path).replace(/\.sql$/i, "")}</span>
+                )}
+                {linked && (
+                  <span className="tree-detail" title={`Opens on ${linked.name}`}>
+                    {linked.name}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+          {list && entries.length === 0 && <li className="muted small scripts-empty">No saved scripts</li>}
+        </ul>
+      )}
+      {menu && <ContextMenu menu={menu} onClose={closeMenu} onError={fail} />}
+    </section>
+  );
+}

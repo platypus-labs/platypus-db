@@ -32,6 +32,18 @@ scrolls through millions of rows.
   condition, `JOIN t ON ` offers the condition. A formatter (`Ctrl+Shift+F`) with
   configurable keyword case and indentation. Line commands, multiple cursors, and a
   context menu with every editor command.
+  Parameters (`:id`, `?`) and variables (`${name}`) asked in a dialog and kept in a
+  Variables panel; client commands `@set`, `@echo`, `@include file.sql` and
+  `@export file.csv`. Built-in functions complete with signature and description; snippets
+  (`sel` then `Tab`) are editable. Folding, an outline of the statements, `Ctrl+click` on a
+  name to open its object, `Ctrl+\` to run into a new result tab, a terminal mode with
+  results as text, and running the script with the local `psql`, `mysql` or `sqlite3`.
+  A linter marks unknown columns, joins without a condition and `SELECT *` on production;
+  comments are spell checked.
+- **Saved scripts**: `.sql` files per project in the Scripts panel under the navigator, with
+  folders, rename, drag to move, and the connection each one opens on.
+- **Visual query builder**: tables dragged onto a canvas, joined on their foreign keys,
+  columns ticked; the generated SELECT opens in the editor.
 - **Results grid** on canvas: millions of rows fetched on demand, cancellable queries.
 - **Data viewer**: open a table, sort by clicking a header, filter with a `WHERE`, count rows.
 - **Data editor**: change cells in place (double-click, `F2` or just type), set NULL or the
