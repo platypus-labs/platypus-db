@@ -26,7 +26,7 @@ registerAction({
 registerAction({
   id: "editor.explain_analyze",
   scope: "editor",
-  title: "Explain analyze (runs the statement, then rolls it back)",
+  title: "Explain analyze (runs the statement)",
   group: "run",
   order: 7,
   when: ({ host }) => !!host?.explain,

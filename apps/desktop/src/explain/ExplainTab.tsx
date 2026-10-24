@@ -73,7 +73,7 @@ function rawPlan(explain: Explain) {
   }
 }
 
-export function ExplainTab({ tab, active, sideSession, onChange }: TabProps<ExplainTabModel>) {
+export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<ExplainTabModel>) {
   const [explain, setExplain] = useState<Explain | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -88,8 +88,13 @@ export function ExplainTab({ tab, active, sideSession, onChange }: TabProps<Expl
       setError(null);
       setRunning(true);
       try {
-        const sid = await sideSession();
+        // A session of its own: an analyzed statement's transaction must not be shared with
+        // the navigator, and a long ANALYZE must not hold it up.
+        const sid = await ensureSession();
         if (sid === null || cancelled) return;
+        // Production sessions start in manual commit; the rollback of analyze needs no
+        // transaction left open by an earlier plain explain.
+        await api.setAutocommit(sid, true).catch(() => {});
         const plan = await api.explain(sid, tab.sql, tab.analyze);
         if (!cancelled) setExplain(plan);
       } catch (e) {
@@ -146,6 +151,9 @@ export function ExplainTab({ tab, active, sideSession, onChange }: TabProps<Expl
       </nav>
       <div className="object-body">
         {error && <div className="notice error">{error}</div>}
+        {tab.analyze && explain && !explain.analyzed && (
+          <div className="notice small">This database cannot run a statement for its plan: estimates only.</div>
+        )}
         {explain && view === "tree" && (
           <div className="explain-split">
             <div className="explain-tree" role="tree">
