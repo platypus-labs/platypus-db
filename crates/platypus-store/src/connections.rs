@@ -9,8 +9,9 @@ use uuid::Uuid;
 
 use crate::{Result, SecretStore, StoreError};
 
-/// 2 added projects: an older app would drop them on its first save, so it refuses the file.
-const FILE_VERSION: u32 = 2;
+/// 2 added projects, 3 network profiles: an older app would drop them on its first save, so
+/// it refuses the file.
+const FILE_VERSION: u32 = 3;
 
 /// A connection as the user saved it. Never contains the password.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,9 +30,20 @@ pub struct SavedConnection {
     #[serde(default)]
     pub ssl_mode: SslMode,
     pub ssl_root_cert: Option<PathBuf>,
+    /// The certificate and key presented to servers that authenticate clients by certificate.
+    pub ssl_client_cert: Option<PathBuf>,
+    pub ssl_client_key: Option<PathBuf>,
     /// Whether the password is kept in the OS keychain.
     #[serde(default)]
     pub save_password: bool,
+    /// A shell command that prints the password, run at each connection (e.g. a password
+    /// manager's CLI). Takes precedence over `.pgpass` and the keychain.
+    pub password_command: Option<String>,
+    /// Looks the password up in `.pgpass` (`PGPASSFILE`), as libpq does.
+    #[serde(default)]
+    pub pgpass: bool,
+    /// A network profile whose SSH tunnel and SSL settings replace the connection's own.
+    pub network_profile: Option<Uuid>,
     /// Blocks statements that modify data (enforced by the app, not the database).
     #[serde(default)]
     pub read_only: bool,
@@ -43,6 +55,9 @@ pub struct SavedConnection {
     /// The SSH server the connection goes through. Before `virtual_keys`: TOML writes plain
     /// values first, then tables.
     pub ssh: Option<SavedSsh>,
+    /// Default schema, time zone and bootstrap statements, run after every connect.
+    #[serde(default, skip_serializing_if = "SavedInit::is_empty")]
+    pub init: SavedInit,
     /// Logical keys the user set for tables without a primary key, so the data editor can
     /// identify their rows. Last: TOML writes arrays of tables after plain values.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -116,6 +131,36 @@ impl SavedSsh {
     }
 }
 
+/// What runs after connecting, as saved; `statements` is a script the app splits.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedInit {
+    pub schema: Option<String>,
+    pub time_zone: Option<String>,
+    #[serde(default)]
+    pub statements: String,
+}
+
+impl SavedInit {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.schema.is_none() && self.time_zone.is_none() && self.statements.trim().is_empty()
+    }
+}
+
+/// An SSH tunnel and SSL settings shared by several connections: changing it changes them
+/// all.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkProfile {
+    pub id: Uuid,
+    pub name: String,
+    #[serde(default)]
+    pub ssl_mode: SslMode,
+    pub ssl_root_cert: Option<PathBuf>,
+    pub ssl_client_cert: Option<PathBuf>,
+    pub ssl_client_key: Option<PathBuf>,
+    pub ssh: Option<SavedSsh>,
+}
+
 /// A set of connections worked on together, shown as a square in the project rail. A
 /// connection can be in several projects.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -177,6 +222,16 @@ fn keep_known(ids: &mut Vec<Uuid>, known: &HashSet<Uuid>) {
     ids.retain(|id| known.contains(id) && seen.insert(*id));
 }
 
+fn check_client_cert(cert: Option<&PathBuf>, key: Option<&PathBuf>) -> Result<()> {
+    if cert.is_some() == key.is_some() {
+        Ok(())
+    } else {
+        Err(StoreError::Invalid(
+            "a client certificate needs both the certificate and its key".to_owned(),
+        ))
+    }
+}
+
 fn is_color(s: &str) -> bool {
     s.len() == 7 && s.starts_with('#') && s[1..].bytes().all(|b| b.is_ascii_hexdigit())
 }
@@ -202,11 +257,17 @@ impl SavedConnection {
             user: String::new(),
             ssl_mode: SslMode::default(),
             ssl_root_cert: None,
+            ssl_client_cert: None,
+            ssl_client_key: None,
             save_password: true,
+            password_command: None,
+            pgpass: false,
+            network_profile: None,
             read_only: false,
             color: None,
             connection_type: None,
             ssh: None,
+            init: SavedInit::default(),
             virtual_keys: Vec::new(),
         }
     }
@@ -221,7 +282,21 @@ impl SavedConnection {
         config.password = password;
         config.ssl_mode = self.ssl_mode;
         config.ssl_root_cert.clone_from(&self.ssl_root_cert);
+        config.ssl_client_cert.clone_from(&self.ssl_client_cert);
+        config.ssl_client_key.clone_from(&self.ssl_client_key);
+        config.init.schema.clone_from(&self.init.schema);
+        config.init.time_zone.clone_from(&self.init.time_zone);
         config
+    }
+
+    /// The password is asked at each connection: none is saved, looked up or printed by a
+    /// command.
+    #[must_use]
+    pub fn asks_password(&self) -> bool {
+        self.driver != DriverKind::Sqlite
+            && !self.save_password
+            && !self.pgpass
+            && self.password_command.is_none()
     }
 }
 
@@ -239,6 +314,8 @@ struct ConnectionsFile {
     #[serde(default)]
     projects: Vec<Project>,
     #[serde(default)]
+    network_profiles: Vec<NetworkProfile>,
+    #[serde(default)]
     connections: Vec<SavedConnection>,
 }
 
@@ -247,6 +324,7 @@ struct ConnectionsFile {
 struct FileOut<'a> {
     version: u32,
     projects: &'a [Project],
+    network_profiles: &'a [NetworkProfile],
     connections: &'a [SavedConnection],
 }
 
@@ -255,6 +333,7 @@ pub struct ConnectionStore {
     path: PathBuf,
     secrets: Arc<dyn SecretStore>,
     projects: Vec<Project>,
+    network_profiles: Vec<NetworkProfile>,
     connections: Vec<SavedConnection>,
 }
 
@@ -262,7 +341,7 @@ impl ConnectionStore {
     /// Loads `path`, or starts empty if it does not exist yet.
     pub fn open(path: impl Into<PathBuf>, secrets: Arc<dyn SecretStore>) -> Result<Self> {
         let path = path.into();
-        let (mut projects, connections) = match std::fs::read_to_string(&path) {
+        let (mut projects, network_profiles, connections) = match std::fs::read_to_string(&path) {
             Ok(text) => {
                 let file: ConnectionsFile =
                     toml::from_str(&text).map_err(|e| StoreError::Format {
@@ -278,9 +357,11 @@ impl ConnectionStore {
                         ),
                     });
                 }
-                (file.projects, file.connections)
+                (file.projects, file.network_profiles, file.connections)
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Vec::new(), Vec::new()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                (Vec::new(), Vec::new(), Vec::new())
+            }
             Err(source) => return Err(StoreError::Io { path, source }),
         };
         // Files edited by hand: ids of missing connections and empty initials.
@@ -295,6 +376,7 @@ impl ConnectionStore {
             path,
             secrets,
             projects,
+            network_profiles,
             connections,
         })
     }
@@ -409,12 +491,102 @@ impl ConnectionStore {
         self.connections.iter().find(|c| c.id == id)
     }
 
+    #[must_use]
+    pub fn network_profiles(&self) -> &[NetworkProfile] {
+        &self.network_profiles
+    }
+
+    /// Inserts or replaces (by id) a network profile, after checking it: a name used by no
+    /// other profile (ignoring case), and a client certificate with its key.
+    pub fn save_network_profile(&mut self, mut profile: NetworkProfile) -> Result<()> {
+        trim(&mut profile.name);
+        if profile.name.is_empty() {
+            return Err(StoreError::Invalid("profile name is required".to_owned()));
+        }
+        let lower = profile.name.to_lowercase();
+        if self
+            .network_profiles
+            .iter()
+            .any(|p| p.id != profile.id && p.name.to_lowercase() == lower)
+        {
+            return Err(StoreError::Invalid(format!(
+                "a network profile named \"{}\" exists already",
+                profile.name
+            )));
+        }
+        check_client_cert(
+            profile.ssl_client_cert.as_ref(),
+            profile.ssl_client_key.as_ref(),
+        )?;
+        match self
+            .network_profiles
+            .iter_mut()
+            .find(|p| p.id == profile.id)
+        {
+            Some(existing) => *existing = profile,
+            None => self.network_profiles.push(profile),
+        }
+        self.write()
+    }
+
+    /// Deletes a profile no connection uses, with its SSH secrets.
+    pub fn delete_network_profile(&mut self, id: Uuid) -> Result<()> {
+        let users: Vec<&str> = self
+            .connections
+            .iter()
+            .filter(|c| c.network_profile == Some(id))
+            .map(|c| c.name.as_str())
+            .collect();
+        if !users.is_empty() {
+            return Err(StoreError::Invalid(format!(
+                "the profile is used by {}",
+                users.join(", ")
+            )));
+        }
+        let Some(index) = self.network_profiles.iter().position(|p| p.id == id) else {
+            return Err(StoreError::NotFound(id));
+        };
+        let removed = self.network_profiles.remove(index);
+        self.write()?;
+        for ssh in removed.ssh.iter().flat_map(SavedSsh::chain) {
+            self.secrets.delete(ssh.secret_id)?;
+        }
+        Ok(())
+    }
+
+    /// The connection with its network profile's SSH tunnel and SSL settings in place of
+    /// its own.
+    #[must_use]
+    pub fn effective(&self, connection: &SavedConnection) -> SavedConnection {
+        let mut out = connection.clone();
+        let profile = connection
+            .network_profile
+            .and_then(|id| self.network_profiles.iter().find(|p| p.id == id));
+        if let Some(p) = profile {
+            out.ssl_mode = p.ssl_mode;
+            out.ssl_root_cert.clone_from(&p.ssl_root_cert);
+            out.ssl_client_cert.clone_from(&p.ssl_client_cert);
+            out.ssl_client_key.clone_from(&p.ssl_client_key);
+            out.ssh.clone_from(&p.ssh);
+        }
+        out
+    }
+
     /// Inserts or replaces (by id) a connection and updates its keychain entry.
     pub fn save(&mut self, connection: SavedConnection, password: PasswordUpdate) -> Result<()> {
         if connection.name.trim().is_empty() {
             return Err(StoreError::Invalid(
                 "connection name is required".to_owned(),
             ));
+        }
+        check_client_cert(
+            connection.ssl_client_cert.as_ref(),
+            connection.ssl_client_key.as_ref(),
+        )?;
+        if let Some(id) = connection.network_profile
+            && !self.network_profiles.iter().any(|p| p.id == id)
+        {
+            return Err(StoreError::Invalid("unknown network profile".to_owned()));
         }
         let id = connection.id;
         let save_password = connection.save_password;
@@ -471,6 +643,40 @@ impl ConnectionStore {
         self.secrets.delete(id)
     }
 
+    /// The ids under which secrets may be saved: connections that keep their password, and
+    /// the SSH servers of connections and network profiles.
+    #[must_use]
+    pub fn secret_ids(&self) -> Vec<Uuid> {
+        let ssh = self
+            .connections
+            .iter()
+            .filter_map(|c| c.ssh.as_ref())
+            .chain(self.network_profiles.iter().filter_map(|p| p.ssh.as_ref()))
+            .flat_map(SavedSsh::chain)
+            .map(|s| s.secret_id);
+        self.connections
+            .iter()
+            .filter(|c| c.save_password)
+            .map(|c| c.id)
+            .chain(ssh)
+            .collect()
+    }
+
+    /// Moves every saved secret to `to` and uses it from now on; the old store keeps none.
+    pub fn move_secrets(&mut self, to: Arc<dyn SecretStore>) -> Result<()> {
+        let ids = self.secret_ids();
+        for &id in &ids {
+            if let Some(secret) = self.secrets.get(id)? {
+                to.set(id, &secret)?;
+            }
+        }
+        for &id in &ids {
+            self.secrets.delete(id)?;
+        }
+        self.secrets = to;
+        Ok(())
+    }
+
     /// Sets (`Some`) or removes (`None`) an SSH password or passphrase by its `secret_id`.
     pub fn set_ssh_secret(&self, secret_id: Uuid, secret: Option<&Secret>) -> Result<()> {
         match secret {
@@ -504,6 +710,7 @@ impl ConnectionStore {
         let text = toml::to_string_pretty(&FileOut {
             version: FILE_VERSION,
             projects: &self.projects,
+            network_profiles: &self.network_profiles,
             connections: &self.connections,
         })
         .map_err(|e| StoreError::Format {
@@ -570,7 +777,7 @@ mod tests {
         s.save_project(project("Interno", vec![shared.id])).unwrap();
 
         let text = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
-        assert!(text.contains("version = 2"), "{text}");
+        assert!(text.contains("version = 3"), "{text}");
         assert!(text.contains("[[projects]]"), "{text}");
         let reopened = ConnectionStore::open(dir.path().join("connections.toml"), secrets).unwrap();
         let projects = reopened.projects();
@@ -581,7 +788,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_a_v1_file_and_writes_v2() {
+    fn reads_a_v1_file_and_writes_v3() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("connections.toml");
         let id = Uuid::new_v4();
@@ -597,8 +804,110 @@ mod tests {
         let old = s.get(id).unwrap().clone();
         s.save(old, PasswordUpdate::Keep).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("version = 2"), "{text}");
+        assert!(text.contains("version = 3"), "{text}");
         assert!(!text.contains("folder"), "{text}");
+    }
+
+    fn profile(name: &str) -> NetworkProfile {
+        NetworkProfile {
+            id: Uuid::new_v4(),
+            name: name.to_owned(),
+            ssl_mode: SslMode::VerifyFull,
+            ssl_root_cert: Some("ca.pem".into()),
+            ssl_client_cert: Some("client.crt".into()),
+            ssl_client_key: Some("client.key".into()),
+            ssh: None,
+        }
+    }
+
+    #[test]
+    fn network_profiles_replace_the_connections_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        let shared = profile("Office VPN");
+        s.save_network_profile(shared.clone()).unwrap();
+        assert!(s.save_network_profile(profile(" office vpn ")).is_err());
+        let mut half = profile("Half");
+        half.ssl_client_key = None;
+        assert!(s.save_network_profile(half).is_err());
+
+        let mut conn = sample();
+        conn.network_profile = Some(shared.id);
+        conn.init.schema = Some("sales".to_owned());
+        conn.init.statements = "SET a = 1;
+SET b = 2;"
+            .to_owned();
+        conn.password_command = Some("pass show db".to_owned());
+        s.save(conn.clone(), PasswordUpdate::Keep).unwrap();
+        let effective = s.effective(&conn);
+        assert_eq!(effective.ssl_mode, SslMode::VerifyFull);
+        assert_eq!(effective.ssl_client_cert, shared.ssl_client_cert);
+        let config = effective.config(None);
+        assert_eq!(config.init.schema.as_deref(), Some("sales"));
+        assert_eq!(config.ssl_root_cert, shared.ssl_root_cert);
+
+        // In use: not deleted.
+        let err = s.delete_network_profile(shared.id).unwrap_err();
+        assert!(err.to_string().contains("Local PG"), "{err}");
+        let reopened = ConnectionStore::open(
+            dir.path().join("connections.toml"),
+            Arc::new(MemorySecrets::default()),
+        )
+        .unwrap();
+        assert_eq!(reopened.network_profiles(), std::slice::from_ref(&shared));
+        assert_eq!(reopened.get(conn.id), Some(&conn));
+
+        conn.network_profile = None;
+        s.save(conn.clone(), PasswordUpdate::Keep).unwrap();
+        s.delete_network_profile(shared.id).unwrap();
+        assert_eq!(s.network_profiles(), []);
+        conn.network_profile = Some(shared.id);
+        assert!(s.save(conn, PasswordUpdate::Keep).is_err());
+    }
+
+    #[test]
+    fn moves_every_saved_secret() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, old) = store(dir.path());
+        let conn = sample();
+        s.save(conn.clone(), PasswordUpdate::Set(Secret::new("pw")))
+            .unwrap();
+        let mut shared = profile("Shared");
+        let ssh = SavedSsh {
+            host: "bastion".to_owned(),
+            port: 22,
+            user: "ops".to_owned(),
+            auth: SshAuthKind::Password,
+            key_path: None,
+            secret_id: Uuid::new_v4(),
+            jump: None,
+        };
+        shared.ssh = Some(ssh.clone());
+        s.save_network_profile(shared).unwrap();
+        s.set_ssh_secret(ssh.secret_id, Some(&Secret::new("ssh")))
+            .unwrap();
+
+        let new = Arc::new(MemorySecrets::default());
+        s.move_secrets(new.clone()).unwrap();
+        assert_eq!(old.get(conn.id).unwrap(), None);
+        assert_eq!(old.get(ssh.secret_id).unwrap(), None);
+        assert_eq!(new.get(conn.id).unwrap().unwrap().expose(), "pw");
+        assert_eq!(
+            s.ssh_secret(ssh.secret_id).unwrap().unwrap().expose(),
+            "ssh"
+        );
+    }
+
+    #[test]
+    fn asks_the_password_only_without_a_source() {
+        let mut c = sample();
+        c.save_password = false;
+        assert!(c.asks_password());
+        c.pgpass = true;
+        assert!(!c.asks_password());
+        c.pgpass = false;
+        c.password_command = Some("x".to_owned());
+        assert!(!c.asks_password());
     }
 
     #[test]
@@ -856,7 +1165,7 @@ mod tests {
         std::fs::write(&path, "version = 99\n").unwrap();
         let err = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap_err();
         assert!(matches!(err, StoreError::Format { .. }));
-        std::fs::write(&path, "version = 3\n").unwrap();
+        std::fs::write(&path, "version = 4\n").unwrap();
         let err = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap_err();
         assert!(err.to_string().contains("newer PlatypusDB"), "{err}");
 

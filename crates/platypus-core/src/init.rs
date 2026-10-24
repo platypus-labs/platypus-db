@@ -1,0 +1,125 @@
+//! What runs right after a connection opens: the default schema, the time zone and the
+//! user's bootstrap statements. Drivers run it at the end of `connect`, so a reconnect sets
+//! the session up again.
+
+use futures::TryStreamExt;
+
+use crate::{Connection, DriverKind, Error, ExecOptions, ExecResult, Result};
+
+/// Session settings applied after connecting.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SessionInit {
+    /// PostgreSQL's `search_path`, MySQL's current database; SQLite has none.
+    pub schema: Option<String>,
+    /// An IANA name such as `Europe/Rome`, or an offset such as `+02:00`; SQLite has none.
+    pub time_zone: Option<String>,
+    /// Run in order, after the settings above.
+    pub statements: Vec<String>,
+}
+
+impl SessionInit {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.schema.is_none() && self.time_zone.is_none() && self.statements.is_empty()
+    }
+
+    /// The statements that set the session up on `driver`.
+    pub fn sql(&self, driver: DriverKind) -> Result<Vec<String>> {
+        let mut out = Vec::new();
+        if let Some(schema) = self.schema.as_deref().filter(|s| !s.is_empty()) {
+            match driver {
+                DriverKind::Postgres => {
+                    out.push(format!("SET search_path TO {}", quote(schema, '"')));
+                }
+                DriverKind::MySql => out.push(format!("USE {}", quote(schema, '`'))),
+                DriverKind::Sqlite => {
+                    return Err(Error::Config("SQLite has no default schema".to_owned()));
+                }
+            }
+        }
+        if let Some(zone) = self.time_zone.as_deref().filter(|z| !z.is_empty()) {
+            // MySQL reads backslashes in strings as escapes; no zone name has one.
+            if zone.contains(['\\', '\'']) {
+                return Err(Error::Config(format!("invalid time zone `{zone}`")));
+            }
+            match driver {
+                DriverKind::Postgres => out.push(format!("SET TIME ZONE '{zone}'")),
+                DriverKind::MySql => out.push(format!("SET time_zone = '{zone}'")),
+                DriverKind::Sqlite => {
+                    return Err(Error::Config("SQLite has no session time zone".to_owned()));
+                }
+            }
+        }
+        out.extend(
+            self.statements
+                .iter()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned),
+        );
+        Ok(out)
+    }
+}
+
+/// `name` as a quoted identifier, the quote character doubled inside.
+fn quote(name: &str, q: char) -> String {
+    let doubled: String = [q, q].iter().collect();
+    format!("{q}{}{q}", name.replace(q, &doubled))
+}
+
+/// Runs the session setup on a new connection; a failing statement is named in the error.
+pub async fn run_init(conn: &dyn Connection, init: &SessionInit, driver: DriverKind) -> Result<()> {
+    for sql in init.sql(driver)? {
+        let result = match conn.execute(&sql, &ExecOptions::default()).await {
+            Ok(ExecResult::Rows(stream)) => stream.try_for_each(|_| async { Ok(()) }).await,
+            Ok(ExecResult::Affected { .. }) => Ok(()),
+            Err(e) => Err(e),
+        };
+        result.map_err(|e| Error::Connect(format!("session setup failed at `{sql}`: {e}")))?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn statements_by_driver() {
+        let init = SessionInit {
+            schema: Some("sales \"eu\"".to_owned()),
+            time_zone: Some("Europe/Rome".to_owned()),
+            statements: vec!["SET x = 1".to_owned(), "  ".to_owned()],
+        };
+        assert_eq!(
+            init.sql(DriverKind::Postgres).unwrap(),
+            [
+                "SET search_path TO \"sales \"\"eu\"\"\"",
+                "SET TIME ZONE 'Europe/Rome'",
+                "SET x = 1"
+            ]
+        );
+        assert_eq!(
+            init.sql(DriverKind::MySql).unwrap(),
+            [
+                "USE `sales \"eu\"`",
+                "SET time_zone = 'Europe/Rome'",
+                "SET x = 1"
+            ]
+        );
+        assert!(init.sql(DriverKind::Sqlite).is_err());
+        let only = SessionInit {
+            statements: vec!["PRAGMA foreign_keys = ON".to_owned()],
+            ..SessionInit::default()
+        };
+        assert_eq!(
+            only.sql(DriverKind::Sqlite).unwrap(),
+            ["PRAGMA foreign_keys = ON"]
+        );
+        let bad = SessionInit {
+            time_zone: Some("x'; DROP TABLE t; --".to_owned()),
+            ..SessionInit::default()
+        };
+        assert!(bad.sql(DriverKind::Postgres).is_err());
+    }
+}

@@ -14,6 +14,13 @@ scrolls through millions of rows.
   server keys are checked against `~/.ssh/known_hosts`. Connection **types** Development,
   Test and Production: production shows a PROD badge in red and opens in manual commit.
   **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`.
+  Client certificates for PostgreSQL and MySQL; **network profiles** share one SSH tunnel
+  and SSL setup between connections. Passwords from the keychain, asked every time, from
+  `.pgpass` or printed by a shell command (a password manager's CLI); a **master password**
+  can keep the saved ones in an encrypted file instead (Argon2id and AES-256-GCM). After
+  connecting, a default schema, a time zone and bootstrap statements run on every
+  connection and reconnection. Idle sessions are checked every minute: the status bar shows
+  the latency, and a connection the server dropped is reopened.
 - **Navigator**: databases (PostgreSQL), schemas, tables, views, routines, triggers, types,
   extensions and events, loaded lazily, with a filter. Estimated rows and sizes of tables
   and indexes; PostgreSQL partitions under their table. Bookmarks, per-connection filters

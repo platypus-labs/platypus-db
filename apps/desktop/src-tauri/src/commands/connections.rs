@@ -6,16 +6,17 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use platypus_core::{Capabilities, Connection, ConnectionConfig, DriverKind, Secret, ServerInfo};
+use platypus_sql::Dialect;
 use platypus_store::{
-    ConnectionStore, ConnectionType, ImportFile, ImportSource, PasswordUpdate, SavedConnection,
-    SavedSsh,
+    ConnectionStore, ConnectionType, ImportFile, ImportSource, NetworkProfile, PasswordUpdate,
+    SavedConnection, SavedSsh,
 };
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use uuid::Uuid;
 
 use super::{AppState, Session, connect, lock};
-use crate::error::CommandResult;
+use crate::error::{CommandError, CommandResult};
 
 /// What to do with the stored password when saving or testing a connection.
 #[derive(Debug, Deserialize)]
@@ -52,15 +53,86 @@ fn ssh_config(
     })
 }
 
+/// The settings to connect with: the network profile's SSH tunnel and SSL in place of the
+/// connection's own, and the bootstrap script split into statements.
 fn config_of(
     store: &ConnectionStore,
     saved: &SavedConnection,
     password: Option<Secret>,
     ssh: &SshSecrets,
 ) -> ConnectionConfig {
+    let saved = store.effective(saved);
     let mut config = saved.config(password);
     config.ssh = saved.ssh.as_ref().map(|s| ssh_config(store, s, ssh));
+    let script = &saved.init.statements;
+    config.init.statements = platypus_sql::split(script, Dialect::from(saved.driver))
+        .iter()
+        .map(|s| s.text(script).to_owned())
+        .collect();
     config
+}
+
+/// The password from the connection's command or `.pgpass`, if it uses one of them.
+async fn external_password(saved: &SavedConnection) -> CommandResult<Option<Secret>> {
+    if let Some(command) = saved.password_command.clone() {
+        let secret = tauri::async_runtime::spawn_blocking(move || {
+            platypus_store::command_password(&command)
+        })
+        .await
+        .map_err(|e| CommandError::new("other", e.to_string()))??;
+        return Ok(Some(secret));
+    }
+    if !saved.pgpass {
+        return Ok(None);
+    }
+    let path = platypus_store::pgpass_path()
+        .ok_or_else(|| CommandError::new("auth", "no .pgpass location: set PGPASSFILE"))?;
+    let port = saved
+        .port
+        .or(saved.driver.default_port())
+        .unwrap_or_default();
+    let found =
+        platypus_store::pgpass_password(&path, &saved.host, port, &saved.database, &saved.user)?;
+    found.map(Some).ok_or_else(|| {
+        CommandError::new(
+            "auth",
+            format!(
+                "no line of {} matches {}:{port}:{}:{}",
+                path.display(),
+                saved.host,
+                saved.database,
+                saved.user
+            ),
+        )
+    })
+}
+
+/// Updates the secrets of an SSH chain that changed from `old` to `new`: servers that left
+/// it take theirs with them, typed ones are set or cleared.
+fn update_ssh_secrets(
+    store: &ConnectionStore,
+    old: Option<&SavedSsh>,
+    new: Option<&SavedSsh>,
+    typed: SshSecrets,
+) -> platypus_store::Result<()> {
+    let kept: Vec<Uuid> = new
+        .into_iter()
+        .flat_map(SavedSsh::chain)
+        .map(|h| h.secret_id)
+        .collect();
+    for h in old.into_iter().flat_map(SavedSsh::chain) {
+        if !kept.contains(&h.secret_id) {
+            store.set_ssh_secret(h.secret_id, None)?;
+        }
+    }
+    for (id, input) in typed {
+        match input {
+            PasswordInput::Set(p) => store.set_ssh_secret(id, Some(&Secret::new(p)))?,
+            PasswordInput::Clear => store.set_ssh_secret(id, None)?,
+            PasswordInput::Keep => {}
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -78,32 +150,15 @@ pub fn save_connection(
         PasswordInput::Clear => PasswordUpdate::Clear,
     };
     state.with_store(|s| {
-        // Servers that left the chain take their secrets with them.
-        let kept: Vec<Uuid> = connection
-            .ssh
-            .iter()
-            .flat_map(SavedSsh::chain)
-            .map(|h| h.secret_id)
-            .collect();
-        let dropped: Vec<Uuid> = s
-            .get(connection.id)
-            .and_then(|c| c.ssh.as_ref())
-            .into_iter()
-            .flat_map(SavedSsh::chain)
-            .map(|h| h.secret_id)
-            .filter(|id| !kept.contains(id))
-            .collect();
+        let old = s.get(connection.id).and_then(|c| c.ssh.clone());
+        let new = connection.ssh.clone();
         s.save(connection, update)?;
-        for id in dropped {
-            s.set_ssh_secret(id, None)?;
-        }
-        for (id, input) in ssh_secrets.unwrap_or_default() {
-            match input {
-                PasswordInput::Set(p) => s.set_ssh_secret(id, Some(&Secret::new(p)))?,
-                PasswordInput::Clear => s.set_ssh_secret(id, None)?,
-                PasswordInput::Keep => {}
-            }
-        }
+        update_ssh_secrets(
+            s,
+            old.as_ref(),
+            new.as_ref(),
+            ssh_secrets.unwrap_or_default(),
+        )?;
         // `None` leaves the connection in the projects it is in.
         if let Some(projects) = projects {
             s.set_projects_of(id, &projects)?;
@@ -186,18 +241,19 @@ pub async fn test_connection(
     ssh_secrets: Option<SshSecrets>,
 ) -> CommandResult<ServerInfo> {
     let ssh = ssh_secrets.unwrap_or_default();
-    let config = state.with_store(|s| {
-        let secret = match password {
-            PasswordInput::Set(p) => Some(Secret::new(p)),
-            PasswordInput::Clear => None,
+    let secret = match password {
+        PasswordInput::Set(p) => Some(Secret::new(p)),
+        PasswordInput::Clear => None,
+        PasswordInput::Keep => match external_password(&connection).await? {
+            Some(secret) => Some(secret),
             // A connection that was never saved has nothing stored yet.
-            PasswordInput::Keep => match s.get(connection.id) {
-                Some(_) => s.password(connection.id)?,
-                None => None,
-            },
-        };
-        Ok(config_of(s, &connection, secret, &ssh))
-    })?;
+            None => state.with_store(|s| match s.get(connection.id) {
+                Some(_) => s.password(connection.id),
+                None => Ok(None),
+            })?,
+        },
+    };
+    let config = state.with_store(|s| Ok(config_of(s, &connection, secret, &ssh)))?;
     let conn = connect(&config).await?;
     Ok(conn.server_info().clone())
 }
@@ -219,19 +275,21 @@ pub async fn open_session(
     password: Option<String>,
     database: Option<String>,
 ) -> CommandResult<SessionInfo> {
-    let (config, production) = state.with_store(|s| {
-        let saved = s
-            .get(connection_id)
-            .ok_or(platypus_store::StoreError::NotFound(connection_id))?
-            .clone();
-        let secret = match password {
-            Some(p) => Some(Secret::new(p)),
-            None => s.password(connection_id)?,
-        };
-        let production = saved.connection_type == Some(ConnectionType::Prod);
-        Ok((config_of(s, &saved, secret, &SshSecrets::new()), production))
+    let saved = state.with_store(|s| {
+        s.get(connection_id)
+            .cloned()
+            .ok_or(platypus_store::StoreError::NotFound(connection_id))
     })?;
-    let mut config = config;
+    // A password command may take a while: it runs without holding the store.
+    let secret = match password {
+        Some(p) => Some(Secret::new(p)),
+        None => match external_password(&saved).await? {
+            Some(secret) => Some(secret),
+            None => state.with_store(|s| s.password(connection_id))?,
+        },
+    };
+    let production = saved.connection_type == Some(ConnectionType::Prod);
+    let mut config = state.with_store(|s| Ok(config_of(s, &saved, secret, &SshSecrets::new())))?;
     if let Some(database) = database {
         config.database = database;
     }
@@ -255,6 +313,47 @@ pub async fn open_session(
         session_id,
         server,
         capabilities,
+    })
+}
+
+#[tauri::command]
+pub fn list_network_profiles(state: State<'_, AppState>) -> CommandResult<Vec<NetworkProfile>> {
+    state.with_store(|s| Ok(s.network_profiles().to_vec()))
+}
+
+/// Saves a network profile and its SSH secrets; returns every profile.
+#[tauri::command]
+pub fn save_network_profile(
+    state: State<'_, AppState>,
+    profile: NetworkProfile,
+    ssh_secrets: Option<SshSecrets>,
+) -> CommandResult<Vec<NetworkProfile>> {
+    state.with_store(|s| {
+        let old = s
+            .network_profiles()
+            .iter()
+            .find(|p| p.id == profile.id)
+            .and_then(|p| p.ssh.clone());
+        let new = profile.ssh.clone();
+        s.save_network_profile(profile)?;
+        update_ssh_secrets(
+            s,
+            old.as_ref(),
+            new.as_ref(),
+            ssh_secrets.unwrap_or_default(),
+        )?;
+        Ok(s.network_profiles().to_vec())
+    })
+}
+
+#[tauri::command]
+pub fn delete_network_profile(
+    state: State<'_, AppState>,
+    id: Uuid,
+) -> CommandResult<Vec<NetworkProfile>> {
+    state.with_store(|s| {
+        s.delete_network_profile(id)?;
+        Ok(s.network_profiles().to_vec())
     })
 }
 

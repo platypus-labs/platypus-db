@@ -14,7 +14,18 @@ export interface SavedConnection {
   user: string;
   ssl_mode: SslMode;
   ssl_root_cert: string | null;
+  /** Certificate and key presented to servers that authenticate clients by certificate. */
+  ssl_client_cert?: string | null;
+  ssl_client_key?: string | null;
   save_password: boolean;
+  /** A shell command printing the password, run at each connection. */
+  password_command?: string | null;
+  /** Looks the password up in `.pgpass`. */
+  pgpass?: boolean;
+  /** A network profile whose SSH tunnel and SSL settings replace the connection's own. */
+  network_profile?: string | null;
+  /** Default schema, time zone and bootstrap statements, run after every connect. */
+  init?: SavedInit;
   read_only: boolean;
   color: string | null;
   /** Production asks before changes and starts in manual commit. */
@@ -26,6 +37,31 @@ export interface SavedConnection {
 }
 
 export type ConnectionType = "dev" | "test" | "prod";
+
+export interface SavedInit {
+  schema: string | null;
+  time_zone: string | null;
+  /** A script, split into statements when connecting. */
+  statements: string;
+}
+
+/** Whether saved passwords are in the file encrypted with a master password. */
+export interface VaultStatus {
+  enabled: boolean;
+  /** The master password was entered in this run of the app. */
+  unlocked: boolean;
+}
+
+/** An SSH tunnel and SSL settings shared by several connections. */
+export interface NetworkProfile {
+  id: string;
+  name: string;
+  ssl_mode: SslMode;
+  ssl_root_cert: string | null;
+  ssl_client_cert: string | null;
+  ssl_client_key: string | null;
+  ssh: SavedSsh | null;
+}
 
 export type SshAuthKind = "password" | "key" | "agent";
 
@@ -533,6 +569,25 @@ export const api = {
       database: database ?? null,
     }),
   closeSession: (sessionId: number) => invoke<void>("close_session", { sessionId }),
+  /** Checks an idle session, reopening it if the server dropped it. */
+  pingSession: (sessionId: number) =>
+    invoke<{ state: "ok"; latency_ms: number; reconnected: boolean } | { state: "busy" }>("ping_session", {
+      sessionId,
+    }),
+  vaultStatus: () => invoke<VaultStatus>("vault_status"),
+  unlockVault: (password: string) => invoke<VaultStatus>("unlock_vault", { password }),
+  lockVault: () => invoke<VaultStatus>("lock_vault"),
+  /** Moves the saved passwords from the keychain into a file encrypted with `password`. */
+  enableVault: (password: string) => invoke<VaultStatus>("enable_vault", { password }),
+  /** Moves them back to the keychain; `password` is the current master password. */
+  disableVault: (password: string) => invoke<VaultStatus>("disable_vault", { password }),
+  changeVaultPassword: (current: string, password: string) =>
+    invoke<VaultStatus>("change_vault_password", { current, password }),
+  listNetworkProfiles: () => invoke<NetworkProfile[]>("list_network_profiles"),
+  saveNetworkProfile: (profile: NetworkProfile, sshSecrets: SshSecrets = {}) =>
+    invoke<NetworkProfile[]>("save_network_profile", { profile, sshSecrets }),
+  /** Refused while a connection uses the profile. */
+  deleteNetworkProfile: (id: string) => invoke<NetworkProfile[]>("delete_network_profile", { id }),
   /** `limit` caps fetched rows and frees the session afterwards (script mode); `history`
    *  false keeps the run out of the query history. */
   runQuery: (

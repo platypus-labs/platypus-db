@@ -4,7 +4,8 @@ import { api, type Capabilities, type CompletionCatalog, type Project, toCommand
 import { onNavigatorRefresh } from "./navigatorEvents";
 import { ConnectionDialog } from "./components/ConnectionDialog";
 import { ImportDialog } from "./components/ImportDialog";
-import { connectionColor } from "./connections";
+import { UnlockDialog } from "./components/MasterPassword";
+import { asksPassword, connectionColor } from "./connections";
 import { Navigator } from "./components/Navigator";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -48,6 +49,7 @@ export function App() {
   const [storeError, setStoreError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [passwordRequest, setPasswordRequest] = useState<PasswordRequest | null>(null);
+  const [unlockRequest, setUnlockRequest] = useState<{ resolve: (unlocked: boolean) => void } | null>(null);
   const [tabs, setTabs] = useState<TabModel[]>([]);
   const [activeTab, setActiveTab] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -80,6 +82,11 @@ export function App() {
       setConnections([]);
       setStoreError(toCommandError(e).message);
     });
+    // Saved passwords behind a master password: asked for once at start.
+    api.vaultStatus().then(
+      (s) => s.enabled && !s.unlocked && void askUnlock(),
+      () => {},
+    );
     api.listProjects().then(
       (all) => {
         setProjects(all);
@@ -251,6 +258,17 @@ export function App() {
     setActiveTab(placed.key);
   }
 
+  /** The open unlock dialog's answer, shared by every connection waiting for it. */
+  const unlocking = useRef<Promise<boolean> | null>(null);
+
+  /** Asks for the master password; true once the saved passwords are unlocked. */
+  function askUnlock() {
+    unlocking.current ??= new Promise<boolean>((resolve) => setUnlockRequest({ resolve })).finally(() => {
+      unlocking.current = null;
+    });
+    return unlocking.current;
+  }
+
   function askPassword(connection: SavedConnection) {
     return new Promise<string | null>((resolve) => setPasswordRequest({ connection, resolve }));
   }
@@ -259,7 +277,7 @@ export function App() {
    *  `database` opens another database of the server than the saved one. */
   async function connect(connection: SavedConnection, database?: string | null): Promise<number | null> {
     let password: string | undefined;
-    if (!connection.save_password && connection.driver !== "sqlite") {
+    if (asksPassword(connection)) {
       password = passwords.current.get(connection.id);
       if (password === undefined) {
         const entered = await askPassword(connection);
@@ -268,7 +286,15 @@ export function App() {
       }
     }
     try {
-      const session = await api.openSession(connection.id, password, database);
+      const open = () => api.openSession(connection.id, password, database);
+      let session;
+      try {
+        session = await open();
+      } catch (e) {
+        // Saved passwords behind a master password not entered yet: ask, then try again.
+        if (toCommandError(e).kind !== "locked" || !(await askUnlock())) throw e;
+        session = await open();
+      }
       if (password !== undefined) passwords.current.set(connection.id, password);
       capabilities.current.set(session.session_id, session.capabilities);
       return session.session_id;
@@ -547,6 +573,7 @@ export function App() {
                 connection={connection}
                 active={t.key === activeTab}
                 ensureSession={() => ensureSession(t)}
+                currentSession={() => sessions.current.get(t.key) ?? null}
                 onChange={(patch) => patchTab(t.key, patch)}
                 sideSession={() => navigatorSession(connection, t.database)}
                 catalog={catalogs[dbKey(connection.id, t.database)] ?? null}
@@ -626,6 +653,14 @@ export function App() {
       {dialogs.map((d) => (
         <Fragment key={d.id}>{d.node}</Fragment>
       ))}
+      {unlockRequest && (
+        <UnlockDialog
+          onDone={(unlocked) => {
+            unlockRequest.resolve(unlocked);
+            setUnlockRequest(null);
+          }}
+        />
+      )}
       {passwordRequest && (
         <PasswordPrompt
           connection={passwordRequest.connection}

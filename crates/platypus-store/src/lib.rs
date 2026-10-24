@@ -1,19 +1,23 @@
 //! Local persistence for PlatypusDB.
 //!
 //! Saved connections live in a human-editable `connections.toml`; passwords never touch
-//! that file and are kept in the OS keychain through a [`SecretStore`]. Executed statements
+//! that file and are kept in the OS keychain, or in a file encrypted with a master password
+//! ([`VaultSecrets`]), through a [`SecretStore`]. Executed statements
 //! are logged to a local SQLite database by [`HistoryStore`]. Preferences live in
 //! `settings.toml` through [`SettingsStore`].
 
+mod auth;
 mod connections;
 mod history;
 mod import;
 mod secrets;
 mod settings;
+mod vault;
 
+pub use auth::{command_password, pgpass_password, pgpass_path};
 pub use connections::{
-    ConnectionStore, ConnectionType, PasswordUpdate, Project, SavedConnection, SavedSsh,
-    SshAuthKind, VirtualKey, initials_of,
+    ConnectionStore, ConnectionType, NetworkProfile, PasswordUpdate, Project, SavedConnection,
+    SavedInit, SavedSsh, SshAuthKind, VirtualKey, initials_of,
 };
 pub use history::{HistoryEntry, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry};
 pub use import::{
@@ -22,6 +26,7 @@ pub use import::{
 pub use secrets::{KeyringSecrets, MemorySecrets, SecretStore};
 pub use settings::SettingsStore;
 pub use toml;
+pub use vault::VaultSecrets;
 
 pub type Result<T, E = StoreError> = std::result::Result<T, E>;
 
@@ -44,6 +49,9 @@ pub enum StoreError {
 
     #[error("keychain error: {0}")]
     Keychain(String),
+
+    #[error("the saved passwords are locked: enter the master password")]
+    Locked,
 
     #[error("no saved connection with id {0}")]
     NotFound(uuid::Uuid),

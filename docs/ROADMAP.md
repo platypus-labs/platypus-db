@@ -234,11 +234,14 @@ viewer GIS su piano cartesiano senza mappa di sfondo).
 
 ---
 
-### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 fatti
+### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 e P2 fatti
 
-**Stato: P1 completati** (tunnel SSH con password, chiave, agent e jump host; tipi
+**Stato: P1 e P2 completati** (tunnel SSH con password, chiave, agent e jump host; tipi
 Dev/Test/Prod con colore e commit manuale in Prod; import da DBeaver, DataGrip, pgAdmin e
-`pg_service.conf`). La conferma prima di scrivere in Prod è nel gruppo L. Restano i P2/P3.
+`pg_service.conf`; profili di rete; schema, fuso orario e query di bootstrap dopo ogni
+connessione; password da `.pgpass`, da comando shell o chiesta ogni volta; master password
+con file cifrato; certificati client; latenza, keep-alive e riconnessione). La conferma
+prima di scrivere in Prod è nel gruppo L. Restano i P3.
 
 **Area:** nuovo crate `platypus-net`, `platypus-store`, `apps/desktop/src/connections/` (`ConnectionDialog.tsx`)
 **Dipende da:** 0.7
@@ -248,15 +251,15 @@ Dev/Test/Prod con colore e commit manuale in Prod; import da DBeaver, DataGrip, 
 | ✅ **Tunnel SSH** (`russh`): password, chiave, agent, jump host | P1 | D |
 | ✅ **Tipi di connessione** Dev/Test/Prod: colore, conferma prima di scrivere, autocommit off di default in Prod | P1 | D |
 | Proxy SOCKS5 e HTTP | P3 | D |
-| **Profili di rete** riutilizzabili tra connessioni | P2 | D |
-| Inizializzazione: schema e database di default, query di bootstrap, fuso orario | P2 | D |
+| ✅ **Profili di rete** riutilizzabili tra connessioni | P2 | D |
+| ✅ Inizializzazione: schema e database di default, query di bootstrap, fuso orario | P2 | D |
 | Comandi shell su eventi (prima della connessione, dopo la disconnessione), ad esempio un VPN | P3 | D |
-| Autenticazione: `.pgpass`, password da comando shell, chiedi ogni volta | P2 | D |
+| ✅ Autenticazione: `.pgpass`, password da comando shell, chiedi ogni volta | P2 | D |
 | Kerberos, SSPI, Entra ID, IAM AWS e GCP | P3 | D+ |
-| **Master password** per le credenziali salvate (oltre al keychain) | P2 | D |
-| Gestione certificati SSL: CA personalizzate, certificato client | P2 | D |
+| ✅ **Master password** per le credenziali salvate (oltre al keychain) | P2 | D |
+| ✅ Gestione certificati SSL: CA personalizzate, certificato client | P2 | D |
 | ✅ Import delle connessioni da DBeaver (`data-sources.json`), DataGrip, pgAdmin, `~/.pg_service.conf` | P1 | D |
-| Indicatore di salute della connessione (latenza, keep-alive, riconnessione) | P2 | N |
+| ✅ Indicatore di salute della connessione (latenza, keep-alive, riconnessione) | P2 | N |
 | Kubernetes port-forward, AWS SSM | P3 | D+ |
 
 ---

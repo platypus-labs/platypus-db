@@ -8,10 +8,10 @@ mod export;
 mod formats;
 mod jobs;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use platypus_store::{ConnectionStore, HistoryStore, KeyringSecrets, SettingsStore};
+use platypus_store::{ConnectionStore, HistoryStore, KeyringSecrets, SettingsStore, VaultSecrets};
 use tauri::Manager;
 
 use crate::commands::AppState;
@@ -57,13 +57,28 @@ fn dir(app: &tauri::App, config: bool) -> Result<PathBuf, String> {
     .map_err(|e| e.to_string())
 }
 
-fn open_store(app: &tauri::App) -> Result<ConnectionStore, String> {
-    let dir = dir(app, true)?;
-    ConnectionStore::open(
-        dir.join("connections.toml"),
-        Arc::new(KeyringSecrets::default()),
-    )
-    .map_err(|e| e.to_string())
+/// The saved passwords file of the master password, next to the connections.
+fn vault_path(app: &tauri::App) -> Result<PathBuf, String> {
+    Ok(dir(app, true)?.join("secrets.vault"))
+}
+
+/// The connections, with their passwords in the keychain, or in the vault at `vault_path`
+/// (locked until the master password is entered) when there is one.
+fn open_store(
+    app: &tauri::App,
+    vault_path: Option<&Path>,
+) -> (Result<ConnectionStore, String>, Option<Arc<VaultSecrets>>) {
+    let vault = vault_path
+        .filter(|p| p.exists())
+        .map(|p| Arc::new(VaultSecrets::locked(p)));
+    let secrets: Arc<dyn platypus_store::SecretStore> = match &vault {
+        Some(v) => v.clone(),
+        None => Arc::new(KeyringSecrets::default()),
+    };
+    let store = dir(app, true).and_then(|dir| {
+        ConnectionStore::open(dir.join("connections.toml"), secrets).map_err(|e| e.to_string())
+    });
+    (store, vault)
 }
 
 fn open_settings(app: &tauri::App) -> Result<SettingsStore, String> {
@@ -97,6 +112,21 @@ fn open_main_window(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Opens the stores and the window.
+fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let vault_path = vault_path(app);
+    let state = AppState::new(
+        open_store(app, vault_path.as_deref().ok()),
+        vault_path,
+        open_history(app),
+        open_settings(app),
+        dir(app, false).map(|d| d.join("scripts")),
+    );
+    app.manage(state);
+    open_main_window(app)?;
+    Ok(())
+}
+
 /// Builds and runs the Tauri application.
 ///
 /// # Panics
@@ -108,17 +138,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .setup(|app| {
-            let state = AppState::new(
-                open_store(app),
-                open_history(app),
-                open_settings(app),
-                dir(app, false).map(|d| d.join("scripts")),
-            );
-            app.manage(state);
-            open_main_window(app)?;
-            Ok(())
-        })
+        .setup(setup)
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
             commands::connections::list_connections,
@@ -137,6 +157,16 @@ pub fn run() {
             commands::connections::test_connection,
             commands::connections::open_session,
             commands::connections::close_session,
+            commands::connections::list_network_profiles,
+            commands::connections::save_network_profile,
+            commands::connections::delete_network_profile,
+            commands::health::ping_session,
+            commands::vault::vault_status,
+            commands::vault::unlock_vault,
+            commands::vault::lock_vault,
+            commands::vault::enable_vault,
+            commands::vault::disable_vault,
+            commands::vault::change_vault_password,
             commands::query::run_query,
             commands::query::fetch_rows,
             commands::query::fetch_all,

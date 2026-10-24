@@ -14,7 +14,7 @@ use futures::{StreamExt, TryStreamExt};
 use platypus_core::geometry;
 use platypus_core::{
     Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, Error, ExecOptions,
-    ExecResult, MatchKind, ObjectKind, ObjectRef,
+    ExecResult, MatchKind, ObjectKind, ObjectRef, SessionInit,
 };
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
@@ -1322,5 +1322,52 @@ async fn reads_geometries() {
         let shapes: Vec<_> = (0..expected.len()).map(|c| shape(&batches[0], c)).collect();
         let expected: Vec<_> = expected.into_iter().map(Some).collect();
         assert_eq!(shapes, expected, "{}", b.name);
+    }
+}
+
+#[tokio::test]
+async fn sets_the_session_up_after_connecting() {
+    for b in backends().await {
+        let mut config = b.config.clone();
+        let (check, expected) = match config.driver {
+            DriverKind::Postgres => (
+                "SELECT current_schema(), current_setting('TimeZone')",
+                vec![Some(b.schema.clone()), Some("Europe/Rome".to_owned())],
+            ),
+            DriverKind::MySql => (
+                "SELECT DATABASE(), @@session.time_zone",
+                vec![Some(b.schema.clone()), Some("+02:00".to_owned())],
+            ),
+            DriverKind::Sqlite => ("SELECT 1", vec![Some("1".to_owned())]),
+        };
+        config.init = SessionInit {
+            schema: (config.driver != DriverKind::Sqlite).then(|| b.schema.clone()),
+            time_zone: match config.driver {
+                DriverKind::Postgres => Some("Europe/Rome".to_owned()),
+                DriverKind::MySql => Some("+02:00".to_owned()),
+                DriverKind::Sqlite => None,
+            },
+            statements: vec!["CREATE TEMPORARY TABLE init_probe (x int)".to_owned()],
+        };
+        let conn = driver(config.driver)
+            .connect(&config)
+            .await
+            .unwrap_or_else(|e| panic!("{}: cannot connect: {e}", b.name));
+        let batches = collect(&b, &*conn, check).await;
+        let got: Vec<_> = (0..expected.len())
+            .map(|c| cell(&batches[0], c, 0))
+            .collect();
+        assert_eq!(got, expected, "{}", b.name);
+        // The bootstrap statement ran on this session.
+        let probe = collect(&b, &*conn, "SELECT count(*) FROM init_probe").await;
+        assert_eq!(cell(&probe[0], 0, 0).as_deref(), Some("0"), "{}", b.name);
+
+        // A failing statement fails the connection and is named.
+        config.init.statements = vec!["SELECT * FROM no_such_table_for_init".to_owned()];
+        let err = match driver(config.driver).connect(&config).await {
+            Ok(_) => panic!("{}: a failing bootstrap statement connected", b.name),
+            Err(e) => e.to_string(),
+        };
+        assert!(err.contains("no_such_table_for_init"), "{}: {err}", b.name);
     }
 }

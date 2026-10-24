@@ -48,7 +48,9 @@ impl Driver for PgDriver {
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<Box<dyn Connection>> {
-        Ok(Box::new(PgConnection::connect(config).await?))
+        let conn: Box<dyn Connection> = Box::new(PgConnection::connect(config).await?);
+        platypus_core::run_init(&*conn, &config.init, self.kind()).await?;
+        Ok(conn)
     }
 }
 

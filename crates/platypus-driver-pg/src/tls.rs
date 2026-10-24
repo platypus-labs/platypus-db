@@ -8,7 +8,7 @@ use rustls::client::WebPkiServerVerifier;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{CryptoProvider, verify_tls12_signature, verify_tls13_signature};
 use rustls::pki_types::pem::PemObject;
-use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
 use rustls::{
     CertificateError, ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme,
 };
@@ -41,12 +41,17 @@ pub fn connector(config: &ConnectionConfig) -> Result<(PgSslMode, Option<MakeRus
             chain_verifier(config.ssl_root_cert.as_deref(), &provider)?,
         ),
     };
-    let tls = ClientConfig::builder_with_provider(provider)
+    let builder = ClientConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()
         .map_err(tls_error)?
         .dangerous()
-        .with_custom_certificate_verifier(verifier)
-        .with_no_client_auth();
+        .with_custom_certificate_verifier(verifier);
+    let tls = match client_identity(config)? {
+        Some((certs, key)) => builder
+            .with_client_auth_cert(certs, key)
+            .map_err(|e| Error::Config(format!("invalid client certificate or key: {e}")))?,
+        None => builder.with_no_client_auth(),
+    };
     Ok((mode, Some(MakeRustlsConnect::new(tls))))
 }
 
@@ -56,6 +61,30 @@ pub fn connector(config: &ConnectionConfig) -> Result<(PgSslMode, Option<MakeRus
 )]
 fn tls_error(e: rustls::Error) -> Error {
     Error::Config(format!("TLS setup failed: {e}"))
+}
+
+/// The client certificate chain and private key (PEM), when both are set.
+fn client_identity(
+    config: &ConnectionConfig,
+) -> Result<Option<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)>> {
+    let (cert, key) = match (&config.ssl_client_cert, &config.ssl_client_key) {
+        (Some(cert), Some(key)) => (cert, key),
+        (None, None) => return Ok(None),
+        _ => {
+            return Err(Error::Config(
+                "a client certificate needs both the certificate and its key".to_owned(),
+            ));
+        }
+    };
+    let unreadable = |path: &Path, e: &dyn std::fmt::Display| {
+        Error::Config(format!("cannot read {}: {e}", path.display()))
+    };
+    let certs = CertificateDer::pem_file_iter(cert)
+        .map_err(|e| unreadable(cert, &e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| unreadable(cert, &e))?;
+    let key = PrivateKeyDer::from_pem_file(key).map_err(|e| unreadable(key, &e))?;
+    Ok(Some((certs, key)))
 }
 
 /// Verifies against `root_cert` (PEM) when given, otherwise against the OS trust store.
@@ -174,5 +203,30 @@ impl ServerCertVerifier for IgnoreHostname {
 
     fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
         self.0.supported_verify_schemes()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use platypus_core::DriverKind;
+
+    use super::*;
+
+    fn error_of(config: &ConnectionConfig) -> String {
+        match connector(config) {
+            Ok(_) => panic!("expected an error"),
+            Err(e) => e.to_string(),
+        }
+    }
+
+    #[test]
+    fn client_certificate_needs_cert_and_key() {
+        let mut config = ConnectionConfig::new(DriverKind::Postgres);
+        config.ssl_mode = SslMode::Require;
+        assert!(connector(&config).is_ok());
+        config.ssl_client_cert = Some("client.crt".into());
+        assert!(error_of(&config).contains("both the certificate and its key"));
+        config.ssl_client_key = Some("client.key".into());
+        assert!(error_of(&config).contains("client.crt"));
     }
 }

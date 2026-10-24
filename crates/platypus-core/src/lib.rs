@@ -9,6 +9,7 @@ mod config;
 mod connection;
 mod error;
 pub mod geometry;
+mod init;
 mod metadata;
 mod transaction;
 
@@ -19,6 +20,7 @@ pub use connection::{
     ServerInfo,
 };
 pub use error::{DbError, Error, Result};
+pub use init::{SessionInit, run_init};
 pub use metadata::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, ConstraintKind, ConstraintMeta,
     FieldMeta, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch, ObjectKind, ObjectMeta,

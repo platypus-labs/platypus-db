@@ -90,6 +90,24 @@
   white-space: nowrap;
 }
 
+/* The session's last keep-alive check. */
+.statusbar .health {
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.statusbar .health.ok .dot {
+  color: var(--ok);
+}
+
+.statusbar .health.reconnected {
+  color: var(--warn);
+}
+
+.statusbar .health.lost {
+  color: var(--error);
+}
+
 .toast {
   position: absolute;
   right: 12px;

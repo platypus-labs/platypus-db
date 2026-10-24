@@ -355,6 +355,11 @@ impl Job {
         self.cancel.cancel().await.map_err(Into::into)
     }
 
+    /// The background task has sent its last event: the session is free again.
+    pub fn is_done(&self) -> bool {
+        self.done.load(Ordering::Acquire)
+    }
+
     /// Stops fetching but keeps the rows already buffered: the result stays browsable while
     /// the session is freed (for COMMIT, ROLLBACK or an export).
     pub fn stop(&self) {

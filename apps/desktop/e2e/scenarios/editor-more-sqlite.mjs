@@ -121,6 +121,7 @@ export default async function (page, { dir }) {
 
   // Terminal mode prints results as text.
   await page.eval(`${button("Terminal")}.click()`);
+  await page.waitFor(`${button("Terminal")}.classList.contains('toggled') && document.querySelector('.terminal-output') !== null`);
   await setEditor(page, "SELECT name FROM customers");
   await page.key("Enter", "Enter", 13, CTRL);
   await page.waitFor(`(document.querySelector('.terminal-output')?.textContent ?? '').includes('(1 row)')`, 15_000);
