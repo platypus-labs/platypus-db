@@ -62,7 +62,7 @@ Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i
 
 **Regole per tutti i gruppi**
 - Un gruppo modifica solo i file della propria **area**. Se gli serve qualcosa da un file
-  condiviso, apre una PR piccola e separata (estensione di un'API, non logica di feature).
+  condiviso, lo fa in un commit piccolo e separato (estensione di un'API, non logica di feature).
 - Le funzionalità di database passano dal `Dialect` o dalle capacità del driver, mai da
   `if driver === "postgres"` sparsi nella UI.
 - Ogni gruppo aggiunge test alla conformance suite per ciò che tocca nei driver.
@@ -70,12 +70,37 @@ Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i
   migliore di come l'ha trovata: rimuove duplicazioni, semplifica, rinomina ciò che è poco
   chiaro e sceglie la soluzione più efficiente (niente allocazioni, copie, query o render
   superflui; nessun lavoro per riga dove basta un lavoro per blocco). Un refactor che rende il
-  codice più leggibile o più veloce è sempre benvenuto, anche dentro una PR di feature, purché
+  codice più leggibile o più veloce è sempre benvenuto, anche dentro un branch di feature, purché
   resti nell'area del gruppo e non cambi il comportamento senza test.
 
 ---
 
 ## 2. Gruppi di lavoro
+
+### Lock dei gruppi
+
+Chi lavora su un gruppo lo segna qui e pusha su `main` prima di scrivere codice. Formato:
+`🔒 <nome> · <branch> · <AAAA-MM-GG>`. Un lock senza commit sul branch da più di 3 giorni è
+scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
+
+| Gruppo | Lock |
+|---|---|
+| A — Modifica dei dati | ✅ fatto (P1, P2) |
+| B — Griglia avanzata | ✅ fatto (P1, P2) |
+| C — Navigator e oggetti | ✅ fatto (P1) |
+| D — Editor SQL | ✅ fatto (P1) |
+| E — Explain e performance | libero |
+| F — Connettività e credenziali | libero |
+| G — Nuovi driver | libero |
+| H — Import, export e trasferimento | libero |
+| I — Strumenti di schema | libero |
+| J — Amministrazione del server | libero |
+| K — Shell ed ergonomia | libero |
+| L — Sicurezza operativa | libero |
+| M — Analisi dei dati | libero |
+| N — Assistente AI | libero |
+| O — Collaborazione e sync | libero |
+| P — Piattaforma, qualità e release | libero |
 
 ### Gruppo A — Modifica dei dati
 
