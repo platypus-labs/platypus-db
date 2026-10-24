@@ -21,6 +21,8 @@ const treeRow = (label) =>
 const editorText = `(${visibleTab}?.querySelector('.cm-content')?.textContent ?? '')`;
 
 export function setup({ dir }) {
+  // For the connection made in the scenario.
+  new DatabaseSync(join(dir, "3.db")).close();
   const connections = ["A dev", "B dev", "Shared"].map((name, i) => {
     const file = join(dir, `${i}.db`);
     const db = new DatabaseSync(file);
@@ -134,6 +136,7 @@ export default async function (page, { dir, shots }) {
   await rail(page);
   if (shots) await page.screenshot(join(shots, "projects-rail.png"));
   await dialogs(page, dir);
+  await members(page, dir, shots);
 }
 
 const square = (id) => `document.querySelector('.project-square[data-project="${id}"]')`;
@@ -226,4 +229,134 @@ async function dialogs(page, dir) {
   await page.waitFor(`document.querySelector('.palette li.selected')?.textContent.includes('Interno')`);
   await page.key("Enter", "Enter", 13);
   await page.waitFor(`${activeSquare} === '${INTERNO}'`);
+}
+
+const menuButton = (label) => `[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.includes(${JSON.stringify(label)}))`;
+
+async function rowMenu(page, name) {
+  await page.eval(`document.querySelectorAll('#e2e-row').forEach(e => e.removeAttribute('id')); ${treeRow(name)}.id = 'e2e-row'`);
+  const r = await page.rect("#e2e-row");
+  await page.click(r.x + 20, r.y + r.h / 2, { button: "right" });
+  await page.waitFor(`document.querySelector('.context-menu') !== null`);
+}
+
+/** Connections joining and leaving projects, and what happens to tabs and projects when
+ *  connections or projects go. Starts in Interno. */
+async function members(page, dir, shots) {
+  // The connection dialog sets the projects of a connection.
+  await page.eval(`[...${treeRow("B dev")}.querySelectorAll('button')].find(b => b.title === 'Edit').click()`);
+  await page.waitFor(`document.querySelector('.project-chips') !== null`);
+  const chip = (name) => `[...document.querySelectorAll('.project-chip')].find(c => c.textContent === ${JSON.stringify(name)})`;
+  assert.equal(await page.eval(`${chip("Cliente Rossi")}.getAttribute('aria-pressed')`), "false");
+  assert.equal(await page.eval(`${chip("Interno")}.getAttribute('aria-pressed')`), "true");
+  await page.eval(`${chip("Cliente Rossi")}.click()`);
+  await page.eval(`[...document.querySelectorAll('.modal button')].find(b => b.textContent === 'Save').click()`);
+  await page.waitFor(`document.querySelector('.project-chips') === null`);
+  await page.key("2", "Digit2", 50, CTRL);
+  await page.waitFor(`${activeSquare} === '${ROSSI}' && ${treeRow("B dev")} !== undefined`);
+
+  // A connection made in a project is in that project.
+  await page.key("3", "Digit3", 51, CTRL);
+  await page.waitFor(`${activeSquare} === '${INTERNO}'`);
+  await page.eval(`document.querySelector('button[title="New connection"]').click()`);
+  await page.waitFor(`document.querySelector('.project-chips') !== null`);
+  assert.equal(await page.eval(`${chip("Interno")}.getAttribute('aria-pressed')`), "true");
+  await page.eval(`(() => {
+    const set = (el, value) => {
+      const proto = el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, value);
+      el.dispatchEvent(new Event(el instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true }));
+    };
+    const fields = [...document.querySelectorAll('.modal .field')];
+    set(fields.find(f => f.textContent.startsWith('Name')).querySelector('input'), 'C new');
+    set(fields.find(f => f.textContent.startsWith('Driver')).querySelector('select'), 'sqlite');
+  })()`);
+  await page.waitFor(`[...document.querySelectorAll('.modal .field')].some(f => f.textContent.startsWith('Database file'))`);
+  await page.eval(`(() => {
+    const input = [...document.querySelectorAll('.modal .field')].find(f => f.textContent.startsWith('Database file')).querySelector('input');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(join(dir, "3.db"))});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await page.eval(`[...document.querySelectorAll('.modal button')].find(b => b.textContent === 'Save').click()`);
+  await page.waitFor(`${treeRow("C new")} !== undefined`);
+  await page.key("2", "Digit2", 50, CTRL);
+  await page.waitFor(`${activeSquare} === '${ROSSI}' && ${treeRow("C new")} === undefined`);
+
+  // Out of the project: gone from its navigator, its open tab stays, still in All connections.
+  assert.equal(await page.eval(tabCount), 1);
+  await rowMenu(page, "A dev");
+  await page.eval(`${menuButton("Remove from this project")}.click()`);
+  await page.waitFor(`${treeRow("A dev")} === undefined`);
+  assert.equal(await page.eval(tabCount), 1);
+  // And back in, from the navigator's menu in All connections.
+  await page.key("1", "Digit1", 49, CTRL);
+  await page.waitFor(`${activeSquare} === 'all' && ${treeRow("A dev")} !== undefined`);
+  await rowMenu(page, "A dev");
+  await page.eval(`${menuButton("Add to project")}.click()`);
+  await page.waitFor(`${menuButton("Cliente Rossi")} !== undefined`);
+  await page.eval(`${menuButton("Cliente Rossi")}.click()`);
+  await page.key("2", "Digit2", 50, CTRL);
+  await page.waitFor(`${activeSquare} === '${ROSSI}' && ${treeRow("A dev")} !== undefined`);
+
+  // An empty project offers to fill it.
+  await page.eval(`document.querySelector('.project-add').click()`);
+  await page.waitFor(`document.querySelector('.project-dialog') !== null`);
+  await page.type("Vuoto");
+  await page.eval(`[...document.querySelectorAll('.project-dialog button')].find(b => b.textContent === 'Save').click()`);
+  await page.waitFor(`document.querySelector('.project-empty')?.textContent.includes('No connections in this project')`);
+  if (shots) await page.screenshot(join(shots, "project-empty.png"));
+  assert.deepEqual(await page.eval(`[...document.querySelectorAll('.project-empty button')].map(b => b.textContent)`), [
+    "New connection",
+    "Add existing…",
+    "Import…",
+  ]);
+  await page.eval(`[...document.querySelectorAll('.project-empty button')].find(b => b.textContent === 'Add existing…').click()`);
+  await page.waitFor(`document.querySelector('.add-connections') !== null`);
+  await page.eval(`[...document.querySelectorAll('.add-connections label')].find(l => l.textContent === 'Shared').querySelector('input').click()`);
+  await page.eval(`[...document.querySelectorAll('.add-connections button')].find(b => b.textContent.startsWith('Add')).click()`);
+  await page.waitFor(`${treeRow("Shared")} !== undefined && document.querySelector('.project-empty') === null`);
+
+  // A deleted connection leaves every project.
+  await page.eval(`window.confirm = () => true`);
+  await page.key("1", "Digit1", 49, CTRL);
+  await page.waitFor(`${activeSquare} === 'all'`);
+  await rowMenu(page, "Shared");
+  await page.eval(`${menuButton("Delete")}.click()`);
+  await page.waitFor(`${treeRow("Shared")} === undefined`);
+  for (const key of ["2", "3"]) {
+    await page.key(key, `Digit${key}`, 48 + Number(key), CTRL);
+    await page.waitFor(`${activeSquare} !== 'all'`);
+    assert.equal(await page.eval(`${treeRow("Shared")} === undefined`), true);
+    await page.key("1", "Digit1", 49, CTRL);
+    await page.waitFor(`${activeSquare} === 'all'`);
+  }
+  assert.doesNotMatch(readFileSync(join(dir, "connections.toml"), "utf8"), new RegExp(CONN.shared));
+
+  // A project deleted while its tabs hold changes asks first; saying no keeps it.
+  await page.key("3", "Digit3", 51, CTRL);
+  await page.waitFor(`${activeSquare} === '${INTERNO}'`);
+  await openEditor(page, "B dev", "SELECT 1");
+  await page.eval(`${visibleTab}.querySelector('button[aria-label="Auto-commit"]').click()`);
+  await page.waitFor(`${visibleTab}.querySelector('button[aria-label="Manual commit"]') !== null`);
+  await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
+  await page.key("a", "KeyA", 65, CTRL);
+  await page.type("UPDATE t SET v = 'z' WHERE id = 1");
+  await page.waitFor(`${editorText} === "UPDATE t SET v = 'z' WHERE id = 1"`);
+  await page.key("Enter", "Enter", 13, CTRL);
+  await page.waitFor(`${visibleTab}.querySelector('.tx-open') !== null`, 15_000);
+  const deleteInterno = async (answers) => {
+    await page.eval(`window.__answers = ${JSON.stringify(answers)}; window.confirm = () => window.__answers.shift()`);
+    const r = await page.rect(`.project-square[data-project="${INTERNO}"]`);
+    await page.click(r.x + r.w / 2, r.y + r.h / 2, { button: "right" });
+    await page.waitFor(`${menuButton("Delete project")} !== undefined`);
+    await page.eval(`${menuButton("Delete project")}.click()`);
+  };
+  await deleteInterno([true, false]);
+  await page.sleep(300);
+  assert.equal(await page.eval(`${square(INTERNO)} !== null && ${activeSquare} === '${INTERNO}'`), true);
+  assert.equal(await page.eval(tabCount), 1);
+  await deleteInterno([true, true, true]);
+  await page.waitFor(`${square(INTERNO)} === null && ${activeSquare} === 'all'`);
+  // All connections still has its two tabs; Interno's closed with it.
+  await page.waitFor(`${tabCount} === 2`);
 }

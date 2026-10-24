@@ -1,7 +1,8 @@
 // Switching projects from the keyboard (Ctrl+1 is All connections, Ctrl+2… the projects in
-// rail order), and the menu of a project's square.
+// rail order), the menu of a project's square, and adding a connection to a project from
+// the navigator.
 import { registerAction } from "../actions";
-import type { Project } from "../api";
+import { api, type Project } from "../api";
 import { workbench } from "../workbench";
 
 declare module "../actions" {
@@ -81,3 +82,35 @@ registerAction({
   order: 20,
   run: (project) => workbench().deleteProject(project),
 });
+
+registerAction({
+  id: "project.remove_connection",
+  scope: "navigator.connection",
+  title: "Remove from this project",
+  group: "project",
+  order: 85,
+  when: () => workbench().activeProject() !== null,
+  run: async ({ connection }) => {
+    const project = workbench().activeProject();
+    if (project) workbench().setProjects(await api.setProjectMembership(connection.id, project.id, false));
+  },
+});
+
+/** "Add to project ▸": one entry per project the connection is not in. Registered again
+ *  whenever the projects change; returns the function that removes the entries. */
+export function registerAddToProject(projects: Project[]): () => void {
+  const removers = projects.map((p) =>
+    registerAction({
+      id: `project.add_to.${p.id}`,
+      scope: "navigator.connection",
+      title: p.name,
+      submenu: "Add to project",
+      group: "project",
+      order: 84,
+      when: ({ connection }) => !p.connections.includes(connection.id),
+      run: async ({ connection }) =>
+        workbench().setProjects(await api.setProjectMembership(connection.id, p.id, true)),
+    }),
+  );
+  return () => removers.forEach((remove) => remove());
+}

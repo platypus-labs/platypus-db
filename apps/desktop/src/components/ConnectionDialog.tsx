@@ -6,6 +6,7 @@ import {
   type ConnectionType,
   type DriverKind,
   type PasswordInput,
+  type Project,
   type SavedConnection,
   type SavedSsh,
   type ServerInfo,
@@ -20,6 +21,10 @@ interface Props {
   initial: SavedConnection;
   /** True when editing a connection that already exists in the store. */
   existing: boolean;
+  /** Every project, to pick the connection's. */
+  projects: Project[];
+  /** The projects the connection is in, or (new) goes into. */
+  memberOf: string[];
   onSaved: (all: SavedConnection[]) => void;
   onClose: () => void;
 }
@@ -72,8 +77,9 @@ function chain(ssh: SavedSsh | null | undefined): SavedSsh[] {
   return out;
 }
 
-export function ConnectionDialog({ initial, existing, onSaved, onClose }: Props) {
+export function ConnectionDialog({ initial, existing, projects, memberOf, onSaved, onClose }: Props) {
   const [conn, setConn] = useState(initial);
+  const [inProjects, setInProjects] = useState(() => new Set(memberOf));
   const [password, setPassword] = useState("");
   /** SSH passwords and passphrases typed, by `secret_id`. */
   const [sshTyped, setSshTyped] = useState<Record<string, string>>({});
@@ -124,7 +130,7 @@ export function ConnectionDialog({ initial, existing, onSaved, onClose }: Props)
     e.preventDefault();
     setBusy(true);
     try {
-      onSaved(await api.saveConnection(conn, passwordInput(), sshSecrets()));
+      onSaved(await api.saveConnection(conn, passwordInput(), sshSecrets(), [...inProjects]));
     } catch (err) {
       setResult({ ok: false, message: toCommandError(err).message });
       setBusy(false);
@@ -344,6 +350,35 @@ export function ConnectionDialog({ initial, existing, onSaved, onClose }: Props)
           />
           Read-only (warn before modifying data)
         </label>
+
+        {projects.length > 0 && (
+          <div className="field">
+            <span>Projects</span>
+            <div className="project-chips">
+              {projects.map((p) => {
+                const on = inProjects.has(p.id);
+                return (
+                  <button
+                    type="button"
+                    key={p.id}
+                    className={`project-chip${on ? " selected" : ""}`}
+                    aria-pressed={on}
+                    onClick={() =>
+                      setInProjects((all) => {
+                        const next = new Set(all);
+                        if (!next.delete(p.id)) next.add(p.id);
+                        return next;
+                      })
+                    }
+                  >
+                    <span className="dot" style={{ background: p.color }} />
+                    {p.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         </div>
 
         {conn.driver !== "sqlite" && (

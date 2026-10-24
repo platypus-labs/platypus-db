@@ -18,11 +18,13 @@ import { type PersistedTab, loadWorkspace, saveWorkspace } from "./workspace";
 import { connectionsOf, loadActiveProject, projectKey, saveActiveProject } from "./projects/state";
 import { ProjectRail } from "./projects/ProjectRail";
 import { ProjectDialog } from "./projects/ProjectDialog";
-import "./projects/actions";
+import { AddConnectionsDialog } from "./projects/AddConnectionsDialog";
+import { registerAddToProject } from "./projects/actions";
 import { ContextMenu, type MenuState } from "./components/ContextMenu";
 
 type Dialog =
-  | { kind: "connection"; connection: SavedConnection; existing: boolean }
+  | { kind: "connection"; connection: SavedConnection; existing: boolean; memberOf: string[] }
+  | { kind: "add-connections" }
   | { kind: "import" }
   | { kind: "project"; project: Project | null }
   | null;
@@ -184,8 +186,25 @@ export function App() {
 
   const connectionById = (id: string) => connections?.find((c) => c.id === id);
 
+  /** A new connection goes into the active project. */
   async function newConnection() {
-    setDialog({ kind: "connection", connection: await api.defaultConnection("postgres"), existing: false });
+    setDialog({
+      kind: "connection",
+      connection: await api.defaultConnection("postgres"),
+      existing: false,
+      memberOf: activeProject ? [activeProject] : [],
+    });
+  }
+
+  /** After a command that saved connections: the projects they joined or left changed too. */
+  async function connectionsSaved(all: SavedConnection[]) {
+    setConnections(all);
+    setDialog(null);
+    try {
+      setProjects(await api.listProjects());
+    } catch (e) {
+      setToast(toCommandError(e).message);
+    }
   }
 
   async function deleteConnection(c: SavedConnection) {
@@ -387,6 +406,8 @@ export function App() {
   });
 
   useEffect(() => registerShellActions(shell), []);
+  // "Add to project" lists the projects as they are.
+  useEffect(() => registerAddToProject(projects ?? []), [projects]);
 
   // Global shortcuts, captured before the editor sees them.
   useEffect(() => {
@@ -425,10 +446,19 @@ export function App() {
       />
       <Navigator
         connections={connectionsOf(project, connections ?? [])}
+        project={project}
+        onAddExisting={() => setDialog({ kind: "add-connections" })}
         error={storeError}
         onNew={() => void newConnection()}
         onImport={() => setDialog({ kind: "import" })}
-        onEdit={(c) => setDialog({ kind: "connection", connection: c, existing: true })}
+        onEdit={(c) =>
+          setDialog({
+            kind: "connection",
+            connection: c,
+            existing: true,
+            memberOf: (projects ?? []).filter((p) => p.connections.includes(c.id)).map((p) => p.id),
+          })
+        }
         onDelete={(c) => void deleteConnection(c)}
         onOpenTab={(c, init) => addTab(createTab("query", c.id, init))}
         session={navigatorSession}
@@ -516,9 +546,19 @@ export function App() {
         <ConnectionDialog
           initial={dialog.connection}
           existing={dialog.existing}
+          projects={projects ?? []}
+          memberOf={dialog.memberOf}
+          onClose={() => setDialog(null)}
+          onSaved={(all) => void connectionsSaved(all)}
+        />
+      )}
+      {dialog?.kind === "add-connections" && project && (
+        <AddConnectionsDialog
+          project={project}
+          connections={connections ?? []}
           onClose={() => setDialog(null)}
           onSaved={(all) => {
-            setConnections(all);
+            setProjects(all);
             setDialog(null);
           }}
         />
@@ -545,11 +585,9 @@ export function App() {
       {dialog?.kind === "import" && (
         <ImportDialog
           existing={connections ?? []}
+          project={activeProject}
           onClose={() => setDialog(null)}
-          onImported={(all) => {
-            setConnections(all);
-            setDialog(null);
-          }}
+          onImported={(all) => void connectionsSaved(all)}
         />
       )}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
