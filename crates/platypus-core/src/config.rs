@@ -7,7 +7,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::{Error, Result};
+use crate::{Error, Result, SessionInit};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -120,6 +120,10 @@ pub struct ConnectionConfig {
     pub ssl_mode: SslMode,
     /// PEM file with the CA certificates to trust; the OS trust store is used when `None`.
     pub ssl_root_cert: Option<PathBuf>,
+    /// PEM certificate (chain) and private key the client presents, for servers that
+    /// authenticate clients by certificate. Both or neither.
+    pub ssl_client_cert: Option<PathBuf>,
+    pub ssl_client_key: Option<PathBuf>,
     pub application_name: Option<String>,
     pub connect_timeout: Option<Duration>,
     /// Where to open the TCP connection when it is not `host:port`, e.g. the local end of an
@@ -128,6 +132,8 @@ pub struct ConnectionConfig {
     /// The SSH tunnel to reach the server through. Drivers ignore it: the app opens the
     /// tunnel and sets `connect_addr`.
     pub ssh: Option<SshConfig>,
+    /// Default schema, time zone and bootstrap statements, run by the driver after connecting.
+    pub init: SessionInit,
 }
 
 impl ConnectionConfig {
@@ -142,10 +148,13 @@ impl ConnectionConfig {
             password: None,
             ssl_mode: SslMode::default(),
             ssl_root_cert: None,
+            ssl_client_cert: None,
+            ssl_client_key: None,
             application_name: Some("PlatypusDB".to_owned()),
             connect_timeout: Some(Duration::from_secs(10)),
             connect_addr: None,
             ssh: None,
+            init: SessionInit::default(),
         }
     }
 
@@ -190,6 +199,8 @@ impl ConnectionConfig {
             match &*key {
                 "sslmode" | "ssl-mode" => config.ssl_mode = value.parse()?,
                 "sslrootcert" => config.ssl_root_cert = Some(PathBuf::from(&*value)),
+                "sslcert" => config.ssl_client_cert = Some(PathBuf::from(&*value)),
+                "sslkey" => config.ssl_client_key = Some(PathBuf::from(&*value)),
                 "application_name" => config.application_name = Some(value.into_owned()),
                 "connect_timeout" => {
                     let secs = value

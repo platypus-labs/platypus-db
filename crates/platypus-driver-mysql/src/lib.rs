@@ -17,7 +17,7 @@ use arrow_schema::{Schema, SchemaRef};
 use async_trait::async_trait;
 use futures::StreamExt;
 use mysql_async::prelude::Queryable;
-use mysql_async::{Conn, DriverError, Opts, OptsBuilder, Row, SslOpts, Value};
+use mysql_async::{ClientIdentity, Conn, DriverError, Opts, OptsBuilder, Row, SslOpts, Value};
 use platypus_core::{
     CancelHandle, Canceller, CatalogColumn, Connection, ConnectionConfig, DbError, Driver,
     DriverKind, Error, ExecOptions, ExecResult, ObjectMeta, RecordBatchStream, ReferencingKey,
@@ -42,7 +42,9 @@ impl Driver for MySqlDriver {
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<Box<dyn Connection>> {
-        Ok(Box::new(MySqlConnection::connect(config).await?))
+        let conn: Box<dyn Connection> = Box::new(MySqlConnection::connect(config).await?);
+        platypus_core::run_init(&*conn, &config.init, self.kind()).await?;
+        Ok(conn)
     }
 }
 
@@ -68,19 +70,24 @@ fn ssl_opts(config: &ConnectionConfig) -> Option<SslOpts> {
             .map(|p| p.clone().into())
             .collect()
     };
+    let identity = match (&config.ssl_client_cert, &config.ssl_client_key) {
+        (Some(cert), Some(key)) => {
+            Some(ClientIdentity::new(cert.clone().into(), key.clone().into()))
+        }
+        _ => None,
+    };
+    let base = SslOpts::default().with_client_identity(identity);
     match config.ssl_mode {
         SslMode::Disable => None,
         SslMode::Prefer | SslMode::Require => Some(
-            SslOpts::default()
-                .with_danger_accept_invalid_certs(true)
+            base.with_danger_accept_invalid_certs(true)
                 .with_danger_skip_domain_validation(true),
         ),
         SslMode::VerifyCa => Some(
-            SslOpts::default()
-                .with_root_certs(roots())
+            base.with_root_certs(roots())
                 .with_danger_skip_domain_validation(true),
         ),
-        SslMode::VerifyFull => Some(SslOpts::default().with_root_certs(roots())),
+        SslMode::VerifyFull => Some(base.with_root_certs(roots())),
     }
 }
 
