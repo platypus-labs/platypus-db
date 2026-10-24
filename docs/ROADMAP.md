@@ -91,7 +91,7 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 | D — Editor SQL | ✅ fatto (P1, P2, P3) |
 | E — Explain e performance | ✅ fatto (P1, P2, P3) |
 | F — Connettività e credenziali | ✅ fatto (P1, P2) |
-| G — Nuovi driver | 🔒 Delfa · group-g-drivers · 2026-10-24 |
+| G — Nuovi driver | ✅ fatto (P1) |
 | H — Import, export e trasferimento | libero |
 | I — Strumenti di schema | libero |
 | J — Amministrazione del server | libero |
