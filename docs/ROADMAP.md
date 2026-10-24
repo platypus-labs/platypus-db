@@ -450,13 +450,13 @@ della fase 0 (un'API piccola), non la condivisione del file.
 Con 4–6 persone. Ogni gruppo può partire quando la sua dipendenza è pronta, anche prima della fine
 dell'ondata.
 
-| Ondata | Gruppi | Obiettivo | Release |
-|---|---|---|---|
-| **0** | Fase 0 (1 persona) e **P** in parallelo | Codice pronto al lavoro parallelo, prima release pubblica | v0.1.x |
-| **1** | **A**, **B** (P1), **C** (P1), **F** (SSH, tipi, import), **K** (P1), **L** (P1) | Sostituire DBeaver nell'uso quotidiano | v0.2 |
-| **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 |
-| **3** | **I**, **J**, **M**, **N**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 |
-| **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ |
+| Ondata | Gruppi | Obiettivo | Release | Stato |
+|---|---|---|---|---|
+| **0** | Fase 0 (1 persona) e **P** in parallelo | Codice pronto al lavoro parallelo, prima release pubblica | v0.1.x | Fase 0 fatta; P in corso |
+| **1** | **A**, **B** (P1), **C** (P1), **F** (SSH, tipi, import), **K** (P1), **L** (P1) | Sostituire DBeaver nell'uso quotidiano | v0.2 | **Fatta** (P1 di A, B, C, F, K e L; P2 di A e B), release v0.2.0 del 24 ottobre 2026 |
+| **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte |
+| **3** | **I**, **J**, **M**, **N**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 | Da fare |
+| **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | Da fare |
 
 Per ogni gruppo, la Definition of Done segue quella dell'MVP:
 - test di conformance o E2E per ciò che è stato aggiunto;
