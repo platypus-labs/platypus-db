@@ -16,8 +16,16 @@ import { dbKey, provideWorkbench, workbench } from "./workbench";
 import { Icon, type IconName } from "./ui/Icon";
 import { type PersistedTab, loadWorkspace, saveWorkspace } from "./workspace";
 import { connectionsOf, loadActiveProject, projectKey, saveActiveProject } from "./projects/state";
+import { ProjectRail } from "./projects/ProjectRail";
+import { ProjectDialog } from "./projects/ProjectDialog";
+import "./projects/actions";
+import { ContextMenu, type MenuState } from "./components/ContextMenu";
 
-type Dialog = { kind: "connection"; connection: SavedConnection; existing: boolean } | { kind: "import" } | null;
+type Dialog =
+  | { kind: "connection"; connection: SavedConnection; existing: boolean }
+  | { kind: "import" }
+  | { kind: "project"; project: Project | null }
+  | null;
 
 interface PasswordRequest {
   connection: SavedConnection;
@@ -32,6 +40,7 @@ export function App() {
   const [activeProject, setActiveProject] = useState<string | null>(null);
   /** The active tab of each project while another one is shown, by `projectKey`. */
   const activeByProject = useRef(new Map<string, number>());
+  const [railMenu, setRailMenu] = useState<MenuState | null>(null);
   const [storeError, setStoreError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [passwordRequest, setPasswordRequest] = useState<PasswordRequest | null>(null);
@@ -133,6 +142,34 @@ export function App() {
   const project = projects?.find((p) => p.id === activeProject) ?? null;
   /** The tabs of the active project, the ones the tab bar shows. */
   const visibleTabs = tabs.filter((t) => (t.project ?? null) === activeProject);
+
+  /** Projects with an open transaction in one of their tabs, for the rail's warning dot. */
+  const txProjects = new Set(tabs.filter((t) => t.txOpen).map((t) => projectKey(t.project)));
+
+  /** Deletes a project once confirmed: its tabs close (those with changes ask first, and a
+   *  refusal keeps the project), its connections stay. */
+  async function deleteProject(p: Project) {
+    if (!window.confirm(`Delete the project "${p.name}"? Its connections stay, in All connections and other projects.`)) {
+      return;
+    }
+    const own = tabs.filter((t) => t.project === p.id);
+    if (own.some((t) => t.unsaved || t.txOpen) && !window.confirm("Some of its tabs have changes not saved or committed. Close them and discard the changes?")) {
+      return;
+    }
+    try {
+      setProjects(await api.deleteProject(p.id));
+    } catch (e) {
+      return setToast(toCommandError(e).message);
+    }
+    for (const t of own) closeTab(t, true);
+    if (activeProject === p.id) {
+      setActiveProject(null);
+      saveActiveProject(null);
+      const all = tabs.filter((t) => (t.project ?? null) === null);
+      const remembered = activeByProject.current.get("all");
+      setActiveTab(all.find((t) => t.key === remembered)?.key ?? all.at(-1)?.key ?? null);
+    }
+  }
 
   /** Shows another project with the tab that was active there. Nothing closes. */
   function switchProject(id: string | null) {
@@ -318,6 +355,7 @@ export function App() {
     reopenTab,
     openPalette,
     switchProject,
+    deleteProject,
   };
   const shell = useRef(shellState);
   shell.current = shellState;
@@ -334,6 +372,8 @@ export function App() {
     setProjects,
     activeProject: () => shell.current.projects.find((p) => p.id === shell.current.activeProject) ?? null,
     switchProject: (id) => shell.current.switchProject(id),
+    editProject: (project) => setDialog({ kind: "project", project }),
+    deleteProject: (project) => shell.current.deleteProject(project),
     openTab: (kind, connectionId, init) => shell.current.addTab(createTab(kind, connectionId, init)),
     sideSession: (connection, database) => shell.current.navigatorSession(connection, database),
     capabilities: (sessionId) => capabilities.current.get(sessionId),
@@ -375,6 +415,14 @@ export function App() {
 
   return (
     <div className="shell">
+      <ProjectRail
+        projects={projects ?? []}
+        active={activeProject}
+        txProjects={txProjects}
+        onSwitch={switchProject}
+        onNew={() => setDialog({ kind: "project", project: null })}
+        onMenu={(p, e) => setRailMenu({ x: e.clientX, y: e.clientY, target: { scope: "project", arg: p } })}
+      />
       <Navigator
         connections={connectionsOf(project, connections ?? [])}
         error={storeError}
@@ -475,6 +523,25 @@ export function App() {
           }}
         />
       )}
+      {dialog?.kind === "project" && (
+        <ProjectDialog
+          project={dialog.project}
+          onClose={() => setDialog(null)}
+          onSaved={(all, saved) => {
+            const created = dialog.project === null;
+            setProjects(all);
+            setDialog(null);
+            // A new project is where the user goes next.
+            if (created) {
+              activeByProject.current.set(projectKey(activeProject), activeTab ?? -1);
+              setActiveProject(saved.id);
+              saveActiveProject(saved.id);
+              setActiveTab(null);
+            }
+          }}
+        />
+      )}
+      {railMenu && <ContextMenu menu={railMenu} onClose={() => setRailMenu(null)} onError={(e) => setToast(toCommandError(e).message)} />}
       {dialog?.kind === "import" && (
         <ImportDialog
           existing={connections ?? []}
@@ -520,6 +587,7 @@ interface ShellApi {
   projects: Project[];
   activeProject: string | null;
   switchProject: (id: string | null) => void;
+  deleteProject: (project: Project) => Promise<void>;
   addTab: (tab: TabModel) => void;
   closeTab: (tab: TabModel) => void;
   setActiveTab: (key: number) => void;

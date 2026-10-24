@@ -1,0 +1,105 @@
+/* Projects: the rail of squares left of the navigator, and the project dialog. */
+
+.project-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  background: var(--bg-rail);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.project-square,
+.project-add {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: border-radius 0.12s, transform 0.12s;
+}
+
+.project-square:hover {
+  border-radius: 12px;
+  transform: translateY(-1px);
+}
+
+.project-square.all {
+  background: var(--hover);
+  color: var(--fg-muted);
+}
+
+/* The bar left of the active square. */
+.project-square.active::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 6px;
+  width: 4px;
+  height: 20px;
+  border-radius: 0 3px 3px 0;
+  background: var(--fg);
+}
+
+/* An open transaction in one of the project's tabs. */
+.project-square.tx::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--type-test);
+  box-shadow: 0 0 0 2px var(--bg-rail);
+}
+
+.project-add {
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--fg-muted);
+}
+
+.project-add:hover {
+  color: var(--fg);
+  border-color: var(--fg-muted);
+}
+
+.project-dialog-preview {
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.project-dialog .swatches input[type="color"] {
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: none;
+}
+
+.project-initials {
+  width: 80px;
+  text-transform: uppercase;
+}

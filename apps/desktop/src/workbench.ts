@@ -17,6 +17,10 @@ export interface Workbench {
   /** The project shown, `null` for All connections. */
   activeProject(): Project | null;
   switchProject(id: string | null): void;
+  /** Opens the project dialog; `null` makes a new project. */
+  editProject(project: Project | null): void;
+  /** Deletes a project after asking, closing its tabs; its connections stay. */
+  deleteProject(project: Project): Promise<void>;
   /** Opens a new tab of `kind` and makes it active. */
   openTab<K extends TabKindName>(kind: K, connectionId: string, init?: TabInit<K>): void;
   /** The navigator session of the connection (and database, `null` for the saved one),

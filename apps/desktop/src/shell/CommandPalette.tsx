@@ -10,7 +10,7 @@ const LIMIT = 60;
 
 interface Item {
   key: string;
-  kind: "Action" | "Connection" | "Table" | "Recent query";
+  kind: "Action" | "Project" | "Connection" | "Table" | "Recent query";
   label: string;
   detail?: string;
   shortcut?: string;
@@ -86,6 +86,13 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
         label: a.title,
         shortcut: shortcutLabel(a),
         run: () => runAction(a, undefined, (e) => workbench().showError(toCommandError(e).message)),
+      })),
+      // Projects, to switch to; All connections first, as in the rail.
+      ...[{ id: null, name: "All connections" }, ...workbench().projects()].map((p) => ({
+        key: `project:${p.id ?? "all"}`,
+        kind: "Project" as const,
+        label: p.name,
+        run: () => workbench().switchProject(p.id),
       })),
       ...connections.map((c) => ({
         key: `connection:${c.id}`,
