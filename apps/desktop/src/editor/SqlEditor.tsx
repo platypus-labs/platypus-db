@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { MySQL, PostgreSQL, SQLite, sql } from "@codemirror/lang-sql";
+import { MSSQL, MySQL, PostgreSQL, SQLite, sql } from "@codemirror/lang-sql";
 import {
   HighlightStyle,
   bracketMatching,
@@ -145,7 +145,8 @@ const theme = EditorView.theme({
   ".cm-searchMatch": { backgroundColor: "rgba(250, 176, 5, 0.3)" },
 });
 
-const dialects = { postgres: PostgreSQL, mysql: MySQL, sqlite: SQLite };
+// DuckDB has no CodeMirror dialect; its syntax follows PostgreSQL.
+const dialects = { postgres: PostgreSQL, mysql: MySQL, sqlite: SQLite, duckdb: PostgreSQL, sqlserver: MSSQL };
 
 function language(driver: DriverKind, catalog: CompletionCatalog | null | undefined) {
   const support = sql({

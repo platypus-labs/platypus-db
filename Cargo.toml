@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "apps/desktop/src-tauri"]
+exclude = ["vendor/tiberius"]
 
 [workspace.package]
 version = "0.2.0"
@@ -11,8 +12,10 @@ publish = false
 
 [workspace.dependencies]
 platypus-core = { path = "crates/platypus-core" }
+platypus-driver-duckdb = { path = "crates/platypus-driver-duckdb" }
 platypus-driver-pg = { path = "crates/platypus-driver-pg" }
 platypus-driver-mysql = { path = "crates/platypus-driver-mysql" }
+platypus-driver-mssql = { path = "crates/platypus-driver-mssql" }
 platypus-driver-sqlite = { path = "crates/platypus-driver-sqlite" }
 platypus-export = { path = "crates/platypus-export" }
 platypus-net = { path = "crates/platypus-net" }
@@ -30,6 +33,7 @@ async-trait = "0.1"
 bytes = "1"
 clap = { version = "4", features = ["derive", "env"] }
 criterion = "0.8"
+duckdb = { version = "1.20000", features = ["bundled", "json", "parquet"] }
 fallible-iterator = "0.2"
 futures = "0.3"
 keyring = "4"
@@ -46,9 +50,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
 thiserror = "2"
+tiberius = { path = "vendor/tiberius", default-features = false, features = ["tds73", "rustls"] }
 tokio = "1"
 tokio-postgres = "0.7"
 tokio-postgres-rustls = "0.14"
+tokio-util = "0.7"
 toml = "1"
 url = "2"
 uuid = { version = "1", features = ["v4", "serde"] }

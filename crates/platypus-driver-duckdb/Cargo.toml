@@ -1,0 +1,26 @@
+[package]
+name = "platypus-driver-duckdb"
+description = "DuckDB driver for PlatypusDB"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+arrow-array.workspace = true
+arrow-cast.workspace = true
+arrow-schema.workspace = true
+async-trait.workspace = true
+duckdb.workspace = true
+futures.workspace = true
+platypus-core.workspace = true
+platypus-sql.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+
+[lints]
+workspace = true

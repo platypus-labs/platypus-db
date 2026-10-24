@@ -28,7 +28,8 @@
     "apache-arrow": "^21.2.0",
     "lucide-react": "^1.61.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "simple-icons": "16.33.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.4",

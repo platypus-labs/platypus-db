@@ -15,6 +15,10 @@ pub enum DriverKind {
     Postgres,
     MySql,
     Sqlite,
+    /// Embedded like SQLite: `database` is the file path, or `:memory:`.
+    DuckDb,
+    /// Microsoft SQL Server and Azure SQL.
+    SqlServer,
 }
 
 impl DriverKind {
@@ -23,8 +27,15 @@ impl DriverKind {
         match self {
             Self::Postgres => Some(5432),
             Self::MySql => Some(3306),
-            Self::Sqlite => None,
+            Self::Sqlite | Self::DuckDb => None,
+            Self::SqlServer => Some(1433),
         }
+    }
+
+    /// Runs in-process on a local file (SQLite, DuckDB): no server, host, user or password.
+    #[must_use]
+    pub const fn is_embedded(self) -> bool {
+        matches!(self, Self::Sqlite | Self::DuckDb)
     }
 }
 
@@ -108,7 +119,7 @@ pub struct SshConfig {
 
 /// Everything a driver needs to open a connection.
 ///
-/// For SQLite, `database` is the file path and the network fields are ignored.
+/// For SQLite and DuckDB, `database` is the file path and the network fields are ignored.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionConfig {
     pub driver: DriverKind,
@@ -159,18 +170,21 @@ impl ConnectionConfig {
     }
 
     /// Parses a connection URL such as `postgres://user:pass@host:5432/db?sslmode=require`,
-    /// `mysql://user@host/db` or `sqlite:///path/to/file.db`.
+    /// `mysql://user@host/db`, `sqlserver://sa@host/master`, `sqlite:///path/to/file.db` or
+    /// `duckdb:///path/to/file.duckdb`.
     pub fn from_url(input: &str) -> Result<Self> {
         let url = Url::parse(input).map_err(|e| Error::Config(format!("invalid URL: {e}")))?;
         let driver = match url.scheme() {
             "postgres" | "postgresql" => DriverKind::Postgres,
             "mysql" | "mariadb" => DriverKind::MySql,
             "sqlite" => DriverKind::Sqlite,
+            "duckdb" => DriverKind::DuckDb,
+            "sqlserver" | "mssql" => DriverKind::SqlServer,
             other => return Err(Error::Config(format!("unsupported URL scheme `{other}`"))),
         };
         let mut config = Self::new(driver);
 
-        if driver == DriverKind::Sqlite {
+        if driver.is_embedded() {
             config.host.clear();
             let path = decode(url.path())?;
             // `sqlite:///C:/data/app.db` has the path `/C:/data/app.db`.
@@ -252,6 +266,18 @@ mod tests {
     }
 
     #[test]
+    fn parses_sql_server_url() {
+        let c = ConnectionConfig::from_url("sqlserver://sa:pw@db/sales?sslmode=require").unwrap();
+        assert_eq!(c.driver, DriverKind::SqlServer);
+        assert_eq!(c.port, Some(1433));
+        assert_eq!(c.database, "sales");
+        assert_eq!(c.ssl_mode, SslMode::Require);
+        let c = ConnectionConfig::from_url("mssql://sa@db:14330/").unwrap();
+        assert_eq!(c.driver, DriverKind::SqlServer);
+        assert_eq!(c.port, Some(14330));
+    }
+
+    #[test]
     fn parses_ipv6_host() {
         let c = ConnectionConfig::from_url("postgres://u@[::1]:5432/db").unwrap();
         assert_eq!(c.host, "::1");
@@ -264,6 +290,12 @@ mod tests {
         assert_eq!(c.database, "/tmp/test.db");
         let c = ConnectionConfig::from_url("sqlite:///C:/data/my%20app.db").unwrap();
         assert_eq!(c.database, "C:/data/my app.db");
+        let c = ConnectionConfig::from_url("duckdb:///C:/data/sales.duckdb").unwrap();
+        assert_eq!(c.driver, DriverKind::DuckDb);
+        assert_eq!(
+            (c.database.as_str(), c.port),
+            ("C:/data/sales.duckdb", None)
+        );
     }
 
     #[test]

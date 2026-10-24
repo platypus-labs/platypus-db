@@ -261,9 +261,10 @@ pub async fn save_changes(
 ) -> CommandResult<Saved> {
     let job = state.job(job_id)?;
     let script = script(&state, &job, &changes)?;
+    let dialect = Dialect::from(state.session(job.session_id)?.config.driver);
     let conn = state.live(job.session_id).await?;
     stop_jobs(&state, job.session_id);
-    dml::apply(conn.as_ref(), &script.statements)
+    dml::apply(conn.as_ref(), dialect, &script.statements)
         .await
         .map_err(|e| match e {
             ApplyError::Failed { index, error } => {

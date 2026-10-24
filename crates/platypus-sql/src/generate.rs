@@ -63,13 +63,12 @@ impl Dialect {
         } else {
             self.columns(columns).join(",\n       ")
         };
-        let mut sql = format!("SELECT {list}\nFROM {}", self.object(table));
-        if let Some(limit) = limit {
-            sql.push('\n');
-            sql.push_str(&self.limit_clause(limit));
+        let sql = format!("SELECT {list}\nFROM {}", self.object(table));
+        match (self, limit) {
+            (Self::SqlServer, Some(limit)) => format!("{};", self.limited(&sql, limit)),
+            (_, Some(limit)) => format!("{sql}\n{};", self.limit_clause(limit)),
+            (_, None) => format!("{sql};"),
         }
-        sql.push(';');
-        sql
     }
 
     #[must_use]
@@ -126,7 +125,7 @@ impl Dialect {
             .map(|(q, _)| q)
             .collect();
         Some(match self {
-            Self::Postgres | Self::Sqlite => {
+            Self::Postgres | Self::Sqlite | Self::DuckDb => {
                 let action = if others.is_empty() {
                     "DO NOTHING".to_owned()
                 } else {
@@ -154,7 +153,41 @@ impl Dialect {
                     .collect();
                 format!("{insert}\nON DUPLICATE KEY UPDATE {};", set.join(",\n    "))
             }
+            Self::SqlServer => self.merge(table, columns, keys, &others),
         })
+    }
+
+    /// Transact-SQL's upsert: `MERGE` of a one-row source on the key.
+    fn merge(
+        self,
+        table: &ObjectName<'_>,
+        columns: &[&str],
+        keys: &[&str],
+        others: &[String],
+    ) -> String {
+        let all = self.columns(columns);
+        let on: Vec<String> = self
+            .columns(keys)
+            .iter()
+            .map(|k| format!("target.{k} = source.{k}"))
+            .collect();
+        let matched = if others.is_empty() {
+            String::new()
+        } else {
+            let set: Vec<String> = others.iter().map(|q| format!("{q} = source.{q}")).collect();
+            format!("\nWHEN MATCHED THEN\n  UPDATE SET {}", set.join(",\n    "))
+        };
+        let values: Vec<String> = all.iter().map(|q| format!("source.{q}")).collect();
+        format!(
+            "MERGE INTO {} AS target\nUSING (VALUES ({})) AS source ({})\nON {}{matched}\n\
+             WHEN NOT MATCHED THEN\n  INSERT ({}) VALUES ({});",
+            self.object(table),
+            vec!["?"; columns.len()].join(", "),
+            all.join(", "),
+            on.join(" AND "),
+            all.join(", "),
+            values.join(", ")
+        )
     }
 
     /// The SQL keyword for the kind in `DROP`/`ALTER`, or `None` where the dialect has no
@@ -166,21 +199,26 @@ impl Dialect {
             (_, ObjectKind::Trigger) => "TRIGGER",
             (Self::Postgres, ObjectKind::MaterializedView) => "MATERIALIZED VIEW",
             (Self::Postgres, ObjectKind::ForeignTable) => "FOREIGN TABLE",
-            (Self::Postgres, ObjectKind::Type) => "TYPE",
+            (Self::Postgres | Self::DuckDb | Self::SqlServer, ObjectKind::Type) => "TYPE",
             (Self::Postgres, ObjectKind::Domain) => "DOMAIN",
             (Self::Postgres, ObjectKind::Extension) => "EXTENSION",
-            (Self::Postgres | Self::MySql, ObjectKind::Sequence) => "SEQUENCE",
-            (Self::Postgres | Self::MySql, ObjectKind::Function) => "FUNCTION",
-            (Self::Postgres | Self::MySql, ObjectKind::Procedure) => "PROCEDURE",
+            (
+                Self::Postgres | Self::MySql | Self::DuckDb | Self::SqlServer,
+                ObjectKind::Sequence,
+            ) => "SEQUENCE",
+            // DuckDB's user functions are macros.
+            (Self::DuckDb, ObjectKind::Function) => "MACRO",
+            (Self::Postgres | Self::MySql | Self::SqlServer, ObjectKind::Function) => "FUNCTION",
+            (Self::Postgres | Self::MySql | Self::SqlServer, ObjectKind::Procedure) => "PROCEDURE",
             (Self::MySql, ObjectKind::Event) => "EVENT",
             _ => return None,
         })
     }
 
-    /// Whether `DROP ... CASCADE` also drops dependent objects (PostgreSQL only).
+    /// Whether `DROP ... CASCADE` also drops dependent objects (PostgreSQL, DuckDB).
     #[must_use]
     pub const fn supports_cascade(self) -> bool {
-        matches!(self, Self::Postgres)
+        matches!(self, Self::Postgres | Self::DuckDb)
     }
 
     #[must_use]
@@ -247,6 +285,31 @@ impl Dialect {
             },
             Self::Sqlite => (kind == ObjectKind::Table)
                 .then(|| format!("ALTER TABLE {} RENAME TO {to};", self.object(o))),
+            Self::DuckDb => match kind {
+                ObjectKind::Table | ObjectKind::View => Some(format!(
+                    "ALTER {} {} RENAME TO {to};",
+                    self.keyword(kind)?,
+                    self.object(o)
+                )),
+                _ => None,
+            },
+            // `sp_rename` keeps the schema; it does not rewrite the source of routines.
+            Self::SqlServer => matches!(
+                kind,
+                ObjectKind::Table
+                    | ObjectKind::View
+                    | ObjectKind::Sequence
+                    | ObjectKind::Function
+                    | ObjectKind::Procedure
+                    | ObjectKind::Trigger
+            )
+            .then(|| {
+                format!(
+                    "EXEC sp_rename {}, {};",
+                    self.quote_literal(&self.object(o)),
+                    self.quote_literal(new_name)
+                )
+            }),
         }
     }
 }
@@ -295,6 +358,20 @@ mod tests {
             "INSERT INTO demo.orders (id)\nVALUES (?)\nON CONFLICT (id) DO NOTHING;"
         );
         assert_eq!(Dialect::Postgres.upsert(&ORDERS, &cols, &[]), None);
+        assert_eq!(
+            Dialect::SqlServer.upsert(&ORDERS, &cols, &["id"]).unwrap(),
+            "MERGE INTO demo.orders AS target\nUSING (VALUES (?, ?)) AS source (id, total)\n\
+             ON target.id = source.id\nWHEN MATCHED THEN\n  UPDATE SET total = source.total\n\
+             WHEN NOT MATCHED THEN\n  INSERT (id, total) VALUES (source.id, source.total);"
+        );
+        assert_eq!(
+            Dialect::SqlServer.select(&ORDERS, &[], Some(5)),
+            "SELECT TOP (5) *\nFROM demo.orders;"
+        );
+        assert_eq!(
+            Dialect::SqlServer.rename(ObjectKind::Table, &ORDERS, "o2"),
+            Some("EXEC sp_rename N'demo.orders', N'o2';".to_owned())
+        );
     }
 
     #[test]
@@ -335,6 +412,16 @@ mod tests {
             None
         );
         assert_eq!(Dialect::Sqlite.rename(ObjectKind::View, &ORDERS, "x"), None);
+        let duck = Dialect::DuckDb;
+        assert_eq!(
+            duck.rename(ObjectKind::View, &ORDERS, "x").as_deref(),
+            Some("ALTER VIEW demo.orders RENAME TO x;")
+        );
+        assert_eq!(
+            duck.drop(ObjectKind::Function, &ORDERS, true).as_deref(),
+            Some("DROP MACRO demo.orders CASCADE;")
+        );
+        assert_eq!(duck.truncate(&ORDERS), "TRUNCATE TABLE demo.orders;");
         assert_eq!(
             Dialect::Sqlite.drop(ObjectKind::Function, &ORDERS, false),
             None

@@ -155,7 +155,13 @@ command("select_all_matches", "Select all occurrences", "Mod+Shift+L", "cursors"
 command("fold_all", "Fold all", "Mod+Alt+[", "folding", 40, foldAll, false);
 command("unfold_all", "Unfold all", "Mod+Alt+]", "folding", 41, unfoldAll, false);
 
-const CLIENTS: Record<DriverKind, string> = { postgres: "psql", mysql: "mysql", sqlite: "sqlite3" };
+/** DuckDB has none: its client cannot open a file the session holds. */
+const CLIENTS: Partial<Record<DriverKind, string>> = {
+  postgres: "psql",
+  mysql: "mysql",
+  sqlite: "sqlite3",
+  sqlserver: "sqlcmd",
+};
 
 registerAction({
   id: "editor.run_append",
@@ -185,5 +191,5 @@ registerAction({
   run: () => workbench().openDialog((close) => createElement(SnippetsDialog, { onClose: close })),
 });
 
-/** The client's name for the menu's tooltip and the status bar. */
+/** The client's name for the menu's tooltip and the status bar; none for DuckDB. */
 export const cliName = (driver: DriverKind) => CLIENTS[driver];

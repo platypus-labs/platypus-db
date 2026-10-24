@@ -1,7 +1,10 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { tableFromIPC } from "apache-arrow";
 
-export type DriverKind = "postgres" | "mysql" | "sqlite";
+export type DriverKind = "postgres" | "mysql" | "sqlite" | "duckdb" | "sqlserver";
+
+/** Runs in-process on a local file (SQLite, DuckDB): no server, host, user or password. */
+export const isEmbedded = (driver: DriverKind) => driver === "sqlite" || driver === "duckdb";
 export type SslMode = "disable" | "prefer" | "require" | "verify-ca" | "verify-full";
 
 export interface SavedConnection {
@@ -715,7 +718,7 @@ export const api = {
   deleteScript: (project: string | null, path: string) => invoke<void>("delete_script", { project, path }),
   linkScript: (project: string | null, path: string, connection: string | null) =>
     invoke<void>("link_script", { project, path, connection }),
-  /** Runs a script with `psql`, `mysql` or `sqlite3` from the PATH, as the session;
+  /** Runs a script with `psql`, `mysql`, `sqlcmd` or `sqlite3` from the PATH, as the session;
    *  `cancelCli` with the same `runId` stops it. */
   runCli: (sessionId: number, runId: number, script: string) =>
     invoke<CliOutput>("run_cli", { sessionId, runId, script }),

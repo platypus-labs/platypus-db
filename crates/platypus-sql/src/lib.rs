@@ -50,6 +50,10 @@ struct Current {
     prev_word: String,
     /// Nesting of `BEGIN ... END` bodies whose inner `;` do not end the statement.
     block_depth: usize,
+    /// A Transact-SQL `BEGIN` that opens a block unless `TRANSACTION` follows.
+    pending_begin: bool,
+    /// A Transact-SQL routine or trigger, which runs to the end of its batch (`GO`).
+    whole_batch: bool,
 }
 
 impl Current {
@@ -63,8 +67,17 @@ impl Current {
         Some(statement)
     }
 
+    /// Whether a `;` here ends the statement.
+    fn at_boundary(&self) -> bool {
+        self.block_depth == 0 && !self.whole_batch
+    }
+
     fn word(&mut self, word: &str, dialect: Dialect) {
         let upper = word.to_ascii_uppercase();
+        if dialect == Dialect::SqlServer {
+            self.tsql_word(&upper);
+            return;
+        }
         let opens_block = match dialect {
             // SQL-standard function bodies: `BEGIN ATOMIC ...; ...; END`.
             Dialect::Postgres => upper == "ATOMIC" && self.prev_word == "BEGIN",
@@ -74,8 +87,8 @@ impl Current {
                     && self.head.first().is_some_and(|w| w == "CREATE")
                     && self.head.iter().take(3).any(|w| w == "TRIGGER")
             }
-            // MySQL bodies rely on `DELIMITER` instead.
-            Dialect::MySql => false,
+            // MySQL bodies rely on `DELIMITER` instead; DuckDB has no statement bodies.
+            Dialect::MySql | Dialect::DuckDb | Dialect::SqlServer => false,
         };
         if opens_block {
             self.block_depth += 1;
@@ -91,6 +104,55 @@ impl Current {
         }
         self.prev_word = upper;
     }
+
+    /// Transact-SQL blocks: `BEGIN ... END` (also `BEGIN TRY`, `BEGIN CATCH`) but not
+    /// `BEGIN TRAN`, and `CREATE [OR ALTER] PROCEDURE | FUNCTION | TRIGGER`, whose body
+    /// takes the rest of the batch.
+    fn tsql_word(&mut self, upper: &str) {
+        if std::mem::take(&mut self.pending_begin)
+            && !matches!(
+                upper,
+                "TRAN" | "TRANSACTION" | "DISTRIBUTED" | "DIALOG" | "CONVERSATION"
+            )
+        {
+            self.block_depth += 1;
+        }
+        match upper {
+            "BEGIN" => self.pending_begin = true,
+            "CASE" if self.block_depth > 0 => self.block_depth += 1,
+            "END" if self.block_depth > 0 => self.block_depth -= 1,
+            _ => {}
+        }
+        if self.head.len() < 4 {
+            self.head.push(upper.to_owned());
+            let head: Vec<&str> = self.head.iter().map(String::as_str).collect();
+            let routine = |w: &str| matches!(w, "PROC" | "PROCEDURE" | "FUNCTION" | "TRIGGER");
+            self.whole_batch = match head.as_slice() {
+                ["CREATE" | "ALTER", kind, ..] if routine(kind) => true,
+                ["CREATE", "OR", "ALTER", kind] => routine(kind),
+                _ => false,
+            };
+        }
+        upper.clone_into(&mut self.prev_word);
+    }
+}
+
+/// If a Transact-SQL batch separator (`GO`, optionally with a count, alone on its line)
+/// is `word`, the end of its line.
+fn batch_separator(src: &str, word: &Token) -> Option<usize> {
+    if !word.text(src).eq_ignore_ascii_case("go") {
+        return None;
+    }
+    let line_start = src[..word.start].rfind('\n').map_or(0, |i| i + 1);
+    if !src[line_start..word.start].trim().is_empty() {
+        return None;
+    }
+    let line_end = src[word.end..]
+        .find('\n')
+        .map_or(src.len(), |i| word.end + i);
+    let rest = src[word.end..line_end].trim();
+    let rest = rest.split("--").next().unwrap_or_default().trim();
+    rest.bytes().all(|b| b.is_ascii_digit()).then_some(line_end)
 }
 
 /// If a MySQL `DELIMITER` client command starts at `pos`, returns the new delimiter and
@@ -141,6 +203,14 @@ pub fn split(src: &str, dialect: Dialect) -> Vec<Statement> {
             lexer.seek(line_end);
             continue;
         }
+        if dialect == Dialect::SqlServer
+            && token.kind == TokenKind::Word
+            && let Some(line_end) = batch_separator(src, &token)
+        {
+            statements.extend(current.take());
+            lexer.seek(line_end);
+            continue;
+        }
         if current.start.is_none()
             && let Some(end) = client_command(src, &token)
         {
@@ -151,7 +221,7 @@ pub fn split(src: &str, dialect: Dialect) -> Vec<Statement> {
             lexer.seek(end);
             continue;
         }
-        if current.block_depth == 0
+        if current.at_boundary()
             && token.kind == TokenKind::Symbol
             && src[token.start..].starts_with(&delimiter)
         {
@@ -322,6 +392,52 @@ mod tests {
                    UPDATE b SET n = CASE WHEN 1 THEN 2 END; DELETE FROM c; END; select 1";
         assert_eq!(split(src, Dialect::Sqlite).len(), 2);
         assert_eq!(texts("BEGIN; select 1; COMMIT", Dialect::Sqlite).len(), 3);
+    }
+
+    #[test]
+    fn duckdb_has_no_statement_bodies() {
+        let src = "CREATE MACRO m(a) AS a || $$;$$; BEGIN; SELECT m('x'); COMMIT";
+        assert_eq!(
+            texts(src, Dialect::DuckDb),
+            [
+                "CREATE MACRO m(a) AS a || $$;$$",
+                "BEGIN",
+                "SELECT m('x')",
+                "COMMIT"
+            ]
+        );
+    }
+
+    #[test]
+    fn sql_server_batches_and_blocks() {
+        let ms = Dialect::SqlServer;
+        let src = "CREATE PROCEDURE p AS\nBEGIN\n  SELECT 1;\n  SELECT 2;\nEND;\nGO\n\
+                   EXEC p;\ngo 2 -- twice\nselect 3";
+        assert_eq!(
+            texts(src, ms),
+            [
+                "CREATE PROCEDURE p AS\nBEGIN\n  SELECT 1;\n  SELECT 2;\nEND;",
+                "EXEC p",
+                "select 3"
+            ]
+        );
+        let tx = "BEGIN TRAN; UPDATE t SET a = 1; COMMIT TRAN";
+        assert_eq!(texts(tx, ms).len(), 3, "BEGIN TRAN is no block");
+        let block = "IF 1 = 1 BEGIN SELECT CASE WHEN 1 = 1 THEN 1 END; SELECT 2; END; SELECT 3";
+        assert_eq!(
+            texts(block, ms),
+            [
+                "IF 1 = 1 BEGIN SELECT CASE WHEN 1 = 1 THEN 1 END; SELECT 2; END",
+                "SELECT 3"
+            ]
+        );
+        let try_catch = "BEGIN TRY SELECT 1/0; END TRY BEGIN CATCH SELECT 2; END CATCH; SELECT 3";
+        assert_eq!(texts(try_catch, ms).len(), 2);
+        let alter = "CREATE OR ALTER FUNCTION f() RETURNS INT AS BEGIN RETURN 1; END; SELECT 1";
+        assert_eq!(texts(alter, ms).len(), 1, "a routine takes its whole batch");
+        // `GO` within a line, or as a name, separates nothing.
+        assert_eq!(texts("SELECT go FROM t; SELECT 1", ms).len(), 2);
+        assert_eq!(texts("SELECT 1 go\nSELECT 2", ms).len(), 1);
     }
 
     #[test]

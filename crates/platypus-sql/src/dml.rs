@@ -336,12 +336,23 @@ const SAVEPOINT: &str = "platypus_edit";
 
 /// Runs `statements`, each of which must hit exactly one row, all or none. In autocommit
 /// mode they run in a transaction of their own and are committed; in manual-commit mode
-/// they join the session's transaction behind a savepoint, and stay uncommitted.
-pub async fn apply(conn: &dyn Connection, statements: &[String]) -> Result<(), ApplyError> {
+/// they join the session's transaction behind a savepoint, and stay uncommitted. Without
+/// savepoints (DuckDB) a failed statement in manual-commit mode rolls back the whole
+/// transaction, which DuckDB aborts on errors anyway; so does a row count off once rows
+/// changed, as nothing else can undo them. A first statement that finds no row leaves the
+/// transaction as it was.
+pub async fn apply(
+    conn: &dyn Connection,
+    dialect: Dialect,
+    statements: &[String],
+) -> Result<(), ApplyError> {
     let manual = !conn.transaction().autocommit;
-    let (begin, end, undo) = if manual {
+    let savepointless = manual && !dialect.has_savepoints();
+    let (begin, end, undo) = if savepointless {
+        (None, Vec::new(), vec!["ROLLBACK".to_owned()])
+    } else if manual {
         (
-            format!("SAVEPOINT {SAVEPOINT}"),
+            Some(format!("SAVEPOINT {SAVEPOINT}")),
             vec![format!("RELEASE SAVEPOINT {SAVEPOINT}")],
             vec![
                 format!("ROLLBACK TO SAVEPOINT {SAVEPOINT}"),
@@ -350,14 +361,16 @@ pub async fn apply(conn: &dyn Connection, statements: &[String]) -> Result<(), A
         )
     } else {
         (
-            "BEGIN".to_owned(),
+            Some("BEGIN".to_owned()),
             vec!["COMMIT".to_owned()],
             vec!["ROLLBACK".to_owned()],
         )
     };
-    exec_one(conn, &begin)
-        .await
-        .map_err(|error| ApplyError::Failed { index: 0, error })?;
+    if let Some(begin) = begin {
+        exec_one(conn, &begin)
+            .await
+            .map_err(|error| ApplyError::Failed { index: 0, error })?;
+    }
     let mut outcome = Ok(());
     for (index, sql) in statements.iter().enumerate() {
         match exec_one(conn, sql).await {
@@ -369,7 +382,12 @@ pub async fn apply(conn: &dyn Connection, statements: &[String]) -> Result<(), A
             break;
         }
     }
-    let finish = if outcome.is_ok() { end } else { undo };
+    let untouched = matches!(outcome, Err(ApplyError::RowCount { index: 0, rows: 0 }));
+    let finish = match outcome {
+        Ok(()) => end,
+        Err(_) if savepointless && untouched => Vec::new(),
+        Err(_) => undo,
+    };
     for sql in &finish {
         if let Err(error) = exec_one(conn, sql).await {
             // The first error explains more than the failed cleanup.

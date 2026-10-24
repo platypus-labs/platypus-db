@@ -196,5 +196,10 @@ mod tests {
             sqlite.droppable,
             [ObjectKind::Table, ObjectKind::View, ObjectKind::Trigger]
         );
+        let mssql = dialect_support(DriverKind::SqlServer);
+        assert!(!mssql.cascade);
+        assert!(mssql.droppable.contains(&ObjectKind::Type));
+        assert!(mssql.renamable.contains(&ObjectKind::Procedure));
+        assert!(!mssql.renamable.contains(&ObjectKind::Type));
     }
 }

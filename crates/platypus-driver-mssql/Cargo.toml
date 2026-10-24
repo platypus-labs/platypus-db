@@ -1,0 +1,26 @@
+[package]
+name = "platypus-driver-mssql"
+description = "Microsoft SQL Server driver for PlatypusDB"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+arrow-array.workspace = true
+arrow-schema.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+platypus-core.workspace = true
+platypus-sql.workspace = true
+tiberius.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "time"] }
+tokio-util = { workspace = true, features = ["compat"] }
+
+[dev-dependencies]
+arrow-cast.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+
+[lints]
+workspace = true

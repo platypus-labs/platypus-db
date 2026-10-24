@@ -4,23 +4,49 @@ import { defineSetting } from "./settings";
 /** Words that cannot be bare identifiers in at least one supported dialect. */
 const RESERVED = new Set(
   (
-    "ALL AND ANY ARRAY AS ASC BETWEEN BOTH BY CASE CAST CHECK COLLATE COLUMN CONSTRAINT CREATE " +
-    "CROSS CURRENT_DATE CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER DEFAULT DELETE DESC " +
-    "DISTINCT DO DROP ELSE END EXCEPT EXISTS FALSE FETCH FOR FOREIGN FROM FULL GRANT GROUP " +
-    "HAVING IN INDEX INNER INSERT INTERSECT INTO IS JOIN KEY LEADING LEFT LIKE LIMIT NATURAL " +
-    "NOT NULL OFFSET ON OR ORDER OUTER PRIMARY REFERENCES RIGHT ROW ROWS SELECT SET SOME " +
-    "TABLE THEN TO TRAILING TRUE UNION UNIQUE UPDATE USER USING VALUES WHEN WHERE WINDOW WITH"
+    "ALL ANALYSE ANALYZE AND ANTI ANY ARRAY AS ASC ASOF ASYMMETRIC AT AUTHORIZATION BETWEEN " +
+    "BINARY BOTH BY CASE CAST CHECK COLLATE COLLATION COLUMN COLUMNS CONCURRENTLY CONSTRAINT " +
+    "CREATE CROSS CURRENT_DATE CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER DEFAULT " +
+    "DEFERRABLE DELETE DESC DESCRIBE DISTINCT DO DROP ELSE END EXCEPT EXISTS FALSE FETCH FOR " +
+    "FOREIGN FREEZE FROM FULL GLOB GRANT GROUP HAVING ILIKE IN INDEX INITIALLY INNER INSERT " +
+    "INTERSECT INTO IS ISNULL JOIN KEY LAMBDA LATERAL LEADING LEFT LIKE LIMIT NATURAL NOT " +
+    "NOTNULL NULL OFFSET ON ONLY OR ORDER OUTER OVERLAPS PIVOT PIVOT_LONGER PIVOT_WIDER " +
+    "PLACING POSITIONAL PRIMARY QUALIFY REFERENCES RETURNING RIGHT ROW ROWS SELECT SEMI SET " +
+    "SHOW SIMILAR SOME SUMMARIZE SYMMETRIC TABLE TABLESAMPLE THEN TO TRAILING TRUE UNION " +
+    "UNIQUE UNPACK UNPIVOT UPDATE USER USING VALUES VARIADIC VERBOSE WHEN WHERE WINDOW WITH"
+  ).split(" "),
+);
+
+/** Further words that Transact-SQL reserves (`TSQL_RESERVED` in `dialect.rs`). */
+const TSQL_RESERVED = new Set(
+  (
+    "ADD BACKUP BEGIN BREAK BROWSE BULK CASCADE CHECKPOINT CLOSE CLUSTERED COALESCE COMMIT " +
+    "COMPUTE CONTAINS CONTAINSTABLE CONTINUE CONVERT CURSOR DATABASE DBCC DEALLOCATE DECLARE " +
+    "DENY DISK DISTRIBUTED DOUBLE DUMP ERRLVL ESCAPE EXEC EXECUTE EXIT EXTERNAL FILE FILLFACTOR " +
+    "FREETEXT FREETEXTTABLE FUNCTION GOTO HOLDLOCK IDENTITY IDENTITYCOL IDENTITY_INSERT IF KILL " +
+    "LINENO LOAD MERGE NATIONAL NOCHECK NONCLUSTERED NULLIF OF OFF OFFSETS OPEN OPENDATASOURCE " +
+    "OPENQUERY OPENROWSET OPENXML OPTION OVER PERCENT PIVOT PLAN PRECISION PRINT PROC PROCEDURE " +
+    "PUBLIC RAISERROR READ READTEXT RECONFIGURE REPLICATION RESTORE RESTRICT RETURN REVERT REVOKE " +
+    "ROLLBACK ROWCOUNT ROWGUIDCOL RULE SAVE SCHEMA SECURITYAUDIT SEMANTICKEYPHRASETABLE " +
+    "SESSION_USER SETUSER SHUTDOWN STATISTICS SYSTEM_USER TABLESAMPLE TEXTSIZE TOP TRAN " +
+    "TRANSACTION TRIGGER TRUNCATE TRY_CONVERT TSEQUAL UNPIVOT UPDATETEXT USE VARYING VIEW " +
+    "WAITFOR WHILE WITHIN WRITETEXT"
   ).split(" "),
 );
 
 /** Quotes an identifier only when the dialect requires it. Mirrors `Dialect::quote_ident`
  *  in `crates/platypus-sql/src/dialect.rs`; keep the two in sync. */
 export function quoteIdent(name: string, driver: DriverKind): string {
-  const reserved = RESERVED.has(name.toUpperCase());
+  const upper = name.toUpperCase();
+  const reserved = RESERVED.has(upper);
+  if (driver === "sqlserver") {
+    const bare = /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !reserved && !TSQL_RESERVED.has(upper);
+    return bare ? name : `[${name.replaceAll("]", "]]")}]`;
+  }
   if (driver === "mysql") {
     return /^[A-Za-z_][A-Za-z0-9_$]*$/.test(name) && !reserved ? name : `\`${name.replaceAll("`", "``")}\``;
   }
-  // PostgreSQL folds bare names to lower case; SQLite ignores case.
+  // PostgreSQL folds bare names to lower case; SQLite and DuckDB ignore case.
   const bare = driver === "postgres" ? /^[a-z_][a-z0-9_$]*$/ : /^[A-Za-z_][A-Za-z0-9_]*$/;
   return bare.test(name) && !reserved ? name : `"${name.replaceAll('"', '""')}"`;
 }
@@ -50,6 +76,8 @@ export function selectSql(
   limit: number | null,
 ): string {
   const list = columns?.length ? columns.map((c) => quoteIdent(c, driver)).join(",\n       ") : "*";
+  // Transact-SQL has no LIMIT: `SELECT TOP (n)`, as `Dialect::limited` writes it.
+  if (driver === "sqlserver" && limit !== null) return `SELECT TOP (${limit}) ${list}\nFROM ${target};`;
   return `SELECT ${list}\nFROM ${target}${limit === null ? "" : `\nLIMIT ${limit}`};`;
 }
 

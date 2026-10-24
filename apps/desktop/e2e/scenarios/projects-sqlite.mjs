@@ -260,6 +260,17 @@ async function members(page, dir, shots) {
   await page.key("3", "Digit3", 51, CTRL);
   await page.waitFor(`${activeSquare} === '${INTERNO}'`);
   await page.eval(`document.querySelector('button[title="New connection"]').click()`);
+  // A new connection starts from the choice of the database.
+  await page.waitFor(`document.querySelector('.driver-grid') !== null`);
+  assert.deepEqual(await page.eval(`[...document.querySelectorAll('.driver-tile')].map(b => b.textContent)`), [
+    "PostgreSQL",
+    "MySQL",
+    "MariaDB",
+    "SQL Server",
+    "SQLite",
+    "DuckDB",
+  ]);
+  await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === 'SQLite').click()`);
   await page.waitFor(`document.querySelector('.project-chips') !== null`);
   assert.equal(await page.eval(`${chip("Interno")}.getAttribute('aria-pressed')`), "true");
   await page.eval(`(() => {

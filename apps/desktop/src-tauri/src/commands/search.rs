@@ -64,10 +64,12 @@ pub async fn search_table_data(
         });
     }
     let condition = dialect.any_column_contains(&columns, &needle);
-    let sql = format!(
-        "SELECT COUNT(*) FROM (SELECT 1 FROM {qualified} WHERE {condition} {}) hits",
-        dialect.limit_clause(ROW_LIMIT)
+    // Without an `ORDER BY`, which Transact-SQL's `OFFSET ... FETCH` needs.
+    let hits = dialect.limited(
+        &format!("SELECT 1 AS hit FROM {qualified} WHERE {condition}"),
+        ROW_LIMIT,
     );
+    let sql = format!("SELECT COUNT(*) FROM ({hits}) hits");
     let rows = platypus_core::query_text(conn.as_ref(), &sql)
         .await?
         .first()

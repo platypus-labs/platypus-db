@@ -107,7 +107,8 @@ Anything that builds SQL goes through `platypus_sql::Dialect` (`crates/platypus-
 rather than checking the driver. It provides:
 - `quote_ident`, `qualified`, `quote_literal`
 - `bool_literal`, `binary_literal`, `has_default_keyword`, `insert_defaults`
-- `limit_clause`
+- `limit_clause`, and `limited` for queries without `ORDER BY` (`SELECT TOP (n)` in
+  Transact-SQL, whose `OFFSET ... FETCH` needs one)
 - statements for the navigator (`generate.rs`): `select`, `insert`, `update`, `delete`,
   `upsert`, `drop`, `rename`, `truncate`. `drop` and `rename` return `None` for an object
   kind the dialect cannot drop or rename; `dialect_support` reports the kinds to the UI.

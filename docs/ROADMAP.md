@@ -272,6 +272,13 @@ prima di scrivere in Prod è nel gruppo L. Restano i P3.
 parallelizzabile: **una persona per driver**.
 **Dipende da:** 0.5, 0.6
 
+**Stato: P1 completate** (SQL Server e DuckDB). SQL Server usa `tiberius` copiato in `vendor/` con
+le patch per la negoziazione della cifratura; il dialetto Transact-SQL scrive `TOP (n)` e `[nomi]`,
+e la transazione segue `@@TRANCOUNT`. DuckDB è incorporato come SQLite, con risultati Arrow nativi;
+senza l'estensione ICU non ha fuso orario di sessione. Una nuova connessione parte dalla scelta del
+database in una griglia di loghi. Conformance su PostgreSQL, MySQL, MariaDB, SQL Server, SQLite e
+DuckDB (SQL Server dal profilo `sqlserver` di `docker/compose.yml`).
+
 | Driver | Prio | Note |
 |---|---|---|
 | SQL Server (`tiberius`) | P1 | Dialetto `TOP`, `[quoting]`, più result set |

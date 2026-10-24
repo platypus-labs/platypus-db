@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { actionsFor, runAction, shortcutLabel } from "../actions";
-import { api, type CompletionCatalog, type HistoryEntry, type SavedConnection, toCommandError } from "../api";
+import { api, type CompletionCatalog, type HistoryEntry, isEmbedded, type SavedConnection, toCommandError } from "../api";
 import { projectKey } from "../projects/state";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import { parseDbKey, workbench } from "../workbench";
@@ -101,7 +101,7 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
         key: `connection:${c.id}`,
         kind: "Connection" as const,
         label: `Open SQL editor: ${c.name}`,
-        detail: c.driver === "sqlite" ? c.database : `${c.host}/${c.database}`,
+        detail: isEmbedded(c.driver) ? c.database : `${c.host}/${c.database}`,
         run: () => workbench().openTab("query", c.id),
       })),
       ...Object.entries(catalogs).flatMap(([key, catalog]) => {

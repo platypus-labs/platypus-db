@@ -706,7 +706,7 @@ export function QueryTab({
 
   const host: EditorHost = {
     openObject: (schema, name) => void openObject(schema, name),
-    runCli: () => void runCli(),
+    runCli: cliName(connection.driver) ? () => void runCli() : undefined,
     runAppend: () => void run("append"),
     explain: (analyze) => void explain(analyze),
   };

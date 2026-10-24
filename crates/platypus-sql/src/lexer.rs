@@ -40,12 +40,27 @@ impl Token {
     }
 }
 
+/// The name in a quoted identifier: quotes removed, doubled closing quotes undone
+/// (Transact-SQL doubles `]` in `[...]` names).
+pub(crate) fn unquote_ident(text: &str) -> Option<String> {
+    let close = match text.chars().next()? {
+        '[' => ']',
+        c => c,
+    };
+    let inner = text.get(1..text.len().saturating_sub(1))?;
+    Some(inner.replace(&format!("{close}{close}"), &close.to_string()))
+}
+
 fn is_ident_start(c: char) -> bool {
     c.is_alphabetic() || c == '_'
 }
 
 fn is_ident_char(c: char, dialect: Dialect) -> bool {
-    c.is_alphanumeric() || c == '_' || (c == '$' && dialect != Dialect::Sqlite)
+    c.is_alphanumeric()
+        || c == '_'
+        || (c == '$' && dialect != Dialect::Sqlite)
+        // Transact-SQL names: `#temp`, `@variable`, `@@ROWCOUNT`.
+        || (matches!(c, '#' | '@') && dialect == Dialect::SqlServer)
 }
 
 #[derive(Debug)]
@@ -106,8 +121,11 @@ impl<'a> Lexer<'a> {
     }
 
     fn block_comment(&mut self) {
-        // PostgreSQL nests block comments; MySQL and SQLite do not.
-        let nested = self.dialect == Dialect::Postgres;
+        // PostgreSQL, DuckDB and SQL Server nest block comments; MySQL and SQLite do not.
+        let nested = matches!(
+            self.dialect,
+            Dialect::Postgres | Dialect::DuckDb | Dialect::SqlServer
+        );
         let mut depth = 1;
         while depth > 0 {
             if self.rest().starts_with("*/") {
@@ -181,10 +199,17 @@ impl<'a> Lexer<'a> {
             self.bump();
             self.quoted('\'', d == Dialect::MySql);
             TokenKind::String
-        } else if (c == 'e' || c == 'E') && self.peek_at(1) == Some('\'') && d == Dialect::Postgres
+        } else if (c == 'e' || c == 'E')
+            && self.peek_at(1) == Some('\'')
+            && matches!(d, Dialect::Postgres | Dialect::DuckDb)
         {
             self.pos += 2;
             self.quoted('\'', true);
+            TokenKind::String
+        } else if (c == 'n' || c == 'N') && self.peek_at(1) == Some('\'') && d == Dialect::SqlServer
+        {
+            self.pos += 2;
+            self.quoted('\'', false);
             TokenKind::String
         } else if c == '"' {
             self.bump();
@@ -195,7 +220,7 @@ impl<'a> Lexer<'a> {
             } else {
                 TokenKind::QuotedIdent
             }
-        } else if c == '`' && d != Dialect::Postgres {
+        } else if c == '`' && matches!(d, Dialect::MySql | Dialect::Sqlite | Dialect::DuckDb) {
             self.bump();
             self.quoted('`', false);
             TokenKind::QuotedIdent
@@ -204,7 +229,18 @@ impl<'a> Lexer<'a> {
             self.eat_while(|c| c != ']');
             self.bump();
             TokenKind::QuotedIdent
-        } else if c == '$' && d == Dialect::Postgres && !self.after_word() && self.dollar_quote() {
+        } else if c == '[' && d == Dialect::SqlServer {
+            self.bump();
+            self.quoted(']', false);
+            TokenKind::QuotedIdent
+        } else if c == '#' && d == Dialect::SqlServer {
+            self.eat_while(|c| is_ident_char(c, d));
+            TokenKind::Word
+        } else if c == '$'
+            && matches!(d, Dialect::Postgres | Dialect::DuckDb)
+            && !self.after_word()
+            && self.dollar_quote()
+        {
             TokenKind::String
         } else if is_ident_start(c) {
             self.eat_while(|c| is_ident_char(c, d));
@@ -287,6 +323,29 @@ mod tests {
     }
 
     #[test]
+    fn duckdb_quoting_and_comments() {
+        use TokenKind::*;
+        let src = r"select E'a\'b', $$a;b$$, `c``d`, a$b, $1 /* x /* y */ z */";
+        assert_eq!(
+            kinds(src, Dialect::DuckDb),
+            [
+                (Word, "select"),
+                (String, r"E'a\'b'"),
+                (Symbol, ","),
+                (String, "$$a;b$$"),
+                (Symbol, ","),
+                (QuotedIdent, "`c``d`"),
+                (Symbol, ","),
+                (Word, "a$b"),
+                (Symbol, ","),
+                (Symbol, "$"),
+                (Symbol, "1"),
+                (BlockComment, "/* x /* y */ z */"),
+            ]
+        );
+    }
+
+    #[test]
     fn mysql_quoting_and_comments() {
         use TokenKind::*;
         let src = "select 'a\\'b', \"c;d\", `e``f`, 1--2\n# hash\n-- dash";
@@ -306,6 +365,33 @@ mod tests {
                 (Symbol, "2"),
                 (LineComment, "# hash"),
                 (LineComment, "-- dash"),
+            ]
+        );
+    }
+
+    #[test]
+    fn sql_server_quoting() {
+        use TokenKind::*;
+        let src = "select N'it''s', [a]]b], \"q\", #tmp, @@rowcount, /* a /* b */ c */ x";
+        assert_eq!(
+            kinds(src, Dialect::SqlServer),
+            [
+                (Word, "select"),
+                (String, "N'it''s'"),
+                (Symbol, ","),
+                (QuotedIdent, "[a]]b]"),
+                (Symbol, ","),
+                (QuotedIdent, "\"q\""),
+                (Symbol, ","),
+                (Word, "#tmp"),
+                (Symbol, ","),
+                // `@` starts no word, so that client commands (`@set`) stay recognisable.
+                (Symbol, "@"),
+                (Symbol, "@"),
+                (Word, "rowcount"),
+                (Symbol, ","),
+                (BlockComment, "/* a /* b */ c */"),
+                (Word, "x"),
             ]
         );
     }

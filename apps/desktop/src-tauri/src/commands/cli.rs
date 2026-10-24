@@ -1,6 +1,7 @@
 //! Runs a script with the database's own command-line client found on the PATH (`psql`,
-//! `mysql` or `sqlite3`), with the settings and password of the editor's session, for
-//! scripts that rely on the client's own commands such as `\copy` or `source`.
+//! `mysql`, `sqlcmd` or `sqlite3`; none for DuckDB), with the settings and password of the
+//! editor's session, for scripts that rely on the client's own commands such as `\copy`,
+//! `source` or `:r`.
 
 use std::process::{Output, Stdio};
 use std::time::Instant;
@@ -27,11 +28,17 @@ pub struct CliOutput {
     elapsed_ms: u64,
 }
 
-fn program(driver: DriverKind) -> &'static str {
+fn program(driver: DriverKind) -> CommandResult<&'static str> {
     match driver {
-        DriverKind::Postgres => "psql",
-        DriverKind::MySql => "mysql",
-        DriverKind::Sqlite => "sqlite3",
+        DriverKind::Postgres => Ok("psql"),
+        DriverKind::MySql => Ok("mysql"),
+        DriverKind::Sqlite => Ok("sqlite3"),
+        DriverKind::SqlServer => Ok("sqlcmd"),
+        // DuckDB locks the file for the process that opens it, and the session holds it.
+        DriverKind::DuckDb => Err(CommandError::new(
+            "cli",
+            "the duckdb client cannot open a database file that PlatypusDB has open",
+        )),
     }
 }
 
@@ -112,13 +119,40 @@ fn invocation(
             }
             env.extend(password.map(|p| ("MYSQL_PWD", p)));
         }
-        DriverKind::Sqlite => {
+        DriverKind::Sqlite | DriverKind::DuckDb => {
             args.extend(
                 ["-bail", "-header", "-column", config.database.as_str()].map(str::to_owned),
             );
         }
+        DriverKind::SqlServer => {
+            args = sqlcmd_args(config, host, port);
+            env.extend(password.map(|p| ("SQLCMDPASSWORD", p)));
+        }
     }
     (args, env)
+}
+
+/// `sqlcmd` stops at the first error, with quoted identifiers on (it turns them off by
+/// default) and UTF-8 input and output.
+fn sqlcmd_args(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Vec<String> {
+    let server = match port {
+        Some(port) => format!("{host},{port}"),
+        None => host.to_owned(),
+    };
+    let mut args: Vec<String> = ["-b", "-I", "-f", "65001", "-S", &server, "-U", &config.user]
+        .map(str::to_owned)
+        .into();
+    if !config.database.is_empty() {
+        args.extend(["-d".to_owned(), config.database.clone()]);
+    }
+    // `prefer` and `require` encrypt without checking the server's certificate.
+    let tls: &[&str] = match config.ssl_mode {
+        SslMode::Disable => &[],
+        SslMode::Prefer | SslMode::Require => &["-N", "-C"],
+        SslMode::VerifyCa | SslMode::VerifyFull => &["-N"],
+    };
+    args.extend(tls.iter().map(|a| (*a).to_owned()));
+    args
 }
 
 /// Waits for the client to end, or (`None`) for `cancel`: the client is then killed, as
@@ -161,7 +195,7 @@ async fn run(
     mut cancel: oneshot::Receiver<()>,
 ) -> CommandResult<CliOutput> {
     let config = state.session(session_id)?.config;
-    let program = program(config.driver);
+    let program = program(config.driver)?;
     // The tunnel stays open while the client runs.
     let tunnel = match (&config.ssh, config.port.or(config.driver.default_port())) {
         (Some(ssh), Some(port)) => Some(Tunnel::open(ssh, &config.host, port, None).await?),
@@ -267,5 +301,22 @@ mod tests {
             "default SSL mode"
         );
         assert!(env.contains(&("MYSQL_PWD", "s3cret".to_owned())));
+
+        config.driver = DriverKind::SqlServer;
+        let (args, env) = invocation(&config, "db", Some(1433));
+        assert!(args.windows(2).any(|w| w == ["-S", "db,1433"]));
+        assert!(args.windows(2).any(|w| w == ["-d", "shop"]));
+        assert!(
+            args.iter().any(|a| a == "-C"),
+            "prefer trusts the certificate"
+        );
+        assert!(!args.iter().any(|a| a.contains("s3cret")));
+        assert!(env.contains(&("SQLCMDPASSWORD", "s3cret".to_owned())));
+    }
+
+    #[test]
+    fn has_no_client_for_duckdb() {
+        assert_eq!(program(DriverKind::Sqlite).ok(), Some("sqlite3"));
+        assert!(program(DriverKind::DuckDb).is_err());
     }
 }
