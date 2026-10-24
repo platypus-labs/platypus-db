@@ -1,8 +1,8 @@
 # PlatypusDB
 
-Fast, lightweight desktop SQL client for **PostgreSQL**, **MySQL/MariaDB** and **SQLite**.
-Rust core, Tauri 2 + React UI: a 5 MB installer that starts in under half a second and
-scrolls through millions of rows.
+Fast, lightweight desktop SQL client for **PostgreSQL**, **MySQL/MariaDB**, **SQLite** and
+**DuckDB**. Rust core, Tauri 2 + React UI: a 5 MB installer that starts in under half a second
+and scrolls through millions of rows.
 
 ![Data viewer](docs/screenshots/data-viewer.png)
 
@@ -173,6 +173,7 @@ crates/
   platypus-driver-pg/      PostgreSQL (tokio-postgres)
   platypus-driver-mysql/   MySQL / MariaDB (mysql_async)
   platypus-driver-sqlite/  SQLite (rusqlite)
+  platypus-driver-duckdb/  DuckDB (duckdb, bundled; Arrow results as they come)
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
   platypus-net/            SSH tunnels (russh)
   platypus-store/          connections (TOML + OS keychain), imports, query history (SQLite)
@@ -214,6 +215,7 @@ cargo run --release -p platypus-cli -- query -f csv -o big.csv --stats "select *
 cargo run --release -p platypus-cli -- query -f parquet -o big.parquet --stats "select * from demo.big_table"
 cargo run -p platypus-cli -- query -u mysql://platypus:platypus@localhost:53306/platypus "select * from type_zoo"
 cargo run -p platypus-cli -- query -u sqlite:///C:/data/app.db "select * from sqlite_master"
+cargo run -p platypus-cli -- query -u duckdb:///C:/data/app.duckdb "select * from duckdb_tables()"
 
 # end-to-end tests (Windows): drive the release build on a throwaway profile
 cd apps/desktop
