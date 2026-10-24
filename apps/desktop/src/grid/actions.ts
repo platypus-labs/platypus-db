@@ -15,7 +15,7 @@ registerAction({
     const lines: string[] = [];
     for (let r = sel.r0; r <= sel.r1; r++) {
       const cells: string[] = [];
-      for (let c = sel.c0; c <= sel.c1; c++) cells.push(grid.value(r, c) ?? "");
+      for (const c of sel.cols) cells.push(grid.value(r, c) ?? "");
       lines.push(cells.join("\t"));
     }
     await navigator.clipboard.writeText(lines.join("\n"));
@@ -30,6 +30,5 @@ registerAction({
   group: "select",
   order: 50,
   when: ({ grid }) => grid.rowCount() > 0 && grid.columns().length > 0,
-  run: ({ grid }) =>
-    grid.select({ row: 0, col: 0 }, { row: grid.rowCount() - 1, col: grid.columns().length - 1 }),
+  run: ({ grid }) => grid.selectAll(),
 });

@@ -57,6 +57,8 @@ export interface Action<S extends ActionScope = ActionScope> {
   when?: (arg: ActionScopes[S]) => boolean;
   /** Shortcut only, never listed in menus. */
   hidden?: boolean;
+  /** Listed in a submenu with this title, e.g. `Copy as`, at the place of its first action. */
+  submenu?: string;
   run: (arg: ActionScopes[S]) => void | Promise<void>;
 }
 

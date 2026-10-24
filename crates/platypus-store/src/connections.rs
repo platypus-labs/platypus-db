@@ -36,6 +36,18 @@ pub struct SavedConnection {
     /// Accent colour for tabs and the navigator, e.g. `#d64545` for production.
     pub color: Option<String>,
     pub folder: Option<String>,
+    /// Logical keys the user set for tables without a primary key, so the data editor can
+    /// identify their rows. Last: TOML writes arrays of tables after plain values.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub virtual_keys: Vec<VirtualKey>,
+}
+
+/// Columns that identify a table's rows, set by the user instead of a primary key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VirtualKey {
+    pub schema: String,
+    pub table: String,
+    pub columns: Vec<String>,
 }
 
 impl SavedConnection {
@@ -55,6 +67,7 @@ impl SavedConnection {
             read_only: false,
             color: None,
             folder: None,
+            virtual_keys: Vec::new(),
         }
     }
 
@@ -156,6 +169,31 @@ impl ConnectionStore {
             PasswordUpdate::Clear => self.secrets.delete(id),
             PasswordUpdate::Keep => Ok(()),
         }
+    }
+
+    /// Sets the virtual key of `schema.table`, or removes it when `columns` is empty.
+    pub fn set_virtual_key(
+        &mut self,
+        id: Uuid,
+        schema: &str,
+        table: &str,
+        columns: Vec<String>,
+    ) -> Result<()> {
+        let connection = self
+            .connections
+            .iter_mut()
+            .find(|c| c.id == id)
+            .ok_or(StoreError::NotFound(id))?;
+        let keys = &mut connection.virtual_keys;
+        keys.retain(|k| k.schema != schema || k.table != table);
+        if !columns.is_empty() {
+            keys.push(VirtualKey {
+                schema: schema.to_owned(),
+                table: table.to_owned(),
+                columns,
+            });
+        }
+        self.write()
     }
 
     pub fn delete(&mut self, id: Uuid) -> Result<()> {
@@ -266,6 +304,36 @@ mod tests {
         s.save(conn.clone(), PasswordUpdate::Set(Secret::new("ignored")))
             .unwrap();
         assert_eq!(s.password(conn.id).unwrap(), None);
+    }
+
+    #[test]
+    fn sets_and_removes_virtual_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, secrets) = store(dir.path());
+        let conn = sample();
+        s.save(conn.clone(), PasswordUpdate::Keep).unwrap();
+        s.set_virtual_key(conn.id, "public", "log", vec!["at".into(), "seq".into()])
+            .unwrap();
+        s.set_virtual_key(conn.id, "public", "log", vec!["id".into()])
+            .unwrap();
+        s.set_virtual_key(conn.id, "public", "other", vec!["x".into()])
+            .unwrap();
+        s.set_virtual_key(conn.id, "public", "other", Vec::new())
+            .unwrap();
+
+        let reopened = ConnectionStore::open(dir.path().join("connections.toml"), secrets).unwrap();
+        assert_eq!(
+            reopened.list()[0].virtual_keys,
+            [VirtualKey {
+                schema: "public".into(),
+                table: "log".into(),
+                columns: vec!["id".into()],
+            }]
+        );
+        assert!(matches!(
+            s.set_virtual_key(Uuid::new_v4(), "a", "b", Vec::new()),
+            Err(StoreError::NotFound(_))
+        ));
     }
 
     #[test]

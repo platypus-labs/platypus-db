@@ -2,7 +2,7 @@
 
 use platypus_core::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, ConstraintKind, ConstraintMeta,
-    Error, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ObjectRef, Property, ReferenceMeta,
+    Error, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ObjectRef, Property, ReferencingKey,
     Result, SchemaMeta, TableDetails, TextRow, TextRowExt, group_sorted, query_catalog, query_text,
     unsupported,
 };
@@ -151,6 +151,7 @@ pub async fn table_details(
         default: r.opt(3),
         primary_key: r.flag(4),
         comment: r.opt(5).filter(|c| !c.is_empty()),
+        enum_values: enum_values(&r.text(1)),
     })
     .collect();
 
@@ -211,7 +212,7 @@ pub async fn table_details(
     );
 
     let constraints = constraints(conn, schema, table).await?;
-    let referenced_by = referenced_by(conn, schema, table).await?;
+    let referenced_by = referencing_keys(conn, schema, table).await?;
 
     Ok(TableDetails {
         columns,
@@ -285,45 +286,6 @@ async fn constraints(
         }
     }
     Ok(constraints)
-}
-
-/// Foreign keys of other tables that point at this one.
-async fn referenced_by(
-    conn: &MySqlConnection,
-    schema: &str,
-    table: &str,
-) -> Result<Vec<ReferenceMeta>> {
-    let rows = query_text(
-        conn,
-        &format!(
-            "SELECT CONSTRAINT_NAME, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME
-             FROM information_schema.KEY_COLUMN_USAGE
-             WHERE REFERENCED_TABLE_SCHEMA = {} AND REFERENCED_TABLE_NAME = {}
-             ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION",
-            conn.literal(schema),
-            conn.literal(table)
-        ),
-    )
-    .await?;
-    let referenced_by = group_sorted(
-        rows.iter().map(|r| {
-            (
-                format!("{}\u{1f}{}\u{1f}{}", r.text(1), r.text(2), r.text(0)),
-                ReferenceMeta {
-                    name: r.text(0),
-                    schema: r.text(1),
-                    table: r.text(2),
-                    columns: vec![r.text(3)],
-                    ref_columns: vec![r.text(4)],
-                },
-            )
-        }),
-        |reference, row| {
-            reference.columns.extend(row.columns);
-            reference.ref_columns.extend(row.ref_columns);
-        },
-    );
-    Ok(referenced_by)
 }
 
 /// `SHOW CREATE ...` for the object, and the column of its output that holds the statement.
@@ -459,4 +421,85 @@ pub async fn object_properties(conn: &MySqlConnection, o: &ObjectRef<'_>) -> Res
         ),
         _ => Vec::new(),
     })
+}
+
+pub async fn referencing_keys(
+    conn: &MySqlConnection,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<ReferencingKey>> {
+    // One row per key column; the group key tells keys of different tables apart.
+    let rows = query_text(
+        conn,
+        &format!(
+            "SELECT CONCAT_WS(CHAR(31), TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME),
+                    TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME
+             FROM information_schema.KEY_COLUMN_USAGE
+             WHERE REFERENCED_TABLE_SCHEMA = {} AND REFERENCED_TABLE_NAME = {}
+             ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION",
+            conn.literal(schema),
+            conn.literal(table)
+        ),
+    )
+    .await?;
+    Ok(group_sorted(
+        rows.iter().map(|r| {
+            (
+                r.text(0),
+                ReferencingKey {
+                    schema: r.text(1),
+                    table: r.text(2),
+                    name: r.text(3),
+                    columns: vec![r.text(4)],
+                    ref_columns: vec![r.text(5)],
+                },
+            )
+        }),
+        |key, row| {
+            key.columns.extend(row.columns);
+            key.ref_columns.extend(row.ref_columns);
+        },
+    ))
+}
+
+/// The values of an `enum('a','it''s')` column type; empty for other types.
+fn enum_values(column_type: &str) -> Vec<String> {
+    let Some(list) = column_type
+        .strip_prefix("enum(")
+        .and_then(|rest| rest.strip_suffix(')'))
+    else {
+        return Vec::new();
+    };
+    let mut values = Vec::new();
+    let mut chars = list.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\'' {
+            continue;
+        }
+        let mut value = String::new();
+        while let Some(c) = chars.next() {
+            match c {
+                '\'' if chars.peek() == Some(&'\'') => {
+                    chars.next();
+                    value.push('\'');
+                }
+                '\'' => break,
+                c => value.push(c),
+            }
+        }
+        values.push(value);
+    }
+    values
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_enum_values() {
+        assert_eq!(enum_values("enum('a','it''s','x,y')"), ["a", "it's", "x,y"]);
+        assert_eq!(enum_values("varchar(10)"), Vec::<String>::new());
+        assert_eq!(enum_values("enum('')"), [""]);
+    }
 }

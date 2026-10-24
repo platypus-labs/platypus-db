@@ -189,12 +189,13 @@ export function Navigator(props: Props) {
     disconnect(c);
   }
 
-  function openData(c: SavedConnection, db: string | null, object: ObjectMeta, target: string) {
+  function openData(c: SavedConnection, db: string | null, schema: SchemaMeta, object: ObjectMeta, target: string) {
     onOpenTab(c, {
       sql: viewerSql(c.driver, target, "", null),
       autorun: true,
       title: object.name,
       table: target,
+      tableRef: { schema: schema.name, name: object.name, kind: object.kind },
       database: db,
     });
   }
@@ -424,7 +425,7 @@ export function Navigator(props: Props) {
         title: object.comment ?? undefined,
         expanded: open,
         onToggle: () => toggle(okey, () => void loadDetails(c, db, schema.name, object.name)),
-        onOpen: () => openData(c, db, object, target),
+        onOpen: () => openData(c, db, schema, object, target),
         ...status(okey),
         menu,
       },
@@ -619,7 +620,7 @@ interface NavigatorApi {
   loadObjects: (c: SavedConnection, db: string | null, schema: string) => void;
   loadDetails: (c: SavedConnection, db: string | null, schema: string, name: string) => Promise<TableDetails | null>;
   closeConnection: (c: SavedConnection) => void;
-  openData: (c: SavedConnection, db: string | null, object: ObjectMeta, target: string) => void;
+  openData: (c: SavedConnection, db: string | null, schema: SchemaMeta, object: ObjectMeta, target: string) => void;
   openObject: (c: SavedConnection, db: string | null, schema: SchemaMeta, object: ObjectMeta) => void;
   isOpen: (key: string) => boolean;
 }
@@ -719,7 +720,7 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       group: "open",
       order: 10,
       when: ({ object }) => isRelation(object.kind),
-      run: ({ connection, database, object, target }) => n().openData(connection, database, object, target),
+      run: ({ connection, database, schema, object, target }) => n().openData(connection, database, schema, object, target),
     }),
     registerAction({
       id: "object.open",

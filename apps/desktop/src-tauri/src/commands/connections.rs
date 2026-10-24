@@ -58,6 +58,22 @@ pub fn delete_connection(
     })
 }
 
+/// Sets the logical key the data editor uses for a table without a primary key; no
+/// columns remove it.
+#[tauri::command]
+pub fn set_virtual_key(
+    state: State<'_, AppState>,
+    connection_id: Uuid,
+    schema: String,
+    table: String,
+    columns: Vec<String>,
+) -> CommandResult<Vec<SavedConnection>> {
+    state.with_store(|s| {
+        s.set_virtual_key(connection_id, &schema, &table, columns)?;
+        Ok(s.list().to_vec())
+    })
+}
+
 /// Connects with the form's current values, without saving them.
 #[tauri::command]
 pub async fn test_connection(

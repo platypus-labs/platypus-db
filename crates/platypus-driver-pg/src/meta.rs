@@ -2,7 +2,7 @@
 
 use platypus_core::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, Connection, ConstraintKind,
-    ConstraintMeta, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ReferenceMeta, Result,
+    ConstraintMeta, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ReferencingKey, Result,
     SchemaMeta, TableDetails, TextRowExt, query_catalog, query_text,
 };
 
@@ -182,7 +182,9 @@ pub async fn table_details(
             "SELECT a.attname, format_type(a.atttypid, a.atttypmod), NOT a.attnotnull,
                     pg_get_expr(d.adbin, d.adrelid),
                     coalesce(a.attnum = ANY (i.indkey), false),
-                    col_description(a.attrelid, a.attnum)
+                    col_description(a.attrelid, a.attnum),
+                    (SELECT string_agg(e.enumlabel, E'\\n' ORDER BY e.enumsortorder)
+                     FROM pg_enum e WHERE e.enumtypid = a.atttypid)
              FROM pg_attribute a
              LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
              LEFT JOIN pg_index i ON i.indrelid = a.attrelid AND i.indisprimary
@@ -199,6 +201,10 @@ pub async fn table_details(
         default: r.opt(3),
         primary_key: r.flag(4),
         comment: r.opt(5),
+        enum_values: r
+            .opt(6)
+            .map(|labels| labels.split('\n').map(str::to_owned).collect())
+            .unwrap_or_default(),
     })
     .collect();
 
@@ -256,7 +262,7 @@ pub async fn table_details(
     .collect();
 
     let constraints = constraints(conn, &relation).await?;
-    let referenced_by = referenced_by(conn, &relation).await?;
+    let referenced_by = referencing_keys(conn, schema, table).await?;
 
     Ok(TableDetails {
         columns,
@@ -300,38 +306,47 @@ async fn constraints(conn: &dyn Connection, relation: &str) -> Result<Vec<Constr
     Ok(constraints)
 }
 
-/// Foreign keys of other tables that point at this one.
-async fn referenced_by(conn: &dyn Connection, relation: &str) -> Result<Vec<ReferenceMeta>> {
-    let referenced_by = query_text(
+/// Foreign keys of other tables that point at `schema.table`.
+pub async fn referencing_keys(
+    conn: &dyn Connection,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<ReferencingKey>> {
+    let columns = |key: &str, rel: &str| {
+        format!(
+            "array_to_string(ARRAY(
+                SELECT a.attname FROM unnest(con.{key}) WITH ORDINALITY k(n, o)
+                JOIN pg_attribute a ON a.attrelid = con.{rel} AND a.attnum = k.n
+                ORDER BY k.o), chr(31))"
+        )
+    };
+    Ok(query_text(
         conn,
         &format!(
-            "SELECT con.conname, n.nspname, c.relname,
-                    array_to_string(ARRAY(
-                        SELECT a.attname FROM unnest(con.conkey) WITH ORDINALITY k(n, o)
-                        JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.n
-                        ORDER BY k.o), chr(31)),
-                    array_to_string(ARRAY(
-                        SELECT a.attname FROM unnest(con.confkey) WITH ORDINALITY k(n, o)
-                        JOIN pg_attribute a ON a.attrelid = con.confrelid AND a.attnum = k.n
-                        ORDER BY k.o), chr(31))
+            "SELECT n.nspname, c.relname, con.conname, {}, {}
              FROM pg_constraint con
              JOIN pg_class c ON c.oid = con.conrelid
              JOIN pg_namespace n ON n.oid = c.relnamespace
-             WHERE con.contype = 'f' AND con.confrelid = {relation}
-             ORDER BY n.nspname, c.relname, con.conname"
+             WHERE con.contype = 'f' AND con.confrelid =
+                 (SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                  WHERE n.nspname = {} AND c.relname = {})
+             ORDER BY n.nspname, c.relname, con.conname",
+            columns("conkey", "conrelid"),
+            columns("confkey", "confrelid"),
+            literal(schema),
+            literal(table)
         ),
     )
     .await?
     .into_iter()
-    .map(|r| ReferenceMeta {
-        name: r.text(0),
-        schema: r.text(1),
-        table: r.text(2),
+    .map(|r| ReferencingKey {
+        schema: r.text(0),
+        table: r.text(1),
+        name: r.text(2),
         columns: list(r.opt(3)),
         ref_columns: list(r.opt(4)),
     })
-    .collect();
-    Ok(referenced_by)
+    .collect())
 }
 
 #[cfg(test)]

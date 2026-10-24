@@ -20,8 +20,8 @@ use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, DriverError, Opts, OptsBuilder, Row, SslOpts, Value};
 use platypus_core::{
     CancelHandle, Canceller, CatalogColumn, Connection, ConnectionConfig, DbError, Driver,
-    DriverKind, Error, ExecOptions, ExecResult, ObjectMeta, RecordBatchStream, Result, SchemaMeta,
-    ServerInfo, SslMode, TableDetails, TransactionState, TxTracker, classify,
+    DriverKind, Error, ExecOptions, ExecResult, ObjectMeta, RecordBatchStream, ReferencingKey,
+    Result, SchemaMeta, ServerInfo, SslMode, TableDetails, TransactionState, TxTracker, classify,
 };
 use tokio::sync::{Mutex, mpsc, oneshot};
 
@@ -93,6 +93,9 @@ fn opts(config: &ConnectionConfig, ssl: Option<SslOpts>) -> Opts {
         .db_name(Some(config.database.clone()).filter(|d| !d.is_empty()))
         .prefer_socket(false)
         .stmt_cache_size(0)
+        // Row counts of UPDATE are the rows matched, as in other databases, not only the
+        // rows whose value changed: the data editor checks that each change hit one row.
+        .client_found_rows(true)
         .init(vec![format!("SET time_zone = '{SESSION_TIME_ZONE}'")])
         .ssl_opts(ssl);
     if let Some(name) = &config.application_name {
@@ -213,6 +216,10 @@ impl Connection for MySqlConnection {
 
     async fn table_details(&self, schema: &str, table: &str) -> Result<TableDetails> {
         meta::table_details(self, schema, table).await
+    }
+
+    async fn referencing_keys(&self, schema: &str, table: &str) -> Result<Vec<ReferencingKey>> {
+        meta::referencing_keys(self, schema, table).await
     }
 
     async fn catalog_columns(&self) -> Result<Vec<CatalogColumn>> {

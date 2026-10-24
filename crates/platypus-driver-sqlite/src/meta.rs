@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 use platypus_core::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, Connection, ConstraintKind,
     ConstraintMeta, Error, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ObjectRef,
-    ReferenceMeta, Result, SchemaMeta, TableDetails, TextRowExt, group_sorted, query_catalog,
+    ReferencingKey, Result, SchemaMeta, TableDetails, TextRowExt, group_sorted, query_catalog,
     query_text, unsupported,
 };
 use platypus_sql::Dialect;
@@ -183,6 +183,7 @@ pub async fn table_details(
         default: r.opt(3),
         primary_key: r.text(4) != "0",
         comment: None,
+        enum_values: Vec::new(),
     })
     .collect();
 
@@ -257,7 +258,7 @@ pub async fn table_details(
     );
 
     let constraints = key_constraints(&indexes);
-    let referenced_by = referenced_by(conn, schema, table).await?;
+    let referenced_by = referencing_keys(conn, schema, table).await?;
 
     Ok(TableDetails {
         columns,
@@ -295,41 +296,66 @@ fn key_constraints(indexes: &[IndexMeta]) -> Vec<ConstraintMeta> {
         .collect()
 }
 
-/// Foreign keys of the other tables of `schema` that point at `table`.
-async fn referenced_by(
+/// SQLite keys only point within their own database, so the other tables of `schema` are
+/// searched.
+pub async fn referencing_keys(
     conn: &dyn Connection,
     schema: &str,
     table: &str,
-) -> Result<Vec<ReferenceMeta>> {
+) -> Result<Vec<ReferencingKey>> {
+    let schema_lit = literal(schema);
     let rows = query_text(
         conn,
         &format!(
-            "SELECT m.name, f.id, f.\"from\", coalesce(f.\"to\", '')
-             FROM {}.sqlite_master m JOIN pragma_foreign_key_list(m.name, {}) f
+            "SELECT m.name || char(31) || f.id, m.name, f.id, f.\"from\", coalesce(f.\"to\", '')
+             FROM {}.sqlite_master m
+             JOIN pragma_foreign_key_list(m.name, {schema_lit}) f
              WHERE m.type = 'table' AND f.\"table\" = {} COLLATE NOCASE
              ORDER BY m.name, f.id, f.seq",
             ident(schema),
-            literal(schema),
             literal(table)
         ),
     )
     .await?;
-    Ok(group_sorted(
+    let mut keys = group_sorted(
         rows.iter().map(|r| {
             (
-                format!("{}{}", r.text(0), r.text(1)),
-                ReferenceMeta {
-                    name: format!("fk_{}_{}", r.text(0), r.text(1)),
+                r.text(0),
+                ReferencingKey {
                     schema: schema.to_owned(),
-                    table: r.text(0),
-                    columns: vec![r.text(2)],
-                    ref_columns: vec![r.text(3)],
+                    table: r.text(1),
+                    name: format!("fk_{}_{}", r.text(1), r.text(2)),
+                    columns: vec![r.text(3)],
+                    ref_columns: vec![r.text(4)],
                 },
             )
         }),
-        |reference, row| {
-            reference.columns.extend(row.columns);
-            reference.ref_columns.extend(row.ref_columns);
+        |key, row| {
+            key.columns.extend(row.columns);
+            key.ref_columns.extend(row.ref_columns);
         },
-    ))
+    );
+    // A key without target columns points at the primary key.
+    if keys
+        .iter()
+        .any(|k| k.ref_columns.iter().any(String::is_empty))
+    {
+        let primary: Vec<String> = query_text(
+            conn,
+            &format!(
+                "SELECT name FROM pragma_table_info({}, {schema_lit}) WHERE pk > 0 ORDER BY pk",
+                literal(table)
+            ),
+        )
+        .await?
+        .iter()
+        .map(|r| r.text(0))
+        .collect();
+        for key in &mut keys {
+            if key.ref_columns.iter().any(String::is_empty) {
+                key.ref_columns.clone_from(&primary);
+            }
+        }
+    }
+    Ok(keys)
 }

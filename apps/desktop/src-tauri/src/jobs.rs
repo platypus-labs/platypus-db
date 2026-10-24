@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use arrow_array::RecordBatch;
-use arrow_schema::SchemaRef;
+use arrow_schema::{DataType, SchemaRef};
 use futures::StreamExt;
 use platypus_core::{CancelHandle, Connection, ExecOptions, ExecResult, META_DB_TYPE};
 use serde::Serialize;
@@ -33,6 +33,8 @@ pub struct ColumnInfo {
     db_type: String,
     /// Right-align in the grid.
     numeric: bool,
+    /// Bytes, shown as hex.
+    binary: bool,
 }
 
 impl ColumnInfo {
@@ -44,6 +46,13 @@ impl ColumnInfo {
                 name: f.name().clone(),
                 db_type: f.metadata().get(META_DB_TYPE).cloned().unwrap_or_default(),
                 numeric: f.data_type().is_numeric(),
+                binary: matches!(
+                    f.data_type(),
+                    DataType::Binary
+                        | DataType::LargeBinary
+                        | DataType::BinaryView
+                        | DataType::FixedSizeBinary(_)
+                ),
             })
             .collect()
     }
