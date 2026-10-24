@@ -265,6 +265,35 @@ async fn reports_syntax_error_position() {
 }
 
 #[tokio::test]
+async fn reports_error_positions_of_paged_reads_in_the_statement() {
+    let Some(conn) = connect().await else { return };
+    let paged = ExecOptions {
+        paged: true,
+        ..ExecOptions::default()
+    };
+    // Outside and inside a transaction: the cursor prefix differs.
+    for begin in [false, true] {
+        if begin {
+            conn.execute("BEGIN", &ExecOptions::default())
+                .await
+                .unwrap();
+        }
+        let Err(Error::Database(db)) = conn
+            .execute("\n  SELECT nope FROM demo.big_table", &paged)
+            .await
+        else {
+            panic!("expected a database error");
+        };
+        assert_eq!(db.position, Some(11), "in transaction: {begin}");
+        if begin {
+            conn.execute("ROLLBACK", &ExecOptions::default())
+                .await
+                .unwrap();
+        }
+    }
+}
+
+#[tokio::test]
 async fn cancels_running_query() {
     let Some(conn) = connect().await else { return };
     // The server only flushes once the statement produces output, so `execute` itself can
@@ -364,4 +393,23 @@ async fn paged_reads_end_their_own_transaction() {
     let failed: Result<Vec<RecordBatch>, _> = stream.try_collect().await;
     assert!(failed.is_err(), "division by zero on the second page");
     assert!(!in_transaction(&conn).await, "rolled back after the error");
+}
+
+#[tokio::test]
+async fn paged_reads_return_once_the_query_has_run() {
+    let Some(conn) = connect().await else { return };
+    let paged = ExecOptions {
+        paged: true,
+        ..ExecOptions::default()
+    };
+    let started = Instant::now();
+    let result = conn.execute("SELECT pg_sleep(0.3), 1", &paged).await;
+    assert!(matches!(result, Ok(ExecResult::Rows(_))));
+    assert!(
+        started.elapsed() >= Duration::from_millis(300),
+        "returned before running"
+    );
+    // An error on the first rows comes from the statement itself.
+    assert!(conn.execute("SELECT 1 / 0", &paged).await.is_err());
+    assert!(!in_transaction(&conn).await);
 }

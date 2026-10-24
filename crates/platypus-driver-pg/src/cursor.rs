@@ -12,7 +12,7 @@ use std::sync::Arc;
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
 use futures::StreamExt;
-use platypus_core::{ExecOptions, ExecResult, RecordBatchStream, Result, leading_words};
+use platypus_core::{Error, ExecOptions, ExecResult, RecordBatchStream, Result, leading_words};
 use platypus_sql::Dialect;
 use tokio::sync::OwnedMutexGuard;
 use tokio_postgres::{Client, Statement};
@@ -44,12 +44,9 @@ pub async fn open(
     let query = sql.trim().trim_end_matches(';');
     let begin = if own { "BEGIN; " } else { "" };
     let batch_size = options.batch_size.max(1);
+    let declare = format!("{begin}DECLARE {name} NO SCROLL CURSOR FOR ");
     let declared = async {
-        client
-            .batch_execute(&format!(
-                "{begin}DECLARE {name} NO SCROLL CURSOR FOR {query}"
-            ))
-            .await?;
+        client.batch_execute(&format!("{declare}{query}")).await?;
         client
             .prepare(&format!("FETCH {batch_size} FROM {name}"))
             .await
@@ -60,7 +57,7 @@ pub async fn open(
             if own {
                 let _ = client.batch_execute("ROLLBACK").await;
             }
-            return Err(map_error(e));
+            return Err(in_query(map_error(e), sql, &declare));
         }
     };
     let (fields, builders): (Vec<_>, Vec<_>) = fetch
@@ -81,11 +78,30 @@ pub async fn open(
         own,
         guard: Some(guard),
     };
-    let stream = futures::stream::try_unfold(state, next_batch);
-    Ok(ExecResult::Rows(RecordBatchStream::new(
-        schema,
-        stream.boxed(),
-    )))
+    // The query runs on the first FETCH: read it here, so the statement returns when its
+    // first rows do (the time to the first response, slow-query marks) and fails as one.
+    let stream = match next_batch(state).await? {
+        None => futures::stream::empty().boxed(),
+        Some((first, state)) => futures::stream::once(async { Ok(first) })
+            .chain(futures::stream::try_unfold(state, next_batch))
+            .boxed(),
+    };
+    Ok(ExecResult::Rows(RecordBatchStream::new(schema, stream)))
+}
+
+/// An error of `{declare}{query}` with its position in `sql`, the statement as typed: the
+/// server counts characters from the start of what it was sent.
+fn in_query(mut e: Error, sql: &str, declare: &str) -> Error {
+    if let Error::Database(db) = &mut e {
+        let trimmed = sql.len() - sql.trim_start().len();
+        let shift = declare.chars().count() - sql[..trimmed].chars().count();
+        db.position = db
+            .position
+            .and_then(|p| usize::try_from(p).ok()?.checked_sub(shift))
+            .filter(|&p| p > 0)
+            .and_then(|p| u32::try_from(p).ok());
+    }
+    e
 }
 
 struct CursorState {
