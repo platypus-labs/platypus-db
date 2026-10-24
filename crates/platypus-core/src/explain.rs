@@ -14,6 +14,22 @@ pub struct Explain {
     pub root: PlanNode,
     /// The statement ran: the nodes have actual rows and times.
     pub analyzed: bool,
+    /// Filtered full scans of large tables, where an index on the filtered columns may
+    /// help. Set by [`Explain::new`].
+    pub suggestions: Vec<FullScan>,
+}
+
+/// Rows a filtered full scan must read before an index is worth suggesting.
+pub const LARGE_SCAN_ROWS: f64 = 10_000.0;
+
+/// A step that reads a whole table and keeps the rows matching a filter.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct FullScan {
+    pub table: String,
+    pub filter: String,
+    /// Rows read, over all loops: actual with analyze; otherwise the planner's estimate,
+    /// which PostgreSQL does not give (`None`).
+    pub rows_read: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -44,21 +60,27 @@ pub struct PlanNode {
     /// With analyze, the milliseconds spent in the step itself over all its loops. Set by
     /// [`Explain::new`].
     pub self_ms: Option<f64>,
+    /// Set by the driver when the step is a filtered full scan of a table.
+    pub full_scan: Option<FullScan>,
     /// Everything else the server said about the step, as label and text.
     pub properties: Vec<(String, String)>,
     pub children: Vec<PlanNode>,
 }
 
 impl Explain {
-    /// A plan whose steps know their own share of the cost and of the time.
+    /// A plan whose steps know their own share of the cost and of the time, with its
+    /// index suggestions.
     #[must_use]
     pub fn new(format: ExplainFormat, plan: String, mut root: PlanNode, analyzed: bool) -> Self {
         root.fill_self();
+        let mut suggestions = Vec::new();
+        root.large_scans(&mut suggestions);
         Self {
             format,
             plan,
             root,
             analyzed,
+            suggestions,
         }
     }
 }
@@ -75,6 +97,17 @@ impl PlanNode {
     /// Milliseconds over all loops, children included.
     fn total_ms(&self) -> Option<f64> {
         Some(self.actual_ms? * self.loops.unwrap_or(1.0))
+    }
+
+    fn large_scans(&self, out: &mut Vec<FullScan>) {
+        if let Some(scan) = &self.full_scan
+            && scan.rows_read.is_some_and(|r| r >= LARGE_SCAN_ROWS)
+        {
+            out.push(scan.clone());
+        }
+        for child in &self.children {
+            child.large_scans(out);
+        }
     }
 
     fn fill_self(&mut self) {
@@ -172,5 +205,24 @@ mod tests {
             (plain.root.self_cost, plain.root.self_ms),
             (Some(3.0), None)
         );
+    }
+
+    #[test]
+    fn suggests_indexes_for_large_filtered_scans() {
+        let scan = |table: &str, rows: f64| PlanNode {
+            full_scan: Some(FullScan {
+                table: table.to_owned(),
+                filter: "(total > 10)".to_owned(),
+                rows_read: Some(rows),
+            }),
+            ..PlanNode::new("Seq Scan")
+        };
+        let join = PlanNode {
+            children: vec![scan("small", 50.0), scan("orders", LARGE_SCAN_ROWS)],
+            ..PlanNode::new("Hash Join")
+        };
+        let plan = Explain::new(ExplainFormat::Json, String::new(), join, false);
+        let tables: Vec<_> = plan.suggestions.iter().map(|s| s.table.as_str()).collect();
+        assert_eq!(tables, ["orders"]);
     }
 }

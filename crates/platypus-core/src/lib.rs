@@ -21,7 +21,7 @@ pub use connection::{
     ServerInfo,
 };
 pub use error::{DbError, Error, Result};
-pub use explain::{Explain, ExplainFormat, PlanNode, explain_document};
+pub use explain::{Explain, ExplainFormat, FullScan, LARGE_SCAN_ROWS, PlanNode, explain_document};
 pub use init::{SessionInit, run_init};
 pub use metadata::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, ConstraintKind, ConstraintMeta,

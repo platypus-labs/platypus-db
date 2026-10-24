@@ -1,5 +1,5 @@
 // Group E against the dev PostgreSQL from docker/compose.yml: explain analyze with the
-// heatmap of each step's own time. Skipped when it is not running.
+// heatmap of each step's own time and an index suggestion. Skipped when it is not running.
 import assert from "node:assert/strict";
 import { CTRL } from "../cdp.mjs";
 
@@ -20,15 +20,16 @@ export default async function (page) {
   await page.eval(`document.querySelector('.modal button[type=submit]').click()`);
   await page.waitFor(`${queryTab} !== undefined`, 15_000);
 
-  const sql = "SELECT c.country, count(*) FROM demo.orders o JOIN demo.customers c ON c.id = o.customer_id GROUP BY c.country";
+  const sql = "SELECT c.country, count(*) FROM demo.orders o JOIN demo.customers c ON c.id = o.customer_id WHERE o.status = 'paid' GROUP BY c.country";
   await page.eval(`${queryTab}.querySelector('.cm-content').focus()`);
   await page.key("a", "KeyA", 65, CTRL);
   await page.type(sql);
   await page.waitFor(`[...${queryTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n') === ${JSON.stringify(sql)}`);
 
-  await page.eval(`${queryTab}.querySelector('.cm-content').id = 'e2e-editor'`);
+  // The visible editor box: a long line scrolls the content sideways.
+  await page.eval(`${queryTab}.querySelector('.cm-editor').id = 'e2e-editor'`);
   const r = await page.rect("#e2e-editor");
-  await page.click(r.x + 40, r.y + 10, { button: "right" });
+  await page.click(r.x + r.w / 2, r.y + 10, { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Explain analyze')).click()`);
   await page.waitFor(`${explainTab}?.querySelector('.explain-share') != null`, 15_000);
@@ -41,4 +42,6 @@ export default async function (page) {
   // The busiest step is tinted.
   const heats = await page.eval(`[...${explainTab}.querySelectorAll('.explain-node')].map(n => n.style.getPropertyValue('--heat'))`);
   assert.ok(heats.some((h) => parseInt(h) > 0), `heat in ${heats}`);
+  // orders is read in full for the status filter: an index is suggested.
+  assert.match(await page.eval(`${explainTab}.querySelector(".explain-suggestion")?.textContent ?? ""`), /^orders is read in full/);
 }

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type LogEntry, toCommandError } from "../api";
 import { fmt, formatMs } from "../components/ResultPanel";
+import { useSetting } from "../settings";
+import { isSlow, slowQuerySeconds } from "./slow";
 
 /** How often the open dialog asks for what changed. */
 const POLL_MS = 1000;
@@ -25,11 +27,47 @@ const time = new Intl.DateTimeFormat(undefined, {
   fractionalSecondDigits: 3,
 });
 
+/** Where a statement's time went: the network (from the last keep-alive), the server
+ *  until its first answer, then reading the rows. */
+function trace(e: LogEntry) {
+  if (e.first_ms === null) return null;
+  const network = e.network_ms === null ? null : Math.min(e.network_ms, e.first_ms);
+  const fetch = Math.max(0, (e.elapsed_ms ?? e.first_ms) - e.first_ms);
+  return { network, server: e.first_ms - (network ?? 0), fetch };
+}
+
+function Trace({ entry }: { entry: LogEntry }) {
+  const t = trace(entry);
+  if (!t) return null;
+  const parts: [string, number | null, string][] = [
+    ["Network", t.network, "The connection's last keep-alive round trip"],
+    ["Server", t.server, "Until the first answer, less the network"],
+    ["Fetch", t.fetch, "Reading the rows after the first answer"],
+  ];
+  const total = parts.reduce((sum, [, ms]) => sum + (ms ?? 0), 0);
+  return (
+    <div className="query-trace">
+      <div className="query-trace-bar">
+        {parts.map(([label, ms]) => (
+          <span key={label} className={label.toLowerCase()} style={{ flexGrow: total > 0 ? (ms ?? 0) / total : 0 }} />
+        ))}
+      </div>
+      {parts.map(([label, ms, title]) => (
+        <span key={label} className={label.toLowerCase()} title={title}>
+          {label} {ms === null ? "unknown" : duration(ms)}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 /** What the app sent to the databases, newest first, updated while open. */
 export function QueryManager({ onClose }: { onClose: () => void }) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [filter, setFilter] = useState("");
   const [metadata, setMetadata] = useState(true);
+  const [slowOnly, setSlowOnly] = useState(false);
+  const slowSeconds = useSetting(slowQuerySeconds);
   const [selected, setSelected] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const since = useRef(0);
@@ -70,6 +108,7 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
   const shown = entries.filter(
     (e) =>
       (metadata || e.kind !== "metadata") &&
+      (!slowOnly || isSlow(e.elapsed_ms, slowSeconds)) &&
       (!needle || e.text.toLowerCase().includes(needle) || e.connection.toLowerCase().includes(needle)),
   );
   const current = entries.find((e) => e.id === selected);
@@ -92,6 +131,11 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
           <label>
             <input type="checkbox" checked={metadata} onChange={(e) => setMetadata(e.target.checked)} /> Metadata
           </label>
+          {slowSeconds > 0 && (
+            <label title={`Slower than ${slowSeconds} s (Settings)`}>
+              <input type="checkbox" checked={slowOnly} onChange={(e) => setSlowOnly(e.target.checked)} /> Slow only
+            </label>
+          )}
           <span className="spacer" />
           <span className="muted small">
             {fmt.format(shown.length)} of {fmt.format(entries.length)}
@@ -115,7 +159,7 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
               {shown.map((e) => (
                 <tr
                   key={e.id}
-                  className={`${e.id === selected ? "selected " : ""}${e.kind}${e.status === "failed" ? " failed" : ""}`}
+                  className={`${e.id === selected ? "selected " : ""}${e.kind}${e.status === "failed" ? " failed" : ""}${isSlow(e.elapsed_ms, slowSeconds) ? " slow" : ""}`}
                   onClick={() => setSelected(e.id)}
                 >
                   <td>{time.format(e.started_at)}</td>
@@ -134,6 +178,7 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
         {current && (
           <>
             {current.error && <div className="notice error small">{current.error}</div>}
+            <Trace entry={current} />
             <pre className="sql-preview">{current.text}</pre>
           </>
         )}

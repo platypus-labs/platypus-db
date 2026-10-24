@@ -672,6 +672,33 @@ async fn explains_queries() {
     }
 }
 
+/// A filtered full scan of a large table is suggested an index.
+#[tokio::test]
+async fn suggests_indexes_for_large_scans() {
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        run(
+            conn,
+            &format!("CREATE TEMPORARY TABLE conf_big AS {}", b.series_sql),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let plan = conn
+            .explain("SELECT * FROM conf_big WHERE id = 42", true)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let tables: Vec<_> = plan.suggestions.iter().map(|s| s.table.as_str()).collect();
+        // SQLite plans have no row counts to judge a table by.
+        let expected: &[&str] = if b.name == "sqlite" {
+            &[]
+        } else {
+            &["conf_big"]
+        };
+        assert_eq!(tables, expected, "{}: {:#?}", b.name, plan.root);
+    }
+}
+
 /// Every optional method agrees with its capability flag: unsupported ones fail with
 /// `Error::Unsupported`, supported ones never do.
 #[tokio::test]

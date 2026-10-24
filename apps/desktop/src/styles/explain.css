@@ -176,3 +176,58 @@
 .query-manager-list tr.selected {
   background: var(--grid-selection);
 }
+
+.query-manager-list tr.slow td:nth-child(4),
+.slow-query {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* A statement's time: network, server until the first answer, fetch. */
+.query-trace {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.query-trace-bar {
+  display: flex;
+  flex-basis: 100%;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--border);
+}
+
+.query-trace .network {
+  --part: var(--fg-muted);
+}
+
+.query-trace .server {
+  --part: var(--accent);
+}
+
+.query-trace .fetch {
+  --part: var(--ok);
+}
+
+.query-trace-bar span {
+  background: var(--part);
+}
+
+.query-trace > span::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 2px;
+  background: var(--part);
+}
+
+.explain-suggestion code {
+  font-family: var(--font-mono);
+}

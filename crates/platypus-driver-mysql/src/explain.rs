@@ -2,7 +2,7 @@
 //! which has no JSON form before 8.3), MariaDB's `EXPLAIN`/`ANALYZE FORMAT=JSON`.
 
 use platypus_core::{
-    Connection, Error, Explain, ExplainFormat, PlanNode, Result, explain_document,
+    Connection, Error, Explain, ExplainFormat, FullScan, PlanNode, Result, explain_document,
 };
 use serde_json::{Map, Value};
 
@@ -58,7 +58,34 @@ fn tree_plan(plan: &str) -> PlanNode {
     while !open.is_empty() {
         close(&mut open, &mut roots);
     }
-    single_root(roots)
+    let mut root = single_root(roots);
+    mark_scans(&mut root);
+    root
+}
+
+/// A `Filter` right over a `Table scan on t` is a filtered full scan of `t`.
+fn mark_scans(node: &mut PlanNode) {
+    if node.operation == "Filter"
+        && let Some(filter) = node.detail.clone()
+        && let [scan] = &mut node.children[..]
+        && let Some(table) = scan.operation.strip_prefix("Table scan on ")
+        // `<temporary>` and the like are the query's own.
+        && !table.starts_with('<')
+    {
+        scan.full_scan = Some(FullScan {
+            table: table.split_whitespace().next().unwrap_or(table).to_owned(),
+            filter,
+            rows_read: rows_read(scan.actual_rows, scan.loops, scan.rows),
+        });
+    }
+    for child in &mut node.children {
+        mark_scans(child);
+    }
+}
+
+/// Rows a scan read over all its loops, or the planner's estimate without analyze.
+fn rows_read(actual: Option<f64>, loops: Option<f64>, estimate: Option<f64>) -> Option<f64> {
+    actual.map(|rows| rows * loops.unwrap_or(1.0)).or(estimate)
 }
 
 fn tree_step(step: &str) -> PlanNode {
@@ -143,8 +170,23 @@ fn json_step(key: &str, map: &Map<String, Value>) -> PlanNode {
             .map(|(k, v)| (k.clone(), text(v)))
             .collect(),
         children: children(map),
+        full_scan: full_scan(map),
         ..PlanNode::default()
     }
+}
+
+/// A table read in full (`ALL`) with a condition on its rows.
+fn full_scan(map: &Map<String, Value>) -> Option<FullScan> {
+    let s = |k: &str| map.get(k).and_then(Value::as_str);
+    let num = |k: &str| map.get(k).and_then(Value::as_f64);
+    if s("access_type")? != "ALL" {
+        return None;
+    }
+    Some(FullScan {
+        table: s("table_name")?.to_owned(),
+        filter: s("attached_condition")?.to_owned(),
+        rows_read: rows_read(num("r_rows"), num("r_loops"), num("rows")),
+    })
 }
 
 fn children(map: &Map<String, Value>) -> Vec<PlanNode> {
@@ -232,6 +274,11 @@ mod tests {
         assert_eq!(filter.detail.as_deref(), Some("(a.id > 1)"));
         assert_eq!(filter.children[0].operation, "Table scan on a");
         assert_eq!(filter.children[0].rows, Some(3.0));
+        let scan = filter.children[0].full_scan.as_ref().unwrap();
+        assert_eq!(
+            (scan.table.as_str(), scan.filter.as_str(), scan.rows_read),
+            ("a", "(a.id > 1)", Some(3.0))
+        );
         assert_eq!(
             lookup.operation,
             "Single-row index lookup on b using PRIMARY (id=a.id)"
@@ -278,6 +325,13 @@ mod tests {
         // Statistics are a property, not a step.
         assert_eq!(a.children, Vec::new());
         assert!(a.properties.iter().any(|(k, _)| k == "r_engine_stats"));
+        assert_eq!(
+            a.full_scan
+                .as_ref()
+                .map(|s| (s.table.as_str(), s.rows_read)),
+            Some(("a", Some(6.0)))
+        );
+        assert_eq!(b.full_scan, None);
         assert!(
             a.properties
                 .contains(&("attached_condition".into(), "a.id > 1".into()))

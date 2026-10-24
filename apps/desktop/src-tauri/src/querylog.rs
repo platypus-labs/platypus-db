@@ -3,7 +3,7 @@
 //! wrap their connection in [`Logged`], which records into the [`QueryLog`] kept in memory.
 //! Scripts run with a command-line client (`commands/cli.rs`) do not pass through it.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -60,6 +60,12 @@ pub struct LogEntry {
     pub started_at: u64,
     /// Until the server answered; for rows, until the last one read so far.
     pub elapsed_ms: Option<f64>,
+    /// Until the server's first answer to a statement: its work plus the network's round
+    /// trip. The rest of `elapsed_ms` is reading the rows.
+    pub first_ms: Option<f64>,
+    /// The connection's last keep-alive round trip when the request started: about what
+    /// the network adds to `first_ms`.
+    pub network_ms: Option<f64>,
     /// Rows read or affected.
     pub rows: Option<u64>,
     pub status: LogStatus,
@@ -78,6 +84,8 @@ pub struct QueryLog {
     entries: Mutex<VecDeque<LogEntry>>,
     next_id: AtomicU64,
     rev: AtomicU64,
+    /// The last keep-alive round trip of each connection, in milliseconds.
+    latency: Mutex<HashMap<Arc<str>, f64>>,
 }
 
 impl QueryLog {
@@ -90,6 +98,7 @@ impl QueryLog {
         let started_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+        let network_ms = lock(&self.latency).get(connection).copied();
         let mut entries = lock(&self.entries);
         if entries.len() == CAPACITY {
             entries.pop_front();
@@ -102,6 +111,8 @@ impl QueryLog {
             text,
             started_at,
             elapsed_ms: None,
+            first_ms: None,
+            network_ms,
             rows: None,
             status: LogStatus::Running,
             error: None,
@@ -147,6 +158,11 @@ impl QueryLog {
         }
     }
 
+    /// Records a keep-alive's round trip, which is not itself logged.
+    pub fn set_latency(&self, connection: &str, ms: f64) {
+        lock(&self.latency).insert(Arc::from(connection), ms);
+    }
+
     pub fn clear(&self) {
         lock(&self.entries).clear();
     }
@@ -159,14 +175,14 @@ fn millis_since(started: Instant) -> f64 {
 /// A connection whose requests go to the log.
 #[derive(Debug)]
 pub struct Logged {
-    inner: Box<dyn Connection>,
+    inner: Arc<dyn Connection>,
     log: Arc<QueryLog>,
     connection: Arc<str>,
 }
 
 impl Logged {
     pub fn wrap(
-        inner: Box<dyn Connection>,
+        inner: Arc<dyn Connection>,
         log: &Arc<QueryLog>,
         connection: &str,
     ) -> Arc<dyn Connection> {
@@ -200,7 +216,10 @@ impl Connection for Logged {
             .log
             .start(&self.connection, LogKind::Query, sql.to_owned());
         let started = Instant::now();
-        match self.inner.execute(sql, options).await {
+        let result = self.inner.execute(sql, options).await;
+        let first = millis_since(started);
+        self.log.update(id, |e| e.first_ms = Some(first));
+        match result {
             Ok(ExecResult::Affected { rows }) => {
                 self.log.update(id, |e| e.rows = Some(rows));
                 self.log.finish(id, started, None);
@@ -447,7 +466,8 @@ mod tests {
                 .connect(&config)
                 .await
                 .unwrap();
-            let conn = Logged::wrap(conn, &log, "local");
+            let conn = Logged::wrap(Arc::from(conn), &log, "local");
+            log.set_latency("local", 2.5);
             let options = ExecOptions { batch_size: 2 };
 
             conn.execute("CREATE TABLE t (id INT)", &options)
@@ -497,6 +517,11 @@ mod tests {
                     .iter()
                     .all(|e| &*e.connection == "local" && e.elapsed_ms.is_some())
             );
+            // The trace: the server's first answer for statements, the network's share.
+            for e in &entries {
+                assert_eq!(e.first_ms.is_some(), e.kind == LogKind::Query, "{e:?}");
+                assert_eq!(e.network_ms, Some(2.5));
+            }
         });
     }
 

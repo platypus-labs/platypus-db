@@ -1,9 +1,18 @@
-// Group E on a throwaway SQLite database: the explain tab opened from the editor, and its
-// tree, text and table views.
+// Group E on a throwaway SQLite database: the explain tab opened from the editor, its
+// tree, text and table views, slow queries and the query manager.
 import assert from "node:assert/strict";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { CTRL, SHIFT } from "../cdp.mjs";
+import { setup as sqlite } from "./smoke-sqlite.mjs";
 
-export { setup } from "./smoke-sqlite.mjs";
+export function setup(ctx) {
+  sqlite(ctx);
+  writeFileSync(join(ctx.dir, "settings.toml"), "[performance]\nslow_query_seconds = 0.5\n");
+}
+
+/** Counts to ten million: well past the half-second threshold. */
+const SLOW = "WITH RECURSIVE s(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM s WHERE n < 10000000) SELECT count(*) FROM s";
 
 const NAME = "E2E SQLite";
 const queryTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
@@ -60,6 +69,14 @@ export default async function (page) {
   await page.waitFor(`document.querySelector('.tab.active')?.textContent.startsWith('Explain analyze')`, 10_000);
   await page.waitFor(`${explainTab}?.querySelector('.explain-node') != null`, 15_000);
 
+  // A statement past the threshold is marked slow.
+  await page.eval(`[...document.querySelectorAll('.tab')].find(t => !t.textContent.startsWith('Explain')).click()`);
+  await page.waitFor(`${queryTab} !== undefined`);
+  await setEditor(page, SLOW);
+  await page.eval(`(() => { const s = ${queryTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
+  await page.key("Enter", "Enter", 13, CTRL);
+  await page.waitFor(`${queryTab}.querySelector('.statusbar .slow-query') !== null`, 60_000);
+
   await queryManager(page);
 }
 
@@ -73,6 +90,11 @@ async function queryManager(page) {
   // Without metadata, only statements and transaction commands are left.
   await page.eval(`document.querySelector('.query-manager-bar input[type=checkbox]').click()`);
   await page.waitFor(`${rows}.length > 0 && ${rows}.every(r => !r.classList.contains('metadata'))`);
+  // Slow only: the counting query, whose trace splits its time.
+  await page.eval(`document.querySelectorAll('.query-manager-bar input[type=checkbox]')[1].click()`);
+  await page.waitFor(`${rows}.length > 0 && ${rows}.every(r => r.classList.contains('slow'))`);
+  await page.eval(`${rows}.find(r => r.textContent.includes('WITH RECURSIVE')).click()`);
+  await page.waitFor(`document.querySelector('.query-trace')?.textContent.includes('Server')`);
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.query-manager') === null`);
 }
