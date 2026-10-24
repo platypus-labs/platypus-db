@@ -95,7 +95,7 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 | H — Import, export e trasferimento | libero |
 | I — Strumenti di schema | libero |
 | J — Amministrazione del server | libero |
-| K — Shell ed ergonomia | ✅ fatto (P1) |
+| K — Shell ed ergonomia | 🔒 Delfa · group-k-shell · 2026-10-24 |
 | L — Sicurezza operativa | ✅ fatto (P1) |
 | M — Analisi dei dati | libero |
 | N — Accesso per agenti (MCP) | libero |
