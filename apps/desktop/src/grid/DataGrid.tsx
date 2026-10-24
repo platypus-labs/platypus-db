@@ -50,6 +50,10 @@ export interface CellDecoration {
   color?: string;
   /** Shown instead of the fetched value; `null` shows NULL. */
   text?: string | null;
+  /** Struck through, e.g. a row marked for deletion. */
+  strike?: boolean;
+  /** Muted text after the value, e.g. the name of the row a foreign key points to. */
+  hint?: string;
 }
 
 /**
@@ -58,8 +62,10 @@ export interface CellDecoration {
  */
 export interface GridApi {
   columns(): ColumnInfo[];
+  /** Every row, the `topRows` included. */
   rowCount(): number;
-  /** The fetched text of a cell: `null` for SQL NULL, `undefined` while not loaded. */
+  /** The text of a cell as shown, decorations included: `null` for SQL NULL, `undefined`
+   *  while not loaded. */
   value(row: number, col: number): string | null | undefined;
   selection(): GridSelection | null;
   focused(): Cell | null;
@@ -71,8 +77,14 @@ export interface GridApi {
   focus(): void;
 }
 
+/**
+ * What features add to `GridSource` for their actions, by augmenting this interface from
+ * their own module, e.g. the data editor's `edit`.
+ */
+export interface GridSourceExtensions {}
+
 /** Where the rows come from, for actions that need more than the values. */
-export interface GridSource {
+export interface GridSource extends GridSourceExtensions {
   connection: SavedConnection;
   sql: string;
   jobId: number | null;
@@ -88,8 +100,12 @@ export interface GridActionContext {
 
 interface Props {
   columns: ColumnInfo[];
+  /** Rows of the result, in `cache`. */
   rowCount: number;
   cache: RowCache;
+  /** Rows drawn above the result's rows, e.g. new rows of the data editor; their cells
+   *  come from `decorate`. Row indices of the grid count them first. */
+  topRows?: number;
   /** Bumped whenever the cache receives rows. */
   version: number;
   /** Server-side sort shown in the header (data viewer). */
@@ -102,6 +118,8 @@ interface Props {
   /** Positioned over the grid, e.g. an inline editor placed with `GridApi.cellRect`. */
   overlay?: ReactNode;
   onCellDoubleClick?: (cell: Cell) => void;
+  /** Called when the grid scrolls, e.g. to close an overlay placed over a cell. */
+  onScroll?: () => void;
   ref?: Ref<GridApi>;
 }
 
@@ -135,6 +153,7 @@ export function DataGrid({
   columns,
   rowCount,
   cache,
+  topRows = 0,
   version,
   sort = null,
   onHeaderClick,
@@ -142,6 +161,7 @@ export function DataGrid({
   decorate,
   overlay,
   onCellDoubleClick,
+  onScroll,
   ref,
 }: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
@@ -157,8 +177,10 @@ export function DataGrid({
   const theme = useRef<Theme | null>(null);
   const frame = useRef(0);
   // Latest props for the imperative draw loop.
-  const props = useRef({ columns, rowCount, cache, sort, onHeaderClick, decorate });
-  props.current = { columns, rowCount, cache, sort, onHeaderClick, decorate };
+  const props = useRef({ columns, rowCount, topRows, cache, sort, onHeaderClick, decorate });
+  props.current = { columns, rowCount, topRows, cache, sort, onHeaderClick, decorate };
+  /** Rows shown: the top rows, then the result's. */
+  const total = () => props.current.rowCount + props.current.topRows;
   const [menu, setMenu] = useState<MenuState | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
 
@@ -197,9 +219,16 @@ export function DataGrid({
     });
   }
 
-  const gutterWidth = () => Math.ceil(measure(String(props.current.rowCount), FONT)) + PAD * 2;
+  const gutterWidth = () => Math.ceil(measure(String(total()), FONT)) + PAD * 2;
 
-  const contentHeight = () => HEADER_H + props.current.rowCount * ROW_H;
+  const contentHeight = () => HEADER_H + total() * ROW_H;
+
+  /** What a cell shows: its decoration's text, else the fetched value. */
+  const cellText = (row: number, col: number, d: CellDecoration | undefined) => {
+    if (d?.text !== undefined) return d.text;
+    const top = props.current.topRows;
+    return row < top ? "" : props.current.cache.get(row - top, col);
+  };
 
   /** Maps the DOM scroll position to a logical one, for results taller than the browser allows. */
   const logicalScrollTop = () => {
@@ -223,7 +252,8 @@ export function DataGrid({
     const scroller = scrollRef.current;
     const outer = outerRef.current;
     if (!canvas || !scroller || !outer) return;
-    const { columns, rowCount, cache, decorate } = props.current;
+    const { columns, cache, decorate, topRows } = props.current;
+    const rows = total();
     const t = (theme.current ??= readTheme(outer));
     sizeToData();
     // Column resizes change the scrollable width without a React render.
@@ -249,7 +279,7 @@ export function DataGrid({
     const sx = scroller.scrollLeft;
     const sy = logicalScrollTop();
     const firstRow = Math.max(0, Math.floor(sy / ROW_H));
-    const lastRow = Math.min(rowCount - 1, Math.floor((sy + h - HEADER_H) / ROW_H));
+    const lastRow = Math.min(rows - 1, Math.floor((sy + h - HEADER_H) / ROW_H));
     const rowY = (r: number) => HEADER_H + r * ROW_H - sy;
 
     const sel = selectionRect();
@@ -294,7 +324,7 @@ export function DataGrid({
         for (let r = firstRow; r <= lastRow; r++) {
           const y = rowY(r) + ROW_H / 2;
           const d = decorations[r - firstRow];
-          const value = d?.text !== undefined ? d.text : cache.get(r, c);
+          const value = cellText(r, c, d);
           if (value === undefined) {
             ctx.fillStyle = t.border;
             ctx.fillRect(x + PAD, y - 2, Math.min(cw - PAD * 2, 40), 4);
@@ -309,12 +339,17 @@ export function DataGrid({
           }
           ctx.font = FONT;
           ctx.fillStyle = d?.color ?? t.fg;
-          if (column?.numeric) {
-            ctx.textAlign = "right";
-            ctx.fillText(value, x + cw - PAD, y);
-          } else {
-            ctx.textAlign = "left";
-            ctx.fillText(value, x + PAD, y);
+          // A hint follows the value, so both start on the left.
+          const right = !!column?.numeric && !d?.hint;
+          ctx.textAlign = right ? "right" : "left";
+          ctx.fillText(value, right ? x + cw - PAD : x + PAD, y);
+          if (d?.strike) {
+            const tw = Math.min(ctx.measureText(value).width, cw - PAD * 2);
+            ctx.fillRect(right ? x + cw - PAD - tw : x + PAD, y, tw, 1);
+          }
+          if (d?.hint) {
+            ctx.fillStyle = t.muted;
+            ctx.fillText(d.hint, x + PAD * 2 + ctx.measureText(value).width, y);
           }
         }
         // Column separator.
@@ -344,7 +379,7 @@ export function DataGrid({
     ctx.textAlign = "right";
     ctx.fillStyle = t.muted;
     for (let r = firstRow; r <= lastRow; r++) {
-      ctx.fillText(String(r + 1), gutter - PAD, rowY(r) + ROW_H / 2);
+      ctx.fillText(r < topRows ? "+" : String(r - topRows + 1), gutter - PAD, rowY(r) + ROW_H / 2);
     }
 
     // Header.
@@ -388,7 +423,10 @@ export function DataGrid({
     ctx.fillRect(0, HEADER_H - 1, w, 1);
     ctx.fillRect(gutter - 1, 0, 1, h);
 
-    cache.ensure(firstRow, lastRow, rowCount);
+    // The cache holds the result's rows only, below the top rows.
+    if (lastRow >= topRows) {
+      cache.ensure(Math.max(0, firstRow - topRows), lastRow - topRows, props.current.rowCount);
+    }
     // Reads only refs, so it never needs to be recreated.
   }, []);
 
@@ -410,8 +448,8 @@ export function DataGrid({
 
   const api: GridApi = {
     columns: () => props.current.columns,
-    rowCount: () => props.current.rowCount,
-    value: (row, col) => props.current.cache.get(row, col),
+    rowCount: total,
+    value: (row, col) => cellText(row, col, props.current.decorate?.(row, col)),
     selection: selectionRect,
     focused: () => focus.current,
     select: (a, f = a) => {
@@ -437,7 +475,7 @@ export function DataGrid({
   useEffect(schedule, [schedule, decorate]);
 
   // Redraw on data, size and theme changes.
-  useEffect(schedule, [schedule, version, rowCount, columns, sort]);
+  useEffect(schedule, [schedule, version, rowCount, topRows, columns, sort]);
   useEffect(() => {
     const outer = outerRef.current;
     if (!outer) return;
@@ -504,7 +542,8 @@ export function DataGrid({
   }
 
   function setFocus(cell: Cell, extend: boolean) {
-    const { rowCount, columns } = props.current;
+    const { columns } = props.current;
+    const rowCount = total();
     const clamped = {
       row: Math.max(0, Math.min(rowCount - 1, cell.row)),
       col: Math.max(0, Math.min(columns.length - 1, cell.col)),
@@ -518,15 +557,16 @@ export function DataGrid({
 
   function autosize(col: number) {
     const scroller = scrollRef.current!;
-    const { cache, columns } = props.current;
+    const { columns } = props.current;
     const first = Math.floor(logicalScrollTop() / ROW_H);
     const visible = Math.ceil(scroller.clientHeight / ROW_H);
     const column = columns[col];
     if (!column) return;
     let max = Math.max(measure(column.name, FONT_BOLD), measure(column.db_type, FONT_SMALL));
     for (let r = first; r < first + visible * 3; r++) {
-      const v = cache.get(r, col);
-      if (v) max = Math.max(max, measure(v, FONT));
+      const d = props.current.decorate?.(r, col);
+      const v = cellText(r, col, d);
+      if (v) max = Math.max(max, measure(v, FONT) + (d?.hint ? measure(d.hint, FONT) + PAD : 0));
     }
     widths.current[col] = Math.max(MIN_COL_W, Math.ceil(max) + PAD * 2);
     schedule();
@@ -548,7 +588,7 @@ export function DataGrid({
       props.current.onHeaderClick?.(h.col);
       return;
     }
-    if (h.inHeader || h.row < 0 || h.row >= props.current.rowCount) return;
+    if (h.inHeader || h.row < 0 || h.row >= total()) return;
     if (h.inGutter) {
       anchor.current = { row: h.row, col: 0 };
       setFocus({ row: h.row, col: props.current.columns.length - 1 }, true);
@@ -587,7 +627,7 @@ export function DataGrid({
   function onDoubleClick(e: React.MouseEvent) {
     const h = hit(e);
     if (h.inHeader && h.border >= 0) autosize(h.border);
-    else if (!h.inHeader && !h.inGutter && h.col >= 0 && h.row >= 0 && h.row < props.current.rowCount) {
+    else if (!h.inHeader && !h.inGutter && h.col >= 0 && h.row >= 0 && h.row < total()) {
       onCellDoubleClick?.({ row: h.row, col: h.col });
     }
   }
@@ -595,7 +635,7 @@ export function DataGrid({
   function onContextMenu(e: React.MouseEvent) {
     e.preventDefault();
     const h = hit(e);
-    if (!h.inHeader && h.row >= 0 && h.row < props.current.rowCount && h.col >= 0) {
+    if (!h.inHeader && h.row >= 0 && h.row < total() && h.col >= 0) {
       // Right-clicking outside the selection selects the cell under the mouse.
       const sel = selectionRect();
       const inside = sel && h.row >= sel.r0 && h.row <= sel.r1 && h.col >= sel.c0 && h.col <= sel.c1;
@@ -621,7 +661,7 @@ export function DataGrid({
       End: () =>
         f &&
         (ctrl
-          ? { row: props.current.rowCount - 1, col: props.current.columns.length - 1 }
+          ? { row: total() - 1, col: props.current.columns.length - 1 }
           : { ...f, col: props.current.columns.length - 1 }),
     };
     const move = moves[e.key];
@@ -634,7 +674,7 @@ export function DataGrid({
     }
   }
 
-  const spacerHeight = Math.min(HEADER_H + rowCount * ROW_H, MAX_SCROLL_PX);
+  const spacerHeight = Math.min(HEADER_H + (rowCount + topRows) * ROW_H, MAX_SCROLL_PX);
 
   return (
     <div className="grid" ref={outerRef}>
@@ -643,7 +683,10 @@ export function DataGrid({
         ref={scrollRef}
         className="grid-scroll"
         tabIndex={0}
-        onScroll={schedule}
+        onScroll={() => {
+          schedule();
+          onScroll?.();
+        }}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}

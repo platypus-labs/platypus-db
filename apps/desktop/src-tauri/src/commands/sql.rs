@@ -1,7 +1,7 @@
 //! SQL text analysis for the editor.
 
 use platypus_core::DriverKind;
-use platypus_sql::Dialect;
+use platypus_sql::{Dialect, SelectItem};
 use serde::Serialize;
 
 /// A statement range in UTF-16 code units, the unit JavaScript strings use.
@@ -68,6 +68,43 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
             })
             .collect(),
     }
+}
+
+/// An item of a query's select list, see [`SelectItem`].
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SourceItem {
+    All,
+    Column { name: String },
+    Other,
+}
+
+/// The one table a query reads, so its results can be edited.
+#[derive(Debug, Serialize)]
+pub struct QuerySource {
+    schema: Option<String>,
+    name: String,
+    items: Vec<SourceItem>,
+}
+
+/// The table `sql` reads when its rows are that table's rows; `None` for joins, grouping
+/// and anything but a plain `SELECT`.
+#[tauri::command]
+pub fn query_source(sql: String, driver: DriverKind) -> Option<QuerySource> {
+    let source = platypus_sql::source_table(&sql, Dialect::from(driver))?;
+    Some(QuerySource {
+        schema: source.schema,
+        name: source.name,
+        items: source
+            .items
+            .into_iter()
+            .map(|item| match item {
+                SelectItem::All => SourceItem::All,
+                SelectItem::Column(name) => SourceItem::Column { name },
+                SelectItem::Other => SourceItem::Other,
+            })
+            .collect(),
+    })
 }
 
 #[cfg(test)]

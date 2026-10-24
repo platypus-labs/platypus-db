@@ -101,6 +101,7 @@ pub async fn table_details(
         default: r.opt(3),
         primary_key: r.flag(4),
         comment: r.opt(5).filter(|c| !c.is_empty()),
+        enum_values: enum_values(&r.text(1)),
     })
     .collect();
 
@@ -165,4 +166,46 @@ pub async fn table_details(
         indexes,
         foreign_keys,
     })
+}
+
+/// The values of an `enum('a','it''s')` column type; empty for other types.
+fn enum_values(column_type: &str) -> Vec<String> {
+    let Some(list) = column_type
+        .strip_prefix("enum(")
+        .and_then(|rest| rest.strip_suffix(')'))
+    else {
+        return Vec::new();
+    };
+    let mut values = Vec::new();
+    let mut chars = list.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\'' {
+            continue;
+        }
+        let mut value = String::new();
+        while let Some(c) = chars.next() {
+            match c {
+                '\'' if chars.peek() == Some(&'\'') => {
+                    chars.next();
+                    value.push('\'');
+                }
+                '\'' => break,
+                c => value.push(c),
+            }
+        }
+        values.push(value);
+    }
+    values
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_enum_values() {
+        assert_eq!(enum_values("enum('a','it''s','x,y')"), ["a", "it's", "x,y"]);
+        assert_eq!(enum_values("varchar(10)"), Vec::<String>::new());
+        assert_eq!(enum_values("enum('')"), [""]);
+    }
 }

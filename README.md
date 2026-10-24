@@ -17,6 +17,14 @@ scrolls through millions of rows.
   tables and columns (including `alias.column`), query history, `.sql` files.
 - **Results grid** on canvas: millions of rows fetched on demand, cancellable queries.
 - **Data viewer**: open a table, sort by clicking a header, filter with a `WHERE`, count rows.
+- **Data editor**: change cells in place (double-click, `F2` or just type), set NULL or the
+  default, add, duplicate and delete rows, preview the generated SQL and save it all or
+  nothing; in manual-commit mode the changes join the open transaction. Tables need a primary
+  key or a unique key on non-null columns, or a virtual key you pick; otherwise the grid says
+  why it is read-only. Results of a query that reads one table edit the same way, with
+  computed columns read-only. Paste cells from a spreadsheet or CSV over the grid or as new
+  rows; foreign keys show the name of the row they point to and edit with a list of those
+  rows; every save leaves an undo script that puts the rows back.
 - **Export** to CSV, JSON, NDJSON or Parquet, streamed straight to the file.
 - **Transactions**: auto-commit or manual commit with Commit/Rollback.
 - Light and dark theme, automatic reconnection, in-app updates.
@@ -44,6 +52,11 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | `Ctrl+T`, `Ctrl+W` | New tab / close tab |
 | `Ctrl+Tab`, `Ctrl+Shift+Tab` | Next / previous tab |
 | `Ctrl+,` | Settings |
+| `F2`, `Enter`, typing | Edit the cell (data viewer, one-table queries) |
+| `Insert`, `Ctrl+D`, `Delete` | Add, duplicate, delete rows |
+| `Shift+Delete` | Set the selected cells to NULL |
+| `Ctrl+V`, `Ctrl+Shift+V` | Paste over the cells / as new rows |
+| `Ctrl+S`, `Ctrl+Z` | Save / undo data changes (grid focused) |
 
 On macOS use `Cmd` instead of `Ctrl`.
 
@@ -73,7 +86,7 @@ crates/
   platypus-driver-pg/      PostgreSQL (tokio-postgres)
   platypus-driver-mysql/   MySQL / MariaDB (mysql_async)
   platypus-driver-sqlite/  SQLite (rusqlite)
-  platypus-sql/            dialect-aware lexer, statement splitting, read-only check
+  platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
   platypus-store/          connections (TOML + OS keychain), query history (SQLite)
   platypus-export/         streaming CSV, JSON, NDJSON and Parquet writers
   platypus-conformance/    integration suite run on every driver

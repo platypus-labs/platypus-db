@@ -179,12 +179,13 @@ export function Navigator(props: Props) {
     loadDetails,
     closeConnection,
     generateSelect,
-    openData: (c, object, target) =>
+    openData: (c, schema, object, target) =>
       onOpenTab(c, {
         sql: viewerSql(c.driver, target, "", null),
         autorun: true,
         title: object.name,
         table: target,
+        tableRef: { schema: schema.name, name: object.name, kind: object.kind },
       }),
   };
   useEffect(() => registerNavigatorActions(nav), []);
@@ -300,7 +301,7 @@ export function Navigator(props: Props) {
         },
       ];
     }
-    const openData = () => nav.current.openData(c, object, target);
+    const openData = () => nav.current.openData(c, schema, object, target);
     const open = expanded.has(okey);
     const out: Row[] = [
       {
@@ -491,7 +492,7 @@ interface NavigatorApi {
   loadDetails: (c: SavedConnection, schema: string, name: string) => Promise<TableDetails | null>;
   closeConnection: (c: SavedConnection) => void;
   generateSelect: (c: SavedConnection, schema: SchemaMeta, object: ObjectMeta) => Promise<void>;
-  openData: (c: SavedConnection, object: ObjectMeta, target: string) => void;
+  openData: (c: SavedConnection, schema: SchemaMeta, object: ObjectMeta, target: string) => void;
 }
 
 /** The navigator's built-in menu entries; features add theirs to the same scopes. */
@@ -566,7 +567,7 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       group: "open",
       order: 10,
       when: ({ object }) => isRelation(object.kind),
-      run: ({ connection, object, target }) => n().openData(connection, object, target),
+      run: ({ connection, schema, object, target }) => n().openData(connection, schema, object, target),
     }),
     registerAction({
       id: "object.generate_select",

@@ -93,6 +93,9 @@ fn opts(config: &ConnectionConfig, ssl: Option<SslOpts>) -> Opts {
         .db_name(Some(config.database.clone()).filter(|d| !d.is_empty()))
         .prefer_socket(false)
         .stmt_cache_size(0)
+        // Row counts of UPDATE are the rows matched, as in other databases, not only the
+        // rows whose value changed: the data editor checks that each change hit one row.
+        .client_found_rows(true)
         .init(vec![format!("SET time_zone = '{SESSION_TIME_ZONE}'")])
         .ssl_opts(ssl);
     if let Some(name) = &config.application_name {

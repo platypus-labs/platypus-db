@@ -4,7 +4,8 @@
 use std::collections::BTreeMap;
 
 use platypus_core::{ObjectMeta, SchemaMeta, TableDetails};
-use serde::Serialize;
+use platypus_sql::Dialect;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use super::AppState;
@@ -89,4 +90,63 @@ pub async fn query_value(
         .into_iter()
         .next()
         .and_then(|r| r.into_iter().next().flatten()))
+}
+
+/// Rows read at most by [`lookup_values`].
+const LOOKUP_LIMIT: usize = 5_000;
+
+/// The table a foreign key points to: its key column and the column that describes a row.
+#[derive(Debug, Deserialize)]
+pub struct Lookup {
+    schema: String,
+    table: String,
+    key: String,
+    label: String,
+}
+
+/// `(key, label)` pairs of the table a foreign key points to, for the data editor's
+/// dictionary: the labels of `values`, or with `None` the first rows ordered by label.
+#[tauri::command]
+pub async fn lookup_values(
+    state: State<'_, AppState>,
+    session_id: u64,
+    lookup: Lookup,
+    values: Option<Vec<String>>,
+    limit: usize,
+) -> CommandResult<Vec<(Option<String>, Option<String>)>> {
+    let dialect = Dialect::from(state.session(session_id)?.config.driver);
+    let conn = state.live(session_id).await?;
+    let key_name = dialect.quote_ident(&lookup.key);
+    let label_name = dialect.quote_ident(&lookup.label);
+    let mut sql = format!(
+        "SELECT {key_name}, {label_name} FROM {}",
+        dialect.qualified(Some(&lookup.schema), &lookup.table)
+    );
+    let limit = limit.min(LOOKUP_LIMIT);
+    match values {
+        Some(values) if values.is_empty() => return Ok(Vec::new()),
+        // Text literals compare with any key type: the databases convert them.
+        Some(values) => {
+            let list: Vec<String> = values
+                .iter()
+                .take(limit)
+                .map(|v| dialect.quote_literal(v))
+                .collect();
+            sql = format!("{sql} WHERE {key_name} IN ({})", list.join(", "));
+        }
+        None => {
+            sql = format!(
+                "{sql} ORDER BY {label_name} {}",
+                dialect.limit_clause(limit as u64)
+            );
+        }
+    }
+    let rows = platypus_core::query_text(conn.as_ref(), &sql).await?;
+    Ok(rows
+        .into_iter()
+        .map(|mut r| {
+            let label = r.pop().flatten();
+            (r.pop().flatten(), label)
+        })
+        .collect())
 }
