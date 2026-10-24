@@ -1,0 +1,333 @@
+/* SQL editor tab, its toolbar, history and object tabs. */
+
+/* Query tab */
+
+.query-tab {
+  flex: 1;
+  min-height: 0;
+}
+
+.query-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+button.toggled {
+  background: var(--grid-selection);
+  border-color: var(--accent);
+}
+
+/* History */
+
+.history {
+  width: 340px;
+  flex: none;
+  border-left: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.history-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 8px 4px 12px;
+}
+
+.history-search {
+  margin: 4px 8px;
+}
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 8px;
+  overflow: auto;
+  flex: 1;
+}
+
+.history-entry {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--ok);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 6px 8px 2px;
+  margin-bottom: 6px;
+  cursor: default;
+}
+
+.history-entry.error {
+  border-left-color: var(--error);
+}
+
+.history-entry.cancelled {
+  border-left-color: var(--fg-muted);
+}
+
+.history-entry pre {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 7.5em;
+  overflow: hidden;
+}
+
+.history-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.history-status {
+  text-transform: uppercase;
+}
+
+.history-empty {
+  padding: 8px 4px;
+}
+
+.history-more {
+  margin: 4px 12px 8px;
+  align-self: flex-start;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Where the statements run, colored by the connection's type. */
+.conn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  background: var(--bg-input);
+}
+
+.conn-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.conn-chip.dev {
+  color: var(--type-dev);
+  background: var(--type-dev-bg);
+}
+
+.conn-chip.test {
+  color: var(--type-test);
+  background: var(--type-test-bg);
+}
+
+.conn-chip.prod {
+  color: var(--type-prod);
+  background: var(--type-prod-bg);
+}
+
+.viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.viewer-bar input {
+  flex: 1;
+  max-width: 640px;
+  font-family: var(--font-mono);
+}
+
+.tx-open {
+  color: var(--warn, #e8590c);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.editor {
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.splitter {
+  cursor: row-resize;
+  background: var(--border);
+  border-top: 2px solid var(--bg);
+  border-bottom: 2px solid var(--bg);
+}
+
+/* Object tab: header, section bar, then the section's content. */
+
+.object-tab {
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.object-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.object-icon {
+  font-size: 20px;
+  color: var(--fg-muted);
+}
+
+.object-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.object-sections {
+  display: flex;
+  gap: 2px;
+  padding: 4px 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.object-sections button {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  padding: 6px 10px;
+}
+
+.object-sections button.active {
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.object-sections .count {
+  margin-left: 6px;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.object-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+.object-ddl {
+  flex: 1;
+  min-height: 200px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.meta-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  align-self: flex-start;
+  min-width: 50%;
+}
+
+.meta-table th,
+.meta-table td {
+  text-align: left;
+  padding: 4px 12px 4px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.meta-table th {
+  color: var(--fg-muted);
+  font-weight: 600;
+}
+
+.meta-table td:last-child {
+  word-break: break-word;
+}
+
+.tx-open {
+  font-variant-numeric: tabular-nums;
+}
+
+.tx-open.long {
+  color: var(--error);
+  font-weight: 600;
+  animation: tx-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tx-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Search tab: the object tab's layout with a search field in the header. */
+
+.search-form {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-results tbody tr {
+  cursor: pointer;
+}
+
+.search-results tbody tr:hover,
+.search-results tbody tr:focus {
+  background: var(--hover);
+  outline: none;
+}
+
+.search-results .tree-icon {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-right: 6px;
+}

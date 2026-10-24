@@ -1,5 +1,6 @@
 import { useId, useRef, useState } from "react";
-import type { CellInput } from "../../api";
+import type { CellInput, FieldMeta } from "../../api";
+import { LIST_H, LIST_W, ListEditor } from "./ListEditor";
 import type { EditorKind } from "./meta";
 
 /** Where to go after committing: the next cell in a direction, or stay. */
@@ -16,6 +17,10 @@ interface Props {
   /** Replaces the value, e.g. the key typed to start editing. */
   typed?: string;
   enumValues: string[];
+  /** The column's type, shown by the array and composite editor. */
+  type: string;
+  /** Composite fields, for the composite editor. */
+  fields: FieldMeta[];
   nullable: boolean;
   json: boolean;
   /** Number columns: an empty value means NULL. */
@@ -38,6 +43,8 @@ export function CellEditor({
   initial,
   typed,
   enumValues,
+  type,
+  fields,
   nullable,
   json,
   numeric,
@@ -95,9 +102,30 @@ export function CellEditor({
     }
   }
 
+  /** A popup's corner: at the cell, moved back inside the grid. */
+  const corner = (width: number, height: number) => ({
+    left: Math.max(0, Math.min(rect.left, bounds.width - width - 4)),
+    top: Math.max(0, Math.min(rect.top, bounds.height - height - 4)),
+  });
+
+  if (kind === "array" || kind === "composite") {
+    return (
+      <ListEditor
+        {...corner(LIST_W, LIST_H)}
+        composite={kind === "composite"}
+        type={type}
+        fields={fields}
+        initial={initial}
+        typed={typed}
+        nullable={nullable}
+        onCommit={onCommit}
+        onCancel={onCancel}
+      />
+    );
+  }
+
   if (kind === "multiline") {
-    const left = Math.max(0, Math.min(rect.left, bounds.width - POPUP_W - 4));
-    const top = Math.max(0, Math.min(rect.top, bounds.height - POPUP_H - 4));
+    const { left, top } = corner(POPUP_W, POPUP_H);
     return (
       <div
         className="cell-popup"

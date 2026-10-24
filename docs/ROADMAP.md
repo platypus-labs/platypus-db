@@ -62,7 +62,7 @@ Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i
 
 **Regole per tutti i gruppi**
 - Un gruppo modifica solo i file della propria **area**. Se gli serve qualcosa da un file
-  condiviso, apre una PR piccola e separata (estensione di un'API, non logica di feature).
+  condiviso, lo fa in un commit piccolo e separato (estensione di un'API, non logica di feature).
 - Le funzionalità di database passano dal `Dialect` o dalle capacità del driver, mai da
   `if driver === "postgres"` sparsi nella UI.
 - Ogni gruppo aggiunge test alla conformance suite per ciò che tocca nei driver.
@@ -70,19 +70,46 @@ Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i
   migliore di come l'ha trovata: rimuove duplicazioni, semplifica, rinomina ciò che è poco
   chiaro e sceglie la soluzione più efficiente (niente allocazioni, copie, query o render
   superflui; nessun lavoro per riga dove basta un lavoro per blocco). Un refactor che rende il
-  codice più leggibile o più veloce è sempre benvenuto, anche dentro una PR di feature, purché
+  codice più leggibile o più veloce è sempre benvenuto, anche dentro un branch di feature, purché
   resti nell'area del gruppo e non cambi il comportamento senza test.
 
 ---
 
 ## 2. Gruppi di lavoro
 
+### Lock dei gruppi
+
+Chi lavora su un gruppo lo segna qui e pusha su `main` prima di scrivere codice. Formato:
+`🔒 <nome> · <branch> · <AAAA-MM-GG>`. Un lock senza commit sul branch da più di 3 giorni è
+scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
+
+| Gruppo | Lock |
+|---|---|
+| A — Modifica dei dati | ✅ fatto (P1, P2, P3) |
+| B — Griglia avanzata | 🔒 Delfa · group-b-panels · 2026-10-24 |
+| C — Navigator e oggetti | ✅ fatto (P1, P2, P3) |
+| D — Editor SQL | 🔒 Paolo · group-d-editor · 2026-10-24 |
+| E — Explain e performance | libero |
+| F — Connettività e credenziali | ✅ fatto (P1) |
+| G — Nuovi driver | libero |
+| H — Import, export e trasferimento | libero |
+| I — Strumenti di schema | libero |
+| J — Amministrazione del server | libero |
+| K — Shell ed ergonomia | ✅ fatto (P1) |
+| L — Sicurezza operativa | ✅ fatto (P1) |
+| M — Analisi dei dati | libero |
+| N — Accesso per agenti (MCP) | libero |
+| O — Collaborazione e sync | libero |
+| P — Piattaforma, qualità e release | libero |
+| Progetti (spazi di lavoro) | ✅ fatto (parte B) |
+
 ### Gruppo A — Modifica dei dati
 
-**Stato: P1 e P2 completati** (modifica, righe nuove/duplicate/eliminate, anteprima SQL,
+**Stato: completato** (modifica, righe nuove/duplicate/eliminate, anteprima SQL,
 chiave obbligatoria o virtuale, NULL/default ed editor per tipo, salvataggio tutto-o-niente,
 incolla da foglio di calcolo, risultati di query di una tabella, dictionary delle FK, script
-di undo). Resta il P3.
+di undo; P3: array e tipi composti PostgreSQL modificati un elemento o campo per riga, gli
+array annidati come testo).
 
 **Area:** `apps/desktop/src/grid/edit/`, `commands/data.rs`, `platypus-sql/src/dml.rs`
 **Dipende da:** 0.3, 0.4, 0.5
@@ -99,7 +126,7 @@ di undo). Resta il P3.
 | Incolla da Excel/CSV come nuove righe | P2 | D |
 | Modifica di risultati di query da una sola tabella (con alias e JOIN esclusi) | P2 | D |
 | **Dictionary data**: le FK mostrano la colonna descrittiva della tabella collegata, con un menu a tendina in modifica | P2 | D |
-| Array PostgreSQL e tipi composti modificabili | P3 | D |
+| ✅ Array PostgreSQL e tipi composti modificabili | P3 | D |
 | Script di undo generato per le modifiche salvate | P2 | N |
 
 **Done:** modifica, inserimento ed eliminazione su PG, MySQL, MariaDB e SQLite, con test di
@@ -142,7 +169,7 @@ Restano i P3.
 **Area:** `apps/desktop/src/components/Navigator.tsx`, `apps/desktop/src/objects/` (tab `object`), `meta.rs` e `ddl.rs` dei driver, `platypus-core/src/metadata.rs`, `platypus-sql/src/generate.rs`
 **Dipende da:** 0.2, 0.3, 0.6
 
-**Stato:** le P1 sono fatte. "MERGE" è un UPSERT per dialetto (`ON CONFLICT` in PostgreSQL e SQLite, `ON DUPLICATE KEY` in MySQL). Le righe stimate e le dimensioni compaiono già nelle proprietà del tab oggetto (PostgreSQL, MySQL); il resto delle P2/P3 è da fare.
+**Stato: P1, P2 e P3 completati.** "MERGE" è un UPSERT per dialetto (`ON CONFLICT` in PostgreSQL e SQLite, `ON DUPLICATE KEY` in MySQL). Righe stimate e dimensioni nel navigator (PostgreSQL e MySQL; dimensione degli indici solo PostgreSQL; SQLite non ha statistiche). La ricerca nei metadati è la capacità opzionale `Connection::search_metadata`, nel tab `search` con la ricerca nei dati (una tabella alla volta, `Dialect::any_column_contains`). Filtri e segnalibri stanno nel local storage della web view, la cache dei metadati in IndexedDB (scade dopo 30 giorni). Partizioni sotto la tabella padre solo in PostgreSQL: in MySQL non sono tabelle a sé.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
@@ -176,7 +203,7 @@ Restano i P3.
 | **Parametri e variabili** (`:id`, `?`, `${var}`) con un dialog dei valori e un **pannello variabili** | P2 | D |
 | **Comandi client-side**: `@set`, `@include file.sql`, `@export`, `@echo` | P2 | D |
 | Template e snippet con Tab, modificabili | P2 | D |
-| Script salvati in un pannello progetti: cartelle, link a una connessione, rinomina | P2 | D |
+| Script salvati in un pannello progetti: cartelle, link a una connessione, rinomina. Gli script vanno nei progetti del gruppo K (`apps/desktop/src/projects/`) | P2 | D |
 | **Modalità terminale SQL**: output testuale invece della griglia | P3 | D |
 | **Query builder visuale**: tabelle trascinate, JOIN sulle FK, SQL generato | P3 | D+ |
 | Autocomplete dei JOIN dalle FK (`JOIN orders o ON` completa la condizione) | P1 | N |
@@ -206,15 +233,19 @@ Restano i P3.
 
 ---
 
-### Gruppo F — Connettività e sicurezza delle credenziali
+### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 fatti
+
+**Stato: P1 completati** (tunnel SSH con password, chiave, agent e jump host; tipi
+Dev/Test/Prod con colore e commit manuale in Prod; import da DBeaver, DataGrip, pgAdmin e
+`pg_service.conf`). La conferma prima di scrivere in Prod è nel gruppo L. Restano i P2/P3.
 
 **Area:** nuovo crate `platypus-net`, `platypus-store`, `apps/desktop/src/connections/` (`ConnectionDialog.tsx`)
 **Dipende da:** 0.7
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| **Tunnel SSH** (`russh`): password, chiave, agent, jump host | P1 | D |
-| **Tipi di connessione** Dev/Test/Prod: colore, conferma prima di scrivere, autocommit off di default in Prod | P1 | D |
+| ✅ **Tunnel SSH** (`russh`): password, chiave, agent, jump host | P1 | D |
+| ✅ **Tipi di connessione** Dev/Test/Prod: colore, conferma prima di scrivere, autocommit off di default in Prod | P1 | D |
 | Proxy SOCKS5 e HTTP | P3 | D |
 | **Profili di rete** riutilizzabili tra connessioni | P2 | D |
 | Inizializzazione: schema e database di default, query di bootstrap, fuso orario | P2 | D |
@@ -223,7 +254,7 @@ Restano i P3.
 | Kerberos, SSPI, Entra ID, IAM AWS e GCP | P3 | D+ |
 | **Master password** per le credenziali salvate (oltre al keychain) | P2 | D |
 | Gestione certificati SSL: CA personalizzate, certificato client | P2 | D |
-| Import delle connessioni da DBeaver (`data-sources.json`), DataGrip, pgAdmin, `~/.pg_service.conf` | P1 | D |
+| ✅ Import delle connessioni da DBeaver (`data-sources.json`), DataGrip, pgAdmin, `~/.pg_service.conf` | P1 | D |
 | Indicatore di salute della connessione (latenza, keep-alive, riconnessione) | P2 | N |
 | Kubernetes port-forward, AWS SSM | P3 | D+ |
 
@@ -306,20 +337,30 @@ parallelizzabile: **una persona per driver**.
 
 ---
 
-### Gruppo K — Shell dell'applicazione ed ergonomia
+### Gruppo K — Shell dell'applicazione ed ergonomia — ✅ P1 fatti
+
+**Stato: P1 completati** (rotella sui tab, command palette con ricerca fuzzy su azioni,
+connessioni, tabelle e query recenti, riapertura del tab chiuso, pagina Impostazioni con
+sezioni, scorciatoie personalizzabili, barra degli strumenti configurabile). Restano i P2/P3.
+Fatta anche la **nuova grafica**: temi Platypus Dark e Light, font Inter e JetBrains Mono
+inclusi, icone Lucide, navigator, tab, toolbar e dialog ridisegnati
+([spec](superpowers/specs/2026-10-24-grafica-e-progetti-design.md), parte A). Fatti anche i
+**progetti come spazi di lavoro** (parte B): barra dei progetti a sinistra, connessioni in
+più progetti, tab, cronologia, palette e titolo della finestra per progetto, `Ctrl+1`…
+per cambiare progetto, `connections.toml` versione 2.
 
 **Area:** `App.tsx`, `apps/desktop/src/shell/` (tab bar, palette, impostazioni), `styles.css`, `theme.ts`
 **Dipende da:** 0.2, 0.3, 0.7
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| **Rotella del mouse sui tab = scroll orizzontale** | P1 | N |
-| **Command palette** (Ctrl+K o Ctrl+Shift+P): azioni, oggetti, connessioni e query recenti, ricerca fuzzy | P1 | N |
-| Riapri l'ultimo tab chiuso (Ctrl+Shift+T) | P1 | N |
+| ✅ **Rotella del mouse sui tab = scroll orizzontale** | P1 | N |
+| ✅ **Command palette** (Ctrl+K o Ctrl+Shift+P): azioni, oggetti, connessioni e query recenti, ricerca fuzzy | P1 | N |
+| ✅ Riapri l'ultimo tab chiuso (Ctrl+Shift+T) | P1 | N |
 | Tab colorati per connessione, raggruppabili e fissabili; menu "chiudi altri" | P2 | N |
 | Editor diviso, con due tab affiancati | P2 | N |
 | Trascinare una tabella dal navigator nell'editor inserisce il nome o un `SELECT` | P2 | N |
-| Pagina Impostazioni, scorciatoie personalizzabili, barra degli strumenti configurabile | P1 | D |
+| ✅ Pagina Impostazioni, scorciatoie personalizzabili, barra degli strumenti configurabile | P1 | D |
 | Lingua dell'interfaccia: italiano e inglese, con l'infrastruttura i18n | P2 | D |
 | Accessibilità: navigazione da tastiera completa, screen reader, contrasto | P2 | D |
 | Pannelli trascinabili e layout salvato | P3 | D |
@@ -330,16 +371,20 @@ parallelizzabile: **una persona per driver**.
 
 ---
 
-### Gruppo L — Sicurezza operativa
+### Gruppo L — Sicurezza operativa — ✅ P1 fatti
+
+**Stato: P1 completati** (conferma o blocco di UPDATE/DELETE senza WHERE e TRUNCATE con le
+righe stimate, conferma delle modifiche sulle connessioni Prod anche dal data editor, timer
+della transazione aperta con avviso). Restano i P2/P3.
 
 **Area:** `platypus-sql/src/analysis.rs` (analisi dello statement prima dell'esecuzione), `apps/desktop/src/guards/`
 **Dipende da:** 0.5; il gruppo F per i tipi di connessione
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Blocco o conferma per UPDATE/DELETE senza WHERE, con il numero di righe stimato | P1 | N |
-| Conferma per DDL e DML sulle connessioni Prod, con il riepilogo degli statement | P1 | D |
-| Timer della transazione aperta: avviso dopo N minuti, indicatore sempre visibile | P1 | N |
+| ✅ Blocco o conferma per UPDATE/DELETE senza WHERE, con il numero di righe stimato | P1 | N |
+| ✅ Conferma per DDL e DML sulle connessioni Prod, con il riepilogo degli statement | P1 | D |
+| ✅ Timer della transazione aperta: avviso dopo N minuti, indicatore sempre visibile | P1 | N |
 | **Pending transactions**: elenco degli statement non ancora committati, per tab | P2 | D |
 | **Transaction log** della sessione | P3 | D |
 | `LIMIT` automatico sulle SELECT senza limite, configurabile | P2 | N |
@@ -367,20 +412,36 @@ parallelizzabile: **una persona per driver**.
 
 ---
 
-### Gruppo N — Assistente AI
+### Gruppo N — Accesso per agenti esterni (MCP)
 
-**Area:** nuovo crate `platypus-ai`, `apps/desktop/src/ai/`
-**Dipende da:** 0.2, 0.7
+PlatypusDB non integra un proprio assistente AI. Diventa invece uno strumento che gli agenti già
+in uso (Claude Code, Codex, Cursor, altri client MCP) possono collegare: usano le connessioni
+salvate, leggono lo schema ed eseguono query con i permessi decisi dall'utente. Le credenziali
+restano nel keychain e non arrivano mai all'agente.
+
+**Area:** nuovo crate `platypus-mcp` (binario, server MCP), `apps/desktop/src-tauri/src/agent/`
+(ponte con l'app aperta), `apps/desktop/src/agents/` (impostazioni e conferme)
+**Dipende da:** `platypus-store` (connessioni e segreti), `platypus-sql` (controllo di sola
+lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Linguaggio naturale → SQL, con lo schema come contesto | P2 | D+ |
-| "Spiega la query", "Correggi l'errore", "Spiega il piano" | P2 | D+ |
-| Chat sul database con conferma prima di ogni esecuzione | P3 | D+ |
-| Provider: Anthropic, OpenAI, Azure, Gemini, Bedrock, Ollama locale | P2 | D+ |
-| **Server MCP**: espone connessioni e metadati di PlatypusDB agli agenti esterni (sola lettura di default) | P2 | D+ |
-| Privacy: niente dati inviati senza consenso; solo schema, solo sample, oppure tutto, per connessione | P1 | D+ |
-| Descrizione degli oggetti generata dall'AI | P3 | D+ |
+| **Server MCP via stdio** (`platypus-mcp`): l'agente lo avvia da sé, senza che l'app sia aperta, e usa le connessioni salvate | P1 | D+ |
+| Tool di lettura: elenco connessioni, schemi, oggetti, dettagli di una tabella (colonne, chiavi, FK, indici), DDL, ricerca di oggetti per nome | P1 | D+ |
+| Tool `run_query`: esegue SQL con limite di righe, di byte e timeout; risultato compatto (tabella testuale o JSON) adatto al contesto di un LLM | P1 | D+ |
+| **Permessi per connessione**: disattivata per gli agenti, sola lettura (default), lettura e scrittura. Le connessioni Prod sono sempre in sola lettura per gli agenti | P1 | N |
+| Sola lettura garantita: controllo dello statement (`is_read_only`) e, dove il database lo permette, transazione `READ ONLY` | P1 | N |
+| Segreti mai esposti: nessun tool restituisce password, URL completi o chiavi SSH | P1 | N |
+| Registro delle query degli agenti nella cronologia, con l'agente come origine e filtro dedicato | P1 | N |
+| Installazione guidata: pagina "Agenti" nelle Impostazioni con i comandi pronti (`claude mcp add platypus -- platypus-mcp`, voce `[mcp_servers.platypus]` per Codex) e un pulsante Copia | P1 | N |
+| CLI per agenti senza MCP: `platypus-cli --connection <nome>` dalle connessioni salvate, output JSON stabile e documentato | P1 | N |
+| `explain` e campione di righe (`sample_rows`) come tool dedicati, con i limiti di `run_query` | P2 | D+ |
+| **Ponte con l'app aperta** (MCP su HTTP locale con token): l'agente vede le sessioni aperte e l'indicatore "agente collegato" compare nella barra | P2 | N |
+| Conferma nell'app per le scritture: dialog con lo statement e le righe stimate (riusa le guardie del gruppo L), con "consenti per questa sessione" | P2 | N |
+| Tool `propose_sql`: apre la query proposta dall'agente in un tab dell'editor, da rivedere ed eseguire a mano | P2 | N |
+| Contesto dell'utente su consenso: testo dell'editor, selezione, risultato corrente della griglia | P3 | N |
+| Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
+| Plugin pronti: plugin per Claude Code e configurazione per Codex con le istruzioni d'uso (quando usare quale tool, limiti) | P3 | N |
 
 ---
 
@@ -430,6 +491,7 @@ della fase 0 (un'API piccola), non la condivisione del file.
 | `App.tsx`, tab | C, E, I, J, K | 0.3: registro dei tipi di tab |
 | Menu e scorciatoie | tutti | 0.2: registro delle azioni |
 | `ConnectionDialog.tsx` | F, G | Sezioni per driver registrabili |
+| `platypus-store` (connessioni, segreti, cronologia) | F, N | API pubblica dello store; il formato dei file cambia solo con una migrazione |
 
 ---
 
@@ -438,13 +500,13 @@ della fase 0 (un'API piccola), non la condivisione del file.
 Con 4–6 persone. Ogni gruppo può partire quando la sua dipendenza è pronta, anche prima della fine
 dell'ondata.
 
-| Ondata | Gruppi | Obiettivo | Release |
-|---|---|---|---|
-| **0** | Fase 0 (1 persona) e **P** in parallelo | Codice pronto al lavoro parallelo, prima release pubblica | v0.1.x |
-| **1** | **A**, **B** (P1), **C** (P1), **F** (SSH, tipi, import), **K** (P1), **L** (P1) | Sostituire DBeaver nell'uso quotidiano | v0.2 |
-| **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 |
-| **3** | **I**, **J**, **M**, **N**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 |
-| **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ |
+| Ondata | Gruppi | Obiettivo | Release | Stato |
+|---|---|---|---|---|
+| **0** | Fase 0 (1 persona) e **P** in parallelo | Codice pronto al lavoro parallelo, prima release pubblica | v0.1.x | Fase 0 fatta; P in corso |
+| **1** | **A**, **B** (P1), **C** (P1), **F** (SSH, tipi, import), **K** (P1), **L** (P1) | Sostituire DBeaver nell'uso quotidiano | v0.2 | **Fatta** (P1 di A, B, C, F, K e L; P2 di A e B), release v0.2.0 del 24 ottobre 2026 |
+| **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte |
+| **3** | **I**, **J**, **M**, **N**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 | Da fare |
+| **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | Da fare |
 
 Per ogni gruppo, la Definition of Done segue quella dell'MVP:
 - test di conformance o E2E per ciò che è stato aggiunto;

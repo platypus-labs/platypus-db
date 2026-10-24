@@ -1,0 +1,400 @@
+//! Network paths to database servers. An SSH tunnel listens on a local port and forwards
+//! every connection to the database through the SSH server (`ssh -L`), optionally reached
+//! through a jump host (`ssh -J`). [`connect`] opens the tunnel, then the driver's
+//! connection through it, and keeps the tunnel alive as long as the connection.
+
+use std::fmt;
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use platypus_core::{
+    CancelHandle, Capabilities, CatalogColumn, Connection, ConnectionConfig, Error, ExecOptions,
+    ExecResult, Explain, ObjectMeta, ObjectRef, ReferencingKey, Result, SchemaMeta, ServerInfo,
+    SshAuth, SshConfig, TableDetails, TransactionState,
+};
+use russh::client::{self, AuthResult, Handle};
+use russh::keys::{self, PrivateKeyWithHashAlg, PublicKeyOrCertificate};
+use tokio::net::TcpListener;
+use tokio::task::JoinHandle;
+
+fn ssh_error(server: &SshConfig, e: impl fmt::Display) -> Error {
+    Error::Connect(format!(
+        "SSH {}@{}:{}: {e}",
+        server.user, server.host, server.port
+    ))
+}
+
+/// Checks the server's key against `~/.ssh/known_hosts`: a known key must match, an
+/// unknown one is learned (trust on first use, as `ssh` with `accept-new`).
+struct KnownHosts {
+    host: String,
+    port: u16,
+    path: PathBuf,
+}
+
+impl KnownHosts {
+    fn check(&self, key: &PublicKeyOrCertificate) -> Result<bool, russh::Error> {
+        // Host certificates are checked by the key they certify.
+        let key = match key {
+            PublicKeyOrCertificate::PublicKey { key, .. } => key.clone(),
+            PublicKeyOrCertificate::Certificate(cert) => cert.public_key().clone().into(),
+        };
+        match keys::check_known_hosts_path(&self.host, self.port, &key, &self.path) {
+            Ok(true) => Ok(true),
+            Ok(false) => {
+                // Without a writable known_hosts the key is still accepted for this time.
+                let _ = keys::known_hosts::learn_known_hosts_path(
+                    &self.host, self.port, &key, &self.path,
+                );
+                Ok(true)
+            }
+            Err(e) => Err(russh::Error::Keys(e)),
+        }
+    }
+}
+
+impl client::Handler for KnownHosts {
+    type Error = russh::Error;
+
+    fn check_server_key(
+        &mut self,
+        key: &PublicKeyOrCertificate,
+    ) -> impl Future<Output = Result<bool, Self::Error>> + Send {
+        let checked = self.check(key);
+        async move { checked }
+    }
+}
+
+type Session = Handle<KnownHosts>;
+
+async fn authenticate(session: &mut Session, server: &SshConfig) -> Result<()> {
+    let fail = |e: russh::Error| ssh_error(server, e);
+    let result = match &server.auth {
+        SshAuth::Password(password) => session
+            .authenticate_password(&server.user, password.expose())
+            .await
+            .map_err(fail)?,
+        SshAuth::Key { path, passphrase } => {
+            let key =
+                keys::load_secret_key(path, passphrase.as_ref().map(platypus_core::Secret::expose))
+                    .map_err(|e| {
+                        ssh_error(
+                            server,
+                            format!("cannot read the key {}: {e}", path.display()),
+                        )
+                    })?;
+            let hash = session
+                .best_supported_rsa_hash()
+                .await
+                .map_err(fail)?
+                .flatten();
+            session
+                .authenticate_publickey(
+                    &server.user,
+                    PrivateKeyWithHashAlg::new(Arc::new(key), hash),
+                )
+                .await
+                .map_err(fail)?
+        }
+        SshAuth::Agent => agent_auth(session, server).await?,
+    };
+    match result {
+        AuthResult::Success => Ok(()),
+        AuthResult::Failure { .. } => Err(ssh_error(server, "authentication failed")),
+    }
+}
+
+/// Tries the agent's keys in turn.
+async fn agent_auth(session: &mut Session, server: &SshConfig) -> Result<AuthResult> {
+    #[cfg(windows)]
+    let mut agent =
+        match keys::agent::client::AgentClient::connect_named_pipe(r"\\.\pipe\openssh-ssh-agent")
+            .await
+        {
+            Ok(agent) => agent.dynamic(),
+            Err(_) => keys::agent::client::AgentClient::connect_pageant()
+                .await
+                .map_err(|e| ssh_error(server, format!("no SSH agent is running: {e}")))?
+                .dynamic(),
+        };
+    #[cfg(unix)]
+    let mut agent = keys::agent::client::AgentClient::connect_env()
+        .await
+        .map_err(|e| ssh_error(server, format!("no SSH agent is running: {e}")))?
+        .dynamic();
+    let identities = agent
+        .request_identities()
+        .await
+        .map_err(|e| ssh_error(server, format!("the SSH agent did not list its keys: {e}")))?;
+    let hash = session
+        .best_supported_rsa_hash()
+        .await
+        .map_err(|e| ssh_error(server, e))?
+        .flatten();
+    for identity in identities {
+        let key = identity.public_key().into_owned();
+        let result = session
+            .authenticate_publickey_with(&server.user, key, hash, &mut agent)
+            .await
+            .map_err(|e| ssh_error(server, e))?;
+        if result.success() {
+            return Ok(result);
+        }
+    }
+    Ok(AuthResult::Failure {
+        remaining_methods: russh::MethodSet::empty(),
+        partial_success: false,
+    })
+}
+
+fn client_config() -> Arc<client::Config> {
+    Arc::new(client::Config {
+        keepalive_interval: Some(std::time::Duration::from_secs(30)),
+        inactivity_timeout: None,
+        nodelay: true,
+        ..client::Config::default()
+    })
+}
+
+/// Logs in to `server`, through its jump host if it has one. Jump hosts stay open as long
+/// as the sessions they carry.
+async fn open_session(server: &SshConfig, known_hosts: &Path) -> Result<(Session, Vec<Session>)> {
+    let handler = KnownHosts {
+        host: server.host.clone(),
+        port: server.port,
+        path: known_hosts.to_owned(),
+    };
+    let (mut session, mut jumps) = match &server.jump {
+        None => {
+            let session = client::connect(
+                client_config(),
+                (server.host.as_str(), server.port),
+                handler,
+            )
+            .await
+            .map_err(|e| ssh_error(server, e))?;
+            (session, Vec::new())
+        }
+        Some(jump) => {
+            let (via, mut chain) = Box::pin(open_session(jump, known_hosts)).await?;
+            let channel = via
+                .channel_open_direct_tcpip(
+                    server.host.clone(),
+                    u32::from(server.port),
+                    "127.0.0.1",
+                    0,
+                )
+                .await
+                .map_err(|e| {
+                    ssh_error(
+                        jump,
+                        format!("cannot reach {}:{}: {e}", server.host, server.port),
+                    )
+                })?;
+            let session = client::connect_stream(client_config(), channel.into_stream(), handler)
+                .await
+                .map_err(|e| ssh_error(server, e))?;
+            chain.push(via);
+            (session, chain)
+        }
+    };
+    authenticate(&mut session, server).await?;
+    jumps.shrink_to_fit();
+    Ok((session, jumps))
+}
+
+/// A local port forwarded to a host and port seen from the SSH server. Closing it (dropping)
+/// stops listening and ends the SSH sessions.
+pub struct Tunnel {
+    local: SocketAddr,
+    session: Arc<Session>,
+    accept: JoinHandle<()>,
+    _jumps: Vec<Session>,
+}
+
+impl fmt::Debug for Tunnel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Tunnel")
+            .field("local", &self.local)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The user's `~/.ssh/known_hosts`, shared with OpenSSH.
+fn default_known_hosts() -> Result<PathBuf> {
+    std::env::home_dir()
+        .map(|home| home.join(".ssh").join("known_hosts"))
+        .ok_or_else(|| Error::Connect("SSH: no home directory for known_hosts".to_owned()))
+}
+
+impl Tunnel {
+    /// Opens a tunnel through `server` to `host:port`, on a free local port. Server keys are
+    /// checked against `known_hosts`, by default the user's `~/.ssh/known_hosts`.
+    pub async fn open(
+        server: &SshConfig,
+        host: &str,
+        port: u16,
+        known_hosts: Option<&Path>,
+    ) -> Result<Self> {
+        let path = match known_hosts {
+            Some(path) => path.to_owned(),
+            None => default_known_hosts()?,
+        };
+        let (session, jumps) = open_session(server, &path).await?;
+        let session = Arc::new(session);
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| {
+            Error::Connect(format!("cannot open a local port for the SSH tunnel: {e}"))
+        })?;
+        let local = listener
+            .local_addr()
+            .map_err(|e| Error::Connect(format!("SSH tunnel: {e}")))?;
+        let forward = Arc::clone(&session);
+        let target = host.to_owned();
+        let accept = tokio::spawn(async move {
+            while let Ok((mut socket, peer)) = listener.accept().await {
+                let session = Arc::clone(&forward);
+                let target = target.clone();
+                tokio::spawn(async move {
+                    let Ok(channel) = session
+                        .channel_open_direct_tcpip(
+                            target,
+                            u32::from(port),
+                            peer.ip().to_string(),
+                            u32::from(peer.port()),
+                        )
+                        .await
+                    else {
+                        return;
+                    };
+                    let mut stream = channel.into_stream();
+                    let _ = tokio::io::copy_bidirectional(&mut socket, &mut stream).await;
+                });
+            }
+        });
+        Ok(Self {
+            local,
+            session,
+            accept,
+            _jumps: jumps,
+        })
+    }
+
+    /// The local address that leads to the target.
+    #[must_use]
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local
+    }
+
+    #[must_use]
+    pub fn is_closed(&self) -> bool {
+        self.session.is_closed() || self.accept.is_finished()
+    }
+}
+
+impl Drop for Tunnel {
+    fn drop(&mut self) {
+        self.accept.abort();
+    }
+}
+
+/// Opens `driver`'s connection for `config`, through its SSH tunnel when it has one; see
+/// [`Tunnel::open`] for `known_hosts`.
+pub async fn connect<F, Fut>(
+    config: &ConnectionConfig,
+    known_hosts: Option<&Path>,
+    driver: F,
+) -> Result<Box<dyn Connection>>
+where
+    F: FnOnce(ConnectionConfig) -> Fut,
+    Fut: Future<Output = Result<Box<dyn Connection>>>,
+{
+    let Some(ssh) = &config.ssh else {
+        return driver(config.clone()).await;
+    };
+    let port = config
+        .port
+        .or(config.driver.default_port())
+        .ok_or_else(|| Error::Config("an SSH tunnel needs a server port".to_owned()))?;
+    let tunnel = Tunnel::open(ssh, &config.host, port, known_hosts).await?;
+    let mut direct = config.clone();
+    direct.ssh = None;
+    direct.connect_addr = Some(tunnel.local_addr());
+    let inner = driver(direct).await?;
+    Ok(Box::new(Tunneled { inner, tunnel }))
+}
+
+/// A connection through an SSH tunnel, which lives as long as it.
+#[derive(Debug)]
+struct Tunneled {
+    inner: Box<dyn Connection>,
+    tunnel: Tunnel,
+}
+
+#[async_trait]
+impl Connection for Tunneled {
+    async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
+        self.inner.execute(sql, options).await
+    }
+
+    fn cancel_handle(&self) -> CancelHandle {
+        self.inner.cancel_handle()
+    }
+
+    fn server_info(&self) -> &ServerInfo {
+        self.inner.server_info()
+    }
+
+    fn is_closed(&self) -> bool {
+        self.inner.is_closed() || self.tunnel.is_closed()
+    }
+
+    async fn schemas(&self) -> Result<Vec<SchemaMeta>> {
+        self.inner.schemas().await
+    }
+
+    async fn objects(&self, schema: &str) -> Result<Vec<ObjectMeta>> {
+        self.inner.objects(schema).await
+    }
+
+    async fn table_details(&self, schema: &str, table: &str) -> Result<TableDetails> {
+        self.inner.table_details(schema, table).await
+    }
+
+    async fn referencing_keys(&self, schema: &str, table: &str) -> Result<Vec<ReferencingKey>> {
+        self.inner.referencing_keys(schema, table).await
+    }
+
+    async fn catalog_columns(&self) -> Result<Vec<CatalogColumn>> {
+        self.inner.catalog_columns().await
+    }
+
+    fn transaction(&self) -> TransactionState {
+        self.inner.transaction()
+    }
+
+    async fn set_autocommit(&self, on: bool) -> Result<()> {
+        self.inner.set_autocommit(on).await
+    }
+
+    async fn commit(&self) -> Result<()> {
+        self.inner.commit().await
+    }
+
+    async fn rollback(&self) -> Result<()> {
+        self.inner.rollback().await
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        self.inner.capabilities()
+    }
+
+    async fn explain(&self, sql: &str, analyze: bool) -> Result<Explain> {
+        self.inner.explain(sql, analyze).await
+    }
+
+    async fn object_ddl(&self, object: &ObjectRef<'_>) -> Result<String> {
+        self.inner.object_ddl(object).await
+    }
+}

@@ -4,20 +4,25 @@ import {
   api,
   toCommandError,
   type ExportOptions,
+  type StatementSpan,
   type QueryEvent,
+  type SavedConnection,
   type TableDetails,
   type TransactionState,
 } from "../api";
 import type { EditSource, TableRef } from "../grid/edit/meta";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
 import { type RunMode, SqlEditor, type SqlEditorHandle } from "../editor/SqlEditor";
-import { defineSetting, getSetting } from "../settings";
+import { defineSetting, getSetting, useSetting } from "../settings";
 import { type Sort, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { basename } from "../workspace";
+import { type CheckedStatement, type GuardRequest, check, elapsed, transactionWarning } from "../guards/guards";
+import { GuardDialog } from "../guards/GuardDialog";
 import { ExportDialog, type ExportSource } from "./ExportDialog";
 import { HistoryPanel } from "./HistoryPanel";
+import { useToolbar } from "./toolbar";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
 
 /** Statements that change which tables and columns exist. */
@@ -62,6 +67,8 @@ interface Planned {
   sql: string;
   offset: number;
   readOnly: boolean;
+  /** Its statements and what they do, for the checks before running. */
+  checks: CheckedStatement[];
 }
 
 let nextResultId = 1;
@@ -100,6 +107,13 @@ export function QueryTab({
 }: Props) {
   const editor = useRef<SqlEditorHandle>(null);
   const [tx, setTx] = useState<TransactionState | null>(null);
+  /** A run waiting for the answer to its checks. */
+  const [guard, setGuard] = useState<{ request: GuardRequest; resolve: (run: boolean) => void } | null>(null);
+  /** When the open transaction began, as far as the tab saw it. */
+  const [txSince, setTxSince] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const warnMinutes = useSetting(transactionWarning);
+  const warned = useRef(false);
   const [filter, setFilter] = useState(tab.filter ?? "");
   const [count, setCount] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
@@ -153,16 +167,19 @@ export function QueryTab({
     const { from, to } = ed.getSelection();
     const scope = from !== to ? { text: text.slice(from, to), offset: from } : { text, offset: 0 };
     const analysis = await api.analyzeSql(scope.text, connection.driver, from - scope.offset);
-    const toPlanned = (s: { start: number; end: number; read_only: boolean }) => ({
+    const checked = (span: StatementSpan) => ({ sql: scope.text.slice(span.start, span.end), span });
+    const toPlanned = (s: StatementSpan): Planned => ({
       sql: scope.text.slice(s.start, s.end),
       offset: scope.offset + s.start,
       readOnly: s.read_only,
+      checks: [checked(s)],
     });
     if (mode === "script") return analysis.statements.map(toPlanned);
     if (from !== to) {
       // A selection runs as typed, even if it holds several statements.
       const readOnly = analysis.statements.every((s) => s.read_only);
-      return scope.text.trim() ? [{ sql: scope.text, offset: from, readOnly }] : [];
+      const checks = analysis.statements.map(checked);
+      return scope.text.trim() ? [{ sql: scope.text, offset: from, readOnly, checks }] : [];
     }
     const at = analysis.at_cursor;
     const statement = at === null ? undefined : analysis.statements[at];
@@ -259,6 +276,11 @@ export function QueryTab({
       return;
     }
     setBlocked(null);
+    // Statements of a run asked about already go again without asking.
+    if (!again) {
+      const request = await check(connection, planned.flatMap((p) => p.checks), sideSession);
+      if (request && !(await new Promise<boolean>((resolve) => setGuard({ request, resolve })))) return;
+    }
     const sessionId = await ensureSession();
     if (sessionId === null) return;
     onNeedCatalog(false);
@@ -559,6 +581,26 @@ export function QueryTab({
     };
   }
 
+  // The open transaction's clock, and one warning when it has been open too long.
+  useEffect(() => {
+    if (!tx?.open) {
+      setTxSince(null);
+      warned.current = false;
+      return;
+    }
+    setTxSince((since) => since ?? Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [tx?.open]);
+  const txAge = txSince === null ? 0 : Math.max(0, now - txSince);
+  const txLong = warnMinutes > 0 && txAge >= warnMinutes * 60_000;
+  useEffect(() => {
+    if (!txLong || warned.current) return;
+    warned.current = true;
+    onError(`A transaction on ${connection.name} has been open for ${warnMinutes} minutes: commit or roll back.`);
+  }, [txLong]);
+
+  const toolbar = useToolbar();
   const current = results[activeResult];
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
   const rowsResult = current?.status.kind === "rows" && current.columns ? current : null;
@@ -572,20 +614,37 @@ export function QueryTab({
         style={{ gridTemplateRows: `auto ${tab.table ? "auto " : ""}${editorHeight}px 6px 1fr auto` }}
       >
         <div className="toolbar">
-          <button className="primary" onClick={() => void run("statement")} title="Run statement (Ctrl+Enter)">
-            ▶ Run
+          <button
+            className="primary"
+            onClick={() => void run("statement")}
+            title="Run statement (Ctrl+Enter)"
+            aria-label="Run"
+          >
+            {toolbar.label("run", "Run")}
           </button>
-          <button onClick={() => void run("script")} title="Run script (Alt+X, Ctrl+Shift+Enter)">
-            ▶▶ Script
-          </button>
-          <button onClick={() => void cancel()} disabled={!running}>
-            ■ Cancel
-          </button>
-          <span className="divider" />
+          {toolbar.visible.script && (
+            <button onClick={() => void run("script")} title="Run script (Alt+X, Ctrl+Shift+Enter)" aria-label="Script">
+              {toolbar.label("script", "Script")}
+            </button>
+          )}
+          {toolbar.visible.cancel && (
+            <button
+              onClick={() => void cancel()}
+              disabled={!running}
+              title="Cancel the running statement"
+              aria-label="Cancel"
+            >
+              {toolbar.label("cancel", "Cancel")}
+            </button>
+          )}
+          <ConnectionChip connection={connection} database={tab.database ?? null} schema={catalog?.default_schema ?? null} />
+          {toolbar.visible.transactions && <span className="divider" />}
+          {toolbar.visible.transactions && (
           <button
             className={manual ? "toggled" : ""}
             onClick={() => void toggleAutocommit()}
             disabled={running || !!tx?.open}
+            aria-label={manual ? "Manual commit" : "Auto-commit"}
             title={
               tx?.open
                 ? "Commit or roll back before switching"
@@ -594,35 +653,56 @@ export function QueryTab({
                   : "Auto-commit: every statement commits on its own"
             }
           >
-            {manual ? "Manual commit" : "Auto-commit"}
+            {toolbar.label(manual ? "manual-commit" : "autocommit", manual ? "Manual commit" : "Auto-commit")}
           </button>
-          {manual && (
+          )}
+          {toolbar.visible.transactions && manual && (
             <>
-              <button onClick={() => void endTransaction(true)} disabled={running || !tx.open}>
-                Commit
+              <button
+                onClick={() => void endTransaction(true)}
+                disabled={running || !tx.open}
+                title="Commit"
+                aria-label="Commit"
+              >
+                {toolbar.label("commit", "Commit")}
               </button>
-              <button onClick={() => void endTransaction(false)} disabled={running || !tx.open}>
-                Rollback
+              <button
+                onClick={() => void endTransaction(false)}
+                disabled={running || !tx.open}
+                title="Rollback"
+                aria-label="Rollback"
+              >
+                {toolbar.label("rollback", "Rollback")}
               </button>
             </>
           )}
           {tx?.open && (
-            <span className="tx-open" title="A transaction is open: changes are not visible to others yet">
-              ● Transaction open
+            <span
+              className={`tx-open${txLong ? " long" : ""}`}
+              title="A transaction is open: changes are not visible to others yet, and locks are held"
+            >
+              ● Transaction open {elapsed(txAge)}
             </span>
           )}
-          <span className="divider" />
-          <button onClick={() => void openFile()} title="Open script (Ctrl+O)">
-            Open
-          </button>
-          <button onClick={() => void saveFile()} title="Save script (Ctrl+S)">
-            Save{dirty ? " •" : ""}
-          </button>
+          {toolbar.visible.files && (
+            <>
+              <span className="divider" />
+              <button onClick={() => void openFile()} title="Open script (Ctrl+O)" aria-label="Open">
+                {toolbar.label("open", "Open")}
+              </button>
+              <button onClick={() => void saveFile()} title="Save script (Ctrl+S)" aria-label="Save">
+                {toolbar.label("save", "Save")}
+                {dirty ? " •" : ""}
+              </button>
+            </>
+          )}
           <span className="spacer" />
           {tab.filePath && <span className="muted small">{basename(tab.filePath)}</span>}
-          <button className={showHistory ? "toggled" : ""} onClick={() => setShowHistory((s) => !s)}>
-            History
-          </button>
+          {toolbar.visible.history && (
+            <button className={showHistory ? "toggled" : ""} onClick={() => setShowHistory((s) => !s)} title="History" aria-label="History">
+              {toolbar.label("history", "History")}
+            </button>
+          )}
         </div>
         {tab.table && (
           <form
@@ -778,6 +858,15 @@ export function QueryTab({
           onClose={() => setShowHistory(false)}
         />
       )}
+      {guard && (
+        <GuardDialog
+          request={guard.request}
+          onAnswer={(run) => {
+            guard.resolve(run);
+            setGuard(null);
+          }}
+        />
+      )}
       {exportOpen && rowsResult && (
         <ExportDialog
           name={tab.title ?? "result"}
@@ -789,5 +878,17 @@ export function QueryTab({
         />
       )}
     </div>
+  );
+}
+
+/** Where the editor's statements run: connection, database when not the saved one, schema;
+ *  colored by the connection's type. */
+function ConnectionChip({ connection, database, schema }: { connection: SavedConnection; database: string | null; schema: string | null }) {
+  const parts = [connection.name, database, schema].filter(Boolean);
+  return (
+    <span className={`conn-chip${connection.connection_type ? ` ${connection.connection_type}` : ""}`} title="Statements run here">
+      <span className="conn-chip-dot" />
+      {parts.join(" · ")}
+    </span>
   );
 }

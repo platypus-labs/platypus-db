@@ -2,11 +2,11 @@
 
 use platypus_core::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, ConstraintKind, ConstraintMeta,
-    Error, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ObjectRef, Property, ReferencingKey,
-    Result, SchemaMeta, TableDetails, TextRow, TextRowExt, group_sorted, query_catalog, query_text,
-    unsupported,
+    Error, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch, ObjectKind, ObjectMeta, ObjectRef,
+    Property, ReferencingKey, Result, SEARCH_LIMIT, SchemaMeta, TableDetails, TextRow, TextRowExt,
+    group_sorted, query_catalog, query_text, unsupported,
 };
-use platypus_sql::Dialect;
+use platypus_sql::{Dialect, contains_pattern};
 
 use crate::MySqlConnection;
 
@@ -85,16 +85,18 @@ pub async fn objects(conn: &MySqlConnection, schema: &str) -> Result<Vec<ObjectM
         conn,
         &format!(
             "SELECT TABLE_NAME AS name, TABLE_TYPE AS kind, TABLE_COMMENT AS comment,
-                    NULL AS parent
+                    NULL AS parent,
+                    CASE WHEN TABLE_TYPE = 'BASE TABLE' THEN TABLE_ROWS END AS row_estimate,
+                    CASE WHEN TABLE_TYPE = 'BASE TABLE' THEN DATA_LENGTH + INDEX_LENGTH END AS size
              FROM information_schema.TABLES WHERE TABLE_SCHEMA = {schema}
              UNION ALL
-             SELECT ROUTINE_NAME, ROUTINE_TYPE, ROUTINE_COMMENT, NULL
+             SELECT ROUTINE_NAME, ROUTINE_TYPE, ROUTINE_COMMENT, NULL, NULL, NULL
              FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = {schema}
              UNION ALL
-             SELECT TRIGGER_NAME, 'TRIGGER', NULL, EVENT_OBJECT_TABLE
+             SELECT TRIGGER_NAME, 'TRIGGER', NULL, EVENT_OBJECT_TABLE, NULL, NULL
              FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = {schema}
              UNION ALL
-             SELECT EVENT_NAME, 'EVENT', EVENT_COMMENT, NULL
+             SELECT EVENT_NAME, 'EVENT', EVENT_COMMENT, NULL, NULL, NULL
              FROM information_schema.EVENTS WHERE EVENT_SCHEMA = {schema}
              ORDER BY name"
         ),
@@ -103,21 +105,85 @@ pub async fn objects(conn: &MySqlConnection, schema: &str) -> Result<Vec<ObjectM
     Ok(rows
         .iter()
         .map(|r| {
-            let kind = match r.text(1).as_str() {
-                "VIEW" | "SYSTEM VIEW" => ObjectKind::View,
-                "SEQUENCE" => ObjectKind::Sequence,
-                "FUNCTION" => ObjectKind::Function,
-                "PROCEDURE" => ObjectKind::Procedure,
-                "TRIGGER" => ObjectKind::Trigger,
-                "EVENT" => ObjectKind::Event,
-                _ => ObjectKind::Table,
-            };
             // Views carry the comment `VIEW`; InnoDB may append its own notes.
             let comment = r.opt(2).filter(|c| !c.is_empty() && c != "VIEW");
             ObjectMeta {
                 parent: r.opt(3),
-                ..ObjectMeta::new(r.text(0), kind, comment)
+                rows: r.number(4),
+                size: r.number(5),
+                ..ObjectMeta::new(r.text(0), object_kind(&r.text(1)), comment)
             }
+        })
+        .collect())
+}
+
+/// `TABLE_TYPE` and `ROUTINE_TYPE` values, plus `TRIGGER` and `EVENT`.
+fn object_kind(code: &str) -> ObjectKind {
+    match code {
+        "VIEW" | "SYSTEM VIEW" => ObjectKind::View,
+        "SEQUENCE" => ObjectKind::Sequence,
+        "FUNCTION" => ObjectKind::Function,
+        "PROCEDURE" => ObjectKind::Procedure,
+        "TRIGGER" => ObjectKind::Trigger,
+        "EVENT" => ObjectKind::Event,
+        _ => ObjectKind::Table,
+    }
+}
+
+pub async fn search_metadata(conn: &MySqlConnection, needle: &str) -> Result<Vec<MetadataMatch>> {
+    let pattern = conn.literal(&contains_pattern(needle));
+    let has = |expr: &str| Dialect::MySql.contains_quoted(expr, &pattern);
+    let user = "NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')";
+    let (table, column, view) = (
+        has("TABLE_NAME"),
+        has("COLUMN_NAME"),
+        has("VIEW_DEFINITION"),
+    );
+    let (routine, body) = (has("ROUTINE_NAME"), has("ROUTINE_DEFINITION"));
+    let (trigger, statement) = (has("TRIGGER_NAME"), has("ACTION_STATEMENT"));
+    let (event, definition) = (has("EVENT_NAME"), has("EVENT_DEFINITION"));
+    let rows = query_text(
+        conn,
+        &format!(
+            "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, NULL, 'name', NULL
+             FROM information_schema.TABLES WHERE TABLE_SCHEMA {user} AND {table}
+             UNION ALL
+             SELECT c.TABLE_SCHEMA, c.TABLE_NAME, t.TABLE_TYPE, NULL, 'column', c.COLUMN_NAME
+             FROM information_schema.COLUMNS c JOIN information_schema.TABLES t
+               ON t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME
+             WHERE c.TABLE_SCHEMA {user} AND {column}
+             UNION ALL
+             SELECT TABLE_SCHEMA, TABLE_NAME, 'VIEW', NULL, 'source', NULL
+             FROM information_schema.VIEWS WHERE TABLE_SCHEMA {user} AND NOT {table} AND {view}
+             UNION ALL
+             SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE, NULL,
+                    CASE WHEN {routine} THEN 'name' ELSE 'source' END, NULL
+             FROM information_schema.ROUTINES
+             WHERE ROUTINE_SCHEMA {user} AND ({routine} OR {body})
+             UNION ALL
+             SELECT TRIGGER_SCHEMA, TRIGGER_NAME, 'TRIGGER', EVENT_OBJECT_TABLE,
+                    CASE WHEN {trigger} THEN 'name' ELSE 'source' END, NULL
+             FROM information_schema.TRIGGERS
+             WHERE TRIGGER_SCHEMA {user} AND ({trigger} OR {statement})
+             UNION ALL
+             SELECT EVENT_SCHEMA, EVENT_NAME, 'EVENT', NULL,
+                    CASE WHEN {event} THEN 'name' ELSE 'source' END, NULL
+             FROM information_schema.EVENTS
+             WHERE EVENT_SCHEMA {user} AND ({event} OR {definition})
+             ORDER BY 1, 2, 6
+             LIMIT {SEARCH_LIMIT}"
+        ),
+    )
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| MetadataMatch {
+            schema: r.text(0),
+            name: r.text(1),
+            kind: object_kind(&r.text(2)),
+            parent: r.opt(3),
+            matched: MatchKind::from_code(&r.text(4)),
+            column: r.opt(5),
         })
         .collect())
 }
@@ -152,6 +218,7 @@ pub async fn table_details(
         primary_key: r.flag(4),
         comment: r.opt(5).filter(|c| !c.is_empty()),
         enum_values: enum_values(&r.text(1)),
+        fields: Vec::new(),
     })
     .collect();
 
@@ -175,6 +242,7 @@ pub async fn table_details(
                     columns: vec![r.text(3)],
                     unique: r.flag(1),
                     primary: r.flag(2),
+                    size: None,
                 },
             )
         }),

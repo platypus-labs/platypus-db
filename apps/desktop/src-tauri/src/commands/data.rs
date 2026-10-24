@@ -3,8 +3,8 @@
 //! none on the session of the result being edited.
 
 use arrow_array::RecordBatch;
-use platypus_sql::Dialect;
 use platypus_sql::dml::{self, ApplyError, Column, Value, ValueKind};
+use platypus_sql::{Dialect, pg_literal};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -287,4 +287,25 @@ pub fn row_values(
     limit: usize,
 ) -> CommandResult<Vec<Vec<Option<String>>>> {
     rows_text(&*state.job(job_id)?, offset, limit)
+}
+
+/// The elements of a PostgreSQL array (or, `composite`, the fields of a composite value)
+/// for the data editor's list; `None` when the text is not one, to edit it as text.
+#[tauri::command]
+pub fn split_literal(composite: bool, text: String) -> Option<Vec<Option<String>>> {
+    if composite {
+        pg_literal::split_composite(&text)
+    } else {
+        pg_literal::split_array(&text)
+    }
+}
+
+/// The array (or composite) literal of the data editor's list.
+#[tauri::command]
+pub fn join_literal(composite: bool, items: Vec<Option<String>>) -> String {
+    if composite {
+        pg_literal::join_composite(&items)
+    } else {
+        pg_literal::join_array(&items)
+    }
 }

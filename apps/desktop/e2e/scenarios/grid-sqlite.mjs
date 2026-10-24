@@ -57,6 +57,19 @@ export default async function (page) {
   await page.eval(`${treeRow("items")}.id = 'e2e-table'`);
   await page.clickSel("#e2e-table", { clickCount: 2 });
   await page.waitFor(`${status} === '3 rows'`, 15_000);
+
+  // The grid draws in the bundled monospace font and, once it has loaded, sizes the columns
+  // with it rather than with the fallback it may have measured first.
+  const canvas = `${visibleTab}.querySelector('.grid-canvas')`;
+  assert.match(await page.eval(`${canvas}.dataset.font`), /^12px "JetBrains Mono"/);
+  await page.waitFor(`${canvas}.dataset.measuredWith?.includes('JetBrains Mono')`);
+  // Another face loading later (an accented letter, say) leaves sized columns alone.
+  const measured = await page.eval(`${canvas}.dataset.measures`);
+  assert.ok(Number(measured) >= 1);
+  await page.eval(`document.fonts.dispatchEvent(new Event('loadingdone'))`);
+  await page.sleep(300);
+  assert.equal(await page.eval(`${canvas}.dataset.measures`), measured);
+
   await page.eval(`${grid}.id = 'e2e-grid'`);
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
 
@@ -68,6 +81,11 @@ export default async function (page) {
 
   // Copy as JSON, from the submenu.
   await openMenu(page, 40);
+  // Menus show an action's shortcut in a key cap.
+  assert.equal(
+    await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Copy'))?.querySelector('kbd.shortcut')?.textContent`),
+    "Ctrl+C",
+  );
   await page.eval(`${menuButton("Copy as")}.click()`);
   await page.waitFor(`${menuButton("JSON")} !== undefined`);
   const json = await copied(page, () => page.eval(`${menuButton("JSON")}.click()`));

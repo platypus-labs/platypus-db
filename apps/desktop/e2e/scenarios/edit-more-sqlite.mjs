@@ -116,7 +116,7 @@ export default async function (page, { dir, shots }) {
     await page.eval(`${visibleTab}.querySelector('.cm-content').textContent`),
     "DELETE FROM main.orders WHERE id = 12;DELETE FROM main.orders WHERE id = 13;",
   );
-  await page.eval(`${button(visibleTab, "▶▶ Script")}.click()`);
+  await page.eval(`${button(visibleTab, "Script")}.click()`);
   // Both result tabs appear when the script starts; Ctrl+Enter is ignored until it ends.
   await page.waitFor(
     `${visibleTab}.querySelectorAll('.result-tab').length === 2 && ` +

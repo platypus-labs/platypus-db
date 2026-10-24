@@ -10,9 +10,19 @@ scrolls through millions of rows.
 
 - **Connections** with TLS (libpq `sslmode` semantics), passwords in the system keychain,
   colors and a read-only flag; paste a `postgres://` or `mysql://` URL to fill the form.
+  **SSH tunnels** with a password, a key or the SSH agent, optionally through a jump host;
+  server keys are checked against `~/.ssh/known_hosts`. Connection **types** Development,
+  Test and Production: production shows a PROD badge in red and opens in manual commit.
+  **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`.
 - **Navigator**: databases (PostgreSQL), schemas, tables, views, routines, triggers, types,
-  extensions and events, loaded lazily, with a filter. Generate SELECT, INSERT, UPDATE,
-  DELETE, UPSERT or DDL; rename, truncate and drop with a preview of the statement.
+  extensions and events, loaded lazily, with a filter. Estimated rows and sizes of tables
+  and indexes; PostgreSQL partitions under their table. Bookmarks, per-connection filters
+  that hide schemas or objects by name (`tmp_*`), and a Simple view with only tables and
+  views. The tree is cached on disk: it shows at once on start, and offline. Generate SELECT,
+  INSERT, UPDATE, DELETE, UPSERT or DDL; rename, truncate and drop with a preview of the
+  statement.
+- **Search**: object names, columns and the source of views, routines and triggers across a
+  database; or the text of every row of a schema's tables, opening the matching rows.
 - **Object details**: properties, columns, indexes, constraints, foreign keys, incoming
   references and the DDL of any object.
 - **SQL editor** (CodeMirror): run the statement under the cursor (`Ctrl+Enter`) or the
@@ -31,7 +41,8 @@ scrolls through millions of rows.
   why it is read-only. Results of a query that reads one table edit the same way, with
   computed columns read-only. Paste cells from a spreadsheet or CSV over the grid or as new
   rows; foreign keys show the name of the row they point to and edit with a list of those
-  rows; every save leaves an undo script that puts the rows back.
+  rows; PostgreSQL arrays and composite values edit one element or field per line, each
+  with its own NULL; every save leaves an undo script that puts the rows back.
 - **Results**: copy with headers or as CSV, JSON, Markdown, HTML, SQL `INSERT` or an `IN`
   list; find in the loaded rows (`Ctrl+F`); a value panel (`F7`) with long text, JSON and XML
   formatted, hex and images from binary columns, and save to file; quick filters on the
@@ -43,12 +54,32 @@ scrolls through millions of rows.
   at the focused one. Dates, timestamps, the time zone, digit grouping and relative times
   follow the Settings.
 - **Export** to CSV, JSON, NDJSON or Parquet, streamed straight to the file.
-- **Transactions**: auto-commit or manual commit with Commit/Rollback.
-- Light and dark theme, automatic reconnection, in-app updates.
+- **Transactions**: auto-commit or manual commit with Commit/Rollback; an open transaction
+  shows how long it has been open and warns after a while (10 minutes by default).
+- **Safety**: an `UPDATE` or `DELETE` without `WHERE`, or a `TRUNCATE`, asks first and says
+  about how many rows it changes; on production connections every change is listed and
+  confirmed before it runs, and the data editor shows its SQL before saving.
+- **Appearance** in the Settings: the Platypus Dark and Platypus Light themes (what
+  "System" follows), Classic Light and Dark, Nord, Dracula, Solarized Light and high
+  contrast; your own accent, background, sidebar and text colors, interface size, grid row
+  density, corner radius and the SQL editor's font size. Inter and JetBrains Mono are
+  bundled, so the app looks the same everywhere and works offline.
+- **Projects** as workspaces: a rail of colored squares on the left, one per project
+  (a client, an environment, a side job). A project shows only its connections, its own tabs
+  and its recent queries; the window title names it. A connection can be in several
+  projects; `Ctrl+1` is All connections, `Ctrl+2`… the projects in rail order.
+- **Command palette** (`Ctrl+K` or `Ctrl+Shift+P`): actions, connections, tables and recent
+  queries, found by typing a few letters of them. In a project it lists only the project's.
+- **Shell**: `Ctrl+Shift+T` reopens the last closed tab, the mouse wheel scrolls the tab bar,
+  every shortcut can be changed in the Settings and the toolbar's buttons hidden or shown as
+  icons only.
+- Automatic reconnection, in-app updates.
 
 | | |
 |---|---|
 | ![Autocomplete](docs/screenshots/autocomplete.png) | ![Transactions](docs/screenshots/transaction.png) |
+| ![Platypus Light](docs/screenshots/light-theme.png) | ![Command palette](docs/screenshots/palette.png) |
+| ![Projects](docs/screenshots/projects.png) | |
 
 ## Install
 
@@ -74,8 +105,11 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | `Alt+drag` | Rectangular selection |
 | `Ctrl+F` | Find and replace |
 | `Ctrl+S`, `Ctrl+O` | Save / open a `.sql` file |
-| `Ctrl+T`, `Ctrl+W` | New tab / close tab |
+| `Ctrl+K`, `Ctrl+Shift+P` | Command palette |
+| `Ctrl+T`, `Ctrl+W`, `Ctrl+Shift+T` | New tab / close tab / reopen the closed tab |
 | `Ctrl+Tab`, `Ctrl+Shift+Tab` | Next / previous tab |
+| `Ctrl+1`, `Ctrl+2`… `Ctrl+9` | All connections / the projects in rail order |
+| `Ctrl+Alt+PageDown`, `Ctrl+Alt+PageUp` | Next / previous project |
 | `Ctrl+,` | Settings |
 | `F2`, `Enter`, typing | Edit the cell (data viewer, one-table queries) |
 | `Insert`, `Ctrl+D`, `Delete` | Add, duplicate, delete rows |
@@ -86,7 +120,8 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | `Ctrl+F`, `F7` | Find in the results / value panel (grid focused) |
 | `Ctrl+Alt+R` | Record view of the focused row; `←` `→` move through the rows |
 
-On macOS use `Cmd` instead of `Ctrl`.
+On macOS use `Cmd` instead of `Ctrl`. Every shortcut can be changed in Settings › Keyboard
+shortcuts.
 
 ## Performance
 
@@ -115,7 +150,8 @@ crates/
   platypus-driver-mysql/   MySQL / MariaDB (mysql_async)
   platypus-driver-sqlite/  SQLite (rusqlite)
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
-  platypus-store/          connections (TOML + OS keychain), query history (SQLite)
+  platypus-net/            SSH tunnels (russh)
+  platypus-store/          connections (TOML + OS keychain), imports, query history (SQLite)
   platypus-export/         streaming CSV, JSON, NDJSON and Parquet writers
   platypus-conformance/    integration suite run on every driver
   platypus-cli/            `platypus` CLI for exercising the core

@@ -12,7 +12,7 @@ mod metadata;
 mod transaction;
 
 pub use capabilities::{Capabilities, Explain, ExplainFormat, ObjectRef, unsupported};
-pub use config::{ConnectionConfig, DriverKind, Secret, SslMode};
+pub use config::{ConnectionConfig, DriverKind, Secret, SshAuth, SshConfig, SslMode};
 pub use connection::{
     CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, RecordBatchStream,
     ServerInfo,
@@ -20,8 +20,9 @@ pub use connection::{
 pub use error::{DbError, Error, Result};
 pub use metadata::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, ConstraintKind, ConstraintMeta,
-    ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, Property, ReferencingKey, SchemaMeta,
-    TableDetails, TextRow, TextRowExt, group_sorted, query_catalog, query_text,
+    FieldMeta, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch, ObjectKind, ObjectMeta,
+    Property, ReferencingKey, SEARCH_LIMIT, SchemaMeta, TableDetails, TextRow, TextRowExt,
+    group_sorted, query_catalog, query_text,
 };
 pub use transaction::{
     TransactionState, TxEffect, TxTracker, classify, leading_words, open_transaction_error,

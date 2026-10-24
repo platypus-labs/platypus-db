@@ -92,6 +92,26 @@ pub async fn referencing_keys(
     Ok(conn.referencing_keys(&schema, &table).await?)
 }
 
+/// About how many rows a table has, from the database's statistics; `None` when unknown.
+/// Shown when a statement is about to change all of them.
+#[tauri::command]
+pub async fn estimate_rows(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: Option<String>,
+    table: String,
+) -> CommandResult<Option<u64>> {
+    let dialect = Dialect::from(state.session(session_id)?.config.driver);
+    let conn = state.live(session_id).await?;
+    let sql = dialect.row_estimate_sql(schema.as_deref(), &table);
+    let rows = platypus_core::query_text(conn.as_ref(), &sql).await?;
+    Ok(rows
+        .into_iter()
+        .next()
+        .and_then(|r| r.into_iter().next().flatten())
+        .and_then(|n| n.parse().ok()))
+}
+
 /// The first value of a small query, as text (`None` for NULL or no rows); used for row
 /// counts. Run on the navigator session, which is never held by a paused result.
 #[tauri::command]

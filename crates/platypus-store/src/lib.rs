@@ -7,11 +7,18 @@
 
 mod connections;
 mod history;
+mod import;
 mod secrets;
 mod settings;
 
-pub use connections::{ConnectionStore, PasswordUpdate, SavedConnection, VirtualKey};
+pub use connections::{
+    ConnectionStore, ConnectionType, PasswordUpdate, Project, SavedConnection, SavedSsh,
+    SshAuthKind, VirtualKey, initials_of,
+};
 pub use history::{HistoryEntry, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry};
+pub use import::{
+    ImportFile, ImportSource, detect as detect_imports, import as import_connections,
+};
 pub use secrets::{KeyringSecrets, MemorySecrets, SecretStore};
 pub use settings::SettingsStore;
 pub use toml;

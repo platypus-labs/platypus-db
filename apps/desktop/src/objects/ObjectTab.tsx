@@ -7,7 +7,8 @@ import {
   type TableDetails,
   toCommandError,
 } from "../api";
-import { OBJECT_ICONS, isRelation } from "../components/Navigator";
+import { isRelation } from "../components/Navigator";
+import { Icon, objectIcon } from "../ui/Icon";
 import { SqlEditor } from "../editor/SqlEditor";
 import { onNavigatorRefresh } from "../navigatorEvents";
 import { qualifiedName, viewerSql } from "../sqlNames";
@@ -31,7 +32,7 @@ export interface ObjectTabModel extends TabBase {
   currentSchema: boolean;
   name: string;
   objectKind: ObjectKind;
-  /** The table of a trigger. */
+  /** The table of a trigger, or the partitioned table of a partition. */
   parent: string | null;
   section?: ObjectSection;
 }
@@ -143,12 +144,14 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
   return (
     <div className="object-tab" style={{ display: active ? "flex" : "none" }}>
       <header className="object-header">
-        <span className="object-icon">{OBJECT_ICONS[tab.objectKind]}</span>
+        <span className="object-icon" data-kind={objectIcon(tab.objectKind)}>
+          <Icon name={objectIcon(tab.objectKind)} size={16} />
+        </span>
         <div className="object-title">
           <strong>{tab.name}</strong>
           <span className="muted small">
             {KIND_LABELS[tab.objectKind]} in {tab.schema}
-            {tab.parent ? ` · on ${tab.parent}` : ""}
+            {tab.parent ? ` · ${tab.objectKind === "trigger" ? "on" : "partition of"} ${tab.parent}` : ""}
             {tab.database ? ` · ${tab.database}` : ""}
           </span>
         </div>
@@ -203,7 +206,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               ["Name", tab.name],
               ["Kind", KIND_LABELS[tab.objectKind]],
               ["Schema", tab.schema],
-              ...(tab.parent ? [["Table", tab.parent]] : []),
+              ...(tab.parent ? [[tab.objectKind === "trigger" ? "Table" : "Partition of", tab.parent]] : []),
               ...data.properties.map((p) => [p.name, p.value]),
             ]}
           />

@@ -26,6 +26,8 @@ pub struct Capabilities {
     /// [`Connection::databases`](crate::Connection::databases): other databases of the
     /// server can be opened from the same saved connection.
     pub multiple_databases: bool,
+    /// [`Connection::search_metadata`](crate::Connection::search_metadata).
+    pub metadata_search: bool,
 }
 
 /// The error a `Connection` method returns when the driver does not implement it.

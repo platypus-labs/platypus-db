@@ -62,8 +62,10 @@ export default async function (page, { dir }) {
   await page.eval(`${connectionRow}.id = 'e2e-connection'`);
   assert.deepEqual(await rightClick(page, "#e2e-connection"), [
     "New SQL script",
+    "Search objects…",
     "Refresh",
     "Disconnect",
+    "Navigator filters…",
     "Edit…",
     "Delete…",
   ]);
@@ -134,7 +136,9 @@ export default async function (page, { dir }) {
 
   // Workspaces saved by 0.1.0 have no tab kind: they still restore as SQL editors.
   await page.sleep(600); // let the debounced save of the current tabs pass
-  await page.eval(`localStorage.setItem('platypus.workspace.v1', JSON.stringify({
+  // As after an update from 0.1.0: only the old workspace is there.
+  await page.eval(`localStorage.removeItem('platypus.workspace.v2');
+    localStorage.setItem('platypus.workspace.v1', JSON.stringify({
     tabs: [{ connectionId: '00000000-0000-4000-8000-000000000001', sql: 'SELECT 42', filePath: null, savedSql: null, title: 'legacy' }],
     active: 0,
   }))`);

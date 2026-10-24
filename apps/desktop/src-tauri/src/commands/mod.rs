@@ -12,7 +12,9 @@ pub mod grid;
 pub mod history;
 pub mod meta;
 pub mod objects;
+pub mod projects;
 pub mod query;
+pub mod search;
 pub mod settings;
 pub mod sql;
 pub mod summary;
@@ -150,12 +152,16 @@ impl AppState {
     }
 }
 
+/// Opens a connection, through its SSH tunnel when it has one.
 pub(crate) async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, Error> {
-    match config.driver {
-        DriverKind::Postgres => PgDriver.connect(config).await,
-        DriverKind::MySql => MySqlDriver.connect(config).await,
-        DriverKind::Sqlite => SqliteDriver.connect(config).await,
-    }
+    platypus_net::connect(config, None, |config| async move {
+        match config.driver {
+            DriverKind::Postgres => PgDriver.connect(&config).await,
+            DriverKind::MySql => MySqlDriver.connect(&config).await,
+            DriverKind::Sqlite => SqliteDriver.connect(&config).await,
+        }
+    })
+    .await
 }
 
 #[derive(Debug, Serialize)]
@@ -164,6 +170,9 @@ pub struct AppInfo {
     version: &'static str,
     os: &'static str,
     arch: &'static str,
+    /// The developer tools port is open (`PLATYPUS_DEVTOOLS_PORT`), as for the end-to-end
+    /// tests, which then get test hooks in the page.
+    devtools: bool,
 }
 
 #[tauri::command]
@@ -173,5 +182,6 @@ pub fn app_info() -> AppInfo {
         version: platypus_core::VERSION,
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
+        devtools: std::env::var_os("PLATYPUS_DEVTOOLS_PORT").is_some(),
     }
 }

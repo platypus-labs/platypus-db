@@ -17,9 +17,38 @@ export interface SavedConnection {
   save_password: boolean;
   read_only: boolean;
   color: string | null;
-  folder: string | null;
+  /** Production asks before changes and starts in manual commit. */
+  connection_type?: ConnectionType | null;
+  /** The SSH server the connection goes through. */
+  ssh?: SavedSsh | null;
   /** Logical keys set by the user for tables without a primary key. */
   virtual_keys?: VirtualKey[];
+}
+
+export type ConnectionType = "dev" | "test" | "prod";
+
+export type SshAuthKind = "password" | "key" | "agent";
+
+/** An SSH server; its password or key passphrase is in the keychain under `secret_id`. */
+export interface SavedSsh {
+  host: string;
+  port: number;
+  user: string;
+  auth: SshAuthKind;
+  key_path: string | null;
+  secret_id: string;
+  /** A jump host to reach this server through. */
+  jump: SavedSsh | null;
+}
+
+/** SSH passwords or passphrases typed in a form, by `secret_id`. */
+export type SshSecrets = Record<string, PasswordInput>;
+
+export type ImportSource = "dbeaver" | "datagrip" | "pgadmin" | "pg_service";
+
+export interface ImportFile {
+  source: ImportSource;
+  path: string;
 }
 
 /** Columns that identify a table's rows, set by the user instead of a primary key. */
@@ -47,6 +76,7 @@ export interface Capabilities {
   explain: boolean;
   object_ddl: boolean;
   multiple_databases: boolean;
+  metadata_search: boolean;
 }
 
 export interface CommandError {
@@ -78,6 +108,9 @@ export interface StatementSpan {
   start: number;
   end: number;
   read_only: boolean;
+  kind: "query" | "dml" | "ddl" | "other";
+  /** An UPDATE or DELETE without WHERE, or a TRUNCATE: the table it changes in every row. */
+  unfiltered: { schema: string | null; name: string } | null;
 }
 
 export interface SqlAnalysis {
@@ -121,8 +154,29 @@ export interface ObjectMeta {
   name: string;
   kind: ObjectKind;
   comment: string | null;
-  /** The table of a trigger. */
+  /** The table of a trigger, or the partitioned table of a partition. */
   parent: string | null;
+  /** Estimated rows of a table, from the statistics. */
+  rows: number | null;
+  /** Bytes on disk of a table with its indexes. */
+  size: number | null;
+}
+
+export interface MetadataMatch {
+  schema: string;
+  name: string;
+  kind: ObjectKind;
+  parent: string | null;
+  matched: "name" | "column" | "source";
+  column: string | null;
+}
+
+/** Rows of a table that hold the searched text, at most `limit`. */
+export interface TableHits {
+  rows: number;
+  limit: number;
+  /** The WHERE condition that selects them. */
+  condition: string;
 }
 
 export interface ColumnMeta {
@@ -134,6 +188,13 @@ export interface ColumnMeta {
   comment: string | null;
   /** Values an enum column accepts; empty for other types. */
   enum_values: string[];
+  /** Fields of a composite type, or of an array's composite elements (PostgreSQL). */
+  fields: FieldMeta[];
+}
+
+export interface FieldMeta {
+  name: string;
+  data_type: string;
 }
 
 export interface IndexMeta {
@@ -141,6 +202,7 @@ export interface IndexMeta {
   columns: string[];
   unique: boolean;
   primary: boolean;
+  size: number | null;
 }
 
 export interface ForeignKeyMeta {
@@ -324,9 +386,22 @@ export type ExportEvent =
   | { type: "failed"; error: CommandError }
   | { type: "cancelled" };
 
+/** A set of connections worked on together; a connection can be in several. */
+export interface Project {
+  id: string;
+  name: string;
+  /** `#rrggbb`. */
+  color: string;
+  /** One or two characters on the project's square. */
+  initials: string;
+  connections: string[];
+}
+
 export interface AppInfo {
   name: string;
   version: string;
+  /** Developer tools are open, as for the end-to-end tests: the page gets test hooks. */
+  devtools: boolean;
   os: string;
   arch: string;
 }
@@ -344,14 +419,33 @@ export const api = {
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
   defaultConnection: (driver: DriverKind) =>
     invoke<SavedConnection>("default_connection", { driver }),
-  saveConnection: (connection: SavedConnection, password: PasswordInput) =>
-    invoke<SavedConnection[]>("save_connection", { connection, password }),
+  /** `projects` replaces the projects the connection is in; `null` leaves them. */
+  saveConnection: (
+    connection: SavedConnection,
+    password: PasswordInput,
+    sshSecrets: SshSecrets = {},
+    projects: string[] | null = null,
+  ) => invoke<SavedConnection[]>("save_connection", { connection, password, sshSecrets, projects }),
+  detectImports: () => invoke<ImportFile[]>("detect_imports"),
+  /** The connections in another tool's file; nothing is saved yet. */
+  readImport: (source: ImportSource, path: string) => invoke<SavedConnection[]>("read_import", { source, path }),
+  /** Saves imported connections, into `project` when given. */
+  saveImported: (connections: SavedConnection[], project: string | null = null) =>
+    invoke<SavedConnection[]>("save_imported", { connections, project }),
+  listProjects: () => invoke<Project[]>("list_projects"),
+  saveProject: (project: Project) => invoke<Project[]>("save_project", { project }),
+  /** Deletes a project; its connections stay. */
+  deleteProject: (id: string) => invoke<Project[]>("delete_project", { id }),
+  setProjectMembership: (connectionId: string, projectId: string, member: boolean) =>
+    invoke<Project[]>("set_project_membership", { connectionId, projectId, member }),
+  /** The initials a project gets from its name. */
+  projectInitials: (name: string) => invoke<string>("project_initials", { name }),
   deleteConnection: (id: string) => invoke<SavedConnection[]>("delete_connection", { id }),
   /** Sets a table's virtual key; no columns remove it. */
   setVirtualKey: (connectionId: string, schema: string, table: string, columns: string[]) =>
     invoke<SavedConnection[]>("set_virtual_key", { connectionId, schema, table, columns }),
-  testConnection: (connection: SavedConnection, password: PasswordInput) =>
-    invoke<ServerInfo>("test_connection", { connection, password }),
+  testConnection: (connection: SavedConnection, password: PasswordInput, sshSecrets: SshSecrets = {}) =>
+    invoke<ServerInfo>("test_connection", { connection, password, sshSecrets }),
   /** `database` opens another database of the same server instead of the saved one. */
   openSession: (connectionId: string, password?: string, database?: string | null) =>
     invoke<{ session_id: number; server: ServerInfo; capabilities: Capabilities }>("open_session", {
@@ -374,6 +468,10 @@ export const api = {
   listSchemas: (sessionId: number) => invoke<SchemaMeta[]>("list_schemas", { sessionId }),
   listObjects: (sessionId: number, schema: string) =>
     invoke<ObjectMeta[]>("list_objects", { sessionId, schema }),
+  searchMetadata: (sessionId: number, needle: string) =>
+    invoke<MetadataMatch[]>("search_metadata", { sessionId, needle }),
+  searchTableData: (sessionId: number, schema: string, table: string, needle: string) =>
+    invoke<TableHits>("search_table_data", { sessionId, schema, table, needle }),
   tableDetails: (sessionId: number, schema: string, table: string) =>
     invoke<TableDetails>("table_details", { sessionId, schema, table }),
   referencingKeys: (sessionId: number, schema: string, table: string) =>
@@ -386,6 +484,9 @@ export const api = {
     invoke<TransactionState>("end_transaction", { sessionId, commit }),
   completionCatalog: (sessionId: number) => invoke<CompletionCatalog>("completion_catalog", { sessionId }),
   queryValue: (sessionId: number, sql: string) => invoke<string | null>("query_value", { sessionId, sql }),
+  /** About how many rows a table has, from the statistics; `null` when unknown. */
+  estimateRows: (sessionId: number, schema: string | null, table: string) =>
+    invoke<number | null>("estimate_rows", { sessionId, schema, table }),
   /** `[key, label]` pairs of `values`, or with `null` the first `limit` rows by label. */
   lookupValues: (sessionId: number, lookup: Lookup, values: string[] | null, limit: number) =>
     invoke<[string | null, string | null][]>("lookup_values", { sessionId, lookup, values, limit }),
@@ -411,14 +512,15 @@ export const api = {
     invoke<string>("format_sql", { sql, driver, settings }),
   /** The table a query reads, when its rows are that table's rows. */
   querySource: (sql: string, driver: DriverKind) => invoke<QuerySource | null>("query_source", { sql, driver }),
+  /** `connectionIds` limits the entries to those connections, e.g. a project's. */
   searchHistory: (query: {
-    connectionId?: string;
+    connectionIds?: string[];
     text?: string;
     beforeId?: number;
     limit: number;
   }) =>
     invoke<HistoryEntry[]>("search_history", {
-      connectionId: query.connectionId ?? null,
+      connectionIds: query.connectionIds ?? null,
       text: query.text || null,
       beforeId: query.beforeId ?? null,
       limit: query.limit,
@@ -461,6 +563,12 @@ export const api = {
   /** Loaded rows' values in full, not cut to one line like the grid's. */
   rowValues: (jobId: number, offset: number, limit: number) =>
     invoke<(string | null)[][]>("row_values", { jobId, offset, limit }),
+  /** The elements of a PostgreSQL array (or the fields of a composite value); `null` when
+   *  the text is not one, e.g. a nested array. */
+  splitLiteral: (composite: boolean, text: string) =>
+    invoke<(string | null)[] | null>("split_literal", { composite, text }),
+  joinLiteral: (composite: boolean, items: (string | null)[]) =>
+    invoke<string>("join_literal", { composite, items }),
   /** Loaded rows of a result in a clipboard format; `table` names the table in INSERTs. */
   copyRows: (
     jobId: number,

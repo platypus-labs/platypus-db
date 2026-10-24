@@ -46,6 +46,8 @@ async function openTable(page, name) {
 /** Types into the cell editor once it is open, then presses Enter. */
 async function finishEdit(page, text) {
   await page.waitFor(`document.querySelector('.cell-editor') !== null`);
+  // Same font as the grid it sits on, so the text does not jump when editing starts.
+  assert.match(await page.eval(`getComputedStyle(document.querySelector('.cell-editor')).fontFamily`), /^"?JetBrains Mono/);
   if (text) await page.type(text);
   await page.key("Enter", "Enter", 13);
   await page.waitFor(`document.querySelector('.cell-editor') === null`);

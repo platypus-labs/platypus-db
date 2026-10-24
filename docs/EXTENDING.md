@@ -52,6 +52,14 @@ The grid's text is rendered in Rust (`display.rs`) with the user's formats from
 relative times. Their settings are declared in `apps/desktop/src/grid/formats.ts`. Editing,
 copying, searching and exports read the plain values of `display::format_options` instead.
 
+### Network paths
+
+`platypus_net::connect` opens a driver's connection through the SSH tunnel of its
+`ConnectionConfig` (`ssh`), and keeps the tunnel open as long as the connection. Drivers
+only see `connect_addr`, the local end of the tunnel, while `host` still names the server
+for TLS. A new kind of path (a proxy, a port-forward) is a new module of `platypus-net`
+that sets `connect_addr` the same way.
+
 ### SQL generation
 
 Anything that builds SQL goes through `platypus_sql::Dialect` (`crates/platypus-sql/src/dialect.rs`)
@@ -66,11 +74,30 @@ rather than checking the driver. It provides:
 
 `platypus_sql::dml` builds the data editor's `UPDATE`, `INSERT` and `DELETE` statements from
 text values and the columns' Arrow types, and `dml::apply` runs them all or none.
-`platypus_sql::source_table` tells which table a `SELECT` reads, when its rows are that
+`platypus_sql::analyze` tells what a statement does (query, DML, DDL) and which table an
+unfiltered `UPDATE`, `DELETE` or `TRUNCATE` changes in every row; the checks before running
+(`apps/desktop/src/guards/`) use it. `platypus_sql::source_table` tells which table a `SELECT` reads, when its rows are that
 table's, so the editor can change the results of such queries too.
+`platypus_sql::pg_literal` splits PostgreSQL array and composite literals into their
+elements and joins them back, for the data editor's list of elements; `ColumnMeta.fields`
+names a composite type's fields.
 
 Add dialect rules there, with tests. `apps/desktop/src/sqlNames.ts` mirrors `quote_ident`
 for the UI.
+
+### Connections file
+
+`platypus_store::ConnectionStore` keeps `connections.toml`, now `version = 2`: a list of
+`[[projects]]` (`id`, `name`, `color` as `#rrggbb`, `initials`, `connections`, the ids of
+its connections) before the `[[connections]]`. A connection can be in several projects, or
+in none. Version 1 files (no projects) are read and written back as version 2; a file with a
+newer version is refused, so an older app never drops what it cannot read. Ids of
+connections that no longer exist are dropped when the file is opened, and deleting a
+connection removes it from every project.
+
+The projects' commands are in `commands/projects.rs`: `list_projects`, `save_project`,
+`delete_project`, `set_project_membership` and `project_initials`. `save_connection` and
+`save_imported` take the projects a connection joins.
 
 ### Settings storage
 
@@ -88,7 +115,10 @@ as described under [Settings](#settings).
 - a title;
 - optionally a shortcut, a menu group and order, and a `when` condition.
 
-Context menus and shortcuts read from the registry, and so will the command palette.
+Context menus, shortcuts and the command palette read from the registry: global actions
+appear in the palette by their title. The user can change any action's shortcut in the
+Settings; it is stored under `shortcuts.<action id>`, and `shortcutsOf(action)` gives the
+ones in effect.
 Actions with the same `submenu` title are listed together under that entry, e.g. `Copy as`.
 
 ```ts
@@ -116,6 +146,7 @@ registerAction({
 database of the same server (PostgreSQL), and sessions and tabs opened from there use it.
 | `grid` | `{ grid: GridApi, source }` | grid menu, and shortcuts while the grid has focus |
 | `editor` | `{ view: EditorView, driver, readOnly }` | editor menu, and shortcuts while the editor has focus (before CodeMirror's own keymaps) |
+| `project` | `Project` | menu of a project's square in the rail |
 
 To add a scope, augment `ActionScopes` from the feature's own module:
 `declare module "../actions" { interface ActionScopes { … } }`.
@@ -150,7 +181,23 @@ without props. It provides:
 - `capabilities`, what an open session's driver supports;
 - `showError`;
 - `openSettings`;
-- `openDialog`, which shows a dialog from an action. Its `render(close)` returns the dialog.
+- `openDialog`, which shows a dialog from an action. Its `render(close)` returns the dialog;
+- `projects`, `setProjects`, `activeProject` and `switchProject`, and `editProject` and
+  `deleteProject`, which open the project dialog or ask before deleting.
+
+### Projects
+
+`apps/desktop/src/projects/` holds the rail (`ProjectRail.tsx`), the project dialog, the
+dialog that adds saved connections to a project, and the actions (`actions.ts`): the
+`Ctrl+1`… switches, next and previous project, the `project` scope of a square's menu, and
+"Add to project" and "Remove from this project" in the navigator. `state.ts` filters the
+connections of a project and remembers the active one.
+
+Every tab has a `project` (`TabBase.project`, `null` for All connections). All tabs stay
+mounted; the tab bar shows those of the active project, and each project remembers its
+active tab. The workspace is saved as `platypus.workspace.v2` in `localStorage`, with the
+active tab per project; a v1 workspace is read once and its tabs go to All connections. A
+new tab joins the active project, so features that open tabs need nothing more.
 
 ### Navigator refresh
 
@@ -175,8 +222,42 @@ getSetting(scriptRowLimit);  // in handlers
 useSetting(scriptRowLimit);  // in components, re-renders on change
 ```
 
-The Settings dialog (Ctrl+,) lists every declared setting, grouped by section. Settings are
-loaded before the first render.
+The Settings dialog (Ctrl+,) lists every declared setting, grouped by section in the order
+they are declared. Settings are loaded before the first render; `onSettingsChanged` calls a
+function after any change, for code outside React. Controls are `boolean`, `number`, `text`,
+`select`, `color` (a `#rrggbb` value, empty for none) and `swatches` (choices shown as cards
+of colors).
+
+### Theme
+
+`apps/desktop/src/theme.ts` owns every color: the presets in `PRESETS` and the Appearance
+settings over them become CSS variables on `<html>` (`--bg`, `--fg`, `--accent`, the grid's
+and the syntax colors, `--radius`, `--grid-row-h`, `--editor-font-size`). Stylesheets use
+the variables, never fixed colors. A new preset is one more entry in `PRESETS`. Code that
+caches colors, like the grid's canvas, reads them again on `THEME_EVENT`.
+
+A preset gives the base colors (`BasePalette`) and may give the extra ones (`ExtraPalette`):
+`--bg-rail`, `--bg-tabbar`, `--fg-strong`, `--border-strong`, `--active`, the object colors
+`--obj-db|table|view|routine|trigger` and the connection types
+`--type-dev|test|prod` with their `-bg`. What a preset leaves out comes from `derive()`,
+which also follows the custom background, sidebar, text and accent colors. "System" stands
+for `platypus_dark` or `platypus_light`. The last applied variables are cached in
+`platypus.appearance.v2`; a change to the variables' set bumps that key.
+
+### Stylesheets, fonts and icons
+
+`src/styles/` holds one file per area, imported in order by `index.css`: `base` (reset,
+fonts, buttons, inputs, `kbd`), `shell` (layout, tabs, status bar), `navigator`, `editor`
+(toolbar, connection chip, history, object tabs), `grid` (results, data editor, panels) and
+`dialogs` (modals, Settings, palette, menus). A group adds its rules to the file of its area.
+
+Inter and JetBrains Mono (Latin and Latin Extended, OFL) are in `src/assets/fonts/`, exposed
+as `--font-ui` and `--font-mono`; the grid's canvas reads `--font-mono` too and redraws when
+the fonts finish loading.
+
+Icons come from Lucide through `src/ui/Icon.tsx`: `<Icon name="table" />`, and
+`objectIcon(kind)` for a database object. A new icon is one more name in its map; components
+never import `lucide-react` themselves.
 
 ### Result grid
 
@@ -217,7 +298,8 @@ together with `source`: the connection, the SQL, the job and the data-viewer tab
 `apps/desktop/e2e/` drives the release build through the WebView2 DevTools protocol, on
 Windows only. Each scenario runs against a fresh profile: `PLATYPUS_DATA_DIR` and a separate
 WebView2 folder. The user's data is never touched. The runner sets `PLATYPUS_DEVTOOLS_PORT`,
-which makes the app open the protocol port itself.
+which makes the app open the protocol port itself. With it set, `app_info().devtools` is
+true and the app exposes test hooks on `window.__platypus`, such as `switchProject(id)`.
 
 ```bash
 npm run tauri build -- --no-bundle
@@ -230,7 +312,12 @@ A scenario in `e2e/scenarios/` exports:
 - optionally `setup(ctx)`, which seeds `ctx.dir` (for example `connections.toml`) before
   the app starts;
 - optionally `skip()`, which returns a reason not to run, for example when a dev database
-  is down.
+  is down;
+- optionally `env(ctx)`, extra environment variables for the app;
+- optionally `ready`, the condition to wait for before the steps (by default the navigator
+  showing a connection; a scenario with no saved connections waits for something else).
 
-Set `PLATYPUS_E2E_SHOTS` to a folder to get a screenshot of each failure. CI runs the
+Set `PLATYPUS_E2E_SHOTS` to a folder to get a screenshot of each failure, plus the ones the
+scenarios take: `visual-sqlite` saves the main screens in Platypus Dark and Light, to compare
+a change to the look by eye. CI runs the
 scenarios on Windows. Scenarios that need the Docker databases skip themselves there.
