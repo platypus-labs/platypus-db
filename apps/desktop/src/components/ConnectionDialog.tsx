@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   api,
+  isEmbedded,
   toCommandError,
   type ConnectionType,
   type DriverKind,
@@ -38,7 +39,13 @@ type PasswordSource = "keychain" | "ask" | "pgpass" | "command";
 
 const COLORS = ["", "#2f9e44", "#1c7ed6", "#f08c00", "#d6336c", "#c92a2a"];
 
-const DEFAULT_PORTS: Record<DriverKind, number | null> = { postgres: 5432, mysql: 3306, sqlite: null };
+const DEFAULT_PORTS: Record<DriverKind, number | null> = { postgres: 5432, mysql: 3306, sqlite: null, duckdb: null };
+
+/** The database files of the embedded drivers: file picker filter and example path. */
+const FILES: Record<"sqlite" | "duckdb", { name: string; extensions: string[]; example: string }> = {
+  sqlite: { name: "SQLite database", extensions: ["db", "sqlite", "sqlite3", "db3"], example: "C:\\data\\app.db" },
+  duckdb: { name: "DuckDB database", extensions: ["duckdb", "ddb", "db"], example: "C:\\data\\app.duckdb" },
+};
 
 const EMPTY_INIT: SavedInit = { schema: null, time_zone: null, statements: "" };
 
@@ -112,7 +119,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
   const setInit = <K extends keyof SavedInit>(key: K, value: SavedInit[K]) => set("init", { ...init, [key]: value });
   const source = passwordSource(conn);
   const profile = profiles.find((p) => p.id === conn.network_profile) ?? null;
-  const server = conn.driver !== "sqlite";
+  const server = !isEmbedded(conn.driver);
 
   // An empty password field keeps the stored one when editing.
   const passwordInput = (): PasswordInput =>
@@ -159,19 +166,20 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
         driver,
         // Keep a custom port, but follow the default one when switching drivers.
         port: c.port === DEFAULT_PORTS[c.driver] ? DEFAULT_PORTS[driver] : c.port,
-        database: c.driver === "sqlite" || driver === "sqlite" ? "" : c.database,
+        database: isEmbedded(c.driver) || isEmbedded(driver) ? "" : c.database,
       };
       // `.pgpass` is PostgreSQL's.
       return driver !== "postgres" && c.pgpass ? withPasswordSource(next, "keychain") : next;
     });
-    if (driver === "sqlite" && page === "network") setPage("general");
+    if (isEmbedded(driver) && page === "network") setPage("general");
   }
 
   async function browseFile() {
+    const file = FILES[conn.driver === "duckdb" ? "duckdb" : "sqlite"];
     const path = await open({
       multiple: false,
       filters: [
-        { name: "SQLite database", extensions: ["db", "sqlite", "sqlite3", "db3"] },
+        { name: file.name, extensions: file.extensions },
         { name: "All files", extensions: ["*"] },
       ],
     });
@@ -237,6 +245,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
                   <option value="postgres">PostgreSQL</option>
                   <option value="mysql">MySQL / MariaDB</option>
                   <option value="sqlite">SQLite</option>
+                  <option value="duckdb">DuckDB</option>
                 </select>
               </label>
               <label className="field">
@@ -279,7 +288,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
                     required
                     value={conn.database}
                     onChange={(e) => set("database", e.target.value)}
-                    placeholder="C:\data\app.db"
+                    placeholder={FILES[conn.driver === "duckdb" ? "duckdb" : "sqlite"].example}
                   />
                   <button type="button" onClick={() => void browseFile()}>
                     Browse…

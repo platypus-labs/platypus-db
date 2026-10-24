@@ -2,6 +2,7 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from "react"
 import {
   api,
   type Capabilities,
+  isEmbedded,
   toCommandError,
   type ObjectKind,
   type ObjectMeta,
@@ -391,7 +392,7 @@ export function Navigator(props: Props) {
     const open = expanded.has(ckey);
     const filtered = !!prefs.filters[c.id];
     const isOffline = offline.current.has(c.id);
-    const target = c.driver === "sqlite" ? c.database : `${c.user}@${c.host}:${c.port ?? ""}/${c.database}`;
+    const target = isEmbedded(c.driver) ? c.database : `${c.user}@${c.host}:${c.port ?? ""}/${c.database}`;
     rows.push({
       key: ckey,
       depth: 0,

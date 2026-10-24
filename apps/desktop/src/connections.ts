@@ -1,5 +1,5 @@
 /** Connection types (development, test, production) and what they change in the UI. */
-import type { ConnectionType, SavedConnection } from "./api";
+import { type ConnectionType, isEmbedded, type SavedConnection } from "./api";
 
 export const CONNECTION_TYPES: { value: ConnectionType; label: string; color: string }[] = [
   { value: "dev", label: "Development", color: "#2f9e44" },
@@ -16,7 +16,7 @@ export function connectionColor(c: SavedConnection | undefined): string | null {
 /** The password is asked at each connection: none is saved, looked up in `.pgpass` or
  *  printed by a command. */
 export const asksPassword = (c: SavedConnection) =>
-  c.driver !== "sqlite" && !c.save_password && !c.pgpass && !c.password_command;
+  !isEmbedded(c.driver) && !c.save_password && !c.pgpass && !c.password_command;
 
 export const isProduction = (c: SavedConnection | undefined) => c?.connection_type === "prod";
 

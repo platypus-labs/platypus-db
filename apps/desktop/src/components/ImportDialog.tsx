@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, type ImportFile, type ImportSource, type SavedConnection, toCommandError } from "../api";
+import { api, type ImportFile, type ImportSource, isEmbedded, type SavedConnection, toCommandError } from "../api";
 import { toggled } from "../sets";
 
 interface Props {
@@ -117,7 +117,7 @@ export function ImportDialog({ existing, project, onImported, onClose }: Props) 
                   <input type="checkbox" checked={picked.has(c.id)} onChange={() => toggle(c.id)} />
                   <strong>{c.name}</strong>
                   <span className="muted small">
-                    {c.driver === "sqlite" ? c.database : `${c.user ? `${c.user}@` : ""}${c.host}:${c.port ?? ""}/${c.database}`}
+                    {isEmbedded(c.driver) ? c.database : `${c.user ? `${c.user}@` : ""}${c.host}:${c.port ?? ""}/${c.database}`}
                     {c.ssh ? ` · SSH ${c.ssh.host}` : ""}
                     {c.connection_type ? ` · ${c.connection_type}` : ""}
                     {duplicate(c, existing) ? " · already saved" : ""}

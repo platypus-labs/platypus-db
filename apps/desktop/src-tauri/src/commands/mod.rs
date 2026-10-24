@@ -31,6 +31,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use platypus_core::{Connection, ConnectionConfig, Driver, DriverKind, Error};
+use platypus_driver_duckdb::DuckDbDriver;
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
 use platypus_driver_sqlite::SqliteDriver;
@@ -179,6 +180,7 @@ pub(crate) async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connect
             DriverKind::Postgres => PgDriver.connect(&config).await,
             DriverKind::MySql => MySqlDriver.connect(&config).await,
             DriverKind::Sqlite => SqliteDriver.connect(&config).await,
+            DriverKind::DuckDb => DuckDbDriver.connect(&config).await,
         }
     })
     .await

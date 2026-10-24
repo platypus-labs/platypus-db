@@ -1,7 +1,10 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { tableFromIPC } from "apache-arrow";
 
-export type DriverKind = "postgres" | "mysql" | "sqlite";
+export type DriverKind = "postgres" | "mysql" | "sqlite" | "duckdb";
+
+/** Runs in-process on a local file (SQLite, DuckDB): no server, host, user or password. */
+export const isEmbedded = (driver: DriverKind) => driver === "sqlite" || driver === "duckdb";
 export type SslMode = "disable" | "prefer" | "require" | "verify-ca" | "verify-full";
 
 export interface SavedConnection {
