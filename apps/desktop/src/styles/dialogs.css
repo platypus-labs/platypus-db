@@ -518,11 +518,6 @@ button.primary.danger:hover:not(:disabled) {
   align-self: flex-end;
 }
 
-.empty-import {
-  margin: 4px 12px;
-  text-align: left;
-}
-
 .dialog-tabs {
   display: flex;
   gap: 2px;

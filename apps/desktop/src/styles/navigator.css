@@ -26,6 +26,43 @@
   margin: 8px 12px;
 }
 
+/* Buttons do not wrap by default: this one says a sentence. */
+.empty-import {
+  margin: 4px 12px;
+  max-width: calc(100% - 24px);
+  text-align: left;
+  white-space: normal;
+  line-height: 1.4;
+}
+
+.project-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 12px;
+}
+
+.project-empty p {
+  margin: 0 0 4px;
+}
+
+.navigator-project {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navigator-project .dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
 .tree-search {
   position: relative;
   display: flex;

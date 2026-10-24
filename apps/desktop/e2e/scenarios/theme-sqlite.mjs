@@ -61,6 +61,10 @@ export const ready = `document.querySelector('.shell') !== null`;
 
 export default async function (page, { dir, shots }) {
   await page.waitFor(`document.querySelector('.shell') !== null`);
+  if (shots) {
+    await page.waitFor(`document.querySelector('.empty-import') !== null`);
+    await page.screenshot(join(shots, "navigator-empty.png"));
+  }
 
   // The bundled fonts: Inter for the interface, JetBrains Mono for SQL and the grid.
   // `document.fonts.check` is true for a family with no faces at all, so look for the faces.
