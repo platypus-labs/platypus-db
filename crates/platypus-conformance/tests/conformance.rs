@@ -1,9 +1,9 @@
-//! The same scenarios against every driver: PostgreSQL, MySQL, MariaDB and SQLite.
+//! The same scenarios against every driver: PostgreSQL, MySQL, MariaDB, SQLite and DuckDB.
 //!
 //! Server databases come from `docker/compose.yml`. Setting `PLATYPUS_TEST_PG_URL`,
 //! `PLATYPUS_TEST_MYSQL_URL` or `PLATYPUS_TEST_MARIADB_URL` makes that database required
-//! (CI does); otherwise an unreachable default database is skipped. SQLite always runs, on
-//! a temporary file.
+//! (CI does); otherwise an unreachable default database is skipped. SQLite and DuckDB always
+//! run, on temporary files.
 
 use std::time::Duration;
 
@@ -16,6 +16,7 @@ use platypus_core::{
     Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, Error, ExecOptions,
     ExecResult, MatchKind, ObjectKind, ObjectRef, SessionInit,
 };
+use platypus_driver_duckdb::DuckDbDriver;
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
 use platypus_driver_sqlite::SqliteDriver;
@@ -33,9 +34,10 @@ struct Backend {
     series_sql: String,
     /// A statement that runs for far longer than the tests wait.
     endless_sql: &'static str,
-    /// `(session id query, kill statement prefix)`; `None` for SQLite, which has no server.
+    /// `(session id query, kill statement prefix)`; `None` for SQLite and DuckDB, which
+    /// have no server.
     kill: Option<(&'static str, &'static str)>,
-    /// Keeps the SQLite file alive.
+    /// Keeps the SQLite or DuckDB file alive.
     _dir: Option<TempDir>,
 }
 
@@ -53,6 +55,7 @@ fn driver(kind: DriverKind) -> &'static dyn Driver {
         DriverKind::Postgres => &PgDriver,
         DriverKind::MySql => &MySqlDriver,
         DriverKind::Sqlite => &SqliteDriver,
+        DriverKind::DuckDb => &DuckDbDriver,
     }
 }
 
@@ -126,6 +129,50 @@ async fn sqlite_backend() -> Backend {
     }
 }
 
+const DUCKDB_FIXTURE: &[&str] = &[
+    "CREATE TABLE customers (
+        id INTEGER PRIMARY KEY,
+        email VARCHAR NOT NULL UNIQUE,
+        full_name VARCHAR NOT NULL
+    )",
+    "CREATE TABLE orders (
+        id INTEGER PRIMARY KEY,
+        customer_id INTEGER NOT NULL REFERENCES customers (id),
+        total DECIMAL(12, 2) NOT NULL
+    )",
+    "CREATE INDEX orders_customer_id_idx ON orders (customer_id)",
+    "CREATE VIEW customer_totals AS
+     SELECT c.id, count(o.id) AS orders
+     FROM customers c LEFT JOIN orders o ON o.customer_id = c.id
+     GROUP BY c.id",
+];
+
+async fn duckdb_backend() -> Backend {
+    let dir = tempfile::tempdir().unwrap();
+    // DuckDB creates the file; an empty one is not a database.
+    let path = dir.path().join("conformance.duckdb");
+    let mut config = ConnectionConfig::new(DriverKind::DuckDb);
+    config.database = path.to_string_lossy().into_owned();
+    let conn = DuckDbDriver.connect(&config).await.unwrap();
+    for sql in DUCKDB_FIXTURE {
+        conn.execute(sql, &ExecOptions::default()).await.unwrap();
+    }
+    // One process at a time may open a DuckDB file for writing.
+    drop(conn);
+    Backend {
+        name: "duckdb",
+        product: "DuckDB",
+        config,
+        schema: "main".to_owned(),
+        series_sql: format!(
+            "SELECT range + 1 AS id, 'row ' || (range + 1) AS label FROM range({SERIES_ROWS})"
+        ),
+        endless_sql: "SELECT max(hash(range)) FROM range(1000000000000000)",
+        kill: None,
+        _dir: Some(dir),
+    }
+}
+
 async fn backends() -> Vec<Backend> {
     let mut all = Vec::new();
     if let Some(config) = server_config(
@@ -176,6 +223,7 @@ async fn backends() -> Vec<Backend> {
         }
     }
     all.push(sqlite_backend().await);
+    all.push(duckdb_backend().await);
     all
 }
 
@@ -313,8 +361,14 @@ async fn maps_errors_with_their_position() {
             }
             other => panic!("{}: expected a database error, got {other:?}", b.name),
         }
+        // DuckDB reads `FROMM` as an alias and stops at `t`.
+        let at = if b.config.driver == DriverKind::DuckDb {
+            16
+        } else {
+            10
+        };
         match run(&*conn, "SELECT * FROMM t").await {
-            Err(Error::Database(e)) => assert_eq!(e.position, Some(10), "{}: {e}", b.name),
+            Err(Error::Database(e)) => assert_eq!(e.position, Some(at), "{}: {e}", b.name),
             other => panic!("{}: expected a syntax error, got {other:?}", b.name),
         }
         // The session is still usable after errors.
@@ -674,6 +728,9 @@ fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<Strin
             "id INT PRIMARY KEY, code VARCHAR(10) UNIQUE, qty INT CHECK (qty >= 0)"
         }
         DriverKind::Sqlite => "id INTEGER PRIMARY KEY, code TEXT UNIQUE, qty INT CHECK (qty >= 0)",
+        DriverKind::DuckDb => {
+            "id INTEGER PRIMARY KEY, code VARCHAR UNIQUE, qty INTEGER CHECK (qty >= 0)"
+        }
     };
     let create = format!("CREATE TABLE {s}.{table} ({columns})");
     let drop = format!("DROP TABLE IF EXISTS {s}.{table}");
@@ -711,6 +768,8 @@ fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<Strin
             ],
             vec![drop],
         ),
+        // DuckDB has no triggers.
+        DriverKind::DuckDb => (vec![create], vec![drop]),
     }
 }
 
@@ -744,6 +803,23 @@ async fn check_probe(b: &Backend, conn: &dyn Connection, table: &str, trigger: &
         );
     }
 
+    let object = |name, kind, parent| ObjectRef {
+        schema: s,
+        name,
+        kind,
+        parent,
+    };
+    let ddl = conn
+        .object_ddl(&object(table, ObjectKind::Table, None))
+        .await
+        .unwrap();
+    for part in ["CREATE TABLE", "code", "qty"] {
+        assert!(ddl.contains(part), "{}: {part} in {ddl}", b.name);
+    }
+    if b.config.driver == DriverKind::DuckDb {
+        return;
+    }
+
     let objects = conn.objects(s).await.unwrap();
     let found = objects.iter().find(|o| o.name == trigger);
     assert_eq!(
@@ -759,19 +835,6 @@ async fn check_probe(b: &Backend, conn: &dyn Connection, table: &str, trigger: &
         b.name
     );
 
-    let object = |name, kind, parent| ObjectRef {
-        schema: s,
-        name,
-        kind,
-        parent,
-    };
-    let ddl = conn
-        .object_ddl(&object(table, ObjectKind::Table, None))
-        .await
-        .unwrap();
-    for part in ["CREATE TABLE", "code", "qty"] {
-        assert!(ddl.contains(part), "{}: {part} in {ddl}", b.name);
-    }
     let ddl = conn
         .object_ddl(&object(trigger, ObjectKind::Trigger, Some(table)))
         .await
@@ -838,6 +901,10 @@ async fn edit_fixture(
             "CREATE TEMPORARY TABLE conf_edit (id INTEGER PRIMARY KEY, name TEXT, \
                  amount NUMERIC, data BLOB, at TEXT, n INT DEFAULT 7)"
         }
+        DriverKind::DuckDb => {
+            "CREATE TEMPORARY TABLE conf_edit (id INTEGER PRIMARY KEY, name VARCHAR, \
+                 amount DECIMAL(10, 2), data BLOB, \"at\" TIMESTAMPTZ, n INTEGER DEFAULT 7)"
+        }
     };
     affected(b, conn, ddl).await;
     let ExecResult::Rows(stream) = conn
@@ -894,7 +961,7 @@ async fn edits_table_data() {
             .unwrap(),
             dml::insert(d, t, &columns, &[(0, Value::Text("2"))]).unwrap(),
         ];
-        dml::apply(conn, &inserts)
+        dml::apply(conn, d, &inserts)
             .await
             .unwrap_or_else(|e| panic!("{}: insert: {e}", b.name));
         let rows = collect(
@@ -936,7 +1003,7 @@ async fn edits_table_data() {
             &[(0, Some("1")), (4, Some(at))],
         )
         .unwrap();
-        dml::apply(conn, &[update])
+        dml::apply(conn, d, &[update])
             .await
             .unwrap_or_else(|e| panic!("{}: update: {e}", b.name));
 
@@ -958,7 +1025,7 @@ async fn edit_rollbacks(
     // A statement that misses its row rolls back the ones before it.
     let ok = dml::update(d, t, columns, &[(1, Value::Text("x"))], &[(0, Some("2"))]).unwrap();
     let missing = dml::update(d, t, columns, &[(1, Value::Text("y"))], &[(0, Some("99"))]).unwrap();
-    let err = dml::apply(conn, &[ok, missing]).await.unwrap_err();
+    let err = dml::apply(conn, d, &[ok, missing]).await.unwrap_err();
     assert!(
         matches!(err, ApplyError::RowCount { index: 1, rows: 0 }),
         "{}: {err}",
@@ -976,7 +1043,7 @@ async fn edit_rollbacks(
     // In manual-commit mode the changes join the session's transaction.
     conn.set_autocommit(false).await.unwrap();
     let delete = dml::delete(d, t, columns, &[(0, Some("2"))]).unwrap();
-    dml::apply(conn, &[delete])
+    dml::apply(conn, d, &[delete])
         .await
         .unwrap_or_else(|e| panic!("{}: delete: {e}", b.name));
     assert!(conn.transaction().open, "{}: left uncommitted", b.name);
@@ -1102,7 +1169,7 @@ async fn edits_arrays_and_composites() {
             &[(0, Some("1"))],
         )
         .unwrap();
-        dml::apply(conn, &[update])
+        dml::apply(conn, Dialect::from(b.config.driver), &[update])
             .await
             .unwrap_or_else(|e| panic!("{}: update: {e}", b.name));
 
@@ -1218,10 +1285,10 @@ async fn sizes_tables_and_nests_partitions() {
         let conn = b.connect().await;
         let objects = conn.objects(&b.schema).await.unwrap();
         let customers = objects.iter().find(|o| o.name == "customers").unwrap();
-        // SQLite keeps no statistics.
+        // SQLite keeps no statistics, DuckDB only row estimates.
         assert_eq!(
             customers.size.is_some(),
-            b.config.driver != DriverKind::Sqlite,
+            !b.config.driver.is_embedded(),
             "{}: {customers:?}",
             b.name
         );
@@ -1316,7 +1383,9 @@ async fn reads_geometries() {
                 "SELECT ST_GeomFromText('POINT(1 2)'), ST_GeomFromText('LINESTRING(0 0, 2 1)')",
                 vec![point.clone(), line.clone()],
             ),
-            DriverKind::Sqlite => ("SELECT 'POINT (1 2)'", vec![point.clone()]),
+            DriverKind::Sqlite | DriverKind::DuckDb => {
+                ("SELECT 'POINT (1 2)'", vec![point.clone()])
+            }
         };
         let batches = collect(&b, &*conn, sql).await;
         let shapes: Vec<_> = (0..expected.len()).map(|c| shape(&batches[0], c)).collect();

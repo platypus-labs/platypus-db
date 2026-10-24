@@ -12,6 +12,7 @@ arrow-array.workspace = true
 arrow-cast.workspace = true
 futures.workspace = true
 platypus-core.workspace = true
+platypus-driver-duckdb.workspace = true
 platypus-driver-mysql.workspace = true
 platypus-driver-pg.workspace = true
 platypus-driver-sqlite.workspace = true
