@@ -94,7 +94,7 @@ export default async function (page, { shots }) {
   );
   await page.key("2", "Digit2", 50, CTRL);
   await page.waitFor(`document.querySelector('.navigator-project')?.textContent === 'Negozio'`);
-  await page.eval(`${treeRow(NAME)}.click()`);
+  await page.eval(`${treeRow(NAME)}.querySelector(".twisty").click()`);
   await page.waitFor(`${treeRow("orders")} !== undefined`, 15_000);
   await page.eval(`${treeRow("orders")}.id = 'e2e-table'`);
   await page.clickSel("#e2e-table", { clickCount: 2 });

@@ -40,7 +40,7 @@ async function runInEditor(page, sql) {
 export default async function (page, { shots }) {
   const shot = (name) => shots && page.screenshot(`${shots}/navigator-objects-${name}.png`);
   await page.waitFor(`${row(NAME)} !== undefined`);
-  await page.eval(`${row(NAME)}.click()`);
+  await page.eval(`${row(NAME)}.querySelector(".twisty").click()`);
   await page.waitFor(`document.querySelector('.modal input[type=password]') !== null`);
   await page.eval(`document.querySelector('.modal input[type=password]').focus()`);
   await page.type("platypus");
@@ -48,7 +48,7 @@ export default async function (page, { shots }) {
 
   // PostgreSQL shows the server's databases; the saved one is open.
   await page.waitFor(`${row("postgres")} !== undefined && ${row("demo")} !== undefined`, 15_000);
-  await page.eval(`${row("demo")}.click()`);
+  await page.eval(`${row("demo")}.querySelector(".twisty").click()`);
   await page.waitFor(`${row("orders")} !== undefined`, 15_000);
 
   // Rows: an SVG icon per kind of object, 24px high, and an icon as the expand arrow.
@@ -101,6 +101,6 @@ export default async function (page, { shots }) {
   await page.waitFor(`${row(`${table}_r`)} === undefined && document.querySelector('.modal.sql-action') === null`, 15_000);
 
   // Another database opens through its own session.
-  await page.eval(`${row("postgres")}.click()`);
+  await page.eval(`${row("postgres")}.querySelector(".twisty").click()`);
   await page.waitFor(`[...document.querySelectorAll('.tree-row')].filter(r => r.querySelector('.tree-label')?.textContent === 'public').length >= 2`, 15_000);
 }

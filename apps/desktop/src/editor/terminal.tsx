@@ -62,7 +62,7 @@ export async function blockText(
     case "message":
       return status.text;
     default:
-      return describe({ id: 0, sql: "", offset: 0, jobId, columns, rows, status, limit: null });
+      return describe({ id: 0, sql: "", offset: 0, jobId, columns, rows, fetching: false, status, limit: null });
   }
 }
 

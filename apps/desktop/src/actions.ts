@@ -23,12 +23,9 @@ export interface ActionScopes {
   /** `database`: `null` for the connection's saved database, else another one of the server. */
   "navigator.schema": { connection: SavedConnection; database: string | null; schema: SchemaMeta };
   /** A table, view, routine, trigger, ...; `target` is its quoted, qualified name. */
-  "navigator.object": {
-    connection: SavedConnection;
-    database: string | null;
-    schema: SchemaMeta;
-    object: ObjectMeta;
-    target: string;
+  "navigator.object": NavigatorObject & {
+    /** Every selected object, the clicked one included, when several are selected. */
+    selection?: NavigatorObject[];
   };
   "navigator.column": {
     connection: SavedConnection;
@@ -39,6 +36,14 @@ export interface ActionScopes {
   };
   /** A result grid with focus or a context menu. */
   grid: GridActionContext;
+}
+
+export interface NavigatorObject {
+  connection: SavedConnection;
+  database: string | null;
+  schema: SchemaMeta;
+  object: ObjectMeta;
+  target: string;
 }
 
 export type ActionScope = keyof ActionScopes;
@@ -58,6 +63,8 @@ export interface Action<S extends ActionScope = ActionScope> {
   when?: (arg: ActionScopes[S]) => boolean;
   /** Shortcut only, never listed in menus. */
   hidden?: boolean;
+  /** Also offered when several rows are selected; it gets them all in `arg.selection`. */
+  multiple?: boolean;
   /** Listed in a submenu with this title, e.g. `Copy as`, at the place of its first action. */
   submenu?: string;
   run: (arg: ActionScopes[S]) => void | Promise<void>;
@@ -84,10 +91,12 @@ export function onActionsChanged(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** Actions of a scope that apply to `arg`, in menu order. */
+/** Actions of a scope that apply to `arg`, in menu order: only the `multiple` ones for a
+ *  selection of several rows. */
 export function actionsFor<S extends ActionScope>(scope: S, arg: ActionScopes[S]): Action<S>[] {
+  const many = ((arg as { selection?: unknown[] } | undefined)?.selection?.length ?? 0) > 1;
   return ([...registry.values()] as unknown as Action<S>[])
-    .filter((a) => a.scope === scope && (a.when?.(arg) ?? true))
+    .filter((a) => a.scope === scope && (!many || a.multiple) && (a.when?.(arg) ?? true))
     .sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
 }
 

@@ -80,7 +80,7 @@ export default async function (page, { dir }) {
   await page.eval(`${button(".master-password", "Lock now")}.click()`);
   await page.waitFor(`${button(".master-password", "Lock now")}?.disabled === true`);
   await closeSettings(page);
-  await page.eval(`${row(NAME)}.click()`);
+  await page.eval(`${row(NAME)}.querySelector(".twisty").click()`);
   await page.waitFor(`document.querySelector('.unlock-vault') !== null`, 15_000);
   await page.eval(setLabeled(".unlock-vault", "Master password", "nope"));
   await page.eval(`${button(".unlock-vault", "Unlock")}.click()`);

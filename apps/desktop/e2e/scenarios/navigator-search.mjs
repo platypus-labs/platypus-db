@@ -63,10 +63,10 @@ async function password(page) {
 export default async function (page, { shots }) {
   const shot = (name) => shots && page.screenshot(`${shots}/navigator-search-${name}.png`);
   await page.waitFor(`${row(NAME)} !== undefined`);
-  await page.eval(`${row(NAME)}.click()`);
+  await page.eval(`${row(NAME)}.querySelector(".twisty").click()`);
   await password(page);
   await page.waitFor(`${row("demo")} !== undefined`, 15_000);
-  await page.eval(`${row("demo")}.click()`);
+  await page.eval(`${row("demo")}.querySelector(".twisty").click()`);
   await page.waitFor(`${row("orders")} !== undefined`, 15_000);
 
   // Tables show their estimated rows and size.
@@ -123,9 +123,9 @@ export default async function (page, { shots }) {
   await choose(page, "Refresh");
   await page.waitFor(`${row(parent)} !== undefined`, 15_000);
   assert.equal(await page.eval(`${row(`${parent}_2026`)} === undefined`), true);
-  await page.eval(`${row(parent)}.click()`);
+  await page.eval(`${row(parent)}.querySelector(".twisty").click()`);
   await page.waitFor(`${row("Partitions")} !== undefined`, 15_000);
-  await page.eval(`${row("Partitions")}.click()`);
+  await page.eval(`${row("Partitions")}.querySelector(".twisty").click()`);
   await page.waitFor(`${row(`${parent}_2026`)} !== undefined`);
   await shot("partitions");
   await runInEditor(page, `DROP TABLE demo.${parent}`);
@@ -135,7 +135,7 @@ export default async function (page, { shots }) {
   await rightClick(page, NAME);
   await choose(page, "Disconnect");
   await page.waitFor(`${row("orders")} === undefined`);
-  await page.eval(`${row(NAME)}.click()`);
+  await page.eval(`${row(NAME)}.querySelector(".twisty").click()`);
   await page.waitFor(`${row("orders")} !== undefined && document.querySelector('.modal input[type=password]') !== null`, 15_000);
   await page.eval(`[...document.querySelectorAll('.modal button')].find(b => b.textContent === 'Cancel').click()`);
   await page.waitFor(`/offline/.test(${row(NAME)}.textContent) && ${row("orders")} !== undefined`);

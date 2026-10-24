@@ -25,6 +25,8 @@ export interface Result {
   jobId: number | null;
   columns: ColumnInfo[] | null;
   rows: number;
+  /** Rows are being read from the server (the job pauses until the grid asks for more). */
+  fetching: boolean;
   status: ResultStatus;
   /** Row cap in script mode. */
   limit: number | null;
@@ -121,8 +123,21 @@ export function ResultPanel({ result, sort, onHeaderClick, source, edit }: Panel
   if (status.kind === "message") {
     return <pre className={`message-output${status.failed ? " failed" : ""}`}>{status.text}</pre>;
   }
-  if (columns && cache && jobId !== null) {
-    return (
+  // A thin bar while the statement runs or rows are on their way.
+  const loading =
+    status.kind === "running" || (status.kind === "rows" && !status.finished && result.fetching) || !!cache?.loading;
+  const bar = loading && <div className="result-loading" role="progressbar" aria-label="Loading rows" />;
+  if (!(columns && cache && jobId !== null)) {
+    return status.kind === "running" ? (
+      <>
+        {bar}
+        <div className="notice muted result-running">Executing…</div>
+      </>
+    ) : null;
+  }
+  return (
+    <>
+      {bar}
       <ResultGrid
         jobId={jobId}
         columns={columns}
@@ -134,9 +149,8 @@ export function ResultPanel({ result, sort, onHeaderClick, source, edit }: Panel
         source={source}
         edit={edit}
       />
-    );
-  }
-  return null;
+    </>
+  );
 }
 
 export function fetchAll(result: Result) {

@@ -124,6 +124,7 @@ impl Export {
         );
         let options_exec = ExecOptions {
             batch_size: BATCH_SIZE,
+            ..ExecOptions::default()
         };
         let ExecResult::Rows(mut stream) = conn.execute(sql, &options_exec).await? else {
             return Err(CommandError::new(

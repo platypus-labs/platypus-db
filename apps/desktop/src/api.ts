@@ -190,7 +190,7 @@ export interface ColumnInfo {
 
 export type QueryEvent =
   | { type: "started"; columns: ColumnInfo[]; elapsed_ms: number }
-  | { type: "progress"; rows: number }
+  | { type: "progress"; rows: number; fetching: boolean }
   | { type: "finished"; rows: number; elapsed_ms: number; complete: boolean; stopped: boolean }
   | { type: "affected"; rows: number; elapsed_ms: number }
   | { type: "failed"; error: CommandError };

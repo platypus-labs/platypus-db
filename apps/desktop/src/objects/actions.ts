@@ -100,18 +100,21 @@ registerAction({
   title: "Generate DDL",
   group: "generate",
   order: 29,
+  multiple: true,
   run: async (arg) => {
     const sid = await workbench().sideSession(arg.connection, arg.database);
     if (sid === null) return;
-    const ddl = await api.objectDdl(sid, {
-      schema: arg.schema.name,
-      name: arg.object.name,
-      kind: arg.object.kind,
-      parent: arg.object.parent,
-    });
+    const objects = arg.selection ?? [arg];
+    const ddl: string[] = [];
+    // One at a time: they share the navigator's session.
+    for (const { schema, object } of objects) {
+      ddl.push(
+        await api.objectDdl(sid, { schema: schema.name, name: object.name, kind: object.kind, parent: object.parent }),
+      );
+    }
     workbench().openTab("query", arg.connection.id, {
-      sql: ddl,
-      title: `${arg.object.name} DDL`,
+      sql: ddl.join("\n\n"),
+      title: objects.length > 1 ? `DDL of ${objects.length} objects` : `${arg.object.name} DDL`,
       database: arg.database,
     });
   },
@@ -123,13 +126,16 @@ registerAction({
   title: "Copy qualified name",
   group: "copy",
   order: 41,
-  run: ({ connection, schema, object }) => {
-    const name = connection.driver === "postgres" && object.name.includes("(")
-      ? `${quoteIdent(object.name.slice(0, object.name.indexOf("(")), connection.driver)}${object.name.slice(object.name.indexOf("("))}`
-      : quoteIdent(object.name, connection.driver);
-    return navigator.clipboard.writeText(`${quoteIdent(schema.name, connection.driver)}.${name}`);
-  },
+  multiple: true,
+  run: (arg) => navigator.clipboard.writeText((arg.selection ?? [arg]).map(qualified).join("\n")),
 });
+
+/** `schema.name`, quoted; a PostgreSQL routine keeps its argument list unquoted. */
+function qualified({ connection: { driver }, schema, object: { name } }: ObjectArg): string {
+  const paren = driver === "postgres" ? name.indexOf("(") : -1;
+  const quoted = paren >= 0 ? `${quoteIdent(name.slice(0, paren), driver)}${name.slice(paren)}` : quoteIdent(name, driver);
+  return `${quoteIdent(schema.name, driver)}.${quoted}`;
+}
 
 /** Opens the confirmation dialog for a statement that changes an object. */
 function confirmStatement(
