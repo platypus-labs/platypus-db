@@ -27,7 +27,8 @@ scrolls through millions of rows.
   that hide schemas or objects by name (`tmp_*`), and a Simple view with only tables and
   views. The tree is cached on disk: it shows at once on start, and offline. Generate SELECT,
   INSERT, UPDATE, DELETE, UPSERT or DDL; rename, truncate and drop with a preview of the
-  statement.
+  statement. A click selects a row (`Ctrl`/`Shift`+click for several, e.g. to generate the
+  DDL of many tables at once), the arrow expands it, a double-click opens it.
 - **Search**: object names, columns and the source of views, routines and triggers across a
   database; or the text of every row of a schema's tables, opening the matching rows.
 - **Object details**: properties, columns, indexes, constraints, foreign keys, incoming
@@ -68,7 +69,8 @@ scrolls through millions of rows.
   folders, rename, drag to move, and the connection each one opens on.
 - **Visual query builder**: tables dragged onto a canvas, joined on their foreign keys,
   columns ticked; the generated SELECT opens in the editor.
-- **Results grid** on canvas: millions of rows fetched on demand, cancellable queries.
+- **Results grid** on canvas: rows are read a page at a time (1,000 ahead of what is on
+  screen) and more as you scroll, with a loading bar; millions of rows, cancellable queries.
 - **Data viewer**: open a table, sort by clicking a header, filter with a `WHERE`, count rows.
 - **Data editor**: change cells in place (double-click, `F2` or just type), set NULL or the
   default, add, duplicate and delete rows, preview the generated SQL and save it all or
