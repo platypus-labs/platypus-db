@@ -102,23 +102,19 @@ sono molto più lenti che in locale: un test che passa in locale può fallire l�
    ```
    Si unisce solo con la verifica del punto 2 tutta verde, rifatta dopo il merge di `origin/main`.
    Se il push viene rifiutato perché `main` è avanzato, ripetere da `git fetch`. Mai `--force`.
-6. **Controllare la CI su `main`** dopo il push (`gh run list --branch main`), compresi gli E2E su
-   Windows. Se è rossa, correggerla subito: l'errore è su `main` per tutti. Se la CI è sospesa
-   (vedi "GitHub Actions"), questo punto è sostituito dalla verifica completa in locale del punto 2.
+6. **Niente CI automatica** (vedi "GitHub Actions"): la verifica in locale del punto 2 è l'unico
+   controllo. Prima di unire in `main` si fanno sempre tutti i passi, anche se il gruppo non tocca
+   UI o driver: build di release ed E2E, e conformance con i container Docker avviati.
 
 ## GitHub Actions
 
-I minuti di Actions sono limitati (3.000 al mese per l'account): si usano solo quando serve.
-- La CI (`ci.yml`) parte a ogni push su `main` e a ogni pull request. Un push con `[skip ci]` nel
-  messaggio del commit in cima non la avvia: con un merge `--no-ff`, nel messaggio del merge.
-- `[skip ci]` per i push che toccano solo la documentazione o la roadmap (lock, rilasci, stato).
-  La CI gira sul merge di un gruppo in `main`, una volta.
-- Un run vecchio superato da un push successivo si annulla (`gh run cancel <id>`); un run fallito
-  non si rilancia senza una correzione.
+Durante lo sviluppo la CI su GitHub non gira: i minuti di Actions dell'account (3.000 al mese)
+sono finiti in meno di un giorno, soprattutto per i push della roadmap e per macOS (contato ×10).
+- `ci.yml` parte solo a mano (`workflow_dispatch`), e solo quando lo chiede l'utente.
 - La release (`release.yml`, tag `v*` o avvio manuale) solo quando lo chiede l'utente.
-- **Fino al 2 novembre 2026 le Actions non si usano**: ogni push su `main` porta `[skip ci]`,
-  niente tag né avvii manuali, e la verifica completa in locale (punto 2, E2E compresi) sostituisce
-  il controllo della CI.
+- Un run superato da un altro si annulla (`gh run cancel <id>`); un run fallito non si rilancia
+  senza una correzione.
+- Fino al 2 novembre 2026 i minuti sono esauriti: nessun run, neanche a mano.
 
 ## Chiusura del lock
 
