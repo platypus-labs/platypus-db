@@ -23,6 +23,7 @@ use platypus_driver_mssql::MssqlDriver;
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
 use platypus_driver_sqlite::SqliteDriver;
+use platypus_mcp::query::{Limits, Outcome};
 use tempfile::TempDir;
 
 const SERIES_ROWS: usize = 100_000;
@@ -1726,5 +1727,53 @@ async fn sets_the_session_up_after_connecting() {
             Err(e) => e.to_string(),
         };
         assert!(err.contains("no_such_table_for_init"), "{}: {err}", b.name);
+    }
+}
+
+/// The rows of `table` an agent's read-only query sees.
+async fn agent_count(b: &Backend, conn: &dyn Connection, table: &str) -> String {
+    let dialect = platypus_sql::Dialect::from(b.config.driver);
+    let sql = format!("SELECT count(*) FROM {table}");
+    match platypus_mcp::query::run(conn, &sql, Some(dialect), &Limits::default()).await {
+        Ok(Outcome::Rows(t)) => t.rows[0][0].text().to_owned(),
+        Ok(other) => panic!("{}: {sql} returned {other:?}", b.name),
+        Err(e) => panic!("{}: {sql}: {e:?}", b.name),
+    }
+}
+
+#[tokio::test]
+async fn agents_read_in_read_only_transactions() {
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let dialect = platypus_sql::Dialect::from(b.config.driver);
+        // A real table: READ ONLY transactions still write temporary ones.
+        let table = "agent_read_only_probe";
+        run(conn, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap();
+        run(conn, &format!("CREATE TABLE {table} (id INT)"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+
+        assert_eq!(agent_count(&b, conn, table).await, "0", "{}", b.name);
+        // A write that got past the statement check is refused, or rolled back.
+        let insert = format!("INSERT INTO {table} VALUES (1)");
+        let write =
+            platypus_mcp::query::run(conn, &insert, Some(dialect), &Limits::default()).await;
+        if dialect.refuses_writes_when_read_only() {
+            assert!(
+                write.is_err(),
+                "{}: the read-only transaction wrote",
+                b.name
+            );
+        }
+        assert!(!conn.transaction().open, "{}: left a transaction", b.name);
+        assert_eq!(agent_count(&b, conn, table).await, "0", "{}", b.name);
+
+        // Afterwards the session writes again (SQLite turns query_only off).
+        assert_eq!(affected(&b, conn, &insert).await, 1, "{}", b.name);
+        assert_eq!(agent_count(&b, conn, table).await, "1", "{}", b.name);
+        run(conn, &format!("DROP TABLE {table}")).await.unwrap();
     }
 }

@@ -4569,6 +4569,7 @@ dependencies = [
  "platypus-driver-mysql",
  "platypus-driver-pg",
  "platypus-driver-sqlite",
+ "platypus-mcp",
  "platypus-sql",
  "tempfile",
  "tokio",
