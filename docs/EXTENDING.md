@@ -50,6 +50,14 @@ The grid's text is rendered in Rust (`display.rs`) with the user's formats from
 relative times. Their settings are declared in `apps/desktop/src/grid/formats.ts`. Editing,
 copying, searching and exports read the plain values of `display::format_options` instead.
 
+### Network paths
+
+`platypus_net::connect` opens a driver's connection through the SSH tunnel of its
+`ConnectionConfig` (`ssh`), and keeps the tunnel open as long as the connection. Drivers
+only see `connect_addr`, the local end of the tunnel, while `host` still names the server
+for TLS. A new kind of path (a proxy, a port-forward) is a new module of `platypus-net`
+that sets `connect_addr` the same way.
+
 ### SQL generation
 
 Anything that builds SQL goes through `platypus_sql::Dialect` (`crates/platypus-sql/src/dialect.rs`)

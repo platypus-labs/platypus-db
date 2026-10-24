@@ -1138,3 +1138,59 @@ button.toggled {
 .columns-row button {
   padding: 0 6px;
 }
+
+/* Connections: type badges, SSH section, import */
+
+.type-badge {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: var(--radius);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: #2f9e44;
+}
+
+.type-badge.test {
+  background: #f08c00;
+}
+
+.type-badge.prod {
+  background: #c92a2a;
+}
+
+.ssh-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.import-found {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.import-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 45vh;
+  overflow: auto;
+}
+
+.align-end {
+  align-self: flex-end;
+}
+
+.empty-import {
+  margin: 4px 12px;
+  text-align: left;
+}

@@ -15,6 +15,7 @@ platypus-driver-pg = { path = "crates/platypus-driver-pg" }
 platypus-driver-mysql = { path = "crates/platypus-driver-mysql" }
 platypus-driver-sqlite = { path = "crates/platypus-driver-sqlite" }
 platypus-export = { path = "crates/platypus-export" }
+platypus-net = { path = "crates/platypus-net" }
 platypus-sql = { path = "crates/platypus-sql" }
 platypus-store = { path = "crates/platypus-store" }
 

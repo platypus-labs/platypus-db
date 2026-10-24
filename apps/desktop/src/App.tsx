@@ -2,6 +2,8 @@ import { type ComponentType, useEffect, useRef, useState } from "react";
 import { dispatchKey, registerAction } from "./actions";
 import { api, type CompletionCatalog, toCommandError, type SavedConnection } from "./api";
 import { ConnectionDialog } from "./components/ConnectionDialog";
+import { ImportDialog } from "./components/ImportDialog";
+import { connectionColor } from "./connections";
 import { Navigator } from "./components/Navigator";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -10,7 +12,7 @@ import { type TabModel, type TabProps, createTab, tabKind } from "./tabs/registr
 import { provideWorkbench, workbench } from "./workbench";
 import { type PersistedTab, loadWorkspace, saveWorkspace } from "./workspace";
 
-type Dialog = { kind: "connection"; connection: SavedConnection; existing: boolean } | null;
+type Dialog = { kind: "connection"; connection: SavedConnection; existing: boolean } | { kind: "import" } | null;
 
 interface PasswordRequest {
   connection: SavedConnection;
@@ -232,6 +234,7 @@ export function App() {
         connections={connections ?? []}
         error={storeError}
         onNew={() => void newConnection()}
+        onImport={() => setDialog({ kind: "import" })}
         onEdit={(c) => setDialog({ kind: "connection", connection: c, existing: true })}
         onDelete={(c) => void deleteConnection(c)}
         onOpenTab={(c, init) => addTab(createTab("query", c.id, init))}
@@ -248,7 +251,7 @@ export function App() {
               <div
                 key={t.key}
                 className={`tab${t.key === activeTab ? " active" : ""}`}
-                style={{ borderTopColor: connectionById(t.connectionId)?.color ?? "transparent" }}
+                style={{ borderTopColor: connectionColor(connectionById(t.connectionId)) ?? "transparent" }}
                 onClick={() => setActiveTab(t.key)}
                 onAuxClick={(e) => e.button === 1 && closeTab(t)}
               >
@@ -311,6 +314,16 @@ export function App() {
           existing={dialog.existing}
           onClose={() => setDialog(null)}
           onSaved={(all) => {
+            setConnections(all);
+            setDialog(null);
+          }}
+        />
+      )}
+      {dialog?.kind === "import" && (
+        <ImportDialog
+          existing={connections ?? []}
+          onClose={() => setDialog(null)}
+          onImported={(all) => {
             setConnections(all);
             setDialog(null);
           }}

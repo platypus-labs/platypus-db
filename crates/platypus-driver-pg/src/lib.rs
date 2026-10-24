@@ -72,10 +72,18 @@ impl PgConnection {
             )));
         }
         let mut pg = tokio_postgres::Config::new();
+        // Through a tunnel the socket goes to its local end; `host` still names the server
+        // for TLS. Ports add up in tokio-postgres, so there is one call.
+        let port = config
+            .connect_addr
+            .map_or(config.port.unwrap_or(5432), |a| a.port());
         pg.host(&config.host)
-            .port(config.port.unwrap_or(5432))
+            .port(port)
             .dbname(&config.database)
             .user(&config.user);
+        if let Some(addr) = config.connect_addr {
+            pg.hostaddr(addr.ip());
+        }
         if let Some(password) = &config.password {
             pg.password(password.expose());
         }

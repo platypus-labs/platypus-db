@@ -1,6 +1,7 @@
 // Runs the end-to-end scenarios against the release build of the desktop app. A scenario
 // exports its steps as `default (page, ctx)`, and optionally `setup(ctx)` to seed the
-// profile before launch and `skip()` returning a reason not to run.
+// profile before launch, `env(ctx)` with environment variables for the app and `skip()`
+// returning a reason not to run.
 //
 //   npm run e2e                 every scenario in e2e/scenarios
 //   npm run e2e -- grid         scenarios whose file name contains "grid"
@@ -46,6 +47,8 @@ for (const file of scenarios) {
   const app = spawn(exe, [], {
     env: {
       ...process.env,
+      // Extra variables of the scenario, e.g. where other tools keep their files.
+      ...(scenario.env?.(ctx) ?? {}),
       PLATYPUS_DATA_DIR: dir,
       WEBVIEW2_USER_DATA_FOLDER: join(dir, "webview"),
       PLATYPUS_DEVTOOLS_PORT: String(port),

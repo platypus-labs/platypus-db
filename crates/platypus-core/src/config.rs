@@ -1,4 +1,5 @@
 use std::fmt;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
@@ -80,6 +81,31 @@ impl fmt::Debug for Secret {
     }
 }
 
+/// How to log in to an SSH server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SshAuth {
+    Password(Secret),
+    /// A private key file (OpenSSH or PEM), with its passphrase if it has one.
+    Key {
+        path: PathBuf,
+        passphrase: Option<Secret>,
+    },
+    /// The keys of the running SSH agent: OpenSSH's or Pageant on Windows, `SSH_AUTH_SOCK`
+    /// elsewhere.
+    Agent,
+}
+
+/// An SSH server the connection goes through, possibly reached through another one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SshConfig {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub auth: SshAuth,
+    /// A jump host to reach this server through (`ssh -J`).
+    pub jump: Option<Box<SshConfig>>,
+}
+
 /// Everything a driver needs to open a connection.
 ///
 /// For SQLite, `database` is the file path and the network fields are ignored.
@@ -96,6 +122,12 @@ pub struct ConnectionConfig {
     pub ssl_root_cert: Option<PathBuf>,
     pub application_name: Option<String>,
     pub connect_timeout: Option<Duration>,
+    /// Where to open the TCP connection when it is not `host:port`, e.g. the local end of an
+    /// SSH tunnel; `host` still names the server for TLS.
+    pub connect_addr: Option<SocketAddr>,
+    /// The SSH tunnel to reach the server through. Drivers ignore it: the app opens the
+    /// tunnel and sets `connect_addr`.
+    pub ssh: Option<SshConfig>,
 }
 
 impl ConnectionConfig {
@@ -112,6 +144,8 @@ impl ConnectionConfig {
             ssl_root_cert: None,
             application_name: Some("PlatypusDB".to_owned()),
             connect_timeout: Some(Duration::from_secs(10)),
+            connect_addr: None,
+            ssh: None,
         }
     }
 

@@ -2,7 +2,7 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use platypus_core::{ConnectionConfig, DriverKind, Secret, SslMode};
+use platypus_core::{ConnectionConfig, DriverKind, Secret, SshAuth, SshConfig, SslMode};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -36,10 +36,83 @@ pub struct SavedConnection {
     /// Accent colour for tabs and the navigator, e.g. `#d64545` for production.
     pub color: Option<String>,
     pub folder: Option<String>,
+    /// Development, test or production: production asks before changes and starts in manual
+    /// commit.
+    pub connection_type: Option<ConnectionType>,
+    /// The SSH server the connection goes through. Before `virtual_keys`: TOML writes plain
+    /// values first, then tables.
+    pub ssh: Option<SavedSsh>,
     /// Logical keys the user set for tables without a primary key, so the data editor can
     /// identify their rows. Last: TOML writes arrays of tables after plain values.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub virtual_keys: Vec<VirtualKey>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ConnectionType {
+    Dev,
+    Test,
+    Prod,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SshAuthKind {
+    #[default]
+    Password,
+    Key,
+    Agent,
+}
+
+const fn ssh_port() -> u16 {
+    22
+}
+
+/// An SSH server as saved: its password or key passphrase is in the keychain under
+/// `secret_id`, never in the file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedSsh {
+    pub host: String,
+    #[serde(default = "ssh_port")]
+    pub port: u16,
+    #[serde(default)]
+    pub user: String,
+    #[serde(default)]
+    pub auth: SshAuthKind,
+    /// The private key file, for key logins.
+    pub key_path: Option<PathBuf>,
+    pub secret_id: Uuid,
+    /// The server to reach this one through (`ssh -J`).
+    pub jump: Option<Box<SavedSsh>>,
+}
+
+impl SavedSsh {
+    /// This server and its jump hosts, outermost last.
+    pub fn chain(&self) -> impl Iterator<Item = &SavedSsh> {
+        std::iter::successors(Some(self), |s| s.jump.as_deref())
+    }
+
+    /// The tunnel's settings, with the secrets `secret` finds by id.
+    pub fn config(&self, secret: &impl Fn(Uuid) -> Option<Secret>) -> SshConfig {
+        let auth = match self.auth {
+            SshAuthKind::Password => {
+                SshAuth::Password(secret(self.secret_id).unwrap_or_else(|| Secret::new("")))
+            }
+            SshAuthKind::Key => SshAuth::Key {
+                path: self.key_path.clone().unwrap_or_default(),
+                passphrase: secret(self.secret_id),
+            },
+            SshAuthKind::Agent => SshAuth::Agent,
+        };
+        SshConfig {
+            host: self.host.clone(),
+            port: self.port,
+            user: self.user.clone(),
+            auth,
+            jump: self.jump.as_ref().map(|j| Box::new(j.config(secret))),
+        }
+    }
 }
 
 /// Columns that identify a table's rows, set by the user instead of a primary key.
@@ -67,6 +140,8 @@ impl SavedConnection {
             read_only: false,
             color: None,
             folder: None,
+            connection_type: None,
+            ssh: None,
             virtual_keys: Vec::new(),
         }
     }
@@ -197,13 +272,28 @@ impl ConnectionStore {
     }
 
     pub fn delete(&mut self, id: Uuid) -> Result<()> {
-        let before = self.connections.len();
-        self.connections.retain(|c| c.id != id);
-        if self.connections.len() == before {
+        let Some(index) = self.connections.iter().position(|c| c.id == id) else {
             return Err(StoreError::NotFound(id));
-        }
+        };
+        let removed = self.connections.remove(index);
         self.write()?;
+        for ssh in removed.ssh.iter().flat_map(SavedSsh::chain) {
+            self.secrets.delete(ssh.secret_id)?;
+        }
         self.secrets.delete(id)
+    }
+
+    /// Sets (`Some`) or removes (`None`) an SSH password or passphrase by its `secret_id`.
+    pub fn set_ssh_secret(&self, secret_id: Uuid, secret: Option<&Secret>) -> Result<()> {
+        match secret {
+            Some(secret) => self.secrets.set(secret_id, secret),
+            None => self.secrets.delete(secret_id),
+        }
+    }
+
+    /// A saved SSH password or passphrase.
+    pub fn ssh_secret(&self, secret_id: Uuid) -> Result<Option<Secret>> {
+        self.secrets.get(secret_id)
     }
 
     /// The saved password, if the connection keeps one.
@@ -334,6 +424,55 @@ mod tests {
             s.set_virtual_key(Uuid::new_v4(), "a", "b", Vec::new()),
             Err(StoreError::NotFound(_))
         ));
+    }
+
+    #[test]
+    fn keeps_ssh_settings_and_their_secrets_apart() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, secrets) = store(dir.path());
+        let mut conn = sample();
+        conn.connection_type = Some(ConnectionType::Prod);
+        let jump = SavedSsh {
+            host: "bastion".into(),
+            port: 2222,
+            user: "ops".into(),
+            auth: SshAuthKind::Agent,
+            key_path: None,
+            secret_id: Uuid::new_v4(),
+            jump: None,
+        };
+        let ssh = SavedSsh {
+            host: "db-box".into(),
+            port: 22,
+            user: "me".into(),
+            auth: SshAuthKind::Password,
+            key_path: None,
+            secret_id: Uuid::new_v4(),
+            jump: Some(Box::new(jump)),
+        };
+        conn.ssh = Some(ssh.clone());
+        s.save(conn.clone(), PasswordUpdate::Keep).unwrap();
+        s.set_virtual_key(conn.id, "public", "log", vec!["id".into()])
+            .unwrap();
+        s.set_ssh_secret(ssh.secret_id, Some(&Secret::new("ssh-pw")))
+            .unwrap();
+
+        let text = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
+        assert!(!text.contains("ssh-pw"), "{text}");
+        let reopened =
+            ConnectionStore::open(dir.path().join("connections.toml"), secrets.clone()).unwrap();
+        assert_eq!(reopened.list()[0].ssh, conn.ssh);
+        assert_eq!(
+            reopened.list()[0].connection_type,
+            Some(ConnectionType::Prod)
+        );
+
+        let config = ssh.config(&|id| reopened.ssh_secret(id).unwrap());
+        assert_eq!(config.auth, SshAuth::Password(Secret::new("ssh-pw")));
+        assert_eq!(config.jump.unwrap().auth, SshAuth::Agent);
+
+        s.delete(conn.id).unwrap();
+        assert_eq!(secrets.get(ssh.secret_id).unwrap(), None);
     }
 
     #[test]
