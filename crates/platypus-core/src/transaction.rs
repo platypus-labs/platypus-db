@@ -178,7 +178,10 @@ mod tests {
         tx.set_autocommit(false);
         assert!(tx.needs_begin(TxEffect::None));
         assert!(!tx.needs_begin(TxEffect::Begin));
-        assert!(tx.needs_begin(TxEffect::ImplicitCommit), "DDL opens the transaction");
+        assert!(
+            tx.needs_begin(TxEffect::ImplicitCommit),
+            "DDL opens the transaction"
+        );
         tx.after(TxEffect::None, false);
         assert!(tx.state().open);
         assert!(!tx.needs_begin(TxEffect::None));
