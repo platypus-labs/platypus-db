@@ -427,6 +427,26 @@ della transazione aperta con avviso). Restano i P2/P3.
 
 ### Gruppo N — Accesso per agenti esterni (MCP)
 
+**Stato: P1 completate.** Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
+il binario `platypus-mcp`, server MCP su stdio con `rmcp`: legge il profilo dell'app (o
+`PLATYPUS_DATA_DIR`) e apre le connessioni come l'app (profili di rete, tunnel SSH, password
+da keychain, comando o `.pgpass`); con la master password i segreti restano bloccati e la
+connessione risponde con un errore chiaro. Strumenti: `list_connections` (senza host, utente
+né segreti), `list_schemas`, `list_objects`, `describe_table`, `get_ddl`, `search_objects` e
+`run_query` (uno statement, limiti di righe, byte e tempo, tabella testuale o JSON).
+`agent_access` per connessione in `connections.toml` (versione 4): `off`, `read_only`
+(default), `read_write`; Prod e connessioni read-only al massimo in sola lettura. In sola
+lettura passa solo ciò che `platypus_sql::analyze` vede come query, eseguito nella
+transazione di sola lettura del database (`Dialect::read_only_begin`: `READ ONLY` in
+PostgreSQL, MySQL e MariaDB, `query_only` in SQLite, rollback in DuckDB e SQL Server); in
+lettura e scrittura niente controllo delle transazioni e niente UPDATE/DELETE senza WHERE o
+TRUNCATE se l'impostazione Safety chiede conferma. Errori ripuliti dai segreti; ogni query
+nella cronologia con l'agente come origine (colonna `origin`) e un filtro nel pannello. Pagina
+Impostazioni "Agents" con i comandi per Claude Code e Codex e l'accesso di ogni connessione;
+selettore "Agent access" nel dialog di connessione. CLI `platypus --connection <nome>` con
+output JSON documentato nel README. Gli installer includono `platypus-mcp` come external
+binary di Tauri (`--config src-tauri/tauri.mcp.conf.json`). Restano P2 e P3.
+
 PlatypusDB non integra un proprio assistente AI. Diventa invece uno strumento che gli agenti già
 in uso (Claude Code, Codex, Cursor, altri client MCP) possono collegare: usano le connessioni
 salvate, leggono lo schema ed eseguono query con i permessi decisi dall'utente. Le credenziali
