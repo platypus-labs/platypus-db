@@ -37,7 +37,7 @@ pub enum AgentError {
     Database(String),
 
     /// The statement ran longer than allowed and was cancelled.
-    #[error("cancelled after {} s: raise timeout_seconds or narrow the query", .0.as_secs())]
+    #[error("cancelled after {0:?}: raise timeout_seconds or narrow the query")]
     Timeout(Duration),
 
     /// The profile's files cannot be read.
@@ -76,6 +76,37 @@ impl AgentError {
 
 impl From<platypus_store::StoreError> for AgentError {
     fn from(e: platypus_store::StoreError) -> Self {
-        Self::Store(e.to_string())
+        match e {
+            // A parse error quotes the file's lines, which may hold a password command.
+            platypus_store::StoreError::Format { path, message } => Self::Store(format!(
+                "invalid {}: {}",
+                path.display(),
+                message.lines().next().unwrap_or_default()
+            )),
+            other => Self::Store(other.to_string()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_errors_do_not_quote_the_file() {
+        let e = AgentError::from(platypus_store::StoreError::Format {
+            path: "connections.toml".into(),
+            message: "TOML parse error at line 3\n  |\n3 | password_command = \"echo s3cret\""
+                .to_owned(),
+        });
+        assert_eq!(
+            e.to_string(),
+            "invalid connections.toml: TOML parse error at line 3"
+        );
+        assert_eq!(e.kind(), "store");
+        assert_eq!(
+            AgentError::Timeout(Duration::from_millis(1500)).to_string(),
+            "cancelled after 1.5s: raise timeout_seconds or narrow the query"
+        );
     }
 }

@@ -94,7 +94,11 @@ pub async fn config_of(
     if let Some(command) = &effective.password_command {
         redactor.add(command);
     }
-    let password = password(store, &effective).await?;
+    // A password command's error may echo what it printed.
+    let password = password(store, &effective).await.map_err(|e| match e {
+        AgentError::Store(message) => AgentError::Store(redactor.apply(&message)),
+        other => other,
+    })?;
     redactor.add_secret(password.as_ref());
     let mut config = effective.config(password);
     if let Some(ssh) = &effective.ssh {
