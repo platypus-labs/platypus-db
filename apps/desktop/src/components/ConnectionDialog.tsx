@@ -39,7 +39,13 @@ type PasswordSource = "keychain" | "ask" | "pgpass" | "command";
 
 const COLORS = ["", "#2f9e44", "#1c7ed6", "#f08c00", "#d6336c", "#c92a2a"];
 
-const DEFAULT_PORTS: Record<DriverKind, number | null> = { postgres: 5432, mysql: 3306, sqlite: null, duckdb: null };
+const DEFAULT_PORTS: Record<DriverKind, number | null> = {
+  postgres: 5432,
+  mysql: 3306,
+  sqlite: null,
+  duckdb: null,
+  sqlserver: 1433,
+};
 
 /** The database files of the embedded drivers: file picker filter and example path. */
 const FILES: Record<"sqlite" | "duckdb", { name: string; extensions: string[]; example: string }> = {
@@ -54,9 +60,11 @@ const SCHEMES: Record<string, DriverKind> = {
   "postgresql:": "postgres",
   "mysql:": "mysql",
   "mariadb:": "mysql",
+  "sqlserver:": "sqlserver",
+  "mssql:": "sqlserver",
 };
 
-/** Turns a `postgres://` or `mysql://` URL into form fields. */
+/** Turns a `postgres://`, `mysql://` or `sqlserver://` URL into form fields. */
 function applyUrl(conn: SavedConnection, input: string): SavedConnection | null {
   let url: URL;
   try {
@@ -246,6 +254,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
                   <option value="mysql">MySQL / MariaDB</option>
                   <option value="sqlite">SQLite</option>
                   <option value="duckdb">DuckDB</option>
+                  <option value="sqlserver">SQL Server</option>
                 </select>
               </label>
               <label className="field">
@@ -315,7 +324,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
                 </div>
 
                 <label className="field">
-                  <span>Database{conn.driver === "mysql" ? " (optional)" : ""}</span>
+                  <span>Database{conn.driver === "mysql" || conn.driver === "sqlserver" ? " (optional)" : ""}</span>
                   <input value={conn.database} onChange={(e) => set("database", e.target.value)} />
                 </label>
 

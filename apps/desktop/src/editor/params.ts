@@ -19,7 +19,9 @@ export function literal(value: string, driver: DriverKind): string {
     return v;
   }
   const escaped = driver === "mysql" ? value.replaceAll("\\", "\\\\") : value;
-  return `'${escaped.replaceAll("'", "''")}'`;
+  // Transact-SQL's N'...' keeps text outside the database's code page.
+  const prefix = driver === "sqlserver" ? "N" : "";
+  return `${prefix}'${escaped.replaceAll("'", "''")}'`;
 }
 
 /** `sql` with its placeholders (offsets relative to `sql`) replaced by `values`. */
