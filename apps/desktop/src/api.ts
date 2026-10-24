@@ -474,16 +474,18 @@ export const api = {
       database: database ?? null,
     }),
   closeSession: (sessionId: number) => invoke<void>("close_session", { sessionId }),
-  /** `limit` caps fetched rows and frees the session afterwards (script mode). */
+  /** `limit` caps fetched rows and frees the session afterwards (script mode); `history`
+   *  false keeps the run out of the query history. */
   runQuery: (
     sessionId: number,
     sql: string,
     limit: number | null,
     onEvent: (e: QueryEvent) => void,
+    history = true,
   ) => {
     const channel = new Channel<QueryEvent>();
     channel.onmessage = onEvent;
-    return invoke<number>("run_query", { sessionId, sql, limit, onEvent: channel });
+    return invoke<number>("run_query", { sessionId, sql, limit, history, onEvent: channel });
   },
   listSchemas: (sessionId: number) => invoke<SchemaMeta[]>("list_schemas", { sessionId }),
   listObjects: (sessionId: number, schema: string) =>

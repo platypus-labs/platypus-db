@@ -122,6 +122,19 @@ button.toggled {
   gap: 5px;
 }
 
+.auto-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 6px;
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+}
+
+.auto-refresh.toggled {
+  color: var(--accent);
+}
+
 /* Where the statements run, colored by the connection's type. */
 .conn-chip {
   display: inline-flex;

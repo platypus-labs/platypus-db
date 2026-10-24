@@ -1,7 +1,7 @@
 // More of the read-only grid on a throwaway SQLite database: the column layout (hidden and
 // moved columns, kept for the table), totals of the selection, counts by value, the record
 // view, foreign keys as links with the References panel, column metadata, the calc panel,
-// two rows compared, and number formats.
+// two rows compared, auto-refresh, and number formats.
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -133,7 +133,28 @@ async function panels(page, shot) {
   await page.waitFor(`document.querySelector('.compare-rows') === null`);
 }
 
-export default async function (page, { shots }) {
+/** Auto-refresh runs the table's query again: a row added outside the app shows up. */
+async function autoRefresh(page, path) {
+  const select = `${visibleTab}.querySelector('.auto-refresh select')`;
+  const choose = (seconds) =>
+    page.eval(`(() => { const s = ${select}; s.value = '${seconds}'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await choose(2);
+  const db = new DatabaseSync(path);
+  db.exec("INSERT INTO orders VALUES (13, 3, 1)");
+  await page.waitFor(`${status} === '4 rows'`, 15_000);
+  await choose(0);
+  db.exec("DELETE FROM orders WHERE id = 13");
+  db.close();
+  // Off: the deleted row stays until the next run.
+  await page.sleep(2500);
+  assert.equal(await page.eval(status), "4 rows");
+  await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
+  await page.eval(`${visibleTab}.querySelector('.toolbar button.primary').click()`);
+  await page.waitFor(`${status} === '3 rows'`, 15_000);
+  await markGrid(page);
+}
+
+export default async function (page, { shots, dir }) {
   const shot = async (name) => shots && (await page.screenshot(join(shots, `grid-more-${name}.png`)));
   await page.waitFor(`${treeRow(NAME)} !== undefined`);
   await page.eval(`${treeRow(NAME)}.click()`);
@@ -232,6 +253,7 @@ export default async function (page, { shots }) {
   await page.waitFor(`${status} === '3 rows'`);
   await markGrid(page);
   await panels(page, shot);
+  await autoRefresh(page, join(dir, "more.db"));
 
   // Numbers grouped as set in the Settings; the grid fetches its rows again.
   await page.key(",", "Comma", 188, CTRL);

@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
   Code2,
+  RefreshCw,
   Columns3,
   Database,
   Download,
@@ -82,6 +83,7 @@ const ICONS = {
   rollback: Undo2,
   autocommit: ToggleRight,
   "manual-commit": ToggleLeft,
+  refresh: RefreshCw,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;
