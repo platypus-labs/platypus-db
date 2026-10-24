@@ -64,3 +64,25 @@ services:
       interval: 2s
       timeout: 3s
       retries: 90
+
+  # Not started by default (a large image): `docker compose --profile sqlserver up -d --wait`.
+  # The image runs no seed scripts: the healthcheck creates the `platypus` database and the
+  # conformance tests create their demo schema. Test-only login: `sa`, `Platypus-2026`.
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    profiles: [sqlserver]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: Platypus-2026
+    ports:
+      - "51433:1433"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          /opt/mssql-tools18/bin/sqlcmd -C -b -S localhost -U sa -P "$$MSSQL_SA_PASSWORD"
+          -Q "IF DB_ID('platypus') IS NULL CREATE DATABASE platypus"
+      interval: 2s
+      timeout: 10s
+      retries: 90
+      start_period: 10s

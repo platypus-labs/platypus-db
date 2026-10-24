@@ -1,7 +1,9 @@
-//! The same scenarios against every driver: PostgreSQL, MySQL, MariaDB, SQLite and DuckDB.
+//! The same scenarios against every driver: PostgreSQL, MySQL, MariaDB, SQL Server, SQLite
+//! and DuckDB.
 //!
-//! Server databases come from `docker/compose.yml`. Setting `PLATYPUS_TEST_PG_URL`,
-//! `PLATYPUS_TEST_MYSQL_URL` or `PLATYPUS_TEST_MARIADB_URL` makes that database required
+//! Server databases come from `docker/compose.yml` (SQL Server from its `sqlserver`
+//! profile). Setting `PLATYPUS_TEST_PG_URL`, `PLATYPUS_TEST_MYSQL_URL`,
+//! `PLATYPUS_TEST_MARIADB_URL` or `PLATYPUS_TEST_MSSQL_URL` makes that database required
 //! (CI does); otherwise an unreachable default database is skipped. SQLite and DuckDB always
 //! run, on temporary files.
 
@@ -17,6 +19,7 @@ use platypus_core::{
     ExecResult, MatchKind, ObjectKind, ObjectRef, SessionInit,
 };
 use platypus_driver_duckdb::DuckDbDriver;
+use platypus_driver_mssql::MssqlDriver;
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
 use platypus_driver_sqlite::SqliteDriver;
@@ -48,6 +51,24 @@ impl Backend {
             .await
             .unwrap_or_else(|e| panic!("{}: cannot connect: {e}", self.name))
     }
+
+    /// The name of the temporary table `name`: SQL Server's start with `#`.
+    fn temp(&self, name: &str) -> String {
+        if self.config.driver == DriverKind::SqlServer {
+            format!("#{name}")
+        } else {
+            name.to_owned()
+        }
+    }
+
+    /// Creates the temporary table `name`, visible to the session only.
+    fn create_temp(&self, name: &str, columns: &str) -> String {
+        if self.config.driver == DriverKind::SqlServer {
+            format!("CREATE TABLE {} ({columns})", self.temp(name))
+        } else {
+            format!("CREATE TEMPORARY TABLE {name} ({columns})")
+        }
+    }
 }
 
 fn driver(kind: DriverKind) -> &'static dyn Driver {
@@ -56,6 +77,7 @@ fn driver(kind: DriverKind) -> &'static dyn Driver {
         DriverKind::MySql => &MySqlDriver,
         DriverKind::Sqlite => &SqliteDriver,
         DriverKind::DuckDb => &DuckDbDriver,
+        DriverKind::SqlServer => &MssqlDriver,
     }
 }
 
@@ -84,6 +106,69 @@ FROM digits a, digits b, digits c, digits e, digits f";
 // `COUNT(*)` of a cross join is computed without scanning by MySQL 8; `SUM` is not.
 const MYSQL_ENDLESS: &str = "SELECT SUM(a.d + j.d) FROM digits a, digits b, digits c, digits d, \
      digits e, digits f, digits g, digits h, digits i, digits j";
+
+const MSSQL_SERIES: &str = "WITH digits (d) AS (
+    SELECT d FROM (VALUES (0), (1), (2), (3), (4), (5), (6), (7), (8), (9)) v (d)
+)
+SELECT 1 + a.d + 10 * b.d + 100 * c.d + 1000 * e.d + 10000 * f.d AS id,
+       CONCAT('row ', a.d) AS label
+FROM digits a, digits b, digits c, digits e, digits f";
+
+/// The demo schema of `docker/postgres` and `docker/mysql` for SQL Server, whose image
+/// runs no seed scripts. Created once per database; the application lock, held by the
+/// session, keeps concurrent tests from creating it twice.
+const MSSQL_FIXTURE: &[&str] = &[
+    "EXEC sp_getapplock @Resource = 'platypus_conformance', @LockMode = 'Exclusive', \
+     @LockOwner = 'Session'",
+    "IF SCHEMA_ID('demo') IS NULL EXEC('CREATE SCHEMA demo')",
+    "IF OBJECT_ID('demo.customers') IS NULL
+     BEGIN
+         CREATE TABLE demo.customers (
+             id INT IDENTITY PRIMARY KEY,
+             email NVARCHAR(255) NOT NULL UNIQUE,
+             full_name NVARCHAR(255) NOT NULL
+         );
+         CREATE TABLE demo.orders (
+             id INT IDENTITY PRIMARY KEY,
+             customer_id INT NOT NULL REFERENCES demo.customers (id),
+             total DECIMAL(12, 2) NOT NULL
+         );
+         CREATE INDEX orders_customer_id_idx ON demo.orders (customer_id);
+         EXEC('CREATE VIEW demo.customer_totals AS
+               SELECT c.id, COUNT(o.id) AS orders
+               FROM demo.customers c LEFT JOIN demo.orders o ON o.customer_id = c.id
+               GROUP BY c.id');
+         INSERT INTO demo.customers (email, full_name)
+         VALUES (N'ada@example.com', N'Ada'), (N'bob@example.com', N'Bob');
+         INSERT INTO demo.orders (customer_id, total) VALUES (1, 10.50), (1, 4.25), (2, 7.00);
+     END",
+    "EXEC sp_releaseapplock @Resource = 'platypus_conformance', @LockOwner = 'Session'",
+];
+
+async fn mssql_backend() -> Option<Backend> {
+    let config = server_config(
+        "PLATYPUS_TEST_MSSQL_URL",
+        "sqlserver://sa:Platypus-2026@localhost:51433/platypus?sslmode=require",
+        "SQL Server",
+    )
+    .await?;
+    let conn = MssqlDriver.connect(&config).await.unwrap();
+    for sql in MSSQL_FIXTURE {
+        run(&*conn, sql)
+            .await
+            .unwrap_or_else(|e| panic!("sqlserver: {sql}: {e}"));
+    }
+    Some(Backend {
+        name: "sqlserver",
+        product: "SQL Server",
+        config,
+        schema: "demo".to_owned(),
+        series_sql: MSSQL_SERIES.to_owned(),
+        endless_sql: "WAITFOR DELAY '00:10:00'",
+        kill: Some(("SELECT @@SPID", "KILL")),
+        _dir: None,
+    })
+}
 
 const SQLITE_FIXTURE: &[&str] = &[
     "CREATE TABLE customers (
@@ -222,6 +307,7 @@ async fn backends() -> Vec<Backend> {
             });
         }
     }
+    all.extend(mssql_backend().await);
     all.push(sqlite_backend().await);
     all.push(duckdb_backend().await);
     all
@@ -317,27 +403,23 @@ async fn reports_affected_rows() {
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
-        let ddl = affected(
-            &b,
-            conn,
-            "CREATE TEMPORARY TABLE conf_t (id INT, v VARCHAR(10))",
-        )
-        .await;
+        let ddl = affected(&b, conn, &b.create_temp("conf_t", "id INT, v VARCHAR(10)")).await;
         assert_eq!(ddl, 0, "{}: DDL", b.name);
-        let sql = "INSERT INTO conf_t VALUES (1, 'a'), (2, 'b'), (3, 'c')";
-        assert_eq!(affected(&b, conn, sql).await, 3, "{}: insert", b.name);
-        let sql = "UPDATE conf_t SET v = 'z' WHERE id >= 2";
-        assert_eq!(affected(&b, conn, sql).await, 2, "{}: update", b.name);
-        let rows = collect(&b, conn, "SELECT count(*) FROM conf_t WHERE v = 'z'").await;
+        let t = b.temp("conf_t");
+        let sql = format!("INSERT INTO {t} VALUES (1, 'a'), (2, 'b'), (3, 'c')");
+        assert_eq!(affected(&b, conn, &sql).await, 3, "{}: insert", b.name);
+        let sql = format!("UPDATE {t} SET v = 'z' WHERE id >= 2");
+        assert_eq!(affected(&b, conn, &sql).await, 2, "{}: update", b.name);
+        let rows = collect(&b, conn, &format!("SELECT count(*) FROM {t} WHERE v = 'z'")).await;
         assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("2"), "{}", b.name);
         assert_eq!(
-            affected(&b, conn, "DELETE FROM conf_t").await,
+            affected(&b, conn, &format!("DELETE FROM {t}")).await,
             3,
             "{}: delete",
             b.name
         );
         assert_eq!(
-            affected(&b, conn, "DROP TABLE conf_t").await,
+            affected(&b, conn, &format!("DROP TABLE {t}")).await,
             0,
             "{}: drop",
             b.name
@@ -514,7 +596,12 @@ async fn navigates_metadata() {
 }
 
 async fn count(b: &Backend, conn: &dyn Connection) -> String {
-    let rows = collect(b, conn, "SELECT count(*) FROM conf_tx").await;
+    let rows = collect(
+        b,
+        conn,
+        &format!("SELECT count(*) FROM {}", b.temp("conf_tx")),
+    )
+    .await;
     cell(&rows[0], 0, 0).unwrap()
 }
 
@@ -523,12 +610,13 @@ async fn manual_commit_and_rollback() {
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
-        affected(&b, conn, "CREATE TEMPORARY TABLE conf_tx (id INT)").await;
+        affected(&b, conn, &b.create_temp("conf_tx", "id INT")).await;
+        let insert = |id: u32| format!("INSERT INTO {} VALUES ({id})", b.temp("conf_tx"));
         assert!(conn.transaction().autocommit, "{}", b.name);
 
         conn.set_autocommit(false).await.unwrap();
         assert!(!conn.transaction().open, "{}: nothing ran yet", b.name);
-        affected(&b, conn, "INSERT INTO conf_tx VALUES (1)").await;
+        affected(&b, conn, &insert(1)).await;
         assert!(
             conn.transaction().open,
             "{}: insert opens a transaction",
@@ -546,7 +634,7 @@ async fn manual_commit_and_rollback() {
         conn.rollback().await.unwrap();
 
         // A result abandoned inside a transaction must not abort it.
-        affected(&b, conn, "INSERT INTO conf_tx VALUES (2)").await;
+        affected(&b, conn, &insert(2)).await;
         let options = ExecOptions { batch_size: 100 };
         let ExecResult::Rows(mut stream) = conn.execute(&b.series_sql, &options).await.unwrap()
         else {
@@ -554,7 +642,7 @@ async fn manual_commit_and_rollback() {
         };
         stream.next().await.unwrap().unwrap();
         drop(stream);
-        affected(&b, conn, "INSERT INTO conf_tx VALUES (3)").await;
+        affected(&b, conn, &insert(3)).await;
         conn.commit().await.unwrap();
         assert!(!conn.transaction().open, "{}", b.name);
 
@@ -570,7 +658,7 @@ async fn manual_commit_and_rollback() {
         // Transaction statements typed by the user are tracked too.
         affected(&b, conn, "BEGIN").await;
         assert!(conn.transaction().open, "{}: typed BEGIN", b.name);
-        affected(&b, conn, "DELETE FROM conf_tx").await;
+        affected(&b, conn, &format!("DELETE FROM {}", b.temp("conf_tx"))).await;
         affected(&b, conn, "ROLLBACK").await;
         assert!(!conn.transaction().open, "{}: typed ROLLBACK", b.name);
         assert_eq!(count(&b, conn).await, "2", "{}", b.name);
@@ -731,6 +819,9 @@ fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<Strin
         DriverKind::DuckDb => {
             "id INTEGER PRIMARY KEY, code VARCHAR UNIQUE, qty INTEGER CHECK (qty >= 0)"
         }
+        DriverKind::SqlServer => {
+            "id INT PRIMARY KEY, code NVARCHAR(10) UNIQUE, qty INT CHECK (qty >= 0)"
+        }
     };
     let create = format!("CREATE TABLE {s}.{table} ({columns})");
     let drop = format!("DROP TABLE IF EXISTS {s}.{table}");
@@ -770,6 +861,15 @@ fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<Strin
         ),
         // DuckDB has no triggers.
         DriverKind::DuckDb => (vec![create], vec![drop]),
+        DriverKind::SqlServer => (
+            vec![
+                create,
+                format!(
+                    "CREATE TRIGGER {s}.{trigger} ON {s}.{table} AFTER INSERT AS SET NOCOUNT ON"
+                ),
+            ],
+            vec![drop],
+        ),
     }
 }
 
@@ -905,10 +1005,17 @@ async fn edit_fixture(
             "CREATE TEMPORARY TABLE conf_edit (id INTEGER PRIMARY KEY, name VARCHAR, \
                  amount DECIMAL(10, 2), data BLOB, \"at\" TIMESTAMPTZ, n INTEGER DEFAULT 7)"
         }
+        DriverKind::SqlServer => {
+            "CREATE TABLE #conf_edit (id INT PRIMARY KEY, name NVARCHAR(MAX), \
+                 amount DECIMAL(10, 2), data VARBINARY(MAX), at DATETIMEOFFSET, n INT DEFAULT 7)"
+        }
     };
     affected(b, conn, ddl).await;
     let ExecResult::Rows(stream) = conn
-        .execute("SELECT * FROM conf_edit", &ExecOptions::default())
+        .execute(
+            &format!("SELECT * FROM {}", b.temp("conf_edit")),
+            &ExecOptions::default(),
+        )
         .await
         .unwrap()
     else {
@@ -940,7 +1047,7 @@ async fn edits_table_data() {
             })
             .collect();
         let d = Dialect::from(b.config.driver);
-        let t = "conf_edit";
+        let t = &b.temp("conf_edit");
         let at = "2024-03-01 10:00:00+00:00";
         let name = r#"it's \ "q""#;
 
@@ -967,7 +1074,7 @@ async fn edits_table_data() {
         let rows = collect(
             &b,
             conn,
-            "SELECT id, name, amount, data, n FROM conf_edit ORDER BY id",
+            &format!("SELECT id, name, amount, data, n FROM {t} ORDER BY id"),
         )
         .await;
         let batch = &rows[0];
@@ -1020,7 +1127,7 @@ async fn edit_rollbacks(
     use platypus_sql::Dialect;
     use platypus_sql::dml::{self, ApplyError, Value};
 
-    let (d, t) = (Dialect::from(b.config.driver), "conf_edit");
+    let (d, t) = (Dialect::from(b.config.driver), &b.temp("conf_edit"));
 
     // A statement that misses its row rolls back the ones before it.
     let ok = dml::update(d, t, columns, &[(1, Value::Text("x"))], &[(0, Some("2"))]).unwrap();
@@ -1031,7 +1138,8 @@ async fn edit_rollbacks(
         "{}: {err}",
         b.name
     );
-    let rows = collect(b, conn, "SELECT count(*) FROM conf_edit WHERE name IS NULL").await;
+    let sql = format!("SELECT count(*) FROM {t} WHERE name IS NULL");
+    let rows = collect(b, conn, &sql).await;
     assert_eq!(
         cell(&rows[0], 0, 0).as_deref(),
         Some("2"),
@@ -1049,7 +1157,7 @@ async fn edit_rollbacks(
     assert!(conn.transaction().open, "{}: left uncommitted", b.name);
     conn.rollback().await.unwrap();
     conn.set_autocommit(true).await.unwrap();
-    let rows = collect(b, conn, "SELECT count(*) FROM conf_edit").await;
+    let rows = collect(b, conn, &format!("SELECT count(*) FROM {t}")).await;
     assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("2"), "{}", b.name);
 }
 
@@ -1386,6 +1494,12 @@ async fn reads_geometries() {
             DriverKind::Sqlite | DriverKind::DuckDb => {
                 ("SELECT 'POINT (1 2)'", vec![point.clone()])
             }
+            // SQL Server's own serialization is not WKB: the values are converted.
+            DriverKind::SqlServer => (
+                "SELECT geometry::Point(1, 2, 0).STAsBinary(), \
+                 geometry::STGeomFromText('LINESTRING(0 0, 2 1)', 0).STAsBinary()",
+                vec![point.clone(), line.clone()],
+            ),
         };
         let batches = collect(&b, &*conn, sql).await;
         let shapes: Vec<_> = (0..expected.len()).map(|c| shape(&batches[0], c)).collect();
@@ -1408,16 +1522,27 @@ async fn sets_the_session_up_after_connecting() {
                 "SELECT DATABASE(), @@session.time_zone",
                 vec![Some(b.schema.clone()), Some("+02:00".to_owned())],
             ),
-            DriverKind::Sqlite => ("SELECT 1", vec![Some("1".to_owned())]),
+            DriverKind::Sqlite | DriverKind::SqlServer => ("SELECT 1", vec![Some("1".to_owned())]),
+        };
+        // SQL Server names its temporary tables with a `#`.
+        let probe_table = if config.driver == DriverKind::SqlServer {
+            "#init_probe"
+        } else {
+            "init_probe"
         };
         config.init = SessionInit {
-            schema: (config.driver != DriverKind::Sqlite).then(|| b.schema.clone()),
+            schema: (!matches!(config.driver, DriverKind::Sqlite | DriverKind::SqlServer))
+                .then(|| b.schema.clone()),
             time_zone: match config.driver {
                 DriverKind::Postgres => Some("Europe/Rome".to_owned()),
                 DriverKind::MySql => Some("+02:00".to_owned()),
-                DriverKind::Sqlite | DriverKind::DuckDb => None,
+                DriverKind::Sqlite | DriverKind::DuckDb | DriverKind::SqlServer => None,
             },
-            statements: vec!["CREATE TEMPORARY TABLE init_probe (x int)".to_owned()],
+            statements: vec![if config.driver == DriverKind::SqlServer {
+                "CREATE TABLE #init_probe (x int)".to_owned()
+            } else {
+                "CREATE TEMPORARY TABLE init_probe (x int)".to_owned()
+            }],
         };
         let conn = driver(config.driver)
             .connect(&config)
@@ -1429,7 +1554,7 @@ async fn sets_the_session_up_after_connecting() {
             .collect();
         assert_eq!(got, expected, "{}", b.name);
         // The bootstrap statement ran on this session.
-        let probe = collect(&b, &*conn, "SELECT count(*) FROM init_probe").await;
+        let probe = collect(&b, &*conn, &format!("SELECT count(*) FROM {probe_table}")).await;
         assert_eq!(cell(&probe[0], 0, 0).as_deref(), Some("0"), "{}", b.name);
 
         // A failing statement fails the connection and is named.
