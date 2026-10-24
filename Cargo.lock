@@ -4553,6 +4553,10 @@ dependencies = [
  "platypus-driver-pg",
  "platypus-driver-sqlite",
  "platypus-export",
+ "platypus-mcp",
+ "rusqlite",
+ "serde_json",
+ "tempfile",
  "tokio",
 ]
 
