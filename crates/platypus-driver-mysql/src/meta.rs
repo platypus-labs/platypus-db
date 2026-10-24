@@ -152,6 +152,7 @@ pub async fn table_details(
         primary_key: r.flag(4),
         comment: r.opt(5).filter(|c| !c.is_empty()),
         enum_values: enum_values(&r.text(1)),
+        fields: Vec::new(),
     })
     .collect();
 

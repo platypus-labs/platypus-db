@@ -2,8 +2,8 @@
 
 use platypus_core::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, Connection, ConstraintKind,
-    ConstraintMeta, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ReferencingKey, Result,
-    SchemaMeta, TableDetails, TextRowExt, query_catalog, query_text,
+    ConstraintMeta, FieldMeta, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ReferencingKey,
+    Result, SchemaMeta, TableDetails, TextRowExt, query_catalog, query_text,
 };
 
 /// Separates list items aggregated into one text cell.
@@ -146,6 +146,18 @@ pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMe
         .collect())
 }
 
+/// The `name\ttype` lines of the columns query's composite fields.
+fn composite_fields(lines: &str) -> Vec<FieldMeta> {
+    lines
+        .split('\n')
+        .filter_map(|line| line.split_once('\t'))
+        .map(|(name, data_type)| FieldMeta {
+            name: name.to_owned(),
+            data_type: data_type.to_owned(),
+        })
+        .collect()
+}
+
 /// The kind codes of the `objects` query: `pg_class.relkind`, plus `F`/`P` for routines,
 /// `T` for triggers, `Y` for types, `D` for domains and `E` for extensions.
 fn object_kind(code: &str) -> ObjectKind {
@@ -164,19 +176,9 @@ fn object_kind(code: &str) -> ObjectKind {
     }
 }
 
-pub async fn table_details(
-    conn: &dyn Connection,
-    schema: &str,
-    table: &str,
-) -> Result<TableDetails> {
-    let relation = format!(
-        "(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-          WHERE n.nspname = {} AND c.relname = {})",
-        literal(schema),
-        literal(table)
-    );
-
-    let columns = query_text(
+/// The columns of `relation` (an oid subquery), in table order.
+async fn columns(conn: &dyn Connection, relation: &str) -> Result<Vec<ColumnMeta>> {
+    Ok(query_text(
         conn,
         &format!(
             "SELECT a.attname, format_type(a.atttypid, a.atttypmod), NOT a.attnotnull,
@@ -184,7 +186,15 @@ pub async fn table_details(
                     coalesce(a.attnum = ANY (i.indkey), false),
                     col_description(a.attrelid, a.attnum),
                     (SELECT string_agg(e.enumlabel, E'\\n' ORDER BY e.enumsortorder)
-                     FROM pg_enum e WHERE e.enumtypid = a.atttypid)
+                     FROM pg_enum e WHERE e.enumtypid = a.atttypid),
+                    (SELECT string_agg(f.attname || E'\\t' || format_type(f.atttypid, f.atttypmod),
+                                       E'\\n' ORDER BY f.attnum)
+                     FROM pg_type t
+                     JOIN pg_type c ON c.oid = CASE WHEN t.typelem <> 0 AND t.typlen = -1
+                                                    THEN t.typelem ELSE t.oid END
+                     JOIN pg_attribute f ON f.attrelid = c.typrelid
+                     WHERE t.oid = a.atttypid AND c.typtype = 'c'
+                       AND f.attnum > 0 AND NOT f.attisdropped)
              FROM pg_attribute a
              LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
              LEFT JOIN pg_index i ON i.indrelid = a.attrelid AND i.indisprimary
@@ -205,8 +215,24 @@ pub async fn table_details(
             .opt(6)
             .map(|labels| labels.split('\n').map(str::to_owned).collect())
             .unwrap_or_default(),
+        fields: r.opt(7).map(|f| composite_fields(&f)).unwrap_or_default(),
     })
-    .collect();
+    .collect())
+}
+
+pub async fn table_details(
+    conn: &dyn Connection,
+    schema: &str,
+    table: &str,
+) -> Result<TableDetails> {
+    let relation = format!(
+        "(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = {} AND c.relname = {})",
+        literal(schema),
+        literal(table)
+    );
+
+    let columns = columns(conn, &relation).await?;
 
     let indexes = query_text(
         conn,

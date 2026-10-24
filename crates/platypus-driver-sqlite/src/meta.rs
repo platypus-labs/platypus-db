@@ -184,6 +184,7 @@ pub async fn table_details(
         primary_key: r.text(4) != "0",
         comment: None,
         enum_values: Vec::new(),
+        fields: Vec::new(),
     })
     .collect();
 
