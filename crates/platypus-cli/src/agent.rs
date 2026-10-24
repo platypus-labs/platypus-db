@@ -4,7 +4,7 @@
 
 use std::process::ExitCode;
 
-use platypus_mcp::{Agent, AgentError, Format, Limits, Profile, QueryArgs as AgentQuery};
+use platypus_mcp::{Agent, AgentError, Format, Profile, QueryArgs as AgentQuery};
 use serde_json::{Value, json};
 
 use crate::{Cli, Command, OutputFormat, QueryArgs};
@@ -81,10 +81,9 @@ async fn query(agent: &Agent, connection: &str, args: QueryArgs) -> Result<Outpu
         timeout_seconds: args.timeout,
         format: Some(format),
     };
-    let limits = Limits::new(request.max_rows, request.max_bytes, request.timeout_seconds)?;
     let result = agent.run_query(&request, ORIGIN).await?;
     Ok(match format {
-        Format::Json => Output::Json(result.json(&limits)),
-        Format::Text => Output::Text(result.text(&limits)),
+        Format::Json => Output::Json(result.json()),
+        Format::Text => Output::Text(result.text()),
     })
 }

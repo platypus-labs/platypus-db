@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Instant, SystemTime};
 
-use platypus_core::{Connection, Error, ObjectKind, ObjectRef};
+use platypus_core::{Connection, Error, ObjectKind, ObjectMeta, ObjectRef};
 use platypus_sql::Dialect;
 use platypus_store::{
     AgentAccess, ConnectionStore, HistoryStatus, HistoryStore, NewHistoryEntry, SavedConnection,
@@ -58,6 +58,31 @@ pub struct ConnectionInfo {
     pub database: String,
     /// What agents may do: `read_only` or `read_write`.
     pub agent_access: AgentAccess,
+}
+
+/// An object of a schema as agents see it: the sizes left out, and nothing that is unset.
+#[derive(Serialize)]
+struct ObjectInfo<'a> {
+    name: &'a str,
+    kind: ObjectKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parent: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rows: Option<u64>,
+}
+
+impl<'a> From<&'a ObjectMeta> for ObjectInfo<'a> {
+    fn from(o: &'a ObjectMeta) -> Self {
+        Self {
+            name: &o.name,
+            kind: o.kind,
+            parent: o.parent.as_deref(),
+            comment: o.comment.as_deref(),
+            rows: o.rows,
+        }
+    }
 }
 
 /// An open connection kept for the next calls.
@@ -247,23 +272,8 @@ impl Agent {
         let lease = self.open(connection).await?;
         let objects = timed(lease.conn().objects(schema)).await;
         let objects = lease.settle(objects)?;
-        Ok(Value::Array(
-            objects
-                .iter()
-                .map(|o| {
-                    let mut v = json!({ "name": o.name, "kind": o.kind });
-                    for (key, value) in [
-                        ("parent", o.parent.as_ref().map(|p| json!(p))),
-                        ("comment", o.comment.as_ref().map(|c| json!(c))),
-                        ("rows", o.rows.map(|r| json!(r))),
-                    ] {
-                        if let Some(value) = value {
-                            v[key] = value;
-                        }
-                    }
-                    v
-                })
-                .collect(),
+        Ok(json!(
+            objects.iter().map(ObjectInfo::from).collect::<Vec<_>>()
         ))
     }
 
@@ -334,6 +344,7 @@ impl Agent {
         let result = result.map(|outcome| QueryResult {
             outcome,
             elapsed: start.elapsed(),
+            limits,
         });
         self.record(&saved, args.sql.trim(), started_at, start, &result, origin);
         result

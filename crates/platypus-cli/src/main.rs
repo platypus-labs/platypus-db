@@ -12,15 +12,7 @@ use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use futures::StreamExt;
-use platypus_core::{
-    Connection, ConnectionConfig, Driver, DriverKind, Error, ExecOptions, ExecResult,
-    RecordBatchStream,
-};
-use platypus_driver_duckdb::DuckDbDriver;
-use platypus_driver_mssql::MssqlDriver;
-use platypus_driver_mysql::MySqlDriver;
-use platypus_driver_pg::PgDriver;
-use platypus_driver_sqlite::SqliteDriver;
+use platypus_core::{ConnectionConfig, Error, ExecOptions, ExecResult, RecordBatchStream};
 
 use crate::output::{Format, Sink};
 
@@ -183,16 +175,6 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, Error> {
-    match config.driver {
-        DriverKind::Postgres => PgDriver.connect(config).await,
-        DriverKind::MySql => MySqlDriver.connect(config).await,
-        DriverKind::Sqlite => SqliteDriver.connect(config).await,
-        DriverKind::DuckDb => DuckDbDriver.connect(config).await,
-        DriverKind::SqlServer => MssqlDriver.connect(config).await,
-    }
-}
-
 /// The SQL argument, or stdin for `-`.
 fn read_sql(sql: String) -> Result<String, Error> {
     if sql != "-" {
@@ -211,7 +193,7 @@ async fn query(args: QueryArgs) -> Result<(), Error> {
         Error::Config("give --url, or --connection for a saved connection".to_owned())
     })?;
     let config = ConnectionConfig::from_url(&url)?;
-    let conn = connect(&config).await?;
+    let conn = platypus_mcp::connect(&config).await?;
 
     // Ctrl+C and --timeout both cancel server-side, so the error path is exercised for real.
     let cancel = conn.cancel_handle();

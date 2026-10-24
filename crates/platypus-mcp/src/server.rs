@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use platypus_mcp::{Agent, AgentError, Format, Limits, QueryArgs};
+use platypus_mcp::{Agent, AgentError, QueryArgs};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
@@ -213,16 +213,12 @@ impl PlatypusServer {
             .map(|info| info.client_info.name.clone())
             .filter(|name| !name.trim().is_empty())
             .unwrap_or_else(|| UNNAMED_CLIENT.to_owned());
-        let format = args.format.unwrap_or(Format::Text);
-        let limits = Limits::new(args.max_rows, args.max_bytes, args.timeout_seconds);
-        let result = match limits {
-            Ok(limits) => self
-                .agent
-                .run_query(&args, &origin)
-                .await
-                .map(|r| r.render(format, &limits)),
-            Err(e) => Err(e),
-        };
+        let format = args.format.unwrap_or_default();
+        let result = self
+            .agent
+            .run_query(&args, &origin)
+            .await
+            .map(|r| r.render(format));
         reply(result)
     }
 }

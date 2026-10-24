@@ -1,5 +1,5 @@
 //! A statement's result as agents read it: an aligned text table, or JSON whose shape is
-//! stable (documented in `docs/EXTENDING.md`). Both stay within the byte limit and say
+//! stable (documented in the README, under Agents). Both stay within the byte limit and say
 //! when rows or values were left out.
 
 use std::fmt::Write as _;
@@ -20,19 +20,20 @@ pub enum Format {
     Json,
 }
 
-/// What ran, how long it took and what it returned.
+/// What a statement returned, how long it took, and the limits it ran within.
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueryResult {
     pub outcome: Outcome,
     pub elapsed: Duration,
+    pub limits: Limits,
 }
 
 impl QueryResult {
     #[must_use]
-    pub fn render(&self, format: Format, limits: &Limits) -> String {
+    pub fn render(&self, format: Format) -> String {
         match format {
-            Format::Text => self.text(limits),
-            Format::Json => self.json(limits).to_string(),
+            Format::Text => self.text(),
+            Format::Json => self.json().to_string(),
         }
     }
 
@@ -42,7 +43,8 @@ impl QueryResult {
 
     /// The text table, then a line on how many rows it shows and why some were left out.
     #[must_use]
-    pub fn text(&self, limits: &Limits) -> String {
+    pub fn text(&self) -> String {
+        let limits = &self.limits;
         let table = match &self.outcome {
             Outcome::Affected(rows) => {
                 return format!("{rows} {} affected.", rows_word(*rows == 1));
@@ -104,7 +106,8 @@ impl QueryResult {
     /// The JSON document: `columns`, `rows`, `row_count`, `truncated`, `truncated_by`,
     /// `values_cut` and `elapsed_ms`; or `affected_rows` and `elapsed_ms`.
     #[must_use]
-    pub fn json(&self, limits: &Limits) -> Value {
+    pub fn json(&self) -> Value {
+        let limits = &self.limits;
         let table = match &self.outcome {
             Outcome::Affected(rows) => {
                 return json!({ "affected_rows": rows, "elapsed_ms": self.elapsed_ms() });
@@ -221,7 +224,7 @@ mod tests {
     use super::*;
     use crate::query::{Column, Table};
 
-    fn table(rows: usize, cut: Option<Cut>) -> QueryResult {
+    fn table(rows: usize, cut: Option<Cut>, limits: Limits) -> QueryResult {
         QueryResult {
             outcome: Outcome::Rows(Table {
                 columns: vec![
@@ -250,6 +253,7 @@ mod tests {
                 values_cut: false,
             }),
             elapsed: Duration::from_millis(7),
+            limits,
         }
     }
 
@@ -257,16 +261,17 @@ mod tests {
     fn text_tables_align_and_say_what_was_left_out() {
         let limits = Limits::default();
         assert_eq!(
-            table(2, None).text(&limits),
+            table(2, None, limits).text(),
             "id | name\n---+-----\n1  | n\\n1\n2  | NULL\n(2 rows, 7 ms)"
         );
-        let more = table(1, Some(Cut::MaxRows)).text(&limits);
+        let more = table(1, Some(Cut::MaxRows), limits).text();
         assert!(more.ends_with("(1 row shown, 7 ms: the result has more. Raise max_rows (up to 10000) or narrow the query)"), "{more}");
         let affected = QueryResult {
             outcome: Outcome::Affected(1),
             elapsed: Duration::ZERO,
+            limits,
         };
-        assert_eq!(affected.text(&limits), "1 row affected.");
+        assert_eq!(affected.text(), "1 row affected.");
     }
 
     #[test]
@@ -275,7 +280,7 @@ mod tests {
             max_bytes: 60,
             ..Limits::default()
         };
-        let out = table(50, None).text(&limits);
+        let out = table(50, None, limits).text();
         let body = out.split("\n(").next().unwrap();
         assert!(body.len() <= 60, "{out}");
         assert!(out.contains("output cut at 60 bytes"), "{out}");
@@ -283,7 +288,7 @@ mod tests {
 
     #[test]
     fn json_is_typed_and_cut_by_bytes() {
-        let doc = table(2, None).json(&Limits::default());
+        let doc = table(2, None, Limits::default()).json();
         assert_eq!(
             doc,
             json!({
@@ -296,19 +301,25 @@ mod tests {
                 "elapsed_ms": 7,
             })
         );
-        let small = table(500, None).json(&Limits {
-            max_bytes: 1000,
-            ..Limits::default()
-        });
+        let small = table(
+            500,
+            None,
+            Limits {
+                max_bytes: 1000,
+                ..Limits::default()
+            },
+        )
+        .json();
         assert!(small.to_string().len() <= 1000, "{small}");
         assert_eq!(small["truncated_by"], "max_bytes");
         assert!(small["row_count"].as_u64().unwrap() > 10);
         let affected = QueryResult {
             outcome: Outcome::Affected(3),
             elapsed: Duration::ZERO,
+            limits: Limits::default(),
         };
         assert_eq!(
-            affected.json(&Limits::default()),
+            affected.json(),
             json!({"affected_rows": 3, "elapsed_ms": 0})
         );
     }
