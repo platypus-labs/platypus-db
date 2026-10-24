@@ -14,7 +14,8 @@ mod ddl;
 pub mod decode;
 mod explain;
 mod meta;
-mod tls;
+#[doc(hidden)]
+pub mod tls;
 
 use std::pin::Pin;
 use std::sync::Arc;

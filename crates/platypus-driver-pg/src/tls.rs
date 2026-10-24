@@ -17,29 +17,27 @@ use tokio_postgres_rustls::MakeRustlsConnect;
 
 /// The protocol-level mode for tokio-postgres plus the connector, if TLS may be used.
 pub fn connector(config: &ConnectionConfig) -> Result<(PgSslMode, Option<MakeRustlsConnect>)> {
+    let mode = match config.ssl_mode {
+        SslMode::Disable => PgSslMode::Disable,
+        SslMode::Prefer => PgSslMode::Prefer,
+        SslMode::Require | SslMode::VerifyCa | SslMode::VerifyFull => PgSslMode::Require,
+    };
+    Ok((mode, client_config(config)?.map(MakeRustlsConnect::new)))
+}
+
+/// The rustls client configuration for `config.ssl_mode`; `None` when TLS is disabled.
+/// `prefer` and `require` do not verify the certificate, as in libpq. Also used by the
+/// libSQL driver.
+pub fn client_config(config: &ConnectionConfig) -> Result<Option<ClientConfig>> {
     let provider = Arc::new(rustls::crypto::ring::default_provider());
-    let (mode, verifier): (_, Arc<dyn ServerCertVerifier>) = match config.ssl_mode {
-        SslMode::Disable => return Ok((PgSslMode::Disable, None)),
-        // libpq does not verify certificates in these modes.
-        SslMode::Prefer => (
-            PgSslMode::Prefer,
-            Arc::new(NoVerification(Arc::clone(&provider))),
-        ),
-        SslMode::Require => (
-            PgSslMode::Require,
-            Arc::new(NoVerification(Arc::clone(&provider))),
-        ),
-        SslMode::VerifyCa => (
-            PgSslMode::Require,
-            Arc::new(IgnoreHostname(chain_verifier(
-                config.ssl_root_cert.as_deref(),
-                &provider,
-            )?)),
-        ),
-        SslMode::VerifyFull => (
-            PgSslMode::Require,
-            chain_verifier(config.ssl_root_cert.as_deref(), &provider)?,
-        ),
+    let verifier: Arc<dyn ServerCertVerifier> = match config.ssl_mode {
+        SslMode::Disable => return Ok(None),
+        SslMode::Prefer | SslMode::Require => Arc::new(NoVerification(Arc::clone(&provider))),
+        SslMode::VerifyCa => Arc::new(IgnoreHostname(chain_verifier(
+            config.ssl_root_cert.as_deref(),
+            &provider,
+        )?)),
+        SslMode::VerifyFull => chain_verifier(config.ssl_root_cert.as_deref(), &provider)?,
     };
     let builder = ClientConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()
@@ -52,7 +50,7 @@ pub fn connector(config: &ConnectionConfig) -> Result<(PgSslMode, Option<MakeRus
             .map_err(|e| Error::Config(format!("invalid client certificate or key: {e}")))?,
         None => builder.with_no_client_auth(),
     };
-    Ok((mode, Some(MakeRustlsConnect::new(tls))))
+    Ok(Some(tls))
 }
 
 #[expect(
