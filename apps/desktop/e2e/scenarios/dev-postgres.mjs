@@ -61,7 +61,7 @@ async function menu(page, selector) {
 
 export default async function (page) {
   await page.waitFor(`${row(NAME)} !== undefined`);
-  await page.eval(`${row(NAME)}.click()`);
+  await page.eval(`${row(NAME)}.querySelector(".twisty").click()`);
 
   // Password prompt.
   await page.waitFor(`document.querySelector('.modal input[type=password]') !== null`);
@@ -71,7 +71,7 @@ export default async function (page) {
 
   // The current schema opens by itself; open the demo schema.
   await page.waitFor(`${row("demo")} !== undefined`, 15_000);
-  await page.eval(`${row("demo")}.click()`);
+  await page.eval(`${row("demo")}.querySelector(".twisty").click()`);
   await page.waitFor(`${row("orders")} !== undefined`, 15_000);
 
   await page.eval(`${row("orders")}.id = 'e2e-orders'`);

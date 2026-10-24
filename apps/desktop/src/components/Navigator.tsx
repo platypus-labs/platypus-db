@@ -15,6 +15,7 @@ import { dropCached, loadCached, pruneCached, saveCached } from "../navigator/di
 import { FilterDialog } from "../navigator/FilterDialog";
 import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
 import { onNavigatorRefresh } from "../navigatorEvents";
+import { toggled } from "../sets";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabInit } from "../tabs/registry";
 import { PRESETS, cycleTheme, themeName, themeSetting } from "../theme";
@@ -169,8 +170,9 @@ export function Navigator(props: Props) {
   const simple = useSetting(viewSetting) === "simple";
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
-  /** The row last clicked, shown as the active one. */
-  const [selected, setSelected] = useState<string | null>(null);
+  /** The selected rows; `anchor` is where a Shift+click range starts. */
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const anchor = useRef<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const signatures = useRef(new Map<string, string>());
 
@@ -704,6 +706,35 @@ export function Navigator(props: Props) {
     return out;
   }
 
+  /** A click selects the row; Ctrl adds or removes it, Shift selects the range from the
+   *  last clicked row. */
+  function select(key: string, e: React.MouseEvent) {
+    const keys = rows.map((r) => r.key);
+    const from = anchor.current === null ? -1 : keys.indexOf(anchor.current);
+    if (e.shiftKey && from >= 0) {
+      const to = keys.indexOf(key);
+      setSelected(new Set(keys.slice(Math.min(from, to), Math.max(from, to) + 1)));
+      return;
+    }
+    anchor.current = key;
+    setSelected(e.ctrlKey || e.metaKey ? toggled(selected, key) : new Set([key]));
+  }
+
+  /** The menu of `row`: with several objects selected, their actions get them all. */
+  function menuOf(row: Row): MenuTarget | undefined {
+    const target = row.menu;
+    if (!selected.has(row.key)) {
+      anchor.current = row.key;
+      setSelected(new Set([row.key]));
+      return target;
+    }
+    if (target?.scope !== "navigator.object") return target;
+    const selection = rows.flatMap((r) =>
+      selected.has(r.key) && r.menu?.scope === "navigator.object" ? [r.menu.arg] : [],
+    );
+    return selection.length > 1 ? { scope: target.scope, arg: { ...target.arg, selection } } : target;
+  }
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -766,28 +797,36 @@ export function Navigator(props: Props) {
             key={row.key}
             role="treeitem"
             aria-expanded={row.expanded}
-            className={`tree-row${row.muted ? " muted" : ""}${row.status === "error" ? " failed" : ""}${row.key === selected ? " selected" : ""}`}
+            className={`tree-row${row.muted ? " muted" : ""}${row.status === "error" ? " failed" : ""}${selected.has(row.key) ? " selected" : ""}`}
             style={{ paddingLeft: 6 + row.depth * 16 }}
             title={
               row.status === "error"
                 ? row.detail
                 : (row.title ?? (row.detail ? `${row.label}  ${row.detail}` : undefined))
             }
-            onClick={() => {
-              setSelected(row.key);
-              row.onToggle?.();
-            }}
+            onClick={(e) => select(row.key, e)}
             onDoubleClick={(e) => {
               e.preventDefault();
-              row.onOpen?.();
+              // Only rows with nothing to open (schemas, folders) expand on a double-click.
+              if (row.onOpen) row.onOpen();
+              else row.onToggle?.();
             }}
             onContextMenu={(e) => {
-              if (!row.menu) return;
+              const target = menuOf(row);
+              if (!target) return;
               e.preventDefault();
-              setMenu({ x: e.clientX, y: e.clientY, target: row.menu });
+              setMenu({ x: e.clientX, y: e.clientY, target });
             }}
           >
-            <span className="twisty">
+            <span
+              className="twisty"
+              onClick={(e) => {
+                if (!row.onToggle) return;
+                e.stopPropagation();
+                row.onToggle();
+              }}
+              onDoubleClick={(e) => row.onToggle && e.stopPropagation()}
+            >
               {row.expanded !== undefined && <Icon name={row.expanded ? "chevron-down" : "chevron-right"} size={12} />}
             </span>
             {row.color !== undefined ? (
@@ -1023,8 +1062,14 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       title: "Copy name",
       group: "copy",
       order: 40,
+      multiple: true,
       // Routines are copied bare, as before: their call syntax differs from a table's.
-      run: ({ object, target }) => copy(isRelation(object.kind) ? target : object.name),
+      run: (arg) =>
+        copy(
+          (arg.selection ?? [arg])
+            .map(({ object, target }) => (isRelation(object.kind) ? target : object.name))
+            .join("\n"),
+        ),
     }),
     registerAction({
       id: "object.bookmark",

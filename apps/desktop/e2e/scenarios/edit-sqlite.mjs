@@ -56,7 +56,7 @@ async function finishEdit(page, text) {
 export default async function (page) {
   await page.waitFor(`${treeRow(NAME)} !== undefined`);
   // The current schema opens by itself.
-  await page.eval(`${treeRow(NAME)}.click()`);
+  await page.eval(`${treeRow(NAME)}.querySelector(".twisty").click()`);
 
   await openTable(page, "items");
   await page.waitFor(`${status} === '3 rows'`);

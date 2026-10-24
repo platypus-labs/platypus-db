@@ -52,7 +52,7 @@ async function openMenu(page, x) {
 export default async function (page) {
   await page.waitFor(`${treeRow(NAME)} !== undefined`);
   // The current schema opens by itself.
-  await page.eval(`${treeRow(NAME)}.click()`);
+  await page.eval(`${treeRow(NAME)}.querySelector(".twisty").click()`);
   await page.waitFor(`${treeRow("items")} !== undefined`);
   await page.eval(`${treeRow("items")}.id = 'e2e-table'`);
   await page.clickSel("#e2e-table", { clickCount: 2 });

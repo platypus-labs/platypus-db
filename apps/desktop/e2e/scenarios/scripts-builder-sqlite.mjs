@@ -77,7 +77,7 @@ export default async function (page, { dir }) {
   await page.waitFor(`document.querySelector('.context-menu') === null`);
 
   // The query builder joins a table to the one before it on their foreign key.
-  await page.eval(`${row(NAME)}.click()`);
+  await page.eval(`${row(NAME)}.querySelector(".twisty").click()`);
   await page.waitFor(`${row("customers")} !== undefined`, 15_000);
   const tableItems = await rightClick(page, row("customers"));
   assert.ok(tableItems.includes("Visual query builder"), `${tableItems}`);

@@ -183,7 +183,7 @@ async function map(page, shot) {
 export default async function (page, { shots, dir }) {
   const shot = async (name) => shots && (await page.screenshot(join(shots, `grid-more-${name}.png`)));
   await page.waitFor(`${treeRow(NAME)} !== undefined`);
-  await page.eval(`${treeRow(NAME)}.click()`);
+  await page.eval(`${treeRow(NAME)}.querySelector(".twisty").click()`);
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
 
   // Hide `city`, move `name` first in the Columns dialog.

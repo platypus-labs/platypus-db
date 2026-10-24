@@ -12,12 +12,15 @@ const row = `[...document.querySelectorAll('.tree-row')].find(r => r.querySelect
 
 export default async function (page) {
   await page.waitFor(`${row} !== undefined`);
-  await page.eval(`${row}.id = 'e2e-connection'`);
-  await page.clickSel("#e2e-connection", { clickCount: 2 });
+  // Expanding the connection asks for the password; a double-click then opens an editor.
+  await page.eval(`${row}.querySelector(".twisty").click()`);
   await page.waitFor(`document.querySelector('.modal input[type=password]') !== null`);
   await page.eval(`document.querySelector('.modal input[type=password]').focus()`);
   await page.type("platypus");
   await page.eval(`document.querySelector('.modal button[type=submit]').click()`);
+  await page.waitFor(`document.querySelector('.modal') === null`, 15_000);
+  await page.eval(`${row}.id = 'e2e-connection'`);
+  await page.clickSel("#e2e-connection", { clickCount: 2 });
   await page.waitFor(`${queryTab} !== undefined`, 15_000);
 
   const sql = "SELECT c.country, count(*) FROM demo.orders o JOIN demo.customers c ON c.id = o.customer_id WHERE o.status = 'paid' GROUP BY c.country";

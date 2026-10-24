@@ -32,11 +32,11 @@ save_password = false
 
 export default async function (page) {
   await page.waitFor(`${row(NAME)} !== undefined`);
-  await page.eval(`${row(NAME)}.click()`);
+  await page.eval(`${row(NAME)}.querySelector(".twisty").click()`);
   await page.waitFor(`${row("t")} !== undefined && ${row("Views")} !== undefined`, 15_000);
   assert.equal(await page.eval(`${row("Triggers")} === undefined`), true, "no triggers in the Simple view");
 
-  await page.eval(`${row("t")}.click()`);
+  await page.eval(`${row("t")}.querySelector(".twisty").click()`);
   await page.waitFor(`${row("Columns")} !== undefined`, 15_000);
   assert.equal(await page.eval(`${row("Indexes")} === undefined`), true, "no indexes in the Simple view");
 }
