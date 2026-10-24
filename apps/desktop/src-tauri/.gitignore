@@ -1,2 +1,4 @@
 /target/
 /gen/schemas
+# platypus-mcp, staged by scripts/stage-mcp.mjs for the bundle.
+/binaries/
