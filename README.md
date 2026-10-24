@@ -28,7 +28,9 @@ scrolls through millions of rows.
   views. The tree is cached on disk: it shows at once on start, and offline. Generate SELECT,
   INSERT, UPDATE, DELETE, UPSERT or DDL; rename, truncate and drop with a preview of the
   statement. A click selects a row (`Ctrl`/`Shift`+click for several, e.g. to generate the
-  DDL of many tables at once), the arrow expands it, a double-click opens it.
+  DDL of many tables at once), the arrow expands it, a double-click opens it (or goes back to
+  its tab when already open). A green dot marks the connections with an open session; none
+  connects before you open it.
 - **Search**: object names, columns and the source of views, routines and triggers across a
   database; or the text of every row of a schema's tables, opening the matching rows.
 - **Object details**: properties, columns, indexes, constraints, foreign keys, incoming

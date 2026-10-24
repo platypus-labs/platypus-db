@@ -70,6 +70,9 @@ export function App() {
   /** Navigator sessions by `dbKey`, separate from the editors' so browsing never waits
    *  behind a running query. */
   const navSessions = useRef(new Map<string, Promise<number | null>>());
+  /** The connection of every open session (editors and navigator), to mark it as active. */
+  const [openSessions, setOpenSessions] = useState<ReadonlyMap<number, string>>(new Map());
+  const activeConnections = useMemo(() => new Set(openSessions.values()), [openSessions]);
   /** Passwords typed this run, in memory only, so a second session does not ask again. */
   const passwords = useRef(new Map<string, string>());
   const [catalogs, setCatalogs] = useState<Record<string, CompletionCatalog>>({});
@@ -298,6 +301,7 @@ export function App() {
       }
       if (password !== undefined) passwords.current.set(connection.id, password);
       capabilities.current.set(session.session_id, session.capabilities);
+      setOpenSessions((m) => new Map(m).set(session.session_id, connection.id));
       return session.session_id;
     } catch (e) {
       passwords.current.delete(connection.id);
@@ -336,6 +340,15 @@ export function App() {
     [],
   );
 
+  function closeSession(id: number) {
+    setOpenSessions((m) => {
+      const rest = new Map(m);
+      rest.delete(id);
+      return rest;
+    });
+    void api.closeSession(id);
+  }
+
   /** Caches a session promise; failed or cancelled attempts are retried on next use. */
   function cached<K>(map: Map<K, Promise<number | null>>, key: K, open: () => Promise<number | null>) {
     const existing = map.get(key);
@@ -367,7 +380,7 @@ export function App() {
       if (key.split("\u0000")[0] !== connection.id) continue;
       navSessions.current.delete(key);
       void session.then((id) => {
-        if (id !== null) void api.closeSession(id);
+        if (id !== null) closeSession(id);
       });
     }
   }
@@ -387,7 +400,7 @@ export function App() {
     const session = sessions.current.get(tab.key);
     sessions.current.delete(tab.key);
     void session?.then((id) => {
-      if (id !== null) void api.closeSession(id);
+      if (id !== null) closeSession(id);
     });
     setTabs((all) => {
       const rest = all.filter((t) => t.key !== tab.key);
@@ -445,6 +458,11 @@ export function App() {
     editProject: (project) => setDialog({ kind: "project", project }),
     deleteProject: (project) => shell.current.deleteProject(project),
     openTab: (kind, connectionId, init) => shell.current.addTab(createTab(kind, connectionId, init)),
+    focusTab: (match) => {
+      const tab = shell.current.tabs.find(match);
+      if (tab) shell.current.setActiveTab(tab.key);
+      return tab !== undefined;
+    },
     sideSession: (connection, database) => shell.current.navigatorSession(connection, database),
     capabilities: (sessionId) => capabilities.current.get(sessionId),
     showError: setToast,
@@ -516,6 +534,7 @@ export function App() {
           session={navigatorSession}
           capabilities={(sessionId) => capabilities.current.get(sessionId)}
           disconnect={disconnectNavigator}
+          active={activeConnections}
           onRefresh={(c, database) => requestCatalog(c, true, database)}
           onError={setToast}
         />
