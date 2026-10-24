@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, type ImportFile, type ImportSource, type SavedConnection, toCommandError } from "../api";
+import { toggled } from "../sets";
 
 interface Props {
   existing: SavedConnection[];
@@ -66,12 +67,7 @@ export function ImportDialog({ existing, project, onImported, onClose }: Props) 
     }
   }
 
-  const toggle = (id: string) =>
-    setPicked((p) => {
-      const next = new Set(p);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
+  const toggle = (id: string) => setPicked((p) => toggled(p, id));
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>

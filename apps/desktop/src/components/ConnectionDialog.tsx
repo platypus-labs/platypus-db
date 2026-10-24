@@ -14,6 +14,7 @@ import {
   type SslMode,
 } from "../api";
 import { CONNECTION_TYPES } from "../connections";
+import { toggled } from "../sets";
 import { basename } from "../workspace";
 import { SshFields, newSsh } from "./SshFields";
 
@@ -363,13 +364,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
                     key={p.id}
                     className={`project-chip${on ? " selected" : ""}`}
                     aria-pressed={on}
-                    onClick={() =>
-                      setInProjects((all) => {
-                        const next = new Set(all);
-                        if (!next.delete(p.id)) next.add(p.id);
-                        return next;
-                      })
-                    }
+                    onClick={() => setInProjects((all) => toggled(all, p.id))}
                   >
                     <span className="dot" style={{ background: p.color }} />
                     {p.name}

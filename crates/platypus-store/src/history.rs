@@ -163,10 +163,8 @@ impl HistoryStore {
         // The ids go as one JSON array: any number of them, in one cached statement.
         let ids = match &query.connection_ids {
             Some(ids) if ids.is_empty() => return Ok(Vec::new()),
-            Some(ids) => Some(
-                serde_json::to_string(&ids.iter().map(Uuid::to_string).collect::<Vec<_>>())
-                    .unwrap_or_default(),
-            ),
+            // A `Uuid` serializes as its hyphenated string, the form `record` stores.
+            Some(ids) => Some(serde_json::to_string(ids).unwrap_or_default()),
             None => None,
         };
         // `\` escapes LIKE wildcards typed by the user.

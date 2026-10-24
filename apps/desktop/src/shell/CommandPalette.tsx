@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { actionsFor, runAction, shortcutLabel } from "../actions";
 import { api, type CompletionCatalog, type HistoryEntry, type SavedConnection, toCommandError } from "../api";
+import { projectKey } from "../projects/state";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import { parseDbKey, workbench } from "../workbench";
 import { type FuzzyMatch, fuzzy } from "./fuzzy";
@@ -91,7 +92,7 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
       })),
       // Projects, to switch to; All connections first, as in the rail.
       ...[{ id: null, name: "All connections" }, ...workbench().projects()].map((p) => ({
-        key: `project:${p.id ?? "all"}`,
+        key: `project:${projectKey(p.id)}`,
         kind: "Project" as const,
         label: p.name,
         run: () => workbench().switchProject(p.id),

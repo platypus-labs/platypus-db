@@ -119,19 +119,14 @@ export function App() {
     }
     const restoredTabs = byIndex.filter((t) => t !== null);
     setTabs(restoredTabs);
-    const own = restoredTabs.filter((t) => (t.project ?? null) === activeProject);
-    const remembered = activeByProject.current.get(projectKey(activeProject));
-    setActiveTab(own.find((t) => t.key === remembered)?.key ?? own.at(-1)?.key ?? null);
+    setActiveTab(shownTab(restoredTabs, activeProject));
   }, [connections, projects]);
 
   useEffect(() => {
     if (!restored.current) return;
-    activeByProject.current.set(projectKey(activeProject), activeTab ?? -1);
+    rememberActiveTab();
     const kept = tabs.flatMap((tab) => {
-      const state = tabKind(tab.kind)?.persist(tab);
-      const saved: PersistedTab | null = state
-        ? { ...state, kind: tab.kind, connectionId: tab.connectionId, project: tab.project ?? null }
-        : null;
+      const saved = persistTab(tab);
       return saved ? [{ key: tab.key, saved }] : [];
     });
     const active: Record<string, number> = {};
@@ -153,7 +148,7 @@ export function App() {
   }, [project?.name]);
 
   /** The tabs of the active project, the ones the tab bar shows. */
-  const visibleTabs = tabs.filter((t) => (t.project ?? null) === activeProject);
+  const visibleTabs = tabs.filter((t) => inProject(t, activeProject));
 
   /** Projects with an open transaction in one of their tabs, for the rail's warning dot. */
   const txProjects = new Set(tabs.filter((t) => t.txOpen).map((t) => projectKey(t.project)));
@@ -174,24 +169,33 @@ export function App() {
       return setToast(toCommandError(e).message);
     }
     for (const t of own) closeTab(t, true);
-    if (activeProject === p.id) {
-      setActiveProject(null);
-      saveActiveProject(null);
-      const all = tabs.filter((t) => (t.project ?? null) === null);
-      const remembered = activeByProject.current.get("all");
-      setActiveTab(all.find((t) => t.key === remembered)?.key ?? all.at(-1)?.key ?? null);
-    }
+    if (activeProject === p.id) showProject(null);
+  }
+
+  /** Keeps the active tab of the project shown, to show it again on coming back. */
+  function rememberActiveTab() {
+    activeByProject.current.set(projectKey(activeProject), activeTab ?? -1);
+  }
+
+  /** The tab to show in a project: the one active there last, else its last one. */
+  function shownTab(all: TabModel[], id: string | null): number | null {
+    const own = all.filter((t) => inProject(t, id));
+    const remembered = activeByProject.current.get(projectKey(id));
+    return own.find((t) => t.key === remembered)?.key ?? own.at(-1)?.key ?? null;
+  }
+
+  /** Makes a project the active one, kept for the next start, with its tab. */
+  function showProject(id: string | null) {
+    setActiveProject(id);
+    saveActiveProject(id);
+    setActiveTab(shownTab(tabs, id));
   }
 
   /** Shows another project with the tab that was active there. Nothing closes. */
   function switchProject(id: string | null) {
     if (id === activeProject || (id !== null && !projects?.some((p) => p.id === id))) return;
-    activeByProject.current.set(projectKey(activeProject), activeTab ?? -1);
-    setActiveProject(id);
-    saveActiveProject(id);
-    const own = tabs.filter((t) => (t.project ?? null) === id);
-    const remembered = activeByProject.current.get(projectKey(id));
-    setActiveTab(own.find((t) => t.key === remembered)?.key ?? own.at(-1)?.key ?? null);
+    rememberActiveTab();
+    showProject(id);
   }
 
   const connectionById = (id: string) => connections?.find((c) => c.id === id);
@@ -338,9 +342,9 @@ export function App() {
         ? "This tab has an open transaction. Close it and roll back the uncommitted changes?"
         : null;
     if (question && !confirmed && !window.confirm(question)) return;
-    const state = tabKind(tab.kind)?.persist(tab);
-    if (state) {
-      closedTabs.current.push({ ...state, kind: tab.kind, connectionId: tab.connectionId, project: tab.project ?? null });
+    const saved = persistTab(tab);
+    if (saved) {
+      closedTabs.current.push(saved);
       if (closedTabs.current.length > CLOSED_TABS) closedTabs.current.shift();
     }
     const session = sessions.current.get(tab.key);
@@ -351,7 +355,7 @@ export function App() {
     setTabs((all) => {
       const rest = all.filter((t) => t.key !== tab.key);
       // The next tab shown is one of the same project.
-      const same = rest.filter((t) => (t.project ?? null) === (tab.project ?? null));
+      const same = rest.filter((t) => inProject(t, tab.project ?? null));
       setActiveTab((active) => (active === tab.key ? (same.at(-1)?.key ?? null) : active));
       return rest;
     });
@@ -363,8 +367,8 @@ export function App() {
   const reopenTab = () => {
     const closed = closedTabs.current;
     let index = closed.length - 1;
-    while (index >= 0 && (closed[index]!.project ?? null) !== activeProject) index--;
-    const saved = index >= 0 ? closedTabs.current.splice(index, 1)[0] : undefined;
+    while (index >= 0 && !inProject(closed[index]!, activeProject)) index--;
+    const saved = index >= 0 ? closed.splice(index, 1)[0] : undefined;
     const kind = saved && tabKind((saved.kind ?? "query") as TabKindName);
     if (!saved || !kind || !connectionById(saved.connectionId)) return;
     addTab(createTab(kind.kind, saved.connectionId, kind.restore(saved)));
@@ -583,10 +587,8 @@ export function App() {
             setDialog(null);
             // A new project is where the user goes next.
             if (created) {
-              activeByProject.current.set(projectKey(activeProject), activeTab ?? -1);
-              setActiveProject(saved.id);
-              saveActiveProject(saved.id);
-              setActiveTab(null);
+              rememberActiveTab();
+              showProject(saved.id);
             }
           }}
         />
@@ -629,6 +631,18 @@ export function App() {
 function tabIcon(t: TabModel): IconName {
   if (t.kind === "object") return "object";
   return "tableRef" in t && t.tableRef ? "table" : "sql";
+}
+
+/** A tab as the workspace saves it, or `null` for a kind that is not kept. */
+function persistTab(tab: TabModel): PersistedTab | null {
+  const state = tabKind(tab.kind)?.persist(tab);
+  return state ? { ...state, kind: tab.kind, connectionId: tab.connectionId, project: tab.project ?? null } : null;
+}
+
+/** The tab belongs to the project (`null` for All connections); tabs saved before projects
+ *  have none. */
+function inProject(tab: { project?: string | null }, id: string | null): boolean {
+  return (tab.project ?? null) === id;
 }
 
 interface ShellApi {

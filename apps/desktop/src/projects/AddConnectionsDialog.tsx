@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, type Project, type SavedConnection, toCommandError } from "../api";
+import { toggled } from "../sets";
 
 interface Props {
   project: Project;
@@ -24,13 +25,6 @@ export function AddConnectionsDialog({ project, connections, onSaved, onClose }:
     }
   }
 
-  const toggle = (id: string) =>
-    setPicked((p) => {
-      const next = new Set(p);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
-
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal small add-connections" onKeyDown={(e) => e.key === "Escape" && onClose()}>
@@ -41,7 +35,7 @@ export function AddConnectionsDialog({ project, connections, onSaved, onClose }:
           <div className="import-list">
             {outside.map((c) => (
               <label key={c.id} className="check">
-                <input type="checkbox" checked={picked.has(c.id)} onChange={() => toggle(c.id)} />
+                <input type="checkbox" checked={picked.has(c.id)} onChange={() => setPicked((p) => toggled(p, c.id))} />
                 {c.name}
               </label>
             ))}

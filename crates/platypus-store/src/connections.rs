@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -131,6 +132,21 @@ pub struct Project {
     pub connections: Vec<Uuid>,
 }
 
+impl Project {
+    /// Adds the connection (at the end) or takes it out; false when it was already so.
+    fn set_member(&mut self, connection: Uuid, member: bool) -> bool {
+        let present = self.connections.contains(&connection);
+        if member && !present {
+            self.connections.push(connection);
+        } else if !member && present {
+            self.connections.retain(|c| *c != connection);
+        } else {
+            return false;
+        }
+        true
+    }
+}
+
 /// The initials of the first two words ("Cliente Rossi" → "CR"), or the first two letters
 /// of a single word ("Interno" → "IN"), upper case.
 #[must_use]
@@ -153,6 +169,12 @@ fn trim(s: &mut String) {
     s.truncate(s.trim_end().len());
     let start = s.len() - s.trim_start().len();
     s.drain(..start);
+}
+
+/// Drops the ids not in `known`, and repeated ones.
+fn keep_known(ids: &mut Vec<Uuid>, known: &HashSet<Uuid>) {
+    let mut seen = HashSet::with_capacity(ids.len());
+    ids.retain(|id| known.contains(id) && seen.insert(*id));
 }
 
 fn is_color(s: &str) -> bool {
@@ -240,7 +262,7 @@ impl ConnectionStore {
     /// Loads `path`, or starts empty if it does not exist yet.
     pub fn open(path: impl Into<PathBuf>, secrets: Arc<dyn SecretStore>) -> Result<Self> {
         let path = path.into();
-        let (projects, connections) = match std::fs::read_to_string(&path) {
+        let (mut projects, connections) = match std::fs::read_to_string(&path) {
             Ok(text) => {
                 let file: ConnectionsFile =
                     toml::from_str(&text).map_err(|e| StoreError::Format {
@@ -261,28 +283,20 @@ impl ConnectionStore {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Vec::new(), Vec::new()),
             Err(source) => return Err(StoreError::Io { path, source }),
         };
-        let mut store = Self {
-            path,
-            secrets,
-            projects,
-            connections,
-        };
         // Files edited by hand: ids of missing connections and empty initials.
-        let mut projects = std::mem::take(&mut store.projects);
+        let known = connections.iter().map(|c| c.id).collect();
         for p in &mut projects {
-            store.keep_known(&mut p.connections);
+            keep_known(&mut p.connections, &known);
             if p.initials.trim().is_empty() {
                 p.initials = initials_of(&p.name);
             }
         }
-        store.projects = projects;
-        Ok(store)
-    }
-
-    /// Drops ids of connections the store does not have, and repeated ones.
-    fn keep_known(&self, ids: &mut Vec<Uuid>) {
-        let mut seen = std::collections::HashSet::new();
-        ids.retain(|id| self.get(*id).is_some() && seen.insert(*id));
+        Ok(Self {
+            path,
+            secrets,
+            projects,
+            connections,
+        })
     }
 
     #[must_use]
@@ -320,7 +334,8 @@ impl ConnectionStore {
         if project.initials.chars().count() > 2 {
             return invalid("initials are one or two characters".to_owned());
         }
-        self.keep_known(&mut project.connections);
+        let known = self.connections.iter().map(|c| c.id).collect();
+        keep_known(&mut project.connections, &known);
         match self.projects.iter_mut().find(|p| p.id == project.id) {
             Some(existing) => *existing = project,
             None => self.projects.push(project),
@@ -348,15 +363,11 @@ impl ConnectionStore {
             .iter_mut()
             .find(|p| p.id == project)
             .ok_or(StoreError::NotFound(project))?;
-        let present = p.connections.contains(&connection);
-        if member && !present {
-            p.connections.push(connection);
-        } else if !member && present {
-            p.connections.retain(|c| *c != connection);
+        if p.set_member(connection, member) {
+            self.write()
         } else {
-            return Ok(());
+            Ok(())
         }
-        self.write()
     }
 
     /// Makes `projects` the projects a connection is in, and no others.
@@ -364,16 +375,11 @@ impl ConnectionStore {
         if self.get(connection).is_none() {
             return Err(StoreError::NotFound(connection));
         }
+        let mut changed = false;
         for p in &mut self.projects {
-            let wanted = projects.contains(&p.id);
-            let present = p.connections.contains(&connection);
-            if wanted && !present {
-                p.connections.push(connection);
-            } else if !wanted && present {
-                p.connections.retain(|c| *c != connection);
-            }
+            changed |= p.set_member(connection, projects.contains(&p.id));
         }
-        self.write()
+        if changed { self.write() } else { Ok(()) }
     }
 
     #[must_use]
