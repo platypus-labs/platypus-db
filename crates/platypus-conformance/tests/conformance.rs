@@ -803,6 +803,10 @@ async fn explains_queries() {
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
+        // Plans are optional: `capabilities_match_optional_methods` checks the others.
+        if !conn.capabilities().explain {
+            continue;
+        }
         affected(&b, conn, "CREATE TEMPORARY TABLE conf_plan (id INT)").await;
         affected(&b, conn, "INSERT INTO conf_plan VALUES (1), (2), (3)").await;
         let count = || async {
@@ -860,6 +864,10 @@ async fn suggests_indexes_for_large_scans() {
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
+        // Plans are optional: `capabilities_match_optional_methods` checks the others.
+        if !conn.capabilities().explain {
+            continue;
+        }
         run(
             conn,
             &format!("CREATE TEMPORARY TABLE conf_big AS {}", b.series_sql),
