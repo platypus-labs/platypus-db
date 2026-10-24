@@ -9,7 +9,7 @@ scrolls through millions of rows.
 
 ## Features
 
-- **Connections** with TLS (libpq `sslmode` semantics), passwords in the system keychain,
+- **Connections** started from a grid of database logos, with TLS (libpq `sslmode` semantics), passwords in the system keychain,
   colors and a read-only flag; paste a `postgres://`, `mysql://` or `sqlserver://` URL to fill the form.
   **SSH tunnels** with a password, a key or the SSH agent, optionally through a jump host;
   server keys are checked against `~/.ssh/known_hosts`. Connection **types** Development,
