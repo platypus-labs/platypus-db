@@ -135,13 +135,30 @@ async fn wait_or_cancel(
 }
 
 /// Runs `script` with the client of the session's database and waits for it to end;
-/// `cancel_cli` with the same `run_id` stops it.
+/// `cancel_cli` with the same `run_id` stops it, also while the SSH tunnel opens.
 #[tauri::command]
 pub async fn run_cli(
     state: State<'_, AppState>,
     session_id: u64,
     run_id: u64,
     script: String,
+) -> CommandResult<CliOutput> {
+    let (stop, cancel) = oneshot::channel();
+    lock(&state.clis).insert(run_id, stop);
+    let out = run(&state, session_id, script, cancel).await;
+    lock(&state.clis).remove(&run_id);
+    out
+}
+
+fn stopped(program: &str) -> CommandError {
+    CommandError::new("cancelled", format!("{program} was stopped"))
+}
+
+async fn run(
+    state: &AppState,
+    session_id: u64,
+    script: String,
+    mut cancel: oneshot::Receiver<()>,
 ) -> CommandResult<CliOutput> {
     let config = state.session(session_id)?.config;
     let program = program(config.driver);
@@ -154,6 +171,9 @@ pub async fn run_cli(
         Some(t) => ("127.0.0.1".to_owned(), Some(t.local_addr().port())),
         None => (config.host.clone(), config.port),
     };
+    if cancel.try_recv().is_ok() {
+        return Err(stopped(program));
+    }
     let (args, env) = invocation(&config, &host, port);
     let mut command = Command::new(program);
     command
@@ -183,13 +203,10 @@ pub async fn run_cli(
             let _ = stdin.write_all(script.as_bytes()).await;
         });
     }
-    let (stop, cancel) = oneshot::channel();
-    lock(&state.clis).insert(run_id, stop);
     let out = wait_or_cancel(child, cancel).await;
-    lock(&state.clis).remove(&run_id);
     drop(tunnel);
     let out = out
-        .ok_or_else(|| CommandError::new("cancelled", format!("{program} was stopped")))?
+        .ok_or_else(|| stopped(program))?
         .map_err(|e| CommandError::new("cli", format!("{program}: {e}")))?;
     let mut output = String::from_utf8_lossy(&out.stdout).into_owned();
     output.push_str(&String::from_utf8_lossy(&out.stderr));
