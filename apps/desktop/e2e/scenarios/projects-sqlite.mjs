@@ -269,6 +269,12 @@ async function members(page, dir, shots) {
     "SQL Server",
     "SQLite",
     "DuckDB",
+    "CockroachDB",
+    "YugabyteDB",
+    "TimescaleDB",
+    "Supabase",
+    "Neon",
+    "AlloyDB",
   ]);
   await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === 'SQLite').click()`);
   await page.waitFor(`document.querySelector('.project-chips') !== null`);

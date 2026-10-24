@@ -635,3 +635,10 @@ button.danger {
   width: 26px;
   height: 26px;
 }
+
+.driver-section {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+}

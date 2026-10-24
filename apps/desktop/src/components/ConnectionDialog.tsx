@@ -219,8 +219,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
   if (picking) {
     return (
       <DriverPicker
-        onPick={(driver) => {
+        onPick={(driver, preset) => {
           changeDriver(driver);
+          setConn((c) => ({ ...c, ...preset }));
           setPicking(false);
         }}
         onClose={onClose}
