@@ -1,5 +1,6 @@
 // Connectivity: connections imported from DBeaver keep their type; a production connection
-// shows its badge and opens in manual commit; the connection dialog has the SSH tunnel.
+// shows its badge and opens in manual commit; the connection dialog has a tab for the SSH
+// tunnel.
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -75,7 +76,11 @@ export default async function (page, { dir, shots }) {
 
   // The dialog of the imported connection shows its SSH server.
   await page.eval(`[...${treeRow("Remote PG")}.querySelectorAll('button')].find(b => b.title === 'Edit').click()`);
-  await page.waitFor(`document.querySelector('.ssh-section') !== null`);
+  // SSH has a tab of its own.
+  await page.waitFor(`document.querySelector('.dialog-tabs') !== null`);
+  assert.equal(await page.eval(`document.querySelector('[data-page="ssh"]').hidden`), true);
+  await page.eval(`[...document.querySelectorAll('.dialog-tabs button')].find(b => b.textContent.startsWith('SSH')).click()`);
+  await page.waitFor(`document.querySelector('[data-page="ssh"]').hidden === false`);
   assert.equal(await page.eval(`document.querySelector('.ssh-section input').value`), "bastion");
   if (shots) await page.screenshot(join(shots, "connection-ssh.png"));
 }

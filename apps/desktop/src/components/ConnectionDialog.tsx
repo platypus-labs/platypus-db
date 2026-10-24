@@ -77,6 +77,7 @@ export function ConnectionDialog({ initial, existing, onSaved, onClose }: Props)
   const [password, setPassword] = useState("");
   /** SSH passwords and passphrases typed, by `secret_id`. */
   const [sshTyped, setSshTyped] = useState<Record<string, string>>({});
+  const [page, setPage] = useState<"general" | "ssh">("general");
   const savedSsh = new Set(existing ? chain(initial.ssh).map((s) => s.secret_id) : []);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<
@@ -164,8 +165,28 @@ export function ConnectionDialog({ initial, existing, onSaved, onClose }: Props)
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <form className="modal" onSubmit={save} onKeyDown={(e) => e.key === "Escape" && onClose()}>
+      <form
+        className="modal"
+        onSubmit={save}
+        onKeyDown={(e) => e.key === "Escape" && onClose()}
+        // A required field left empty on the other tab: show that tab.
+        onInvalidCapture={(e) => {
+          const tab = (e.target as HTMLElement).closest<HTMLElement>("[data-page]")?.dataset.page;
+          if (tab === "general" || tab === "ssh") setPage(tab);
+        }}
+      >
         <h2>{existing ? "Edit connection" : "New connection"}</h2>
+        {conn.driver !== "sqlite" && (
+          <div className="dialog-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected={page === "general"} onClick={() => setPage("general")}>
+              General
+            </button>
+            <button type="button" role="tab" aria-selected={page === "ssh"} onClick={() => setPage("ssh")}>
+              SSH{ssh ? " ●" : ""}
+            </button>
+          </div>
+        )}
+        <div data-page="general" hidden={page !== "general" && conn.driver !== "sqlite"} className="dialog-page">
 
         <label className="field">
           <span>Name</span>
@@ -312,41 +333,6 @@ export function ConnectionDialog({ initial, existing, onSaved, onClose }: Props)
               </label>
             )}
 
-            <label className="check">
-              <input type="checkbox" checked={ssh !== null} onChange={(e) => setSsh(e.target.checked ? newSsh() : null)} />
-              Connect through an SSH tunnel
-            </label>
-            {ssh && (
-              <fieldset className="ssh-section">
-                <SshFields
-                  ssh={ssh}
-                  onChange={(next) => setSsh(next)}
-                  secret={sshTyped[ssh.secret_id] ?? ""}
-                  onSecret={(v) => setSshTyped((t) => ({ ...t, [ssh.secret_id]: v }))}
-                  saved={savedSsh.has(ssh.secret_id)}
-                />
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={ssh.jump !== null}
-                    onChange={(e) => setSsh({ ...ssh, jump: e.target.checked ? newSsh() : null })}
-                  />
-                  Through a jump host first
-                </label>
-                {ssh.jump && (
-                  <fieldset className="ssh-section">
-                    <legend className="muted small">Jump host</legend>
-                    <SshFields
-                      ssh={ssh.jump}
-                      onChange={(jump) => setSsh({ ...ssh, jump })}
-                      secret={sshTyped[ssh.jump.secret_id] ?? ""}
-                      onSecret={(v) => setSshTyped((t) => ({ ...t, [ssh.jump!.secret_id]: v }))}
-                      saved={savedSsh.has(ssh.jump.secret_id)}
-                    />
-                  </fieldset>
-                )}
-              </fieldset>
-            )}
           </>
         )}
 
@@ -358,6 +344,47 @@ export function ConnectionDialog({ initial, existing, onSaved, onClose }: Props)
           />
           Read-only (warn before modifying data)
         </label>
+        </div>
+
+        {conn.driver !== "sqlite" && (
+          <div data-page="ssh" hidden={page !== "ssh"} className="dialog-page">
+        <label className="check">
+          <input type="checkbox" checked={ssh !== null} onChange={(e) => setSsh(e.target.checked ? newSsh() : null)} />
+          Connect through an SSH tunnel
+        </label>
+        {ssh && (
+          <fieldset className="ssh-section">
+            <SshFields
+              ssh={ssh}
+              onChange={(next) => setSsh(next)}
+              secret={sshTyped[ssh.secret_id] ?? ""}
+              onSecret={(v) => setSshTyped((t) => ({ ...t, [ssh.secret_id]: v }))}
+              saved={savedSsh.has(ssh.secret_id)}
+            />
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={ssh.jump !== null}
+                onChange={(e) => setSsh({ ...ssh, jump: e.target.checked ? newSsh() : null })}
+              />
+              Through a jump host first
+            </label>
+            {ssh.jump && (
+              <fieldset className="ssh-section">
+                <legend className="muted small">Jump host</legend>
+                <SshFields
+                  ssh={ssh.jump}
+                  onChange={(jump) => setSsh({ ...ssh, jump })}
+                  secret={sshTyped[ssh.jump.secret_id] ?? ""}
+                  onSecret={(v) => setSshTyped((t) => ({ ...t, [ssh.jump!.secret_id]: v }))}
+                  saved={savedSsh.has(ssh.jump.secret_id)}
+                />
+              </fieldset>
+            )}
+          </fieldset>
+        )}
+          </div>
+        )}
 
         {result && (
           <div className={result.ok ? "notice ok" : "notice error"}>
