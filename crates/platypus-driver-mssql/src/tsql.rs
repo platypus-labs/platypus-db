@@ -51,18 +51,19 @@ pub fn prepare(sql: &str) -> Prepared<'_> {
         sql: Some(Cow::Owned(text)),
         effect,
     };
+    let begin = || send("BEGIN TRANSACTION".to_owned(), TxEffect::Begin);
     if is(first, &["BEGIN"]) {
         return match t.len() {
             // `BEGIN`, `BEGIN WORK`: the standard spelling.
-            1 => send("BEGIN TRANSACTION".to_owned(), TxEffect::Begin),
-            2 if is(second, &["WORK"]) => send("BEGIN TRANSACTION".to_owned(), TxEffect::Begin),
+            1 => begin(),
+            2 if is(second, &["WORK"]) => begin(),
             _ if is(second, &["TRAN", "TRANSACTION", "DISTRIBUTED"]) => keep(TxEffect::Begin),
             // A block: `BEGIN ... END`, `BEGIN TRY`.
             _ => keep(TxEffect::None),
         };
     }
     if is(first, &["START"]) && is(second, &["TRANSACTION"]) {
-        return send("BEGIN TRANSACTION".to_owned(), TxEffect::Begin);
+        return begin();
     }
     if is(first, &["COMMIT"]) {
         return keep(TxEffect::End);

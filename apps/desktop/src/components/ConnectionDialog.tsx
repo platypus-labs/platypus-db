@@ -131,6 +131,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
   const source = passwordSource(conn);
   const profile = profiles.find((p) => p.id === conn.network_profile) ?? null;
   const server = !isEmbedded(conn.driver);
+  const file = FILES[conn.driver === "duckdb" ? "duckdb" : "sqlite"];
 
   // An empty password field keeps the stored one when editing.
   const passwordInput = (): PasswordInput =>
@@ -186,7 +187,6 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
   }
 
   async function browseFile() {
-    const file = FILES[conn.driver === "duckdb" ? "duckdb" : "sqlite"];
     const path = await open({
       multiple: false,
       filters: [
@@ -312,7 +312,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
                     required
                     value={conn.database}
                     onChange={(e) => set("database", e.target.value)}
-                    placeholder={FILES[conn.driver === "duckdb" ? "duckdb" : "sqlite"].example}
+                    placeholder={file.example}
                   />
                   <button type="button" onClick={() => void browseFile()}>
                     Browse…

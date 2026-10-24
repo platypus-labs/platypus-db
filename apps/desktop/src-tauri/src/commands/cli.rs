@@ -131,6 +131,7 @@ fn invocation(
     }
     (args, env)
 }
+
 /// `sqlcmd` stops at the first error, with quoted identifiers on (it turns them off by
 /// default) and UTF-8 input and output.
 fn sqlcmd_args(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Vec<String> {

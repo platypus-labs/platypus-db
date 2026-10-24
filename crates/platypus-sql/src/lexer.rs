@@ -40,6 +40,17 @@ impl Token {
     }
 }
 
+/// The name in a quoted identifier: quotes removed, doubled closing quotes undone
+/// (Transact-SQL doubles `]` in `[...]` names).
+pub(crate) fn unquote_ident(text: &str) -> Option<String> {
+    let close = match text.chars().next()? {
+        '[' => ']',
+        c => c,
+    };
+    let inner = text.get(1..text.len().saturating_sub(1))?;
+    Some(inner.replace(&format!("{close}{close}"), &close.to_string()))
+}
+
 fn is_ident_start(c: char) -> bool {
     c.is_alphabetic() || c == '_'
 }

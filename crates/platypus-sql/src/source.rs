@@ -1,6 +1,7 @@
 //! The table a query reads, so the data editor can change the query's results: only a plain
 //! `SELECT` from one table, without joins, grouping, set operations or `DISTINCT`.
 
+use crate::lexer::unquote_ident;
 use crate::{Dialect, Lexer, Token, TokenKind};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,16 +99,7 @@ impl Query<'_> {
                 text.to_owned()
             };
         }
-        let close = match text.chars().next() {
-            Some('[') => ']',
-            Some(c) => c,
-            None => return String::new(),
-        };
-        let inner = text
-            .get(1..text.len().saturating_sub(1))
-            .unwrap_or_default();
-        // Transact-SQL doubles `]` in `[...]` names.
-        inner.replace(&format!("{close}{close}"), &close.to_string())
+        unquote_ident(text).unwrap_or_default()
     }
 }
 

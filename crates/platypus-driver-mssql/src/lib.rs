@@ -45,6 +45,8 @@ type Session = Client<Compat<TcpStream>>;
 
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
+const DEFAULT_PORT: u16 = 1433;
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MssqlDriver;
 
@@ -78,7 +80,7 @@ fn session_config(config: &ConnectionConfig) -> tiberius::Config {
     let mut c = tiberius::Config::new();
     // `host` names the server for TLS even when the socket goes to a tunnel.
     c.host(&config.host);
-    c.port(config.port.unwrap_or(1433));
+    c.port(config.port.unwrap_or(DEFAULT_PORT));
     if !config.database.is_empty() {
         c.database(&config.database);
     }
@@ -127,7 +129,7 @@ async fn open(config: &ConnectionConfig) -> Result<Session> {
     let mut session = session_config(config);
     let (host, port) = match config.connect_addr {
         Some(addr) => (addr.ip().to_string(), addr.port()),
-        None => (config.host.clone(), config.port.unwrap_or(1433)),
+        None => (config.host.clone(), config.port.unwrap_or(DEFAULT_PORT)),
     };
     let mut result = login(session.clone(), &host, port).await;
     if config.ssl_mode == SslMode::Prefer
@@ -638,21 +640,20 @@ fn map_error(e: tiberius::error::Error, sql: &str) -> Error {
     use tiberius::error::Error as E;
     match e {
         E::Server(t) => {
-            let detail = if t.procedure().is_empty() {
-                format!("Severity {}, state {}", t.class(), t.state())
+            let (detail, position) = if t.procedure().is_empty() {
+                (
+                    format!("Severity {}, state {}", t.class(), t.state()),
+                    tsql::error_position(sql, t.line(), t.message()),
+                )
             } else {
-                format!(
+                let detail = format!(
                     "In {} at line {} (severity {}, state {})",
                     t.procedure(),
                     t.line(),
                     t.class(),
                     t.state()
-                )
-            };
-            let position = if t.procedure().is_empty() {
-                tsql::error_position(sql, t.line(), t.message())
-            } else {
-                None
+                );
+                (detail, None)
             };
             Error::Database(DbError {
                 code: Some(t.code().to_string()),

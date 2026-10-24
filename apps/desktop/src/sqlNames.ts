@@ -37,9 +37,10 @@ const TSQL_RESERVED = new Set(
 /** Quotes an identifier only when the dialect requires it. Mirrors `Dialect::quote_ident`
  *  in `crates/platypus-sql/src/dialect.rs`; keep the two in sync. */
 export function quoteIdent(name: string, driver: DriverKind): string {
-  const reserved = RESERVED.has(name.toUpperCase());
+  const upper = name.toUpperCase();
+  const reserved = RESERVED.has(upper);
   if (driver === "sqlserver") {
-    const bare = /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !reserved && !TSQL_RESERVED.has(name.toUpperCase());
+    const bare = /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !reserved && !TSQL_RESERVED.has(upper);
     return bare ? name : `[${name.replaceAll("]", "]]")}]`;
   }
   if (driver === "mysql") {

@@ -135,6 +135,11 @@ async fn foreign_keys(conn: &MssqlConnection, top: &str, filter: &str) -> Result
     ))
 }
 
+/// The foreign keys of the object `id`.
+async fn own_foreign_keys(conn: &MssqlConnection, id: &str) -> Result<Vec<ForeignKey>> {
+    foreign_keys(conn, "", &format!("k.parent_object_id = {id}")).await
+}
+
 pub async fn catalog_foreign_keys(conn: &MssqlConnection) -> Result<Vec<CatalogForeignKey>> {
     let keys = foreign_keys(
         conn,
@@ -396,7 +401,6 @@ async fn checks(conn: &MssqlConnection, id: &str) -> Result<Vec<Check>> {
 fn constraints(indexes: &[Index], checks: Vec<Check>) -> Vec<ConstraintMeta> {
     let keys = indexes.iter().filter(|i| i.is_constraint()).map(|i| {
         let columns: Vec<String> = i.columns.iter().map(|(c, _)| c.clone()).collect();
-        let quoted: Vec<_> = columns.iter().map(|c| D.quote_ident(c)).collect();
         let (kind, keyword) = if i.primary {
             (ConstraintKind::PrimaryKey, "PRIMARY KEY")
         } else {
@@ -405,7 +409,7 @@ fn constraints(indexes: &[Index], checks: Vec<Check>) -> Vec<ConstraintMeta> {
         ConstraintMeta {
             name: i.name.clone(),
             kind,
-            definition: format!("{keyword} ({})", quoted.join(", ")),
+            definition: format!("{keyword} ({})", ddl::names(&columns)),
             columns,
         }
     });
@@ -427,7 +431,7 @@ pub async fn table_details(
     let columns = columns(conn, &id).await?;
     let indexes = indexes(conn, &id).await?;
     let checks = checks(conn, &id).await?;
-    let foreign_keys = foreign_keys(conn, "", &format!("k.parent_object_id = {id}")).await?;
+    let foreign_keys = own_foreign_keys(conn, &id).await?;
     let referenced_by = referencing_keys(conn, schema, table).await?;
 
     let primary: Vec<&str> = indexes
@@ -533,16 +537,13 @@ pub async fn object_ddl(conn: &MssqlConnection, o: &ObjectRef<'_>) -> Result<Str
     let qualified = D.qualified(Some(o.schema), o.name);
     let id = object_id(o.schema, o.name);
     match o.kind {
-        ObjectKind::Table => {
-            let filter = format!("k.parent_object_id = {id}");
-            Ok(ddl::table(
-                &qualified,
-                &columns(conn, &id).await?,
-                &indexes(conn, &id).await?,
-                &checks(conn, &id).await?,
-                &foreign_keys(conn, "", &filter).await?,
-            ))
-        }
+        ObjectKind::Table => Ok(ddl::table(
+            &qualified,
+            &columns(conn, &id).await?,
+            &indexes(conn, &id).await?,
+            &checks(conn, &id).await?,
+            &own_foreign_keys(conn, &id).await?,
+        )),
         ObjectKind::View | ObjectKind::Function | ObjectKind::Procedure | ObjectKind::Trigger => {
             first_row(conn, &format!("SELECT OBJECT_DEFINITION({id})"), &qualified)
                 .await?

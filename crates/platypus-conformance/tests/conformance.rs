@@ -611,7 +611,8 @@ async fn manual_commit_and_rollback() {
         let conn = b.connect().await;
         let conn = &*conn;
         affected(&b, conn, &b.create_temp("conf_tx", "id INT")).await;
-        let insert = |id: u32| format!("INSERT INTO {} VALUES ({id})", b.temp("conf_tx"));
+        let t = b.temp("conf_tx");
+        let insert = |id: u32| format!("INSERT INTO {t} VALUES ({id})");
         assert!(conn.transaction().autocommit, "{}", b.name);
 
         conn.set_autocommit(false).await.unwrap();
@@ -658,7 +659,7 @@ async fn manual_commit_and_rollback() {
         // Transaction statements typed by the user are tracked too.
         affected(&b, conn, "BEGIN").await;
         assert!(conn.transaction().open, "{}: typed BEGIN", b.name);
-        affected(&b, conn, &format!("DELETE FROM {}", b.temp("conf_tx"))).await;
+        affected(&b, conn, &format!("DELETE FROM {t}")).await;
         affected(&b, conn, "ROLLBACK").await;
         assert!(!conn.transaction().open, "{}: typed ROLLBACK", b.name);
         assert_eq!(count(&b, conn).await, "2", "{}", b.name);

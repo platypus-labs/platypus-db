@@ -113,7 +113,9 @@ pub struct ForeignKey {
     pub on_update: String,
 }
 
-fn names(columns: &[String]) -> String {
+/// The quoted `columns`, comma-separated.
+#[must_use]
+pub fn names(columns: &[String]) -> String {
     columns
         .iter()
         .map(|c| D.quote_ident(c).into_owned())

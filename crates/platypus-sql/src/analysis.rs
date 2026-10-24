@@ -1,6 +1,7 @@
 //! What a statement does, checked before it runs: the app asks before changes that hit every
 //! row of a table, and before any change on a production connection.
 
+use crate::lexer::unquote_ident;
 use crate::{Dialect, Lexer, Token, TokenKind, is_read_only};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,15 +106,7 @@ impl<'a> Words<'a> {
         match t.kind {
             TokenKind::Word if dialect == Dialect::Postgres => Some(text.to_lowercase()),
             TokenKind::Word => Some(text.to_owned()),
-            TokenKind::QuotedIdent => {
-                let close = match text.chars().next()? {
-                    '[' => ']',
-                    c => c,
-                };
-                let inner = text.get(1..text.len().saturating_sub(1))?;
-                // Transact-SQL doubles `]` in `[...]` names.
-                Some(inner.replace(&format!("{close}{close}"), &close.to_string()))
-            }
+            TokenKind::QuotedIdent => unquote_ident(text),
             _ => None,
         }
     }

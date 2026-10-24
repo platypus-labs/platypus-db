@@ -416,8 +416,7 @@ fn run(conn: &duckdb::Connection, command: Command) {
     let schema = types::tag_schema(&schema, &stmt);
     // The first chunk is fetched before answering, so errors raised by the first rows fail
     // the statement itself.
-    let first = stmt.step();
-    let first = match first {
+    let mut chunk = match stmt.step() {
         Ok(chunk) => chunk,
         Err(e) => {
             let _ = reply.send(Err(map_error(&e, &sql)));
@@ -431,7 +430,6 @@ fn run(conn: &duckdb::Connection, command: Command) {
     {
         return;
     }
-    let mut chunk = first;
     while let Some(array) = chunk {
         match conform(&schema, &array) {
             Ok(batch) => {
