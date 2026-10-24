@@ -1,0 +1,107 @@
+/* Explain tab: the plan as a tree with a details pane, as text, as a table. */
+
+.explain-sql {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 70vw;
+}
+
+.explain-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 14px;
+}
+
+.explain-tree {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.explain-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: var(--radius);
+  cursor: default;
+}
+
+.explain-node:hover {
+  background: var(--hover);
+}
+
+.explain-node.selected {
+  background: var(--grid-selection);
+}
+
+.explain-toggle {
+  border: none;
+  background: none;
+  padding: 0 2px;
+  width: 16px;
+  color: var(--fg-muted);
+}
+
+.explain-op {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.explain-detail {
+  font-family: var(--font-mono);
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.explain-figures {
+  display: flex;
+  gap: 10px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The step's cost against the most expensive one. */
+.explain-bar {
+  flex: none;
+  width: 80px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.explain-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.explain-properties {
+  flex: none;
+  width: min(380px, 40%);
+  min-width: 0;
+  align-self: flex-start;
+  overflow: auto;
+  max-height: 100%;
+}
+
+.explain-text {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre;
+}
+
+.explain-table td:not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
