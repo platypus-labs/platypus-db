@@ -468,7 +468,10 @@ mod tests {
                 .unwrap();
             let conn = Logged::wrap(Arc::from(conn), &log, "local");
             log.set_latency("local", 2.5);
-            let options = ExecOptions { batch_size: 2 };
+            let options = ExecOptions {
+                batch_size: 2,
+                ..ExecOptions::default()
+            };
 
             conn.execute("CREATE TABLE t (id INT)", &options)
                 .await

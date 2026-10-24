@@ -124,11 +124,18 @@ pub struct ServerInfo {
 pub struct ExecOptions {
     /// Maximum number of rows per [`RecordBatch`].
     pub batch_size: usize,
+    /// The reader takes a page at a time and may leave the rest (a result grid): the driver
+    /// should fetch `batch_size` rows per request, so the server never runs ahead and an
+    /// abandoned result ends at once instead of being drained.
+    pub paged: bool,
 }
 
 impl Default for ExecOptions {
     fn default() -> Self {
-        Self { batch_size: 1024 }
+        Self {
+            batch_size: 1024,
+            paged: false,
+        }
     }
 }
 

@@ -202,7 +202,10 @@ async fn maps_every_type_in_type_zoo() {
 #[tokio::test]
 async fn streams_big_table_in_batches() {
     let Some(conn) = connect().await else { return };
-    let options = ExecOptions { batch_size: 4096 };
+    let options = ExecOptions {
+        batch_size: 4096,
+        ..ExecOptions::default()
+    };
     let ExecResult::Rows(mut stream) = conn
         .execute("SELECT * FROM demo.big_table", &options)
         .await
@@ -305,4 +308,60 @@ async fn dropping_a_stream_cancels_it_without_hitting_the_next_query() {
         "42"
     );
     assert!(started.elapsed() < Duration::from_secs(5));
+}
+
+/// Whether a transaction is open on the server: two statements then share a transaction id.
+async fn in_transaction(conn: &PgConnection) -> bool {
+    let xid = async || {
+        let batches = collect(conn, "SELECT txid_current()").await;
+        array_value_to_string(batches[0].column(0), 0).unwrap()
+    };
+    xid().await == xid().await
+}
+
+#[tokio::test]
+async fn paged_reads_end_their_own_transaction() {
+    let Some(conn) = connect().await else { return };
+    let paged = ExecOptions {
+        batch_size: 500,
+        paged: true,
+    };
+    let read = |sql| conn.execute(sql, &paged);
+
+    // Read in full, a page at a time.
+    let ExecResult::Rows(stream) = read("SELECT * FROM demo.big_table WHERE id <= 1234")
+        .await
+        .unwrap()
+    else {
+        panic!("expected rows");
+    };
+    let batches: Vec<RecordBatch> = stream.try_collect().await.unwrap();
+    assert_eq!(
+        batches.iter().map(RecordBatch::num_rows).sum::<usize>(),
+        1234
+    );
+    assert!(batches.iter().all(|b| b.num_rows() <= 500));
+    assert!(!in_transaction(&conn).await, "committed at the end");
+
+    // Abandoned after a page: the next statement runs at once, outside any transaction.
+    let ExecResult::Rows(mut stream) = read("SELECT * FROM demo.big_table").await.unwrap() else {
+        panic!("expected rows");
+    };
+    assert_eq!(stream.next().await.unwrap().unwrap().num_rows(), 500);
+    drop(stream);
+    let started = Instant::now();
+    assert!(!in_transaction(&conn).await, "closed when dropped");
+    assert!(started.elapsed() < Duration::from_secs(2));
+    assert!(!conn.transaction().open);
+
+    // A failing read leaves the session usable.
+    let ExecResult::Rows(stream) = read("SELECT 1 / (g - 600) FROM generate_series(1, 1000) g")
+        .await
+        .unwrap()
+    else {
+        panic!("expected rows");
+    };
+    let failed: Result<Vec<RecordBatch>, _> = stream.try_collect().await;
+    assert!(failed.is_err(), "division by zero on the second page");
+    assert!(!in_transaction(&conn).await, "rolled back after the error");
 }

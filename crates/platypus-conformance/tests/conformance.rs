@@ -248,7 +248,10 @@ async fn selects_scalars() {
 async fn streams_large_results_in_batches() {
     for b in backends().await {
         let conn = b.connect().await;
-        let options = ExecOptions { batch_size: 1000 };
+        let options = ExecOptions {
+            batch_size: 1000,
+            ..ExecOptions::default()
+        };
         let ExecResult::Rows(stream) = conn.execute(&b.series_sql, &options).await.unwrap() else {
             panic!("{}: expected rows", b.name);
         };
@@ -350,18 +353,26 @@ async fn cancels_running_queries() {
 async fn abandoned_results_free_the_connection() {
     for b in backends().await {
         let conn = b.connect().await;
-        let options = ExecOptions { batch_size: 100 };
-        let ExecResult::Rows(mut stream) = conn.execute(&b.series_sql, &options).await.unwrap()
-        else {
-            panic!("{}: expected rows", b.name);
-        };
-        let first = stream.next().await.unwrap().unwrap();
-        assert_eq!(first.num_rows(), 100, "{}", b.name);
-        drop(stream);
-        let rows = tokio::time::timeout(Duration::from_secs(10), collect(&b, &*conn, "SELECT 7"))
-            .await
-            .unwrap_or_else(|_| panic!("{}: connection stuck after drop", b.name));
-        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("7"), "{}", b.name);
+        // Paged: read a page at a time, as the result grid does.
+        for paged in [false, true] {
+            let options = ExecOptions {
+                batch_size: 100,
+                paged,
+            };
+            let ExecResult::Rows(mut stream) = conn.execute(&b.series_sql, &options).await.unwrap()
+            else {
+                panic!("{}: expected rows", b.name);
+            };
+            let first = stream.next().await.unwrap().unwrap();
+            assert_eq!(first.num_rows(), 100, "{} (paged {paged})", b.name);
+            drop(stream);
+            let rows =
+                tokio::time::timeout(Duration::from_secs(10), collect(&b, &*conn, "SELECT 7"))
+                    .await
+                    .unwrap_or_else(|_| panic!("{}: connection stuck after drop", b.name));
+            assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("7"), "{}", b.name);
+            assert!(!conn.transaction().open, "{} (paged {paged})", b.name);
+        }
     }
 }
 
@@ -493,7 +504,10 @@ async fn manual_commit_and_rollback() {
 
         // A result abandoned inside a transaction must not abort it.
         affected(&b, conn, "INSERT INTO conf_tx VALUES (2)").await;
-        let options = ExecOptions { batch_size: 100 };
+        let options = ExecOptions {
+            batch_size: 100,
+            ..ExecOptions::default()
+        };
         let ExecResult::Rows(mut stream) = conn.execute(&b.series_sql, &options).await.unwrap()
         else {
             panic!("{}: expected rows", b.name);
