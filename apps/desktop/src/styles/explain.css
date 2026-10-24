@@ -1,0 +1,233 @@
+/* Explain tab: the plan as a tree with a details pane, as text, as a table. */
+
+.explain-sql {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 70vw;
+}
+
+.explain-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 14px;
+}
+
+.explain-tree {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.explain-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: var(--radius);
+  cursor: default;
+}
+
+.explain-node:hover {
+  background: var(--hover);
+}
+
+.explain-node.selected {
+  background: var(--grid-selection);
+}
+
+.explain-toggle {
+  border: none;
+  background: none;
+  padding: 0 2px;
+  width: 16px;
+  color: var(--fg-muted);
+}
+
+.explain-op {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.explain-detail {
+  font-family: var(--font-mono);
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.explain-figures {
+  display: flex;
+  gap: 10px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Heatmap: a step tinted by its share of the work it does itself (--heat, a percentage). */
+.explain-node,
+.explain-heat {
+  background: color-mix(in srgb, var(--error) calc(var(--heat, 0%) * 0.6), transparent);
+}
+
+.explain-share {
+  flex: none;
+  width: 48px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.explain-misestimate {
+  flex: none;
+  padding: 0 6px;
+  border-radius: var(--radius);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.explain-properties {
+  flex: none;
+  width: min(380px, 40%);
+  min-width: 0;
+  align-self: flex-start;
+  overflow: auto;
+  max-height: 100%;
+}
+
+.explain-text {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre;
+}
+
+.explain-table td:not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Query manager: the log of what the app sent to the databases. */
+
+.modal.query-manager {
+  width: min(1100px, calc(100vw - 32px));
+  height: calc(100vh - 64px);
+}
+
+.query-manager-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.query-manager-bar input:not([type="checkbox"]) {
+  width: 280px;
+}
+
+.query-manager-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.query-manager-list table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.query-manager-list th:nth-child(1) {
+  width: 100px;
+}
+
+.query-manager-list th:nth-child(2) {
+  width: 140px;
+}
+
+.query-manager-list th:nth-child(n + 4) {
+  width: 90px;
+}
+
+.query-manager-list td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.query-manager-text {
+  font-family: var(--font-mono);
+}
+
+.query-manager-list tr.metadata,
+.query-manager-list tr.transaction {
+  color: var(--fg-muted);
+}
+
+.query-manager-list tr.failed {
+  color: var(--error);
+}
+
+.query-manager-list tr.selected {
+  background: var(--grid-selection);
+}
+
+.query-manager-list tr.slow td:nth-child(4),
+.slow-query {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* A statement's time: network, server until the first answer, fetch. */
+.query-trace {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.query-trace-bar {
+  display: flex;
+  flex-basis: 100%;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--border);
+}
+
+.query-trace .network {
+  --part: var(--fg-muted);
+}
+
+.query-trace .server {
+  --part: var(--accent);
+}
+
+.query-trace .fetch {
+  --part: var(--ok);
+}
+
+.query-trace-bar span {
+  background: var(--part);
+}
+
+.query-trace > span::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 2px;
+  background: var(--part);
+}
+
+.explain-suggestion code {
+  font-family: var(--font-mono);
+}

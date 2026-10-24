@@ -10,9 +10,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use platypus_core::{
-    CancelHandle, Capabilities, CatalogColumn, Connection, ConnectionConfig, Error, ExecOptions,
-    ExecResult, Explain, ObjectMeta, ObjectRef, ReferencingKey, Result, SchemaMeta, ServerInfo,
-    SshAuth, SshConfig, TableDetails, TransactionState,
+    CancelHandle, Capabilities, CatalogColumn, CatalogForeignKey, Connection, ConnectionConfig,
+    Error, ExecOptions, ExecResult, Explain, MetadataMatch, ObjectMeta, ObjectRef, Property,
+    ReferencingKey, Result, SchemaMeta, ServerInfo, SshAuth, SshConfig, TableDetails,
+    TransactionState,
 };
 use russh::client::{self, AuthResult, Handle};
 use russh::keys::{self, PrivateKeyWithHashAlg, PublicKeyOrCertificate};
@@ -396,5 +397,21 @@ impl Connection for Tunneled {
 
     async fn object_ddl(&self, object: &ObjectRef<'_>) -> Result<String> {
         self.inner.object_ddl(object).await
+    }
+
+    async fn catalog_foreign_keys(&self) -> Result<Vec<CatalogForeignKey>> {
+        self.inner.catalog_foreign_keys().await
+    }
+
+    async fn object_properties(&self, object: &ObjectRef<'_>) -> Result<Vec<Property>> {
+        self.inner.object_properties(object).await
+    }
+
+    async fn databases(&self) -> Result<Vec<String>> {
+        self.inner.databases().await
+    }
+
+    async fn search_metadata(&self, needle: &str) -> Result<Vec<MetadataMatch>> {
+        self.inner.search_metadata(needle).await
     }
 }

@@ -118,6 +118,62 @@ export interface Capabilities {
   metadata_search: boolean;
 }
 
+/** One step of a query plan; see `platypus_core::PlanNode`. Rows and times are per loop. */
+export interface PlanNode {
+  operation: string;
+  detail: string | null;
+  cost: number | null;
+  rows: number | null;
+  actual_rows: number | null;
+  actual_ms: number | null;
+  loops: number | null;
+  /** The step's own cost, without its children's. */
+  self_cost: number | null;
+  /** With analyze, the milliseconds spent in the step itself over all its loops. */
+  self_ms: number | null;
+  /** Set when the step is a filtered full scan of a table. */
+  full_scan: FullScan | null;
+  properties: [string, string][];
+  children: PlanNode[];
+}
+
+/** A step that reads a whole table to keep the rows matching `filter`. */
+export interface FullScan {
+  table: string;
+  filter: string;
+  /** Over all loops; without analyze an estimate, which PostgreSQL does not give. */
+  rows_read: number | null;
+}
+
+export interface Explain {
+  format: "json" | "text";
+  /** The plan as the server returned it. */
+  plan: string;
+  root: PlanNode;
+  analyzed: boolean;
+  /** Filtered full scans of large tables, where an index may help. */
+  suggestions: FullScan[];
+}
+
+/** A request the app sent to a database; see `querylog.rs`. */
+export interface LogEntry {
+  id: number;
+  rev: number;
+  connection: string;
+  kind: "query" | "metadata" | "transaction";
+  text: string;
+  /** Milliseconds since the Unix epoch. */
+  started_at: number;
+  elapsed_ms: number | null;
+  /** Until the server's first answer to a statement: its work plus the network. */
+  first_ms: number | null;
+  /** The connection's last keep-alive round trip: about the network's share. */
+  network_ms: number | null;
+  rows: number | null;
+  status: "running" | "fetching" | "done" | "closed" | "failed";
+  error: string | null;
+}
+
 export interface CommandError {
   kind: string;
   message: string;
@@ -137,7 +193,7 @@ export interface ColumnInfo {
 
 export type QueryEvent =
   | { type: "started"; columns: ColumnInfo[]; elapsed_ms: number }
-  | { type: "progress"; rows: number }
+  | { type: "progress"; rows: number; fetching: boolean }
   | { type: "finished"; rows: number; elapsed_ms: number; complete: boolean; stopped: boolean }
   | { type: "affected"; rows: number; elapsed_ms: number }
   | { type: "failed"; error: CommandError };
@@ -699,6 +755,11 @@ export const api = {
   getSettings: () => invoke<Record<string, unknown>>("get_settings"),
   /** `null` removes the key, restoring the default. */
   setSetting: (key: string, value: unknown) => invoke<void>("set_setting", { key, value }),
+  /** The query log's entries that changed after revision `since` (0: all). */
+  queryLog: (since: number) => invoke<{ entries: LogEntry[]; rev: number }>("query_log", { since }),
+  clearQueryLog: () => invoke<void>("clear_query_log"),
+  /** With `analyze` the statement runs, and its changes are rolled back. */
+  explain: (sessionId: number, sql: string, analyze: boolean) => invoke<Explain>("explain", { sessionId, sql, analyze }),
   objectDdl: (sessionId: number, object: ObjectTarget) => invoke<string>("object_ddl", { sessionId, object }),
   objectProperties: (sessionId: number, object: ObjectTarget) =>
     invoke<Property[]>("object_properties", { sessionId, object }),

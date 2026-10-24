@@ -80,7 +80,7 @@ async function saveFromPreview(page) {
 
 export default async function (page, { dir, shots }) {
   await page.waitFor(`${treeRow(NAME)} !== undefined`);
-  await page.eval(`${treeRow(NAME)}.click()`);
+  await page.eval(`${treeRow(NAME)}.querySelector(".twisty").click()`);
 
   // A foreign key edits with the rows it can point to, by their name.
   await openTable(page, "orders");

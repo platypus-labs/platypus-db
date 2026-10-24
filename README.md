@@ -28,7 +28,10 @@ scrolls through millions of rows.
   that hide schemas or objects by name (`tmp_*`), and a Simple view with only tables and
   views. The tree is cached on disk: it shows at once on start, and offline. Generate SELECT,
   INSERT, UPDATE, DELETE, UPSERT or DDL; rename, truncate and drop with a preview of the
-  statement.
+  statement. A click selects a row (`Ctrl`/`Shift`+click for several, e.g. to generate the
+  DDL of many tables at once), the arrow expands it, a double-click opens it (or goes back to
+  its tab when already open). A green dot marks the connections with an open session; none
+  connects before you open it.
 - **Search**: object names, columns and the source of views, routines and triggers across a
   database; or the text of every row of a schema's tables, opening the matching rows.
 - **Object details**: properties, columns, indexes, constraints, foreign keys, incoming
@@ -48,11 +51,29 @@ scrolls through millions of rows.
   results as text, and running the script with the local `psql`, `mysql`, `sqlcmd` or `sqlite3`.
   A linter marks unknown columns, joins without a condition and `SELECT *` on production;
   comments are spell checked.
+- **Query plans**: `Ctrl+Shift+E` opens the plan of the statement under the cursor in its own
+  tab, as a tree with costs, estimated rows and each step's details, as indented text or as
+  a table. Explain analyze (editor menu) runs the statement for actual rows and times, then
+  rolls back what it changed; tables that ignore transactions (MySQL's MyISAM) keep the
+  changes. PostgreSQL, MySQL 8.0.16+ and MariaDB analyze; SQLite gives its query plan only.
+  A heatmap tints each step by its share of the time it spends itself (of the cost, without
+  analyze), and a badge marks the steps whose row estimate was 10 times off or more. A table
+  read in full (10,000 rows or more) to keep the rows matching a condition gets a
+  suggestion to index that condition's columns; on PostgreSQL with Explain analyze.
+- **Query manager** (`Ctrl+Shift+M`): every statement, metadata request and commit or
+  rollback the app sent to the databases, newest first, with its connection, duration, rows
+  and outcome; filter by text, hide the metadata. It keeps the last 2000 in memory; scripts
+  run with `psql`, `mysql` or `sqlite3` are not in it. A statement's trace splits its time
+  into network (the connection's last keep-alive round trip), server until the first answer,
+  and fetching the rows.
+- **Slow queries**: statements slower than a threshold (Settings, Performance; 5 s by
+  default) are marked in the editor's status bar and listed apart in the query manager.
 - **Saved scripts**: `.sql` files per project in the Scripts panel under the navigator, with
   folders, rename, drag to move, and the connection each one opens on.
 - **Visual query builder**: tables dragged onto a canvas, joined on their foreign keys,
   columns ticked; the generated SELECT opens in the editor.
-- **Results grid** on canvas: millions of rows fetched on demand, cancellable queries.
+- **Results grid** on canvas: rows are read a page at a time (1,000 ahead of what is on
+  screen) and more as you scroll, with a loading bar; millions of rows, cancellable queries.
 - **Data viewer**: open a table, sort by clicking a header, filter with a `WHERE`, count rows.
 - **Data editor**: change cells in place (double-click, `F2` or just type), set NULL or the
   default, add, duplicate and delete rows, preview the generated SQL and save it all or
@@ -122,6 +143,8 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | `Ctrl+/` | Comment / uncomment |
 | `Ctrl+Shift+F` | Format the script (or the selection) |
 | `Ctrl+Shift+A` | Select the statement under the cursor |
+| `Ctrl+Shift+E` | Explain the statement under the cursor |
+| `Ctrl+Shift+M` | Query manager |
 | `Shift+Alt+Down`, `Shift+Alt+Up` | Duplicate the line |
 | `Alt+Up`, `Alt+Down` | Move the line |
 | `Ctrl+Shift+K` | Delete the line |

@@ -6,6 +6,7 @@
 
 #[doc(hidden)]
 pub mod columns;
+mod explain;
 mod meta;
 
 use std::sync::Arc;
@@ -251,6 +252,10 @@ impl Connection for MySqlConnection {
         meta::catalog_foreign_keys(self).await
     }
 
+    async fn explain(&self, sql: &str, analyze: bool) -> Result<platypus_core::Explain> {
+        explain::explain(self, sql, analyze).await
+    }
+
     async fn object_ddl(&self, object: &platypus_core::ObjectRef<'_>) -> Result<String> {
         meta::object_ddl(self, object).await
     }
@@ -299,6 +304,7 @@ impl Connection for MySqlConnection {
         platypus_core::Capabilities {
             transactions: true,
             cancel: true,
+            explain: true,
             object_ddl: true,
             metadata_search: true,
             ..Default::default()

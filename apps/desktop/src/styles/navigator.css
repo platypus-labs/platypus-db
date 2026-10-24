@@ -264,3 +264,13 @@
 .scripts-empty {
   padding: 4px 12px;
 }
+
+/* A connection with an open session. */
+.connected-mark {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--ok);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ok) 25%, transparent);
+}

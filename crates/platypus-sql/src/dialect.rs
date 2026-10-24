@@ -1,5 +1,5 @@
 //! What differs between SQL dialects when generating SQL: quoting of identifiers and
-//! literals, boolean and binary values, defaults, row limits, `EXPLAIN`. Features that build SQL (data editing, DDL, import,
+//! literals, boolean and binary values, defaults, row limits. Features that build SQL (data editing, DDL, import,
 //! the data viewer) go through these methods instead of matching on the driver.
 //!
 //! `apps/desktop/src/sqlNames.ts` mirrors [`Dialect::quote_ident`] for the UI; keep the two
@@ -518,21 +518,6 @@ impl Dialect {
             .collect::<Vec<_>>()
             .join(" OR ")
     }
-
-    /// The prefix that turns a statement into a plan request whose output is JSON, or
-    /// `None` when the dialect has no JSON plan (SQLite's `EXPLAIN QUERY PLAN` is a table;
-    /// DuckDB's JSON plan is not PostgreSQL's).
-    #[must_use]
-    pub const fn explain_json_prefix(self, analyze: bool) -> Option<&'static str> {
-        match (self, analyze) {
-            (Self::Postgres, false) => Some("EXPLAIN (FORMAT JSON)"),
-            (Self::Postgres, true) => Some("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)"),
-            (Self::MySql, false) => Some("EXPLAIN FORMAT=JSON"),
-            (Self::MySql, true) => Some("EXPLAIN ANALYZE FORMAT=JSON"),
-            // Transact-SQL plans come from `SET SHOWPLAN_XML ON`, not from a prefix.
-            (Self::Sqlite | Self::DuckDb | Self::SqlServer, _) => None,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -613,10 +598,7 @@ mod tests {
     }
 
     #[test]
-    fn explain_prefixes() {
-        assert!(Dialect::Postgres.explain_json_prefix(true).is_some());
-        assert_eq!(Dialect::Sqlite.explain_json_prefix(false), None);
-        assert_eq!(Dialect::DuckDb.explain_json_prefix(true), None);
+    fn limits_rows() {
         assert_eq!(Dialect::DuckDb.limit_clause(5), "LIMIT 5");
         assert_eq!(Dialect::MySql.limit_clause(5), "LIMIT 5");
     }
@@ -664,7 +646,6 @@ mod tests {
             ms.row_estimate_sql(Some("dbo"), "t")
                 .contains("OBJECT_ID(N'dbo.t')")
         );
-        assert_eq!(ms.explain_json_prefix(false), None);
     }
 
     #[test]

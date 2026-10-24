@@ -16,7 +16,7 @@ use futures::{StreamExt, TryStreamExt};
 use platypus_core::geometry;
 use platypus_core::{
     Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, Error, ExecOptions,
-    ExecResult, MatchKind, ObjectKind, ObjectRef, SessionInit,
+    ExecResult, MatchKind, ObjectKind, ObjectRef, PlanNode, SessionInit,
 };
 use platypus_driver_duckdb::DuckDbDriver;
 use platypus_driver_mssql::MssqlDriver;
@@ -382,7 +382,10 @@ async fn selects_scalars() {
 async fn streams_large_results_in_batches() {
     for b in backends().await {
         let conn = b.connect().await;
-        let options = ExecOptions { batch_size: 1000 };
+        let options = ExecOptions {
+            batch_size: 1000,
+            ..ExecOptions::default()
+        };
         let ExecResult::Rows(stream) = conn.execute(&b.series_sql, &options).await.unwrap() else {
             panic!("{}: expected rows", b.name);
         };
@@ -486,18 +489,26 @@ async fn cancels_running_queries() {
 async fn abandoned_results_free_the_connection() {
     for b in backends().await {
         let conn = b.connect().await;
-        let options = ExecOptions { batch_size: 100 };
-        let ExecResult::Rows(mut stream) = conn.execute(&b.series_sql, &options).await.unwrap()
-        else {
-            panic!("{}: expected rows", b.name);
-        };
-        let first = stream.next().await.unwrap().unwrap();
-        assert_eq!(first.num_rows(), 100, "{}", b.name);
-        drop(stream);
-        let rows = tokio::time::timeout(Duration::from_secs(10), collect(&b, &*conn, "SELECT 7"))
-            .await
-            .unwrap_or_else(|_| panic!("{}: connection stuck after drop", b.name));
-        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("7"), "{}", b.name);
+        // Paged: read a page at a time, as the result grid does.
+        for paged in [false, true] {
+            let options = ExecOptions {
+                batch_size: 100,
+                paged,
+            };
+            let ExecResult::Rows(mut stream) = conn.execute(&b.series_sql, &options).await.unwrap()
+            else {
+                panic!("{}: expected rows", b.name);
+            };
+            let first = stream.next().await.unwrap().unwrap();
+            assert_eq!(first.num_rows(), 100, "{} (paged {paged})", b.name);
+            drop(stream);
+            let rows =
+                tokio::time::timeout(Duration::from_secs(10), collect(&b, &*conn, "SELECT 7"))
+                    .await
+                    .unwrap_or_else(|_| panic!("{}: connection stuck after drop", b.name));
+            assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("7"), "{}", b.name);
+            assert!(!conn.transaction().open, "{} (paged {paged})", b.name);
+        }
     }
 }
 
@@ -647,7 +658,10 @@ async fn manual_commit_and_rollback() {
 
         // A result abandoned inside a transaction must not abort it.
         affected(&b, conn, &insert(2)).await;
-        let options = ExecOptions { batch_size: 100 };
+        let options = ExecOptions {
+            batch_size: 100,
+            ..ExecOptions::default()
+        };
         let ExecResult::Rows(mut stream) = conn.execute(&b.series_sql, &options).await.unwrap()
         else {
             panic!("{}: expected rows", b.name);
@@ -767,6 +781,103 @@ async fn reports_lost_connections() {
             "{}: connection reported as closed",
             b.name
         );
+    }
+}
+
+fn plan_mentions(node: &PlanNode, name: &str) -> bool {
+    node.operation.contains(name)
+        || node.detail.as_deref().is_some_and(|d| d.contains(name))
+        || node.children.iter().any(|c| plan_mentions(c, name))
+}
+
+/// Some step has actual rows and its own share of the time.
+fn plan_has_actuals(node: &PlanNode) -> bool {
+    (node.actual_rows.is_some() && node.self_ms.is_some())
+        || node.children.iter().any(plan_has_actuals)
+}
+
+/// Plans come back as a tree. With analyze the statement runs, and what it changes is
+/// rolled back, in autocommit and inside an open transaction alike.
+#[tokio::test]
+async fn explains_queries() {
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        affected(&b, conn, "CREATE TEMPORARY TABLE conf_plan (id INT)").await;
+        affected(&b, conn, "INSERT INTO conf_plan VALUES (1), (2), (3)").await;
+        let count = || async {
+            let rows = collect(&b, conn, "SELECT count(*) FROM conf_plan").await;
+            cell(&rows[0], 0, 0).unwrap()
+        };
+        let select = "SELECT * FROM conf_plan WHERE id > 1";
+        let plan = conn.explain(select, false).await.unwrap();
+        assert!(!plan.analyzed && !plan.plan.is_empty(), "{}", b.name);
+        assert!(
+            plan_mentions(&plan.root, "conf_plan"),
+            "{}: {:#?}",
+            b.name,
+            plan.root
+        );
+
+        let plan = conn.explain(select, true).await.unwrap();
+        // SQLite has no plan that runs the statement.
+        let analyzes = b.name != "sqlite";
+        assert_eq!(plan.analyzed, analyzes, "{}", b.name);
+        assert_eq!(
+            plan_has_actuals(&plan.root),
+            analyzes,
+            "{}: {:#?}",
+            b.name,
+            plan.root
+        );
+
+        // MySQL analyzes only the multi-table form of DELETE.
+        let delete = if b.product == "MySQL" {
+            "DELETE p FROM conf_plan p WHERE p.id > 1"
+        } else {
+            "DELETE FROM conf_plan WHERE id > 1"
+        };
+        conn.explain(delete, true)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(count().await, "3", "{}: analyze rolled back", b.name);
+        assert!(!conn.transaction().open, "{}", b.name);
+
+        conn.set_autocommit(false).await.unwrap();
+        affected(&b, conn, "INSERT INTO conf_plan VALUES (4)").await;
+        conn.explain(delete, true).await.unwrap();
+        assert!(conn.transaction().open, "{}: still open", b.name);
+        assert_eq!(count().await, "4", "{}: only the analyze undone", b.name);
+        conn.rollback().await.unwrap();
+        conn.set_autocommit(true).await.unwrap();
+        assert_eq!(count().await, "3", "{}", b.name);
+    }
+}
+
+/// A filtered full scan of a large table is suggested an index.
+#[tokio::test]
+async fn suggests_indexes_for_large_scans() {
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        run(
+            conn,
+            &format!("CREATE TEMPORARY TABLE conf_big AS {}", b.series_sql),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let plan = conn
+            .explain("SELECT * FROM conf_big WHERE id = 42", true)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let tables: Vec<_> = plan.suggestions.iter().map(|s| s.table.as_str()).collect();
+        // SQLite plans have no row counts to judge a table by.
+        let expected: &[&str] = if b.name == "sqlite" {
+            &[]
+        } else {
+            &["conf_big"]
+        };
+        assert_eq!(tables, expected, "{}: {:#?}", b.name, plan.root);
     }
 }
 

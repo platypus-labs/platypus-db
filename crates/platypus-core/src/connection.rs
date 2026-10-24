@@ -74,7 +74,8 @@ pub trait Connection: Send + Sync + fmt::Debug {
     /// Which optional methods below the driver implements.
     fn capabilities(&self) -> Capabilities;
 
-    /// The plan of `sql`; with `analyze` the statement is executed to get real timings.
+    /// The plan of `sql`; with `analyze` the statement is executed to get real rows and
+    /// timings, and what it changes is rolled back (see [`explain_document`](crate::explain_document)).
     /// Optional: see [`Capabilities::explain`].
     async fn explain(&self, sql: &str, analyze: bool) -> Result<Explain> {
         let _ = (sql, analyze);
@@ -123,11 +124,18 @@ pub struct ServerInfo {
 pub struct ExecOptions {
     /// Maximum number of rows per [`RecordBatch`].
     pub batch_size: usize,
+    /// The reader takes a page at a time and may leave the rest (a result grid): the driver
+    /// should fetch `batch_size` rows per request, so the server never runs ahead and an
+    /// abandoned result ends at once instead of being drained.
+    pub paged: bool,
 }
 
 impl Default for ExecOptions {
     fn default() -> Self {
-        Self { batch_size: 1024 }
+        Self {
+            batch_size: 1024,
+            paged: false,
+        }
     }
 }
 

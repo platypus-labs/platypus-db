@@ -4592,6 +4592,7 @@ dependencies = [
  "arrow-cast",
  "arrow-ipc",
  "arrow-schema",
+ "async-trait",
  "chrono",
  "futures",
  "platypus-core",
@@ -4659,6 +4660,7 @@ dependencies = [
  "mysql_async",
  "platypus-core",
  "platypus-sql",
+ "serde_json",
  "tokio",
 ]
 
@@ -4678,6 +4680,7 @@ dependencies = [
  "postgres-protocol",
  "rustls 0.23.46",
  "rustls-platform-verifier",
+ "serde_json",
  "tokio",
  "tokio-postgres",
  "tokio-postgres-rustls",

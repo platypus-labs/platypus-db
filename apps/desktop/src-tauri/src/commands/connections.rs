@@ -1,9 +1,8 @@
 //! Saved connections and the sessions opened from them.
 
-use std::sync::Arc;
-
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use platypus_core::{Capabilities, Connection, ConnectionConfig, DriverKind, Secret, ServerInfo};
 use platypus_sql::Dialect;
@@ -17,6 +16,7 @@ use uuid::Uuid;
 
 use super::{AppState, Session, connect, lock};
 use crate::error::{CommandError, CommandResult};
+use crate::querylog::Logged;
 
 /// What to do with the stored password when saving or testing a connection.
 #[derive(Debug, Deserialize)]
@@ -290,10 +290,15 @@ pub async fn open_session(
     };
     let production = saved.connection_type == Some(ConnectionType::Prod);
     let mut config = state.with_store(|s| Ok(config_of(s, &saved, secret, &SshSecrets::new())))?;
+    let label = match &database {
+        Some(database) => format!("{} · {database}", saved.name),
+        None => saved.name.clone(),
+    };
     if let Some(database) = database {
         config.database = database;
     }
-    let conn: Arc<dyn Connection> = Arc::from(connect(&config).await?);
+    let raw: Arc<dyn Connection> = Arc::from(connect(&config).await?);
+    let conn = Logged::wrap(Arc::clone(&raw), &state.query_log, &label);
     // Production starts in manual commit, so nothing changes until Commit.
     if production && conn.capabilities().transactions {
         conn.set_autocommit(false).await?;
@@ -307,6 +312,8 @@ pub async fn open_session(
             connection_id,
             conn,
             config,
+            label,
+            raw,
         },
     );
     Ok(SessionInfo {

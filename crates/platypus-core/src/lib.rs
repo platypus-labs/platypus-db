@@ -8,18 +8,20 @@ mod capabilities;
 mod config;
 mod connection;
 mod error;
+mod explain;
 pub mod geometry;
 mod init;
 mod metadata;
 mod transaction;
 
-pub use capabilities::{Capabilities, Explain, ExplainFormat, ObjectRef, unsupported};
+pub use capabilities::{Capabilities, ObjectRef, unsupported};
 pub use config::{ConnectionConfig, DriverKind, Secret, SshAuth, SshConfig, SslMode};
 pub use connection::{
     CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, RecordBatchStream,
     ServerInfo,
 };
 pub use error::{DbError, Error, Result};
+pub use explain::{Explain, ExplainFormat, FullScan, LARGE_SCAN_ROWS, PlanNode, explain_document};
 pub use init::{SessionInit, run_init};
 pub use metadata::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, ConstraintKind, ConstraintMeta,

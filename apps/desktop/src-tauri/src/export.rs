@@ -19,6 +19,7 @@ use tauri::ipc::Channel;
 use tokio::sync::mpsc;
 
 use crate::error::CommandError;
+use crate::querylog::{Logged, QueryLog};
 
 const BATCH_SIZE: usize = 8192;
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
@@ -74,7 +75,7 @@ fn millis(since: Instant) -> u64 {
 impl Export {
     /// Runs `sql` on a new connection and writes its rows to `path`.
     pub fn start(
-        config: ConnectionConfig,
+        (config, label, log): (ConnectionConfig, String, Arc<QueryLog>),
         sql: String,
         path: PathBuf,
         options: ExportOptions,
@@ -88,7 +89,7 @@ impl Export {
         let task = Arc::clone(&export);
         let handle = tauri::async_runtime::spawn(async move {
             let started = Instant::now();
-            let event = match task.run(&config, &sql, path, options).await {
+            let event = match task.run(&config, &label, &log, &sql, path, options).await {
                 Ok(rows) => ExportEvent::Done {
                     rows,
                     elapsed_ms: millis(started),
@@ -110,13 +111,20 @@ impl Export {
     async fn run(
         &self,
         config: &ConnectionConfig,
+        label: &str,
+        log: &Arc<QueryLog>,
         sql: &str,
         path: PathBuf,
         options: ExportOptions,
     ) -> Result<u64, CommandError> {
-        let conn = crate::commands::connect(config).await?;
+        let conn = Logged::wrap(
+            Arc::from(crate::commands::connect(config).await?),
+            log,
+            label,
+        );
         let options_exec = ExecOptions {
             batch_size: BATCH_SIZE,
+            ..ExecOptions::default()
         };
         let ExecResult::Rows(mut stream) = conn.execute(sql, &options_exec).await? else {
             return Err(CommandError::new(

@@ -9,7 +9,10 @@ use std::sync::Arc;
 
 use futures::TryStreamExt;
 use platypus_core::{
-    ConnectionConfig, Driver, ExecOptions, ExecResult, Secret, SshAuth, SshConfig,
+    CancelHandle, Capabilities, CatalogColumn, CatalogForeignKey, Connection, ConnectionConfig,
+    Driver, DriverKind, ExecOptions, ExecResult, MetadataMatch, ObjectKind, ObjectMeta, ObjectRef,
+    Property, ReferencingKey, SchemaMeta, Secret, ServerInfo, SshAuth, SshConfig, TableDetails,
+    TransactionState,
 };
 use platypus_net::Tunnel;
 use russh::Channel;
@@ -242,9 +245,7 @@ async fn connects_databases_through_the_tunnel() {
         config.ssh = Some(server(port, password()));
         let conn = platypus_net::connect(&config, Some(&known_hosts), |c| async move {
             match c.driver {
-                platypus_core::DriverKind::Postgres => {
-                    platypus_driver_pg::PgDriver.connect(&c).await
-                }
+                DriverKind::Postgres => platypus_driver_pg::PgDriver.connect(&c).await,
                 _ => platypus_driver_mysql::MySqlDriver.connect(&c).await,
             }
         })
@@ -268,4 +269,105 @@ async fn connects_databases_through_the_tunnel() {
         );
         assert!(!conn.is_closed(), "{env}");
     }
+}
+
+/// A connection whose optional methods answer differently from the trait's defaults.
+#[derive(Debug)]
+struct Optional;
+
+#[async_trait::async_trait]
+impl Connection for Optional {
+    async fn execute(&self, _: &str, _: &ExecOptions) -> platypus_core::Result<ExecResult> {
+        unimplemented!()
+    }
+    fn cancel_handle(&self) -> CancelHandle {
+        unimplemented!()
+    }
+    fn server_info(&self) -> &ServerInfo {
+        unimplemented!()
+    }
+    fn is_closed(&self) -> bool {
+        false
+    }
+    async fn schemas(&self) -> platypus_core::Result<Vec<SchemaMeta>> {
+        Ok(Vec::new())
+    }
+    async fn objects(&self, _: &str) -> platypus_core::Result<Vec<ObjectMeta>> {
+        Ok(Vec::new())
+    }
+    async fn table_details(&self, _: &str, _: &str) -> platypus_core::Result<TableDetails> {
+        unimplemented!()
+    }
+    async fn referencing_keys(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> platypus_core::Result<Vec<ReferencingKey>> {
+        Ok(Vec::new())
+    }
+    async fn catalog_columns(&self) -> platypus_core::Result<Vec<CatalogColumn>> {
+        Ok(Vec::new())
+    }
+    async fn catalog_foreign_keys(&self) -> platypus_core::Result<Vec<CatalogForeignKey>> {
+        Ok(vec![CatalogForeignKey {
+            schema: "s".to_owned(),
+            table: "orders".to_owned(),
+            columns: vec!["customer_id".to_owned()],
+            ref_schema: "s".to_owned(),
+            ref_table: "customers".to_owned(),
+            ref_columns: vec!["id".to_owned()],
+        }])
+    }
+    fn transaction(&self) -> TransactionState {
+        unimplemented!()
+    }
+    async fn set_autocommit(&self, _: bool) -> platypus_core::Result<()> {
+        Ok(())
+    }
+    async fn commit(&self) -> platypus_core::Result<()> {
+        Ok(())
+    }
+    async fn rollback(&self) -> platypus_core::Result<()> {
+        Ok(())
+    }
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::default()
+    }
+    async fn object_properties(&self, _: &ObjectRef<'_>) -> platypus_core::Result<Vec<Property>> {
+        Ok(vec![Property::new("owner", "me")])
+    }
+    async fn databases(&self) -> platypus_core::Result<Vec<String>> {
+        Ok(vec!["other".to_owned()])
+    }
+    async fn search_metadata(&self, _: &str) -> platypus_core::Result<Vec<MetadataMatch>> {
+        Ok(Vec::new())
+    }
+}
+
+/// Every optional method reaches the driver's connection through the tunnel, not the
+/// trait's default (empty, or unsupported).
+#[tokio::test]
+async fn forwards_optional_methods() {
+    let dir = tempfile::tempdir().unwrap();
+    let known_hosts = dir.path().join("known_hosts");
+    let port = ssh_server(random_key(), random_key().public_key().clone()).await;
+    let mut config = ConnectionConfig::new(DriverKind::Postgres);
+    config.host = "127.0.0.1".to_owned();
+    config.port = Some(echo_server().await);
+    config.ssh = Some(server(port, password()));
+    let conn = platypus_net::connect(&config, Some(&known_hosts), |_| async {
+        Ok(Box::new(Optional) as Box<dyn Connection>)
+    })
+    .await
+    .unwrap();
+    let object = ObjectRef {
+        schema: "s",
+        name: "orders",
+        kind: ObjectKind::Table,
+        parent: None,
+    };
+    assert_eq!(conn.catalog_foreign_keys().await.unwrap().len(), 1);
+    assert_eq!(conn.object_properties(&object).await.unwrap().len(), 1);
+    assert_eq!(conn.databases().await.unwrap(), ["other"]);
+    assert!(conn.search_metadata("orders").await.is_ok());
 }

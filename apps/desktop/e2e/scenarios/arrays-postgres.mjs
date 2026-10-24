@@ -39,7 +39,7 @@ const SETUP = [
 
 export default async function (page, { shots }) {
   await page.waitFor(`${row(NAME)} !== undefined`);
-  await page.eval(`${row(NAME)}.click()`);
+  await page.eval(`${row(NAME)}.querySelector(".twisty").click()`);
   await page.waitFor(`document.querySelector('.modal input[type=password]') !== null`);
   await page.eval(`document.querySelector('.modal input[type=password]').focus()`);
   await page.type("platypus");

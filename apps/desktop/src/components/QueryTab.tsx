@@ -35,6 +35,7 @@ import { ExportDialog, type ExportSource } from "./ExportDialog";
 import { HealthBadge, useSessionHealth } from "./health";
 import { HistoryPanel } from "./HistoryPanel";
 import { useToolbar } from "./toolbar";
+import { isSlow, slowQuerySeconds } from "../querylog/slow";
 import { Icon } from "../ui/Icon";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
 
@@ -147,7 +148,7 @@ let nextResultId = 1;
 
 /** A new result tab for `sql`, before it has a job. */
 function newResult(sql: string, offset: number, status: ResultStatus, limit: number | null): Result {
-  return { id: nextResultId++, sql, offset, jobId: null, columns: null, rows: 0, status, limit };
+  return { id: nextResultId++, sql, offset, jobId: null, columns: null, rows: 0, fetching: false, status, limit };
 }
 
 function isTerminal(status: ResultStatus, limited: boolean) {
@@ -191,6 +192,7 @@ export function QueryTab({
   const [txSince, setTxSince] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const warnMinutes = useSetting(transactionWarning);
+  const slowSeconds = useSetting(slowQuerySeconds);
   const warned = useRef(false);
   const [filter, setFilter] = useState(tab.filter ?? "");
   const [count, setCount] = useState<string | null>(null);
@@ -303,11 +305,11 @@ export function QueryTab({
           case "started":
             status = { kind: "rows", finished: false, complete: true, elapsedMs: event.elapsed_ms };
             if (seen) seen.columns = event.columns;
-            update(result.id, { columns: event.columns, status });
+            update(result.id, { columns: event.columns, fetching: true, status });
             break;
           case "progress":
             if (seen) seen.rows = event.rows;
-            update(result.id, { rows: event.rows });
+            update(result.id, { rows: event.rows, fetching: event.fetching });
             break;
           case "finished":
             if (seen) seen.rows = event.rows;
@@ -318,7 +320,7 @@ export function QueryTab({
               stopped: event.stopped,
               elapsedMs: event.elapsed_ms,
             };
-            update(result.id, { rows: event.rows, status });
+            update(result.id, { rows: event.rows, fetching: false, status });
             break;
           case "affected":
             status = { kind: "affected", rows: event.rows, elapsedMs: event.elapsed_ms };
@@ -675,10 +677,38 @@ export function QueryTab({
     }
   }
 
+  /** Opens the plan of the selection or the statement under the cursor in a new tab. */
+  async function explain(analyze: boolean) {
+    let p: Planned | undefined;
+    try {
+      [p] = await plan("statement");
+    } catch (e) {
+      onError(toCommandError(e).message);
+      return;
+    }
+    if (!p || p.kind === "command") return;
+    let sql = p.sql;
+    if (p.params.length) {
+      const values = await fillParams(p, { ...(tab.variables ?? {}), ...lastAnswers.current }, new Set());
+      if (!values) return;
+      sql = substitute(p.sql, p.params, values, connection.driver);
+    }
+    // Analyze runs the statement: the checks of a run apply.
+    if (analyze) {
+      if (connection.read_only && !p.readOnly) {
+        onError(`${connection.name} is read-only and this statement may modify data.`);
+        return;
+      }
+      if (!(await confirmed([p]))) return;
+    }
+    workbench().openTab("explain", connection.id, { database: tab.database, sql, analyze });
+  }
+
   const host: EditorHost = {
     openObject: (schema, name) => void openObject(schema, name),
     runCli: cliName(connection.driver) ? () => void runCli() : undefined,
     runAppend: () => void run("append"),
+    explain: (analyze) => void explain(analyze),
   };
 
   /** Closes a result tab and frees its rows. */
@@ -1241,6 +1271,15 @@ export function QueryTab({
                   {formatMs(current.status.elapsedMs)}
                 </span>
               )}
+              {(current.status.kind === "rows" || current.status.kind === "affected") &&
+                isSlow(current.status.elapsedMs, slowSeconds) && (
+                  <span
+                    className="slow-query"
+                    title={`Slower than ${slowSeconds} s (Settings). Explain (Ctrl+Shift+E) shows where the time goes.`}
+                  >
+                    slow
+                  </span>
+                )}
               {current.status.kind === "rows" && !current.status.finished && (
                 <button className="link" onClick={() => fetchAll(current)}>
                   Fetch all

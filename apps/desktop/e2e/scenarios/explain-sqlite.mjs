@@ -1,0 +1,103 @@
+// Group E on a throwaway SQLite database: the explain tab opened from the editor, its
+// tree, text and table views, slow queries and the query manager.
+import assert from "node:assert/strict";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { CTRL, SHIFT } from "../cdp.mjs";
+import { setup as sqlite } from "./smoke-sqlite.mjs";
+
+export function setup(ctx) {
+  sqlite(ctx);
+  writeFileSync(join(ctx.dir, "settings.toml"), "[performance]\nslow_query_seconds = 0.5\n");
+}
+
+/** Counts to ten million: well past the half-second threshold. */
+const SLOW = "WITH RECURSIVE s(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM s WHERE n < 10000000) SELECT count(*) FROM s";
+
+const NAME = "E2E SQLite";
+const queryTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
+const status = `${queryTab}?.querySelector('.statusbar span')?.textContent ?? ''`;
+const explainTab = `[...document.querySelectorAll('.explain-tab')].find(t => t.style.display !== 'none')`;
+const operations = `[...${explainTab}.querySelectorAll('.explain-op')].map(e => e.textContent)`;
+
+async function setEditor(page, sql) {
+  await page.eval(`${queryTab}.querySelector('.cm-content').focus()`);
+  await page.key("a", "KeyA", 65, CTRL);
+  await page.type(sql);
+  await page.waitFor(`[...${queryTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n') === ${JSON.stringify(sql)}`);
+}
+
+async function showView(page, label) {
+  await page.eval(`[...${explainTab}.querySelectorAll('.object-sections button')].find(b => b.textContent === ${JSON.stringify(label)}).click()`);
+}
+
+export default async function (page) {
+  const connectionRow = `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(NAME)})`;
+  await page.waitFor(`${connectionRow} !== undefined`);
+  await page.eval(`${connectionRow}.id = 'e2e-connection'`);
+  await page.clickSel("#e2e-connection", { clickCount: 2 });
+  await page.waitFor(`${queryTab} !== undefined`);
+
+  await setEditor(page, "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)");
+  await page.eval(`(() => { const s = ${queryTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
+  await page.key("Enter", "Enter", 13, CTRL);
+  await page.waitFor(`(() => { const s = ${status}; return s !== '' && !s.includes('Executing'); })()`, 15_000);
+
+  // Ctrl+Shift+E: the plan of the statement under the cursor, as a tree.
+  await setEditor(page, "SELECT * FROM items WHERE name = 'x'");
+  await page.key("E", "KeyE", 69, CTRL | SHIFT);
+  await page.waitFor(`${explainTab}?.querySelector('.explain-node') != null`, 15_000);
+  assert.match(await page.eval(`document.querySelector('.tab.active').textContent`), /^Explain/);
+  const ops = await page.eval(operations);
+  assert.ok(ops.some((o) => o.startsWith("SCAN items")), `a scan in ${ops}`);
+
+  // The same steps as indented text, and as table rows.
+  await showView(page, "Text");
+  await page.waitFor(`${explainTab}.querySelector('.explain-text')?.textContent.includes('-> SCAN items')`);
+  await showView(page, "Table");
+  await page.waitFor(`${explainTab}.querySelector('.explain-table') != null`);
+  assert.equal(await page.eval(`${explainTab}.querySelectorAll('.explain-table tbody tr').length`), ops.length);
+
+  // Back in the editor, its context menu offers explain analyze too.
+  await page.eval(`[...document.querySelectorAll('.tab')].find(t => !t.textContent.startsWith('Explain')).click()`);
+  await page.waitFor(`${queryTab} !== undefined`);
+  await page.eval(`${queryTab}.querySelector('.cm-content').id = 'e2e-editor'`);
+  const r = await page.rect("#e2e-editor");
+  await page.click(r.x + 40, r.y + 10, { button: "right" });
+  await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Explain analyze')).click()`);
+  await page.waitFor(`document.querySelector('.tab.active')?.textContent.startsWith('Explain analyze')`, 10_000);
+  await page.waitFor(`${explainTab}?.querySelector('.explain-node') != null`, 15_000);
+
+  // A statement past the threshold is marked slow.
+  await page.eval(`[...document.querySelectorAll('.tab')].find(t => !t.textContent.startsWith('Explain')).click()`);
+  await page.waitFor(`${queryTab} !== undefined`);
+  await setEditor(page, SLOW);
+  await page.eval(`(() => { const s = ${queryTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
+  await page.key("Enter", "Enter", 13, CTRL);
+  // While it runs, the results show a loading bar.
+  await page.waitFor(`${queryTab}.querySelector('.result-loading') !== null`, 10_000);
+  await page.waitFor(`${queryTab}.querySelector('.statusbar .slow-query') !== null`, 60_000);
+  await page.waitFor(`${queryTab}.querySelector('.result-loading') === null`);
+
+  await queryManager(page);
+}
+
+/** Group E: the query manager lists what the app ran, with metadata requests. */
+async function queryManager(page) {
+  const rows = `[...document.querySelectorAll('.query-manager tbody tr')]`;
+  await page.key("M", "KeyM", 77, CTRL | SHIFT);
+  await page.waitFor(`document.querySelector('.query-manager') !== null`);
+  await page.waitFor(`${rows}.some(r => r.textContent.includes('CREATE TABLE items') && r.textContent.includes('Done'))`, 10_000);
+  assert.ok(await page.eval(`${rows}.some(r => r.classList.contains('metadata'))`), "metadata requests are listed");
+  // Without metadata, only statements and transaction commands are left.
+  await page.eval(`document.querySelector('.query-manager-bar input[type=checkbox]').click()`);
+  await page.waitFor(`${rows}.length > 0 && ${rows}.every(r => !r.classList.contains('metadata'))`);
+  // Slow only: the counting query, whose trace splits its time.
+  await page.eval(`document.querySelectorAll('.query-manager-bar input[type=checkbox]')[1].click()`);
+  await page.waitFor(`${rows}.length > 0 && ${rows}.every(r => r.classList.contains('slow'))`);
+  await page.eval(`${rows}.find(r => r.textContent.includes('WITH RECURSIVE')).click()`);
+  await page.waitFor(`document.querySelector('.query-trace')?.textContent.includes('Server')`);
+  await page.key("Escape", "Escape", 27);
+  await page.waitFor(`document.querySelector('.query-manager') === null`);
+}

@@ -1,6 +1,7 @@
 //! Exports: a query re-run in streaming, or the rows a result has loaded.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use platypus_export::ExportOptions;
 use tauri::State;
@@ -21,8 +22,9 @@ pub fn export_query(
     options: ExportOptions,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
-    let config = state.session(session_id)?.config;
-    let export = Export::start(config, sql, path, options, on_event);
+    let session = state.session(session_id)?;
+    let connection = (session.config, session.label, Arc::clone(&state.query_log));
+    let export = Export::start(connection, sql, path, options, on_event);
     let id = state.next_id();
     lock(&state.exports).insert(id, export);
     Ok(id)

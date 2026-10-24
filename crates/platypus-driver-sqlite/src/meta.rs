@@ -4,9 +4,10 @@ use std::fmt::Write as _;
 
 use platypus_core::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, Connection, ConstraintKind,
-    ConstraintMeta, Error, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch, ObjectKind,
-    ObjectMeta, ObjectRef, ReferencingKey, Result, SEARCH_LIMIT, SchemaMeta, TableDetails,
-    TextRowExt, group_sorted, query_catalog, query_text, unsupported,
+    ConstraintMeta, Error, Explain, ExplainFormat, ForeignKeyMeta, IndexMeta, MatchKind,
+    MetadataMatch, ObjectKind, ObjectMeta, ObjectRef, PlanNode, ReferencingKey, Result,
+    SEARCH_LIMIT, SchemaMeta, TableDetails, TextRowExt, group_sorted, query_catalog, query_text,
+    unsupported,
 };
 use platypus_sql::Dialect;
 
@@ -412,4 +413,66 @@ pub async fn referencing_keys(
         }
     }
     Ok(keys)
+}
+
+/// `EXPLAIN QUERY PLAN` as a tree: its rows are `(id, parent, notused, detail)`.
+pub async fn explain(conn: &dyn Connection, sql: &str) -> Result<Explain> {
+    let rows = query_text(conn, &format!("EXPLAIN QUERY PLAN {sql}")).await?;
+    let steps: Vec<_> = rows
+        .iter()
+        .map(|r| (r.number(0), r.number(1), r.text(3)))
+        .collect();
+    let mut plan = String::new();
+    let root = PlanNode {
+        children: plan_steps(&steps, Some(0), 0, &mut plan),
+        ..PlanNode::new("QUERY PLAN")
+    };
+    Ok(Explain::new(
+        ExplainFormat::Text,
+        format!("QUERY PLAN\n{plan}"),
+        root,
+        false,
+    ))
+}
+
+/// The steps under `parent`, also written to `text` indented by `depth`.
+fn plan_steps(
+    steps: &[(Option<u64>, Option<u64>, String)],
+    parent: Option<u64>,
+    depth: usize,
+    text: &mut String,
+) -> Vec<PlanNode> {
+    steps
+        .iter()
+        .filter(|(_, p, _)| *p == parent)
+        .map(|(id, _, detail)| {
+            let _ = writeln!(text, "{}{detail}", "  ".repeat(depth + 1));
+            PlanNode {
+                children: plan_steps(steps, *id, depth + 1, text),
+                ..PlanNode::new(detail.clone())
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nests_plan_steps_by_parent() {
+        let steps = [
+            (Some(2), Some(0), "SCAN a".to_owned()),
+            (Some(5), Some(0), "CORRELATED SCALAR SUBQUERY 1".to_owned()),
+            (Some(9), Some(5), "SEARCH b USING INDEX i (x=?)".to_owned()),
+        ];
+        let mut text = String::new();
+        let top = plan_steps(&steps, Some(0), 0, &mut text);
+        assert_eq!(top.len(), 2);
+        assert_eq!(top[1].children[0].operation, "SEARCH b USING INDEX i (x=?)");
+        assert_eq!(
+            text,
+            "  SCAN a\n  CORRELATED SCALAR SUBQUERY 1\n    SEARCH b USING INDEX i (x=?)\n"
+        );
+    }
 }

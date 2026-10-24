@@ -7,6 +7,7 @@
 pub mod cli;
 pub mod connections;
 pub mod data;
+pub mod explain;
 pub mod export;
 pub mod files;
 pub mod geometry;
@@ -17,6 +18,7 @@ pub mod meta;
 pub mod objects;
 pub mod projects;
 pub mod query;
+pub mod querylog;
 pub mod scripts;
 pub mod search;
 pub mod settings;
@@ -43,6 +45,7 @@ use uuid::Uuid;
 use crate::error::{CommandError, CommandResult};
 use crate::export::Export;
 use crate::jobs::Job;
+use crate::querylog::{Logged, QueryLog};
 
 #[derive(Debug)]
 pub struct AppState {
@@ -62,6 +65,8 @@ pub struct AppState {
     exports: Mutex<HashMap<u64, Arc<Export>>>,
     /// Scripts running in a command-line client, by the editor's run id: sending stops one.
     clis: Mutex<HashMap<u64, tokio::sync::oneshot::Sender<()>>>,
+    /// What the query manager shows.
+    query_log: Arc<QueryLog>,
     next_id: AtomicU64,
 }
 
@@ -71,9 +76,13 @@ struct Session {
     conn: Arc<dyn Connection>,
     /// How the session was opened, password included: exports open their own connection.
     config: ConnectionConfig,
+    /// The connection's name in the query log.
+    label: String,
+    /// `conn` without the query log, for keep-alives.
+    raw: Arc<dyn Connection>,
 }
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
@@ -96,6 +105,7 @@ impl AppState {
             jobs: Mutex::new(HashMap::new()),
             exports: Mutex::new(HashMap::new()),
             clis: Mutex::new(HashMap::new()),
+            query_log: Arc::default(),
             next_id: AtomicU64::new(1),
         }
     }
@@ -150,12 +160,14 @@ impl AppState {
             return Ok(session.conn);
         }
         let previous = session.conn.transaction();
-        let conn: Arc<dyn Connection> = Arc::from(connect(&session.config).await?);
+        let raw: Arc<dyn Connection> = Arc::from(connect(&session.config).await?);
+        let conn = Logged::wrap(Arc::clone(&raw), &self.query_log, &session.label);
         if !previous.autocommit {
             conn.set_autocommit(false).await?;
         }
         if let Some(s) = lock(&self.sessions).get_mut(&id) {
             s.conn = Arc::clone(&conn);
+            s.raw = raw;
         }
         if previous.open {
             return Err(CommandError::new(

@@ -181,6 +181,7 @@ async fn query(args: QueryArgs) -> Result<(), Error> {
     let started = Instant::now();
     let options = ExecOptions {
         batch_size: args.batch_size,
+        ..ExecOptions::default()
     };
     let mut stream = match conn.execute(&sql, &options).await? {
         ExecResult::Affected { rows } => {
