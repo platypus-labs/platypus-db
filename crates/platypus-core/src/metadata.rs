@@ -58,8 +58,12 @@ pub struct ObjectMeta {
     pub name: String,
     pub kind: ObjectKind,
     pub comment: Option<String>,
-    /// The table a trigger belongs to.
+    /// The table a trigger belongs to, or the partitioned table of a partition.
     pub parent: Option<String>,
+    /// About how many rows a table has, from the statistics; `None` when unknown.
+    pub rows: Option<u64>,
+    /// Bytes on disk of a table with its indexes; `None` when unknown.
+    pub size: Option<u64>,
 }
 
 impl ObjectMeta {
@@ -70,6 +74,8 @@ impl ObjectMeta {
             kind,
             comment,
             parent: None,
+            rows: None,
+            size: None,
         }
     }
 }
@@ -94,6 +100,8 @@ pub struct IndexMeta {
     pub columns: Vec<String>,
     pub unique: bool,
     pub primary: bool,
+    /// Bytes on disk; `None` when the driver does not know.
+    pub size: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -182,6 +190,44 @@ pub struct TableDetails {
     pub referenced_by: Vec<ReferencingKey>,
 }
 
+/// What a metadata search matched in an object.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MatchKind {
+    Name,
+    /// A column of a table or view, named in [`MetadataMatch::column`].
+    Column,
+    /// The source of a function, procedure, trigger or view.
+    Source,
+}
+
+impl MatchKind {
+    /// From the `name`, `column` and `source` codes of the drivers' search queries.
+    #[must_use]
+    pub fn from_code(code: &str) -> Self {
+        match code {
+            "column" => Self::Column,
+            "source" => Self::Source,
+            _ => Self::Name,
+        }
+    }
+}
+
+/// One hit of [`Connection::search_metadata`](crate::Connection::search_metadata).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MetadataMatch {
+    pub schema: String,
+    pub name: String,
+    pub kind: ObjectKind,
+    /// As in [`ObjectMeta::parent`].
+    pub parent: Option<String>,
+    pub matched: MatchKind,
+    pub column: Option<String>,
+}
+
+/// Hits a metadata search returns at most.
+pub const SEARCH_LIMIT: usize = 1000;
+
 /// One line of an object's properties, e.g. `Owner: platypus`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Property {
@@ -240,6 +286,8 @@ pub trait TextRowExt {
     fn text(&self, i: usize) -> String;
     fn opt(&self, i: usize) -> Option<String>;
     fn flag(&self, i: usize) -> bool;
+    /// A non-negative whole number; `None` for NULL or anything else.
+    fn number(&self, i: usize) -> Option<u64>;
 }
 
 impl TextRowExt for TextRow {
@@ -256,6 +304,10 @@ impl TextRowExt for TextRow {
             self.get(i).and_then(Option::as_deref),
             Some("t" | "true" | "1" | "YES")
         )
+    }
+
+    fn number(&self, i: usize) -> Option<u64> {
+        self.get(i)?.as_deref()?.parse().ok()
     }
 }
 
@@ -302,5 +354,10 @@ mod tests {
         assert!(!row.flag(3));
         assert_eq!(row.opt(3), None);
         assert_eq!(row.text(9), "");
+        let row: TextRow = vec![Some("42".into()), Some("-1".into()), None];
+        assert_eq!(row.number(0), Some(42));
+        assert_eq!(row.number(1), None);
+        assert_eq!(row.number(2), None);
+        assert_eq!(MatchKind::from_code("column"), MatchKind::Column);
     }
 }
