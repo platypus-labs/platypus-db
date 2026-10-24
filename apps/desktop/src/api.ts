@@ -356,6 +356,26 @@ export interface SelectionStats {
   max: number | null;
 }
 
+/** Statistics of one column over selected rows, for the calc panel. */
+export interface ColumnStats {
+  column: number;
+  values: number;
+  nulls: number;
+  distinct: number;
+  /** For number columns. */
+  numbers: {
+    sum: number;
+    avg: number;
+    min: number;
+    max: number;
+    median: number;
+    stddev: number | null;
+  } | null;
+  /** Smallest and largest text of other columns. */
+  first: string | null;
+  last: string | null;
+}
+
 export interface GroupCounts {
   groups: { values: (string | null)[]; count: number }[];
   rows: number;
@@ -599,6 +619,8 @@ export const api = {
   selectionStats: (jobId: number, offset: number, limit: number, columns: number[]) =>
     invoke<SelectionStats>("selection_stats", { jobId, offset, limit, columns }),
   /** Loaded rows by value of `columns`, most frequent first. */
+  columnStats: (jobId: number, offset: number, limit: number, columns: number[]) =>
+    invoke<ColumnStats[]>("column_stats", { jobId, offset, limit, columns }),
   groupCounts: (jobId: number, columns: number[]) => invoke<GroupCounts>("group_counts", { jobId, columns }),
   searchRows: (jobId: number, text: string) => invoke<SearchResult>("search_rows", { jobId, text }),
   fetchAll: (jobId: number) => invoke<void>("fetch_all", { jobId }),

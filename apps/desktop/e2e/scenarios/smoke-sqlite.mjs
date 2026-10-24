@@ -95,6 +95,8 @@ export default async function (page, { dir }) {
     "Value panel",
     "Record view",
     "Count by value",
+    "Column metadata",
+    "Calculate",
     "Columns",
   ]);
   // The page may not read the clipboard back: record what is written instead.

@@ -158,6 +158,7 @@ pub fn run() {
             commands::grid::save_cell,
             commands::grid::search_rows,
             commands::summary::selection_stats,
+            commands::summary::column_stats,
             commands::summary::group_counts,
             commands::export::export_query,
             commands::export::export_rows,

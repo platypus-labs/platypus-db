@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnInfo } from "../api";
+import { CalcPanel } from "../panels/CalcPanel";
+import { CompareRows } from "../panels/CompareRows";
 import { GroupingPanel } from "../panels/GroupingPanel";
+import { MetadataPanel } from "../panels/MetadataPanel";
 import { RecordView } from "../panels/RecordView";
 import { ValuePanel, type ValueTarget } from "../panels/ValuePanel";
 import { defineSetting, setSetting, useSetting } from "../settings";
@@ -38,6 +41,10 @@ export interface GridFeatures {
   toggleRecordView(): void;
   /** Opens the grouping panel on these result columns. */
   groupBy(cols: number[]): void;
+  toggleMetadata(): void;
+  toggleCalc(): void;
+  /** Shows two loaded rows side by side. */
+  compareRows(rows: [number, number]): void;
 }
 
 declare module "./DataGrid" {
@@ -84,6 +91,11 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   const [recordView, setRecordView] = useState(false);
   const [grouping, setGrouping] = useState<number[] | null>(null);
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const [metadataOpen, setMetadataOpen] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
+  /** Bumped on every selection change while the calc panel is open. */
+  const [selection, setSelection] = useState(0);
+  const [compared, setCompared] = useState<[number, number] | null>(null);
   const decorate = useMemo(() => combine(editor.decorate, search.decorate), [editor.decorate, search.decorate]);
 
   // Data viewer tables keep their column layout; other results start from the query's.
@@ -115,6 +127,9 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
       if (recordView) grid.current?.focus();
     },
     groupBy: setGrouping,
+    toggleMetadata: () => setMetadataOpen(!metadataOpen),
+    toggleCalc: () => setCalcOpen(!calcOpen),
+    compareRows: setCompared,
   };
 
   const column = focused ? columns[focused.col] : undefined;
@@ -144,7 +159,10 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
             onCellDoubleClick={editor.onCellDoubleClick}
             onScroll={editor.onScroll}
             onFocusChange={setFocused}
-            onSelectionChange={stats.onSelectionChange}
+            onSelectionChange={() => {
+              stats.onSelectionChange();
+              if (calcOpen) setSelection((n) => n + 1);
+            }}
             layout={layout}
             onLayoutChange={changeLayout}
           />
@@ -164,6 +182,18 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
           )}
         </div>
         {panelOpen && <ValuePanel target={valueTarget} onClose={features.toggleValuePanel} />}
+        {metadataOpen && (
+          <MetadataPanel
+            column={column}
+            table={editor.catalog?.table ?? null}
+            meta={focused ? editor.catalog?.columns[focused.col] : undefined}
+            inKey={!!focused && !!editor.catalog?.key.includes(focused.col)}
+            onClose={features.toggleMetadata}
+          />
+        )}
+        {calcOpen && (
+          <CalcPanel jobId={jobId} columns={columns} grid={grid} selection={selection} onClose={features.toggleCalc} />
+        )}
         {grouping && (
           <GroupingPanel
             jobId={jobId}
@@ -177,6 +207,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
       </div>
       {stats.summary}
       {editor.dialog}
+      {compared && <CompareRows jobId={jobId} columns={columns} rows={compared} onClose={() => setCompared(null)} />}
       {columnsOpen && (
         <ColumnsDialog columns={columns} layout={layout} onChange={changeLayout} onClose={() => setColumnsOpen(false)} />
       )}

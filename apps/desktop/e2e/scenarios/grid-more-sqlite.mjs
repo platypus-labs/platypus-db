@@ -1,11 +1,12 @@
 // More of the read-only grid on a throwaway SQLite database: the column layout (hidden and
 // moved columns, kept for the table), totals of the selection, counts by value, the record
-// view, foreign keys as links with the References panel, and number formats.
+// view, foreign keys as links with the References panel, column metadata, the calc panel,
+// two rows compared, and number formats.
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { ALT, CTRL } from "../cdp.mjs";
+import { ALT, CTRL, SHIFT } from "../cdp.mjs";
 
 const NAME = "E2E grid more";
 const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
@@ -88,6 +89,48 @@ async function copyAll(page) {
 
 async function closeTab(page) {
   await page.key("w", "KeyW", 87, CTRL);
+}
+
+/** On `orders`: the focused column's metadata, statistics of a selection, two rows compared. */
+async function panels(page, shot) {
+  const panelText = (selector) => `(document.querySelector(${JSON.stringify(selector)})?.textContent ?? '')`;
+  await focusCell(page, 0, 2);
+  await openMenu(page);
+  await menu(page, "Column metadata");
+  await page.waitFor(`${panelText(".metadata-list")}.includes('Tablemain.orders')`);
+  const metadata = await page.eval(panelText(".metadata-list"));
+  for (const part of ["TypeREAL", "Columntotal", "Nullableyes", "Primary keyno", "Row keyno"]) {
+    assert.ok(metadata.includes(part), `${part} in ${metadata}`);
+  }
+  await page.eval(`${button("document.querySelector('.metadata-panel')", "×")}.click()`);
+
+  // The calc panel follows the selection: all of `total`.
+  await openMenu(page);
+  await menu(page, "Calculate");
+  await page.waitFor(`document.querySelector('.calc-panel') !== null`);
+  await page.eval(`document.getElementById('e2e-grid').focus()`);
+  await page.key("ArrowDown", "ArrowDown", 40, SHIFT);
+  await page.key("ArrowDown", "ArrowDown", 40, SHIFT);
+  await page.waitFor(`${panelText(".calc-panel .value-size")} === '3 rows selected'`);
+  const calc = await page.eval(panelText(".calc-list"));
+  assert.match(calc, /Count3NULL0Distinct3Sum1[.,]?239[.,]75/);
+  assert.match(calc, /Median3[.,]25/);
+  await shot("calc");
+  await page.eval(`${button("document.querySelector('.calc-panel')", "×")}.click()`);
+
+  // Two rows selected: compared column by column.
+  await focusCell(page, 0, 0);
+  await page.key("ArrowDown", "ArrowDown", 40, SHIFT);
+  await openMenu(page);
+  await menu(page, "Compare the two rows");
+  await page.waitFor(`document.querySelectorAll('.compare-list tbody tr').length === 3`);
+  assert.deepEqual(
+    await page.eval(`[...document.querySelectorAll('.compare-list tbody tr.differs th')].map(t => t.textContent)`),
+    ["id", "total"],
+  );
+  await shot("compare");
+  await page.eval(`${button("document.querySelector('.compare-rows')", "Close")}.click()`);
+  await page.waitFor(`document.querySelector('.compare-rows') === null`);
 }
 
 export default async function (page, { shots }) {
@@ -186,9 +229,11 @@ export default async function (page, { shots }) {
   assert.equal(await page.eval(`${visibleTab}.querySelector('.viewer-bar input').value`), "id = 1");
   await closeTab(page);
 
-  // Numbers grouped as set in the Settings; the grid fetches its rows again.
   await page.waitFor(`${status} === '3 rows'`);
   await markGrid(page);
+  await panels(page, shot);
+
+  // Numbers grouped as set in the Settings; the grid fetches its rows again.
   await page.key(",", "Comma", 188, CTRL);
   await page.waitFor(`document.querySelector('.modal.settings') !== null`);
   await page.eval(`(() => {

@@ -1,10 +1,10 @@
 import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
-import { api, type CellInput, type ColumnInfo, type SavedConnection, toCommandError } from "../../api";
+import { api, type CellInput, type ColumnInfo, type ColumnMeta, type SavedConnection, toCommandError } from "../../api";
 import type { Cell, CellDecoration, GridApi } from "../DataGrid";
 import type { RowCache } from "../RowCache";
 import { CellEditor, type Move } from "./CellEditor";
 import { Dictionary } from "./dictionary";
-import { type EditMeta, type EditSource, type EditorKind, editMeta, editorKind, isJson, type ReadOnly } from "./meta";
+import { type EditMeta, type EditSource, type EditorKind, editMeta, editorKind, isJson, type ReadOnly, type TableRef } from "./meta";
 import { plainNumber } from "../formats";
 import { mapFields, parseClipboard } from "./paste";
 import { needsProductionConfirm } from "../../guards/guards";
@@ -80,6 +80,8 @@ interface Options {
 export interface TableEditorHost {
   /** Given to grid actions as `source.edit`; `undefined` when the result is not a table's. */
   edit: TableEdit | undefined;
+  /** The table behind the result and its column per result column, once loaded. */
+  catalog: { table: TableRef; columns: (ColumnMeta | undefined)[]; key: number[] } | null;
   /** The edit bar above the grid. */
   bar: ReactNode;
   /** Dialogs, e.g. the SQL preview. */
@@ -559,6 +561,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
 
   return {
     edit: target ? edit : undefined,
+    catalog: keys && { table: keys.table, columns: keys.columns, key: keys.key },
     bar,
     dialog: (
       <>
