@@ -547,6 +547,21 @@ async fn lists_catalog_columns_for_completion() {
             .map(|c| c.column.as_str())
             .collect();
         assert_eq!(orders.first(), Some(&"id"), "{}", b.name);
+
+        // Foreign keys complete JOIN conditions.
+        let keys = conn.catalog_foreign_keys().await.unwrap();
+        let fk = keys
+            .iter()
+            .find(|k| k.schema == b.schema && k.table == "orders")
+            .unwrap_or_else(|| panic!("{}: orders foreign key in {keys:?}", b.name));
+        assert_eq!(fk.columns, ["customer_id"], "{}", b.name);
+        assert_eq!(
+            (fk.ref_schema.as_str(), fk.ref_table.as_str()),
+            (b.schema.as_str(), "customers"),
+            "{}",
+            b.name
+        );
+        assert_eq!(fk.ref_columns, ["id"], "{}", b.name);
     }
 }
 

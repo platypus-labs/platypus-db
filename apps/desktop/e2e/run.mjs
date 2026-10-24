@@ -12,7 +12,7 @@
 // through the WebView2 DevTools protocol.
 
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -43,6 +43,7 @@ for (const file of scenarios) {
   }
   const dir = mkdtempSync(join(tmpdir(), "platypus-e2e-"));
   const ctx = { dir, shots: process.env.PLATYPUS_E2E_SHOTS ?? null };
+  if (ctx.shots) mkdirSync(ctx.shots, { recursive: true });
   await scenario.setup?.(ctx);
   const app = spawn(exe, [], {
     env: {
@@ -79,6 +80,19 @@ for (const file of scenarios) {
   } catch (e) {
     failed++;
     console.log(`FAIL ${file}\n     ${e instanceof Error ? (e.stack ?? e.message) : e}`);
+    // What the window showed, for failures that only happen on the CI runner.
+    const state = await page
+      ?.eval(`(() => {
+        const tab = [...document.querySelectorAll('.query-tab, .object-tab')].find(t => t.style.display !== 'none');
+        return JSON.stringify({
+          tabs: [...document.querySelectorAll('.tab')].map(t => t.textContent),
+          status: tab?.querySelector('.statusbar')?.textContent ?? null,
+          editBar: tab?.querySelector('.edit-bar')?.textContent ?? null,
+          notices: [...document.querySelectorAll('.notice, .error, .modal')].map(n => n.textContent.slice(0, 200)),
+        });
+      })()`)
+      .catch((err) => `unavailable: ${err}`);
+    if (state) console.log(`     page: ${state}`);
     if (page && ctx.shots) await page.screenshot(join(ctx.shots, `${file}.failure.png`)).catch(() => {});
   } finally {
     page?.close();

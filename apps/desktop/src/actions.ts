@@ -191,10 +191,10 @@ export function runAction<S extends ActionScope>(
 export function shortcutLabel(action: Pick<Action, "id" | "shortcut">): string | undefined {
   const first = shortcutsOf(action)[0];
   if (!first) return undefined;
-  if (!isMac) return first.replace("Mod", "Ctrl");
+  if (!isMac) return first.replace("Mod", "Ctrl").replaceAll("Arrow", "");
   const symbols: Record<string, string> = { Mod: "⌘", Shift: "⇧", Alt: "⌥", Ctrl: "⌃" };
   return first
     .split("+")
-    .map((p) => symbols[p] ?? p.toUpperCase())
+    .map((p) => symbols[p] ?? p.replace("Arrow", "").toUpperCase())
     .join("");
 }

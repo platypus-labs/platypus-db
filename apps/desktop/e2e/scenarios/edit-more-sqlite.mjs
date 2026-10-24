@@ -122,7 +122,11 @@ export default async function (page, { dir, shots }) {
   // A query of one table edits like the table; computed columns stay read-only.
   await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
   await page.key("a", "KeyA", 65, CTRL);
-  await page.type("SELECT id, total * 2 AS dbl, total FROM orders ORDER BY id");
+  const query = "SELECT id, total * 2 AS dbl, total FROM orders ORDER BY id";
+  await page.type(query);
+  // On a slow runner Ctrl+Enter could otherwise run the script still in the editor.
+  await page.waitFor(`${visibleTab}.querySelector('.cm-content').textContent === ${JSON.stringify(query)}`);
+  await page.key("Escape", "Escape", 27); // close the completion list
   await page.key("Enter", "Enter", 13, CTRL);
   await page.waitFor(`${status} === '2 rows' && ${editBar}.includes('to edit a cell')`, 15_000);
   await focusCell(page, 0, 1);

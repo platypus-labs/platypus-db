@@ -1,17 +1,19 @@
 //! Dialect-aware SQL utilities: statement splitting, the statement under the cursor, a
 //! conservative read-only check, the [`Dialect`] rules for generating SQL, the table a query
-//! reads ([`source_table`]) and the [`dml`] that saves edited table data. All offsets are byte
-//! offsets into the input.
+//! reads ([`source_table`]), the [`dml`] that saves edited table data and the editor's
+//! formatter ([`format()`]). All offsets are byte offsets into the input.
 
 mod analysis;
 mod dialect;
 pub mod dml;
+mod format;
 mod generate;
 mod lexer;
 mod source;
 
 pub use analysis::{Analysis, StatementKind, TableName, analyze};
 pub use dialect::Dialect;
+pub use format::{FormatOptions, KeywordCase, format};
 pub use generate::ObjectName;
 pub use lexer::{Lexer, Token, TokenKind};
 pub use source::{SelectItem, SourceTable, source_table};

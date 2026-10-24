@@ -1,9 +1,9 @@
 //! Navigator metadata from `pg_catalog`.
 
 use platypus_core::{
-    CATALOG_LIMIT, CatalogColumn, ColumnMeta, Connection, ConstraintKind, ConstraintMeta,
-    ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ReferencingKey, Result, SchemaMeta,
-    TableDetails, TextRowExt, query_catalog, query_text,
+    CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, Connection, ConstraintKind,
+    ConstraintMeta, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ReferencingKey, Result,
+    SchemaMeta, TableDetails, TextRowExt, query_catalog, query_text,
 };
 
 /// Separates list items aggregated into one text cell.
@@ -57,6 +57,45 @@ pub async fn catalog_columns(conn: &dyn Connection) -> Result<Vec<CatalogColumn>
         ),
     )
     .await
+}
+
+pub async fn catalog_foreign_keys(conn: &dyn Connection) -> Result<Vec<CatalogForeignKey>> {
+    let rows = query_text(
+        conn,
+        &format!(
+            "SELECT n.nspname, c.relname,
+                    array_to_string(ARRAY(
+                        SELECT a.attname FROM unnest(con.conkey) WITH ORDINALITY k(n, o)
+                        JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.n
+                        ORDER BY k.o), chr(31)),
+                    fn.nspname, fc.relname,
+                    array_to_string(ARRAY(
+                        SELECT a.attname FROM unnest(con.confkey) WITH ORDINALITY k(n, o)
+                        JOIN pg_attribute a ON a.attrelid = con.confrelid AND a.attnum = k.n
+                        ORDER BY k.o), chr(31))
+             FROM pg_constraint con
+             JOIN pg_class c ON c.oid = con.conrelid
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             JOIN pg_class fc ON fc.oid = con.confrelid
+             JOIN pg_namespace fn ON fn.oid = fc.relnamespace
+             WHERE con.contype = 'f'
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+             ORDER BY 1, 2, con.conname
+             LIMIT {CATALOG_LIMIT}"
+        ),
+    )
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| CatalogForeignKey {
+            schema: r.text(0),
+            table: r.text(1),
+            columns: list(r.opt(2)),
+            ref_schema: r.text(3),
+            ref_table: r.text(4),
+            ref_columns: list(r.opt(5)),
+        })
+        .collect())
 }
 
 pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMeta>> {

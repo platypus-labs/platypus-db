@@ -32,6 +32,8 @@ async function setEditor(page, sql) {
   await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
   await page.key("a", "KeyA", 65, CTRL);
   await page.type(sql);
+  // Run only once the editor holds the text (a slow runner may lag behind the keys).
+  await page.waitFor(`[...${visibleTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n') === ${JSON.stringify(sql)}`);
   // Blank the previous status, so waitDone sees the next run's.
   await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
 }
