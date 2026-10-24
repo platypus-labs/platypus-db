@@ -98,7 +98,7 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 | K — Shell ed ergonomia | libero |
 | L — Sicurezza operativa | libero |
 | M — Analisi dei dati | libero |
-| N — Assistente AI | libero |
+| N — Accesso per agenti (MCP) | libero |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
 
@@ -404,20 +404,36 @@ della transazione aperta con avviso). Restano i P2/P3.
 
 ---
 
-### Gruppo N — Assistente AI
+### Gruppo N — Accesso per agenti esterni (MCP)
 
-**Area:** nuovo crate `platypus-ai`, `apps/desktop/src/ai/`
-**Dipende da:** 0.2, 0.7
+PlatypusDB non integra un proprio assistente AI. Diventa invece uno strumento che gli agenti già
+in uso (Claude Code, Codex, Cursor, altri client MCP) possono collegare: usano le connessioni
+salvate, leggono lo schema ed eseguono query con i permessi decisi dall'utente. Le credenziali
+restano nel keychain e non arrivano mai all'agente.
+
+**Area:** nuovo crate `platypus-mcp` (binario, server MCP), `apps/desktop/src-tauri/src/agent/`
+(ponte con l'app aperta), `apps/desktop/src/agents/` (impostazioni e conferme)
+**Dipende da:** `platypus-store` (connessioni e segreti), `platypus-sql` (controllo di sola
+lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Linguaggio naturale → SQL, con lo schema come contesto | P2 | D+ |
-| "Spiega la query", "Correggi l'errore", "Spiega il piano" | P2 | D+ |
-| Chat sul database con conferma prima di ogni esecuzione | P3 | D+ |
-| Provider: Anthropic, OpenAI, Azure, Gemini, Bedrock, Ollama locale | P2 | D+ |
-| **Server MCP**: espone connessioni e metadati di PlatypusDB agli agenti esterni (sola lettura di default) | P2 | D+ |
-| Privacy: niente dati inviati senza consenso; solo schema, solo sample, oppure tutto, per connessione | P1 | D+ |
-| Descrizione degli oggetti generata dall'AI | P3 | D+ |
+| **Server MCP via stdio** (`platypus-mcp`): l'agente lo avvia da sé, senza che l'app sia aperta, e usa le connessioni salvate | P1 | D+ |
+| Tool di lettura: elenco connessioni, schemi, oggetti, dettagli di una tabella (colonne, chiavi, FK, indici), DDL, ricerca di oggetti per nome | P1 | D+ |
+| Tool `run_query`: esegue SQL con limite di righe, di byte e timeout; risultato compatto (tabella testuale o JSON) adatto al contesto di un LLM | P1 | D+ |
+| **Permessi per connessione**: disattivata per gli agenti, sola lettura (default), lettura e scrittura. Le connessioni Prod sono sempre in sola lettura per gli agenti | P1 | N |
+| Sola lettura garantita: controllo dello statement (`is_read_only`) e, dove il database lo permette, transazione `READ ONLY` | P1 | N |
+| Segreti mai esposti: nessun tool restituisce password, URL completi o chiavi SSH | P1 | N |
+| Registro delle query degli agenti nella cronologia, con l'agente come origine e filtro dedicato | P1 | N |
+| Installazione guidata: pagina "Agenti" nelle Impostazioni con i comandi pronti (`claude mcp add platypus -- platypus-mcp`, voce `[mcp_servers.platypus]` per Codex) e un pulsante Copia | P1 | N |
+| CLI per agenti senza MCP: `platypus-cli --connection <nome>` dalle connessioni salvate, output JSON stabile e documentato | P1 | N |
+| `explain` e campione di righe (`sample_rows`) come tool dedicati, con i limiti di `run_query` | P2 | D+ |
+| **Ponte con l'app aperta** (MCP su HTTP locale con token): l'agente vede le sessioni aperte e l'indicatore "agente collegato" compare nella barra | P2 | N |
+| Conferma nell'app per le scritture: dialog con lo statement e le righe stimate (riusa le guardie del gruppo L), con "consenti per questa sessione" | P2 | N |
+| Tool `propose_sql`: apre la query proposta dall'agente in un tab dell'editor, da rivedere ed eseguire a mano | P2 | N |
+| Contesto dell'utente su consenso: testo dell'editor, selezione, risultato corrente della griglia | P3 | N |
+| Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
+| Plugin pronti: plugin per Claude Code e configurazione per Codex con le istruzioni d'uso (quando usare quale tool, limiti) | P3 | N |
 
 ---
 
@@ -467,6 +483,7 @@ della fase 0 (un'API piccola), non la condivisione del file.
 | `App.tsx`, tab | C, E, I, J, K | 0.3: registro dei tipi di tab |
 | Menu e scorciatoie | tutti | 0.2: registro delle azioni |
 | `ConnectionDialog.tsx` | F, G | Sezioni per driver registrabili |
+| `platypus-store` (connessioni, segreti, cronologia) | F, N | API pubblica dello store; il formato dei file cambia solo con una migrazione |
 
 ---
 
