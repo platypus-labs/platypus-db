@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, type Project, type SavedConnection, toCommandError } from "../api";
+import { workbench } from "../workbench";
 import { toggled } from "../sets";
 
 interface Props {
@@ -16,12 +17,14 @@ export function AddConnectionsDialog({ project, connections, onSaved, onClose }:
   const [error, setError] = useState<string | null>(null);
 
   async function save() {
+    let projects: Project[] | null = null;
     try {
-      let projects: Project[] = [];
       for (const id of picked) projects = await api.setProjectMembership(id, project.id, true);
-      onSaved(projects);
+      onSaved(projects!);
     } catch (e) {
       setError(toCommandError(e).message);
+      // The ones added before the error are in the project already.
+      if (projects) workbench().setProjects(projects);
     }
   }
 

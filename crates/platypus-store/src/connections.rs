@@ -370,6 +370,23 @@ impl ConnectionStore {
         }
     }
 
+    /// Adds several connections to a project, writing the file once.
+    pub fn add_to_project(&mut self, project: Uuid, connections: &[Uuid]) -> Result<()> {
+        if let Some(missing) = connections.iter().find(|c| self.get(**c).is_none()) {
+            return Err(StoreError::NotFound(*missing));
+        }
+        let p = self
+            .projects
+            .iter_mut()
+            .find(|p| p.id == project)
+            .ok_or(StoreError::NotFound(project))?;
+        let mut changed = false;
+        for c in connections {
+            changed |= p.set_member(*c, true);
+        }
+        if changed { self.write() } else { Ok(()) }
+    }
+
     /// Makes `projects` the projects a connection is in, and no others.
     pub fn set_projects_of(&mut self, connection: Uuid, projects: &[Uuid]) -> Result<()> {
         if self.get(connection).is_none() {
@@ -651,6 +668,28 @@ mod tests {
         assert_eq!(s.projects()[0].connections, NONE);
         assert!(matches!(
             s.set_membership(Uuid::new_v4(), p, true),
+            Err(StoreError::NotFound(_))
+        ));
+    }
+
+    #[test]
+    fn add_to_project_adds_each_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        let (a, mut b) = (sample(), sample());
+        b.id = Uuid::new_v4();
+        s.save(a.clone(), PasswordUpdate::Keep).unwrap();
+        s.save(b.clone(), PasswordUpdate::Keep).unwrap();
+        s.save_project(project("P", vec![a.id])).unwrap();
+        let p = s.projects()[0].id;
+        s.add_to_project(p, &[a.id, b.id]).unwrap();
+        assert_eq!(s.projects()[0].connections, [a.id, b.id]);
+        assert!(matches!(
+            s.add_to_project(p, &[Uuid::new_v4()]),
+            Err(StoreError::NotFound(_))
+        ));
+        assert!(matches!(
+            s.add_to_project(Uuid::new_v4(), &[a.id]),
             Err(StoreError::NotFound(_))
         ));
     }

@@ -71,6 +71,8 @@ export function App() {
   const [catalogs, setCatalogs] = useState<Record<string, CompletionCatalog>>({});
   const catalogLoads = useRef(new Map<string, Promise<unknown>>());
   const restored = useRef(false);
+  /** Set by the restore, a render after it: the first save then sees the restored tabs. */
+  const [workspaceReady, setWorkspaceReady] = useState(false);
 
   useEffect(() => {
     api.listConnections().then(setConnections, (e: unknown) => {
@@ -99,6 +101,7 @@ export function App() {
   useEffect(() => {
     if (!connections || !projects || restored.current) return;
     restored.current = true;
+    setWorkspaceReady(true);
     const saved = loadWorkspace();
     if (!saved) return;
     const known = new Set(connections.map((c) => c.id));
@@ -123,7 +126,7 @@ export function App() {
   }, [connections, projects]);
 
   useEffect(() => {
-    if (!restored.current) return;
+    if (!workspaceReady) return;
     rememberActiveTab();
     const kept = tabs.flatMap((tab) => {
       const saved = persistTab(tab);
@@ -135,7 +138,7 @@ export function App() {
       if (index >= 0) active[key] = index;
     }
     saveWorkspace({ tabs: kept.map((k) => k.saved), active });
-  }, [tabs, activeTab, activeProject]);
+  }, [workspaceReady, tabs, activeTab, activeProject]);
 
   const project = projects?.find((p) => p.id === activeProject) ?? null;
   // The window says which project is shown.
@@ -169,6 +172,7 @@ export function App() {
       return setToast(toCommandError(e).message);
     }
     for (const t of own) closeTab(t, true);
+    activeByProject.current.delete(p.id);
     if (activeProject === p.id) showProject(null);
   }
 
@@ -225,10 +229,14 @@ export function App() {
     if (!window.confirm(`Delete the connection "${c.name}"?`)) return;
     try {
       setConnections(await api.deleteConnection(c.id));
+    } catch (e) {
+      return setToast(toCommandError(e).message);
+    }
+    for (const t of tabs.filter((t) => t.connectionId === c.id)) closeTab(t, true);
+    disconnectNavigator(c);
+    try {
       // The store took the connection out of every project.
       setProjects(await api.listProjects());
-      for (const t of tabs.filter((t) => t.connectionId === c.id)) closeTab(t, true);
-      disconnectNavigator(c);
     } catch (e) {
       setToast(toCommandError(e).message);
     }

@@ -133,12 +133,18 @@ pub fn save_imported(
     project: Option<Uuid>,
 ) -> CommandResult<Vec<SavedConnection>> {
     state.with_store(|s| {
+        // A project deleted meanwhile is refused before anything is saved.
+        if let Some(project) = project
+            && !s.projects().iter().any(|p| p.id == project)
+        {
+            return Err(platypus_store::StoreError::NotFound(project));
+        }
+        let ids: Vec<Uuid> = connections.iter().map(|c| c.id).collect();
         for connection in connections {
-            let id = connection.id;
             s.save(connection, PasswordUpdate::Clear)?;
-            if let Some(project) = project {
-                s.set_membership(id, project, true)?;
-            }
+        }
+        if let Some(project) = project {
+            s.add_to_project(project, &ids)?;
         }
         Ok(s.list().to_vec())
     })
