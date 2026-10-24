@@ -6,11 +6,13 @@
 mod analysis;
 mod dialect;
 pub mod dml;
+mod generate;
 mod lexer;
 mod source;
 
 pub use analysis::{Analysis, StatementKind, TableName, analyze};
 pub use dialect::Dialect;
+pub use generate::ObjectName;
 pub use lexer::{Lexer, Token, TokenKind};
 pub use source::{SelectItem, SourceTable, source_table};
 

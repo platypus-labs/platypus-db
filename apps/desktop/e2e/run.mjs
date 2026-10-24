@@ -70,6 +70,9 @@ for (const file of scenarios) {
       console.log(diagnose(exit, Buffer.concat(output).toString()));
       throw e;
     }
+    // A cold start (first launch of WebView2 on a CI runner) can take over 10 s to render
+    // the saved connections; scenarios start once the navigator shows them.
+    await page.waitFor(`document.querySelector('.tree-row') !== null`, 60_000);
     await scenario.default(page, ctx);
     passed++;
     console.log(`ok   ${file} (${Math.round(performance.now() - started)} ms)`);

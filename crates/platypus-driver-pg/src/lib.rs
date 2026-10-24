@@ -9,6 +9,7 @@
 #[doc(hidden)]
 pub mod columns;
 mod cursor;
+mod ddl;
 #[doc(hidden)]
 pub mod decode;
 mod meta;
@@ -17,6 +18,7 @@ mod tls;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
@@ -206,6 +208,21 @@ impl Connection for PgConnection {
         meta::catalog_columns(self).await
     }
 
+    async fn object_ddl(&self, object: &platypus_core::ObjectRef<'_>) -> Result<String> {
+        ddl::object_ddl(self, object).await
+    }
+
+    async fn object_properties(
+        &self,
+        object: &platypus_core::ObjectRef<'_>,
+    ) -> Result<Vec<platypus_core::Property>> {
+        ddl::object_properties(self, object).await
+    }
+
+    async fn databases(&self) -> Result<Vec<String>> {
+        ddl::databases(self).await
+    }
+
     fn transaction(&self) -> TransactionState {
         self.tx.state()
     }
@@ -228,6 +245,8 @@ impl Connection for PgConnection {
         platypus_core::Capabilities {
             transactions: true,
             cancel: true,
+            object_ddl: true,
+            multiple_databases: true,
             ..Default::default()
         }
     }
@@ -392,9 +411,16 @@ async fn next_batch(mut state: BatchState) -> Result<Option<(RecordBatch, BatchS
     Ok(Some((batch, state)))
 }
 
+/// How long an abandoned result may drain on its own before it is cancelled.
+const DRAIN_BEFORE_CANCEL: Duration = Duration::from_millis(100);
+
 impl Drop for BatchState {
-    /// An abandoned result is cancelled server-side and drained in the background; the
-    /// connection stays busy until then, so the cancel cannot hit the next statement.
+    /// An abandoned result is drained in the background, and cancelled server-side only
+    /// if it is still running after a moment; the connection stays busy until it is done.
+    ///
+    /// A cancel request reaches the backend as a signal, asynchronously: one sent for a
+    /// query that had already finished could land on the next statement and cancel it. Most
+    /// abandoned results (a paused page of rows) have finished, so they are only drained.
     fn drop(&mut self) {
         let (Some(mut rows), Some(guard)) = (self.rows.take(), self.guard.take()) else {
             return;
@@ -404,8 +430,14 @@ impl Drop for BatchState {
         };
         let canceller = self.canceller.clone();
         runtime.spawn(async move {
-            let _ = canceller.cancel().await;
-            while rows.next().await.is_some() {}
+            let drained = tokio::time::timeout(DRAIN_BEFORE_CANCEL, async {
+                while rows.next().await.is_some() {}
+            })
+            .await;
+            if drained.is_err() {
+                let _ = canceller.cancel().await;
+                while rows.next().await.is_some() {}
+            }
             drop(guard);
         });
     }

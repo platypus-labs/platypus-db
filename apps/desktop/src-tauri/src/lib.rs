@@ -165,6 +165,12 @@ pub fn run() {
             commands::files::read_clipboard,
             commands::settings::get_settings,
             commands::settings::set_setting,
+            commands::objects::object_ddl,
+            commands::objects::object_properties,
+            commands::objects::list_databases,
+            commands::objects::execute_statement,
+            commands::objects::generate_sql,
+            commands::objects::dialect_support,
         ])
         .run(tauri::generate_context!())
         .expect("error while running PlatypusDB");

@@ -485,7 +485,7 @@ export function QueryTab({
     if (typeof path !== "string") return;
     try {
       const sql = await api.readTextFile(path);
-      workbench().openTab("query", connection.id, { sql, filePath: path });
+      workbench().openTab("query", connection.id, { sql, filePath: path, database: tab.database });
     } catch (e) {
       onError(toCommandError(e).message);
     }

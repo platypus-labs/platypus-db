@@ -235,6 +235,17 @@ impl Connection for MySqlConnection {
         meta::catalog_columns(self).await
     }
 
+    async fn object_ddl(&self, object: &platypus_core::ObjectRef<'_>) -> Result<String> {
+        meta::object_ddl(self, object).await
+    }
+
+    async fn object_properties(
+        &self,
+        object: &platypus_core::ObjectRef<'_>,
+    ) -> Result<Vec<platypus_core::Property>> {
+        meta::object_properties(self, object).await
+    }
+
     fn transaction(&self) -> TransactionState {
         self.tx.state()
     }
@@ -268,6 +279,7 @@ impl Connection for MySqlConnection {
         platypus_core::Capabilities {
             transactions: true,
             cancel: true,
+            object_ddl: true,
             ..Default::default()
         }
     }

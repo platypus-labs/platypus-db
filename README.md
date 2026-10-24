@@ -14,8 +14,11 @@ scrolls through millions of rows.
   server keys are checked against `~/.ssh/known_hosts`. Connection **types** Development,
   Test and Production: production shows a PROD badge in red and opens in manual commit.
   **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`.
-- **Navigator**: schemas, tables, views, routines, columns, indexes and foreign keys, loaded
-  lazily, with a filter.
+- **Navigator**: databases (PostgreSQL), schemas, tables, views, routines, triggers, types,
+  extensions and events, loaded lazily, with a filter. Generate SELECT, INSERT, UPDATE,
+  DELETE, UPSERT or DDL; rename, truncate and drop with a preview of the statement.
+- **Object details**: properties, columns, indexes, constraints, foreign keys, incoming
+  references and the DDL of any object.
 - **SQL editor** (CodeMirror): run the statement under the cursor (`Ctrl+Enter`) or the
   whole script (`Alt+X`), errors pointed out in the text, autocompletion of keywords,
   tables and columns (including `alias.column`), query history, `.sql` files.

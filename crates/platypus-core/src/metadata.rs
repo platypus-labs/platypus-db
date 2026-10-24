@@ -6,7 +6,7 @@
 use arrow_array::{Array, StringArray};
 use arrow_schema::DataType;
 use futures::TryStreamExt;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{Connection, Error, ExecOptions, ExecResult, Result};
 
@@ -19,7 +19,7 @@ pub struct SchemaMeta {
     pub current: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ObjectKind {
     Table,
@@ -29,6 +29,16 @@ pub enum ObjectKind {
     Sequence,
     Function,
     Procedure,
+    /// Belongs to a table, named in [`ObjectMeta::parent`].
+    Trigger,
+    /// User-defined type: PostgreSQL enums, composite and range types.
+    Type,
+    /// PostgreSQL domain: a base type with constraints.
+    Domain,
+    /// PostgreSQL extension installed into the schema.
+    Extension,
+    /// MySQL scheduled event.
+    Event,
 }
 
 impl ObjectKind {
@@ -48,6 +58,20 @@ pub struct ObjectMeta {
     pub name: String,
     pub kind: ObjectKind,
     pub comment: Option<String>,
+    /// The table a trigger belongs to.
+    pub parent: Option<String>,
+}
+
+impl ObjectMeta {
+    #[must_use]
+    pub fn new(name: impl Into<String>, kind: ObjectKind, comment: Option<String>) -> Self {
+        Self {
+            name: name.into(),
+            kind,
+            comment,
+            parent: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -117,11 +141,51 @@ pub async fn query_catalog(conn: &dyn Connection, sql: &str) -> Result<Vec<Catal
         .collect())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConstraintKind {
+    PrimaryKey,
+    Unique,
+    Check,
+    /// PostgreSQL `EXCLUDE` constraints.
+    Exclusion,
+}
+
+/// A table constraint other than a foreign key (those are [`ForeignKeyMeta`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ConstraintMeta {
+    pub name: String,
+    pub kind: ConstraintKind,
+    pub columns: Vec<String>,
+    /// The constraint as the database prints it, e.g. `CHECK (total >= 0)`.
+    pub definition: String,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct TableDetails {
     pub columns: Vec<ColumnMeta>,
     pub indexes: Vec<IndexMeta>,
     pub foreign_keys: Vec<ForeignKeyMeta>,
+    pub constraints: Vec<ConstraintMeta>,
+    /// Foreign keys of other tables that point at this one.
+    pub referenced_by: Vec<ReferencingKey>,
+}
+
+/// One line of an object's properties, e.g. `Owner: platypus`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Property {
+    pub name: String,
+    pub value: String,
+}
+
+impl Property {
+    #[must_use]
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+        }
+    }
 }
 
 /// One result row with every value rendered as text.

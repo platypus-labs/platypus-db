@@ -44,10 +44,12 @@ export interface SqlEditorHandle {
 interface Props {
   initialValue: string;
   driver: DriverKind;
-  onChange: (text: string) => void;
-  onRun: (mode: RunMode) => void;
-  onSave: () => void;
-  onOpen: () => void;
+  onChange?: (text: string) => void;
+  onRun?: (mode: RunMode) => void;
+  onSave?: () => void;
+  onOpen?: () => void;
+  /** Shows SQL that cannot be edited, e.g. an object's DDL. */
+  readOnly?: boolean;
   /** Tables and columns to complete; keywords complete without it. */
   catalog?: CompletionCatalog | null;
 }
@@ -131,7 +133,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
 
   useEffect(() => {
     const run = (mode: RunMode) => () => {
-      callbacks.current.onRun(mode);
+      callbacks.current.onRun?.(mode);
       return true;
     };
     const state = EditorState.create({
@@ -151,6 +153,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         search({ top: true }),
         lintGutter(),
         flashField,
+        EditorState.readOnly.of(!!props.readOnly),
         syntaxHighlighting(highlight),
         languageConf.current.of(language(props.driver, props.catalog)),
         keymap.of([
@@ -160,12 +163,12 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
           { key: "Mod-/", run: toggleComment },
           {
             key: "Mod-s",
-            run: () => (callbacks.current.onSave(), true),
+            run: () => (callbacks.current.onSave?.(), true),
             preventDefault: true,
           },
           {
             key: "Mod-o",
-            run: () => (callbacks.current.onOpen(), true),
+            run: () => (callbacks.current.onOpen?.(), true),
             preventDefault: true,
           },
           ...closeBracketsKeymap,
@@ -177,7 +180,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         ]),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) {
-            callbacks.current.onChange(u.state.doc.toString());
+            callbacks.current.onChange?.(u.state.doc.toString());
             // Edits invalidate the reported error position.
             u.view.dispatch(setDiagnostics(u.state, []));
           }

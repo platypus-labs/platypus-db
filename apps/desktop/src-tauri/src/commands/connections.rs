@@ -192,12 +192,14 @@ pub struct SessionInfo {
     capabilities: Capabilities,
 }
 
-/// Opens a session for a saved connection. `password` overrides the stored one.
+/// Opens a session for a saved connection. `password` overrides the stored one, `database`
+/// the saved database (another database of the same server).
 #[tauri::command]
 pub async fn open_session(
     state: State<'_, AppState>,
     connection_id: Uuid,
     password: Option<String>,
+    database: Option<String>,
 ) -> CommandResult<SessionInfo> {
     let (config, production) = state.with_store(|s| {
         let saved = s
@@ -211,6 +213,10 @@ pub async fn open_session(
         let production = saved.connection_type == Some(ConnectionType::Prod);
         Ok((config_of(s, &saved, secret, &SshSecrets::new()), production))
     })?;
+    let mut config = config;
+    if let Some(database) = database {
+        config.database = database;
+    }
     let conn: Arc<dyn Connection> = Arc::from(connect(&config).await?);
     // Production starts in manual commit, so nothing changes until Commit.
     if production && conn.capabilities().transactions {

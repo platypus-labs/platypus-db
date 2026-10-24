@@ -29,7 +29,8 @@ A database feature that not every driver supports is an optional method on the
 the flag says whether the driver overrides it. `open_session` returns the capabilities, so
 the UI can hide what a connection cannot do.
 
-Existing optional methods are `explain` and `object_ddl`. To add one:
+Existing optional methods are `explain`, `object_ddl` and `databases`. `object_properties`
+is optional too, but needs no flag: its default is an empty list. To add one:
 1. Add the method, with a default that calls `unsupported("…")`.
 2. Add a flag in `Capabilities`, defaulting to `false`, and the same field in
    `Capabilities` in `api.ts`.
@@ -66,6 +67,9 @@ rather than checking the driver. It provides:
 - `bool_literal`, `binary_literal`, `has_default_keyword`, `insert_defaults`
 - `limit_clause`
 - `explain_json_prefix`
+- statements for the navigator (`generate.rs`): `select`, `insert`, `update`, `delete`,
+  `upsert`, `drop`, `rename`, `truncate`. `drop` and `rename` return `None` for an object
+  kind the dialect cannot drop or rename; `dialect_support` reports the kinds to the UI.
 
 `platypus_sql::dml` builds the data editor's `UPDATE`, `INSERT` and `DELETE` statements from
 text values and the columns' Arrow types, and `dml::apply` runs them all or none.
@@ -115,9 +119,13 @@ registerAction({
 |---|---|---|
 | `global` | — | shortcuts anywhere, including in the editor |
 | `navigator.connection` | `{ connection }` | navigator menu |
-| `navigator.schema` | `{ connection, schema }` | navigator menu |
-| `navigator.object` | `{ connection, schema, object, target }` | navigator menu |
-| `navigator.column` | `{ connection, schema, object, column }` | navigator menu |
+| `navigator.database` | `{ connection, database, name }` | navigator menu |
+| `navigator.schema` | `{ connection, database, schema }` | navigator menu |
+| `navigator.object` | `{ connection, database, schema, object, target }` | navigator menu |
+| `navigator.column` | `{ connection, database, schema, object, column }` | navigator menu |
+
+`database` is `null` for the connection's saved database. Otherwise it names another
+database of the same server (PostgreSQL), and sessions and tabs opened from there use it.
 | `grid` | `{ grid: GridApi, source }` | grid menu, and shortcuts while the grid has focus |
 
 To add a scope, augment `ActionScopes` from the feature's own module:
@@ -149,9 +157,17 @@ editor (`kind: "query"`) is the reference implementation, in `components/QueryTa
 without props. It provides:
 - the connections, and `setConnections` for commands that return the changed list;
 - `openTab`;
-- `sideSession`, the connection's navigator session;
+- `sideSession`, the navigator session of a connection and database;
+- `capabilities`, what an open session's driver supports;
 - `showError`;
-- `openSettings`.
+- `openSettings`;
+- `openDialog`, which shows a dialog from an action. Its `render(close)` returns the dialog.
+
+### Navigator refresh
+
+After changing objects, call `requestNavigatorRefresh({ connectionId, database, schema })`
+from `navigatorEvents.ts`. The navigator reloads that part of the tree, and autocompletion
+and open object tabs reload as well. Listen with `onNavigatorRefresh` to react to it.
 
 ### Settings
 

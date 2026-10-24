@@ -11,7 +11,7 @@ use futures::stream::BoxStream;
 
 use crate::{
     Capabilities, CatalogColumn, ConnectionConfig, DriverKind, Explain, ObjectMeta, ObjectRef,
-    ReferencingKey, Result, SchemaMeta, TableDetails, TransactionState, unsupported,
+    Property, ReferencingKey, Result, SchemaMeta, TableDetails, TransactionState, unsupported,
 };
 
 #[async_trait]
@@ -78,6 +78,19 @@ pub trait Connection: Send + Sync + fmt::Debug {
     async fn object_ddl(&self, object: &ObjectRef<'_>) -> Result<String> {
         let _ = object;
         Err(unsupported("object DDL"))
+    }
+
+    /// Descriptive properties of an object (owner, size, row estimate, ...), in display
+    /// order. Empty when the driver has none to show.
+    async fn object_properties(&self, object: &ObjectRef<'_>) -> Result<Vec<Property>> {
+        let _ = object;
+        Ok(Vec::new())
+    }
+
+    /// The databases of the server this session could switch to, sorted by name.
+    /// Optional: see [`Capabilities::multiple_databases`].
+    async fn databases(&self) -> Result<Vec<String>> {
+        Err(unsupported("listing databases"))
     }
 }
 

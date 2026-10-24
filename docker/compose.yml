@@ -30,6 +30,9 @@ services:
 
   mysql:
     image: mysql:8.4
+    # Binary logging is on by default; without this only SUPER may create triggers and
+    # functions, which the app and the tests do as the `platypus` user.
+    command: --log-bin-trust-function-creators=1
     environment:
       MYSQL_USER: platypus
       MYSQL_PASSWORD: platypus

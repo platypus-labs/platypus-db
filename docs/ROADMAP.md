@@ -139,8 +139,10 @@ Restano i P3.
 
 ### Gruppo C — Navigator e oggetti del database
 
-**Area:** `apps/desktop/src/navigator/`, `apps/desktop/src/objects/` (tab `object`), `meta.rs` di ogni driver, `platypus-core/src/metadata.rs`
+**Area:** `apps/desktop/src/components/Navigator.tsx`, `apps/desktop/src/objects/` (tab `object`), `meta.rs` e `ddl.rs` dei driver, `platypus-core/src/metadata.rs`, `platypus-sql/src/generate.rs`
 **Dipende da:** 0.2, 0.3, 0.6
+
+**Stato:** le P1 sono fatte. "MERGE" è un UPSERT per dialetto (`ON CONFLICT` in PostgreSQL e SQLite, `ON DUPLICATE KEY` in MySQL). Le righe stimate e le dimensioni compaiono già nelle proprietà del tab oggetto (PostgreSQL, MySQL); il resto delle P2/P3 è da fare.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|

@@ -11,6 +11,7 @@ pub mod files;
 pub mod grid;
 pub mod history;
 pub mod meta;
+pub mod objects;
 pub mod query;
 pub mod settings;
 pub mod sql;

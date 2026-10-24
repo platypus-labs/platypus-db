@@ -1,6 +1,7 @@
-import { type ComponentType, useEffect, useRef, useState } from "react";
+import { type ComponentType, Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { dispatchKey, registerAction } from "./actions";
-import { api, type CompletionCatalog, toCommandError, type SavedConnection } from "./api";
+import { api, type Capabilities, type CompletionCatalog, toCommandError, type SavedConnection } from "./api";
+import { onNavigatorRefresh } from "./navigatorEvents";
 import { ConnectionDialog } from "./components/ConnectionDialog";
 import { ImportDialog } from "./components/ImportDialog";
 import { connectionColor } from "./connections";
@@ -9,6 +10,7 @@ import { SettingsDialog } from "./components/SettingsDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { CommandPalette } from "./shell/CommandPalette";
 import "./tabs";
+import "./objects/actions";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { provideWorkbench, workbench } from "./workbench";
 import { type PersistedTab, loadWorkspace, saveWorkspace } from "./workspace";
@@ -33,11 +35,16 @@ export function App() {
   /** Closed tabs as they would be saved, newest last, for Ctrl+Shift+T. */
   const closedTabs = useRef<PersistedTab[]>([]);
   const tabBar = useRef<HTMLDivElement>(null);
+  /** Dialogs opened by actions through `workbench().openDialog`. */
+  const [dialogs, setDialogs] = useState<{ id: number; node: ReactNode }[]>([]);
+  const nextDialog = useRef(1);
+  /** What each open session's driver supports. */
+  const capabilities = useRef(new Map<number, Capabilities>());
   const [version, setVersion] = useState("");
   /** Open sessions by tab key; opened on a tab's first run. */
   const sessions = useRef(new Map<number, Promise<number | null>>());
-  /** Navigator sessions by connection id, separate from the editors' so browsing never
-   *  waits behind a running query. */
+  /** Navigator sessions by `dbKey`, separate from the editors' so browsing never waits
+   *  behind a running query. */
   const navSessions = useRef(new Map<string, Promise<number | null>>());
   /** Passwords typed this run, in memory only, so a second session does not ask again. */
   const passwords = useRef(new Map<string, string>());
@@ -109,8 +116,9 @@ export function App() {
     return new Promise<string | null>((resolve) => setPasswordRequest({ connection, resolve }));
   }
 
-  /** Opens a session, asking for the password when it is not saved; `null` on failure. */
-  async function connect(connection: SavedConnection): Promise<number | null> {
+  /** Opens a session, asking for the password when it is not saved; `null` on failure.
+   *  `database` opens another database of the server than the saved one. */
+  async function connect(connection: SavedConnection, database?: string | null): Promise<number | null> {
     let password: string | undefined;
     if (!connection.save_password && connection.driver !== "sqlite") {
       password = passwords.current.get(connection.id);
@@ -121,9 +129,10 @@ export function App() {
       }
     }
     try {
-      const { session_id } = await api.openSession(connection.id, password);
+      const session = await api.openSession(connection.id, password, database);
       if (password !== undefined) passwords.current.set(connection.id, password);
-      return session_id;
+      capabilities.current.set(session.session_id, session.capabilities);
+      return session.session_id;
     } catch (e) {
       passwords.current.delete(connection.id);
       setToast(`${connection.name}: ${toCommandError(e).message}`);
@@ -132,21 +141,34 @@ export function App() {
   }
 
   /** Loads (or with `force` reloads) the tables and columns the editors complete. */
-  function requestCatalog(connection: SavedConnection, force = false) {
-    if (!force && catalogLoads.current.has(connection.id)) return;
+  function requestCatalog(connection: SavedConnection, force = false, database?: string | null) {
+    const key = dbKey(connection.id, database);
+    if (!force && catalogLoads.current.has(key)) return;
     const loading = (async () => {
-      const sessionId = await navigatorSession(connection);
-      if (sessionId === null) return catalogLoads.current.delete(connection.id);
+      const sessionId = await navigatorSession(connection, database);
+      if (sessionId === null) return catalogLoads.current.delete(key);
       try {
         const catalog = await api.completionCatalog(sessionId);
-        setCatalogs((all) => ({ ...all, [connection.id]: catalog }));
+        setCatalogs((all) => ({ ...all, [key]: catalog }));
       } catch (e) {
-        catalogLoads.current.delete(connection.id);
+        catalogLoads.current.delete(key);
         console.warn("autocompletion catalog", e);
       }
     })();
-    catalogLoads.current.set(connection.id, loading);
+    catalogLoads.current.set(key, loading);
   }
+
+  // DDL run from the navigator changes what autocompletion should offer.
+  useEffect(
+    () =>
+      onNavigatorRefresh(({ connectionId, database }) => {
+        const connection = shell.current.connections?.find((c) => c.id === connectionId);
+        if (connection && catalogLoads.current.has(dbKey(connectionId, database))) {
+          requestCatalog(connection, true, database);
+        }
+      }),
+    [],
+  );
 
   /** Caches a session promise; failed or cancelled attempts are retried on next use. */
   function cached<K>(map: Map<K, Promise<number | null>>, key: K, open: () => Promise<number | null>) {
@@ -161,22 +183,27 @@ export function App() {
   function ensureSession(tab: TabModel): Promise<number | null> {
     return cached(sessions.current, tab.key, async () => {
       const connection = connectionById(tab.connectionId);
-      return connection ? connect(connection) : null;
+      return connection ? connect(connection, tab.database) : null;
     });
   }
 
-  function navigatorSession(connection: SavedConnection) {
-    return cached(navSessions.current, connection.id, () => connect(connection));
+  function navigatorSession(connection: SavedConnection, database?: string | null) {
+    return cached(navSessions.current, dbKey(connection.id, database), () => connect(connection, database));
   }
 
+  /** Closes the navigator sessions of every database of the connection. */
   function disconnectNavigator(connection: SavedConnection) {
     passwords.current.delete(connection.id);
-    catalogLoads.current.delete(connection.id);
-    const session = navSessions.current.get(connection.id);
-    navSessions.current.delete(connection.id);
-    void session?.then((id) => {
-      if (id !== null) void api.closeSession(id);
-    });
+    for (const key of [...catalogLoads.current.keys()]) {
+      if (key.split("\u0000")[0] === connection.id) catalogLoads.current.delete(key);
+    }
+    for (const [key, session] of [...navSessions.current]) {
+      if (key.split("\u0000")[0] !== connection.id) continue;
+      navSessions.current.delete(key);
+      void session.then((id) => {
+        if (id !== null) void api.closeSession(id);
+      });
+    }
   }
 
   function closeTab(tab: TabModel, confirmed = false) {
@@ -224,9 +251,15 @@ export function App() {
     connections: () => shell.current.connections ?? [],
     setConnections,
     openTab: (kind, connectionId, init) => shell.current.addTab(createTab(kind, connectionId, init)),
-    sideSession: (connection) => shell.current.navigatorSession(connection),
+    sideSession: (connection, database) => shell.current.navigatorSession(connection, database),
+    capabilities: (sessionId) => capabilities.current.get(sessionId),
     showError: setToast,
     openSettings: () => setSettingsOpen(true),
+    openDialog: (render) => {
+      const id = nextDialog.current++;
+      const close = () => setDialogs((all) => all.filter((d) => d.id !== id));
+      setDialogs((all) => [...all, { id, node: render(close) }]);
+    },
   });
 
   useEffect(() => registerShellActions(shell), []);
@@ -241,11 +274,17 @@ export function App() {
   }, []);
 
   function patchTab(key: number, patch: Partial<TabModel>) {
-    setTabs((all) => all.map((t) => (t.key === key ? { ...t, ...patch } : t)));
+    // The patch comes from the tab's own component, so it matches the tab's kind.
+    setTabs((all) => all.map((t) => (t.key === key ? ({ ...t, ...patch } as TabModel) : t)));
   }
 
   function tabTitle(tab: TabModel) {
-    const name = connectionById(tab.connectionId)?.name ?? "?";
+    const connection = connectionById(tab.connectionId);
+    // Another database than the saved one is part of the name.
+    const name =
+      tab.database && tab.database !== connection?.database
+        ? `${connection?.name ?? "?"}/${tab.database}`
+        : (connection?.name ?? "?");
     const label = tabKind(tab.kind)?.label(tab);
     return label ? `${label} — ${name}` : name;
   }
@@ -261,8 +300,9 @@ export function App() {
         onDelete={(c) => void deleteConnection(c)}
         onOpenTab={(c, init) => addTab(createTab("query", c.id, init))}
         session={navigatorSession}
+        capabilities={(sessionId) => capabilities.current.get(sessionId)}
         disconnect={disconnectNavigator}
-        onRefresh={(c) => requestCatalog(c, true)}
+        onRefresh={(c, database) => requestCatalog(c, true, database)}
         onError={setToast}
       />
       <main className="workspace">
@@ -316,9 +356,9 @@ export function App() {
                 active={t.key === activeTab}
                 ensureSession={() => ensureSession(t)}
                 onChange={(patch) => patchTab(t.key, patch)}
-                sideSession={() => navigatorSession(connection)}
-                catalog={catalogs[connection.id] ?? null}
-                onNeedCatalog={(force) => requestCatalog(connection, force)}
+                sideSession={() => navigatorSession(connection, t.database)}
+                catalog={catalogs[dbKey(connection.id, t.database)] ?? null}
+                onNeedCatalog={(force) => requestCatalog(connection, force, t.database)}
                 onError={setToast}
               />
             )
@@ -362,6 +402,9 @@ export function App() {
       {paletteOpen && (
         <CommandPalette connections={connections ?? []} catalogs={catalogs} onClose={() => setPaletteOpen(false)} />
       )}
+      {dialogs.map((d) => (
+        <Fragment key={d.id}>{d.node}</Fragment>
+      ))}
       {passwordRequest && (
         <PasswordPrompt
           connection={passwordRequest.connection}
@@ -375,6 +418,11 @@ export function App() {
   );
 }
 
+/** Sessions and catalogs are per connection and database; `null` is the saved one. */
+function dbKey(connectionId: string, database?: string | null) {
+  return `${connectionId}\u0000${database ?? ""}`;
+}
+
 interface ShellApi {
   tabs: TabModel[];
   activeTab: number | null;
@@ -382,7 +430,7 @@ interface ShellApi {
   addTab: (tab: TabModel) => void;
   closeTab: (tab: TabModel) => void;
   setActiveTab: (key: number) => void;
-  navigatorSession: (connection: SavedConnection) => Promise<number | null>;
+  navigatorSession: (connection: SavedConnection, database?: string | null) => Promise<number | null>;
   reopenTab: () => void;
   openPalette: () => void;
 }
