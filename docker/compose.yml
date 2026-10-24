@@ -86,3 +86,59 @@ services:
       timeout: 10s
       retries: 90
       start_period: 10s
+
+  # PostgreSQL-compatible servers, not started by default:
+  # `docker compose --profile pgwire up -d --wait`. TimescaleDB runs the PostgreSQL seed;
+  # CockroachDB and YugabyteDB run none, and the conformance tests seed them.
+  timescale:
+    image: timescale/timescaledb:2.30.2-pg17
+    profiles: [pgwire]
+    environment:
+      POSTGRES_USER: platypus
+      POSTGRES_PASSWORD: platypus
+      POSTGRES_DB: platypus
+    ports:
+      - "55433:5432"
+    volumes:
+      - ./postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platypus -d platypus"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  # Insecure single node: user `root`, no password. The healthcheck turns temporary tables
+  # on, experimental in CockroachDB and used by the conformance tests.
+  cockroach:
+    image: cockroachdb/cockroach:v26.2.7
+    profiles: [pgwire]
+    command: start-single-node --insecure
+    environment:
+      COCKROACH_DATABASE: platypus
+    ports:
+      - "56257:26257"
+    healthcheck:
+      test:
+        - CMD
+        - cockroach
+        - sql
+        - --insecure
+        - -e
+        - SET CLUSTER SETTING sql.defaults.experimental_temporary_tables.enabled = true
+      interval: 2s
+      timeout: 5s
+      retries: 90
+
+  # User `yugabyte`, password `yugabyte`, database `yugabyte`.
+  yugabyte:
+    image: yugabytedb/yugabyte:2025.2.6.0-b111
+    profiles: [pgwire]
+    command: bin/yugabyted start --background=false
+    ports:
+      - "55434:5433"
+    healthcheck:
+      test: ["CMD-SHELL", "bin/ysqlsh -h $$(hostname) -c 'SELECT 1'"]
+      interval: 3s
+      timeout: 5s
+      retries: 100
+      start_period: 20s

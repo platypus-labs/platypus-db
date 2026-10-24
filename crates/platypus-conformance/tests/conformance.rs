@@ -258,6 +258,93 @@ async fn duckdb_backend() -> Backend {
     }
 }
 
+const PG_SEED: &str = include_str!("../../../docker/postgres/01-seed.sql");
+
+/// Serializes seeding: the tests run in parallel and each lists the backends.
+static SEEDING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Runs the PostgreSQL seed on a server that ran none (CockroachDB, YugabyteDB), once.
+async fn seed_pg_wire(config: &ConnectionConfig, name: &str) {
+    let _seeding = SEEDING.lock().await;
+    let conn = PgDriver.connect(config).await.unwrap();
+    // The orders are seeded last: a seed cut short is run again.
+    let seeded = platypus_core::query_text(&*conn, "SELECT count(*) FROM demo.orders").await;
+    if seeded.is_ok_and(|rows| rows == [[Some("20000".to_owned())]]) {
+        return;
+    }
+    run(&*conn, "DROP SCHEMA IF EXISTS demo CASCADE")
+        .await
+        .unwrap_or_else(|e| panic!("{name}: {e}"));
+    for statement in platypus_sql::split(PG_SEED, platypus_sql::Dialect::Postgres) {
+        let sql = statement.text(PG_SEED);
+        // The type zoo and the large table are for the PostgreSQL driver's own tests.
+        if ["mood", "type_zoo", "big_table"]
+            .iter()
+            .any(|t| sql.contains(t))
+        {
+            continue;
+        }
+        run(&*conn, sql)
+            .await
+            .unwrap_or_else(|e| panic!("{name}: seed: {sql}: {e}"));
+    }
+}
+
+/// The servers that speak the PostgreSQL protocol, run with the PostgreSQL driver.
+async fn pg_wire_backends() -> Vec<Backend> {
+    let mut all = Vec::new();
+    for (name, product, env, default, seed) in [
+        (
+            "timescale",
+            "PostgreSQL",
+            "PLATYPUS_TEST_TIMESCALE_URL",
+            "postgres://platypus:platypus@localhost:55433/platypus?sslmode=disable",
+            false,
+        ),
+        (
+            "cockroach",
+            "CockroachDB",
+            "PLATYPUS_TEST_COCKROACH_URL",
+            "postgres://root@localhost:56257/platypus?sslmode=disable",
+            true,
+        ),
+        (
+            "yugabyte",
+            "YugabyteDB",
+            "PLATYPUS_TEST_YUGABYTE_URL",
+            "postgres://yugabyte:yugabyte@localhost:55434/yugabyte?sslmode=disable",
+            true,
+        ),
+    ] {
+        let Some(config) = server_config(env, default, product).await else {
+            continue;
+        };
+        if seed {
+            seed_pg_wire(&config, name).await;
+        }
+        all.push(Backend {
+            name,
+            product,
+            config,
+            schema: "demo".to_owned(),
+            series_sql: format!(
+                "SELECT g AS id, 'row ' || g AS label FROM generate_series(1, {SERIES_ROWS}) g"
+            ),
+            endless_sql: "SELECT pg_sleep(600)",
+            kill: Some(if name == "cockroach" {
+                (
+                    "SELECT quote_literal(current_setting('session_id'))",
+                    "CANCEL SESSION",
+                )
+            } else {
+                ("SELECT pg_backend_pid()", "SELECT pg_terminate_backend")
+            }),
+            _dir: None,
+        });
+    }
+    all
+}
+
 async fn backends() -> Vec<Backend> {
     let mut all = Vec::new();
     if let Some(config) = server_config(
@@ -307,6 +394,7 @@ async fn backends() -> Vec<Backend> {
             });
         }
     }
+    all.extend(pg_wire_backends().await);
     all.extend(mssql_backend().await);
     all.push(sqlite_backend().await);
     all.push(duckdb_backend().await);
@@ -323,8 +411,24 @@ async fn collect(b: &Backend, conn: &dyn Connection, sql: &str) -> Vec<RecordBat
     }
 }
 
+/// Runs `sql`, again after a serialization failure outside a transaction: YugabyteDB
+/// fails DDL that races the other tests' DDL with `40001`, which clients are to retry.
+async fn execute(conn: &dyn Connection, sql: &str) -> Result<ExecResult, Error> {
+    for _ in 0..20 {
+        match conn.execute(sql, &ExecOptions::default()).await {
+            Err(Error::Database(e))
+                if e.code.as_deref() == Some("40001") && !conn.transaction().open =>
+            {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            other => return other,
+        }
+    }
+    conn.execute(sql, &ExecOptions::default()).await
+}
+
 async fn affected(b: &Backend, conn: &dyn Connection, sql: &str) -> u64 {
-    match conn.execute(sql, &ExecOptions::default()).await {
+    match execute(conn, sql).await {
         Ok(ExecResult::Affected { rows }) => rows,
         other => panic!("{}: expected a row count from {sql}, got {other:?}", b.name),
     }
@@ -337,7 +441,7 @@ fn cell(batch: &RecordBatch, column: usize, row: usize) -> Option<String> {
 
 /// Runs `sql` to completion, returning the first error from either phase.
 async fn run(conn: &dyn Connection, sql: &str) -> Result<(), Error> {
-    match conn.execute(sql, &ExecOptions::default()).await? {
+    match execute(conn, sql).await? {
         ExecResult::Rows(stream) => stream.try_for_each(|_| async { Ok(()) }).await,
         ExecResult::Affected { .. } => Ok(()),
     }
@@ -446,14 +550,14 @@ async fn maps_errors_with_their_position() {
             }
             other => panic!("{}: expected a database error, got {other:?}", b.name),
         }
-        // DuckDB reads `FROMM` as an alias and stops at `t`.
-        let at = if b.config.driver == DriverKind::DuckDb {
-            16
-        } else {
-            10
+        // DuckDB reads `FROMM` as an alias and stops at `t`; CockroachDB gives no position.
+        let at = match (b.config.driver, b.name) {
+            (DriverKind::DuckDb, _) => Some(16),
+            (_, "cockroach") => None,
+            _ => Some(10),
         };
         match run(&*conn, "SELECT * FROMM t").await {
-            Err(Error::Database(e)) => assert_eq!(e.position, Some(at), "{}: {e}", b.name),
+            Err(Error::Database(e)) => assert_eq!(e.position, at, "{}: {e}", b.name),
             other => panic!("{}: expected a syntax error, got {other:?}", b.name),
         }
         // The session is still usable after errors.
@@ -467,14 +571,23 @@ async fn cancels_running_queries() {
     for b in backends().await {
         let conn = b.connect().await;
         let handle = conn.cancel_handle();
+        // Again until the query stops: a cancel that arrives before the query starts (a busy
+        // YugabyteDB) is lost.
         let cancel = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(500)).await;
-            handle.cancel().await
+            loop {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                if let Err(e) = handle.cancel().await {
+                    return e;
+                }
+            }
         });
         let result = tokio::time::timeout(Duration::from_secs(30), run(&*conn, b.endless_sql))
             .await
             .unwrap_or_else(|_| panic!("{}: cancel did not stop the query", b.name));
-        cancel.await.unwrap().unwrap();
+        cancel.abort();
+        if let Ok(e) = cancel.await {
+            panic!("{}: cancel failed: {e}", b.name);
+        }
         assert!(
             matches!(result, Err(Error::Cancelled)),
             "{}: got {result:?}",
@@ -1348,7 +1461,8 @@ async fn arrays_fixture(conn: &dyn Connection) {
     for sql in [
         "DROP TABLE IF EXISTS demo.conf_arrays",
         "DROP TYPE IF EXISTS demo.conf_pair",
-        "CREATE TYPE demo.conf_pair AS (label TEXT, n INT)",
+        // INT4: `INT` is 64-bit in CockroachDB.
+        "CREATE TYPE demo.conf_pair AS (label TEXT, n INT4)",
         "CREATE TABLE demo.conf_arrays (id INT PRIMARY KEY, tags TEXT[], nums INT[], \
          pair demo.conf_pair, pairs demo.conf_pair[])",
         "INSERT INTO demo.conf_arrays (id) VALUES (1)",
@@ -1555,14 +1669,14 @@ async fn sizes_tables_and_nests_partitions() {
         let conn = b.connect().await;
         let objects = conn.objects(&b.schema).await.unwrap();
         let customers = objects.iter().find(|o| o.name == "customers").unwrap();
-        // SQLite keeps no statistics, DuckDB only row estimates.
+        // SQLite keeps no statistics, DuckDB only row estimates, CockroachDB no page counts.
         assert_eq!(
             customers.size.is_some(),
-            !b.config.driver.is_embedded(),
+            !b.config.driver.is_embedded() && b.name != "cockroach",
             "{}: {customers:?}",
             b.name
         );
-        if b.config.driver != DriverKind::Postgres {
+        if b.config.driver != DriverKind::Postgres || b.name == "cockroach" {
             continue;
         }
         let details = conn.table_details(&b.schema, "customers").await.unwrap();
@@ -1621,6 +1735,10 @@ async fn reads_geometries() {
         points: vec![[0.0, 0.0], [2.0, 1.0]],
     };
     for b in backends().await {
+        // CockroachDB has none of PostgreSQL's geometric types.
+        if b.name == "cockroach" {
+            continue;
+        }
         let conn = b.connect().await;
         let (sql, expected) = match b.config.driver {
             DriverKind::Postgres => (

@@ -19,7 +19,7 @@ platypus-driver-pg.workspace = true
 platypus-driver-sqlite.workspace = true
 platypus-sql.workspace = true
 tempfile.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 
 [lints]
 workspace = true

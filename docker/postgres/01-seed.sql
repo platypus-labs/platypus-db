@@ -30,14 +30,14 @@ INSERT INTO customers (email, full_name, country, created_at)
 SELECT 'user' || g || '@example.com',
        'Customer ' || g,
        (ARRAY['IT', 'DE', 'FR', 'US', 'JP'])[1 + g % 5],
-       now() - make_interval(hours => g)
+       now() - g * interval '1 hour'
 FROM generate_series(1, 1000) AS g;
 
 INSERT INTO orders (customer_id, total, status, placed_at)
 SELECT 1 + g % 1000,
        round((random() * 500)::numeric, 2),
        (ARRAY['new', 'paid', 'shipped', 'cancelled'])[1 + g % 4],
-       now() - make_interval(mins => g)
+       now() - g * interval '1 minute'
 FROM generate_series(1, 20000) AS g;
 
 -- One column per interesting type, for Arrow type-mapping tests.
@@ -96,6 +96,6 @@ SELECT g AS id,
        md5(g::text) AS hash,
        g % 1000 AS bucket,
        random() * 1000 AS score,
-       now() - make_interval(secs => g) AS ts
+       now() - g * interval '1 second' AS ts
 FROM generate_series(1, 1000000) AS g;
 ALTER TABLE big_table ADD PRIMARY KEY (id);
