@@ -207,7 +207,9 @@ pub fn create_script_folder(
 /// Renames or moves a script or folder; links follow it.
 fn rename(root: &Path, from: &str, to: &str) -> CommandResult<()> {
     let (source, target) = (resolve(root, from)?, resolve(root, to)?);
-    if target.exists() {
+    // On a case-insensitive file system `a.sql` to `A.sql` finds the file itself.
+    let same_file = fs::canonicalize(&source).ok() == fs::canonicalize(&target).ok();
+    if target.exists() && !same_file {
         return Err(CommandError::new("exists", format!("{to} already exists")));
     }
     if let Some(parent) = target.parent() {
@@ -317,6 +319,8 @@ mod tests {
         rename(root, "reports", "old/reports").unwrap();
         assert_eq!(read_links(root).get("old/reports/Monthly.sql"), Some(&c));
         assert!(rename(root, "Script.sql", "old").is_err(), "taken");
+        rename(root, "Script.sql", "script.sql").unwrap();
+        assert!(root.join("script.sql").exists());
         delete(root, "old").unwrap();
         assert!(read_links(root).is_empty());
         assert_eq!(paths(root).len(), 1);

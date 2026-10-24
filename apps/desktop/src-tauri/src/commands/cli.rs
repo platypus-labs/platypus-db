@@ -93,14 +93,16 @@ fn invocation(
             if let Some(port) = port {
                 args.push(format!("--port={port}"));
             }
+            // The default needs no option: the MariaDB client, often installed as `mysql`,
+            // does not know `--ssl-mode`.
             let mode = match config.ssl_mode {
-                SslMode::Disable => "DISABLED",
-                SslMode::Prefer => "PREFERRED",
-                SslMode::Require => "REQUIRED",
-                SslMode::VerifyCa => "VERIFY_CA",
-                SslMode::VerifyFull => "VERIFY_IDENTITY",
+                SslMode::Disable => Some("DISABLED"),
+                SslMode::Prefer => None,
+                SslMode::Require => Some("REQUIRED"),
+                SslMode::VerifyCa => Some("VERIFY_CA"),
+                SslMode::VerifyFull => Some("VERIFY_IDENTITY"),
             };
-            args.push(format!("--ssl-mode={mode}"));
+            args.extend(mode.map(|m| format!("--ssl-mode={m}")));
             if let Some(cert) = &config.ssl_root_cert {
                 args.push(format!("--ssl-ca={}", cert.display()));
             }
@@ -200,6 +202,10 @@ mod tests {
         config.driver = DriverKind::MySql;
         let (args, env) = invocation(&config, "db", None);
         assert_eq!(args.last().map(String::as_str), Some("shop"));
+        assert!(
+            !args.iter().any(|a| a.starts_with("--ssl-mode")),
+            "default SSL mode"
+        );
         assert!(env.contains(&("MYSQL_PWD", "s3cret".to_owned())));
     }
 }

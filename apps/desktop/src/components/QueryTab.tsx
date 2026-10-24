@@ -210,6 +210,8 @@ export function QueryTab({
   const sources = useRef(new Map<string, Promise<EditSource | null>>());
   /** What the last run ran, run again after saving edited rows. */
   const lastPlanned = useRef<Planned[]>([]);
+  /** Parameter values answered in the last run, reused when it runs again. */
+  const lastAnswers = useRef<Record<string, string>>({});
   /** SQL that undoes the last saved edits. */
   const [undoScript, setUndoScript] = useState<string | null>(null);
 
@@ -356,6 +358,7 @@ export function QueryTab({
     );
     setAsking(null);
     if (!answer) return null;
+    Object.assign(lastAnswers.current, answer);
     for (const k of ask) if (!k.startsWith("?")) defined.add(k);
     return { ...variables, ...answer };
   }
@@ -388,6 +391,13 @@ export function QueryTab({
     setTerminalLog((log) => [...log, { id, sql, text, failed }]);
   }
 
+  /** Shows the checks before running `planned` (UPDATE without WHERE, production
+   *  changes); false when the user declines. */
+  async function confirmed(planned: Planned[]): Promise<boolean> {
+    const request = await check(connection, planned.flatMap((p) => p.checks), sideSession);
+    return !request || new Promise<boolean>((resolve) => setGuard({ request, resolve }));
+  }
+
   /** Runs what `mode` selects in the editor, or `again` (the statements of the last run). */
   async function run(mode: RunMode, force = false, again?: Planned[]) {
     if (running && !force) return;
@@ -409,10 +419,7 @@ export function QueryTab({
     }
     setBlocked(null);
     // Statements of a run asked about already go again without asking.
-    if (!again) {
-      const request = await check(connection, planned.flatMap((p) => p.checks), sideSession);
-      if (request && !(await new Promise<boolean>((resolve) => setGuard({ request, resolve })))) return;
-    }
+    if (!again && !(await confirmed(planned))) return;
     const sessionId = await ensureSession();
     if (sessionId === null) return;
     onNeedCatalog(false);
@@ -432,8 +439,10 @@ export function QueryTab({
     setRunning(true);
     editor.current!.setError(null);
 
-    const variables = { ...(tab.variables ?? {}) };
-    const defined = new Set<string>();
+    // A run again after saving edited rows reuses the values answered last time.
+    if (!again) lastAnswers.current = {};
+    const variables = { ...(tab.variables ?? {}), ...lastAnswers.current };
+    const defined = new Set<string>(again ? Object.keys(variables) : []);
     const keepVariables = () =>
       onChange({ variables: Object.fromEntries(Object.entries(variables).filter(([k]) => !k.startsWith("?"))) });
     // Set by `@export`, taken by the next statement.
@@ -450,9 +459,12 @@ export function QueryTab({
           return { kind: "message", summary: `${c.variable} = ${c.value}`, text: `${c.variable} = ${c.value}` };
         case "echo":
           return { kind: "message", summary: c.text.slice(0, 60) || "(empty)", text: c.text };
-        case "export":
-          pending.export = { path: c.path, format: c.format };
-          return { kind: "message", summary: `Next rows to ${c.path}`, text: `The next statement's rows go to ${c.path}.` };
+        case "export": {
+          const path = resolvePath(c.path, tab.filePath);
+          if (!path) return { kind: "error", error: clientError("Save the script first, or give @export an absolute path.") };
+          pending.export = { path, format: c.format };
+          return { kind: "message", summary: `Next rows to ${c.path}`, text: `The next statement's rows go to ${path}.` };
+        }
         case "error":
           return { kind: "error", error: clientError(c.message) };
         case "include": {
@@ -465,6 +477,11 @@ export function QueryTab({
             const text = await api.readTextFile(path);
             const spans = (await api.analyzeSql(text, connection.driver, 0)).statements;
             const added = plannedOf(text, spans, -1, p.depth + 1);
+            // The file's statements get the checks the editor's had before the run.
+            if (connection.read_only && added.some((a) => !a.readOnly)) {
+              return { kind: "error", error: clientError(`${connection.name} is read-only and ${path} may modify data.`) };
+            }
+            if (!(await confirmed(added))) return { kind: "error", error: clientError("Cancelled", "cancelled") };
             const addedResults = added.map((a) => resultOf(a, false));
             queue.splice(i + 1, 0, ...added);
             own.splice(i + 1, 0, ...addedResults);
@@ -560,7 +577,15 @@ export function QueryTab({
     const { from, to } = ed.getSelection();
     const script = from !== to ? ed.getText().slice(from, to) : ed.getText();
     if (!script.trim()) return;
-    if (connection.read_only && !window.confirm(`${connection.name} is read-only, and the client is not checked. Run anyway?`)) return;
+    const planned = plannedOf(script, (await api.analyzeSql(script, connection.driver, 0)).statements, 0);
+    if (
+      connection.read_only &&
+      planned.some((p) => !p.readOnly) &&
+      !window.confirm(`${connection.name} is read-only and this may modify data. Run anyway?`)
+    ) {
+      return;
+    }
+    if (!(await confirmed(planned))) return;
     const sessionId = await ensureSession();
     if (sessionId === null) return;
     const client = cliName(connection.driver);
@@ -632,7 +657,8 @@ export function QueryTab({
   function closeResult(id: number) {
     const i = results.findIndex((r) => r.id === id);
     const r = results[i];
-    if (!r || (running && r.status.kind === "running")) return;
+    // The run in progress places its results by position.
+    if (!r || running) return;
     if (r.jobId !== null) {
       void api.closeQuery(r.jobId);
       jobs.current = jobs.current.filter((j) => j !== r.jobId);

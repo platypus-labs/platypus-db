@@ -212,7 +212,10 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         history(),
         drawSelection(),
         EditorState.allowMultipleSelections.of(true),
-        rectangularSelection(),
+        // Ctrl+click opens the object under it, so Alt+click adds a cursor and
+        // Shift+Alt+drag selects a rectangle, as in VS Code.
+        EditorView.clickAddsSelectionRange.of((e) => e.altKey && !e.shiftKey),
+        rectangularSelection({ eventFilter: (e) => e.altKey && e.shiftKey }),
         crosshairCursor(),
         indentOnInput(),
         bracketMatching(),

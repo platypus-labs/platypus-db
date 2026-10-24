@@ -48,6 +48,12 @@ export interface BuilderJoin {
 
 const detailsKey = (t: { schema: string; name: string }) => `${t.schema}\u0000${t.name}`;
 
+/** The columns a foreign key references: as declared, else (SQLite `REFERENCES t`) the
+ *  referenced table's primary key. */
+function referenced(columns: string[], target: TableDetails | undefined): string[] {
+  return columns.length ? columns : (target?.columns.filter((c) => c.primary_key).map((c) => c.name) ?? []);
+}
+
 /** The joins of `tables`: each one after the first, joined to the first earlier table one
  *  of their foreign keys links. */
 export function joinsOf(tables: BuilderTable[], details: Map<string, TableDetails>): BuilderJoin[] {
@@ -58,12 +64,15 @@ export function joinsOf(tables: BuilderTable[], details: Map<string, TableDetail
       const ld = details.get(detailsKey(left));
       const out = rd?.foreign_keys.find((fk) => fk.ref_schema === left.schema && fk.ref_table === left.name);
       const back = ld?.foreign_keys.find((fk) => fk.ref_schema === right.schema && fk.ref_table === right.name);
-      if (out) {
-        joins.push({ key: `${left.id}-${right.id}-${out.name}`, left, right, on: out.ref_columns.map((c, k) => [c, out.columns[k]!]) });
+      // A key whose columns cannot be told is no join: the table is cross joined.
+      if (out && referenced(out.ref_columns, ld).length) {
+        const refs = referenced(out.ref_columns, ld);
+        joins.push({ key: `${left.id}-${right.id}-${out.name}`, left, right, on: refs.map((c, k) => [c, out.columns[k]!]) });
         return;
       }
-      if (back) {
-        joins.push({ key: `${left.id}-${right.id}-${back.name}`, left, right, on: back.columns.map((c, k) => [c, back.ref_columns[k]!]) });
+      if (back && referenced(back.ref_columns, rd).length) {
+        const refs = referenced(back.ref_columns, rd);
+        joins.push({ key: `${left.id}-${right.id}-${back.name}`, left, right, on: back.columns.map((c, k) => [c, refs[k]!]) });
         return;
       }
     }
