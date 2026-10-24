@@ -20,10 +20,10 @@ use tokio::sync::watch;
 use crate::error::CommandError;
 
 /// Rows fetched ahead of what the grid has asked for.
-pub const PREFETCH_ROWS: usize = 10_000;
+pub const PREFETCH_ROWS: usize = 1_000;
 /// Buffered Arrow data per result before fetching stops.
 pub const MEMORY_LIMIT_BYTES: usize = 512 * 1024 * 1024;
-const BATCH_SIZE: usize = 2048;
+const BATCH_SIZE: usize = 500;
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Serialize)]
@@ -68,6 +68,8 @@ pub enum QueryEvent {
     },
     Progress {
         rows: usize,
+        /// Still reading from the server; `false` once paused until the grid asks for more.
+        fetching: bool,
     },
     /// No more rows will arrive. `complete` is false when the memory cap stopped fetching.
     Finished {
@@ -235,6 +237,7 @@ impl Job {
         let started = Instant::now();
         let options = ExecOptions {
             batch_size: BATCH_SIZE,
+            paged: true,
         };
         let mut stream = match conn.execute(&sql, &options).await {
             Err(error) => {
@@ -271,7 +274,6 @@ impl Job {
         });
 
         let mut demand = self.target.subscribe();
-        let mut reported = 0;
         let mut last_report = Instant::now();
         let mut complete = true;
         loop {
@@ -282,10 +284,10 @@ impl Job {
                 break;
             }
             if (*demand.borrow()).min(cap) <= rows {
-                if rows != reported {
-                    send(QueryEvent::Progress { rows });
-                    reported = rows;
-                }
+                send(QueryEvent::Progress {
+                    rows,
+                    fetching: false,
+                });
                 if demand
                     .wait_for(|target| (*target).min(cap) > rows)
                     .await
@@ -293,6 +295,10 @@ impl Job {
                 {
                     break;
                 }
+                send(QueryEvent::Progress {
+                    rows,
+                    fetching: true,
+                });
             }
             match stream.next().await {
                 None => break,
@@ -312,8 +318,10 @@ impl Job {
                 }
             }
             if last_report.elapsed() >= PROGRESS_INTERVAL {
-                reported = lock(&self.buffer).rows;
-                send(QueryEvent::Progress { rows: reported });
+                send(QueryEvent::Progress {
+                    rows: lock(&self.buffer).rows,
+                    fetching: true,
+                });
                 last_report = Instant::now();
             }
         }

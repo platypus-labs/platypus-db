@@ -148,7 +148,7 @@ let nextResultId = 1;
 
 /** A new result tab for `sql`, before it has a job. */
 function newResult(sql: string, offset: number, status: ResultStatus, limit: number | null): Result {
-  return { id: nextResultId++, sql, offset, jobId: null, columns: null, rows: 0, status, limit };
+  return { id: nextResultId++, sql, offset, jobId: null, columns: null, rows: 0, fetching: false, status, limit };
 }
 
 function isTerminal(status: ResultStatus, limited: boolean) {
@@ -305,11 +305,11 @@ export function QueryTab({
           case "started":
             status = { kind: "rows", finished: false, complete: true, elapsedMs: event.elapsed_ms };
             if (seen) seen.columns = event.columns;
-            update(result.id, { columns: event.columns, status });
+            update(result.id, { columns: event.columns, fetching: true, status });
             break;
           case "progress":
             if (seen) seen.rows = event.rows;
-            update(result.id, { rows: event.rows });
+            update(result.id, { rows: event.rows, fetching: event.fetching });
             break;
           case "finished":
             if (seen) seen.rows = event.rows;
@@ -320,7 +320,7 @@ export function QueryTab({
               stopped: event.stopped,
               elapsedMs: event.elapsed_ms,
             };
-            update(result.id, { rows: event.rows, status });
+            update(result.id, { rows: event.rows, fetching: false, status });
             break;
           case "affected":
             status = { kind: "affected", rows: event.rows, elapsedMs: event.elapsed_ms };

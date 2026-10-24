@@ -23,6 +23,11 @@ export class RowCache {
     private readonly onLoad: () => void,
   ) {}
 
+  /** Blocks are being fetched. */
+  get loading(): boolean {
+    return this.pending.size > 0;
+  }
+
   /** `undefined` = not loaded yet, `null` = SQL NULL. */
   get(row: number, col: number): string | null | undefined {
     const block = this.blocks.get(Math.floor(row / BLOCK_ROWS));
@@ -51,6 +56,7 @@ export class RowCache {
 
   private async load(block: number) {
     this.pending.add(block);
+    this.onLoad();
     try {
       const { rows, columns } = await api.fetchRows(this.jobId, block * BLOCK_ROWS, BLOCK_ROWS);
       if (this.disposed) return;
@@ -61,12 +67,12 @@ export class RowCache {
           if (oldest === undefined) break;
           this.blocks.delete(oldest);
         }
-        this.onLoad();
       }
     } catch (e) {
       console.error("fetch_rows failed", e);
     } finally {
       this.pending.delete(block);
+      if (!this.disposed) this.onLoad();
     }
   }
 

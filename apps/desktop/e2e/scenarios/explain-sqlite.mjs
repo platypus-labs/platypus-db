@@ -75,7 +75,10 @@ export default async function (page) {
   await setEditor(page, SLOW);
   await page.eval(`(() => { const s = ${queryTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
   await page.key("Enter", "Enter", 13, CTRL);
+  // While it runs, the results show a loading bar.
+  await page.waitFor(`${queryTab}.querySelector('.result-loading') !== null`, 10_000);
   await page.waitFor(`${queryTab}.querySelector('.statusbar .slow-query') !== null`, 60_000);
+  await page.waitFor(`${queryTab}.querySelector('.result-loading') === null`);
 
   await queryManager(page);
 }
