@@ -427,12 +427,12 @@ pub async fn explain(conn: &dyn Connection, sql: &str) -> Result<Explain> {
         children: plan_steps(&steps, Some(0), 0, &mut plan),
         ..PlanNode::new("QUERY PLAN")
     };
-    Ok(Explain {
-        format: ExplainFormat::Text,
-        plan: format!("QUERY PLAN\n{plan}"),
+    Ok(Explain::new(
+        ExplainFormat::Text,
+        format!("QUERY PLAN\n{plan}"),
         root,
-        analyzed: false,
-    })
+        false,
+    ))
 }
 
 /// The steps under `parent`, also written to `text` indented by `depth`.
