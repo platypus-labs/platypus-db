@@ -80,6 +80,8 @@ interface Options {
 export interface TableEditorHost {
   /** Given to grid actions as `source.edit`; `undefined` when the result is not a table's. */
   edit: TableEdit | undefined;
+  /** The table behind the result and its column per result column, once loaded. */
+  catalog: Pick<EditMeta, "table" | "columns" | "key"> | null;
   /** The edit bar above the grid. */
   bar: ReactNode;
   /** Dialogs, e.g. the SQL preview. */
@@ -559,6 +561,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
 
   return {
     edit: target ? edit : undefined,
+    catalog: keys ?? (meta && "catalog" in meta && meta.catalog ? { ...meta.catalog, key: [] } : null),
     bar,
     dialog: (
       <>

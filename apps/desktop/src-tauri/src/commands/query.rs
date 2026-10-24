@@ -15,15 +15,18 @@ use crate::formats::DisplayFormat;
 use crate::jobs::{Job, Outcome, QueryEvent};
 
 /// Starts a statement and returns its job id at once; progress arrives on `on_event`.
-/// `limit` caps the rows fetched and frees the session afterwards (script mode).
+/// `limit` caps the rows fetched and frees the session afterwards (script mode). `history`
+/// false keeps the run out of the query history, e.g. an auto-refresh.
 #[tauri::command]
 pub async fn run_query(
     state: State<'_, AppState>,
     session_id: u64,
     sql: String,
     limit: Option<usize>,
+    history: Option<bool>,
     on_event: Channel<QueryEvent>,
 ) -> CommandResult<u64> {
+    let keep = history.unwrap_or(true);
     let conn = state.live(session_id).await?;
     let session = state.session(session_id)?;
     let history = Arc::clone(&state.history);
@@ -41,6 +44,9 @@ pub async fn run_query(
                 (elapsed, None, HistoryStatus::Error, Some(error.to_string()))
             }
         };
+        if !keep {
+            return;
+        }
         if let Ok(history) = &*lock(&history) {
             // History is best effort: a failed write must not affect the query.
             let _ = history.record(&NewHistoryEntry {

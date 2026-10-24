@@ -28,6 +28,7 @@ import {
   Play,
   Plus,
   Puzzle,
+  RefreshCw,
   Save,
   Search,
   Settings,
@@ -82,6 +83,7 @@ const ICONS = {
   rollback: Undo2,
   autocommit: ToggleRight,
   "manual-commit": ToggleLeft,
+  refresh: RefreshCw,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

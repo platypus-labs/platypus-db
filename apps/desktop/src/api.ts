@@ -356,6 +356,43 @@ export interface SelectionStats {
   max: number | null;
 }
 
+/** Statistics of one column over selected rows, for the calc panel. */
+export interface ColumnStats {
+  column: number;
+  values: number;
+  nulls: number;
+  distinct: number;
+  /** For number columns. */
+  numbers: {
+    sum: number;
+    avg: number;
+    min: number;
+    max: number;
+    median: number;
+    stddev: number | null;
+  } | null;
+  /** Smallest and largest text of other columns. */
+  first: string | null;
+  last: string | null;
+}
+
+/** A geometry in plane coordinates, as `platypus_core::geometry::Shape`. */
+export type Shape =
+  | { type: "point"; x: number; y: number }
+  | { type: "line"; points: [number, number][] }
+  /** The outer ring first, then the holes. */
+  | { type: "polygon"; rings: [number, number][][] }
+  | { type: "circle"; x: number; y: number; r: number }
+  | { type: "collection"; items: Shape[] };
+
+/** The geometries of loaded cells, for the map panel. */
+export interface Geometries {
+  shapes: { row: number; column: number; shape: Shape }[];
+  /** Cells that are not NULL and hold no geometry. */
+  unreadable: number;
+  truncated: boolean;
+}
+
 export interface GroupCounts {
   groups: { values: (string | null)[]; count: number }[];
   rows: number;
@@ -454,16 +491,18 @@ export const api = {
       database: database ?? null,
     }),
   closeSession: (sessionId: number) => invoke<void>("close_session", { sessionId }),
-  /** `limit` caps fetched rows and frees the session afterwards (script mode). */
+  /** `limit` caps fetched rows and frees the session afterwards (script mode); `history`
+   *  false keeps the run out of the query history. */
   runQuery: (
     sessionId: number,
     sql: string,
     limit: number | null,
     onEvent: (e: QueryEvent) => void,
+    history = true,
   ) => {
     const channel = new Channel<QueryEvent>();
     channel.onmessage = onEvent;
-    return invoke<number>("run_query", { sessionId, sql, limit, onEvent: channel });
+    return invoke<number>("run_query", { sessionId, sql, limit, history, onEvent: channel });
   },
   listSchemas: (sessionId: number) => invoke<SchemaMeta[]>("list_schemas", { sessionId }),
   listObjects: (sessionId: number, schema: string) =>
@@ -598,6 +637,12 @@ export const api = {
   /** Loaded cells containing `text`, ignoring case. */
   selectionStats: (jobId: number, offset: number, limit: number, columns: number[]) =>
     invoke<SelectionStats>("selection_stats", { jobId, offset, limit, columns }),
+  /** Statistics of each of `columns` over loaded rows `offset..offset + limit`. */
+  columnStats: (jobId: number, offset: number, limit: number, columns: number[]) =>
+    invoke<ColumnStats[]>("column_stats", { jobId, offset, limit, columns }),
+  /** The geometries in `columns` of loaded rows `offset..offset + limit`. */
+  geometries: (jobId: number, offset: number, limit: number, columns: number[]) =>
+    invoke<Geometries>("geometries", { jobId, offset, limit, columns }),
   /** Loaded rows by value of `columns`, most frequent first. */
   groupCounts: (jobId: number, columns: number[]) => invoke<GroupCounts>("group_counts", { jobId, columns }),
   searchRows: (jobId: number, text: string) => invoke<SearchResult>("search_rows", { jobId, text }),

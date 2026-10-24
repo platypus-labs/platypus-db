@@ -113,6 +113,19 @@ pub fn sql_literals(
         .collect()
 }
 
+/// The bytes of `row` in a binary array; `None` when the array is not binary.
+pub(super) fn binary_at(array: &dyn Array, row: usize) -> Option<&[u8]> {
+    if let Some(a) = array.as_binary_opt::<i32>() {
+        Some(a.value(row))
+    } else if let Some(a) = array.as_binary_opt::<i64>() {
+        Some(a.value(row))
+    } else if let Some(a) = array.as_binary_view_opt() {
+        Some(a.value(row))
+    } else {
+        array.as_fixed_size_binary_opt().map(|a| a.value(row))
+    }
+}
+
 /// The raw bytes of a cell: binary values as stored, anything else as UTF-8 text.
 /// `None` for NULL.
 fn cell_bytes_of(job: &Job, row: usize, column: usize) -> CommandResult<Option<Vec<u8>>> {
@@ -127,14 +140,8 @@ fn cell_bytes_of(job: &Job, row: usize, column: usize) -> CommandResult<Option<V
     if array.is_null(0) {
         return Ok(None);
     }
-    let bytes = if let Some(a) = array.as_binary_opt::<i32>() {
-        a.value(0).to_vec()
-    } else if let Some(a) = array.as_binary_opt::<i64>() {
-        a.value(0).to_vec()
-    } else if let Some(a) = array.as_binary_view_opt() {
-        a.value(0).to_vec()
-    } else if let Some(a) = array.as_fixed_size_binary_opt() {
-        a.value(0).to_vec()
+    let bytes = if let Some(b) = binary_at(array.as_ref(), 0) {
+        b.to_vec()
     } else {
         let mut rows = Vec::with_capacity(1);
         display::rows_text(batch, &mut rows)?;

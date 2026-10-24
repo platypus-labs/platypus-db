@@ -385,3 +385,154 @@
   padding: 4px 10px;
   border-bottom: 1px solid var(--border);
 }
+
+/* Metadata and calc panels, row comparison */
+
+.metadata-list {
+  margin: 0;
+  padding: 6px 10px;
+  overflow-y: auto;
+}
+
+.metadata-list div {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.metadata-list dt {
+  color: var(--fg-muted);
+}
+
+.metadata-list dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  word-break: break-word;
+}
+
+.calc-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 10px;
+}
+
+.calc-list h3 {
+  margin: 8px 0 4px;
+  font-weight: 600;
+}
+
+.calc-list table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.calc-list th {
+  width: 50%;
+  text-align: left;
+  font-weight: normal;
+  color: var(--fg-muted);
+}
+
+.calc-list td {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.map-panel {
+  width: 420px;
+}
+
+.map-view {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.map-view svg {
+  position: absolute;
+  inset: 0;
+}
+
+.map-shape {
+  cursor: pointer;
+}
+
+.map-point,
+.map-area {
+  fill: color-mix(in srgb, var(--accent) 35%, transparent);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.map-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.map-shape:hover > *,
+.map-shape.focused > * {
+  stroke: var(--error);
+  stroke-width: 2.5;
+}
+
+.map-shape.focused .map-point,
+.map-shape.focused .map-area {
+  fill: color-mix(in srgb, var(--error) 35%, transparent);
+}
+
+.compare-rows {
+  width: min(760px, calc(100vw - 48px));
+}
+
+.compare-list {
+  max-height: 60vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.compare-list table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.compare-list th,
+.compare-list td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.compare-list td {
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.compare-list thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-elevated, var(--bg));
+}
+
+.compare-list tr.differs td {
+  background: var(--grid-selection);
+}
+
+.compare-list td.null {
+  color: var(--fg-muted);
+  font-style: italic;
+}

@@ -12,6 +12,7 @@ export const toolbarSettings = {
   transactions: show("show_transactions", "Auto-commit, Commit and Rollback"),
   files: show("show_files", "Open and Save script"),
   history: show("show_history", "History"),
+  refresh: show("show_refresh", "Auto-refresh"),
 };
 
 export const toolbarLabels = defineSetting<string>({
@@ -36,6 +37,7 @@ export function useToolbar() {
     transactions: useSetting(toolbarSettings.transactions),
     files: useSetting(toolbarSettings.files),
     history: useSetting(toolbarSettings.history),
+    refresh: useSetting(toolbarSettings.refresh),
   };
   const iconsOnly = useSetting(toolbarLabels) === "icons";
   /** The icon and the words, or the icon alone: the button's `aria-label` and tooltip keep
