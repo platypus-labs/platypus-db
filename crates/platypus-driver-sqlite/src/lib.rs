@@ -210,6 +210,10 @@ impl Connection for SqliteConnection {
         meta::object_ddl(self, object).await
     }
 
+    async fn search_metadata(&self, needle: &str) -> Result<Vec<platypus_core::MetadataMatch>> {
+        meta::search_metadata(self, needle).await
+    }
+
     fn transaction(&self) -> TransactionState {
         TransactionState {
             autocommit: self.autocommit.load(Ordering::Acquire),
@@ -244,6 +248,7 @@ impl Connection for SqliteConnection {
             transactions: true,
             cancel: true,
             object_ddl: true,
+            metadata_search: true,
             ..Default::default()
         }
     }

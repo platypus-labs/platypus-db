@@ -227,6 +227,10 @@ impl Connection for PgConnection {
         ddl::databases(self).await
     }
 
+    async fn search_metadata(&self, needle: &str) -> Result<Vec<platypus_core::MetadataMatch>> {
+        meta::search_metadata(self, needle).await
+    }
+
     fn transaction(&self) -> TransactionState {
         self.tx.state()
     }
@@ -250,6 +254,7 @@ impl Connection for PgConnection {
             transactions: true,
             cancel: true,
             object_ddl: true,
+            metadata_search: true,
             multiple_databases: true,
             ..Default::default()
         }

@@ -13,6 +13,7 @@ pub mod history;
 pub mod meta;
 pub mod objects;
 pub mod query;
+pub mod search;
 pub mod settings;
 pub mod sql;
 pub mod summary;

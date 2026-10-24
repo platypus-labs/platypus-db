@@ -4,9 +4,9 @@ use std::fmt::Write as _;
 
 use platypus_core::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, Connection, ConstraintKind,
-    ConstraintMeta, Error, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ObjectRef,
-    ReferencingKey, Result, SchemaMeta, TableDetails, TextRowExt, group_sorted, query_catalog,
-    query_text, unsupported,
+    ConstraintMeta, Error, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch, ObjectKind,
+    ObjectMeta, ObjectRef, ReferencingKey, Result, SEARCH_LIMIT, SchemaMeta, TableDetails,
+    TextRowExt, group_sorted, query_catalog, query_text, unsupported,
 };
 use platypus_sql::Dialect;
 
@@ -108,18 +108,60 @@ pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMe
     .await?;
     Ok(rows
         .iter()
-        .map(|r| {
-            let kind = match r.text(1).as_str() {
-                "view" => ObjectKind::View,
-                "trigger" => ObjectKind::Trigger,
-                _ => ObjectKind::Table,
-            };
-            ObjectMeta {
-                parent: r.opt(2),
-                ..ObjectMeta::new(r.text(0), kind, None)
-            }
+        .map(|r| ObjectMeta {
+            parent: r.opt(2),
+            ..ObjectMeta::new(r.text(0), object_kind(&r.text(1)), None)
         })
         .collect())
+}
+
+/// A `sqlite_master.type`.
+fn object_kind(code: &str) -> ObjectKind {
+    match code {
+        "view" => ObjectKind::View,
+        "trigger" => ObjectKind::Trigger,
+        _ => ObjectKind::Table,
+    }
+}
+
+pub async fn search_metadata(conn: &dyn Connection, needle: &str) -> Result<Vec<MetadataMatch>> {
+    let has = |expr: &str| Dialect::Sqlite.contains(expr, needle);
+    let (name, column, source) = (has("m.name"), has("p.name"), has("m.sql"));
+    let user = r"m.name NOT LIKE 'sqlite\_%' ESCAPE '\'";
+    let parent = "CASE WHEN m.type = 'trigger' THEN m.tbl_name END";
+    let mut found = Vec::new();
+    for schema in schemas(conn).await? {
+        let (lit, id) = (literal(&schema.name), ident(&schema.name));
+        let rows = query_text(
+            conn,
+            &format!(
+                "SELECT m.name, m.type, {parent}, 'name', NULL
+                 FROM {id}.sqlite_master m
+                 WHERE {user} AND m.type IN ('table', 'view', 'trigger') AND {name}
+                 UNION ALL
+                 SELECT m.name, m.type, NULL, 'column', p.name
+                 FROM {id}.sqlite_master m JOIN pragma_table_info(m.name, {lit}) p
+                 WHERE {user} AND m.type IN ('table', 'view') AND {column}
+                 UNION ALL
+                 SELECT m.name, m.type, {parent}, 'source', NULL
+                 FROM {id}.sqlite_master m
+                 WHERE {user} AND m.type IN ('view', 'trigger') AND NOT {name} AND {source}
+                 ORDER BY 1, 5
+                 LIMIT {SEARCH_LIMIT}"
+            ),
+        )
+        .await?;
+        found.extend(rows.iter().map(|r| MetadataMatch {
+            schema: schema.name.clone(),
+            name: r.text(0),
+            kind: object_kind(&r.text(1)),
+            parent: r.opt(2),
+            matched: MatchKind::from_code(&r.text(3)),
+            column: r.opt(4),
+        }));
+    }
+    found.truncate(SEARCH_LIMIT);
+    Ok(found)
 }
 
 /// The stored `CREATE` statement; for a table followed by its indexes and triggers.
@@ -206,6 +248,7 @@ pub async fn table_details(
                     columns: vec![r.text(3)],
                     unique: r.flag(1),
                     primary: r.flag(2),
+                    size: None,
                 },
             )
         }),
@@ -224,6 +267,7 @@ pub async fn table_details(
                     .collect(),
                 unique: true,
                 primary: true,
+                size: None,
             },
         );
     }
