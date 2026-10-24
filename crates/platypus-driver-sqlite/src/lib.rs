@@ -148,7 +148,11 @@ impl SqliteConnection {
 impl Connection for SqliteConnection {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
         let state = self.transaction();
-        if !state.autocommit && !state.open && classify(sql) == TxEffect::None {
+        // DDL is transactional in SQLite: it opens the transaction too.
+        if !state.autocommit
+            && !state.open
+            && matches!(classify(sql), TxEffect::None | TxEffect::ImplicitCommit)
+        {
             self.send("BEGIN", 1).await?;
         }
         let (job, started) = self.send(sql, options.batch_size.max(1)).await?;
