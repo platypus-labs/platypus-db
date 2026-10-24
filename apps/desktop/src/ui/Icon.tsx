@@ -5,6 +5,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  Bookmark,
   Check,
   ChevronDown,
   ChevronRight,
@@ -60,6 +61,7 @@ const ICONS = {
   "fk-out": ArrowRight,
   "fk-in": ArrowLeft,
   folder: Folder,
+  bookmark: Bookmark,
   sql: Code2,
   object: Info,
   run: Play,

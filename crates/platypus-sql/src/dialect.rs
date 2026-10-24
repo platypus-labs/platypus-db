@@ -118,6 +118,21 @@ fn is_reserved(name: &str) -> bool {
     RESERVED.iter().any(|w| w.eq_ignore_ascii_case(name))
 }
 
+/// The `LIKE` pattern, with `!` as the escape character, of the texts containing `needle`.
+#[must_use]
+pub fn contains_pattern(needle: &str) -> String {
+    let mut pattern = String::with_capacity(needle.len() + 2);
+    pattern.push('%');
+    for c in needle.chars() {
+        if matches!(c, '%' | '_' | '!') {
+            pattern.push('!');
+        }
+        pattern.push(c);
+    }
+    pattern.push('%');
+    pattern
+}
+
 impl Dialect {
     /// Quotes an identifier only when the dialect requires it: PostgreSQL folds bare names
     /// to lower case, so any upper-case letter needs quotes there.
@@ -236,6 +251,39 @@ impl Dialect {
         format!("LIMIT {limit}")
     }
 
+    /// A condition true when the text `expr` contains `needle`, ignoring case. `%` and `_`
+    /// in the needle match themselves.
+    #[must_use]
+    pub fn contains(self, expr: &str, needle: &str) -> String {
+        self.contains_quoted(expr, &self.quote_literal(&contains_pattern(needle)))
+    }
+
+    /// [`Dialect::contains`] with the [`contains_pattern`] already quoted, for callers
+    /// that quote literals their own way (MySQL's `NO_BACKSLASH_ESCAPES`).
+    #[must_use]
+    pub fn contains_quoted(self, expr: &str, pattern: &str) -> String {
+        match self {
+            Self::Postgres => format!("{expr} ILIKE {pattern} ESCAPE '!'"),
+            // A binary collation would make LIKE case-sensitive.
+            Self::MySql => format!("LOWER({expr}) LIKE LOWER({pattern}) ESCAPE '!'"),
+            Self::Sqlite => format!("{expr} LIKE {pattern} ESCAPE '!'"),
+        }
+    }
+
+    /// A condition true for the rows where any of `columns`, read as text, contains `needle`.
+    #[must_use]
+    pub fn any_column_contains(self, columns: &[&str], needle: &str) -> String {
+        let text = match self {
+            Self::Postgres | Self::Sqlite => "TEXT",
+            Self::MySql => "CHAR",
+        };
+        columns
+            .iter()
+            .map(|c| self.contains(&format!("CAST({} AS {text})", self.quote_ident(c)), needle))
+            .collect::<Vec<_>>()
+            .join(" OR ")
+    }
+
     /// The prefix that turns a statement into a plan request whose output is JSON, or
     /// `None` when the dialect has no JSON plan (SQLite's `EXPLAIN QUERY PLAN` is a table).
     #[must_use]
@@ -285,6 +333,27 @@ mod tests {
         assert_eq!(Dialect::Postgres.quote_literal("a\\b"), "'a\\b'");
         assert_eq!(Dialect::MySql.quote_literal("a\\'b"), "'a\\\\''b'");
         assert_eq!(Dialect::Sqlite.quote_literal("🦆"), "'🦆'");
+    }
+
+    #[test]
+    fn contains_escapes_wildcards() {
+        assert_eq!(
+            Dialect::Postgres.contains("name", "a_b%!'"),
+            "name ILIKE '%a!_b!%!!''%' ESCAPE '!'"
+        );
+        assert_eq!(
+            Dialect::MySql.contains("c", "X"),
+            "LOWER(c) LIKE LOWER('%X%') ESCAPE '!'"
+        );
+        assert_eq!(
+            Dialect::Sqlite.any_column_contains(&["a", "Order"], "x"),
+            "CAST(a AS TEXT) LIKE '%x%' ESCAPE '!' OR CAST(\"Order\" AS TEXT) LIKE '%x%' ESCAPE '!'"
+        );
+        assert!(
+            Dialect::MySql
+                .any_column_contains(&["a"], "x")
+                .contains("CAST(a AS CHAR)")
+        );
     }
 
     #[test]

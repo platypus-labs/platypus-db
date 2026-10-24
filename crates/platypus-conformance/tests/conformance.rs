@@ -12,7 +12,7 @@ use arrow_cast::display::array_value_to_string;
 use futures::{StreamExt, TryStreamExt};
 use platypus_core::{
     Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, Error, ExecOptions,
-    ExecResult, ObjectKind, ObjectRef,
+    ExecResult, MatchKind, ObjectKind, ObjectRef,
 };
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
@@ -630,6 +630,14 @@ async fn capabilities_match_optional_methods() {
             "{}: object_ddl vs capabilities.object_ddl: {ddl:?}",
             b.name
         );
+
+        let search = conn.search_metadata("customers").await;
+        assert_eq!(
+            matches!(search, Err(Error::Unsupported(_))),
+            !caps.metadata_search,
+            "{}: search_metadata vs capabilities.metadata_search: {search:?}",
+            b.name
+        );
     }
 }
 
@@ -1112,5 +1120,147 @@ async fn edits_arrays_and_composites() {
 
         run(conn, "DROP TABLE demo.conf_arrays").await.unwrap();
         run(conn, "DROP TYPE demo.conf_pair").await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn searches_metadata() {
+    for b in backends().await {
+        let conn = b.connect().await;
+        if !conn.capabilities().metadata_search {
+            continue;
+        }
+        let hits = conn.search_metadata("CUSTOMER").await.unwrap();
+        let hit = |name: &str, matched: MatchKind| {
+            hits.iter()
+                .any(|h| h.schema == b.schema && h.name == name && h.matched == matched)
+        };
+        assert!(hit("customers", MatchKind::Name), "{}: {hits:?}", b.name);
+        assert!(
+            hit("customer_totals", MatchKind::Name),
+            "{}: {hits:?}",
+            b.name
+        );
+        assert!(
+            hits.iter().any(|h| h.name == "orders"
+                && h.kind == ObjectKind::Table
+                && h.column.as_deref() == Some("customer_id")),
+            "{}: {hits:?}",
+            b.name
+        );
+        // `count(` is in the view's source, not in its name or columns.
+        let hits = conn.search_metadata("COUNT(").await.unwrap();
+        assert!(
+            hits.iter()
+                .any(|h| h.name == "customer_totals" && h.matched == MatchKind::Source),
+            "{}: {hits:?}",
+            b.name
+        );
+        // Wildcards match themselves.
+        assert_eq!(conn.search_metadata("c%s").await.unwrap(), [], "{}", b.name);
+    }
+}
+
+#[tokio::test]
+async fn searches_table_data() {
+    use platypus_sql::Dialect;
+    for b in backends().await {
+        let conn = b.connect().await;
+        let d = Dialect::from(b.config.driver);
+        let table = format!("probe_search{}", std::process::id());
+        let qualified = d.qualified(Some(&b.schema), &table);
+        let _ = run(&*conn, &format!("DROP TABLE {qualified}")).await;
+        run(
+            &*conn,
+            &format!("CREATE TABLE {qualified} (id INTEGER, label VARCHAR(20))"),
+        )
+        .await
+        .unwrap();
+        run(
+            &*conn,
+            &format!(
+                "INSERT INTO {qualified} (id, label) VALUES (1, 'Alpha'), (2, 'beta'), (30, '100%'), (4, NULL)"
+            ),
+        )
+        .await
+        .unwrap();
+        for (needle, expected) in [
+            ("ALP", "1"),
+            ("a", "2"),
+            ("%", "1"),
+            ("3", "1"),
+            ("zz", "0"),
+        ] {
+            let sql = format!(
+                "SELECT COUNT(*) FROM {qualified} WHERE {}",
+                d.any_column_contains(&["id", "label"], needle)
+            );
+            let rows = collect(&b, &*conn, &sql).await;
+            assert_eq!(
+                cell(&rows[0], 0, 0).as_deref(),
+                Some(expected),
+                "{}: {sql}",
+                b.name
+            );
+        }
+        run(&*conn, &format!("DROP TABLE {qualified}"))
+            .await
+            .unwrap();
+    }
+}
+
+/// Row estimates and sizes of tables, and PostgreSQL partitions under their table.
+#[tokio::test]
+async fn sizes_tables_and_nests_partitions() {
+    for b in backends().await {
+        let conn = b.connect().await;
+        let objects = conn.objects(&b.schema).await.unwrap();
+        let customers = objects.iter().find(|o| o.name == "customers").unwrap();
+        // SQLite keeps no statistics.
+        assert_eq!(
+            customers.size.is_some(),
+            b.config.driver != DriverKind::Sqlite,
+            "{}: {customers:?}",
+            b.name
+        );
+        if b.config.driver != DriverKind::Postgres {
+            continue;
+        }
+        let details = conn.table_details(&b.schema, "customers").await.unwrap();
+        assert!(
+            details.indexes.iter().all(|i| i.size.is_some()),
+            "{}",
+            b.name
+        );
+
+        let parent = format!("probe_part{}", std::process::id());
+        let child = format!("{parent}_2026");
+        let _ = run(
+            &*conn,
+            &format!("DROP TABLE IF EXISTS {}.{parent}", b.schema),
+        )
+        .await;
+        let s = &b.schema;
+        for sql in [
+            format!("CREATE TABLE {s}.{parent} (at date NOT NULL) PARTITION BY RANGE (at)"),
+            format!(
+                "CREATE TABLE {s}.{child} PARTITION OF {s}.{parent}
+                 FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')"
+            ),
+        ] {
+            run(&*conn, &sql).await.unwrap();
+        }
+        let objects = conn.objects(&b.schema).await.unwrap();
+        let find = |name: &str| objects.iter().find(|o| o.name == name).unwrap();
+        assert_eq!(
+            find(&child).parent.as_deref(),
+            Some(parent.as_str()),
+            "{}",
+            b.name
+        );
+        assert_eq!(find(&parent).parent, None, "{}", b.name);
+        run(&*conn, &format!("DROP TABLE {}.{parent}", b.schema))
+            .await
+            .unwrap();
     }
 }

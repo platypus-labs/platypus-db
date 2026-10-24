@@ -10,7 +10,10 @@ import {
   type SchemaMeta,
   type TableDetails,
 } from "../api";
-import { useSetting } from "../settings";
+import { defineSetting, useSetting } from "../settings";
+import { dropCached, loadCached, pruneCached, saveCached } from "../navigator/diskCache";
+import { FilterDialog } from "../navigator/FilterDialog";
+import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
 import { onNavigatorRefresh } from "../navigatorEvents";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabInit } from "../tabs/registry";
@@ -21,14 +24,55 @@ import { connectionColor, typeBadge } from "../connections";
 import { Icon, type IconName, objectIcon } from "../ui/Icon";
 import { ContextMenu, type MenuState, type MenuTarget } from "./ContextMenu";
 
-type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ok"; data: T };
+/** `cached`: read from the disk cache, not yet reloaded from the server. */
+type Load<T> =
+  | { state: "loading" }
+  | { state: "error"; message: string }
+  | { state: "ok"; data: T; cached?: boolean };
 
 /**
  * Loaded metadata by node key. A database's base key is the connection id for the saved
  * database and `cid@name` for the others; below it `base` → schemas, `base/schema` →
  * objects, `base/schema/name` → details. `cid#dbs` holds the server's databases.
+ * The `ok` entries of each connection are also kept on disk (`diskCache.ts`).
  */
 type Cache = Map<string, Load<unknown>>;
+
+const viewSetting = defineSetting({
+  key: "navigator.view",
+  section: "Navigator",
+  label: "Navigator view",
+  description: "Simple shows only the tables and views of the user schemas, with their columns.",
+  default: "advanced" as string,
+  control: {
+    type: "select",
+    options: [
+      { value: "advanced", label: "Advanced" },
+      { value: "simple", label: "Simple" },
+    ],
+  },
+});
+
+const SIMPLE_KINDS = new Set<ObjectKind>(["table", "view", "materialized_view"]);
+
+const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
+
+function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${unit === 0 ? value : value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
+}
+
+/** `~1.2K rows · 3.4 MB`, from what the statistics say. */
+function sizeDetail(object: ObjectMeta): string | undefined {
+  const parts = [object.rows != null && `~${compact.format(object.rows)} rows`, object.size != null && formatBytes(object.size)];
+  return parts.filter(Boolean).join(" · ") || undefined;
+}
 
 interface Props {
   connections: SavedConnection[];
@@ -104,7 +148,25 @@ interface Row {
 
 export function Navigator(props: Props) {
   const { connections, project, onAddExisting, error, onNew, onImport, onEdit, onOpenTab, session, disconnect, onError } = props;
-  const [cache, setCache] = useState<Cache>(new Map());
+  // The ref is the source of truth, so a load sees what was merged just before it.
+  const cacheRef = useRef<Cache>(new Map());
+  const [cache, setCache] = useState<Cache>(cacheRef.current);
+  const updateCache = (change: (m: Cache) => Cache) => {
+    cacheRef.current = change(cacheRef.current);
+    setCache(cacheRef.current);
+  };
+  /** Connections that could not connect: their cached metadata is shown without retrying. */
+  const offline = useRef(new Set<string>());
+  const [, setOfflineVersion] = useState(0);
+  const setOffline = (connectionId: string, on: boolean) => {
+    if (offline.current.has(connectionId) === on) return;
+    if (on) offline.current.add(connectionId);
+    else offline.current.delete(connectionId);
+    setOfflineVersion((v) => v + 1);
+  };
+  const saveTimers = useRef(new Map<string, number>());
+  const prefs = useNavigatorPrefs();
+  const simple = useSetting(viewSetting) === "simple";
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
   /** The row last clicked, shown as the active one. */
@@ -118,21 +180,64 @@ export function Navigator(props: Props) {
       const signature = JSON.stringify([c.driver, c.host, c.port, c.database, c.user, c.ssl_mode]);
       const previous = signatures.current.get(c.id);
       signatures.current.set(c.id, signature);
-      if (previous !== undefined && previous !== signature) closeConnection(c);
+      if (previous !== undefined && previous !== signature) {
+        closeConnection(c);
+        dropCached(c.id);
+      }
     }
   }, [connections]);
 
-  const setLoad = (key: string, value: Load<unknown>) => setCache((m) => new Map(m).set(key, value));
+  useEffect(() => void pruneCached(), []);
+
+  const setLoad = (key: string, value: Load<unknown>) => updateCache((m) => new Map(m).set(key, value));
   const loaded = <T,>(key: string) => {
     const entry = cache.get(key);
     return entry?.state === "ok" ? (entry.data as T) : null;
   };
+  const isCached = (key: string) => {
+    const entry = cacheRef.current.get(key);
+    return entry?.state === "ok" && !!entry.cached;
+  };
 
+  /** Shows what the disk cache has for a connection not loaded yet in this run. */
+  async function restoreCache(c: SavedConnection) {
+    if ([...cacheRef.current.keys()].some((k) => isUnder(k, c.id))) return;
+    const entries = await loadCached(c.id);
+    if (entries.length === 0) return;
+    updateCache((m) => {
+      const next = new Map(m);
+      for (const [key, data] of entries) if (!next.has(key)) next.set(key, { state: "ok", data, cached: true });
+      return next;
+    });
+  }
+
+  /** Writes the connection's loaded metadata to disk, once loads have settled. */
+  function scheduleSave(connectionId: string) {
+    clearTimeout(saveTimers.current.get(connectionId));
+    const timer = window.setTimeout(() => {
+      const entries: [string, unknown][] = [];
+      for (const [key, entry] of cacheRef.current) {
+        if (entry.state === "ok" && isUnder(key, connectionId)) entries.push([key, entry.data]);
+      }
+      saveCached(connectionId, entries);
+    }, 1000);
+    saveTimers.current.set(connectionId, timer);
+  }
+
+  /** Loads `key` from the server. Cached data stays on screen meanwhile, and when the
+   *  connection fails, so the tree can be browsed offline. */
   async function load<T>(c: SavedConnection, db: string | null, key: string, fetch: (sid: number) => Promise<T>) {
-    setLoad(key, { state: "loading" });
+    const entry = cacheRef.current.get(key);
+    const cached = entry?.state === "ok" && entry.cached ? (entry.data as T) : null;
+    if (cached !== null && offline.current.has(c.id)) return cached;
+    if (cached === null) setLoad(key, { state: "loading" });
     const sid = await session(c, db);
     if (sid === null) {
-      setCache((m) => {
+      if (cached !== null) {
+        setOffline(c.id, true);
+        return cached;
+      }
+      updateCache((m) => {
         const next = new Map(m);
         next.delete(key);
         return next;
@@ -143,6 +248,8 @@ export function Navigator(props: Props) {
     try {
       const data = await fetch(sid);
       setLoad(key, { state: "ok", data });
+      setOffline(c.id, false);
+      scheduleSave(c.id);
       return data;
     } catch (e) {
       setLoad(key, { state: "error", message: toCommandError(e).message });
@@ -164,6 +271,7 @@ export function Navigator(props: Props) {
 
   /** The server's databases, when the driver can switch between them. */
   async function loadDatabases(c: SavedConnection) {
+    if (offline.current.has(c.id)) return;
     const sid = await session(c);
     if (sid === null || !props.capabilities(sid)?.multiple_databases) return;
     void load(c, null, `${c.id}#dbs`, (id) => api.listDatabases(id));
@@ -179,17 +287,24 @@ export function Navigator(props: Props) {
     const open = !expanded.has(key);
     // Collapsing keeps the state below, so reopening shows the same nodes.
     setExpanded((s) => (open ? new Set(s).add(key) : withoutPrefix(s, key)));
-    if (open && !cache.has(key)) onOpen?.();
+    if (open && (!cache.has(key) || isCached(key))) onOpen?.();
   }
 
   /** Forgets everything loaded under `key` and reloads it if open (`open`: whether the
    *  node showing it is expanded, when that node has another key). */
   function refresh(key: string, reload: () => void, open = expanded.has(key)) {
-    setCache((m) => new Map([...m].filter(([k]) => !isUnder(k, key))));
+    updateCache((m) => new Map([...m].filter(([k]) => !isUnder(k, key))));
     if (open) reload();
   }
 
+  async function openConnection(c: SavedConnection) {
+    await restoreCache(c);
+    loadSchemas(c, null);
+    void loadDatabases(c);
+  }
+
   function refreshConnection(c: SavedConnection) {
+    setOffline(c.id, false);
     refresh(c.id, () => {
       loadSchemas(c, null);
       void loadDatabases(c);
@@ -197,7 +312,10 @@ export function Navigator(props: Props) {
   }
 
   function closeConnection(c: SavedConnection) {
-    setCache((m) => new Map([...m].filter(([k]) => !isUnder(k, c.id))));
+    // A pending save would overwrite the disk cache with the emptied memory cache.
+    clearTimeout(saveTimers.current.get(c.id));
+    updateCache((m) => new Map([...m].filter(([k]) => !isUnder(k, c.id))));
+    setOffline(c.id, false);
     setExpanded((s) => withoutPrefix(s, c.id, true));
     disconnect(c);
   }
@@ -271,19 +389,19 @@ export function Navigator(props: Props) {
   for (const c of connections) {
     const ckey = c.id;
     const open = expanded.has(ckey);
+    const filtered = !!prefs.filters[c.id];
+    const isOffline = offline.current.has(c.id);
+    const target = c.driver === "sqlite" ? c.database : `${c.user}@${c.host}:${c.port ?? ""}/${c.database}`;
     rows.push({
       key: ckey,
       depth: 0,
       label: c.name,
       color: connectionColor(c),
       badge: typeBadge(c),
-      title: c.driver === "sqlite" ? c.database : `${c.user}@${c.host}:${c.port ?? ""}/${c.database}`,
+      detail: [isOffline && "offline", filtered && "filtered"].filter(Boolean).join(" · ") || undefined,
+      title: isOffline ?`${target}\nNot connected: showing the metadata cached on disk. Refresh to retry.` : target,
       expanded: open,
-      onToggle: () =>
-        toggle(ckey, () => {
-          loadSchemas(c, null);
-          void loadDatabases(c);
-        }),
+      onToggle: () => toggle(ckey, () => void openConnection(c)),
       onOpen: () => onOpenTab(c),
       ...status(ckey),
       menu: { scope: "navigator.connection", arg: { connection: c } },
@@ -299,6 +417,7 @@ export function Navigator(props: Props) {
       ),
     });
     if (!open) continue;
+    rows.push(...bookmarkRows(c));
     const databases = loaded<string[]>(`${c.id}#dbs`);
     if (!databases || databases.length < 2) {
       rows.push(...schemaRows(c, null, 1));
@@ -344,12 +463,22 @@ export function Navigator(props: Props) {
       if (s.status) out.push({ key: `${base}#status`, depth, label: s.detail ?? "", muted: true, ...s });
       return out;
     }
+    const hidden = prefs.filters[c.id];
+    const hiddenSchema = nameMatcher(hidden?.schemas);
+    const hiddenObject = nameMatcher(hidden?.objects);
     // User schemas first, catalog schemas after them.
-    const ordered = [...schemas].sort((a, b) => Number(a.system) - Number(b.system));
+    const ordered = schemas
+      .filter((s) => !(simple && s.system) && !hiddenSchema(s.name))
+      .sort((a, b) => Number(a.system) - Number(b.system));
     for (const schema of ordered) {
       const skey = `${base}/${schema.name}`;
       const objects = loaded<ObjectMeta[]>(skey);
-      const matches = objects?.filter((o) => !needle || o.name.toLowerCase().includes(needle));
+      const matches = objects?.filter(
+        (o) =>
+          (!needle || o.name.toLowerCase().includes(needle)) &&
+          (!simple || SIMPLE_KINDS.has(o.kind)) &&
+          !hiddenObject(o.name),
+      );
       if (needle && objects && matches?.length === 0) continue;
       const sOpen = expanded.has(skey) || (!!needle && !!matches?.length);
       out.push({
@@ -368,8 +497,18 @@ export function Navigator(props: Props) {
         out.push({ key: `${skey}#empty`, depth: depth + 1, label: "No objects", muted: true });
         continue;
       }
+      // Partitions show under their table, when it is listed too.
+      const tables = new Set(matches.filter((o) => o.kind === "table").map((o) => o.name));
+      const isPartition = (o: ObjectMeta) => o.kind === "table" && o.parent !== null && tables.has(o.parent);
+      const partitions = new Map<string, ObjectMeta[]>();
+      for (const o of matches) {
+        if (!isPartition(o)) continue;
+        const siblings = partitions.get(o.parent!);
+        if (siblings) siblings.push(o);
+        else partitions.set(o.parent!, [o]);
+      }
       for (const folder of FOLDERS) {
-        const items = matches.filter((o) => o.kind === folder.kind);
+        const items = matches.filter((o) => o.kind === folder.kind && !isPartition(o));
         if (items.length === 0) continue;
         const fkey = `${skey}#${folder.kind}`;
         const fOpen =
@@ -396,9 +535,45 @@ export function Navigator(props: Props) {
         });
         if (!fOpen) continue;
         for (const object of items) {
-          out.push(...objectRows(c, db, schema, object, objectIcon(folder.kind), depth + 2));
+          out.push(...objectRows(c, db, schema, object, partitions, depth + 2));
         }
       }
+    }
+    return out;
+  }
+
+  /** The connection's bookmarks, in a folder that starts open (`!` remembers it was closed). */
+  function bookmarkRows(c: SavedConnection): Row[] {
+    const marks = prefs.bookmarks.filter((b) => b.connectionId === c.id);
+    if (marks.length === 0) return [];
+    const fkey = `${c.id}#bookmarks`;
+    const fOpen = !expanded.has(`${fkey}!`);
+    const out: Row[] = [
+      {
+        key: fkey,
+        depth: 1,
+        label: "Bookmarks",
+        icon: "bookmark",
+        detail: String(marks.length),
+        expanded: fOpen,
+        onToggle: () => setExpanded((s) => (fOpen ? new Set(s).add(`${fkey}!`) : withoutPrefix(s, `${fkey}!`))),
+      },
+    ];
+    if (!fOpen) return out;
+    for (const b of marks) {
+      const schema: SchemaMeta = { name: b.schema, system: false, current: b.currentSchema };
+      const object: ObjectMeta = { name: b.name, kind: b.kind, comment: null, parent: b.parent, rows: null, size: null };
+      const target = qualifiedName(c.driver, schema, b.name);
+      out.push({
+        key: `${fkey}/${b.database ?? ""}/${b.schema}/${b.kind}/${b.parent ?? ""}/${b.name}`,
+        depth: 2,
+        label: b.name,
+        icon: objectIcon(b.kind),
+        detail: [b.database, b.schema].filter(Boolean).join(" · "),
+        onOpen: () =>
+          isRelation(b.kind) ? openData(c, b.database, schema, object, target) : openObject(c, b.database, schema, object),
+        menu: { scope: "navigator.object", arg: { connection: c, database: b.database, schema, object, target } },
+      });
     }
     return out;
   }
@@ -408,11 +583,12 @@ export function Navigator(props: Props) {
     db: string | null,
     schema: SchemaMeta,
     object: ObjectMeta,
-    icon: IconName,
+    partitions: Map<string, ObjectMeta[]>,
     depth: number,
   ): Row[] {
+    const icon = objectIcon(object.kind);
     // Triggers are named per table in PostgreSQL: the key includes the table.
-    const okey = `${baseKey(c, db)}/${schema.name}/${object.parent ? `${object.parent}.` : ""}${object.name}`;
+    const okey = `${baseKey(c, db)}/${schema.name}/${object.kind === "trigger" && object.parent ? `${object.parent}.` : ""}${object.name}`;
     const target = qualifiedName(c.driver, schema, object.name);
     const menu: MenuTarget = { scope: "navigator.object", arg: { connection: c, database: db, schema, object, target } };
     if (!isRelation(object.kind)) {
@@ -436,6 +612,7 @@ export function Navigator(props: Props) {
         depth,
         label: object.name,
         icon,
+        detail: sizeDetail(object),
         title: object.comment ?? undefined,
         expanded: open,
         onToggle: () => toggle(okey, () => void loadDetails(c, db, schema.name, object.name)),
@@ -447,7 +624,7 @@ export function Navigator(props: Props) {
     const details = open ? loaded<TableDetails>(okey) : null;
     if (!details) return out;
     const section = (name: string, count: number, children: Row[]) => {
-      if (count === 0) return;
+      if (count === 0 || (simple && name !== "Columns" && name !== "Partitions")) return;
       const key = `${okey}#${name}`;
       // Columns start open, the other sections closed.
       const isOpen = name === "Columns" ? !expanded.has(`${key}!`) : expanded.has(key);
@@ -492,8 +669,14 @@ export function Navigator(props: Props) {
         depth: depth + 2,
         label: ix.name,
         icon: ix.primary ? "key" : "index",
-        detail: `(${ix.columns.join(", ")})${ix.primary ? " · primary" : ix.unique ? " · unique" : ""}`,
+        detail: `(${ix.columns.join(", ")})${ix.primary ? " · primary" : ix.unique ? " · unique" : ""}${ix.size != null ? ` · ${formatBytes(ix.size)}` : ""}`,
       })),
+    );
+    const parts = partitions.get(object.name) ?? [];
+    section(
+      "Partitions",
+      parts.length,
+      parts.flatMap((p) => objectRows(c, db, schema, p, partitions, depth + 2)),
     );
     section(
       "Foreign keys",
@@ -678,6 +861,23 @@ interface NavigatorApi {
   isOpen: (key: string) => boolean;
 }
 
+function bookmarkOf({ connection, database, schema, object }: {
+  connection: SavedConnection;
+  database: string | null;
+  schema: SchemaMeta;
+  object: ObjectMeta;
+}): Bookmark {
+  return {
+    connectionId: connection.id,
+    database,
+    schema: schema.name,
+    currentSchema: schema.current,
+    name: object.name,
+    kind: object.kind,
+    parent: object.parent,
+  };
+}
+
 /** The navigator's built-in menu entries; features add theirs to the same scopes. */
 function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
   const n = () => nav.current;
@@ -711,6 +911,23 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       run: ({ connection }) => n().closeConnection(connection),
     }),
     registerAction({
+      id: "connection.search",
+      scope: "navigator.connection",
+      title: "Search objects…",
+      group: "open",
+      order: 20,
+      run: ({ connection }) => workbench().openTab("search", connection.id, { mode: "metadata" }),
+    }),
+    registerAction({
+      id: "connection.filters",
+      scope: "navigator.connection",
+      title: "Navigator filters…",
+      group: "manage",
+      order: 80,
+      run: ({ connection }) =>
+        workbench().openDialog((close) => <FilterDialog connection={connection} onClose={close} />),
+    }),
+    registerAction({
       id: "connection.edit",
       scope: "navigator.connection",
       title: "Edit…",
@@ -735,6 +952,14 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       run: ({ connection, database }) => n().props.onOpenTab(connection, { database }),
     }),
     registerAction({
+      id: "database.search",
+      scope: "navigator.database",
+      title: "Search objects…",
+      group: "open",
+      order: 20,
+      run: ({ connection, database }) => workbench().openTab("search", connection.id, { database, mode: "metadata" }),
+    }),
+    registerAction({
       id: "database.refresh",
       scope: "navigator.database",
       title: "Refresh",
@@ -754,6 +979,15 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       group: "open",
       order: 10,
       run: ({ connection, database }) => n().props.onOpenTab(connection, { database }),
+    }),
+    registerAction({
+      id: "schema.search_data",
+      scope: "navigator.schema",
+      title: "Search data…",
+      group: "open",
+      order: 20,
+      run: ({ connection, database, schema }) =>
+        workbench().openTab("search", connection.id, { database, mode: "data", schema: schema.name }),
     }),
     registerAction({
       id: "schema.refresh",
@@ -791,6 +1025,24 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       order: 40,
       // Routines are copied bare, as before: their call syntax differs from a table's.
       run: ({ object, target }) => copy(isRelation(object.kind) ? target : object.name),
+    }),
+    registerAction({
+      id: "object.bookmark",
+      scope: "navigator.object",
+      title: "Add bookmark",
+      group: "copy",
+      order: 45,
+      when: (arg) => !isBookmarked(bookmarkOf(arg)),
+      run: (arg) => toggleBookmark(bookmarkOf(arg)),
+    }),
+    registerAction({
+      id: "object.unbookmark",
+      scope: "navigator.object",
+      title: "Remove bookmark",
+      group: "copy",
+      order: 45,
+      when: (arg) => isBookmarked(bookmarkOf(arg)),
+      run: (arg) => toggleBookmark(bookmarkOf(arg)),
     }),
     registerAction({
       id: "object.refresh",

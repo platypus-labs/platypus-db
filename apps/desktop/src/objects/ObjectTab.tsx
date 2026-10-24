@@ -32,7 +32,7 @@ export interface ObjectTabModel extends TabBase {
   currentSchema: boolean;
   name: string;
   objectKind: ObjectKind;
-  /** The table of a trigger. */
+  /** The table of a trigger, or the partitioned table of a partition. */
   parent: string | null;
   section?: ObjectSection;
 }
@@ -151,7 +151,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
           <strong>{tab.name}</strong>
           <span className="muted small">
             {KIND_LABELS[tab.objectKind]} in {tab.schema}
-            {tab.parent ? ` · on ${tab.parent}` : ""}
+            {tab.parent ? ` · ${tab.objectKind === "trigger" ? "on" : "partition of"} ${tab.parent}` : ""}
             {tab.database ? ` · ${tab.database}` : ""}
           </span>
         </div>
@@ -206,7 +206,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               ["Name", tab.name],
               ["Kind", KIND_LABELS[tab.objectKind]],
               ["Schema", tab.schema],
-              ...(tab.parent ? [["Table", tab.parent]] : []),
+              ...(tab.parent ? [[tab.objectKind === "trigger" ? "Table" : "Partition of", tab.parent]] : []),
               ...data.properties.map((p) => [p.name, p.value]),
             ]}
           />

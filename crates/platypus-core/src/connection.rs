@@ -11,8 +11,8 @@ use futures::stream::BoxStream;
 
 use crate::{
     Capabilities, CatalogColumn, CatalogForeignKey, ConnectionConfig, DriverKind, Explain,
-    ObjectMeta, ObjectRef, Property, ReferencingKey, Result, SchemaMeta, TableDetails,
-    TransactionState, unsupported,
+    MetadataMatch, ObjectMeta, ObjectRef, Property, ReferencingKey, Result, SchemaMeta,
+    TableDetails, TransactionState, unsupported,
 };
 
 #[async_trait]
@@ -98,6 +98,14 @@ pub trait Connection: Send + Sync + fmt::Debug {
     /// Optional: see [`Capabilities::multiple_databases`].
     async fn databases(&self) -> Result<Vec<String>> {
         Err(unsupported("listing databases"))
+    }
+
+    /// Objects of the user schemas whose name, column names or source contain `needle`,
+    /// ignoring case; at most [`SEARCH_LIMIT`](crate::SEARCH_LIMIT) of them.
+    /// Optional: see [`Capabilities::metadata_search`].
+    async fn search_metadata(&self, needle: &str) -> Result<Vec<MetadataMatch>> {
+        let _ = needle;
+        Err(unsupported("metadata search"))
     }
 }
 

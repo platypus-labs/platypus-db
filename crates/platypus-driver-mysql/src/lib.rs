@@ -250,6 +250,10 @@ impl Connection for MySqlConnection {
         meta::object_properties(self, object).await
     }
 
+    async fn search_metadata(&self, needle: &str) -> Result<Vec<platypus_core::MetadataMatch>> {
+        meta::search_metadata(self, needle).await
+    }
+
     fn transaction(&self) -> TransactionState {
         self.tx.state()
     }
@@ -284,6 +288,7 @@ impl Connection for MySqlConnection {
             transactions: true,
             cancel: true,
             object_ddl: true,
+            metadata_search: true,
             ..Default::default()
         }
     }
