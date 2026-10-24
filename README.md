@@ -47,6 +47,11 @@ scrolls through millions of rows.
   results as text, and running the script with the local `psql`, `mysql` or `sqlite3`.
   A linter marks unknown columns, joins without a condition and `SELECT *` on production;
   comments are spell checked.
+- **Query plans**: `Ctrl+Shift+E` opens the plan of the statement under the cursor in its own
+  tab, as a tree with costs, estimated rows and each step's details, as indented text or as
+  a table. Explain analyze (editor menu) runs the statement for actual rows and times, then
+  rolls back what it changed; tables that ignore transactions (MySQL's MyISAM) keep the
+  changes. PostgreSQL, MySQL 8.0.16+ and MariaDB analyze; SQLite gives its query plan only.
 - **Saved scripts**: `.sql` files per project in the Scripts panel under the navigator, with
   folders, rename, drag to move, and the connection each one opens on.
 - **Visual query builder**: tables dragged onto a canvas, joined on their foreign keys,
@@ -121,6 +126,7 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | `Ctrl+/` | Comment / uncomment |
 | `Ctrl+Shift+F` | Format the script (or the selection) |
 | `Ctrl+Shift+A` | Select the statement under the cursor |
+| `Ctrl+Shift+E` | Explain the statement under the cursor |
 | `Shift+Alt+Down`, `Shift+Alt+Up` | Duplicate the line |
 | `Alt+Up`, `Alt+Down` | Move the line |
 | `Ctrl+Shift+K` | Delete the line |
