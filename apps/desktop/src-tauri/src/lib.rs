@@ -109,7 +109,12 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            let state = AppState::new(open_store(app), open_history(app), open_settings(app));
+            let state = AppState::new(
+                open_store(app),
+                open_history(app),
+                open_settings(app),
+                dir(app, false).map(|d| d.join("scripts")),
+            );
             app.manage(state);
             open_main_window(app)?;
             Ok(())
@@ -168,6 +173,14 @@ pub fn run() {
             commands::sql::analyze_sql,
             commands::sql::format_sql,
             commands::sql::query_source,
+            commands::sql::lint_sql,
+            commands::scripts::list_scripts,
+            commands::scripts::create_script,
+            commands::scripts::create_script_folder,
+            commands::scripts::rename_script,
+            commands::scripts::delete_script,
+            commands::scripts::link_script,
+            commands::cli::run_cli,
             commands::history::search_history,
             commands::history::delete_history,
             commands::files::read_text_file,

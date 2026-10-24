@@ -4,6 +4,7 @@
 // Tauri injects `State` and deserialized arguments by value.
 #![allow(clippy::needless_pass_by_value)]
 
+pub mod cli;
 pub mod connections;
 pub mod data;
 pub mod export;
@@ -14,6 +15,7 @@ pub mod meta;
 pub mod objects;
 pub mod projects;
 pub mod query;
+pub mod scripts;
 pub mod search;
 pub mod settings;
 pub mod sql;
@@ -21,6 +23,7 @@ pub mod summary;
 pub mod transactions;
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -43,6 +46,8 @@ pub struct AppState {
     /// Shared with job tasks, which record outcomes as they happen.
     history: Arc<Mutex<Result<HistoryStore, String>>>,
     settings: Mutex<Result<SettingsStore, String>>,
+    /// The folder of the saved scripts, see `scripts`.
+    scripts: Result<PathBuf, String>,
     sessions: Mutex<HashMap<u64, Session>>,
     jobs: Mutex<HashMap<u64, Arc<Job>>>,
     exports: Mutex<HashMap<u64, Arc<Export>>>,
@@ -66,11 +71,13 @@ impl AppState {
         store: Result<ConnectionStore, String>,
         history: Result<HistoryStore, String>,
         settings: Result<SettingsStore, String>,
+        scripts: Result<PathBuf, String>,
     ) -> Self {
         Self {
             store: Mutex::new(store),
             history: Arc::new(Mutex::new(history)),
             settings: Mutex::new(settings),
+            scripts,
             sessions: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
             exports: Mutex::new(HashMap::new()),
