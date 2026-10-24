@@ -11,25 +11,45 @@
 .sidebar-header {
   display: flex;
   align-items: center;
-  padding: 8px 8px 4px 12px;
+  gap: 2px;
+  padding: 10px 8px 6px 12px;
 }
 
 .sidebar-title {
   flex: 1;
   font-weight: 600;
-  text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: var(--fg-muted);
+  font-size: 13px;
+  color: var(--fg-strong);
 }
 
 .empty-cta {
   margin: 8px 12px;
 }
 
+.tree-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 0 8px 6px;
+}
+
+.tree-search-icon {
+  position: absolute;
+  left: 8px;
+  color: var(--fg-muted);
+  pointer-events: none;
+}
+
 .tree-filter {
-  margin: 2px 8px 4px;
-  padding: 4px 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 56px 4px 28px;
+}
+
+.tree-search-kbd {
+  position: absolute;
+  right: 6px;
+  cursor: pointer;
 }
 
 .tree {
@@ -43,10 +63,10 @@
 .tree-row {
   display: flex;
   align-items: center;
-  gap: 5px;
-  height: 22px;
+  gap: 6px;
+  height: 24px;
   padding-right: 6px;
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   cursor: default;
   user-select: none;
   white-space: nowrap;
@@ -54,6 +74,11 @@
 
 .tree-row:hover {
   background: var(--hover);
+}
+
+.tree-row.selected {
+  background: var(--active);
+  color: var(--fg-strong);
 }
 
 .tree-row.muted .tree-label {
@@ -65,18 +90,41 @@
 }
 
 .twisty {
-  width: 10px;
+  display: flex;
+  width: 12px;
   flex: none;
   color: var(--fg-muted);
-  font-size: 10px;
-  text-align: center;
 }
 
 .tree-icon {
+  display: flex;
   width: 14px;
   flex: none;
-  text-align: center;
   color: var(--fg-muted);
+}
+
+.tree-icon[data-kind="database"] {
+  color: var(--obj-db);
+}
+
+.tree-icon[data-kind="table"] {
+  color: var(--obj-table);
+}
+
+.tree-icon[data-kind="view"] {
+  color: var(--obj-view);
+}
+
+.tree-icon[data-kind="routine"] {
+  color: var(--obj-routine);
+}
+
+.tree-icon[data-kind="trigger"] {
+  color: var(--obj-trigger);
+}
+
+.tree-icon[data-kind="key"] {
+  color: var(--obj-trigger);
 }
 
 .dot {
@@ -115,19 +163,22 @@
 
 .type-badge {
   margin-left: 4px;
-  padding: 0 4px;
+  padding: 1px 5px;
   border-radius: var(--radius);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: #fff;
-  background: #2f9e44;
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--type-dev);
+  background: var(--type-dev-bg);
 }
 
 .type-badge.test {
-  background: #f08c00;
+  color: var(--type-test);
+  background: var(--type-test-bg);
 }
 
 .type-badge.prod {
-  background: #c92a2a;
+  color: var(--type-prod);
+  background: var(--type-prod-bg);
 }

@@ -110,13 +110,27 @@ button.primary:hover:not(:disabled) {
 button.icon {
   border: none;
   background: transparent;
-  padding: 0 6px;
+  padding: 3px 5px;
   line-height: 20px;
   color: var(--fg-muted);
 }
 
 button.icon:hover {
   color: var(--fg);
+}
+
+button.icon > svg {
+  display: block;
+}
+
+kbd {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  color: var(--fg-muted);
+  font: 10px/16px var(--font-ui);
 }
 
 button.link {

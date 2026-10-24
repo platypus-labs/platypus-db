@@ -14,9 +14,10 @@ import { onNavigatorRefresh } from "../navigatorEvents";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabInit } from "../tabs/registry";
 import { PRESETS, cycleTheme, themeName, themeSetting } from "../theme";
-import { registerAction } from "../actions";
+import { actionsFor, registerAction, runAction, shortcutLabel } from "../actions";
 import { workbench } from "../workbench";
 import { connectionColor, typeBadge } from "../connections";
+import { Icon, type IconName, objectIcon } from "../ui/Icon";
 import { ContextMenu, type MenuState, type MenuTarget } from "./ContextMenu";
 
 type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ok"; data: T };
@@ -49,22 +50,21 @@ interface Props {
   onError: (message: string) => void;
 }
 
-const FOLDERS: { kind: ObjectKind; label: string; icon: string }[] = [
-  { kind: "table", label: "Tables", icon: "▦" },
-  { kind: "view", label: "Views", icon: "◫" },
-  { kind: "materialized_view", label: "Materialized views", icon: "◩" },
-  { kind: "foreign_table", label: "Foreign tables", icon: "⧉" },
-  { kind: "sequence", label: "Sequences", icon: "#" },
-  { kind: "function", label: "Functions", icon: "ƒ" },
-  { kind: "procedure", label: "Procedures", icon: "ƒ" },
-  { kind: "trigger", label: "Triggers", icon: "⚡" },
-  { kind: "type", label: "Types", icon: "τ" },
-  { kind: "domain", label: "Domains", icon: "τ" },
-  { kind: "extension", label: "Extensions", icon: "⬡" },
-  { kind: "event", label: "Events", icon: "⏱" },
+const FOLDERS: { kind: ObjectKind; label: string }[] = [
+  { kind: "table", label: "Tables" },
+  { kind: "view", label: "Views" },
+  { kind: "materialized_view", label: "Materialized views" },
+  { kind: "foreign_table", label: "Foreign tables" },
+  { kind: "sequence", label: "Sequences" },
+  { kind: "function", label: "Functions" },
+  { kind: "procedure", label: "Procedures" },
+  { kind: "trigger", label: "Triggers" },
+  { kind: "type", label: "Types" },
+  { kind: "domain", label: "Domains" },
+  { kind: "extension", label: "Extensions" },
+  { kind: "event", label: "Events" },
 ];
 
-export const OBJECT_ICONS = Object.fromEntries(FOLDERS.map((f) => [f.kind, f.icon])) as Record<ObjectKind, string>;
 
 export const isRelation = (kind: ObjectKind) =>
   kind === "table" || kind === "view" || kind === "materialized_view" || kind === "foreign_table";
@@ -80,7 +80,7 @@ interface Row {
   key: string;
   depth: number;
   label: string;
-  icon?: string;
+  icon?: IconName;
   color?: string | null;
   /** A short tag after the label, e.g. PROD. */
   badge?: string | null;
@@ -102,6 +102,8 @@ export function Navigator(props: Props) {
   const [cache, setCache] = useState<Cache>(new Map());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
+  /** The row last clicked, shown as the active one. */
+  const [selected, setSelected] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const signatures = useRef(new Map<string, string>());
 
@@ -283,10 +285,10 @@ export function Navigator(props: Props) {
       actions: (
         <>
           <button className="icon" title="Open SQL editor" onClick={() => onOpenTab(c)}>
-            ▶
+            <Icon name="sql" />
           </button>
           <button className="icon" title="Edit" onClick={() => onEdit(c)}>
-            ✎
+            <Icon name="edit" />
           </button>
         </>
       ),
@@ -307,7 +309,7 @@ export function Navigator(props: Props) {
         key: dkey,
         depth: 1,
         label: name,
-        icon: "⛁",
+        icon: "database",
         detail: db === null ? "default" : undefined,
         expanded: dOpen,
         onToggle: () => {
@@ -349,7 +351,7 @@ export function Navigator(props: Props) {
         key: skey,
         depth,
         label: schema.name,
-        icon: "◇",
+        icon: "schema",
         muted: schema.system,
         expanded: sOpen,
         onToggle: () => toggle(skey, () => loadObjects(c, db, schema.name)),
@@ -389,7 +391,7 @@ export function Navigator(props: Props) {
         });
         if (!fOpen) continue;
         for (const object of items) {
-          out.push(...objectRows(c, db, schema, object, folder.icon, depth + 2));
+          out.push(...objectRows(c, db, schema, object, objectIcon(folder.kind), depth + 2));
         }
       }
     }
@@ -401,7 +403,7 @@ export function Navigator(props: Props) {
     db: string | null,
     schema: SchemaMeta,
     object: ObjectMeta,
-    icon: string,
+    icon: IconName,
     depth: number,
   ): Row[] {
     // Triggers are named per table in PostgreSQL: the key includes the table.
@@ -468,7 +470,7 @@ export function Navigator(props: Props) {
         key: `${okey}.${col.name}`,
         depth: depth + 2,
         label: col.name,
-        icon: col.primary_key ? "⚿" : "·",
+        icon: col.primary_key ? "key" : "column",
         detail: `${col.data_type}${col.nullable ? "" : " · not null"}`,
         title: [col.default && `default ${col.default}`, col.comment].filter(Boolean).join("\n") || undefined,
         menu: {
@@ -484,7 +486,7 @@ export function Navigator(props: Props) {
         key: `${okey}:ix:${ix.name}`,
         depth: depth + 2,
         label: ix.name,
-        icon: ix.primary ? "⚿" : "↯",
+        icon: ix.primary ? "key" : "index",
         detail: `(${ix.columns.join(", ")})${ix.primary ? " · primary" : ix.unique ? " · unique" : ""}`,
       })),
     );
@@ -495,7 +497,7 @@ export function Navigator(props: Props) {
         key: `${okey}:fk:${fk.name}`,
         depth: depth + 2,
         label: fk.name,
-        icon: "→",
+        icon: "fk-out",
         detail: `(${fk.columns.join(", ")}) → ${fk.ref_table}(${fk.ref_columns.join(", ")})`,
       })),
     );
@@ -506,7 +508,7 @@ export function Navigator(props: Props) {
         key: `${okey}:ref:${r.schema}.${r.table}.${r.name}`,
         depth: depth + 2,
         label: r.schema === schema.name ? r.table : `${r.schema}.${r.table}`,
-        icon: "←",
+        icon: "fk-in",
         detail: `(${r.columns.join(", ")}) → (${r.ref_columns.join(", ")})`,
         title: r.name,
       })),
@@ -520,23 +522,27 @@ export function Navigator(props: Props) {
         <span className="sidebar-title">Connections</span>
         <ThemeButton />
         <button className="icon" title="Settings (Ctrl+,)" onClick={() => workbench().openSettings()}>
-          ⚙
+          <Icon name="settings" />
         </button>
         <button className="icon" title="Import connections from DBeaver, DataGrip, pgAdmin…" onClick={onImport}>
-          ⇩
+          <Icon name="import" />
         </button>
         <button className="icon" title="New connection" onClick={onNew}>
-          +
+          <Icon name="plus" />
         </button>
       </div>
       {connections.length > 0 && (
-        <input
-          className="tree-filter"
-          placeholder="Filter objects…"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          onKeyDown={(e) => e.key === "Escape" && setFilter("")}
-        />
+        <div className="tree-search">
+          <Icon name="search" className="tree-search-icon" />
+          <input
+            className="tree-filter"
+            placeholder="Filter objects…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => e.key === "Escape" && setFilter("")}
+          />
+          <PaletteHint />
+        </div>
       )}
       {error && <div className="notice error small">{error}</div>}
       {connections.length === 0 && !error && (
@@ -555,14 +561,17 @@ export function Navigator(props: Props) {
             key={row.key}
             role="treeitem"
             aria-expanded={row.expanded}
-            className={`tree-row${row.muted ? " muted" : ""}${row.status === "error" ? " failed" : ""}`}
-            style={{ paddingLeft: 6 + row.depth * 14 }}
+            className={`tree-row${row.muted ? " muted" : ""}${row.status === "error" ? " failed" : ""}${row.key === selected ? " selected" : ""}`}
+            style={{ paddingLeft: 6 + row.depth * 16 }}
             title={
               row.status === "error"
                 ? row.detail
                 : (row.title ?? (row.detail ? `${row.label}  ${row.detail}` : undefined))
             }
-            onClick={() => row.onToggle?.()}
+            onClick={() => {
+              setSelected(row.key);
+              row.onToggle?.();
+            }}
             onDoubleClick={(e) => {
               e.preventDefault();
               row.onOpen?.();
@@ -573,11 +582,17 @@ export function Navigator(props: Props) {
               setMenu({ x: e.clientX, y: e.clientY, target: row.menu });
             }}
           >
-            <span className="twisty">{row.expanded === undefined ? "" : row.expanded ? "▾" : "▸"}</span>
+            <span className="twisty">
+              {row.expanded !== undefined && <Icon name={row.expanded ? "chevron-down" : "chevron-right"} size={12} />}
+            </span>
             {row.color !== undefined ? (
               <span className="dot" style={{ background: row.color ?? "var(--border)" }} />
             ) : (
-              row.icon && <span className="tree-icon">{row.icon}</span>
+              row.icon && (
+                <span className="tree-icon" data-kind={row.icon}>
+                  <Icon name={row.icon} />
+                </span>
+              )
             )}
             <span className="tree-label">{row.label}</span>
             {row.badge && <span className={`type-badge ${row.badge.toLowerCase()}`}>{row.badge}</span>}
@@ -597,7 +612,17 @@ export function Navigator(props: Props) {
   );
 }
 
-const THEME_ICONS: Record<string, string> = { system: "◐", platypus_light: "☀", platypus_dark: "☾" };
+/** The palette's shortcut beside the filter; a click opens the palette. */
+function PaletteHint() {
+  const action = actionsFor("global", undefined).find((a) => a.id === "app.palette");
+  const keys = action && shortcutLabel(action);
+  if (!action || !keys) return null;
+  return (
+    <kbd className="tree-search-kbd" title="Search everything" onClick={() => runAction(action, undefined, () => {})}>
+      {keys}
+    </kbd>
+  );
+}
 
 /** Cycles system, Platypus Light and Platypus Dark; the other themes are in the Settings. */
 function ThemeButton() {
@@ -606,7 +631,7 @@ function ThemeButton() {
   const label = name === "system" ? "System" : PRESETS[name].label;
   return (
     <button className="icon" title={`Theme: ${label} (click to change; more in the Settings)`} onClick={cycleTheme}>
-      {THEME_ICONS[name] ?? "◑"}
+      <Icon name="theme" />
     </button>
   );
 }
