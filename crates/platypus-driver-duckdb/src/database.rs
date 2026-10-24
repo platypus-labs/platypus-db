@@ -4,14 +4,15 @@
 //! same file fails even within one process. The app opens several sessions per saved
 //! connection (navigator, editor tabs), so every connection to a file shares one instance,
 //! kept open while any of them is. `:memory:` is shared the same way: the sessions of the
-//! app see the same in-memory tables.
+//! app see the same in-memory tables. A data file (CSV, Parquet, XLSX...) gets an in-memory
+//! instance of its own, shared the same way, that reads it ([`crate::files`]).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
 
 use platypus_core::{Error, Result};
 
-use crate::lock;
+use crate::{files, lock};
 
 /// An open DuckDB instance. New connections are cloned from `root`.
 pub struct Database {
@@ -67,12 +68,16 @@ pub fn connect(path: &str) -> Result<(Arc<Database>, duckdb::Connection)> {
     let database = if let Some(database) = existing {
         database
     } else {
-        let root = if path == MEMORY {
+        let data_file = files::is_data_file(path);
+        let root = if path == MEMORY || data_file {
             duckdb::Connection::open_in_memory_with_flags(settings()?)
         } else {
             duckdb::Connection::open_with_flags(&key, settings()?)
         }
         .map_err(|e| Error::Connect(format!("cannot open {path}: {e}")))?;
+        if data_file {
+            files::load(&root, path)?;
+        }
         let database = Arc::new(Database {
             root: Mutex::new(root),
         });

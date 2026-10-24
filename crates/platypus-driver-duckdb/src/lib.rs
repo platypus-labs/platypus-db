@@ -9,6 +9,7 @@
 
 mod database;
 mod error;
+pub mod files;
 mod meta;
 mod types;
 
