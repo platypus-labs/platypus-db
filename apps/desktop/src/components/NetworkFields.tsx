@@ -20,11 +20,14 @@ export const SSL_MODES: { value: SslMode; label: string }[] = [
 ];
 
 /** An SSH server and its jump hosts. */
-export function sshChain(ssh: SavedSsh | null | undefined): SavedSsh[] {
+function sshChain(ssh: SavedSsh | null | undefined): SavedSsh[] {
   const out: SavedSsh[] = [];
   for (let s = ssh; s; s = s.jump) out.push(s);
   return out;
 }
+
+/** The `secret_id`s of `ssh` and its jump hosts. */
+export const sshSecretIds = (ssh: SavedSsh | null | undefined) => new Set(sshChain(ssh).map((s) => s.secret_id));
 
 /** The SSH secrets to send for `ssh`: typed ones, else keep what is saved (servers never
  *  saved have nothing to keep). */

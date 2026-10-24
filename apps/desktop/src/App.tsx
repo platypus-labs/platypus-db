@@ -280,13 +280,14 @@ export function App() {
       }
     }
     try {
+      const open = () => api.openSession(connection.id, password, database);
       let session;
       try {
-        session = await api.openSession(connection.id, password, database);
+        session = await open();
       } catch (e) {
         // Saved passwords behind a master password not entered yet: ask, then try again.
         if (toCommandError(e).kind !== "locked" || !(await askUnlock())) throw e;
-        session = await api.openSession(connection.id, password, database);
+        session = await open();
       }
       if (password !== undefined) passwords.current.set(connection.id, password);
       capabilities.current.set(session.session_id, session.capabilities);

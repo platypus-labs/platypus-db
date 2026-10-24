@@ -16,7 +16,7 @@ import {
 import { CONNECTION_TYPES } from "../connections";
 import { toggled } from "../sets";
 import { basename } from "../workspace";
-import { NetworkFields, SSL_MODES, sshChain, sshSecretsOf } from "./NetworkFields";
+import { NetworkFields, SSL_MODES, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 import { NetworkProfileDialog, newNetworkProfile } from "./NetworkProfileDialog";
 
 interface Props {
@@ -93,7 +93,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
   /** SSH passwords and passphrases typed, by `secret_id`. */
   const [sshTyped, setSshTyped] = useState<Record<string, string>>({});
   const [page, setPage] = useState<Page>("general");
-  const savedSsh = new Set(existing ? sshChain(initial.ssh).map((s) => s.secret_id) : []);
+  const [savedSsh] = useState(() => sshSecretIds(existing ? initial.ssh : null));
   const [profiles, setProfiles] = useState<NetworkProfile[]>([]);
   /** The network profile being edited in its own dialog, and whether it is saved. */
   const [editing, setEditing] = useState<{ profile: NetworkProfile; existing: boolean } | null>(null);

@@ -114,7 +114,7 @@ fn update_ssh_secrets(
     old: Option<&SavedSsh>,
     new: Option<&SavedSsh>,
     typed: SshSecrets,
-) -> Result<(), platypus_store::StoreError> {
+) -> platypus_store::Result<()> {
     let kept: Vec<Uuid> = new
         .into_iter()
         .flat_map(SavedSsh::chain)
@@ -289,8 +289,7 @@ pub async fn open_session(
         },
     };
     let production = saved.connection_type == Some(ConnectionType::Prod);
-    let config = state.with_store(|s| Ok(config_of(s, &saved, secret, &SshSecrets::new())))?;
-    let mut config = config;
+    let mut config = state.with_store(|s| Ok(config_of(s, &saved, secret, &SshSecrets::new())))?;
     if let Some(database) = database {
         config.database = database;
     }

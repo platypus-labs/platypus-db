@@ -62,8 +62,14 @@ impl std::fmt::Debug for VaultSecrets {
     }
 }
 
-fn locked() -> StoreError {
-    StoreError::Locked
+/// Refuses an empty master password.
+fn check_password(password: &str) -> Result<()> {
+    if password.is_empty() {
+        return Err(StoreError::Invalid(
+            "the master password cannot be empty".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 fn corrupt(path: &Path, message: &str) -> StoreError {
@@ -139,11 +145,7 @@ impl VaultSecrets {
         password: &str,
         secrets: HashMap<Uuid, Secret>,
     ) -> Result<Self> {
-        if password.is_empty() {
-            return Err(StoreError::Invalid(
-                "the master password cannot be empty".to_owned(),
-            ));
-        }
+        check_password(password)?;
         let salt = random::<SALT_LEN>()?;
         let vault = Self::locked(path);
         let open = Unlocked {
@@ -212,22 +214,20 @@ impl VaultSecrets {
 
     /// Encrypts the vault with a new password (and a new salt).
     pub fn change_password(&self, password: &str) -> Result<()> {
-        if password.is_empty() {
-            return Err(StoreError::Invalid(
-                "the master password cannot be empty".to_owned(),
-            ));
-        }
+        check_password(password)?;
         let mut state = self.lock_state();
-        let open = state.as_mut().ok_or_else(locked)?;
-        open.salt = random::<SALT_LEN>()?;
-        open.key = derive(password, &open.salt, params())?;
+        let open = state.as_mut().ok_or(StoreError::Locked)?;
+        // The salt changes only with its key: a failed derivation keeps both.
+        let salt = random::<SALT_LEN>()?;
+        open.key = derive(password, &salt, params())?;
+        open.salt = salt;
         self.write(open)
     }
 
     /// Every secret, to move them elsewhere when the vault is turned off.
     pub fn entries(&self) -> Result<HashMap<Uuid, Secret>> {
         let state = self.lock_state();
-        let open = state.as_ref().ok_or_else(locked)?;
+        let open = state.as_ref().ok_or(StoreError::Locked)?;
         Ok(open
             .secrets
             .iter()
@@ -268,7 +268,7 @@ impl VaultSecrets {
 
     fn update(&self, change: impl FnOnce(&mut HashMap<Uuid, String>) -> bool) -> Result<()> {
         let mut state = self.lock_state();
-        let open = state.as_mut().ok_or_else(locked)?;
+        let open = state.as_mut().ok_or(StoreError::Locked)?;
         if change(&mut open.secrets) {
             self.write(open)?;
         }
@@ -279,7 +279,7 @@ impl VaultSecrets {
 impl SecretStore for VaultSecrets {
     fn get(&self, id: Uuid) -> Result<Option<Secret>> {
         let state = self.lock_state();
-        let open = state.as_ref().ok_or_else(locked)?;
+        let open = state.as_ref().ok_or(StoreError::Locked)?;
         Ok(open.secrets.get(&id).map(|s| Secret::new(s.clone())))
     }
 

@@ -54,7 +54,8 @@ pub fn pgpass_password(
             .iter()
             .zip(wanted)
             .all(|(field, value)| field == "*" || field == value);
-        matches.then(|| Secret::new(fields[4].clone()))
+        let [.., password] = fields;
+        matches.then(|| Secret::new(password))
     }))
 }
 
@@ -80,16 +81,14 @@ fn pgpass_fields(line: &str) -> Option<[String; 5]> {
 /// Runs `command` in the system shell and returns the first line it prints.
 pub fn command_password(command: &str) -> Result<Secret> {
     let failed = |message: String| StoreError::Invalid(format!("password command: {message}"));
-    let mut shell = if cfg!(windows) {
-        let mut c = Command::new("cmd");
-        c.args(["/D", "/C", command]);
-        c
+    let (shell, flags): (_, &[&str]) = if cfg!(windows) {
+        ("cmd", &["/D", "/C"])
     } else {
-        let mut c = Command::new("sh");
-        c.args(["-c", command]);
-        c
+        ("sh", &["-c"])
     };
-    let mut child = shell
+    let mut child = Command::new(shell)
+        .args(flags)
+        .arg(command)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

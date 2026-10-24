@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, type DriverKind, type NetworkProfile, toCommandError } from "../api";
-import { NetworkFields, sshChain, sshSecretsOf } from "./NetworkFields";
+import { NetworkFields, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 
 interface Props {
   initial: NetworkProfile;
@@ -28,7 +28,7 @@ export function newNetworkProfile(): NetworkProfile {
 export function NetworkProfileDialog({ initial, existing, driver, onSaved, onClose }: Props) {
   const [profile, setProfile] = useState(initial);
   const [typed, setTyped] = useState<Record<string, string>>({});
-  const saved = new Set(existing ? sshChain(initial.ssh).map((s) => s.secret_id) : []);
+  const [saved] = useState(() => sshSecretIds(existing ? initial.ssh : null));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

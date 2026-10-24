@@ -8,7 +8,7 @@ mod export;
 mod formats;
 mod jobs;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use platypus_store::{ConnectionStore, HistoryStore, KeyringSecrets, SettingsStore, VaultSecrets};
@@ -62,11 +62,13 @@ fn vault_path(app: &tauri::App) -> Result<PathBuf, String> {
     Ok(dir(app, true)?.join("secrets.vault"))
 }
 
-/// The connections, with their passwords in the keychain, or in the vault (locked until
-/// the master password is entered) when there is one.
-fn open_store(app: &tauri::App) -> (Result<ConnectionStore, String>, Option<Arc<VaultSecrets>>) {
-    let vault = vault_path(app)
-        .ok()
+/// The connections, with their passwords in the keychain, or in the vault at `vault_path`
+/// (locked until the master password is entered) when there is one.
+fn open_store(
+    app: &tauri::App,
+    vault_path: Option<&Path>,
+) -> (Result<ConnectionStore, String>, Option<Arc<VaultSecrets>>) {
+    let vault = vault_path
         .filter(|p| p.exists())
         .map(|p| Arc::new(VaultSecrets::locked(p)));
     let secrets: Arc<dyn platypus_store::SecretStore> = match &vault {
@@ -112,9 +114,10 @@ fn open_main_window(app: &tauri::App) -> tauri::Result<()> {
 
 /// Opens the stores and the window.
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let vault_path = vault_path(app);
     let state = AppState::new(
-        open_store(app),
-        vault_path(app),
+        open_store(app, vault_path.as_deref().ok()),
+        vault_path,
         open_history(app),
         open_settings(app),
         dir(app, false).map(|d| d.join("scripts")),

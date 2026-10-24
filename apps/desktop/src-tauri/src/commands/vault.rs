@@ -19,15 +19,10 @@ pub struct VaultStatus {
 }
 
 fn status(state: &AppState) -> VaultStatus {
-    match &*lock(&state.vault) {
-        Some(v) => VaultStatus {
-            enabled: true,
-            unlocked: v.is_unlocked(),
-        },
-        None => VaultStatus {
-            enabled: false,
-            unlocked: false,
-        },
+    let vault = lock(&state.vault);
+    VaultStatus {
+        enabled: vault.is_some(),
+        unlocked: vault.as_ref().is_some_and(|v| v.is_unlocked()),
     }
 }
 
@@ -44,6 +39,17 @@ async fn blocking<T: Send + 'static>(
     tauri::async_runtime::spawn_blocking(f)
         .await
         .map_err(|e| CommandError::new("other", e.to_string()))?
+}
+
+/// Checks `password` against the vault file even when `vault` is unlocked already, and
+/// leaves it unlocked. A locked vault is checked by unlocking it: one key derivation.
+fn confirm_password(vault: &VaultSecrets, password: &str) -> CommandResult<()> {
+    if vault.is_unlocked() {
+        VaultSecrets::locked(vault.path()).unlock(password)?;
+    } else {
+        vault.unlock(password)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -83,9 +89,9 @@ pub async fn enable_vault(
         .vault_path
         .clone()
         .map_err(|e| CommandError::new("store", e))?;
-    let created =
-        blocking(move || Ok(VaultSecrets::create(path, &password, HashMap::new())?)).await?;
-    let created = Arc::new(created);
+    let created = Arc::new(
+        blocking(move || Ok(VaultSecrets::create(path, &password, HashMap::new())?)).await?,
+    );
     state.with_store(|s| s.move_secrets(created.clone()))?;
     *lock(&state.vault) = Some(created);
     Ok(status(&state))
@@ -99,16 +105,8 @@ pub async fn disable_vault(
 ) -> CommandResult<VaultStatus> {
     let v = vault(&state)?;
     // The master password is asked again, even when unlocked.
-    let check = VaultSecrets::locked(v.path());
     let target = Arc::clone(&v);
-    blocking(move || {
-        check.unlock(&password)?;
-        if !target.is_unlocked() {
-            target.unlock(&password)?;
-        }
-        Ok(())
-    })
-    .await?;
+    blocking(move || confirm_password(&target, &password)).await?;
     state.with_store(|s| s.move_secrets(Arc::new(KeyringSecrets::default())))?;
     std::fs::remove_file(v.path())
         .map_err(|e| CommandError::new("io", format!("{}: {e}", v.path().display())))?;
@@ -123,14 +121,9 @@ pub async fn change_vault_password(
     password: String,
 ) -> CommandResult<VaultStatus> {
     let v = vault(&state)?;
-    let check = VaultSecrets::locked(v.path());
-    let target = Arc::clone(&v);
     blocking(move || {
-        check.unlock(&current)?;
-        if !target.is_unlocked() {
-            target.unlock(&current)?;
-        }
-        Ok(target.change_password(&password)?)
+        confirm_password(&v, &current)?;
+        Ok(v.change_password(&password)?)
     })
     .await?;
     Ok(status(&state))
