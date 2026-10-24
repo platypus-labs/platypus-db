@@ -89,7 +89,7 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 | B — Griglia avanzata | ✅ fatto (P1, P2, P3) |
 | C — Navigator e oggetti | ✅ fatto (P1, P2, P3) |
 | D — Editor SQL | ✅ fatto (P1, P2, P3) |
-| E — Explain e performance | libero |
+| E — Explain e performance | 🔒 Paolo · group-e-explain · 2026-10-24 |
 | F — Connettività e credenziali | ✅ fatto (P1, P2) |
 | G — Nuovi driver | 🔒 Delfa · group-g-drivers · 2026-10-24 |
 | H — Import, export e trasferimento | libero |
