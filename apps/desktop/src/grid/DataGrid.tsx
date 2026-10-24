@@ -18,7 +18,8 @@ import { type ColumnLayout, EMPTY_LAYOUT, moveColumn, resolveLayout } from "./la
 import type { RowCache } from "./RowCache";
 import "./actions";
 
-const ROW_H = 24;
+/** Row height, from the `--grid-row-h` variable (the density setting); see `readTheme`. */
+let ROW_H = 24;
 const HEADER_H = 40;
 const PAD = 8;
 const MIN_COL_W = 48;
@@ -159,6 +160,8 @@ interface Theme {
 function readTheme(el: Element): Theme {
   const s = getComputedStyle(el);
   const v = (name: string) => s.getPropertyValue(name).trim();
+  const rowHeight = Number(v("--grid-row-h"));
+  if (rowHeight >= 16) ROW_H = rowHeight;
   return {
     bg: v("--grid-bg"),
     bgAlt: v("--grid-bg-alt"),

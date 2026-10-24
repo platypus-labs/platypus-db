@@ -10,7 +10,11 @@ export type SettingControl =
   | { type: "boolean" }
   | { type: "number"; min?: number; max?: number; step?: number }
   | { type: "text"; placeholder?: string }
-  | { type: "select"; options: { value: string; label: string }[] };
+  | { type: "select"; options: { value: string; label: string }[] }
+  /** A `#rrggbb` color; empty means none (e.g. the theme's own). */
+  | { type: "color" }
+  /** Choices shown as cards of colors, e.g. themes. */
+  | { type: "swatches"; options: { value: string; label: string; colors: string[] }[] };
 
 export interface SettingDef<T extends boolean | number | string> {
   /** Dotted, `section.name`, e.g. `editor.script_row_limit`. */
@@ -71,6 +75,28 @@ export function getSetting<T extends boolean | number | string>(def: SettingDef<
   return typeof v === typeof def.default ? (v as T) : def.default;
 }
 
+/** A stored value that no declared setting describes, e.g. a shortcut the user changed;
+ *  `undefined` when unset. */
+export function getStored(key: string): unknown {
+  return values.get(key);
+}
+
+/** Stores such a value; `null` removes it. */
+export async function setStored(key: string, value: string | number | boolean | null) {
+  const previous = values.get(key);
+  if (value === null) values.delete(key);
+  else values.set(key, value);
+  changed();
+  try {
+    await api.setSetting(key, value);
+  } catch (e) {
+    if (previous === undefined) values.delete(key);
+    else values.set(key, previous);
+    changed();
+    throw e;
+  }
+}
+
 /** Stores a value; `null` restores the default. */
 export async function setSetting<T extends boolean | number | string>(def: SettingDef<T>, value: T | null) {
   const previous = values.get(def.key);
@@ -91,6 +117,9 @@ function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
+
+/** Calls `listener` after any setting changes; returns a function that stops it. */
+export const onSettingsChanged = subscribe;
 
 /** Re-renders when any setting changes. */
 export function useSettingsVersion(): number {

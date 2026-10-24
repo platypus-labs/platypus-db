@@ -11,6 +11,7 @@
  *   }
  */
 import type { ObjectMeta, SavedConnection, SchemaMeta } from "./api";
+import { getStored, setStored } from "./settings";
 import type { GridActionContext } from "./grid/DataGrid";
 
 export interface ActionScopes {
@@ -82,13 +83,48 @@ export function allActions(): Action[] {
 
 const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 
+/** Where a shortcut the user set is stored, by action id. */
+const shortcutKey = (id: string) => `shortcuts.${id}`;
+
+/** An action's shortcuts: the ones the user set (an empty string turns them off), else its
+ *  own. */
+export function shortcutsOf(action: Pick<Action, "id" | "shortcut">): string[] {
+  const own = getStored(shortcutKey(action.id));
+  if (typeof own === "string") return own ? own.split(/\s*,\s*/) : [];
+  return [action.shortcut ?? []].flat();
+}
+
+/** Sets an action's shortcut: a combination, `""` for none, or `null` for its own. */
+export function setShortcut(action: Pick<Action, "id">, shortcut: string | null): Promise<void> {
+  return setStored(shortcutKey(action.id), shortcut);
+}
+
+/** Whether the user changed an action's shortcut. */
+export function shortcutChanged(action: Pick<Action, "id">): boolean {
+  return typeof getStored(shortcutKey(action.id)) === "string";
+}
+
+/** The combination of a key press as shortcuts write it, e.g. `Mod+Shift+K`; `null` for a
+ *  modifier alone. */
+export function shortcutOf(e: KeyboardEvent): string | null {
+  if (["Control", "Shift", "Alt", "Meta", "AltGraph"].includes(e.key)) return null;
+  const parts: string[] = [];
+  if (isMac ? e.metaKey : e.ctrlKey) parts.push("Mod");
+  if (isMac && e.ctrlKey) parts.push("Ctrl");
+  if (e.altKey) parts.push("Alt");
+  if (e.shiftKey) parts.push("Shift");
+  const key = e.key === " " ? "Space" : e.key.length === 1 ? e.key.toUpperCase() : e.key;
+  parts.push(key);
+  return parts.join("+");
+}
+
 function matches(shortcut: string, e: KeyboardEvent): boolean {
   const parts = shortcut.split("+");
   const key = parts.pop()!.toLowerCase();
   const mods = new Set(parts.map((p) => p.toLowerCase()));
   const mod = isMac ? e.metaKey : e.ctrlKey;
   return (
-    e.key.toLowerCase() === key &&
+    (e.key === " " ? "space" : e.key.toLowerCase()) === key &&
     mod === mods.has("mod") &&
     e.shiftKey === mods.has("shift") &&
     e.altKey === mods.has("alt") &&
@@ -102,8 +138,11 @@ export function actionForKey<S extends ActionScope>(
   arg: ActionScopes[S],
   e: KeyboardEvent,
 ): Action<S> | undefined {
-  return actionsFor(scope, arg).find((a) => [a.shortcut ?? []].flat().some((s) => matches(s, e)));
+  return actionsFor(scope, arg).find((a) => shortcutsOf(a).some((s) => matches(s, e)));
 }
+
+/** While the Settings record a new shortcut, the keys go to them and run nothing. */
+export const keyCapture = { active: false };
 
 /** Runs the matching action and swallows the event; `true` if one ran. */
 export function dispatchKey<S extends ActionScope>(
@@ -112,6 +151,7 @@ export function dispatchKey<S extends ActionScope>(
   e: KeyboardEvent,
   onError: (e: unknown) => void,
 ): boolean {
+  if (keyCapture.active) return false;
   const action = actionForKey(scope, arg, e);
   if (!action) return false;
   e.preventDefault();
@@ -133,8 +173,8 @@ export function runAction<S extends ActionScope>(
 }
 
 /** The first shortcut as shown in menus: `Ctrl+Shift+T`, or `⌘⇧T` on macOS. */
-export function shortcutLabel(action: Action): string | undefined {
-  const first = [action.shortcut ?? []].flat()[0];
+export function shortcutLabel(action: Pick<Action, "id" | "shortcut">): string | undefined {
+  const first = shortcutsOf(action)[0];
   if (!first) return undefined;
   if (!isMac) return first.replace("Mod", "Ctrl");
   const symbols: Record<string, string> = { Mod: "⌘", Shift: "⇧", Alt: "⌥", Ctrl: "⌃" };

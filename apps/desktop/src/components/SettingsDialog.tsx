@@ -1,13 +1,18 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toCommandError } from "../api";
 import { type SettingDef, getSetting, setSetting, settingDefs, useSettingsVersion } from "../settings";
+import { ShortcutsPanel } from "../shell/ShortcutsPanel";
+
+const SHORTCUTS = "Keyboard shortcuts";
 
 type Value = boolean | number | string;
 
-/** Every declared setting, by section. Changes apply and save at once. */
+/** Every declared setting, by section, then the keyboard shortcuts; the list on the left
+ *  jumps to a section. Changes apply and save at once. */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   useSettingsVersion();
   const [error, setError] = useState<string | null>(null);
+  const body = useRef<HTMLDivElement>(null);
   const sections = new Map<string, SettingDef<Value>[]>();
   for (const def of settingDefs()) {
     sections.set(def.section, [...(sections.get(def.section) ?? []), def]);
@@ -26,14 +31,37 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       >
         <h2>Settings</h2>
         {error && <div className="notice error small">{error}</div>}
-        {[...sections].map(([section, defs]) => (
-          <section key={section}>
-            <h3>{section}</h3>
-            {defs.map((def) => (
-              <SettingRow key={def.key} def={def} onSave={(v) => save(def, v)} />
+        <div className="settings-layout">
+          <nav className="settings-nav">
+            {[...sections.keys(), SHORTCUTS].map((section) => (
+              <button
+                key={section}
+                type="button"
+                onClick={() =>
+                  body.current
+                    ?.querySelector(`[data-section="${CSS.escape(section)}"]`)
+                    ?.scrollIntoView({ block: "start", behavior: "smooth" })
+                }
+              >
+                {section}
+              </button>
             ))}
-          </section>
-        ))}
+          </nav>
+          <div className="settings-body" ref={body}>
+            {[...sections].map(([section, defs]) => (
+              <section key={section} data-section={section}>
+                <h3>{section}</h3>
+                {defs.map((def) => (
+                  <SettingRow key={def.key} def={def} onSave={(v) => save(def, v)} />
+                ))}
+              </section>
+            ))}
+            <section data-section={SHORTCUTS}>
+              <h3>{SHORTCUTS}</h3>
+              <ShortcutsPanel />
+            </section>
+          </div>
+        </div>
         <div className="actions">
           <span className="muted small">Saved in settings.toml</span>
           <span className="spacer" />
@@ -75,6 +103,44 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
         />
       );
       break;
+    case "color": {
+      const hex = /^#[0-9a-f]{6}$/i.test(value as string) ? (value as string) : null;
+      input = (
+        <div className="color-control">
+          {!hex && <span className="muted small">Theme's</span>}
+          <input
+            type="color"
+            value={hex ?? "#808080"}
+            title={hex ?? "The theme's color"}
+            onChange={(e) => onSave(e.target.value)}
+          />
+        </div>
+      );
+      break;
+    }
+    case "swatches":
+      input = (
+        <div className="swatches-control" role="radiogroup">
+          {c.options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              role="radio"
+              aria-checked={value === o.value}
+              className={`theme-card${value === o.value ? " selected" : ""}`}
+              onClick={() => onSave(o.value)}
+            >
+              <span className="theme-card-colors">
+                {o.colors.map((color, i) => (
+                  <span key={i} style={{ background: color }} />
+                ))}
+              </span>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      );
+      break;
     case "select":
       input = (
         <select value={value as string} onChange={(e) => onSave(e.target.value)}>
@@ -87,22 +153,38 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
       );
       break;
   }
+  const reset = (
+    <button
+      type="button"
+      className="link"
+      style={{ visibility: changed ? "visible" : "hidden", gridColumn: c.type === "swatches" ? 3 : undefined }}
+      title={c.type === "color" ? "Back to the theme's color" : `Default: ${String(def.default)}`}
+      onClick={() => onSave(null)}
+    >
+      Reset
+    </button>
+  );
+  const text = (
+    <span>
+      {def.label}
+      {def.description && <span className="muted small">{def.description}</span>}
+    </span>
+  );
+  // Cards take a row of their own, under the label.
+  if (c.type === "swatches") {
+    return (
+      <div className="setting">
+        {text}
+        {reset}
+        {input}
+      </div>
+    );
+  }
   return (
     <label className="setting">
-      <span>
-        {def.label}
-        {def.description && <span className="muted small">{def.description}</span>}
-      </span>
+      {text}
       {input}
-      <button
-        type="button"
-        className="link"
-        style={{ visibility: changed ? "visible" : "hidden" }}
-        title={`Default: ${String(def.default)}`}
-        onClick={() => onSave(null)}
-      >
-        Reset
-      </button>
+      {reset}
     </label>
   );
 }

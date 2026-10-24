@@ -37,7 +37,15 @@ scrolls through millions of rows.
   follow the Settings.
 - **Export** to CSV, JSON, NDJSON or Parquet, streamed straight to the file.
 - **Transactions**: auto-commit or manual commit with Commit/Rollback.
-- Light and dark theme, automatic reconnection, in-app updates.
+- **Appearance** in the Settings: themes (system, light, dark, Nord, Dracula, Solarized
+  Light, high contrast), your own accent, background, sidebar and text colors, interface
+  size, grid row density, corner radius and the SQL editor's font size.
+- **Command palette** (`Ctrl+K` or `Ctrl+Shift+P`): actions, connections, tables and recent
+  queries, found by typing a few letters of them.
+- **Shell**: `Ctrl+Shift+T` reopens the last closed tab, the mouse wheel scrolls the tab bar,
+  every shortcut can be changed in the Settings and the toolbar's buttons hidden or shown as
+  icons only.
+- Automatic reconnection, in-app updates.
 
 | | |
 |---|---|
@@ -59,7 +67,8 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | `Ctrl+/` | Comment / uncomment |
 | `Ctrl+F` | Find and replace |
 | `Ctrl+S`, `Ctrl+O` | Save / open a `.sql` file |
-| `Ctrl+T`, `Ctrl+W` | New tab / close tab |
+| `Ctrl+K`, `Ctrl+Shift+P` | Command palette |
+| `Ctrl+T`, `Ctrl+W`, `Ctrl+Shift+T` | New tab / close tab / reopen the closed tab |
 | `Ctrl+Tab`, `Ctrl+Shift+Tab` | Next / previous tab |
 | `Ctrl+,` | Settings |
 | `F2`, `Enter`, typing | Edit the cell (data viewer, one-table queries) |
@@ -71,7 +80,8 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | `Ctrl+F`, `F7` | Find in the results / value panel (grid focused) |
 | `Ctrl+Alt+R` | Record view of the focused row; `←` `→` move through the rows |
 
-On macOS use `Cmd` instead of `Ctrl`.
+On macOS use `Cmd` instead of `Ctrl`. Every shortcut can be changed in Settings › Keyboard
+shortcuts.
 
 ## Performance
 

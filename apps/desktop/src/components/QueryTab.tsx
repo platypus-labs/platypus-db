@@ -18,6 +18,7 @@ import { workbench } from "../workbench";
 import { basename } from "../workspace";
 import { ExportDialog, type ExportSource } from "./ExportDialog";
 import { HistoryPanel } from "./HistoryPanel";
+import { useToolbar } from "./toolbar";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
 
 /** Statements that change which tables and columns exist. */
@@ -559,6 +560,7 @@ export function QueryTab({
     };
   }
 
+  const toolbar = useToolbar();
   const current = results[activeResult];
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
   const rowsResult = current?.status.kind === "rows" && current.columns ? current : null;
@@ -573,15 +575,20 @@ export function QueryTab({
       >
         <div className="toolbar">
           <button className="primary" onClick={() => void run("statement")} title="Run statement (Ctrl+Enter)">
-            ▶ Run
+            {toolbar.label("▶", "Run")}
           </button>
-          <button onClick={() => void run("script")} title="Run script (Alt+X, Ctrl+Shift+Enter)">
-            ▶▶ Script
-          </button>
-          <button onClick={() => void cancel()} disabled={!running}>
-            ■ Cancel
-          </button>
-          <span className="divider" />
+          {toolbar.visible.script && (
+            <button onClick={() => void run("script")} title="Run script (Alt+X, Ctrl+Shift+Enter)">
+              {toolbar.label("▶▶", "Script")}
+            </button>
+          )}
+          {toolbar.visible.cancel && (
+            <button onClick={() => void cancel()} disabled={!running} title="Cancel the running statement">
+              {toolbar.label("■", "Cancel")}
+            </button>
+          )}
+          {toolbar.visible.transactions && <span className="divider" />}
+          {toolbar.visible.transactions && (
           <button
             className={manual ? "toggled" : ""}
             onClick={() => void toggleAutocommit()}
@@ -594,15 +601,16 @@ export function QueryTab({
                   : "Auto-commit: every statement commits on its own"
             }
           >
-            {manual ? "Manual commit" : "Auto-commit"}
+            {toolbar.iconsOnly ? (manual ? "MC" : "AC") : manual ? "Manual commit" : "Auto-commit"}
           </button>
-          {manual && (
+          )}
+          {toolbar.visible.transactions && manual && (
             <>
-              <button onClick={() => void endTransaction(true)} disabled={running || !tx.open}>
-                Commit
+              <button onClick={() => void endTransaction(true)} disabled={running || !tx.open} title="Commit">
+                {toolbar.iconsOnly ? "✓" : "Commit"}
               </button>
-              <button onClick={() => void endTransaction(false)} disabled={running || !tx.open}>
-                Rollback
+              <button onClick={() => void endTransaction(false)} disabled={running || !tx.open} title="Rollback">
+                {toolbar.iconsOnly ? "↶" : "Rollback"}
               </button>
             </>
           )}
@@ -611,18 +619,25 @@ export function QueryTab({
               ● Transaction open
             </span>
           )}
-          <span className="divider" />
-          <button onClick={() => void openFile()} title="Open script (Ctrl+O)">
-            Open
-          </button>
-          <button onClick={() => void saveFile()} title="Save script (Ctrl+S)">
-            Save{dirty ? " •" : ""}
-          </button>
+          {toolbar.visible.files && (
+            <>
+              <span className="divider" />
+              <button onClick={() => void openFile()} title="Open script (Ctrl+O)">
+                {toolbar.iconsOnly ? "⇪" : "Open"}
+              </button>
+              <button onClick={() => void saveFile()} title="Save script (Ctrl+S)">
+                {toolbar.iconsOnly ? "⤓" : "Save"}
+                {dirty ? " •" : ""}
+              </button>
+            </>
+          )}
           <span className="spacer" />
           {tab.filePath && <span className="muted small">{basename(tab.filePath)}</span>}
-          <button className={showHistory ? "toggled" : ""} onClick={() => setShowHistory((s) => !s)}>
-            History
-          </button>
+          {toolbar.visible.history && (
+            <button className={showHistory ? "toggled" : ""} onClick={() => setShowHistory((s) => !s)} title="History">
+              {toolbar.iconsOnly ? "⟲" : "History"}
+            </button>
+          )}
         </div>
         {tab.table && (
           <form

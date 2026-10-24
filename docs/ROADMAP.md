@@ -304,6 +304,10 @@ parallelizzabile: **una persona per driver**.
 
 ### Gruppo K — Shell dell'applicazione ed ergonomia
 
+**Stato: P1 completati** (rotella sui tab, command palette con ricerca fuzzy su azioni,
+connessioni, tabelle e query recenti, riapertura del tab chiuso, pagina Impostazioni con
+sezioni, scorciatoie personalizzabili, barra degli strumenti configurabile). Restano i P2/P3.
+
 **Area:** `App.tsx`, `apps/desktop/src/shell/` (tab bar, palette, impostazioni), `styles.css`, `theme.ts`
 **Dipende da:** 0.2, 0.3, 0.7
 
