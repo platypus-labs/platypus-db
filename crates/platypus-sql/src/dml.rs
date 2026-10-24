@@ -336,12 +336,20 @@ const SAVEPOINT: &str = "platypus_edit";
 
 /// Runs `statements`, each of which must hit exactly one row, all or none. In autocommit
 /// mode they run in a transaction of their own and are committed; in manual-commit mode
-/// they join the session's transaction behind a savepoint, and stay uncommitted.
-pub async fn apply(conn: &dyn Connection, statements: &[String]) -> Result<(), ApplyError> {
+/// they join the session's transaction behind a savepoint, and stay uncommitted. Without
+/// savepoints (DuckDB) a failure in manual-commit mode rolls back the whole transaction,
+/// which DuckDB aborts on errors anyway.
+pub async fn apply(
+    conn: &dyn Connection,
+    dialect: Dialect,
+    statements: &[String],
+) -> Result<(), ApplyError> {
     let manual = !conn.transaction().autocommit;
-    let (begin, end, undo) = if manual {
+    let (begin, end, undo) = if manual && !dialect.has_savepoints() {
+        (None, Vec::new(), vec!["ROLLBACK".to_owned()])
+    } else if manual {
         (
-            format!("SAVEPOINT {SAVEPOINT}"),
+            Some(format!("SAVEPOINT {SAVEPOINT}")),
             vec![format!("RELEASE SAVEPOINT {SAVEPOINT}")],
             vec![
                 format!("ROLLBACK TO SAVEPOINT {SAVEPOINT}"),
@@ -350,14 +358,16 @@ pub async fn apply(conn: &dyn Connection, statements: &[String]) -> Result<(), A
         )
     } else {
         (
-            "BEGIN".to_owned(),
+            Some("BEGIN".to_owned()),
             vec!["COMMIT".to_owned()],
             vec!["ROLLBACK".to_owned()],
         )
     };
-    exec_one(conn, &begin)
-        .await
-        .map_err(|error| ApplyError::Failed { index: 0, error })?;
+    if let Some(begin) = begin {
+        exec_one(conn, &begin)
+            .await
+            .map_err(|error| ApplyError::Failed { index: 0, error })?;
+    }
     let mut outcome = Ok(());
     for (index, sql) in statements.iter().enumerate() {
         match exec_one(conn, sql).await {

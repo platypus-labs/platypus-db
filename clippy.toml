@@ -1,1 +1,1 @@
-doc-valid-idents = ["PlatypusDB", "PostgreSQL", "MySQL", "MariaDB", "SQLite", "WebView2", "DBeaver", "DataGrip", "pgAdmin", ".."]
+doc-valid-idents = ["PlatypusDB", "PostgreSQL", "MySQL", "MariaDB", "SQLite", "DuckDB", "WebView2", "DBeaver", "DataGrip", "pgAdmin", ".."]

@@ -74,8 +74,8 @@ impl Current {
                     && self.head.first().is_some_and(|w| w == "CREATE")
                     && self.head.iter().take(3).any(|w| w == "TRIGGER")
             }
-            // MySQL bodies rely on `DELIMITER` instead.
-            Dialect::MySql => false,
+            // MySQL bodies rely on `DELIMITER` instead; DuckDB has no statement bodies.
+            Dialect::MySql | Dialect::DuckDb => false,
         };
         if opens_block {
             self.block_depth += 1;
@@ -322,6 +322,20 @@ mod tests {
                    UPDATE b SET n = CASE WHEN 1 THEN 2 END; DELETE FROM c; END; select 1";
         assert_eq!(split(src, Dialect::Sqlite).len(), 2);
         assert_eq!(texts("BEGIN; select 1; COMMIT", Dialect::Sqlite).len(), 3);
+    }
+
+    #[test]
+    fn duckdb_has_no_statement_bodies() {
+        let src = "CREATE MACRO m(a) AS a || $$;$$; BEGIN; SELECT m('x'); COMMIT";
+        assert_eq!(
+            texts(src, Dialect::DuckDb),
+            [
+                "CREATE MACRO m(a) AS a || $$;$$",
+                "BEGIN",
+                "SELECT m('x')",
+                "COMMIT"
+            ]
+        );
     }
 
     #[test]

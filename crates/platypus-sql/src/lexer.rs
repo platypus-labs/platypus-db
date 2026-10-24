@@ -106,8 +106,8 @@ impl<'a> Lexer<'a> {
     }
 
     fn block_comment(&mut self) {
-        // PostgreSQL nests block comments; MySQL and SQLite do not.
-        let nested = self.dialect == Dialect::Postgres;
+        // PostgreSQL and DuckDB nest block comments; MySQL and SQLite do not.
+        let nested = matches!(self.dialect, Dialect::Postgres | Dialect::DuckDb);
         let mut depth = 1;
         while depth > 0 {
             if self.rest().starts_with("*/") {
@@ -181,7 +181,9 @@ impl<'a> Lexer<'a> {
             self.bump();
             self.quoted('\'', d == Dialect::MySql);
             TokenKind::String
-        } else if (c == 'e' || c == 'E') && self.peek_at(1) == Some('\'') && d == Dialect::Postgres
+        } else if (c == 'e' || c == 'E')
+            && self.peek_at(1) == Some('\'')
+            && matches!(d, Dialect::Postgres | Dialect::DuckDb)
         {
             self.pos += 2;
             self.quoted('\'', true);
@@ -204,7 +206,11 @@ impl<'a> Lexer<'a> {
             self.eat_while(|c| c != ']');
             self.bump();
             TokenKind::QuotedIdent
-        } else if c == '$' && d == Dialect::Postgres && !self.after_word() && self.dollar_quote() {
+        } else if c == '$'
+            && matches!(d, Dialect::Postgres | Dialect::DuckDb)
+            && !self.after_word()
+            && self.dollar_quote()
+        {
             TokenKind::String
         } else if is_ident_start(c) {
             self.eat_while(|c| is_ident_char(c, d));
@@ -283,6 +289,29 @@ mod tests {
         assert_eq!(
             kinds(src, Dialect::MySql)[0],
             (TokenKind::BlockComment, "/* a /* b */")
+        );
+    }
+
+    #[test]
+    fn duckdb_quoting_and_comments() {
+        use TokenKind::*;
+        let src = r"select E'a\'b', $$a;b$$, `c``d`, a$b, $1 /* x /* y */ z */";
+        assert_eq!(
+            kinds(src, Dialect::DuckDb),
+            [
+                (Word, "select"),
+                (String, r"E'a\'b'"),
+                (Symbol, ","),
+                (String, "$$a;b$$"),
+                (Symbol, ","),
+                (QuotedIdent, "`c``d`"),
+                (Symbol, ","),
+                (Word, "a$b"),
+                (Symbol, ","),
+                (Symbol, "$"),
+                (Symbol, "1"),
+                (BlockComment, "/* x /* y */ z */"),
+            ]
         );
     }
 

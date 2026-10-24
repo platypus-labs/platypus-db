@@ -14,6 +14,8 @@ pub enum Dialect {
     Postgres,
     MySql,
     Sqlite,
+    /// PostgreSQL-like syntax; bare names keep their case and match it loosely, like SQLite.
+    DuckDb,
 }
 
 impl From<DriverKind> for Dialect {
@@ -22,6 +24,7 @@ impl From<DriverKind> for Dialect {
             DriverKind::Postgres => Self::Postgres,
             DriverKind::MySql => Self::MySql,
             DriverKind::Sqlite => Self::Sqlite,
+            DriverKind::DuckDb => Self::DuckDb,
         }
     }
 }
@@ -29,19 +32,30 @@ impl From<DriverKind> for Dialect {
 /// Words that cannot be bare identifiers in at least one supported dialect.
 const RESERVED: &[&str] = &[
     "ALL",
+    "ANALYSE",
+    "ANALYZE",
     "AND",
+    "ANTI",
     "ANY",
     "ARRAY",
     "AS",
     "ASC",
+    "ASOF",
+    "ASYMMETRIC",
+    "AT",
+    "AUTHORIZATION",
     "BETWEEN",
+    "BINARY",
     "BOTH",
     "BY",
     "CASE",
     "CAST",
     "CHECK",
     "COLLATE",
+    "COLLATION",
     "COLUMN",
+    "COLUMNS",
+    "CONCURRENTLY",
     "CONSTRAINT",
     "CREATE",
     "CROSS",
@@ -50,8 +64,10 @@ const RESERVED: &[&str] = &[
     "CURRENT_TIMESTAMP",
     "CURRENT_USER",
     "DEFAULT",
+    "DEFERRABLE",
     "DELETE",
     "DESC",
+    "DESCRIBE",
     "DISTINCT",
     "DO",
     "DROP",
@@ -63,51 +79,78 @@ const RESERVED: &[&str] = &[
     "FETCH",
     "FOR",
     "FOREIGN",
+    "FREEZE",
     "FROM",
     "FULL",
+    "GLOB",
     "GRANT",
     "GROUP",
     "HAVING",
+    "ILIKE",
     "IN",
     "INDEX",
+    "INITIALLY",
     "INNER",
     "INSERT",
     "INTERSECT",
     "INTO",
     "IS",
+    "ISNULL",
     "JOIN",
     "KEY",
+    "LAMBDA",
+    "LATERAL",
     "LEADING",
     "LEFT",
     "LIKE",
     "LIMIT",
     "NATURAL",
     "NOT",
+    "NOTNULL",
     "NULL",
     "OFFSET",
     "ON",
+    "ONLY",
     "OR",
     "ORDER",
     "OUTER",
+    "OVERLAPS",
+    "PIVOT",
+    "PIVOT_LONGER",
+    "PIVOT_WIDER",
+    "PLACING",
+    "POSITIONAL",
     "PRIMARY",
+    "QUALIFY",
     "REFERENCES",
+    "RETURNING",
     "RIGHT",
     "ROW",
     "ROWS",
     "SELECT",
+    "SEMI",
     "SET",
+    "SHOW",
+    "SIMILAR",
     "SOME",
+    "SUMMARIZE",
+    "SYMMETRIC",
     "TABLE",
+    "TABLESAMPLE",
     "THEN",
     "TO",
     "TRAILING",
     "TRUE",
     "UNION",
     "UNIQUE",
+    "UNPACK",
+    "UNPIVOT",
     "UPDATE",
     "USER",
     "USING",
     "VALUES",
+    "VARIADIC",
+    "VERBOSE",
     "WHEN",
     "WHERE",
     "WINDOW",
@@ -141,12 +184,12 @@ impl Dialect {
         let mut chars = name.chars();
         let first_ok = chars.next().is_some_and(|c| match self {
             Self::Postgres => c.is_ascii_lowercase() || c == '_',
-            Self::MySql | Self::Sqlite => c.is_ascii_alphabetic() || c == '_',
+            Self::MySql | Self::Sqlite | Self::DuckDb => c.is_ascii_alphabetic() || c == '_',
         });
         let rest_ok = chars.all(|c| match self {
             Self::Postgres => c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '$',
             Self::MySql => c.is_ascii_alphanumeric() || c == '_' || c == '$',
-            Self::Sqlite => c.is_ascii_alphanumeric() || c == '_',
+            Self::Sqlite | Self::DuckDb => c.is_ascii_alphanumeric() || c == '_',
         });
         if first_ok && rest_ok && !is_reserved(name) {
             return Cow::Borrowed(name);
@@ -161,7 +204,7 @@ impl Dialect {
     pub const fn ident_quote(self) -> char {
         match self {
             Self::MySql => '`',
-            Self::Postgres | Self::Sqlite => '"',
+            Self::Postgres | Self::Sqlite | Self::DuckDb => '"',
         }
     }
 
@@ -209,6 +252,7 @@ impl Dialect {
         match self {
             Self::Postgres => format!("decode('{hex}', 'hex')"),
             Self::MySql | Self::Sqlite => format!("X'{hex}'"),
+            Self::DuckDb => format!("from_hex('{hex}')"),
         }
     }
 
@@ -218,12 +262,20 @@ impl Dialect {
         !matches!(self, Self::Sqlite)
     }
 
+    /// Whether `SAVEPOINT` works inside a transaction; DuckDB has none.
+    #[must_use]
+    pub const fn has_savepoints(self) -> bool {
+        !matches!(self, Self::DuckDb)
+    }
+
     /// An `INSERT` of a row where every column takes its default.
     #[must_use]
     pub fn insert_defaults(self, table: &str) -> String {
         match self {
             Self::MySql => format!("INSERT INTO {table} () VALUES ()"),
-            Self::Postgres | Self::Sqlite => format!("INSERT INTO {table} DEFAULT VALUES"),
+            Self::Postgres | Self::Sqlite | Self::DuckDb => {
+                format!("INSERT INTO {table} DEFAULT VALUES")
+            }
         }
     }
 
@@ -242,6 +294,12 @@ impl Dialect {
                 self.quote_literal(table)
             ),
             Self::Sqlite => format!("SELECT COUNT(*) FROM {}", self.qualified(schema, table)),
+            Self::DuckDb => format!(
+                "SELECT estimated_size FROM duckdb_tables() \
+                 WHERE database_name = current_database() AND schema_name = {} AND table_name = {}",
+                schema.map_or_else(|| "current_schema()".to_owned(), |s| self.quote_literal(s)),
+                self.quote_literal(table)
+            ),
         }
     }
 
@@ -263,7 +321,7 @@ impl Dialect {
     #[must_use]
     pub fn contains_quoted(self, expr: &str, pattern: &str) -> String {
         match self {
-            Self::Postgres => format!("{expr} ILIKE {pattern} ESCAPE '!'"),
+            Self::Postgres | Self::DuckDb => format!("{expr} ILIKE {pattern} ESCAPE '!'"),
             // A binary collation would make LIKE case-sensitive.
             Self::MySql => format!("LOWER({expr}) LIKE LOWER({pattern}) ESCAPE '!'"),
             Self::Sqlite => format!("{expr} LIKE {pattern} ESCAPE '!'"),
@@ -274,7 +332,7 @@ impl Dialect {
     #[must_use]
     pub fn any_column_contains(self, columns: &[&str], needle: &str) -> String {
         let text = match self {
-            Self::Postgres | Self::Sqlite => "TEXT",
+            Self::Postgres | Self::Sqlite | Self::DuckDb => "TEXT",
             Self::MySql => "CHAR",
         };
         columns
@@ -285,7 +343,8 @@ impl Dialect {
     }
 
     /// The prefix that turns a statement into a plan request whose output is JSON, or
-    /// `None` when the dialect has no JSON plan (SQLite's `EXPLAIN QUERY PLAN` is a table).
+    /// `None` when the dialect has no JSON plan (SQLite's `EXPLAIN QUERY PLAN` is a table;
+    /// DuckDB's JSON plan is not PostgreSQL's).
     #[must_use]
     pub const fn explain_json_prefix(self, analyze: bool) -> Option<&'static str> {
         match (self, analyze) {
@@ -293,7 +352,7 @@ impl Dialect {
             (Self::Postgres, true) => Some("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)"),
             (Self::MySql, false) => Some("EXPLAIN FORMAT=JSON"),
             (Self::MySql, true) => Some("EXPLAIN ANALYZE FORMAT=JSON"),
-            (Self::Sqlite, _) => None,
+            (Self::Sqlite | Self::DuckDb, _) => None,
         }
     }
 }
@@ -316,6 +375,10 @@ mod tests {
         assert_eq!(Dialect::MySql.quote_ident("a`b"), "`a``b`");
         assert_eq!(Dialect::Sqlite.quote_ident("Select"), "\"Select\"");
         assert_eq!(Dialect::Sqlite.quote_ident("a$b"), "\"a$b\"");
+        let duck = Dialect::DuckDb;
+        assert_eq!(duck.quote_ident("Orders"), "Orders");
+        assert_eq!(duck.quote_ident("qualify"), "\"qualify\"");
+        assert_eq!(duck.quote_ident("a b"), "\"a b\"");
     }
 
     #[test]
@@ -354,12 +417,18 @@ mod tests {
                 .any_column_contains(&["a"], "x")
                 .contains("CAST(a AS CHAR)")
         );
+        assert_eq!(
+            Dialect::DuckDb.any_column_contains(&["Total"], "x"),
+            "CAST(Total AS TEXT) ILIKE '%x%' ESCAPE '!'"
+        );
     }
 
     #[test]
     fn explain_prefixes() {
         assert!(Dialect::Postgres.explain_json_prefix(true).is_some());
         assert_eq!(Dialect::Sqlite.explain_json_prefix(false), None);
+        assert_eq!(Dialect::DuckDb.explain_json_prefix(true), None);
+        assert_eq!(Dialect::DuckDb.limit_clause(5), "LIMIT 5");
         assert_eq!(Dialect::MySql.limit_clause(5), "LIMIT 5");
     }
 
@@ -373,9 +442,35 @@ mod tests {
         );
         assert_eq!(Dialect::MySql.binary_literal(""), "X''");
         assert!(!Dialect::Sqlite.has_default_keyword());
+        assert_eq!(Dialect::DuckDb.binary_literal("00ff"), "from_hex('00ff')");
+        assert_eq!(Dialect::DuckDb.bool_literal(true), "TRUE");
+        assert!(Dialect::DuckDb.has_default_keyword());
+        assert!(!Dialect::DuckDb.has_savepoints() && Dialect::Postgres.has_savepoints());
         assert_eq!(
             Dialect::MySql.insert_defaults("t"),
             "INSERT INTO t () VALUES ()"
+        );
+        assert_eq!(
+            Dialect::DuckDb.insert_defaults("t"),
+            "INSERT INTO t DEFAULT VALUES"
+        );
+    }
+
+    #[test]
+    fn estimates_rows_from_the_catalog() {
+        let duck = Dialect::DuckDb;
+        let sql = duck.row_estimate_sql(Some("main"), "orders");
+        assert!(
+            sql.starts_with("SELECT estimated_size FROM duckdb_tables()"),
+            "{sql}"
+        );
+        assert!(
+            sql.ends_with("schema_name = 'main' AND table_name = 'orders'"),
+            "{sql}"
+        );
+        assert!(
+            duck.row_estimate_sql(None, "t")
+                .contains("schema_name = current_schema()")
         );
     }
 }

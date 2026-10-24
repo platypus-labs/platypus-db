@@ -978,7 +978,12 @@ mod tests {
             "select 'unterminated",
             "select (select 1), ((1 + 2)) * 3 /* c */ from t where a in (1, 2) and b like 'x%'",
         ];
-        for d in [Dialect::Postgres, Dialect::MySql, Dialect::Sqlite] {
+        for d in [
+            Dialect::Postgres,
+            Dialect::MySql,
+            Dialect::Sqlite,
+            Dialect::DuckDb,
+        ] {
             for sql in corpus {
                 let formatted = format(sql, d, FormatOptions::default());
                 assert_eq!(

@@ -126,7 +126,7 @@ impl Dialect {
             .map(|(q, _)| q)
             .collect();
         Some(match self {
-            Self::Postgres | Self::Sqlite => {
+            Self::Postgres | Self::Sqlite | Self::DuckDb => {
                 let action = if others.is_empty() {
                     "DO NOTHING".to_owned()
                 } else {
@@ -166,10 +166,12 @@ impl Dialect {
             (_, ObjectKind::Trigger) => "TRIGGER",
             (Self::Postgres, ObjectKind::MaterializedView) => "MATERIALIZED VIEW",
             (Self::Postgres, ObjectKind::ForeignTable) => "FOREIGN TABLE",
-            (Self::Postgres, ObjectKind::Type) => "TYPE",
+            (Self::Postgres | Self::DuckDb, ObjectKind::Type) => "TYPE",
             (Self::Postgres, ObjectKind::Domain) => "DOMAIN",
             (Self::Postgres, ObjectKind::Extension) => "EXTENSION",
-            (Self::Postgres | Self::MySql, ObjectKind::Sequence) => "SEQUENCE",
+            (Self::Postgres | Self::MySql | Self::DuckDb, ObjectKind::Sequence) => "SEQUENCE",
+            // DuckDB's user functions are macros.
+            (Self::DuckDb, ObjectKind::Function) => "MACRO",
             (Self::Postgres | Self::MySql, ObjectKind::Function) => "FUNCTION",
             (Self::Postgres | Self::MySql, ObjectKind::Procedure) => "PROCEDURE",
             (Self::MySql, ObjectKind::Event) => "EVENT",
@@ -177,10 +179,10 @@ impl Dialect {
         })
     }
 
-    /// Whether `DROP ... CASCADE` also drops dependent objects (PostgreSQL only).
+    /// Whether `DROP ... CASCADE` also drops dependent objects (PostgreSQL, DuckDB).
     #[must_use]
     pub const fn supports_cascade(self) -> bool {
-        matches!(self, Self::Postgres)
+        matches!(self, Self::Postgres | Self::DuckDb)
     }
 
     #[must_use]
@@ -247,6 +249,14 @@ impl Dialect {
             },
             Self::Sqlite => (kind == ObjectKind::Table)
                 .then(|| format!("ALTER TABLE {} RENAME TO {to};", self.object(o))),
+            Self::DuckDb => match kind {
+                ObjectKind::Table | ObjectKind::View => Some(format!(
+                    "ALTER {} {} RENAME TO {to};",
+                    self.keyword(kind)?,
+                    self.object(o)
+                )),
+                _ => None,
+            },
         }
     }
 }
@@ -335,6 +345,16 @@ mod tests {
             None
         );
         assert_eq!(Dialect::Sqlite.rename(ObjectKind::View, &ORDERS, "x"), None);
+        let duck = Dialect::DuckDb;
+        assert_eq!(
+            duck.rename(ObjectKind::View, &ORDERS, "x").as_deref(),
+            Some("ALTER VIEW demo.orders RENAME TO x;")
+        );
+        assert_eq!(
+            duck.drop(ObjectKind::Function, &ORDERS, true).as_deref(),
+            Some("DROP MACRO demo.orders CASCADE;")
+        );
+        assert_eq!(duck.truncate(&ORDERS), "TRUNCATE TABLE demo.orders;");
         assert_eq!(
             Dialect::Sqlite.drop(ObjectKind::Function, &ORDERS, false),
             None
