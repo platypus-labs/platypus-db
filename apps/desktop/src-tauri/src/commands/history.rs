@@ -1,6 +1,6 @@
 //! Query history.
 
-use platypus_store::{HistoryEntry, HistoryQuery};
+use platypus_store::{HistoryEntry, HistoryOrigin, HistoryQuery};
 use tauri::State;
 use uuid::Uuid;
 
@@ -13,6 +13,7 @@ pub fn search_history(
     connection_ids: Option<Vec<Uuid>>,
     text: Option<String>,
     before_id: Option<i64>,
+    origin: Option<HistoryOrigin>,
     limit: usize,
 ) -> CommandResult<Vec<HistoryEntry>> {
     state.with_history(|h| {
@@ -20,6 +21,7 @@ pub fn search_history(
             connection_ids,
             text,
             before_id,
+            origin,
             limit: limit.min(1000),
         })
     })
