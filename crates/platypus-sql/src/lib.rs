@@ -3,11 +3,13 @@
 //! reads ([`source_table`]) and the [`dml`] that saves edited table data. All offsets are byte
 //! offsets into the input.
 
+mod analysis;
 mod dialect;
 pub mod dml;
 mod lexer;
 mod source;
 
+pub use analysis::{Analysis, StatementKind, TableName, analyze};
 pub use dialect::Dialect;
 pub use lexer::{Lexer, Token, TokenKind};
 pub use source::{SelectItem, SourceTable, source_table};

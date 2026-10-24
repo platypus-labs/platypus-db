@@ -4,6 +4,7 @@ import {
   api,
   toCommandError,
   type ExportOptions,
+  type StatementSpan,
   type QueryEvent,
   type TableDetails,
   type TransactionState,
@@ -11,11 +12,13 @@ import {
 import type { EditSource, TableRef } from "../grid/edit/meta";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
 import { type RunMode, SqlEditor, type SqlEditorHandle } from "../editor/SqlEditor";
-import { defineSetting, getSetting } from "../settings";
+import { defineSetting, getSetting, useSetting } from "../settings";
 import { type Sort, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { basename } from "../workspace";
+import { type CheckedStatement, type GuardRequest, check, elapsed, transactionWarning } from "../guards/guards";
+import { GuardDialog } from "../guards/GuardDialog";
 import { ExportDialog, type ExportSource } from "./ExportDialog";
 import { HistoryPanel } from "./HistoryPanel";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
@@ -62,6 +65,8 @@ interface Planned {
   sql: string;
   offset: number;
   readOnly: boolean;
+  /** Its statements and what they do, for the checks before running. */
+  checks: CheckedStatement[];
 }
 
 let nextResultId = 1;
@@ -100,6 +105,13 @@ export function QueryTab({
 }: Props) {
   const editor = useRef<SqlEditorHandle>(null);
   const [tx, setTx] = useState<TransactionState | null>(null);
+  /** A run waiting for the answer to its checks. */
+  const [guard, setGuard] = useState<{ request: GuardRequest; resolve: (run: boolean) => void } | null>(null);
+  /** When the open transaction began, as far as the tab saw it. */
+  const [txSince, setTxSince] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const warnMinutes = useSetting(transactionWarning);
+  const warned = useRef(false);
   const [filter, setFilter] = useState(tab.filter ?? "");
   const [count, setCount] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
@@ -153,16 +165,19 @@ export function QueryTab({
     const { from, to } = ed.getSelection();
     const scope = from !== to ? { text: text.slice(from, to), offset: from } : { text, offset: 0 };
     const analysis = await api.analyzeSql(scope.text, connection.driver, from - scope.offset);
-    const toPlanned = (s: { start: number; end: number; read_only: boolean }) => ({
+    const checked = (span: StatementSpan) => ({ sql: scope.text.slice(span.start, span.end), span });
+    const toPlanned = (s: StatementSpan): Planned => ({
       sql: scope.text.slice(s.start, s.end),
       offset: scope.offset + s.start,
       readOnly: s.read_only,
+      checks: [checked(s)],
     });
     if (mode === "script") return analysis.statements.map(toPlanned);
     if (from !== to) {
       // A selection runs as typed, even if it holds several statements.
       const readOnly = analysis.statements.every((s) => s.read_only);
-      return scope.text.trim() ? [{ sql: scope.text, offset: from, readOnly }] : [];
+      const checks = analysis.statements.map(checked);
+      return scope.text.trim() ? [{ sql: scope.text, offset: from, readOnly, checks }] : [];
     }
     const at = analysis.at_cursor;
     const statement = at === null ? undefined : analysis.statements[at];
@@ -259,6 +274,11 @@ export function QueryTab({
       return;
     }
     setBlocked(null);
+    // Statements of a run asked about already go again without asking.
+    if (!again) {
+      const request = await check(connection, planned.flatMap((p) => p.checks), sideSession);
+      if (request && !(await new Promise<boolean>((resolve) => setGuard({ request, resolve })))) return;
+    }
     const sessionId = await ensureSession();
     if (sessionId === null) return;
     onNeedCatalog(false);
@@ -559,6 +579,25 @@ export function QueryTab({
     };
   }
 
+  // The open transaction's clock, and one warning when it has been open too long.
+  useEffect(() => {
+    if (!tx?.open) {
+      setTxSince(null);
+      warned.current = false;
+      return;
+    }
+    setTxSince((since) => since ?? Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [tx?.open]);
+  const txAge = txSince === null ? 0 : Math.max(0, now - txSince);
+  const txLong = warnMinutes > 0 && txAge >= warnMinutes * 60_000;
+  useEffect(() => {
+    if (!txLong || warned.current) return;
+    warned.current = true;
+    onError(`A transaction on ${connection.name} has been open for ${warnMinutes} minutes: commit or roll back.`);
+  }, [txLong]);
+
   const current = results[activeResult];
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
   const rowsResult = current?.status.kind === "rows" && current.columns ? current : null;
@@ -607,8 +646,11 @@ export function QueryTab({
             </>
           )}
           {tx?.open && (
-            <span className="tx-open" title="A transaction is open: changes are not visible to others yet">
-              ● Transaction open
+            <span
+              className={`tx-open${txLong ? " long" : ""}`}
+              title="A transaction is open: changes are not visible to others yet, and locks are held"
+            >
+              ● Transaction open {elapsed(txAge)}
             </span>
           )}
           <span className="divider" />
@@ -776,6 +818,15 @@ export function QueryTab({
           refresh={historyVersion}
           onInsert={(sql) => editor.current?.insert(sql)}
           onClose={() => setShowHistory(false)}
+        />
+      )}
+      {guard && (
+        <GuardDialog
+          request={guard.request}
+          onAnswer={(run) => {
+            guard.resolve(run);
+            setGuard(null);
+          }}
         />
       )}
       {exportOpen && rowsResult && (

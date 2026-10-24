@@ -7,6 +7,7 @@ import { Dictionary } from "./dictionary";
 import { type EditMeta, type EditSource, type EditorKind, editMeta, editorKind, isJson, type ReadOnly } from "./meta";
 import { plainNumber } from "../formats";
 import { mapFields, parseClipboard } from "./paste";
+import { needsProductionConfirm } from "../../guards/guards";
 import { PreviewDialog } from "./PreviewDialog";
 import * as edits from "./state";
 import { VirtualKeyDialog } from "./VirtualKeyDialog";
@@ -47,7 +48,9 @@ export interface TableEdit {
    *  or with `asRows` as new rows. */
   paste(asRows: boolean): Promise<void>;
   undo(): void;
-  save(): Promise<void>;
+  /** Saves the changes; on a production connection the SQL is shown first, unless
+   *  `confirmed` (the preview's Save). */
+  save(confirmed?: boolean): Promise<void>;
   preview(): Promise<void>;
   discard(): void;
 }
@@ -387,8 +390,9 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
       current.current = prev;
       setState(prev);
     },
-    save: async () => {
+    save: async (confirmed = false) => {
       if (!editable || !keys || edits.isEmpty(current.current)) return;
+      if (!confirmed && target && needsProductionConfirm(target.connection)) return edit.preview();
       setBusy(true);
       setPreview(null);
       try {
@@ -560,7 +564,8 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
           <PreviewDialog
             statements={preview}
             busy={busy}
-            onSave={() => void edit.save()}
+            production={!!target && needsProductionConfirm(target.connection)}
+            onSave={() => void edit.save(true)}
             onClose={() => setPreview(null)}
           />
         )}

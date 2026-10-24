@@ -40,7 +40,11 @@ scrolls through millions of rows.
   at the focused one. Dates, timestamps, the time zone, digit grouping and relative times
   follow the Settings.
 - **Export** to CSV, JSON, NDJSON or Parquet, streamed straight to the file.
-- **Transactions**: auto-commit or manual commit with Commit/Rollback.
+- **Transactions**: auto-commit or manual commit with Commit/Rollback; an open transaction
+  shows how long it has been open and warns after a while (10 minutes by default).
+- **Safety**: an `UPDATE` or `DELETE` without `WHERE`, or a `TRUNCATE`, asks first and says
+  about how many rows it changes; on production connections every change is listed and
+  confirmed before it runs, and the data editor shows its SQL before saving.
 - Light and dark theme, automatic reconnection, in-app updates.
 
 | | |

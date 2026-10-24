@@ -134,6 +134,7 @@ pub fn run() {
             commands::query::close_query,
             commands::meta::completion_catalog,
             commands::meta::query_value,
+            commands::meta::estimate_rows,
             commands::meta::list_schemas,
             commands::meta::list_objects,
             commands::meta::table_details,

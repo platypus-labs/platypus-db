@@ -69,7 +69,9 @@ rather than checking the driver. It provides:
 
 `platypus_sql::dml` builds the data editor's `UPDATE`, `INSERT` and `DELETE` statements from
 text values and the columns' Arrow types, and `dml::apply` runs them all or none.
-`platypus_sql::source_table` tells which table a `SELECT` reads, when its rows are that
+`platypus_sql::analyze` tells what a statement does (query, DML, DDL) and which table an
+unfiltered `UPDATE`, `DELETE` or `TRUNCATE` changes in every row; the checks before running
+(`apps/desktop/src/guards/`) use it. `platypus_sql::source_table` tells which table a `SELECT` reads, when its rows are that
 table's, so the editor can change the results of such queries too.
 
 Add dialect rules there, with tests. `apps/desktop/src/sqlNames.ts` mirrors `quote_ident`

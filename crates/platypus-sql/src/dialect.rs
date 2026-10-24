@@ -212,6 +212,24 @@ impl Dialect {
         }
     }
 
+    /// A query for about how many rows a table has, read from the statistics where the
+    /// database keeps them (SQLite counts them). Its value is NULL when unknown.
+    #[must_use]
+    pub fn row_estimate_sql(self, schema: Option<&str>, table: &str) -> String {
+        match self {
+            Self::Postgres => format!(
+                "SELECT CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::bigint END                  FROM pg_class c WHERE c.oid = to_regclass({})",
+                self.quote_literal(&self.qualified(schema, table))
+            ),
+            Self::MySql => format!(
+                "SELECT TABLE_ROWS FROM information_schema.TABLES                  WHERE TABLE_SCHEMA = {} AND TABLE_NAME = {}",
+                schema.map_or_else(|| "DATABASE()".to_owned(), |s| self.quote_literal(s)),
+                self.quote_literal(table)
+            ),
+            Self::Sqlite => format!("SELECT COUNT(*) FROM {}", self.qualified(schema, table)),
+        }
+    }
+
     /// The clause that caps a query's rows, appended after `ORDER BY`.
     #[must_use]
     pub fn limit_clause(self, limit: u64) -> String {

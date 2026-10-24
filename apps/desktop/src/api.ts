@@ -107,6 +107,9 @@ export interface StatementSpan {
   start: number;
   end: number;
   read_only: boolean;
+  kind: "query" | "dml" | "ddl" | "other";
+  /** An UPDATE or DELETE without WHERE, or a TRUNCATE: the table it changes in every row. */
+  unfiltered: { schema: string | null; name: string } | null;
 }
 
 export interface SqlAnalysis {
@@ -346,6 +349,9 @@ export const api = {
     invoke<TransactionState>("end_transaction", { sessionId, commit }),
   completionCatalog: (sessionId: number) => invoke<CompletionCatalog>("completion_catalog", { sessionId }),
   queryValue: (sessionId: number, sql: string) => invoke<string | null>("query_value", { sessionId, sql }),
+  /** About how many rows a table has, from the statistics; `null` when unknown. */
+  estimateRows: (sessionId: number, schema: string | null, table: string) =>
+    invoke<number | null>("estimate_rows", { sessionId, schema, table }),
   /** `[key, label]` pairs of `values`, or with `null` the first `limit` rows by label. */
   lookupValues: (sessionId: number, lookup: Lookup, values: string[] | null, limit: number) =>
     invoke<[string | null, string | null][]>("lookup_values", { sessionId, lookup, values, limit }),
