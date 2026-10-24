@@ -1,0 +1,85 @@
+/* Window layout, tab bar, status bar. */
+
+/* Layout */
+
+.shell {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  height: 100%;
+}
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+
+.welcome {
+  margin: auto;
+  text-align: center;
+}
+
+.welcome h1 {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+/* Tabs */
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 6px 12px;
+  border-right: 1px solid var(--border);
+  border-top: 2px solid transparent;
+  cursor: default;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tab.active {
+  background: var(--bg);
+  margin-bottom: -1px;
+}
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 3px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.toast {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 5;
+  max-width: 480px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--ok-bg);
+  border-bottom: 1px solid var(--border);
+}

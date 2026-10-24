@@ -1,0 +1,147 @@
+/* Reset, fonts, variables other than colors, buttons, inputs and shared utilities. */
+
+:root {
+  /* Colors, corner radius and grid density are set by theme.ts from the Appearance settings. */
+  --mono: ui-monospace, "Cascadia Code", Consolas, "SF Mono", monospace;
+  --radius: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --editor-font-size: 13px;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  overflow: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+button.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  background: var(--accent);
+}
+
+button.icon {
+  border: none;
+  background: transparent;
+  padding: 0 6px;
+  line-height: 20px;
+  color: var(--fg-muted);
+}
+
+button.icon:hover {
+  color: var(--fg);
+}
+
+button.link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+}
+
+input,
+select {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  min-width: 0;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.muted {
+  color: var(--fg-muted);
+}
+
+.small {
+  font-size: 11px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.error-text {
+  color: var(--error);
+}
+
+/* Notices and dialogs */
+
+.notice {
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  margin: 8px;
+}
+
+.notice.small {
+  font-size: 12px;
+  margin: 4px 8px;
+}
+
+.notice.error {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.notice.ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.notice.warn {
+  background: var(--warn-bg);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
