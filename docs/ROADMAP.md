@@ -206,7 +206,7 @@ Restano i P3.
 
 ---
 
-### Gruppo F — Connettività e sicurezza delle credenziali
+### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 fatti
 
 **Stato: P1 completati** (tunnel SSH con password, chiave, agent e jump host; tipi
 Dev/Test/Prod con colore e commit manuale in Prod; import da DBeaver, DataGrip, pgAdmin e
@@ -217,8 +217,8 @@ Dev/Test/Prod con colore e commit manuale in Prod; import da DBeaver, DataGrip, 
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| **Tunnel SSH** (`russh`): password, chiave, agent, jump host | P1 | D |
-| **Tipi di connessione** Dev/Test/Prod: colore, conferma prima di scrivere, autocommit off di default in Prod | P1 | D |
+| ✅ **Tunnel SSH** (`russh`): password, chiave, agent, jump host | P1 | D |
+| ✅ **Tipi di connessione** Dev/Test/Prod: colore, conferma prima di scrivere, autocommit off di default in Prod | P1 | D |
 | Proxy SOCKS5 e HTTP | P3 | D |
 | **Profili di rete** riutilizzabili tra connessioni | P2 | D |
 | Inizializzazione: schema e database di default, query di bootstrap, fuso orario | P2 | D |
@@ -227,7 +227,7 @@ Dev/Test/Prod con colore e commit manuale in Prod; import da DBeaver, DataGrip, 
 | Kerberos, SSPI, Entra ID, IAM AWS e GCP | P3 | D+ |
 | **Master password** per le credenziali salvate (oltre al keychain) | P2 | D |
 | Gestione certificati SSL: CA personalizzate, certificato client | P2 | D |
-| Import delle connessioni da DBeaver (`data-sources.json`), DataGrip, pgAdmin, `~/.pg_service.conf` | P1 | D |
+| ✅ Import delle connessioni da DBeaver (`data-sources.json`), DataGrip, pgAdmin, `~/.pg_service.conf` | P1 | D |
 | Indicatore di salute della connessione (latenza, keep-alive, riconnessione) | P2 | N |
 | Kubernetes port-forward, AWS SSM | P3 | D+ |
 
@@ -310,7 +310,7 @@ parallelizzabile: **una persona per driver**.
 
 ---
 
-### Gruppo K — Shell dell'applicazione ed ergonomia
+### Gruppo K — Shell dell'applicazione ed ergonomia — ✅ P1 fatti
 
 **Stato: P1 completati** (rotella sui tab, command palette con ricerca fuzzy su azioni,
 connessioni, tabelle e query recenti, riapertura del tab chiuso, pagina Impostazioni con
@@ -325,13 +325,13 @@ come spazi di lavoro** (parte B della stessa spec) sono il prossimo passo.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| **Rotella del mouse sui tab = scroll orizzontale** | P1 | N |
-| **Command palette** (Ctrl+K o Ctrl+Shift+P): azioni, oggetti, connessioni e query recenti, ricerca fuzzy | P1 | N |
-| Riapri l'ultimo tab chiuso (Ctrl+Shift+T) | P1 | N |
+| ✅ **Rotella del mouse sui tab = scroll orizzontale** | P1 | N |
+| ✅ **Command palette** (Ctrl+K o Ctrl+Shift+P): azioni, oggetti, connessioni e query recenti, ricerca fuzzy | P1 | N |
+| ✅ Riapri l'ultimo tab chiuso (Ctrl+Shift+T) | P1 | N |
 | Tab colorati per connessione, raggruppabili e fissabili; menu "chiudi altri" | P2 | N |
 | Editor diviso, con due tab affiancati | P2 | N |
 | Trascinare una tabella dal navigator nell'editor inserisce il nome o un `SELECT` | P2 | N |
-| Pagina Impostazioni, scorciatoie personalizzabili, barra degli strumenti configurabile | P1 | D |
+| ✅ Pagina Impostazioni, scorciatoie personalizzabili, barra degli strumenti configurabile | P1 | D |
 | Lingua dell'interfaccia: italiano e inglese, con l'infrastruttura i18n | P2 | D |
 | Accessibilità: navigazione da tastiera completa, screen reader, contrasto | P2 | D |
 | Pannelli trascinabili e layout salvato | P3 | D |
@@ -342,7 +342,7 @@ come spazi di lavoro** (parte B della stessa spec) sono il prossimo passo.
 
 ---
 
-### Gruppo L — Sicurezza operativa
+### Gruppo L — Sicurezza operativa — ✅ P1 fatti
 
 **Stato: P1 completati** (conferma o blocco di UPDATE/DELETE senza WHERE e TRUNCATE con le
 righe stimate, conferma delle modifiche sulle connessioni Prod anche dal data editor, timer
@@ -353,9 +353,9 @@ della transazione aperta con avviso). Restano i P2/P3.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Blocco o conferma per UPDATE/DELETE senza WHERE, con il numero di righe stimato | P1 | N |
-| Conferma per DDL e DML sulle connessioni Prod, con il riepilogo degli statement | P1 | D |
-| Timer della transazione aperta: avviso dopo N minuti, indicatore sempre visibile | P1 | N |
+| ✅ Blocco o conferma per UPDATE/DELETE senza WHERE, con il numero di righe stimato | P1 | N |
+| ✅ Conferma per DDL e DML sulle connessioni Prod, con il riepilogo degli statement | P1 | D |
+| ✅ Timer della transazione aperta: avviso dopo N minuti, indicatore sempre visibile | P1 | N |
 | **Pending transactions**: elenco degli statement non ancora committati, per tab | P2 | D |
 | **Transaction log** della sessione | P3 | D |
 | `LIMIT` automatico sulle SELECT senza limite, configurabile | P2 | N |
