@@ -142,6 +142,7 @@ pub fn run() {
         .setup(setup)
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            commands::agents::agent_setup,
             commands::connections::list_connections,
             commands::connections::default_connection,
             commands::connections::save_connection,

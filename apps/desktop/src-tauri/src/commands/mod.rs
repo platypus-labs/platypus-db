@@ -4,6 +4,7 @@
 // Tauri injects `State` and deserialized arguments by value.
 #![allow(clippy::needless_pass_by_value)]
 
+pub mod agents;
 pub mod cli;
 pub mod connections;
 pub mod data;
