@@ -6,6 +6,12 @@ import { registerTabKind } from "./registry";
 
 const text = (v: unknown) => (typeof v === "string" ? v : null);
 
+/** A saved object of strings, e.g. the variables; anything else is dropped. */
+function strings(v: unknown): Record<string, string> | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  return Object.fromEntries(Object.entries(v).filter((e): e is [string, string] => typeof e[1] === "string"));
+}
+
 function tableRef(v: unknown): TableRef | null {
   if (!v || typeof v !== "object") return null;
   const { schema, name, kind } = v as Record<string, unknown>;
@@ -26,7 +32,7 @@ registerTabKind({
     if (!tab.filePath) return tab.title ?? "";
     return `${basename(tab.filePath)}${tab.sql !== tab.savedSql ? " •" : ""}`;
   },
-  persist: ({ sql, filePath, savedSql, title, table, tableRef, filter, sort, database }) => ({
+  persist: ({ sql, filePath, savedSql, title, table, tableRef, filter, sort, database, variables, terminal }) => ({
     database,
     sql,
     filePath,
@@ -36,6 +42,8 @@ registerTabKind({
     tableRef,
     filter,
     sort,
+    variables,
+    terminal,
   }),
   restore: (saved) => ({
     sql: text(saved.sql) ?? "",
@@ -47,5 +55,7 @@ registerTabKind({
     filter: text(saved.filter) ?? undefined,
     sort: (saved.sort as Sort | null | undefined) ?? null,
     database: text(saved.database),
+    variables: strings(saved.variables),
+    terminal: saved.terminal === true,
   }),
 });

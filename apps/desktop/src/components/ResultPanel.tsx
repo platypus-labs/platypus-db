@@ -12,7 +12,9 @@ export type ResultStatus =
   | { kind: "rows"; finished: boolean; complete: boolean; stopped?: boolean; elapsedMs: number }
   | { kind: "affected"; rows: number; elapsedMs: number }
   | { kind: "error"; error: CommandError }
-  | { kind: "skipped" };
+  | { kind: "skipped" }
+  /** Output of the app itself: a client command such as `@echo`, or a command-line client. */
+  | { kind: "message"; summary: string; text: string; failed?: boolean };
 
 export interface Result {
   /** Local id, stable across re-renders. */
@@ -58,6 +60,8 @@ export function describe(result: Result): string {
       return s.error.kind === "cancelled" ? "Cancelled" : "Error";
     case "skipped":
       return "Not executed";
+    case "message":
+      return s.summary;
   }
 }
 
@@ -113,6 +117,9 @@ export function ResultPanel({ result, sort, onHeaderClick, source, edit }: Panel
   }
   if (status.kind === "skipped") {
     return <div className="notice muted">Not executed: an earlier statement failed.</div>;
+  }
+  if (status.kind === "message") {
+    return <pre className={`message-output${status.failed ? " failed" : ""}`}>{status.text}</pre>;
   }
   if (columns && cache && jobId !== null) {
     return (

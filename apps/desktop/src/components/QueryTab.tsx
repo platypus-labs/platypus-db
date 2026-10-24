@@ -3,16 +3,27 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   api,
   toCommandError,
+  type ColumnInfo,
+  type CommandError,
+  type ExportFormat,
   type ExportOptions,
+  type ParameterSpan,
   type StatementSpan,
   type QueryEvent,
   type SavedConnection,
   type TableDetails,
   type TransactionState,
 } from "../api";
+import { isProduction } from "../connections";
 import type { EditSource, TableRef } from "../grid/edit/meta";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
-import { type RunMode, SqlEditor, type SqlEditorHandle } from "../editor/SqlEditor";
+import { cliName } from "../editor/actions";
+import { OutlinePanel } from "../editor/OutlinePanel";
+import { ParamsDialog } from "../editor/ParamsDialog";
+import { expandVariables, parameterKeys, parseCommand, resolvePath, substitute } from "../editor/params";
+import { type EditorHost, type RunMode, SqlEditor, type SqlEditorHandle } from "../editor/SqlEditor";
+import { TERMINAL_ROWS, type TerminalBlock, TerminalView, blockText } from "../editor/terminal";
+import { VariablesPanel } from "../editor/VariablesPanel";
 import { defineSetting, getSetting, useSetting } from "../settings";
 import { type Sort, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
@@ -53,7 +64,26 @@ export interface QueryTabModel extends TabBase {
   filter?: string;
   /** Data viewer: server-side sort. */
   sort?: Sort | null;
+  /** Values of `${name}` and `:name`, kept with the tab. */
+  variables?: Record<string, string>;
+  /** Results as text, like a console, instead of the grid. */
+  terminal?: boolean;
 }
+
+/** The side panel next to the editor. */
+type SidePanel = "history" | "variables" | "outline";
+
+/** How many files `@include` may nest. */
+const INCLUDE_DEPTH = 16;
+
+const clientError = (message: string, kind = "other"): CommandError => ({
+  kind,
+  message,
+  code: null,
+  detail: null,
+  hint: null,
+  position: null,
+});
 
 declare module "../tabs/registry" {
   interface TabKinds {
@@ -65,10 +95,39 @@ type Props = TabProps<QueryTabModel>;
 
 interface Planned {
   sql: string;
+  /** Where `sql` starts in the editor; -1 for statements of an `@include`d file. */
   offset: number;
   readOnly: boolean;
   /** Its statements and what they do, for the checks before running. */
   checks: CheckedStatement[];
+  kind: StatementSpan["kind"];
+  /** Placeholders, relative to `sql`. */
+  params: ParameterSpan[];
+  /** How many `@include`s deep it comes from. */
+  depth: number;
+}
+
+/** What `runOne` learned about the result, for terminal mode. */
+interface Seen {
+  jobId: number | null;
+  columns: ColumnInfo[] | null;
+  rows: number;
+}
+
+/** The statements of `text`, from its analysis, at `offset` in the editor. */
+function plannedOf(text: string, spans: StatementSpan[], offset: number, depth = 0): Planned[] {
+  return spans.map((s) => {
+    const sql = text.slice(s.start, s.end);
+    return {
+      sql,
+      offset: offset < 0 ? -1 : offset + s.start,
+      readOnly: s.read_only,
+      checks: [{ sql, span: s }],
+      kind: s.kind,
+      params: s.parameters.map((p) => ({ ...p, start: p.start - s.start, end: p.end - s.start })),
+      depth,
+    };
+  });
 }
 
 let nextResultId = 1;
@@ -122,7 +181,17 @@ export function QueryTab({
   const [activeResult, setActiveResult] = useState(0);
   const [running, setRunning] = useState(false);
   const [blocked, setBlocked] = useState<RunMode | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
+  const [panel, setPanel] = useState<SidePanel | null>(null);
+  const togglePanel = (p: SidePanel) => setPanel((open) => (open === p ? null : p));
+  /** A statement waiting for its parameters' values; `null` resolves as cancelled. */
+  const [asking, setAsking] = useState<{
+    sql: string;
+    keys: string[];
+    raw: Set<string>;
+    initial: Record<string, string>;
+    resolve: (values: Record<string, string> | null) => void;
+  } | null>(null);
+  const [terminalLog, setTerminalLog] = useState<TerminalBlock[]>([]);
   const [historyVersion, setHistoryVersion] = useState(0);
   const [editorHeight, setEditorHeight] = useState(200);
   const runToken = useRef(0);
@@ -167,27 +236,32 @@ export function QueryTab({
     const { from, to } = ed.getSelection();
     const scope = from !== to ? { text: text.slice(from, to), offset: from } : { text, offset: 0 };
     const analysis = await api.analyzeSql(scope.text, connection.driver, from - scope.offset);
-    const checked = (span: StatementSpan) => ({ sql: scope.text.slice(span.start, span.end), span });
-    const toPlanned = (s: StatementSpan): Planned => ({
-      sql: scope.text.slice(s.start, s.end),
-      offset: scope.offset + s.start,
-      readOnly: s.read_only,
-      checks: [checked(s)],
-    });
-    if (mode === "script") return analysis.statements.map(toPlanned);
+    const statements = analysis.statements;
+    const all = plannedOf(scope.text, statements, scope.offset);
+    // A selection runs as typed, even if it holds several statements, unless it has client
+    // commands: those run one by one, as a script.
+    if (mode === "script" || (from !== to && statements.some((s) => s.kind === "command"))) return all;
     if (from !== to) {
-      // A selection runs as typed, even if it holds several statements.
-      const readOnly = analysis.statements.every((s) => s.read_only);
-      const checks = analysis.statements.map(checked);
-      return scope.text.trim() ? [{ sql: scope.text, offset: from, readOnly, checks }] : [];
+      if (!scope.text.trim()) return [];
+      return [
+        {
+          sql: scope.text,
+          offset: from,
+          readOnly: statements.every((s) => s.read_only),
+          checks: all.flatMap((p) => p.checks),
+          kind: statements[0]?.kind ?? "query",
+          params: statements.flatMap((s) => s.parameters),
+          depth: 0,
+        },
+      ];
     }
     const at = analysis.at_cursor;
-    const statement = at === null ? undefined : analysis.statements[at];
-    return statement ? [toPlanned(statement)] : [];
+    return at === null || !all[at] ? [] : [all[at]];
   }
 
-  /** Runs one statement and resolves with its first terminal status. */
-  function runOne(sessionId: number, result: Result, token: number): Promise<ResultStatus> {
+  /** Runs one statement and resolves with its first terminal status; `seen` gets its job,
+   *  columns and rows as they arrive. */
+  function runOne(sessionId: number, result: Result, token: number, seen?: Seen): Promise<ResultStatus> {
     const limited = result.limit !== null;
     return new Promise((resolve) => {
       let settled = false;
@@ -203,12 +277,15 @@ export function QueryTab({
         switch (event.type) {
           case "started":
             status = { kind: "rows", finished: false, complete: true, elapsedMs: event.elapsed_ms };
+            if (seen) seen.columns = event.columns;
             update(result.id, { columns: event.columns, status });
             break;
           case "progress":
+            if (seen) seen.rows = event.rows;
             update(result.id, { rows: event.rows });
             break;
           case "finished":
+            if (seen) seen.rows = event.rows;
             status = {
               kind: "rows",
               finished: true,
@@ -233,6 +310,7 @@ export function QueryTab({
         (jobId) => {
           jobs.current.push(jobId);
           currentJob.current = jobId;
+          if (seen) seen.jobId = jobId;
           update(result.id, { jobId });
         },
         (e: unknown) => {
@@ -245,7 +323,7 @@ export function QueryTab({
   }
 
   function showError(planned: Planned, status: ResultStatus) {
-    if (status.kind !== "error" || status.error.kind === "cancelled") return;
+    if (status.kind !== "error" || status.error.kind === "cancelled" || planned.offset < 0) return;
     const text = editor.current!.getText();
     const position = status.error.position;
     const from = position ? planned.offset + position - 1 : planned.offset;
@@ -257,13 +335,53 @@ export function QueryTab({
     });
   }
 
+  /** Asks the values of a statement's parameters that this run has not set yet; `null`
+   *  when the user cancels. `defined` holds the names set so far in the run. */
+  async function fillParams(
+    p: Planned,
+    variables: Record<string, string>,
+    defined: Set<string>,
+  ): Promise<Record<string, string> | null> {
+    const keys = parameterKeys(p.params);
+    const raw = new Set(p.params.filter((s) => s.kind === "variable").map((s) => s.name));
+    const ask = [...new Set(keys)].filter((k) => (raw.has(k) ? !(k in variables) : !defined.has(k)));
+    if (ask.length === 0) return variables;
+    const answer = await new Promise<Record<string, string> | null>((resolve) =>
+      setAsking({ sql: p.sql, keys: ask, raw, initial: variables, resolve }),
+    );
+    setAsking(null);
+    if (!answer) return null;
+    for (const k of ask) if (!k.startsWith("?")) defined.add(k);
+    return { ...variables, ...answer };
+  }
+
+  /** Exports the rows of `sql` to `path` instead of showing them (`@export`). */
+  function exportTo(sessionId: number, sql: string, path: string, format: ExportFormat): Promise<ResultStatus> {
+    return new Promise((resolve) => {
+      const options: ExportOptions = { format, delimiter: ",", header: true };
+      api
+        .exportQuery(sessionId, sql, path, options, (event) => {
+          if (event.type === "done") {
+            const text = `Exported ${fmt.format(event.rows)} rows to ${path} in ${formatMs(event.elapsed_ms)}`;
+            resolve({ kind: "message", summary: `Exported ${fmt.format(event.rows)} rows`, text });
+          } else if (event.type === "failed") {
+            resolve({ kind: "error", error: event.error });
+          } else if (event.type === "cancelled") {
+            resolve({ kind: "error", error: clientError("Export cancelled", "cancelled") });
+          }
+        })
+        .catch((e: unknown) => resolve({ kind: "error", error: toCommandError(e) }));
+    });
+  }
+
   /** Runs what `mode` selects in the editor, or `again` (the statements of the last run). */
   async function run(mode: RunMode, force = false, again?: Planned[]) {
     if (running && !force) return;
     if (unsaved.current && !window.confirm("Discard the changes to the data that are not saved?")) return;
+    const append = mode === "append";
     let planned: Planned[];
     try {
-      planned = again ?? (await plan(mode));
+      planned = again ?? (await plan(append ? "statement" : mode));
     } catch (e) {
       onError(toCommandError(e).message);
       return;
@@ -286,60 +404,252 @@ export function QueryTab({
     onNeedCatalog(false);
 
     const token = ++runToken.current;
-    closeJobs();
+    if (!append) closeJobs();
     const script = mode === "script" && planned.length > 1;
-    const initial: Result[] = planned.map((p, i) => ({
+    const limit = tab.terminal ? TERMINAL_ROWS : script ? getSetting(scriptRowLimit) : null;
+    const resultOf = (p: Planned, first: boolean): Result => ({
       id: nextResultId++,
       sql: p.sql,
       offset: p.offset,
       jobId: null,
       columns: null,
       rows: 0,
-      status: { kind: i === 0 ? "running" : "pending" },
-      limit: script ? getSetting(scriptRowLimit) : null,
-    }));
-    setResults(initial);
-    setActiveResult(0);
+      status: { kind: first ? "running" : "pending" },
+      limit,
+    });
+    // `queue` grows when an `@include` adds a file's statements after itself.
+    const queue = [...planned];
+    const own = queue.map((p, i) => resultOf(p, i === 0));
+    const base = append ? results.length : 0;
+    setResults((all) => (append ? [...all, ...own] : own));
+    setActiveResult(base);
     setRunning(true);
     editor.current!.setError(null);
+
+    const variables = { ...(tab.variables ?? {}) };
+    const defined = new Set<string>();
+    const keepVariables = () =>
+      onChange({ variables: Object.fromEntries(Object.entries(variables).filter(([k]) => !k.startsWith("?"))) });
+    // Set by `@export`, taken by the next statement.
+    const pending: { export: { path: string; format: ExportFormat } | null } = { export: null };
+
+    /** Runs a client command; an `@include` adds the file's statements after `i`. */
+    async function command(p: Planned, i: number): Promise<ResultStatus> {
+      const c = parseCommand(expandVariables(p.sql, variables));
+      switch (c.name) {
+        case "set":
+          variables[c.variable] = c.value;
+          defined.add(c.variable);
+          keepVariables();
+          return { kind: "message", summary: `${c.variable} = ${c.value}`, text: `${c.variable} = ${c.value}` };
+        case "echo":
+          return { kind: "message", summary: c.text.slice(0, 60) || "(empty)", text: c.text };
+        case "export":
+          pending.export = { path: c.path, format: c.format };
+          return { kind: "message", summary: `Next rows to ${c.path}`, text: `The next statement's rows go to ${c.path}.` };
+        case "error":
+          return { kind: "error", error: clientError(c.message) };
+        case "include": {
+          const path = resolvePath(c.path, tab.filePath);
+          if (!path) return { kind: "error", error: clientError("Save the script first, or give @include an absolute path.") };
+          if (p.depth >= INCLUDE_DEPTH) {
+            return { kind: "error", error: clientError(`@include nests more than ${INCLUDE_DEPTH} files.`) };
+          }
+          try {
+            const text = await api.readTextFile(path);
+            const spans = (await api.analyzeSql(text, connection.driver, 0)).statements;
+            const added = plannedOf(text, spans, -1, p.depth + 1);
+            const addedResults = added.map((a) => resultOf(a, false));
+            queue.splice(i + 1, 0, ...added);
+            own.splice(i + 1, 0, ...addedResults);
+            const after = own[i]!.id;
+            setResults((all) => {
+              const at = all.findIndex((r) => r.id === after);
+              return [...all.slice(0, at + 1), ...addedResults, ...all.slice(at + 1)];
+            });
+            const n = added.length;
+            return {
+              kind: "message",
+              summary: `Included ${n} statement${n === 1 ? "" : "s"}`,
+              text: `Included ${path}: ${n} statement${n === 1 ? "" : "s"}`,
+            };
+          } catch (e) {
+            return { kind: "error", error: toCommandError(e) };
+          }
+        }
+      }
+    }
 
     // Afterwards show the failed statement, else the last result set, else the last result.
     let failed = -1;
     let lastRows = -1;
-    for (let i = 0; i < initial.length; i++) {
-      const result = initial[i]!;
-      const p = planned[i]!;
+    for (let i = 0; i < queue.length; i++) {
+      const result = own[i]!;
+      const p = queue[i]!;
       if (token !== runToken.current) return;
       update(result.id, { status: { kind: "running" } });
-      setActiveResult(i);
-      editor.current!.flash(p.offset, p.offset + p.sql.length);
-      let status = await runOne(sessionId, result, token);
-      // A dropped connection fails before the statement reaches the server; the second
-      // attempt runs on a reopened connection.
-      if (status.kind === "error" && status.error.kind === "closed" && token === runToken.current) {
-        update(result.id, { status: { kind: "running" } });
-        status = await runOne(sessionId, result, token);
+      setActiveResult(base + i);
+      if (p.offset >= 0) editor.current!.flash(p.offset, p.offset + p.sql.length);
+      const seen: Seen = { jobId: null, columns: null, rows: 0 };
+      let status: ResultStatus;
+      let sql = p.sql;
+      if (p.kind === "command") {
+        status = await command(p, i);
+      } else {
+        const values = p.params.length ? await fillParams(p, variables, defined) : variables;
+        if (!values) {
+          status = { kind: "error", error: clientError("Cancelled", "cancelled") };
+        } else {
+          if (p.params.length) {
+            sql = substitute(p.sql, p.params, values, connection.driver);
+            Object.assign(variables, values);
+            keepVariables();
+          }
+          const ran = { ...result, sql };
+          update(result.id, { sql });
+          const target = pending.export;
+          pending.export = null;
+          if (target) {
+            status = await exportTo(sessionId, sql, target.path, target.format);
+          } else {
+            status = await runOne(sessionId, ran, token, seen);
+            // A dropped connection fails before the statement reaches the server; the
+            // second attempt runs on a reopened connection.
+            if (status.kind === "error" && status.error.kind === "closed" && token === runToken.current) {
+              update(result.id, { status: { kind: "running" } });
+              status = await runOne(sessionId, ran, token, seen);
+            }
+          }
+        }
       }
       if (token !== runToken.current) return;
+      // runOne reports the statuses of a job; commands, exports and cancelled ones are set here.
+      if (seen.jobId === null) update(result.id, { status });
+      if (tab.terminal) {
+        const text = await blockText(status, seen.jobId, seen.columns, seen.rows).catch(
+          (e: unknown) => toCommandError(e).message,
+        );
+        setTerminalLog((log) => [...log, { id: result.id, sql, text, failed: status.kind === "error" }]);
+      }
       if (status.kind === "rows") lastRows = i;
       if (status.kind === "error") {
         failed = i;
         showError(p, status);
-        const skipped = new Set(initial.slice(i + 1).map((r) => r.id));
+        const skipped = new Set(own.slice(i + 1).map((r) => r.id));
         setResults((all) => all.map((r) => (skipped.has(r.id) ? { ...r, status: { kind: "skipped" } } : r)));
         break;
       }
     }
-    setActiveResult(failed >= 0 ? failed : lastRows >= 0 ? lastRows : initial.length - 1);
+    setActiveResult(base + (failed >= 0 ? failed : lastRows >= 0 ? lastRows : own.length - 1));
     setRunning(false);
     currentJob.current = null;
-    if (planned.some((p) => DDL.test(p.sql))) {
+    if (queue.some((p) => DDL.test(p.sql))) {
       onNeedCatalog(true);
       details.current = null;
       sources.current.clear();
     }
     setHistoryVersion((v) => v + 1);
     await refreshTx(sessionId);
+  }
+
+  /** Runs the selection, or the whole editor, with the database's command-line client. */
+  async function runCli() {
+    if (running) return;
+    const ed = editor.current!;
+    const { from, to } = ed.getSelection();
+    const script = from !== to ? ed.getText().slice(from, to) : ed.getText();
+    if (!script.trim()) return;
+    if (connection.read_only && !window.confirm(`${connection.name} is read-only, and the client is not checked. Run anyway?`)) return;
+    const sessionId = await ensureSession();
+    if (sessionId === null) return;
+    const client = cliName(connection.driver);
+    const result: Result = {
+      id: nextResultId++,
+      sql: script,
+      offset: from !== to ? from : 0,
+      jobId: null,
+      columns: null,
+      rows: 0,
+      status: { kind: "running" },
+      limit: null,
+    };
+    runToken.current++;
+    closeJobs();
+    setResults([result]);
+    setActiveResult(0);
+    setRunning(true);
+    let status: ResultStatus;
+    try {
+      const out = await api.runCli(sessionId, script);
+      const failed = out.status !== 0;
+      status = {
+        kind: "message",
+        summary: `${client} ${failed ? `failed (exit ${out.status ?? "signal"})` : "finished"} in ${formatMs(out.elapsed_ms)}`,
+        text: out.output || "(no output)",
+        failed,
+      };
+    } catch (e) {
+      status = { kind: "error", error: toCommandError(e) };
+    }
+    update(result.id, { status });
+    if (tab.terminal) {
+      const text = status.kind === "message" ? status.text : await blockText(status, null, null, 0);
+      setTerminalLog((log) => [...log, { id: result.id, sql: script, text, failed: status.kind === "error" || !!(status.kind === "message" && status.failed) }]);
+    }
+    setRunning(false);
+    onNeedCatalog(true);
+    await refreshTx(sessionId);
+  }
+
+  /** Opens the table, view or routine a name in the SQL refers to (Ctrl+click). */
+  async function openObject(schema: string | null, name: string) {
+    const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+    try {
+      const id = await sideId();
+      const schemas = await api.listSchemas(id);
+      const candidates = schema
+        ? schemas.filter((s) => same(s.name, schema))
+        : [...schemas.filter((s) => s.current), ...schemas.filter((s) => !s.current && !s.system)];
+      for (const s of candidates) {
+        const objects = (await api.listObjects(id, s.name)).filter((o) => o.kind !== "trigger");
+        const base = (o: { name: string }) => o.name.replace(/\(.*$/, "");
+        const object = objects.find((o) => base(o) === name) ?? objects.find((o) => same(base(o), name));
+        if (object) {
+          workbench().openTab("object", connection.id, {
+            database: tab.database,
+            schema: s.name,
+            currentSchema: s.current,
+            name: object.name,
+            objectKind: object.kind,
+            parent: object.parent,
+            title: object.name,
+          });
+          return;
+        }
+      }
+      onError(`No table, view or routine named ${schema ? `${schema}.` : ""}${name}`);
+    } catch (e) {
+      onError(toCommandError(e).message);
+    }
+  }
+
+  const host: EditorHost = {
+    openObject: (schema, name) => void openObject(schema, name),
+    runCli: () => void runCli(),
+    runAppend: () => void run("append"),
+  };
+
+  /** Closes a result tab and frees its rows. */
+  function closeResult(id: number) {
+    const i = results.findIndex((r) => r.id === id);
+    const r = results[i];
+    if (!r || (running && r.status.kind === "running")) return;
+    if (r.jobId !== null) {
+      void api.closeQuery(r.jobId);
+      jobs.current = jobs.current.filter((j) => j !== r.jobId);
+    }
+    setResults((all) => all.filter((x) => x.id !== id));
+    setActiveResult((a) => Math.max(0, a > i || a === results.length - 1 ? a - 1 : a));
   }
 
   async function refreshTx(sessionId: number) {
@@ -698,8 +1008,36 @@ export function QueryTab({
           )}
           <span className="spacer" />
           {tab.filePath && <span className="muted small">{basename(tab.filePath)}</span>}
+          {toolbar.visible.panels && (
+            <>
+              <button
+                className={tab.terminal ? "toggled" : ""}
+                onClick={() => onChange({ terminal: !tab.terminal })}
+                title="Terminal mode: results as text, kept across runs"
+                aria-label="Terminal"
+              >
+                {toolbar.label("terminal", "Terminal")}
+              </button>
+              <button
+                className={panel === "variables" ? "toggled" : ""}
+                onClick={() => togglePanel("variables")}
+                title="Variables of ${name} and :name"
+                aria-label="Variables"
+              >
+                {toolbar.label("variables", "Variables")}
+              </button>
+              <button
+                className={panel === "outline" ? "toggled" : ""}
+                onClick={() => togglePanel("outline")}
+                title="Statements of the editor"
+                aria-label="Outline"
+              >
+                {toolbar.label("outline", "Outline")}
+              </button>
+            </>
+          )}
           {toolbar.visible.history && (
-            <button className={showHistory ? "toggled" : ""} onClick={() => setShowHistory((s) => !s)} title="History" aria-label="History">
+            <button className={panel === "history" ? "toggled" : ""} onClick={() => togglePanel("history")} title="History" aria-label="History">
               {toolbar.label("history", "History")}
             </button>
           )}
@@ -742,6 +1080,8 @@ export function QueryTab({
           initialValue={tab.sql}
           driver={connection.driver}
           catalog={catalog}
+          production={isProduction(connection)}
+          host={host}
           onChange={(sql) => onChange({ sql })}
           onRun={(mode) => void run(mode)}
           onSave={() => void saveFile()}
@@ -755,21 +1095,35 @@ export function QueryTab({
               <button onClick={() => void run(blocked, true)}>Run anyway</button>
             </div>
           )}
-          {results.length > 1 && (
+          {tab.terminal && <TerminalView blocks={terminalLog} onClear={() => setTerminalLog([])} />}
+          {!tab.terminal && results.length > 1 && (
             <div className="result-tabs">
               {results.map((r, i) => (
                 <button
                   key={r.id}
                   className={`result-tab ${r.status.kind}${i === activeResult ? " active" : ""}`}
                   onClick={() => setActiveResult(i)}
+                  onAuxClick={(e) => e.button === 1 && closeResult(r.id)}
                   title={r.sql}
                 >
                   {i + 1}. {describe(r)}
+                  <span
+                    className="result-tab-close"
+                    role="button"
+                    aria-label="Close result"
+                    title="Close result"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeResult(r.id);
+                    }}
+                  >
+                    ×
+                  </span>
                 </button>
               ))}
             </div>
           )}
-          {current && (
+          {!tab.terminal && current && (
             <ResultPanel
               key={current.id}
               result={current}
@@ -850,12 +1204,37 @@ export function QueryTab({
           <span className="muted">Ctrl+Enter statement · Alt+X script · {connection.name}</span>
         </div>
       </div>
-      {showHistory && (
+      {panel === "history" && (
         <HistoryPanel
           connectionId={connection.id}
           refresh={historyVersion}
           onInsert={(sql) => editor.current?.insert(sql)}
-          onClose={() => setShowHistory(false)}
+          onClose={() => setPanel(null)}
+        />
+      )}
+      {panel === "variables" && (
+        <VariablesPanel
+          variables={tab.variables ?? {}}
+          onChange={(variables) => onChange({ variables })}
+          onClose={() => setPanel(null)}
+        />
+      )}
+      {panel === "outline" && (
+        <OutlinePanel
+          text={tab.sql}
+          driver={connection.driver}
+          onSelect={(from, to) => editor.current?.select(from, to)}
+          onClose={() => setPanel(null)}
+        />
+      )}
+      {asking && (
+        <ParamsDialog
+          sql={asking.sql}
+          keys={asking.keys}
+          raw={asking.raw}
+          initial={asking.initial}
+          onRun={asking.resolve}
+          onCancel={() => asking.resolve(null)}
         />
       )}
       {guard && (
