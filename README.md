@@ -100,6 +100,11 @@ scrolls through millions of rows.
   history. Dates, timestamps, the time zone, digit grouping and relative times follow the
   Settings.
 - **Export** to CSV, JSON, NDJSON or Parquet, streamed straight to the file.
+- **Import** of CSV, TSV, JSON, NDJSON, Parquet and Excel files into a table (right-click it,
+  *Import data…*), with a preview and each column fed from a file column; or into a new table
+  (right-click a schema) created with the types DuckDB infers. All rows or none.
+- **Data files as databases**: drop a CSV, JSON, Parquet or Excel file on the window (or pick
+  it as a DuckDB database) to query it with SQL; each Excel sheet is a table.
 - **Transactions**: auto-commit or manual commit with Commit/Rollback; an open transaction
   shows how long it has been open and warns after a while (10 minutes by default).
 - **Safety**: an `UPDATE` or `DELETE` without `WHERE`, or a `TRUNCATE`, asks first and says
@@ -202,7 +207,7 @@ crates/
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
   platypus-net/            SSH tunnels (russh)
   platypus-store/          connections (TOML + OS keychain), imports, query history (SQLite)
-  platypus-export/         streaming CSV, JSON, NDJSON and Parquet writers
+  platypus-export/         streaming CSV, JSON, NDJSON and Parquet writers; import into tables
   platypus-conformance/    integration suite run on every driver
   platypus-cli/            `platypus` CLI for exercising the core
 apps/desktop/              Tauri app: React UI in src/, Rust shell in src-tauri/

@@ -284,7 +284,7 @@ DuckDB (SQL Server dal profilo `sqlserver` di `docker/compose.yml`).
 | SQL Server (`tiberius`) | P1 | Dialetto `TOP`, `[quoting]`, più result set |
 | DuckDB | P1 | Arrow nativo; serve anche al gruppo M |
 | ClickHouse | P2 | HTTP con formato Arrow |
-| File come database: CSV, Parquet, JSON, XLSX (tramite DuckDB) | P2 | Si aprono con il trascinamento sulla finestra |
+| File come database: CSV, Parquet, JSON, XLSX (tramite DuckDB) | P2 | ✅ Fatto con il gruppo H: viste DuckDB sul file, un foglio XLSX per tabella (calamine); si aprono col trascinamento sulla finestra |
 | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | P2 | Wire PG: profili e test, non driver nuovi |
 | ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | Una persona per il bridge, poi profili |
 | Oracle nativo | P3 | Licensing OCI da valutare |
@@ -297,6 +297,13 @@ DuckDB (SQL Server dal profilo `sqlserver` di `docker/compose.yml`).
 
 **Area:** `platypus-export` (da rinominare in `platypus-transfer`), `apps/desktop/src/transfer/`, `commands/transfer.rs`
 **Dipende da:** 0.5
+
+**Stato: P1 completate.** I file (CSV, TSV, JSON, NDJSON, Parquet, XLSX) si leggono con una
+connessione DuckDB sul file, la stessa del "file come database" del gruppo G; l'import in una
+tabella esistente o nuova (`platypus-export::import`) scrive INSERT da 500 righe in una sola
+transazione, e una tabella creata e poi fallita si elimina. I tipi della tabella nuova vengono da
+`Dialect::column_type`. Il rename in `platypus-transfer` non è stato fatto. Conformance su tutti i
+database ed E2E `import-sqlite`.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
@@ -517,7 +524,7 @@ dell'ondata.
 |---|---|---|---|---|
 | **0** | Fase 0 (1 persona) e **P** in parallelo | Codice pronto al lavoro parallelo, prima release pubblica | v0.1.x | Fase 0 fatta; P in corso |
 | **1** | **A**, **B** (P1), **C** (P1), **F** (SSH, tipi, import), **K** (P1), **L** (P1) | Sostituire DBeaver nell'uso quotidiano | v0.2 | **Fatta** (P1 di A, B, C, F, K e L; P2 di A e B), release v0.2.0 del 24 ottobre 2026 |
-| **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte; E: completato |
+| **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte; E: completato; H: P1 fatte |
 | **3** | **I**, **J**, **M**, **N**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 | Da fare |
 | **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | Da fare |
 
