@@ -35,6 +35,7 @@ import { ExportDialog, type ExportSource } from "./ExportDialog";
 import { HealthBadge, useSessionHealth } from "./health";
 import { HistoryPanel } from "./HistoryPanel";
 import { useToolbar } from "./toolbar";
+import { isSlow, slowQuerySeconds } from "../querylog/slow";
 import { Icon } from "../ui/Icon";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
 
@@ -191,6 +192,7 @@ export function QueryTab({
   const [txSince, setTxSince] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const warnMinutes = useSetting(transactionWarning);
+  const slowSeconds = useSetting(slowQuerySeconds);
   const warned = useRef(false);
   const [filter, setFilter] = useState(tab.filter ?? "");
   const [count, setCount] = useState<string | null>(null);
@@ -1269,6 +1271,15 @@ export function QueryTab({
                   {formatMs(current.status.elapsedMs)}
                 </span>
               )}
+              {(current.status.kind === "rows" || current.status.kind === "affected") &&
+                isSlow(current.status.elapsedMs, slowSeconds) && (
+                  <span
+                    className="slow-query"
+                    title={`Slower than ${slowSeconds} s (Settings). Explain (Ctrl+Shift+E) shows where the time goes.`}
+                  >
+                    slow
+                  </span>
+                )}
               {current.status.kind === "rows" && !current.status.finished && (
                 <button className="link" onClick={() => fetchAll(current)}>
                   Fetch all
