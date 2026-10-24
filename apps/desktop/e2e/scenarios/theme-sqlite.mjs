@@ -42,6 +42,19 @@ export const ready = `document.querySelector('.shell') !== null`;
 
 export default async function (page, { dir, shots }) {
   await page.waitFor(`document.querySelector('.shell') !== null`);
+
+  // The bundled fonts: Inter for the interface, JetBrains Mono for SQL and the grid.
+  // `document.fonts.check` is true for a family with no faces at all, so look for the faces.
+  const loaded = (family) =>
+    `[...document.fonts].some(f => f.family.replace(/"/g, '') === ${JSON.stringify(family)} && f.status === 'loaded')`;
+  await page.waitFor(`document.fonts.status === 'loaded'`);
+  await page.waitFor(loaded("Inter"));
+  // Nothing on this screen is monospace yet, and faces load on first use: ask for it.
+  await page.eval(`document.fonts.load('12px "JetBrains Mono"').then(() => true)`);
+  await page.waitFor(loaded("JetBrains Mono"));
+  assert.match(await page.eval(`getComputedStyle(document.body).fontFamily`), /^"?Inter/);
+  assert.match(await page.eval(cssVar("--font-mono")), /JetBrains Mono/);
+
   await page.key(",", "Comma", 188, CTRL);
   await page.waitFor(`document.querySelector('.modal.settings') !== null`);
   // Appearance comes first.

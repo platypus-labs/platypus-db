@@ -141,7 +141,7 @@
   margin: 0;
   padding: 8px;
   overflow: auto;
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -219,7 +219,7 @@
 .cell-popup-text {
   flex: 1;
   resize: none;
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 
@@ -230,7 +230,7 @@
 }
 
 .result-error {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   user-select: text;
@@ -272,7 +272,7 @@
 }
 
 .record-value {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-word;

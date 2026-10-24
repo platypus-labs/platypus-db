@@ -61,7 +61,7 @@
   padding: 8px 10px;
   max-height: 50vh;
   overflow: auto;
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 12px;
   background: var(--bg-sidebar);
   border: 1px solid var(--border);
@@ -221,7 +221,7 @@ button.primary.danger:hover:not(:disabled) {
   padding: 8px 10px;
   max-height: 260px;
   overflow: auto;
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 12px;
   background: var(--bg-sidebar);
   border: 1px solid var(--border);
@@ -398,7 +398,7 @@ button.primary.danger:hover:not(:disabled) {
 
 .palette kbd,
 .shortcut-key {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 
@@ -570,7 +570,7 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .guard-statements code {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   word-break: break-word;
 }
 
