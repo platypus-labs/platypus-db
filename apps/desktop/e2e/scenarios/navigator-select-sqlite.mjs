@@ -9,6 +9,8 @@ import { CTRL, SHIFT } from "../cdp.mjs";
 
 const NAME = "Select db";
 const ROWS = 5000;
+/** Columns enough to reach under the vertical scrollbar. */
+const WIDE = Array.from({ length: 12 }, (_, i) => `w${i + 1}`);
 const row = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
 const selected = `[...document.querySelectorAll('.tree-row.selected')].map(r => r.querySelector('.tree-label').textContent)`;
@@ -20,9 +22,9 @@ export function setup({ dir }) {
   const db = new DatabaseSync(join(dir, "select.db"));
   db.exec(`CREATE TABLE a (id INTEGER PRIMARY KEY);
            CREATE TABLE b (id INTEGER PRIMARY KEY);
-           CREATE TABLE c (id INTEGER PRIMARY KEY, v TEXT);
+           CREATE TABLE c (id INTEGER PRIMARY KEY, v TEXT, ${WIDE.map((w) => `${w} TEXT`).join(", ")});
            WITH RECURSIVE s(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM s WHERE n < ${ROWS})
-           INSERT INTO c SELECT n, 'value ' || n FROM s;`);
+           INSERT INTO c SELECT n, 'value ' || n, ${WIDE.map(() => "printf('%040d', n)").join(", ")} FROM s;`);
   db.close();
   writeFileSync(
     join(dir, "connections.toml"),
@@ -48,12 +50,18 @@ async function clickRow(page, label, options = {}) {
 
 export default async function (page) {
   await page.waitFor(`${row(NAME)} !== undefined`);
+  // Nothing connects on its own at startup: no tab is open.
+  await page.sleep(1500);
+  const log = await page.eval(`window.__TAURI_INTERNALS__.invoke('query_log', { since: 0 }).then(p => (p.entries ?? p).length)`);
+  assert.equal(log, 0, "no statement before a click");
+  assert.equal(await page.eval(`document.querySelector('.connected-mark')`), null);
   // A click on the label selects the connection but does not expand it; the arrow does.
   await clickRow(page, NAME);
   assert.deepEqual(await page.eval(selected), [NAME]);
   assert.equal(await page.eval(`${row(NAME)}.getAttribute('aria-expanded')`), "false");
   await page.eval(`${row(NAME)}.querySelector('.twisty').click()`);
   await page.waitFor(`${row("a")} !== undefined && ${row("c")} !== undefined`, 15_000);
+  await page.waitFor(`${row(NAME)}.querySelector('.connected-mark') !== null`);
 
   // Shift+click selects the range from the last click, Ctrl+click adds or removes a row.
   await clickRow(page, "a");
@@ -78,10 +86,29 @@ export default async function (page) {
   await clickRow(page, "c", { clickCount: 2 });
   await page.waitFor(`document.querySelector('.tab.active')?.textContent.startsWith('c')`, 10_000);
   assert.equal(await page.eval(`${row("c")}.getAttribute('aria-expanded')`), "false");
+  // Again from another tab: back to the same one, no second tab.
+  const tabs = await page.eval(`document.querySelectorAll('.tab').length`);
+  await page.eval(`[...document.querySelectorAll('.tab')].find(t => t.textContent.startsWith('DDL')).click()`);
+  await clickRow(page, "c", { clickCount: 2 });
+  await page.waitFor(`document.querySelector('.tab.active')?.textContent.startsWith('c')`, 10_000);
+  assert.equal(await page.eval(`document.querySelectorAll('.tab').length`), tabs, "the open tab is reused");
 
   // Only a page of the table is read; scrolling to the end reads more.
   await page.waitFor(`${status}.includes('more available')`, 15_000);
   const first = await page.eval(loaded);
+
+  // Dragging the scrollbar thumb from over the header row does not sort that column.
+  await page.eval(`${queryTab}.querySelector('.grid-scroll').id = 'e2e-grid'`);
+  const g = await page.rect("#e2e-grid");
+  const bar = await page.eval(`(() => { const s = document.getElementById('e2e-grid'); return s.offsetWidth - s.clientWidth; })()`);
+  assert.ok(bar > 0, "the grid has a vertical scrollbar");
+  const x = g.x + g.w - bar / 2;
+  await page.mouse("mousePressed", x, g.y + 8);
+  await page.mouse("mouseMoved", x, g.y + 40);
+  await page.mouse("mouseReleased", x, g.y + 40);
+  await page.sleep(500);
+  const sql = await page.eval(`[...${queryTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join(' ')`);
+  assert.doesNotMatch(sql, /ORDER BY/, "no sort from the scrollbar");
   assert.ok(first > 0 && first < ROWS, `a page of rows, not ${first}`);
   await page.waitFor(
     `(() => { const g = ${queryTab}.querySelector('.grid-scroll'); g.scrollTop = g.scrollHeight; return ${loaded} > ${first}; })()`,

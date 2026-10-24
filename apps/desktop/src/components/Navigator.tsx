@@ -17,7 +17,7 @@ import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorP
 import { onNavigatorRefresh } from "../navigatorEvents";
 import { toggled } from "../sets";
 import { qualifiedName, viewerSql } from "../sqlNames";
-import type { TabInit } from "../tabs/registry";
+import type { TabInit, TabModel } from "../tabs/registry";
 import { PRESETS, cycleTheme, themeName, themeSetting } from "../theme";
 import { actionsFor, registerAction, runAction, shortcutLabel } from "../actions";
 import { workbench } from "../workbench";
@@ -95,6 +95,8 @@ interface Props {
   capabilities: (sessionId: number) => Capabilities | undefined;
   /** Drops the navigator sessions, e.g. after the connection broke. */
   disconnect: (c: SavedConnection) => void;
+  /** Connections with an open session, in an editor or the navigator. */
+  active: ReadonlySet<string>;
   /** A connection was refreshed: cached metadata elsewhere (autocompletion) is stale. */
   onRefresh: (c: SavedConnection, database?: string | null) => void;
   onError: (message: string) => void;
@@ -139,6 +141,8 @@ interface Row {
   muted?: boolean;
   /** `undefined`: leaf. */
   expanded?: boolean;
+  /** A connection with an open session. */
+  connected?: boolean;
   onToggle?: () => void;
   onOpen?: () => void;
   /** Its context menu lists the actions registered for this scope. */
@@ -148,7 +152,7 @@ interface Row {
 }
 
 export function Navigator(props: Props) {
-  const { connections, project, onAddExisting, error, onNew, onImport, onEdit, onOpenTab, session, disconnect, onError } = props;
+  const { connections, project, onAddExisting, error, onNew, onImport, onEdit, onOpenTab, session, disconnect, active, onError } = props;
   // The ref is the source of truth, so a load sees what was merged just before it.
   const cacheRef = useRef<Cache>(new Map());
   const [cache, setCache] = useState<Cache>(cacheRef.current);
@@ -322,7 +326,11 @@ export function Navigator(props: Props) {
     disconnect(c);
   }
 
+  /** Opens a table's data, or goes back to the tab already showing it. */
   function openData(c: SavedConnection, db: string | null, schema: SchemaMeta, object: ObjectMeta, target: string) {
+    const showing = (t: TabModel) =>
+      t.kind === "query" && t.connectionId === c.id && (t.database ?? null) === db && t.table === target;
+    if (workbench().focusTab(showing)) return;
     onOpenTab(c, {
       sql: viewerSql(c.driver, target, "", null),
       autorun: true,
@@ -334,6 +342,15 @@ export function Navigator(props: Props) {
   }
 
   function openObject(c: SavedConnection, db: string | null, schema: SchemaMeta, object: ObjectMeta) {
+    const showing = (t: TabModel) =>
+      t.kind === "object" &&
+      t.connectionId === c.id &&
+      (t.database ?? null) === db &&
+      t.schema === schema.name &&
+      t.name === object.name &&
+      t.objectKind === object.kind &&
+      (t.parent ?? null) === (object.parent ?? null);
+    if (workbench().focusTab(showing)) return;
     workbench().openTab("object", c.id, {
       database: db,
       schema: schema.name,
@@ -401,8 +418,11 @@ export function Navigator(props: Props) {
       color: connectionColor(c),
       badge: typeBadge(c),
       detail: [isOffline && "offline", filtered && "filtered"].filter(Boolean).join(" · ") || undefined,
-      title: isOffline ?`${target}\nNot connected: showing the metadata cached on disk. Refresh to retry.` : target,
+      title: isOffline
+        ? `${target}\nNot connected: showing the metadata cached on disk. Refresh to retry.`
+        : `${target}${active.has(c.id) ? "\nConnected" : ""}`,
       expanded: open,
+      connected: active.has(c.id),
       onToggle: () => toggle(ckey, () => void openConnection(c)),
       onOpen: () => onOpenTab(c),
       ...status(ckey),
@@ -839,6 +859,7 @@ export function Navigator(props: Props) {
               )
             )}
             <span className="tree-label">{row.label}</span>
+            {row.connected && <span className="connected-mark" role="img" aria-label="Connected" />}
             {row.badge && <span className={`type-badge ${row.badge.toLowerCase()}`}>{row.badge}</span>}
             {row.detail && <span className="tree-detail">{row.detail}</span>}
             {row.actions && (
