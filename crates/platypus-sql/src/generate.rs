@@ -211,9 +211,13 @@ WHERE {};",
     const fn keyword(self, kind: ObjectKind) -> Option<&'static str> {
         Some(match (self, kind) {
             (_, ObjectKind::Table) => "TABLE",
-            (_, ObjectKind::View) => "VIEW",
-            (Self::ClickHouse, ObjectKind::Trigger) => return None,
-            (_, ObjectKind::Trigger) => "TRIGGER",
+            // ClickHouse drops a materialized view with `DROP VIEW`.
+            (_, ObjectKind::View) | (Self::ClickHouse, ObjectKind::MaterializedView) => "VIEW",
+            // ClickHouse has no triggers.
+            (
+                Self::Postgres | Self::MySql | Self::Sqlite | Self::DuckDb | Self::SqlServer,
+                ObjectKind::Trigger,
+            ) => "TRIGGER",
             (Self::Postgres, ObjectKind::MaterializedView) => "MATERIALIZED VIEW",
             (Self::Postgres, ObjectKind::ForeignTable) => "FOREIGN TABLE",
             (Self::Postgres | Self::DuckDb | Self::SqlServer, ObjectKind::Type) => "TYPE",
@@ -228,8 +232,6 @@ WHERE {};",
             (Self::Postgres | Self::MySql | Self::SqlServer, ObjectKind::Function) => "FUNCTION",
             (Self::Postgres | Self::MySql | Self::SqlServer, ObjectKind::Procedure) => "PROCEDURE",
             (Self::MySql, ObjectKind::Event) => "EVENT",
-            // ClickHouse drops a materialized view with `DROP VIEW`.
-            (Self::ClickHouse, ObjectKind::MaterializedView) => "VIEW",
             (Self::ClickHouse, ObjectKind::Dictionary) => "DICTIONARY",
             _ => return None,
         })
