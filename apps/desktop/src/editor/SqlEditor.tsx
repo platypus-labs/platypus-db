@@ -1,6 +1,6 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
-import { defaultKeymap, history, historyKeymap, indentWithTab, toggleComment } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { MySQL, PostgreSQL, SQLite, sql } from "@codemirror/lang-sql";
 import {
   HighlightStyle,
@@ -10,20 +10,27 @@ import {
 } from "@codemirror/language";
 import { type Diagnostic, lintGutter, setDiagnostics } from "@codemirror/lint";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState, StateEffect, StateField } from "@codemirror/state";
+import { Compartment, EditorState, Prec, StateEffect, StateField } from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
   EditorView,
+  crosshairCursor,
   drawSelection,
   highlightActiveLine,
   highlightActiveLineGutter,
   highlightSpecialChars,
   keymap,
   lineNumbers,
+  rectangularSelection,
 } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
-import type { CompletionCatalog, DriverKind } from "../api";
+import { dispatchKey } from "../actions";
+import { type CompletionCatalog, type DriverKind, toCommandError } from "../api";
+import { ContextMenu, type MenuState } from "../components/ContextMenu";
+import { workbench } from "../workbench";
+import "./actions";
+import { joinCompletion } from "./joinCompletion";
 
 export type RunMode = "statement" | "script";
 
@@ -97,13 +104,16 @@ const theme = EditorView.theme({
 const dialects = { postgres: PostgreSQL, mysql: MySQL, sqlite: SQLite };
 
 function language(driver: DriverKind, catalog: CompletionCatalog | null | undefined) {
-  return sql({
+  const support = sql({
     dialect: dialects[driver],
     upperCaseKeywords: true,
     schema: catalog?.schemas,
     defaultSchema: catalog?.default_schema ?? undefined,
   });
+  return [support, support.language.data.of({ autocomplete: joinCompletion(catalog, driver) })];
 }
+
+const reportError = (e: unknown) => workbench().showError(toCommandError(e).message);
 
 const flashEffect = StateEffect.define<{ from: number; to: number } | null>();
 const flashField = StateField.define<DecorationSet>({
@@ -130,8 +140,15 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
   // Keymaps read the latest callbacks without rebuilding the editor.
   const callbacks = useRef(props);
   callbacks.current = props;
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
 
   useEffect(() => {
+    const target = (view: EditorView) => ({
+      view,
+      driver: callbacks.current.driver,
+      readOnly: !!callbacks.current.readOnly,
+    });
     const run = (mode: RunMode) => () => {
       callbacks.current.onRun?.(mode);
       return true;
@@ -144,6 +161,9 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         highlightSpecialChars(),
         history(),
         drawSelection(),
+        EditorState.allowMultipleSelections.of(true),
+        rectangularSelection(),
+        crosshairCursor(),
         indentOnInput(),
         bracketMatching(),
         closeBrackets(),
@@ -156,11 +176,26 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         EditorState.readOnly.of(!!props.readOnly),
         syntaxHighlighting(highlight),
         languageConf.current.of(language(props.driver, props.catalog)),
+        // Registered editor actions take their shortcuts before the keymaps below.
+        Prec.highest(
+          EditorView.domEventHandlers({
+            keydown: (e, view) => dispatchKey("editor", target(view), e, reportError),
+            contextmenu: (e, view) => {
+              e.preventDefault();
+              // A right-click outside the selection moves the cursor there first.
+              const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+              const sel = view.state.selection.main;
+              if (pos !== null && (pos < sel.from || pos > sel.to)) view.dispatch({ selection: { anchor: pos } });
+              view.focus();
+              setMenu({ x: e.clientX, y: e.clientY, target: { scope: "editor", arg: target(view) } });
+              return true;
+            },
+          }),
+        ),
         keymap.of([
           { key: "Mod-Enter", run: run("statement"), preventDefault: true },
           { key: "Mod-Shift-Enter", run: run("script"), preventDefault: true },
           { key: "Alt-x", run: run("script"), preventDefault: true },
-          { key: "Mod-/", run: toggleComment },
           {
             key: "Mod-s",
             run: () => (callbacks.current.onSave?.(), true),
@@ -258,5 +293,10 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
     },
   }));
 
-  return <div className="editor" ref={host} />;
+  return (
+    <>
+      <div className="editor" ref={host} />
+      {menu && <ContextMenu menu={menu} onClose={closeMenu} onError={reportError} />}
+    </>
+  );
 });

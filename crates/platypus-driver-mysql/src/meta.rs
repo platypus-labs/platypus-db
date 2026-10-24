@@ -1,9 +1,9 @@
 //! Navigator metadata from `information_schema`, valid for MySQL and MariaDB.
 
 use platypus_core::{
-    CATALOG_LIMIT, CatalogColumn, ColumnMeta, ConstraintKind, ConstraintMeta, Error,
-    ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ObjectRef, Property, ReferencingKey, Result,
-    SchemaMeta, TableDetails, TextRow, TextRowExt, group_sorted, query_catalog, query_text,
+    CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, ConstraintKind, ConstraintMeta,
+    Error, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ObjectRef, Property, ReferencingKey,
+    Result, SchemaMeta, TableDetails, TextRow, TextRowExt, group_sorted, query_catalog, query_text,
     unsupported,
 };
 use platypus_sql::Dialect;
@@ -42,6 +42,41 @@ pub async fn catalog_columns(conn: &MySqlConnection) -> Result<Vec<CatalogColumn
         ),
     )
     .await
+}
+
+pub async fn catalog_foreign_keys(conn: &MySqlConnection) -> Result<Vec<CatalogForeignKey>> {
+    let rows = query_text(
+        conn,
+        &format!(
+            "SELECT TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME,
+                    REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+             FROM information_schema.KEY_COLUMN_USAGE
+             WHERE REFERENCED_TABLE_NAME IS NOT NULL
+               AND TABLE_SCHEMA NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
+             ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION
+             LIMIT {CATALOG_LIMIT}"
+        ),
+    )
+    .await?;
+    Ok(group_sorted(
+        rows.iter().map(|r| {
+            (
+                format!("{}.{}.{}", r.text(0), r.text(1), r.text(2)),
+                CatalogForeignKey {
+                    schema: r.text(0),
+                    table: r.text(1),
+                    columns: vec![r.text(3)],
+                    ref_schema: r.text(4),
+                    ref_table: r.text(5),
+                    ref_columns: vec![r.text(6)],
+                },
+            )
+        }),
+        |fk, row| {
+            fk.columns.extend(row.columns);
+            fk.ref_columns.extend(row.ref_columns);
+        },
+    ))
 }
 
 pub async fn objects(conn: &MySqlConnection, schema: &str) -> Result<Vec<ObjectMeta>> {

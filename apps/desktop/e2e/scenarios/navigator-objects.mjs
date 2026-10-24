@@ -30,6 +30,8 @@ async function runInEditor(page, sql) {
   await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
   await page.key("a", "KeyA", 65, CTRL);
   await page.type(sql);
+  // Run only once the editor holds the text (a slow runner may lag behind the keys).
+  await page.waitFor(`[...${visibleTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n') === ${JSON.stringify(sql)}`);
   await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
   await page.key("Enter", "Enter", 13, CTRL);
   await page.waitFor(`(() => { const s = ${visibleTab}.querySelector('.statusbar span')?.textContent ?? ''; return s && !s.includes('Executing'); })()`, 15_000);

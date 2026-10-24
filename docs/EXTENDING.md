@@ -30,7 +30,8 @@ the flag says whether the driver overrides it. `open_session` returns the capabi
 the UI can hide what a connection cannot do.
 
 Existing optional methods are `explain`, `object_ddl` and `databases`. `object_properties`
-is optional too, but needs no flag: its default is an empty list. To add one:
+and `catalog_foreign_keys` are optional too, but need no flag: their default is an empty
+list. To add one:
 1. Add the method, with a default that calls `unsupported("…")`.
 2. Add a flag in `Capabilities`, defaulting to `false`, and the same field in
    `Capabilities` in `api.ts`.
@@ -114,6 +115,7 @@ registerAction({
 `database` is `null` for the connection's saved database. Otherwise it names another
 database of the same server (PostgreSQL), and sessions and tabs opened from there use it.
 | `grid` | `{ grid: GridApi, source }` | grid menu, and shortcuts while the grid has focus |
+| `editor` | `{ view: EditorView, driver, readOnly }` | editor menu, and shortcuts while the editor has focus (before CodeMirror's own keymaps) |
 
 To add a scope, augment `ActionScopes` from the feature's own module:
 `declare module "../actions" { interface ActionScopes { … } }`.
