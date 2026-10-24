@@ -4,6 +4,8 @@ import { fmt, formatMs } from "../components/ResultPanel";
 
 /** How often the open dialog asks for what changed. */
 const POLL_MS = 1000;
+/** As many as the app keeps; older ones are gone from it already. */
+const KEPT = 2000;
 
 const STATUS_LABELS: Record<LogEntry["status"], string> = {
   running: "Running",
@@ -43,7 +45,7 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
           setEntries((old) => {
             const byId = new Map(old.map((e) => [e.id, e]));
             for (const e of page.entries) byId.set(e.id, e);
-            return [...byId.values()].sort((a, b) => b.id - a.id);
+            return [...byId.values()].sort((a, b) => b.id - a.id).slice(0, KEPT);
           });
         }
       } catch (e) {

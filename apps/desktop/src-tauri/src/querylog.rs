@@ -1,6 +1,7 @@
 //! The query manager's log: every statement, metadata request and transaction command the
 //! app sends to a database, with how long it took and how it ended. Sessions and exports
 //! wrap their connection in [`Logged`], which records into the [`QueryLog`] kept in memory.
+//! Scripts run with a command-line client (`commands/cli.rs`) do not pass through it.
 
 use std::collections::VecDeque;
 use std::future::Future;
