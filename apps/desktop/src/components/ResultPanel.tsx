@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type ColumnInfo, type CommandError } from "../api";
 import type { GridSource } from "../grid/DataGrid";
+import { useFormatSignature } from "../grid/formats";
 import { ResultGrid } from "../grid/ResultGrid";
 import { RowCache } from "../grid/RowCache";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
@@ -77,7 +78,9 @@ export function ResultPanel({ result, sort, onHeaderClick, source, edit }: Panel
   const [version, setVersion] = useState(0);
   const { jobId, columns, status } = result;
 
-  // One cache per result, created once both the job id and the schema are known.
+  const formats = useFormatSignature();
+  // One cache per result, created once both the job id and the schema are known, and again
+  // when the display formats change the rendered text.
   useEffect(() => {
     if (jobId === null || columns === null) return;
     const c = new RowCache(jobId, () => setVersion((v) => v + 1));
@@ -86,7 +89,7 @@ export function ResultPanel({ result, sort, onHeaderClick, source, edit }: Panel
       c.dispose();
       setCache(null);
     };
-  }, [jobId, columns]);
+  }, [jobId, columns, formats]);
 
   if (status.kind === "error") {
     const e = status.error;

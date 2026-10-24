@@ -2,8 +2,8 @@
 
 use platypus_core::{
     CATALOG_LIMIT, CatalogColumn, ColumnMeta, Connection, ForeignKeyMeta, IndexMeta, ObjectKind,
-    ObjectMeta, Result, SchemaMeta, TableDetails, TextRowExt, group_sorted, query_catalog,
-    query_text,
+    ObjectMeta, ReferencingKey, Result, SchemaMeta, TableDetails, TextRowExt, group_sorted,
+    query_catalog, query_text,
 };
 
 fn literal(s: &str) -> String {
@@ -177,4 +177,68 @@ pub async fn table_details(
         indexes,
         foreign_keys,
     })
+}
+
+/// SQLite keys only point within their own database, so the other tables of `schema` are
+/// searched.
+pub async fn referencing_keys(
+    conn: &dyn Connection,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<ReferencingKey>> {
+    let schema_lit = literal(schema);
+    let rows = query_text(
+        conn,
+        &format!(
+            "SELECT m.name || char(31) || f.id, m.name, f.id, f.\"from\", coalesce(f.\"to\", '')
+             FROM {}.sqlite_master m
+             JOIN pragma_foreign_key_list(m.name, {schema_lit}) f
+             WHERE m.type = 'table' AND f.\"table\" = {} COLLATE NOCASE
+             ORDER BY m.name, f.id, f.seq",
+            ident(schema),
+            literal(table)
+        ),
+    )
+    .await?;
+    let mut keys = group_sorted(
+        rows.iter().map(|r| {
+            (
+                r.text(0),
+                ReferencingKey {
+                    schema: schema.to_owned(),
+                    table: r.text(1),
+                    name: format!("fk_{}_{}", r.text(1), r.text(2)),
+                    columns: vec![r.text(3)],
+                    ref_columns: vec![r.text(4)],
+                },
+            )
+        }),
+        |key, row| {
+            key.columns.extend(row.columns);
+            key.ref_columns.extend(row.ref_columns);
+        },
+    );
+    // A key without target columns points at the primary key.
+    if keys
+        .iter()
+        .any(|k| k.ref_columns.iter().any(String::is_empty))
+    {
+        let primary: Vec<String> = query_text(
+            conn,
+            &format!(
+                "SELECT name FROM pragma_table_info({}, {schema_lit}) WHERE pk > 0 ORDER BY pk",
+                literal(table)
+            ),
+        )
+        .await?
+        .iter()
+        .map(|r| r.text(0))
+        .collect();
+        for key in &mut keys {
+            if key.ref_columns.iter().any(String::is_empty) {
+                key.ref_columns.clone_from(&primary);
+            }
+        }
+    }
+    Ok(keys)
 }

@@ -201,6 +201,33 @@ export interface Lookup {
   label: string;
 }
 
+/** A foreign key of another table that points at a table. */
+export interface ReferencingKey {
+  schema: string;
+  table: string;
+  name: string;
+  columns: string[];
+  /** The referenced table's columns they hold. */
+  ref_columns: string[];
+}
+
+/** Totals of a selection; the number ones cover the number columns only. */
+export interface SelectionStats {
+  cells: number;
+  values: number;
+  numbers: number;
+  sum: number | null;
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+}
+
+export interface GroupCounts {
+  groups: { values: (string | null)[]; count: number }[];
+  rows: number;
+  distinct: number;
+}
+
 /** Clipboard formats of `copyRows`. */
 export type CopyFormat = "tsv" | "csv" | "json" | "markdown" | "html" | "insert" | "in_list";
 
@@ -275,6 +302,8 @@ export const api = {
     invoke<ObjectMeta[]>("list_objects", { sessionId, schema }),
   tableDetails: (sessionId: number, schema: string, table: string) =>
     invoke<TableDetails>("table_details", { sessionId, schema, table }),
+  referencingKeys: (sessionId: number, schema: string, table: string) =>
+    invoke<ReferencingKey[]>("referencing_keys", { sessionId, schema, table }),
   transactionState: (sessionId: number) => invoke<TransactionState>("transaction_state", { sessionId }),
   setAutocommit: (sessionId: number, on: boolean) =>
     invoke<TransactionState>("set_autocommit", { sessionId, on }),
@@ -373,6 +402,10 @@ export const api = {
   saveCell: (jobId: number, row: number, column: number, path: string) =>
     invoke<void>("save_cell", { jobId, row, column, path }),
   /** Loaded cells containing `text`, ignoring case. */
+  selectionStats: (jobId: number, offset: number, limit: number, columns: number[]) =>
+    invoke<SelectionStats>("selection_stats", { jobId, offset, limit, columns }),
+  /** Loaded rows by value of `columns`, most frequent first. */
+  groupCounts: (jobId: number, columns: number[]) => invoke<GroupCounts>("group_counts", { jobId, columns }),
   searchRows: (jobId: number, text: string) => invoke<SearchResult>("search_rows", { jobId, text }),
   fetchAll: (jobId: number) => invoke<void>("fetch_all", { jobId }),
   cancelQuery: (jobId: number) => invoke<void>("cancel_query", { jobId }),

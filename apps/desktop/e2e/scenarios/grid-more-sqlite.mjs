@@ -1,0 +1,209 @@
+// More of the read-only grid on a throwaway SQLite database: the column layout (hidden and
+// moved columns, kept for the table), totals of the selection, counts by value, the record
+// view, foreign keys as links with the References panel, and number formats.
+import assert from "node:assert/strict";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { ALT, CTRL } from "../cdp.mjs";
+
+const NAME = "E2E grid more";
+const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
+const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ?? '')`;
+const grid = `${visibleTab}.querySelector('.grid-scroll')`;
+const treeRow = (label) =>
+  `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
+const menuButton = (label) =>
+  `[...document.querySelectorAll('.context-menu button')].find(b => b.querySelector('span')?.textContent === ${JSON.stringify(label)})`;
+const button = (scope, label) =>
+  `[...${scope}.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)})`;
+
+export function setup({ dir }) {
+  const path = join(dir, "more.db");
+  const db = new DatabaseSync(path);
+  db.exec(`CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT, city TEXT);
+           INSERT INTO customers VALUES (1, 'Ada', 'Rome'), (2, 'Bob', 'Oslo'), (3, 'Cy', 'Rome');
+           CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customers (id), total REAL);
+           INSERT INTO orders VALUES (10, 1, 1234.5), (11, 1, 2), (12, 2, 3.25);`);
+  db.close();
+  writeFileSync(
+    join(dir, "connections.toml"),
+    `version = 1
+
+[[connections]]
+id = "00000000-0000-4000-8000-000000000005"
+name = "${NAME}"
+driver = "sqlite"
+database = '${path}'
+save_password = false
+`,
+  );
+}
+
+async function openTable(page, name, rows) {
+  await page.waitFor(`${treeRow(name)} !== undefined`);
+  await page.eval(`${treeRow(name)}.id = 'e2e-table'`);
+  await page.clickSel("#e2e-table", { clickCount: 2 });
+  await page.eval(`document.getElementById('e2e-table').removeAttribute('id')`);
+  await page.waitFor(`${status} === '${rows}'`, 15_000);
+  await markGrid(page);
+}
+
+/** Names the visible tab's grid `e2e-grid`; hidden tabs keep theirs otherwise. */
+async function markGrid(page) {
+  await page.eval(`document.querySelectorAll('#e2e-grid').forEach(e => e.removeAttribute('id'))`);
+  await page.eval(`${grid}.id = 'e2e-grid'`);
+}
+
+/** Focuses the cell `col` display positions right of the first column of `row`. */
+async function focusCell(page, row, col) {
+  await page.eval(`document.getElementById('e2e-grid').focus()`);
+  await page.key("Home", "Home", 36, CTRL);
+  for (let i = 0; i < row; i++) await page.key("ArrowDown", "ArrowDown", 40);
+  for (let i = 0; i < col; i++) await page.key("ArrowRight", "ArrowRight", 39);
+}
+
+/** The grid's menu for the focused cell: opened on the row numbers, which keep the focus. */
+async function openMenu(page) {
+  const r = await page.rect(`#e2e-grid`);
+  await page.click(r.x + 4, r.y + 52, { button: "right" });
+  await page.waitFor(`document.querySelector('.context-menu') !== null`);
+}
+
+async function menu(page, ...path) {
+  for (const label of path) {
+    await page.waitFor(`${menuButton(label)} !== undefined`);
+    await page.eval(`${menuButton(label)}.click()`);
+  }
+}
+
+async function copyAll(page) {
+  await page.eval(`window.__copied = undefined`);
+  await page.eval(`document.getElementById('e2e-grid').focus()`);
+  await page.key("a", "KeyA", 65, CTRL);
+  await page.key("c", "KeyC", 67, CTRL);
+  await page.waitFor(`window.__copied !== undefined`);
+  return page.eval(`window.__copied`);
+}
+
+async function closeTab(page) {
+  await page.key("w", "KeyW", 87, CTRL);
+}
+
+export default async function (page, { shots }) {
+  const shot = async (name) => shots && (await page.screenshot(join(shots, `grid-more-${name}.png`)));
+  await page.waitFor(`${treeRow(NAME)} !== undefined`);
+  await page.eval(`${treeRow(NAME)}.click()`);
+  await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
+
+  // Hide `city`, move `name` first in the Columns dialog.
+  await openTable(page, "customers", "3 rows");
+  await focusCell(page, 0, 2);
+  await openMenu(page);
+  await menu(page, "Columns", "Hide column");
+  await openMenu(page);
+  await menu(page, "Columns", "Columns…");
+  await page.waitFor(`document.querySelector('.columns-list') !== null`);
+  await page.eval(
+    `[...document.querySelectorAll('.columns-row')].find(r => r.textContent.includes('name')).querySelector('button[title="Move left"]').click()`,
+  );
+  await page.eval(`${button("document.querySelector('.modal')", "Close")}.click()`);
+  assert.equal(await copyAll(page), "Ada\t1\nBob\t2\nCy\t3");
+
+  // The selection's totals: three values of a number column.
+  await page.waitFor(`document.querySelector('.grid-summary')?.textContent.includes('Sum 6')`);
+  await shot("layout");
+
+  // The layout stays with the table.
+  await closeTab(page);
+  await openTable(page, "customers", "3 rows");
+  assert.equal(await copyAll(page), "Ada\t1\nBob\t2\nCy\t3");
+  await openMenu(page);
+  await menu(page, "Columns", "Reset columns");
+  assert.equal(await copyAll(page), "1\tAda\tRome\n2\tBob\tOslo\n3\tCy\tRome");
+
+  // A pinned column goes first, and back when unpinned.
+  await focusCell(page, 0, 2);
+  await openMenu(page);
+  await menu(page, "Columns", "Pin column");
+  assert.equal(await copyAll(page), "Rome\t1\tAda\nOslo\t2\tBob\nRome\t3\tCy");
+  await focusCell(page, 0, 0);
+  await openMenu(page);
+  await menu(page, "Columns", "Unpin column");
+  assert.equal(await copyAll(page), "1\tAda\tRome\n2\tBob\tOslo\n3\tCy\tRome");
+
+  // Dragging a header moves its column: `id` past the last one.
+  const r = await page.rect("#e2e-grid");
+  await page.mouse("mousePressed", r.x + 36, r.y + 20);
+  await page.mouse("mouseMoved", r.x + 120, r.y + 20);
+  await page.mouse("mouseMoved", r.x + 600, r.y + 20);
+  await page.mouse("mouseReleased", r.x + 600, r.y + 20);
+  assert.equal(await copyAll(page), "Ada\tRome\t1\nBob\tOslo\t2\nCy\tRome\t3");
+  await openMenu(page);
+  await menu(page, "Columns", "Reset columns");
+
+  // Counts by value of the focused column.
+  await focusCell(page, 0, 2);
+  await openMenu(page);
+  await menu(page, "Count by value");
+  await page.waitFor(`document.querySelectorAll('.grouping-list tbody tr').length === 2`);
+  assert.deepEqual(
+    await page.eval(`[...document.querySelectorAll('.grouping-list tbody tr')].map(r => r.textContent)`),
+    ["Rome2", "Oslo1"],
+  );
+  await shot("grouping");
+  await page.eval(`${button("document.querySelector('.grouping-panel')", "×")}.click()`);
+
+  // The record view shows one row and moves with the arrows.
+  await page.eval(`document.getElementById('e2e-grid').focus()`);
+  await page.key("Home", "Home", 36, CTRL);
+  await page.key("r", "KeyR", 82, CTRL | ALT);
+  await page.waitFor(`document.querySelector('.record-view .record-position')?.textContent === 'Row 1 of 3'`);
+  await page.key("ArrowRight", "ArrowRight", 39);
+  await page.waitFor(`document.querySelector('.record-position')?.textContent === 'Row 2 of 3'`);
+  await page.waitFor(`[...document.querySelectorAll('.record-value')].map(v => v.textContent).join() === '2,Bob,Oslo'`);
+  await shot("record");
+  await page.key("Escape", "Escape", 27);
+  await page.waitFor(`document.querySelector('.record-view') === null`);
+
+  // The References panel counts the orders of the focused customer and opens them.
+  await focusCell(page, 0, 0);
+  await openMenu(page);
+  await menu(page, "References panel");
+  await page.waitFor(`document.querySelector('.reference button')?.textContent === '2 rows'`);
+  await shot("references");
+  await page.eval(`document.querySelector('.reference button').click()`);
+  await page.waitFor(`${status} === '2 rows'`, 15_000);
+  assert.equal(await page.eval(`${visibleTab}.querySelector('.viewer-bar input').value`), "customer_id = 1");
+  await closeTab(page);
+
+  // A foreign key opens the row it points to.
+  await openTable(page, "orders", "3 rows");
+  await focusCell(page, 0, 1);
+  await openMenu(page);
+  await menu(page, "Open referenced row");
+  await page.waitFor(`${status} === '1 row'`, 15_000);
+  assert.equal(await page.eval(`${visibleTab}.querySelector('.viewer-bar input').value`), "id = 1");
+  await closeTab(page);
+
+  // Numbers grouped as set in the Settings; the grid fetches its rows again.
+  await page.waitFor(`${status} === '3 rows'`);
+  await markGrid(page);
+  await page.key(",", "Comma", 188, CTRL);
+  await page.waitFor(`document.querySelector('.modal.settings') !== null`);
+  await page.eval(`(() => {
+    const select = [...document.querySelectorAll('.setting')].find(s => s.textContent.includes('Numbers')).querySelector('select');
+    select.value = 'comma';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);
+  await page.waitFor(`document.querySelector('.modal.settings') === null`);
+  await markGrid(page);
+  const deadline = Date.now() + 10_000;
+  let text = "";
+  while (!text.includes("1,234.5") && Date.now() < deadline) {
+    text = await copyAll(page);
+    await page.sleep(100);
+  }
+  assert.equal(text, "10\t1\t1,234.5\n11\t1\t2.0\n12\t2\t3.25");
+}

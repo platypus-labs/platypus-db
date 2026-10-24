@@ -20,8 +20,8 @@ use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, DriverError, Opts, OptsBuilder, Row, SslOpts, Value};
 use platypus_core::{
     CancelHandle, Canceller, CatalogColumn, Connection, ConnectionConfig, DbError, Driver,
-    DriverKind, Error, ExecOptions, ExecResult, ObjectMeta, RecordBatchStream, Result, SchemaMeta,
-    ServerInfo, SslMode, TableDetails, TransactionState, TxTracker, classify,
+    DriverKind, Error, ExecOptions, ExecResult, ObjectMeta, RecordBatchStream, ReferencingKey,
+    Result, SchemaMeta, ServerInfo, SslMode, TableDetails, TransactionState, TxTracker, classify,
 };
 use tokio::sync::{Mutex, mpsc, oneshot};
 
@@ -216,6 +216,10 @@ impl Connection for MySqlConnection {
 
     async fn table_details(&self, schema: &str, table: &str) -> Result<TableDetails> {
         meta::table_details(self, schema, table).await
+    }
+
+    async fn referencing_keys(&self, schema: &str, table: &str) -> Result<Vec<ReferencingKey>> {
+        meta::referencing_keys(self, schema, table).await
     }
 
     async fn catalog_columns(&self) -> Result<Vec<CatalogColumn>> {

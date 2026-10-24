@@ -89,6 +89,9 @@ export default async function (page, { dir }) {
     "Select all",
     "Find…",
     "Value panel",
+    "Record view",
+    "Count by value",
+    "Columns",
   ]);
   // The page may not read the clipboard back: record what is written instead.
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);

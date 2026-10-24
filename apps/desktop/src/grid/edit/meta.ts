@@ -45,8 +45,9 @@ function byName(details: TableDetails): (name: string) => ColumnMeta | undefined
   return (name) => exact.get(name) ?? folded.get(name.toLowerCase());
 }
 
-/** The table column behind each result column, by the select list. */
-function resultColumns(source: EditSource, columns: ColumnInfo[]): (ColumnMeta | undefined)[] | string {
+/** The table column behind each result column, by the select list; a string says why the
+ *  columns cannot be matched. */
+export function resultColumns(source: EditSource, columns: ColumnInfo[]): (ColumnMeta | undefined)[] | string {
   const find = byName(source.details);
   const expected: (string | null)[] = source.items
     ? source.items.flatMap((item) =>

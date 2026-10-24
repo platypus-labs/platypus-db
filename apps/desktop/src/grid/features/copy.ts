@@ -11,7 +11,7 @@ function selectedRange({ grid }: GridActionContext) {
   const last = grid.dataRow(sel.r1);
   if (last === null) return null;
   const first = grid.dataRow(sel.r0) ?? 0;
-  const columns = Array.from({ length: sel.c1 - sel.c0 + 1 }, (_, i) => sel.c0 + i);
+  const columns = sel.cols;
   return { offset: first, limit: last - first + 1, columns };
 }
 

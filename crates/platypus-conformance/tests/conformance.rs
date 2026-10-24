@@ -436,6 +436,24 @@ async fn navigates_metadata() {
             b.name,
             customers.indexes
         );
+
+        let referencing = conn.referencing_keys(&b.schema, "customers").await.unwrap();
+        assert_eq!(referencing.len(), 1, "{}: {referencing:?}", b.name);
+        let key = &referencing[0];
+        assert_eq!(
+            (key.schema.as_str(), key.table.as_str()),
+            (b.schema.as_str(), "orders"),
+            "{}",
+            b.name
+        );
+        assert_eq!(key.columns, ["customer_id"], "{}", b.name);
+        assert_eq!(key.ref_columns, ["id"], "{}", b.name);
+        assert_eq!(
+            conn.referencing_keys(&b.schema, "orders").await.unwrap(),
+            [],
+            "{}",
+            b.name
+        );
     }
 }
 

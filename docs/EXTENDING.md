@@ -10,7 +10,8 @@ a small separate change rather than adding feature logic to a shared file.
 ### Tauri commands
 
 `apps/desktop/src-tauri/src/commands/` has one module per area: `connections`, `query`,
-`meta`, `data`, `transactions`, `export`, `sql`, `history`, `files` and `settings`. Shared state
+`meta`, `data`, `grid`, `summary`, `transactions`, `export`, `sql`, `history`, `files` and
+`settings`. Shared state
 (`AppState`, sessions, `live`) is in `commands/mod.rs`.
 
 To add commands:
@@ -36,6 +37,18 @@ Existing optional methods are `explain` and `object_ddl`. To add one:
    `crates/platypus-conformance/tests/conformance.rs`.
 
 A driver that implements the method sets its flag in `fn capabilities`.
+
+Metadata every driver must answer is a required method instead, checked by
+`navigates_metadata` in the conformance tests: `schemas`, `objects`, `table_details`,
+`referencing_keys` (the foreign keys of other tables that point at a table) and
+`catalog_columns`.
+
+### Display formats
+
+The grid's text is rendered in Rust (`display.rs`) with the user's formats from
+`formats.rs`: dates and timestamps, the time zone of zoned timestamps, digit grouping and
+relative times. Their settings are declared in `apps/desktop/src/grid/formats.ts`. Editing,
+copying, searching and exports read the plain values of `display::format_options` instead.
 
 ### SQL generation
 
@@ -159,12 +172,18 @@ loaded before the first render.
 | `topRows` | Rows drawn above the result's, e.g. new rows; their cells come from `decorate`. |
 | `onScroll` | Called when the grid scrolls, e.g. to move an overlay. |
 | `onFocusChange` | Called when the focused cell changes, e.g. for the value panel. |
+| `onSelectionChange` | Called when the selection changes, e.g. for its totals. |
+| `layout`, `onLayoutChange` | The column layout (`grid/layout.ts`): order, hidden and pinned columns, widths. Without `onLayoutChange` the columns keep the result's order. |
 | `ref` | Gives the `GridApi`. |
 
-`GridApi.dataRow` maps a grid row to the result's row (`null` for the top rows).
-`grid/ResultGrid.tsx` hosts a result's features around the grid: the data editor
-(`grid/edit/`), search and the copy and filter actions (`grid/features/`), the value panel
-(`panels/`). It combines their decorations, so each feature keeps its own.
+Cells and selections always use result columns, wherever the layout shows them: a
+selection lists its columns in `cols`, left to right as shown, and `visibleColumns()` gives
+the display order. `GridApi.dataRow` maps a grid row to the result's row (`null` for the top
+rows). `grid/ResultGrid.tsx` hosts a result's features around the grid: the data editor
+(`grid/edit/`), search, totals, column, copy, filter and foreign key actions
+(`grid/features/`), the value, grouping and references panels and the record view
+(`panels/`, `grid/features/references.tsx`). It combines their decorations, so each feature
+keeps its own.
 
 A decoration can set `background`, `color`, replacement `text`, `strike` and a muted `hint`
 after the value (the data editor's foreign key labels). Features that

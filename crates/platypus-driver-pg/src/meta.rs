@@ -2,7 +2,8 @@
 
 use platypus_core::{
     CATALOG_LIMIT, CatalogColumn, ColumnMeta, Connection, ForeignKeyMeta, IndexMeta, ObjectKind,
-    ObjectMeta, Result, SchemaMeta, TableDetails, TextRowExt, query_catalog, query_text,
+    ObjectMeta, ReferencingKey, Result, SchemaMeta, TableDetails, TextRowExt, query_catalog,
+    query_text,
 };
 
 /// Separates list items aggregated into one text cell.
@@ -196,6 +197,48 @@ pub async fn table_details(
         indexes,
         foreign_keys,
     })
+}
+
+pub async fn referencing_keys(
+    conn: &dyn Connection,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<ReferencingKey>> {
+    let columns = |key: &str, rel: &str| {
+        format!(
+            "array_to_string(ARRAY(
+                SELECT a.attname FROM unnest(con.{key}) WITH ORDINALITY k(n, o)
+                JOIN pg_attribute a ON a.attrelid = con.{rel} AND a.attnum = k.n
+                ORDER BY k.o), chr(31))"
+        )
+    };
+    Ok(query_text(
+        conn,
+        &format!(
+            "SELECT n.nspname, c.relname, con.conname, {}, {}
+             FROM pg_constraint con
+             JOIN pg_class c ON c.oid = con.conrelid
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE con.contype = 'f' AND con.confrelid =
+                 (SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                  WHERE n.nspname = {} AND c.relname = {})
+             ORDER BY n.nspname, c.relname, con.conname",
+            columns("conkey", "conrelid"),
+            columns("confkey", "confrelid"),
+            literal(schema),
+            literal(table)
+        ),
+    )
+    .await?
+    .into_iter()
+    .map(|r| ReferencingKey {
+        schema: r.text(0),
+        table: r.text(1),
+        name: r.text(2),
+        columns: list(r.opt(3)),
+        ref_columns: list(r.opt(4)),
+    })
+    .collect())
 }
 
 #[cfg(test)]

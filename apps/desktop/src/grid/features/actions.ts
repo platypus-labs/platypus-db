@@ -1,4 +1,5 @@
-// Search and the value panel, on the grid's shortcuts and menu.
+// Search, the value panel, the record view and counts by value, on the grid's shortcuts and
+// menu.
 import { registerAction } from "../../actions";
 
 registerAction({
@@ -21,4 +22,25 @@ registerAction({
   order: 61,
   when: ({ source }) => source?.features !== undefined,
   run: ({ source }) => source!.features!.toggleValuePanel(),
+});
+
+registerAction({
+  id: "grid.record_view",
+  scope: "grid",
+  title: "Record view",
+  shortcut: "Mod+Alt+R",
+  group: "view",
+  order: 62,
+  when: ({ source, grid }) => source?.features !== undefined && grid.rowCount() > 0,
+  run: ({ source }) => source!.features!.toggleRecordView(),
+});
+
+registerAction({
+  id: "grid.group_by",
+  scope: "grid",
+  title: "Count by value",
+  group: "view",
+  order: 63,
+  when: ({ source, grid }) => source?.features !== undefined && grid.selection() !== null,
+  run: ({ source, grid }) => source!.features!.groupBy(grid.selection()!.cols),
 });

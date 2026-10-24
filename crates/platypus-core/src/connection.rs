@@ -11,7 +11,7 @@ use futures::stream::BoxStream;
 
 use crate::{
     Capabilities, CatalogColumn, ConnectionConfig, DriverKind, Explain, ObjectMeta, ObjectRef,
-    Result, SchemaMeta, TableDetails, TransactionState, unsupported,
+    ReferencingKey, Result, SchemaMeta, TableDetails, TransactionState, unsupported,
 };
 
 #[async_trait]
@@ -46,6 +46,9 @@ pub trait Connection: Send + Sync + fmt::Debug {
 
     /// Columns, indexes and foreign keys of a table or view.
     async fn table_details(&self, schema: &str, table: &str) -> Result<TableDetails>;
+
+    /// The foreign keys of other tables that point at `schema.table`.
+    async fn referencing_keys(&self, schema: &str, table: &str) -> Result<Vec<ReferencingKey>>;
 
     /// Every column of every table and view in the user schemas, for autocompletion.
     async fn catalog_columns(&self) -> Result<Vec<CatalogColumn>>;

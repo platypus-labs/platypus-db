@@ -28,7 +28,13 @@ scrolls through millions of rows.
 - **Results**: copy with headers or as CSV, JSON, Markdown, HTML, SQL `INSERT` or an `IN`
   list; find in the loaded rows (`Ctrl+F`); a value panel (`F7`) with long text, JSON and XML
   formatted, hex and images from binary columns, and save to file; quick filters on the
-  focused value from the grid's menu (data viewer).
+  focused value from the grid's menu (data viewer). Columns can be hidden, pinned to the
+  left, dragged to another place and resized, and data viewer tables keep that layout. The
+  totals of the selection (count, sum, average, minimum, maximum) show under the grid; a
+  record view shows one row at a time; a panel counts the rows by value. Foreign keys open
+  the row they point to, and the References panel lists the rows of other tables that point
+  at the focused one. Dates, timestamps, the time zone, digit grouping and relative times
+  follow the Settings.
 - **Export** to CSV, JSON, NDJSON or Parquet, streamed straight to the file.
 - **Transactions**: auto-commit or manual commit with Commit/Rollback.
 - Light and dark theme, automatic reconnection, in-app updates.
@@ -63,6 +69,7 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | `Ctrl+S`, `Ctrl+Z` | Save / undo data changes (grid focused) |
 | `Ctrl+Shift+C` | Copy the selection with headers |
 | `Ctrl+F`, `F7` | Find in the results / value panel (grid focused) |
+| `Ctrl+Alt+R` | Record view of the focused row; `←` `→` move through the rows |
 
 On macOS use `Cmd` instead of `Ctrl`.
 

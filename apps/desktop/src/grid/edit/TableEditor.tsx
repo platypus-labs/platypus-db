@@ -5,6 +5,7 @@ import type { RowCache } from "../RowCache";
 import { CellEditor, type Move } from "./CellEditor";
 import { Dictionary } from "./dictionary";
 import { type EditMeta, type EditSource, type EditorKind, editMeta, editorKind, isJson, type ReadOnly } from "./meta";
+import { plainNumber } from "../formats";
 import { mapFields, parseClipboard } from "./paste";
 import { PreviewDialog } from "./PreviewDialog";
 import * as edits from "./state";
@@ -286,10 +287,11 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
       return fail(e);
     }
     const focused = grid.current?.focused() ?? { row: 0, col: 0 };
+    const shown = grid.current?.visibleColumns() ?? columns.map((_, i) => i);
     const { targets, rows } = mapFields(
       parseClipboard(text),
       columns.map((c) => c.name),
-      focused.col,
+      shown.slice(Math.max(0, shown.indexOf(focused.col))),
     );
     const fields = (row: string[]) =>
       row.flatMap((value, i) => {
@@ -341,7 +343,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
       if (!editable || !sel) return;
       const cells: edits.CellChange[] = [];
       for (let r = sel.r0; r <= sel.r1; r++) {
-        for (let c = sel.c0; c <= sel.c1; c++) if (writable(c)) cells.push({ gridRow: r, col: c, value });
+        for (const c of sel.cols) if (writable(c)) cells.push({ gridRow: r, col: c, value });
       }
       apply((s) => edits.setCells(s, cells));
     },
@@ -427,14 +429,22 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
       } else {
         const input = state.updates.get(row - n)?.get(col);
         d = input && decoration(input, CHANGED);
-        value = input ? (input.kind === "value" ? input.text : null) : cache.get(row - n, col);
+        // Loaded numbers may be shown grouped; keys are looked up as plain numbers.
+        const loaded = cache.get(row - n, col);
+        value = input
+          ? input.kind === "value"
+            ? input.text
+            : null
+          : loaded != null && columns[col]?.numeric
+            ? plainNumber(loaded)
+            : loaded;
       }
       if (!dict?.has(col) || value == null) return d;
       const label = dict.label(col, value);
       return label ? { ...d, hint: label } : d;
     },
     // `labels` and `version` change what the dictionary and the cache hold.
-    [state, labels, version, cache],
+    [state, labels, version, cache, columns],
   );
   const decorated = dirty || (dictionary.current?.size ?? 0) > 0;
 

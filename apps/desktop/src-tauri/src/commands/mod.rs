@@ -14,6 +14,7 @@ pub mod meta;
 pub mod query;
 pub mod settings;
 pub mod sql;
+pub mod summary;
 pub mod transactions;
 
 use std::collections::HashMap;
