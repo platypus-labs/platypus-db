@@ -85,7 +85,7 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 
 | Gruppo | Lock |
 |---|---|
-| A — Modifica dei dati | 🔒 Delfa · group-a-arrays · 2026-10-24 |
+| A — Modifica dei dati | ✅ fatto (P1, P2, P3) |
 | B — Griglia avanzata | ✅ fatto (P1, P2) |
 | C — Navigator e oggetti | ✅ fatto (P1, P2, P3) |
 | D — Editor SQL | ✅ fatto (P1) |
