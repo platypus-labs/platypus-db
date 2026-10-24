@@ -1,6 +1,6 @@
 //! `EXPLAIN (FORMAT JSON)` as a plan tree.
 
-use platypus_core::{Error, Explain, ExplainFormat, PlanNode, Result, explain_document};
+use platypus_core::{Error, Explain, ExplainFormat, FullScan, PlanNode, Result, explain_document};
 use serde_json::{Map, Value};
 
 use crate::PgConnection;
@@ -64,14 +64,16 @@ fn node(map: &Map<String, Value>) -> PlanNode {
         detail.push(format!("on {target}"));
         detail.extend(s("Alias").filter(|a| *a != target).map(str::to_owned));
     }
+    let operation = s("Node Type").unwrap_or("?");
     PlanNode {
-        operation: s("Node Type").unwrap_or("?").to_owned(),
+        operation: operation.to_owned(),
         detail: (!detail.is_empty()).then(|| detail.join(" ")),
         cost: num("Total Cost"),
         rows: num("Plan Rows"),
         actual_rows: num("Actual Rows"),
         actual_ms: num("Actual Total Time"),
         loops: num("Actual Loops"),
+        full_scan: full_scan(operation, map),
         properties: map
             .iter()
             .filter(|(k, _)| !SHOWN.contains(&k.as_str()))
@@ -90,6 +92,26 @@ fn node(map: &Map<String, Value>) -> PlanNode {
             .unwrap_or_default(),
         ..PlanNode::default()
     }
+}
+
+/// A `Seq Scan` (or `Parallel Seq Scan`) with a filter. With analyze it read the rows it
+/// returned plus those the filter removed, per loop.
+fn full_scan(operation: &str, map: &Map<String, Value>) -> Option<FullScan> {
+    let num = |k: &str| map.get(k).and_then(Value::as_f64);
+    if !operation.ends_with("Seq Scan") {
+        return None;
+    }
+    let read = match (num("Actual Rows"), num("Rows Removed by Filter")) {
+        (Some(kept), removed) => {
+            Some((kept + removed.unwrap_or(0.0)) * num("Actual Loops").unwrap_or(1.0))
+        }
+        (None, _) => num("Plan Rows"),
+    };
+    Some(FullScan {
+        table: map.get("Relation Name")?.as_str()?.to_owned(),
+        filter: map.get("Filter")?.as_str()?.to_owned(),
+        rows_read: read,
+    })
 }
 
 /// A value as shown: strings unquoted, lists (sort keys, output columns) comma-separated.
@@ -133,6 +155,12 @@ mod tests {
         };
         assert_eq!(scan.detail.as_deref(), Some("on orders o"));
         assert_eq!(scan.actual_rows, None);
+        let full = scan.full_scan.as_ref().unwrap();
+        assert_eq!(
+            (full.table.as_str(), full.rows_read),
+            ("orders", Some(1000.0))
+        );
+        assert_eq!(index.full_scan, None);
         assert!(
             scan.properties
                 .contains(&("Filter".into(), "(total > 10)".into()))
