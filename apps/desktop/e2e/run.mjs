@@ -99,8 +99,27 @@ for (const file of scenarios) {
     page?.close();
     // The WebView2 processes are children of the app: end the whole tree.
     spawnSync("taskkill", ["/pid", String(app.pid), "/t", "/f"], { stdio: "ignore" });
+    // WebView2 processes the tree no longer holds would keep the DevTools port and the
+    // profile: they are found by their profile folder.
+    spawnSync(
+      "powershell",
+      [
+        "-NoProfile",
+        "-Command",
+        `Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | ` +
+          `Where-Object { $_.CommandLine -like '*${dir.replaceAll("'", "''")}*' } | ` +
+          `ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`,
+      ],
+      { stdio: "ignore" },
+    );
     await new Promise((r) => setTimeout(r, 300));
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    // WebView2 can hold its profile files a few seconds after the tree is killed: a folder
+    // left behind in the temp directory is no reason to stop the run.
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+    } catch (e) {
+      console.log(`     (left ${dir}: ${e instanceof Error ? e.message : e})`);
+    }
   }
 }
 
