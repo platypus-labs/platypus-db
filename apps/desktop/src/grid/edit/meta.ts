@@ -33,6 +33,8 @@ export interface ReadOnly {
   /** Not worth saying, e.g. a query in the SQL editor that joins tables. */
   hidden?: boolean;
   noKey?: { table: TableRef; columns: string[] };
+  /** The table and its column behind each result column, when they are known. */
+  catalog?: Pick<EditMeta, "table" | "columns">;
 }
 
 /** How a column is edited. */
@@ -72,9 +74,11 @@ export function resultColumns(source: EditSource, columns: ColumnInfo[]): (Colum
  */
 export function editMeta(source: EditSource, columns: ColumnInfo[], virtualKeys: VirtualKey[]): EditMeta | ReadOnly {
   const { table, details } = source;
-  if (table.kind !== "table") return { reason: "only tables can be edited" };
   const mapped = resultColumns(source, columns);
-  if (typeof mapped === "string") return { reason: mapped };
+  if (typeof mapped === "string") return { reason: table.kind === "table" ? mapped : "only tables can be edited" };
+  // Read-only results still describe their columns, e.g. in the metadata panel.
+  const catalog = { table, columns: mapped };
+  if (table.kind !== "table") return { reason: "only tables can be edited", catalog };
   if (mapped.every((c) => !c)) return { reason: "the result has none of the table's columns" };
   const index = new Map(mapped.flatMap((c, i) => (c ? [[c.name, i] as const] : [])));
   const present = (names: string[]) => names.length > 0 && names.every((n) => index.has(n));
@@ -99,10 +103,11 @@ export function editMeta(source: EditSource, columns: ColumnInfo[], virtualKeys:
   if (unique) return meta(unique.columns, null);
   if (virtual && present(virtual)) return meta(virtual, virtual);
   const keyed = primary.length > 0 || uniques.length > 0 || virtual !== undefined;
-  if (keyed) return { reason: "the result does not include the table's key columns" };
+  if (keyed) return { reason: "the result does not include the table's key columns", catalog };
   return {
     reason: "the table has no primary key or unique key on non-null columns",
     noKey: { table, columns: details.columns.map((c) => c.name) },
+    catalog,
   };
 }
 

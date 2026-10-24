@@ -34,7 +34,19 @@ import { GuardDialog } from "../guards/GuardDialog";
 import { ExportDialog, type ExportSource } from "./ExportDialog";
 import { HistoryPanel } from "./HistoryPanel";
 import { useToolbar } from "./toolbar";
+import { Icon } from "../ui/Icon";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
+
+/** Auto-refresh intervals in seconds, `0` for off. */
+const REFRESH_CHOICES: [number, string][] = [
+  [0, "Off"],
+  [2, "2 s"],
+  [5, "5 s"],
+  [10, "10 s"],
+  [30, "30 s"],
+  [60, "1 min"],
+  [300, "5 min"],
+];
 
 /** Statements that change which tables and columns exist. */
 const DDL = /^\s*(create|alter|drop|rename)\b/i;
@@ -214,6 +226,8 @@ export function QueryTab({
   const lastAnswers = useRef<Record<string, string>>({});
   /** SQL that undoes the last saved edits. */
   const [undoScript, setUndoScript] = useState<string | null>(null);
+  /** Seconds between runs of the last statements again; `null` is off. */
+  const [refreshEvery, setRefreshEvery] = useState<number | null>(null);
 
   const closeJobs = () => {
     for (const id of jobs.current) void api.closeQuery(id);
@@ -268,7 +282,7 @@ export function QueryTab({
 
   /** Runs one statement and resolves with its first terminal status; `seen` gets its job,
    *  columns and rows as they arrive. */
-  function runOne(sessionId: number, result: Result, token: number, seen?: Seen): Promise<ResultStatus> {
+  function runOne(sessionId: number, result: Result, token: number, history: boolean, seen?: Seen): Promise<ResultStatus> {
     const limited = result.limit !== null;
     return new Promise((resolve) => {
       let settled = false;
@@ -313,7 +327,7 @@ export function QueryTab({
         }
         if (status) settle(status);
       };
-      api.runQuery(sessionId, result.sql, result.limit, onEvent).then(
+      api.runQuery(sessionId, result.sql, result.limit, onEvent, history).then(
         (jobId) => {
           jobs.current.push(jobId);
           currentJob.current = jobId;
@@ -398,8 +412,11 @@ export function QueryTab({
     return !request || new Promise<boolean>((resolve) => setGuard({ request, resolve }));
   }
 
-  /** Runs what `mode` selects in the editor, or `again` (the statements of the last run). */
-  async function run(mode: RunMode, force = false, again?: Planned[]) {
+  /** Runs what `mode` selects in the editor, or `again` (the statements of the last run).
+   *  An `auto` refresh stays out of the query history, keeps the result tab shown and the
+   *  editor as it is, and stops refreshing when a statement fails. */
+  async function run(mode: RunMode, force = false, again?: Planned[], auto = false) {
+    const history = !auto;
     if (running && !force) return;
     if (unsaved.current && !window.confirm("Discard the changes to the data that are not saved?")) return;
     const append = mode === "append";
@@ -435,7 +452,7 @@ export function QueryTab({
     const own = queue.map((p, i) => resultOf(p, i === 0));
     const base = append ? results.length : 0;
     setResults((all) => (append ? [...all, ...own] : own));
-    setActiveResult(base);
+    if (!auto) setActiveResult(base);
     setRunning(true);
     editor.current!.setError(null);
 
@@ -511,8 +528,10 @@ export function QueryTab({
       const p = queue[i]!;
       if (token !== runToken.current) return;
       update(result.id, { status: { kind: "running" } });
-      setActiveResult(base + i);
-      if (p.offset >= 0) editor.current!.flash(p.offset, p.offset + p.sql.length);
+      if (!auto) {
+        setActiveResult(base + i);
+        if (p.offset >= 0) editor.current!.flash(p.offset, p.offset + p.sql.length);
+      }
       const seen: Seen = { jobId: null, columns: null, rows: 0 };
       let status: ResultStatus;
       let sql = p.sql;
@@ -535,12 +554,12 @@ export function QueryTab({
           if (target) {
             status = await exportTo(sessionId, sql, target.path, target.format);
           } else {
-            status = await runOne(sessionId, ran, token, seen);
+            status = await runOne(sessionId, ran, token, history, seen);
             // A dropped connection fails before the statement reaches the server; the
             // second attempt runs on a reopened connection.
             if (status.kind === "error" && status.error.kind === "closed" && token === runToken.current) {
               update(result.id, { status: { kind: "running" } });
-              status = await runOne(sessionId, ran, token, seen);
+              status = await runOne(sessionId, ran, token, history, seen);
             }
           }
         }
@@ -552,13 +571,16 @@ export function QueryTab({
       if (status.kind === "rows") lastRows = i;
       if (status.kind === "error") {
         failed = i;
-        showError(p, status);
+        // The editor may have changed since the statements were planned: no marker there.
+        if (!auto) showError(p, status);
+        else onError(`Auto-refresh stopped: ${status.error.message}`);
         const skipped = new Set(own.slice(i + 1).map((r) => r.id));
         setResults((all) => all.map((r) => (skipped.has(r.id) ? { ...r, status: { kind: "skipped" } } : r)));
         break;
       }
     }
-    setActiveResult(base + (failed >= 0 ? failed : lastRows >= 0 ? lastRows : own.length - 1));
+    if (auto && failed >= 0) setRefreshEvery(null);
+    if (!auto || failed >= 0) setActiveResult(base + (failed >= 0 ? failed : lastRows >= 0 ? lastRows : own.length - 1));
     setRunning(false);
     currentJob.current = null;
     if (queue.some((p) => DDL.test(p.sql))) {
@@ -925,6 +947,25 @@ export function QueryTab({
     onError(`A transaction on ${connection.name} has been open for ${warnMinutes} minutes: commit or roll back.`);
   }, [txLong]);
 
+  // Auto-refresh: the last statements again, if they only read, while the tab is shown and
+  // nothing runs, asks or waits to be saved. The timer calls the latest render's `refresh`.
+  const refresh = useRef(() => {});
+  refresh.current = () => {
+    const again = lastPlanned.current;
+    if (running || guard || unsaved.current || again.length === 0) return;
+    if (again.some((p) => !p.readOnly)) {
+      setRefreshEvery(null);
+      onError("Auto-refresh stopped: the last statements change data.");
+      return;
+    }
+    void run("statement", false, again, true);
+  };
+  useEffect(() => {
+    if (refreshEvery === null || !active) return;
+    const timer = setInterval(() => refresh.current(), refreshEvery * 1000);
+    return () => clearInterval(timer);
+  }, [refreshEvery, active]);
+
   const toolbar = useToolbar();
   const current = results[activeResult];
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
@@ -1020,6 +1061,25 @@ export function QueryTab({
                 {dirty ? " •" : ""}
               </button>
             </>
+          )}
+          {toolbar.visible.refresh && (
+            <label
+              className={`auto-refresh${refreshEvery !== null ? " toggled" : ""}`}
+              title="Run the last statements again every few seconds, if they only read data"
+            >
+              <Icon name="refresh" />
+              <select
+                aria-label="Auto-refresh"
+                value={refreshEvery ?? 0}
+                onChange={(e) => setRefreshEvery(Number(e.target.value) || null)}
+              >
+                {REFRESH_CHOICES.map(([seconds, label]) => (
+                  <option key={seconds} value={seconds}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
           <span className="spacer" />
           {tab.filePath && <span className="muted small">{basename(tab.filePath)}</span>}

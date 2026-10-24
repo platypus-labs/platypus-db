@@ -1,11 +1,12 @@
 // More of the read-only grid on a throwaway SQLite database: the column layout (hidden and
 // moved columns, kept for the table), totals of the selection, counts by value, the record
-// view, foreign keys as links with the References panel, and number formats.
+// view, foreign keys as links with the References panel, column metadata, the calc panel,
+// two rows compared, auto-refresh, number formats, and geometries on the map.
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { ALT, CTRL } from "../cdp.mjs";
+import { ALT, CTRL, SHIFT } from "../cdp.mjs";
 
 const NAME = "E2E grid more";
 const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
@@ -24,7 +25,13 @@ export function setup({ dir }) {
   db.exec(`CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT, city TEXT);
            INSERT INTO customers VALUES (1, 'Ada', 'Rome'), (2, 'Bob', 'Oslo'), (3, 'Cy', 'Rome');
            CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customers (id), total REAL);
-           INSERT INTO orders VALUES (10, 1, 1234.5), (11, 1, 2), (12, 2, 3.25);`);
+           INSERT INTO orders VALUES (10, 1, 1234.5), (11, 1, 2), (12, 2, 3.25);
+           CREATE TABLE places (id INTEGER PRIMARY KEY, shape TEXT, wkb BLOB);
+           INSERT INTO places VALUES
+             (1, 'POINT (1 2)', X'010100000000000000000014400000000000001440'),
+             (2, 'POLYGON ((0 0, 4 0, 4 4, 0 4, 0 0))', NULL),
+             (3, 'LINESTRING (0 0, 3 3)', NULL),
+             (4, 'hello', NULL);`);
   db.close();
   writeFileSync(
     join(dir, "connections.toml"),
@@ -90,7 +97,90 @@ async function closeTab(page) {
   await page.key("w", "KeyW", 87, CTRL);
 }
 
-export default async function (page, { shots }) {
+/** On `orders`: the focused column's metadata, statistics of a selection, two rows compared. */
+async function panels(page, shot) {
+  const panelText = (selector) => `(document.querySelector(${JSON.stringify(selector)})?.textContent ?? '')`;
+  await focusCell(page, 0, 2);
+  await openMenu(page);
+  await menu(page, "Column metadata");
+  await page.waitFor(`${panelText(".metadata-list")}.includes('Tablemain.orders')`);
+  const metadata = await page.eval(panelText(".metadata-list"));
+  for (const part of ["TypeREAL", "Columntotal", "Nullableyes", "Primary keyno", "Row keyno"]) {
+    assert.ok(metadata.includes(part), `${part} in ${metadata}`);
+  }
+  await page.eval(`${button("document.querySelector('.metadata-panel')", "×")}.click()`);
+
+  // The calc panel follows the selection: all of `total`.
+  await openMenu(page);
+  await menu(page, "Calculate");
+  await page.waitFor(`document.querySelector('.calc-panel') !== null`);
+  await page.eval(`document.getElementById('e2e-grid').focus()`);
+  await page.key("ArrowDown", "ArrowDown", 40, SHIFT);
+  await page.key("ArrowDown", "ArrowDown", 40, SHIFT);
+  await page.waitFor(`${panelText(".calc-panel .value-size")} === '3 rows selected'`);
+  const calc = await page.eval(panelText(".calc-list"));
+  assert.match(calc, /Count3NULL0Distinct3Sum1[.,]?239[.,]75/);
+  assert.match(calc, /Median3[.,]25/);
+  await shot("calc");
+  await page.eval(`${button("document.querySelector('.calc-panel')", "×")}.click()`);
+
+  // Two rows selected: compared column by column.
+  await focusCell(page, 0, 0);
+  await page.key("ArrowDown", "ArrowDown", 40, SHIFT);
+  await openMenu(page);
+  await menu(page, "Compare the two rows");
+  await page.waitFor(`document.querySelectorAll('.compare-list tbody tr').length === 3`);
+  assert.deepEqual(
+    await page.eval(`[...document.querySelectorAll('.compare-list tbody tr.differs th')].map(t => t.textContent)`),
+    ["id", "total"],
+  );
+  await shot("compare");
+  await page.eval(`${button("document.querySelector('.compare-rows')", "Close")}.click()`);
+  await page.waitFor(`document.querySelector('.compare-rows') === null`);
+}
+
+/** Auto-refresh runs the table's query again: a row added outside the app shows up. */
+async function autoRefresh(page, path) {
+  const select = `${visibleTab}.querySelector('.auto-refresh select')`;
+  const choose = (seconds) =>
+    page.eval(`(() => { const s = ${select}; s.value = '${seconds}'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await choose(2);
+  const db = new DatabaseSync(path);
+  db.exec("INSERT INTO orders VALUES (13, 3, 1)");
+  await page.waitFor(`${status} === '4 rows'`, 15_000);
+  await choose(0);
+  db.exec("DELETE FROM orders WHERE id = 13");
+  db.close();
+  // Off: the deleted row stays until the next run.
+  await page.sleep(2500);
+  assert.equal(await page.eval(status), "4 rows");
+  await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
+  await page.eval(`${visibleTab}.querySelector('.toolbar button.primary').click()`);
+  await page.waitFor(`${status} === '3 rows'`, 15_000);
+  await markGrid(page);
+}
+
+/** On `places`: WKT text and WKB blobs drawn on the map; a click focuses the shape's row. */
+async function map(page, shot) {
+  const size = `(document.querySelector('.map-panel .value-size')?.textContent ?? '')`;
+  await focusCell(page, 0, 1);
+  await openMenu(page);
+  await menu(page, "Show on map");
+  await page.waitFor(`${size} === '3 geometries · 1 not readable'`);
+  // The WKB point of the next column joins in.
+  await page.eval(`document.getElementById('e2e-grid').focus()`);
+  await page.key("ArrowRight", "ArrowRight", 39, SHIFT);
+  await page.waitFor(`${size} === '4 geometries · 1 not readable'`);
+  await page.waitFor(`document.querySelector('.map-shape.focused')?.dataset.row === '0'`);
+  await shot("map");
+  await page.eval(`document.querySelector('.map-shape[data-row="2"]').id = 'e2e-line'`);
+  const line = await page.rect("#e2e-line");
+  await page.click(line.x + line.w / 2, line.y + line.h / 2);
+  await page.waitFor(`document.querySelector('.map-shape.focused')?.dataset.row === '2'`);
+  await page.eval(`${button("document.querySelector('.map-panel')", "×")}.click()`);
+}
+
+export default async function (page, { shots, dir }) {
   const shot = async (name) => shots && (await page.screenshot(join(shots, `grid-more-${name}.png`)));
   await page.waitFor(`${treeRow(NAME)} !== undefined`);
   await page.eval(`${treeRow(NAME)}.click()`);
@@ -186,9 +276,12 @@ export default async function (page, { shots }) {
   assert.equal(await page.eval(`${visibleTab}.querySelector('.viewer-bar input').value`), "id = 1");
   await closeTab(page);
 
-  // Numbers grouped as set in the Settings; the grid fetches its rows again.
   await page.waitFor(`${status} === '3 rows'`);
   await markGrid(page);
+  await panels(page, shot);
+  await autoRefresh(page, join(dir, "more.db"));
+
+  // Numbers grouped as set in the Settings; the grid fetches its rows again.
   await page.key(",", "Comma", 188, CTRL);
   await page.waitFor(`document.querySelector('.modal.settings') !== null`);
   await page.eval(`(() => {
@@ -206,4 +299,8 @@ export default async function (page, { shots }) {
     await page.sleep(100);
   }
   assert.equal(text, "10\t1\t1,234.5\n11\t1\t2.0\n12\t2\t3.25");
+
+  await closeTab(page);
+  await openTable(page, "places", "4 rows");
+  await map(page, shot);
 }

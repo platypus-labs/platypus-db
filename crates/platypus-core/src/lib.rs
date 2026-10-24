@@ -8,6 +8,7 @@ mod capabilities;
 mod config;
 mod connection;
 mod error;
+pub mod geometry;
 mod metadata;
 mod transaction;
 

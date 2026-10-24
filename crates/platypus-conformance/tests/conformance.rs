@@ -8,8 +8,10 @@
 use std::time::Duration;
 
 use arrow_array::RecordBatch;
+use arrow_array::cast::AsArray;
 use arrow_cast::display::array_value_to_string;
 use futures::{StreamExt, TryStreamExt};
+use platypus_core::geometry;
 use platypus_core::{
     Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, Error, ExecOptions,
     ExecResult, MatchKind, ObjectKind, ObjectRef,
@@ -1262,5 +1264,63 @@ async fn sizes_tables_and_nests_partitions() {
         run(&*conn, &format!("DROP TABLE {}.{parent}", b.schema))
             .await
             .unwrap();
+    }
+}
+
+/// The geometry in a cell: binary values as (E)WKB, others as text.
+fn shape(batch: &RecordBatch, column: usize) -> Option<geometry::Shape> {
+    let array = batch.column(column);
+    match array.as_binary_opt::<i32>() {
+        Some(a) => geometry::from_bytes(a.value(0)),
+        None => geometry::from_text(&cell(batch, column, 0)?),
+    }
+}
+
+#[tokio::test]
+async fn reads_geometries() {
+    use geometry::Shape;
+    let point = Shape::Point { x: 1.0, y: 2.0 };
+    let line = Shape::Line {
+        points: vec![[0.0, 0.0], [2.0, 1.0]],
+    };
+    for b in backends().await {
+        let conn = b.connect().await;
+        let (sql, expected) = match b.config.driver {
+            DriverKind::Postgres => (
+                "SELECT point '(1,2)', box '(1,1),(0,0)', polygon '((0,0),(1,0),(1,1))', \
+                 path '[(0,0),(2,1)]', lseg '[(0,0),(2,1)]', circle '<(1,2),3>'",
+                vec![
+                    point.clone(),
+                    Shape::Polygon {
+                        rings: vec![vec![
+                            [1.0, 1.0],
+                            [0.0, 1.0],
+                            [0.0, 0.0],
+                            [1.0, 0.0],
+                            [1.0, 1.0],
+                        ]],
+                    },
+                    Shape::Polygon {
+                        rings: vec![vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]],
+                    },
+                    line.clone(),
+                    line.clone(),
+                    Shape::Circle {
+                        x: 1.0,
+                        y: 2.0,
+                        r: 3.0,
+                    },
+                ],
+            ),
+            DriverKind::MySql => (
+                "SELECT ST_GeomFromText('POINT(1 2)'), ST_GeomFromText('LINESTRING(0 0, 2 1)')",
+                vec![point.clone(), line.clone()],
+            ),
+            DriverKind::Sqlite => ("SELECT 'POINT (1 2)'", vec![point.clone()]),
+        };
+        let batches = collect(&b, &*conn, sql).await;
+        let shapes: Vec<_> = (0..expected.len()).map(|c| shape(&batches[0], c)).collect();
+        let expected: Vec<_> = expected.into_iter().map(Some).collect();
+        assert_eq!(shapes, expected, "{}", b.name);
     }
 }

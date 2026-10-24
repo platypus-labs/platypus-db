@@ -12,6 +12,7 @@ export const toolbarSettings = {
   transactions: show("show_transactions", "Auto-commit, Commit and Rollback"),
   files: show("show_files", "Open and Save script"),
   history: show("show_history", "History"),
+  refresh: show("show_refresh", "Auto-refresh"),
   panels: show("show_panels", "Variables, Outline and Terminal"),
 };
 
@@ -37,6 +38,7 @@ export function useToolbar() {
     transactions: useSetting(toolbarSettings.transactions),
     files: useSetting(toolbarSettings.files),
     history: useSetting(toolbarSettings.history),
+    refresh: useSetting(toolbarSettings.refresh),
     panels: useSetting(toolbarSettings.panels),
   };
   const iconsOnly = useSetting(toolbarLabels) === "icons";

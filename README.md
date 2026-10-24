@@ -63,8 +63,13 @@ scrolls through millions of rows.
   totals of the selection (count, sum, average, minimum, maximum) show under the grid; a
   record view shows one row at a time; a panel counts the rows by value. Foreign keys open
   the row they point to, and the References panel lists the rows of other tables that point
-  at the focused one. Dates, timestamps, the time zone, digit grouping and relative times
-  follow the Settings.
+  at the focused one. Side panels show the focused column's type, nullability and source
+  table, and statistics of the selection (count, NULLs, distinct values, sum, average,
+  extremes, median, standard deviation); two selected rows are compared column by column.
+  A map panel draws PostGIS, MySQL and WKT geometries and PostgreSQL's geometric types,
+  with zoom and pan. Read-only results can run again every few seconds, without filling the
+  history. Dates, timestamps, the time zone, digit grouping and relative times follow the
+  Settings.
 - **Export** to CSV, JSON, NDJSON or Parquet, streamed straight to the file.
 - **Transactions**: auto-commit or manual commit with Commit/Rollback; an open transaction
   shows how long it has been open and warns after a while (10 minutes by default).

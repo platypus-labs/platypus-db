@@ -86,11 +86,11 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 | Gruppo | Lock |
 |---|---|
 | A — Modifica dei dati | ✅ fatto (P1, P2, P3) |
-| B — Griglia avanzata | 🔒 Delfa · group-b-panels · 2026-10-24 |
+| B — Griglia avanzata | ✅ fatto (P1, P2, P3) |
 | C — Navigator e oggetti | ✅ fatto (P1, P2, P3) |
 | D — Editor SQL | 🔒 Paolo · group-d-editor · 2026-10-24 |
 | E — Explain e performance | libero |
-| F — Connettività e credenziali | ✅ fatto (P1) |
+| F — Connettività e credenziali | 🔒 Delfa · group-f-connectivity · 2026-10-24 |
 | G — Nuovi driver | libero |
 | H — Import, export e trasferimento | libero |
 | I — Strumenti di schema | libero |
@@ -136,10 +136,11 @@ conformance per la DML generata (quoting, NULL, binari, timestamp con fuso).
 
 ### Gruppo B — Griglia avanzata (sola lettura)
 
-**Stato: P1 e P2 completati** (copia avanzata, ricerca Ctrl+F, pannello valori F7, filtri
+**Stato: completato** (P1–P3: copia avanzata, ricerca Ctrl+F, pannello valori F7, filtri
 rapidi, vista record, layout delle colonne salvato per tabella, aggregati della selezione,
-navigazione delle FK e pannello References, pannello Grouping, formati di visualizzazione).
-Restano i P3.
+navigazione delle FK e pannello References, pannello Grouping, formati di visualizzazione,
+pannelli Metadata e Calc, confronto di due righe, refresh automatico fuori dalla cronologia,
+viewer GIS su piano cartesiano senza mappa di sfondo).
 
 **Area:** `apps/desktop/src/grid/features/`, `apps/desktop/src/panels/`
 **Dipende da:** 0.4

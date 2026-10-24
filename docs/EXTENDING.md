@@ -301,8 +301,8 @@ selection lists its columns in `cols`, left to right as shown, and `visibleColum
 the display order. `GridApi.dataRow` maps a grid row to the result's row (`null` for the top
 rows). `grid/ResultGrid.tsx` hosts a result's features around the grid: the data editor
 (`grid/edit/`), search, totals, column, copy, filter and foreign key actions
-(`grid/features/`), the value, grouping and references panels and the record view
-(`panels/`, `grid/features/references.tsx`). It combines their decorations, so each feature
+(`grid/features/`), the value, grouping, metadata, calc, map and references panels, the
+record view and the row comparison (`panels/`, `grid/features/references.tsx`). It combines their decorations, so each feature
 keeps its own.
 
 A decoration can set `background`, `color`, replacement `text`, `strike` and a muted `hint`
