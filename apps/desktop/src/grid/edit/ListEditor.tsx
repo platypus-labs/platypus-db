@@ -76,18 +76,22 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
 
   async function toggleText() {
     setProblem(null);
-    if (!asText) {
-      if (items) setText(await api.joinLiteral(composite, items));
-      setAsText(true);
-      return;
+    try {
+      if (!asText) {
+        if (items) setText(await api.joinLiteral(composite, items));
+        setAsText(true);
+        return;
+      }
+      const split = await api.splitLiteral(composite, text);
+      if (!split) {
+        setProblem(composite ? "Not a composite value: (a,b,…)" : "Not a one-dimensional array: {a,b,…}");
+        return;
+      }
+      setItems(split);
+      setAsText(false);
+    } catch (e) {
+      setProblem(toCommandError(e).message);
     }
-    const split = await api.splitLiteral(composite, text);
-    if (!split) {
-      setProblem(composite ? "Not a composite value: (a,b,…)" : "Not a one-dimensional array: {a,b,…}");
-      return;
-    }
-    setItems(split);
-    setAsText(false);
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -95,7 +99,7 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
     if (e.key === "Escape") {
       e.preventDefault();
       cancel();
-    } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+    } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey || isTextInput(e.target))) {
       e.preventDefault();
       void commit();
     }
@@ -107,6 +111,8 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
   return (
     <div
       className="cell-popup list-editor"
+      // Focusable, so a click on its header or padding keeps the focus inside it.
+      tabIndex={-1}
       style={{ left, top, width: LIST_W, height: LIST_H }}
       onKeyDown={onKeyDown}
       onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && void commit()}
@@ -184,4 +190,10 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
       </div>
     </div>
   );
+}
+
+/** Enter applies from an element's field, as in the other cell editors; the text area keeps
+ *  it for new lines. */
+function isTextInput(target: EventTarget): boolean {
+  return target instanceof HTMLInputElement && target.type !== "checkbox";
 }

@@ -121,8 +121,9 @@ export function editorKind(
   const type = meta?.data_type ?? column.db_type;
   if (lookup) return "lookup";
   if (meta?.enum_values.length) return "enum";
-  // PostgreSQL prints array types as `integer[]`, `character varying(20)[]`.
-  if (type.endsWith("[]")) return "array";
+  // PostgreSQL prints array types as `integer[]`, `character varying(20)[]`. Arrays of
+  // boxes separate their elements with `;`: those stay text.
+  if (type.endsWith("[]") && type !== "box[]") return "array";
   if (meta?.fields.length) return "composite";
   // Booleans stored as numbers (SQLite, MySQL TINYINT) are typed as 1 and 0.
   if (BOOL_TYPE.test(type) && !column.numeric) return "bool";

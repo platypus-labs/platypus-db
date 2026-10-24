@@ -58,7 +58,7 @@ pub fn join_array(items: &[Option<String>]) -> String {
 /// The fields of a composite literal, or `None` when the text is not one.
 #[must_use]
 pub fn split_composite(text: &str) -> Option<Vec<Option<String>>> {
-    let inner = text.strip_prefix('(')?.strip_suffix(')')?;
+    let inner = text.trim().strip_prefix('(')?.strip_suffix(')')?;
     let mut fields = Vec::new();
     let mut chars = inner.chars().peekable();
     loop {
@@ -217,6 +217,7 @@ mod tests {
             Some(some(&["say \"hi\"", "a\\b", "c\"d"]))
         );
         assert_eq!(split_composite("()"), Some(vec![None]));
+        assert_eq!(split_composite(" (a,b) "), Some(some(&["a", "b"])));
         assert_eq!(split_composite("(1,(2))"), None);
         assert_eq!(split_composite("1,2"), None);
     }

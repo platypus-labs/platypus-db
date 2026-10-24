@@ -229,6 +229,10 @@
   gap: 6px;
 }
 
+.list-editor:focus {
+  outline: none;
+}
+
 .list-editor-head {
   display: flex;
   justify-content: space-between;
