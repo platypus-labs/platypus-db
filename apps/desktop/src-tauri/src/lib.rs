@@ -145,6 +145,8 @@ pub fn run() {
             commands::meta::table_details,
             commands::meta::referencing_keys,
             commands::meta::lookup_values,
+            commands::search::search_metadata,
+            commands::search::search_table_data,
             commands::data::preview_changes,
             commands::data::save_changes,
             commands::data::row_values,

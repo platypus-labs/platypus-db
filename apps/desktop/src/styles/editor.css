@@ -302,3 +302,32 @@ button.toggled {
     opacity: 0.55;
   }
 }
+
+/* Search tab: the object tab's layout with a search field in the header. */
+
+.search-form {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-results tbody tr {
+  cursor: pointer;
+}
+
+.search-results tbody tr:hover,
+.search-results tbody tr:focus {
+  background: var(--hover);
+  outline: none;
+}
+
+.search-results .tree-icon {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-right: 6px;
+}

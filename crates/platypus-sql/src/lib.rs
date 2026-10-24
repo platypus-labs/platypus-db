@@ -12,7 +12,7 @@ mod lexer;
 mod source;
 
 pub use analysis::{Analysis, StatementKind, TableName, analyze};
-pub use dialect::Dialect;
+pub use dialect::{Dialect, contains_pattern};
 pub use format::{FormatOptions, KeywordCase, format};
 pub use generate::ObjectName;
 pub use lexer::{Lexer, Token, TokenKind};

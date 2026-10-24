@@ -2,9 +2,11 @@
 
 use platypus_core::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, Connection, ConstraintKind,
-    ConstraintMeta, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta, ReferencingKey, Result,
-    SchemaMeta, TableDetails, TextRowExt, query_catalog, query_text,
+    ConstraintMeta, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch, ObjectKind, ObjectMeta,
+    ReferencingKey, Result, SEARCH_LIMIT, SchemaMeta, TableDetails, TextRowExt, query_catalog,
+    query_text,
 };
+use platypus_sql::Dialect;
 
 /// Separates list items aggregated into one text cell.
 const SEP: char = '\u{1f}';
@@ -103,17 +105,29 @@ pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMe
     let rows = query_text(
         conn,
         &format!(
-            "SELECT c.relname, c.relkind::text, obj_description(c.oid, 'pg_class'), NULL
+            "SELECT c.relname, c.relkind::text, obj_description(c.oid, 'pg_class'),
+                    -- A partition shows under its table when both are in this schema.
+                    CASE WHEN c.relispartition THEN
+                        (SELECT pc.relname FROM pg_inherits i JOIN pg_class pc ON pc.oid = i.inhparent
+                         WHERE i.inhrelid = c.oid AND pc.relnamespace = c.relnamespace) END,
+                    -- -1 until the table is first analyzed.
+                    CASE WHEN c.relkind IN ('r', 'm') AND c.reltuples >= 0 THEN c.reltuples::bigint END,
+                    -- From the statistics: pg_total_relation_size would lock every table.
+                    CASE WHEN c.relkind IN ('r', 'm') THEN
+                        (SELECT sum(r.relpages) FROM pg_class r
+                         WHERE r.oid = c.oid OR r.oid = c.reltoastrelid
+                            OR r.oid IN (SELECT indexrelid FROM pg_index WHERE indrelid = c.oid))
+                        * current_setting('block_size')::bigint END
              FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
              WHERE n.nspname = {schema} AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
              UNION ALL
              SELECT p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')',
                     CASE p.prokind WHEN 'p' THEN 'P' ELSE 'F' END,
-                    obj_description(p.oid, 'pg_proc'), NULL
+                    obj_description(p.oid, 'pg_proc'), NULL, NULL, NULL
              FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
              WHERE n.nspname = {schema} AND p.prokind IN ('f', 'p')
              UNION ALL
-             SELECT t.tgname, 'T', obj_description(t.oid, 'pg_trigger'), c.relname
+             SELECT t.tgname, 'T', obj_description(t.oid, 'pg_trigger'), c.relname, NULL, NULL
              FROM pg_trigger t
              JOIN pg_class c ON c.oid = t.tgrelid
              JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -122,7 +136,7 @@ pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMe
              -- Enums, domains, ranges and standalone composite types; not the row types
              -- of tables, nor the types an extension brings.
              SELECT t.typname, CASE t.typtype WHEN 'd' THEN 'D' ELSE 'Y' END,
-                    obj_description(t.oid, 'pg_type'), NULL
+                    obj_description(t.oid, 'pg_type'), NULL, NULL, NULL
              FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
              WHERE n.nspname = {schema}
                AND (t.typtype IN ('e', 'd', 'r')
@@ -130,7 +144,7 @@ pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMe
                AND NOT EXISTS (SELECT 1 FROM pg_depend d
                                WHERE d.classid = 'pg_type'::regclass AND d.objid = t.oid AND d.deptype = 'e')
              UNION ALL
-             SELECT e.extname, 'E', obj_description(e.oid, 'pg_extension'), NULL
+             SELECT e.extname, 'E', obj_description(e.oid, 'pg_extension'), NULL, NULL, NULL
              FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
              WHERE n.nspname = {schema}
              ORDER BY 1"
@@ -141,7 +155,64 @@ pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMe
         .iter()
         .map(|r| ObjectMeta {
             parent: r.opt(3),
+            rows: r.number(4),
+            size: r.number(5),
             ..ObjectMeta::new(r.text(0), object_kind(&r.text(1)), r.opt(2))
+        })
+        .collect())
+}
+
+/// The search runs as one catalog query; kind codes are those of [`objects`].
+pub async fn search_metadata(conn: &dyn Connection, needle: &str) -> Result<Vec<MetadataMatch>> {
+    let has = |expr: &str| Dialect::Postgres.contains(expr, needle);
+    let (relname, attname, viewdef) = (
+        has("c.relname"),
+        has("a.attname"),
+        has("pg_get_viewdef(c.oid)"),
+    );
+    let (proname, prosrc, tgname) = (has("p.proname"), has("p.prosrc"), has("t.tgname"));
+    let rows = query_text(
+        conn,
+        &format!(
+            "WITH n AS (SELECT oid, nspname FROM pg_namespace
+                        WHERE nspname NOT IN ('pg_catalog', 'information_schema')
+                          AND nspname NOT LIKE 'pg\\_toast%' AND nspname NOT LIKE 'pg\\_temp\\_%')
+             SELECT n.nspname, c.relname, c.relkind::text, NULL, 'name', NULL
+             FROM pg_class c JOIN n ON n.oid = c.relnamespace
+             WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S') AND {relname}
+             UNION ALL
+             SELECT n.nspname, c.relname, c.relkind::text, NULL, 'column', a.attname
+             FROM pg_class c JOIN n ON n.oid = c.relnamespace
+             JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+             WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f') AND {attname}
+             UNION ALL
+             SELECT n.nspname, c.relname, c.relkind::text, NULL, 'source', NULL
+             FROM pg_class c JOIN n ON n.oid = c.relnamespace
+             WHERE c.relkind IN ('v', 'm') AND NOT {relname} AND {viewdef}
+             UNION ALL
+             SELECT n.nspname, p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')',
+                    CASE p.prokind WHEN 'p' THEN 'P' ELSE 'F' END, NULL,
+                    CASE WHEN {proname} THEN 'name' ELSE 'source' END, NULL
+             FROM pg_proc p JOIN n ON n.oid = p.pronamespace
+             WHERE p.prokind IN ('f', 'p') AND ({proname} OR {prosrc})
+             UNION ALL
+             SELECT n.nspname, t.tgname, 'T', c.relname, 'name', NULL
+             FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN n ON n.oid = c.relnamespace
+             WHERE NOT t.tgisinternal AND {tgname}
+             ORDER BY 1, 2, 6
+             LIMIT {SEARCH_LIMIT}"
+        ),
+    )
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| MetadataMatch {
+            schema: r.text(0),
+            name: r.text(1),
+            kind: object_kind(&r.text(2)),
+            parent: r.opt(3),
+            matched: MatchKind::from_code(&r.text(4)),
+            column: r.opt(5),
         })
         .collect())
 }
@@ -208,27 +279,7 @@ pub async fn table_details(
     })
     .collect();
 
-    let indexes = query_text(
-        conn,
-        &format!(
-            "SELECT ic.relname, i.indisunique, i.indisprimary,
-                    array_to_string(ARRAY(
-                        SELECT pg_get_indexdef(i.indexrelid, k, true)
-                        FROM generate_series(1, i.indnkeyatts) k ORDER BY k), chr(31))
-             FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid
-             WHERE i.indrelid = {relation}
-             ORDER BY i.indisprimary DESC, ic.relname"
-        ),
-    )
-    .await?
-    .into_iter()
-    .map(|r| IndexMeta {
-        name: r.text(0),
-        unique: r.flag(1),
-        primary: r.flag(2),
-        columns: list(r.opt(3)),
-    })
-    .collect();
+    let indexes = indexes(conn, &relation).await?;
 
     let foreign_keys = query_text(
         conn,
@@ -271,6 +322,32 @@ pub async fn table_details(
         constraints,
         referenced_by,
     })
+}
+
+async fn indexes(conn: &dyn Connection, relation: &str) -> Result<Vec<IndexMeta>> {
+    Ok(query_text(
+        conn,
+        &format!(
+            "SELECT ic.relname, i.indisunique, i.indisprimary,
+                    array_to_string(ARRAY(
+                        SELECT pg_get_indexdef(i.indexrelid, k, true)
+                        FROM generate_series(1, i.indnkeyatts) k ORDER BY k), chr(31)),
+                    pg_relation_size(i.indexrelid)
+             FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid
+             WHERE i.indrelid = {relation}
+             ORDER BY i.indisprimary DESC, ic.relname"
+        ),
+    )
+    .await?
+    .into_iter()
+    .map(|r| IndexMeta {
+        name: r.text(0),
+        unique: r.flag(1),
+        primary: r.flag(2),
+        columns: list(r.opt(3)),
+        size: r.number(4),
+    })
+    .collect())
 }
 
 /// Primary key, unique, check and exclusion constraints.

@@ -15,8 +15,14 @@ scrolls through millions of rows.
   Test and Production: production shows a PROD badge in red and opens in manual commit.
   **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`.
 - **Navigator**: databases (PostgreSQL), schemas, tables, views, routines, triggers, types,
-  extensions and events, loaded lazily, with a filter. Generate SELECT, INSERT, UPDATE,
-  DELETE, UPSERT or DDL; rename, truncate and drop with a preview of the statement.
+  extensions and events, loaded lazily, with a filter. Estimated rows and sizes of tables
+  and indexes; PostgreSQL partitions under their table. Bookmarks, per-connection filters
+  that hide schemas or objects by name (`tmp_*`), and a Simple view with only tables and
+  views. The tree is cached on disk: it shows at once on start, and offline. Generate SELECT,
+  INSERT, UPDATE, DELETE, UPSERT or DDL; rename, truncate and drop with a preview of the
+  statement.
+- **Search**: object names, columns and the source of views, routines and triggers across a
+  database; or the text of every row of a schema's tables, opening the matching rows.
 - **Object details**: properties, columns, indexes, constraints, foreign keys, incoming
   references and the DDL of any object.
 - **SQL editor** (CodeMirror): run the statement under the cursor (`Ctrl+Enter`) or the

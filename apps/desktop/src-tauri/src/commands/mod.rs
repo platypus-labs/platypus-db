@@ -14,6 +14,7 @@ pub mod meta;
 pub mod objects;
 pub mod projects;
 pub mod query;
+pub mod search;
 pub mod settings;
 pub mod sql;
 pub mod summary;

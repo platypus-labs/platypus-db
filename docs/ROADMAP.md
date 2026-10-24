@@ -168,7 +168,7 @@ Restano i P3.
 **Area:** `apps/desktop/src/components/Navigator.tsx`, `apps/desktop/src/objects/` (tab `object`), `meta.rs` e `ddl.rs` dei driver, `platypus-core/src/metadata.rs`, `platypus-sql/src/generate.rs`
 **Dipende da:** 0.2, 0.3, 0.6
 
-**Stato:** le P1 sono fatte. "MERGE" è un UPSERT per dialetto (`ON CONFLICT` in PostgreSQL e SQLite, `ON DUPLICATE KEY` in MySQL). Le righe stimate e le dimensioni compaiono già nelle proprietà del tab oggetto (PostgreSQL, MySQL); il resto delle P2/P3 è da fare.
+**Stato: P1, P2 e P3 completati.** "MERGE" è un UPSERT per dialetto (`ON CONFLICT` in PostgreSQL e SQLite, `ON DUPLICATE KEY` in MySQL). Righe stimate e dimensioni nel navigator (PostgreSQL e MySQL; dimensione degli indici solo PostgreSQL; SQLite non ha statistiche). La ricerca nei metadati è la capacità opzionale `Connection::search_metadata`, nel tab `search` con la ricerca nei dati (una tabella alla volta, `Dialect::any_column_contains`). Filtri e segnalibri stanno nel local storage della web view, la cache dei metadati in IndexedDB (scade dopo 30 giorni). Partizioni sotto la tabella padre solo in PostgreSQL: in MySQL non sono tabelle a sé.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|

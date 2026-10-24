@@ -62,8 +62,10 @@ export default async function (page, { dir }) {
   await page.eval(`${connectionRow}.id = 'e2e-connection'`);
   assert.deepEqual(await rightClick(page, "#e2e-connection"), [
     "New SQL script",
+    "Search objects…",
     "Refresh",
     "Disconnect",
+    "Navigator filters…",
     "Edit…",
     "Delete…",
   ]);
