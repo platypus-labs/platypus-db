@@ -112,7 +112,12 @@ pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMe
                          WHERE i.inhrelid = c.oid AND pc.relnamespace = c.relnamespace) END,
                     -- -1 until the table is first analyzed.
                     CASE WHEN c.relkind IN ('r', 'm') AND c.reltuples >= 0 THEN c.reltuples::bigint END,
-                    CASE WHEN c.relkind IN ('r', 'm') THEN pg_total_relation_size(c.oid) END
+                    -- From the statistics: pg_total_relation_size would lock every table.
+                    CASE WHEN c.relkind IN ('r', 'm') THEN
+                        (SELECT sum(r.relpages) FROM pg_class r
+                         WHERE r.oid = c.oid OR r.oid = c.reltoastrelid
+                            OR r.oid IN (SELECT indexrelid FROM pg_index WHERE indrelid = c.oid))
+                        * current_setting('block_size')::bigint END
              FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
              WHERE n.nspname = {schema} AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
              UNION ALL

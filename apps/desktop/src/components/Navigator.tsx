@@ -307,6 +307,8 @@ export function Navigator(props: Props) {
   }
 
   function closeConnection(c: SavedConnection) {
+    // A pending save would overwrite the disk cache with the emptied memory cache.
+    clearTimeout(saveTimers.current.get(c.id));
     updateCache((m) => new Map([...m].filter(([k]) => !isUnder(k, c.id))));
     setOffline(c.id, false);
     setExpanded((s) => withoutPrefix(s, c.id, true));

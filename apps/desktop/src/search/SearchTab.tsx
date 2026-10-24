@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { api, type MetadataMatch, type SchemaMeta, type TableHits, toCommandError } from "../api";
+import { api, type MetadataMatch, type ObjectKind, type SchemaMeta, type TableHits, toCommandError } from "../api";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { Icon, objectIcon } from "../ui/Icon";
@@ -25,6 +25,7 @@ declare module "../tabs/registry" {
 interface TableHit extends TableHits {
   schema: SchemaMeta;
   table: string;
+  kind: ObjectKind;
 }
 
 type Results =
@@ -49,6 +50,9 @@ export function SearchTab({ tab, connection, active, ensureSession, sideSession,
   async function searchData(needle: string) {
     const sid = await ensureSession();
     if (sid === null) return;
+    // Production sessions start in manual commit, where these reads would leave a
+    // transaction open; the search never writes.
+    await api.setAutocommit(sid, true).catch(() => {});
     const schemas = (await api.listSchemas(sid)).filter((s) => (tab.schema === null ? !s.system : s.name === tab.schema));
     const found: Results & { mode: "data" } = { mode: "data", hits: [], searched: 0, failed: 0 };
     setResults({ ...found });
@@ -62,7 +66,7 @@ export function SearchTab({ tab, connection, active, ensureSession, sideSession,
         setRunning(`${schema.name}.${table.name}`);
         try {
           const hit = await api.searchTableData(sid, schema.name, table.name, needle);
-          if (hit.rows > 0) found.hits.push({ schema, table: table.name, ...hit });
+          if (hit.rows > 0) found.hits.push({ schema, table: table.name, kind: table.kind, ...hit });
           found.searched++;
         } catch {
           found.failed++;
@@ -108,7 +112,7 @@ export function SearchTab({ tab, connection, active, ensureSession, sideSession,
       autorun: true,
       title: hit.table,
       table: target,
-      tableRef: { schema: hit.schema.name, name: hit.table, kind: "table" },
+      tableRef: { schema: hit.schema.name, name: hit.table, kind: hit.kind },
       filter: hit.condition,
       database: tab.database,
     });
@@ -260,7 +264,7 @@ function DataResults({
                   </span>
                   {h.schema.name}.{h.table}
                 </td>
-                <td>{h.rows >= 1000 ? "1000+" : h.rows}</td>
+                <td>{h.rows >= h.limit ? `${h.limit}+` : h.rows}</td>
               </tr>
             ))}
           </tbody>

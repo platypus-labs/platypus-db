@@ -62,7 +62,7 @@ pub struct ObjectMeta {
     pub parent: Option<String>,
     /// About how many rows a table has, from the statistics; `None` when unknown.
     pub rows: Option<u64>,
-    /// Bytes on disk of a table with its indexes; `None` when unknown.
+    /// About how many bytes a table takes on disk with its indexes; `None` when unknown.
     pub size: Option<u64>,
 }
 

@@ -172,9 +172,10 @@ export interface MetadataMatch {
   column: string | null;
 }
 
-/** Rows of a table that hold the searched text, at most 1000. */
+/** Rows of a table that hold the searched text, at most `limit`. */
 export interface TableHits {
   rows: number;
+  limit: number;
   /** The WHERE condition that selects them. */
   condition: string;
 }
