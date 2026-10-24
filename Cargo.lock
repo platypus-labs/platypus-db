@@ -4448,6 +4448,7 @@ dependencies = [
  "mysql_async",
  "platypus-core",
  "platypus-sql",
+ "serde_json",
  "tokio",
 ]
 
@@ -4467,6 +4468,7 @@ dependencies = [
  "postgres-protocol",
  "rustls",
  "rustls-platform-verifier",
+ "serde_json",
  "tokio",
  "tokio-postgres",
  "tokio-postgres-rustls",

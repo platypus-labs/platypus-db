@@ -14,7 +14,7 @@ use futures::{StreamExt, TryStreamExt};
 use platypus_core::geometry;
 use platypus_core::{
     Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, Error, ExecOptions,
-    ExecResult, MatchKind, ObjectKind, ObjectRef, SessionInit,
+    ExecResult, MatchKind, ObjectKind, ObjectRef, PlanNode, SessionInit,
 };
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
@@ -599,6 +599,74 @@ async fn reports_lost_connections() {
             "{}: connection reported as closed",
             b.name
         );
+    }
+}
+
+fn plan_mentions(node: &PlanNode, name: &str) -> bool {
+    node.operation.contains(name)
+        || node.detail.as_deref().is_some_and(|d| d.contains(name))
+        || node.children.iter().any(|c| plan_mentions(c, name))
+}
+
+fn plan_has_actual_rows(node: &PlanNode) -> bool {
+    node.actual_rows.is_some() || node.children.iter().any(plan_has_actual_rows)
+}
+
+/// Plans come back as a tree. With analyze the statement runs, and what it changes is
+/// rolled back, in autocommit and inside an open transaction alike.
+#[tokio::test]
+async fn explains_queries() {
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        affected(&b, conn, "CREATE TEMPORARY TABLE conf_plan (id INT)").await;
+        affected(&b, conn, "INSERT INTO conf_plan VALUES (1), (2), (3)").await;
+        let count = || async {
+            let rows = collect(&b, conn, "SELECT count(*) FROM conf_plan").await;
+            cell(&rows[0], 0, 0).unwrap()
+        };
+        let select = "SELECT * FROM conf_plan WHERE id > 1";
+        let plan = conn.explain(select, false).await.unwrap();
+        assert!(!plan.analyzed && !plan.plan.is_empty(), "{}", b.name);
+        assert!(
+            plan_mentions(&plan.root, "conf_plan"),
+            "{}: {:#?}",
+            b.name,
+            plan.root
+        );
+
+        let plan = conn.explain(select, true).await.unwrap();
+        // SQLite has no plan that runs the statement.
+        let analyzes = b.name != "sqlite";
+        assert_eq!(plan.analyzed, analyzes, "{}", b.name);
+        assert_eq!(
+            plan_has_actual_rows(&plan.root),
+            analyzes,
+            "{}: {:#?}",
+            b.name,
+            plan.root
+        );
+
+        // MySQL analyzes only the multi-table form of DELETE.
+        let delete = if b.product == "MySQL" {
+            "DELETE p FROM conf_plan p WHERE p.id > 1"
+        } else {
+            "DELETE FROM conf_plan WHERE id > 1"
+        };
+        conn.explain(delete, true)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(count().await, "3", "{}: analyze rolled back", b.name);
+        assert!(!conn.transaction().open, "{}", b.name);
+
+        conn.set_autocommit(false).await.unwrap();
+        affected(&b, conn, "INSERT INTO conf_plan VALUES (4)").await;
+        conn.explain(delete, true).await.unwrap();
+        assert!(conn.transaction().open, "{}: still open", b.name);
+        assert_eq!(count().await, "4", "{}: only the analyze undone", b.name);
+        conn.rollback().await.unwrap();
+        conn.set_autocommit(true).await.unwrap();
+        assert_eq!(count().await, "3", "{}", b.name);
     }
 }
 

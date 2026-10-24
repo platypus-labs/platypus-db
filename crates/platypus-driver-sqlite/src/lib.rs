@@ -208,6 +208,11 @@ impl Connection for SqliteConnection {
         meta::catalog_foreign_keys(self).await
     }
 
+    /// SQLite plans have no costs, and no form that runs the statement: `analyze` is ignored.
+    async fn explain(&self, sql: &str, _analyze: bool) -> Result<platypus_core::Explain> {
+        meta::explain(self, sql).await
+    }
+
     async fn object_ddl(&self, object: &platypus_core::ObjectRef<'_>) -> Result<String> {
         meta::object_ddl(self, object).await
     }
@@ -249,6 +254,7 @@ impl Connection for SqliteConnection {
         platypus_core::Capabilities {
             transactions: true,
             cancel: true,
+            explain: true,
             object_ddl: true,
             metadata_search: true,
             ..Default::default()
