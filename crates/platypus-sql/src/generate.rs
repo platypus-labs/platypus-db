@@ -83,6 +83,7 @@ impl Dialect {
 
     /// Sets the non-key columns where the key matches. Without a key every column is in
     /// both lists, so the statement still names a single row when the values are exact.
+    /// ClickHouse updates through a mutation.
     #[must_use]
     pub fn update(self, table: &ObjectName<'_>, columns: &[&str], keys: &[&str]) -> String {
         let set: Vec<String> = self
@@ -92,6 +93,19 @@ impl Dialect {
             .filter(|(_, c)| !keys.contains(c))
             .map(|(q, _)| format!("{q} = ?"))
             .collect();
+        if self == Self::ClickHouse {
+            return format!(
+                "ALTER TABLE {}
+UPDATE {}
+WHERE {};",
+                self.object(table),
+                set.join(
+                    ",
+    "
+                ),
+                self.key_filter(columns, keys)
+            );
+        }
         format!(
             "UPDATE {}\nSET {}\nWHERE {};",
             self.object(table),
@@ -109,10 +123,11 @@ impl Dialect {
         )
     }
 
-    /// Inserts a row or updates it when the key exists. `None` without a key.
+    /// Inserts a row or updates it when the key exists. `None` without a key, and in
+    /// ClickHouse, whose keys are not unique.
     #[must_use]
     pub fn upsert(self, table: &ObjectName<'_>, columns: &[&str], keys: &[&str]) -> Option<String> {
-        if keys.is_empty() {
+        if keys.is_empty() || self == Self::ClickHouse {
             return None;
         }
         let insert = self.insert(table, columns);
@@ -154,6 +169,7 @@ impl Dialect {
                 format!("{insert}\nON DUPLICATE KEY UPDATE {};", set.join(",\n    "))
             }
             Self::SqlServer => self.merge(table, columns, keys, &others),
+            Self::ClickHouse => return None,
         })
     }
 
@@ -196,6 +212,7 @@ impl Dialect {
         Some(match (self, kind) {
             (_, ObjectKind::Table) => "TABLE",
             (_, ObjectKind::View) => "VIEW",
+            (Self::ClickHouse, ObjectKind::Trigger) => return None,
             (_, ObjectKind::Trigger) => "TRIGGER",
             (Self::Postgres, ObjectKind::MaterializedView) => "MATERIALIZED VIEW",
             (Self::Postgres, ObjectKind::ForeignTable) => "FOREIGN TABLE",
@@ -211,6 +228,9 @@ impl Dialect {
             (Self::Postgres | Self::MySql | Self::SqlServer, ObjectKind::Function) => "FUNCTION",
             (Self::Postgres | Self::MySql | Self::SqlServer, ObjectKind::Procedure) => "PROCEDURE",
             (Self::MySql, ObjectKind::Event) => "EVENT",
+            // ClickHouse drops a materialized view with `DROP VIEW`.
+            (Self::ClickHouse, ObjectKind::MaterializedView) => "VIEW",
+            (Self::ClickHouse, ObjectKind::Dictionary) => "DICTIONARY",
             _ => return None,
         })
     }
@@ -293,6 +313,22 @@ impl Dialect {
                 )),
                 _ => None,
             },
+            // `RENAME TABLE` also moves views; dictionaries have their own statement.
+            Self::ClickHouse => match kind {
+                ObjectKind::Table | ObjectKind::View | ObjectKind::MaterializedView => {
+                    Some(format!(
+                        "RENAME TABLE {} TO {};",
+                        self.object(o),
+                        self.qualified(o.schema, new_name)
+                    ))
+                }
+                ObjectKind::Dictionary => Some(format!(
+                    "RENAME DICTIONARY {} TO {};",
+                    self.object(o),
+                    self.qualified(o.schema, new_name)
+                )),
+                _ => None,
+            },
             // `sp_rename` keeps the schema; it does not rewrite the source of routines.
             Self::SqlServer => matches!(
                 kind,
@@ -371,6 +407,42 @@ mod tests {
         assert_eq!(
             Dialect::SqlServer.rename(ObjectKind::Table, &ORDERS, "o2"),
             Some("EXEC sp_rename N'demo.orders', N'o2';".to_owned())
+        );
+    }
+
+    #[test]
+    fn clickhouse_statements() {
+        let ch = Dialect::ClickHouse;
+        assert_eq!(
+            ch.select(&ORDERS, &["id"], Some(5)),
+            "SELECT id\nFROM demo.orders\nLIMIT 5;"
+        );
+        assert_eq!(
+            ch.update(&ORDERS, &["id", "total"], &["id"]),
+            "ALTER TABLE demo.orders\nUPDATE total = ?\nWHERE id = ?;"
+        );
+        assert_eq!(
+            ch.delete(&ORDERS, &["id"], &["id"]),
+            "DELETE FROM demo.orders\nWHERE id = ?;"
+        );
+        assert_eq!(ch.upsert(&ORDERS, &["id"], &["id"]), None);
+        assert_eq!(
+            ch.drop(ObjectKind::MaterializedView, &ORDERS, true)
+                .as_deref(),
+            Some("DROP VIEW demo.orders;")
+        );
+        assert_eq!(
+            ch.drop(ObjectKind::Dictionary, &ORDERS, false).as_deref(),
+            Some("DROP DICTIONARY demo.orders;")
+        );
+        assert_eq!(ch.drop(ObjectKind::Trigger, &ORDERS, false), None);
+        assert_eq!(
+            ch.rename(ObjectKind::View, &ORDERS, "o2").as_deref(),
+            Some("RENAME TABLE demo.orders TO demo.o2;")
+        );
+        assert_eq!(
+            ch.rename(ObjectKind::Dictionary, &ORDERS, "d").as_deref(),
+            Some("RENAME DICTIONARY demo.orders TO demo.d;")
         );
     }
 

@@ -20,6 +20,8 @@ pub enum Dialect {
     DuckDb,
     /// Transact-SQL: Microsoft SQL Server and Azure SQL.
     SqlServer,
+    /// Case-sensitive names; strings and quoted names take backslash escapes.
+    ClickHouse,
 }
 
 impl From<DriverKind> for Dialect {
@@ -30,6 +32,7 @@ impl From<DriverKind> for Dialect {
             DriverKind::Sqlite => Self::Sqlite,
             DriverKind::DuckDb => Self::DuckDb,
             DriverKind::SqlServer => Self::SqlServer,
+            DriverKind::ClickHouse => Self::ClickHouse,
         }
     }
 }
@@ -308,20 +311,26 @@ impl Dialect {
         let mut chars = name.chars();
         let first_ok = chars.next().is_some_and(|c| match self {
             Self::Postgres => c.is_ascii_lowercase() || c == '_',
-            Self::MySql | Self::Sqlite | Self::DuckDb | Self::SqlServer => {
+            Self::MySql | Self::Sqlite | Self::DuckDb | Self::SqlServer | Self::ClickHouse => {
                 c.is_ascii_alphabetic() || c == '_'
             }
         });
         let rest_ok = chars.all(|c| match self {
             Self::Postgres => c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '$',
             Self::MySql => c.is_ascii_alphanumeric() || c == '_' || c == '$',
-            Self::Sqlite | Self::DuckDb | Self::SqlServer => c.is_ascii_alphanumeric() || c == '_',
+            Self::Sqlite | Self::DuckDb | Self::SqlServer | Self::ClickHouse => {
+                c.is_ascii_alphanumeric() || c == '_'
+            }
         });
         if first_ok && rest_ok && !is_reserved(name, self) {
             return Cow::Borrowed(name);
         }
         let (open, close) = self.ident_quotes();
-        let escaped = name.replace(close, &format!("{close}{close}"));
+        let mut escaped = name.replace(close, &format!("{close}{close}"));
+        // A backslash escapes the next character inside ClickHouse quotes.
+        if self == Self::ClickHouse {
+            escaped = escaped.replace('\\', "\\\\");
+        }
         Cow::Owned(format!("{open}{escaped}{close}"))
     }
 
@@ -335,7 +344,7 @@ impl Dialect {
     #[must_use]
     pub const fn ident_quotes(self) -> (char, char) {
         match self {
-            Self::MySql => ('`', '`'),
+            Self::MySql | Self::ClickHouse => ('`', '`'),
             Self::Postgres | Self::Sqlite | Self::DuckDb => ('"', '"'),
             Self::SqlServer => ('[', ']'),
         }
@@ -351,7 +360,7 @@ impl Dialect {
     }
 
     /// A string literal. MySQL treats backslashes as escapes by default
-    /// (`NO_BACKSLASH_ESCAPES` off), so they are doubled there. Transact-SQL literals are
+    /// (`NO_BACKSLASH_ESCAPES` off), and ClickHouse always, so they are doubled there. Transact-SQL literals are
     /// `N'...'`, so that text outside the database's code page survives.
     #[must_use]
     pub fn quote_literal(self, value: &str) -> String {
@@ -363,7 +372,7 @@ impl Dialect {
         for c in value.chars() {
             match c {
                 '\'' => out.push_str("''"),
-                '\\' if self == Self::MySql => out.push_str("\\\\"),
+                '\\' if matches!(self, Self::MySql | Self::ClickHouse) => out.push_str("\\\\"),
                 c => out.push(c),
             }
         }
@@ -391,6 +400,7 @@ impl Dialect {
             Self::Postgres => format!("decode('{hex}', 'hex')"),
             Self::MySql | Self::Sqlite => format!("X'{hex}'"),
             Self::DuckDb => format!("from_hex('{hex}')"),
+            Self::ClickHouse => format!("unhex('{hex}')"),
             Self::SqlServer => format!("0x{hex}"),
         }
     }
@@ -401,10 +411,10 @@ impl Dialect {
         !matches!(self, Self::Sqlite)
     }
 
-    /// Whether `SAVEPOINT` works inside a transaction; DuckDB has none.
+    /// Whether `SAVEPOINT` works inside a transaction; DuckDB and ClickHouse have none.
     #[must_use]
     pub const fn has_savepoints(self) -> bool {
-        !matches!(self, Self::DuckDb)
+        !matches!(self, Self::DuckDb | Self::ClickHouse)
     }
 
     /// An `INSERT` of a row where every column takes its default.
@@ -412,6 +422,8 @@ impl Dialect {
     pub fn insert_defaults(self, table: &str) -> String {
         match self {
             Self::MySql => format!("INSERT INTO {table} () VALUES ()"),
+            // An empty JSON object leaves every column to its default.
+            Self::ClickHouse => format!("INSERT INTO {table} FORMAT JSONEachRow {{}}"),
             Self::Postgres | Self::Sqlite | Self::DuckDb | Self::SqlServer => {
                 format!("INSERT INTO {table} DEFAULT VALUES")
             }
@@ -437,6 +449,11 @@ impl Dialect {
                 "SELECT estimated_size FROM duckdb_tables() \
                  WHERE database_name = current_database()                  AND lower(schema_name) = lower({}) AND lower(table_name) = lower({})",
                 schema.map_or_else(|| "current_schema()".to_owned(), |s| self.quote_literal(s)),
+                self.quote_literal(table)
+            ),
+            Self::ClickHouse => format!(
+                "SELECT total_rows FROM system.tables WHERE database = {} AND name = {}",
+                schema.map_or_else(|| "currentDatabase()".to_owned(), |s| self.quote_literal(s)),
                 self.quote_literal(table)
             ),
             // Heaps (index 0) or clustered indexes (index 1) hold the rows.
@@ -501,6 +518,11 @@ impl Dialect {
                 format!("LOWER({expr}) LIKE LOWER({pattern}) ESCAPE '!'")
             }
             Self::Sqlite => format!("{expr} LIKE {pattern} ESCAPE '!'"),
+            // No `ESCAPE` clause: LIKE escapes with a backslash, which the replacement
+            // writes as `\\\\` (doubled again in the literal).
+            Self::ClickHouse => {
+                format!(r"{expr} ILIKE replaceRegexpAll({pattern}, '!(.)', '\\\\\\\\\\1')")
+            }
         }
     }
 
@@ -511,10 +533,16 @@ impl Dialect {
             Self::Postgres | Self::Sqlite | Self::DuckDb => "TEXT",
             Self::MySql => "CHAR",
             Self::SqlServer => "NVARCHAR(MAX)",
+            // `toString` keeps NULLs, where `CAST(NULL AS String)` fails.
+            Self::ClickHouse => "",
+        };
+        let as_text = |c: &str| match self {
+            Self::ClickHouse => format!("toString({})", self.quote_ident(c)),
+            _ => format!("CAST({} AS {text})", self.quote_ident(c)),
         };
         columns
             .iter()
-            .map(|c| self.contains(&format!("CAST({} AS {text})", self.quote_ident(c)), needle))
+            .map(|c| self.contains(&as_text(c), needle))
             .collect::<Vec<_>>()
             .join(" OR ")
     }
@@ -645,6 +673,35 @@ mod tests {
         assert!(
             ms.row_estimate_sql(Some("dbo"), "t")
                 .contains("OBJECT_ID(N'dbo.t')")
+        );
+    }
+
+    #[test]
+    fn clickhouse_rules() {
+        let ch = Dialect::ClickHouse;
+        assert_eq!(ch.quote_ident("Orders"), "Orders");
+        assert_eq!(ch.quote_ident("select"), "`select`");
+        assert_eq!(ch.quote_ident("a`b\\c"), "`a``b\\\\c`");
+        assert_eq!(ch.quote_literal("it's \\"), "'it''s \\\\'");
+        assert_eq!(ch.bool_literal(false), "FALSE");
+        assert_eq!(ch.binary_literal("00ff"), "unhex('00ff')");
+        assert!(!ch.has_savepoints() && ch.has_default_keyword());
+        assert_eq!(
+            ch.insert_defaults("t"),
+            "INSERT INTO t FORMAT JSONEachRow {}"
+        );
+        assert_eq!(ch.limited("SELECT 1", 2), "SELECT 1 LIMIT 2");
+        assert_eq!(
+            ch.row_estimate_sql(None, "t"),
+            "SELECT total_rows FROM system.tables WHERE database = currentDatabase() AND name = 't'"
+        );
+        assert_eq!(
+            ch.contains("c", "a%"),
+            r"c ILIKE replaceRegexpAll('%a!%%', '!(.)', '\\\\\\\\\\1')"
+        );
+        assert!(
+            ch.any_column_contains(&["id", "n"], "x")
+                .starts_with("toString(id) ILIKE")
         );
     }
 
