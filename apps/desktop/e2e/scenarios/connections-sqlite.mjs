@@ -1,6 +1,6 @@
 // Connectivity: connections imported from DBeaver keep their type; a production connection
-// shows its badge and opens in manual commit; the connection dialog has a tab for the SSH
-// tunnel.
+// shows its badge and opens in manual commit; the connection dialog has a Network tab for the
+// SSH tunnel and shared network profiles, an Init tab, and passwords from a command.
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -10,6 +10,21 @@ const treeRow = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
 const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
 const button = (scope, text) => `[...${scope}.querySelectorAll('button')].find(b => b.textContent.trim().startsWith(${JSON.stringify(text)}))`;
+
+/** Sets a React-controlled field and tells React, as typing would. */
+const setField = (selector, value) => fill(`document.querySelector(${JSON.stringify(selector)})`, value);
+/** The same for the field labelled `label` inside `scope`. */
+const setLabeled = (scope, label, value) =>
+  fill(
+    `[...document.querySelectorAll(${JSON.stringify(`${scope} label.field`)})].find(l => l.querySelector('span')?.textContent === ${JSON.stringify(label)}).querySelector('input, select, textarea')`,
+    value,
+  );
+const fill = (element, value) => `(() => {
+  const el = ${element};
+  const proto = Object.getPrototypeOf(el);
+  Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)});
+  el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
+})()`;
 
 export function setup({ dir }) {
   const db = join(dir, "prod.db");
@@ -79,13 +94,49 @@ export default async function (page, { dir, shots }) {
 
   // The dialog of the imported connection shows its SSH server.
   await page.eval(`[...${treeRow("Remote PG")}.querySelectorAll('button')].find(b => b.title === 'Edit').click()`);
-  // SSH has a tab of its own.
+  // SSH and SSL are on the Network tab.
   await page.waitFor(`document.querySelector('.dialog-tabs') !== null`);
-  assert.equal(await page.eval(`document.querySelector('[data-page="ssh"]').hidden`), true);
+  assert.equal(await page.eval(`document.querySelector('[data-page="network"]').hidden`), true);
   // The color swatches stay round dots, not stretched to a button's height.
   assert.equal(await page.eval(`(() => { const r = document.querySelector('.modal .swatch').getBoundingClientRect(); return r.width === r.height; })()`), true);
-  await page.eval(`[...document.querySelectorAll('.dialog-tabs button')].find(b => b.textContent.startsWith('SSH')).click()`);
-  await page.waitFor(`document.querySelector('[data-page="ssh"]').hidden === false`);
+  const tab = (name) => page.eval(`[...document.querySelectorAll('.dialog-tabs button')].find(b => b.textContent.startsWith('${name}')).click()`);
+  await tab("Network");
+  await page.waitFor(`document.querySelector('[data-page="network"]').hidden === false`);
   assert.equal(await page.eval(`document.querySelector('.ssh-section input').value`), "bastion");
   if (shots) await page.screenshot(join(shots, "connection-ssh.png"));
+
+  // A new network profile is chosen for the connection in place of its own tunnel.
+  await page.eval(`${button("document.querySelector('[data-page=\"network\"]')", "New")}.click()`);
+  await page.waitFor(`document.querySelector('.network-profile') !== null`);
+  await page.eval(setField(".network-profile input", "Office VPN"));
+  await page.eval(`document.querySelector('.network-profile .check input').click()`);
+  await page.waitFor(`document.querySelector('.network-profile .ssh-section input') !== null`);
+  await page.eval(setLabeled(".network-profile", "SSH host", "jump.example.com"));
+  await page.eval(setLabeled(".network-profile", "SSH user", "ops"));
+  await page.eval(`${button("document.querySelector('.network-profile')", "Save")}.click()`);
+  await page.waitFor(`document.querySelector('.network-profile') === null`);
+  await page.waitFor(`document.querySelector('[data-field="profile_summary"]')?.textContent.includes('jump.example.com')`);
+  if (shots) await page.screenshot(join(shots, "connection-profile.png"));
+
+  // Session setup, and the password printed by a command.
+  await tab("Init");
+  await page.eval(setField('[data-field="init_schema"]', "app"));
+  await page.eval(setField('[data-field="init_statements"]', "SET statement_timeout = '5s';"));
+  if (shots) await page.screenshot(join(shots, "connection-init.png"));
+  await tab("General");
+  await page.eval(setField('[data-field="password_source"]', "command"));
+  await page.waitFor(`document.querySelector('[data-field="password_command"]') !== null`);
+  await page.eval(setField('[data-field="password_command"]', "echo s3cret"));
+  await page.eval(`${button("document.querySelector('.modal')", "Save")}.click()`);
+  await page.waitFor(`document.querySelector('.modal') === null`);
+
+  const after = readFileSync(join(dir, "connections.toml"), "utf8");
+  assert.match(after, /^version = 3/m);
+  assert.match(after, /\[\[network_profiles\]\][^[]*name = "Office VPN"/);
+  assert.match(after, /\[network_profiles\.ssh\]\s+host = "jump.example.com"/);
+  assert.match(after, /password_command = "echo s3cret"/);
+  assert.match(after, /network_profile = "[0-9a-f-]{36}"/);
+  assert.match(after, /\[connections\.init\]\s+schema = "app"/);
+  // The profile's tunnel replaced the connection's own.
+  assert.doesNotMatch(after, /host = "bastion"/);
 }

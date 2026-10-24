@@ -549,6 +549,17 @@ button.primary.danger:hover:not(:disabled) {
   display: none;
 }
 
+/* The connection's bootstrap statements. */
+.field textarea.init-script {
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  resize: vertical;
+}
+
 /* Safety: confirmation before risky statements, long transactions */
 
 .guard .notice {

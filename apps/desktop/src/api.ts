@@ -14,7 +14,18 @@ export interface SavedConnection {
   user: string;
   ssl_mode: SslMode;
   ssl_root_cert: string | null;
+  /** Certificate and key presented to servers that authenticate clients by certificate. */
+  ssl_client_cert?: string | null;
+  ssl_client_key?: string | null;
   save_password: boolean;
+  /** A shell command printing the password, run at each connection. */
+  password_command?: string | null;
+  /** Looks the password up in `.pgpass`. */
+  pgpass?: boolean;
+  /** A network profile whose SSH tunnel and SSL settings replace the connection's own. */
+  network_profile?: string | null;
+  /** Default schema, time zone and bootstrap statements, run after every connect. */
+  init?: SavedInit;
   read_only: boolean;
   color: string | null;
   /** Production asks before changes and starts in manual commit. */
@@ -26,6 +37,24 @@ export interface SavedConnection {
 }
 
 export type ConnectionType = "dev" | "test" | "prod";
+
+export interface SavedInit {
+  schema: string | null;
+  time_zone: string | null;
+  /** A script, split into statements when connecting. */
+  statements: string;
+}
+
+/** An SSH tunnel and SSL settings shared by several connections. */
+export interface NetworkProfile {
+  id: string;
+  name: string;
+  ssl_mode: SslMode;
+  ssl_root_cert: string | null;
+  ssl_client_cert: string | null;
+  ssl_client_key: string | null;
+  ssh: SavedSsh | null;
+}
 
 export type SshAuthKind = "password" | "key" | "agent";
 
@@ -533,6 +562,11 @@ export const api = {
       database: database ?? null,
     }),
   closeSession: (sessionId: number) => invoke<void>("close_session", { sessionId }),
+  listNetworkProfiles: () => invoke<NetworkProfile[]>("list_network_profiles"),
+  saveNetworkProfile: (profile: NetworkProfile, sshSecrets: SshSecrets = {}) =>
+    invoke<NetworkProfile[]>("save_network_profile", { profile, sshSecrets }),
+  /** Refused while a connection uses the profile. */
+  deleteNetworkProfile: (id: string) => invoke<NetworkProfile[]>("delete_network_profile", { id }),
   /** `limit` caps fetched rows and frees the session afterwards (script mode); `history`
    *  false keeps the run out of the query history. */
   runQuery: (

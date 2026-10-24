@@ -14,7 +14,7 @@ import {
   type TableDetails,
   type TransactionState,
 } from "../api";
-import { isProduction } from "../connections";
+import { asksPassword, isProduction } from "../connections";
 import type { EditSource, TableRef } from "../grid/edit/meta";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
 import { cliName } from "../editor/actions";
@@ -238,7 +238,7 @@ export function QueryTab({
 
   // Without a password prompt the catalog can load right away; otherwise on first run.
   useEffect(() => {
-    if (connection.save_password || connection.driver === "sqlite") onNeedCatalog(false);
+    if (!asksPassword(connection)) onNeedCatalog(false);
   }, [connection.id]);
 
   useEffect(() => {

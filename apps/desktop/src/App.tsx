@@ -4,7 +4,7 @@ import { api, type Capabilities, type CompletionCatalog, type Project, toCommand
 import { onNavigatorRefresh } from "./navigatorEvents";
 import { ConnectionDialog } from "./components/ConnectionDialog";
 import { ImportDialog } from "./components/ImportDialog";
-import { connectionColor } from "./connections";
+import { asksPassword, connectionColor } from "./connections";
 import { Navigator } from "./components/Navigator";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -259,7 +259,7 @@ export function App() {
    *  `database` opens another database of the server than the saved one. */
   async function connect(connection: SavedConnection, database?: string | null): Promise<number | null> {
     let password: string | undefined;
-    if (!connection.save_password && connection.driver !== "sqlite") {
+    if (asksPassword(connection)) {
       password = passwords.current.get(connection.id);
       if (password === undefined) {
         const entered = await askPassword(connection);
