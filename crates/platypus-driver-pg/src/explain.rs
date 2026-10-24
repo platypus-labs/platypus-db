@@ -98,19 +98,19 @@ fn node(map: &Map<String, Value>) -> PlanNode {
 /// returned plus those the filter removed, per loop.
 fn full_scan(operation: &str, map: &Map<String, Value>) -> Option<FullScan> {
     let num = |k: &str| map.get(k).and_then(Value::as_f64);
+    let s = |k: &str| map.get(k).and_then(Value::as_str);
     if !operation.ends_with("Seq Scan") {
         return None;
     }
-    let read = match (num("Actual Rows"), num("Rows Removed by Filter")) {
-        (Some(kept), removed) => {
-            Some((kept + removed.unwrap_or(0.0)) * num("Actual Loops").unwrap_or(1.0))
-        }
-        (None, _) => num("Plan Rows"),
-    };
     Some(FullScan {
-        table: map.get("Relation Name")?.as_str()?.to_owned(),
-        filter: map.get("Filter")?.as_str()?.to_owned(),
-        rows_read: read,
+        table: s("Relation Name")?.to_owned(),
+        filter: s("Filter")?.to_owned(),
+        rows_read: num("Actual Rows")
+            .map(|kept| {
+                (kept + num("Rows Removed by Filter").unwrap_or(0.0))
+                    * num("Actual Loops").unwrap_or(1.0)
+            })
+            .or(num("Plan Rows")),
     })
 }
 

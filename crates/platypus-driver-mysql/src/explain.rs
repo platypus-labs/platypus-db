@@ -75,7 +75,7 @@ fn mark_scans(node: &mut PlanNode) {
         scan.full_scan = Some(FullScan {
             table: table.split_whitespace().next().unwrap_or(table).to_owned(),
             filter,
-            rows_read: read(scan),
+            rows_read: rows_read(scan.actual_rows, scan.loops, scan.rows),
         });
     }
     for child in &mut node.children {
@@ -84,10 +84,8 @@ fn mark_scans(node: &mut PlanNode) {
 }
 
 /// Rows a scan read over all its loops, or the planner's estimate without analyze.
-fn read(scan: &PlanNode) -> Option<f64> {
-    scan.actual_rows
-        .map(|rows| rows * scan.loops.unwrap_or(1.0))
-        .or(scan.rows)
+fn rows_read(actual: Option<f64>, loops: Option<f64>, estimate: Option<f64>) -> Option<f64> {
+    actual.map(|rows| rows * loops.unwrap_or(1.0)).or(estimate)
 }
 
 fn tree_step(step: &str) -> PlanNode {
@@ -187,9 +185,7 @@ fn full_scan(map: &Map<String, Value>) -> Option<FullScan> {
     Some(FullScan {
         table: s("table_name")?.to_owned(),
         filter: s("attached_condition")?.to_owned(),
-        rows_read: num("r_rows")
-            .map(|rows| rows * num("r_loops").unwrap_or(1.0))
-            .or(num("rows")),
+        rows_read: rows_read(num("r_rows"), num("r_loops"), num("rows")),
     })
 }
 
