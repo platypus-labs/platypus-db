@@ -85,7 +85,7 @@ textarea {
 }
 
 button {
-  height: 28px;
+  min-height: 28px;
   background: var(--bg-input);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -115,7 +115,7 @@ button.primary:hover:not(:disabled) {
 }
 
 button.icon {
-  height: auto;
+  min-height: 0;
   border: none;
   background: transparent;
   padding: 3px 5px;
@@ -144,7 +144,7 @@ kbd {
 }
 
 button.link {
-  height: auto;
+  min-height: 0;
   border: none;
   background: none;
   padding: 0;
