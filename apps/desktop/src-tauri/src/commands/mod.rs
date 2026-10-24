@@ -8,11 +8,13 @@ pub mod connections;
 pub mod data;
 pub mod export;
 pub mod files;
+pub mod grid;
 pub mod history;
 pub mod meta;
 pub mod query;
 pub mod settings;
 pub mod sql;
+pub mod summary;
 pub mod transactions;
 
 use std::collections::HashMap;

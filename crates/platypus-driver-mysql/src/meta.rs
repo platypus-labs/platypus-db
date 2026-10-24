@@ -2,7 +2,8 @@
 
 use platypus_core::{
     CATALOG_LIMIT, CatalogColumn, ColumnMeta, ForeignKeyMeta, IndexMeta, ObjectKind, ObjectMeta,
-    Result, SchemaMeta, TableDetails, TextRowExt, group_sorted, query_catalog, query_text,
+    ReferencingKey, Result, SchemaMeta, TableDetails, TextRowExt, group_sorted, query_catalog,
+    query_text,
 };
 
 use crate::MySqlConnection;
@@ -166,6 +167,45 @@ pub async fn table_details(
         indexes,
         foreign_keys,
     })
+}
+
+pub async fn referencing_keys(
+    conn: &MySqlConnection,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<ReferencingKey>> {
+    // One row per key column; the group key tells keys of different tables apart.
+    let rows = query_text(
+        conn,
+        &format!(
+            "SELECT CONCAT_WS(CHAR(31), TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME),
+                    TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME
+             FROM information_schema.KEY_COLUMN_USAGE
+             WHERE REFERENCED_TABLE_SCHEMA = {} AND REFERENCED_TABLE_NAME = {}
+             ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION",
+            conn.literal(schema),
+            conn.literal(table)
+        ),
+    )
+    .await?;
+    Ok(group_sorted(
+        rows.iter().map(|r| {
+            (
+                r.text(0),
+                ReferencingKey {
+                    schema: r.text(1),
+                    table: r.text(2),
+                    name: r.text(3),
+                    columns: vec![r.text(4)],
+                    ref_columns: vec![r.text(5)],
+                },
+            )
+        }),
+        |key, row| {
+            key.columns.extend(row.columns);
+            key.ref_columns.extend(row.ref_columns);
+        },
+    ))
 }
 
 /// The values of an `enum('a','it''s')` column type; empty for other types.

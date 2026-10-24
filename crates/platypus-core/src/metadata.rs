@@ -81,6 +81,18 @@ pub struct ForeignKeyMeta {
     pub ref_columns: Vec<String>,
 }
 
+/// A foreign key of another table that points at a table: the rows that reference it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ReferencingKey {
+    pub schema: String,
+    pub table: String,
+    pub name: String,
+    /// Columns of the referencing table.
+    pub columns: Vec<String>,
+    /// The referenced table's columns they hold, in the same order.
+    pub ref_columns: Vec<String>,
+}
+
 /// One column of the catalog, for editor autocompletion.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CatalogColumn {

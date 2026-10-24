@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use platypus_core::{ObjectMeta, SchemaMeta, TableDetails};
+use platypus_core::{ObjectMeta, ReferencingKey, SchemaMeta, TableDetails};
 use platypus_sql::Dialect;
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -74,6 +74,18 @@ pub async fn table_details(
 ) -> CommandResult<TableDetails> {
     let conn = state.live(session_id).await?;
     Ok(conn.table_details(&schema, &table).await?)
+}
+
+/// The foreign keys of other tables that point at `schema.table`, for the References panel.
+#[tauri::command]
+pub async fn referencing_keys(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: String,
+    table: String,
+) -> CommandResult<Vec<ReferencingKey>> {
+    let conn = state.live(session_id).await?;
+    Ok(conn.referencing_keys(&schema, &table).await?)
 }
 
 /// The first value of a small query, as text (`None` for NULL or no rows); used for row

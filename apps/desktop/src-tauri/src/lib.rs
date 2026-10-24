@@ -1,9 +1,11 @@
 //! Tauri shell for PlatypusDB: exposes the core crates to the web UI as commands.
 
 mod commands;
+mod copy;
 mod display;
 mod error;
 mod export;
+mod formats;
 mod jobs;
 
 use std::path::PathBuf;
@@ -132,10 +134,18 @@ pub fn run() {
             commands::meta::list_schemas,
             commands::meta::list_objects,
             commands::meta::table_details,
+            commands::meta::referencing_keys,
             commands::meta::lookup_values,
             commands::data::preview_changes,
             commands::data::save_changes,
             commands::data::row_values,
+            commands::grid::copy_rows,
+            commands::grid::sql_literals,
+            commands::grid::cell_bytes,
+            commands::grid::save_cell,
+            commands::grid::search_rows,
+            commands::summary::selection_stats,
+            commands::summary::group_counts,
             commands::export::export_query,
             commands::export::export_rows,
             commands::export::cancel_export,

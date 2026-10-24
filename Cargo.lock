@@ -3886,6 +3886,7 @@ dependencies = [
  "arrow-cast",
  "arrow-ipc",
  "arrow-schema",
+ "chrono",
  "futures",
  "platypus-core",
  "platypus-driver-mysql",

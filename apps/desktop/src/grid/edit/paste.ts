@@ -53,13 +53,14 @@ export function parseClipboard(text: string): string[][] {
 
 /**
  * Where pasted fields go: by name when the first row repeats column names (a copy with
- * headers), else in order from `first`. Returns the target column of each field (`-1`
- * skips it) and the rows without the header.
+ * headers), else to the columns of `order` in turn (the ones shown from the focused cell
+ * on). Returns the target column of each field (`-1` skips it) and the rows without the
+ * header.
  */
 export function mapFields(
   rows: string[][],
   names: string[],
-  first: number,
+  order: number[],
 ): { targets: number[]; rows: string[][] } {
   const header = rows[0] ?? [];
   const index = new Map(names.map((n, i) => [n.toLowerCase(), i]));
@@ -68,7 +69,7 @@ export function mapFields(
   }
   const width = Math.max(0, ...rows.map((r) => r.length));
   return {
-    targets: Array.from({ length: width }, (_, i) => (first + i < names.length ? first + i : -1)),
+    targets: Array.from({ length: width }, (_, i) => order[i] ?? -1),
     rows,
   };
 }

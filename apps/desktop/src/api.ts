@@ -61,6 +61,8 @@ export interface ColumnInfo {
   name: string;
   db_type: string;
   numeric: boolean;
+  /** Bytes, shown as hex. */
+  binary: boolean;
 }
 
 export type QueryEvent =
@@ -199,6 +201,43 @@ export interface Lookup {
   label: string;
 }
 
+/** A foreign key of another table that points at a table. */
+export interface ReferencingKey {
+  schema: string;
+  table: string;
+  name: string;
+  columns: string[];
+  /** The referenced table's columns they hold. */
+  ref_columns: string[];
+}
+
+/** Totals of a selection; the number ones cover the number columns only. */
+export interface SelectionStats {
+  cells: number;
+  values: number;
+  numbers: number;
+  sum: number | null;
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+}
+
+export interface GroupCounts {
+  groups: { values: (string | null)[]; count: number }[];
+  rows: number;
+  distinct: number;
+}
+
+/** Clipboard formats of `copyRows`. */
+export type CopyFormat = "tsv" | "csv" | "json" | "markdown" | "html" | "insert" | "in_list";
+
+export interface SearchResult {
+  /** `[row, column]` of the matching cells, row by row. */
+  matches: [number, number][];
+  /** More cells matched than were reported. */
+  truncated: boolean;
+}
+
 export type ExportFormat = "csv" | "json" | "ndjson" | "parquet";
 
 export interface ExportOptions {
@@ -263,6 +302,8 @@ export const api = {
     invoke<ObjectMeta[]>("list_objects", { sessionId, schema }),
   tableDetails: (sessionId: number, schema: string, table: string) =>
     invoke<TableDetails>("table_details", { sessionId, schema, table }),
+  referencingKeys: (sessionId: number, schema: string, table: string) =>
+    invoke<ReferencingKey[]>("referencing_keys", { sessionId, schema, table }),
   transactionState: (sessionId: number) => invoke<TransactionState>("transaction_state", { sessionId }),
   setAutocommit: (sessionId: number, on: boolean) =>
     invoke<TransactionState>("set_autocommit", { sessionId, on }),
@@ -334,6 +375,38 @@ export const api = {
   /** Loaded rows' values in full, not cut to one line like the grid's. */
   rowValues: (jobId: number, offset: number, limit: number) =>
     invoke<(string | null)[][]>("row_values", { jobId, offset, limit }),
+  /** Loaded rows of a result in a clipboard format; `table` names the table in INSERTs. */
+  copyRows: (
+    jobId: number,
+    offset: number,
+    limit: number,
+    columns: number[],
+    format: CopyFormat,
+    options: { header?: boolean; table?: string | null } = {},
+  ) =>
+    invoke<string>("copy_rows", {
+      jobId,
+      offset,
+      limit,
+      columns,
+      format,
+      header: options.header ?? false,
+      table: options.table ?? null,
+    }),
+  /** A column's loaded values as SQL literals, `NULL` included. */
+  sqlLiterals: (jobId: number, offset: number, limit: number, column: number) =>
+    invoke<string[]>("sql_literals", { jobId, offset, limit, column }),
+  /** A cell's raw bytes (UTF-8 text for non-binary columns); empty for NULL. */
+  cellBytes: async (jobId: number, row: number, column: number) =>
+    new Uint8Array(await invoke<ArrayBuffer>("cell_bytes", { jobId, row, column })),
+  saveCell: (jobId: number, row: number, column: number, path: string) =>
+    invoke<void>("save_cell", { jobId, row, column, path }),
+  /** Loaded cells containing `text`, ignoring case. */
+  selectionStats: (jobId: number, offset: number, limit: number, columns: number[]) =>
+    invoke<SelectionStats>("selection_stats", { jobId, offset, limit, columns }),
+  /** Loaded rows by value of `columns`, most frequent first. */
+  groupCounts: (jobId: number, columns: number[]) => invoke<GroupCounts>("group_counts", { jobId, columns }),
+  searchRows: (jobId: number, text: string) => invoke<SearchResult>("search_rows", { jobId, text }),
   fetchAll: (jobId: number) => invoke<void>("fetch_all", { jobId }),
   cancelQuery: (jobId: number) => invoke<void>("cancel_query", { jobId }),
   closeQuery: (jobId: number) => invoke<void>("close_query", { jobId }),
