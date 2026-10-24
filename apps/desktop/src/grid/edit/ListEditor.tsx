@@ -101,7 +101,8 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
     }
   }
 
-  const set = (i: number, value: string | null) => setItems((all) => all && all.map((v, j) => (j === i ? value : v)));
+  const edit = (change: (all: (string | null)[]) => (string | null)[]) => setItems((all) => all && change(all));
+  const set = (i: number, value: string | null) => edit((all) => all.map((v, j) => (j === i ? value : v)));
 
   return (
     <div
@@ -148,7 +149,7 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
                   type="button"
                   className="icon"
                   title="Remove the element"
-                  onClick={() => setItems((all) => all && all.filter((_, j) => j !== i))}
+                  onClick={() => edit((all) => all.filter((_, j) => j !== i))}
                 >
                   ×
                 </button>
@@ -156,7 +157,7 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
             </div>
           ))}
           {!composite && items && (
-            <button type="button" className="list-editor-add" onClick={() => setItems((all) => all && [...all, ""])}>
+            <button type="button" className="list-editor-add" onClick={() => edit((all) => [...all, ""])}>
               + Element
             </button>
           )}

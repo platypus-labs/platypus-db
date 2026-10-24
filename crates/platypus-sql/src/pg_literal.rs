@@ -8,10 +8,10 @@
 pub fn split_array(text: &str) -> Option<Vec<Option<String>>> {
     let inner = text.trim().strip_prefix('{')?.strip_suffix('}')?;
     let mut items = Vec::new();
-    let mut chars = inner.chars().peekable();
     if inner.trim().is_empty() {
         return Some(items);
     }
+    let mut chars = inner.chars().peekable();
     loop {
         while chars.next_if(|c| c.is_whitespace()).is_some() {}
         let item = if chars.next_if_eq(&'"').is_some() {
@@ -52,18 +52,7 @@ pub fn split_array(text: &str) -> Option<Vec<Option<String>>> {
 /// An array literal of `items`, quoting the elements that need it.
 #[must_use]
 pub fn join_array(items: &[Option<String>]) -> String {
-    let mut out = String::from("{");
-    for (i, item) in items.iter().enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        match item {
-            None => out.push_str("NULL"),
-            Some(v) => push_quoted(&mut out, v, needs_array_quotes(v)),
-        }
-    }
-    out.push('}');
-    out
+    join(items, ('{', '}'), "NULL")
 }
 
 /// The fields of a composite literal, or `None` when the text is not one.
@@ -105,34 +94,36 @@ pub fn split_composite(text: &str) -> Option<Vec<Option<String>>> {
 /// A composite literal of `fields`, quoting the ones that need it.
 #[must_use]
 pub fn join_composite(fields: &[Option<String>]) -> String {
-    let mut out = String::from("(");
-    for (i, field) in fields.iter().enumerate() {
+    join(fields, ('(', ')'), "")
+}
+
+/// `items` between `brackets`, with `null` for NULL. Values that read as `null` or hold
+/// whitespace, a separator, a quote, a backslash or a bracket are quoted.
+fn join(items: &[Option<String>], brackets: (char, char), null: &str) -> String {
+    let (open, close) = brackets;
+    let mut out = String::from(open);
+    for (i, item) in items.iter().enumerate() {
         if i > 0 {
             out.push(',');
         }
-        if let Some(v) = field {
-            let quote = v.is_empty()
-                || v.chars()
-                    .any(|c| matches!(c, '(' | ')' | ',' | '"' | '\\') || c.is_whitespace());
-            push_quoted(&mut out, v, quote);
+        match item {
+            None => out.push_str(null),
+            Some(v) if needs_quotes(v, brackets, null) => push_quoted(&mut out, v),
+            Some(v) => out.push_str(v),
         }
     }
-    out.push(')');
+    out.push(close);
     out
 }
 
-fn needs_array_quotes(v: &str) -> bool {
+fn needs_quotes(v: &str, (open, close): (char, char), null: &str) -> bool {
     v.is_empty()
-        || v.eq_ignore_ascii_case("null")
+        || v.eq_ignore_ascii_case(null)
         || v.chars()
-            .any(|c| matches!(c, '{' | '}' | ',' | '"' | '\\') || c.is_whitespace())
+            .any(|c| matches!(c, ',' | '"' | '\\') || c == open || c == close || c.is_whitespace())
 }
 
-fn push_quoted(out: &mut String, v: &str, quote: bool) {
-    if !quote {
-        out.push_str(v);
-        return;
-    }
+fn push_quoted(out: &mut String, v: &str) {
     out.push('"');
     for c in v.chars() {
         if matches!(c, '"' | '\\') {
