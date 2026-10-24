@@ -3,6 +3,7 @@ import type { ColumnInfo } from "../api";
 import { CalcPanel } from "../panels/CalcPanel";
 import { CompareRows } from "../panels/CompareRows";
 import { GroupingPanel } from "../panels/GroupingPanel";
+import { MapPanel } from "../panels/MapPanel";
 import { MetadataPanel } from "../panels/MetadataPanel";
 import { RecordView } from "../panels/RecordView";
 import { ValuePanel, type ValueTarget } from "../panels/ValuePanel";
@@ -43,6 +44,7 @@ export interface GridFeatures {
   groupBy(cols: number[]): void;
   toggleMetadata(): void;
   toggleCalc(): void;
+  toggleMap(): void;
   /** Shows two loaded rows side by side. */
   compareRows(rows: [number, number]): void;
 }
@@ -93,7 +95,8 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [metadataOpen, setMetadataOpen] = useState(false);
   const [calcOpen, setCalcOpen] = useState(false);
-  /** Bumped on every selection change while the calc panel is open. */
+  const [mapOpen, setMapOpen] = useState(false);
+  /** Bumped on every selection change while the calc or map panel is open. */
   const [selection, setSelection] = useState(0);
   const [compared, setCompared] = useState<[number, number] | null>(null);
   const decorate = useMemo(() => combine(editor.decorate, search.decorate), [editor.decorate, search.decorate]);
@@ -129,6 +132,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
     groupBy: setGrouping,
     toggleMetadata: () => setMetadataOpen(!metadataOpen),
     toggleCalc: () => setCalcOpen(!calcOpen),
+    toggleMap: () => setMapOpen(!mapOpen),
     compareRows: setCompared,
   };
 
@@ -161,7 +165,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
             onFocusChange={setFocused}
             onSelectionChange={() => {
               stats.onSelectionChange();
-              if (calcOpen) setSelection((n) => n + 1);
+              if (calcOpen || mapOpen) setSelection((n) => n + 1);
             }}
             layout={layout}
             onLayoutChange={changeLayout}
@@ -193,6 +197,19 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
         )}
         {calcOpen && (
           <CalcPanel jobId={jobId} columns={columns} grid={grid} selection={selection} onClose={features.toggleCalc} />
+        )}
+        {mapOpen && (
+          <MapPanel
+            jobId={jobId}
+            columns={columns}
+            grid={grid}
+            selection={selection}
+            rows={rowCount}
+            version={version}
+            focusedRow={dataRow ?? null}
+            onPick={(row, col) => grid.current?.select({ row: row + editor.topRows, col })}
+            onClose={features.toggleMap}
+          />
         )}
         {grouping && (
           <GroupingPanel

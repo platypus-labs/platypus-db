@@ -34,7 +34,7 @@ pub struct SelectionStats {
     max: Option<f64>,
 }
 
-async fn blocking<T: Send + 'static>(
+pub(super) async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> CommandResult<T> + Send + 'static,
 ) -> CommandResult<T> {
     tauri::async_runtime::spawn_blocking(f)
@@ -42,7 +42,7 @@ async fn blocking<T: Send + 'static>(
         .map_err(|e| CommandError::new("other", e.to_string()))?
 }
 
-fn check_columns(job: &Job, columns: &[usize]) -> CommandResult<()> {
+pub(super) fn check_columns(job: &Job, columns: &[usize]) -> CommandResult<()> {
     let (schema, _) = job
         .window(0, 0)
         .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;

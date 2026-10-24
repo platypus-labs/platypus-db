@@ -469,6 +469,64 @@ fn format_composite(
     Ok(out)
 }
 
+/// The `f64`s at the start of `buf`, big-endian.
+fn floats<const N: usize>(buf: &[u8], what: &str) -> DecodeResult<[f64; N]> {
+    let mut out = [0.0; N];
+    for (i, v) in out.iter_mut().enumerate() {
+        let bytes = buf.get(i * 8..i * 8 + 8).ok_or_else(|| invalid(what))?;
+        *v = f64::from_be_bytes(bytes.try_into()?);
+    }
+    Ok(out)
+}
+
+/// `(x,y)` for each of `count` points at the start of `buf`, comma separated.
+fn write_points(out: &mut String, buf: &[u8], count: usize, what: &str) -> DecodeResult<()> {
+    for i in 0..count {
+        if i > 0 {
+            out.push(',');
+        }
+        let [x, y] = floats::<2>(buf.get(i * 16..).ok_or_else(|| invalid(what))?, what)?;
+        let _ = write!(out, "({x},{y})");
+    }
+    Ok(())
+}
+
+/// The geometric types other than `point`, as PostgreSQL prints them.
+fn format_geometric(ty: &Type, raw: &[u8]) -> DecodeResult<String> {
+    let mut out = String::new();
+    match *ty {
+        Type::BOX => write_points(&mut out, raw, 2, "box")?,
+        Type::LSEG => {
+            out.push('[');
+            write_points(&mut out, raw, 2, "lseg")?;
+            out.push(']');
+        }
+        Type::PATH | Type::POLYGON => {
+            // A path starts with a closed flag; both then have the number of points.
+            let (closed, rest) = if *ty == Type::PATH {
+                let (&flag, rest) = raw.split_first().ok_or_else(|| invalid("path"))?;
+                (flag != 0, rest)
+            } else {
+                (true, raw)
+            };
+            let count = i32::from_be_bytes(take(rest, "path")?);
+            let count = usize::try_from(count).map_err(|_| invalid("path"))?;
+            out.push(if closed { '(' } else { '[' });
+            write_points(&mut out, &rest[4..], count, "path")?;
+            out.push(if closed { ')' } else { ']' });
+        }
+        Type::LINE => {
+            let [a, b, c] = floats::<3>(raw, "line")?;
+            let _ = write!(out, "{{{a},{b},{c}}}");
+        }
+        _ => {
+            let [x, y, r] = floats::<3>(raw, "circle")?;
+            let _ = write!(out, "<({x},{y}),{r}>");
+        }
+    }
+    Ok(out)
+}
+
 /// Renders any PostgreSQL value as text, close to PostgreSQL's own output format.
 pub fn format_value(ty: &Type, raw: &[u8]) -> DecodeResult<String> {
     match *ty {
@@ -536,6 +594,9 @@ pub fn format_value(ty: &Type, raw: &[u8]) -> DecodeResult<String> {
         Type::POINT => {
             let p = pg::point_from_sql(raw)?;
             Ok(format!("({},{})", p.x(), p.y()))
+        }
+        Type::BOX | Type::LSEG | Type::PATH | Type::POLYGON | Type::LINE | Type::CIRCLE => {
+            format_geometric(ty, raw)
         }
         _ => match ty.kind() {
             Kind::Array(element) => format_array(element, raw),
@@ -631,6 +692,33 @@ mod tests {
         assert_eq!(format_interval(0, 0, 14), "1 year 2 mons");
         assert_eq!(format_interval(0, 0, 0), "00:00:00");
         assert_eq!(format_interval(-1_500_000, -3, 0), "-3 days -00:00:01.5");
+    }
+
+    fn wire(floats: &[f64]) -> Vec<u8> {
+        floats.iter().flat_map(|f| f.to_be_bytes()).collect()
+    }
+
+    #[test]
+    fn geometric_types() {
+        let format = |ty: &Type, raw: &[u8]| format_value(ty, raw).unwrap();
+        assert_eq!(
+            format(&Type::BOX, &wire(&[2.0, 3.0, 0.0, -1.5])),
+            "(2,3),(0,-1.5)"
+        );
+        assert_eq!(
+            format(&Type::LSEG, &wire(&[0.0, 0.0, 1.0, 1.0])),
+            "[(0,0),(1,1)]"
+        );
+        let mut polygon = 3_i32.to_be_bytes().to_vec();
+        polygon.extend(wire(&[0.0, 0.0, 1.0, 0.0, 1.0, 1.0]));
+        assert_eq!(format(&Type::POLYGON, &polygon), "((0,0),(1,0),(1,1))");
+        let mut open = vec![0];
+        open.extend(2_i32.to_be_bytes());
+        open.extend(wire(&[0.0, 0.0, 2.5, 1.0]));
+        assert_eq!(format(&Type::PATH, &open), "[(0,0),(2.5,1)]");
+        assert_eq!(format(&Type::LINE, &wire(&[1.0, -1.0, 0.0])), "{1,-1,0}");
+        assert_eq!(format(&Type::CIRCLE, &wire(&[1.0, 2.0, 3.0])), "<(1,2),3>");
+        assert!(format_value(&Type::CIRCLE, &wire(&[1.0])).is_err());
     }
 
     #[test]

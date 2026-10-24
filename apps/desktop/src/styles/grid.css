@@ -441,6 +441,56 @@
   overflow-wrap: anywhere;
 }
 
+.map-panel {
+  width: 420px;
+}
+
+.map-view {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.map-view svg {
+  position: absolute;
+  inset: 0;
+}
+
+.map-shape {
+  cursor: pointer;
+}
+
+.map-point,
+.map-area {
+  fill: color-mix(in srgb, var(--accent) 35%, transparent);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.map-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.map-shape:hover > *,
+.map-shape.focused > * {
+  stroke: var(--error);
+  stroke-width: 2.5;
+}
+
+.map-shape.focused .map-point,
+.map-shape.focused .map-area {
+  fill: color-mix(in srgb, var(--error) 35%, transparent);
+}
+
 .compare-rows {
   width: min(760px, calc(100vw - 48px));
 }

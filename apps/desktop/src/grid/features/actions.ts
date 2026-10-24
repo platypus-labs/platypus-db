@@ -1,5 +1,5 @@
-// Search, the value panel, the record view, counts by value, column metadata, calculations
-// and comparing two rows, on the grid's shortcuts and menu.
+// Search, the value panel, the record view, counts by value, column metadata, calculations,
+// the map and comparing two rows, on the grid's shortcuts and menu.
 import { registerAction } from "../../actions";
 
 registerAction({
@@ -66,11 +66,21 @@ registerAction({
 });
 
 registerAction({
+  id: "grid.map",
+  scope: "grid",
+  title: "Show on map",
+  group: "view",
+  order: 66,
+  when: ({ source }) => source?.features !== undefined,
+  run: ({ source }) => source!.features!.toggleMap(),
+});
+
+registerAction({
   id: "grid.compare_rows",
   scope: "grid",
   title: "Compare the two rows",
   group: "view",
-  order: 66,
+  order: 67,
   when: ({ source, grid }) => {
     const sel = grid.selection();
     return (

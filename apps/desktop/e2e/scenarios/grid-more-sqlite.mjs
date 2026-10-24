@@ -1,7 +1,7 @@
 // More of the read-only grid on a throwaway SQLite database: the column layout (hidden and
 // moved columns, kept for the table), totals of the selection, counts by value, the record
 // view, foreign keys as links with the References panel, column metadata, the calc panel,
-// two rows compared, auto-refresh, and number formats.
+// two rows compared, auto-refresh, number formats, and geometries on the map.
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -25,7 +25,13 @@ export function setup({ dir }) {
   db.exec(`CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT, city TEXT);
            INSERT INTO customers VALUES (1, 'Ada', 'Rome'), (2, 'Bob', 'Oslo'), (3, 'Cy', 'Rome');
            CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customers (id), total REAL);
-           INSERT INTO orders VALUES (10, 1, 1234.5), (11, 1, 2), (12, 2, 3.25);`);
+           INSERT INTO orders VALUES (10, 1, 1234.5), (11, 1, 2), (12, 2, 3.25);
+           CREATE TABLE places (id INTEGER PRIMARY KEY, shape TEXT, wkb BLOB);
+           INSERT INTO places VALUES
+             (1, 'POINT (1 2)', X'010100000000000000000014400000000000001440'),
+             (2, 'POLYGON ((0 0, 4 0, 4 4, 0 4, 0 0))', NULL),
+             (3, 'LINESTRING (0 0, 3 3)', NULL),
+             (4, 'hello', NULL);`);
   db.close();
   writeFileSync(
     join(dir, "connections.toml"),
@@ -154,6 +160,26 @@ async function autoRefresh(page, path) {
   await markGrid(page);
 }
 
+/** On `places`: WKT text and WKB blobs drawn on the map; a click focuses the shape's row. */
+async function map(page, shot) {
+  const size = `(document.querySelector('.map-panel .value-size')?.textContent ?? '')`;
+  await focusCell(page, 0, 1);
+  await openMenu(page);
+  await menu(page, "Show on map");
+  await page.waitFor(`${size} === '3 geometries · 1 not readable'`);
+  // The WKB point of the next column joins in.
+  await page.eval(`document.getElementById('e2e-grid').focus()`);
+  await page.key("ArrowRight", "ArrowRight", 39, SHIFT);
+  await page.waitFor(`${size} === '4 geometries · 1 not readable'`);
+  await page.waitFor(`document.querySelector('.map-shape.focused')?.dataset.row === '0'`);
+  await shot("map");
+  await page.eval(`document.querySelector('.map-shape[data-row="2"]').id = 'e2e-line'`);
+  const line = await page.rect("#e2e-line");
+  await page.click(line.x + line.w / 2, line.y + line.h / 2);
+  await page.waitFor(`document.querySelector('.map-shape.focused')?.dataset.row === '2'`);
+  await page.eval(`${button("document.querySelector('.map-panel')", "×")}.click()`);
+}
+
 export default async function (page, { shots, dir }) {
   const shot = async (name) => shots && (await page.screenshot(join(shots, `grid-more-${name}.png`)));
   await page.waitFor(`${treeRow(NAME)} !== undefined`);
@@ -273,4 +299,8 @@ export default async function (page, { shots, dir }) {
     await page.sleep(100);
   }
   assert.equal(text, "10\t1\t1,234.5\n11\t1\t2.0\n12\t2\t3.25");
+
+  await closeTab(page);
+  await openTable(page, "places", "4 rows");
+  await map(page, shot);
 }

@@ -160,6 +160,7 @@ pub fn run() {
             commands::summary::selection_stats,
             commands::summary::column_stats,
             commands::summary::group_counts,
+            commands::geometry::geometries,
             commands::export::export_query,
             commands::export::export_rows,
             commands::export::cancel_export,

@@ -376,6 +376,23 @@ export interface ColumnStats {
   last: string | null;
 }
 
+/** A geometry in plane coordinates, as `platypus_core::geometry::Shape`. */
+export type Shape =
+  | { type: "point"; x: number; y: number }
+  | { type: "line"; points: [number, number][]; closed: boolean }
+  /** The outer ring first, then the holes. */
+  | { type: "polygon"; rings: [number, number][][] }
+  | { type: "circle"; x: number; y: number; r: number }
+  | { type: "collection"; items: Shape[] };
+
+/** The geometries of loaded cells, for the map panel. */
+export interface Geometries {
+  shapes: { row: number; column: number; shape: Shape }[];
+  /** Cells that are not NULL and hold no geometry. */
+  unreadable: number;
+  truncated: boolean;
+}
+
 export interface GroupCounts {
   groups: { values: (string | null)[]; count: number }[];
   rows: number;
@@ -623,6 +640,9 @@ export const api = {
   /** Loaded rows by value of `columns`, most frequent first. */
   columnStats: (jobId: number, offset: number, limit: number, columns: number[]) =>
     invoke<ColumnStats[]>("column_stats", { jobId, offset, limit, columns }),
+  /** The geometries in `columns` of loaded rows `offset..offset + limit`. */
+  geometries: (jobId: number, offset: number, limit: number, columns: number[]) =>
+    invoke<Geometries>("geometries", { jobId, offset, limit, columns }),
   groupCounts: (jobId: number, columns: number[]) => invoke<GroupCounts>("group_counts", { jobId, columns }),
   searchRows: (jobId: number, text: string) => invoke<SearchResult>("search_rows", { jobId, text }),
   fetchAll: (jobId: number) => invoke<void>("fetch_all", { jobId }),
