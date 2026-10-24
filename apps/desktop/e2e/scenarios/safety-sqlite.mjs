@@ -80,6 +80,8 @@ export default async function (page, { dir }) {
   // The data editor shows its SQL before saving on production.
   await runSql(page, "SELECT * FROM t");
   await page.waitFor(`${status} === '3 rows'`, 15_000);
+  // Keys before the grid knows it is editable are ignored: "+ Row" turns on when it is.
+  await page.waitFor(`${visibleTab}?.querySelector('.edit-bar:not([hidden]) button')?.disabled === false`, 15_000);
   await page.eval(`${visibleTab}.querySelector('.grid-scroll').focus()`);
   await page.key("ArrowDown", "ArrowDown", 40);
   await page.key("ArrowRight", "ArrowRight", 39);
