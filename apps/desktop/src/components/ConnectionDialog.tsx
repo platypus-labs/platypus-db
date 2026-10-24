@@ -17,6 +17,7 @@ import {
 import { CONNECTION_TYPES } from "../connections";
 import { toggled } from "../sets";
 import { basename } from "../workspace";
+import { DriverPicker } from "./DriverPicker";
 import { NetworkFields, SSL_MODES, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 import { NetworkProfileDialog, newNetworkProfile } from "./NetworkProfileDialog";
 
@@ -108,6 +109,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
   /** SSH passwords and passphrases typed, by `secret_id`. */
   const [sshTyped, setSshTyped] = useState<Record<string, string>>({});
   const [page, setPage] = useState<Page>("general");
+  /** A new connection starts from the choice of the database. */
+  const [picking, setPicking] = useState(!existing);
   const [savedSsh] = useState(() => sshSecretIds(existing ? initial.ssh : null));
   const [profiles, setProfiles] = useState<NetworkProfile[]>([]);
   /** The network profile being edited in its own dialog, and whether it is saved. */
@@ -212,6 +215,18 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
   );
   const networkSet = conn.network_profile || conn.ssh || conn.ssl_client_cert;
   const initSet = !!(init.schema || init.time_zone || init.statements.trim());
+
+  if (picking) {
+    return (
+      <DriverPicker
+        onPick={(driver) => {
+          changeDriver(driver);
+          setPicking(false);
+        }}
+        onClose={onClose}
+      />
+    );
+  }
 
   return (
     <>
