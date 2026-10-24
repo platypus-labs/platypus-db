@@ -541,12 +541,11 @@ impl Dialect {
             (T::Int32 | T::UInt16, Self::MySql | Self::SqlServer) => "INT",
             (T::Int32 | T::UInt16, _) => "INTEGER",
             (T::Int64 | T::UInt32, _) => "BIGINT",
-            (T::Float16 | T::Float32, Self::MySql) => "FLOAT",
+            (T::Float16 | T::Float32, Self::MySql) | (T::Float64, Self::SqlServer) => "FLOAT",
             (T::Float16 | T::Float32 | T::Float64, Self::Sqlite) | (T::Float16 | T::Float32, _) => {
                 "REAL"
             }
             (T::Float64, Self::Postgres) => "DOUBLE PRECISION",
-            (T::Float64, Self::SqlServer) => "FLOAT",
             (T::Float64, _) => "DOUBLE",
             (
                 T::Decimal32(p, s) | T::Decimal64(p, s) | T::Decimal128(p, s) | T::Decimal256(p, s),
