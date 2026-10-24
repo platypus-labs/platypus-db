@@ -5,7 +5,7 @@
  */
 import type { ReactNode } from "react";
 import type { Capabilities, Project, SavedConnection } from "./api";
-import type { TabInit, TabKindName } from "./tabs/registry";
+import type { TabInit, TabKindName, TabModel } from "./tabs/registry";
 
 export interface Workbench {
   connections(): SavedConnection[];
@@ -23,6 +23,8 @@ export interface Workbench {
   deleteProject(project: Project): Promise<void>;
   /** Opens a new tab of `kind` and makes it active. */
   openTab<K extends TabKindName>(kind: K, connectionId: string, init?: TabInit<K>): void;
+  /** Makes active the first tab of the active project that `match` accepts; `false` if none. */
+  focusTab(match: (tab: TabModel) => boolean): boolean;
   /** The navigator session of the connection (and database, `null` for the saved one),
    *  opened on first use; `null` if cancelled. */
   sideSession(connection: SavedConnection, database?: string | null): Promise<number | null>;
