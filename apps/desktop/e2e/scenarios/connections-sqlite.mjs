@@ -32,6 +32,8 @@ export function setup({ dir }) {
   sqlite.exec("CREATE TABLE t (id INTEGER PRIMARY KEY); INSERT INTO t VALUES (1);");
   sqlite.close();
   writeFileSync(join(dir, "connections.toml"), "version = 1\n");
+  // Idle sessions are checked every 2 seconds instead of every minute.
+  writeFileSync(join(dir, "settings.toml"), "[connections]\nkeepalive_seconds = 2\n");
   // DBeaver's file where it keeps it on Windows, under the APPDATA the app is given.
   const dbeaver = join(dir, "appdata", "DBeaverData", "workspace6", "General", ".dbeaver");
   mkdirSync(dbeaver, { recursive: true });

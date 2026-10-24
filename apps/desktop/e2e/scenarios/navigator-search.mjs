@@ -42,9 +42,15 @@ async function runInEditor(page, sql) {
   await page.key("a", "KeyA", 65, CTRL);
   await page.type(sql);
   await page.waitFor(`[...${visibleTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n') === ${JSON.stringify(sql)}`);
+  // Two DDL statements in a row print the same status, which React then leaves as it is: the
+  // result's notice is new on every run, so the old one is marked and a new one waited for.
+  await page.eval(`${visibleTab}.querySelectorAll('.notice').forEach(n => n.dataset.e2eOld = '1')`);
   await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
   await page.key("Enter", "Enter", 13, CTRL);
-  await page.waitFor(`(() => { const s = ${visibleTab}.querySelector('.statusbar span')?.textContent ?? ''; return s && !s.includes('Executing'); })()`, 15_000);
+  await page.waitFor(
+    `(() => { const s = ${visibleTab}.querySelector('.statusbar span')?.textContent ?? ''; const fresh = ${visibleTab}.querySelector('.notice:not([data-e2e-old])'); return (s && !s.includes('Executing')) || (fresh !== null && !fresh.textContent.includes('Executing')); })()`,
+    15_000,
+  );
 }
 
 async function password(page) {
