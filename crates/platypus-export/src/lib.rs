@@ -3,6 +3,9 @@
 //!
 //! Output goes to `<file>.part` and is renamed into place by [`Exporter::finish`]; an
 //! exporter dropped before that (cancelled or failed export) deletes the partial file.
+//! [`import`] goes the other way: rows of a data file into a table.
+
+pub mod import;
 
 use std::fs::File;
 use std::io::BufWriter;
