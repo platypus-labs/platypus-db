@@ -138,7 +138,7 @@ export interface PlanNode {
 export interface FullScan {
   table: string;
   filter: string;
-  /** Over all loops; without analyze PostgreSQL only estimates the rows kept. */
+  /** Over all loops; without analyze an estimate, which PostgreSQL does not give. */
   rows_read: number | null;
 }
 

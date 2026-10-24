@@ -28,7 +28,7 @@ pub struct FullScan {
     pub table: String,
     pub filter: String,
     /// Rows read, over all loops: actual with analyze; otherwise the planner's estimate,
-    /// which PostgreSQL gives only after the filter (a lower bound).
+    /// which PostgreSQL does not give (`None`).
     pub rows_read: Option<f64>,
 }
 

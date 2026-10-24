@@ -95,7 +95,8 @@ fn node(map: &Map<String, Value>) -> PlanNode {
 }
 
 /// A `Seq Scan` (or `Parallel Seq Scan`) with a filter. With analyze it read the rows it
-/// returned plus those the filter removed, per loop.
+/// returned plus those the filter removed, per loop. Without analyze PostgreSQL only
+/// estimates the rows kept, which says nothing of the rows read.
 fn full_scan(operation: &str, map: &Map<String, Value>) -> Option<FullScan> {
     let num = |k: &str| map.get(k).and_then(Value::as_f64);
     let s = |k: &str| map.get(k).and_then(Value::as_str);
@@ -105,12 +106,10 @@ fn full_scan(operation: &str, map: &Map<String, Value>) -> Option<FullScan> {
     Some(FullScan {
         table: s("Relation Name")?.to_owned(),
         filter: s("Filter")?.to_owned(),
-        rows_read: num("Actual Rows")
-            .map(|kept| {
-                (kept + num("Rows Removed by Filter").unwrap_or(0.0))
-                    * num("Actual Loops").unwrap_or(1.0)
-            })
-            .or(num("Plan Rows")),
+        rows_read: num("Actual Rows").map(|kept| {
+            (kept + num("Rows Removed by Filter").unwrap_or(0.0))
+                * num("Actual Loops").unwrap_or(1.0)
+        }),
     })
 }
 
@@ -156,10 +155,7 @@ mod tests {
         assert_eq!(scan.detail.as_deref(), Some("on orders o"));
         assert_eq!(scan.actual_rows, None);
         let full = scan.full_scan.as_ref().unwrap();
-        assert_eq!(
-            (full.table.as_str(), full.rows_read),
-            ("orders", Some(1000.0))
-        );
+        assert_eq!((full.table.as_str(), full.rows_read), ("orders", None));
         assert_eq!(index.full_scan, None);
         assert!(
             scan.properties
