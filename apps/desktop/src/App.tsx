@@ -12,6 +12,7 @@ import { UpdateBanner } from "./components/UpdateBanner";
 import { CommandPalette } from "./shell/CommandPalette";
 import "./tabs";
 import "./objects/actions";
+import "./querylog/actions";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { dbKey, provideWorkbench, workbench } from "./workbench";
 import { Icon, type IconName } from "./ui/Icon";
