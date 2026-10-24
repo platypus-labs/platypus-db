@@ -4559,6 +4559,7 @@ dependencies = [
  "futures",
  "platypus-core",
  "platypus-driver-duckdb",
+ "platypus-driver-mssql",
  "platypus-driver-mysql",
  "platypus-driver-pg",
  "platypus-driver-sqlite",

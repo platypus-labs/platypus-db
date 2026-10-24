@@ -55,7 +55,9 @@ impl Driver for MssqlDriver {
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<Box<dyn Connection>> {
-        Ok(Box::new(MssqlConnection::connect(config).await?))
+        let conn: Box<dyn Connection> = Box::new(MssqlConnection::connect(config).await?);
+        platypus_core::run_init(&*conn, &config.init, self.kind()).await?;
+        Ok(conn)
     }
 }
 
