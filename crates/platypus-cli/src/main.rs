@@ -13,6 +13,7 @@ use platypus_core::{
     Connection, ConnectionConfig, Driver, DriverKind, Error, ExecOptions, ExecResult,
     RecordBatchStream,
 };
+use platypus_driver_duckdb::DuckDbDriver;
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
 use platypus_driver_sqlite::SqliteDriver;
@@ -35,7 +36,8 @@ enum Command {
 #[derive(Debug, clap::Args)]
 struct QueryArgs {
     /// Connection URL, e.g. `postgres://user:pass@localhost:5432/db?sslmode=disable`,
-    /// `mysql://user:pass@localhost:3306/db` or `sqlite:///path/to/file.db`
+    /// `mysql://user:pass@localhost:3306/db`, `sqlite:///path/to/file.db` or
+    /// `duckdb:///path/to/file.duckdb`
     #[arg(short, long, env = "PLATYPUS_URL", hide_env_values = true)]
     url: String,
 
@@ -140,6 +142,7 @@ async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, Error
         DriverKind::Postgres => PgDriver.connect(config).await,
         DriverKind::MySql => MySqlDriver.connect(config).await,
         DriverKind::Sqlite => SqliteDriver.connect(config).await,
+        DriverKind::DuckDb => DuckDbDriver.connect(config).await,
     }
 }
 
