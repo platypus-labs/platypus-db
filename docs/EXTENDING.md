@@ -60,6 +60,28 @@ only see `connect_addr`, the local end of the tunnel, while `host` still names t
 for TLS. A new kind of path (a proxy, a port-forward) is a new module of `platypus-net`
 that sets `connect_addr` the same way.
 
+### Session setup
+
+`ConnectionConfig.init` (`platypus_core::SessionInit`) holds the default schema, the time
+zone and the bootstrap statements. Every driver calls `platypus_core::run_init` at the end
+of `connect`, so a reconnect sets the session up again; `SessionInit::sql` gives the
+statements per driver. A new driver does the same in its `connect`, and adds its case to
+`SessionInit::sql`.
+
+### Passwords
+
+Where a connection's password comes from, in order: a shell command
+(`platypus_store::command_password`), `.pgpass` (`pgpass_password`), then the store's
+`SecretStore`: the OS keychain (`KeyringSecrets`), or with a master password the encrypted
+`secrets.vault` (`VaultSecrets`, Argon2id key, AES-256-GCM). `ConnectionStore::move_secrets`
+moves every saved secret from one store to the other; `commands/vault.rs` turns the master
+password on and off. A locked vault makes `password` fail with `StoreError::Locked`, which
+the UI answers with the unlock dialog.
+
+`commands/health.rs` pings an idle session (`ping_session`): it measures the latency and
+reopens a connection the server dropped. Any answer from the server, an error included,
+counts as alive.
+
 ### SQL generation
 
 Anything that builds SQL goes through `platypus_sql::Dialect` (`crates/platypus-sql/src/dialect.rs`)
@@ -87,10 +109,12 @@ for the UI.
 
 ### Connections file
 
-`platypus_store::ConnectionStore` keeps `connections.toml`, now `version = 2`: a list of
+`platypus_store::ConnectionStore` keeps `connections.toml`, now `version = 3`: a list of
 `[[projects]]` (`id`, `name`, `color` as `#rrggbb`, `initials`, `connections`, the ids of
-its connections) before the `[[connections]]`. A connection can be in several projects, or
-in none. Version 1 files (no projects) are read and written back as version 2; a file with a
+its connections), then the `[[network_profiles]]` (an SSH tunnel and SSL settings that
+connections reference by `network_profile`; `ConnectionStore::effective` puts them in place
+of the connection's own), before the `[[connections]]`. A connection can be in several
+projects, or in none. Older files are read and written back as version 3; a file with a
 newer version is refused, so an older app never drops what it cannot read. Ids of
 connections that no longer exist are dropped when the file is opened, and deleting a
 connection removes it from every project.
