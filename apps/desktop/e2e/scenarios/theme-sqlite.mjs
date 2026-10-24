@@ -37,6 +37,9 @@ async function saved(dir, pattern) {
   assert.match(text, pattern);
 }
 
+// No saved connections: there is no navigator row to wait for.
+export const ready = `document.querySelector('.shell') !== null`;
+
 export default async function (page, { dir, shots }) {
   await page.waitFor(`document.querySelector('.shell') !== null`);
   await page.key(",", "Comma", 188, CTRL);

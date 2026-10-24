@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { actionsFor, runAction, shortcutLabel } from "../actions";
 import { api, type CompletionCatalog, type HistoryEntry, type SavedConnection, toCommandError } from "../api";
 import { qualifiedName, viewerSql } from "../sqlNames";
-import { workbench } from "../workbench";
+import { parseDbKey, workbench } from "../workbench";
 import { type FuzzyMatch, fuzzy } from "./fuzzy";
 
 /** Results shown at most. */
@@ -34,13 +34,20 @@ function Highlight({ text, match }: { text: string; match: FuzzyMatch }) {
   );
 }
 
-/** Opens `schema.table` of `connection` in a data viewer, finding whether it is a view. */
-async function openTable(connection: SavedConnection, catalog: CompletionCatalog, schema: string, table: string) {
+/** Opens `schema.table` of `connection` (`database`, `null` for the saved one) in a data
+ * viewer, finding whether it is a view. */
+async function openTable(
+  connection: SavedConnection,
+  database: string | null,
+  catalog: CompletionCatalog,
+  schema: string,
+  table: string,
+) {
   const current = schema === catalog.default_schema;
   const target = qualifiedName(connection.driver, { name: schema, current }, table);
   let kind: "table" | "view" = "table";
   try {
-    const id = await workbench().sideSession(connection);
+    const id = await workbench().sideSession(connection, database);
     if (id !== null) {
       const found = (await api.listObjects(id, schema)).find((o) => o.name === table);
       if (found && found.kind !== "table") kind = "view";
@@ -54,6 +61,7 @@ async function openTable(connection: SavedConnection, catalog: CompletionCatalog
     title: table,
     table: target,
     tableRef: { schema, name: table, kind },
+    database,
   });
 }
 
@@ -86,16 +94,17 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
         detail: c.driver === "sqlite" ? c.database : `${c.host}/${c.database}`,
         run: () => workbench().openTab("query", c.id),
       })),
-      ...Object.entries(catalogs).flatMap(([id, catalog]) => {
-        const connection = byId.get(id);
+      ...Object.entries(catalogs).flatMap(([key, catalog]) => {
+        const { connectionId, database } = parseDbKey(key);
+        const connection = byId.get(connectionId);
         if (!connection) return [];
         return Object.entries(catalog.schemas).flatMap(([schema, tables]) =>
           Object.keys(tables).map((table) => ({
-            key: `table:${id}:${schema}.${table}`,
+            key: `table:${connectionId}:${database ?? ""}:${schema}.${table}`,
             kind: "Table" as const,
             label: schema === catalog.default_schema ? table : `${schema}.${table}`,
-            detail: connection.name,
-            run: () => openTable(connection, catalog, schema, table),
+            detail: database ? `${connection.name} · ${database}` : connection.name,
+            run: () => openTable(connection, database, catalog, schema, table),
           })),
         );
       }),

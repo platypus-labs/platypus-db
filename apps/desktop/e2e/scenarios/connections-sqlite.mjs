@@ -50,6 +50,9 @@ export function setup({ dir }) {
 
 export const env = ({ dir }) => ({ APPDATA: join(dir, "appdata") });
 
+// No saved connections: the navigator only offers the import.
+export const ready = `document.querySelector('.empty-import') !== null`;
+
 export default async function (page, { dir, shots }) {
   await page.waitFor(`document.querySelector('.empty-import') !== null`);
   await page.eval(`document.querySelector('.empty-import').click()`);

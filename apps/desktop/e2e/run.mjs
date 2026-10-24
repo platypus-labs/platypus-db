@@ -1,7 +1,8 @@
 // Runs the end-to-end scenarios against the release build of the desktop app. A scenario
 // exports its steps as `default (page, ctx)`, and optionally `setup(ctx)` to seed the
-// profile before launch, `env(ctx)` with environment variables for the app and `skip()`
-// returning a reason not to run.
+// profile before launch, `env(ctx)` with environment variables for the app, `skip()`
+// returning a reason not to run and `ready`, the condition to wait for before the steps
+// (by default the navigator showing a connection).
 //
 //   npm run e2e                 every scenario in e2e/scenarios
 //   npm run e2e -- grid         scenarios whose file name contains "grid"
@@ -73,7 +74,7 @@ for (const file of scenarios) {
     }
     // A cold start (first launch of WebView2 on a CI runner) can take over 10 s to render
     // the saved connections; scenarios start once the navigator shows them.
-    await page.waitFor(`document.querySelector('.tree-row') !== null`, 60_000);
+    await page.waitFor(scenario.ready ?? `document.querySelector('.tree-row') !== null`, 60_000);
     await scenario.default(page, ctx);
     passed++;
     console.log(`ok   ${file} (${Math.round(performance.now() - started)} ms)`);

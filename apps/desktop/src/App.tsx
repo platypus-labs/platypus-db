@@ -12,7 +12,7 @@ import { CommandPalette } from "./shell/CommandPalette";
 import "./tabs";
 import "./objects/actions";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
-import { provideWorkbench, workbench } from "./workbench";
+import { dbKey, provideWorkbench, workbench } from "./workbench";
 import { type PersistedTab, loadWorkspace, saveWorkspace } from "./workspace";
 
 type Dialog = { kind: "connection"; connection: SavedConnection; existing: boolean } | { kind: "import" } | null;
@@ -418,10 +418,6 @@ export function App() {
   );
 }
 
-/** Sessions and catalogs are per connection and database; `null` is the saved one. */
-function dbKey(connectionId: string, database?: string | null) {
-  return `${connectionId}\u0000${database ?? ""}`;
-}
 
 interface ShellApi {
   tabs: TabModel[];

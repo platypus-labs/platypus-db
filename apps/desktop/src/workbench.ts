@@ -34,3 +34,14 @@ export function workbench(): Workbench {
   if (!current) throw new Error("the workbench is not ready yet");
   return current;
 }
+
+/** Sessions and catalogs are per connection and database; `null` is the saved one. */
+export function dbKey(connectionId: string, database?: string | null) {
+  return `${connectionId}\u0000${database ?? ""}`;
+}
+
+/** The connection and database of a `dbKey`. */
+export function parseDbKey(key: string): { connectionId: string; database: string | null } {
+  const [connectionId = "", database = ""] = key.split("\u0000");
+  return { connectionId, database: database || null };
+}
