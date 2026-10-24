@@ -1,5 +1,5 @@
 use crate::tds::stream::ReceivedToken;
-use crate::{row::ColumnType, Column, Row};
+use crate::{Column, Row};
 use futures_util::{
     ready,
     stream::{BoxStream, Peekable, Stream, StreamExt, TryStreamExt},
@@ -7,7 +7,10 @@ use futures_util::{
 use std::{
     fmt::Debug,
     pin::Pin,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     task::{self, Poll},
 };
 
@@ -92,6 +95,8 @@ pub struct QueryStream<'a> {
     token_stream: Peekable<BoxStream<'a, crate::Result<ReceivedToken>>>,
     columns: Option<Arc<Vec<Column>>>,
     result_set_index: Option<usize>,
+    /// PlatypusDB: the row counts of the `DONE` tokens read so far.
+    rows_affected: Arc<AtomicU64>,
 }
 
 impl<'a> Debug for QueryStream<'a> {
@@ -107,11 +112,28 @@ impl<'a> Debug for QueryStream<'a> {
 
 impl<'a> QueryStream<'a> {
     pub(crate) fn new(token_stream: BoxStream<'a, crate::Result<ReceivedToken>>) -> Self {
+        let rows_affected = Arc::new(AtomicU64::new(0));
+        let counter = Arc::clone(&rows_affected);
+        let token_stream = token_stream
+            .inspect_ok(move |token| {
+                if let ReceivedToken::Done(done) | ReceivedToken::DoneInProc(done) = token {
+                    if done.has_count() {
+                        counter.fetch_add(done.rows(), Ordering::Relaxed);
+                    }
+                }
+            })
+            .boxed();
         Self {
             token_stream: token_stream.peekable(),
             columns: None,
             result_set_index: None,
+            rows_affected,
         }
+    }
+
+    /// PlatypusDB: the rows the statements read so far changed, or returned, in total.
+    pub fn rows_affected(&self) -> u64 {
+        self.rows_affected.load(Ordering::Relaxed)
     }
 
     /// Moves the stream forward until having result metadata, stream end or an
@@ -365,10 +387,7 @@ impl<'a> Stream for QueryStream<'a> {
                     let column_meta = meta
                         .columns
                         .iter()
-                        .map(|x| Column {
-                            name: x.col_name.to_string(),
-                            column_type: ColumnType::from(&x.base.ty),
-                        })
+                        .map(|x| Column::from_type_info(x.col_name.to_string(), &x.base.ty))
                         .collect::<Vec<_>>();
 
                     let column_meta = Arc::new(column_meta);

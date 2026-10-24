@@ -78,32 +78,34 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TlsStream<S> {
 
         let client_config = match &config.trust {
             TrustConfig::CaCertificateLocation(path) => {
+                // PlatypusDB: a PEM file may hold a chain of several certificates.
                 if let Ok(buf) = fs::read(path) {
-                    let cert = match path.extension() {
-                            Some(ext)
+                    let certs = match path.extension() {
+                        Some(ext)
                             if ext.to_ascii_lowercase() == "pem"
                                 || ext.to_ascii_lowercase() == "crt" =>
-                                {
-                                    let pem_cert = rustls_pemfile::certs(&mut buf.as_slice())?;
-                                    if pem_cert.len() != 1 {
-                                        return Err(crate::Error::Io {
-                                            kind: IoErrorKind::InvalidInput,
-                                            message: format!("Certificate file {} contain 0 or more than 1 certs", path.to_string_lossy()),
-                                        });
-                                    }
-
-                                    Certificate(pem_cert.into_iter().next().unwrap())
-                                }
-                            Some(ext) if ext.to_ascii_lowercase() == "der" => {
-                                Certificate(buf)
-                            }
-                            Some(_) | None => return Err(crate::Error::Io {
-                                kind: IoErrorKind::InvalidInput,
-                                message: "Provided CA certificate with unsupported file-extension! Supported types are pem, crt and der.".to_string(),
-                            }),
-                        };
+                        {
+                            rustls_pemfile::certs(&mut buf.as_slice())?
+                                .into_iter()
+                                .map(Certificate)
+                                .collect::<Vec<_>>()
+                        }
+                        Some(ext) if ext.to_ascii_lowercase() == "der" => vec![Certificate(buf)],
+                        Some(_) | None => return Err(crate::Error::Io {
+                            kind: IoErrorKind::InvalidInput,
+                            message: "Provided CA certificate with unsupported file-extension! Supported types are pem, crt and der.".to_string(),
+                        }),
+                    };
+                    if certs.is_empty() {
+                        return Err(crate::Error::Io {
+                            kind: IoErrorKind::InvalidInput,
+                            message: format!("Certificate file {} contains no certificate", path.to_string_lossy()),
+                        });
+                    }
                     let mut cert_store = RootCertStore::empty();
-                    cert_store.add(&cert)?;
+                    for cert in &certs {
+                        cert_store.add(cert)?;
+                    }
                     builder
                         .with_root_certificates(cert_store)
                         .with_no_client_auth()
@@ -130,7 +132,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TlsStream<S> {
             }
             TrustConfig::Default => {
                 event!(Level::INFO, "Using default trust configuration.");
-                builder.with_native_roots().with_no_client_auth()
+                builder.with_native_roots()?.with_no_client_auth()
             }
         };
 
@@ -181,17 +183,23 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> AsyncWrite for TlsStream<S> {
 }
 
 trait ConfigBuilderExt {
-    fn with_native_roots(self) -> ConfigBuilder<ClientConfig, WantsTransparencyPolicyOrClientCert>;
+    fn with_native_roots(
+        self,
+    ) -> crate::Result<ConfigBuilder<ClientConfig, WantsTransparencyPolicyOrClientCert>>;
 }
 
 impl ConfigBuilderExt for ConfigBuilder<ClientConfig, WantsVerifier> {
-    fn with_native_roots(self) -> ConfigBuilder<ClientConfig, WantsTransparencyPolicyOrClientCert> {
+    // PlatypusDB: errors instead of panics when the platform has no certificates.
+    fn with_native_roots(
+        self,
+    ) -> crate::Result<ConfigBuilder<ClientConfig, WantsTransparencyPolicyOrClientCert>> {
         let mut roots = RootCertStore::empty();
         let mut valid_count = 0;
         let mut invalid_count = 0;
 
-        for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs")
-        {
+        let certs = rustls_native_certs::load_native_certs()
+            .map_err(|e| Error::Tls(format!("could not load platform certificates: {e}")))?;
+        for cert in certs {
             let cert = Certificate(cert.0);
             match roots.add(&cert) {
                 Ok(_) => valid_count += 1,
@@ -208,8 +216,10 @@ impl ConfigBuilderExt for ConfigBuilder<ClientConfig, WantsVerifier> {
             valid_count,
             invalid_count
         );
-        assert!(!roots.is_empty(), "no CA certificates found");
+        if roots.is_empty() {
+            return Err(Error::Tls("no CA certificates found".to_owned()));
+        }
 
-        self.with_root_certificates(roots)
+        Ok(self.with_root_certificates(roots))
     }
 }

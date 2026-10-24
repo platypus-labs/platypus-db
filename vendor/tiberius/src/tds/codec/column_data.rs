@@ -20,6 +20,7 @@ mod text;
 #[cfg(feature = "tds73")]
 mod time;
 mod var_len;
+mod variant;
 mod xml;
 
 use super::{Encode, FixedLenType, TypeInfo, VarLenType};
@@ -133,7 +134,12 @@ impl<'a> ColumnData<'a> {
                 VarLenType::Decimaln | VarLenType::Numericn => {
                     ColumnData::Numeric(Numeric::decode(src, *scale).await?)
                 }
-                _ => todo!(),
+                // PlatypusDB: an error instead of a panic.
+                ty => {
+                    return Err(crate::Error::Protocol(
+                        format!("{:?} with a precision is not supported", ty).into(),
+                    ))
+                }
             },
             TypeInfo::Xml { schema, size } => xml::decode(src, *size, schema.clone()).await?,
         };

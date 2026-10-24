@@ -41,7 +41,15 @@ where
         Text => super::text::decode(src, collation).await?,
         NText => super::text::decode(src, None).await?,
         Image => super::image::decode(src).await?,
-        t => unimplemented!("{:?}", t),
+        // PlatypusDB: UDT values are their serialized bytes, variants their base value.
+        Udt => super::binary::decode(src, len).await?,
+        SSVariant => super::variant::decode(src).await?,
+        #[allow(unreachable_patterns)]
+        t => {
+            return Err(crate::Error::Protocol(
+                format!("column type {:?} is not supported", t).into(),
+            ))
+        }
     };
 
     Ok(res)

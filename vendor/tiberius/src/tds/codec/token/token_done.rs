@@ -57,6 +57,11 @@ impl TokenDone {
     pub(crate) fn rows(&self) -> u64 {
         self.done_rows
     }
+
+    /// PlatypusDB: whether `rows` is a row count.
+    pub(crate) fn has_count(&self) -> bool {
+        self.status.contains(DoneStatus::Count)
+    }
 }
 
 impl Encode<BytesMut> for TokenDone {

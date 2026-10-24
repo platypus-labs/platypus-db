@@ -6,7 +6,7 @@ use std::{
 use crate::{
     error::Error,
     tds::codec::{Encode, FixedLenType, TokenType, TypeInfo, VarLenType},
-    Column, ColumnData, ColumnType, SqlReadBytes,
+    Column, ColumnData, SqlReadBytes,
 };
 use asynchronous_codec::BytesMut;
 use bytes::BufMut;
@@ -167,11 +167,11 @@ impl BaseMetaDataColumn {
                 VarLenType::NVarchar => ColumnData::String(None),
                 VarLenType::NChar => ColumnData::String(None),
                 VarLenType::Xml => ColumnData::Xml(None),
-                VarLenType::Udt => todo!("User-defined types not supported"),
+                VarLenType::Udt => ColumnData::Binary(None),
                 VarLenType::Text => ColumnData::String(None),
                 VarLenType::Image => ColumnData::Binary(None),
                 VarLenType::NText => ColumnData::String(None),
-                VarLenType::SSVariant => todo!(),
+                VarLenType::SSVariant => ColumnData::String(None),
             },
             TypeInfo::VarLenSizedPrecision { ty, .. } => match ty {
                 VarLenType::Guid => ColumnData::Guid(None),
@@ -197,11 +197,11 @@ impl BaseMetaDataColumn {
                 VarLenType::NVarchar => ColumnData::String(None),
                 VarLenType::NChar => ColumnData::String(None),
                 VarLenType::Xml => ColumnData::Xml(None),
-                VarLenType::Udt => todo!("User-defined types not supported"),
+                VarLenType::Udt => ColumnData::Binary(None),
                 VarLenType::Text => ColumnData::String(None),
                 VarLenType::Image => ColumnData::Binary(None),
                 VarLenType::NText => ColumnData::String(None),
-                VarLenType::SSVariant => todo!(),
+                VarLenType::SSVariant => ColumnData::String(None),
             },
             TypeInfo::Xml { .. } => ColumnData::Xml(None),
         }
@@ -312,10 +312,9 @@ impl TokenColMetaData<'static> {
 
 impl<'a> TokenColMetaData<'a> {
     pub(crate) fn columns(&self) -> impl Iterator<Item = Column> + '_ {
-        self.columns.iter().map(|x| Column {
-            name: x.col_name.to_string(),
-            column_type: ColumnType::from(&x.base.ty),
-        })
+        self.columns
+            .iter()
+            .map(|x| Column::from_type_info(x.col_name.to_string(), &x.base.ty))
     }
 }
 

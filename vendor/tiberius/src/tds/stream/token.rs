@@ -226,7 +226,19 @@ where
                 }
             }
 
-            let ty_byte = this.conn.read_u8().await?;
+            let mut ty_byte = this.conn.read_u8().await?;
+
+            // PlatypusDB: browse-mode TABNAME (0xA4) and COLINFO (0xA5) tokens are skipped.
+            while ty_byte == 0xA4 || ty_byte == 0xA5 {
+                let len = this.conn.read_u16_le().await? as usize;
+                for _ in 0..len {
+                    this.conn.read_u8().await?;
+                }
+                if this.conn.is_eof() {
+                    return Ok(None);
+                }
+                ty_byte = this.conn.read_u8().await?;
+            }
 
             let ty = TokenType::try_from(ty_byte)
                 .map_err(|_| Error::Protocol(format!("invalid token type {:x}", ty_byte).into()))?;
@@ -247,7 +259,12 @@ where
                 TokenType::LoginAck => this.get_login_ack().await?,
                 TokenType::Sspi => this.get_sspi().await?,
                 TokenType::FeatureExtAck => this.get_feature_ext_ack().await?,
-                _ => panic!("Token {:?} unimplemented!", ty),
+                // PlatypusDB: an error instead of a panic.
+                _ => {
+                    return Err(Error::Protocol(
+                        format!("token {:?} is not supported", ty).into(),
+                    ))
+                }
             };
 
             Ok(Some((token, this)))

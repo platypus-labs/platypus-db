@@ -250,6 +250,39 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Connection<S> {
         Ok(())
     }
 
+    /// PlatypusDB: reads and drops whole packets until a message ends with a `DONE`
+    /// token acknowledging an attention. The token decoder may have stopped anywhere, so
+    /// the payload is not parsed: the acknowledgment is the last token of its message.
+    pub(crate) async fn discard_until_attention(&mut self) -> crate::Result<()> {
+        // DONE: token type, status, current command, row count.
+        let done_len = 5 + self.context.version().done_row_count_bytes() as usize;
+        let mut tail: Vec<u8> = Vec::with_capacity(2 * done_len);
+        self.buf.truncate(0);
+        while let Some(packet) = self.try_next().await? {
+            let last = packet.is_last();
+            let (_, payload) = packet.into_parts();
+            tail.extend_from_slice(&payload);
+            if tail.len() > done_len {
+                tail.drain(..tail.len() - done_len);
+            }
+            if last {
+                let status = if tail.len() == done_len && tail[0] == 0xFD {
+                    u16::from_le_bytes([tail[1], tail[2]])
+                } else {
+                    0
+                };
+                if status & 0x20 != 0 {
+                    self.flushed = true;
+                    return Ok(());
+                }
+                tail.clear();
+            }
+        }
+        Err(crate::Error::Protocol(
+            "the connection closed before the cancel was acknowledged".into(),
+        ))
+    }
+
     /// True if the underlying stream has no more data and is consumed
     /// completely.
     pub fn is_eof(&self) -> bool {

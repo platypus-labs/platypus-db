@@ -100,6 +100,15 @@ impl PacketHeader {
         }
     }
 
+    /// PlatypusDB: an attention signal, which has no payload.
+    pub fn attention(id: u8) -> Self {
+        Self {
+            ty: PacketType::AttentionSignal,
+            status: PacketStatus::EndOfMessage,
+            ..Self::new(0, id)
+        }
+    }
+
     pub fn bulk_load(id: u8) -> Self {
         Self {
             ty: PacketType::BulkLoad,

@@ -10,12 +10,72 @@ use std::{fmt::Display, sync::Arc};
 pub struct Column {
     pub(crate) name: String,
     pub(crate) column_type: ColumnType,
+    /// PlatypusDB: `(precision, scale)` of decimals, `scale` of time types.
+    pub(crate) precision: Option<u8>,
+    pub(crate) scale: Option<u8>,
+    /// PlatypusDB: the declared length in bytes of sized types; `None` for `max` types.
+    pub(crate) max_length: Option<usize>,
 }
 
 impl Column {
     /// Construct a new Column.
     pub fn new(name: String, column_type: ColumnType) -> Self {
-        Self { name, column_type }
+        Self {
+            name,
+            column_type,
+            precision: None,
+            scale: None,
+            max_length: None,
+        }
+    }
+
+    /// PlatypusDB: a column described by its metadata.
+    pub(crate) fn from_type_info(name: String, ty: &TypeInfo) -> Self {
+        let mut column = Self::new(name, ColumnType::from(ty));
+        match ty {
+            TypeInfo::VarLenSizedPrecision {
+                precision, scale, ..
+            } => {
+                column.precision = Some(*precision);
+                column.scale = Some(*scale);
+            }
+            TypeInfo::VarLenSized(cx) => match cx.r#type() {
+                #[cfg(feature = "tds73")]
+                VarLenType::Timen | VarLenType::Datetime2 | VarLenType::DatetimeOffsetn => {
+                    column.scale = Some(cx.len() as u8);
+                }
+                VarLenType::BigVarChar
+                | VarLenType::BigChar
+                | VarLenType::NVarchar
+                | VarLenType::NChar
+                | VarLenType::BigVarBin
+                | VarLenType::BigBinary
+                    if cx.len() != 0xffff =>
+                {
+                    column.max_length = Some(cx.len());
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+        column
+    }
+
+    /// PlatypusDB: the precision of a `decimal` or `numeric` column.
+    pub fn precision(&self) -> Option<u8> {
+        self.precision
+    }
+
+    /// PlatypusDB: the digits after the point of a `decimal`, `numeric`, `time`,
+    /// `datetime2` or `datetimeoffset` column.
+    pub fn scale(&self) -> Option<u8> {
+        self.scale
+    }
+
+    /// PlatypusDB: the declared length in bytes of a `char`, `varchar`, `nchar`,
+    /// `nvarchar`, `binary` or `varbinary` column; `None` for `max` and other types.
+    pub fn max_length(&self) -> Option<usize> {
+        self.max_length
     }
 
     /// The name of the column.

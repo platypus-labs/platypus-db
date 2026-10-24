@@ -314,7 +314,23 @@ impl TypeInfo {
                     VarLenType::Image | VarLenType::Text | VarLenType::NText => {
                         src.read_u32_le().await? as usize
                     }
-                    _ => todo!("not yet implemented for {:?}", ty),
+                    // PlatypusDB: UDT_INFO is the maximum size followed by the type's
+                    // database, schema, name and assembly; values travel as varbinary.
+                    VarLenType::Udt => {
+                        let len = src.read_u16_le().await? as usize;
+                        src.read_b_varchar().await?;
+                        src.read_b_varchar().await?;
+                        src.read_b_varchar().await?;
+                        src.read_us_varchar().await?;
+                        len
+                    }
+                    // PlatypusDB: `sql_variant` has a 4-byte maximum length.
+                    VarLenType::SSVariant => src.read_u32_le().await? as usize,
+                    _ => {
+                        return Err(Error::Protocol(
+                            format!("column type {:?} is not supported", ty).into(),
+                        ))
+                    }
                 };
 
                 let collation = match ty {

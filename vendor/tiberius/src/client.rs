@@ -347,6 +347,38 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
         BulkLoadRequest::new(&mut self.connection, columns)
     }
 
+    /// PlatypusDB: sends a batch of SQL statements without reading the response, which
+    /// [`batch_results`](Self::batch_results) then reads. Unlike
+    /// [`simple_query`](Self::simple_query), the reading half can be dropped at any point
+    /// and the statements stopped with [`cancel`](Self::cancel).
+    pub async fn send_batch<'b>(&mut self, query: impl Into<Cow<'b, str>>) -> crate::Result<()> {
+        self.connection.flush_stream().await?;
+        let req = BatchRequest::new(query, self.connection.context().transaction_descriptor());
+        let id = self.connection.context_mut().next_packet_id();
+        self.connection.send(PacketHeader::batch(id), req).await
+    }
+
+    /// PlatypusDB: the results of the batch sent by [`send_batch`](Self::send_batch).
+    pub async fn batch_results(&mut self) -> crate::Result<QueryStream<'_>> {
+        let ts = TokenStream::new(&mut self.connection);
+        let mut result = QueryStream::new(ts.try_unfold());
+        result.forward_to_metadata().await?;
+        Ok(result)
+    }
+
+    /// PlatypusDB: stops the running request with an attention signal, and discards the
+    /// rest of its response up to the server's acknowledgment. The connection can be used
+    /// again afterwards. Call it only after a request was sent, once its reading has been
+    /// abandoned.
+    pub async fn cancel(&mut self) -> crate::Result<()> {
+        let id = self.connection.context_mut().next_packet_id();
+        self.connection
+            .write_to_wire(PacketHeader::attention(id), bytes::BytesMut::new())
+            .await?;
+        self.connection.flush_sink().await?;
+        self.connection.discard_until_attention().await
+    }
+
     /// Closes this database connection explicitly.
     pub async fn close(self) -> crate::Result<()> {
         self.connection.close().await
