@@ -101,7 +101,7 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 | N — Accesso per agenti (MCP) | libero |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
-| Progetti (spazi di lavoro) | 🔒 Delfa · group-projects · 2026-10-24 |
+| Progetti (spazi di lavoro) | ✅ fatto (parte B) |
 
 ### Gruppo A — Modifica dei dati
 
