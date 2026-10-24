@@ -117,7 +117,12 @@ export default async function (page, { dir, shots }) {
     "DELETE FROM main.orders WHERE id = 12;DELETE FROM main.orders WHERE id = 13;",
   );
   await page.eval(`${button(visibleTab, "▶▶ Script")}.click()`);
-  await page.waitFor(`${visibleTab}.querySelectorAll('.result-tab').length === 2`, 15_000);
+  // Both result tabs appear when the script starts; Ctrl+Enter is ignored until it ends.
+  await page.waitFor(
+    `${visibleTab}.querySelectorAll('.result-tab').length === 2 && ` +
+      `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.textContent.includes('Cancel'))?.disabled`,
+    15_000,
+  );
 
   // A query of one table edits like the table; computed columns stay read-only.
   await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);

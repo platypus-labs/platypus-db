@@ -83,6 +83,8 @@ export default async function (page) {
       "UPDATE main.items SET name = 'zed' WHERE id = 1;\n" +
       "INSERT INTO main.items (name) VALUES ('x');",
   );
+  // Blank the status, so the wait below sees the reload's and not the one before it.
+  await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
   await page.eval(`[...document.querySelectorAll('.modal button')].find(b => b.textContent === 'Save').click()`);
   await page.waitFor(`document.querySelector('.sql-preview') === null`);
   // Saving reloads the table.
