@@ -13,10 +13,10 @@ pub enum Shape {
         x: f64,
         y: f64,
     },
-    /// A line string, or a closed path.
+    /// A line string or an open path. PostgreSQL prints a closed path as a polygon: it is
+    /// read as one.
     Line {
         points: Vec<[f64; 2]>,
-        closed: bool,
     },
     /// The outer ring first, then the holes.
     Polygon {
@@ -153,12 +153,15 @@ impl<'a> Wkb<'a> {
         match kind {
             1 => {
                 let [x, y] = point(self)?;
-                // An empty point is NaN, NaN.
-                (!x.is_nan()).then_some(Shape::Point { x, y })
+                // An empty point is NaN, NaN: an empty shape, as `POINT EMPTY` in WKT.
+                Some(if x.is_nan() {
+                    Shape::Collection { items: Vec::new() }
+                } else {
+                    Shape::Point { x, y }
+                })
             }
             2 => Some(Shape::Line {
                 points: points(self)?,
-                closed: false,
             }),
             3 => {
                 let n = self.u32(little)?;
@@ -167,16 +170,9 @@ impl<'a> Wkb<'a> {
             }
             4..=7 => {
                 let n = self.u32(little)?;
-                let mut items = Vec::new();
-                for _ in 0..n {
-                    // An empty point inside a multi-point is left out.
-                    let before = self.at;
-                    match self.geometry(depth + 1) {
-                        Some(item) => items.push(item),
-                        None if self.at > before && kind == 4 => {}
-                        None => return None,
-                    }
-                }
+                let items = (0..n)
+                    .map(|_| self.geometry(depth + 1))
+                    .collect::<Option<Vec<_>>>()?;
                 Some(Shape::Collection { items })
             }
             _ => None,
@@ -303,7 +299,6 @@ impl<'a> Wkt<'a> {
             }
             "LINESTRING" => Some(Shape::Line {
                 points: self.points()?,
-                closed: false,
             }),
             "POLYGON" => Some(Shape::Polygon {
                 rings: self.list(Self::points)?,
@@ -315,10 +310,7 @@ impl<'a> Wkt<'a> {
                 items: self
                     .list(Self::points)?
                     .into_iter()
-                    .map(|points| Shape::Line {
-                        points,
-                        closed: false,
-                    })
+                    .map(|points| Shape::Line { points })
                     .collect(),
             }),
             "MULTIPOLYGON" => Some(Shape::Collection {
@@ -353,10 +345,7 @@ fn pg_geometric(text: &str) -> Option<Shape> {
     let points = pg_points(text)?;
     if text.starts_with('[') {
         // lseg and open path.
-        return Some(Shape::Line {
-            points,
-            closed: false,
-        });
+        return Some(Shape::Line { points });
     }
     match points[..] {
         [[x, y]] => Some(Shape::Point { x, y }),
@@ -438,7 +427,6 @@ mod tests {
         }
         let expected = Shape::Line {
             points: vec![[0.0, 0.0], [1.0, 1.0]],
-            closed: false,
         };
         assert_eq!(from_bytes(&line), Some(expected.clone()));
         let mut multi = vec![1];
@@ -452,6 +440,27 @@ mod tests {
                 items: vec![point(5.0, 6.0), expected]
             })
         );
+    }
+
+    #[test]
+    fn reads_empty_points_inside_collections() {
+        // GEOMETRYCOLLECTION (POINT EMPTY, POINT (1 2))
+        let mut multi = vec![1];
+        multi.extend(7_u32.to_le_bytes());
+        multi.extend(2_u32.to_le_bytes());
+        multi.extend(wkb_point(f64::NAN, f64::NAN));
+        multi.extend(wkb_point(1.0, 2.0));
+        assert_eq!(
+            from_bytes(&multi),
+            Some(Shape::Collection {
+                items: vec![Shape::Collection { items: vec![] }, point(1.0, 2.0)]
+            })
+        );
+        // A bad item fails the whole value instead of being skipped.
+        let mut bad = multi[..9].to_vec();
+        bad.extend([1, 99, 0, 0, 0]);
+        bad.extend(wkb_point(1.0, 2.0));
+        assert_eq!(from_bytes(&bad), None);
     }
 
     #[test]
@@ -497,8 +506,7 @@ mod tests {
                 items: vec![
                     point(1.0, 2.0),
                     Shape::Line {
-                        points: vec![[0.0, 0.0], [1.0, 1.0]],
-                        closed: false
+                        points: vec![[0.0, 0.0], [1.0, 1.0]]
                     }
                 ]
             })
@@ -536,8 +544,7 @@ mod tests {
         assert_eq!(
             from_text("[(0,0),(2.5,1)]"),
             Some(Shape::Line {
-                points: vec![[0.0, 0.0], [2.5, 1.0]],
-                closed: false
+                points: vec![[0.0, 0.0], [2.5, 1.0]]
             })
         );
         assert_eq!(

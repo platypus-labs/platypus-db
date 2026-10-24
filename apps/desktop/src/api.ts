@@ -379,7 +379,7 @@ export interface ColumnStats {
 /** A geometry in plane coordinates, as `platypus_core::geometry::Shape`. */
 export type Shape =
   | { type: "point"; x: number; y: number }
-  | { type: "line"; points: [number, number][]; closed: boolean }
+  | { type: "line"; points: [number, number][] }
   /** The outer ring first, then the holes. */
   | { type: "polygon"; rings: [number, number][][] }
   | { type: "circle"; x: number; y: number; r: number }

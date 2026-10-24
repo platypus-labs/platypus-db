@@ -561,7 +561,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
 
   return {
     edit: target ? edit : undefined,
-    catalog: keys,
+    catalog: keys ?? (meta && "catalog" in meta && meta.catalog ? { ...meta.catalog, key: [] } : null),
     bar,
     dialog: (
       <>

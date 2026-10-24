@@ -271,9 +271,11 @@ export function QueryTab({
     });
   }
 
-  /** Runs what `mode` selects in the editor, or `again` (the statements of the last run);
-   *  `history` false keeps it out of the query history. */
-  async function run(mode: RunMode, force = false, again?: Planned[], history = true) {
+  /** Runs what `mode` selects in the editor, or `again` (the statements of the last run).
+   *  An `auto` refresh stays out of the query history, keeps the result tab shown and the
+   *  editor as it is, and stops refreshing when a statement fails. */
+  async function run(mode: RunMode, force = false, again?: Planned[], auto = false) {
+    const history = !auto;
     if (running && !force) return;
     if (unsaved.current && !window.confirm("Discard the changes to the data that are not saved?")) return;
     let planned: Planned[];
@@ -314,7 +316,7 @@ export function QueryTab({
       limit: script ? getSetting(scriptRowLimit) : null,
     }));
     setResults(initial);
-    setActiveResult(0);
+    if (!auto) setActiveResult(0);
     setRunning(true);
     editor.current!.setError(null);
 
@@ -326,8 +328,10 @@ export function QueryTab({
       const p = planned[i]!;
       if (token !== runToken.current) return;
       update(result.id, { status: { kind: "running" } });
-      setActiveResult(i);
-      editor.current!.flash(p.offset, p.offset + p.sql.length);
+      if (!auto) {
+        setActiveResult(i);
+        editor.current!.flash(p.offset, p.offset + p.sql.length);
+      }
       let status = await runOne(sessionId, result, token, history);
       // A dropped connection fails before the statement reaches the server; the second
       // attempt runs on a reopened connection.
@@ -339,13 +343,16 @@ export function QueryTab({
       if (status.kind === "rows") lastRows = i;
       if (status.kind === "error") {
         failed = i;
-        showError(p, status);
+        // The editor may have changed since the statements were planned: no marker there.
+        if (!auto) showError(p, status);
+        else onError(`Auto-refresh stopped: ${status.error.message}`);
         const skipped = new Set(initial.slice(i + 1).map((r) => r.id));
         setResults((all) => all.map((r) => (skipped.has(r.id) ? { ...r, status: { kind: "skipped" } } : r)));
         break;
       }
     }
-    setActiveResult(failed >= 0 ? failed : lastRows >= 0 ? lastRows : initial.length - 1);
+    if (auto && failed >= 0) setRefreshEvery(null);
+    if (!auto || failed >= 0) setActiveResult(failed >= 0 ? failed : lastRows >= 0 ? lastRows : initial.length - 1);
     setRunning(false);
     currentJob.current = null;
     if (planned.some((p) => DDL.test(p.sql))) {
@@ -626,7 +633,7 @@ export function QueryTab({
       onError("Auto-refresh stopped: the last statements change data.");
       return;
     }
-    void run("statement", false, again, false);
+    void run("statement", false, again, true);
   };
   useEffect(() => {
     if (refreshEvery === null || !active) return;

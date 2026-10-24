@@ -1282,7 +1282,6 @@ async fn reads_geometries() {
     let point = Shape::Point { x: 1.0, y: 2.0 };
     let line = Shape::Line {
         points: vec![[0.0, 0.0], [2.0, 1.0]],
-        closed: false,
     };
     for b in backends().await {
         let conn = b.connect().await;

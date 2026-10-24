@@ -29,9 +29,9 @@ pub struct Located {
 #[derive(Debug, Default, Serialize, PartialEq)]
 pub struct Geometries {
     shapes: Vec<Located>,
-    /// Cells that are not NULL and hold no geometry.
+    /// Cells read that are not NULL and hold no geometry.
     unreadable: usize,
-    /// More cells had a geometry than were reported.
+    /// The limit was reached before the last cell: the rest was not read.
     truncated: bool,
 }
 
@@ -45,10 +45,21 @@ fn geometries_of(
     let mut first = offset;
     let mut text = String::new();
     for batch in batches {
-        for &column in columns {
-            let array = batch.column(column);
-            let formatter = ArrayFormatter::try_new(array.as_ref(), &options)?;
-            for row in (0..array.len()).filter(|&r| !array.is_null(r)) {
+        let formatters = columns
+            .iter()
+            .map(|&c| ArrayFormatter::try_new(batch.column(c).as_ref(), &options))
+            .collect::<Result<Vec<_>, _>>()?;
+        // Row by row, so that the limit keeps the first rows of every column.
+        for row in 0..batch.num_rows() {
+            for (&column, formatter) in columns.iter().zip(&formatters) {
+                let array = batch.column(column);
+                if array.is_null(row) {
+                    continue;
+                }
+                if out.shapes.len() == SHAPE_LIMIT {
+                    out.truncated = true;
+                    return Ok(out);
+                }
                 let shape = if let Some(bytes) = binary_at(array.as_ref(), row) {
                     geometry::from_bytes(bytes)
                 } else {
@@ -58,7 +69,6 @@ fn geometries_of(
                 };
                 match shape {
                     None => out.unreadable += 1,
-                    Some(_) if out.shapes.len() == SHAPE_LIMIT => out.truncated = true,
                     Some(shape) => out.shapes.push(Located {
                         row: first + row,
                         column,
@@ -69,7 +79,6 @@ fn geometries_of(
         }
         first += batch.num_rows();
     }
-    out.shapes.sort_by_key(|s| (s.row, s.column));
     Ok(out)
 }
 

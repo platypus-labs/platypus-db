@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
+use std::hash::{BuildHasher, RandomState};
 
 use arrow_array::cast::AsArray;
 use arrow_array::types::Float64Type;
@@ -134,6 +135,7 @@ fn column_stats_of(
     let options = display::format_options();
     let mut out = Vec::with_capacity(columns.len());
     let mut text = String::new();
+    let hasher = RandomState::new();
     for &c in columns {
         let mut s = ColumnStats {
             column: c,
@@ -142,7 +144,8 @@ fn column_stats_of(
         let numeric = batches
             .first()
             .is_some_and(|b| b.column(c).data_type().is_numeric());
-        let mut seen: HashSet<String> = HashSet::new();
+        // Hashes, not copies of the values: a 64-bit collision is too rare to skew the count.
+        let mut seen: HashSet<u64> = HashSet::new();
         let mut numbers: Vec<f64> = Vec::new();
         for batch in batches {
             let array = batch.column(c);
@@ -152,8 +155,14 @@ fn column_stats_of(
             for row in (0..array.len()).filter(|&r| !array.is_null(r)) {
                 text.clear();
                 let _ = write!(text, "{}", formatter.value(row));
-                if !seen.contains(&text) {
-                    seen.insert(text.clone());
+                if !seen.insert(hasher.hash_one(&text)) || numeric {
+                    continue;
+                }
+                if s.first.as_ref().is_none_or(|first| text < *first) {
+                    s.first = Some(text.clone());
+                }
+                if s.last.as_ref().is_none_or(|last| text > *last) {
+                    s.last = Some(text.clone());
                 }
             }
             if numeric {
@@ -164,9 +173,6 @@ fn column_stats_of(
         s.distinct = seen.len();
         if numeric {
             s.numbers = number_stats(&mut numbers);
-        } else {
-            s.first = seen.iter().min().cloned();
-            s.last = seen.iter().max().cloned();
         }
         out.push(s);
     }

@@ -1,18 +1,5 @@
-import {
-  type PointerEvent as ReactPointerEvent,
-  type RefObject,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {
-  api,
-  type ColumnInfo,
-  type Geometries,
-  type Shape,
-  toCommandError,
-} from "../api";
+import { type PointerEvent as ReactPointerEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { api, type ColumnInfo, type Geometries, type Shape, toCommandError } from "../api";
 import type { GridApi } from "../grid/DataGrid";
 
 interface Props {
@@ -47,78 +34,60 @@ interface View {
 
 const PADDING = 16;
 const POINT_RADIUS = 3.5;
+/** Waits for the rows to settle, e.g. while a result streams in. */
+const DELAY_MS = 300;
 
 /** The geometries of the selected columns in every loaded row, drawn on plane axes. */
-export function MapPanel({
-  jobId,
-  columns,
-  grid,
-  selection,
-  rows,
-  version,
-  focusedRow,
-  onPick,
-  onClose,
-}: Props) {
-  const [cols, setCols] = useState<number[]>(
-    () => grid.current?.selection()?.cols ?? [],
-  );
+export function MapPanel({ jobId, columns, grid, selection, rows, version, focusedRow, onPick, onClose }: Props) {
+  const [cols, setCols] = useState<number[]>(() => grid.current?.selection()?.cols ?? []);
   const [data, setData] = useState<Geometries | null>(null);
   const [error, setError] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [view, setView] = useState<View | null>(null);
-  const drag = useRef<{
-    x: number;
-    y: number;
-    view: View;
-    moved: boolean;
-  } | null>(null);
+  const drag = useRef<{ x: number; y: number; view: View; moved: boolean } | null>(null);
 
   useEffect(() => {
     const next = grid.current?.selection()?.cols;
     if (next && next.join() !== cols.join()) setCols(next);
   }, [selection]);
 
+  // Each fetch reads every loaded row again, so it waits for them to settle.
   useEffect(() => {
     let live = true;
     if (cols.length === 0) return;
-    api.geometries(jobId, 0, rows, cols).then(
-      (g) => {
-        if (!live) return;
-        setData(g);
-        setError(null);
-      },
-      (e) => live && setError(toCommandError(e).message),
-    );
+    const timer = setTimeout(() => {
+      api.geometries(jobId, 0, rows, cols).then(
+        (g) => {
+          if (!live) return;
+          setData(g);
+          setError(null);
+        },
+        (e) => live && setError(toCommandError(e).message),
+      );
+    }, DELAY_MS);
     return () => {
       live = false;
+      clearTimeout(timer);
     };
   }, [jobId, cols.join(), rows, version]);
+  // Other columns or another result are shown whole again; more rows keep the view.
+  useEffect(() => setView(null), [jobId, cols.join()]);
 
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const observer = new ResizeObserver(() =>
-      setSize({ w: el.clientWidth, h: el.clientHeight }),
-    );
+    const observer = new ResizeObserver(() => setSize({ w: el.clientWidth, h: el.clientHeight }));
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
-  const bounds = useMemo(
-    () => (data ? boundsOf(data.shapes.map((s) => s.shape)) : null),
-    [data],
-  );
+  const bounds = useMemo(() => (data ? boundsOf(data.shapes.map((s) => s.shape)) : null), [data]);
   const fitted = bounds && size.w > 0 ? fit(bounds, size.w, size.h) : null;
-  // A new set of shapes is shown whole again.
-  useEffect(() => setView(null), [bounds]);
   const v = view ?? fitted;
 
   const toScreen = (x: number, y: number): [number, number] =>
-    v
-      ? [size.w / 2 + (x - v.cx) * v.scale, size.h / 2 - (y - v.cy) * v.scale]
-      : [0, 0];
+    v ? [size.w / 2 + (x - v.cx) * v.scale, size.h / 2 - (y - v.cy) * v.scale] : [0, 0];
 
   const onWheel = (e: React.WheelEvent) => {
     if (!v || !box.current) return;
@@ -156,11 +125,7 @@ export function MapPanel({
     if (d?.moved) return;
     // A click, not a drag: the shape under the pointer, if any, picks its cell.
     const target = (e.target as Element).closest("[data-row]");
-    if (target)
-      onPick(
-        Number(target.getAttribute("data-row")),
-        Number(target.getAttribute("data-col")),
-      );
+    if (target) onPick(Number(target.getAttribute("data-row")), Number(target.getAttribute("data-col")));
   };
 
   const shapes = data?.shapes ?? [];
@@ -168,10 +133,7 @@ export function MapPanel({
   const ordered =
     focusedRow === null
       ? shapes
-      : [
-          ...shapes.filter((s) => s.row !== focusedRow),
-          ...shapes.filter((s) => s.row === focusedRow),
-        ];
+      : [...shapes.filter((s) => s.row !== focusedRow), ...shapes.filter((s) => s.row === focusedRow)];
   const names = cols.map((c) => columns[c]?.name ?? "?").join(", ");
 
   return (
@@ -181,12 +143,7 @@ export function MapPanel({
           Map{names && ` · ${names}`}
         </strong>
         <span className="spacer" />
-        <button
-          className="icon"
-          title="Show all"
-          disabled={!view}
-          onClick={() => setView(null)}
-        >
+        <button className="icon" title="Show all" disabled={!view} onClick={() => setView(null)}>
           ⤢
         </button>
         <button className="icon" title="Close" onClick={onClose}>
@@ -203,15 +160,9 @@ export function MapPanel({
         onPointerUp={onPointerUp}
         onDoubleClick={() => setView(null)}
       >
-        {cols.length === 0 && (
-          <div className="muted small value-empty">
-            Select a column with geometries.
-          </div>
-        )}
+        {cols.length === 0 && <div className="muted small value-empty">Select a column with geometries.</div>}
         {data && shapes.length === 0 && !error && (
-          <div className="muted small value-empty">
-            No geometries in the selected columns.
-          </div>
+          <div className="muted small value-empty">No geometries in the selected columns.</div>
         )}
         {v && shapes.length > 0 && (
           <svg width={size.w} height={size.h}>
@@ -220,18 +171,12 @@ export function MapPanel({
                 key={`${s.row}:${s.column}`}
                 data-row={s.row}
                 data-col={s.column}
-                className={
-                  s.row === focusedRow ? "map-shape focused" : "map-shape"
-                }
+                className={s.row === focusedRow ? "map-shape focused" : "map-shape"}
               >
                 <title>
                   Row {s.row + 1} · {columns[s.column]?.name}
                 </title>
-                <ShapeView
-                  shape={s.shape}
-                  toScreen={toScreen}
-                  scale={v.scale}
-                />
+                <ShapeView shape={s.shape} toScreen={toScreen} scale={v.scale} />
               </g>
             ))}
           </svg>
@@ -239,11 +184,9 @@ export function MapPanel({
       </div>
       {data && (
         <div className="muted small value-size">
-          {shapes.length.toLocaleString()}{" "}
-          {shapes.length === 1 ? "geometry" : "geometries"}
+          {shapes.length.toLocaleString()} {shapes.length === 1 ? "geometry" : "geometries"}
           {data.truncated && " (more not shown)"}
-          {data.unreadable > 0 &&
-            ` · ${data.unreadable.toLocaleString()} not readable`}
+          {data.unreadable > 0 && ` · ${data.unreadable.toLocaleString()} not readable`}
         </div>
       )}
     </aside>
@@ -260,34 +203,19 @@ function ShapeView({
   scale: number;
 }) {
   const path = (points: [number, number][], close: boolean) =>
-    points
-      .map(([x, y], i) => `${i ? "L" : "M"}${toScreen(x, y).join(",")}`)
-      .join("") + (close ? "Z" : "");
+    points.map(([x, y], i) => `${i ? "L" : "M"}${toScreen(x, y).join(",")}`).join("") + (close ? "Z" : "");
   switch (shape.type) {
     case "point": {
       const [cx, cy] = toScreen(shape.x, shape.y);
       return <circle className="map-point" cx={cx} cy={cy} r={POINT_RADIUS} />;
     }
     case "line":
-      return <path className="map-line" d={path(shape.points, shape.closed)} />;
+      return <path className="map-line" d={path(shape.points, false)} />;
     case "polygon":
-      return (
-        <path
-          className="map-area"
-          fillRule="evenodd"
-          d={shape.rings.map((r) => path(r, true)).join("")}
-        />
-      );
+      return <path className="map-area" fillRule="evenodd" d={shape.rings.map((r) => path(r, true)).join("")} />;
     case "circle": {
       const [cx, cy] = toScreen(shape.x, shape.y);
-      return (
-        <circle
-          className="map-area"
-          cx={cx}
-          cy={cy}
-          r={Math.max(shape.r * scale, 1)}
-        />
-      );
+      return <circle className="map-area" cx={cx} cy={cy} r={Math.max(shape.r * scale, 1)} />;
     }
     case "collection":
       return (
@@ -331,9 +259,7 @@ function fit(b: Bounds, w: number, h: number): View {
   const bw = Math.max(b.x1 - b.x0, 1e-9);
   const bh = Math.max(b.y1 - b.y0, 1e-9);
   const single = b.x1 === b.x0 && b.y1 === b.y0;
-  const scale = single
-    ? 1
-    : Math.min((w - 2 * PADDING) / bw, (h - 2 * PADDING) / bh);
+  const scale = single ? 1 : Math.min((w - 2 * PADDING) / bw, (h - 2 * PADDING) / bh);
   return {
     cx: (b.x0 + b.x1) / 2,
     cy: (b.y0 + b.y1) / 2,
