@@ -89,7 +89,6 @@ rather than checking the driver. It provides:
 - `quote_ident`, `qualified`, `quote_literal`
 - `bool_literal`, `binary_literal`, `has_default_keyword`, `insert_defaults`
 - `limit_clause`
-- `explain_json_prefix`
 - statements for the navigator (`generate.rs`): `select`, `insert`, `update`, `delete`,
   `upsert`, `drop`, `rename`, `truncate`. `drop` and `rename` return `None` for an object
   kind the dialect cannot drop or rename; `dialect_support` reports the kinds to the UI.
