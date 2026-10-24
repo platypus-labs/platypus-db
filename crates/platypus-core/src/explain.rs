@@ -38,9 +38,29 @@ pub struct PlanNode {
     /// Milliseconds until the step returned its last row.
     pub actual_ms: Option<f64>,
     pub loops: Option<f64>,
+    /// The step's own cost, without its children's: where the planner expects the work.
+    /// Set by [`Explain::new`].
+    pub self_cost: Option<f64>,
+    /// With analyze, the milliseconds spent in the step itself over all its loops. Set by
+    /// [`Explain::new`].
+    pub self_ms: Option<f64>,
     /// Everything else the server said about the step, as label and text.
     pub properties: Vec<(String, String)>,
     pub children: Vec<PlanNode>,
+}
+
+impl Explain {
+    /// A plan whose steps know their own share of the cost and of the time.
+    #[must_use]
+    pub fn new(format: ExplainFormat, plan: String, mut root: PlanNode, analyzed: bool) -> Self {
+        root.fill_self();
+        Self {
+            format,
+            plan,
+            root,
+            analyzed,
+        }
+    }
 }
 
 impl PlanNode {
@@ -50,6 +70,24 @@ impl PlanNode {
             operation: operation.into(),
             ..Self::default()
         }
+    }
+
+    /// Milliseconds over all loops, children included.
+    fn total_ms(&self) -> Option<f64> {
+        Some(self.actual_ms? * self.loops.unwrap_or(1.0))
+    }
+
+    fn fill_self(&mut self) {
+        for child in &mut self.children {
+            child.fill_self();
+        }
+        // Costs and times include the children's; a parallel or cached child can make the
+        // difference negative.
+        let own = |total: Option<f64>, of: fn(&Self) -> Option<f64>| {
+            total.map(|t| (t - self.children.iter().filter_map(of).sum::<f64>()).max(0.0))
+        };
+        self.self_cost = own(self.cost, |c| c.cost);
+        self.self_ms = own(self.total_ms(), Self::total_ms);
     }
 }
 
@@ -91,4 +129,48 @@ async fn run(conn: &dyn Connection, sql: &str) -> Result<()> {
         drop(stream);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn step(cost: f64, ms: Option<f64>, loops: f64, children: Vec<PlanNode>) -> PlanNode {
+        PlanNode {
+            cost: Some(cost),
+            actual_ms: ms,
+            loops: ms.map(|_| loops),
+            children,
+            ..PlanNode::new("step")
+        }
+    }
+
+    #[test]
+    fn steps_get_their_own_cost_and_time() {
+        // A join of a scan run once and a lookup run 10 times, 0.2 ms each.
+        let scan = step(10.0, Some(2.0), 1.0, vec![]);
+        let lookup = step(5.0, Some(0.2), 10.0, vec![]);
+        let join = step(40.0, Some(5.0), 1.0, vec![scan, lookup]);
+        let root = Explain::new(ExplainFormat::Json, String::new(), join, true).root;
+        assert_eq!(root.self_cost, Some(25.0));
+        assert_eq!(root.self_ms, Some(1.0));
+        assert_eq!(root.children[1].self_ms, Some(2.0));
+
+        // Children reported as slower than their parent (parallel workers) count as zero.
+        let parallel = step(1.0, Some(1.0), 1.0, vec![step(2.0, Some(3.0), 1.0, vec![])]);
+        let root = Explain::new(ExplainFormat::Json, String::new(), parallel, true).root;
+        assert_eq!((root.self_cost, root.self_ms), (Some(0.0), Some(0.0)));
+
+        // Without analyze there is no time.
+        let plain = Explain::new(
+            ExplainFormat::Text,
+            String::new(),
+            step(3.0, None, 1.0, vec![]),
+            false,
+        );
+        assert_eq!(
+            (plain.root.self_cost, plain.root.self_ms),
+            (Some(3.0), None)
+        );
+    }
 }

@@ -608,8 +608,10 @@ fn plan_mentions(node: &PlanNode, name: &str) -> bool {
         || node.children.iter().any(|c| plan_mentions(c, name))
 }
 
-fn plan_has_actual_rows(node: &PlanNode) -> bool {
-    node.actual_rows.is_some() || node.children.iter().any(plan_has_actual_rows)
+/// Some step has actual rows and its own share of the time.
+fn plan_has_actuals(node: &PlanNode) -> bool {
+    (node.actual_rows.is_some() && node.self_ms.is_some())
+        || node.children.iter().any(plan_has_actuals)
 }
 
 /// Plans come back as a tree. With analyze the statement runs, and what it changes is
@@ -640,7 +642,7 @@ async fn explains_queries() {
         let analyzes = b.name != "sqlite";
         assert_eq!(plan.analyzed, analyzes, "{}", b.name);
         assert_eq!(
-            plan_has_actual_rows(&plan.root),
+            plan_has_actuals(&plan.root),
             analyzes,
             "{}: {:#?}",
             b.name,

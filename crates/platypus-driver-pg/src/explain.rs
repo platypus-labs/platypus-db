@@ -29,12 +29,7 @@ pub async fn explain(conn: &PgConnection, sql: &str, analyze: bool) -> Result<Ex
     };
     let plan = explain_document(conn, &format!("{prefix} {sql}"), analyze).await?;
     let root = parse(&plan)?;
-    Ok(Explain {
-        format: ExplainFormat::Json,
-        plan,
-        root,
-        analyzed: analyze,
-    })
+    Ok(Explain::new(ExplainFormat::Json, plan, root, analyze))
 }
 
 fn parse(plan: &str) -> Result<PlanNode> {
@@ -93,6 +88,7 @@ fn node(map: &Map<String, Value>) -> PlanNode {
                     .collect()
             })
             .unwrap_or_default(),
+        ..PlanNode::default()
     }
 }
 

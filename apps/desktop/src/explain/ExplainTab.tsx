@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 import { api, type Explain, type PlanNode, toCommandError } from "../api";
 import { fmt } from "../components/ResultPanel";
 import type { TabBase, TabProps } from "../tabs/registry";
@@ -40,6 +40,44 @@ function steps(node: PlanNode, collapsed?: Set<string>, depth = 0, path = "0", o
 }
 
 const num = (v: number | null) => (v === null ? "" : fmt.format(v));
+const percent = new Intl.NumberFormat(undefined, { style: "percent", maximumFractionDigits: 1 });
+
+/** Each step's share of the work it does itself: of the time when analyzed, else of the
+ *  cost. */
+function shares(all: Step[], analyzed: boolean): Map<PlanNode, number> {
+  const own = (n: PlanNode) => (analyzed ? n.self_ms : n.self_cost) ?? 0;
+  const total = all.reduce((sum, s) => sum + own(s.node), 0);
+  return new Map(all.map(({ node }) => [node, total > 0 ? own(node) / total : 0]));
+}
+
+/** An estimate this many times off, either way, is worth a look. */
+const MISESTIMATE = 10;
+
+/** How many times more (positive) or fewer (negative) rows the step returned than the
+ *  planner expected, when that is far off. */
+function misestimate(n: PlanNode): number | null {
+  if (n.rows === null || n.actual_rows === null || n.loops === 0) return null;
+  const factor = Math.max(n.rows, n.actual_rows) / Math.max(Math.min(n.rows, n.actual_rows), 1);
+  if (factor < MISESTIMATE) return null;
+  return n.actual_rows > n.rows ? factor : -factor;
+}
+
+function Misestimate({ node }: { node: PlanNode }) {
+  const factor = misestimate(node);
+  if (factor === null) return null;
+  const times = fmt.format(Math.round(Math.abs(factor)));
+  return (
+    <span
+      className="explain-misestimate"
+      title={`Estimated ${num(node.rows)} rows, got ${num(node.actual_rows)}: the planner may have chosen badly`}
+    >
+      {times}× {factor > 0 ? "more" : "fewer"} rows
+    </span>
+  );
+}
+
+/** The step tinted by its share of the work. */
+const heat = (share: number) => ({ "--heat": `${Math.round(share * 100)}%` }) as CSSProperties;
 
 function title(node: PlanNode) {
   return node.detail ? `${node.operation} ${node.detail}` : node.operation;
@@ -110,7 +148,10 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
 
   const all = explain ? steps(explain.root) : [];
   const node = all.find((s) => s.path === selected)?.node ?? explain?.root;
-  const maxCost = Math.max(0, ...all.map((s) => s.node.cost ?? 0));
+  const share = shares(all, explain?.analyzed ?? false);
+  const heated = [...share.values()].some((v) => v > 0);
+  const own = explain?.analyzed ? "time" : "cost";
+  const shareOf = (n: PlanNode) => share.get(n) ?? 0;
   const toggle = (path: string) =>
     setCollapsed((c) => {
       const next = new Set(c);
@@ -164,7 +205,7 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
                   aria-selected={path === selected}
                   aria-expanded={n.children.length ? !collapsed.has(path) : undefined}
                   className={`explain-node${path === selected ? " selected" : ""}`}
-                  style={{ paddingLeft: depth * 18 + 4 }}
+                  style={{ paddingLeft: depth * 18 + 4, ...heat(shareOf(n)) }}
                   onClick={() => setSelected(path)}
                 >
                   <button
@@ -181,10 +222,11 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
                   <span className="explain-op">{n.operation}</span>
                   {n.detail && <span className="explain-detail">{n.detail}</span>}
                   <span className="spacer" />
+                  <Misestimate node={n} />
                   <Figures node={n} />
-                  {maxCost > 0 && (
-                    <span className="explain-bar" title={n.cost === null ? undefined : `cost ${num(n.cost)}`}>
-                      <span style={{ width: `${((n.cost ?? 0) / maxCost) * 100}%` }} />
+                  {heated && (
+                    <span className="explain-share" title={`Share of the ${own} spent in this step itself`}>
+                      {percent.format(shareOf(n))}
                     </span>
                   )}
                 </div>
@@ -204,6 +246,7 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
                 <th>Actual rows</th>
                 <th>Loops</th>
                 <th>Time (ms)</th>
+                {heated && <th>Own {own}</th>}
               </tr>
             </thead>
             <tbody>
@@ -212,9 +255,16 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
                   <td style={{ paddingLeft: depth * 16 }}>{title(n)}</td>
                   <td>{num(n.cost)}</td>
                   <td>{num(n.rows)}</td>
-                  <td>{num(n.actual_rows)}</td>
+                  <td>
+                    {num(n.actual_rows)} <Misestimate node={n} />
+                  </td>
                   <td>{num(n.loops)}</td>
                   <td>{num(n.actual_ms)}</td>
+                  {heated && (
+                    <td className="explain-heat" style={heat(shareOf(n))}>
+                      {percent.format(shareOf(n))}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -250,6 +300,8 @@ function Properties({ node }: { node: PlanNode }) {
       ["Actual rows", node.actual_rows],
       ["Loops", node.loops],
       ["Time (ms)", node.actual_ms],
+      ["Own cost", node.self_cost],
+      ["Own time, all loops (ms)", node.self_ms],
     ] as const)
       .filter(([, v]) => v !== null)
       .map(([k, v]) => [k, num(v)] as [string, string]),

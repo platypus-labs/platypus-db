@@ -7,6 +7,7 @@ mod error;
 mod export;
 mod formats;
 mod jobs;
+mod querylog;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -222,6 +223,8 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::set_setting,
             commands::explain::explain,
+            commands::querylog::query_log,
+            commands::querylog::clear_query_log,
             commands::objects::object_ddl,
             commands::objects::object_properties,
             commands::objects::list_databases,
