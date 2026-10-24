@@ -8,7 +8,8 @@ use uuid::Uuid;
 use crate::{Result, StoreError};
 
 /// Schema migrations, applied in order and tracked with `PRAGMA user_version`.
-const MIGRATIONS: &[&str] = &["CREATE TABLE history (
+const MIGRATIONS: &[&str] = &[
+    "CREATE TABLE history (
         id            INTEGER PRIMARY KEY,
         connection_id TEXT    NOT NULL,
         sql           TEXT    NOT NULL,
@@ -18,7 +19,10 @@ const MIGRATIONS: &[&str] = &["CREATE TABLE history (
         status        TEXT    NOT NULL,
         error         TEXT
     );
-    CREATE INDEX history_connection ON history (connection_id, id);"];
+    CREATE INDEX history_connection ON history (connection_id, id);",
+    // The agent that ran the statement; NULL for the app.
+    "ALTER TABLE history ADD COLUMN origin TEXT;",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -58,6 +62,8 @@ pub struct HistoryEntry {
     pub rows: Option<u64>,
     pub status: HistoryStatus,
     pub error: Option<String>,
+    /// The agent that ran it, e.g. `claude-code`; `None` when run in the app.
+    pub origin: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -69,6 +75,17 @@ pub struct NewHistoryEntry {
     pub rows: Option<u64>,
     pub status: HistoryStatus,
     pub error: Option<String>,
+    /// The agent that ran it; `None` for the app.
+    pub origin: Option<String>,
+}
+
+/// Who ran the statements a history search returns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HistoryOrigin {
+    App,
+    /// Any external agent.
+    Agent,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -79,6 +96,8 @@ pub struct HistoryQuery {
     pub text: Option<String>,
     /// Page backwards from this entry (exclusive).
     pub before_id: Option<i64>,
+    /// Entries run in the app, or by agents; `None` for both.
+    pub origin: Option<HistoryOrigin>,
     pub limit: usize,
 }
 
@@ -143,8 +162,8 @@ impl HistoryStore {
             .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
         self.db
             .execute(
-                "INSERT INTO history (connection_id, sql, started_at, duration_ms, rows, status, error)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO history (connection_id, sql, started_at, duration_ms, rows, status, error, origin)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     entry.connection_id.to_string(),
                     entry.sql,
@@ -153,6 +172,7 @@ impl HistoryStore {
                     entry.rows.map(clamp_i64),
                     entry.status.as_str(),
                     entry.error,
+                    entry.origin,
                 ],
             )
             .map_err(db_error)?;
@@ -179,11 +199,12 @@ impl HistoryStore {
         let mut stmt = self
             .db
             .prepare_cached(
-                "SELECT id, connection_id, sql, started_at, duration_ms, rows, status, error
+                "SELECT id, connection_id, sql, started_at, duration_ms, rows, status, error, origin
                  FROM history
                  WHERE (?1 IS NULL OR connection_id IN (SELECT value FROM json_each(?1)))
                    AND (?2 IS NULL OR sql LIKE ?2 ESCAPE '\\')
                    AND (?3 IS NULL OR id < ?3)
+                   AND (?5 IS NULL OR (origin IS NOT NULL) = ?5)
                  ORDER BY id DESC
                  LIMIT ?4",
             )
@@ -195,6 +216,7 @@ impl HistoryStore {
                     pattern,
                     query.before_id,
                     i64::try_from(query.limit).unwrap_or(i64::MAX),
+                    query.origin.map(|o| o == HistoryOrigin::Agent),
                 ],
                 |r| {
                     let connection_id: String = r.get(1)?;
@@ -208,6 +230,7 @@ impl HistoryStore {
                         rows: r.get::<_, Option<i64>>(5)?.and_then(|n| n.try_into().ok()),
                         status: HistoryStatus::parse(&status),
                         error: r.get(7)?,
+                        origin: r.get(8)?,
                     })
                 },
             )
@@ -256,7 +279,67 @@ mod tests {
             rows: Some(7),
             status,
             error: (status == HistoryStatus::Error).then(|| "boom".to_owned()),
+            origin: None,
         }
+    }
+
+    #[test]
+    fn filters_on_who_ran_the_statement() {
+        let h = HistoryStore::open_in_memory().unwrap();
+        let id = Uuid::new_v4();
+        h.record(&entry(id, "by the app", HistoryStatus::Ok))
+            .unwrap();
+        h.record(&NewHistoryEntry {
+            origin: Some("claude-code".to_owned()),
+            ..entry(id, "by an agent", HistoryStatus::Ok)
+        })
+        .unwrap();
+        let search = |origin| {
+            h.search(&HistoryQuery {
+                origin,
+                limit: 10,
+                ..Default::default()
+            })
+            .unwrap()
+        };
+        let agents = search(Some(HistoryOrigin::Agent));
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].sql, "by an agent");
+        assert_eq!(agents[0].origin.as_deref(), Some("claude-code"));
+        let app = search(Some(HistoryOrigin::App));
+        assert_eq!(app.len(), 1);
+        assert_eq!(
+            (app[0].sql.as_str(), app[0].origin.as_deref()),
+            ("by the app", None)
+        );
+        assert_eq!(search(None).len(), 2);
+    }
+
+    #[test]
+    fn upgrades_a_first_version_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        {
+            let db = Connection::open(&path).unwrap();
+            db.execute_batch(MIGRATIONS[0]).unwrap();
+            db.pragma_update(None, "user_version", 1).unwrap();
+            db.execute(
+                "INSERT INTO history (connection_id, sql, started_at, duration_ms, status)
+                 VALUES (?1, 'select 1', 0, 1, 'ok')",
+                [Uuid::new_v4().to_string()],
+            )
+            .unwrap();
+        }
+        let h = HistoryStore::open(&path).unwrap();
+        let all = h
+            .search(&HistoryQuery {
+                origin: Some(HistoryOrigin::App),
+                limit: 10,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].origin, None);
     }
 
     #[test]
