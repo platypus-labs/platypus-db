@@ -19,6 +19,8 @@ pub enum DriverKind {
     DuckDb,
     /// Microsoft SQL Server and Azure SQL.
     SqlServer,
+    /// Over HTTP: port 8123, or 8443 with TLS.
+    ClickHouse,
 }
 
 impl DriverKind {
@@ -29,6 +31,7 @@ impl DriverKind {
             Self::MySql => Some(3306),
             Self::Sqlite | Self::DuckDb => None,
             Self::SqlServer => Some(1433),
+            Self::ClickHouse => Some(8123),
         }
     }
 
@@ -180,6 +183,7 @@ impl ConnectionConfig {
             "sqlite" => DriverKind::Sqlite,
             "duckdb" => DriverKind::DuckDb,
             "sqlserver" | "mssql" => DriverKind::SqlServer,
+            "clickhouse" => DriverKind::ClickHouse,
             other => return Err(Error::Config(format!("unsupported URL scheme `{other}`"))),
         };
         let mut config = Self::new(driver);
@@ -272,6 +276,9 @@ mod tests {
         assert_eq!(c.port, Some(1433));
         assert_eq!(c.database, "sales");
         assert_eq!(c.ssl_mode, SslMode::Require);
+        let c = ConnectionConfig::from_url("clickhouse://default@ch/logs").unwrap();
+        assert_eq!(c.driver, DriverKind::ClickHouse);
+        assert_eq!((c.port, c.database.as_str()), (Some(8123), "logs"));
         let c = ConnectionConfig::from_url("mssql://sa@db:14330/").unwrap();
         assert_eq!(c.driver, DriverKind::SqlServer);
         assert_eq!(c.port, Some(14330));

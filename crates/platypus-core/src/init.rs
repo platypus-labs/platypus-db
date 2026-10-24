@@ -32,6 +32,8 @@ impl SessionInit {
                     out.push(format!("SET search_path TO {}", quote(schema, '"')));
                 }
                 DriverKind::MySql => out.push(format!("USE {}", quote(schema, '`'))),
+                // `USE` holds for the HTTP session the driver keeps.
+                DriverKind::ClickHouse => out.push(format!("USE {}", quote_clickhouse(schema))),
                 // DuckDB takes the search path as a string of identifiers.
                 DriverKind::DuckDb => out.push(format!(
                     "SET search_path = '{}'",
@@ -56,6 +58,7 @@ impl SessionInit {
             match driver {
                 DriverKind::Postgres => out.push(format!("SET TIME ZONE '{zone}'")),
                 DriverKind::MySql => out.push(format!("SET time_zone = '{zone}'")),
+                DriverKind::ClickHouse => out.push(format!("SET session_timezone = '{zone}'")),
                 // Time zones come with DuckDB's ICU extension, which the app does not bundle.
                 DriverKind::DuckDb => {
                     return Err(Error::Config(
@@ -87,6 +90,11 @@ impl SessionInit {
 fn quote(name: &str, q: char) -> String {
     let doubled: String = [q, q].iter().collect();
     format!("{q}{}{q}", name.replace(q, &doubled))
+}
+
+/// A ClickHouse identifier: backticks, with backslash escapes inside.
+fn quote_clickhouse(name: &str) -> String {
+    format!("`{}`", name.replace('\\', "\\\\").replace('`', "\\`"))
 }
 
 /// Runs the session setup on a new connection; a failing statement is named in the error.
@@ -129,6 +137,15 @@ mod tests {
                 "SET x = 1"
             ]
         );
+        assert_eq!(
+            init.sql(DriverKind::ClickHouse).unwrap(),
+            [
+                "USE `sales \"eu\"`",
+                "SET session_timezone = 'Europe/Rome'",
+                "SET x = 1"
+            ]
+        );
+        assert_eq!(quote_clickhouse("a`b\\c"), "`a\\`b\\\\c`");
         assert!(init.sql(DriverKind::DuckDb).is_err());
         let schema_only = SessionInit {
             schema: Some("sales".to_owned()),
