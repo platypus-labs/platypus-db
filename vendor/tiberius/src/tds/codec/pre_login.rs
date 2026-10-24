@@ -62,17 +62,21 @@ impl PreloginMessage {
         feature = "native-tls",
         feature = "vendored-openssl"
     ))]
-    pub fn negotiated_encryption(&self, expected: EncryptionLevel) -> EncryptionLevel {
+    /// PlatypusDB: follows the table of [MS-TDS] 2.2.6.5, with an error instead of a
+    /// panic when client and server cannot agree. A server that answers `Off` to a client
+    /// that asked for encryption encrypts anyway, as its answer to `On` should be `On`.
+    pub fn negotiated_encryption(&self, expected: EncryptionLevel) -> Result<EncryptionLevel> {
+        use EncryptionLevel::{NotSupported, Off, On, Required};
         match (expected, self.encryption) {
-            (EncryptionLevel::NotSupported, EncryptionLevel::NotSupported) => {
-                EncryptionLevel::NotSupported
+            (NotSupported | Off, NotSupported) | (NotSupported, Off) => Ok(NotSupported),
+            (Off, Off) => Ok(Off),
+            (On | Required, NotSupported) => Err(Error::Tls(
+                "the server does not support encryption".to_owned(),
+            )),
+            (NotSupported, On | Required) => {
+                Err(Error::Tls("the server requires encryption".to_owned()))
             }
-            (EncryptionLevel::Off, EncryptionLevel::Off) => EncryptionLevel::Off,
-            (EncryptionLevel::On, EncryptionLevel::Off)
-            | (EncryptionLevel::On, EncryptionLevel::NotSupported) => {
-                panic!("Server does not allow the requested encryption level.")
-            }
-            (_, _) => EncryptionLevel::On,
+            (_, _) => Ok(On),
         }
     }
 
@@ -81,8 +85,8 @@ impl PreloginMessage {
         feature = "native-tls",
         feature = "vendored-openssl"
     )))]
-    pub fn negotiated_encryption(&self, _: EncryptionLevel) -> EncryptionLevel {
-        EncryptionLevel::NotSupported
+    pub fn negotiated_encryption(&self, _: EncryptionLevel) -> Result<EncryptionLevel> {
+        Ok(EncryptionLevel::NotSupported)
     }
 }
 

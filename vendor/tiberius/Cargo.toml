@@ -9,7 +9,9 @@
 # - `Client::send_batch` and `Client::batch_results` split `simple_query` into its sending
 #   and reading halves, so the reading half can be abandoned and cancelled;
 # - `QueryStream::rows_affected` sums the row counts of the statements without results;
-# - `Column::precision`, `Column::scale` and `Column::max_length` describe the column type.
+# - `Column::precision`, `Column::scale` and `Column::max_length` describe the column type;
+# - the encryption negotiation follows the table of [MS-TDS], with an error instead of a
+#   panic when client and server cannot agree.
 [package]
 edition = "2021"
 name = "tiberius"
@@ -52,3 +54,7 @@ tds73 = []
 unexpected_cfgs = "allow"
 dead_code = "allow"
 deprecated = "allow"
+
+# A workspace of its own: the PlatypusDB one excludes it, and cargo must not look further
+# up (`cargo fmt --all` fails in a checkout nested in another one).
+[workspace]

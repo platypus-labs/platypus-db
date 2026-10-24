@@ -125,7 +125,10 @@ where
             let time = Time::new(read_uint(&data[..n]), props[0]);
             let date = Date::new(read_u24(&data[n..n + 3]));
             let offset = LittleEndian::read_i16(&data[n + 3..]);
-            ColumnData::DateTimeOffset(Some(DateTimeOffset::new(DateTime2::new(date, time), offset)))
+            ColumnData::DateTimeOffset(Some(DateTimeOffset::new(
+                DateTime2::new(date, time),
+                offset,
+            )))
         }
         _ => ColumnData::Binary(Some(Cow::Owned(data))),
     };

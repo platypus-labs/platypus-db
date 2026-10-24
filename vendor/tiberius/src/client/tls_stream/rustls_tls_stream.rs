@@ -99,7 +99,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TlsStream<S> {
                     if certs.is_empty() {
                         return Err(crate::Error::Io {
                             kind: IoErrorKind::InvalidInput,
-                            message: format!("Certificate file {} contains no certificate", path.to_string_lossy()),
+                            message: format!(
+                                "Certificate file {} contains no certificate",
+                                path.to_string_lossy()
+                            ),
                         });
                     }
                     let mut cert_store = RootCertStore::empty();
