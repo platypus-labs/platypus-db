@@ -5,8 +5,9 @@ import { ConnectionDialog } from "./components/ConnectionDialog";
 import { Navigator } from "./components/Navigator";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { CommandPalette } from "./shell/CommandPalette";
 import "./tabs";
-import { type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
+import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { provideWorkbench, workbench } from "./workbench";
 import { type PersistedTab, loadWorkspace, saveWorkspace } from "./workspace";
 
@@ -26,6 +27,10 @@ export function App() {
   const [activeTab, setActiveTab] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  /** Closed tabs as they would be saved, newest last, for Ctrl+Shift+T. */
+  const closedTabs = useRef<PersistedTab[]>([]);
+  const tabBar = useRef<HTMLDivElement>(null);
   const [version, setVersion] = useState("");
   /** Open sessions by tab key; opened on a tab's first run. */
   const sessions = useRef(new Map<number, Promise<number | null>>());
@@ -179,6 +184,11 @@ export function App() {
         ? "This tab has an open transaction. Close it and roll back the uncommitted changes?"
         : null;
     if (question && !confirmed && !window.confirm(question)) return;
+    const state = tabKind(tab.kind)?.persist(tab);
+    if (state) {
+      closedTabs.current.push({ ...state, kind: tab.kind, connectionId: tab.connectionId });
+      if (closedTabs.current.length > CLOSED_TABS) closedTabs.current.shift();
+    }
     const session = sessions.current.get(tab.key);
     sessions.current.delete(tab.key);
     void session?.then((id) => {
@@ -193,8 +203,20 @@ export function App() {
 
   // What the shell's actions and the workbench need, refreshed every render so they
   // always see the latest state while being registered once.
-  const shell = useRef({ tabs, activeTab, connections, addTab, closeTab, setActiveTab, navigatorSession });
-  shell.current = { tabs, activeTab, connections, addTab, closeTab, setActiveTab, navigatorSession };
+  const reopenTab = () => {
+    const saved = closedTabs.current.pop();
+    const kind = saved && tabKind((saved.kind ?? "query") as TabKindName);
+    if (!saved || !kind || !connectionById(saved.connectionId)) return;
+    addTab(createTab(kind.kind, saved.connectionId, kind.restore(saved)));
+  };
+  const openPalette = () => setPaletteOpen(true);
+  const shell = useRef({ tabs, activeTab, connections, addTab, closeTab, setActiveTab, navigatorSession, reopenTab, openPalette });
+  shell.current = { tabs, activeTab, connections, addTab, closeTab, setActiveTab, navigatorSession, reopenTab, openPalette };
+
+  // The active tab stays in view when tabs overflow the bar.
+  useEffect(() => {
+    tabBar.current?.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeTab, tabs.length]);
 
   provideWorkbench({
     connections: () => shell.current.connections ?? [],
@@ -243,7 +265,14 @@ export function App() {
       <main className="workspace">
         <UpdateBanner />
         {tabs.length > 0 && (
-          <div className="tabs">
+          <div
+            className="tabs"
+            ref={tabBar}
+            // The wheel scrolls the tabs sideways: the bar has nothing to scroll up or down.
+            onWheel={(e) => {
+              if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY;
+            }}
+          >
             {tabs.map((t) => (
               <div
                 key={t.key}
@@ -317,6 +346,9 @@ export function App() {
         />
       )}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      {paletteOpen && (
+        <CommandPalette connections={connections ?? []} catalogs={catalogs} onClose={() => setPaletteOpen(false)} />
+      )}
       {passwordRequest && (
         <PasswordPrompt
           connection={passwordRequest.connection}
@@ -338,7 +370,12 @@ interface ShellApi {
   closeTab: (tab: TabModel) => void;
   setActiveTab: (key: number) => void;
   navigatorSession: (connection: SavedConnection) => Promise<number | null>;
+  reopenTab: () => void;
+  openPalette: () => void;
 }
+
+/** Closed tabs kept for reopening. */
+const CLOSED_TABS = 20;
 
 /** Tab and window commands; their shortcuts work everywhere, the editor included. */
 function registerShellActions(shell: { current: ShellApi }) {
@@ -382,6 +419,20 @@ function registerShellActions(shell: { current: ShellApi }) {
       title: "Previous tab",
       shortcut: ["Mod+Shift+Tab", "Mod+PageUp"],
       run: () => move(-1),
+    }),
+    registerAction({
+      id: "tab.reopen",
+      scope: "global",
+      title: "Reopen closed tab",
+      shortcut: "Mod+Shift+T",
+      run: () => s().reopenTab(),
+    }),
+    registerAction({
+      id: "app.palette",
+      scope: "global",
+      title: "Command palette",
+      shortcut: ["Mod+K", "Mod+Shift+P"],
+      run: () => s().openPalette(),
     }),
     registerAction({
       id: "app.settings",

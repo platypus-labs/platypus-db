@@ -83,7 +83,10 @@ as described under [Settings](#settings).
 - a title;
 - optionally a shortcut, a menu group and order, and a `when` condition.
 
-Context menus and shortcuts read from the registry, and so will the command palette.
+Context menus, shortcuts and the command palette read from the registry: global actions
+appear in the palette by their title. The user can change any action's shortcut in the
+Settings; it is stored under `shortcuts.<action id>`, and `shortcutsOf(action)` gives the
+ones in effect.
 Actions with the same `submenu` title are listed together under that entry, e.g. `Copy as`.
 
 ```ts

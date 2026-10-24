@@ -1,13 +1,18 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toCommandError } from "../api";
 import { type SettingDef, getSetting, setSetting, settingDefs, useSettingsVersion } from "../settings";
+import { ShortcutsPanel } from "../shell/ShortcutsPanel";
+
+const SHORTCUTS = "Keyboard shortcuts";
 
 type Value = boolean | number | string;
 
-/** Every declared setting, by section. Changes apply and save at once. */
+/** Every declared setting, by section, then the keyboard shortcuts; the list on the left
+ *  jumps to a section. Changes apply and save at once. */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   useSettingsVersion();
   const [error, setError] = useState<string | null>(null);
+  const body = useRef<HTMLDivElement>(null);
   const sections = new Map<string, SettingDef<Value>[]>();
   for (const def of settingDefs()) {
     sections.set(def.section, [...(sections.get(def.section) ?? []), def]);
@@ -26,14 +31,37 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       >
         <h2>Settings</h2>
         {error && <div className="notice error small">{error}</div>}
-        {[...sections].map(([section, defs]) => (
-          <section key={section}>
-            <h3>{section}</h3>
-            {defs.map((def) => (
-              <SettingRow key={def.key} def={def} onSave={(v) => save(def, v)} />
+        <div className="settings-layout">
+          <nav className="settings-nav">
+            {[...sections.keys(), SHORTCUTS].map((section) => (
+              <button
+                key={section}
+                type="button"
+                onClick={() =>
+                  body.current
+                    ?.querySelector(`[data-section="${CSS.escape(section)}"]`)
+                    ?.scrollIntoView({ block: "start", behavior: "smooth" })
+                }
+              >
+                {section}
+              </button>
             ))}
-          </section>
-        ))}
+          </nav>
+          <div className="settings-body" ref={body}>
+            {[...sections].map(([section, defs]) => (
+              <section key={section} data-section={section}>
+                <h3>{section}</h3>
+                {defs.map((def) => (
+                  <SettingRow key={def.key} def={def} onSave={(v) => save(def, v)} />
+                ))}
+              </section>
+            ))}
+            <section data-section={SHORTCUTS}>
+              <h3>{SHORTCUTS}</h3>
+              <ShortcutsPanel />
+            </section>
+          </div>
+        </div>
         <div className="actions">
           <span className="muted small">Saved in settings.toml</span>
           <span className="spacer" />

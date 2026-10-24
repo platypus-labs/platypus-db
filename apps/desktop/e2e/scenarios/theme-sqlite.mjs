@@ -49,7 +49,7 @@ export default async function (page, { dir, shots }) {
   assert.equal(await page.eval(`document.documentElement.style.colorScheme`), "dark");
   await saved(dir, /\[appearance\][^[]*theme = "nord"/);
   if (shots) {
-    await page.eval(`document.querySelector('.modal.settings').scrollTop = 0`);
+    await page.eval(`document.querySelector('.settings-body').scrollTop = 0`);
     await page.screenshot(join(shots, "theme-cards.png"));
   }
 
