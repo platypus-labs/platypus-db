@@ -1,15 +1,16 @@
 # PlatypusDB
 
-Fast, lightweight desktop SQL client for **PostgreSQL**, **MySQL/MariaDB**, **SQLite** and
-**DuckDB**. Rust core, Tauri 2 + React UI: a 5 MB installer that starts in under half a second
-and scrolls through millions of rows.
+Fast, lightweight desktop SQL client for **PostgreSQL**, **MySQL/MariaDB**, **SQL Server**
+(and Azure SQL), **SQLite** and **DuckDB**.
+Rust core, Tauri 2 + React UI: a 5 MB installer that starts in under half a second and
+scrolls through millions of rows.
 
 ![Data viewer](docs/screenshots/data-viewer.png)
 
 ## Features
 
 - **Connections** with TLS (libpq `sslmode` semantics), passwords in the system keychain,
-  colors and a read-only flag; paste a `postgres://` or `mysql://` URL to fill the form.
+  colors and a read-only flag; paste a `postgres://`, `mysql://` or `sqlserver://` URL to fill the form.
   **SSH tunnels** with a password, a key or the SSH agent, optionally through a jump host;
   server keys are checked against `~/.ssh/known_hosts`. Connection **types** Development,
   Test and Production: production shows a PROD badge in red and opens in manual commit.
@@ -44,7 +45,7 @@ and scrolls through millions of rows.
   `@export file.csv`. Built-in functions complete with signature and description; snippets
   (`sel` then `Tab`) are editable. Folding, an outline of the statements, `Ctrl+click` on a
   name to open its object, `Ctrl+\` to run into a new result tab, a terminal mode with
-  results as text, and running the script with the local `psql`, `mysql` or `sqlite3`.
+  results as text, and running the script with the local `psql`, `mysql`, `sqlcmd` or `sqlite3`.
   A linter marks unknown columns, joins without a condition and `SELECT *` on production;
   comments are spell checked.
 - **Saved scripts**: `.sql` files per project in the Scripts panel under the navigator, with
@@ -172,6 +173,7 @@ crates/
   platypus-core/           driver traits, metadata types, result streams
   platypus-driver-pg/      PostgreSQL (tokio-postgres)
   platypus-driver-mysql/   MySQL / MariaDB (mysql_async)
+  platypus-driver-mssql/   SQL Server / Azure SQL (tiberius, vendored with patches in vendor/)
   platypus-driver-sqlite/  SQLite (rusqlite)
   platypus-driver-duckdb/  DuckDB (duckdb, bundled; Arrow results as they come)
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
@@ -205,7 +207,8 @@ npm run tauri dev
 
 # core crates; the conformance suite (crates/platypus-conformance) runs the same scenarios on
 # every driver. Server databases that are down are skipped; set PLATYPUS_TEST_PG_URL,
-# PLATYPUS_TEST_MYSQL_URL or PLATYPUS_TEST_MARIADB_URL to make them mandatory
+# PLATYPUS_TEST_MYSQL_URL, PLATYPUS_TEST_MARIADB_URL or PLATYPUS_TEST_MSSQL_URL to make them
+# mandatory
 cargo test --workspace --exclude platypus-desktop
 
 # CLI: table (first 200 rows), csv, ndjson, json or parquet (json and parquet need -o); Ctrl+C or --timeout cancel server-side
@@ -222,8 +225,9 @@ cd apps/desktop
 npm run tauri build -- --no-bundle
 npm run e2e
 
-# dev databases (PostgreSQL 17, MySQL 8.4, MariaDB 11.4)
+# dev databases (PostgreSQL 17, MySQL 8.4, MariaDB 11.4); SQL Server 2022 with its profile
 docker compose -f docker/compose.yml up -d --wait
+docker compose -f docker/compose.yml --profile sqlserver up -d --wait
 ```
 
 | Database   | Host port | User / password / db           |
@@ -231,6 +235,7 @@ docker compose -f docker/compose.yml up -d --wait
 | PostgreSQL | 55432     | `platypus` / `platypus` / `platypus` (schema `demo`, TLS with a self-signed cert) |
 | MySQL      | 53306     | `platypus` / `platypus` / `platypus` |
 | MariaDB    | 53307     | `platypus` / `platypus` / `platypus` |
+| SQL Server | 51433     | `sa` / `Platypus-2026` / `platypus` (TLS with a self-signed cert; the conformance tests create schema `demo`) |
 
 Each database has `customers`, `orders`, a `customer_totals` view, a `type_zoo` table with one
 column per notable type, and a 1M-row `big_table` for streaming and scrolling benchmarks.
