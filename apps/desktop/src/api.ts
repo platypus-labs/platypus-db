@@ -128,8 +128,18 @@ export interface PlanNode {
   self_cost: number | null;
   /** With analyze, the milliseconds spent in the step itself over all its loops. */
   self_ms: number | null;
+  /** Set when the step is a filtered full scan of a table. */
+  full_scan: FullScan | null;
   properties: [string, string][];
   children: PlanNode[];
+}
+
+/** A step that reads a whole table to keep the rows matching `filter`. */
+export interface FullScan {
+  table: string;
+  filter: string;
+  /** Over all loops; without analyze PostgreSQL only estimates the rows kept. */
+  rows_read: number | null;
 }
 
 export interface Explain {
@@ -138,6 +148,8 @@ export interface Explain {
   plan: string;
   root: PlanNode;
   analyzed: boolean;
+  /** Filtered full scans of large tables, where an index may help. */
+  suggestions: FullScan[];
 }
 
 /** A request the app sent to a database; see `querylog.rs`. */
@@ -150,6 +162,10 @@ export interface LogEntry {
   /** Milliseconds since the Unix epoch. */
   started_at: number;
   elapsed_ms: number | null;
+  /** Until the server's first answer to a statement: its work plus the network. */
+  first_ms: number | null;
+  /** The connection's last keep-alive round trip: about the network's share. */
+  network_ms: number | null;
   rows: number | null;
   status: "running" | "fetching" | "done" | "closed" | "failed";
   error: string | null;

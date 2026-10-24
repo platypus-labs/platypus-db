@@ -195,6 +195,13 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
         {tab.analyze && explain && !explain.analyzed && (
           <div className="notice small">This database cannot run a statement for its plan: estimates only.</div>
         )}
+        {explain?.suggestions.map((s, i) => (
+          <div key={i} className="notice warn small explain-suggestion">
+            <strong>{s.table}</strong> is read in full
+            {s.rows_read === null ? "" : ` (${explain.analyzed ? "" : "about "}${num(s.rows_read)} rows)`} to keep the rows
+            where <code>{s.filter}</code>: an index on the columns of that condition may help.
+          </div>
+        ))}
         {explain && view === "tree" && (
           <div className="explain-split">
             <div className="explain-tree" role="tree">
