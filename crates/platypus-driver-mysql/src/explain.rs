@@ -22,12 +22,7 @@ pub async fn explain(conn: &MySqlConnection, sql: &str, analyze: bool) -> Result
     } else {
         (ExplainFormat::Text, tree_plan(&plan))
     };
-    Ok(Explain {
-        format,
-        plan,
-        root,
-        analyzed: analyze,
-    })
+    Ok(Explain::new(format, plan, root, analyze))
 }
 
 /// Reads the `-> step  (cost=… rows=…) (actual time=…..… rows=… loops=…)` lines, nested
@@ -137,23 +132,27 @@ fn json_step(key: &str, map: &Map<String, Value>) -> PlanNode {
         cost: num("cost").or(num("query_cost")),
         rows: num("rows"),
         actual_rows: num("r_rows"),
-        // MariaDB reports the time of all loops.
-        actual_ms: num("r_total_time_ms").map(|ms| ms / loops.filter(|l| *l > 0.0).unwrap_or(1.0)),
+        // MariaDB reports the time of all loops; a table's as reading plus checking rows.
+        actual_ms: num("r_total_time_ms")
+            .or_else(|| Some(num("r_table_time_ms")? + num("r_other_time_ms").unwrap_or(0.0)))
+            .map(|ms| ms / loops.filter(|l| *l > 0.0).unwrap_or(1.0)),
         loops,
         properties: map
             .iter()
-            .filter(|(k, v)| !SHOWN.contains(&k.as_str()) && !is_step(v))
+            .filter(|(k, v)| !SHOWN.contains(&k.as_str()) && !is_step(k, v))
             .map(|(k, v)| (k.clone(), text(v)))
             .collect(),
         children: children(map),
+        ..PlanNode::default()
     }
 }
 
 fn children(map: &Map<String, Value>) -> Vec<PlanNode> {
     map.iter()
+        .filter(|(key, value)| is_step(key, value))
         .filter_map(|(key, value)| match value {
             Value::Object(inner) => Some(json_step(key, inner)),
-            Value::Array(items) if is_step(value) => Some(PlanNode {
+            Value::Array(items) => Some(PlanNode {
                 children: items
                     .iter()
                     .filter_map(Value::as_object)
@@ -175,8 +174,12 @@ fn single_entry(map: &Map<String, Value>) -> Option<(&String, &Value)> {
     entries.next().is_none().then_some(first)
 }
 
-/// Objects and lists of objects are steps; anything else is a property.
-fn is_step(v: &Value) -> bool {
+/// Objects and lists of objects are steps, except ANALYZE's statistics (`r_engine_stats`);
+/// anything else is a property.
+fn is_step(key: &str, v: &Value) -> bool {
+    if key.starts_with("r_") {
+        return false;
+    }
     match v {
         Value::Object(_) => true,
         Value::Array(items) => items.iter().any(Value::is_object),
@@ -251,7 +254,8 @@ mod tests {
         let plan = r#"{"query_block": {"select_id": 1, "cost": 0.03, "r_loops": 1,
             "r_total_time_ms": 0.1, "nested_loop": [
               {"table": {"table_name": "a", "access_type": "ALL", "rows": 3, "r_loops": 2,
-                "r_rows": 3, "r_total_time_ms": 0.04, "attached_condition": "a.id > 1"}},
+                "r_rows": 3, "r_table_time_ms": 0.75, "r_other_time_ms": 0.25,
+                "r_engine_stats": {"pages_accessed": 2}, "attached_condition": "a.id > 1"}},
               {"table": {"table_name": "b", "access_type": "eq_ref",
                 "possible_keys": ["PRIMARY"], "rows": 1}}]}}"#;
         let root = json_plan(plan).unwrap();
@@ -269,8 +273,11 @@ mod tests {
         );
         assert_eq!(
             (a.actual_rows, a.loops, a.actual_ms),
-            (Some(3.0), Some(2.0), Some(0.02))
+            (Some(3.0), Some(2.0), Some(0.5))
         );
+        // Statistics are a property, not a step.
+        assert!(a.children.is_empty());
+        assert!(a.properties.iter().any(|(k, _)| k == "r_engine_stats"));
         assert!(
             a.properties
                 .contains(&("attached_condition".into(), "a.id > 1".into()))
