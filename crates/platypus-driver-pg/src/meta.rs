@@ -351,6 +351,11 @@ pub async fn table_details(
 }
 
 async fn indexes(conn: &dyn Connection, relation: &str) -> Result<Vec<IndexMeta>> {
+    let size = if crate::is_cockroach(conn) {
+        "NULL::bigint"
+    } else {
+        "pg_relation_size(i.indexrelid)"
+    };
     Ok(query_text(
         conn,
         &format!(
@@ -358,7 +363,7 @@ async fn indexes(conn: &dyn Connection, relation: &str) -> Result<Vec<IndexMeta>
                     array_to_string(ARRAY(
                         SELECT pg_get_indexdef(i.indexrelid, k, true)
                         FROM generate_series(1, i.indnkeyatts) k ORDER BY k), chr(31)),
-                    pg_relation_size(i.indexrelid)
+                    {size}
              FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid
              WHERE i.indrelid = {relation}
              ORDER BY i.indisprimary DESC, ic.relname"

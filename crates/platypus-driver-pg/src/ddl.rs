@@ -363,13 +363,17 @@ async fn type_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<String> {
 
 pub async fn object_properties(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<Vec<Property>> {
     if o.kind.is_relation() || o.kind == ObjectKind::Sequence {
+        let sizes = if crate::is_cockroach(conn) {
+            "NULL, NULL, NULL"
+        } else {
+            "pg_size_pretty(pg_total_relation_size(c.oid)),
+                        pg_size_pretty(pg_relation_size(c.oid)),
+                        pg_size_pretty(pg_indexes_size(c.oid))"
+        };
         let r = row(
             conn,
             &format!(
-                "SELECT pg_get_userbyid(c.relowner), c.reltuples::bigint,
-                        pg_size_pretty(pg_total_relation_size(c.oid)),
-                        pg_size_pretty(pg_relation_size(c.oid)),
-                        pg_size_pretty(pg_indexes_size(c.oid)),
+                "SELECT pg_get_userbyid(c.relowner), c.reltuples::bigint, {sizes},
                         coalesce(ts.spcname, 'default')
                  FROM pg_class c LEFT JOIN pg_tablespace ts ON ts.oid = c.reltablespace
                  WHERE c.oid = {}",

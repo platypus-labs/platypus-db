@@ -68,6 +68,29 @@ pub struct PgConnection {
     next_cursor: AtomicU64,
 }
 
+/// The server speaking the protocol, from `version()`: CockroachDB and YugabyteDB name
+/// themselves there. CockroachDB's `server_version` is the PostgreSQL release it mimics,
+/// so its own release replaces it.
+fn product(full: Option<&str>, server_version: String) -> (&'static str, String) {
+    let full = full.unwrap_or_default();
+    if full.starts_with("CockroachDB") {
+        let own = full
+            .split(' ')
+            .find(|w| w.starts_with('v'))
+            .map(str::to_owned);
+        ("CockroachDB", own.unwrap_or(server_version))
+    } else if server_version.contains("-YB-") {
+        ("YugabyteDB", server_version)
+    } else {
+        ("PostgreSQL", server_version)
+    }
+}
+
+/// Whether `conn` is CockroachDB, which lacks some of PostgreSQL's catalog functions.
+pub(crate) fn is_cockroach(conn: &dyn Connection) -> bool {
+    conn.server_info().product == "CockroachDB"
+}
+
 impl PgConnection {
     pub async fn connect(config: &ConnectionConfig) -> Result<Self> {
         if config.driver != DriverKind::Postgres {
@@ -109,7 +132,8 @@ impl PgConnection {
         let row = client
             .simple_query(
                 "SELECT current_setting('server_version'), \
-                 coalesce((SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()), false)",
+                 coalesce((SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()), false), \
+                 version()",
             )
             .await
             .map_err(map_error)?
@@ -124,6 +148,7 @@ impl PgConnection {
             .unwrap_or_default()
             .to_owned();
         let encrypted = row.as_ref().and_then(|r| r.get(1)) == Some("t");
+        let (product, version) = product(row.as_ref().and_then(|r| r.get(2)), version);
 
         Ok(Self {
             canceller: PgCanceller {
@@ -132,7 +157,7 @@ impl PgConnection {
             },
             client: Arc::new(client),
             server: ServerInfo {
-                product: "PostgreSQL".to_owned(),
+                product: product.to_owned(),
                 version,
                 encrypted,
             },
@@ -216,6 +241,9 @@ impl Connection for PgConnection {
     }
 
     async fn explain(&self, sql: &str, analyze: bool) -> Result<platypus_core::Explain> {
+        if is_cockroach(self) {
+            return Err(Error::Unsupported("CockroachDB query plans".to_owned()));
+        }
         explain::explain(self, sql, analyze).await
     }
 
@@ -260,7 +288,8 @@ impl Connection for PgConnection {
         platypus_core::Capabilities {
             transactions: true,
             cancel: true,
-            explain: true,
+            // CockroachDB's plans are neither PostgreSQL's JSON nor `EXPLAIN ANALYZE`'s.
+            explain: !is_cockroach(self),
             object_ddl: true,
             metadata_search: true,
             multiple_databases: true,
