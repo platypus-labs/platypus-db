@@ -36,21 +36,6 @@ pub fn unsupported(feature: &str) -> Error {
     Error::Unsupported(feature.to_owned())
 }
 
-/// A query plan as the server produced it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Explain {
-    pub format: ExplainFormat,
-    /// The plan document: JSON text for [`ExplainFormat::Json`], else plain text.
-    pub plan: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExplainFormat {
-    Json,
-    Text,
-}
-
 /// Which object [`Connection::object_ddl`](crate::Connection::object_ddl) describes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectRef<'a> {

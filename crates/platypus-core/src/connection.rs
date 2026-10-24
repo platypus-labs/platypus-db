@@ -74,7 +74,8 @@ pub trait Connection: Send + Sync + fmt::Debug {
     /// Which optional methods below the driver implements.
     fn capabilities(&self) -> Capabilities;
 
-    /// The plan of `sql`; with `analyze` the statement is executed to get real timings.
+    /// The plan of `sql`; with `analyze` the statement is executed to get real rows and
+    /// timings, and what it changes is rolled back (see [`explain_document`](crate::explain_document)).
     /// Optional: see [`Capabilities::explain`].
     async fn explain(&self, sql: &str, analyze: bool) -> Result<Explain> {
         let _ = (sql, analyze);
