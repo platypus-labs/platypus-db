@@ -524,7 +524,16 @@ export function Navigator(props: Props) {
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <span className="sidebar-title">Connections</span>
+        <span className="sidebar-title">
+          {project ? (
+            <span className="navigator-project" title={project.name}>
+              <span className="dot" style={{ background: project.color }} />
+              {project.name}
+            </span>
+          ) : (
+            "Connections"
+          )}
+        </span>
         <ThemeButton />
         <button className="icon" title="Settings (Ctrl+,)" onClick={() => workbench().openSettings()}>
           <Icon name="settings" />

@@ -73,7 +73,9 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
   const list = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
-    api.searchHistory({ limit: 30 }).then(setHistory, () => setHistory([]));
+    // In a project, its connections' queries only: the limit counts them alone.
+    const connectionIds = workbench().activeProject() ? connections.map((c) => c.id) : undefined;
+    api.searchHistory({ connectionIds, limit: 30 }).then(setHistory, () => setHistory([]));
   }, []);
 
   const items = useMemo((): Item[] => {

@@ -21,6 +21,7 @@ import { ProjectDialog } from "./projects/ProjectDialog";
 import { AddConnectionsDialog } from "./projects/AddConnectionsDialog";
 import { registerAddToProject } from "./projects/actions";
 import { ContextMenu, type MenuState } from "./components/ContextMenu";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 type Dialog =
   | { kind: "connection"; connection: SavedConnection; existing: boolean; memberOf: string[] }
@@ -142,6 +143,15 @@ export function App() {
   }, [tabs, activeTab, activeProject]);
 
   const project = projects?.find((p) => p.id === activeProject) ?? null;
+  // The window says which project is shown.
+  useEffect(() => {
+    const title = project ? `${project.name} — PlatypusDB` : "PlatypusDB";
+    document.title = title;
+    getCurrentWindow()
+      .setTitle(title)
+      .catch((e: unknown) => console.warn("window title", e));
+  }, [project?.name]);
+
   /** The tabs of the active project, the ones the tab bar shows. */
   const visibleTabs = tabs.filter((t) => (t.project ?? null) === activeProject);
 
@@ -592,7 +602,11 @@ export function App() {
       )}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {paletteOpen && (
-        <CommandPalette connections={connections ?? []} catalogs={catalogs} onClose={() => setPaletteOpen(false)} />
+        <CommandPalette
+          connections={connectionsOf(project, connections ?? [])}
+          catalogs={catalogs}
+          onClose={() => setPaletteOpen(false)}
+        />
       )}
       {dialogs.map((d) => (
         <Fragment key={d.id}>{d.node}</Fragment>

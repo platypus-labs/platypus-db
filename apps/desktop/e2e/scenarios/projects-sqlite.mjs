@@ -137,6 +137,7 @@ export default async function (page, { dir, shots }) {
   if (shots) await page.screenshot(join(shots, "projects-rail.png"));
   await dialogs(page, dir);
   await members(page, dir, shots);
+  await follows(page);
 }
 
 const square = (id) => `document.querySelector('.project-square[data-project="${id}"]')`;
@@ -359,4 +360,31 @@ async function members(page, dir, shots) {
   await page.waitFor(`${square(INTERNO)} === null && ${activeSquare} === 'all'`);
   // All connections still has its two tabs; Interno's closed with it.
   await page.waitFor(`${tabCount} === 2`);
+}
+
+/** Runs `sql` in a new editor on `name` and waits for its row. */
+async function runIn(page, name, sql) {
+  await openEditor(page, name, sql);
+  await page.key("Enter", "Enter", 13, CTRL);
+  await page.waitFor(`${visibleTab}.querySelector('.statusbar span')?.textContent === '1 row'`, 15_000);
+}
+
+/** The window title, the navigator's header and the palette follow the project. Starts in
+ *  All connections, with Cliente Rossi holding A dev and B dev, and C new in no project. */
+async function follows(page) {
+  assert.equal(await page.eval(`document.title`), "PlatypusDB");
+  await runIn(page, "C new", "SELECT 'c'");
+  await page.key("2", "Digit2", 50, CTRL);
+  await page.waitFor(`document.title === 'Cliente Rossi — PlatypusDB'`);
+  assert.equal(await page.eval(`document.querySelector('.navigator-project')?.textContent`), "Cliente Rossi");
+  await runIn(page, "A dev", "SELECT 'a'");
+
+  await page.key("k", "KeyK", 75, CTRL);
+  await page.waitFor(`[...document.querySelectorAll('.palette li')].some(l => l.textContent.includes("SELECT 'a'"))`);
+  const items = await page.eval(`[...document.querySelectorAll('.palette li')].map(l => l.textContent)`);
+  assert.ok(items.some((t) => t.includes("Open SQL editor: A dev")), items.join(" | "));
+  assert.ok(!items.some((t) => t.includes("C new") || t.includes("SELECT 'c'")), items.join(" | "));
+  await page.key("Escape", "Escape", 27);
+  await page.key("1", "Digit1", 49, CTRL);
+  await page.waitFor(`document.title === 'PlatypusDB' && document.querySelector('.navigator-project') === null`);
 }
