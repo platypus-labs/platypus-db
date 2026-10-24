@@ -88,10 +88,10 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 | A — Modifica dei dati | ✅ fatto (P1, P2, P3) |
 | B — Griglia avanzata | ✅ fatto (P1, P2, P3) |
 | C — Navigator e oggetti | ✅ fatto (P1, P2, P3) |
-| D — Editor SQL | 🔒 Paolo · group-d-editor · 2026-10-24 |
+| D — Editor SQL | ✅ fatto (P1, P2, P3) |
 | E — Explain e performance | libero |
 | F — Connettività e credenziali | 🔒 Delfa · group-f-connectivity · 2026-10-24 |
-| G — Nuovi driver | libero |
+| G — Nuovi driver | 🔒 Delfa · group-g-drivers · 2026-10-24 |
 | H — Import, export e trasferimento | libero |
 | I — Strumenti di schema | libero |
 | J — Amministrazione del server | libero |
@@ -195,7 +195,7 @@ viewer GIS su piano cartesiano senza mappa di sfondo).
 **Area:** `apps/desktop/src/editor/`, `platypus-sql` (formatter, parser), `apps/desktop/src/scripts/`
 **Dipende da:** 0.2, 0.5
 
-**Stato: completato** (P1, P2 e P3). Il formatter lavora sui token (`platypus-sql/src/format.rs`): cambia solo spazi e maiuscole delle parole chiave, e lascia com'è il corpo di funzioni, procedure e trigger. Le opzioni sono il case delle parole chiave e l'indentazione. I comandi dell'editor sono azioni dello scope `editor`. L'autocomplete dei JOIN usa le FK del catalogo (`Connection::catalog_foreign_keys`). Parametri (`:id`, `?`) e variabili (`${nome}`) passano dal dialog dei valori e dal pannello Variabili, sostituiti prima dell'esecuzione; i comandi client (`@set`, `@echo`, `@include`, `@export`) sono righe che iniziano con `@` all'inizio di uno statement e non arrivano al database. Gli script salvati sono file `.sql` in `scripts/<progetto>` nella cartella dati, con i link alle connessioni in `.links.json`. Il linter usa i fatti di `platypus_sql::lint` e il catalogo dell'autocomplete; l'esecuzione con `psql`, `mysql` o `sqlite3` usa le impostazioni della sessione e il suo tunnel SSH. Resta da fare: annullare uno script lanciato col client a riga di comando.
+**Stato: completato** (P1, P2 e P3). Il formatter lavora sui token (`platypus-sql/src/format.rs`): cambia solo spazi e maiuscole delle parole chiave, e lascia com'è il corpo di funzioni, procedure e trigger. Le opzioni sono il case delle parole chiave e l'indentazione. I comandi dell'editor sono azioni dello scope `editor`. L'autocomplete dei JOIN usa le FK del catalogo (`Connection::catalog_foreign_keys`). Parametri (`:id`, `?`) e variabili (`${nome}`) passano dal dialog dei valori e dal pannello Variabili, sostituiti prima dell'esecuzione; i comandi client (`@set`, `@echo`, `@include`, `@export`) sono righe che iniziano con `@` all'inizio di uno statement e non arrivano al database. Gli script salvati sono file `.sql` in `scripts/<progetto>` nella cartella dati, con i link alle connessioni in `.links.json`. Il linter usa i fatti di `platypus_sql::lint` e il catalogo dell'autocomplete; l'esecuzione con `psql`, `mysql` o `sqlite3` usa le impostazioni della sessione e il suo tunnel SSH, e Cancel lo interrompe.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|

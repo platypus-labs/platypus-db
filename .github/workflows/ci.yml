@@ -1,9 +1,9 @@
 name: CI
 
+# Started by hand only (Actions tab, or `gh workflow run ci.yml`): during development the
+# checks run locally, see "GitHub Actions" in CLAUDE.md.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}

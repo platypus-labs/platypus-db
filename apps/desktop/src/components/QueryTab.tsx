@@ -226,6 +226,8 @@ export function QueryTab({
   const lastPlanned = useRef<Planned[]>([]);
   /** Parameter values answered in the last run, reused when it runs again. */
   const lastAnswers = useRef<Record<string, string>>({});
+  /** The script running in the command-line client, which Cancel stops. */
+  const cliRun = useRef<number | null>(null);
   /** SQL that undoes the last saved edits. */
   const [undoScript, setUndoScript] = useState<string | null>(null);
   /** Seconds between runs of the last statements again; `null` is off. */
@@ -621,7 +623,8 @@ export function QueryTab({
     setRunning(true);
     let status: ResultStatus;
     try {
-      const out = await api.runCli(sessionId, script);
+      cliRun.current = result.id;
+      const out = await api.runCli(sessionId, result.id, script);
       const failed = out.status !== 0;
       status = {
         kind: "message",
@@ -632,6 +635,7 @@ export function QueryTab({
     } catch (e) {
       status = { kind: "error", error: toCommandError(e) };
     }
+    cliRun.current = null;
     update(result.id, { status });
     if (tab.terminal) await logTerminal(result.id, script, status);
     setRunning(false);
@@ -807,9 +811,10 @@ export function QueryTab({
 
   async function cancel() {
     const job = currentJob.current;
-    if (job === null) return;
+    const cli = cliRun.current;
     try {
-      await api.cancelQuery(job);
+      if (cli !== null) await api.cancelCli(cli);
+      else if (job !== null) await api.cancelQuery(job);
     } catch (e) {
       onError(toCommandError(e).message);
     }
