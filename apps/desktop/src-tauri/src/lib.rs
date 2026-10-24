@@ -148,6 +148,8 @@ pub fn run() {
             commands::data::preview_changes,
             commands::data::save_changes,
             commands::data::row_values,
+            commands::data::split_literal,
+            commands::data::join_literal,
             commands::grid::copy_rows,
             commands::grid::sql_literals,
             commands::grid::cell_bytes,

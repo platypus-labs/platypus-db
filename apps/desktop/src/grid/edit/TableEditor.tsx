@@ -482,6 +482,8 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
       initial={editing.initial}
       typed={editing.typed}
       enumValues={columnMeta?.enum_values ?? []}
+      type={columnMeta?.data_type ?? column.db_type}
+      fields={columnMeta?.fields ?? []}
       nullable={columnMeta?.nullable ?? true}
       json={isJson(column, columnMeta)}
       numeric={column.numeric}

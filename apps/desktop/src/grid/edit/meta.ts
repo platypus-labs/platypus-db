@@ -36,7 +36,7 @@ export interface ReadOnly {
 }
 
 /** How a column is edited. */
-export type EditorKind = "text" | "multiline" | "bool" | "enum" | "date" | "lookup";
+export type EditorKind = "text" | "multiline" | "bool" | "enum" | "date" | "lookup" | "array" | "composite";
 
 /** Finds a catalog column by name: exactly, else ignoring case (MySQL and SQLite). */
 function byName(details: TableDetails): (name: string) => ColumnMeta | undefined {
@@ -121,6 +121,9 @@ export function editorKind(
   const type = meta?.data_type ?? column.db_type;
   if (lookup) return "lookup";
   if (meta?.enum_values.length) return "enum";
+  // PostgreSQL prints array types as `integer[]`, `character varying(20)[]`.
+  if (type.endsWith("[]")) return "array";
+  if (meta?.fields.length) return "composite";
   // Booleans stored as numbers (SQLite, MySQL TINYINT) are typed as 1 and 0.
   if (BOOL_TYPE.test(type) && !column.numeric) return "bool";
   if (JSON_TYPE.test(type) || (value !== null && (value.includes("\n") || value.length > LONG_TEXT))) {
