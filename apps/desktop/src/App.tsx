@@ -258,9 +258,15 @@ export function App() {
     setActiveTab(placed.key);
   }
 
+  /** The open unlock dialog's answer, shared by every connection waiting for it. */
+  const unlocking = useRef<Promise<boolean> | null>(null);
+
   /** Asks for the master password; true once the saved passwords are unlocked. */
   function askUnlock() {
-    return new Promise<boolean>((resolve) => setUnlockRequest({ resolve }));
+    unlocking.current ??= new Promise<boolean>((resolve) => setUnlockRequest({ resolve })).finally(() => {
+      unlocking.current = null;
+    });
+    return unlocking.current;
   }
 
   function askPassword(connection: SavedConnection) {

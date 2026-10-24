@@ -17,7 +17,8 @@ export type Health =
   | { state: "ok"; latencyMs: number; reconnected: boolean }
   | { state: "lost"; message: string };
 
-/** Pings the session that `current` gives (never opening one) while `idle`. */
+/** Pings the session that `current` gives (never opening one) after it has been `idle` for
+ *  the set interval, and again at each one: never right after a statement. */
 export function useSessionHealth(current: () => Promise<number | null> | null, idle: boolean): Health | null {
   const seconds = useSetting(keepAliveSeconds);
   const [health, setHealth] = useState<Health | null>(null);
@@ -37,7 +38,6 @@ export function useSessionHealth(current: () => Promise<number | null> | null, i
         if (live) setHealth({ state: "lost", message: toCommandError(e).message });
       }
     };
-    void ping();
     const timer = setInterval(() => void ping(), seconds * 1000);
     return () => {
       live = false;

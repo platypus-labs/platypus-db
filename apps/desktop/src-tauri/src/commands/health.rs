@@ -38,13 +38,14 @@ pub async fn ping_session(state: State<'_, AppState>, session_id: u64) -> Comman
         Err(e) => Err(e),
     };
     let reconnected = match pinged {
-        Ok(()) => was_closed,
         // Dropped since the last statement: the ping found out, reopen it now.
         Err(_) if conn.is_closed() => {
             state.live(session_id).await?;
             true
         }
-        Err(e) => return Err(e.into()),
+        // Answered, even with an error (PostgreSQL refuses statements in a transaction a
+        // failed one aborted): the connection is alive.
+        _ => was_closed,
     };
     let latency_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
     Ok(Health::Ok {

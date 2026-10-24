@@ -92,7 +92,11 @@ pub async fn enable_vault(
     let created = Arc::new(
         blocking(move || Ok(VaultSecrets::create(path, &password, HashMap::new())?)).await?,
     );
-    state.with_store(|s| s.move_secrets(created.clone()))?;
+    // A vault file left behind would be read at the next start instead of the keychain.
+    if let Err(e) = state.with_store(|s| s.move_secrets(created.clone())) {
+        let _ = std::fs::remove_file(created.path());
+        return Err(e);
+    }
     *lock(&state.vault) = Some(created);
     Ok(status(&state))
 }
@@ -108,9 +112,14 @@ pub async fn disable_vault(
     let target = Arc::clone(&v);
     blocking(move || confirm_password(&target, &password)).await?;
     state.with_store(|s| s.move_secrets(Arc::new(KeyringSecrets::default())))?;
-    std::fs::remove_file(v.path())
-        .map_err(|e| CommandError::new("io", format!("{}: {e}", v.path().display())))?;
+    // The passwords are in the keychain now, whatever happens to the file.
     *lock(&state.vault) = None;
+    // A file still there would be read at the next start: renamed when it cannot go.
+    if let Err(e) = std::fs::remove_file(v.path()) {
+        let aside = v.path().with_extension("vault.off");
+        std::fs::rename(v.path(), &aside)
+            .map_err(|_| CommandError::new("io", format!("{}: {e}", v.path().display())))?;
+    }
     Ok(status(&state))
 }
 

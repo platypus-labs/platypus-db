@@ -20,6 +20,10 @@ use crate::{Result, SecretStore, StoreError};
 const FILE_VERSION: u32 = 1;
 const SALT_LEN: usize = 16;
 const KEY_LEN: usize = 32;
+/// Upper bounds of the key settings read from a file: 1 GiB, 64 passes, 16 lanes.
+const MAX_M_COST: u32 = 1 << 20;
+const MAX_T_COST: u32 = 64;
+const MAX_P_COST: u32 = 16;
 
 /// What the vault file holds; everything but the KDF settings is encrypted.
 #[derive(Serialize, Deserialize)]
@@ -196,6 +200,11 @@ impl VaultSecrets {
             .try_into()
             .map_err(|_| corrupt(&self.path, "invalid nonce"))?;
         let mut data = bytes(&file.data)?;
+        // Costs far beyond any setting this app writes: a damaged file, not a reason to
+        // allocate gigabytes.
+        if file.m_cost > MAX_M_COST || file.t_cost > MAX_T_COST || file.p_cost > MAX_P_COST {
+            return Err(corrupt(&self.path, "key settings out of range"));
+        }
         let key = derive(password, &salt, (file.m_cost, file.t_cost, file.p_cost))?;
         let plain = sealing_key(&key)
             .open_in_place(Nonce::assume_unique_for_key(nonce), Aad::empty(), &mut data)
@@ -217,11 +226,17 @@ impl VaultSecrets {
         check_password(password)?;
         let mut state = self.lock_state();
         let open = state.as_mut().ok_or(StoreError::Locked)?;
-        // The salt changes only with its key: a failed derivation keeps both.
+        // The salt changes only with its key, and both only once the file is written: a
+        // failure keeps the old password working.
         let salt = random::<SALT_LEN>()?;
-        open.key = derive(password, &salt, params())?;
-        open.salt = salt;
-        self.write(open)
+        let key = derive(password, &salt, params())?;
+        let old = (open.key, open.salt);
+        (open.key, open.salt) = (key, salt);
+        if let Err(e) = self.write(open) {
+            (open.key, open.salt) = old;
+            return Err(e);
+        }
+        Ok(())
     }
 
     /// Every secret, to move them elsewhere when the vault is turned off.
@@ -345,5 +360,18 @@ mod tests {
         file["data"] = format!("{flipped}{}", &data[1..]).into();
         std::fs::write(&path, file.to_string()).unwrap();
         assert!(VaultSecrets::locked(&path).unlock("pw").is_err());
+    }
+
+    #[test]
+    fn refuses_key_settings_out_of_range() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("secrets.vault");
+        VaultSecrets::create(&path, "pw", HashMap::new()).unwrap();
+        let mut file: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        file["m_cost"] = (MAX_M_COST + 1).into();
+        std::fs::write(&path, file.to_string()).unwrap();
+        let err = VaultSecrets::locked(&path).unlock("pw").unwrap_err();
+        assert!(err.to_string().contains("out of range"), "{err}");
     }
 }

@@ -62,7 +62,7 @@ pub struct MySqlConnection {
     closed: Arc<AtomicBool>,
 }
 
-fn ssl_opts(config: &ConnectionConfig) -> Option<SslOpts> {
+fn ssl_opts(config: &ConnectionConfig) -> Result<Option<SslOpts>> {
     let roots = || {
         config
             .ssl_root_cert
@@ -74,10 +74,15 @@ fn ssl_opts(config: &ConnectionConfig) -> Option<SslOpts> {
         (Some(cert), Some(key)) => {
             Some(ClientIdentity::new(cert.clone().into(), key.clone().into()))
         }
-        _ => None,
+        (None, None) => None,
+        _ => {
+            return Err(Error::Config(
+                "a client certificate needs both the certificate and its key".to_owned(),
+            ));
+        }
     };
     let base = SslOpts::default().with_client_identity(identity);
-    match config.ssl_mode {
+    Ok(match config.ssl_mode {
         SslMode::Disable => None,
         SslMode::Prefer | SslMode::Require => Some(
             base.with_danger_accept_invalid_certs(true)
@@ -88,7 +93,7 @@ fn ssl_opts(config: &ConnectionConfig) -> Option<SslOpts> {
                 .with_danger_skip_domain_validation(true),
         ),
         SslMode::VerifyFull => Some(base.with_root_certs(roots())),
-    }
+    })
 }
 
 fn opts(config: &ConnectionConfig, ssl: Option<SslOpts>) -> Opts {
@@ -139,7 +144,7 @@ impl MySqlConnection {
             )));
         }
         let timeout = config.connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT);
-        let mut opts = opts(config, ssl_opts(config));
+        let mut opts = opts(config, ssl_opts(config)?);
         let mut conn = match open(opts.clone(), timeout).await {
             // `prefer` falls back to plaintext when the server has no TLS.
             Err(Error::Connect(message))
@@ -530,6 +535,17 @@ fn error_position(sql: &str, message: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn client_certificate_needs_cert_and_key() {
+        let mut config = ConnectionConfig::new(DriverKind::MySql);
+        config.ssl_mode = SslMode::Require;
+        assert!(ssl_opts(&config).unwrap().is_some());
+        config.ssl_client_cert = Some("client.crt".into());
+        assert!(ssl_opts(&config).is_err());
+        config.ssl_client_key = Some("client.key".into());
+        assert!(ssl_opts(&config).unwrap().is_some());
+    }
 
     #[test]
     fn locates_syntax_errors() {
