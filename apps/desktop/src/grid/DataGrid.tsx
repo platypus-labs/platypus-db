@@ -699,7 +699,9 @@ export function DataGrid({
       }
     }
     const row = Math.floor((py - HEADER_H + logicalScrollTop()) / ROW_H);
-    return { px, py, col, d, border, row, inHeader: py < HEADER_H, inGutter: px < gutter };
+    // The scrollbars lie over the cells: a press there drags them and must not sort or select.
+    const onScrollbar = px >= scroller.clientWidth || py >= scroller.clientHeight;
+    return { px, py, col, d, border, row, inHeader: py < HEADER_H, inGutter: px < gutter, onScrollbar };
   }
 
   function scrollIntoView(cell: Cell) {
@@ -782,6 +784,7 @@ export function DataGrid({
   function onMouseDown(e: React.MouseEvent) {
     if (e.button !== 0) return;
     const h = hit(e);
+    if (h.onScrollbar) return;
     if (h.inHeader && h.border >= 0) {
       e.preventDefault();
       resizing.current = { col: h.border, startX: e.clientX, startW: width(h.border) };
@@ -877,6 +880,7 @@ export function DataGrid({
 
   function onDoubleClick(e: React.MouseEvent) {
     const h = hit(e);
+    if (h.onScrollbar) return;
     if (h.inHeader && h.border >= 0) autosize(h.border);
     else if (!h.inHeader && !h.inGutter && h.col >= 0 && h.row >= 0 && h.row < total()) {
       onCellDoubleClick?.({ row: h.row, col: h.col });
