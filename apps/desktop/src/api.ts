@@ -17,7 +17,6 @@ export interface SavedConnection {
   save_password: boolean;
   read_only: boolean;
   color: string | null;
-  folder: string | null;
   /** Production asks before changes and starts in manual commit. */
   connection_type?: ConnectionType | null;
   /** The SSH server the connection goes through. */

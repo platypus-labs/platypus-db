@@ -8,7 +8,8 @@ use uuid::Uuid;
 
 use crate::{Result, SecretStore, StoreError};
 
-const FILE_VERSION: u32 = 1;
+/// 2 added projects: an older app would drop them on its first save, so it refuses the file.
+const FILE_VERSION: u32 = 2;
 
 /// A connection as the user saved it. Never contains the password.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,7 +36,6 @@ pub struct SavedConnection {
     pub read_only: bool,
     /// Accent colour for tabs and the navigator, e.g. `#d64545` for production.
     pub color: Option<String>,
-    pub folder: Option<String>,
     /// Development, test or production: production asks before changes and starts in manual
     /// commit.
     pub connection_type: Option<ConnectionType>,
@@ -115,6 +115,50 @@ impl SavedSsh {
     }
 }
 
+/// A set of connections worked on together, shown as a square in the project rail. A
+/// connection can be in several projects.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Project {
+    pub id: Uuid,
+    pub name: String,
+    /// `#rrggbb`.
+    pub color: String,
+    /// One or two characters on the square; computed from the name when empty.
+    #[serde(default)]
+    pub initials: String,
+    /// In the order they were added.
+    #[serde(default)]
+    pub connections: Vec<Uuid>,
+}
+
+/// The initials of the first two words ("Cliente Rossi" → "CR"), or the first two letters
+/// of a single word ("Interno" → "IN"), upper case.
+#[must_use]
+pub fn initials_of(name: &str) -> String {
+    let words: Vec<&str> = name.split_whitespace().collect();
+    let chars: Vec<char> = match words.as_slice() {
+        [] => Vec::new(),
+        [word] => word.chars().take(2).collect(),
+        [first, second, ..] => first
+            .chars()
+            .take(1)
+            .chain(second.chars().take(1))
+            .collect(),
+    };
+    chars.into_iter().flat_map(char::to_uppercase).collect()
+}
+
+/// Trims in place, without a new allocation.
+fn trim(s: &mut String) {
+    s.truncate(s.trim_end().len());
+    let start = s.len() - s.trim_start().len();
+    s.drain(..start);
+}
+
+fn is_color(s: &str) -> bool {
+    s.len() == 7 && s.starts_with('#') && s[1..].bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 /// Columns that identify a table's rows, set by the user instead of a primary key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VirtualKey {
@@ -139,7 +183,6 @@ impl SavedConnection {
             save_password: true,
             read_only: false,
             color: None,
-            folder: None,
             connection_type: None,
             ssh: None,
             virtual_keys: Vec::new(),
@@ -168,17 +211,28 @@ pub enum PasswordUpdate {
     Clear,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 struct ConnectionsFile {
     version: u32,
     #[serde(default)]
+    projects: Vec<Project>,
+    #[serde(default)]
     connections: Vec<SavedConnection>,
+}
+
+/// What `write` saves, borrowed from the store.
+#[derive(Serialize)]
+struct FileOut<'a> {
+    version: u32,
+    projects: &'a [Project],
+    connections: &'a [SavedConnection],
 }
 
 #[derive(Debug)]
 pub struct ConnectionStore {
     path: PathBuf,
     secrets: Arc<dyn SecretStore>,
+    projects: Vec<Project>,
     connections: Vec<SavedConnection>,
 }
 
@@ -186,7 +240,7 @@ impl ConnectionStore {
     /// Loads `path`, or starts empty if it does not exist yet.
     pub fn open(path: impl Into<PathBuf>, secrets: Arc<dyn SecretStore>) -> Result<Self> {
         let path = path.into();
-        let connections = match std::fs::read_to_string(&path) {
+        let (projects, connections) = match std::fs::read_to_string(&path) {
             Ok(text) => {
                 let file: ConnectionsFile =
                     toml::from_str(&text).map_err(|e| StoreError::Format {
@@ -202,16 +256,124 @@ impl ConnectionStore {
                         ),
                     });
                 }
-                file.connections
+                (file.projects, file.connections)
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Vec::new(), Vec::new()),
             Err(source) => return Err(StoreError::Io { path, source }),
         };
-        Ok(Self {
+        let mut store = Self {
             path,
             secrets,
+            projects,
             connections,
-        })
+        };
+        // Files edited by hand: ids of missing connections and empty initials.
+        let mut projects = std::mem::take(&mut store.projects);
+        for p in &mut projects {
+            store.keep_known(&mut p.connections);
+            if p.initials.trim().is_empty() {
+                p.initials = initials_of(&p.name);
+            }
+        }
+        store.projects = projects;
+        Ok(store)
+    }
+
+    /// Drops ids of connections the store does not have, and repeated ones.
+    fn keep_known(&self, ids: &mut Vec<Uuid>) {
+        let mut seen = std::collections::HashSet::new();
+        ids.retain(|id| self.get(*id).is_some() && seen.insert(*id));
+    }
+
+    #[must_use]
+    pub fn projects(&self) -> &[Project] {
+        &self.projects
+    }
+
+    /// Inserts or replaces (by id) a project, after checking it: a name used by no other
+    /// project (ignoring case), a `#rrggbb` color, one or two characters of initials (empty
+    /// ones are computed from the name). Unknown connection ids are dropped.
+    pub fn save_project(&mut self, mut project: Project) -> Result<()> {
+        let invalid = |m: String| Err(StoreError::Invalid(m));
+        trim(&mut project.name);
+        trim(&mut project.initials);
+        if project.name.is_empty() {
+            return invalid("project name is required".to_owned());
+        }
+        let lower = project.name.to_lowercase();
+        if self
+            .projects
+            .iter()
+            .any(|p| p.id != project.id && p.name.to_lowercase() == lower)
+        {
+            return invalid(format!(
+                "a project named \"{}\" exists already",
+                project.name
+            ));
+        }
+        if !is_color(&project.color) {
+            return invalid(format!("invalid project color `{}`", project.color));
+        }
+        if project.initials.is_empty() {
+            project.initials = initials_of(&project.name);
+        }
+        if project.initials.chars().count() > 2 {
+            return invalid("initials are one or two characters".to_owned());
+        }
+        self.keep_known(&mut project.connections);
+        match self.projects.iter_mut().find(|p| p.id == project.id) {
+            Some(existing) => *existing = project,
+            None => self.projects.push(project),
+        }
+        self.write()
+    }
+
+    /// Removes a project; its connections stay.
+    pub fn delete_project(&mut self, id: Uuid) -> Result<()> {
+        let before = self.projects.len();
+        self.projects.retain(|p| p.id != id);
+        if self.projects.len() == before {
+            return Err(StoreError::NotFound(id));
+        }
+        self.write()
+    }
+
+    /// Adds a connection to a project, or (`member` false) takes it out.
+    pub fn set_membership(&mut self, connection: Uuid, project: Uuid, member: bool) -> Result<()> {
+        if self.get(connection).is_none() {
+            return Err(StoreError::NotFound(connection));
+        }
+        let p = self
+            .projects
+            .iter_mut()
+            .find(|p| p.id == project)
+            .ok_or(StoreError::NotFound(project))?;
+        let present = p.connections.contains(&connection);
+        if member && !present {
+            p.connections.push(connection);
+        } else if !member && present {
+            p.connections.retain(|c| *c != connection);
+        } else {
+            return Ok(());
+        }
+        self.write()
+    }
+
+    /// Makes `projects` the projects a connection is in, and no others.
+    pub fn set_projects_of(&mut self, connection: Uuid, projects: &[Uuid]) -> Result<()> {
+        if self.get(connection).is_none() {
+            return Err(StoreError::NotFound(connection));
+        }
+        for p in &mut self.projects {
+            let wanted = projects.contains(&p.id);
+            let present = p.connections.contains(&connection);
+            if wanted && !present {
+                p.connections.push(connection);
+            } else if !wanted && present {
+                p.connections.retain(|c| *c != connection);
+            }
+        }
+        self.write()
     }
 
     #[must_use]
@@ -276,6 +438,9 @@ impl ConnectionStore {
             return Err(StoreError::NotFound(id));
         };
         let removed = self.connections.remove(index);
+        for p in &mut self.projects {
+            p.connections.retain(|c| *c != id);
+        }
         self.write()?;
         for ssh in removed.ssh.iter().flat_map(SavedSsh::chain) {
             self.secrets.delete(ssh.secret_id)?;
@@ -313,9 +478,10 @@ impl ConnectionStore {
         };
         let dir = self.path.parent().unwrap_or(Path::new("."));
         std::fs::create_dir_all(dir).map_err(io_error)?;
-        let text = toml::to_string_pretty(&ConnectionsFile {
+        let text = toml::to_string_pretty(&FileOut {
             version: FILE_VERSION,
-            connections: self.connections.clone(),
+            projects: &self.projects,
+            connections: &self.connections,
         })
         .map_err(|e| StoreError::Format {
             path: self.path.clone(),
@@ -347,6 +513,156 @@ mod tests {
         c.ssl_mode = SslMode::Disable;
         c.color = Some("#d64545".to_owned());
         c
+    }
+
+    const NONE: [Uuid; 0] = [];
+
+    fn project(name: &str, connections: Vec<Uuid>) -> Project {
+        Project {
+            id: Uuid::new_v4(),
+            name: name.to_owned(),
+            color: "#d08f20".to_owned(),
+            initials: String::new(),
+            connections,
+        }
+    }
+
+    #[test]
+    fn initials_from_the_first_two_words() {
+        assert_eq!(initials_of("Cliente Rossi"), "CR");
+        assert_eq!(initials_of("Interno"), "IN");
+        assert_eq!(initials_of("  a  b  c "), "AB");
+        assert_eq!(initials_of("éclair dé"), "ÉD");
+        assert_eq!(initials_of("x"), "X");
+    }
+
+    #[test]
+    fn projects_round_trip_many_to_many() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, secrets) = store(dir.path());
+        let shared = sample();
+        s.save(shared.clone(), PasswordUpdate::Keep).unwrap();
+        s.save_project(project("Cliente Rossi", vec![shared.id]))
+            .unwrap();
+        s.save_project(project("Interno", vec![shared.id])).unwrap();
+
+        let text = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
+        assert!(text.contains("version = 2"), "{text}");
+        assert!(text.contains("[[projects]]"), "{text}");
+        let reopened = ConnectionStore::open(dir.path().join("connections.toml"), secrets).unwrap();
+        let projects = reopened.projects();
+        assert_eq!(projects.len(), 2);
+        assert!(projects.iter().all(|p| p.connections == [shared.id]));
+        assert_eq!(projects[0].initials, "CR");
+        assert_eq!(projects[1].initials, "IN");
+    }
+
+    #[test]
+    fn reads_a_v1_file_and_writes_v2() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("connections.toml");
+        let id = Uuid::new_v4();
+        std::fs::write(
+            &path,
+            format!(
+                "version = 1\n\n[[connections]]\nid = \"{id}\"\nname = \"Old\"\ndriver = \"sqlite\"\ndatabase = 'x.db'\nfolder = \"x\"\n"
+            ),
+        )
+        .unwrap();
+        let mut s = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap();
+        assert_eq!(s.projects(), []);
+        let old = s.get(id).unwrap().clone();
+        s.save(old, PasswordUpdate::Keep).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("version = 2"), "{text}");
+        assert!(!text.contains("folder"), "{text}");
+    }
+
+    #[test]
+    fn deleting_a_connection_removes_it_from_projects() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        let (a, b) = (sample(), sample());
+        s.save(a.clone(), PasswordUpdate::Keep).unwrap();
+        s.save(b.clone(), PasswordUpdate::Keep).unwrap();
+        s.save_project(project("One", vec![a.id, b.id])).unwrap();
+        s.save_project(project("Two", vec![a.id])).unwrap();
+        s.delete(a.id).unwrap();
+        assert_eq!(s.projects()[0].connections, [b.id]);
+        assert_eq!(s.projects()[1].connections, NONE);
+    }
+
+    #[test]
+    fn drops_unknown_connection_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("connections.toml");
+        let (known, unknown) = (Uuid::new_v4(), Uuid::new_v4());
+        std::fs::write(
+            &path,
+            format!(
+                "version = 2\n\n[[projects]]\nid = \"{}\"\nname = \"P\"\ncolor = \"#123456\"\nconnections = [\"{unknown}\", \"{known}\", \"{known}\"]\n\n[[connections]]\nid = \"{known}\"\nname = \"K\"\ndriver = \"sqlite\"\n",
+                Uuid::new_v4()
+            ),
+        )
+        .unwrap();
+        let s = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap();
+        assert_eq!(s.projects()[0].connections, [known]);
+        assert_eq!(s.projects()[0].initials, "P");
+    }
+
+    #[test]
+    fn validates_projects() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        s.save_project(project("Interno", vec![])).unwrap();
+        let invalid = |r: Result<()>| matches!(r, Err(StoreError::Invalid(_)));
+        assert!(invalid(s.save_project(project("  ", vec![]))));
+        assert!(invalid(s.save_project(project("INTERNO", vec![]))));
+        let mut red = project("Red", vec![]);
+        red.color = "red".to_owned();
+        assert!(invalid(s.save_project(red)));
+        let mut long = project("Long", vec![]);
+        long.initials = "ABC".to_owned();
+        assert!(invalid(s.save_project(long)));
+        // Renaming a project to its own name in other case is not a clash.
+        let mut same = s.projects()[0].clone();
+        same.name = "interno".to_owned();
+        s.save_project(same).unwrap();
+    }
+
+    #[test]
+    fn set_membership_adds_and_removes() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        let c = sample();
+        s.save(c.clone(), PasswordUpdate::Keep).unwrap();
+        s.save_project(project("P", vec![])).unwrap();
+        let p = s.projects()[0].id;
+        s.set_membership(c.id, p, true).unwrap();
+        s.set_membership(c.id, p, true).unwrap();
+        assert_eq!(s.projects()[0].connections, [c.id]);
+        s.set_membership(c.id, p, false).unwrap();
+        assert_eq!(s.projects()[0].connections, NONE);
+        assert!(matches!(
+            s.set_membership(Uuid::new_v4(), p, true),
+            Err(StoreError::NotFound(_))
+        ));
+    }
+
+    #[test]
+    fn set_projects_of_replaces() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        let c = sample();
+        s.save(c.clone(), PasswordUpdate::Keep).unwrap();
+        s.save_project(project("A", vec![c.id])).unwrap();
+        s.save_project(project("B", vec![])).unwrap();
+        let (a, b) = (s.projects()[0].id, s.projects()[1].id);
+        s.set_projects_of(c.id, &[b]).unwrap();
+        assert_eq!(s.projects()[0].connections, NONE);
+        assert_eq!(s.projects()[1].connections, [c.id]);
+        s.set_projects_of(c.id, &[a, b]).unwrap();
+        assert!(s.projects().iter().all(|p| p.connections == [c.id]));
     }
 
     #[test]
@@ -495,6 +811,9 @@ mod tests {
         std::fs::write(&path, "version = 99\n").unwrap();
         let err = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap_err();
         assert!(matches!(err, StoreError::Format { .. }));
+        std::fs::write(&path, "version = 3\n").unwrap();
+        let err = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap_err();
+        assert!(err.to_string().contains("newer PlatypusDB"), "{err}");
 
         let (mut s, _) = store(&dir.path().join("other"));
         let mut conn = sample();
