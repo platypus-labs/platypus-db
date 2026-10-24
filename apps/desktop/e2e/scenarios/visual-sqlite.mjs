@@ -1,5 +1,5 @@
-// The look of the main screens in Platypus Dark and Light: navigator with a table open,
-// editor with results, palette and Settings. With PLATYPUS_E2E_SHOTS set it saves
+// The look of the main screens in Platypus Dark and Light: the project rail, navigator with a
+// table open, editor with results, palette and Settings. With PLATYPUS_E2E_SHOTS set it saves
 // visual-<theme>-<screen>.png, to compare with the design by eye.
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
@@ -31,7 +31,18 @@ export function setup({ dir }) {
   db.close();
   writeFileSync(
     join(dir, "connections.toml"),
-    `version = 1
+    `version = 2
+
+[[projects]]
+id = "00000000-0000-4000-9000-000000000011"
+name = "Negozio"
+color = "#d97706"
+connections = ["00000000-0000-4000-8000-000000000011"]
+
+[[projects]]
+id = "00000000-0000-4000-9000-000000000012"
+name = "Interno"
+color = "#0d9488"
 
 [[connections]]
 id = "00000000-0000-4000-8000-000000000011"
@@ -74,6 +85,13 @@ async function screens(page, theme, shots) {
 
 export default async function (page, { shots }) {
   await page.waitFor(`${cssVar("--bg")} === '#141519'`);
+  // All connections, then the two projects; Negozio becomes the workspace shown.
+  assert.deepEqual(
+    await page.eval(`[...document.querySelectorAll('.project-square')].map(s => s.title)`),
+    ["All connections", "Negozio", "Interno"],
+  );
+  await page.key("2", "Digit2", 50, CTRL);
+  await page.waitFor(`document.querySelector('.navigator-project')?.textContent === 'Negozio'`);
   await page.eval(`${treeRow(NAME)}.click()`);
   await page.waitFor(`${treeRow("orders")} !== undefined`, 15_000);
   await page.eval(`${treeRow("orders")}.id = 'e2e-table'`);

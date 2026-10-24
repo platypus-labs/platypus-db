@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, type ImportFile, type ImportSource, type SavedConnection, toCommandError } from "../api";
+import { toggled } from "../sets";
 
 interface Props {
   existing: SavedConnection[];
+  /** The active project, which the imported connections join; `null` for none. */
+  project: string | null;
   onImported: (all: SavedConnection[]) => void;
   onClose: () => void;
 }
@@ -26,7 +29,7 @@ function duplicate(c: SavedConnection, existing: SavedConnection[]) {
 
 /** Reads the connections of DBeaver, DataGrip, pgAdmin or `pg_service.conf` and saves the
  *  chosen ones. Passwords are asked for on first use. */
-export function ImportDialog({ existing, onImported, onClose }: Props) {
+export function ImportDialog({ existing, project, onImported, onClose }: Props) {
   const [found, setFound] = useState<ImportFile[] | null>(null);
   const [file, setFile] = useState<ImportFile | null>(null);
   const [connections, setConnections] = useState<SavedConnection[] | null>(null);
@@ -58,18 +61,13 @@ export function ImportDialog({ existing, onImported, onClose }: Props) {
 
   async function save() {
     try {
-      onImported(await api.saveImported(connections!.filter((c) => picked.has(c.id))));
+      onImported(await api.saveImported(connections!.filter((c) => picked.has(c.id)), project));
     } catch (e) {
       setError(toCommandError(e).message);
     }
   }
 
-  const toggle = (id: string) =>
-    setPicked((p) => {
-      const next = new Set(p);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
+  const toggle = (id: string) => setPicked((p) => toggled(p, id));
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>

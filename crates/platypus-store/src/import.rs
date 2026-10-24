@@ -195,7 +195,6 @@ fn dbeaver(json: &str) -> Result<Vec<SavedConnection>, String> {
         if let Some(user) = text(config, "user") {
             c.user = user;
         }
-        c.folder = text(entry, "folder");
         c.read_only = entry
             .get("read-only")
             .and_then(Value::as_bool)
@@ -250,7 +249,6 @@ fn pgadmin(json: &str) -> Result<Vec<SavedConnection>, String> {
         c.port = text(s, "Port").and_then(|p| p.parse().ok()).or(Some(5432));
         c.database = text(s, "MaintenanceDB").unwrap_or_else(|| "postgres".to_owned());
         c.user = text(s, "Username").unwrap_or_default();
-        c.folder = text(s, "Group").filter(|g| g != "Servers");
         if let Some(mode) = text(s, "SSLMode").and_then(|m| m.parse::<SslMode>().ok()) {
             c.ssl_mode = mode;
         }
@@ -395,10 +393,7 @@ mod tests {
             (pg.host.as_str(), pg.port, pg.database.as_str()),
             ("db.example.com", Some(6543), "app")
         );
-        assert_eq!(
-            (pg.user.as_str(), pg.folder.as_deref()),
-            ("me", Some("Work"))
-        );
+        assert_eq!(pg.user, "me");
         assert_eq!(pg.connection_type, Some(ConnectionType::Prod));
         let ssh = pg.ssh.as_ref().unwrap();
         assert_eq!(
@@ -420,7 +415,6 @@ mod tests {
             ["A", "B"]
         );
         assert_eq!(found[1].ssl_mode, SslMode::Require);
-        assert_eq!(found[1].folder.as_deref(), Some("Team"));
         assert_eq!(found[0].ssh.as_ref().unwrap().host, "jump");
 
         let ini = "# services\n[reports]\nhost=r.example.com\nport=5440\ndbname=rep\nuser=ro\n\n[local]\nhost=localhost\n";

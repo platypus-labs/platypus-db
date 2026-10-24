@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { actionsFor, runAction, shortcutLabel } from "../actions";
 import { api, type CompletionCatalog, type HistoryEntry, type SavedConnection, toCommandError } from "../api";
+import { projectKey } from "../projects/state";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import { parseDbKey, workbench } from "../workbench";
 import { type FuzzyMatch, fuzzy } from "./fuzzy";
@@ -10,7 +11,7 @@ const LIMIT = 60;
 
 interface Item {
   key: string;
-  kind: "Action" | "Connection" | "Table" | "Recent query";
+  kind: "Action" | "Project" | "Connection" | "Table" | "Recent query";
   label: string;
   detail?: string;
   shortcut?: string;
@@ -73,7 +74,9 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
   const list = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
-    api.searchHistory({ limit: 30 }).then(setHistory, () => setHistory([]));
+    // In a project, its connections' queries only: the limit counts them alone.
+    const connectionIds = workbench().activeProject() ? connections.map((c) => c.id) : undefined;
+    api.searchHistory({ connectionIds, limit: 30 }).then(setHistory, () => setHistory([]));
   }, []);
 
   const items = useMemo((): Item[] => {
@@ -86,6 +89,13 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
         label: a.title,
         shortcut: shortcutLabel(a),
         run: () => runAction(a, undefined, (e) => workbench().showError(toCommandError(e).message)),
+      })),
+      // Projects, to switch to; All connections first, as in the rail.
+      ...[{ id: null, name: "All connections" }, ...workbench().projects()].map((p) => ({
+        key: `project:${projectKey(p.id)}`,
+        kind: "Project" as const,
+        label: p.name,
+        run: () => workbench().switchProject(p.id),
       })),
       ...connections.map((c) => ({
         key: `connection:${c.id}`,

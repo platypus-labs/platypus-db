@@ -5,6 +5,7 @@ import {
   toCommandError,
   type ObjectKind,
   type ObjectMeta,
+  type Project,
   type SavedConnection,
   type SchemaMeta,
   type TableDetails,
@@ -31,6 +32,10 @@ type Cache = Map<string, Load<unknown>>;
 
 interface Props {
   connections: SavedConnection[];
+  /** The active project, whose connections these are; `null` for All connections. */
+  project: Project | null;
+  /** Adds saved connections to the active project. */
+  onAddExisting: () => void;
   error: string | null;
   onNew: () => void;
   /** Opens the import of connections from other tools. */
@@ -98,7 +103,7 @@ interface Row {
 }
 
 export function Navigator(props: Props) {
-  const { connections, error, onNew, onImport, onEdit, onOpenTab, session, disconnect, onError } = props;
+  const { connections, project, onAddExisting, error, onNew, onImport, onEdit, onOpenTab, session, disconnect, onError } = props;
   const [cache, setCache] = useState<Cache>(new Map());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
@@ -519,7 +524,16 @@ export function Navigator(props: Props) {
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <span className="sidebar-title">Connections</span>
+        <span className="sidebar-title">
+          {project ? (
+            <span className="navigator-project" title={project.name}>
+              <span className="dot" style={{ background: project.color }} />
+              {project.name}
+            </span>
+          ) : (
+            "Connections"
+          )}
+        </span>
         <ThemeButton />
         <button className="icon" title="Settings (Ctrl+,)" onClick={() => workbench().openSettings()}>
           <Icon name="settings" />
@@ -545,7 +559,15 @@ export function Navigator(props: Props) {
         </div>
       )}
       {error && <div className="notice error small">{error}</div>}
-      {connections.length === 0 && !error && (
+      {project && connections.length === 0 && !error && (
+        <div className="project-empty">
+          <p className="muted small">No connections in this project.</p>
+          <button onClick={onNew}>New connection</button>
+          <button onClick={onAddExisting}>Add existing…</button>
+          <button onClick={onImport}>Import…</button>
+        </div>
+      )}
+      {!project && connections.length === 0 && !error && (
         <>
           <button className="empty-cta" onClick={onNew}>
             Add your first connection
