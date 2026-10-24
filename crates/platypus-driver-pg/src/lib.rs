@@ -286,12 +286,13 @@ impl PgConnection {
         options: &ExecOptions,
         guard: OwnedMutexGuard<()>,
     ) -> Result<ExecResult> {
-        if self.tx.state().open && cursor::eligible(sql) {
+        let open = self.tx.state().open;
+        if (open || options.paged) && cursor::eligible(sql) {
             let name = format!(
                 "platypus_cursor_{}",
                 self.next_cursor.fetch_add(1, Ordering::Relaxed)
             );
-            return cursor::open(Arc::clone(&self.client), &name, sql, options, guard).await;
+            return cursor::open(Arc::clone(&self.client), &name, sql, options, guard, !open).await;
         }
         let statement = self.client.prepare(sql).await.map_err(map_error)?;
 

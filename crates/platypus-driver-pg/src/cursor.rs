@@ -1,8 +1,11 @@
-//! Queries inside a transaction run through a server-side cursor.
+//! Queries inside a transaction, and paged reads (a result grid), run through a
+//! server-side cursor.
 //!
-//! Outside a transaction an abandoned result is cancelled, which is harmless. Inside one, a
-//! cancel would abort the whole transaction, so queries are declared as cursors and read
-//! with `FETCH`: abandoning the result just closes the cursor.
+//! Inside a transaction a cancel would abort it, so queries are declared as cursors and
+//! read with `FETCH`: abandoning the result just closes the cursor. A paged read outside a
+//! transaction gets one of its own, committed when the cursor is closed: the server sends
+//! only the rows asked for, so an abandoned result ends at once instead of being drained
+//! (seconds over a slow link).
 
 use std::sync::Arc;
 
@@ -28,23 +31,38 @@ pub fn eligible(sql: &str) -> bool {
     ) && platypus_sql::is_read_only(sql, Dialect::Postgres)
 }
 
+/// Declares `sql` as cursor `name`. `own`: no transaction is open, so the cursor gets one
+/// of its own.
 pub async fn open(
     client: Arc<Client>,
     name: &str,
     sql: &str,
     options: &ExecOptions,
     guard: OwnedMutexGuard<()>,
+    own: bool,
 ) -> Result<ExecResult> {
     let query = sql.trim().trim_end_matches(';');
-    client
-        .batch_execute(&format!("DECLARE {name} NO SCROLL CURSOR FOR {query}"))
-        .await
-        .map_err(map_error)?;
+    let begin = if own { "BEGIN; " } else { "" };
     let batch_size = options.batch_size.max(1);
-    let fetch = client
-        .prepare(&format!("FETCH {batch_size} FROM {name}"))
-        .await
-        .map_err(map_error)?;
+    let declared = async {
+        client
+            .batch_execute(&format!(
+                "{begin}DECLARE {name} NO SCROLL CURSOR FOR {query}"
+            ))
+            .await?;
+        client
+            .prepare(&format!("FETCH {batch_size} FROM {name}"))
+            .await
+    };
+    let fetch = match declared.await {
+        Ok(fetch) => fetch,
+        Err(e) => {
+            if own {
+                let _ = client.batch_execute("ROLLBACK").await;
+            }
+            return Err(map_error(e));
+        }
+    };
     let (fields, builders): (Vec<_>, Vec<_>) = fetch
         .columns()
         .iter()
@@ -60,6 +78,7 @@ pub async fn open(
         builders,
         schema: Arc::clone(&schema),
         batch_size,
+        own,
         guard: Some(guard),
     };
     let stream = futures::stream::try_unfold(state, next_batch);
@@ -76,19 +95,35 @@ struct CursorState {
     builders: Vec<ColumnBuilder>,
     schema: Arc<Schema>,
     batch_size: usize,
+    /// The cursor has a transaction of its own, ended with it.
+    own: bool,
     /// `None` once the cursor is closed.
     guard: Option<OwnedMutexGuard<()>>,
 }
 
 impl CursorState {
+    /// What closes the cursor. Its own transaction is committed, not rolled back: a query
+    /// can still change data through the functions it calls.
+    fn close_sql(&self) -> String {
+        let end = if self.own { "; COMMIT" } else { "" };
+        format!("CLOSE {}{end}", self.name)
+    }
+
     async fn close(&mut self) {
         if self.guard.is_some() {
-            let _ = self
-                .client
-                .batch_execute(&format!("CLOSE {}", self.name))
-                .await;
+            let _ = self.client.batch_execute(&self.close_sql()).await;
             self.guard = None;
         }
+    }
+
+    /// After a failed `FETCH`: the transaction is aborted and the cursor gone with it; its
+    /// own transaction is ended so the session can run statements again.
+    async fn failed(&mut self, e: tokio_postgres::Error) -> platypus_core::Error {
+        if self.own {
+            let _ = self.client.batch_execute("ROLLBACK").await;
+        }
+        self.guard = None;
+        map_error(e)
     }
 }
 
@@ -98,21 +133,14 @@ async fn next_batch(mut state: CursorState) -> Result<Option<(RecordBatch, Curso
     }
     let rows = match state.client.query_raw(&state.fetch, no_params()).await {
         Ok(rows) => rows,
-        Err(e) => {
-            // The transaction is aborted; the cursor is gone with it.
-            state.guard = None;
-            return Err(map_error(e));
-        }
+        Err(e) => return Err(state.failed(e).await),
     };
     let mut rows = std::pin::pin!(rows);
     let mut len = 0;
     while let Some(row) = rows.next().await {
         let row = match row {
             Ok(row) => row,
-            Err(e) => {
-                state.guard = None;
-                return Err(map_error(e));
-            }
+            Err(e) => return Err(state.failed(e).await),
         };
         append_row(&mut state.builders, &state.schema, &row)?;
         len += 1;
@@ -143,7 +171,7 @@ impl Drop for CursorState {
             return;
         };
         let client = Arc::clone(&self.client);
-        let close = format!("CLOSE {}", self.name);
+        let close = self.close_sql();
         runtime.spawn(async move {
             let _ = client.batch_execute(&close).await;
             drop(guard);
