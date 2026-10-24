@@ -88,12 +88,14 @@ export function setNavigatorFilter(connectionId: string, filter: NavigatorFilter
   write({ ...prefs, filters });
 }
 
-/** Whether `name` matches one of the comma-separated `patterns`. */
-export function matchesAny(patterns: string | undefined, name: string): boolean {
-  return (patterns ?? "")
+/** Whether a name matches one of the comma-separated `patterns`, compiled once. */
+export function nameMatcher(patterns: string | undefined): (name: string) => boolean {
+  const globs = (patterns ?? "")
     .split(",")
     .map((p) => p.trim())
-    .some((p) => p && glob(p).test(name));
+    .filter(Boolean)
+    .map(glob);
+  return (name) => globs.some((g) => g.test(name));
 }
 
 const glob = (pattern: string) =>

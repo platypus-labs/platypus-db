@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { api, type MetadataMatch, type SchemaMeta, toCommandError } from "../api";
+import { api, type MetadataMatch, type SchemaMeta, type TableHits, toCommandError } from "../api";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { Icon, objectIcon } from "../ui/Icon";
@@ -22,11 +22,9 @@ declare module "../tabs/registry" {
   }
 }
 
-interface TableHit {
+interface TableHit extends TableHits {
   schema: SchemaMeta;
   table: string;
-  rows: number;
-  condition: string;
 }
 
 type Results =
@@ -190,7 +188,6 @@ export function SearchTab({ tab, connection, active, ensureSession, sideSession,
     </div>
   );
 }
-
 
 function MetadataResults({
   results,

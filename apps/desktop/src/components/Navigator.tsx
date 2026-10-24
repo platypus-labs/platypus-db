@@ -12,7 +12,7 @@ import {
 import { defineSetting, useSetting } from "../settings";
 import { dropCached, loadCached, pruneCached, saveCached } from "../navigator/diskCache";
 import { FilterDialog } from "../navigator/FilterDialog";
-import { type Bookmark, isBookmarked, matchesAny, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
+import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
 import { onNavigatorRefresh } from "../navigatorEvents";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabInit } from "../tabs/registry";
@@ -383,6 +383,7 @@ export function Navigator(props: Props) {
     const ckey = c.id;
     const open = expanded.has(ckey);
     const filtered = !!prefs.filters[c.id];
+    const isOffline = offline.current.has(c.id);
     const target = c.driver === "sqlite" ? c.database : `${c.user}@${c.host}:${c.port ?? ""}/${c.database}`;
     rows.push({
       key: ckey,
@@ -390,8 +391,8 @@ export function Navigator(props: Props) {
       label: c.name,
       color: connectionColor(c),
       badge: typeBadge(c),
-      detail: [offline.current.has(c.id) && "offline", filtered && "filtered"].filter(Boolean).join(" · ") || undefined,
-      title: offline.current.has(c.id) ? `${target}\nNot connected: showing the metadata cached on disk. Refresh to retry.` : target,
+      detail: [isOffline && "offline", filtered && "filtered"].filter(Boolean).join(" · ") || undefined,
+      title: isOffline ?`${target}\nNot connected: showing the metadata cached on disk. Refresh to retry.` : target,
       expanded: open,
       onToggle: () => toggle(ckey, () => void openConnection(c)),
       onOpen: () => onOpenTab(c),
@@ -456,9 +457,11 @@ export function Navigator(props: Props) {
       return out;
     }
     const hidden = prefs.filters[c.id];
+    const hiddenSchema = nameMatcher(hidden?.schemas);
+    const hiddenObject = nameMatcher(hidden?.objects);
     // User schemas first, catalog schemas after them.
     const ordered = schemas
-      .filter((s) => !(simple && s.system) && !matchesAny(hidden?.schemas, s.name))
+      .filter((s) => !(simple && s.system) && !hiddenSchema(s.name))
       .sort((a, b) => Number(a.system) - Number(b.system));
     for (const schema of ordered) {
       const skey = `${base}/${schema.name}`;
@@ -467,7 +470,7 @@ export function Navigator(props: Props) {
         (o) =>
           (!needle || o.name.toLowerCase().includes(needle)) &&
           (!simple || SIMPLE_KINDS.has(o.kind)) &&
-          !matchesAny(hidden?.objects, o.name),
+          !hiddenObject(o.name),
       );
       if (needle && objects && matches?.length === 0) continue;
       const sOpen = expanded.has(skey) || (!!needle && !!matches?.length);
@@ -491,7 +494,12 @@ export function Navigator(props: Props) {
       const tables = new Set(matches.filter((o) => o.kind === "table").map((o) => o.name));
       const isPartition = (o: ObjectMeta) => o.kind === "table" && o.parent !== null && tables.has(o.parent);
       const partitions = new Map<string, ObjectMeta[]>();
-      for (const o of matches) if (isPartition(o)) partitions.set(o.parent!, [...(partitions.get(o.parent!) ?? []), o]);
+      for (const o of matches) {
+        if (!isPartition(o)) continue;
+        const siblings = partitions.get(o.parent!);
+        if (siblings) siblings.push(o);
+        else partitions.set(o.parent!, [o]);
+      }
       for (const folder of FOLDERS) {
         const items = matches.filter((o) => o.kind === folder.kind && !isPartition(o));
         if (items.length === 0) continue;
