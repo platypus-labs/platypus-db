@@ -81,6 +81,15 @@ jobs:
       - name: End-to-end tests
         if: runner.os == 'Windows'
         run: npm run e2e
+        env:
+          PLATYPUS_E2E_SHOTS: ${{ runner.temp }}/e2e-shots
+      - name: Upload E2E screenshots
+        if: failure() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-shots
+          path: ${{ runner.temp }}/e2e-shots
+          if-no-files-found: ignore
 
   integration:
     name: Integration (dev databases)
