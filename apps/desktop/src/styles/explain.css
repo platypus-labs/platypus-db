@@ -69,20 +69,27 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The step's cost against the most expensive one. */
-.explain-bar {
-  flex: none;
-  width: 80px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--border);
-  overflow: hidden;
+/* Heatmap: a step tinted by its share of the work it does itself (--heat, a percentage). */
+.explain-node,
+.explain-heat {
+  background: color-mix(in srgb, var(--error) calc(var(--heat, 0%) * 0.6), transparent);
 }
 
-.explain-bar span {
-  display: block;
-  height: 100%;
-  background: var(--accent);
+.explain-share {
+  flex: none;
+  width: 48px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.explain-misestimate {
+  flex: none;
+  padding: 0 6px;
+  border-radius: var(--radius);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .explain-properties {
@@ -104,4 +111,68 @@
 .explain-table td:not(:first-child) {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* Query manager: the log of what the app sent to the databases. */
+
+.modal.query-manager {
+  width: min(1100px, calc(100vw - 32px));
+  height: calc(100vh - 64px);
+}
+
+.query-manager-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.query-manager-bar input:not([type="checkbox"]) {
+  width: 280px;
+}
+
+.query-manager-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.query-manager-list table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.query-manager-list th:nth-child(1) {
+  width: 100px;
+}
+
+.query-manager-list th:nth-child(2) {
+  width: 140px;
+}
+
+.query-manager-list th:nth-child(n + 4) {
+  width: 90px;
+}
+
+.query-manager-list td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.query-manager-text {
+  font-family: var(--font-mono);
+}
+
+.query-manager-list tr.metadata,
+.query-manager-list tr.transaction {
+  color: var(--fg-muted);
+}
+
+.query-manager-list tr.failed {
+  color: var(--error);
+}
+
+.query-manager-list tr.selected {
+  background: var(--grid-selection);
 }

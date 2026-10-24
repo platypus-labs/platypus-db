@@ -124,6 +124,10 @@ export interface PlanNode {
   actual_rows: number | null;
   actual_ms: number | null;
   loops: number | null;
+  /** The step's own cost, without its children's. */
+  self_cost: number | null;
+  /** With analyze, the milliseconds spent in the step itself over all its loops. */
+  self_ms: number | null;
   properties: [string, string][];
   children: PlanNode[];
 }
@@ -134,6 +138,21 @@ export interface Explain {
   plan: string;
   root: PlanNode;
   analyzed: boolean;
+}
+
+/** A request the app sent to a database; see `querylog.rs`. */
+export interface LogEntry {
+  id: number;
+  rev: number;
+  connection: string;
+  kind: "query" | "metadata" | "transaction";
+  text: string;
+  /** Milliseconds since the Unix epoch. */
+  started_at: number;
+  elapsed_ms: number | null;
+  rows: number | null;
+  status: "running" | "fetching" | "done" | "closed" | "failed";
+  error: string | null;
 }
 
 export interface CommandError {
@@ -717,6 +736,9 @@ export const api = {
   getSettings: () => invoke<Record<string, unknown>>("get_settings"),
   /** `null` removes the key, restoring the default. */
   setSetting: (key: string, value: unknown) => invoke<void>("set_setting", { key, value }),
+  /** The query log's entries that changed after revision `since` (0: all). */
+  queryLog: (since: number) => invoke<{ entries: LogEntry[]; rev: number }>("query_log", { since }),
+  clearQueryLog: () => invoke<void>("clear_query_log"),
   /** With `analyze` the statement runs, and its changes are rolled back. */
   explain: (sessionId: number, sql: string, analyze: boolean) => invoke<Explain>("explain", { sessionId, sql, analyze }),
   objectDdl: (sessionId: number, object: ObjectTarget) => invoke<string>("object_ddl", { sessionId, object }),
