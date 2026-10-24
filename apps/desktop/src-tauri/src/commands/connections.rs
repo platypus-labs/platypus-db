@@ -2,8 +2,9 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use platypus_core::{Capabilities, ConnectionConfig, DriverKind, Secret, ServerInfo};
+use platypus_core::{Capabilities, Connection, ConnectionConfig, DriverKind, Secret, ServerInfo};
 use platypus_sql::Dialect;
 use platypus_store::{
     ConnectionStore, ConnectionType, ImportFile, ImportSource, NetworkProfile, PasswordUpdate,
@@ -296,7 +297,8 @@ pub async fn open_session(
     if let Some(database) = database {
         config.database = database;
     }
-    let conn = Logged::wrap(connect(&config).await?, &state.query_log, &label);
+    let raw: Arc<dyn Connection> = Arc::from(connect(&config).await?);
+    let conn = Logged::wrap(Arc::clone(&raw), &state.query_log, &label);
     // Production starts in manual commit, so nothing changes until Commit.
     if production && conn.capabilities().transactions {
         conn.set_autocommit(false).await?;
@@ -311,6 +313,7 @@ pub async fn open_session(
             conn,
             config,
             label,
+            raw,
         },
     );
     Ok(SessionInfo {

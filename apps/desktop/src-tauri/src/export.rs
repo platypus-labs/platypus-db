@@ -117,7 +117,11 @@ impl Export {
         path: PathBuf,
         options: ExportOptions,
     ) -> Result<u64, CommandError> {
-        let conn = Logged::wrap(crate::commands::connect(config).await?, log, label);
+        let conn = Logged::wrap(
+            Arc::from(crate::commands::connect(config).await?),
+            log,
+            label,
+        );
         let options_exec = ExecOptions {
             batch_size: BATCH_SIZE,
         };

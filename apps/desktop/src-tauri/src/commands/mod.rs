@@ -76,6 +76,8 @@ struct Session {
     config: ConnectionConfig,
     /// The connection's name in the query log.
     label: String,
+    /// `conn` without the query log, for keep-alives.
+    raw: Arc<dyn Connection>,
 }
 
 pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -156,16 +158,14 @@ impl AppState {
             return Ok(session.conn);
         }
         let previous = session.conn.transaction();
-        let conn = Logged::wrap(
-            connect(&session.config).await?,
-            &self.query_log,
-            &session.label,
-        );
+        let raw: Arc<dyn Connection> = Arc::from(connect(&session.config).await?);
+        let conn = Logged::wrap(Arc::clone(&raw), &self.query_log, &session.label);
         if !previous.autocommit {
             conn.set_autocommit(false).await?;
         }
         if let Some(s) = lock(&self.sessions).get_mut(&id) {
             s.conn = Arc::clone(&conn);
+            s.raw = raw;
         }
         if previous.open {
             return Err(CommandError::new(

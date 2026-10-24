@@ -30,7 +30,10 @@ pub async fn ping_session(state: State<'_, AppState>, session_id: u64) -> Comman
     }
     let was_closed = state.session(session_id)?.conn.is_closed();
     // Reopens a dropped connection; an open transaction lost on the way is an error.
-    let conn = state.live(session_id).await?;
+    state.live(session_id).await?;
+    // Past the query log: the keep-alive only records its round trip there.
+    let session = state.session(session_id)?;
+    let conn = session.raw;
     let start = Instant::now();
     let pinged = match conn.execute("SELECT 1", &ExecOptions::default()).await {
         Ok(ExecResult::Rows(stream)) => stream.try_for_each(|_| async { Ok(()) }).await,
@@ -47,7 +50,13 @@ pub async fn ping_session(state: State<'_, AppState>, session_id: u64) -> Comman
         // failed one aborted): the connection is alive.
         _ => was_closed,
     };
-    let latency_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let elapsed = start.elapsed();
+    if !reconnected {
+        state
+            .query_log
+            .set_latency(&session.label, elapsed.as_secs_f64() * 1000.0);
+    }
+    let latency_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
     Ok(Health::Ok {
         latency_ms,
         reconnected,
