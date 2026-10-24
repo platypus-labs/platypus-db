@@ -30,8 +30,11 @@
 
 .tabs {
   display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 6px 8px 0;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-sidebar);
+  background: var(--bg-tabbar);
   overflow-x: auto;
   overflow-y: hidden;
   flex: none;
@@ -40,18 +43,38 @@
 .tab {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 6px 6px 12px;
-  border-right: 1px solid var(--border);
+  gap: 6px;
+  padding: 5px 6px 5px 10px;
+  border: 1px solid transparent;
   border-top: 2px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  color: var(--fg-muted);
   cursor: default;
   white-space: nowrap;
   user-select: none;
 }
 
+.tab:hover {
+  color: var(--fg);
+}
+
 .tab.active {
   background: var(--bg);
+  border-left-color: var(--border);
+  border-right-color: var(--border);
+  color: var(--fg-strong);
   margin-bottom: -1px;
+  padding-bottom: 6px;
+}
+
+.tab-icon {
+  display: flex;
+  color: var(--fg-muted);
+}
+
+.tab.active .tab-icon {
+  color: var(--accent);
 }
 
 .statusbar {

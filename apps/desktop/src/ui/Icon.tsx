@@ -5,6 +5,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  Check,
   ChevronDown,
   ChevronRight,
   Code2,
@@ -35,6 +36,9 @@ import {
   SunMoon,
   Table2,
   Timer,
+  ToggleLeft,
+  ToggleRight,
+  Undo2,
   Zap,
 } from "lucide-react";
 import type { ObjectKind } from "../api";
@@ -72,6 +76,10 @@ const ICONS = {
   save: Save,
   edit: Pencil,
   import: Download,
+  commit: Check,
+  rollback: Undo2,
+  autocommit: ToggleRight,
+  "manual-commit": ToggleLeft,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

@@ -6,6 +6,7 @@ import {
   type ExportOptions,
   type StatementSpan,
   type QueryEvent,
+  type SavedConnection,
   type TableDetails,
   type TransactionState,
 } from "../api";
@@ -613,25 +614,37 @@ export function QueryTab({
         style={{ gridTemplateRows: `auto ${tab.table ? "auto " : ""}${editorHeight}px 6px 1fr auto` }}
       >
         <div className="toolbar">
-          <button className="primary" onClick={() => void run("statement")} title="Run statement (Ctrl+Enter)">
-            {toolbar.label("▶", "Run")}
+          <button
+            className="primary"
+            onClick={() => void run("statement")}
+            title="Run statement (Ctrl+Enter)"
+            aria-label="Run"
+          >
+            {toolbar.label("run", "Run")}
           </button>
           {toolbar.visible.script && (
-            <button onClick={() => void run("script")} title="Run script (Alt+X, Ctrl+Shift+Enter)">
-              {toolbar.label("▶▶", "Script")}
+            <button onClick={() => void run("script")} title="Run script (Alt+X, Ctrl+Shift+Enter)" aria-label="Script">
+              {toolbar.label("script", "Script")}
             </button>
           )}
           {toolbar.visible.cancel && (
-            <button onClick={() => void cancel()} disabled={!running} title="Cancel the running statement">
-              {toolbar.label("■", "Cancel")}
+            <button
+              onClick={() => void cancel()}
+              disabled={!running}
+              title="Cancel the running statement"
+              aria-label="Cancel"
+            >
+              {toolbar.label("cancel", "Cancel")}
             </button>
           )}
+          <ConnectionChip connection={connection} database={tab.database ?? null} schema={catalog?.default_schema ?? null} />
           {toolbar.visible.transactions && <span className="divider" />}
           {toolbar.visible.transactions && (
           <button
             className={manual ? "toggled" : ""}
             onClick={() => void toggleAutocommit()}
             disabled={running || !!tx?.open}
+            aria-label={manual ? "Manual commit" : "Auto-commit"}
             title={
               tx?.open
                 ? "Commit or roll back before switching"
@@ -640,16 +653,26 @@ export function QueryTab({
                   : "Auto-commit: every statement commits on its own"
             }
           >
-            {toolbar.iconsOnly ? (manual ? "MC" : "AC") : manual ? "Manual commit" : "Auto-commit"}
+            {toolbar.label(manual ? "manual-commit" : "autocommit", manual ? "Manual commit" : "Auto-commit")}
           </button>
           )}
           {toolbar.visible.transactions && manual && (
             <>
-              <button onClick={() => void endTransaction(true)} disabled={running || !tx.open} title="Commit">
-                {toolbar.iconsOnly ? "✓" : "Commit"}
+              <button
+                onClick={() => void endTransaction(true)}
+                disabled={running || !tx.open}
+                title="Commit"
+                aria-label="Commit"
+              >
+                {toolbar.label("commit", "Commit")}
               </button>
-              <button onClick={() => void endTransaction(false)} disabled={running || !tx.open} title="Rollback">
-                {toolbar.iconsOnly ? "↶" : "Rollback"}
+              <button
+                onClick={() => void endTransaction(false)}
+                disabled={running || !tx.open}
+                title="Rollback"
+                aria-label="Rollback"
+              >
+                {toolbar.label("rollback", "Rollback")}
               </button>
             </>
           )}
@@ -664,11 +687,11 @@ export function QueryTab({
           {toolbar.visible.files && (
             <>
               <span className="divider" />
-              <button onClick={() => void openFile()} title="Open script (Ctrl+O)">
-                {toolbar.iconsOnly ? "⇪" : "Open"}
+              <button onClick={() => void openFile()} title="Open script (Ctrl+O)" aria-label="Open">
+                {toolbar.label("open", "Open")}
               </button>
-              <button onClick={() => void saveFile()} title="Save script (Ctrl+S)">
-                {toolbar.iconsOnly ? "⤓" : "Save"}
+              <button onClick={() => void saveFile()} title="Save script (Ctrl+S)" aria-label="Save">
+                {toolbar.label("save", "Save")}
                 {dirty ? " •" : ""}
               </button>
             </>
@@ -676,8 +699,8 @@ export function QueryTab({
           <span className="spacer" />
           {tab.filePath && <span className="muted small">{basename(tab.filePath)}</span>}
           {toolbar.visible.history && (
-            <button className={showHistory ? "toggled" : ""} onClick={() => setShowHistory((s) => !s)} title="History">
-              {toolbar.iconsOnly ? "⟲" : "History"}
+            <button className={showHistory ? "toggled" : ""} onClick={() => setShowHistory((s) => !s)} title="History" aria-label="History">
+              {toolbar.label("history", "History")}
             </button>
           )}
         </div>
@@ -855,5 +878,17 @@ export function QueryTab({
         />
       )}
     </div>
+  );
+}
+
+/** Where the editor's statements run: connection, database when not the saved one, schema;
+ *  colored by the connection's type. */
+function ConnectionChip({ connection, database, schema }: { connection: SavedConnection; database: string | null; schema: string | null }) {
+  const parts = [connection.name, database, schema].filter(Boolean);
+  return (
+    <span className={`conn-chip${connection.connection_type ? ` ${connection.connection_type}` : ""}`} title="Statements run here">
+      <span className="conn-chip-dot" />
+      {parts.join(" · ")}
+    </span>
   );
 }

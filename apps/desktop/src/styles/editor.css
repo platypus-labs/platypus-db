@@ -114,6 +114,48 @@ button.toggled {
   border-bottom: 1px solid var(--border);
 }
 
+.toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Where the statements run, colored by the connection's type. */
+.conn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  background: var(--bg-input);
+}
+
+.conn-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.conn-chip.dev {
+  color: var(--type-dev);
+  background: var(--type-dev-bg);
+}
+
+.conn-chip.test {
+  color: var(--type-test);
+  background: var(--type-test-bg);
+}
+
+.conn-chip.prod {
+  color: var(--type-prod);
+  background: var(--type-prod-bg);
+}
+
 .viewer-bar {
   display: flex;
   align-items: center;
