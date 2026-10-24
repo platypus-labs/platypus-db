@@ -61,6 +61,10 @@ export default async function (page, { dir, shots }) {
   await page.clickSel("#e2e-conn", { clickCount: 2 });
   await page.waitFor(`${tabCount} === 1`);
 
+  // The toolbar says where statements run; the tab shows its kind.
+  await page.waitFor(`${visibleTab}.querySelector('.conn-chip')?.textContent === 'E2E shell · main'`);
+  assert.equal(await page.eval(`!!document.querySelector('.tab.active .tab-icon svg')`), true);
+
   // Closed tabs come back with their SQL.
   await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
   await page.type("SELECT 'kept'");
@@ -82,6 +86,7 @@ export default async function (page, { dir, shots }) {
 
   // The palette runs actions and opens tables of the loaded catalogs.
   await palette(page, "settings");
+  assert.equal(await page.eval(`getComputedStyle(document.querySelector('.palette input')).height`), "28px");
   assert.match(await page.eval(`document.querySelector('.palette li.selected').textContent`), /Settings/);
   await page.key("Enter", "Enter", 13);
   await page.waitFor(`document.querySelector('.modal.settings') !== null`);
@@ -103,10 +108,27 @@ export default async function (page, { dir, shots }) {
   await settingsFile(dir, /\[shortcuts\.app\]\s+palette = "Mod\+J"/);
   if (shots) await page.screenshot(join(shots, "shell-shortcuts.png"));
 
-  // Toolbar buttons can be hidden.
+  // Toolbar buttons can be hidden, and shown as icons only.
   await page.eval(`${settingRow("History")}.querySelector('input').click()`);
+  await page.eval(`(() => {
+    const el = ${settingRow("Buttons")}.querySelector('select');
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, 'icons');
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
   await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);
-  await page.waitFor(`![...${visibleTab}.querySelectorAll('.toolbar button')].some(b => b.textContent === 'History')`);
+  await page.waitFor(`![...${visibleTab}.querySelectorAll('.toolbar button')].some(b => b.getAttribute('aria-label') === 'History')`);
+  // Without words a button keeps its name for screen readers and in the tooltip.
+  const runButton = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Run')`;
+  await page.waitFor(`${runButton} !== undefined`);
+  assert.equal(await page.eval(`${runButton}.title.startsWith('Run')`), true);
+  assert.equal(await page.eval(`${runButton}.textContent`), "");
+  assert.equal(await page.eval(`!!${runButton}.querySelector('svg')`), true);
+  const unnamed = await page.eval(
+    `JSON.stringify([...${visibleTab}.querySelectorAll('.toolbar button')].filter(b => !b.getAttribute('aria-label') || !b.title).map(b => b.outerHTML.slice(0, 80)))`,
+  );
+  assert.equal(unnamed, "[]");
+  // A toolbar wider than the window scrolls with a visible scrollbar.
+  assert.equal(await page.eval(`getComputedStyle(${visibleTab}.querySelector('.toolbar')).scrollbarWidth`), "thin");
 
   await page.key("j", "KeyJ", 74, CTRL);
   await page.waitFor(`document.querySelector('.palette') !== null`);

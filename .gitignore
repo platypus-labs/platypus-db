@@ -5,3 +5,6 @@
 .vscode/*
 !.vscode/extensions.json
 graphify-out/
+
+# Brainstorming mockups (visual companion)
+.superpowers/

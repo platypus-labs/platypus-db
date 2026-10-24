@@ -7,7 +7,8 @@ import {
   type TableDetails,
   toCommandError,
 } from "../api";
-import { OBJECT_ICONS, isRelation } from "../components/Navigator";
+import { isRelation } from "../components/Navigator";
+import { Icon, objectIcon } from "../ui/Icon";
 import { SqlEditor } from "../editor/SqlEditor";
 import { onNavigatorRefresh } from "../navigatorEvents";
 import { qualifiedName, viewerSql } from "../sqlNames";
@@ -143,7 +144,9 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
   return (
     <div className="object-tab" style={{ display: active ? "flex" : "none" }}>
       <header className="object-header">
-        <span className="object-icon">{OBJECT_ICONS[tab.objectKind]}</span>
+        <span className="object-icon" data-kind={objectIcon(tab.objectKind)}>
+          <Icon name={objectIcon(tab.objectKind)} size={16} />
+        </span>
         <div className="object-title">
           <strong>{tab.name}</strong>
           <span className="muted small">

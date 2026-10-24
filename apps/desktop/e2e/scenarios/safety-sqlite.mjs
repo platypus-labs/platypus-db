@@ -67,6 +67,7 @@ export default async function (page, { dir }) {
 
   // Production: every change is listed first, then runs in the open transaction.
   await openEditor(page, "Prod db");
+  await page.waitFor(`${visibleTab}.querySelector('.conn-chip.prod') !== null`);
   await runSql(page, "UPDATE t SET v = 'z' WHERE id = 1");
   await page.waitFor(`document.querySelector('.modal.guard') !== null`);
   assert.match(await page.eval(`document.querySelector('.modal.guard h2').textContent`), /Prod db \(production\)/);

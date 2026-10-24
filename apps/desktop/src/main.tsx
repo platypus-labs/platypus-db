@@ -4,7 +4,7 @@ import { paintCached, startAppearance } from "./theme";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { loadSettings } from "./settings";
-import "./styles.css";
+import "./styles/index.css";
 
 paintCached();
 

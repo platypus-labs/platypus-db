@@ -10,7 +10,8 @@ import { defineSetting, getSetting, onSettingsChanged, setSetting } from "./sett
 /** Fired on `window` when the theme changes, for code that caches colors (the grid). */
 export const THEME_EVENT = "platypus-theme";
 
-type Palette = Record<
+/** The colors every preset gives. */
+type BasePalette = Record<
   | "bg"
   | "bg-sidebar"
   | "bg-input"
@@ -38,15 +39,161 @@ type Palette = Record<
   string
 >;
 
+/** Colors added with the Platypus themes; presets that do not give them get `derive`'s. */
+type ExtraPalette = Record<
+  | "bg-rail"
+  | "bg-tabbar"
+  | "fg-strong"
+  | "border-strong"
+  | "active"
+  | "obj-db"
+  | "obj-table"
+  | "obj-view"
+  | "obj-routine"
+  | "obj-trigger"
+  | "type-dev"
+  | "type-dev-bg"
+  | "type-test"
+  | "type-test-bg"
+  | "type-prod"
+  | "type-prod-bg",
+  string
+>;
+
+type Palette = BasePalette & ExtraPalette;
+
 interface Preset {
   label: string;
   dark: boolean;
-  colors: Palette;
+  colors: BasePalette & Partial<ExtraPalette>;
+}
+
+const mix = (a: string, pct: number, b: string) => `color-mix(in srgb, ${a} ${pct}%, ${b})`;
+
+/** The extra colors of a preset that predates them, from its base colors. */
+function derive(c: BasePalette, dark: boolean): ExtraPalette {
+  // The rail and the tab bar sit a step darker than what they frame, on light themes too.
+  return {
+    "bg-rail": mix(c["bg-sidebar"], dark ? 65 : 94, "#000000"),
+    "bg-tabbar": mix(c.bg, dark ? 70 : 96, "#000000"),
+    "fg-strong": mix(c.fg, 80, dark ? "#ffffff" : "#000000"),
+    "border-strong": mix(c.border, 85, c.fg),
+    active: mix(c.accent, 16, c["bg-sidebar"]),
+    "obj-db": c.accent,
+    "obj-table": c["syn-ident"],
+    "obj-view": c["syn-keyword"],
+    "obj-routine": c["syn-number"],
+    "obj-trigger": c["syn-type"],
+    "type-dev": c.ok,
+    "type-dev-bg": c["ok-bg"],
+    "type-test": c["syn-number"],
+    "type-test-bg": c["warn-bg"],
+    "type-prod": c.error,
+    "type-prod-bg": c["error-bg"],
+  };
+}
+
+/** All the colors of a preset: its own, and derived ones for what it does not give. */
+function paletteOf(p: Preset): Palette {
+  return { ...derive(p.colors, p.dark), ...p.colors };
 }
 
 export const PRESETS = {
+  platypus_dark: {
+    label: "Platypus Dark",
+    dark: true,
+    colors: {
+      bg: "#141519",
+      "bg-sidebar": "#17181d",
+      "bg-input": "#1d1f25",
+      "bg-rail": "#0d0e11",
+      "bg-tabbar": "#0f1013",
+      fg: "#c9ccd3",
+      "fg-strong": "#f2f3f5",
+      "fg-muted": "#6f7480",
+      border: "#23252c",
+      "border-strong": "#2b2e36",
+      active: "#24262e",
+      accent: "#6c63ff",
+      "accent-fg": "#ffffff",
+      hover: "rgba(255, 255, 255, 0.04)",
+      error: "#ff7b7b",
+      "error-bg": "#3a1518",
+      ok: "#7ed3a0",
+      "ok-bg": "#173322",
+      "warn-bg": "#3a2a12",
+      "grid-bg": "#141519",
+      "grid-bg-alt": "#17181d",
+      "grid-header": "#17181d",
+      "grid-selection": "rgba(108, 99, 255, 0.22)",
+      "syn-keyword": "#b69cff",
+      "syn-string": "#7ed3a0",
+      "syn-number": "#f2b16d",
+      "syn-comment": "#5c616c",
+      "syn-type": "#6fd3e8",
+      "syn-ident": "#8ea2ff",
+      "obj-db": "#8ea2ff",
+      "obj-table": "#8ea2ff",
+      "obj-view": "#b69cff",
+      "obj-routine": "#f2b16d",
+      "obj-trigger": "#f5d76e",
+      "type-dev": "#7ed3a0",
+      "type-dev-bg": "#173322",
+      "type-test": "#f2b16d",
+      "type-test-bg": "#3a2a12",
+      "type-prod": "#ff8a8a",
+      "type-prod-bg": "#3a1518",
+    },
+  },
+  platypus_light: {
+    label: "Platypus Light",
+    dark: false,
+    colors: {
+      bg: "#ffffff",
+      "bg-sidebar": "#f6f7f9",
+      "bg-input": "#ffffff",
+      "bg-rail": "#eceef2",
+      "bg-tabbar": "#f1f2f5",
+      fg: "#2b2f36",
+      "fg-strong": "#111318",
+      "fg-muted": "#5f6672",
+      border: "#e6e8eb",
+      "border-strong": "#dcdfe3",
+      active: "#ebeafd",
+      accent: "#5b52f0",
+      "accent-fg": "#ffffff",
+      hover: "rgba(0, 0, 0, 0.04)",
+      error: "#c62828",
+      "error-bg": "#fdecea",
+      ok: "#2b8a3e",
+      "ok-bg": "#e6f6ea",
+      "warn-bg": "#fff3e0",
+      "grid-bg": "#ffffff",
+      "grid-bg-alt": "#f9fafb",
+      "grid-header": "#f6f7f9",
+      "grid-selection": "rgba(91, 82, 240, 0.14)",
+      "syn-keyword": "#7c3aed",
+      "syn-string": "#2b8a3e",
+      "syn-number": "#c2410c",
+      "syn-comment": "#8b919a",
+      "syn-type": "#0b7285",
+      "syn-ident": "#4f46e5",
+      "obj-db": "#4f46e5",
+      "obj-table": "#4f46e5",
+      "obj-view": "#7c3aed",
+      "obj-routine": "#c2410c",
+      "obj-trigger": "#b7791f",
+      "type-dev": "#2f7a3a",
+      "type-dev-bg": "#e3f4e6",
+      "type-test": "#a15c07",
+      "type-test-bg": "#fdf0d9",
+      "type-prod": "#b42318",
+      "type-prod-bg": "#fde3e3",
+    },
+  },
+  // "light" and "dark" keep their keys, so a saved choice still applies.
   light: {
-    label: "Light",
+    label: "Classic Light",
     dark: false,
     colors: {
       bg: "#ffffff",
@@ -76,7 +223,7 @@ export const PRESETS = {
     },
   },
   dark: {
-    label: "Dark",
+    label: "Classic Dark",
     dark: true,
     colors: {
       bg: "#1b1d21",
@@ -240,7 +387,11 @@ export const themeSetting = defineSetting<string>({
   control: {
     type: "swatches",
     options: [
-      { value: "system", label: "System", colors: [PRESETS.light.colors.bg, PRESETS.dark.colors.bg, PRESETS.light.colors.accent] },
+      {
+        value: "system",
+        label: "System",
+        colors: [PRESETS.platypus_light.colors.bg, PRESETS.platypus_dark.colors.bg, PRESETS.platypus_dark.colors.accent],
+      },
       ...(Object.entries(PRESETS) as [PresetName, Preset][]).map(([value, p]) => ({
         value,
         label: p.label,
@@ -328,6 +479,9 @@ function readableOn(hex: string): string {
 
 const systemDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
 
+/** The preset the "System" theme stands for right now. */
+const systemPreset = (): PresetName => (systemDark() ? "platypus_dark" : "platypus_light");
+
 export function themeName(): ThemeName {
   const name = getSetting(themeSetting);
   return name === "system" || name in PRESETS ? (name as ThemeName) : "system";
@@ -336,8 +490,8 @@ export function themeName(): ThemeName {
 /** The variables of the current settings: the preset, then the custom colors over it. */
 function variables(): { dark: boolean; vars: Record<string, string> } {
   const name = themeName();
-  const preset: Preset = PRESETS[name === "system" ? (systemDark() ? "dark" : "light") : name];
-  const vars: Record<string, string> = { ...preset.colors };
+  const preset: Preset = PRESETS[name === "system" ? systemPreset() : name];
+  const vars: Palette = paletteOf(preset);
   const custom = (def: typeof accentSetting) => {
     const v = getSetting(def);
     return HEX.test(v) ? v : null;
@@ -363,6 +517,17 @@ function variables(): { dark: boolean; vars: Record<string, string> } {
     vars.fg = text;
     vars["fg-muted"] = `color-mix(in srgb, ${text} 62%, ${vars.bg})`;
   }
+  // What is mixed from a custom color follows it, as on a preset without its own: the tab bar
+  // from the background, the rail from the sidebar, the active row from the sidebar and the
+  // accent, strong text from the text. Lighter or darker by the actual background, which a
+  // custom color may have turned the other way from the preset.
+  if (bg || sidebar || text || accent) {
+    const derived = derive(vars, readableOn(vars.bg) === "#ffffff");
+    if (bg) vars["bg-tabbar"] = derived["bg-tabbar"];
+    if (sidebar) vars["bg-rail"] = derived["bg-rail"];
+    if (sidebar || accent) vars.active = derived.active;
+    if (text) vars["fg-strong"] = derived["fg-strong"];
+  }
   const radius = RADII[getSetting(radiusSetting)] ?? RADII.rounded!;
   const out: Record<string, string> = Object.fromEntries(Object.entries(vars).map(([k, v]) => [`--${k}`, v]));
   out["--radius"] = `${radius[0]}px`;
@@ -373,7 +538,9 @@ function variables(): { dark: boolean; vars: Record<string, string> } {
   return { dark: preset.dark, vars: out };
 }
 
-const CACHE = "platypus.appearance.v1";
+/** v2 since the Platypus themes: a v1 cache lacks their variables, so it is dropped. */
+const CACHE = "platypus.appearance.v2";
+const OLD_CACHE = "platypus.appearance.v1";
 
 function paint(dark: boolean, vars: Record<string, string>) {
   const root = document.documentElement;
@@ -411,13 +578,18 @@ export function applyAppearance() {
 /** Paints the last applied appearance before the settings load, so the app never flashes. */
 export function paintCached() {
   try {
+    localStorage.removeItem(OLD_CACHE);
     const cached = JSON.parse(localStorage.getItem(CACHE) ?? "null") as { dark: boolean; vars: Record<string, string> } | null;
-    if (cached) return paint(cached.dark, cached.vars);
+    if (cached) {
+      document.documentElement.dataset.firstPaint = "cache";
+      return paint(cached.dark, cached.vars);
+    }
   } catch {
     // Fall through to the system's colors.
   }
-  const preset = PRESETS[systemDark() ? "dark" : "light"];
-  paint(preset.dark, Object.fromEntries(Object.entries(preset.colors).map(([k, v]) => [`--${k}`, v])));
+  document.documentElement.dataset.firstPaint = "default";
+  const preset = PRESETS[systemPreset()];
+  paint(preset.dark, Object.fromEntries(Object.entries(paletteOf(preset)).map(([k, v]) => [`--${k}`, v])));
 }
 
 /** Follows the settings and, for the system theme, the system's light or dark mode. Call
@@ -440,6 +612,10 @@ export function startAppearance() {
 
 /** The quick toggle in the sidebar: system, light, dark, and back to system. */
 export function cycleTheme() {
-  const next: Record<string, ThemeName> = { system: "light", light: "dark", dark: "system" };
+  const next: Record<string, ThemeName> = {
+    system: "platypus_light",
+    platypus_light: "platypus_dark",
+    platypus_dark: "system",
+  };
   void setSetting(themeSetting, next[themeName()] ?? "system");
 }

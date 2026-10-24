@@ -1,5 +1,7 @@
 /** Which buttons the SQL editor's toolbar shows, and whether with words or icons only. */
+import type { ReactNode } from "react";
 import { defineSetting, useSetting } from "../settings";
+import { Icon, type IconName } from "../ui/Icon";
 
 const show = (key: string, label: string) =>
   defineSetting<boolean>({ key: `toolbar.${key}`, section: "Toolbar", label, default: true, control: { type: "boolean" } });
@@ -36,7 +38,16 @@ export function useToolbar() {
     history: useSetting(toolbarSettings.history),
   };
   const iconsOnly = useSetting(toolbarLabels) === "icons";
-  /** `icon text`, or the icon alone (the words move to the tooltip). */
-  const label = (icon: string, text: string) => (iconsOnly ? icon : icon ? `${icon} ${text}` : text);
+  /** The icon and the words, or the icon alone: the button's `aria-label` and tooltip keep
+   *  the words. */
+  const label = (icon: IconName, text: string): ReactNode =>
+    iconsOnly ? (
+      <Icon name={icon} />
+    ) : (
+      <>
+        <Icon name={icon} />
+        {text}
+      </>
+    );
   return { visible, iconsOnly, label };
 }

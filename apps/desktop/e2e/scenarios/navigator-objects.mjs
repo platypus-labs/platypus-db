@@ -51,6 +51,15 @@ export default async function (page, { shots }) {
   await page.eval(`${row("demo")}.click()`);
   await page.waitFor(`${row("orders")} !== undefined`, 15_000);
 
+  // Rows: an SVG icon per kind of object, 24px high, and an icon as the expand arrow.
+  assert.equal(await page.eval(`!!${row("orders")}.querySelector('.tree-icon svg')`), true);
+  assert.equal(await page.eval(`${row("orders")}.querySelector('.tree-icon').dataset.kind`), "table");
+  assert.equal(await page.eval(`${row("postgres")}.querySelector('.tree-icon').dataset.kind`), "database");
+  assert.equal(await page.eval(`${row("demo")}.querySelector('.tree-icon').dataset.kind`), "schema");
+  assert.equal(await page.eval(`getComputedStyle(${row("orders")}).height`), "24px");
+  assert.equal(await page.eval(`${row("orders")}.querySelector('.twisty').textContent`), "");
+  assert.equal(await page.eval(`!!${row("demo")}.querySelector('.twisty svg')`), true);
+
   // Object tab with DDL.
   await rightClick(page, "orders");
   await choose(page, "Open details");

@@ -13,6 +13,7 @@ import "./tabs";
 import "./objects/actions";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { dbKey, provideWorkbench, workbench } from "./workbench";
+import { Icon, type IconName } from "./ui/Icon";
 import { type PersistedTab, loadWorkspace, saveWorkspace } from "./workspace";
 
 type Dialog = { kind: "connection"; connection: SavedConnection; existing: boolean } | { kind: "import" } | null;
@@ -324,6 +325,9 @@ export function App() {
                 onClick={() => setActiveTab(t.key)}
                 onAuxClick={(e) => e.button === 1 && closeTab(t)}
               >
+                <span className="tab-icon">
+                  <Icon name={tabIcon(t)} size={13} />
+                </span>
                 <span>{tabTitle(t)}</span>
                 <button
                   className="icon"
@@ -418,6 +422,12 @@ export function App() {
   );
 }
 
+
+/** A tab's icon: what it shows. */
+function tabIcon(t: TabModel): IconName {
+  if (t.kind === "object") return "object";
+  return "tableRef" in t && t.tableRef ? "table" : "sql";
+}
 
 interface ShellApi {
   tabs: TabModel[];
