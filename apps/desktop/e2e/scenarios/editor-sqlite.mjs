@@ -15,6 +15,8 @@ async function setEditor(page, sql) {
   await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
   await page.key("a", "KeyA", 65, CTRL);
   await page.type(sql);
+  // Run only once the editor holds the text (a slow runner may lag behind the keys).
+  await page.waitFor(`[...${visibleTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n') === ${JSON.stringify(sql)}`);
 }
 
 /** Opens completion at the end of `sql` and accepts the option containing `wanted`. */
