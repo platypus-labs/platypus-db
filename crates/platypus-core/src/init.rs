@@ -9,7 +9,7 @@ use crate::{Connection, DriverKind, Error, ExecOptions, ExecResult, Result};
 /// Session settings applied after connecting.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SessionInit {
-    /// PostgreSQL's `search_path`, MySQL's current database; SQLite has none.
+    /// PostgreSQL's and DuckDB's `search_path`, MySQL's current database; SQLite has none.
     pub schema: Option<String>,
     /// An IANA name such as `Europe/Rome`, or an offset such as `+02:00`; SQLite has none.
     pub time_zone: Option<String>,
@@ -32,6 +32,11 @@ impl SessionInit {
                     out.push(format!("SET search_path TO {}", quote(schema, '"')));
                 }
                 DriverKind::MySql => out.push(format!("USE {}", quote(schema, '`'))),
+                // DuckDB takes the search path as a string of identifiers.
+                DriverKind::DuckDb => out.push(format!(
+                    "SET search_path = '{}'",
+                    quote(schema, '"').replace('\'', "''")
+                )),
                 DriverKind::Sqlite => {
                     return Err(Error::Config("SQLite has no default schema".to_owned()));
                 }
@@ -45,6 +50,12 @@ impl SessionInit {
             match driver {
                 DriverKind::Postgres => out.push(format!("SET TIME ZONE '{zone}'")),
                 DriverKind::MySql => out.push(format!("SET time_zone = '{zone}'")),
+                // Time zones come with DuckDB's ICU extension, which the app does not bundle.
+                DriverKind::DuckDb => {
+                    return Err(Error::Config(
+                        "DuckDB has no session time zone here".to_owned(),
+                    ));
+                }
                 DriverKind::Sqlite => {
                     return Err(Error::Config("SQLite has no session time zone".to_owned()));
                 }
@@ -106,6 +117,15 @@ mod tests {
                 "SET time_zone = 'Europe/Rome'",
                 "SET x = 1"
             ]
+        );
+        assert!(init.sql(DriverKind::DuckDb).is_err());
+        let schema_only = SessionInit {
+            schema: Some("sales".to_owned()),
+            ..SessionInit::default()
+        };
+        assert_eq!(
+            schema_only.sql(DriverKind::DuckDb).unwrap(),
+            ["SET search_path = '\"sales\"'"]
         );
         assert!(init.sql(DriverKind::Sqlite).is_err());
         let only = SessionInit {

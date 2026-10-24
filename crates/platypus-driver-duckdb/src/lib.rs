@@ -41,8 +41,8 @@ impl Driver for DuckDbDriver {
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<Box<dyn Connection>> {
-        let conn = Box::new(DuckDbConnection::connect(config).await?);
-        // TODO(group F): platypus_core::run_init(&*conn, &config.init, self.kind()).await?;
+        let conn: Box<dyn Connection> = Box::new(DuckDbConnection::connect(config).await?);
+        platypus_core::run_init(&*conn, &config.init, self.kind()).await?;
         Ok(conn)
     }
 }

@@ -1403,6 +1403,7 @@ async fn sets_the_session_up_after_connecting() {
                 "SELECT current_schema(), current_setting('TimeZone')",
                 vec![Some(b.schema.clone()), Some("Europe/Rome".to_owned())],
             ),
+            DriverKind::DuckDb => ("SELECT current_schema()", vec![Some(b.schema.clone())]),
             DriverKind::MySql => (
                 "SELECT DATABASE(), @@session.time_zone",
                 vec![Some(b.schema.clone()), Some("+02:00".to_owned())],
@@ -1414,7 +1415,7 @@ async fn sets_the_session_up_after_connecting() {
             time_zone: match config.driver {
                 DriverKind::Postgres => Some("Europe/Rome".to_owned()),
                 DriverKind::MySql => Some("+02:00".to_owned()),
-                DriverKind::Sqlite => None,
+                DriverKind::Sqlite | DriverKind::DuckDb => None,
             },
             statements: vec!["CREATE TEMPORARY TABLE init_probe (x int)".to_owned()],
         };
