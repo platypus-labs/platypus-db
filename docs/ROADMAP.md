@@ -90,12 +90,12 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 | C — Navigator e oggetti | ✅ fatto (P1, P2, P3) |
 | D — Editor SQL | 🔒 Paolo · group-d-editor · 2026-10-24 |
 | E — Explain e performance | libero |
-| F — Connettività e credenziali | ✅ fatto (P1) |
+| F — Connettività e credenziali | 🔒 Delfa · group-f-connectivity · 2026-10-24 |
 | G — Nuovi driver | libero |
 | H — Import, export e trasferimento | libero |
 | I — Strumenti di schema | libero |
 | J — Amministrazione del server | libero |
-| K — Shell ed ergonomia | 🔒 Delfa · group-k-shell · 2026-10-24 |
+| K — Shell ed ergonomia | ✅ fatto (P1) |
 | L — Sicurezza operativa | ✅ fatto (P1) |
 | M — Analisi dei dati | libero |
 | N — Accesso per agenti (MCP) | libero |
