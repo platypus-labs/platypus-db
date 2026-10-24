@@ -4358,7 +4358,7 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "platypus-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-cast",
@@ -4377,7 +4377,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-conformance"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-cast",
@@ -4393,7 +4393,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-cast",
@@ -4408,7 +4408,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-desktop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arboard",
  "arrow-array",
@@ -4438,7 +4438,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-mysql"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -4452,7 +4452,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-pg"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-cast",
@@ -4473,7 +4473,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-sqlite"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -4488,7 +4488,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-export"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-cast",
@@ -4503,7 +4503,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-net"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "futures",
@@ -4518,14 +4518,14 @@ dependencies = [
 
 [[package]]
 name = "platypus-sql"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "platypus-core",
 ]
 
 [[package]]
 name = "platypus-store"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "keyring",
  "platypus-core",
