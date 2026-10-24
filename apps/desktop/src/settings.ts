@@ -10,7 +10,11 @@ export type SettingControl =
   | { type: "boolean" }
   | { type: "number"; min?: number; max?: number; step?: number }
   | { type: "text"; placeholder?: string }
-  | { type: "select"; options: { value: string; label: string }[] };
+  | { type: "select"; options: { value: string; label: string }[] }
+  /** A `#rrggbb` color; empty means none (e.g. the theme's own). */
+  | { type: "color" }
+  /** Choices shown as cards of colors, e.g. themes. */
+  | { type: "swatches"; options: { value: string; label: string; colors: string[] }[] };
 
 export interface SettingDef<T extends boolean | number | string> {
   /** Dotted, `section.name`, e.g. `editor.script_row_limit`. */
@@ -91,6 +95,9 @@ function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
+
+/** Calls `listener` after any setting changes; returns a function that stops it. */
+export const onSettingsChanged = subscribe;
 
 /** Re-renders when any setting changes. */
 export function useSettingsVersion(): number {

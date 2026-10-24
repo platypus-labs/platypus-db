@@ -37,7 +37,10 @@ scrolls through millions of rows.
   follow the Settings.
 - **Export** to CSV, JSON, NDJSON or Parquet, streamed straight to the file.
 - **Transactions**: auto-commit or manual commit with Commit/Rollback.
-- Light and dark theme, automatic reconnection, in-app updates.
+- **Appearance** in the Settings: themes (system, light, dark, Nord, Dracula, Solarized
+  Light, high contrast), your own accent, background, sidebar and text colors, interface
+  size, grid row density, corner radius and the SQL editor's font size.
+- Automatic reconnection, in-app updates.
 
 | | |
 |---|---|

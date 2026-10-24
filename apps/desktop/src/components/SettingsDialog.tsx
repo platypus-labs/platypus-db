@@ -75,6 +75,44 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
         />
       );
       break;
+    case "color": {
+      const hex = /^#[0-9a-f]{6}$/i.test(value as string) ? (value as string) : null;
+      input = (
+        <div className="color-control">
+          {!hex && <span className="muted small">Theme's</span>}
+          <input
+            type="color"
+            value={hex ?? "#808080"}
+            title={hex ?? "The theme's color"}
+            onChange={(e) => onSave(e.target.value)}
+          />
+        </div>
+      );
+      break;
+    }
+    case "swatches":
+      input = (
+        <div className="swatches-control" role="radiogroup">
+          {c.options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              role="radio"
+              aria-checked={value === o.value}
+              className={`theme-card${value === o.value ? " selected" : ""}`}
+              onClick={() => onSave(o.value)}
+            >
+              <span className="theme-card-colors">
+                {o.colors.map((color, i) => (
+                  <span key={i} style={{ background: color }} />
+                ))}
+              </span>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      );
+      break;
     case "select":
       input = (
         <select value={value as string} onChange={(e) => onSave(e.target.value)}>
@@ -87,22 +125,38 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
       );
       break;
   }
+  const reset = (
+    <button
+      type="button"
+      className="link"
+      style={{ visibility: changed ? "visible" : "hidden", gridColumn: c.type === "swatches" ? 3 : undefined }}
+      title={c.type === "color" ? "Back to the theme's color" : `Default: ${String(def.default)}`}
+      onClick={() => onSave(null)}
+    >
+      Reset
+    </button>
+  );
+  const text = (
+    <span>
+      {def.label}
+      {def.description && <span className="muted small">{def.description}</span>}
+    </span>
+  );
+  // Cards take a row of their own, under the label.
+  if (c.type === "swatches") {
+    return (
+      <div className="setting">
+        {text}
+        {reset}
+        {input}
+      </div>
+    );
+  }
   return (
     <label className="setting">
-      <span>
-        {def.label}
-        {def.description && <span className="muted small">{def.description}</span>}
-      </span>
+      {text}
       {input}
-      <button
-        type="button"
-        className="link"
-        style={{ visibility: changed ? "visible" : "hidden" }}
-        title={`Default: ${String(def.default)}`}
-        onClick={() => onSave(null)}
-      >
-        Reset
-      </button>
+      {reset}
     </label>
   );
 }

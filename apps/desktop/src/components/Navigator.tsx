@@ -8,10 +8,10 @@ import {
   type SchemaMeta,
   type TableDetails,
 } from "../api";
-import { getSetting } from "../settings";
+import { getSetting, useSetting } from "../settings";
 import { qualifiedName, selectLimit, selectSql, viewerSql } from "../sqlNames";
 import type { TabInit } from "../tabs/registry";
-import { type ThemePref, applyTheme, loadTheme, nextTheme } from "../theme";
+import { PRESETS, cycleTheme, themeName, themeSetting } from "../theme";
 import { registerAction } from "../actions";
 import { workbench } from "../workbench";
 import { ContextMenu, type MenuState, type MenuTarget } from "./ContextMenu";
@@ -453,26 +453,16 @@ export function Navigator(props: Props) {
   );
 }
 
-const THEME_LABELS: Record<ThemePref, { icon: string; label: string }> = {
-  system: { icon: "◐", label: "System" },
-  light: { icon: "☀", label: "Light" },
-  dark: { icon: "☾", label: "Dark" },
-};
+const THEME_ICONS: Record<string, string> = { system: "◐", light: "☀", dark: "☾" };
 
+/** Cycles system, light and dark; the other themes are in the Settings. */
 function ThemeButton() {
-  const [pref, setPref] = useState(loadTheme);
-  const { icon, label } = THEME_LABELS[pref];
+  useSetting(themeSetting);
+  const name = themeName();
+  const label = name === "system" ? "System" : PRESETS[name].label;
   return (
-    <button
-      className="icon"
-      title={`Theme: ${label} (click to change)`}
-      onClick={() => {
-        const next = nextTheme[pref];
-        applyTheme(next);
-        setPref(next);
-      }}
-    >
-      {icon}
+    <button className="icon" title={`Theme: ${label} (click to change; more in the Settings)`} onClick={cycleTheme}>
+      {THEME_ICONS[name] ?? "◑"}
     </button>
   );
 }

@@ -157,8 +157,19 @@ getSetting(scriptRowLimit);  // in handlers
 useSetting(scriptRowLimit);  // in components, re-renders on change
 ```
 
-The Settings dialog (Ctrl+,) lists every declared setting, grouped by section. Settings are
-loaded before the first render.
+The Settings dialog (Ctrl+,) lists every declared setting, grouped by section in the order
+they are declared. Settings are loaded before the first render; `onSettingsChanged` calls a
+function after any change, for code outside React. Controls are `boolean`, `number`, `text`,
+`select`, `color` (a `#rrggbb` value, empty for none) and `swatches` (choices shown as cards
+of colors).
+
+### Theme
+
+`apps/desktop/src/theme.ts` owns every color: the presets in `PRESETS` and the Appearance
+settings over them become CSS variables on `<html>` (`--bg`, `--fg`, `--accent`, the grid's
+and the syntax colors, `--radius`, `--grid-row-h`, `--editor-font-size`). Stylesheets use
+the variables, never fixed colors. A new preset is one more entry in `PRESETS`. Code that
+caches colors, like the grid's canvas, reads them again on `THEME_EVENT`.
 
 ### Result grid
 
