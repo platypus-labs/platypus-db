@@ -221,6 +221,7 @@ pub fn run() {
             commands::files::read_clipboard,
             commands::settings::get_settings,
             commands::settings::set_setting,
+            commands::explain::explain,
             commands::objects::object_ddl,
             commands::objects::object_properties,
             commands::objects::list_databases,

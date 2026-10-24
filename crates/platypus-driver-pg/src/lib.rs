@@ -12,6 +12,7 @@ mod cursor;
 mod ddl;
 #[doc(hidden)]
 pub mod decode;
+mod explain;
 mod meta;
 mod tls;
 
@@ -214,6 +215,10 @@ impl Connection for PgConnection {
         meta::catalog_foreign_keys(self).await
     }
 
+    async fn explain(&self, sql: &str, analyze: bool) -> Result<platypus_core::Explain> {
+        explain::explain(self, sql, analyze).await
+    }
+
     async fn object_ddl(&self, object: &platypus_core::ObjectRef<'_>) -> Result<String> {
         ddl::object_ddl(self, object).await
     }
@@ -255,10 +260,10 @@ impl Connection for PgConnection {
         platypus_core::Capabilities {
             transactions: true,
             cancel: true,
+            explain: true,
             object_ddl: true,
             metadata_search: true,
             multiple_databases: true,
-            ..Default::default()
         }
     }
 }

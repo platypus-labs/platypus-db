@@ -40,6 +40,13 @@ list. To add one:
 
 A driver that implements the method sets its flag in `fn capabilities`.
 
+`explain` returns the server's plan document and the same plan as a tree of
+`platypus_core::PlanNode` (operation, detail, cost, estimated and actual rows, time, loops,
+other properties), which the explain tab shows for every database alike. A new driver runs
+its plan request through `platypus_core::explain_document`, which with `analyze` wraps it
+in a transaction (or a savepoint) rolled back afterwards, and parses the result in its own
+`explain` module.
+
 Metadata every driver must answer is a required method instead, checked by
 `navigates_metadata` in the conformance tests: `schemas`, `objects`, `table_details`,
 `referencing_keys` (the foreign keys of other tables that point at a table) and
@@ -89,7 +96,6 @@ rather than checking the driver. It provides:
 - `quote_ident`, `qualified`, `quote_literal`
 - `bool_literal`, `binary_literal`, `has_default_keyword`, `insert_defaults`
 - `limit_clause`
-- `explain_json_prefix`
 - statements for the navigator (`generate.rs`): `select`, `insert`, `update`, `delete`,
   `upsert`, `drop`, `rename`, `truncate`. `drop` and `rename` return `None` for an object
   kind the dialect cannot drop or rename; `dialect_support` reports the kinds to the UI.

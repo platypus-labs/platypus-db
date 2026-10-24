@@ -3,3 +3,4 @@ import "./query";
 import "./object";
 import "./search";
 import "./builder";
+import "./explain";

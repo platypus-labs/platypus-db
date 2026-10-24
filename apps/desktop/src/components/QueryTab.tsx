@@ -675,10 +675,38 @@ export function QueryTab({
     }
   }
 
+  /** Opens the plan of the selection or the statement under the cursor in a new tab. */
+  async function explain(analyze: boolean) {
+    let p: Planned | undefined;
+    try {
+      [p] = await plan("statement");
+    } catch (e) {
+      onError(toCommandError(e).message);
+      return;
+    }
+    if (!p || p.kind === "command") return;
+    let sql = p.sql;
+    if (p.params.length) {
+      const values = await fillParams(p, { ...(tab.variables ?? {}), ...lastAnswers.current }, new Set());
+      if (!values) return;
+      sql = substitute(p.sql, p.params, values, connection.driver);
+    }
+    // Analyze runs the statement: the checks of a run apply.
+    if (analyze) {
+      if (connection.read_only && !p.readOnly) {
+        onError(`${connection.name} is read-only and this statement may modify data.`);
+        return;
+      }
+      if (!(await confirmed([p]))) return;
+    }
+    workbench().openTab("explain", connection.id, { database: tab.database, sql, analyze });
+  }
+
   const host: EditorHost = {
     openObject: (schema, name) => void openObject(schema, name),
     runCli: () => void runCli(),
     runAppend: () => void run("append"),
+    explain: (analyze) => void explain(analyze),
   };
 
   /** Closes a result tab and frees its rows. */

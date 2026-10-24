@@ -7,6 +7,7 @@
 pub mod cli;
 pub mod connections;
 pub mod data;
+pub mod explain;
 pub mod export;
 pub mod files;
 pub mod geometry;

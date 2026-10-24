@@ -115,6 +115,27 @@ export interface Capabilities {
   metadata_search: boolean;
 }
 
+/** One step of a query plan; see `platypus_core::PlanNode`. Rows and times are per loop. */
+export interface PlanNode {
+  operation: string;
+  detail: string | null;
+  cost: number | null;
+  rows: number | null;
+  actual_rows: number | null;
+  actual_ms: number | null;
+  loops: number | null;
+  properties: [string, string][];
+  children: PlanNode[];
+}
+
+export interface Explain {
+  format: "json" | "text";
+  /** The plan as the server returned it. */
+  plan: string;
+  root: PlanNode;
+  analyzed: boolean;
+}
+
 export interface CommandError {
   kind: string;
   message: string;
@@ -696,6 +717,8 @@ export const api = {
   getSettings: () => invoke<Record<string, unknown>>("get_settings"),
   /** `null` removes the key, restoring the default. */
   setSetting: (key: string, value: unknown) => invoke<void>("set_setting", { key, value }),
+  /** With `analyze` the statement runs, and its changes are rolled back. */
+  explain: (sessionId: number, sql: string, analyze: boolean) => invoke<Explain>("explain", { sessionId, sql, analyze }),
   objectDdl: (sessionId: number, object: ObjectTarget) => invoke<string>("object_ddl", { sessionId, object }),
   objectProperties: (sessionId: number, object: ObjectTarget) =>
     invoke<Property[]>("object_properties", { sessionId, object }),
