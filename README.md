@@ -53,11 +53,17 @@ scrolls through millions of rows.
   rolls back what it changed; tables that ignore transactions (MySQL's MyISAM) keep the
   changes. PostgreSQL, MySQL 8.0.16+ and MariaDB analyze; SQLite gives its query plan only.
   A heatmap tints each step by its share of the time it spends itself (of the cost, without
-  analyze), and a badge marks the steps whose row estimate was 10 times off or more.
+  analyze), and a badge marks the steps whose row estimate was 10 times off or more. A table
+  read in full (10,000 rows or more) to keep the rows matching a condition gets a
+  suggestion to index that condition's columns; on PostgreSQL with Explain analyze.
 - **Query manager** (`Ctrl+Shift+M`): every statement, metadata request and commit or
   rollback the app sent to the databases, newest first, with its connection, duration, rows
   and outcome; filter by text, hide the metadata. It keeps the last 2000 in memory; scripts
-  run with `psql`, `mysql` or `sqlite3` are not in it.
+  run with `psql`, `mysql` or `sqlite3` are not in it. A statement's trace splits its time
+  into network (the connection's last keep-alive round trip), server until the first answer,
+  and fetching the rows.
+- **Slow queries**: statements slower than a threshold (Settings, Performance; 5 s by
+  default) are marked in the editor's status bar and listed apart in the query manager.
 - **Saved scripts**: `.sql` files per project in the Scripts panel under the navigator, with
   folders, rename, drag to move, and the connection each one opens on.
 - **Visual query builder**: tables dragged onto a canvas, joined on their foreign keys,

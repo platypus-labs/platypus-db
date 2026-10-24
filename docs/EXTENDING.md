@@ -49,7 +49,8 @@ other properties), which the explain tab shows for every database alike. A new d
 its plan request through `platypus_core::explain_document`, which with `analyze` wraps it
 in a transaction (or a savepoint) rolled back afterwards, and parses the result in its own
 `explain` module, then builds the result with `Explain::new`, which fills each step's own
-cost and time for the heatmap.
+cost and time for the heatmap. A driver that recognises a filtered full scan of a table sets
+`PlanNode::full_scan`; `Explain::new` turns the large ones into index suggestions.
 
 ### Query log
 
