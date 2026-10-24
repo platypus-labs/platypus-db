@@ -15,13 +15,12 @@ fallible-iterator.workspace = true
 futures.workspace = true
 platypus-core.workspace = true
 platypus-sql.workspace = true
+platypus-tls.workspace = true
 postgres-protocol.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["rt", "sync", "time"] }
 tokio-postgres.workspace = true
 tokio-postgres-rustls.workspace = true
-rustls.workspace = true
-rustls-platform-verifier.workspace = true
 
 [dev-dependencies]
 arrow-cast.workspace = true

@@ -4677,9 +4677,8 @@ dependencies = [
  "futures",
  "platypus-core",
  "platypus-sql",
+ "platypus-tls",
  "postgres-protocol",
- "rustls 0.23.46",
- "rustls-platform-verifier",
  "serde_json",
  "tokio",
  "tokio-postgres",
@@ -4753,6 +4752,15 @@ dependencies = [
  "thiserror 2.0.21",
  "toml 1.1.8+spec-1.1.0",
  "uuid",
+]
+
+[[package]]
+name = "platypus-tls"
+version = "0.2.0"
+dependencies = [
+ "platypus-core",
+ "rustls 0.23.46",
+ "rustls-platform-verifier",
 ]
 
 [[package]]

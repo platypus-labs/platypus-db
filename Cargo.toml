@@ -21,6 +21,7 @@ platypus-export = { path = "crates/platypus-export" }
 platypus-net = { path = "crates/platypus-net" }
 platypus-sql = { path = "crates/platypus-sql" }
 platypus-store = { path = "crates/platypus-store" }
+platypus-tls = { path = "crates/platypus-tls" }
 
 argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
 arrow-array = "60"

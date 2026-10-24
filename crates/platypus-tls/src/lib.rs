@@ -1,45 +1,31 @@
-//! TLS setup following libpq `sslmode` semantics, on rustls with the `ring` provider.
+//! The rustls client configuration shared by the network drivers: libpq `sslmode`
+//! semantics on the `ring` provider. Each driver decides how a mode maps to its protocol
+//! (PostgreSQL negotiates TLS in-band, HTTP picks the scheme).
 
 use std::path::Path;
 use std::sync::Arc;
 
 use platypus_core::{ConnectionConfig, Error, Result, SslMode};
+pub use rustls::ClientConfig;
 use rustls::client::WebPkiServerVerifier;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{CryptoProvider, verify_tls12_signature, verify_tls13_signature};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
-use rustls::{
-    CertificateError, ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme,
-};
-use tokio_postgres::config::SslMode as PgSslMode;
-use tokio_postgres_rustls::MakeRustlsConnect;
+use rustls::{CertificateError, DigitallySignedStruct, RootCertStore, SignatureScheme};
 
-/// The protocol-level mode for tokio-postgres plus the connector, if TLS may be used.
-pub fn connector(config: &ConnectionConfig) -> Result<(PgSslMode, Option<MakeRustlsConnect>)> {
+/// The client configuration for `config.ssl_mode`, or `None` with `sslmode=disable`.
+/// `prefer` and `require` do not verify the certificate, as in libpq.
+pub fn client_config(config: &ConnectionConfig) -> Result<Option<ClientConfig>> {
     let provider = Arc::new(rustls::crypto::ring::default_provider());
-    let (mode, verifier): (_, Arc<dyn ServerCertVerifier>) = match config.ssl_mode {
-        SslMode::Disable => return Ok((PgSslMode::Disable, None)),
-        // libpq does not verify certificates in these modes.
-        SslMode::Prefer => (
-            PgSslMode::Prefer,
-            Arc::new(NoVerification(Arc::clone(&provider))),
-        ),
-        SslMode::Require => (
-            PgSslMode::Require,
-            Arc::new(NoVerification(Arc::clone(&provider))),
-        ),
-        SslMode::VerifyCa => (
-            PgSslMode::Require,
-            Arc::new(IgnoreHostname(chain_verifier(
-                config.ssl_root_cert.as_deref(),
-                &provider,
-            )?)),
-        ),
-        SslMode::VerifyFull => (
-            PgSslMode::Require,
-            chain_verifier(config.ssl_root_cert.as_deref(), &provider)?,
-        ),
+    let verifier: Arc<dyn ServerCertVerifier> = match config.ssl_mode {
+        SslMode::Disable => return Ok(None),
+        SslMode::Prefer | SslMode::Require => Arc::new(NoVerification(Arc::clone(&provider))),
+        SslMode::VerifyCa => Arc::new(IgnoreHostname(chain_verifier(
+            config.ssl_root_cert.as_deref(),
+            &provider,
+        )?)),
+        SslMode::VerifyFull => chain_verifier(config.ssl_root_cert.as_deref(), &provider)?,
     };
     let builder = ClientConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()
@@ -52,7 +38,7 @@ pub fn connector(config: &ConnectionConfig) -> Result<(PgSslMode, Option<MakeRus
             .map_err(|e| Error::Config(format!("invalid client certificate or key: {e}")))?,
         None => builder.with_no_client_auth(),
     };
-    Ok((mode, Some(MakeRustlsConnect::new(tls))))
+    Ok(Some(tls))
 }
 
 #[expect(
@@ -213,17 +199,29 @@ mod tests {
     use super::*;
 
     fn error_of(config: &ConnectionConfig) -> String {
-        match connector(config) {
+        match client_config(config) {
             Ok(_) => panic!("expected an error"),
             Err(e) => e.to_string(),
         }
     }
 
     #[test]
+    fn disable_means_no_tls() {
+        let config = ConnectionConfig::new(DriverKind::Postgres);
+        assert!(
+            client_config(&config).unwrap().is_some(),
+            "prefer is the default"
+        );
+        let mut config = config;
+        config.ssl_mode = SslMode::Disable;
+        assert!(client_config(&config).unwrap().is_none());
+    }
+
+    #[test]
     fn client_certificate_needs_cert_and_key() {
         let mut config = ConnectionConfig::new(DriverKind::Postgres);
         config.ssl_mode = SslMode::Require;
-        assert!(connector(&config).is_ok());
+        assert!(client_config(&config).unwrap().is_some());
         config.ssl_client_cert = Some("client.crt".into());
         assert!(error_of(&config).contains("both the certificate and its key"));
         config.ssl_client_key = Some("client.key".into());
