@@ -229,6 +229,54 @@
   gap: 6px;
 }
 
+.list-editor:focus {
+  outline: none;
+}
+
+.list-editor-head {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+}
+
+.list-editor-rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  outline: none;
+}
+
+.list-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.list-editor-row input:not([type="checkbox"]) {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.list-editor-label {
+  flex: none;
+  width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.list-editor-add {
+  align-self: flex-start;
+}
+
 .result-error {
   font-family: var(--font-mono);
   font-size: 12px;

@@ -91,6 +91,17 @@ pub struct ColumnMeta {
     pub comment: Option<String>,
     /// The values an enum column accepts, in declaration order; empty for other types.
     pub enum_values: Vec<String>,
+    /// The fields of a composite type, or of an array's composite element type (PostgreSQL);
+    /// empty for other types.
+    pub fields: Vec<FieldMeta>,
+}
+
+/// A field of a composite type.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FieldMeta {
+    pub name: String,
+    /// Declared type as the database prints it.
+    pub data_type: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

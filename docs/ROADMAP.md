@@ -105,10 +105,11 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 
 ### Gruppo A — Modifica dei dati
 
-**Stato: P1 e P2 completati** (modifica, righe nuove/duplicate/eliminate, anteprima SQL,
+**Stato: completato** (modifica, righe nuove/duplicate/eliminate, anteprima SQL,
 chiave obbligatoria o virtuale, NULL/default ed editor per tipo, salvataggio tutto-o-niente,
 incolla da foglio di calcolo, risultati di query di una tabella, dictionary delle FK, script
-di undo). Resta il P3.
+di undo; P3: array e tipi composti PostgreSQL modificati un elemento o campo per riga, gli
+array annidati come testo).
 
 **Area:** `apps/desktop/src/grid/edit/`, `commands/data.rs`, `platypus-sql/src/dml.rs`
 **Dipende da:** 0.3, 0.4, 0.5
@@ -125,7 +126,7 @@ di undo). Resta il P3.
 | Incolla da Excel/CSV come nuove righe | P2 | D |
 | Modifica di risultati di query da una sola tabella (con alias e JOIN esclusi) | P2 | D |
 | **Dictionary data**: le FK mostrano la colonna descrittiva della tabella collegata, con un menu a tendina in modifica | P2 | D |
-| Array PostgreSQL e tipi composti modificabili | P3 | D |
+| ✅ Array PostgreSQL e tipi composti modificabili | P3 | D |
 | Script di undo generato per le modifiche salvate | P2 | N |
 
 **Done:** modifica, inserimento ed eliminazione su PG, MySQL, MariaDB e SQLite, con test di

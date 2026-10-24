@@ -188,6 +188,13 @@ export interface ColumnMeta {
   comment: string | null;
   /** Values an enum column accepts; empty for other types. */
   enum_values: string[];
+  /** Fields of a composite type, or of an array's composite elements (PostgreSQL). */
+  fields: FieldMeta[];
+}
+
+export interface FieldMeta {
+  name: string;
+  data_type: string;
 }
 
 export interface IndexMeta {
@@ -556,6 +563,12 @@ export const api = {
   /** Loaded rows' values in full, not cut to one line like the grid's. */
   rowValues: (jobId: number, offset: number, limit: number) =>
     invoke<(string | null)[][]>("row_values", { jobId, offset, limit }),
+  /** The elements of a PostgreSQL array (or the fields of a composite value); `null` when
+   *  the text is not one, e.g. a nested array. */
+  splitLiteral: (composite: boolean, text: string) =>
+    invoke<(string | null)[] | null>("split_literal", { composite, text }),
+  joinLiteral: (composite: boolean, items: (string | null)[]) =>
+    invoke<string>("join_literal", { composite, items }),
   /** Loaded rows of a result in a clipboard format; `table` names the table in INSERTs. */
   copyRows: (
     jobId: number,

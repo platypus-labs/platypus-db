@@ -200,15 +200,14 @@ pub async fn object_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<Stri
     Ok(statements.join("\n\n"))
 }
 
-pub async fn table_details(
+/// The columns of a table, from the literals of its schema and name, in table order.
+async fn columns(
     conn: &dyn Connection,
-    schema: &str,
-    table: &str,
-) -> Result<TableDetails> {
-    let (schema_lit, table_lit) = (literal(schema), literal(table));
-
+    schema_lit: &str,
+    table_lit: &str,
+) -> Result<Vec<ColumnMeta>> {
     // `hidden` is 1 for hidden virtual-table columns, 2 and 3 for generated columns.
-    let columns: Vec<ColumnMeta> = query_text(
+    Ok(query_text(
         conn,
         &format!(
             "SELECT name, type, \"notnull\", dflt_value, pk
@@ -226,8 +225,19 @@ pub async fn table_details(
         primary_key: r.text(4) != "0",
         comment: None,
         enum_values: Vec::new(),
+        fields: Vec::new(),
     })
-    .collect();
+    .collect())
+}
+
+pub async fn table_details(
+    conn: &dyn Connection,
+    schema: &str,
+    table: &str,
+) -> Result<TableDetails> {
+    let (schema_lit, table_lit) = (literal(schema), literal(table));
+
+    let columns = columns(conn, &schema_lit, &table_lit).await?;
 
     let rows = query_text(
         conn,

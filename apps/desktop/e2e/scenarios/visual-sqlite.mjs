@@ -85,7 +85,9 @@ async function screens(page, theme, shots) {
 
 export default async function (page, { shots }) {
   await page.waitFor(`${cssVar("--bg")} === '#141519'`);
-  // All connections, then the two projects; Negozio becomes the workspace shown.
+  // All connections, then the two projects (they load after the theme); Negozio becomes the
+  // workspace shown.
+  await page.waitFor(`document.querySelectorAll('.project-square').length === 3`);
   assert.deepEqual(
     await page.eval(`[...document.querySelectorAll('.project-square')].map(s => s.title)`),
     ["All connections", "Negozio", "Interno"],

@@ -1004,6 +1004,125 @@ async fn estimates_table_rows() {
     }
 }
 
+/// Creates `demo.conf_arrays` and its composite type, and checks the columns' fields.
+async fn arrays_fixture(conn: &dyn Connection) {
+    for sql in [
+        "DROP TABLE IF EXISTS demo.conf_arrays",
+        "DROP TYPE IF EXISTS demo.conf_pair",
+        "CREATE TYPE demo.conf_pair AS (label TEXT, n INT)",
+        "CREATE TABLE demo.conf_arrays (id INT PRIMARY KEY, tags TEXT[], nums INT[], \
+         pair demo.conf_pair, pairs demo.conf_pair[])",
+        "INSERT INTO demo.conf_arrays (id) VALUES (1)",
+    ] {
+        run(conn, sql).await.unwrap();
+    }
+
+    let details = conn.table_details("demo", "conf_arrays").await.unwrap();
+    let fields = |name: &str| -> Vec<(String, String)> {
+        details
+            .columns
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap()
+            .fields
+            .iter()
+            .map(|f| (f.name.clone(), f.data_type.clone()))
+            .collect()
+    };
+    let pair_fields = [
+        ("label".to_owned(), "text".to_owned()),
+        ("n".to_owned(), "integer".to_owned()),
+    ];
+    assert_eq!(fields("pair"), pair_fields);
+    assert_eq!(fields("pairs"), pair_fields, "fields of the element type");
+    assert_eq!(fields("tags"), []);
+}
+
+/// PostgreSQL arrays and composite values: the fields of composite columns, and literals the
+/// data editor joins that come back as the same elements.
+#[tokio::test]
+async fn edits_arrays_and_composites() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{self, Column, Value, ValueKind};
+    use platypus_sql::pg_literal::{join_array, join_composite, split_array, split_composite};
+
+    for b in backends().await {
+        if b.config.driver != DriverKind::Postgres {
+            continue;
+        }
+        let conn = b.connect().await;
+        let conn = &*conn;
+        arrays_fixture(conn).await;
+
+        let text = |items: &[Option<&str>]| -> Vec<Option<String>> {
+            items.iter().map(|s| s.map(str::to_owned)).collect()
+        };
+        let tags = text(&[
+            Some("plain"),
+            Some("with space"),
+            Some(r#"q"x\y"#),
+            Some("{b},"),
+            Some("null"),
+            Some(""),
+            None,
+        ]);
+        let nums = text(&[Some("1"), None, Some("-3")]);
+        let pair = text(&[Some(r#"a (b), "c" \"#), None]);
+        let pairs = vec![Some(join_composite(&pair)), None];
+        let values = [
+            join_array(&tags),
+            join_array(&nums),
+            join_composite(&pair),
+            join_array(&pairs),
+        ];
+        let columns: Vec<Column<'_>> = ["id", "tags", "nums", "pair", "pairs"]
+            .iter()
+            .map(|name| Column {
+                name,
+                kind: if *name == "id" {
+                    ValueKind::Integer
+                } else {
+                    ValueKind::Text
+                },
+                default: None,
+            })
+            .collect();
+        let set: Vec<(usize, Value<'_>)> = values
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (i + 1, Value::Text(v)))
+            .collect();
+        let update = dml::update(
+            Dialect::from(b.config.driver),
+            "demo.conf_arrays",
+            &columns,
+            &set,
+            &[(0, Some("1"))],
+        )
+        .unwrap();
+        dml::apply(conn, &[update])
+            .await
+            .unwrap_or_else(|e| panic!("{}: update: {e}", b.name));
+
+        let rows = collect(
+            &b,
+            conn,
+            "SELECT tags, nums, pair, pairs FROM demo.conf_arrays",
+        )
+        .await;
+        let shown = |column| cell(&rows[0], column, 0).unwrap();
+        assert_eq!(split_array(&shown(0)), Some(tags));
+        assert_eq!(split_array(&shown(1)), Some(nums));
+        assert_eq!(split_composite(&shown(2)), Some(pair.clone()));
+        let read = split_array(&shown(3)).unwrap();
+        assert_eq!(read[1], None);
+        assert_eq!(split_composite(read[0].as_deref().unwrap()), Some(pair));
+
+        run(conn, "DROP TABLE demo.conf_arrays").await.unwrap();
+        run(conn, "DROP TYPE demo.conf_pair").await.unwrap();
+    }
+}
+
 #[tokio::test]
 async fn searches_metadata() {
     for b in backends().await {
