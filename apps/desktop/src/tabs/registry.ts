@@ -28,6 +28,9 @@ export interface TabBase {
   title?: string | null;
   /** Another database of the server than the saved one (PostgreSQL). */
   database?: string | null;
+  /** The project the tab belongs to, the one active when it opened; `null` for All
+   *  connections. */
+  project?: string | null;
   /** Uncommitted changes are pending: closing asks first. Not persisted. */
   txOpen?: boolean;
   /** Edits not saved yet, e.g. in the data editor: closing asks first. Not persisted. */

@@ -1,6 +1,6 @@
 import { type ComponentType, Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { dispatchKey, registerAction } from "./actions";
-import { api, type Capabilities, type CompletionCatalog, toCommandError, type SavedConnection } from "./api";
+import { api, type Capabilities, type CompletionCatalog, type Project, toCommandError, type SavedConnection } from "./api";
 import { onNavigatorRefresh } from "./navigatorEvents";
 import { ConnectionDialog } from "./components/ConnectionDialog";
 import { ImportDialog } from "./components/ImportDialog";
@@ -15,6 +15,7 @@ import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } fr
 import { dbKey, provideWorkbench, workbench } from "./workbench";
 import { Icon, type IconName } from "./ui/Icon";
 import { type PersistedTab, loadWorkspace, saveWorkspace } from "./workspace";
+import { connectionsOf, loadActiveProject, projectKey, saveActiveProject } from "./projects/state";
 
 type Dialog = { kind: "connection"; connection: SavedConnection; existing: boolean } | { kind: "import" } | null;
 
@@ -25,6 +26,12 @@ interface PasswordRequest {
 
 export function App() {
   const [connections, setConnections] = useState<SavedConnection[] | null>(null);
+  /** `null` until loaded. */
+  const [projects, setProjects] = useState<Project[] | null>(null);
+  /** The project shown; `null` is All connections. */
+  const [activeProject, setActiveProject] = useState<string | null>(null);
+  /** The active tab of each project while another one is shown, by `projectKey`. */
+  const activeByProject = useRef(new Map<string, number>());
   const [storeError, setStoreError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [passwordRequest, setPasswordRequest] = useState<PasswordRequest | null>(null);
@@ -58,38 +65,85 @@ export function App() {
       setConnections([]);
       setStoreError(toCommandError(e).message);
     });
-    api.appInfo().then((i) => setVersion(i.version), console.error);
+    api.listProjects().then(
+      (all) => {
+        setProjects(all);
+        setActiveProject(loadActiveProject(all));
+      },
+      () => setProjects([]),
+    );
+    api.appInfo().then((i) => {
+      setVersion(i.version);
+      // The end-to-end tests drive what has no button yet through these.
+      if (i.devtools) {
+        (window as unknown as { __platypus: object }).__platypus = {
+          switchProject: (id: string | null) => shell.current.switchProject(id),
+        };
+      }
+    }, console.error);
   }, []);
 
-  // Restore the previous workspace once connections are known.
+  // Restore the previous workspace once connections and projects are known.
   useEffect(() => {
-    if (!connections || restored.current) return;
+    if (!connections || !projects || restored.current) return;
     restored.current = true;
     const saved = loadWorkspace();
     if (!saved) return;
     const known = new Set(connections.map((c) => c.id));
-    const restoredTabs = saved.tabs.flatMap((t) => {
+    const existing = new Set(projects.map((p) => p.id));
+    // By saved index, so the active tabs (saved as indices) find theirs.
+    const byIndex = saved.tabs.map((t) => {
       // Tabs saved before tab kinds existed are SQL editors.
       const kind = tabKind(t.kind ?? "query");
-      if (!kind || !known.has(t.connectionId)) return [];
-      return [createTab(kind.kind, t.connectionId, kind.restore(t))];
+      if (!kind || !known.has(t.connectionId)) return null;
+      const tab = createTab(kind.kind, t.connectionId, kind.restore(t));
+      // A deleted project's tabs go to All connections.
+      tab.project = t.project && existing.has(t.project) ? t.project : null;
+      return tab;
     });
+    for (const [key, index] of Object.entries(saved.active)) {
+      const tab = byIndex[index];
+      if (tab) activeByProject.current.set(key, tab.key);
+    }
+    const restoredTabs = byIndex.filter((t) => t !== null);
     setTabs(restoredTabs);
-    setActiveTab(restoredTabs[Math.min(saved.active, restoredTabs.length - 1)]?.key ?? null);
-  }, [connections]);
+    const own = restoredTabs.filter((t) => (t.project ?? null) === activeProject);
+    const remembered = activeByProject.current.get(projectKey(activeProject));
+    setActiveTab(own.find((t) => t.key === remembered)?.key ?? own.at(-1)?.key ?? null);
+  }, [connections, projects]);
 
   useEffect(() => {
     if (!restored.current) return;
+    activeByProject.current.set(projectKey(activeProject), activeTab ?? -1);
     const kept = tabs.flatMap((tab) => {
       const state = tabKind(tab.kind)?.persist(tab);
-      const saved: PersistedTab | null = state ? { ...state, kind: tab.kind, connectionId: tab.connectionId } : null;
+      const saved: PersistedTab | null = state
+        ? { ...state, kind: tab.kind, connectionId: tab.connectionId, project: tab.project ?? null }
+        : null;
       return saved ? [{ key: tab.key, saved }] : [];
     });
-    saveWorkspace({
-      tabs: kept.map((k) => k.saved),
-      active: Math.max(0, kept.findIndex((k) => k.key === activeTab)),
-    });
-  }, [tabs, activeTab]);
+    const active: Record<string, number> = {};
+    for (const [key, tabKey] of activeByProject.current) {
+      const index = kept.findIndex((k) => k.key === tabKey);
+      if (index >= 0) active[key] = index;
+    }
+    saveWorkspace({ tabs: kept.map((k) => k.saved), active });
+  }, [tabs, activeTab, activeProject]);
+
+  const project = projects?.find((p) => p.id === activeProject) ?? null;
+  /** The tabs of the active project, the ones the tab bar shows. */
+  const visibleTabs = tabs.filter((t) => (t.project ?? null) === activeProject);
+
+  /** Shows another project with the tab that was active there. Nothing closes. */
+  function switchProject(id: string | null) {
+    if (id === activeProject || (id !== null && !projects?.some((p) => p.id === id))) return;
+    activeByProject.current.set(projectKey(activeProject), activeTab ?? -1);
+    setActiveProject(id);
+    saveActiveProject(id);
+    const own = tabs.filter((t) => (t.project ?? null) === id);
+    const remembered = activeByProject.current.get(projectKey(id));
+    setActiveTab(own.find((t) => t.key === remembered)?.key ?? own.at(-1)?.key ?? null);
+  }
 
   const connectionById = (id: string) => connections?.find((c) => c.id === id);
 
@@ -101,6 +155,8 @@ export function App() {
     if (!window.confirm(`Delete the connection "${c.name}"?`)) return;
     try {
       setConnections(await api.deleteConnection(c.id));
+      // The store took the connection out of every project.
+      setProjects(await api.listProjects());
       for (const t of tabs.filter((t) => t.connectionId === c.id)) closeTab(t, true);
       disconnectNavigator(c);
     } catch (e) {
@@ -108,9 +164,11 @@ export function App() {
     }
   }
 
+  /** Opens a tab in the active project, unless it says which one it belongs to. */
   function addTab(tab: TabModel) {
-    setTabs((all) => [...all, tab]);
-    setActiveTab(tab.key);
+    const placed = tab.project === undefined ? { ...tab, project: activeProject } : tab;
+    setTabs((all) => [...all, placed]);
+    setActiveTab(placed.key);
   }
 
   function askPassword(connection: SavedConnection) {
@@ -216,7 +274,7 @@ export function App() {
     if (question && !confirmed && !window.confirm(question)) return;
     const state = tabKind(tab.kind)?.persist(tab);
     if (state) {
-      closedTabs.current.push({ ...state, kind: tab.kind, connectionId: tab.connectionId });
+      closedTabs.current.push({ ...state, kind: tab.kind, connectionId: tab.connectionId, project: tab.project ?? null });
       if (closedTabs.current.length > CLOSED_TABS) closedTabs.current.shift();
     }
     const session = sessions.current.get(tab.key);
@@ -226,22 +284,43 @@ export function App() {
     });
     setTabs((all) => {
       const rest = all.filter((t) => t.key !== tab.key);
-      setActiveTab((active) => (active === tab.key ? (rest.at(-1)?.key ?? null) : active));
+      // The next tab shown is one of the same project.
+      const same = rest.filter((t) => (t.project ?? null) === (tab.project ?? null));
+      setActiveTab((active) => (active === tab.key ? (same.at(-1)?.key ?? null) : active));
       return rest;
     });
   }
 
   // What the shell's actions and the workbench need, refreshed every render so they
   // always see the latest state while being registered once.
+  /** Reopens the tab closed last in the active project. */
   const reopenTab = () => {
-    const saved = closedTabs.current.pop();
+    const closed = closedTabs.current;
+    let index = closed.length - 1;
+    while (index >= 0 && (closed[index]!.project ?? null) !== activeProject) index--;
+    const saved = index >= 0 ? closedTabs.current.splice(index, 1)[0] : undefined;
     const kind = saved && tabKind((saved.kind ?? "query") as TabKindName);
     if (!saved || !kind || !connectionById(saved.connectionId)) return;
     addTab(createTab(kind.kind, saved.connectionId, kind.restore(saved)));
   };
   const openPalette = () => setPaletteOpen(true);
-  const shell = useRef({ tabs, activeTab, connections, addTab, closeTab, setActiveTab, navigatorSession, reopenTab, openPalette });
-  shell.current = { tabs, activeTab, connections, addTab, closeTab, setActiveTab, navigatorSession, reopenTab, openPalette };
+  // `tabs` here are the active project's: the tab actions work on what the bar shows.
+  const shellState = {
+    tabs: visibleTabs,
+    activeTab,
+    connections,
+    projects: projects ?? [],
+    activeProject,
+    addTab,
+    closeTab,
+    setActiveTab,
+    navigatorSession,
+    reopenTab,
+    openPalette,
+    switchProject,
+  };
+  const shell = useRef(shellState);
+  shell.current = shellState;
 
   // The active tab stays in view when tabs overflow the bar.
   useEffect(() => {
@@ -251,6 +330,10 @@ export function App() {
   provideWorkbench({
     connections: () => shell.current.connections ?? [],
     setConnections,
+    projects: () => shell.current.projects,
+    setProjects,
+    activeProject: () => shell.current.projects.find((p) => p.id === shell.current.activeProject) ?? null,
+    switchProject: (id) => shell.current.switchProject(id),
     openTab: (kind, connectionId, init) => shell.current.addTab(createTab(kind, connectionId, init)),
     sideSession: (connection, database) => shell.current.navigatorSession(connection, database),
     capabilities: (sessionId) => capabilities.current.get(sessionId),
@@ -293,7 +376,7 @@ export function App() {
   return (
     <div className="shell">
       <Navigator
-        connections={connections ?? []}
+        connections={connectionsOf(project, connections ?? [])}
         error={storeError}
         onNew={() => void newConnection()}
         onImport={() => setDialog({ kind: "import" })}
@@ -308,7 +391,7 @@ export function App() {
       />
       <main className="workspace">
         <UpdateBanner />
-        {tabs.length > 0 && (
+        {visibleTabs.length > 0 && (
           <div
             className="tabs"
             ref={tabBar}
@@ -317,7 +400,7 @@ export function App() {
               if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY;
             }}
           >
-            {tabs.map((t) => (
+            {visibleTabs.map((t) => (
               <div
                 key={t.key}
                 className={`tab${t.key === activeTab ? " active" : ""}`}
@@ -368,7 +451,7 @@ export function App() {
             )
           );
         })}
-        {tabs.length === 0 && (
+        {visibleTabs.length === 0 && (
           <div className="welcome">
             <h1>PlatypusDB</h1>
             <p className="muted">
@@ -430,9 +513,13 @@ function tabIcon(t: TabModel): IconName {
 }
 
 interface ShellApi {
+  /** The active project's tabs. */
   tabs: TabModel[];
   activeTab: number | null;
   connections: SavedConnection[] | null;
+  projects: Project[];
+  activeProject: string | null;
+  switchProject: (id: string | null) => void;
   addTab: (tab: TabModel) => void;
   closeTab: (tab: TabModel) => void;
   setActiveTab: (key: number) => void;
