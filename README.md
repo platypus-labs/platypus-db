@@ -52,9 +52,11 @@ scrolls through millions of rows.
 - **Safety**: an `UPDATE` or `DELETE` without `WHERE`, or a `TRUNCATE`, asks first and says
   about how many rows it changes; on production connections every change is listed and
   confirmed before it runs, and the data editor shows its SQL before saving.
-- **Appearance** in the Settings: themes (system, light, dark, Nord, Dracula, Solarized
-  Light, high contrast), your own accent, background, sidebar and text colors, interface
-  size, grid row density, corner radius and the SQL editor's font size.
+- **Appearance** in the Settings: the Platypus Dark and Platypus Light themes (what
+  "System" follows), Classic Light and Dark, Nord, Dracula, Solarized Light and high
+  contrast; your own accent, background, sidebar and text colors, interface size, grid row
+  density, corner radius and the SQL editor's font size. Inter and JetBrains Mono are
+  bundled, so the app looks the same everywhere and works offline.
 - **Command palette** (`Ctrl+K` or `Ctrl+Shift+P`): actions, connections, tables and recent
   queries, found by typing a few letters of them.
 - **Shell**: `Ctrl+Shift+T` reopens the last closed tab, the mouse wheel scrolls the tab bar,
@@ -65,6 +67,7 @@ scrolls through millions of rows.
 | | |
 |---|---|
 | ![Autocomplete](docs/screenshots/autocomplete.png) | ![Transactions](docs/screenshots/transaction.png) |
+| ![Platypus Light](docs/screenshots/light-theme.png) | ![Command palette](docs/screenshots/palette.png) |
 
 ## Install
 

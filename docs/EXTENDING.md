@@ -202,6 +202,29 @@ and the syntax colors, `--radius`, `--grid-row-h`, `--editor-font-size`). Styles
 the variables, never fixed colors. A new preset is one more entry in `PRESETS`. Code that
 caches colors, like the grid's canvas, reads them again on `THEME_EVENT`.
 
+A preset gives the base colors (`BasePalette`) and may give the extra ones (`ExtraPalette`):
+`--bg-rail`, `--bg-tabbar`, `--fg-strong`, `--border-strong`, `--active`, the object colors
+`--obj-db|table|view|routine|trigger` and the connection types
+`--type-dev|test|prod` with their `-bg`. What a preset leaves out comes from `derive()`,
+which also follows the custom background, sidebar, text and accent colors. "System" stands
+for `platypus_dark` or `platypus_light`. The last applied variables are cached in
+`platypus.appearance.v2`; a change to the variables' set bumps that key.
+
+### Stylesheets, fonts and icons
+
+`src/styles/` holds one file per area, imported in order by `index.css`: `base` (reset,
+fonts, buttons, inputs, `kbd`), `shell` (layout, tabs, status bar), `navigator`, `editor`
+(toolbar, connection chip, history, object tabs), `grid` (results, data editor, panels) and
+`dialogs` (modals, Settings, palette, menus). A group adds its rules to the file of its area.
+
+Inter and JetBrains Mono (Latin and Latin Extended, OFL) are in `src/assets/fonts/`, exposed
+as `--font-ui` and `--font-mono`; the grid's canvas reads `--font-mono` too and redraws when
+the fonts finish loading.
+
+Icons come from Lucide through `src/ui/Icon.tsx`: `<Icon name="table" />`, and
+`objectIcon(kind)` for a database object. A new icon is one more name in its map; components
+never import `lucide-react` themselves.
+
 ### Result grid
 
 `DataGrid` (`apps/desktop/src/grid/DataGrid.tsx`) takes these extension props:
@@ -254,7 +277,12 @@ A scenario in `e2e/scenarios/` exports:
 - optionally `setup(ctx)`, which seeds `ctx.dir` (for example `connections.toml`) before
   the app starts;
 - optionally `skip()`, which returns a reason not to run, for example when a dev database
-  is down.
+  is down;
+- optionally `env(ctx)`, extra environment variables for the app;
+- optionally `ready`, the condition to wait for before the steps (by default the navigator
+  showing a connection; a scenario with no saved connections waits for something else).
 
-Set `PLATYPUS_E2E_SHOTS` to a folder to get a screenshot of each failure. CI runs the
+Set `PLATYPUS_E2E_SHOTS` to a folder to get a screenshot of each failure, plus the ones the
+scenarios take: `visual-sqlite` saves the main screens in Platypus Dark and Light, to compare
+a change to the look by eye. CI runs the
 scenarios on Windows. Scenarios that need the Docker databases skip themselves there.

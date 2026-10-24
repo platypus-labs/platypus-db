@@ -315,6 +315,10 @@ parallelizzabile: **una persona per driver**.
 **Stato: P1 completati** (rotella sui tab, command palette con ricerca fuzzy su azioni,
 connessioni, tabelle e query recenti, riapertura del tab chiuso, pagina Impostazioni con
 sezioni, scorciatoie personalizzabili, barra degli strumenti configurabile). Restano i P2/P3.
+Fatta anche la **nuova grafica**: temi Platypus Dark e Light, font Inter e JetBrains Mono
+inclusi, icone Lucide, navigator, tab, toolbar e dialog ridisegnati
+([spec](superpowers/specs/2026-10-24-grafica-e-progetti-design.md), parte A). I **progetti
+come spazi di lavoro** (parte B della stessa spec) sono il prossimo passo.
 
 **Area:** `App.tsx`, `apps/desktop/src/shell/` (tab bar, palette, impostazioni), `styles.css`, `theme.ts`
 **Dipende da:** 0.2, 0.3, 0.7
