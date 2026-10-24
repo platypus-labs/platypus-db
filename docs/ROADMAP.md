@@ -77,6 +77,31 @@ Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i
 
 ## 2. Gruppi di lavoro
 
+### Lock dei gruppi
+
+Chi lavora su un gruppo lo segna qui e pusha su `main` prima di scrivere codice. Formato:
+`🔒 <nome> · <branch> · <AAAA-MM-GG>`. Un lock senza commit sul branch da più di 3 giorni è
+scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
+
+| Gruppo | Lock |
+|---|---|
+| A — Modifica dei dati | ✅ fatto (P1, P2) |
+| B — Griglia avanzata | ✅ fatto (P1, P2) |
+| C — Navigator e oggetti | ✅ fatto (P1) |
+| D — Editor SQL | ✅ fatto (P1) |
+| E — Explain e performance | libero |
+| F — Connettività e credenziali | libero |
+| G — Nuovi driver | libero |
+| H — Import, export e trasferimento | libero |
+| I — Strumenti di schema | libero |
+| J — Amministrazione del server | libero |
+| K — Shell ed ergonomia | libero |
+| L — Sicurezza operativa | libero |
+| M — Analisi dei dati | libero |
+| N — Assistente AI | libero |
+| O — Collaborazione e sync | libero |
+| P — Piattaforma, qualità e release | libero |
+
 ### Gruppo A — Modifica dei dati
 
 **Stato: P1 e P2 completati** (modifica, righe nuove/duplicate/eliminate, anteprima SQL,
