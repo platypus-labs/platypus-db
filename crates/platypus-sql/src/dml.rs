@@ -337,15 +337,18 @@ const SAVEPOINT: &str = "platypus_edit";
 /// Runs `statements`, each of which must hit exactly one row, all or none. In autocommit
 /// mode they run in a transaction of their own and are committed; in manual-commit mode
 /// they join the session's transaction behind a savepoint, and stay uncommitted. Without
-/// savepoints (DuckDB) a failure in manual-commit mode rolls back the whole transaction,
-/// which DuckDB aborts on errors anyway.
+/// savepoints (DuckDB) a failed statement in manual-commit mode rolls back the whole
+/// transaction, which DuckDB aborts on errors anyway; so does a row count off once rows
+/// changed, as nothing else can undo them. A first statement that finds no row leaves the
+/// transaction as it was.
 pub async fn apply(
     conn: &dyn Connection,
     dialect: Dialect,
     statements: &[String],
 ) -> Result<(), ApplyError> {
     let manual = !conn.transaction().autocommit;
-    let (begin, end, undo) = if manual && !dialect.has_savepoints() {
+    let savepointless = manual && !dialect.has_savepoints();
+    let (begin, end, undo) = if savepointless {
         (None, Vec::new(), vec!["ROLLBACK".to_owned()])
     } else if manual {
         (
@@ -379,7 +382,12 @@ pub async fn apply(
             break;
         }
     }
-    let finish = if outcome.is_ok() { end } else { undo };
+    let untouched = matches!(outcome, Err(ApplyError::RowCount { index: 0, rows: 0 }));
+    let finish = match outcome {
+        Ok(()) => end,
+        Err(_) if savepointless && untouched => Vec::new(),
+        Err(_) => undo,
+    };
     for sql in &finish {
         if let Err(error) = exec_one(conn, sql).await {
             // The first error explains more than the failed cleanup.

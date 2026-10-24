@@ -529,6 +529,17 @@ async fn navigates_metadata() {
         );
 
         let orders = conn.table_details(&b.schema, "orders").await.unwrap();
+        if b.config.driver == DriverKind::DuckDb {
+            // A name spelled in another case, as a bare name in a query can be.
+            let upper = conn.table_details(&b.schema, "ORDERS").await.unwrap();
+            assert!(!upper.constraints.is_empty(), "{}", b.name);
+            assert_eq!(
+                upper.constraints.len(),
+                orders.constraints.len(),
+                "{}",
+                b.name
+            );
+        }
         let column = |name: &str| {
             orders
                 .columns
@@ -663,6 +674,20 @@ async fn manual_commit_and_rollback() {
         affected(&b, conn, "ROLLBACK").await;
         assert!(!conn.transaction().open, "{}: typed ROLLBACK", b.name);
         assert_eq!(count(&b, conn).await, "2", "{}", b.name);
+
+        if b.config.driver == DriverKind::SqlServer {
+            // A nested COMMIT closes one level only: the session's transaction stays open.
+            conn.set_autocommit(false).await.unwrap();
+            affected(&b, conn, &insert(4)).await;
+            affected(&b, conn, "BEGIN TRAN").await;
+            affected(&b, conn, "COMMIT").await;
+            assert!(conn.transaction().open, "{}: nested COMMIT", b.name);
+            conn.rollback().await.unwrap();
+            assert_eq!(count(&b, conn).await, "2", "{}: all rolled back", b.name);
+            // The count opened a transaction of its own.
+            conn.rollback().await.unwrap();
+            conn.set_autocommit(true).await.unwrap();
+        }
     }
 }
 
@@ -1133,7 +1158,9 @@ async fn edit_rollbacks(
     // A statement that misses its row rolls back the ones before it.
     let ok = dml::update(d, t, columns, &[(1, Value::Text("x"))], &[(0, Some("2"))]).unwrap();
     let missing = dml::update(d, t, columns, &[(1, Value::Text("y"))], &[(0, Some("99"))]).unwrap();
-    let err = dml::apply(conn, d, &[ok, missing]).await.unwrap_err();
+    let err = dml::apply(conn, d, &[ok, missing.clone()])
+        .await
+        .unwrap_err();
     assert!(
         matches!(err, ApplyError::RowCount { index: 1, rows: 0 }),
         "{}: {err}",
@@ -1156,6 +1183,21 @@ async fn edit_rollbacks(
         .await
         .unwrap_or_else(|e| panic!("{}: delete: {e}", b.name));
     assert!(conn.transaction().open, "{}: left uncommitted", b.name);
+    // A missing row that changed nothing keeps the session's work, savepoints or not.
+    let err = dml::apply(conn, d, &[missing]).await.unwrap_err();
+    assert!(
+        matches!(err, ApplyError::RowCount { index: 0, rows: 0 }),
+        "{}: {err}",
+        b.name
+    );
+    assert!(conn.transaction().open, "{}: still open", b.name);
+    let rows = collect(b, conn, &format!("SELECT count(*) FROM {t}")).await;
+    assert_eq!(
+        cell(&rows[0], 0, 0).as_deref(),
+        Some("1"),
+        "{}: delete kept",
+        b.name
+    );
     conn.rollback().await.unwrap();
     conn.set_autocommit(true).await.unwrap();
     let rows = collect(b, conn, &format!("SELECT count(*) FROM {t}")).await;

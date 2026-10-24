@@ -278,8 +278,10 @@ const TSQL_RESERVED: &[&str] = &[
 ];
 
 fn is_reserved(name: &str, dialect: Dialect) -> bool {
-    let is = |w: &&str| w.eq_ignore_ascii_case(name);
-    RESERVED.iter().any(is) || (dialect == Dialect::SqlServer && TSQL_RESERVED.iter().any(is))
+    // Both lists are sorted; the `sorted_reserved_words` test keeps them so.
+    let upper = name.to_ascii_uppercase();
+    let found = |list: &[&str]| list.binary_search(&upper.as_str()).is_ok();
+    found(RESERVED) || (dialect == Dialect::SqlServer && found(TSQL_RESERVED))
 }
 
 /// The `LIKE` pattern, with `!` as the escape character, of the texts containing `needle`.
@@ -433,7 +435,7 @@ impl Dialect {
             Self::Sqlite => format!("SELECT COUNT(*) FROM {}", self.qualified(schema, table)),
             Self::DuckDb => format!(
                 "SELECT estimated_size FROM duckdb_tables() \
-                 WHERE database_name = current_database() AND schema_name = {} AND table_name = {}",
+                 WHERE database_name = current_database()                  AND lower(schema_name) = lower({}) AND lower(table_name) = lower({})",
                 schema.map_or_else(|| "current_schema()".to_owned(), |s| self.quote_literal(s)),
                 self.quote_literal(table)
             ),
@@ -536,6 +538,13 @@ impl Dialect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sorted_reserved_words() {
+        for list in [RESERVED, TSQL_RESERVED] {
+            assert!(list.windows(2).all(|w| w[0] < w[1]), "{list:?}");
+        }
+    }
 
     #[test]
     fn quotes_identifiers_only_when_needed() {
@@ -691,12 +700,14 @@ mod tests {
             "{sql}"
         );
         assert!(
-            sql.ends_with("schema_name = 'main' AND table_name = 'orders'"),
+            sql.ends_with(
+                "lower(schema_name) = lower('main') AND lower(table_name) = lower('orders')"
+            ),
             "{sql}"
         );
         assert!(
             duck.row_estimate_sql(None, "t")
-                .contains("schema_name = current_schema()")
+                .contains("lower(schema_name) = lower(current_schema())")
         );
     }
 }

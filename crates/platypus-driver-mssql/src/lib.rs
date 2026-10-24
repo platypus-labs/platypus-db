@@ -19,7 +19,7 @@ mod meta;
 #[doc(hidden)]
 pub mod tsql;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, PoisonError};
 use std::time::Duration;
 
@@ -215,6 +215,12 @@ impl Connection for MssqlConnection {
             return Ok(ExecResult::Affected { rows: 0 });
         };
         let mut session = Arc::clone(&self.session).lock_owned().await;
+        if !self.tx.state().autocommit {
+            // The server may have rolled the transaction back (a deadlock, `XACT_ABORT`),
+            // or a nested `COMMIT` may have left one open.
+            let open = trancount(&mut session, &self.closed).await? > 0;
+            self.tx.set_open(open);
+        }
         if self.tx.needs_begin(prepared.effect) {
             run_simple(&mut session, "BEGIN TRANSACTION", &self.closed).await?;
             self.tx.set_open(true);
@@ -222,6 +228,14 @@ impl Connection for MssqlConnection {
         let result = self.start(session, sql.into_owned(), options).await;
         // DDL is transactional in SQL Server.
         self.tx.after(prepared.effect, false);
+        if prepared.effect == platypus_core::TxEffect::End
+            && matches!(result, Ok(ExecResult::Affected { .. }))
+        {
+            // `COMMIT` closes one level of nested transactions only.
+            let mut session = self.session.lock().await;
+            self.tx
+                .set_open(trancount(&mut session, &self.closed).await? > 0);
+        }
         result
     }
 
@@ -362,6 +376,20 @@ async fn run_simple(session: &mut Session, sql: &str, closed: &AtomicBool) -> Re
     Ok(())
 }
 
+/// The session's `@@TRANCOUNT`: how many `BEGIN TRANSACTION`s are open.
+async fn trancount(session: &mut Session, closed: &AtomicBool) -> Result<i32> {
+    const SQL: &str = "SELECT @@TRANCOUNT";
+    let fail = |e| lost(map_error(e, SQL), closed);
+    let row = session
+        .simple_query(SQL)
+        .await
+        .map_err(fail)?
+        .into_row()
+        .await
+        .map_err(fail)?;
+    Ok(row.and_then(|r| r.get::<i32, _>(0)).unwrap_or(0))
+}
+
 /// How a statement's task ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Outcome {
@@ -391,13 +419,15 @@ impl Statement {
         reply: oneshot::Sender<Result<Started>>,
         canceller: &MssqlCanceller,
     ) {
+        // Armed before sending: a cancel while a long script is written stops it too.
+        let (id, token) = canceller.arm();
         if let Err(e) = session.send_batch(self.sql.as_str()).await {
+            canceller.disarm(id);
             let _ = reply.send(Err(self.fail(e)));
             return;
         }
-        let token = canceller.arm();
         let outcome = self.read(&mut session, reply, &token).await;
-        canceller.disarm(&token);
+        canceller.disarm(id);
         if outcome == Outcome::Interrupted && session.cancel().await.is_err() {
             self.closed.store(true, Ordering::Release);
         }
@@ -581,24 +611,24 @@ impl RowSink {
 /// sends the attention: the session cannot be reached from another task.
 #[derive(Debug, Clone, Default)]
 struct MssqlCanceller {
-    running: Arc<std::sync::Mutex<Option<CancellationToken>>>,
+    /// The running statement's token, with an id to tell it from the next one's.
+    running: Arc<std::sync::Mutex<Option<(u64, CancellationToken)>>>,
+    next_id: Arc<AtomicU64>,
 }
 
 impl MssqlCanceller {
     /// A token for the statement that starts reading now.
-    fn arm(&self) -> CancellationToken {
+    fn arm(&self) -> (u64, CancellationToken) {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let token = CancellationToken::new();
-        *self.running.lock().unwrap_or_else(PoisonError::into_inner) = Some(token.clone());
-        token
+        *self.running.lock().unwrap_or_else(PoisonError::into_inner) = Some((id, token.clone()));
+        (id, token)
     }
 
-    /// The statement of `token` is over: a later cancel must not reach the next one.
-    fn disarm(&self, token: &CancellationToken) {
+    /// The statement `id` is over: a later cancel must not reach the next one.
+    fn disarm(&self, id: u64) {
         let mut running = self.running.lock().unwrap_or_else(PoisonError::into_inner);
-        if running
-            .as_ref()
-            .is_some_and(|t| t.is_cancelled() || std::ptr::eq(t, token))
-        {
+        if running.as_ref().is_some_and(|(armed, _)| *armed == id) {
             *running = None;
         }
         drop(running);
@@ -613,7 +643,7 @@ impl Canceller for MssqlCanceller {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .take();
-        if let Some(token) = token {
+        if let Some((_, token)) = token {
             token.cancel();
         }
         Ok(())

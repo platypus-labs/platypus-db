@@ -203,16 +203,39 @@ async fn constraints(conn: &dyn Connection, at: &str) -> Result<Vec<Constraint>>
         .collect())
 }
 
-/// `[a, b]`, how `duckdb_indexes()` prints the indexed expressions.
+/// `[a, b]`, how `duckdb_indexes()` prints the indexed expressions: split at the commas
+/// outside parentheses and quotes, quoted names unquoted.
 fn index_expressions(text: &str) -> Vec<String> {
     let inner = text
         .strip_prefix('[')
         .and_then(|t| t.strip_suffix(']'))
         .unwrap_or(text);
-    inner
-        .split(", ")
+    let mut items = Vec::new();
+    let (mut depth, mut quote, mut start) = (0u32, None, 0);
+    for (i, c) in inner.char_indices() {
+        match (quote, c) {
+            (Some(q), _) if c == q => quote = None,
+            (None, '"' | '\'') => quote = Some(c),
+            (None, '(') => depth += 1,
+            (None, ')') => depth = depth.saturating_sub(1),
+            (None, ',') if depth == 0 => {
+                items.push(&inner[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    items.push(&inner[start..]);
+    items
+        .into_iter()
+        .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(|s| s.trim_matches('"').to_owned())
+        .map(
+            |s| match s.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+                Some(name) => name.replace("\"\"", "\""),
+                None => s.to_owned(),
+            },
+        )
         .collect()
 }
 
@@ -221,8 +244,9 @@ pub async fn table_details(
     schema: &str,
     table: &str,
 ) -> Result<TableDetails> {
+    // DuckDB names are case-insensitive, quoted or not: `orders` finds `Orders`.
     let at = format!(
-        "{HERE} AND schema_name = {} AND table_name = {}",
+        "{HERE} AND lower(schema_name) = lower({}) AND lower(table_name) = lower({})",
         literal(schema),
         literal(table)
     );
@@ -320,7 +344,7 @@ pub async fn referencing_keys(
     table: &str,
 ) -> Result<Vec<ReferencingKey>> {
     let filter = format!(
-        "AND schema_name = {} AND referenced_table = {}",
+        "AND lower(schema_name) = lower({}) AND lower(referenced_table) = lower({})",
         literal(schema),
         literal(table)
     );
@@ -533,5 +557,9 @@ mod tests {
         assert_eq!(index_expressions("[customer_id]"), ["customer_id"]);
         assert_eq!(index_expressions("[a, \"B c\"]"), ["a", "B c"]);
         assert_eq!(index_expressions("[]"), Vec::<String>::new());
+        assert_eq!(
+            index_expressions("[coalesce(a, b), \"x, y\"]"),
+            ["coalesce(a, b)", "x, y"]
+        );
     }
 }
