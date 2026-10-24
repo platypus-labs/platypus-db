@@ -17,6 +17,8 @@ pub enum DriverKind {
     Sqlite,
     /// Embedded like SQLite: `database` is the file path, or `:memory:`.
     DuckDb,
+    /// Microsoft SQL Server and Azure SQL.
+    SqlServer,
 }
 
 impl DriverKind {
@@ -26,6 +28,7 @@ impl DriverKind {
             Self::Postgres => Some(5432),
             Self::MySql => Some(3306),
             Self::Sqlite | Self::DuckDb => None,
+            Self::SqlServer => Some(1433),
         }
     }
 
@@ -167,7 +170,8 @@ impl ConnectionConfig {
     }
 
     /// Parses a connection URL such as `postgres://user:pass@host:5432/db?sslmode=require`,
-    /// `mysql://user@host/db`, `sqlite:///path/to/file.db` or `duckdb:///path/to/file.duckdb`.
+    /// `mysql://user@host/db`, `sqlserver://sa@host/master`, `sqlite:///path/to/file.db` or
+    /// `duckdb:///path/to/file.duckdb`.
     pub fn from_url(input: &str) -> Result<Self> {
         let url = Url::parse(input).map_err(|e| Error::Config(format!("invalid URL: {e}")))?;
         let driver = match url.scheme() {
@@ -175,6 +179,7 @@ impl ConnectionConfig {
             "mysql" | "mariadb" => DriverKind::MySql,
             "sqlite" => DriverKind::Sqlite,
             "duckdb" => DriverKind::DuckDb,
+            "sqlserver" | "mssql" => DriverKind::SqlServer,
             other => return Err(Error::Config(format!("unsupported URL scheme `{other}`"))),
         };
         let mut config = Self::new(driver);
@@ -258,6 +263,18 @@ mod tests {
         assert_eq!(c.port, Some(3306));
         assert_eq!(c.ssl_mode, SslMode::Prefer);
         assert_eq!(c.password, None);
+    }
+
+    #[test]
+    fn parses_sql_server_url() {
+        let c = ConnectionConfig::from_url("sqlserver://sa:pw@db/sales?sslmode=require").unwrap();
+        assert_eq!(c.driver, DriverKind::SqlServer);
+        assert_eq!(c.port, Some(1433));
+        assert_eq!(c.database, "sales");
+        assert_eq!(c.ssl_mode, SslMode::Require);
+        let c = ConnectionConfig::from_url("mssql://sa@db:14330/").unwrap();
+        assert_eq!(c.driver, DriverKind::SqlServer);
+        assert_eq!(c.port, Some(14330));
     }
 
     #[test]
