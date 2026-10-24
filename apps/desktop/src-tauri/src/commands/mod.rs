@@ -25,6 +25,7 @@ pub mod settings;
 pub mod sql;
 pub mod summary;
 pub mod transactions;
+pub mod transfer;
 pub mod vault;
 
 use std::collections::HashMap;

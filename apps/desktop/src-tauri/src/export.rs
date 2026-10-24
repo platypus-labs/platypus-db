@@ -81,6 +81,20 @@ impl Export {
         options: ExportOptions,
         events: Channel<ExportEvent>,
     ) -> Arc<Self> {
+        Self::spawn(events, |task| async move {
+            task.run(&config, &label, &log, &sql, path, options).await
+        })
+    }
+
+    /// Runs `work`, a transfer of rows that reports progress on the job's events and returns
+    /// how many rows it moved, reporting its outcome when it ends.
+    pub fn spawn<F>(
+        events: Channel<ExportEvent>,
+        work: impl FnOnce(Arc<Self>) -> F + Send + 'static,
+    ) -> Arc<Self>
+    where
+        F: Future<Output = Result<u64, CommandError>> + Send + 'static,
+    {
         let export = Arc::new(Self {
             events,
             task: Mutex::new(None),
@@ -89,7 +103,7 @@ impl Export {
         let task = Arc::clone(&export);
         let handle = tauri::async_runtime::spawn(async move {
             let started = Instant::now();
-            let event = match task.run(&config, &label, &log, &sql, path, options).await {
+            let event = match work(Arc::clone(&task)).await {
                 Ok(rows) => ExportEvent::Done {
                     rows,
                     elapsed_ms: millis(started),
@@ -100,6 +114,11 @@ impl Export {
         });
         *lock(&export.task) = Some(handle);
         export
+    }
+
+    /// Reports `rows` moved so far.
+    pub fn progress(&self, rows: u64) {
+        let _ = self.events.send(ExportEvent::Progress { rows });
     }
 
     fn finish(&self, event: ExportEvent) {
@@ -163,7 +182,7 @@ impl Export {
                 }
             }
             if last_report.elapsed() >= PROGRESS_INTERVAL {
-                let _ = self.events.send(ExportEvent::Progress { rows });
+                self.progress(rows);
                 last_report = Instant::now();
             }
         }
@@ -181,7 +200,7 @@ impl Export {
         Ok(written?)
     }
 
-    /// Stops the export and deletes the partial file.
+    /// Stops the job: an export deletes its partial file.
     pub fn cancel(&self) {
         if let Some(task) = lock(&self.task).take() {
             task.abort();

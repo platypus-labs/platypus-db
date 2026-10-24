@@ -133,6 +133,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 /// # Panics
 ///
 /// Panics if the Tauri runtime fails to start (e.g. missing WebView2 on Windows).
+#[expect(clippy::too_many_lines, reason = "one line per command")]
 pub fn run() {
     migrate_legacy_dirs();
     tauri::Builder::default()
@@ -200,6 +201,8 @@ pub fn run() {
             commands::export::export_query,
             commands::export::export_rows,
             commands::export::cancel_export,
+            commands::transfer::preview_import,
+            commands::transfer::import_file,
             commands::transactions::transaction_state,
             commands::transactions::set_autocommit,
             commands::transactions::end_transaction,
