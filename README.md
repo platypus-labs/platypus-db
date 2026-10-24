@@ -52,6 +52,12 @@ scrolls through millions of rows.
   a table. Explain analyze (editor menu) runs the statement for actual rows and times, then
   rolls back what it changed; tables that ignore transactions (MySQL's MyISAM) keep the
   changes. PostgreSQL, MySQL 8.0.16+ and MariaDB analyze; SQLite gives its query plan only.
+  A heatmap tints each step by its share of the time it spends itself (of the cost, without
+  analyze), and a badge marks the steps whose row estimate was 10 times off or more.
+- **Query manager** (`Ctrl+Shift+M`): every statement, metadata request and commit or
+  rollback the app sent to the databases, newest first, with its connection, duration, rows
+  and outcome; filter by text, hide the metadata. It keeps the last 2000 in memory; scripts
+  run with `psql`, `mysql` or `sqlite3` are not in it.
 - **Saved scripts**: `.sql` files per project in the Scripts panel under the navigator, with
   folders, rename, drag to move, and the connection each one opens on.
 - **Visual query builder**: tables dragged onto a canvas, joined on their foreign keys,
@@ -127,6 +133,7 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | `Ctrl+Shift+F` | Format the script (or the selection) |
 | `Ctrl+Shift+A` | Select the statement under the cursor |
 | `Ctrl+Shift+E` | Explain the statement under the cursor |
+| `Ctrl+Shift+M` | Query manager |
 | `Shift+Alt+Down`, `Shift+Alt+Up` | Duplicate the line |
 | `Alt+Up`, `Alt+Down` | Move the line |
 | `Ctrl+Shift+K` | Delete the line |

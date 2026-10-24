@@ -37,6 +37,9 @@ list. To add one:
    `Capabilities` in `api.ts`.
 3. Add a check to `capabilities_match_optional_methods` in
    `crates/platypus-conformance/tests/conformance.rs`.
+4. Forward it in the two connection wrappers, which otherwise return the default:
+   `Tunneled` in `crates/platypus-net/src/lib.rs` and `Logged` in
+   `apps/desktop/src-tauri/src/querylog.rs`.
 
 A driver that implements the method sets its flag in `fn capabilities`.
 
@@ -45,7 +48,15 @@ A driver that implements the method sets its flag in `fn capabilities`.
 other properties), which the explain tab shows for every database alike. A new driver runs
 its plan request through `platypus_core::explain_document`, which with `analyze` wraps it
 in a transaction (or a savepoint) rolled back afterwards, and parses the result in its own
-`explain` module.
+`explain` module, then builds the result with `Explain::new`, which fills each step's own
+cost and time for the heatmap.
+
+### Query log
+
+Every session and export wraps its connection in `Logged`
+(`apps/desktop/src-tauri/src/querylog.rs`), which records each request into the in-memory
+`QueryLog` that the query manager reads with `query_log`. A new place that opens a
+connection for the user wraps it the same way (`Logged::wrap`).
 
 Metadata every driver must answer is a required method instead, checked by
 `navigates_metadata` in the conformance tests: `schemas`, `objects`, `table_details`,

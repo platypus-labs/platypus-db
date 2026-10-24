@@ -222,7 +222,7 @@ viewer GIS su piano cartesiano senza mappa di sfondo).
 **Area:** `apps/desktop/src/explain/` (tab `explain`), `explain` in ogni driver, `commands/explain.rs`
 **Dipende da:** 0.3, 0.6
 
-**Stato: P1 fatte.** Ogni driver legge il proprio piano in un albero di `PlanNode` (`platypus-core/src/explain.rs`): PostgreSQL `EXPLAIN (FORMAT JSON)`, MySQL `FORMAT=TREE` ed `EXPLAIN ANALYZE` (il JSON di ANALYZE arriva solo con la 8.3), MariaDB `EXPLAIN`/`ANALYZE FORMAT=JSON`, SQLite `EXPLAIN QUERY PLAN` (senza costi né ANALYZE). Con ANALYZE lo statement gira in una transazione annullata (un savepoint dentro una transazione aperta), sulla sessione propria del tab `explain`. Il tab ha le viste albero, testo e tabella; si apre con `Ctrl+Shift+E` o con Explain analyze dal menu dell'editor, che applica i controlli di una normale esecuzione.
+**Stato: P1 e P2 fatte.** Ogni driver legge il proprio piano in un albero di `PlanNode` (`platypus-core/src/explain.rs`): PostgreSQL `EXPLAIN (FORMAT JSON)`, MySQL `FORMAT=TREE` ed `EXPLAIN ANALYZE` (il JSON di ANALYZE arriva solo con la 8.3), MariaDB `EXPLAIN`/`ANALYZE FORMAT=JSON`, SQLite `EXPLAIN QUERY PLAN` (senza costi né ANALYZE). Con ANALYZE lo statement gira in una transazione annullata (un savepoint dentro una transazione aperta), sulla sessione propria del tab `explain`. Il tab ha le viste albero, testo e tabella; si apre con `Ctrl+Shift+E` o con Explain analyze dal menu dell'editor, che applica i controlli di una normale esecuzione. `Explain::new` calcola per ogni passo costo e tempo propri, senza i figli (`self_cost`, `self_ms`): la heatmap colora i passi per la loro quota e segnala le stime di righe sbagliate di 10 volte o più. Il query manager (`Ctrl+Shift+M`) legge un log in memoria (`apps/desktop/src-tauri/src/querylog.rs`, le ultime 2000 richieste): ogni sessione ed export avvolge la connessione in `Logged`, che registra statement, richieste di metadati e comandi di transazione con durata, righe ed esito.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
@@ -510,7 +510,7 @@ dell'ondata.
 |---|---|---|---|---|
 | **0** | Fase 0 (1 persona) e **P** in parallelo | Codice pronto al lavoro parallelo, prima release pubblica | v0.1.x | Fase 0 fatta; P in corso |
 | **1** | **A**, **B** (P1), **C** (P1), **F** (SSH, tipi, import), **K** (P1), **L** (P1) | Sostituire DBeaver nell'uso quotidiano | v0.2 | **Fatta** (P1 di A, B, C, F, K e L; P2 di A e B), release v0.2.0 del 24 ottobre 2026 |
-| **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte; E: P1 fatte |
+| **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte; E: P1 e P2 fatte |
 | **3** | **I**, **J**, **M**, **N**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 | Da fare |
 | **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | Da fare |
 
