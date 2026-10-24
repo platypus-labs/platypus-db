@@ -106,19 +106,31 @@ fn tree_step(step: &str) -> PlanNode {
 /// Reads MariaDB's JSON plan: objects nest as steps, lists of steps (`nested_loop`,
 /// `subqueries`) become a step holding them, and other values are properties.
 fn json_plan(plan: &str) -> Result<PlanNode> {
-    let doc: Value = serde_json::from_str(plan)
-        .map_err(|_| Error::Other("unreadable MariaDB plan".to_owned()))?;
+    let unreadable = || Error::Other("unreadable MariaDB plan".to_owned());
+    let doc: Value = serde_json::from_str(plan).map_err(|_| unreadable())?;
     let Value::Object(map) = doc else {
-        return Err(Error::Other("unreadable MariaDB plan".to_owned()));
+        return Err(unreadable());
     };
     Ok(single_root(children(&map)))
 }
+
+/// Keys shown as the node's own fields, not as properties.
+const SHOWN: &[&str] = &[
+    "access_type",
+    "table_name",
+    "cost",
+    "query_cost",
+    "rows",
+    "r_rows",
+    "r_loops",
+    "r_total_time_ms",
+];
 
 fn json_step(key: &str, map: &Map<String, Value>) -> PlanNode {
     let num = |k: &str| map.get(k).and_then(Value::as_f64);
     let s = |k: &str| map.get(k).and_then(Value::as_str);
     let loops = num("r_loops");
-    let mut node = PlanNode {
+    PlanNode {
         // A table's access type (`ALL`, `ref`, `range`) is what its step does.
         operation: s("access_type").map_or_else(|| key.replace('_', " "), str::to_owned),
         detail: s("table_name").map(str::to_owned),
@@ -128,25 +140,13 @@ fn json_step(key: &str, map: &Map<String, Value>) -> PlanNode {
         // MariaDB reports the time of all loops.
         actual_ms: num("r_total_time_ms").map(|ms| ms / loops.filter(|l| *l > 0.0).unwrap_or(1.0)),
         loops,
+        properties: map
+            .iter()
+            .filter(|(k, v)| !SHOWN.contains(&k.as_str()) && !is_step(v))
+            .map(|(k, v)| (k.clone(), text(v)))
+            .collect(),
         children: children(map),
-        ..PlanNode::default()
-    };
-    const SHOWN: &[&str] = &[
-        "access_type",
-        "table_name",
-        "cost",
-        "query_cost",
-        "rows",
-        "r_rows",
-        "r_loops",
-        "r_total_time_ms",
-    ];
-    node.properties = map
-        .iter()
-        .filter(|(k, v)| !SHOWN.contains(&k.as_str()) && !is_step(v))
-        .map(|(k, v)| (k.clone(), text(v)))
-        .collect();
-    node
+    }
 }
 
 fn children(map: &Map<String, Value>) -> Vec<PlanNode> {

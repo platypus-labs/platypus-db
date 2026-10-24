@@ -264,7 +264,6 @@ impl Connection for PgConnection {
             object_ddl: true,
             metadata_search: true,
             multiple_databases: true,
-            ..Default::default()
         }
     }
 }

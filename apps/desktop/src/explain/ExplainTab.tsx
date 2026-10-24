@@ -46,8 +46,8 @@ function title(node: PlanNode) {
 }
 
 /** One line per step, indented, with the figures the database reported. */
-function planText(root: PlanNode) {
-  return steps(root)
+function planText(all: Step[]) {
+  return all
     .map(({ node, depth }) => {
       const estimate = [node.cost !== null && `cost=${num(node.cost)}`, node.rows !== null && `rows=${num(node.rows)}`];
       const actual = [
@@ -185,7 +185,7 @@ export function ExplainTab({ tab, active, sideSession, onChange }: TabProps<Expl
             {node && <Properties node={node} />}
           </div>
         )}
-        {explain && view === "text" && <pre className="explain-text">{planText(explain.root)}</pre>}
+        {explain && view === "text" && <pre className="explain-text">{planText(all)}</pre>}
         {explain && view === "table" && (
           <table className="meta-table explain-table">
             <thead>
