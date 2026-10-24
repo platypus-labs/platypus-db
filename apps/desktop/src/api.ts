@@ -604,8 +604,11 @@ export const api = {
   deleteScript: (project: string | null, path: string) => invoke<void>("delete_script", { project, path }),
   linkScript: (project: string | null, path: string, connection: string | null) =>
     invoke<void>("link_script", { project, path, connection }),
-  /** Runs a script with `psql`, `mysql` or `sqlite3` from the PATH, as the session. */
-  runCli: (sessionId: number, script: string) => invoke<CliOutput>("run_cli", { sessionId, script }),
+  /** Runs a script with `psql`, `mysql` or `sqlite3` from the PATH, as the session;
+   *  `cancelCli` with the same `runId` stops it. */
+  runCli: (sessionId: number, runId: number, script: string) =>
+    invoke<CliOutput>("run_cli", { sessionId, runId, script }),
+  cancelCli: (runId: number) => invoke<void>("cancel_cli", { runId }),
   /** `connectionIds` limits the entries to those connections, e.g. a project's. */
   searchHistory: (query: {
     connectionIds?: string[];

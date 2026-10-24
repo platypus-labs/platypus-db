@@ -52,6 +52,8 @@ pub struct AppState {
     sessions: Mutex<HashMap<u64, Session>>,
     jobs: Mutex<HashMap<u64, Arc<Job>>>,
     exports: Mutex<HashMap<u64, Arc<Export>>>,
+    /// Scripts running in a command-line client, by the editor's run id: sending stops one.
+    clis: Mutex<HashMap<u64, tokio::sync::oneshot::Sender<()>>>,
     next_id: AtomicU64,
 }
 
@@ -82,6 +84,7 @@ impl AppState {
             sessions: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
             exports: Mutex::new(HashMap::new()),
+            clis: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(1),
         }
     }

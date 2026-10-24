@@ -183,6 +183,7 @@ pub fn run() {
             commands::scripts::delete_script,
             commands::scripts::link_script,
             commands::cli::run_cli,
+            commands::cli::cancel_cli,
             commands::history::search_history,
             commands::history::delete_history,
             commands::files::read_text_file,
