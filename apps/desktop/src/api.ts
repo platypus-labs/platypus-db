@@ -285,7 +285,8 @@ export type ObjectKind =
   | "type"
   | "domain"
   | "extension"
-  | "event";
+  | "event"
+  | "dictionary";
 
 export interface ObjectMeta {
   name: string;

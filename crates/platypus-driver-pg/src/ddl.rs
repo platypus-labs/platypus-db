@@ -110,7 +110,9 @@ pub async fn object_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<Stri
                 Dialect::Postgres.quote_literal(&version)
             ))
         }
-        ObjectKind::Event => Err(unsupported("events in PostgreSQL")),
+        ObjectKind::Event | ObjectKind::Dictionary => {
+            Err(unsupported("events and dictionaries in PostgreSQL"))
+        }
     }
 }
 
