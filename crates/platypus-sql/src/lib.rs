@@ -2,7 +2,8 @@
 //! conservative read-only check, the [`Dialect`] rules for generating SQL, the table a query
 //! reads ([`source_table`]), the [`dml`] that saves edited table data, the editor's formatter
 //! ([`format()`]) and the PostgreSQL array and composite literals the data editor splits
-//! ([`pg_literal`]). All offsets are byte offsets into the input.
+//! ([`pg_literal`]), the editor's parameters ([`parameters`]) and linter ([`lint()`]). All
+//! offsets are byte offsets into the input.
 
 mod analysis;
 mod dialect;
@@ -10,6 +11,8 @@ pub mod dml;
 mod format;
 mod generate;
 mod lexer;
+mod lint;
+mod params;
 pub mod pg_literal;
 mod source;
 
@@ -18,6 +21,8 @@ pub use dialect::{Dialect, contains_pattern};
 pub use format::{FormatOptions, KeywordCase, format};
 pub use generate::ObjectName;
 pub use lexer::{Lexer, Token, TokenKind};
+pub use lint::{ColumnRef, Lint, LintIssue, LintKind, TableAlias, lint};
+pub use params::{Parameter, ParameterKind, parameters};
 pub use source::{SelectItem, SourceTable, source_table};
 
 /// A statement's byte range: from its first token to its last, excluding surrounding
@@ -101,6 +106,19 @@ fn delimiter_command(src: &str, word: &Token) -> Option<(String, usize)> {
     Some((delimiter.to_owned(), line_end))
 }
 
+/// If a client command (`@set x = 1`, `@include a.sql`) starts at `token`, the end of its
+/// text: the rest of the line, without a trailing `;`. No statement starts with `@`.
+fn client_command(src: &str, token: &Token) -> Option<usize> {
+    if token.kind != TokenKind::Symbol
+        || token.text(src) != "@"
+        || !src[token.end..].starts_with(|c: char| c.is_ascii_alphabetic())
+    {
+        return None;
+    }
+    let line = src[token.start..].lines().next().unwrap_or_default();
+    Some(token.start + line.trim_end().trim_end_matches(';').trim_end().len())
+}
+
 /// Splits a script into statements. Never fails: unterminated quotes or comments simply
 /// extend to the end of the input.
 #[must_use]
@@ -121,6 +139,16 @@ pub fn split(src: &str, dialect: Dialect) -> Vec<Statement> {
         {
             delimiter = new;
             lexer.seek(line_end);
+            continue;
+        }
+        if current.start.is_none()
+            && let Some(end) = client_command(src, &token)
+        {
+            statements.push(Statement {
+                start: token.start,
+                end,
+            });
+            lexer.seek(end);
             continue;
         }
         if current.block_depth == 0
@@ -266,6 +294,25 @@ mod tests {
                 "CALL p()",
                 "select '//'"
             ]
+        );
+    }
+
+    #[test]
+    fn client_commands_end_at_the_line() {
+        let src = "@set id = 1;\n@include 'a b.sql'\r\nselect :id;\n@echo it's done";
+        assert_eq!(
+            texts(src, Dialect::Postgres),
+            [
+                "@set id = 1",
+                "@include 'a b.sql'",
+                "select :id",
+                "@echo it's done"
+            ]
+        );
+        // MySQL user variables are not commands.
+        assert_eq!(
+            texts("select\n@x := 1; set @y = 2", Dialect::MySql),
+            ["select\n@x := 1", "set @y = 2"]
         );
     }
 

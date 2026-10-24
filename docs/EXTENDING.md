@@ -145,8 +145,9 @@ registerAction({
 `database` is `null` for the connection's saved database. Otherwise it names another
 database of the same server (PostgreSQL), and sessions and tabs opened from there use it.
 | `grid` | `{ grid: GridApi, source }` | grid menu, and shortcuts while the grid has focus |
-| `editor` | `{ view: EditorView, driver, readOnly }` | editor menu, and shortcuts while the editor has focus (before CodeMirror's own keymaps) |
+| `editor` | `{ view: EditorView, driver, readOnly, host? }` | editor menu, and shortcuts while the editor has focus (before CodeMirror's own keymaps). `host` is what the tab offers (`EditorHost` in `editor/SqlEditor.tsx`): open an object, run with the CLI, run into a new result tab |
 | `project` | `Project` | menu of a project's square in the rail |
+| `script` | `{ entry, project, root, connections, rename }` | menu of a saved script or folder in the Scripts panel |
 
 To add a scope, augment `ActionScopes` from the feature's own module:
 `declare module "../actions" { interface ActionScopes { … } }`.
@@ -198,6 +199,26 @@ mounted; the tab bar shows those of the active project, and each project remembe
 active tab. The workspace is saved as `platypus.workspace.v2` in `localStorage`, with the
 active tab per project; a v1 workspace is read once and its tabs go to All connections. A
 new tab joins the active project, so features that open tabs need nothing more.
+
+### SQL editor
+
+`apps/desktop/src/editor/` holds the editor (`SqlEditor.tsx`) and what it is built from:
+completion sources (`joinCompletion.ts`, `functions.ts` for the built-in functions of each
+dialect, `snippets.ts`), the linter (`lint.ts`), spell checking (`spellcheck.ts`), the
+terminal mode (`terminal.tsx`) and the side panels. A completion source is added in
+`language()` in `SqlEditor.tsx`.
+
+Statements come split by the backend (`analyze_sql`). A line starting with `@` at a
+statement start is a client command: it ends at the line and never reaches the database.
+`parseCommand` in `editor/params.ts` reads it and the run loop in `QueryTab.tsx` runs it; a
+new command is a case in both. Placeholders (`:name`, `?`, `${name}`) come with each
+statement (`StatementSpan.parameters`) and `substitute` replaces them before the statement
+runs.
+
+Snippets are stored as JSON in the settings under `editor.snippets`. Saved scripts are
+`.sql` files in `scripts/<project id>` (`scripts/all` for All connections) in the app's data
+folder, with the connection links in `.links.json`; the commands are in
+`commands/scripts.rs` and the panel in `apps/desktop/src/scripts/`.
 
 ### Navigator refresh
 

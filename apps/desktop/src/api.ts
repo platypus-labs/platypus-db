@@ -108,9 +108,51 @@ export interface StatementSpan {
   start: number;
   end: number;
   read_only: boolean;
-  kind: "query" | "dml" | "ddl" | "other";
+  /** `command` is a client command such as `@set x = 1`, run by the app. */
+  kind: "query" | "dml" | "ddl" | "other" | "command";
   /** An UPDATE or DELETE without WHERE, or a TRUNCATE: the table it changes in every row. */
   unfiltered: { schema: string | null; name: string } | null;
+  /** `:name`, `?` and `${name}` placeholders, in the same units as `start`. */
+  parameters: ParameterSpan[];
+}
+
+export interface ParameterSpan {
+  /** `named` and `positional` take literals, `variable` (`${name}`) text as typed. */
+  kind: "named" | "positional" | "variable";
+  /** Empty for `?`. */
+  name: string;
+  start: number;
+  end: number;
+}
+
+/** What the linter found in the editor's SQL; offsets in UTF-16 units. */
+export interface SqlLint {
+  issues: { kind: "select_star" | "join_without_condition"; from: number; to: number }[];
+  statements: {
+    /** `name` is `null` for subqueries, functions and common table expressions. */
+    tables: { alias: string; schema: string | null; name: string | null }[];
+    columns: { qualifier: string; column: string; from: number; to: number }[];
+  }[];
+}
+
+/** A saved script or folder, by its path relative to the project's scripts folder. */
+export interface ScriptEntry {
+  path: string;
+  folder: boolean;
+  connection: string | null;
+}
+
+export interface ScriptList {
+  /** The project's scripts folder, absolute. */
+  root: string;
+  entries: ScriptEntry[];
+}
+
+export interface CliOutput {
+  command: string;
+  status: number | null;
+  output: string;
+  elapsed_ms: number;
 }
 
 export interface SqlAnalysis {
@@ -551,6 +593,19 @@ export const api = {
     invoke<string>("format_sql", { sql, driver, settings }),
   /** The table a query reads, when its rows are that table's rows. */
   querySource: (sql: string, driver: DriverKind) => invoke<QuerySource | null>("query_source", { sql, driver }),
+  lintSql: (sql: string, driver: DriverKind) => invoke<SqlLint>("lint_sql", { sql, driver }),
+  /** Saved scripts of a project, `null` for All connections. */
+  listScripts: (project: string | null) => invoke<ScriptList>("list_scripts", { project }),
+  /** A new empty script; returns its relative path. */
+  createScript: (project: string | null, folder: string, name: string, connection: string | null) =>
+    invoke<string>("create_script", { project, folder, name, connection }),
+  createScriptFolder: (project: string | null, path: string) => invoke<void>("create_script_folder", { project, path }),
+  renameScript: (project: string | null, from: string, to: string) => invoke<void>("rename_script", { project, from, to }),
+  deleteScript: (project: string | null, path: string) => invoke<void>("delete_script", { project, path }),
+  linkScript: (project: string | null, path: string, connection: string | null) =>
+    invoke<void>("link_script", { project, path, connection }),
+  /** Runs a script with `psql`, `mysql` or `sqlite3` from the PATH, as the session. */
+  runCli: (sessionId: number, script: string) => invoke<CliOutput>("run_cli", { sessionId, script }),
   /** `connectionIds` limits the entries to those connections, e.g. a project's. */
   searchHistory: (query: {
     connectionIds?: string[];

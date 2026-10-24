@@ -82,13 +82,14 @@ export class Page {
     })()`);
   }
 
-  async mouse(type, x, y, { button = "left", clickCount = 1 } = {}) {
+  async mouse(type, x, y, { button = "left", clickCount = 1, modifiers = 0 } = {}) {
     await this.send("Input.dispatchMouseEvent", {
       type,
       x,
       y,
       button,
       clickCount,
+      modifiers,
       buttons: button === "right" ? 2 : 1,
     });
   }

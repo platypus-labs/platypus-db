@@ -195,7 +195,7 @@ viewer GIS su piano cartesiano senza mappa di sfondo).
 **Area:** `apps/desktop/src/editor/`, `platypus-sql` (formatter, parser), `apps/desktop/src/scripts/`
 **Dipende da:** 0.2, 0.5
 
-**Stato:** le P1 sono fatte. Il formatter lavora sui token (`platypus-sql/src/format.rs`): cambia solo spazi e maiuscole delle parole chiave, e lascia com'è il corpo di funzioni, procedure e trigger. Le opzioni sono il case delle parole chiave e l'indentazione. I comandi dell'editor sono azioni dello scope `editor`. L'autocomplete dei JOIN usa le FK del catalogo (`Connection::catalog_foreign_keys`). Le P2/P3 sono da fare.
+**Stato: completato** (P1, P2 e P3). Il formatter lavora sui token (`platypus-sql/src/format.rs`): cambia solo spazi e maiuscole delle parole chiave, e lascia com'è il corpo di funzioni, procedure e trigger. Le opzioni sono il case delle parole chiave e l'indentazione. I comandi dell'editor sono azioni dello scope `editor`. L'autocomplete dei JOIN usa le FK del catalogo (`Connection::catalog_foreign_keys`). Parametri (`:id`, `?`) e variabili (`${nome}`) passano dal dialog dei valori e dal pannello Variabili, sostituiti prima dell'esecuzione; i comandi client (`@set`, `@echo`, `@include`, `@export`) sono righe che iniziano con `@` all'inizio di uno statement e non arrivano al database. Gli script salvati sono file `.sql` in `scripts/<progetto>` nella cartella dati, con i link alle connessioni in `.links.json`. Il linter usa i fatti di `platypus_sql::lint` e il catalogo dell'autocomplete; l'esecuzione con `psql`, `mysql` o `sqlite3` usa le impostazioni della sessione e il suo tunnel SSH. Resta da fare: annullare uno script lanciato col client a riga di comando.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|

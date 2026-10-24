@@ -11,16 +11,21 @@ import {
   moveLineUp,
   toggleComment,
 } from "@codemirror/commands";
+import { foldAll, unfoldAll } from "@codemirror/language";
 import { selectNextOccurrence, selectSelectionMatches } from "@codemirror/search";
 import type { EditorView } from "@codemirror/view";
+import { createElement } from "react";
 import { registerAction } from "../actions";
 import { api, type DriverKind, type FormatSettings } from "../api";
 import { defineSetting, getSetting } from "../settings";
+import { workbench } from "../workbench";
+import type { EditorHost } from "./SqlEditor";
+import { SnippetsDialog } from "./SnippetsDialog";
 
 declare module "../actions" {
   interface ActionScopes {
     /** The SQL editor with focus or a context menu. */
-    editor: { view: EditorView; driver: DriverKind; readOnly: boolean };
+    editor: { view: EditorView; driver: DriverKind; readOnly: boolean; host?: EditorHost };
   }
 }
 
@@ -147,3 +152,38 @@ command("add_cursor_above", "Add cursor above", "Mod+Alt+ArrowUp", "cursors", 30
 command("add_cursor_below", "Add cursor below", "Mod+Alt+ArrowDown", "cursors", 31, addCursorBelow, false);
 command("select_next", "Select next occurrence", "Mod+D", "cursors", 32, selectNextOccurrence, false);
 command("select_all_matches", "Select all occurrences", "Mod+Shift+L", "cursors", 33, selectSelectionMatches, false);
+command("fold_all", "Fold all", "Mod+Alt+[", "folding", 40, foldAll, false);
+command("unfold_all", "Unfold all", "Mod+Alt+]", "folding", 41, unfoldAll, false);
+
+const CLIENTS: Record<DriverKind, string> = { postgres: "psql", mysql: "mysql", sqlite: "sqlite3" };
+
+registerAction({
+  id: "editor.run_append",
+  scope: "editor",
+  title: "Run in a new result tab",
+  shortcut: "Mod+\\",
+  group: "run",
+  order: 4,
+  when: ({ host }) => !!host?.runAppend,
+  run: ({ host }) => host?.runAppend?.(),
+});
+
+registerAction({
+  id: "editor.run_cli",
+  scope: "editor",
+  title: "Run script with the command-line client",
+  group: "run",
+  order: 5,
+  when: ({ host }) => !!host?.runCli,
+  run: ({ host }) => host?.runCli?.(),
+});
+
+registerAction({
+  id: "editor.snippets",
+  scope: "global",
+  title: "Edit SQL snippets…",
+  run: () => workbench().openDialog((close) => createElement(SnippetsDialog, { onClose: close })),
+});
+
+/** The client's name for the menu's tooltip and the status bar. */
+export const cliName = (driver: DriverKind) => CLIENTS[driver];

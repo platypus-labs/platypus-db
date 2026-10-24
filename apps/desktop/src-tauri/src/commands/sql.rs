@@ -1,7 +1,9 @@
 //! SQL text analysis for the editor.
 
 use platypus_core::DriverKind;
-use platypus_sql::{Dialect, FormatOptions, KeywordCase, SelectItem, StatementKind};
+use platypus_sql::{
+    Dialect, FormatOptions, KeywordCase, LintKind, ParameterKind, SelectItem, StatementKind,
+};
 use serde::{Deserialize, Serialize};
 
 /// A table a statement changes in every row; `schema` is `None` for the session's.
@@ -18,10 +20,21 @@ pub struct StatementSpan {
     start: usize,
     end: usize,
     read_only: bool,
-    /// `query`, `dml`, `ddl` or `other`.
+    /// `query`, `dml`, `ddl`, `other` or `command` (`@set`, run by the app).
     kind: &'static str,
     /// An `UPDATE` or `DELETE` without `WHERE`, or a `TRUNCATE`: its table.
     unfiltered: Option<UnfilteredTable>,
+    /// Its `:name`, `?` and `${name}` placeholders, in the same units as `start`.
+    parameters: Vec<ParameterSpan>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ParameterSpan {
+    /// `named`, `positional` or `variable`.
+    kind: &'static str,
+    name: String,
+    start: usize,
+    end: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -76,24 +89,141 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
             .map(|s| {
                 let text = s.text(&sql);
                 let analysis = platypus_sql::analyze(text, dialect);
+                let parameters = if analysis.kind == StatementKind::Command {
+                    Vec::new()
+                } else {
+                    platypus_sql::parameters(text, dialect)
+                };
                 StatementSpan {
                     start: map.to_utf16(s.start),
                     end: map.to_utf16(s.end),
-                    read_only: analysis.kind == StatementKind::Query,
+                    read_only: matches!(
+                        analysis.kind,
+                        StatementKind::Query | StatementKind::Command
+                    ),
                     kind: match analysis.kind {
                         StatementKind::Query => "query",
                         StatementKind::Dml => "dml",
                         StatementKind::Ddl => "ddl",
                         StatementKind::Other => "other",
+                        StatementKind::Command => "command",
                     },
                     unfiltered: analysis.unfiltered.map(|t| UnfilteredTable {
                         schema: t.schema,
                         name: t.name,
                     }),
+                    parameters: parameters
+                        .into_iter()
+                        .map(|p| ParameterSpan {
+                            kind: match p.kind {
+                                ParameterKind::Named => "named",
+                                ParameterKind::Positional => "positional",
+                                ParameterKind::Variable => "variable",
+                            },
+                            name: p.name,
+                            start: map.to_utf16(s.start + p.start),
+                            end: map.to_utf16(s.start + p.end),
+                        })
+                        .collect(),
                 }
             })
             .collect(),
     }
+}
+
+/// A problem the linter found by itself; offsets in UTF-16 units of the whole text.
+#[derive(Debug, Serialize)]
+pub struct LintIssueSpan {
+    /// `select_star` or `join_without_condition`.
+    kind: &'static str,
+    from: usize,
+    to: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LintTable {
+    alias: String,
+    /// `None` (with `name` too) for subqueries, functions and common table expressions.
+    schema: Option<String>,
+    name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LintColumn {
+    qualifier: String,
+    column: String,
+    from: usize,
+    to: usize,
+}
+
+/// One statement's tables and qualified column references, which the editor checks
+/// against its catalog.
+#[derive(Debug, Serialize)]
+pub struct LintStatement {
+    tables: Vec<LintTable>,
+    columns: Vec<LintColumn>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SqlLint {
+    issues: Vec<LintIssueSpan>,
+    statements: Vec<LintStatement>,
+}
+
+/// Lints every statement of `sql` but the client commands.
+#[tauri::command]
+pub fn lint_sql(sql: String, driver: DriverKind) -> SqlLint {
+    let dialect = Dialect::from(driver);
+    let map = Utf16Map::new(&sql);
+    let mut out = SqlLint {
+        issues: Vec::new(),
+        statements: Vec::new(),
+    };
+    for s in platypus_sql::split(&sql, dialect) {
+        let text = s.text(&sql);
+        if text.starts_with('@') {
+            continue;
+        }
+        let lint = platypus_sql::lint(text, dialect);
+        let span =
+            |start: usize, end: usize| (map.to_utf16(s.start + start), map.to_utf16(s.start + end));
+        out.issues.extend(lint.issues.iter().map(|i| {
+            let (from, to) = span(i.start, i.end);
+            LintIssueSpan {
+                kind: match i.kind {
+                    LintKind::SelectStar => "select_star",
+                    LintKind::JoinWithoutCondition => "join_without_condition",
+                },
+                from,
+                to,
+            }
+        }));
+        out.statements.push(LintStatement {
+            tables: lint
+                .tables
+                .into_iter()
+                .map(|t| LintTable {
+                    alias: t.alias,
+                    schema: t.table.as_ref().and_then(|t| t.schema.clone()),
+                    name: t.table.map(|t| t.name),
+                })
+                .collect(),
+            columns: lint
+                .columns
+                .into_iter()
+                .map(|c| {
+                    let (from, to) = span(c.start, c.end);
+                    LintColumn {
+                        qualifier: c.qualifier,
+                        column: c.column,
+                        from,
+                        to,
+                    }
+                })
+                .collect(),
+        });
+    }
+    out
 }
 
 /// The formatter settings, as the editor sends them.
@@ -185,5 +315,22 @@ mod tests {
         assert_eq!(a.statements[1].start, 13);
         assert!(!a.statements[1].read_only);
         assert_eq!(a.at_cursor, Some(1));
+    }
+
+    #[test]
+    fn reports_parameters_and_lint_in_utf16_units() {
+        let sql = "@set x = 1\nselect '🦆', :id from t join u".to_owned();
+        let a = analyze_sql(sql.clone(), DriverKind::Postgres, 0);
+        assert_eq!(a.statements[0].kind, "command");
+        assert!(a.statements[0].read_only);
+        let p = &a.statements[1].parameters[0];
+        assert_eq!(
+            (p.kind, p.name.as_str(), p.start, p.end),
+            ("named", "id", 24, 27)
+        );
+        let lint = lint_sql(sql, DriverKind::Postgres);
+        assert_eq!(lint.statements.len(), 1);
+        assert_eq!(lint.issues[0].kind, "join_without_condition");
+        assert_eq!(lint.statements[0].tables[0].name.as_deref(), Some("t"));
     }
 }
