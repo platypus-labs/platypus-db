@@ -92,7 +92,7 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
           {"action" in entry ? (
             <button onClick={() => choose(entry.action)} onMouseEnter={() => setOpen(null)}>
               <span>{entry.action.title}</span>
-              {shortcutLabel(entry.action) && <span className="shortcut">{shortcutLabel(entry.action)}</span>}
+              {shortcutLabel(entry.action) && <kbd className="shortcut">{shortcutLabel(entry.action)}</kbd>}
             </button>
           ) : (
             <div className="submenu-anchor" onMouseEnter={() => setOpen(entry.submenu)}>
@@ -105,7 +105,7 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
                   {entry.actions.map((action) => (
                     <button key={action.id} onClick={() => choose(action)}>
                       <span>{action.title}</span>
-                      {shortcutLabel(action) && <span className="shortcut">{shortcutLabel(action)}</span>}
+                      {shortcutLabel(action) && <kbd className="shortcut">{shortcutLabel(action)}</kbd>}
                     </button>
                   ))}
                 </div>

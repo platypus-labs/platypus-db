@@ -75,6 +75,11 @@ export default async function (page) {
 
   // Copy as JSON, from the submenu.
   await openMenu(page, 40);
+  // Menus show an action's shortcut in a key cap.
+  assert.equal(
+    await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Copy'))?.querySelector('kbd.shortcut')?.textContent`),
+    "Ctrl+C",
+  );
   await page.eval(`${menuButton("Copy as")}.click()`);
   await page.waitFor(`${menuButton("JSON")} !== undefined`);
   const json = await copied(page, () => page.eval(`${menuButton("JSON")}.click()`));

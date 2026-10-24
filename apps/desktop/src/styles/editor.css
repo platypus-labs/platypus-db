@@ -112,6 +112,8 @@ button.toggled {
   gap: 6px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .toolbar button {
@@ -175,6 +177,7 @@ button.toggled {
   color: var(--warn, #e8590c);
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .editor {

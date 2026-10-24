@@ -50,8 +50,13 @@
   --radius-lg: 6px;
   --radius-xl: 8px;
   --editor-font-size: 13px;
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
   font-family: var(--font-ui);
   font-size: 13px;
+}
+
+:root[data-theme="light"] {
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
 }
 
 * {
@@ -80,10 +85,12 @@ textarea {
 }
 
 button {
+  height: 28px;
   background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 0 10px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -108,6 +115,7 @@ button.primary:hover:not(:disabled) {
 }
 
 button.icon {
+  height: auto;
   border: none;
   background: transparent;
   padding: 3px 5px;
@@ -127,13 +135,16 @@ kbd {
   display: inline-block;
   padding: 0 5px;
   border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
   border-radius: var(--radius);
   background: var(--bg-input);
   color: var(--fg-muted);
-  font: 10px/16px var(--font-ui);
+  font: 500 10px/15px var(--font-ui);
+  white-space: nowrap;
 }
 
 button.link {
+  height: auto;
   border: none;
   background: none;
   padding: 0;
@@ -143,18 +154,24 @@ button.link {
 input,
 select {
   background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 5px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 0 8px;
   min-width: 0;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+select {
+  height: 28px;
 }
 
 input:focus,
 select:focus,
 textarea:focus,
 button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .muted {
