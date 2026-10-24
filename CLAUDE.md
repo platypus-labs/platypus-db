@@ -33,17 +33,15 @@ rispettate anche quelle.
      l'ha presa qualcun altro, scegliere un altro gruppo. Mai `--force` su main.
 5. Creare il branch del gruppo da `main`: `group-<lettera>-<tema>` (es. `group-d-editor`).
    Pushare il branch almeno una volta al giorno, altrimenti il lock risulta scaduto.
-   Se il gruppo dipende da un altro gruppo non ancora unito (o tocca gli stessi file), crearlo
-   dal branch di quel gruppo e aprire la PR con quel branch come base. Quando la PR sotto viene
-   unita, cambiare la base in `main` (`gh pr edit <n> --base main`). Non cancellare il branch
-   sotto prima: chiuderebbe la PR sopra.
+   Se il gruppo dipende da un altro gruppo non ancora unito in `main` (o tocca gli stessi file),
+   crearlo dal branch di quel gruppo e unirlo in `main` solo dopo quello.
 
 ## Durante il lavoro
 
 - Per capire il codice usare prima il grafo: `graphify query "<domanda>"`, `graphify explain "X"`,
   `graphify affected "X"` (legge `graphify-out/graph.json`). Se il grafo non esiste: `/graphify .`.
 - Restare nell'**area** del gruppo. Una modifica a un file condiviso (vedi "Mappa dei conflitti")
-  va in una PR piccola e separata.
+  va in un commit piccolo e separato.
 - **Prima di aggiungere un tipo, un metodo del trait `Connection` o un modulo in `platypus-core`
   o `platypus-sql`**, controllare che non esista già su `main` o sui branch degli altri gruppi
   (`git fetch`, poi `git log origin/main` e `git grep <nome> origin/<branch>`). Due gruppi in
@@ -94,14 +92,22 @@ sono molto più lenti che in locale: un test che passa in locale può fallire l�
 3. **Code review** con `/code-review` sul branch e correzione dei problemi trovati.
 4. **Aggiornare la documentazione**: la riga "Stato" del gruppo in ROADMAP.md, EXTENDING.md se
    nasce un nuovo punto di estensione, README per le funzionalità utente.
-5. **Aprire una PR verso `main`.** Niente push diretti su main, tranne i commit di lock.
-6. **Unire solo con la CI verde**, tutti i job compresi gli E2E su Windows. Se `main` è avanzato
-   dall'apertura della PR, unire di nuovo `origin/main` nel branch e riverificare prima del merge.
-   Una PR unita con la CI rossa porta l'errore su `main` per tutti.
+5. **Unire in `main`** (niente pull request):
+   ```bash
+   git fetch origin
+   git merge origin/main          # sul branch del gruppo: conflitti risolti qui, poi riverificare
+   git checkout main && git pull
+   git merge --no-ff <branch>
+   git push origin main
+   ```
+   Si unisce solo con la verifica del punto 2 tutta verde, rifatta dopo il merge di `origin/main`.
+   Se il push viene rifiutato perché `main` è avanzato, ripetere da `git fetch`. Mai `--force`.
+6. **Controllare la CI su `main`** dopo il push (`gh run list --branch main`), compresi gli E2E su
+   Windows. Se è rossa, correggerla subito: l'errore è su `main` per tutti.
 
 ## Chiusura del lock
 
-- Quando la PR del gruppo è unita (o il lavoro previsto è finito): riportare la riga a `libero`
+- Quando il branch del gruppo è unito in `main` (o il lavoro previsto è finito): riportare la riga a `libero`
   oppure a `✅ fatto (<priorità completate>)` con un commit `chore(roadmap): rilascio gruppo <X>`.
 - Se si abbandona il lavoro, rilasciare subito il lock, senza aspettare i 3 giorni.
 

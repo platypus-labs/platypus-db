@@ -62,7 +62,7 @@ Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i
 
 **Regole per tutti i gruppi**
 - Un gruppo modifica solo i file della propria **area**. Se gli serve qualcosa da un file
-  condiviso, apre una PR piccola e separata (estensione di un'API, non logica di feature).
+  condiviso, lo fa in un commit piccolo e separato (estensione di un'API, non logica di feature).
 - Le funzionalità di database passano dal `Dialect` o dalle capacità del driver, mai da
   `if driver === "postgres"` sparsi nella UI.
 - Ogni gruppo aggiunge test alla conformance suite per ciò che tocca nei driver.
@@ -70,7 +70,7 @@ Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i
   migliore di come l'ha trovata: rimuove duplicazioni, semplifica, rinomina ciò che è poco
   chiaro e sceglie la soluzione più efficiente (niente allocazioni, copie, query o render
   superflui; nessun lavoro per riga dove basta un lavoro per blocco). Un refactor che rende il
-  codice più leggibile o più veloce è sempre benvenuto, anche dentro una PR di feature, purché
+  codice più leggibile o più veloce è sempre benvenuto, anche dentro un branch di feature, purché
   resti nell'area del gruppo e non cambi il comportamento senza test.
 
 ---
