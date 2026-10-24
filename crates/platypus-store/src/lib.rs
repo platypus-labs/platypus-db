@@ -5,15 +5,17 @@
 //! are logged to a local SQLite database by [`HistoryStore`]. Preferences live in
 //! `settings.toml` through [`SettingsStore`].
 
+mod auth;
 mod connections;
 mod history;
 mod import;
 mod secrets;
 mod settings;
 
+pub use auth::{command_password, pgpass_password, pgpass_path};
 pub use connections::{
-    ConnectionStore, ConnectionType, PasswordUpdate, Project, SavedConnection, SavedSsh,
-    SshAuthKind, VirtualKey, initials_of,
+    ConnectionStore, ConnectionType, NetworkProfile, PasswordUpdate, Project, SavedConnection,
+    SavedInit, SavedSsh, SshAuthKind, VirtualKey, initials_of,
 };
 pub use history::{HistoryEntry, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry};
 pub use import::{
