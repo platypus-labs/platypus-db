@@ -106,11 +106,8 @@ impl Query<'_> {
         let inner = text
             .get(1..text.len().saturating_sub(1))
             .unwrap_or_default();
-        if close == ']' {
-            inner.to_owned()
-        } else {
-            inner.replace(&format!("{close}{close}"), &close.to_string())
-        }
+        // Transact-SQL doubles `]` in `[...]` names.
+        inner.replace(&format!("{close}{close}"), &close.to_string())
     }
 }
 

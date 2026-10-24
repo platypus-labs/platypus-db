@@ -40,6 +40,12 @@ impl SessionInit {
                 DriverKind::Sqlite => {
                     return Err(Error::Config("SQLite has no default schema".to_owned()));
                 }
+                // The default schema belongs to the login's database user, not the session.
+                DriverKind::SqlServer => {
+                    return Err(Error::Config(
+                        "SQL Server sets the default schema per user, not per session".to_owned(),
+                    ));
+                }
             }
         }
         if let Some(zone) = self.time_zone.as_deref().filter(|z| !z.is_empty()) {
@@ -58,6 +64,11 @@ impl SessionInit {
                 }
                 DriverKind::Sqlite => {
                     return Err(Error::Config("SQLite has no session time zone".to_owned()));
+                }
+                DriverKind::SqlServer => {
+                    return Err(Error::Config(
+                        "SQL Server has no session time zone".to_owned(),
+                    ));
                 }
             }
         }
@@ -128,6 +139,7 @@ mod tests {
             ["SET search_path = '\"sales\"'"]
         );
         assert!(init.sql(DriverKind::Sqlite).is_err());
+        assert!(init.sql(DriverKind::SqlServer).is_err());
         let only = SessionInit {
             statements: vec!["PRAGMA foreign_keys = ON".to_owned()],
             ..SessionInit::default()

@@ -983,6 +983,7 @@ mod tests {
             Dialect::MySql,
             Dialect::Sqlite,
             Dialect::DuckDb,
+            Dialect::SqlServer,
         ] {
             for sql in corpus {
                 let formatted = format(sql, d, FormatOptions::default());

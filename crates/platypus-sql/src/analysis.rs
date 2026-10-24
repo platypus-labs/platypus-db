@@ -106,13 +106,13 @@ impl<'a> Words<'a> {
             TokenKind::Word if dialect == Dialect::Postgres => Some(text.to_lowercase()),
             TokenKind::Word => Some(text.to_owned()),
             TokenKind::QuotedIdent => {
-                let quote = text.chars().next()?;
+                let close = match text.chars().next()? {
+                    '[' => ']',
+                    c => c,
+                };
                 let inner = text.get(1..text.len().saturating_sub(1))?;
-                Some(if quote == '[' {
-                    inner.to_owned()
-                } else {
-                    inner.replace(&format!("{quote}{quote}"), &quote.to_string())
-                })
+                // Transact-SQL doubles `]` in `[...]` names.
+                Some(inner.replace(&format!("{close}{close}"), &close.to_string()))
             }
             _ => None,
         }
@@ -270,6 +270,8 @@ mod tests {
         );
         let mysql = analyze("DELETE LOW_PRIORITY FROM `My Table`", Dialect::MySql);
         assert_eq!(mysql.unfiltered, Some(table(None, "My Table")));
+        let tsql = analyze("DELETE FROM [dbo].[My]]T]", Dialect::SqlServer);
+        assert_eq!(tsql.unfiltered, Some(table(Some("dbo"), "My]T")));
     }
 
     #[test]
