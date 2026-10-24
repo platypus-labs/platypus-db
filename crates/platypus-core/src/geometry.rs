@@ -1,5 +1,5 @@
 //! Geometries read from the values the drivers return, for drawing them: well-known binary
-//! (WKB, PostGIS EWKB as `\x…` hex text, MySQL's SRID-prefixed WKB), well-known text (WKT,
+//! (WKB, `PostGIS` EWKB as `\x…` hex text, MySQL's SRID-prefixed WKB), well-known text (WKT,
 //! with an optional `SRID=…;`) and PostgreSQL's own geometric types as text. Only `x` and
 //! `y` are kept; `z` and `m` are skipped.
 
@@ -36,15 +36,9 @@ pub enum Shape {
 /// The shape in a binary value: WKB, EWKB, or MySQL's 4-byte SRID followed by WKB.
 #[must_use]
 pub fn from_bytes(bytes: &[u8]) -> Option<Shape> {
-    let plain = Wkb { buf: bytes, at: 0 }.read_all();
-    if plain.is_some() {
-        return plain;
-    }
-    Wkb {
-        buf: bytes.get(4..)?,
-        at: 0,
-    }
-    .read_all()
+    Wkb::new(bytes)
+        .read_all()
+        .or_else(|| Wkb::new(bytes.get(4..)?).read_all())
 }
 
 /// The shape in a text value: hex (E)WKB, WKT, or a PostgreSQL geometric type.
@@ -52,7 +46,8 @@ pub fn from_bytes(bytes: &[u8]) -> Option<Shape> {
 pub fn from_text(text: &str) -> Option<Shape> {
     let text = text.trim();
     let hex = text.strip_prefix("\\x").unwrap_or(text);
-    if hex.len() >= 10 && hex.len() % 2 == 0 && hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+    if hex.len() >= 10 && hex.len().is_multiple_of(2) && hex.bytes().all(|b| b.is_ascii_hexdigit())
+    {
         return from_bytes(&decode_hex(hex)?);
     }
     if text.starts_with(|c: char| c.is_ascii_alphabetic()) {
@@ -80,7 +75,11 @@ struct Wkb<'a> {
     at: usize,
 }
 
-impl Wkb<'_> {
+impl<'a> Wkb<'a> {
+    fn new(buf: &'a [u8]) -> Self {
+        Self { buf, at: 0 }
+    }
+
     fn read_all(mut self) -> Option<Shape> {
         let shape = self.geometry(0)?;
         (self.at == self.buf.len()).then_some(shape)
@@ -225,6 +224,16 @@ impl<'a> Wkt<'a> {
         word.to_ascii_uppercase()
     }
 
+    /// Skips the next word if it is one of `words`.
+    fn eat_word(&mut self, words: &[&str]) -> bool {
+        let save = self.rest;
+        let found = words.contains(&self.word().as_str());
+        if !found {
+            self.rest = save;
+        }
+        found
+    }
+
     fn number(&mut self) -> Option<f64> {
         self.skip_space();
         let end = self
@@ -283,15 +292,10 @@ impl<'a> Wkt<'a> {
         }
         let kind = self.word();
         // Z, M or ZM before the coordinates.
-        let save = self.rest;
-        if !matches!(self.word().as_str(), "Z" | "M" | "ZM") {
-            self.rest = save;
-        }
-        let save = self.rest;
-        if self.word() == "EMPTY" {
+        self.eat_word(&["Z", "M", "ZM"]);
+        if self.eat_word(&["EMPTY"]) {
             return Some(Shape::Collection { items: Vec::new() });
         }
-        self.rest = save;
         match kind.as_str() {
             "POINT" => {
                 let [x, y] = self.points()?.into_iter().next()?;

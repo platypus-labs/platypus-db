@@ -11,9 +11,9 @@ use tauri::State;
 
 use super::AppState;
 use super::grid::binary_at;
-use super::summary::{blocking, check_columns};
+use super::summary::{blocking, loaded_rows};
 use crate::display;
-use crate::error::{CommandError, CommandResult};
+use crate::error::CommandResult;
 
 /// Shapes reported at most by [`geometries`].
 const SHAPE_LIMIT: usize = 10_000;
@@ -84,10 +84,7 @@ pub async fn geometries(
 ) -> CommandResult<Geometries> {
     let job = state.job(job_id)?;
     blocking(move || {
-        check_columns(&job, &columns)?;
-        let (_, batches) = job
-            .window(offset, limit)
-            .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;
+        let batches = loaded_rows(&job, offset, limit, &columns)?;
         Ok(geometries_of(&batches, offset, &columns)?)
     })
     .await

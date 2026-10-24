@@ -1280,6 +1280,10 @@ fn shape(batch: &RecordBatch, column: usize) -> Option<geometry::Shape> {
 async fn reads_geometries() {
     use geometry::Shape;
     let point = Shape::Point { x: 1.0, y: 2.0 };
+    let line = Shape::Line {
+        points: vec![[0.0, 0.0], [2.0, 1.0]],
+        closed: false,
+    };
     for b in backends().await {
         let conn = b.connect().await;
         let (sql, expected) = match b.config.driver {
@@ -1300,14 +1304,8 @@ async fn reads_geometries() {
                     Shape::Polygon {
                         rings: vec![vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]],
                     },
-                    Shape::Line {
-                        points: vec![[0.0, 0.0], [2.0, 1.0]],
-                        closed: false,
-                    },
-                    Shape::Line {
-                        points: vec![[0.0, 0.0], [2.0, 1.0]],
-                        closed: false,
-                    },
+                    line.clone(),
+                    line.clone(),
                     Shape::Circle {
                         x: 1.0,
                         y: 2.0,
@@ -1317,15 +1315,9 @@ async fn reads_geometries() {
             ),
             DriverKind::MySql => (
                 "SELECT ST_GeomFromText('POINT(1 2)'), ST_GeomFromText('LINESTRING(0 0, 2 1)')",
-                vec![
-                    point.clone(),
-                    Shape::Line {
-                        points: vec![[0.0, 0.0], [2.0, 1.0]],
-                        closed: false,
-                    },
-                ],
+                vec![point.clone(), line.clone()],
             ),
-            _ => ("SELECT 'POINT (1 2)'", vec![point.clone()]),
+            DriverKind::Sqlite => ("SELECT 'POINT (1 2)'", vec![point.clone()]),
         };
         let batches = collect(&b, &*conn, sql).await;
         let shapes: Vec<_> = (0..expected.len()).map(|c| shape(&batches[0], c)).collect();

@@ -42,7 +42,7 @@ pub(super) async fn blocking<T: Send + 'static>(
         .map_err(|e| CommandError::new("other", e.to_string()))?
 }
 
-pub(super) fn check_columns(job: &Job, columns: &[usize]) -> CommandResult<()> {
+fn check_columns(job: &Job, columns: &[usize]) -> CommandResult<()> {
     let (schema, _) = job
         .window(0, 0)
         .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;
@@ -52,17 +52,18 @@ pub(super) fn check_columns(job: &Job, columns: &[usize]) -> CommandResult<()> {
     }
 }
 
-fn stats(
+/// Loaded rows `offset..offset + limit`, once `columns` are known to exist.
+pub(super) fn loaded_rows(
     job: &Job,
     offset: usize,
     limit: usize,
     columns: &[usize],
-) -> CommandResult<SelectionStats> {
+) -> CommandResult<Vec<RecordBatch>> {
     check_columns(job, columns)?;
     let (_, batches) = job
         .window(offset, limit)
         .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;
-    Ok(stats_of(&batches, columns)?)
+    Ok(batches)
 }
 
 fn stats_of(
@@ -132,11 +133,15 @@ fn column_stats_of(
 ) -> Result<Vec<ColumnStats>, arrow_schema::ArrowError> {
     let options = display::format_options();
     let mut out = Vec::with_capacity(columns.len());
+    let mut text = String::new();
     for &c in columns {
         let mut s = ColumnStats {
             column: c,
             ..ColumnStats::default()
         };
+        let numeric = batches
+            .first()
+            .is_some_and(|b| b.column(c).data_type().is_numeric());
         let mut seen: HashSet<String> = HashSet::new();
         let mut numbers: Vec<f64> = Vec::new();
         for batch in batches {
@@ -144,7 +149,6 @@ fn column_stats_of(
             s.nulls += array.null_count();
             s.values += array.len() - array.null_count();
             let formatter = ArrayFormatter::try_new(array.as_ref(), &options)?;
-            let mut text = String::new();
             for row in (0..array.len()).filter(|&r| !array.is_null(r)) {
                 text.clear();
                 let _ = write!(text, "{}", formatter.value(row));
@@ -152,16 +156,13 @@ fn column_stats_of(
                     seen.insert(text.clone());
                 }
             }
-            if array.data_type().is_numeric() {
+            if numeric {
                 let cast = arrow_cast::cast(array, &DataType::Float64)?;
                 numbers.extend(cast.as_primitive::<Float64Type>().iter().flatten());
             }
         }
         s.distinct = seen.len();
-        if batches
-            .first()
-            .is_some_and(|b| b.column(c).data_type().is_numeric())
-        {
+        if numeric {
             s.numbers = number_stats(&mut numbers);
         } else {
             s.first = seen.iter().min().cloned();
@@ -213,10 +214,7 @@ pub async fn column_stats(
 ) -> CommandResult<Vec<ColumnStats>> {
     let job = state.job(job_id)?;
     blocking(move || {
-        check_columns(&job, &columns)?;
-        let (_, batches) = job
-            .window(offset, limit)
-            .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;
+        let batches = loaded_rows(&job, offset, limit, &columns)?;
         Ok(column_stats_of(&batches, &columns)?)
     })
     .await
@@ -233,7 +231,11 @@ pub async fn selection_stats(
     columns: Vec<usize>,
 ) -> CommandResult<SelectionStats> {
     let job = state.job(job_id)?;
-    blocking(move || stats(&job, offset, limit, &columns)).await
+    blocking(move || {
+        let batches = loaded_rows(&job, offset, limit, &columns)?;
+        Ok(stats_of(&batches, &columns)?)
+    })
+    .await
 }
 
 #[derive(Debug, Serialize, PartialEq)]

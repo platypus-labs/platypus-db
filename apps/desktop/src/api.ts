@@ -637,12 +637,13 @@ export const api = {
   /** Loaded cells containing `text`, ignoring case. */
   selectionStats: (jobId: number, offset: number, limit: number, columns: number[]) =>
     invoke<SelectionStats>("selection_stats", { jobId, offset, limit, columns }),
-  /** Loaded rows by value of `columns`, most frequent first. */
+  /** Statistics of each of `columns` over loaded rows `offset..offset + limit`. */
   columnStats: (jobId: number, offset: number, limit: number, columns: number[]) =>
     invoke<ColumnStats[]>("column_stats", { jobId, offset, limit, columns }),
   /** The geometries in `columns` of loaded rows `offset..offset + limit`. */
   geometries: (jobId: number, offset: number, limit: number, columns: number[]) =>
     invoke<Geometries>("geometries", { jobId, offset, limit, columns }),
+  /** Loaded rows by value of `columns`, most frequent first. */
   groupCounts: (jobId: number, columns: number[]) => invoke<GroupCounts>("group_counts", { jobId, columns }),
   searchRows: (jobId: number, text: string) => invoke<SearchResult>("search_rows", { jobId, text }),
   fetchAll: (jobId: number) => invoke<void>("fetch_all", { jobId }),
