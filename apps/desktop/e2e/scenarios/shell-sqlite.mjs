@@ -123,6 +123,12 @@ export default async function (page, { dir, shots }) {
   assert.equal(await page.eval(`${runButton}.title.startsWith('Run')`), true);
   assert.equal(await page.eval(`${runButton}.textContent`), "");
   assert.equal(await page.eval(`!!${runButton}.querySelector('svg')`), true);
+  const unnamed = await page.eval(
+    `JSON.stringify([...${visibleTab}.querySelectorAll('.toolbar button')].filter(b => !b.getAttribute('aria-label') || !b.title).map(b => b.outerHTML.slice(0, 80)))`,
+  );
+  assert.equal(unnamed, "[]");
+  // A toolbar wider than the window scrolls with a visible scrollbar.
+  assert.equal(await page.eval(`getComputedStyle(${visibleTab}.querySelector('.toolbar')).scrollbarWidth`), "thin");
 
   await page.key("j", "KeyJ", 74, CTRL);
   await page.waitFor(`document.querySelector('.palette') !== null`);

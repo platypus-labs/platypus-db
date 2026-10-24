@@ -196,7 +196,7 @@
   padding: 0 7px;
   border: 2px solid var(--accent);
   border-radius: 0;
-  font: 12px system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 12px var(--font-mono);
   background: var(--bg-input);
   color: var(--fg);
   outline: none;

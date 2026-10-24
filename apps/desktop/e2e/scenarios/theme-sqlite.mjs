@@ -6,6 +6,25 @@ import { join } from "node:path";
 import { CTRL } from "../cdp.mjs";
 
 const cssVar = (name) => `getComputedStyle(document.documentElement).getPropertyValue(${JSON.stringify(name)}).trim()`;
+/** A color variable as the browser resolves it (color-mix included), as [r, g, b]. */
+const rgbOf = (name) => `(() => {
+  const probe = document.createElement('div');
+  probe.style.color = 'var(${name})';
+  document.body.append(probe);
+  const c = getComputedStyle(probe).color;
+  probe.remove();
+  // rgb(r, g, b) with 0-255, or color(srgb r g b) with 0-1 for color-mix results.
+  const n = c.match(/[0-9.]+/g).map(Number);
+  return JSON.stringify(c.startsWith('color(') ? n.slice(0, 3).map((v) => v * 255) : n.slice(0, 3));
+})()`;
+const luminance = ([r, g, b]) => {
+  const lin = (v) => ((v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+};
+const contrast = (a, b) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+};
 const setting = (label) =>
   `[...document.querySelectorAll('.modal.settings .setting')].find(s => s.querySelector('span')?.firstChild?.textContent === ${JSON.stringify(label)})`;
 
@@ -62,6 +81,7 @@ export default async function (page, { dir, shots }) {
 
   // First start, theme "System": one of the two Platypus themes, whatever Windows uses.
   const css = (name) => page.eval(cssVar(name));
+  const rgb = async (name) => JSON.parse(await page.eval(rgbOf(name)));
   assert.ok(["#141519", "#ffffff"].includes(await css("--bg")), await css("--bg"));
 
   // Every preset sets the variables added with the Platypus themes.
@@ -87,14 +107,43 @@ export default async function (page, { dir, shots }) {
   await pick("Classic Dark");
   await page.waitFor(`${cssVar("--bg")} === '#1b1d21'`); // the former "Dark"
 
-  // A custom background on Platypus Dark: the colors derived from it follow.
+  // A custom background on Platypus Dark: the tab bar follows it; the rail and the active row
+  // go with the sidebar and the accent, so they keep the theme's colors.
   await pick("Platypus Dark");
-  await page.eval(change(`${setting("Background")}.querySelector('input[type=color]')`, "#202020"));
-  await page.waitFor(`${cssVar("--bg")} === '#202020'`);
-  assert.notEqual(await css("--bg-rail"), "#0d0e11");
-  assert.notEqual(await css("--bg-tabbar"), "#0f1013");
-  assert.notEqual(await css("--active"), "#24262e");
-  await page.eval(`[...${setting("Background")}.querySelectorAll('button')].find(b => b.textContent === 'Reset').click()`);
+  const background = async (hex) => {
+    await page.eval(change(`${setting("Background")}.querySelector('input[type=color]')`, hex));
+    await page.waitFor(`${cssVar("--bg")} === '${hex}'`);
+  };
+  await background("#202020");
+  const tabbar = await rgb("--bg-tabbar");
+  await background("#303030");
+  assert.notEqual(await rgb("--bg-tabbar"), tabbar);
+  assert.equal(await css("--bg-rail"), "#0d0e11");
+  assert.equal(await css("--active"), "#24262e");
+
+  // A light custom background on a dark theme: what is derived from it goes the light way.
+  await background("#ffffff");
+  await page.eval(change(`${setting("Text")}.querySelector('input[type=color]')`, "#222222"));
+  await page.waitFor(`${cssVar("--fg")} === '#222222'`);
+  const bar = await rgb("--bg-tabbar");
+  assert.ok(luminance(bar) > 0.6, `tab bar stays light: ${JSON.stringify(bar)} ${await css("--bg-tabbar")}`);
+  assert.ok(
+    contrast(await rgb("--fg-strong"), await rgb("--bg")) >= contrast(await rgb("--fg"), await rgb("--bg")),
+    "strong text at least as strong as text",
+  );
+  for (const label of ["Background", "Text"]) {
+    await page.eval(`[...${setting(label)}.querySelectorAll('button')].find(b => b.textContent === 'Reset').click()`);
+  }
+  await page.waitFor(`${cssVar("--bg")} === '#141519'`);
+
+  // Platypus Light: secondary text readable on every surface it sits on.
+  await pick("Platypus Light");
+  await page.waitFor(`${cssVar("--bg")} === '#ffffff'`);
+  for (const surface of ["--bg", "--bg-sidebar", "--bg-tabbar", "--grid-header"]) {
+    const ratio = contrast(await rgb("--fg-muted"), await rgb(surface));
+    assert.ok(ratio >= 4.5, `--fg-muted on ${surface}: ${ratio.toFixed(2)}`);
+  }
+  await pick("Platypus Dark");
   await page.waitFor(`${cssVar("--bg")} === '#141519'`);
 
   await page.eval(`[...document.querySelectorAll('.theme-card')].find(c => c.textContent === 'Nord').click()`);

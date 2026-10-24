@@ -63,6 +63,12 @@ export default async function (page) {
   const canvas = `${visibleTab}.querySelector('.grid-canvas')`;
   assert.match(await page.eval(`${canvas}.dataset.font`), /^12px "JetBrains Mono"/);
   await page.waitFor(`${canvas}.dataset.measuredWith?.includes('JetBrains Mono')`);
+  // Another face loading later (an accented letter, say) leaves sized columns alone.
+  const measured = await page.eval(`${canvas}.dataset.measures`);
+  assert.ok(Number(measured) >= 1);
+  await page.eval(`document.fonts.dispatchEvent(new Event('loadingdone'))`);
+  await page.sleep(300);
+  assert.equal(await page.eval(`${canvas}.dataset.measures`), measured);
 
   await page.eval(`${grid}.id = 'e2e-grid'`);
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);

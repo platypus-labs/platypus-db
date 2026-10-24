@@ -156,7 +156,7 @@ export const PRESETS = {
       "bg-tabbar": "#f1f2f5",
       fg: "#2b2f36",
       "fg-strong": "#111318",
-      "fg-muted": "#868c96",
+      "fg-muted": "#5f6672",
       border: "#e6e8eb",
       "border-strong": "#dcdfe3",
       active: "#ebeafd",
@@ -491,7 +491,7 @@ export function themeName(): ThemeName {
 function variables(): { dark: boolean; vars: Record<string, string> } {
   const name = themeName();
   const preset: Preset = PRESETS[name === "system" ? systemPreset() : name];
-  const vars: Record<string, string> = paletteOf(preset);
+  const vars: Palette = paletteOf(preset);
   const custom = (def: typeof accentSetting) => {
     const v = getSetting(def);
     return HEX.test(v) ? v : null;
@@ -517,12 +517,15 @@ function variables(): { dark: boolean; vars: Record<string, string> } {
     vars.fg = text;
     vars["fg-muted"] = `color-mix(in srgb, ${text} 62%, ${vars.bg})`;
   }
-  // What frames the custom colors follows them, as on a preset without its own.
+  // What is mixed from a custom color follows it, as on a preset without its own: the tab bar
+  // from the background, the rail from the sidebar, the active row from the sidebar and the
+  // accent, strong text from the text. Lighter or darker by the actual background, which a
+  // custom color may have turned the other way from the preset.
   if (bg || sidebar || text || accent) {
-    const derived = derive(vars as BasePalette, preset.dark);
+    const derived = derive(vars, readableOn(vars.bg) === "#ffffff");
     if (bg) vars["bg-tabbar"] = derived["bg-tabbar"];
-    if (bg || sidebar) vars["bg-rail"] = derived["bg-rail"];
-    if (bg || sidebar || accent) vars.active = derived.active;
+    if (sidebar) vars["bg-rail"] = derived["bg-rail"];
+    if (sidebar || accent) vars.active = derived.active;
     if (text) vars["fg-strong"] = derived["fg-strong"];
   }
   const radius = RADII[getSetting(radiusSetting)] ?? RADII.rounded!;
@@ -577,10 +580,14 @@ export function paintCached() {
   try {
     localStorage.removeItem(OLD_CACHE);
     const cached = JSON.parse(localStorage.getItem(CACHE) ?? "null") as { dark: boolean; vars: Record<string, string> } | null;
-    if (cached) return paint(cached.dark, cached.vars);
+    if (cached) {
+      document.documentElement.dataset.firstPaint = "cache";
+      return paint(cached.dark, cached.vars);
+    }
   } catch {
     // Fall through to the system's colors.
   }
+  document.documentElement.dataset.firstPaint = "default";
   const preset = PRESETS[systemPreset()];
   paint(preset.dark, Object.fromEntries(Object.entries(paletteOf(preset)).map(([k, v]) => [`--${k}`, v])));
 }

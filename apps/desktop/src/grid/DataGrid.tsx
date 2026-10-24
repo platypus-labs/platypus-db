@@ -291,7 +291,11 @@ export function DataGrid({
     const { columns, rowCount, cache, layout } = props.current;
     if (sizedToData.current || rowCount === 0 || cache.get(0, 0) === undefined) return;
     sizedToData.current = true;
-    if (canvasRef.current) canvasRef.current.dataset.measuredWith = document.fonts.check(FONT) ? FONT : "fallback";
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.dataset.measuredWith = document.fonts.check(FONT) ? FONT : "fallback";
+      canvas.dataset.measures = String(Number(canvas.dataset.measures ?? 0) + 1);
+    }
     const sample = Math.min(rowCount, SIZE_SAMPLE_ROWS);
     widths.current = columns.map((c, col) => {
       const saved = layout.widths[c.name];
@@ -647,10 +651,12 @@ export function DataGrid({
     };
     media.addEventListener("change", onTheme);
     window.addEventListener(THEME_EVENT, onTheme);
-    // Columns measured with a fallback font are sized again with the real one; widths
-    // saved in the layout (resized by hand) stay.
+    // Columns measured with a fallback font are sized again once the real one has loaded;
+    // widths saved in the layout (resized by hand) stay. Other faces loading later (Inter,
+    // an accented letter's subset) change nothing here.
     const onFonts = () => {
       theme.current = readTheme(outer);
+      if (canvasRef.current?.dataset.measuredWith !== "fallback" || !document.fonts.check(FONT)) return;
       const { columns, layout } = props.current;
       widths.current = columns.map((c) => layout.widths[c.name] ?? headerWidth(c));
       sizedToData.current = false;

@@ -82,6 +82,8 @@ export default async function (page, { dir, shots }) {
   // SSH has a tab of its own.
   await page.waitFor(`document.querySelector('.dialog-tabs') !== null`);
   assert.equal(await page.eval(`document.querySelector('[data-page="ssh"]').hidden`), true);
+  // The color swatches stay round dots, not stretched to a button's height.
+  assert.equal(await page.eval(`(() => { const r = document.querySelector('.modal .swatch').getBoundingClientRect(); return r.width === r.height; })()`), true);
   await page.eval(`[...document.querySelectorAll('.dialog-tabs button')].find(b => b.textContent.startsWith('SSH')).click()`);
   await page.waitFor(`document.querySelector('[data-page="ssh"]').hidden === false`);
   assert.equal(await page.eval(`document.querySelector('.ssh-section input').value`), "bastion");
