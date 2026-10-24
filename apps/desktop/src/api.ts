@@ -450,14 +450,15 @@ export const api = {
     invoke<string>("format_sql", { sql, driver, settings }),
   /** The table a query reads, when its rows are that table's rows. */
   querySource: (sql: string, driver: DriverKind) => invoke<QuerySource | null>("query_source", { sql, driver }),
+  /** `connectionIds` limits the entries to those connections, e.g. a project's. */
   searchHistory: (query: {
-    connectionId?: string;
+    connectionIds?: string[];
     text?: string;
     beforeId?: number;
     limit: number;
   }) =>
     invoke<HistoryEntry[]>("search_history", {
-      connectionId: query.connectionId ?? null,
+      connectionIds: query.connectionIds ?? null,
       text: query.text || null,
       beforeId: query.beforeId ?? null,
       limit: query.limit,

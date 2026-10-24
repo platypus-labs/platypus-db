@@ -10,14 +10,14 @@ use crate::error::CommandResult;
 #[tauri::command]
 pub fn search_history(
     state: State<'_, AppState>,
-    connection_id: Option<Uuid>,
+    connection_ids: Option<Vec<Uuid>>,
     text: Option<String>,
     before_id: Option<i64>,
     limit: usize,
 ) -> CommandResult<Vec<HistoryEntry>> {
     state.with_history(|h| {
         h.search(&HistoryQuery {
-            connection_id,
+            connection_ids,
             text,
             before_id,
             limit: limit.min(1000),

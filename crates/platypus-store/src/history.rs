@@ -73,7 +73,8 @@ pub struct NewHistoryEntry {
 
 #[derive(Debug, Clone, Default)]
 pub struct HistoryQuery {
-    pub connection_id: Option<Uuid>,
+    /// Entries of these connections only, e.g. a project's; `None` for all of them.
+    pub connection_ids: Option<Vec<Uuid>>,
     /// Case-insensitive substring of the SQL.
     pub text: Option<String>,
     /// Page backwards from this entry (exclusive).
@@ -159,6 +160,15 @@ impl HistoryStore {
     }
 
     pub fn search(&self, query: &HistoryQuery) -> Result<Vec<HistoryEntry>> {
+        // The ids go as one JSON array: any number of them, in one cached statement.
+        let ids = match &query.connection_ids {
+            Some(ids) if ids.is_empty() => return Ok(Vec::new()),
+            Some(ids) => Some(
+                serde_json::to_string(&ids.iter().map(Uuid::to_string).collect::<Vec<_>>())
+                    .unwrap_or_default(),
+            ),
+            None => None,
+        };
         // `\` escapes LIKE wildcards typed by the user.
         let pattern = query.text.as_ref().filter(|t| !t.is_empty()).map(|t| {
             format!(
@@ -173,7 +183,7 @@ impl HistoryStore {
             .prepare_cached(
                 "SELECT id, connection_id, sql, started_at, duration_ms, rows, status, error
                  FROM history
-                 WHERE (?1 IS NULL OR connection_id = ?1)
+                 WHERE (?1 IS NULL OR connection_id IN (SELECT value FROM json_each(?1)))
                    AND (?2 IS NULL OR sql LIKE ?2 ESCAPE '\\')
                    AND (?3 IS NULL OR id < ?3)
                  ORDER BY id DESC
@@ -183,7 +193,7 @@ impl HistoryStore {
         let rows = stmt
             .query_map(
                 params![
-                    query.connection_id.map(|id| id.to_string()),
+                    ids,
                     pattern,
                     query.before_id,
                     i64::try_from(query.limit).unwrap_or(i64::MAX),
@@ -252,6 +262,40 @@ mod tests {
     }
 
     #[test]
+    fn filters_on_several_connections() {
+        let h = HistoryStore::open_in_memory().unwrap();
+        let (a, b, c) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        for (id, sql) in [(a, "a1"), (b, "b1"), (c, "c1"), (a, "a2")] {
+            h.record(&entry(id, sql, HistoryStatus::Ok)).unwrap();
+        }
+        let found = h
+            .search(&HistoryQuery {
+                connection_ids: Some(vec![a, c]),
+                limit: 10,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            found.iter().map(|e| e.sql.as_str()).collect::<Vec<_>>(),
+            ["a2", "c1", "a1"]
+        );
+    }
+
+    #[test]
+    fn empty_list_matches_nothing() {
+        let h = HistoryStore::open_in_memory().unwrap();
+        h.record(&entry(Uuid::new_v4(), "x", HistoryStatus::Ok))
+            .unwrap();
+        let query = |ids: Option<Vec<Uuid>>| HistoryQuery {
+            connection_ids: ids,
+            limit: 10,
+            ..Default::default()
+        };
+        assert_eq!(h.search(&query(Some(Vec::new()))).unwrap().len(), 0);
+        assert_eq!(h.search(&query(None)).unwrap().len(), 1);
+    }
+
+    #[test]
     fn records_and_searches_newest_first() {
         let h = HistoryStore::open_in_memory().unwrap();
         let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
@@ -279,7 +323,7 @@ mod tests {
         assert_eq!((all[0].duration_ms, all[0].rows), (42, Some(7)));
 
         let only_a = HistoryQuery {
-            connection_id: Some(a),
+            connection_ids: Some(vec![a]),
             limit: 10,
             ..Default::default()
         };
