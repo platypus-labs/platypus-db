@@ -57,6 +57,13 @@ export default async function (page) {
   await page.eval(`${treeRow("items")}.id = 'e2e-table'`);
   await page.clickSel("#e2e-table", { clickCount: 2 });
   await page.waitFor(`${status} === '3 rows'`, 15_000);
+
+  // The grid draws in the bundled monospace font and, once it has loaded, sizes the columns
+  // with it rather than with the fallback it may have measured first.
+  const canvas = `${visibleTab}.querySelector('.grid-canvas')`;
+  assert.match(await page.eval(`${canvas}.dataset.font`), /^12px "JetBrains Mono"/);
+  await page.waitFor(`${canvas}.dataset.measuredWith?.includes('JetBrains Mono')`);
+
   await page.eval(`${grid}.id = 'e2e-grid'`);
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
 

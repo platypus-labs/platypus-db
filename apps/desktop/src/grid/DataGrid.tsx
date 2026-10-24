@@ -31,10 +31,12 @@ const RESIZE_HIT_PX = 4;
 const DRAG_PX = 5;
 /** Rows measured to size columns when a result first appears. */
 const SIZE_SAMPLE_ROWS = 200;
-const FONT = "12px system-ui, -apple-system, 'Segoe UI', sans-serif";
-const FONT_BOLD = "600 12px system-ui, -apple-system, 'Segoe UI', sans-serif";
-const FONT_SMALL = "11px system-ui, -apple-system, 'Segoe UI', sans-serif";
-const FONT_NULL = "italic 12px system-ui, -apple-system, 'Segoe UI', sans-serif";
+/** Canvas fonts, from `--font-mono` (set by `readTheme`, like `ROW_H`). */
+const MONO_FALLBACK = '"Cascadia Code", Consolas, ui-monospace, monospace';
+let FONT = `12px ${MONO_FALLBACK}`;
+let FONT_BOLD = `600 12px ${MONO_FALLBACK}`;
+let FONT_SMALL = `11px ${MONO_FALLBACK}`;
+let FONT_NULL = `italic 12px ${MONO_FALLBACK}`;
 
 /** A grid cell: `col` is the result column, wherever the layout shows it. */
 export interface Cell {
@@ -162,6 +164,13 @@ function readTheme(el: Element): Theme {
   const v = (name: string) => s.getPropertyValue(name).trim();
   const rowHeight = Number(v("--grid-row-h"));
   if (rowHeight >= 16) ROW_H = rowHeight;
+  const mono = v("--font-mono") || MONO_FALLBACK;
+  FONT = `12px ${mono}`;
+  FONT_BOLD = `600 12px ${mono}`;
+  FONT_SMALL = `11px ${mono}`;
+  FONT_NULL = `italic 12px ${mono}`;
+  // Canvas text does not load a font face by itself.
+  void document.fonts.load(FONT).catch(() => {});
   return {
     bg: v("--grid-bg"),
     bgAlt: v("--grid-bg-alt"),
@@ -282,6 +291,7 @@ export function DataGrid({
     const { columns, rowCount, cache, layout } = props.current;
     if (sizedToData.current || rowCount === 0 || cache.get(0, 0) === undefined) return;
     sizedToData.current = true;
+    if (canvasRef.current) canvasRef.current.dataset.measuredWith = document.fonts.check(FONT) ? FONT : "fallback";
     const sample = Math.min(rowCount, SIZE_SAMPLE_ROWS);
     widths.current = columns.map((c, col) => {
       const saved = layout.widths[c.name];
@@ -366,6 +376,7 @@ export function DataGrid({
     const { view, pinned } = resolved;
     const rows = total();
     const t = (theme.current ??= readTheme(outer));
+    canvas.dataset.font = FONT;
     sizeToData();
     // Column resizes change the scrollable width without a React render.
     const contentWidth = gutterWidth() + offsetX(view.length) + 200;
@@ -494,7 +505,7 @@ export function DataGrid({
       ctx.fillRect(x, 0, cw, HEADER_H);
       ctx.textAlign = "left";
       ctx.font = FONT_BOLD;
-      ctx.fillStyle = t.fg;
+      ctx.fillStyle = t.muted;
       ctx.fillText(column.name, x + PAD, 14);
       const sorted = props.current.sort;
       if (sorted?.column === column.name) {
@@ -636,10 +647,21 @@ export function DataGrid({
     };
     media.addEventListener("change", onTheme);
     window.addEventListener(THEME_EVENT, onTheme);
+    // Columns measured with a fallback font are sized again with the real one; widths
+    // saved in the layout (resized by hand) stay.
+    const onFonts = () => {
+      theme.current = readTheme(outer);
+      const { columns, layout } = props.current;
+      widths.current = columns.map((c) => layout.widths[c.name] ?? headerWidth(c));
+      sizedToData.current = false;
+      schedule();
+    };
+    document.fonts.addEventListener("loadingdone", onFonts);
     return () => {
       observer.disconnect();
       media.removeEventListener("change", onTheme);
       window.removeEventListener(THEME_EVENT, onTheme);
+      document.fonts.removeEventListener("loadingdone", onFonts);
       cancelAnimationFrame(frame.current);
       frame.current = 0;
     };
