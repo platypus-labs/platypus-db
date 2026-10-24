@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   api,
+  DATA_FILE_EXTENSIONS,
   isEmbedded,
   toCommandError,
   type ConnectionType,
@@ -51,7 +52,12 @@ const DEFAULT_PORTS: Record<DriverKind, number | null> = {
 /** The database files of the embedded drivers: file picker filter and example path. */
 const FILES: Record<"sqlite" | "duckdb", { name: string; extensions: string[]; example: string }> = {
   sqlite: { name: "SQLite database", extensions: ["db", "sqlite", "sqlite3", "db3"], example: "C:\\data\\app.db" },
-  duckdb: { name: "DuckDB database", extensions: ["duckdb", "ddb", "db"], example: "C:\\data\\app.duckdb" },
+  // A data file (CSV, Parquet, Excel...) opens as an in-memory database that reads it.
+  duckdb: {
+    name: "DuckDB database or data file",
+    extensions: ["duckdb", "ddb", "db", ...DATA_FILE_EXTENSIONS],
+    example: "C:\\data\\app.duckdb",
+  },
 };
 
 const EMPTY_INIT: SavedInit = { schema: null, time_zone: null, statements: "" };

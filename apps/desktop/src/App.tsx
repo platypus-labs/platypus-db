@@ -1,6 +1,14 @@
 import { type ComponentType, Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { dispatchKey, registerAction } from "./actions";
-import { api, type Capabilities, type CompletionCatalog, type Project, toCommandError, type SavedConnection } from "./api";
+import {
+  api,
+  type Capabilities,
+  type CompletionCatalog,
+  DATA_FILE_EXTENSIONS,
+  type Project,
+  toCommandError,
+  type SavedConnection,
+} from "./api";
 import { onNavigatorRefresh } from "./navigatorEvents";
 import { ConnectionDialog } from "./components/ConnectionDialog";
 import { ImportDialog } from "./components/ImportDialog";
@@ -12,6 +20,7 @@ import { UpdateBanner } from "./components/UpdateBanner";
 import { CommandPalette } from "./shell/CommandPalette";
 import "./tabs";
 import "./objects/actions";
+import "./transfer/actions";
 import "./querylog/actions";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { dbKey, provideWorkbench, workbench } from "./workbench";
@@ -25,6 +34,7 @@ import { registerAddToProject } from "./projects/actions";
 import { ScriptsPanel } from "./scripts/ScriptsPanel";
 import { ContextMenu, type MenuState } from "./components/ContextMenu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 type Dialog =
   | { kind: "connection"; connection: SavedConnection; existing: boolean; memberOf: string[] }
@@ -226,6 +236,26 @@ export function App() {
       memberOf: activeProject ? [activeProject] : [],
     });
   }
+
+  /** A data file dropped on the window opens as a DuckDB database: a saved connection to it
+   *  gets a new script, otherwise the new connection dialog starts filled in. */
+  async function openDroppedFile(path: string) {
+    const saved = shell.current.connections?.find((c) => c.driver === "duckdb" && c.database === path);
+    if (saved) return workbench().openTab("query", saved.id, {});
+    const connection = await api.defaultConnection("duckdb");
+    const name = path.split(/[\\/]/).pop() ?? path;
+    const active = shell.current.activeProject;
+    setDialog({ kind: "connection", connection: { ...connection, name, database: path }, existing: false, memberOf: active ? [active] : [] });
+  }
+
+  useEffect(() => {
+    const isDataFile = (p: string) => DATA_FILE_EXTENSIONS.includes(p.split(".").pop()?.toLowerCase() ?? "");
+    const off = getCurrentWebview().onDragDropEvent(({ payload }) => {
+      const path = payload.type === "drop" ? payload.paths.find(isDataFile) : undefined;
+      if (path) void openDroppedFile(path).catch((e: unknown) => setToast(toCommandError(e).message));
+    });
+    return () => void off.then((unlisten) => unlisten());
+  }, []);
 
   /** After a command that saved connections: the projects they joined or left changed too. */
   async function connectionsSaved(all: SavedConnection[]) {
