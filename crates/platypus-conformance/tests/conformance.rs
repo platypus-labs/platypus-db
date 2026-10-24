@@ -782,3 +782,23 @@ async fn edit_rollbacks(
     let rows = collect(b, conn, "SELECT count(*) FROM conf_edit").await;
     assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("2"), "{}", b.name);
 }
+
+#[tokio::test]
+async fn estimates_table_rows() {
+    use platypus_sql::Dialect;
+    for b in backends().await {
+        let conn = b.connect().await;
+        let d = Dialect::from(b.config.driver);
+        for schema in [Some(b.schema.as_str()), None] {
+            // Unqualified names are the current schema's, which may not hold the seed.
+            let sql = d.row_estimate_sql(schema, "customers");
+            let rows = platypus_core::query_text(conn.as_ref(), &sql)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name));
+            assert!(rows.len() <= 1, "{}: {rows:?}", b.name);
+            if let Some(Some(n)) = rows.first().and_then(|r| r.first()) {
+                assert!(n.parse::<i64>().is_ok(), "{}: {n}", b.name);
+            }
+        }
+    }
+}

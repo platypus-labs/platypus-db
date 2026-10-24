@@ -1,15 +1,27 @@
 //! SQL text analysis for the editor.
 
 use platypus_core::DriverKind;
-use platypus_sql::{Dialect, SelectItem};
+use platypus_sql::{Dialect, SelectItem, StatementKind};
 use serde::Serialize;
 
-/// A statement range in UTF-16 code units, the unit JavaScript strings use.
+/// A table a statement changes in every row; `schema` is `None` for the session's.
+#[derive(Debug, Serialize)]
+pub struct UnfilteredTable {
+    schema: Option<String>,
+    name: String,
+}
+
+/// A statement range in UTF-16 code units, the unit JavaScript strings use, and what the
+/// statement does, for the checks before it runs.
 #[derive(Debug, Serialize)]
 pub struct StatementSpan {
     start: usize,
     end: usize,
     read_only: bool,
+    /// `query`, `dml`, `ddl` or `other`.
+    kind: &'static str,
+    /// An `UPDATE` or `DELETE` without `WHERE`, or a `TRUNCATE`: its table.
+    unfiltered: Option<UnfilteredTable>,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,10 +73,24 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
         at_cursor: at.and_then(|at| statements.iter().position(|s| *s == at)),
         statements: statements
             .iter()
-            .map(|s| StatementSpan {
-                start: map.to_utf16(s.start),
-                end: map.to_utf16(s.end),
-                read_only: platypus_sql::is_read_only(s.text(&sql), dialect),
+            .map(|s| {
+                let text = s.text(&sql);
+                let analysis = platypus_sql::analyze(text, dialect);
+                StatementSpan {
+                    start: map.to_utf16(s.start),
+                    end: map.to_utf16(s.end),
+                    read_only: analysis.kind == StatementKind::Query,
+                    kind: match analysis.kind {
+                        StatementKind::Query => "query",
+                        StatementKind::Dml => "dml",
+                        StatementKind::Ddl => "ddl",
+                        StatementKind::Other => "other",
+                    },
+                    unfiltered: analysis.unfiltered.map(|t| UnfilteredTable {
+                        schema: t.schema,
+                        name: t.name,
+                    }),
+                }
             })
             .collect(),
     }

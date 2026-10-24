@@ -18,8 +18,38 @@ export interface SavedConnection {
   read_only: boolean;
   color: string | null;
   folder: string | null;
+  /** Production asks before changes and starts in manual commit. */
+  connection_type?: ConnectionType | null;
+  /** The SSH server the connection goes through. */
+  ssh?: SavedSsh | null;
   /** Logical keys set by the user for tables without a primary key. */
   virtual_keys?: VirtualKey[];
+}
+
+export type ConnectionType = "dev" | "test" | "prod";
+
+export type SshAuthKind = "password" | "key" | "agent";
+
+/** An SSH server; its password or key passphrase is in the keychain under `secret_id`. */
+export interface SavedSsh {
+  host: string;
+  port: number;
+  user: string;
+  auth: SshAuthKind;
+  key_path: string | null;
+  secret_id: string;
+  /** A jump host to reach this server through. */
+  jump: SavedSsh | null;
+}
+
+/** SSH passwords or passphrases typed in a form, by `secret_id`. */
+export type SshSecrets = Record<string, PasswordInput>;
+
+export type ImportSource = "dbeaver" | "datagrip" | "pgadmin" | "pg_service";
+
+export interface ImportFile {
+  source: ImportSource;
+  path: string;
 }
 
 /** Columns that identify a table's rows, set by the user instead of a primary key. */
@@ -77,6 +107,9 @@ export interface StatementSpan {
   start: number;
   end: number;
   read_only: boolean;
+  kind: "query" | "dml" | "ddl" | "other";
+  /** An UPDATE or DELETE without WHERE, or a TRUNCATE: the table it changes in every row. */
+  unfiltered: { schema: string | null; name: string } | null;
 }
 
 export interface SqlAnalysis {
@@ -272,14 +305,18 @@ export const api = {
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
   defaultConnection: (driver: DriverKind) =>
     invoke<SavedConnection>("default_connection", { driver }),
-  saveConnection: (connection: SavedConnection, password: PasswordInput) =>
-    invoke<SavedConnection[]>("save_connection", { connection, password }),
+  saveConnection: (connection: SavedConnection, password: PasswordInput, sshSecrets: SshSecrets = {}) =>
+    invoke<SavedConnection[]>("save_connection", { connection, password, sshSecrets }),
+  detectImports: () => invoke<ImportFile[]>("detect_imports"),
+  /** The connections in another tool's file; nothing is saved yet. */
+  readImport: (source: ImportSource, path: string) => invoke<SavedConnection[]>("read_import", { source, path }),
+  saveImported: (connections: SavedConnection[]) => invoke<SavedConnection[]>("save_imported", { connections }),
   deleteConnection: (id: string) => invoke<SavedConnection[]>("delete_connection", { id }),
   /** Sets a table's virtual key; no columns remove it. */
   setVirtualKey: (connectionId: string, schema: string, table: string, columns: string[]) =>
     invoke<SavedConnection[]>("set_virtual_key", { connectionId, schema, table, columns }),
-  testConnection: (connection: SavedConnection, password: PasswordInput) =>
-    invoke<ServerInfo>("test_connection", { connection, password }),
+  testConnection: (connection: SavedConnection, password: PasswordInput, sshSecrets: SshSecrets = {}) =>
+    invoke<ServerInfo>("test_connection", { connection, password, sshSecrets }),
   openSession: (connectionId: string, password?: string) =>
     invoke<{ session_id: number; server: ServerInfo; capabilities: Capabilities }>("open_session", {
       connectionId,
@@ -312,6 +349,9 @@ export const api = {
     invoke<TransactionState>("end_transaction", { sessionId, commit }),
   completionCatalog: (sessionId: number) => invoke<CompletionCatalog>("completion_catalog", { sessionId }),
   queryValue: (sessionId: number, sql: string) => invoke<string | null>("query_value", { sessionId, sql }),
+  /** About how many rows a table has, from the statistics; `null` when unknown. */
+  estimateRows: (sessionId: number, schema: string | null, table: string) =>
+    invoke<number | null>("estimate_rows", { sessionId, schema, table }),
   /** `[key, label]` pairs of `values`, or with `null` the first `limit` rows by label. */
   lookupValues: (sessionId: number, lookup: Lookup, values: string[] | null, limit: number) =>
     invoke<[string | null, string | null][]>("lookup_values", { sessionId, lookup, values, limit }),

@@ -14,6 +14,7 @@ import type { TabInit } from "../tabs/registry";
 import { PRESETS, cycleTheme, themeName, themeSetting } from "../theme";
 import { registerAction } from "../actions";
 import { workbench } from "../workbench";
+import { connectionColor, typeBadge } from "../connections";
 import { ContextMenu, type MenuState, type MenuTarget } from "./ContextMenu";
 
 type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ok"; data: T };
@@ -25,6 +26,8 @@ interface Props {
   connections: SavedConnection[];
   error: string | null;
   onNew: () => void;
+  /** Opens the import of connections from other tools. */
+  onImport: () => void;
   onEdit: (c: SavedConnection) => void;
   onDelete: (c: SavedConnection) => void;
   /** Opens a new editor tab: optionally with SQL, run at once, or as a data viewer. */
@@ -57,6 +60,8 @@ interface Row {
   label: string;
   icon?: string;
   color?: string | null;
+  /** A short tag after the label, e.g. PROD. */
+  badge?: string | null;
   detail?: string;
   title?: string;
   muted?: boolean;
@@ -71,7 +76,7 @@ interface Row {
 }
 
 export function Navigator(props: Props) {
-  const { connections, error, onNew, onEdit, onOpenTab, session, disconnect, onError } = props;
+  const { connections, error, onNew, onImport, onEdit, onOpenTab, session, disconnect, onError } = props;
   const [cache, setCache] = useState<Cache>(new Map());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
@@ -207,7 +212,8 @@ export function Navigator(props: Props) {
       key: ckey,
       depth: 0,
       label: c.name,
-      color: c.color,
+      color: connectionColor(c),
+      badge: typeBadge(c),
       title: c.driver === "sqlite" ? c.database : `${c.user}@${c.host}:${c.port ?? ""}/${c.database}`,
       expanded: open,
       onToggle: () => toggle(ckey, () => loadSchemas(c)),
@@ -387,6 +393,9 @@ export function Navigator(props: Props) {
         <button className="icon" title="Settings (Ctrl+,)" onClick={() => workbench().openSettings()}>
           ⚙
         </button>
+        <button className="icon" title="Import connections from DBeaver, DataGrip, pgAdmin…" onClick={onImport}>
+          ⇩
+        </button>
         <button className="icon" title="New connection" onClick={onNew}>
           +
         </button>
@@ -402,9 +411,14 @@ export function Navigator(props: Props) {
       )}
       {error && <div className="notice error small">{error}</div>}
       {connections.length === 0 && !error && (
-        <button className="empty-cta" onClick={onNew}>
-          Add your first connection
-        </button>
+        <>
+          <button className="empty-cta" onClick={onNew}>
+            Add your first connection
+          </button>
+          <button className="link small empty-import" onClick={onImport}>
+            or import them from DBeaver, DataGrip, pgAdmin…
+          </button>
+        </>
       )}
       <ul className="tree" role="tree">
         {rows.map((row) => (
@@ -437,6 +451,7 @@ export function Navigator(props: Props) {
               row.icon && <span className="tree-icon">{row.icon}</span>
             )}
             <span className="tree-label">{row.label}</span>
+            {row.badge && <span className={`type-badge ${row.badge.toLowerCase()}`}>{row.badge}</span>}
             {row.detail && <span className="tree-detail">{row.detail}</span>}
             {row.actions && (
               <span className="tree-actions" onClick={(e) => e.stopPropagation()}>

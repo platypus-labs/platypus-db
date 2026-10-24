@@ -12,7 +12,7 @@ mod metadata;
 mod transaction;
 
 pub use capabilities::{Capabilities, Explain, ExplainFormat, ObjectRef, unsupported};
-pub use config::{ConnectionConfig, DriverKind, Secret, SslMode};
+pub use config::{ConnectionConfig, DriverKind, Secret, SshAuth, SshConfig, SslMode};
 pub use connection::{
     CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, RecordBatchStream,
     ServerInfo,

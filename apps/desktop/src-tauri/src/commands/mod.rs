@@ -149,12 +149,16 @@ impl AppState {
     }
 }
 
+/// Opens a connection, through its SSH tunnel when it has one.
 pub(crate) async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, Error> {
-    match config.driver {
-        DriverKind::Postgres => PgDriver.connect(config).await,
-        DriverKind::MySql => MySqlDriver.connect(config).await,
-        DriverKind::Sqlite => SqliteDriver.connect(config).await,
-    }
+    platypus_net::connect(config, None, |config| async move {
+        match config.driver {
+            DriverKind::Postgres => PgDriver.connect(&config).await,
+            DriverKind::MySql => MySqlDriver.connect(&config).await,
+            DriverKind::Sqlite => SqliteDriver.connect(&config).await,
+        }
+    })
+    .await
 }
 
 #[derive(Debug, Serialize)]

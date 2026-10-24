@@ -204,6 +204,10 @@ Restano i P3.
 
 ### Gruppo F — Connettività e sicurezza delle credenziali
 
+**Stato: P1 completati** (tunnel SSH con password, chiave, agent e jump host; tipi
+Dev/Test/Prod con colore e commit manuale in Prod; import da DBeaver, DataGrip, pgAdmin e
+`pg_service.conf`). La conferma prima di scrivere in Prod è nel gruppo L. Restano i P2/P3.
+
 **Area:** nuovo crate `platypus-net`, `platypus-store`, `apps/desktop/src/connections/` (`ConnectionDialog.tsx`)
 **Dipende da:** 0.7
 
@@ -331,6 +335,10 @@ sezioni, scorciatoie personalizzabili, barra degli strumenti configurabile). Res
 ---
 
 ### Gruppo L — Sicurezza operativa
+
+**Stato: P1 completati** (conferma o blocco di UPDATE/DELETE senza WHERE e TRUNCATE con le
+righe stimate, conferma delle modifiche sulle connessioni Prod anche dal data editor, timer
+della transazione aperta con avviso). Restano i P2/P3.
 
 **Area:** `platypus-sql/src/analysis.rs` (analisi dello statement prima dell'esecuzione), `apps/desktop/src/guards/`
 **Dipende da:** 0.5; il gruppo F per i tipi di connessione

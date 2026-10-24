@@ -85,9 +85,18 @@ fn ssl_opts(config: &ConnectionConfig) -> Option<SslOpts> {
 }
 
 fn opts(config: &ConnectionConfig, ssl: Option<SslOpts>) -> Opts {
+    // Through a tunnel the certificate still names the server, not the tunnel's address.
+    let (address, port, ssl) = match config.connect_addr {
+        Some(addr) => (
+            addr.ip().to_string(),
+            addr.port(),
+            ssl.map(|s| s.with_danger_tls_hostname_override(Some(config.host.clone()))),
+        ),
+        None => (config.host.clone(), config.port.unwrap_or(3306), ssl),
+    };
     let mut builder = OptsBuilder::default()
-        .ip_or_hostname(config.host.clone())
-        .tcp_port(config.port.unwrap_or(3306))
+        .ip_or_hostname(address)
+        .tcp_port(port)
         .user(Some(config.user.clone()))
         .pass(config.password.as_ref().map(|p| p.expose().to_owned()))
         .db_name(Some(config.database.clone()).filter(|d| !d.is_empty()))

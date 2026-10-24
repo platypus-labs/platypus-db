@@ -1282,3 +1282,133 @@ button.toggled {
   width: 100%;
   margin-bottom: 4px;
 }
+
+/* Connections: type badges, SSH section, import */
+
+.type-badge {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: var(--radius);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: #2f9e44;
+}
+
+.type-badge.test {
+  background: #f08c00;
+}
+
+.type-badge.prod {
+  background: #c92a2a;
+}
+
+.ssh-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.import-found {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.import-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 45vh;
+  overflow: auto;
+}
+
+.align-end {
+  align-self: flex-end;
+}
+
+.empty-import {
+  margin: 4px 12px;
+  text-align: left;
+}
+
+.dialog-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dialog-tabs button {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  padding: 4px 12px;
+  color: var(--fg-muted);
+}
+
+.dialog-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--fg);
+}
+
+.dialog-page {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dialog-page[hidden] {
+  display: none;
+}
+
+/* Safety: confirmation before risky statements, long transactions */
+
+.guard .notice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.guard-statements {
+  margin: 0;
+  padding-left: 22px;
+  max-height: 40vh;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.guard-statements code {
+  font-family: var(--mono);
+  word-break: break-word;
+}
+
+button.danger {
+  background: var(--error);
+  border-color: var(--error);
+  color: #fff;
+}
+
+.tx-open {
+  font-variant-numeric: tabular-nums;
+}
+
+.tx-open.long {
+  color: var(--error);
+  font-weight: 600;
+  animation: tx-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tx-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}

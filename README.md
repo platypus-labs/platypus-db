@@ -10,6 +10,10 @@ scrolls through millions of rows.
 
 - **Connections** with TLS (libpq `sslmode` semantics), passwords in the system keychain,
   colors and a read-only flag; paste a `postgres://` or `mysql://` URL to fill the form.
+  **SSH tunnels** with a password, a key or the SSH agent, optionally through a jump host;
+  server keys are checked against `~/.ssh/known_hosts`. Connection **types** Development,
+  Test and Production: production shows a PROD badge in red and opens in manual commit.
+  **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`.
 - **Navigator**: schemas, tables, views, routines, columns, indexes and foreign keys, loaded
   lazily, with a filter.
 - **SQL editor** (CodeMirror): run the statement under the cursor (`Ctrl+Enter`) or the
@@ -36,7 +40,11 @@ scrolls through millions of rows.
   at the focused one. Dates, timestamps, the time zone, digit grouping and relative times
   follow the Settings.
 - **Export** to CSV, JSON, NDJSON or Parquet, streamed straight to the file.
-- **Transactions**: auto-commit or manual commit with Commit/Rollback.
+- **Transactions**: auto-commit or manual commit with Commit/Rollback; an open transaction
+  shows how long it has been open and warns after a while (10 minutes by default).
+- **Safety**: an `UPDATE` or `DELETE` without `WHERE`, or a `TRUNCATE`, asks first and says
+  about how many rows it changes; on production connections every change is listed and
+  confirmed before it runs, and the data editor shows its SQL before saving.
 - **Appearance** in the Settings: themes (system, light, dark, Nord, Dracula, Solarized
   Light, high contrast), your own accent, background, sidebar and text colors, interface
   size, grid row density, corner radius and the SQL editor's font size.
@@ -110,7 +118,8 @@ crates/
   platypus-driver-mysql/   MySQL / MariaDB (mysql_async)
   platypus-driver-sqlite/  SQLite (rusqlite)
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
-  platypus-store/          connections (TOML + OS keychain), query history (SQLite)
+  platypus-net/            SSH tunnels (russh)
+  platypus-store/          connections (TOML + OS keychain), imports, query history (SQLite)
   platypus-export/         streaming CSV, JSON, NDJSON and Parquet writers
   platypus-conformance/    integration suite run on every driver
   platypus-cli/            `platypus` CLI for exercising the core
