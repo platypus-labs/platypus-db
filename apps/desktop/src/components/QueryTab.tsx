@@ -132,6 +132,11 @@ function plannedOf(text: string, spans: StatementSpan[], offset: number, depth =
 
 let nextResultId = 1;
 
+/** A new result tab for `sql`, before it has a job. */
+function newResult(sql: string, offset: number, status: ResultStatus, limit: number | null): Result {
+  return { id: nextResultId++, sql, offset, jobId: null, columns: null, rows: 0, status, limit };
+}
+
 function isTerminal(status: ResultStatus, limited: boolean) {
   switch (status.kind) {
     case "affected":
@@ -374,6 +379,15 @@ export function QueryTab({
     });
   }
 
+  /** Adds a finished statement's text to the terminal-mode output. */
+  async function logTerminal(id: number, sql: string, status: ResultStatus, seen?: Seen) {
+    const text = await blockText(status, seen?.jobId ?? null, seen?.columns ?? null, seen?.rows ?? 0).catch(
+      (e: unknown) => toCommandError(e).message,
+    );
+    const failed = status.kind === "error" || (status.kind === "message" && !!status.failed);
+    setTerminalLog((log) => [...log, { id, sql, text, failed }]);
+  }
+
   /** Runs what `mode` selects in the editor, or `again` (the statements of the last run). */
   async function run(mode: RunMode, force = false, again?: Planned[]) {
     if (running && !force) return;
@@ -407,16 +421,8 @@ export function QueryTab({
     if (!append) closeJobs();
     const script = mode === "script" && planned.length > 1;
     const limit = tab.terminal ? TERMINAL_ROWS : script ? getSetting(scriptRowLimit) : null;
-    const resultOf = (p: Planned, first: boolean): Result => ({
-      id: nextResultId++,
-      sql: p.sql,
-      offset: p.offset,
-      jobId: null,
-      columns: null,
-      rows: 0,
-      status: { kind: first ? "running" : "pending" },
-      limit,
-    });
+    const resultOf = (p: Planned, first: boolean) =>
+      newResult(p.sql, p.offset, { kind: first ? "running" : "pending" }, limit);
     // `queue` grows when an `@include` adds a file's statements after itself.
     const queue = [...planned];
     const own = queue.map((p, i) => resultOf(p, i === 0));
@@ -525,12 +531,7 @@ export function QueryTab({
       if (token !== runToken.current) return;
       // runOne reports the statuses of a job; commands, exports and cancelled ones are set here.
       if (seen.jobId === null) update(result.id, { status });
-      if (tab.terminal) {
-        const text = await blockText(status, seen.jobId, seen.columns, seen.rows).catch(
-          (e: unknown) => toCommandError(e).message,
-        );
-        setTerminalLog((log) => [...log, { id: result.id, sql, text, failed: status.kind === "error" }]);
-      }
+      if (tab.terminal) await logTerminal(result.id, sql, status, seen);
       if (status.kind === "rows") lastRows = i;
       if (status.kind === "error") {
         failed = i;
@@ -563,16 +564,7 @@ export function QueryTab({
     const sessionId = await ensureSession();
     if (sessionId === null) return;
     const client = cliName(connection.driver);
-    const result: Result = {
-      id: nextResultId++,
-      sql: script,
-      offset: from !== to ? from : 0,
-      jobId: null,
-      columns: null,
-      rows: 0,
-      status: { kind: "running" },
-      limit: null,
-    };
+    const result = newResult(script, from !== to ? from : 0, { kind: "running" }, null);
     runToken.current++;
     closeJobs();
     setResults([result]);
@@ -592,10 +584,7 @@ export function QueryTab({
       status = { kind: "error", error: toCommandError(e) };
     }
     update(result.id, { status });
-    if (tab.terminal) {
-      const text = status.kind === "message" ? status.text : await blockText(status, null, null, 0);
-      setTerminalLog((log) => [...log, { id: result.id, sql: script, text, failed: status.kind === "error" || !!(status.kind === "message" && status.failed) }]);
-    }
+    if (tab.terminal) await logTerminal(result.id, script, status);
     setRunning(false);
     onNeedCatalog(true);
     await refreshTx(sessionId);

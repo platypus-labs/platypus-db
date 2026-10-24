@@ -3,7 +3,7 @@
 //! which the editor looks up in the catalog it has.
 
 use crate::analysis::Words;
-use crate::{Dialect, Lexer, TableName, TokenKind};
+use crate::{Dialect, TableName, TokenKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LintKind {
@@ -215,12 +215,7 @@ fn select_star(w: &Words<'_>, i: usize) -> bool {
 /// Lints one statement; offsets are byte offsets into `sql`.
 #[must_use]
 pub fn lint(sql: &str, dialect: Dialect) -> Lint {
-    let w = Words {
-        src: sql,
-        tokens: Lexer::new(sql, dialect)
-            .filter(|t| !t.is_trivia())
-            .collect(),
-    };
+    let w = Words::new(sql, dialect);
     let ctes = ctes(&w, dialect);
     let mut lint = Lint::default();
     let mut table_names = Vec::new();

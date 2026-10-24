@@ -69,11 +69,21 @@ const MODIFIERS: &[&str] = &[
 ];
 
 pub(crate) struct Words<'a> {
-    pub(crate) src: &'a str,
+    src: &'a str,
     pub(crate) tokens: Vec<Token>,
 }
 
-impl Words<'_> {
+impl<'a> Words<'a> {
+    /// The tokens of `sql` without whitespace and comments.
+    pub(crate) fn new(sql: &'a str, dialect: Dialect) -> Self {
+        Words {
+            src: sql,
+            tokens: Lexer::new(sql, dialect)
+                .filter(|t| !t.is_trivia())
+                .collect(),
+        }
+    }
+
     pub(crate) fn word(&self, i: usize) -> Option<String> {
         let t = self.tokens.get(i)?;
         (t.kind == TokenKind::Word).then(|| t.text(self.src).to_ascii_uppercase())
@@ -195,12 +205,7 @@ pub fn analyze(sql: &str, dialect: Dialect) -> Analysis {
             unfiltered: None,
         };
     }
-    let w = Words {
-        src: sql,
-        tokens: Lexer::new(sql, dialect)
-            .filter(|t| !t.is_trivia())
-            .collect(),
-    };
+    let w = Words::new(sql, dialect);
     let first = w.word(0).unwrap_or_default();
     // A `WITH` names its main statement after the common table expressions.
     let main = if first == "WITH" {
