@@ -37,7 +37,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 type Dialog =
-  | { kind: "connection"; connection: SavedConnection; existing: boolean; memberOf: string[] }
+  | { kind: "connection"; connection: SavedConnection; existing: boolean; memberOf: string[]; driverChosen?: boolean }
   | { kind: "add-connections" }
   | { kind: "import" }
   | { kind: "project"; project: Project | null }
@@ -114,6 +114,8 @@ export function App() {
       if (i.devtools) {
         (window as unknown as { __platypus: object }).__platypus = {
           switchProject: (id: string | null) => shell.current.switchProject(id),
+          // What a file dropped on the window does; CDP cannot drop files.
+          openDroppedFile: (path: string) => openDroppedFile(path),
         };
       }
     }, console.error);
@@ -245,7 +247,7 @@ export function App() {
     const connection = await api.defaultConnection("duckdb");
     const name = path.split(/[\\/]/).pop() ?? path;
     const active = shell.current.activeProject;
-    setDialog({ kind: "connection", connection: { ...connection, name, database: path }, existing: false, memberOf: active ? [active] : [] });
+    setDialog({ kind: "connection", connection: { ...connection, name, database: path }, existing: false, memberOf: active ? [active] : [], driverChosen: true });
   }
 
   useEffect(() => {
@@ -652,6 +654,7 @@ export function App() {
           existing={dialog.existing}
           projects={projects ?? []}
           memberOf={dialog.memberOf}
+          driverChosen={dialog.driverChosen}
           onClose={() => setDialog(null)}
           onSaved={(all) => void connectionsSaved(all)}
         />

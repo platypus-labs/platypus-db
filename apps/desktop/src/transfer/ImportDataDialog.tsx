@@ -45,6 +45,8 @@ const plural = (n: number, word: string) => `${n.toLocaleString()} ${word}${n ==
 export function ImportDataDialog({ connection, database, schema, currentSchema, table, path: initial, onClose }: Props) {
   const [sid, setSid] = useState<number | null>(null);
   const [path, setPath] = useState(initial ?? "");
+  /** The file the preview shows: an edited path is read again on Enter. */
+  const [loaded, setLoaded] = useState<string | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [newTable, setNewTable] = useState("");
   const [newColumns, setNewColumns] = useState<NewColumn[]>([]);
@@ -82,10 +84,12 @@ export function ImportDataDialog({ connection, database, schema, currentSchema, 
     try {
       const p = await api.previewImport(sid, file, sheet);
       setPreview(p);
+      setLoaded(file);
       setNewTable(p.table);
       setNewColumns(p.columns.map((c) => ({ include: true, target: c.name, type: c.target_type })));
     } catch (e) {
       setPreview(null);
+      setLoaded(null);
       setError(toCommandError(e).message);
     }
   }
@@ -126,7 +130,7 @@ export function ImportDataDialog({ connection, database, schema, currentSchema, 
     if (sid === null || !preview) return;
     setStatus({ state: "running", id: null, rows: 0 });
     try {
-      const id = await api.importFile(sid, path, plan(preview), (event) => {
+      const id = await api.importFile(sid, loaded!, plan(preview), (event) => {
         switch (event.type) {
           case "progress":
             setStatus((s) => (s.state === "running" ? { ...s, rows: event.rows } : s));
@@ -152,6 +156,7 @@ export function ImportDataDialog({ connection, database, schema, currentSchema, 
   const p = preview ? plan(preview) : null;
   const ready =
     p !== null &&
+    loaded === path.trim() &&
     p.table !== "" &&
     p.columns.length > 0 &&
     p.columns.every((c) => c.target !== "" && (c.data_type === null || c.data_type !== ""));
@@ -166,7 +171,14 @@ export function ImportDataDialog({ connection, database, schema, currentSchema, 
         <div className="row">
           <label className="field grow">
             <span>File</span>
-            <input value={path} readOnly placeholder="CSV, TSV, JSON, NDJSON, Parquet or Excel" title={path} />
+            <input
+              value={path}
+              disabled={running}
+              placeholder="CSV, TSV, JSON, NDJSON, Parquet or Excel"
+              title={path}
+              onChange={(e) => setPath(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && path.trim() && void load(path.trim(), null)}
+            />
           </label>
           <button type="button" className="align-end" disabled={running || sid === null} onClick={() => void choose()}>
             Choose file…
@@ -174,7 +186,7 @@ export function ImportDataDialog({ connection, database, schema, currentSchema, 
           {preview && preview.tables.length > 1 && (
             <label className="field">
               <span>Sheet</span>
-              <select value={preview.table} disabled={running} onChange={(e) => void load(path, e.target.value)}>
+              <select value={preview.table} disabled={running} onChange={(e) => void load(loaded!, e.target.value)}>
                 {preview.tables.map((t) => (
                   <option key={t}>{t}</option>
                 ))}

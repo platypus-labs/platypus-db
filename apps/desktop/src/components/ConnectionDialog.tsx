@@ -30,6 +30,8 @@ interface Props {
   projects: Project[];
   /** The projects the connection is in, or (new) goes into. */
   memberOf: string[];
+  /** A new connection whose driver is decided, e.g. a dropped data file: no driver picker. */
+  driverChosen?: boolean;
   onSaved: (all: SavedConnection[]) => void;
   onClose: () => void;
 }
@@ -108,7 +110,7 @@ function withPasswordSource(c: SavedConnection, source: PasswordSource): SavedCo
   };
 }
 
-export function ConnectionDialog({ initial, existing, projects, memberOf, onSaved, onClose }: Props) {
+export function ConnectionDialog({ initial, existing, projects, memberOf, driverChosen, onSaved, onClose }: Props) {
   const [conn, setConn] = useState(initial);
   const [inProjects, setInProjects] = useState(() => new Set(memberOf));
   const [password, setPassword] = useState("");
@@ -116,7 +118,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
   const [sshTyped, setSshTyped] = useState<Record<string, string>>({});
   const [page, setPage] = useState<Page>("general");
   /** A new connection starts from the choice of the database. */
-  const [picking, setPicking] = useState(!existing);
+  const [picking, setPicking] = useState(!existing && !driverChosen);
   const [savedSsh] = useState(() => sshSecretIds(existing ? initial.ssh : null));
   const [profiles, setProfiles] = useState<NetworkProfile[]>([]);
   /** The network profile being edited in its own dialog, and whether it is saved. */
