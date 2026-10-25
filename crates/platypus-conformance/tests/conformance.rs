@@ -1936,3 +1936,98 @@ async fn imports_data_files() {
         conn.commit().await.unwrap();
     }
 }
+
+/// A table copied from every database into every other, in a table created with the types
+/// mapped to the target's.
+#[tokio::test]
+async fn transfers_tables_between_databases() {
+    use platypus_export::import::{ImportColumn, ImportMode, ImportPlan, import, target_type};
+    use platypus_sql::Dialect;
+
+    let all = backends().await;
+    for b in &all {
+        let conn = b.connect().await;
+        let d = Dialect::from(b.config.driver);
+        let src = d.qualified(Some(&b.schema), "conf_xfer_src");
+        let _ = run(&*conn, &format!("DROP TABLE {src}")).await;
+        run(
+            &*conn,
+            &format!(
+                "CREATE TABLE {src} (id INT, name VARCHAR(20), price DECIMAL(10, 2), day DATE)"
+            ),
+        )
+        .await
+        .unwrap();
+        run(
+            &*conn,
+            &format!(
+                "INSERT INTO {src} VALUES (1, 'it''s', 1.50, '2024-03-01'), (2, NULL, 2.25, '2024-12-31'), (3, 'ink', NULL, NULL)"
+            ),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+    }
+    for from in &all {
+        let source = from.connect().await;
+        let source_dialect = Dialect::from(from.config.driver);
+        let ExecResult::Rows(stream) = source
+            .execute(
+                &format!(
+                    "SELECT * FROM {} WHERE 1 = 0",
+                    source_dialect.qualified(Some(&from.schema), "conf_xfer_src")
+                ),
+                &ExecOptions::default(),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("{}: no schema", from.name);
+        };
+        let fields = stream.schema().fields().clone();
+        drop(stream);
+        for to in &all {
+            let pair = format!("{} -> {}", from.name, to.name);
+            let target = to.connect().await;
+            let d = Dialect::from(to.config.driver);
+            let dst = d.qualified(Some(&to.schema), "conf_xfer_dst");
+            let _ = run(&*target, &format!("DROP TABLE {dst}")).await;
+            let plan = ImportPlan {
+                source_table: "conf_xfer_src".to_owned(),
+                source_schema: Some(from.schema.clone()),
+                schema: Some(to.schema.clone()),
+                table: "conf_xfer_dst".to_owned(),
+                create: true,
+                mode: ImportMode::Append,
+                keys: Vec::new(),
+                columns: fields
+                    .iter()
+                    .map(|f| ImportColumn {
+                        source: f.name().clone(),
+                        target: f.name().to_lowercase(),
+                        data_type: Some(target_type(f, d)),
+                    })
+                    .collect(),
+            };
+            let rows = import((&*source, source_dialect), (&*target, d), &plan, |_| true)
+                .await
+                .unwrap_or_else(|e| panic!("{pair}: {e}"));
+            assert_eq!(rows, 3, "{pair}");
+            let check =
+                format!("SELECT COUNT(*), SUM(id), MAX(name), SUM(price), COUNT(day) FROM {dst}");
+            let batches = collect(to, &*target, &check).await;
+            let values: Vec<_> = (0..5).map(|c| cell(&batches[0], c, 0)).collect();
+            assert_eq!(values[0].as_deref(), Some("3"), "{pair}");
+            assert_eq!(values[1].as_deref(), Some("6"), "{pair}");
+            assert_eq!(values[2].as_deref(), Some("it's"), "{pair}");
+            let price: f64 = values[3].as_deref().unwrap().parse().unwrap();
+            assert!((price - 3.75).abs() < 1e-9, "{pair}: {price}");
+            assert_eq!(values[4].as_deref(), Some("2"), "{pair}");
+            run(&*target, &format!("DROP TABLE {dst}")).await.unwrap();
+        }
+    }
+    for b in &all {
+        let conn = b.connect().await;
+        let src = Dialect::from(b.config.driver).qualified(Some(&b.schema), "conf_xfer_src");
+        run(&*conn, &format!("DROP TABLE {src}")).await.unwrap();
+    }
+}

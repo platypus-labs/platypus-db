@@ -9,9 +9,9 @@
 
 use arrow_array::RecordBatch;
 use arrow_cast::display::{ArrayFormatter, FormatOptions};
-use arrow_schema::ArrowError;
+use arrow_schema::{ArrowError, DataType, Field, TimeUnit};
 use futures::StreamExt;
-use platypus_core::{Connection, ExecOptions, ExecResult};
+use platypus_core::{Connection, ExecOptions, ExecResult, META_DB_TYPE};
 use platypus_sql::Dialect;
 use platypus_sql::dml::{Column, InvalidValue, ValueKind};
 use serde::Deserialize;
@@ -200,6 +200,46 @@ impl ImportPlan {
     }
 }
 
+/// The column type in `target` that holds the values of `field`: from its Arrow type, or from
+/// the type the source declares where Arrow only has text (SQLite's columns take their type
+/// from their values, so an empty result has none).
+#[must_use]
+pub fn target_type(field: &Field, target: Dialect) -> String {
+    let declared = matches!(
+        field.data_type(),
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View | DataType::Null
+    )
+    .then(|| field.metadata().get(META_DB_TYPE))
+    .flatten()
+    .and_then(|t| declared_type(t));
+    target.column_type(declared.as_ref().unwrap_or(field.data_type()))
+}
+
+/// The Arrow type of a declared column type, for the types other databases share.
+fn declared_type(name: &str) -> Option<DataType> {
+    let name = name.trim().to_ascii_uppercase();
+    let (base, args) = match name.split_once('(') {
+        Some((base, args)) => (base.trim(), Some(args.trim_end_matches(')'))),
+        None => (name.as_str(), None),
+    };
+    Some(match base {
+        "INT" | "INTEGER" | "BIGINT" | "SMALLINT" | "TINYINT" | "MEDIUMINT" | "INT8" | "INT4" => {
+            DataType::Int64
+        }
+        "REAL" | "FLOAT" | "DOUBLE" | "DOUBLE PRECISION" => DataType::Float64,
+        "BOOLEAN" | "BOOL" => DataType::Boolean,
+        "DATE" => DataType::Date32,
+        "DATETIME" | "TIMESTAMP" => DataType::Timestamp(TimeUnit::Microsecond, None),
+        "DECIMAL" | "NUMERIC" => {
+            let (p, s) = args?.split_once(',').unwrap_or((args?, "0"));
+            let p: u8 = p.trim().parse().ok()?;
+            let s: i8 = s.trim().parse().ok()?;
+            DataType::Decimal128(p.min(38), s)
+        }
+        _ => return None,
+    })
+}
+
 /// The values of `batch` as text, row by row, `None` for NULL: what an import writes.
 pub fn rows_text(batch: &RecordBatch) -> Result<Vec<Vec<Option<String>>>, ArrowError> {
     let options = FormatOptions::default();
@@ -373,6 +413,33 @@ mod tests {
         assert!(
             p.insert_sql(Dialect::Postgres, &batch()).unwrap()[0]
                 .starts_with("INSERT INTO public.\"Sales\" (id, item) VALUES")
+        );
+    }
+
+    #[test]
+    fn types_of_text_columns_from_their_declared_type() {
+        let field = |data_type: DataType, declared: &str| {
+            Field::new("c", data_type, true).with_metadata(std::collections::HashMap::from([(
+                META_DB_TYPE.to_owned(),
+                declared.to_owned(),
+            )]))
+        };
+        let d = Dialect::Postgres;
+        assert_eq!(
+            target_type(&field(DataType::Utf8, "DECIMAL(10, 2)"), d),
+            "DECIMAL(10, 2)"
+        );
+        assert_eq!(target_type(&field(DataType::Utf8, "INT"), d), "BIGINT");
+        assert_eq!(target_type(&field(DataType::Utf8, "uuid"), d), "TEXT");
+        assert_eq!(
+            target_type(&field(DataType::Utf8, "numeric"), d),
+            "TEXT",
+            "no precision"
+        );
+        // A typed column keeps its type.
+        assert_eq!(
+            target_type(&field(DataType::Float64, "DECIMAL(10, 2)"), d),
+            "DOUBLE PRECISION"
         );
     }
 
