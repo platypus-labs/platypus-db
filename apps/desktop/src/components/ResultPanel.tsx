@@ -74,6 +74,8 @@ interface PanelProps {
   sort?: { column: string; desc: boolean } | null;
   /** Header clicks with the column name; the data viewer sorts with them. */
   onHeaderClick?: (column: string) => void;
+  /** Why the headers do not sort, as their tooltip. */
+  headerHint?: string;
   /** Passed to the grid's actions. */
   source?: GridSource | null;
   /** The table whose rows the result shows, to edit them. */
@@ -81,7 +83,7 @@ interface PanelProps {
   notes?: NotesScope | null;
 }
 
-export function ResultPanel({ result, sort, onHeaderClick, source, edit, notes }: PanelProps) {
+export function ResultPanel({ result, sort, onHeaderClick, headerHint, source, edit, notes }: PanelProps) {
   const [cache, setCache] = useState<RowCache | null>(null);
   const [version, setVersion] = useState(0);
   const { jobId, columns, status } = result;
@@ -148,6 +150,7 @@ export function ResultPanel({ result, sort, onHeaderClick, source, edit, notes }
         version={version}
         sort={sort}
         onHeaderClick={onHeaderClick && ((i) => onHeaderClick(columns[i]!.name))}
+        headerHint={headerHint}
         source={source}
         edit={edit}
         notes={notes}

@@ -134,12 +134,6 @@ export function viewerSql(driver: DriverKind, table: string, filter = ""): strin
   return `SELECT *\nFROM ${table}${filter.trim() ? `\nWHERE ${filter.trim()}` : ""}`;
 }
 
-/** A MongoDB viewer's query sorted by a field; SQL viewers sort with `api.sqlOrderBy`. */
-export function mongoSortedSql(table: string, sort: Sort | null): string {
-  const order = sort ? `.sort({ ${quoteIdent(sort.column, "mongo")}: ${sort.desc ? -1 : 1} })` : "";
-  return `${table}.find({})${order}`;
-}
-
 /** The drag type of a table or column dragged from the navigator: `{ name, select? }`, the
  *  quoted name and, for a table, a query of it. */
 export const SQL_DRAG = "application/x-platypus-sql";

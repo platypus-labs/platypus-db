@@ -27,7 +27,7 @@ import { type EditorHost, type RunMode, SqlEditor, type SqlEditorHandle } from "
 import { TERMINAL_ROWS, type TerminalBlock, TerminalView, blockText } from "../editor/terminal";
 import { VariablesPanel } from "../editor/VariablesPanel";
 import { defineSetting, getSetting, useSetting } from "../settings";
-import { mongoSortedSql, type Sort, viewerSql } from "../sqlNames";
+import { type Sort, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { basename } from "../workspace";
@@ -73,6 +73,13 @@ const scriptRowLimit = defineSetting({
 
 /** `sql` as the viewer compares queries: trimmed, without a final `;`. */
 const queryKey = (sql: string) => sql.trim().replace(/;$/, "");
+
+/** The range of the statement that produced `result` in the editor's `text`, when it still holds it. */
+function statementRange(result: Result, text: string) {
+  if (result.offset < 0) return null;
+  const to = result.offset + result.sql.length;
+  return text.slice(result.offset, to) === result.sql ? { from: result.offset, to } : null;
+}
 
 /** A SQL editor, or with `table` set, the data viewer of a table. */
 export interface QueryTabModel extends TabBase {
@@ -210,10 +217,27 @@ export function QueryTab({
   const [results, setResults] = useState<Result[]>([]);
   const [activeResult, setActiveResult] = useState(0);
   const [running, setRunning] = useState(false);
+  // Whether the shown result's statement is in the editor and a read-only query the header
+  // sort can rewrite with certainty.
+  const shown = results[activeResult];
+  useEffect(() => {
+    let live = true;
+    setSortable(false);
+    if (!tab.table || shown?.status.kind !== "rows" || !statementRange(shown, tab.sql)) return;
+    api.sqlSortable(shown.sql, connection.driver).then(
+      (ok) => live && setSortable(ok),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [tab.table, shown?.id, shown?.sql, shown?.offset, shown?.status.kind, tab.sql, connection.driver]);
   /** The run going on was started by auto-refresh. */
   const autoRun = useRef(false);
   /** Texts of the data viewer's own queries: its first one and each sort's, to tell them from other queries. */
   const viewerQueries = useRef(new Set([queryKey(tab.sql)]));
+  /** The data viewer's shown result is a query the header sort and quick filters can rewrite. */
+  const [sortable, setSortable] = useState(false);
   const [blocked, setBlocked] = useState<RunMode | null>(null);
   const [panel, setPanel] = useState<SidePanel | null>(null);
   const togglePanel = (p: SidePanel) => setPanel((open) => (open === p ? null : p));
@@ -779,35 +803,68 @@ export function QueryTab({
     }
   }
 
-  /** Data viewer: sorts the editor's query, which stays as written, and runs it. */
-  function applyViewer(patch: { sort: Sort | null }) {
-    if (!tab.table) return;
-    if (unsaved.current) {
-      void ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }).then((yes) => {
-        if (!yes) return;
-        unsaved.current = false;
-        applyViewer(patch);
-      });
-      return;
+  /**
+   * Data viewer: rewrites the statement that produced `result` in the editor (only that
+   * statement, the rest of the text stays) and runs it. `false` when the editor no longer holds
+   * the statement or the rewrite cannot place the change with certainty.
+   */
+  async function rewriteStatement(result: Result, rewrite: (sql: string) => Promise<string | null>): Promise<boolean> {
+    const ed = editor.current!;
+    const text = ed.getText();
+    const range = statementRange(result, text);
+    let next: string | null = null;
+    try {
+      next = range ? await rewrite(result.sql) : null;
+    } catch (e) {
+      onError(toCommandError(e).message);
+      return false;
     }
-    const table = tab.table;
-    const { sort } = patch;
-    void (async () => {
-      const text = editor.current!.getText();
-      let next: string;
-      try {
-        next = isMongo(connection.driver)
-          ? mongoSortedSql(table, sort)
-          : await api.sqlOrderBy(text, connection.driver, sort?.column ?? null, sort?.desc ?? false);
-      } catch (e) {
-        return onError(toCommandError(e).message);
-      }
-      onChange({ sort });
-      setCount(null);
-      viewerQueries.current.add(queryKey(next));
-      editor.current!.setText(next);
-      void run("statement");
-    })();
+    if (!range || next === null) {
+      onError(t("This query cannot be changed from the grid: edit it in the editor."));
+      return false;
+    }
+    viewerQueries.current.add(queryKey(next));
+    ed.setText(text.slice(0, range.from) + next + text.slice(range.to));
+    // The cursor inside the statement, so that it is the one that runs.
+    const inside = range.from + Math.floor(next.length / 2);
+    ed.select(inside, inside);
+    void run("statement");
+    return true;
+  }
+
+  /** Goes on once edited rows are saved or discarded. */
+  function afterDiscard(go: () => void) {
+    if (!unsaved.current) return go();
+    void ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }).then((yes) => {
+      if (!yes) return;
+      unsaved.current = false;
+      go();
+    });
+  }
+
+  /** Data viewer: sorts the shown result's statement and runs it. */
+  function applyViewer(sort: Sort | null) {
+    const result = results[activeResult];
+    if (!tab.table || !result) return;
+    afterDiscard(() => {
+      const column = sort?.column ?? null;
+      void rewriteStatement(result, (sql) => api.sqlOrderBy(sql, connection.driver, column, sort?.desc ?? false)).then((done) => {
+        if (!done) return;
+        onChange({ sort });
+        setCount(null);
+      });
+    });
+  }
+
+  /** Quick filter of the grid: adds `condition` to the WHERE of the shown result's statement. */
+  function addCondition(condition: string) {
+    const result = results[activeResult];
+    if (!result) return;
+    afterDiscard(() => {
+      void rewriteStatement(result, (sql) => api.sqlAddCondition(sql, connection.driver, condition)).then(
+        (done) => done && setCount(null),
+      );
+    });
   }
 
   /** Whether `sql` is one of the viewer's own queries: it reads exactly the viewer's table. */
@@ -818,9 +875,9 @@ export function QueryTab({
   /** Header clicks cycle a column through ascending, descending and unsorted. */
   function sortBy(column: string) {
     const sort = tab.sort ?? null;
-    if (sort?.column !== column) applyViewer({ sort: { column, desc: false } });
-    else if (!sort.desc) applyViewer({ sort: { column, desc: true } });
-    else applyViewer({ sort: null });
+    if (sort?.column !== column) applyViewer({ column, desc: false });
+    else if (!sort.desc) applyViewer({ column, desc: true });
+    else applyViewer(null);
   }
 
   async function countRows() {
@@ -829,9 +886,12 @@ export function QueryTab({
     const sessionId = await sideSession();
     if (sessionId === null) return setCount(null);
     try {
-      const query = isMongo(connection.driver)
-        ? `${tab.table}.countDocuments({})`
-        : await api.sqlCountQuery(editor.current!.getText(), connection.driver);
+      // The statement of the shown result, else the editor's text.
+      const query = await api.sqlCountQuery(results[activeResult]?.sql ?? editor.current!.getText(), connection.driver);
+      if (query === null) {
+        setCount(null);
+        return onError(t("This query cannot be counted."));
+      }
       const value = await api.queryValue(sessionId, query);
       setCount(value === null ? null : plural(Number(value), "{n} row", "{n} rows"));
     } catch (e) {
@@ -1294,12 +1354,18 @@ export function QueryTab({
               key={current.id}
               result={current}
               sort={tab.table ? (tab.sort ?? null) : null}
-              onHeaderClick={tab.table && !running ? sortBy : undefined}
+              onHeaderClick={tab.table && sortable && !running ? sortBy : undefined}
+              headerHint={
+                tab.table && !sortable && current.status.kind === "rows"
+                  ? t("This query cannot be sorted from the header: it is not one read-only query that an ORDER BY can be added to.")
+                  : undefined
+              }
               source={{
                 connection,
                 sql: current.sql,
                 jobId: current.jobId,
                 table: tab.table ?? null,
+                viewer: tab.table && sortable ? { addCondition } : undefined,
               }}
               edit={editTarget(current)}
               notes={notesScope(current)}

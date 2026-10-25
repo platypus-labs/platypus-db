@@ -17,6 +17,7 @@ import { type TableEditTarget, useTableEditor } from "./edit/TableEditor";
 import "./features/actions";
 import "./features/columns";
 import "./features/copy";
+import "./features/filters";
 import { useReferences } from "./features/references";
 import { useGridSearch } from "./features/search";
 import { useSelectionStats } from "./features/stats";
@@ -85,6 +86,8 @@ interface Props {
   version: number;
   sort?: { column: string; desc: boolean } | null;
   onHeaderClick?: (column: number) => void;
+  /** Tooltip of the headers when they do not sort. */
+  headerHint?: string;
   source?: GridSource | null;
   /** The table behind the result, to edit it and follow its foreign keys. */
   edit?: TableEditTarget | null;
@@ -93,7 +96,7 @@ interface Props {
 }
 
 /** A result's grid with its features: editing, search, column layout, totals and panels. */
-export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onHeaderClick, source, edit, notes }: Props) {
+export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onHeaderClick, headerHint, source, edit, notes }: Props) {
   const notesVersion = useCatalogVersion();
   const noteOf = (col: number) =>
     notes && columns[col]
@@ -172,7 +175,11 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
           <DataGrid
             ref={grid}
             columns={columns}
-            headerTitle={notes ? (col) => annotation(noteOf(col)) : undefined}
+            headerTitle={
+              notes || headerHint
+                ? (col) => [notes ? annotation(noteOf(col)) : undefined, headerHint].filter(Boolean).join("\n") || undefined
+                : undefined
+            }
             headerVersion={notesVersion}
             headerMarked={notes ? (col) => { const e = noteOf(col); return !!(e?.note || e?.tags.length); } : undefined}
             rowCount={rowCount}
