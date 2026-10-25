@@ -59,7 +59,7 @@ async function openTable(
     // Opened as a table; the editor checks the keys again.
   }
   workbench().openTab("query", connection.id, {
-    sql: viewerSql(connection.driver, target, "", null),
+    sql: viewerSql(connection.driver, target),
     autorun: true,
     title: table,
     table: target,

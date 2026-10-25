@@ -175,7 +175,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
           <button
             onClick={() =>
               workbench().openTab("query", connection.id, {
-                sql: viewerSql(connection.driver, qualified, "", null),
+                sql: viewerSql(connection.driver, qualified),
                 autorun: true,
                 title: tab.name,
                 table: qualified,

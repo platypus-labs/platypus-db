@@ -384,7 +384,7 @@ export function Navigator(props: Props) {
       t.kind === "query" && t.connectionId === c.id && (t.database ?? null) === db && t.table === target;
     if (workbench().focusTab(showing)) return;
     onOpenTab(c, {
-      sql: viewerSql(c.driver, target, "", null),
+      sql: viewerSql(c.driver, target),
       autorun: true,
       title: object.name,
       table: target,

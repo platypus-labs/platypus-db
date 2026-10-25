@@ -126,17 +126,18 @@ export interface Sort {
   desc: boolean;
 }
 
-/** The data viewer's query for a table (already quoted), a `WHERE` filter and a sort. On
- *  MongoDB the table is a collection reference and the filter a query document. */
-export function viewerSql(driver: DriverKind, table: string, filter: string, sort: Sort | null): string {
-  if (driver === "mongo") {
-    const order = sort ? `.sort({ ${quoteIdent(sort.column, driver)}: ${sort.desc ? -1 : 1} })` : "";
-    return `${table}.find(${filter.trim() || "{}"})${order}`;
-  }
-  let sql = `SELECT *\nFROM ${table}`;
-  if (filter.trim()) sql += `\nWHERE ${filter.trim()}`;
-  if (sort) sql += `\nORDER BY ${quoteIdent(sort.column, driver)} ${sort.desc ? "DESC" : "ASC"}`;
-  return sql;
+/** The data viewer's first query for a table (already quoted) and an optional `WHERE`
+ *  condition. On MongoDB the table is a collection reference and the filter a query document.
+ *  Once open, the editor's text is the query: `api.sqlOrderBy` sorts it. */
+export function viewerSql(driver: DriverKind, table: string, filter = ""): string {
+  if (driver === "mongo") return `${table}.find(${filter.trim() || "{}"})`;
+  return `SELECT *\nFROM ${table}${filter.trim() ? `\nWHERE ${filter.trim()}` : ""}`;
+}
+
+/** A MongoDB viewer's query sorted by a field; SQL viewers sort with `api.sqlOrderBy`. */
+export function mongoSortedSql(table: string, sort: Sort | null): string {
+  const order = sort ? `.sort({ ${quoteIdent(sort.column, "mongo")}: ${sort.desc ? -1 : 1} })` : "";
+  return `${table}.find({})${order}`;
 }
 
 /** The drag type of a table or column dragged from the navigator: `{ name, select? }`, the

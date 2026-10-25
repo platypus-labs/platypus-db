@@ -27,7 +27,7 @@ import { type EditorHost, type RunMode, SqlEditor, type SqlEditorHandle } from "
 import { TERMINAL_ROWS, type TerminalBlock, TerminalView, blockText } from "../editor/terminal";
 import { VariablesPanel } from "../editor/VariablesPanel";
 import { defineSetting, getSetting, useSetting } from "../settings";
-import { type Sort, viewerSql } from "../sqlNames";
+import { mongoSortedSql, type Sort, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { basename } from "../workspace";
@@ -70,6 +70,9 @@ const scriptRowLimit = defineSetting({
   default: 1000,
   control: { type: "number", min: 1, step: 100 },
 });
+
+/** `sql` as the viewer compares queries: trimmed, without a final `;`. */
+const queryKey = (sql: string) => sql.trim().replace(/;$/, "");
 
 /** A SQL editor, or with `table` set, the data viewer of a table. */
 export interface QueryTabModel extends TabBase {
@@ -209,6 +212,8 @@ export function QueryTab({
   const [running, setRunning] = useState(false);
   /** The run going on was started by auto-refresh. */
   const autoRun = useRef(false);
+  /** Texts of the data viewer's own queries: its first one and each sort's, to tell them from other queries. */
+  const viewerQueries = useRef(new Set([queryKey(tab.sql)]));
   const [blocked, setBlocked] = useState<RunMode | null>(null);
   const [panel, setPanel] = useState<SidePanel | null>(null);
   const togglePanel = (p: SidePanel) => setPanel((open) => (open === p ? null : p));
@@ -774,7 +779,7 @@ export function QueryTab({
     }
   }
 
-  /** Data viewer: rebuilds the query for a new sort, then runs it. */
+  /** Data viewer: sorts the editor's query, which stays as written, and runs it. */
   function applyViewer(patch: { sort: Sort | null }) {
     if (!tab.table) return;
     if (unsaved.current) {
@@ -785,10 +790,29 @@ export function QueryTab({
       });
       return;
     }
-    onChange({ sort: patch.sort });
-    setCount(null);
-    editor.current!.setText(viewerSql(connection.driver, tab.table, "", patch.sort));
-    void run("statement");
+    const table = tab.table;
+    const { sort } = patch;
+    void (async () => {
+      const text = editor.current!.getText();
+      let next: string;
+      try {
+        next = isMongo(connection.driver)
+          ? mongoSortedSql(table, sort)
+          : await api.sqlOrderBy(text, connection.driver, sort?.column ?? null, sort?.desc ?? false);
+      } catch (e) {
+        return onError(toCommandError(e).message);
+      }
+      onChange({ sort });
+      setCount(null);
+      viewerQueries.current.add(queryKey(next));
+      editor.current!.setText(next);
+      void run("statement");
+    })();
+  }
+
+  /** Whether `sql` is one of the viewer's own queries: it reads exactly the viewer's table. */
+  function isViewerQuery(sql: string) {
+    return viewerQueries.current.has(queryKey(sql)) || sql === viewerSql(connection.driver, tab.table ?? "");
   }
 
   /** Header clicks cycle a column through ascending, descending and unsorted. */
@@ -804,8 +828,10 @@ export function QueryTab({
     setCount(t("counting…"));
     const sessionId = await sideSession();
     if (sessionId === null) return setCount(null);
-    const query = isMongo(connection.driver) ? `${tab.table}.countDocuments({})` : `SELECT COUNT(*) FROM ${tab.table}`;
     try {
+      const query = isMongo(connection.driver)
+        ? `${tab.table}.countDocuments({})`
+        : await api.sqlCountQuery(editor.current!.getText(), connection.driver);
       const value = await api.queryValue(sessionId, query);
       setCount(value === null ? null : plural(Number(value), "{n} row", "{n} rows"));
     } catch (e) {
@@ -946,7 +972,7 @@ export function QueryTab({
     const viewer =
       !!tab.table &&
       !!ref &&
-      result.sql === viewerSql(connection.driver, tab.table, "", tab.sort ?? null);
+      isViewerQuery(result.sql);
     if (!viewer && results.length !== 1) return null;
     const forget = <T,>(p: Promise<T>, drop: () => void) =>
       p.catch((e: unknown) => {
@@ -989,7 +1015,7 @@ export function QueryTab({
   function notesScope(result: Result): NotesScope | null {
     const ref = tab.tableRef;
     if (!(tab.table && ref) || isMongo(connection.driver)) return null;
-    if (result.sql !== viewerSql(connection.driver, tab.table, "", tab.sort ?? null)) return null;
+    if (!isViewerQuery(result.sql)) return null;
     return { connectionId: connection.id, database: tab.database, schema: ref.schema, table: ref.name };
   }
 
@@ -1207,7 +1233,7 @@ export function QueryTab({
               className="square"
               onClick={() => void countRows()}
               aria-label={t("Count rows")}
-              title={t(isMongo(connection.driver) ? "Count rows: runs countDocuments with the filter" : "Count rows: runs SELECT COUNT(*) with the filter")}
+              title={t(isMongo(connection.driver) ? "Count rows: runs countDocuments on the collection" : "Count rows: counts the rows of the query in the editor")}
             >
               <Icon name="sequence" />
             </button>
