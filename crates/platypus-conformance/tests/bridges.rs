@@ -30,14 +30,13 @@ async fn trino_driver() -> Option<&'static PathBuf> {
         let dir = drivers_dir();
         if platypus_drivers::installed(&dir, "trino").is_none() {
             let registry = platypus_drivers::Registry::public(&dir);
-            let installed = match registry.package("trino").await {
-                Ok(p) => {
-                    registry
-                        .install(&p, |_, _| {}, &CancellationToken::new())
-                        .await
-                }
-                Err(e) => Err(e),
-            };
+            let installed = async {
+                let p = registry.package("trino").await?;
+                registry
+                    .install(&p, |_, _| {}, &CancellationToken::new())
+                    .await
+            }
+            .await;
             if let Err(e) = installed {
                 println!("skipping Trino: cannot download its ADBC driver: {e}");
                 return None;

@@ -9,7 +9,10 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
 
-use crate::{DriverError, Installed, Package, REMOVED_MARK, Registry, drivers_dir, io_error};
+use crate::{
+    DriverError, Installed, Package, REMOVED_MARK, Registry, adbc_dir, drivers_dir, io_error,
+    network_error,
+};
 
 /// Names of the folders a download unpacks into before it is moved in place.
 pub(crate) const TMP_PREFIX: &str = ".tmp-";
@@ -45,10 +48,9 @@ impl Registry {
                 return Err(DriverError::Checksum);
             }
         }
-        let root = drivers_dir(&self.data_dir);
-        let tmp = root.join(format!("{TMP_PREFIX}{}", uuid::Uuid::new_v4()));
+        let tmp = drivers_dir(&self.data_dir).join(format!("{TMP_PREFIX}{}", uuid::Uuid::new_v4()));
         let package = package.clone();
-        let target = root.join("adbc").join(&package.name);
+        let target = adbc_dir(&self.data_dir).join(&package.name);
         tokio::task::spawn_blocking(move || {
             let result =
                 unpack(&bytes, &tmp).and_then(|library| place(&tmp, &target, &package, &library));
@@ -68,14 +70,13 @@ impl Registry {
         if cancel.is_cancelled() {
             return Err(DriverError::Cancelled);
         }
-        let network = |e: reqwest::Error| DriverError::Network(e.to_string());
         let response = self
             .http()?
             .get(&package.url)
             .send()
             .await
             .and_then(reqwest::Response::error_for_status)
-            .map_err(network)?;
+            .map_err(network_error)?;
         let total = response.content_length();
         let mut bytes = Vec::with_capacity(usize::try_from(total.unwrap_or(0)).unwrap_or(0));
         let mut stream = response.bytes_stream();
@@ -85,7 +86,7 @@ impl Registry {
                 chunk = stream.next() => chunk,
             };
             let Some(chunk) = chunk else { break };
-            bytes.extend_from_slice(&chunk.map_err(network)?);
+            bytes.extend_from_slice(&chunk.map_err(network_error)?);
             if bytes.len() as u64 > MAX_FILE {
                 return Err(DriverError::TooLarge);
             }

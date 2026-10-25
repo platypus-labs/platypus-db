@@ -52,6 +52,10 @@ pub enum DriverError {
     },
 }
 
+pub(crate) fn network_error(e: impl std::fmt::Display) -> DriverError {
+    DriverError::Network(e.to_string())
+}
+
 pub(crate) fn io_error(path: &Path) -> impl FnOnce(std::io::Error) -> DriverError + '_ {
     move |source| DriverError::Io {
         path: path.to_owned(),
@@ -88,7 +92,7 @@ pub(crate) fn drivers_dir(data_dir: &Path) -> PathBuf {
     data_dir.join("drivers")
 }
 
-fn adbc_dir(data_dir: &Path) -> PathBuf {
+pub(crate) fn adbc_dir(data_dir: &Path) -> PathBuf {
     drivers_dir(data_dir).join("adbc")
 }
 

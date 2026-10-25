@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, DOWNLOADED_DRIVERS, type DriverStatus, type SavedConnection, toCommandError } from "../api";
 import { askDriver } from "./DriverPopup";
-import { type Profile, fieldValue, withField } from "./profiles";
+import { type Profile, type ProfileField, fieldValue, withField } from "./profiles";
 
 interface Props {
   conn: SavedConnection;
@@ -14,7 +14,7 @@ interface Props {
 
 /** The fields of a database reached through an ADBC driver, and its driver's state. */
 export function ProfileFields({ conn, profile, onChange, password }: Props) {
-  async function browse(key: Parameters<typeof withField>[1]) {
+  async function browse(key: ProfileField["key"]) {
     const path = await open({ multiple: false });
     if (typeof path === "string") onChange(withField(conn, key, path));
   }
@@ -53,6 +53,7 @@ function DriverState({ conn }: { conn: SavedConnection }) {
   const [status, setStatus] = useState<DriverStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = () => api.driverStatus(conn.driver).then(setStatus, (e: unknown) => setError(toCommandError(e).message));
+  const ask = () => void askDriver(conn.driver).then(load);
 
   useEffect(() => {
     setStatus(null);
@@ -72,7 +73,7 @@ function DriverState({ conn }: { conn: SavedConnection }) {
           {newer && (
             <>
               {" · "}
-              <button type="button" className="link" onClick={() => void askDriver(conn.driver).then(load)}>
+              <button type="button" className="link" onClick={ask}>
                 Update to {status.package!.version}
               </button>
             </>
@@ -90,7 +91,7 @@ function DriverState({ conn }: { conn: SavedConnection }) {
       {status && !installed && (
         <span>
           Driver: not installed ·{" "}
-          <button type="button" className="link" onClick={() => void askDriver(conn.driver).then(load)}>
+          <button type="button" className="link" onClick={ask}>
             Download
           </button>
         </span>

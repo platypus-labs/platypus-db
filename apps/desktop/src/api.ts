@@ -1035,8 +1035,6 @@ export const api = {
     channel.onmessage = onEvent;
     return invoke<number>("transfer_table", { sourceSessionId, targetSessionId, plan, onEvent: channel });
   },
-  /** Imports a data file into the session's database on its own connection; cancelled with
-   *  `cancelExport`. */
   /** What is installed for `driver` and what the registry offers. */
   driverStatus: (driver: DriverKind) => invoke<DriverStatus>("driver_status", { driver }),
   /** Downloads and installs the driver of `driver`; stopped by `cancelDriverInstall`. */
@@ -1049,6 +1047,8 @@ export const api = {
   listDrivers: () => invoke<InstalledDriver[]>("list_drivers"),
   /** Removes a downloaded driver; returns the ones left. */
   removeDriver: (name: string) => invoke<InstalledDriver[]>("remove_driver", { name }),
+  /** Imports a data file into the session's database on its own connection; cancelled with
+   *  `cancelExport`. */
   importFile: (sessionId: number, path: string, plan: ImportPlan, onEvent: (e: ExportEvent) => void) => {
     const channel = new Channel<ExportEvent>();
     channel.onmessage = onEvent;

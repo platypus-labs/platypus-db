@@ -2,7 +2,7 @@
 //! registry offers, the download with its progress, and removal.
 
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use platypus_core::DriverKind;
 use platypus_drivers::{CancellationToken, DriverError, Installed, Package, Registry};
@@ -13,6 +13,10 @@ use crate::error::{CommandError, CommandResult};
 
 /// The download in progress, which `cancel_driver_install` stops.
 static INSTALLING: Mutex<Option<CancellationToken>> = Mutex::new(None);
+
+fn installing() -> MutexGuard<'static, Option<CancellationToken>> {
+    INSTALLING.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 fn data_dir() -> CommandResult<&'static Path> {
     platypus_drivers::data_dir()
@@ -78,27 +82,18 @@ pub async fn install_driver(
     let registry = Registry::public(data_dir()?);
     let package = registry.package(name).await.map_err(driver_error)?;
     let cancel = CancellationToken::new();
-    *INSTALLING
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(cancel.clone());
+    *installing() = Some(cancel.clone());
     let progress = |done, total| {
         let _ = on_event.send(InstallEvent::Progress { done, total });
     };
     let result = registry.install(&package, progress, &cancel).await;
-    INSTALLING
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .take();
+    installing().take();
     result.map_err(driver_error)
 }
 
 #[tauri::command]
 pub fn cancel_driver_install() {
-    if let Some(cancel) = INSTALLING
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .as_ref()
-    {
+    if let Some(cancel) = installing().as_ref() {
         cancel.cancel();
     }
 }

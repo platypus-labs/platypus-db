@@ -8,7 +8,7 @@ use std::time::Duration;
 use platypus_core::{ConnectionConfig, DriverKind, SslMode};
 use serde::{Deserialize, Serialize};
 
-use crate::{DriverError, PUBLIC_REGISTRY, drivers_dir, io_error, platform};
+use crate::{DriverError, PUBLIC_REGISTRY, drivers_dir, io_error, network_error, platform};
 
 /// A package of a driver, ready to download.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -95,17 +95,17 @@ impl Registry {
         // reqwest has no crypto provider of its own: it needs a configuration even for http.
         let tls = if self.url.starts_with("https:") {
             platypus_tls::client_config(&config)
-                .map_err(|e| DriverError::Network(e.to_string()))?
+                .map_err(network_error)?
                 .ok_or_else(|| DriverError::Network("no TLS configuration".to_owned()))?
         } else {
-            platypus_tls::plaintext_config().map_err(|e| DriverError::Network(e.to_string()))?
+            platypus_tls::plaintext_config().map_err(network_error)?
         };
         reqwest::Client::builder()
             .user_agent(concat!("platypus-db/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(15))
             .tls_backend_preconfigured(tls)
             .build()
-            .map_err(|e| DriverError::Network(e.to_string()))
+            .map_err(network_error)
     }
 
     /// The index from the registry, saved as the cache; the cached one when the registry
@@ -132,16 +132,15 @@ impl Registry {
     }
 
     async fn fetch_index(&self) -> Result<String, DriverError> {
-        let network = |e: reqwest::Error| DriverError::Network(e.to_string());
         self.http()?
             .get(format!("{}/index.yaml", self.url))
             .send()
             .await
             .and_then(reqwest::Response::error_for_status)
-            .map_err(network)?
+            .map_err(network_error)?
             .text()
             .await
-            .map_err(network)
+            .map_err(network_error)
     }
 
     /// The newest package of driver `name` for this platform.

@@ -312,10 +312,11 @@ impl Dialect {
                 )),
                 _ => None,
             },
-            Self::Sqlite => (kind == ObjectKind::Table)
+            // BigQuery takes only the name.
+            Self::Sqlite | Self::BigQuery => (kind == ObjectKind::Table)
                 .then(|| format!("ALTER TABLE {} RENAME TO {to};", self.object(o))),
             // Snowflake, Trino and Spark resolve an unqualified new name in the session's
-            // schema; BigQuery takes only the name.
+            // schema.
             Self::Ansi | Self::Databricks => (kind == ObjectKind::Table).then(|| {
                 format!(
                     "ALTER TABLE {} RENAME TO {};",
@@ -323,8 +324,6 @@ impl Dialect {
                     self.qualified(o.schema, new_name)
                 )
             }),
-            Self::BigQuery => (kind == ObjectKind::Table)
-                .then(|| format!("ALTER TABLE {} RENAME TO {to};", self.object(o))),
             Self::DuckDb => match kind {
                 ObjectKind::Table | ObjectKind::View => Some(format!(
                     "ALTER {} {} RENAME TO {to};",

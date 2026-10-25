@@ -183,14 +183,14 @@ impl Connection for AdbcConnection {
         state.starting.fetch_add(1, Ordering::SeqCst);
         let abandoned = state.abandon.notified();
         let started = tokio::select! {
-            started = started => started,
-            () = abandoned => {
-                state.starting.fetch_sub(1, Ordering::SeqCst);
-                return Err(Error::Cancelled);
-            }
+            started = started => Some(started),
+            () = abandoned => None,
         };
         state.starting.fetch_sub(1, Ordering::SeqCst);
-        match started.map_err(|_| Error::Closed)?? {
+        match started
+            .ok_or(Error::Cancelled)?
+            .map_err(|_| Error::Closed)??
+        {
             Started::Affected(rows) => Ok(ExecResult::Affected { rows }),
             Started::Rows(schema, mut rx) => {
                 let stream = futures::stream::poll_fn(move |cx| rx.poll_recv(cx));

@@ -5,7 +5,9 @@
  */
 import type { DriverKind, SavedConnection } from "../api";
 
-type Key = "host" | "port" | "database" | "user" | `options.${string}`;
+const OPTION = "options.";
+
+type Key = "host" | "port" | "database" | "user" | `${typeof OPTION}${string}`;
 
 export interface ProfileField {
   key: Key;
@@ -76,15 +78,15 @@ export const PROFILES: Partial<Record<DriverKind, Profile>> = {
 };
 
 export function fieldValue(conn: SavedConnection, key: Key): string {
-  if (key.startsWith("options.")) return conn.options?.[key.slice("options.".length)] ?? "";
+  if (key.startsWith(OPTION)) return conn.options?.[key.slice(OPTION.length)] ?? "";
   if (key === "port") return conn.port === null ? "" : String(conn.port);
   return conn[key as "host" | "database" | "user"];
 }
 
 export function withField(conn: SavedConnection, key: Key, value: string): SavedConnection {
-  if (key.startsWith("options.")) {
+  if (key.startsWith(OPTION)) {
     const options = { ...conn.options };
-    const name = key.slice("options.".length);
+    const name = key.slice(OPTION.length);
     if (value) options[name] = value;
     else delete options[name];
     return { ...conn, options };

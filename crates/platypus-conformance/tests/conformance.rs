@@ -106,6 +106,19 @@ impl Backend {
     }
 }
 
+/// The drivers reached through a bridge, as a pattern: they have their own tests.
+macro_rules! bridged {
+    () => {
+        DriverKind::Snowflake
+            | DriverKind::BigQuery
+            | DriverKind::Databricks
+            | DriverKind::Trino
+            | DriverKind::Adbc
+    };
+}
+
+const BRIDGED: &str = "drivers with a bridge have their own tests in bridges.rs";
+
 fn driver(kind: DriverKind) -> &'static dyn Driver {
     match kind {
         DriverKind::Postgres => &PgDriver,
@@ -116,13 +129,7 @@ fn driver(kind: DriverKind) -> &'static dyn Driver {
         DriverKind::SqlServer => &MssqlDriver,
         DriverKind::ClickHouse => &ClickHouseDriver,
         DriverKind::Mongo => &MongoDriver,
-        DriverKind::Snowflake
-        | DriverKind::BigQuery
-        | DriverKind::Databricks
-        | DriverKind::Trino
-        | DriverKind::Adbc => {
-            unreachable!("drivers with a bridge have their own tests in bridges.rs")
-        }
+        bridged!() => unreachable!("{BRIDGED}"),
     }
 }
 
@@ -1343,13 +1350,7 @@ fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<Strin
     let s = &b.schema;
     let columns = match b.config.driver {
         DriverKind::Mongo => unreachable!("MongoDB has its own tests in mongo.rs"),
-        DriverKind::Snowflake
-        | DriverKind::BigQuery
-        | DriverKind::Databricks
-        | DriverKind::Trino
-        | DriverKind::Adbc => {
-            unreachable!("drivers with a bridge have their own tests in bridges.rs")
-        }
+        bridged!() => unreachable!("{BRIDGED}"),
         DriverKind::Postgres => "id int PRIMARY KEY, code text UNIQUE, qty int CHECK (qty >= 0)",
         DriverKind::MySql => {
             "id INT PRIMARY KEY, code VARCHAR(10) UNIQUE, qty INT CHECK (qty >= 0)"
@@ -1374,13 +1375,7 @@ fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<Strin
     let drop = format!("DROP TABLE IF EXISTS {s}.{table}");
     match b.config.driver {
         DriverKind::Mongo => unreachable!("MongoDB has its own tests in mongo.rs"),
-        DriverKind::Snowflake
-        | DriverKind::BigQuery
-        | DriverKind::Databricks
-        | DriverKind::Trino
-        | DriverKind::Adbc => {
-            unreachable!("drivers with a bridge have their own tests in bridges.rs")
-        }
+        bridged!() => unreachable!("{BRIDGED}"),
         DriverKind::Postgres => {
             let function = format!("{s}.probe_fn{suffix}()");
             (
@@ -1551,13 +1546,7 @@ async fn edit_fixture(
 ) -> platypus_core::arrow_schema::SchemaRef {
     let ddl = match b.config.driver {
         DriverKind::Mongo => unreachable!("MongoDB has its own tests in mongo.rs"),
-        DriverKind::Snowflake
-        | DriverKind::BigQuery
-        | DriverKind::Databricks
-        | DriverKind::Trino
-        | DriverKind::Adbc => {
-            unreachable!("drivers with a bridge have their own tests in bridges.rs")
-        }
+        bridged!() => unreachable!("{BRIDGED}"),
         DriverKind::Postgres => {
             "CREATE TEMPORARY TABLE conf_edit (id INT PRIMARY KEY, name TEXT, \
                  amount NUMERIC(10, 2), data BYTEA, at TIMESTAMPTZ, n INT DEFAULT 7)"
@@ -2084,13 +2073,7 @@ async fn reads_geometries() {
         let conn = b.connect().await;
         let (sql, expected) = match b.config.driver {
             DriverKind::Mongo => unreachable!("MongoDB has its own tests in mongo.rs"),
-            DriverKind::Snowflake
-            | DriverKind::BigQuery
-            | DriverKind::Databricks
-            | DriverKind::Trino
-            | DriverKind::Adbc => {
-                unreachable!("drivers with a bridge have their own tests in bridges.rs")
-            }
+            bridged!() => unreachable!("{BRIDGED}"),
             DriverKind::Postgres => (
                 "SELECT point '(1,2)', box '(1,1),(0,0)', polygon '((0,0),(1,0),(1,1))', \
                  path '[(0,0),(2,1)]', lseg '[(0,0),(2,1)]', circle '<(1,2),3>'",
@@ -2148,13 +2131,7 @@ async fn sets_the_session_up_after_connecting() {
         let mut config = b.config.clone();
         let (check, expected) = match config.driver {
             DriverKind::Mongo => unreachable!("MongoDB has its own tests in mongo.rs"),
-            DriverKind::Snowflake
-            | DriverKind::BigQuery
-            | DriverKind::Databricks
-            | DriverKind::Trino
-            | DriverKind::Adbc => {
-                unreachable!("drivers with a bridge have their own tests in bridges.rs")
-            }
+            bridged!() => unreachable!("{BRIDGED}"),
             DriverKind::Postgres => (
                 "SELECT current_schema(), current_setting('TimeZone')",
                 vec![Some(b.schema.clone()), Some("Europe/Rome".to_owned())],
@@ -2186,13 +2163,7 @@ async fn sets_the_session_up_after_connecting() {
             .then(|| b.schema.clone()),
             time_zone: match config.driver {
                 DriverKind::Mongo => unreachable!("MongoDB has its own tests in mongo.rs"),
-                DriverKind::Snowflake
-                | DriverKind::BigQuery
-                | DriverKind::Databricks
-                | DriverKind::Trino
-                | DriverKind::Adbc => {
-                    unreachable!("drivers with a bridge have their own tests in bridges.rs")
-                }
+                bridged!() => unreachable!("{BRIDGED}"),
                 DriverKind::Postgres | DriverKind::ClickHouse => Some("Europe/Rome".to_owned()),
                 DriverKind::MySql => Some("+02:00".to_owned()),
                 DriverKind::Sqlite

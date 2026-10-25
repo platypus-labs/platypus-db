@@ -51,6 +51,15 @@ pub struct Opened {
     pub schema: Option<String>,
 }
 
+/// A batch from the driver, in the app's arrow version.
+fn convert(
+    batch: std::result::Result<arrow_array_59::RecordBatch, impl std::fmt::Display>,
+) -> Result<RecordBatch> {
+    batch
+        .map_err(|e| Error::Unsupported(e.to_string()))
+        .and_then(|b| ipc::batch(&b))
+}
+
 pub fn adbc_error(e: adbc_core::error::Error) -> Error {
     let state: String = e
         .sqlstate
@@ -192,14 +201,7 @@ fn run(connection: &mut ManagedConnection, command: Command) {
                     None,
                 )
                 .map_err(adbc_error)
-                .and_then(|reader| {
-                    reader
-                        .map(|b| {
-                            b.map_err(|e| Error::Unsupported(e.to_string()))
-                                .and_then(|b| ipc::batch(&b))
-                        })
-                        .collect()
-                });
+                .and_then(|reader| reader.map(convert).collect());
             let _ = reply.send(result);
         }
     }
@@ -247,27 +249,17 @@ fn execute(
         let _ = reply.send(rows);
         return;
     }
-    let mut reader = match statement.execute() {
-        Ok(reader) => reader,
-        Err(e) => {
-            let _ = reply.send(Err(adbc_error(e)));
-            return;
-        }
-    };
-    let schema = match ipc::schema(&reader.schema()) {
-        Ok(schema) => schema,
-        Err(e) => {
-            let _ = reply.send(Err(e));
-            return;
-        }
-    };
-    // The first batch is read before answering, so its errors fail the statement itself.
-    let first = reader.next().map(|b| {
-        b.map_err(|e| Error::Unsupported(e.to_string()))
-            .and_then(|b| ipc::batch(&b))
-    });
-    let first = match first.transpose() {
-        Ok(first) => first,
+    let opened = statement
+        .execute()
+        .map_err(adbc_error)
+        .and_then(|mut reader| {
+            let schema = ipc::schema(&reader.schema())?;
+            // The first batch is read before answering, so its errors fail the statement itself.
+            let first = reader.next().map(convert).transpose()?;
+            Ok((reader, schema, first))
+        });
+    let (reader, schema, first) = match opened {
+        Ok(opened) => opened,
         Err(e) => {
             let _ = reply.send(Err(e));
             return;
@@ -277,10 +269,7 @@ fn execute(
     if reply.send(Ok(Started::Rows(schema, rx))).is_err() {
         return;
     }
-    let batches = first.into_iter().map(Ok).chain(reader.map(|b| {
-        b.map_err(|e| Error::Unsupported(e.to_string()))
-            .and_then(|b| ipc::batch(&b))
-    }));
+    let batches = first.into_iter().map(Ok).chain(reader.map(convert));
     for batch in batches {
         let sent = match batch {
             Ok(batch) => send_sliced(&tx, &batch, batch_size),
