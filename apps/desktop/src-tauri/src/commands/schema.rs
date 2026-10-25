@@ -1,0 +1,64 @@
+//! The table editor: a table's design, the script that creates or alters it, and running
+//! that script (see `platypus-schema`).
+
+use platypus_core::DriverKind;
+use platypus_schema::{Script, TableDesign};
+use platypus_sql::Dialect;
+use serde::Serialize;
+use tauri::State;
+
+use super::AppState;
+use crate::error::{CommandError, CommandResult};
+
+/// The design of `schema.table` as it is in the database.
+#[tauri::command]
+pub async fn table_design(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: String,
+    table: String,
+) -> CommandResult<TableDesign> {
+    let dialect = Dialect::from(state.session(session_id)?.config.driver);
+    let conn = state.live(session_id).await?;
+    Ok(platypus_schema::load(conn.as_ref(), dialect, &schema, &table).await?)
+}
+
+#[derive(Debug, Serialize)]
+pub struct DesignScript {
+    script: Script,
+    /// The script as text, for the preview and the editor.
+    sql: String,
+}
+
+/// The script that turns `original` into `design` in `schema`, or creates `design` when
+/// there is no `original`.
+#[tauri::command]
+pub fn table_script(
+    driver: DriverKind,
+    schema: String,
+    original: Option<TableDesign>,
+    design: TableDesign,
+) -> CommandResult<DesignScript> {
+    let script = platypus_schema::script(Dialect::from(driver), &schema, original.as_ref(), &design)
+        .map_err(|e| CommandError::new("invalid_design", e))?;
+    Ok(DesignScript {
+        sql: script.text(),
+        script,
+    })
+}
+
+/// Runs a script from [`table_script`] on the session.
+#[tauri::command]
+pub async fn apply_table_script(
+    state: State<'_, AppState>,
+    session_id: u64,
+    script: Script,
+) -> CommandResult<()> {
+    let conn = state.live(session_id).await?;
+    platypus_schema::apply(conn.as_ref(), &script)
+        .await
+        .map_err(|e| {
+            let first_line = e.statement.lines().next().unwrap_or_default();
+            CommandError::from(&e.error).context(first_line)
+        })
+}
