@@ -4,7 +4,7 @@
  * it mounts; actions and tab kinds call `workbench()`.
  */
 import type { ReactNode } from "react";
-import type { Capabilities, Project, SavedConnection } from "./api";
+import type { Capabilities, Project, ProjectFolder, SavedConnection, Workspace } from "./api";
 import type { TabInit, TabKindName, TabModel } from "./tabs/registry";
 
 export interface Workbench {
@@ -14,6 +14,10 @@ export interface Workbench {
   projects(): Project[];
   /** Replaces the projects with what a command that changed them returned. */
   setProjects(all: Project[]): void;
+  /** The folders of the rail. */
+  projectFolders(): ProjectFolder[];
+  /** Replaces connections, projects and rail folders with what a command returned. */
+  setWorkspace(workspace: Workspace): void;
   /** The project shown, `null` for All connections. */
   activeProject(): Project | null;
   switchProject(id: string | null): void;
