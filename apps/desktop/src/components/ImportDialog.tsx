@@ -43,6 +43,8 @@ const HINTS: Record<ImportSource, string> = {
 
 const label = (source: ImportSource) => SOURCES.find((s) => s.value === source)!.label;
 const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
+/** The rail folder's default name: the file's, without its extension. */
+const railName = (path: string) => fileName(path).replace(/\.[^.]+$/, "") || "Imported";
 
 /** Whether `c` looks like a connection that is already saved. */
 function duplicate(c: SavedConnection, existing: SavedConnection[]) {
@@ -77,7 +79,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
       setRead(all);
       setTicked(new Set(all.flatMap((p) => p.connections).filter((c) => !duplicate(c, existing)).map((c) => c.id)));
       setInto(all.map((p) => defaultInto(p, project)));
-      setRailFolder(all.filter((p) => p.name).length > 1 ? fileName(next.path).replace(/\.[^.]+$/, "") : null);
+      setRailFolder(all.filter((p) => p.name).length > 1 ? railName(next.path) : null);
     } catch (e) {
       setError(toCommandError(e).message);
     }
@@ -176,7 +178,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
         <div className="actions">
           {newProjects.length > 1 && (
             <label className="check import-rail">
-              <input type="checkbox" checked={railFolder !== null} onChange={(e) => setRailFolder(e.target.checked ? fileName(file?.path ?? "").replace(/\.[^.]+$/, "") || "Imported" : null)} />
+              <input type="checkbox" checked={railFolder !== null} onChange={(e) => setRailFolder(e.target.checked ? railName(file?.path ?? "") : null)} />
               Put in a rail folder
               {railFolder !== null && <input className="import-rail-name" value={railFolder} onChange={(e) => setRailFolder(e.target.value)} />}
             </label>

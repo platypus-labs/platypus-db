@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{ConnectionStore, Project, ProjectFolder};
+use super::{ConnectionStore, Project};
 use crate::{ImportedProject, Result};
 
 /// The colors given to new projects, the same as the project dialog's.
@@ -80,33 +80,21 @@ impl ConnectionStore {
                 continue;
             };
             for path in &target.project.folders {
-                project.folder_path(&path.iter().map(String::as_str).collect::<Vec<_>>());
+                project.folder_path(path);
             }
             for id in ids {
                 project.set_member(id, true);
-                if let Some(path) = target.project.placement.get(&id) {
-                    let names: Vec<&str> = path.iter().map(String::as_str).collect();
-                    if let Some(folder) = project.folder_path(&names) {
-                        project.placement.insert(id, folder);
-                    }
+                if let Some(path) = target.project.placement.get(&id)
+                    && let Some(folder) = project.folder_path(path)
+                {
+                    project.placement.insert(id, folder);
                 }
             }
         }
         if let Some(name) = request.rail_folder.filter(|n| !n.trim().is_empty())
-            && let Some(first) = made.first()
+            && !made.is_empty()
         {
-            let color = self
-                .projects
-                .iter()
-                .find(|p| p.id == *first)
-                .map(|p| p.color.clone());
-            self.project_folders.push(ProjectFolder {
-                id: Uuid::new_v4(),
-                name: name.trim().to_owned(),
-                color: color.unwrap_or_default(),
-                projects: made,
-                collapsed: false,
-            });
+            self.add_project_folder(name.trim().to_owned(), made);
         }
         let written = self.write();
         if written.is_err() {

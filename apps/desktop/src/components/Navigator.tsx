@@ -169,6 +169,22 @@ interface DragItem {
 
 const DRAG_TYPE = "application/x-platypus-navigator";
 
+/** Lets a dragged connection or folder be dropped here, when `onDrop` is given. */
+const dropTarget = (onDrop: ((item: DragItem) => void) | undefined) => ({
+  onDragOver: (e: React.DragEvent) => {
+    if (!onDrop || !e.dataTransfer.types.includes(DRAG_TYPE)) return;
+    e.preventDefault();
+    e.stopPropagation();
+  },
+  onDrop: (e: React.DragEvent) => {
+    const data = e.dataTransfer.getData(DRAG_TYPE);
+    if (!onDrop || !data) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onDrop(JSON.parse(data) as DragItem);
+  },
+});
+
 export function Navigator(props: Props) {
   const { connections, project, onAddExisting, error, onNew, onImport, onEdit, onOpenTab, session, disconnect, active, onError } = props;
   // The ref is the source of truth, so a load sees what was merged just before it.
@@ -884,14 +900,8 @@ export function Navigator(props: Props) {
       <ul
         className="tree"
         role="tree"
-        onDragOver={(e) => project && e.dataTransfer.types.includes(DRAG_TYPE) && e.preventDefault()}
-        onDrop={(e) => {
-          // Dropped below the rows: to the project's root.
-          const data = e.dataTransfer.getData(DRAG_TYPE);
-          if (!project || !data) return;
-          e.preventDefault();
-          dropInto(project, null, JSON.parse(data) as DragItem);
-        }}
+        // Dropped below the rows: to the project's root.
+        {...dropTarget(project ? (item) => dropInto(project, null, item) : undefined)}
       >
         {rows.map((row) => (
           <li
@@ -902,18 +912,7 @@ export function Navigator(props: Props) {
             style={{ paddingLeft: 6 + row.depth * 16 }}
             draggable={!!row.drag}
             onDragStart={(e) => row.drag && e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(row.drag))}
-            onDragOver={(e) => {
-              if (!row.onDrop || !e.dataTransfer.types.includes(DRAG_TYPE)) return;
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onDrop={(e) => {
-              const data = e.dataTransfer.getData(DRAG_TYPE);
-              if (!row.onDrop || !data) return;
-              e.preventDefault();
-              e.stopPropagation();
-              row.onDrop(JSON.parse(data) as DragItem);
-            }}
+            {...dropTarget(row.onDrop)}
             title={
               row.status === "error"
                 ? row.detail

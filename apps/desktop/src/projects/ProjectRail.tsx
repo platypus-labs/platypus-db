@@ -125,7 +125,7 @@ export function ProjectRail({ projects, folders, active, txProjects, onSwitch, o
           );
         }
         return (
-          <div key={f.id} className="project-folder-open" data-folder={f.id} style={{ borderColor: f.color }} {...into(f)}>
+          <div key={f.id} className="project-folder-open" data-folder={f.id} {...into(f)}>
             <button
               type="button"
               className="project-folder-head"

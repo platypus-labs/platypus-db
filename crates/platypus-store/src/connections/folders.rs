@@ -11,6 +11,10 @@ impl Project {
         self.folders.iter().find(|f| f.id == id)
     }
 
+    fn require_folder(&self, id: Uuid) -> Result<()> {
+        self.folder(id).map(|_| ()).ok_or(StoreError::NotFound(id))
+    }
+
     /// Whether `folder` is `ancestor` or inside it.
     fn is_within(&self, folder: Uuid, ancestor: Uuid) -> bool {
         let mut at = Some(folder);
@@ -50,9 +54,10 @@ impl Project {
 
     /// The folder at `path` (names from the root, matched ignoring case), created where
     /// missing; `None` for an empty path.
-    pub fn folder_path(&mut self, path: &[&str]) -> Option<Uuid> {
+    pub fn folder_path<S: AsRef<str>>(&mut self, path: &[S]) -> Option<Uuid> {
         let mut parent = None;
         for name in path {
+            let name = name.as_ref();
             let lower = name.to_lowercase();
             let found = self
                 .folders
@@ -63,7 +68,7 @@ impl Project {
                 let id = Uuid::new_v4();
                 self.folders.push(ConnectionFolder {
                     id,
-                    name: (*name).to_owned(),
+                    name: name.to_owned(),
                     parent,
                 });
                 id
@@ -116,12 +121,9 @@ impl ConnectionStore {
         parent: Option<Uuid>,
     ) -> Result<Uuid> {
         let p = self.project_mut(project)?;
-        let mut name = name.to_owned();
-        trim(&mut name);
-        if let Some(parent) = parent
-            && p.folder(parent).is_none()
-        {
-            return Err(StoreError::NotFound(parent));
+        let name = name.trim().to_owned();
+        if let Some(parent) = parent {
+            p.require_folder(parent)?;
         }
         p.check_folder_name(&name, parent, None)?;
         let id = Uuid::new_v4();
@@ -132,8 +134,7 @@ impl ConnectionStore {
 
     pub fn rename_folder(&mut self, project: Uuid, folder: Uuid, name: &str) -> Result<()> {
         let (p, index) = self.folder_of(project, folder)?;
-        let mut name = name.to_owned();
-        trim(&mut name);
+        let name = name.trim().to_owned();
         p.check_folder_name(&name, p.folders[index].parent, Some(folder))?;
         p.folders[index].name = name;
         self.write()
@@ -143,9 +144,7 @@ impl ConnectionStore {
     pub fn move_folder(&mut self, project: Uuid, folder: Uuid, parent: Option<Uuid>) -> Result<()> {
         let (p, index) = self.folder_of(project, folder)?;
         if let Some(parent) = parent {
-            if p.folder(parent).is_none() {
-                return Err(StoreError::NotFound(parent));
-            }
+            p.require_folder(parent)?;
             if p.is_within(parent, folder) {
                 return Err(StoreError::Invalid(
                     "a folder cannot go inside itself".to_owned(),
@@ -200,10 +199,14 @@ impl ConnectionStore {
             return Err(StoreError::NotFound(connection));
         }
         match folder {
-            Some(f) if p.folder(f).is_none() => return Err(StoreError::NotFound(f)),
-            Some(f) => p.placement.insert(connection, f),
-            None => p.placement.remove(&connection),
-        };
+            Some(f) => {
+                p.require_folder(f)?;
+                p.placement.insert(connection, f);
+            }
+            None => {
+                p.placement.remove(&connection);
+            }
+        }
         self.write()
     }
 }
@@ -231,6 +234,24 @@ impl ConnectionStore {
         self.project_folders.retain(|f| !f.projects.is_empty());
     }
 
+    /// Makes a rail folder holding `projects`, in the color of the first one.
+    pub(super) fn add_project_folder(&mut self, name: String, projects: Vec<Uuid>) -> Uuid {
+        let color = projects
+            .first()
+            .and_then(|first| self.projects.iter().find(|p| p.id == *first))
+            .map(|p| p.color.clone())
+            .unwrap_or_default();
+        let id = Uuid::new_v4();
+        self.project_folders.push(ProjectFolder {
+            id,
+            name,
+            color,
+            projects,
+            collapsed: false,
+        });
+        id
+    }
+
     /// Drops `dragged` onto `target`: it joins `target`'s folder, or a new folder with both
     /// is made, named "New folder" in `target`'s color. Returns the folder.
     pub fn group_projects(&mut self, target: Uuid, dragged: Uuid) -> Result<Uuid> {
@@ -250,21 +271,7 @@ impl ConnectionStore {
             f.projects.push(dragged);
             f.id
         } else {
-            let color = self
-                .projects
-                .iter()
-                .find(|p| p.id == target)
-                .map(|p| p.color.clone())
-                .unwrap_or_default();
-            let id = Uuid::new_v4();
-            self.project_folders.push(ProjectFolder {
-                id,
-                name: "New folder".to_owned(),
-                color,
-                projects: vec![target, dragged],
-                collapsed: false,
-            });
-            id
+            self.add_project_folder("New folder".to_owned(), vec![target, dragged])
         };
         self.write()?;
         Ok(id)
@@ -491,7 +498,7 @@ mod tests {
         let second = p.folder_path(&["a", "B"]);
         assert!(first.is_some());
         assert_eq!(first, second);
-        assert_eq!(p.folder_path(&[]), None);
+        assert_eq!(p.folder_path::<&str>(&[]), None);
         assert_eq!(p.folders.len(), 2);
         let other = p.folder_path(&["A", "C"]);
         assert_ne!(other, first);
