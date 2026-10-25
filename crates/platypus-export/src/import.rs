@@ -109,12 +109,6 @@ impl ImportPlan {
                 default: None,
             })
             .collect();
-        let options = FormatOptions::default();
-        let formatters = batch
-            .columns()
-            .iter()
-            .map(|a| ArrayFormatter::try_new(a.as_ref(), &options))
-            .collect::<Result<Vec<_>, _>>()?;
         let head = format!(
             "INSERT INTO {} ({}) VALUES ",
             self.table(dialect),
@@ -124,29 +118,44 @@ impl ImportPlan {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        let mut statements = Vec::new();
-        for start in (0..batch.num_rows()).step_by(ROWS_PER_INSERT) {
-            let end = (start + ROWS_PER_INSERT).min(batch.num_rows());
-            let mut sql = head.clone();
-            for row in start..end {
-                if row > start {
-                    sql.push_str(", ");
-                }
-                sql.push('(');
-                for (i, (column, formatter)) in columns.iter().zip(&formatters).enumerate() {
-                    if i > 0 {
-                        sql.push_str(", ");
-                    }
-                    let text =
-                        (!batch.column(i).is_null(row)).then(|| formatter.value(row).to_string());
-                    sql.push_str(&column.literal(dialect, text.as_deref())?);
-                }
-                sql.push(')');
-            }
-            statements.push(sql);
-        }
-        Ok(statements)
+        rows_text(batch)?
+            .chunks(ROWS_PER_INSERT)
+            .map(|chunk| {
+                let values = chunk
+                    .iter()
+                    .map(|row| {
+                        let literals = columns
+                            .iter()
+                            .zip(row)
+                            .map(|(c, text)| c.literal(dialect, text.as_deref()))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        Ok(format!("({})", literals.join(", ")))
+                    })
+                    .collect::<Result<Vec<_>, ImportError>>()?;
+                Ok(format!("{head}{}", values.join(", ")))
+            })
+            .collect()
     }
+}
+
+/// The values of `batch` as text, row by row, `None` for NULL: what an import writes.
+pub fn rows_text(batch: &RecordBatch) -> Result<Vec<Vec<Option<String>>>, ArrowError> {
+    let options = FormatOptions::default();
+    // One formatter per column, not per value.
+    let formatters = batch
+        .columns()
+        .iter()
+        .map(|a| ArrayFormatter::try_new(a.as_ref(), &options))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((0..batch.num_rows())
+        .map(|row| {
+            formatters
+                .iter()
+                .zip(batch.columns())
+                .map(|(f, a)| (!a.is_null(row)).then(|| f.value(row).to_string()))
+                .collect()
+        })
+        .collect())
 }
 
 async fn exec(conn: &dyn Connection, sql: &str) -> Result<(), platypus_core::Error> {

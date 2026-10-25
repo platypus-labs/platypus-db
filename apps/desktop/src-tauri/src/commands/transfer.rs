@@ -1,14 +1,13 @@
 //! Import of data files (CSV, TSV, JSON, NDJSON, Parquet, XLSX) into a table. The file is
 //! read through a DuckDB connection on it, the way it opens as a database.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use futures::TryStreamExt;
 use platypus_core::{Connection, ConnectionConfig, DriverKind, ExecOptions, ExecResult};
 use platypus_driver_duckdb::files::is_data_file;
-use platypus_export::import::{ImportError, ImportPlan, import};
+use platypus_export::import::{ImportError, ImportPlan, import, rows_text};
 use platypus_sql::Dialect;
 use serde::Serialize;
 use tauri::State;
@@ -40,15 +39,16 @@ pub struct ImportPreview {
     rows: Vec<Vec<Option<String>>>,
 }
 
-async fn open_file(path: &str) -> CommandResult<Box<dyn Connection>> {
-    if !is_data_file(path) {
+async fn open_file(path: &Path) -> CommandResult<Box<dyn Connection>> {
+    let path = path.to_string_lossy();
+    if !is_data_file(&path) {
         return Err(CommandError::new(
             "import",
             "choose a CSV, TSV, JSON, NDJSON, Parquet or Excel file",
         ));
     }
     let mut config = ConnectionConfig::new(DriverKind::DuckDb);
-    config.database = path.to_owned();
+    config.database = path.into_owned();
     Ok(super::connect(&config).await?)
 }
 
@@ -62,7 +62,7 @@ pub async fn preview_import(
     table: Option<String>,
 ) -> CommandResult<ImportPreview> {
     let dialect = Dialect::from(state.session(session_id)?.config.driver);
-    let file = open_file(&path.to_string_lossy()).await?;
+    let file = open_file(&path).await?;
     let schema = file.schemas().await?.into_iter().next().map(|s| s.name);
     let tables: Vec<String> = match schema {
         Some(schema) => file
@@ -99,24 +99,9 @@ pub async fn preview_import(
             target_type: dialect.column_type(f.data_type()),
         })
         .collect();
-    let options = FormatOptions::default();
     let mut rows = Vec::new();
     for batch in &batches {
-        let formatters = batch
-            .columns()
-            .iter()
-            .map(|a| ArrayFormatter::try_new(a.as_ref(), &options))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| CommandError::new("import", e.to_string()))?;
-        for row in 0..batch.num_rows() {
-            rows.push(
-                formatters
-                    .iter()
-                    .zip(batch.columns())
-                    .map(|(f, a)| (!a.is_null(row)).then(|| f.value(row).to_string()))
-                    .collect(),
-            );
-        }
+        rows.extend(rows_text(batch).map_err(|e| CommandError::new("import", e.to_string()))?);
     }
     Ok(ImportPreview {
         tables,
@@ -140,7 +125,7 @@ pub fn import_file(
     let session = state.session(session_id)?;
     let log = Arc::clone(&state.query_log);
     let job = Export::spawn(on_event, move |job| async move {
-        let file = open_file(&path.to_string_lossy()).await?;
+        let file = open_file(&path).await?;
         let target = Logged::wrap(
             Arc::from(super::connect(&session.config).await?),
             &log,
