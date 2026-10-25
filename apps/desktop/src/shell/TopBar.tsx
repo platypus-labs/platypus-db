@@ -1,9 +1,11 @@
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useEffect, useRef, useState } from "react";
 import { runAction, shortcutLabel, useActions } from "../actions";
 import type { Project, SavedConnection } from "../api";
 import mark from "../assets/brand/platypus-mark.png";
 import { CONNECTION_TYPES } from "../connections";
 import { useSetting } from "../settings";
-import { PRESETS, cycleTheme, themeName, themeSetting } from "../theme";
+import { PRESETS, cycleTheme, themeName, themeSetting, titleBarSetting } from "../theme";
 import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
 
@@ -19,16 +21,29 @@ export function TopBar({ project, connection }: Props) {
   const palette = useActions("global", undefined).find((a) => a.id === "app.palette");
   const keys = palette && shortcutLabel(palette);
   const type = CONNECTION_TYPES.find((t) => t.value === connection?.connection_type);
+  const ownTitleBar = useSetting(titleBarSetting) !== "system" && !MAC;
+  // The window opens with the bar the setting asks for (lib.rs); a change applies at once.
+  const opened = useRef(ownTitleBar);
+  useEffect(() => {
+    if (MAC || ownTitleBar === opened.current) return;
+    opened.current = ownTitleBar;
+    getCurrentWindow().setDecorations(!ownTitleBar).catch((e: unknown) => console.warn("decorations", e));
+  }, [ownTitleBar]);
+  // The bar moves the window where nothing else takes the click (data-tauri-drag-region on
+  // each element that is not a control).
+  const drag = ownTitleBar ? { "data-tauri-drag-region": true } : {};
   return (
-    <header className="topbar">
-      <img className="topbar-mark" src={mark} alt="PlatypusDB" width={26} height={26} />
-      <span className="topbar-project">{project?.name ?? "All connections"}</span>
+    <header className={`topbar${ownTitleBar ? " own-title-bar" : ""}`} {...drag}>
+      <img className="topbar-mark" src={mark} alt="PlatypusDB" width={26} height={26} {...drag} />
+      <span className="topbar-project" {...drag}>
+        {project?.name ?? "All connections"}
+      </span>
       {connection && (
         <>
-          <span className="topbar-sep" aria-hidden="true">
+          <span className="topbar-sep" aria-hidden="true" {...drag}>
             /
           </span>
-          <span className="topbar-connection">
+          <span className="topbar-connection" {...drag}>
             <span className="dot" aria-hidden="true" />
             {connection.name}
             {type && <span className="topbar-type">{type.label}</span>}
@@ -49,7 +64,41 @@ export function TopBar({ project, connection }: Props) {
       <button type="button" className="icon" title="Settings (Ctrl+,)" aria-label="Settings" onClick={() => workbench().openSettings()}>
         <Icon name="settings" />
       </button>
+      {ownTitleBar && <WindowControls />}
     </header>
+  );
+}
+
+const MAC = navigator.userAgent.includes("Mac");
+
+/** Minimize, maximize or restore, and close, as the system's title bar has them. */
+function WindowControls() {
+  const [maximized, setMaximized] = useState(false);
+  useEffect(() => {
+    const win = getCurrentWindow();
+    const update = () => void win.isMaximized().then(setMaximized, () => {});
+    update();
+    const off = win.onResized(update);
+    return () => void off.then((unlisten) => unlisten());
+  }, []);
+  const win = getCurrentWindow();
+  return (
+    <div className="window-controls">
+      <button type="button" aria-label="Minimize" title="Minimize" onClick={() => void win.minimize()}>
+        <Icon name="minimize" size={15} />
+      </button>
+      <button
+        type="button"
+        aria-label={maximized ? "Restore" : "Maximize"}
+        title={maximized ? "Restore" : "Maximize"}
+        onClick={() => void win.toggleMaximize()}
+      >
+        <Icon name={maximized ? "restore" : "maximize"} size={13} />
+      </button>
+      <button type="button" className="close" aria-label="Close" title="Close" onClick={() => void win.close()}>
+        <Icon name="close" size={16} />
+      </button>
+    </div>
   );
 }
 

@@ -148,6 +148,44 @@
   background: var(--hover);
 }
 
+/* The app's own title bar: the top bar moves the window, and the window buttons sit at its
+   right end, full height, as Windows draws them. */
+.topbar.own-title-bar {
+  padding-right: 0;
+  user-select: none;
+}
+
+/* Above the backdrop of dialogs and the palette, as the system's buttons would be. */
+.window-controls {
+  position: relative;
+  z-index: 60;
+  align-self: stretch;
+  display: flex;
+  margin-left: 6px;
+}
+
+.window-controls button {
+  width: 46px;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 0;
+  color: var(--fg);
+}
+
+.window-controls button:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+/* The system's own red for Close. */
+.window-controls button.close:hover:not(:disabled) {
+  background: #c42b1c;
+  color: #ffffff;
+}
+
 /* Welcome: the workspace with no tab open */
 
 .welcome {

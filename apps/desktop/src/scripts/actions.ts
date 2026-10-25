@@ -2,6 +2,7 @@
 import { registerAction } from "../actions";
 import { api, type SavedConnection, type ScriptEntry } from "../api";
 import { workbench } from "../workbench";
+import { ask } from "../ui/ask";
 import { connectionFor, nameOf, openScript, parentOf, scriptFile, scriptsChanged } from "./scripts";
 
 declare module "../actions" {
@@ -101,7 +102,7 @@ registerAction({
   order: 90,
   run: async ({ entry, project }) => {
     const what = entry.folder ? `the folder ${nameOf(entry.path)} and every script in it` : nameOf(entry.path);
-    if (!window.confirm(`Delete ${what}? The file${entry.folder ? "s are" : " is"} removed from disk.`)) return;
+    if (!(await ask(`Delete ${what}? The file${entry.folder ? "s are" : " is"} removed from disk.`, { confirm: "Delete", danger: true }))) return;
     await api.deleteScript(project, entry.path);
     scriptsChanged();
   },

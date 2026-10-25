@@ -260,7 +260,8 @@ methods and fields. `mongodb+srv://` and connection string options go in the Dat
   connection can be in several projects. `Ctrl+1` is All connections, `Ctrl+2`… the projects.
 - **The frame shows where you are**: the bar on top names the project and the connection of
   the active tab, and the window frame takes the color of its type, green for development,
-  blue for test and red for production.
+  blue for test and red for production. On Windows and Linux the bar is also the window's title
+  bar, with its buttons (Settings › Appearance › Title bar puts the system's back).
 - **Command palette** (`Ctrl+K`): actions, connections, tables and recent queries, found by
   typing a few letters.
 - **Themes**: Platypus Dark and Light (what "System" follows), Classic Light and Dark, Nord,

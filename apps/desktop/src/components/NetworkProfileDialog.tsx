@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, type DriverKind, type NetworkProfile, toCommandError } from "../api";
 import { NetworkFields, sshSecretIds, sshSecretsOf } from "./NetworkFields";
+import { ask } from "../ui/ask";
 
 interface Props {
   initial: NetworkProfile;
@@ -47,8 +48,8 @@ export function NetworkProfileDialog({ initial, existing, driver, onSaved, onClo
     e.preventDefault();
     void run(async () => onSaved(await api.saveNetworkProfile(profile, sshSecretsOf(profile.ssh, typed, saved)), profile));
   };
-  const remove = () => {
-    if (!window.confirm(`Delete the network profile "${profile.name}"?`)) return;
+  const remove = async () => {
+    if (!(await ask(`Delete the network profile "${profile.name}"?`, { confirm: "Delete", danger: true }))) return;
     void run(async () => onSaved(await api.deleteNetworkProfile(profile.id), null));
   };
 
@@ -87,7 +88,7 @@ export function NetworkProfileDialog({ initial, existing, driver, onSaved, onClo
         {error && <div className="notice error">{error}</div>}
         <div className="actions">
           {existing && (
-            <button type="button" onClick={remove} disabled={busy}>
+            <button type="button" onClick={() => void remove()} disabled={busy}>
               Delete
             </button>
           )}

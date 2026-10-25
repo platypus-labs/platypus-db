@@ -352,6 +352,8 @@ without props. It provides:
 - `showError`;
 - `openSettings`;
 - `openDialog`, which shows a dialog from an action. Its `render(close)` returns the dialog;
+  for a yes/no question, `ask(message, { confirm, danger })` from `ui/ask.tsx` opens one and
+  resolves to the answer (never `window.confirm`, which has no app style and no test hook);
 - `projects`, `setProjects`, `activeProject` and `switchProject`, and `editProject` and
   `deleteProject`, which open the project dialog or ask before deleting.
 
