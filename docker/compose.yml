@@ -65,6 +65,26 @@ services:
       timeout: 3s
       retries: 90
 
+  # Over HTTP on 58123; the conformance tests create their demo tables.
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.3.25.2
+    environment:
+      CLICKHOUSE_USER: platypus
+      CLICKHOUSE_PASSWORD: platypus
+      CLICKHOUSE_DB: platypus
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    ports:
+      - "58123:8123"
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "platypus", "--password", "platypus", "-q", "SELECT 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
   # Not started by default (a large image): `docker compose --profile sqlserver up -d --wait`.
   # The image runs no seed scripts: the healthcheck creates the `platypus` database and the
   # conformance tests create their demo schema. Test-only login: `sa`, `Platypus-2026`.

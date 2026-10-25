@@ -4541,6 +4541,7 @@ dependencies = [
  "clap",
  "futures",
  "platypus-core",
+ "platypus-driver-clickhouse",
  "platypus-driver-duckdb",
  "platypus-driver-mssql",
  "platypus-driver-mysql",
@@ -4613,6 +4614,28 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "tempfile",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "platypus-driver-clickhouse"
+version = "0.2.0"
+dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-cast",
+ "arrow-ipc",
+ "arrow-schema",
+ "async-trait",
+ "bytes",
+ "futures",
+ "platypus-core",
+ "platypus-sql",
+ "platypus-tls",
+ "reqwest",
+ "rustls 0.23.46",
+ "serde_json",
  "tokio",
  "uuid",
 ]
