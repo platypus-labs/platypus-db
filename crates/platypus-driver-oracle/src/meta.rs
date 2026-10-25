@@ -1,0 +1,579 @@
+//! The navigator's metadata from Oracle's `ALL_*` views: what the session's user can see.
+
+use platypus_core::{
+    CatalogColumn, CatalogForeignKey, ColumnMeta, ConstraintKind, ConstraintMeta, ForeignKeyMeta,
+    IndexMeta, ObjectKind, ObjectMeta, ObjectRef, ReferencingKey, SchemaMeta, TextRow, TextRowExt,
+    group_sorted,
+};
+use platypus_sql::Dialect;
+
+fn lit(value: &str) -> String {
+    Dialect::Oracle.quote_literal(value)
+}
+
+/// The schemas (users), Oracle's own marked as system ones.
+pub const SCHEMAS: &str = "SELECT USERNAME, ORACLE_MAINTAINED, \
+     CASE WHEN USERNAME = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') THEN 'Y' ELSE 'N' END \
+     FROM ALL_USERS ORDER BY USERNAME";
+
+#[must_use]
+pub fn schemas(rows: &[TextRow]) -> Vec<SchemaMeta> {
+    rows.iter()
+        .map(|r| SchemaMeta {
+            name: r.text(0),
+            system: r.text(1) == "Y",
+            current: r.text(2) == "Y",
+        })
+        .collect()
+}
+
+/// The object types the navigator lists, as `ALL_OBJECTS` names them.
+const OBJECT_TYPES: &str = "'TABLE', 'VIEW', 'MATERIALIZED VIEW', 'SEQUENCE', 'FUNCTION', \
+     'PROCEDURE', 'TRIGGER', 'TYPE'";
+
+/// Tables, views, sequences, routines, triggers and types of `schema`, with the comments
+/// and row estimates of tables and the table of each trigger. A materialized view is also
+/// a table in `ALL_OBJECTS`: listed once; tables in the recycle bin are left out.
+#[must_use]
+pub fn objects_sql(schema: &str) -> String {
+    let s = lit(schema);
+    format!(
+        "SELECT o.OBJECT_NAME, o.OBJECT_TYPE, c.COMMENTS, t.TABLE_NAME, s.NUM_ROWS \
+         FROM ALL_OBJECTS o \
+         LEFT JOIN ALL_TAB_COMMENTS c ON c.OWNER = o.OWNER AND c.TABLE_NAME = o.OBJECT_NAME \
+           AND o.OBJECT_TYPE IN ('TABLE', 'VIEW') \
+         LEFT JOIN ALL_TRIGGERS t ON t.OWNER = o.OWNER AND t.TRIGGER_NAME = o.OBJECT_NAME \
+           AND o.OBJECT_TYPE = 'TRIGGER' \
+         LEFT JOIN ALL_TABLES s ON s.OWNER = o.OWNER AND s.TABLE_NAME = o.OBJECT_NAME \
+           AND o.OBJECT_TYPE = 'TABLE' \
+         WHERE o.OWNER = {s} AND o.OBJECT_TYPE IN ({OBJECT_TYPES}) \
+           AND o.OBJECT_NAME NOT LIKE 'BIN$%' \
+           AND NOT (o.OBJECT_TYPE = 'TABLE' AND EXISTS (SELECT 1 FROM ALL_MVIEWS m \
+             WHERE m.OWNER = o.OWNER AND m.MVIEW_NAME = o.OBJECT_NAME)) \
+         ORDER BY o.OBJECT_NAME, o.OBJECT_TYPE"
+    )
+}
+
+fn object_kind(oracle_type: &str) -> Option<ObjectKind> {
+    Some(match oracle_type {
+        "TABLE" => ObjectKind::Table,
+        "VIEW" => ObjectKind::View,
+        "MATERIALIZED VIEW" => ObjectKind::MaterializedView,
+        "SEQUENCE" => ObjectKind::Sequence,
+        "FUNCTION" => ObjectKind::Function,
+        "PROCEDURE" => ObjectKind::Procedure,
+        "TRIGGER" => ObjectKind::Trigger,
+        "TYPE" => ObjectKind::Type,
+        _ => return None,
+    })
+}
+
+#[must_use]
+pub fn objects(rows: &[TextRow]) -> Vec<ObjectMeta> {
+    rows.iter()
+        .filter_map(|r| {
+            let mut object = ObjectMeta::new(r.text(0), object_kind(&r.text(1))?, r.opt(2));
+            object.parent = r.opt(3);
+            object.rows = r.number(4);
+            Some(object)
+        })
+        .collect()
+}
+
+/// The columns of a table or view, in order, with their comments.
+#[must_use]
+pub fn columns_sql(schema: &str, table: &str) -> String {
+    format!(
+        "SELECT c.COLUMN_NAME, c.DATA_TYPE, c.DATA_PRECISION, c.DATA_SCALE, c.CHAR_LENGTH, \
+         c.CHAR_USED, c.NULLABLE, c.DATA_DEFAULT, m.COMMENTS \
+         FROM ALL_TAB_COLUMNS c \
+         LEFT JOIN ALL_COL_COMMENTS m ON m.OWNER = c.OWNER AND m.TABLE_NAME = c.TABLE_NAME \
+           AND m.COLUMN_NAME = c.COLUMN_NAME \
+         WHERE c.OWNER = {} AND c.TABLE_NAME = {} ORDER BY c.COLUMN_ID",
+        lit(schema),
+        lit(table)
+    )
+}
+
+/// The type as Oracle prints it: `VARCHAR2(20 CHAR)`, `NUMBER(10,2)`, `RAW(16)`.
+fn type_text(r: &TextRow) -> String {
+    let name = r.text(1);
+    let (precision, scale) = (r.opt(2), r.opt(3));
+    match name.as_str() {
+        "VARCHAR2" | "NVARCHAR2" | "CHAR" | "NCHAR" => {
+            let unit = if r.text(5) == "C" && !name.starts_with('N') {
+                " CHAR"
+            } else {
+                ""
+            };
+            format!("{name}({}{unit})", r.text(4))
+        }
+        "NUMBER" => match (precision, scale.as_deref()) {
+            (None, None) => name,
+            (None, Some(s)) => format!("NUMBER(*,{s})"),
+            (Some(p), None | Some("0")) => format!("NUMBER({p})"),
+            (Some(p), Some(s)) => format!("NUMBER({p},{s})"),
+        },
+        "FLOAT" => precision.map_or(name.clone(), |p| format!("FLOAT({p})")),
+        "RAW" => format!("RAW({})", r.text(4)),
+        _ => name,
+    }
+}
+
+fn column(r: &TextRow) -> ColumnMeta {
+    ColumnMeta {
+        name: r.text(0),
+        data_type: type_text(r),
+        nullable: r.text(6) != "N",
+        // A `LONG`: kept as typed, often with a trailing newline.
+        default: r
+            .opt(7)
+            .map(|d| d.trim().to_owned())
+            .filter(|d| !d.is_empty()),
+        primary_key: false,
+        comment: r.opt(8),
+        enum_values: Vec::new(),
+        fields: Vec::new(),
+    }
+}
+
+/// The constraints of a table, one row per column: name, type (`P`, `U`, `C`, `R`), column,
+/// check condition, and for a foreign key the referenced schema, table and column.
+/// The `NOT NULL` checks Oracle names itself are left out: the columns show them.
+#[must_use]
+pub fn constraints_sql(schema: &str, table: &str) -> String {
+    format!(
+        "SELECT c.CONSTRAINT_NAME, c.CONSTRAINT_TYPE, cc.COLUMN_NAME, c.SEARCH_CONDITION_VC, \
+         r.OWNER, r.TABLE_NAME, rc.COLUMN_NAME \
+         FROM ALL_CONSTRAINTS c \
+         LEFT JOIN ALL_CONS_COLUMNS cc ON cc.OWNER = c.OWNER \
+           AND cc.CONSTRAINT_NAME = c.CONSTRAINT_NAME \
+         LEFT JOIN ALL_CONSTRAINTS r ON r.OWNER = c.R_OWNER \
+           AND r.CONSTRAINT_NAME = c.R_CONSTRAINT_NAME \
+         LEFT JOIN ALL_CONS_COLUMNS rc ON rc.OWNER = r.OWNER \
+           AND rc.CONSTRAINT_NAME = r.CONSTRAINT_NAME AND rc.POSITION = cc.POSITION \
+         WHERE c.OWNER = {} AND c.TABLE_NAME = {} AND c.CONSTRAINT_TYPE IN ('P', 'U', 'C', 'R') \
+           AND NOT (c.CONSTRAINT_TYPE = 'C' AND c.GENERATED = 'GENERATED NAME' \
+             AND c.SEARCH_CONDITION_VC LIKE '% IS NOT NULL') \
+         ORDER BY c.CONSTRAINT_NAME, cc.POSITION",
+        lit(schema),
+        lit(table)
+    )
+}
+
+/// The indexes of a table, one row per column; LOB indexes are the database's own.
+#[must_use]
+pub fn indexes_sql(schema: &str, table: &str) -> String {
+    format!(
+        "SELECT i.INDEX_NAME, i.UNIQUENESS, ic.COLUMN_NAME \
+         FROM ALL_INDEXES i \
+         JOIN ALL_IND_COLUMNS ic ON ic.INDEX_OWNER = i.OWNER AND ic.INDEX_NAME = i.INDEX_NAME \
+         WHERE i.TABLE_OWNER = {} AND i.TABLE_NAME = {} AND i.INDEX_TYPE <> 'LOB' \
+         ORDER BY i.INDEX_NAME, ic.COLUMN_POSITION",
+        lit(schema),
+        lit(table)
+    )
+}
+
+/// The foreign keys of other tables pointing at a table, one row per column: their schema,
+/// table and name, the column and the referenced column.
+#[must_use]
+pub fn referencing_sql(schema: &str, table: &str) -> String {
+    format!(
+        "SELECT c.OWNER, c.TABLE_NAME, c.CONSTRAINT_NAME, cc.COLUMN_NAME, rc.COLUMN_NAME \
+         FROM ALL_CONSTRAINTS c \
+         JOIN ALL_CONSTRAINTS r ON r.OWNER = c.R_OWNER AND r.CONSTRAINT_NAME = c.R_CONSTRAINT_NAME \
+         JOIN ALL_CONS_COLUMNS cc ON cc.OWNER = c.OWNER AND cc.CONSTRAINT_NAME = c.CONSTRAINT_NAME \
+         JOIN ALL_CONS_COLUMNS rc ON rc.OWNER = r.OWNER AND rc.CONSTRAINT_NAME = r.CONSTRAINT_NAME \
+           AND rc.POSITION = cc.POSITION \
+         WHERE c.CONSTRAINT_TYPE = 'R' AND r.OWNER = {} AND r.TABLE_NAME = {} \
+         ORDER BY c.OWNER, c.TABLE_NAME, c.CONSTRAINT_NAME, cc.POSITION",
+        lit(schema),
+        lit(table)
+    )
+}
+
+#[must_use]
+pub fn referencing_keys(rows: &[TextRow]) -> Vec<ReferencingKey> {
+    let keyed = rows.iter().map(|r| {
+        (
+            format!("{}.{}.{}", r.text(0), r.text(1), r.text(2)),
+            ReferencingKey {
+                schema: r.text(0),
+                table: r.text(1),
+                name: r.text(2),
+                columns: vec![r.text(3)],
+                ref_columns: vec![r.text(4)],
+            },
+        )
+    });
+    group_sorted(keyed, |key, more| {
+        key.columns.extend(more.columns);
+        key.ref_columns.extend(more.ref_columns);
+    })
+}
+
+/// A table's details from the rows of [`columns_sql`], [`constraints_sql`],
+/// [`indexes_sql`] and [`referencing_sql`].
+#[must_use]
+pub fn table_details(
+    columns: &[TextRow],
+    constraints: &[TextRow],
+    indexes: &[TextRow],
+    referencing: &[TextRow],
+) -> platypus_core::TableDetails {
+    let grouped = group_sorted(
+        constraints.iter().map(|r| (r.text(0), vec![r.clone()])),
+        Extend::extend,
+    );
+    let mut columns: Vec<ColumnMeta> = columns.iter().map(column).collect();
+    let mut foreign_keys = Vec::new();
+    let mut checks = Vec::new();
+    let mut primary_name = None;
+    for rows in &grouped {
+        let first = &rows[0];
+        let names: Vec<String> = rows.iter().filter_map(|r| r.opt(2)).collect();
+        let (name, kind) = (first.text(0), first.text(1));
+        match kind.as_str() {
+            "P" | "U" => {
+                if kind == "P" {
+                    for c in columns.iter_mut().filter(|c| names.contains(&c.name)) {
+                        c.primary_key = true;
+                    }
+                    primary_name = Some(name.clone());
+                }
+                let (label, constraint) = if kind == "P" {
+                    ("PRIMARY KEY", ConstraintKind::PrimaryKey)
+                } else {
+                    ("UNIQUE", ConstraintKind::Unique)
+                };
+                checks.push(ConstraintMeta {
+                    definition: format!("{label} ({})", names.join(", ")),
+                    name,
+                    kind: constraint,
+                    columns: names,
+                });
+            }
+            "C" => checks.push(ConstraintMeta {
+                definition: format!("CHECK ({})", first.text(3)),
+                name,
+                kind: ConstraintKind::Check,
+                columns: Vec::new(),
+            }),
+            _ => foreign_keys.push(ForeignKeyMeta {
+                name,
+                columns: names,
+                ref_schema: first.text(4),
+                ref_table: first.text(5),
+                ref_columns: rows.iter().map(|r| r.text(6)).collect(),
+            }),
+        }
+    }
+    let indexes = group_sorted(
+        indexes.iter().map(|r| {
+            (
+                r.text(0),
+                IndexMeta {
+                    primary: primary_name.as_deref() == Some(r.text(0).as_str()),
+                    name: r.text(0),
+                    columns: vec![r.text(2)],
+                    unique: r.text(1) == "UNIQUE",
+                    size: None,
+                },
+            )
+        }),
+        |index, more| index.columns.extend(more.columns),
+    );
+    platypus_core::TableDetails {
+        columns,
+        indexes,
+        foreign_keys,
+        constraints: checks,
+        referenced_by: referencing_keys(referencing),
+    }
+}
+
+/// The columns of the tables and views in the users' schemas, for autocompletion.
+#[must_use]
+pub fn catalog_columns_sql(limit: usize) -> String {
+    format!(
+        "SELECT c.OWNER, c.TABLE_NAME, c.COLUMN_NAME FROM ALL_TAB_COLUMNS c \
+         JOIN ALL_USERS u ON u.USERNAME = c.OWNER \
+         WHERE u.ORACLE_MAINTAINED = 'N' AND c.TABLE_NAME NOT LIKE 'BIN$%' \
+         ORDER BY c.OWNER, c.TABLE_NAME, c.COLUMN_ID FETCH FIRST {limit} ROWS ONLY"
+    )
+}
+
+#[must_use]
+pub fn catalog_columns(rows: &[TextRow]) -> Vec<CatalogColumn> {
+    rows.iter()
+        .map(|r| CatalogColumn {
+            schema: r.text(0),
+            table: r.text(1),
+            column: r.text(2),
+        })
+        .collect()
+}
+
+/// The foreign keys between the users' tables, one row per column.
+pub const CATALOG_FOREIGN_KEYS: &str = "SELECT c.OWNER, c.TABLE_NAME, c.CONSTRAINT_NAME, \
+     cc.COLUMN_NAME, r.OWNER, r.TABLE_NAME, rc.COLUMN_NAME \
+     FROM ALL_CONSTRAINTS c \
+     JOIN ALL_USERS u ON u.USERNAME = c.OWNER \
+     JOIN ALL_CONSTRAINTS r ON r.OWNER = c.R_OWNER AND r.CONSTRAINT_NAME = c.R_CONSTRAINT_NAME \
+     JOIN ALL_CONS_COLUMNS cc ON cc.OWNER = c.OWNER AND cc.CONSTRAINT_NAME = c.CONSTRAINT_NAME \
+     JOIN ALL_CONS_COLUMNS rc ON rc.OWNER = r.OWNER AND rc.CONSTRAINT_NAME = r.CONSTRAINT_NAME \
+       AND rc.POSITION = cc.POSITION \
+     WHERE c.CONSTRAINT_TYPE = 'R' AND u.ORACLE_MAINTAINED = 'N' \
+     ORDER BY c.OWNER, c.TABLE_NAME, c.CONSTRAINT_NAME, cc.POSITION";
+
+#[must_use]
+pub fn catalog_foreign_keys(rows: &[TextRow]) -> Vec<CatalogForeignKey> {
+    let keyed = rows.iter().map(|r| {
+        (
+            format!("{}.{}.{}", r.text(0), r.text(1), r.text(2)),
+            CatalogForeignKey {
+                schema: r.text(0),
+                table: r.text(1),
+                columns: vec![r.text(3)],
+                ref_schema: r.text(4),
+                ref_table: r.text(5),
+                ref_columns: vec![r.text(6)],
+            },
+        )
+    });
+    group_sorted(keyed, |key, more| {
+        key.columns.extend(more.columns);
+        key.ref_columns.extend(more.ref_columns);
+    })
+}
+
+/// The `CREATE` statement of an object, from `DBMS_METADATA`; `None` for kinds it does not
+/// describe here.
+#[must_use]
+pub fn ddl_sql(object: &ObjectRef<'_>) -> Option<String> {
+    let kind = match object.kind {
+        ObjectKind::Table => "TABLE",
+        ObjectKind::View => "VIEW",
+        ObjectKind::MaterializedView => "MATERIALIZED_VIEW",
+        ObjectKind::Sequence => "SEQUENCE",
+        ObjectKind::Function => "FUNCTION",
+        ObjectKind::Procedure => "PROCEDURE",
+        ObjectKind::Trigger => "TRIGGER",
+        ObjectKind::Type => "TYPE",
+        _ => return None,
+    };
+    Some(format!(
+        "SELECT DBMS_METADATA.GET_DDL('{kind}', {}, {}) FROM DUAL",
+        lit(object.name),
+        lit(object.schema)
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(cells: &[Option<&str>]) -> TextRow {
+        cells.iter().map(|c| c.map(str::to_owned)).collect()
+    }
+
+    #[test]
+    fn reads_schemas_and_objects() {
+        let s = schemas(&[
+            row(&[Some("HR"), Some("N"), Some("Y")]),
+            row(&[Some("SYS"), Some("Y"), Some("N")]),
+        ]);
+        assert!(s[0].current && !s[0].system);
+        assert!(s[1].system && !s[1].current);
+        let o = objects(&[
+            row(&[Some("EMP"), Some("TABLE"), Some("staff"), None, Some("14")]),
+            row(&[Some("EMP_TRG"), Some("TRIGGER"), None, Some("EMP"), None]),
+            row(&[Some("PKG"), Some("PACKAGE"), None, None, None]),
+        ]);
+        assert_eq!(o.len(), 2);
+        assert_eq!(
+            (o[0].kind, o[0].rows, o[0].comment.as_deref()),
+            (ObjectKind::Table, Some(14), Some("staff"))
+        );
+        assert_eq!(o[1].parent.as_deref(), Some("EMP"));
+        assert!(objects_sql("O'X").contains("o.OWNER = 'O''X'"));
+    }
+
+    /// An `EMP` table with a check, a foreign key, a primary key, an index of two columns
+    /// and a key pointing at it.
+    fn emp_details() -> platypus_core::TableDetails {
+        let columns = [
+            row(&[
+                Some("ID"),
+                Some("NUMBER"),
+                Some("10"),
+                Some("0"),
+                Some("0"),
+                None,
+                Some("N"),
+                None,
+                None,
+            ]),
+            row(&[
+                Some("NAME"),
+                Some("VARCHAR2"),
+                None,
+                None,
+                Some("20"),
+                Some("C"),
+                Some("Y"),
+                Some("'x' \n"),
+                Some("full name"),
+            ]),
+            row(&[
+                Some("PAY"),
+                Some("NUMBER"),
+                Some("8"),
+                Some("2"),
+                Some("0"),
+                None,
+                Some("Y"),
+                None,
+                None,
+            ]),
+            row(&[
+                Some("N"),
+                Some("NUMBER"),
+                None,
+                None,
+                Some("0"),
+                None,
+                Some("Y"),
+                None,
+                None,
+            ]),
+            row(&[
+                Some("AT"),
+                Some("TIMESTAMP(6)"),
+                None,
+                Some("6"),
+                Some("0"),
+                None,
+                Some("Y"),
+                None,
+                None,
+            ]),
+        ];
+        let constraints = [
+            row(&[
+                Some("EMP_CHK"),
+                Some("C"),
+                None,
+                Some("PAY > 0"),
+                None,
+                None,
+                None,
+            ]),
+            row(&[
+                Some("EMP_DEPT_FK"),
+                Some("R"),
+                Some("DEPT_ID"),
+                None,
+                Some("HR"),
+                Some("DEPT"),
+                Some("ID"),
+            ]),
+            row(&[
+                Some("EMP_PK"),
+                Some("P"),
+                Some("ID"),
+                None,
+                None,
+                None,
+                None,
+            ]),
+        ];
+        let indexes = [
+            row(&[Some("EMP_NAME_IX"), Some("NONUNIQUE"), Some("NAME")]),
+            row(&[Some("EMP_NAME_IX"), Some("NONUNIQUE"), Some("PAY")]),
+            row(&[Some("EMP_PK"), Some("UNIQUE"), Some("ID")]),
+        ];
+        let referencing = [row(&[
+            Some("HR"),
+            Some("PROJ"),
+            Some("PROJ_FK"),
+            Some("EMP_A"),
+            Some("ID"),
+        ])];
+        table_details(&columns, &constraints, &indexes, &referencing)
+    }
+
+    #[test]
+    fn builds_table_details() {
+        let d = emp_details();
+        let types: Vec<_> = d.columns.iter().map(|c| c.data_type.as_str()).collect();
+        assert_eq!(
+            types,
+            [
+                "NUMBER(10)",
+                "VARCHAR2(20 CHAR)",
+                "NUMBER(8,2)",
+                "NUMBER",
+                "TIMESTAMP(6)"
+            ]
+        );
+        assert!(d.columns[0].primary_key && !d.columns[0].nullable);
+        assert_eq!(d.columns[1].default.as_deref(), Some("'x'"));
+        assert_eq!(d.columns[1].comment.as_deref(), Some("full name"));
+        assert_eq!(d.foreign_keys[0].ref_table, "DEPT");
+        assert_eq!(d.foreign_keys[0].ref_columns, ["ID"]);
+        assert_eq!(d.constraints.len(), 2);
+        assert_eq!(d.constraints[0].definition, "CHECK (PAY > 0)");
+        assert_eq!(d.constraints[1].definition, "PRIMARY KEY (ID)");
+        assert_eq!(d.indexes[0].columns, ["NAME", "PAY"]);
+        assert!(d.indexes[1].primary && d.indexes[1].unique);
+        assert_eq!(d.referenced_by[0].table, "PROJ");
+    }
+
+    #[test]
+    fn groups_keys_by_name() {
+        let keys = catalog_foreign_keys(&[
+            row(&[
+                Some("HR"),
+                Some("E"),
+                Some("FK"),
+                Some("A"),
+                Some("HR"),
+                Some("D"),
+                Some("X"),
+            ]),
+            row(&[
+                Some("HR"),
+                Some("E"),
+                Some("FK"),
+                Some("B"),
+                Some("HR"),
+                Some("D"),
+                Some("Y"),
+            ]),
+        ]);
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].columns, ["A", "B"]);
+        assert_eq!(keys[0].ref_columns, ["X", "Y"]);
+    }
+
+    #[test]
+    fn ddl_of_objects() {
+        let object = ObjectRef {
+            schema: "HR",
+            name: "EMP",
+            kind: ObjectKind::Table,
+            parent: None,
+        };
+        assert_eq!(
+            ddl_sql(&object).unwrap(),
+            "SELECT DBMS_METADATA.GET_DDL('TABLE', 'EMP', 'HR') FROM DUAL"
+        );
+        let object = ObjectRef {
+            kind: ObjectKind::Extension,
+            ..object
+        };
+        assert!(ddl_sql(&object).is_none());
+    }
+}

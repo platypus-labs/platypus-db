@@ -24,6 +24,7 @@ futures.workspace = true
 platypus-core.workspace = true
 platypus-driver-adbc.workspace = true
 platypus-driver-odbc.workspace = true
+platypus-driver-oracle.workspace = true
 platypus-drivers.workspace = true
 platypus-driver-clickhouse.workspace = true
 platypus-driver-duckdb.workspace = true
