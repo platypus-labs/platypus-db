@@ -81,18 +81,20 @@ Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i
 
 Chi lavora su un gruppo lo segna qui e pusha su `main` prima di scrivere codice. Formato:
 `🔒 <nome> · <branch> · <AAAA-MM-GG>`. Un lock senza commit sul branch da più di 3 giorni è
-scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
+scaduto. `✅ completato` vuol dire che P1, P2 e P3 sono tutte fatte; `✅ fatto (…)` elenca le
+priorità finite, e il resto del gruppo si può ancora prendere. Procedura completa:
+[CLAUDE.md](../CLAUDE.md).
 
 | Gruppo | Lock |
 |---|---|
-| A — Modifica dei dati | ✅ fatto (P1, P2, P3) |
-| B — Griglia avanzata | ✅ fatto (P1, P2, P3) |
-| C — Navigator e oggetti | ✅ fatto (P1, P2, P3) |
-| D — Editor SQL | ✅ fatto (P1, P2, P3) |
-| E — Explain e performance | ✅ fatto (P1, P2, P3) |
+| A — Modifica dei dati | ✅ completato |
+| B — Griglia avanzata | ✅ completato |
+| C — Navigator e oggetti | ✅ completato |
+| D — Editor SQL | ✅ completato |
+| E — Explain e performance | ✅ completato |
 | F — Connettività e credenziali | ✅ fatto (P1, P2) |
 | G — Nuovi driver | ✅ fatto (P1; P2 e P3 in parte) |
-| H — Import, export e trasferimento | ✅ fatto (P1, P2, P3) |
+| H — Import, export e trasferimento | ✅ completato |
 | I — Strumenti di schema | ✅ fatto (P1) |
 | J — Amministrazione del server | libero |
 | K — Shell ed ergonomia | ✅ fatto (P1) |
@@ -170,7 +172,7 @@ viewer GIS su piano cartesiano senza mappa di sfondo).
 **Area:** `apps/desktop/src/components/Navigator.tsx`, `apps/desktop/src/objects/` (tab `object`), `meta.rs` e `ddl.rs` dei driver, `platypus-core/src/metadata.rs`, `platypus-sql/src/generate.rs`
 **Dipende da:** 0.2, 0.3, 0.6
 
-**Stato: P1, P2 e P3 completati.** "MERGE" è un UPSERT per dialetto (`ON CONFLICT` in PostgreSQL e SQLite, `ON DUPLICATE KEY` in MySQL). Righe stimate e dimensioni nel navigator (PostgreSQL e MySQL; dimensione degli indici solo PostgreSQL; SQLite non ha statistiche). La ricerca nei metadati è la capacità opzionale `Connection::search_metadata`, nel tab `search` con la ricerca nei dati (una tabella alla volta, `Dialect::any_column_contains`). Filtri e segnalibri stanno nel local storage della web view, la cache dei metadati in IndexedDB (scade dopo 30 giorni). Partizioni sotto la tabella padre solo in PostgreSQL: in MySQL non sono tabelle a sé.
+**Stato: completato** (P1, P2 e P3). "MERGE" è un UPSERT per dialetto (`ON CONFLICT` in PostgreSQL e SQLite, `ON DUPLICATE KEY` in MySQL). Righe stimate e dimensioni nel navigator (PostgreSQL e MySQL; dimensione degli indici solo PostgreSQL; SQLite non ha statistiche). La ricerca nei metadati è la capacità opzionale `Connection::search_metadata`, nel tab `search` con la ricerca nei dati (una tabella alla volta, `Dialect::any_column_contains`). Filtri e segnalibri stanno nel local storage della web view, la cache dei metadati in IndexedDB (scade dopo 30 giorni). Partizioni sotto la tabella padre solo in PostgreSQL: in MySQL non sono tabelle a sé.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
@@ -329,7 +331,9 @@ conformance dedicata in `tests/mongo.rs` (profilo `mongo` di `docker/compose.yml
 **Area:** `platypus-transfer`, `apps/desktop/src/transfer/`, `commands/transfer.rs`
 **Dipende da:** 0.5
 
-**Stato: P1 completate.** I file (CSV, TSV, JSON, NDJSON, Parquet, XLSX) si leggono con una
+**Stato: completato** (P1, P2 e P3).
+
+**P1 completate.** I file (CSV, TSV, JSON, NDJSON, Parquet, XLSX) si leggono con una
 connessione DuckDB sul file, la stessa del "file come database" del gruppo G; l'import in una
 tabella esistente o nuova (`platypus-transfer::import`) scrive INSERT da 500 righe in una sola
 transazione, e una tabella creata e poi fallita si elimina. I tipi della tabella nuova vengono da
