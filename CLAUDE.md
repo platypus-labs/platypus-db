@@ -23,6 +23,7 @@ rispettate anche quelle.
    se la versione è cambiata, rilanciare `graphify install --platform windows` per aggiornare la skill.
 3. **Controllare la roadmap.** Nella tabella "Lock dei gruppi" di [docs/ROADMAP.md](docs/ROADMAP.md)
    scegliere un gruppo libero, con le dipendenze pronte, seguendo le "Ondate consigliate".
+   Un gruppo `✅ fatto (…)` si può prendere per le priorità che restano; uno `✅ completato` no.
    Un lock è scaduto se il branch indicato non ha commit da più di **3 giorni**
    (`git log -1 --format=%cd origin/<branch>`): in quel caso il gruppo si considera libero.
 4. **Prendere il lock e pusharlo su main**, prima di scrivere codice:
@@ -118,8 +119,14 @@ sono finiti in meno di un giorno, soprattutto per i push della roadmap e per mac
 
 ## Chiusura del lock
 
-- Quando il branch del gruppo è unito in `main` (o il lavoro previsto è finito): riportare la riga a `libero`
-  oppure a `✅ fatto (<priorità completate>)` con un commit `chore(roadmap): rilascio gruppo <X>`.
+- Quando il branch del gruppo è unito in `main` (o il lavoro previsto è finito), aggiornare la riga
+  con un commit `chore(roadmap): rilascio gruppo <X>`:
+  - `✅ completato` solo se **tutte** le funzionalità P1, P2 e P3 della tabella del gruppo sono
+    fatte. Anche la riga "Stato" della sezione del gruppo diventa `**Stato: completato**`. Un gruppo
+    completato non si riprende: è il segno che lì non c'è più niente da fare.
+  - `✅ fatto (<priorità completate>)` se resta qualcosa (es. `✅ fatto (P1, P2)`, o
+    `✅ fatto (P1; P2 in parte)`): il gruppo resta disponibile per il resto, come un gruppo libero.
+  - `libero` se non è stato completato nessun livello di priorità.
 - Se si abbandona il lavoro, rilasciare subito il lock, senza aspettare i 3 giorni.
 
 ## graphify
