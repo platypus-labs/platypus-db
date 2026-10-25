@@ -39,8 +39,9 @@ pub fn table_script(
     original: Option<TableDesign>,
     design: TableDesign,
 ) -> CommandResult<DesignScript> {
-    let script = platypus_schema::script(Dialect::from(driver), &schema, original.as_ref(), &design)
-        .map_err(|e| CommandError::new("invalid_design", e))?;
+    let script =
+        platypus_schema::script(Dialect::from(driver), &schema, original.as_ref(), &design)
+            .map_err(|e| CommandError::new("invalid_design", e))?;
     Ok(DesignScript {
         sql: script.text(),
         script,

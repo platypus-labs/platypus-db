@@ -4,8 +4,6 @@ import {
   type ColumnDesign,
   type ConstraintDesign,
   type DriverKind,
-  type ForeignKeyDesign,
-  type IndexDesign,
   type TableDesign,
   type TableScript,
   toCommandError,
@@ -292,7 +290,7 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
         {section === "indexes" && (
           <EditTable
             head={["Name", "Columns", "Unique", ""]}
-            rows={design.indexes.map((x: IndexDesign, i) => [
+            rows={design.indexes.map((x, i) => [
               <input value={x.name} onChange={(e) => setPart("indexes", i, { name: e.target.value })} aria-label="Index name" />,
               <NamesInput value={x.columns} onChange={(columns) => setPart("indexes", i, { columns })} hint={columnNames} />,
               <input type="checkbox" checked={x.unique} onChange={(e) => setPart("indexes", i, { unique: e.target.checked })} aria-label="Unique" />,
@@ -307,7 +305,7 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
         {section === "foreign_keys" && (
           <EditTable
             head={["Name", "Columns", "Schema", "References", "Referenced columns", "On delete", "On update", ""]}
-            rows={design.foreign_keys.map((f: ForeignKeyDesign, i) => [
+            rows={design.foreign_keys.map((f, i) => [
               <input value={f.name} onChange={(e) => setPart("foreign_keys", i, { name: e.target.value })} aria-label="Foreign key name" />,
               <NamesInput value={f.columns} onChange={(columns) => setPart("foreign_keys", i, { columns })} hint={columnNames} />,
               <input value={f.ref_schema} onChange={(e) => setPart("foreign_keys", i, { ref_schema: e.target.value })} aria-label="Referenced schema" />,
@@ -339,7 +337,7 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
         {section === "constraints" && (
           <EditTable
             head={["Name", "Kind", "Columns or condition", ""]}
-            rows={design.constraints.map((c: ConstraintDesign, i) => [
+            rows={design.constraints.map((c, i) => [
               <input value={c.name} onChange={(e) => setPart("constraints", i, { name: e.target.value })} aria-label="Constraint name" />,
               <select value={c.kind} onChange={(e) => setPart("constraints", i, { kind: e.target.value as ConstraintDesign["kind"] })} aria-label="Kind">
                 <option value="unique">UNIQUE</option>

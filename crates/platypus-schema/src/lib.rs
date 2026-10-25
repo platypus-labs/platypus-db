@@ -7,8 +7,7 @@ mod ddl;
 use std::fmt::Write;
 
 use platypus_core::{
-    Connection, ConstraintKind, Error, ExecOptions, ExecResult, Result, TableDetails, TextRowExt,
-    query_text,
+    Connection, ConstraintKind, Error, ExecOptions, Result, TableDetails, TextRowExt, query_text,
 };
 use platypus_sql::Dialect;
 use serde::{Deserialize, Serialize};
@@ -396,10 +395,8 @@ pub struct ApplyError {
 }
 
 async fn exec(conn: &dyn Connection, sql: &str) -> Result<()> {
-    match conn.execute(sql, &ExecOptions::default()).await? {
-        // Dropping the stream ends the statement.
-        ExecResult::Affected { .. } | ExecResult::Rows(_) => Ok(()),
-    }
+    // Dropping a result stream ends the statement.
+    conn.execute(sql, &ExecOptions::default()).await.map(drop)
 }
 
 /// Runs `script`: its statements in one transaction where the database can roll DDL back

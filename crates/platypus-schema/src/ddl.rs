@@ -33,7 +33,7 @@ pub fn script(
             script
                 .statements
                 .push(ddl.create_table(design, &design.name));
-            ddl.indexes_and_comments(design, &design.name, None, &mut script);
+            ddl.indexes_and_comments(design, &design.name, &mut script);
         }
         Some(old) => {
             let diff = Diff::new(old, design);
@@ -408,21 +408,16 @@ impl Ddl<'_> {
 
     fn create_index(&self, table: &str, i: &IndexDesign) -> String {
         let unique = if i.unique { "UNIQUE " } else { "" };
-        let columns = self.list(&i.columns);
-        if self.d == Dialect::Sqlite {
-            // SQLite qualifies the index, not its table.
-            format!(
-                "CREATE {unique}INDEX {} ON {} ({columns})",
-                self.table(&i.name),
-                self.q(table)
-            )
+        // SQLite qualifies the index, not its table.
+        let (index, on) = if self.d == Dialect::Sqlite {
+            (self.table(&i.name), self.q(table))
         } else {
-            format!(
-                "CREATE {unique}INDEX {} ON {} ({columns})",
-                self.q(&i.name),
-                self.table(table)
-            )
-        }
+            (self.q(&i.name), self.table(table))
+        };
+        format!(
+            "CREATE {unique}INDEX {index} ON {on} ({})",
+            self.list(&i.columns)
+        )
     }
 
     fn drop_index(&self, table: &str, name: &str) -> String {
@@ -434,37 +429,16 @@ impl Ddl<'_> {
         }
     }
 
-    /// The indexes of `design` on `table` and the comments of its columns: all of them, or
-    /// those that differ from `old`.
-    fn indexes_and_comments(
-        &self,
-        design: &TableDesign,
-        table: &str,
-        old: Option<&Diff<'_>>,
-        script: &mut Script,
-    ) {
+    /// The indexes of `design` on `table` and the comments of its columns.
+    fn indexes_and_comments(&self, design: &TableDesign, table: &str, script: &mut Script) {
         for i in &design.indexes {
             script.statements.push(self.create_index(table, i));
         }
-        let commented: Vec<&ColumnDesign> = match old {
-            None => design
-                .columns
-                .iter()
-                .filter(|c| text(c.comment.as_ref()).is_some())
-                .collect(),
-            Some(diff) => diff
-                .kept_columns
-                .iter()
-                .filter(|(o, n)| comment_changed(o, n))
-                .map(|(_, n)| *n)
-                .chain(
-                    diff.added_columns
-                        .iter()
-                        .copied()
-                        .filter(|c| text(c.comment.as_ref()).is_some()),
-                )
-                .collect(),
-        };
+        let commented: Vec<&ColumnDesign> = design
+            .columns
+            .iter()
+            .filter(|c| text(c.comment.as_ref()).is_some())
+            .collect();
         self.comments(table, &commented, script);
     }
 
@@ -586,11 +560,22 @@ impl Ddl<'_> {
         for f in &diff.foreign_keys.added {
             out.push(format!("ALTER TABLE {t} ADD {}", self.foreign_key(f)));
         }
-        let added = TableDesign {
-            indexes: diff.indexes.added.iter().map(|i| (*i).clone()).collect(),
-            ..TableDesign::default()
-        };
-        self.indexes_and_comments(&added, name, Some(diff), script);
+        for i in &diff.indexes.added {
+            out.push(self.create_index(name, i));
+        }
+        let commented: Vec<&ColumnDesign> = diff
+            .kept_columns
+            .iter()
+            .filter(|(o, n)| comment_changed(o, n))
+            .map(|(_, n)| *n)
+            .chain(
+                diff.added_columns
+                    .iter()
+                    .copied()
+                    .filter(|c| text(c.comment.as_ref()).is_some()),
+            )
+            .collect();
+        self.comments(name, &commented, script);
     }
 
     /// Renames and redefines a kept column, on `table` (its new name).
@@ -699,7 +684,7 @@ impl Ddl<'_> {
             warning.push_str(" Its triggers are dropped with it.");
         }
         script.warnings.push(warning);
-        self.indexes_and_comments(new, &new.name, None, script);
+        self.indexes_and_comments(new, &new.name, script);
     }
 }
 
@@ -738,12 +723,6 @@ mod tests {
             }],
             ..TableDesign::default()
         }
-    }
-
-    fn new_part<T: Clone>(part: &T, clear: impl Fn(&mut T)) -> T {
-        let mut p = part.clone();
-        clear(&mut p);
-        p
     }
 
     #[test]
@@ -982,9 +961,10 @@ mod tests {
     #[test]
     fn rejects_incomplete_designs() {
         let mut design = orders();
-        design
-            .columns
-            .push(new_part(&design.columns[0], |c| c.primary_key = false));
+        design.columns.push(ColumnDesign {
+            primary_key: false,
+            ..design.columns[0].clone()
+        });
         assert_eq!(
             script(Dialect::Postgres, "s", None, &design),
             Err("Two columns are named id.".to_owned())
