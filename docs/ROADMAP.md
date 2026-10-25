@@ -481,6 +481,9 @@ della finestra (barra superiore, barra dei progetti, navigator) prende la tinta 
 connessione della scheda attiva (DEV, TEST, PROD) attorno a un foglio arrotondato con il lavoro;
 barra superiore con progetto, connessione e tipo, ricerca che apre la palette, tema e
 impostazioni; schermata di benvenuto con apertura di un file di dati e import delle connessioni.
+La barra superiore fa anche da barra del titolo (pulsanti della finestra, trascinamento; con
+l'impostazione "Title bar" torna quella di sistema, sempre su macOS) e le conferme sono dialog
+dell'app (`ui/ask.tsx`) al posto di `window.confirm`.
 
 **Area:** `App.tsx`, `apps/desktop/src/shell/` (tab bar, palette, impostazioni), `styles.css`, `theme.ts`
 **Dipende da:** 0.2, 0.3, 0.7
