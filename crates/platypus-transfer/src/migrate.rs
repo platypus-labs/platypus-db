@@ -204,10 +204,11 @@ fn portable_default(
         _ if quoted(v) => v.to_owned(),
         // N'...' of SQL Server.
         _ if upper.starts_with("N'") && quoted(&v[1..]) => v[1..].to_owned(),
+        // Before the text: MariaDB writes no default of a nullable column as `NULL`.
+        "NULL" => "NULL".to_owned(),
         // MySQL leaves the quotes out (MariaDB does not).
         _ if source == Dialect::MySql && text_column => literal(v),
         _ if number => v.to_owned(),
-        "NULL" => "NULL".to_owned(),
         "TRUE" | "FALSE" if target == Dialect::SqlServer => {
             if upper == "TRUE" { "1" } else { "0" }.to_owned()
         }
@@ -619,7 +620,10 @@ async fn identity_steps(
             vec![
                 Step {
                     label: label.clone(),
-                    sql: format!("CREATE SEQUENCE {sequence} START WITH {}", max + 1),
+                    sql: format!(
+                        "CREATE OR REPLACE SEQUENCE {sequence} START WITH {}",
+                        max + 1
+                    ),
                 },
                 Step {
                     label,
@@ -880,6 +884,11 @@ mod tests {
         assert_eq!(
             portable_default("open", mysql, "varchar(10)").as_deref(),
             Some("'open'")
+        );
+        // MariaDB's "no default" of a nullable column.
+        assert_eq!(
+            portable_default("NULL", mysql, "varchar(10)").as_deref(),
+            Some("NULL")
         );
         assert_eq!(
             portable_default("1", mysql, "tinyint(1)").as_deref(),

@@ -534,6 +534,12 @@ async fn resolve(
         return Ok(generator);
     }
     Ok(match generator {
+        // SQL Server's unique indexes take one NULL.
+        Generator::Null if dialect == Dialect::SqlServer && rows > 1 => {
+            return Err(ImportError::Plan(format!(
+                "{name} is unique, and SQL Server takes NULL in it only once"
+            )));
+        }
         g @ (Generator::Sequence { .. }
         | Generator::Uuid
         | Generator::Null

@@ -237,8 +237,17 @@ impl ImportPlan {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
+        let mut rows = rows_text(batch)?;
+        if self.mode() == ImportMode::Upsert && self.staging(dialect).is_some() {
+            // `ON DUPLICATE KEY` let the last of a key win; the staged insert would add each.
+            let at: Vec<usize> = keys
+                .iter()
+                .filter_map(|k| names.iter().position(|n| n == k))
+                .collect();
+            rows = last_per_key(rows, &at);
+        }
         let mut statements = Vec::new();
-        for chunk in rows_text(batch)?.chunks(ROWS_PER_INSERT) {
+        for chunk in rows.chunks(ROWS_PER_INSERT) {
             let values = chunk
                 .iter()
                 .map(|row| {
@@ -418,6 +427,22 @@ pub fn rows_text(batch: &RecordBatch) -> Result<Vec<Vec<Option<String>>>, ArrowE
                 .collect()
         })
         .collect())
+}
+
+/// `rows` with only the last of each key (the values at `at`), in their order; a row with a
+/// NULL key matches none and stays.
+fn last_per_key(rows: Vec<Vec<Option<String>>>, at: &[usize]) -> Vec<Vec<Option<String>>> {
+    let mut seen = std::collections::HashSet::new();
+    let mut kept: Vec<_> = rows
+        .into_iter()
+        .rev()
+        .filter(|row| {
+            let key: Option<Vec<&String>> = at.iter().map(|&i| row[i].as_ref()).collect();
+            key.is_none_or(|k| seen.insert(k.into_iter().cloned().collect::<Vec<_>>()))
+        })
+        .collect();
+    kept.reverse();
+    kept
 }
 
 /// The rows of the query `sql`, as text; none for a statement without rows.
@@ -670,6 +695,27 @@ mod tests {
         assert_eq!(
             target_type(&field(DataType::Float64, "DECIMAL(10, 2)"), d),
             "DOUBLE PRECISION"
+        );
+    }
+
+    #[test]
+    fn keeps_the_last_row_of_a_key() {
+        let row = |k: Option<&str>, v: &str| vec![k.map(str::to_owned), Some(v.to_owned())];
+        let rows = vec![
+            row(Some("1"), "a"),
+            row(None, "b"),
+            row(Some("2"), "c"),
+            row(Some("1"), "d"),
+            row(None, "e"),
+        ];
+        assert_eq!(
+            last_per_key(rows, &[0]),
+            [
+                row(None, "b"),
+                row(Some("2"), "c"),
+                row(Some("1"), "d"),
+                row(None, "e")
+            ]
         );
     }
 

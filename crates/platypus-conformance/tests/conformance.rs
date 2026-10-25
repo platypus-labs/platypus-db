@@ -2209,10 +2209,16 @@ async fn migrates_tables_between_databases() {
                     "CREATE TABLE {child} (id INT NOT NULL PRIMARY KEY, parent_id INT, \
                      CONSTRAINT conf_mig_fk FOREIGN KEY (parent_id) REFERENCES {referenced} (id))"
                 ),
-                format!("CREATE VIEW {view} AS SELECT id, name FROM {referenced}"),
                 format!("INSERT INTO {parent} (name, code) VALUES ('a', 'x'), ('b', 'y')"),
                 format!("INSERT INTO {child} VALUES (10, 1), (11, NULL)"),
             ]);
+            // The view travels only between databases of one kind: MySQL and MariaDB. Elsewhere
+            // it would race the metadata search of the other tests, which reads every view.
+            if sd == Dialect::MySql {
+                setup.push(format!(
+                    "CREATE VIEW {view} AS SELECT id, name FROM {referenced}"
+                ));
+            }
             for sql in setup {
                 run(&*source, &sql)
                     .await
