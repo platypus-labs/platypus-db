@@ -11,7 +11,7 @@ use arrow_array::RecordBatch;
 use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use arrow_schema::{ArrowError, DataType, Field, TimeUnit};
 use futures::StreamExt;
-use platypus_core::{Connection, ExecOptions, ExecResult, META_DB_TYPE};
+use platypus_core::{Connection, ExecOptions, ExecResult, META_DB_TYPE, RecordBatchStream};
 use platypus_sql::Dialect;
 use platypus_sql::dml::{Column, InvalidValue, ValueKind};
 use serde::Deserialize;
@@ -28,6 +28,9 @@ pub struct ImportColumn {
     /// The column type, used when the import creates the table.
     #[serde(default)]
     pub data_type: Option<String>,
+    /// A created column refuses NULL.
+    #[serde(default)]
+    pub not_null: bool,
 }
 
 /// What happens to the rows already in an existing table.
@@ -60,6 +63,9 @@ pub struct ImportPlan {
     #[serde(default)]
     pub keys: Vec<String>,
     pub columns: Vec<ImportColumn>,
+    /// The primary key of a created table, as target columns.
+    #[serde(default)]
+    pub primary_key: Vec<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -119,15 +125,29 @@ impl ImportPlan {
             .columns
             .iter()
             .map(|c| match c.data_type.as_deref().map(str::trim) {
-                Some(t) if !t.is_empty() => Ok(format!("{} {t}", dialect.quote_ident(&c.target))),
+                Some(t) if !t.is_empty() => Ok(format!(
+                    "{} {t}{}",
+                    dialect.quote_ident(&c.target),
+                    if c.not_null { " NOT NULL" } else { "" }
+                )),
                 _ => Err(ImportError::Plan(format!(
                     "column {} has no type",
                     c.target
                 ))),
             })
             .collect::<Result<Vec<_>, _>>()?;
+        let key = if self.primary_key.is_empty() {
+            String::new()
+        } else {
+            let names: Vec<_> = self
+                .primary_key
+                .iter()
+                .map(|k| dialect.quote_ident(k))
+                .collect();
+            format!(", PRIMARY KEY ({})", names.join(", "))
+        };
         Ok(format!(
-            "CREATE TABLE {} ({})",
+            "CREATE TABLE {} ({}{key})",
             self.table(dialect),
             columns.join(", ")
         ))
@@ -210,9 +230,34 @@ pub fn target_type(field: &Field, target: Dialect) -> String {
         DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View | DataType::Null
     )
     .then(|| field.metadata().get(META_DB_TYPE))
-    .flatten()
-    .and_then(|t| declared_type(t));
+    .flatten();
+    // Text of a bounded length keeps it: MySQL cannot index (or key) TEXT.
+    if let Some(n) = declared.and_then(|t| text_length(t)) {
+        return match target {
+            Dialect::SqlServer => format!("NVARCHAR({n})"),
+            Dialect::Sqlite => "TEXT".to_owned(),
+            _ => format!("VARCHAR({n})"),
+        };
+    }
+    let declared = declared.and_then(|t| declared_type(t));
     target.column_type(declared.as_ref().unwrap_or(field.data_type()))
+}
+
+/// The length of a declared `varchar(n)` or `char(n)`.
+fn text_length(name: &str) -> Option<u32> {
+    let (base, args) = name.split_once('(')?;
+    let base = base.trim().to_ascii_lowercase();
+    let text = [
+        "varchar",
+        "character varying",
+        "nvarchar",
+        "char",
+        "character",
+        "nchar",
+    ];
+    text.contains(&base.as_str())
+        .then(|| args.trim_end_matches(')').trim().parse().ok())
+        .flatten()
 }
 
 /// The Arrow type of a declared column type, for the types other databases share.
@@ -271,6 +316,25 @@ async fn exec(conn: &dyn Connection, sql: &str) -> Result<(), platypus_core::Err
 /// Returns how many rows were imported.
 pub async fn import(
     (source, source_dialect): (&dyn Connection, Dialect),
+    target: (&dyn Connection, Dialect),
+    plan: &ImportPlan,
+    progress: impl FnMut(u64) -> bool,
+) -> Result<u64, ImportError> {
+    plan.check()?;
+    let options = ExecOptions {
+        batch_size: ROWS_PER_INSERT,
+        ..ExecOptions::default()
+    };
+    let sql = plan.source_sql(source_dialect);
+    let ExecResult::Rows(rows) = source.execute(&sql, &options).await? else {
+        return Err(ImportError::Plan("the source returned no rows".to_owned()));
+    };
+    import_rows(rows, target, plan, progress).await
+}
+
+/// Writes `rows`, whose columns are the plan's sources in order, as [`import`] does.
+pub async fn import_rows(
+    mut rows: RecordBatchStream,
     (target, dialect): (&dyn Connection, Dialect),
     plan: &ImportPlan,
     mut progress: impl FnMut(u64) -> bool,
@@ -288,14 +352,6 @@ pub async fn import(
         if plan.mode() == ImportMode::Replace {
             exec(target, &format!("DELETE FROM {}", plan.table(dialect))).await?;
         }
-        let options = ExecOptions {
-            batch_size: ROWS_PER_INSERT,
-            ..ExecOptions::default()
-        };
-        let sql = plan.source_sql(source_dialect);
-        let ExecResult::Rows(mut rows) = source.execute(&sql, &options).await? else {
-            return Err(ImportError::Plan("the source returned no rows".to_owned()));
-        };
         let mut written = 0;
         while let Some(batch) = rows.next().await {
             let batch = batch?;
@@ -342,16 +398,19 @@ mod tests {
             create,
             mode: ImportMode::Append,
             keys: Vec::new(),
+            primary_key: Vec::new(),
             columns: vec![
                 ImportColumn {
                     source: "id".to_owned(),
                     target: "id".to_owned(),
                     data_type: Some("BIGINT".to_owned()),
+                    not_null: false,
                 },
                 ImportColumn {
                     source: "item name".to_owned(),
                     target: "item".to_owned(),
                     data_type: Some("TEXT".to_owned()),
+                    not_null: false,
                 },
             ],
         }
@@ -431,6 +490,18 @@ mod tests {
         );
         assert_eq!(target_type(&field(DataType::Utf8, "INT"), d), "BIGINT");
         assert_eq!(target_type(&field(DataType::Utf8, "uuid"), d), "TEXT");
+        assert_eq!(
+            target_type(&field(DataType::Utf8, "varchar(20)"), d),
+            "VARCHAR(20)"
+        );
+        assert_eq!(
+            target_type(&field(DataType::Utf8, "varchar(20)"), Dialect::SqlServer),
+            "NVARCHAR(20)"
+        );
+        assert_eq!(
+            target_type(&field(DataType::Utf8, "nvarchar(max)"), d),
+            "TEXT"
+        );
         assert_eq!(
             target_type(&field(DataType::Utf8, "numeric"), d),
             "TEXT",

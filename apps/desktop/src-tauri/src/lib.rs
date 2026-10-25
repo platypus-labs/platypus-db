@@ -206,6 +206,7 @@ pub fn run() {
             commands::transfer::import_file,
             commands::transfer::preview_transfer,
             commands::transfer::transfer_table,
+            commands::transfer::migrate_tables,
             commands::transactions::transaction_state,
             commands::transactions::set_autocommit,
             commands::transactions::end_transaction,

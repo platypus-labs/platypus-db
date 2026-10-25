@@ -7,6 +7,7 @@ import { isRelation } from "../components/Navigator";
 import { workbench } from "../workbench";
 import { ExportTablesDialog } from "./ExportTablesDialog";
 import { ImportDataDialog, type TableAt } from "./ImportDataDialog";
+import { MigrateDialog } from "./MigrateDialog";
 
 const at = (connection: SavedConnection, database: string | null, schema: SchemaMeta, table: string | null): TableAt => ({
   connection,
@@ -123,4 +124,31 @@ registerAction({
       createElement(ImportDataDialog, { target: at(connection, database, schema, null), path, onClose: close }),
     );
   },
+});
+
+function openMigrate(connection: SavedConnection, database: string | null, schema: string, tables: string[] | null) {
+  workbench().openDialog((close) => createElement(MigrateDialog, { connection, database, schema, tables, onClose: close }));
+}
+
+registerAction({
+  id: "object.migrate",
+  scope: "navigator.object",
+  title: "Copy tables to a database…",
+  group: "manage",
+  order: 73,
+  multiple: true,
+  // One table has "Copy to a database…", with its columns to map.
+  when: ({ schema, selection }) =>
+    (selection?.length ?? 0) > 1 && selection!.every((s) => s.object.kind === "table" && s.schema.name === schema.name),
+  run: ({ connection, database, schema, selection }) =>
+    openMigrate(connection, database, schema.name, selection!.map((s) => s.object.name)),
+});
+
+registerAction({
+  id: "schema.migrate",
+  scope: "navigator.schema",
+  title: "Copy schema to a database…",
+  group: "open",
+  order: 33,
+  run: ({ connection, database, schema }) => openMigrate(connection, database, schema.name, null),
 });

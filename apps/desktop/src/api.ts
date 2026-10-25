@@ -560,7 +560,7 @@ export interface ExportOptions {
 
 export type ExportEvent =
   | { type: "progress"; rows: number }
-  | { type: "done"; rows: number; elapsed_ms: number }
+  | { type: "done"; rows: number; elapsed_ms: number; warnings?: string[] }
   | { type: "failed"; error: CommandError }
   | { type: "cancelled" };
 
@@ -755,6 +755,27 @@ export const api = {
     invoke<ImportPreview>("preview_import", { sessionId, path, table }),
   /** The first rows of a table of the source session, with the column types they would take in
    *  the target session's database. */
+  /** Creates tables of the source session's schema in the target session's and copies their
+   *  rows, then their foreign keys; cancelled with `cancelExport`. */
+  migrateTables: (
+    sourceSessionId: number,
+    targetSessionId: number,
+    sourceSchema: string,
+    targetSchema: string,
+    tables: string[],
+    onEvent: (e: ExportEvent) => void,
+  ) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("migrate_tables", {
+      sourceSessionId,
+      targetSessionId,
+      sourceSchema,
+      targetSchema,
+      tables,
+      onEvent: channel,
+    });
+  },
   /** Saves the clipboard's text to a new `pasted.csv`; returns its path. */
   clipboardToFile: () => invoke<string>("clipboard_to_file"),
   previewTransfer: (sourceSessionId: number, schema: string | null, table: string, targetSessionId: number) =>

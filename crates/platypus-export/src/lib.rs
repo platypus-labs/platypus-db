@@ -6,6 +6,7 @@
 //! [`import`] goes the other way: rows of a data file into a table.
 
 pub mod import;
+pub mod migrate;
 mod text;
 
 use std::fs::File;

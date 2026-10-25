@@ -9,6 +9,7 @@ use futures::TryStreamExt;
 use platypus_core::{Connection, ConnectionConfig, DriverKind, ExecOptions, ExecResult};
 use platypus_driver_duckdb::files::is_data_file;
 use platypus_export::import::{ImportError, ImportPlan, import, rows_text, target_type};
+use platypus_export::migrate::migrate;
 use platypus_sql::Dialect;
 use serde::Serialize;
 use tauri::State;
@@ -219,6 +220,53 @@ fn start(
             ImportError::Database(e) => e.into(),
             e => CommandError::new("import", e.to_string()),
         })
+    });
+    let id = state.next_id();
+    lock(&state.exports).insert(id, job);
+    Ok(id)
+}
+
+/// Creates `tables` of the source session's `source_schema` in the target session's
+/// `target_schema` and copies their rows, then their foreign keys; the keys left out arrive as
+/// warnings. Returns an id for `cancel_export`.
+#[tauri::command]
+pub fn migrate_tables(
+    state: State<'_, AppState>,
+    source_session_id: u64,
+    target_session_id: u64,
+    source_schema: String,
+    target_schema: String,
+    tables: Vec<String>,
+    on_event: Channel<ExportEvent>,
+) -> CommandResult<u64> {
+    let source = state.session(source_session_id)?;
+    let target = state.session(target_session_id)?;
+    let log = Arc::clone(&state.query_log);
+    let job = Export::spawn(on_event, true, move |job| async move {
+        let from = super::connect(&source.config).await?;
+        let to = Logged::wrap(
+            Arc::from(super::connect(&target.config).await?),
+            &log,
+            &target.label,
+        );
+        let done = migrate(
+            (&*from, Dialect::from(source.config.driver), &source_schema),
+            (&*to, Dialect::from(target.config.driver), &target_schema),
+            &tables,
+            |rows| {
+                job.progress(rows);
+                !job.stopping()
+            },
+        )
+        .await
+        .map_err(|e| match e {
+            ImportError::Database(e) => e.into(),
+            e => CommandError::new("import", e.to_string()),
+        })?;
+        for warning in done.skipped {
+            job.warn(warning);
+        }
+        Ok(done.rows)
     });
     let id = state.next_id();
     lock(&state.exports).insert(id, job);
