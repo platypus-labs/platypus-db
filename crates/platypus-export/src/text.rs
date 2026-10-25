@@ -12,7 +12,7 @@ use platypus_sql::dml::{Column, ValueKind};
 use rust_xlsxwriter::{Workbook, Worksheet, XlsxError};
 
 use crate::import::rows_text;
-use crate::{ExportError, Format, Result};
+use crate::{ExportError, Format, Result, io_error};
 
 /// Rows an Excel sheet holds, the header included.
 const XLSX_MAX_ROWS: u32 = 1_048_576;
@@ -96,10 +96,7 @@ impl TextSink {
     fn put(&mut self, text: &str) -> Result<()> {
         if let Out::File(out) = &mut self.out {
             out.write_all(text.as_bytes())
-                .map_err(|source| ExportError::Io {
-                    path: "export".into(),
-                    source,
-                })?;
+                .map_err(io_error(Path::new("export")))?;
         }
         Ok(())
     }
@@ -230,14 +227,10 @@ impl TextSink {
         self.put(tail)?;
         match self.out {
             Out::File(out) => {
-                let file = out.into_inner().map_err(|e| ExportError::Io {
-                    path: partial.to_owned(),
-                    source: e.into_error(),
-                })?;
-                file.sync_all().map_err(|source| ExportError::Io {
-                    path: partial.to_owned(),
-                    source,
-                })
+                let file = out
+                    .into_inner()
+                    .map_err(|e| io_error(partial)(e.into_error()))?;
+                file.sync_all().map_err(io_error(partial))
             }
             Out::Xlsx(mut workbook) => Ok(workbook.save(partial)?),
         }

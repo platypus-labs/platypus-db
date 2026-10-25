@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, type ExportFormat, type ExportOptions, type SavedConnection, toCommandError } from "../api";
-import { DELIMITERS, FORMATS } from "../components/ExportDialog";
+import { CsvOptions, FORMATS } from "../components/ExportDialog";
 import { workbench } from "../workbench";
 
 type TableRef = { schema: string | null; name: string };
@@ -86,24 +86,7 @@ export function ExportTablesDialog({ connection, database, schema, currentSchema
             ))}
           </select>
         </label>
-        {options.format === "csv" && (
-          <div className="row">
-            <label className="field">
-              <span>Delimiter</span>
-              <select value={options.delimiter} disabled={running} onChange={(e) => setOptions({ ...options, delimiter: e.target.value })}>
-                {DELIMITERS.map((d) => (
-                  <option key={d.label} value={d.value}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="check">
-              <input type="checkbox" checked={options.header} disabled={running} onChange={(e) => setOptions({ ...options, header: e.target.checked })} />
-              Header row
-            </label>
-          </div>
-        )}
+        {options.format === "csv" && <CsvOptions options={options} disabled={running} onChange={setOptions} />}
         {status.state === "running" && <div className="notice small">Exporting… {status.rows.toLocaleString()} rows</div>}
         {status.state === "done" && <div className="notice small">Exported {status.rows.toLocaleString()} rows.</div>}
         {status.state === "failed" && <div className="notice error small">{status.message}</div>}

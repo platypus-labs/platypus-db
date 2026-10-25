@@ -31,12 +31,35 @@ export const FORMATS: { value: ExportFormat; label: string; ext: string }[] = [
   { value: "xml", label: "XML", ext: "xml" },
 ];
 
-export const DELIMITERS = [
+const DELIMITERS = [
   { value: ",", label: "Comma ," },
   { value: ";", label: "Semicolon ;" },
   { value: "\t", label: "Tab" },
   { value: "|", label: "Pipe |" },
 ];
+
+/** The CSV delimiter and header row of `options`. */
+export function CsvOptions(props: { options: ExportOptions; disabled?: boolean; onChange: (o: ExportOptions) => void }) {
+  const { options, disabled, onChange } = props;
+  return (
+    <div className="row">
+      <label className="field">
+        <span>Delimiter</span>
+        <select value={options.delimiter} disabled={disabled} onChange={(e) => onChange({ ...options, delimiter: e.target.value })}>
+          {DELIMITERS.map((d) => (
+            <option key={d.label} value={d.value}>
+              {d.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={options.header} disabled={disabled} onChange={(e) => onChange({ ...options, header: e.target.checked })} />
+        Header row
+      </label>
+    </div>
+  );
+}
 
 export function ExportDialog({ name, driver, loadedRows, complete, transactionOpen, onExport, onClose }: Props) {
   const [options, setOptions] = useState<ExportOptions>({
@@ -82,31 +105,7 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
             <input value={options.table} onChange={(e) => setOptions({ ...options, table: e.target.value })} />
           </label>
         )}
-        {options.format === "csv" && (
-          <div className="row">
-            <label className="field">
-              <span>Delimiter</span>
-              <select
-                value={options.delimiter}
-                onChange={(e) => setOptions({ ...options, delimiter: e.target.value })}
-              >
-                {DELIMITERS.map((d) => (
-                  <option key={d.label} value={d.value}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={options.header}
-                onChange={(e) => setOptions({ ...options, header: e.target.checked })}
-              />
-              Header row
-            </label>
-          </div>
-        )}
+        {options.format === "csv" && <CsvOptions options={options} onChange={setOptions} />}
         <fieldset className="choices">
           <label className="check">
             <input type="radio" checked={source === "query"} onChange={() => setSource("query")} />

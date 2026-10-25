@@ -84,14 +84,7 @@ impl Export {
         options: ExportOptions,
         events: Channel<ExportEvent>,
     ) -> Arc<Self> {
-        Self::spawn(events, false, |task| async move {
-            let conn = Logged::wrap(
-                Arc::from(crate::commands::connect(&config).await?),
-                &log,
-                &label,
-            );
-            task.write_query(&*conn, &sql, path, &options, 0).await
-        })
+        Self::start_many((config, label, log), vec![(sql, path, options)], events)
     }
 
     /// Runs each query of `files` on one new connection and writes its rows to the file next
@@ -109,7 +102,7 @@ impl Export {
             );
             let mut rows = 0;
             for (sql, path, options) in files {
-                rows += task.write_query(&*conn, &sql, path, &options, rows).await?;
+                rows += task.write_query(&*conn, &sql, path, options, rows).await?;
             }
             Ok(rows)
         })
@@ -172,10 +165,9 @@ impl Export {
         conn: &dyn Connection,
         sql: &str,
         path: PathBuf,
-        options: &ExportOptions,
+        options: ExportOptions,
         done: u64,
     ) -> Result<u64, CommandError> {
-        let options = options.clone();
         let options_exec = ExecOptions {
             batch_size: BATCH_SIZE,
             ..ExecOptions::default()

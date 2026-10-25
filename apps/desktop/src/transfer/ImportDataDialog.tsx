@@ -86,6 +86,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
   const [mode, setMode] = useState<ImportMode>("append");
   const [status, setStatus] = useState<Status>({ state: "idle" });
   const [error, setError] = useState<string | null>(null);
+  const fail = (e: unknown) => setError(failure(e));
   /** The confirmation a production connection asks before the import. */
   const [confirm, setConfirm] = useState<GuardRequest | null>(null);
 
@@ -96,7 +97,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
     if (source) {
       workbench()
         .sideSession(source.connection, source.database)
-        .then(setSourceSid, (e: unknown) => setError(failure(e)));
+        .then(setSourceSid, fail);
     }
   }, []);
 
@@ -108,14 +109,14 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
         setSid(id);
         if (id !== null && transfer) setSchemas(await api.listSchemas(id));
       })
-      .catch((e: unknown) => setError(failure(e)));
+      .catch(fail);
   }, [target.connection.id, target.database]);
 
   useEffect(() => {
     if (sid === null || !transfer || !target.schema) return;
     api.listObjects(sid, target.schema).then(
       (objects) => setTables(objects.filter((o) => o.kind === "table").map((o) => o.name)),
-      (e: unknown) => setError(failure(e)),
+      fail,
     );
   }, [sid, target.schema]);
 
@@ -124,7 +125,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
     if (sid === null || existing === null || !target.schema) return;
     api.tableDetails(sid, target.schema, existing).then(
       (d) => setTargets(d.columns),
-      (e: unknown) => setError(failure(e)),
+      fail,
     );
   }, [sid, target.schema, existing]);
 
