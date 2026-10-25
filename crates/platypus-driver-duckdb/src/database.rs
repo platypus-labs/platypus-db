@@ -5,10 +5,12 @@
 //! connection (navigator, editor tabs), so every connection to a file shares one instance,
 //! kept open while any of them is. `:memory:` is shared the same way: the sessions of the
 //! app see the same in-memory tables. A data file (CSV, Parquet, XLSX...) gets an in-memory
-//! instance of its own, shared the same way, that reads it ([`crate::files`]).
+//! instance of its own, shared the same way, that reads it ([`crate::files`]); a new connection
+//! loads it again once the file changed, which matters for the copied sheets of a workbook.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
+use std::time::SystemTime;
 
 use platypus_core::{Error, Result};
 
@@ -17,6 +19,8 @@ use crate::{files, lock};
 /// An open DuckDB instance. New connections are cloned from `root`.
 pub struct Database {
     root: Mutex<duckdb::Connection>,
+    /// When the data file it reads was last changed, as it was loaded; `None` otherwise.
+    loaded: Mutex<Option<SystemTime>>,
 }
 
 static OPEN: Mutex<Vec<(PathBuf, Weak<Database>)>> = Mutex::new(Vec::new());
@@ -65,26 +69,32 @@ pub fn connect(path: &str) -> Result<(Arc<Database>, duckdb::Connection)> {
         .iter()
         .find(|(k, _)| *k == key)
         .and_then(|(_, db)| db.upgrade());
+    let data_file = files::is_data_file(path);
     let database = if let Some(database) = existing {
         database
     } else {
-        let data_file = files::is_data_file(path);
         let root = if path == MEMORY || data_file {
             duckdb::Connection::open_in_memory_with_flags(settings()?)
         } else {
             duckdb::Connection::open_with_flags(&key, settings()?)
         }
         .map_err(|e| Error::Connect(format!("cannot open {path}: {e}")))?;
-        if data_file {
-            files::load(&root, path)?;
-        }
         let database = Arc::new(Database {
             root: Mutex::new(root),
+            loaded: Mutex::new(None),
         });
         open.push((key, Arc::downgrade(&database)));
         database
     };
     drop(open);
+    if data_file {
+        let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+        let mut loaded = lock(&database.loaded);
+        if loaded.is_none() || *loaded != modified {
+            files::load(&lock(&database.root), path)?;
+            *loaded = modified;
+        }
+    }
     let conn = lock(&database.root)
         .try_clone()
         .map_err(|e| Error::Connect(format!("cannot connect to {path}: {e}")))?;

@@ -54,7 +54,7 @@ pub fn load(conn: &duckdb::Connection, path: &str) -> Result<()> {
     let d = Dialect::DuckDb;
     // The file is read again at each query: a missing or unreadable file fails here first.
     let sql = format!(
-        "CREATE VIEW {} AS SELECT * FROM {reader}({}); SELECT * FROM {0} LIMIT 0",
+        "CREATE OR REPLACE VIEW {} AS SELECT * FROM {reader}({}); SELECT * FROM {0} LIMIT 0",
         d.quote_ident(name),
         d.quote_literal(path),
     );
@@ -126,8 +126,11 @@ fn load_workbook(conn: &duckdb::Connection, path: &str) -> Result<()> {
             .map(|(n, t)| format!("{} {t}", d.quote_ident(n)))
             .collect();
         let table = d.quote_ident(&sheet);
-        conn.execute_batch(&format!("CREATE TABLE {table} ({})", columns.join(", ")))
-            .map_err(|e| fail(&e))?;
+        conn.execute_batch(&format!(
+            "CREATE OR REPLACE TABLE {table} ({})",
+            columns.join(", ")
+        ))
+        .map_err(|e| fail(&e))?;
         let mut appender = conn.appender(&sheet).map_err(|e| fail(&e))?;
         for row in rows {
             let values = types

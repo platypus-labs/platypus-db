@@ -287,8 +287,11 @@ async fn opens_data_files_as_views() {
 }
 
 /// A workbook with one sheet, `People`, written by hand: the parts calamine reads.
-fn write_xlsx(path: &std::path::Path) {
+fn write_xlsx(path: &std::path::Path, alan_age: u32) {
     use std::io::Write as _;
+    let sheet = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>name</t></is></c><c r="B1" t="inlineStr"><is><t>age</t></is></c><c r="C1" t="inlineStr"><is><t>score</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>Ada</t></is></c><c r="B2"><v>36</v></c><c r="C2"><v>9.5</v></c></row><row r="3"><c r="A3" t="inlineStr"><is><t>Alan</t></is></c><c r="B3"><v>{alan_age}</v></c></row></sheetData></worksheet>"#
+    );
     let parts = [
         (
             "[Content_Types].xml",
@@ -306,10 +309,7 @@ fn write_xlsx(path: &std::path::Path) {
             "xl/_rels/workbook.xml.rels",
             r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#,
         ),
-        (
-            "xl/worksheets/sheet1.xml",
-            r#"<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>name</t></is></c><c r="B1" t="inlineStr"><is><t>age</t></is></c><c r="C1" t="inlineStr"><is><t>score</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>Ada</t></is></c><c r="B2"><v>36</v></c><c r="C2"><v>9.5</v></c></row><row r="3"><c r="A3" t="inlineStr"><is><t>Alan</t></is></c><c r="B3"><v>41</v></c></row></sheetData></worksheet>"#,
-        ),
+        ("xl/worksheets/sheet1.xml", sheet.as_str()),
     ];
     let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
     let options =
@@ -325,9 +325,13 @@ fn write_xlsx(path: &std::path::Path) {
 async fn opens_workbook_sheets_as_tables() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("book.xlsx");
-    write_xlsx(&path);
+    write_xlsx(&path, 41);
     let conn = open_file(&path).await;
     assert_eq!(value(&*conn, "SELECT sum(age) FROM People").await, "77");
+    // A new connection reads the workbook again once it changed.
+    write_xlsx(&path, 42);
+    let other = open_file(&path).await;
+    assert_eq!(value(&*other, "SELECT sum(age) FROM People").await, "78");
     assert_eq!(
         value(
             &*conn,
