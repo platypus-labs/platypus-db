@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, type ExportFormat, type ExportOptions, type SavedConnection } from "../api";
-import { CsvOptions, FORMATS, OutputOptions } from "../components/ExportDialog";
+import { CsvOptions, FORMATS, OutputOptions, sentOptions } from "../components/ExportDialog";
 import { workbench } from "../workbench";
 import { JobFooter, useJob } from "./job";
 
@@ -43,7 +43,7 @@ export function ExportTablesDialog({ connection, database, schema, currentSchema
     if (typeof dir !== "string" || !tables) return;
     const sid = await workbench().sideSession(connection, database);
     if (sid === null) return;
-    await start((onEvent) => api.exportTables(sid, tables, dir, options, onEvent));
+    await start((onEvent) => api.exportTables(sid, tables, dir, sentOptions(options), onEvent));
   }
 
   const running = status.state === "running";

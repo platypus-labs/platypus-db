@@ -50,6 +50,12 @@ const compressedExt = (c: Compression | undefined) => COMPRESSIONS.find((x) => x
 // Parquet and Excel files are compressed already.
 const packed = (format: ExportFormat) => format === "parquet" || format === "xlsx";
 
+/** `options` as sent: Parquet and Excel files take no compression, whatever was picked before. */
+export const sentOptions = (options: ExportOptions): ExportOptions => ({
+  ...options,
+  compression: packed(options.format) ? "none" : options.compression,
+});
+
 /** The compression of the finished file and, with `upload`, a signed URL to send it to. */
 export function OutputOptions(props: {
   options: ExportOptions;
@@ -127,7 +133,7 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const chosen = { ...options, compression: packed(options.format) ? "none" : options.compression } as ExportOptions;
+    const chosen = sentOptions(options);
     const zipped = compressedExt(chosen.compression);
     const path = await save({
       defaultPath: `${name}.${format.ext}${zipped ? `.${zipped}` : ""}`,

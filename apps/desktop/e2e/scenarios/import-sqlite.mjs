@@ -32,7 +32,7 @@ save_password = false
   );
 }
 
-async function menu(page, label, item) {
+async function menu(page, label, item, modal = dialog) {
   await page.eval(`${row(label)}.querySelector('.tree-label').id = 'e2e-row'`);
   await page.clickSel("#e2e-row", { button: "right" });
   await page.eval(`document.getElementById('e2e-row')?.removeAttribute('id')`);
@@ -40,7 +40,7 @@ async function menu(page, label, item) {
   await page.eval(
     `[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith(${JSON.stringify(item)})).click()`,
   );
-  await page.waitFor(`${dialog} !== null`);
+  await page.waitFor(`${modal} !== null`);
 }
 
 /** Sets the dialog's React-controlled `input` to `value`, as typing would. */
@@ -142,4 +142,20 @@ export default async function (page, { dir }) {
   await page.eval(fill(`${dialog}.querySelector('input[list]')`, "items_copy2"));
   await page.waitFor(`[...${dialog}.querySelectorAll('label.field span')].some(s => s.textContent === 'New table')`);
   await runImport(page, { action: "Copy" });
+
+  // Fake rows: keys after the largest, names and prices; the production guard lists them.
+  const gen = `document.querySelector('.modal.generate-data')`;
+  await menu(page, "items", "Generate data", gen);
+  await page.waitFor(`${gen}.querySelectorAll('select').length === 3`);
+  const kinds = await page.eval(`[...${gen}.querySelectorAll('select')].map(s => s.value)`);
+  assert.deepEqual(kinds, ["next_key", "full_name", "decimal"]);
+  await page.eval(fill(`${gen}.querySelector('input[type=number]')`, "50"));
+  await page.eval(`${button(gen, "Generate")}.click()`);
+  await confirmProduction(page);
+  await page.waitFor(`${gen}.textContent.includes('Added 50 rows') || ${gen}.textContent.includes('Nothing was added')`, 20_000);
+  assert.ok((await page.eval(`${gen}.textContent`)).includes("Added 50 rows"), await page.eval(`${gen}.textContent`));
+  await page.eval(`${button(gen, "Close")}.click()`);
+  const after = new DatabaseSync(join(dir, "import.db"));
+  assert.deepEqual({ ...after.prepare("SELECT count(*) AS n, max(id) AS top FROM items").get() }, { n: 53, top: 53 });
+  after.close();
 }
