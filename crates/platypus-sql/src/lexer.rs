@@ -69,6 +69,8 @@ fn is_ident_char(c: char, dialect: Dialect) -> bool {
         || (c == '$' && dialect != Dialect::Sqlite)
         // Transact-SQL names: `#temp`, `@variable`, `@@ROWCOUNT`.
         || (matches!(c, '#' | '@') && dialect == Dialect::SqlServer)
+        // Oracle names may hold `#` after the first letter.
+        || (c == '#' && dialect == Dialect::Oracle)
 }
 
 #[derive(Debug)]
@@ -110,6 +112,32 @@ impl<'a> Lexer<'a> {
         while self.peek().is_some_and(&f) {
             self.bump();
         }
+    }
+
+    /// Consumes an Oracle alternative-quoted string, `q'[...]'` or `nq'{...}'`, whose
+    /// delimiter is any character, paired for brackets; `false` when none starts here.
+    fn q_quote(&mut self) -> bool {
+        let rest = self.rest();
+        let prefix = usize::from(rest.starts_with(['n', 'N']));
+        let mut chars = rest[prefix..].chars();
+        let (Some('q' | 'Q'), Some('\''), Some(open)) = (chars.next(), chars.next(), chars.next())
+        else {
+            return false;
+        };
+        let close = match open {
+            '[' => ']',
+            '{' => '}',
+            '<' => '>',
+            '(' => ')',
+            c => c,
+        };
+        let body = prefix + 2 + open.len_utf8();
+        let mut end = [0; 4];
+        let terminator = format!("{}'", close.encode_utf8(&mut end));
+        self.pos += rest[body..]
+            .find(&terminator)
+            .map_or(rest.len(), |i| body + i + terminator.len());
+        true
     }
 
     /// Consumes a quoted run ending at `close`. A doubled `close` is an escaped quote;
@@ -261,11 +289,12 @@ impl<'a> Lexer<'a> {
         } else if c == '#' && d == Dialect::SqlServer {
             self.eat_while(|c| is_ident_char(c, d));
             TokenKind::Word
-        } else if c == '$'
+        } else if (c == '$'
             // ClickHouse calls dollar quotes heredocs.
             && matches!(d, Dialect::Postgres | Dialect::DuckDb | Dialect::ClickHouse)
             && !self.after_word()
-            && self.dollar_quote()
+            && self.dollar_quote())
+            || (matches!(c, 'q' | 'Q' | 'n' | 'N') && d == Dialect::Oracle && self.q_quote())
         {
             TokenKind::String
         } else if is_ident_start(c) {
@@ -487,5 +516,20 @@ mod tests {
                 (TokenKind::String, "'it''s'")
             ]
         );
+    }
+
+    #[test]
+    fn oracle_alternative_quotes() {
+        assert_eq!(
+            kinds("q'[it's]' Nq'{a}b}' q'!x!' quota a#b", Dialect::Oracle),
+            [
+                (TokenKind::String, "q'[it's]'"),
+                (TokenKind::String, "Nq'{a}b}'"),
+                (TokenKind::String, "q'!x!'"),
+                (TokenKind::Word, "quota"),
+                (TokenKind::Word, "a#b"),
+            ]
+        );
+        assert_eq!(kinds("q'[open", Dialect::Oracle).len(), 1);
     }
 }

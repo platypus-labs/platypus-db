@@ -52,8 +52,44 @@ struct Current {
     block_depth: usize,
     /// A Transact-SQL `BEGIN` that opens a block unless `TRANSACTION` follows.
     pending_begin: bool,
-    /// A Transact-SQL routine or trigger, which runs to the end of its batch (`GO`).
+    /// A Transact-SQL routine or trigger, which runs to the end of its batch (`GO`), or
+    /// Oracle PL/SQL, which runs to a `/` line.
     whole_batch: bool,
+    /// The last word was an `END` that closed a block, unless `IF`, `LOOP`… follows.
+    ended_block: bool,
+}
+
+/// Words between `CREATE` and the kind of object in Oracle.
+const ORACLE_CREATE_MODIFIERS: &[&str] = &["OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE"];
+
+/// Whether an Oracle statement starting with `head` (upper-cased words) is PL/SQL: a block,
+/// or a routine, package, trigger or type being created.
+fn plsql_head(head: &[String]) -> bool {
+    match head {
+        [first, ..] if first == "BEGIN" || first == "DECLARE" => true,
+        [first, rest @ ..] if first == "CREATE" => rest
+            .iter()
+            .find(|w| !ORACLE_CREATE_MODIFIERS.contains(&w.as_str()))
+            .is_some_and(|kind| {
+                matches!(
+                    kind.as_str(),
+                    "PROCEDURE" | "FUNCTION" | "PACKAGE" | "TRIGGER" | "TYPE"
+                )
+            }),
+        _ => false,
+    }
+}
+
+/// Whether an Oracle statement is PL/SQL, which keeps its final `;`: the database refuses
+/// that `;` after plain SQL.
+#[must_use]
+pub fn is_plsql(sql: &str) -> bool {
+    let head: Vec<String> = Lexer::new(sql, Dialect::Oracle)
+        .filter(|t| t.kind == TokenKind::Word)
+        .take(ORACLE_CREATE_MODIFIERS.len() + 2)
+        .map(|t| t.text(sql).to_ascii_uppercase())
+        .collect();
+    plsql_head(&head)
 }
 
 impl Current {
@@ -78,6 +114,13 @@ impl Current {
             self.tsql_word(&upper);
             return;
         }
+        if dialect == Dialect::Oracle {
+            if self.head.len() < ORACLE_CREATE_MODIFIERS.len() + 2 {
+                self.head.push(upper);
+                self.whole_batch = self.whole_batch || plsql_head(&self.head);
+            }
+            return;
+        }
         let opens_block = match dialect {
             // SQL-standard function bodies: `BEGIN ATOMIC ...; ...; END`.
             Dialect::Postgres => upper == "ATOMIC" && self.prev_word == "BEGIN",
@@ -87,22 +130,34 @@ impl Current {
                     && self.head.first().is_some_and(|w| w == "CREATE")
                     && self.head.iter().take(3).any(|w| w == "TRIGGER")
             }
+            // Compound statements, and the bodies of routines and triggers.
+            Dialect::Db2 => upper == "BEGIN" && self.head.first().is_none_or(|w| w == "CREATE"),
             // MySQL bodies rely on `DELIMITER` instead; DuckDB and ClickHouse have no
-            // statement bodies.
+            // statement bodies; Oracle's run to a `/` line.
             Dialect::MySql
             | Dialect::DuckDb
             | Dialect::SqlServer
             | Dialect::ClickHouse
             | Dialect::Ansi
             | Dialect::BigQuery
-            | Dialect::Databricks => false,
+            | Dialect::Databricks
+            | Dialect::Oracle => false,
         };
+        let after_end = std::mem::take(&mut self.ended_block);
         if opens_block {
+            self.block_depth += 1;
+        } else if after_end && matches!(upper.as_str(), "IF" | "LOOP" | "WHILE" | "REPEAT" | "FOR")
+        {
+            // `END IF`, `END LOOP`…: the `END` closed no block.
             self.block_depth += 1;
         } else if self.block_depth > 0 {
             match upper.as_str() {
-                "CASE" => self.block_depth += 1,
-                "END" => self.block_depth -= 1,
+                // `END CASE` closes the `CASE` statement the `END` counted.
+                "CASE" if !after_end => self.block_depth += 1,
+                "END" => {
+                    self.block_depth -= 1;
+                    self.ended_block = true;
+                }
                 _ => {}
             }
         }
@@ -162,6 +217,20 @@ fn batch_separator(src: &str, word: &Token) -> Option<usize> {
     rest.bytes().all(|b| b.is_ascii_digit()).then_some(line_end)
 }
 
+/// If `token` is an Oracle `/` alone on its line, which ends a statement (as in SQL*Plus),
+/// the end of its line.
+fn slash_line(src: &str, token: &Token) -> Option<usize> {
+    if token.text(src) != "/" {
+        return None;
+    }
+    let line_start = src[..token.start].rfind('\n').map_or(0, |i| i + 1);
+    let line_end = src[token.end..]
+        .find('\n')
+        .map_or(src.len(), |i| token.end + i);
+    (src[line_start..token.start].trim().is_empty() && src[token.end..line_end].trim().is_empty())
+        .then_some(line_end)
+}
+
 /// If a MySQL `DELIMITER` client command starts at `pos`, returns the new delimiter and
 /// the end of its line.
 fn delimiter_command(src: &str, word: &Token) -> Option<(String, usize)> {
@@ -213,6 +282,14 @@ pub fn split(src: &str, dialect: Dialect) -> Vec<Statement> {
         if dialect == Dialect::SqlServer
             && token.kind == TokenKind::Word
             && let Some(line_end) = batch_separator(src, &token)
+        {
+            statements.extend(current.take());
+            lexer.seek(line_end);
+            continue;
+        }
+        if dialect == Dialect::Oracle
+            && token.kind == TokenKind::Symbol
+            && let Some(line_end) = slash_line(src, &token)
         {
             statements.extend(current.take());
             lexer.seek(line_end);
@@ -454,6 +531,50 @@ mod tests {
         // `GO` within a line, or as a name, separates nothing.
         assert_eq!(texts("SELECT go FROM t; SELECT 1", ms).len(), 2);
         assert_eq!(texts("SELECT 1 go\nSELECT 2", ms).len(), 1);
+    }
+
+    #[test]
+    fn oracle_plsql_runs_to_a_slash_line() {
+        let src = "select 1 from dual;\n\
+                   BEGIN\n  update t set a = 1;\n  commit;\nEND;\n/\n\
+                   CREATE OR REPLACE PROCEDURE p IS\nBEGIN\n  NULL;\nEND p;\n/\n\
+                   select q'[it's; here]' from dual\n/\nselect 2 from dual";
+        assert_eq!(
+            texts(src, Dialect::Oracle),
+            [
+                "select 1 from dual",
+                "BEGIN\n  update t set a = 1;\n  commit;\nEND;",
+                "CREATE OR REPLACE PROCEDURE p IS\nBEGIN\n  NULL;\nEND p;",
+                "select q'[it's; here]' from dual",
+                "select 2 from dual",
+            ]
+        );
+        // A `/` inside a line divides.
+        assert_eq!(texts("select 4 / 2 from dual;", Dialect::Oracle).len(), 1);
+        assert!(is_plsql("declare x number; begin null; end;"));
+        assert!(is_plsql(
+            "create or replace editionable package body k as end;"
+        ));
+        assert!(is_plsql(
+            "CREATE TRIGGER t BEFORE INSERT ON x BEGIN NULL; END;"
+        ));
+        assert!(!is_plsql("create table t (a number)"));
+        assert!(!is_plsql(
+            "create or replace view v as select 1 x from dual"
+        ));
+        assert!(!is_plsql("select 1 from dual"));
+    }
+
+    #[test]
+    fn db2_compound_bodies() {
+        let src = "CREATE PROCEDURE p() BEGIN\n  IF 1 = 1 THEN SET x = CASE WHEN a THEN 1 END; END IF;\n  \
+                   CASE y WHEN 1 THEN SET z = 2; END CASE;\nEND;\nselect 1 from sysibm.sysdummy1;\n\
+                   BEGIN\n  WHILE i < 3 DO SET i = i + 1; END WHILE;\nEND";
+        let parts = texts(src, Dialect::Db2);
+        assert_eq!(parts.len(), 3, "{parts:?}");
+        assert!(parts[0].ends_with("END CASE;\nEND"), "{parts:?}");
+        assert_eq!(parts[1], "select 1 from sysibm.sysdummy1");
+        assert!(parts[2].starts_with("BEGIN") && parts[2].ends_with("END"));
     }
 
     #[test]

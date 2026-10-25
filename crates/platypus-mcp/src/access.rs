@@ -63,7 +63,9 @@ fn outside_effect(statement: &str, dialect: Dialect) -> Option<&str> {
         | Dialect::ClickHouse
         | Dialect::Ansi
         | Dialect::BigQuery
-        | Dialect::Databricks => {
+        | Dialect::Databricks
+        | Dialect::Oracle
+        | Dialect::Db2 => {
             return None;
         }
     };
