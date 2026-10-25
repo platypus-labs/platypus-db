@@ -30,7 +30,14 @@ impl From<DriverKind> for Dialect {
         match kind {
             // MongoDB speaks no SQL: the app never builds SQL for it (the editor, data
             // viewer and navigator write mongosh instead), so any dialect would do here.
-            DriverKind::Postgres | DriverKind::Mongo => Self::Postgres,
+            // The drivers with a bridge get their own dialects next.
+            DriverKind::Postgres
+            | DriverKind::Mongo
+            | DriverKind::Snowflake
+            | DriverKind::BigQuery
+            | DriverKind::Databricks
+            | DriverKind::Trino
+            | DriverKind::Adbc => Self::Postgres,
             DriverKind::MySql => Self::MySql,
             DriverKind::Sqlite | DriverKind::Libsql => Self::Sqlite,
             DriverKind::DuckDb => Self::DuckDb,

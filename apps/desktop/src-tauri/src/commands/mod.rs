@@ -204,6 +204,14 @@ pub(crate) async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connect
             DriverKind::SqlServer => MssqlDriver.connect(&config).await,
             DriverKind::ClickHouse => ClickHouseDriver.connect(&config).await,
             DriverKind::Mongo => MongoDriver.connect(&config).await,
+            DriverKind::Snowflake
+            | DriverKind::BigQuery
+            | DriverKind::Databricks
+            | DriverKind::Trino
+            | DriverKind::Adbc => Err(Error::Unsupported(format!(
+                "{} is not available yet",
+                config.driver.name()
+            ))),
         }
     })
     .await
