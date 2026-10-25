@@ -202,6 +202,20 @@ pub struct Project {
     pub placement: BTreeMap<Uuid, Uuid>,
 }
 
+/// A folder of projects in the rail. A project is in one folder at most.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectFolder {
+    pub id: Uuid,
+    pub name: String,
+    /// `#rrggbb`.
+    pub color: String,
+    /// In order.
+    #[serde(default)]
+    pub projects: Vec<Uuid>,
+    #[serde(default)]
+    pub collapsed: bool,
+}
+
 /// A folder of connections inside a project.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConnectionFolder {
@@ -377,6 +391,8 @@ struct ConnectionsFile {
     #[serde(default)]
     projects: Vec<Project>,
     #[serde(default)]
+    project_folders: Vec<ProjectFolder>,
+    #[serde(default)]
     network_profiles: Vec<NetworkProfile>,
     #[serde(default)]
     connections: Vec<SavedConnection>,
@@ -387,6 +403,8 @@ struct ConnectionsFile {
 struct FileOut<'a> {
     version: u32,
     projects: &'a [Project],
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    project_folders: &'a [ProjectFolder],
     network_profiles: &'a [NetworkProfile],
     connections: &'a [SavedConnection],
 }
@@ -396,6 +414,7 @@ pub struct ConnectionStore {
     path: PathBuf,
     secrets: Arc<dyn SecretStore>,
     projects: Vec<Project>,
+    project_folders: Vec<ProjectFolder>,
     network_profiles: Vec<NetworkProfile>,
     connections: Vec<SavedConnection>,
 }
@@ -404,29 +423,35 @@ impl ConnectionStore {
     /// Loads `path`, or starts empty if it does not exist yet.
     pub fn open(path: impl Into<PathBuf>, secrets: Arc<dyn SecretStore>) -> Result<Self> {
         let path = path.into();
-        let (mut projects, network_profiles, connections) = match std::fs::read_to_string(&path) {
-            Ok(text) => {
-                let file: ConnectionsFile =
-                    toml::from_str(&text).map_err(|e| StoreError::Format {
-                        path: path.clone(),
-                        message: e.to_string(),
-                    })?;
-                if file.version > FILE_VERSION {
-                    return Err(StoreError::Format {
-                        path,
-                        message: format!(
-                            "written by a newer PlatypusDB (version {})",
-                            file.version
-                        ),
-                    });
+        let (mut projects, mut project_folders, network_profiles, connections) =
+            match std::fs::read_to_string(&path) {
+                Ok(text) => {
+                    let file: ConnectionsFile =
+                        toml::from_str(&text).map_err(|e| StoreError::Format {
+                            path: path.clone(),
+                            message: e.to_string(),
+                        })?;
+                    if file.version > FILE_VERSION {
+                        return Err(StoreError::Format {
+                            path,
+                            message: format!(
+                                "written by a newer PlatypusDB (version {})",
+                                file.version
+                            ),
+                        });
+                    }
+                    (
+                        file.projects,
+                        file.project_folders,
+                        file.network_profiles,
+                        file.connections,
+                    )
                 }
-                (file.projects, file.network_profiles, file.connections)
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                (Vec::new(), Vec::new(), Vec::new())
-            }
-            Err(source) => return Err(StoreError::Io { path, source }),
-        };
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    (Vec::new(), Vec::new(), Vec::new(), Vec::new())
+                }
+                Err(source) => return Err(StoreError::Io { path, source }),
+            };
         // Files edited by hand: ids of missing connections and empty initials.
         let known = connections.iter().map(|c| c.id).collect();
         for p in &mut projects {
@@ -436,10 +461,17 @@ impl ConnectionStore {
             }
             p.drop_dangling();
         }
+        let mut seen = HashSet::new();
+        for f in &mut project_folders {
+            f.projects
+                .retain(|id| projects.iter().any(|p| p.id == *id) && seen.insert(*id));
+        }
+        project_folders.retain(|f| !f.projects.is_empty());
         Ok(Self {
             path,
             secrets,
             projects,
+            project_folders,
             network_profiles,
             connections,
         })
@@ -503,6 +535,7 @@ impl ConnectionStore {
         if self.projects.len() == before {
             return Err(StoreError::NotFound(id));
         }
+        self.leave_project_folder(id);
         self.write()
     }
 
@@ -781,6 +814,7 @@ impl ConnectionStore {
         let text = toml::to_string_pretty(&FileOut {
             version: FILE_VERSION,
             projects: &self.projects,
+            project_folders: &self.project_folders,
             network_profiles: &self.network_profiles,
             connections: &self.connections,
         })

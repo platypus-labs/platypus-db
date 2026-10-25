@@ -3,7 +3,7 @@
 
 use uuid::Uuid;
 
-use super::{ConnectionFolder, ConnectionStore, Project, trim};
+use super::{ConnectionFolder, ConnectionStore, Project, ProjectFolder, is_color, trim};
 use crate::{Result, StoreError};
 
 impl Project {
@@ -208,6 +208,142 @@ impl ConnectionStore {
     }
 }
 
+/// Rail folders.
+impl ConnectionStore {
+    #[must_use]
+    pub fn project_folders(&self) -> &[ProjectFolder] {
+        &self.project_folders
+    }
+
+    fn require_project(&self, id: Uuid) -> Result<()> {
+        if self.projects.iter().any(|p| p.id == id) {
+            Ok(())
+        } else {
+            Err(StoreError::NotFound(id))
+        }
+    }
+
+    /// Takes a project out of its folder, if any; a folder left empty goes away.
+    pub(super) fn leave_project_folder(&mut self, project: Uuid) {
+        for f in &mut self.project_folders {
+            f.projects.retain(|p| *p != project);
+        }
+        self.project_folders.retain(|f| !f.projects.is_empty());
+    }
+
+    /// Drops `dragged` onto `target`: it joins `target`'s folder, or a new folder with both
+    /// is made, named "New folder" in `target`'s color. Returns the folder.
+    pub fn group_projects(&mut self, target: Uuid, dragged: Uuid) -> Result<Uuid> {
+        self.require_project(target)?;
+        self.require_project(dragged)?;
+        if target == dragged {
+            return Err(StoreError::Invalid(
+                "a project cannot be grouped with itself".to_owned(),
+            ));
+        }
+        self.leave_project_folder(dragged);
+        let id = if let Some(f) = self
+            .project_folders
+            .iter_mut()
+            .find(|f| f.projects.contains(&target))
+        {
+            f.projects.push(dragged);
+            f.id
+        } else {
+            let color = self
+                .projects
+                .iter()
+                .find(|p| p.id == target)
+                .map(|p| p.color.clone())
+                .unwrap_or_default();
+            let id = Uuid::new_v4();
+            self.project_folders.push(ProjectFolder {
+                id,
+                name: "New folder".to_owned(),
+                color,
+                projects: vec![target, dragged],
+                collapsed: false,
+            });
+            id
+        };
+        self.write()?;
+        Ok(id)
+    }
+
+    /// Changes a folder's name, color or collapsed state; its projects stay as they are.
+    pub fn save_project_folder(&mut self, mut folder: ProjectFolder) -> Result<()> {
+        trim(&mut folder.name);
+        if folder.name.is_empty() {
+            return Err(StoreError::Invalid("folder name is required".to_owned()));
+        }
+        if !is_color(&folder.color) {
+            return Err(StoreError::Invalid(format!(
+                "invalid folder color `{}`",
+                folder.color
+            )));
+        }
+        let existing = self
+            .project_folders
+            .iter_mut()
+            .find(|f| f.id == folder.id)
+            .ok_or(StoreError::NotFound(folder.id))?;
+        existing.name = folder.name;
+        existing.color = folder.color;
+        existing.collapsed = folder.collapsed;
+        self.write()
+    }
+
+    /// Moves a project into a folder, at `index` (the end when `None` or past it), or out of
+    /// any folder.
+    pub fn set_project_folder(
+        &mut self,
+        project: Uuid,
+        folder: Option<Uuid>,
+        index: Option<usize>,
+    ) -> Result<()> {
+        self.require_project(project)?;
+        if let Some(folder) = folder
+            && !self.project_folders.iter().any(|f| f.id == folder)
+        {
+            return Err(StoreError::NotFound(folder));
+        }
+        self.leave_project_folder(project);
+        // The folder may have gone away if the project was its only one.
+        if let Some(f) = folder.and_then(|id| self.project_folders.iter_mut().find(|f| f.id == id))
+        {
+            let at = index.map_or(f.projects.len(), |i| i.min(f.projects.len()));
+            f.projects.insert(at, project);
+        }
+        self.write()
+    }
+
+    /// Removes a folder; its projects stay in the rail.
+    pub fn ungroup(&mut self, folder: Uuid) -> Result<()> {
+        let before = self.project_folders.len();
+        self.project_folders.retain(|f| f.id != folder);
+        if self.project_folders.len() == before {
+            return Err(StoreError::NotFound(folder));
+        }
+        self.write()
+    }
+
+    /// Puts the projects in this order, which must hold each of them once.
+    pub fn reorder_projects(&mut self, order: &[Uuid]) -> Result<()> {
+        let unique: std::collections::HashSet<_> = order.iter().collect();
+        if order.len() != self.projects.len()
+            || unique.len() != order.len()
+            || self.projects.iter().any(|p| !unique.contains(&p.id))
+        {
+            return Err(StoreError::Invalid(
+                "the new order must list every project once".to_owned(),
+            ));
+        }
+        self.projects
+            .sort_by_key(|p| order.iter().position(|id| *id == p.id));
+        self.write()
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::many_single_char_names)]
 mod tests {
@@ -217,7 +353,7 @@ mod tests {
     use platypus_core::DriverKind;
     use uuid::Uuid;
 
-    use super::super::{ConnectionStore, PasswordUpdate, Project, SavedConnection};
+    use super::super::{ConnectionStore, PasswordUpdate, Project, ProjectFolder, SavedConnection};
     use crate::{MemorySecrets, StoreError};
 
     fn store(dir: &Path) -> ConnectionStore {
@@ -410,5 +546,96 @@ mod tests {
         assert!(pr.placement.is_empty(), "{:?}", pr.placement);
         assert_eq!(pr.folders.len(), 2);
         assert!(pr.folders.iter().all(|f| f.parent.is_none()));
+    }
+
+    /// A store with `n` empty projects, in order.
+    fn projects(dir: &Path, n: usize) -> (ConnectionStore, Vec<Uuid>) {
+        let mut s = store(dir);
+        let ids = (0..n)
+            .map(|i| {
+                let p = Project::new(&format!("P{i}"), "#d08f20");
+                let id = p.id;
+                s.save_project(p).unwrap();
+                id
+            })
+            .collect();
+        (s, ids)
+    }
+
+    fn folder(s: &ConnectionStore, id: Uuid) -> &ProjectFolder {
+        s.project_folders().iter().find(|f| f.id == id).unwrap()
+    }
+
+    #[test]
+    fn group_creates_then_extends() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, ids) = projects(dir.path(), 3);
+        let f = s.group_projects(ids[0], ids[1]).unwrap();
+        assert_eq!(folder(&s, f).projects, [ids[0], ids[1]]);
+        assert_eq!(folder(&s, f).name, "New folder");
+        assert_eq!(folder(&s, f).color, "#d08f20");
+        // Onto a project already in a folder: that folder grows.
+        assert_eq!(s.group_projects(ids[1], ids[2]).unwrap(), f);
+        assert_eq!(folder(&s, f).projects, ids);
+        assert!(invalid(&s.group_projects(ids[0], ids[0])));
+    }
+
+    #[test]
+    fn project_in_one_folder_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, ids) = projects(dir.path(), 4);
+        let f = s.group_projects(ids[0], ids[1]).unwrap();
+        let g = s.group_projects(ids[2], ids[3]).unwrap();
+        s.set_project_folder(ids[1], Some(g), Some(0)).unwrap();
+        assert_eq!(folder(&s, f).projects, [ids[0]]);
+        assert_eq!(folder(&s, g).projects, [ids[1], ids[2], ids[3]]);
+        s.set_project_folder(ids[2], None, None).unwrap();
+        assert_eq!(folder(&s, g).projects, [ids[1], ids[3]]);
+    }
+
+    #[test]
+    fn empty_folder_disappears() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, ids) = projects(dir.path(), 3);
+        let f = s.group_projects(ids[0], ids[1]).unwrap();
+        s.set_project_folder(ids[0], None, None).unwrap();
+        s.delete_project(ids[1]).unwrap();
+        assert_eq!(s.project_folders(), []);
+        let g = s.group_projects(ids[0], ids[2]).unwrap();
+        assert_ne!(f, g);
+        s.ungroup(g).unwrap();
+        assert_eq!(s.project_folders(), []);
+        assert_eq!(s.projects().len(), 2);
+    }
+
+    #[test]
+    fn reorder_must_be_permutation() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, ids) = projects(dir.path(), 3);
+        assert!(invalid(&s.reorder_projects(&[ids[0], ids[1]])));
+        assert!(invalid(&s.reorder_projects(&[ids[0], ids[1], ids[1]])));
+        s.reorder_projects(&[ids[2], ids[0], ids[1]]).unwrap();
+        let order: Vec<Uuid> = s.projects().iter().map(|p| p.id).collect();
+        assert_eq!(order, [ids[2], ids[0], ids[1]]);
+    }
+
+    #[test]
+    fn project_folders_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, ids) = projects(dir.path(), 2);
+        let f = s.group_projects(ids[0], ids[1]).unwrap();
+        let mut edited = folder(&s, f).clone();
+        edited.name = "Clients".to_owned();
+        edited.color = "#3d7bf7".to_owned();
+        edited.collapsed = true;
+        s.save_project_folder(edited.clone()).unwrap();
+        let mut bad = edited.clone();
+        bad.color = "blue".to_owned();
+        assert!(invalid(&s.save_project_folder(bad)));
+        bad = edited.clone();
+        bad.name = " ".to_owned();
+        assert!(invalid(&s.save_project_folder(bad)));
+        let again = store(dir.path());
+        assert_eq!(again.project_folders(), [edited]);
     }
 }
