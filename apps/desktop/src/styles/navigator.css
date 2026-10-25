@@ -220,9 +220,34 @@
 /* The navigator and the Scripts panel share the sidebar column. */
 
 .sidebar-column {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+.sidebar-column[hidden] {
+  display: none;
+}
+
+/* The drag handle: a thin strip on the column's right edge, lit while hovered or dragged. */
+.sidebar-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  z-index: 5;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.sidebar-handle:hover,
+.sidebar-handle:focus-visible,
+.sidebar-handle.dragging {
+  background: var(--accent);
+  opacity: 0.5;
+  outline: none;
 }
 
 .sidebar-column > .sidebar {

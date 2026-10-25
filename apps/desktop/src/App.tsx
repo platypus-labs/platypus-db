@@ -1,4 +1,4 @@
-import { type ComponentType, Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentType, type CSSProperties, Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { dispatchKey, registerAction } from "./actions";
 import {
   api,
@@ -45,6 +45,8 @@ import { TopBar } from "./shell/TopBar";
 import { Welcome } from "./shell/Welcome";
 import { TabBar, barOrder, groupTabsSetting } from "./shell/TabBar";
 import { useSetting } from "./settings";
+import { SidebarHandle } from "./shell/SidebarHandle";
+import { useSidebar } from "./shell/sidebar";
 import { language, languageSetting, t, plural } from "./i18n";
 import { stepZoom } from "./theme";
 import { logError, track } from "./shell/activity";
@@ -673,10 +675,15 @@ export function App() {
     return label ? `${label} — ${name}` : name;
   }
 
+  const sidebar = useSidebar();
   const activeConnection = connectionById(visibleTabs.find((t) => t.key === activeTab)?.connectionId ?? "");
   return (
     // The frame takes the tint of the active tab's connection type.
-    <div className="shell" data-env={activeConnection?.connection_type ?? "local"}>
+    <div
+      className={`shell${sidebar.collapsed ? " sidebar-collapsed" : ""}`}
+      data-env={activeConnection?.connection_type ?? "local"}
+      style={{ "--sidebar-w": `${sidebar.width}px` } as CSSProperties}
+    >
       <TopBar project={project} connection={activeConnection} />
       <ProjectRail
         projects={projects ?? []}
@@ -688,7 +695,8 @@ export function App() {
         folders={projectFolders}
         onFolderMenu={(f, e) => setMenu({ x: e.clientX, y: e.clientY, target: { scope: "project.folder", arg: f } })}
       />
-      <div className="sidebar-column">
+      <div className="sidebar-column" hidden={sidebar.collapsed}>
+        <SidebarHandle width={sidebar.width} />
         <Navigator
           connections={projectConnections}
           project={project}

@@ -83,6 +83,27 @@ export default async function (page, { dir, shots }) {
   await page.key("t", "KeyT", 84, CTRL);
   await page.waitFor(`${tabs}.length === 3`);
 
+  // The sidebar: its handle resizes it, a double click restores the width, Ctrl+B hides it.
+  const sidebarWidth = `Math.round(document.querySelector('.sidebar-column').getBoundingClientRect().width)`;
+  assert.equal(await page.eval(sidebarWidth), 260);
+  const handle = await page.rect(".sidebar-handle");
+  const [hx, hy] = [handle.x + handle.w / 2, handle.y + handle.h / 2];
+  await page.mouse("mousePressed", hx, hy);
+  await page.mouse("mouseMoved", hx + 40, hy);
+  await page.mouse("mouseMoved", hx + 60, hy);
+  await page.mouse("mouseReleased", hx + 60, hy);
+  await page.waitFor(`${sidebarWidth} === 320`);
+  await settingsFile(dir, /sidebar_width = 320/);
+  await page.eval(`document.querySelector('.sidebar-handle').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+  await page.waitFor(`${sidebarWidth} === 260`);
+  await settingsFile(dir, /^(?![\s\S]*sidebar_width)/);
+  await page.key("b", "KeyB", 66, CTRL);
+  await page.waitFor(`document.querySelector('.sidebar-column').hidden`);
+  await settingsFile(dir, /sidebar_collapsed = true/);
+  await page.eval(`document.querySelector('.topbar button[aria-label="Toggle sidebar"]').click()`);
+  await page.waitFor(`!document.querySelector('.sidebar-column').hidden`);
+  await settingsFile(dir, /^(?![\s\S]*sidebar_collapsed)/);
+
   // The tab bar is a tab list; its menu works from the keyboard and pins a tab.
   assert.equal(await page.eval(`document.querySelector('.tabs').getAttribute('role')`), "tablist");
   assert.equal(await page.eval(`${tabs}.filter(t => t.getAttribute('aria-selected') === 'true').length`), 1);

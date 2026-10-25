@@ -35,6 +35,8 @@ import {
   ListVideo,
   Minus,
   type LucideIcon,
+  PanelLeft,
+  PanelLeftClose,
   Pencil,
   Pin,
   Play,
@@ -120,6 +122,8 @@ const ICONS = {
   pin: Pin,
   split: Columns2,
   activity: Activity,
+  sidebar: PanelLeft,
+  "sidebar-close": PanelLeftClose,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

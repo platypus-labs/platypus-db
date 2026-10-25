@@ -10,6 +10,7 @@ import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
 import { useActivity } from "./activity";
 import { openActivity } from "./ActivityDialog";
+import { toggleSidebar } from "./sidebar";
 import { t, plural } from "../i18n";
 
 interface Props {
@@ -38,6 +39,9 @@ export function TopBar({ project, connection }: Props) {
   return (
     <header className={`topbar${ownTitleBar ? " own-title-bar" : ""}`} {...drag}>
       <img className="topbar-mark" src={mark} alt="PlatypusDB" width={26} height={26} {...drag} />
+      <button type="button" className="icon" title={t("Toggle sidebar (Ctrl+B)")} aria-label={t("Toggle sidebar")} onClick={toggleSidebar}>
+        <Icon name="sidebar" />
+      </button>
       <span className="topbar-project" {...drag}>
         {project?.name ?? t("All connections")}
       </span>

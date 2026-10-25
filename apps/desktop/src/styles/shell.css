@@ -7,7 +7,7 @@
   --frame: var(--bg-rail);
   --env-ink: var(--fg-strong);
   display: grid;
-  grid-template-columns: 52px 260px minmax(0, 1fr);
+  grid-template-columns: 52px var(--sidebar-w, 260px) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
     "top top top"
@@ -15,6 +15,10 @@
   height: 100%;
   background: var(--frame);
   transition: background-color 0.35s ease-out;
+}
+
+.shell.sidebar-collapsed {
+  grid-template-columns: 52px 0 minmax(0, 1fr);
 }
 
 .shell[data-env="dev"] {
