@@ -4559,6 +4559,7 @@ dependencies = [
  "arrow-cast",
  "futures",
  "platypus-core",
+ "platypus-driver-clickhouse",
  "platypus-driver-duckdb",
  "platypus-driver-mssql",
  "platypus-driver-mysql",

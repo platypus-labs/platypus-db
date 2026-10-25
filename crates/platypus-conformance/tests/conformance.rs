@@ -1,9 +1,10 @@
-//! The same scenarios against every driver: PostgreSQL, MySQL, MariaDB, SQL Server, SQLite
-//! and DuckDB.
+//! The same scenarios against every driver: PostgreSQL, MySQL, MariaDB, SQL Server,
+//! ClickHouse, SQLite and DuckDB.
 //!
 //! Server databases come from `docker/compose.yml` (SQL Server from its `sqlserver`
 //! profile). Setting `PLATYPUS_TEST_PG_URL`, `PLATYPUS_TEST_MYSQL_URL`,
-//! `PLATYPUS_TEST_MARIADB_URL` or `PLATYPUS_TEST_MSSQL_URL` makes that database required
+//! `PLATYPUS_TEST_MARIADB_URL`, `PLATYPUS_TEST_MSSQL_URL` or `PLATYPUS_TEST_CLICKHOUSE_URL`
+//! makes that database required
 //! (CI does); otherwise an unreachable default database is skipped. SQLite and DuckDB always
 //! run, on temporary files.
 
@@ -18,6 +19,7 @@ use platypus_core::{
     Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, Error, ExecOptions,
     ExecResult, MatchKind, ObjectKind, ObjectRef, PlanNode, SessionInit,
 };
+use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
 use platypus_driver_mssql::MssqlDriver;
 use platypus_driver_mysql::MySqlDriver;
@@ -61,6 +63,21 @@ impl Backend {
         }
     }
 
+    /// Whether the database has foreign keys and unique constraints: ClickHouse has
+    /// neither, its primary key only orders the data.
+    fn keys(&self) -> bool {
+        self.config.driver != DriverKind::ClickHouse
+    }
+
+    /// What follows the column list of a `CREATE TABLE`: ClickHouse needs an engine.
+    fn table_options(&self, order_by: &str) -> String {
+        if self.config.driver == DriverKind::ClickHouse {
+            format!(" ENGINE = MergeTree ORDER BY {order_by}")
+        } else {
+            String::new()
+        }
+    }
+
     /// Creates the temporary table `name`, visible to the session only.
     fn create_temp(&self, name: &str, columns: &str) -> String {
         if self.config.driver == DriverKind::SqlServer {
@@ -78,6 +95,7 @@ fn driver(kind: DriverKind) -> &'static dyn Driver {
         DriverKind::Sqlite => &SqliteDriver,
         DriverKind::DuckDb => &DuckDbDriver,
         DriverKind::SqlServer => &MssqlDriver,
+        DriverKind::ClickHouse => &ClickHouseDriver,
     }
 }
 
@@ -166,6 +184,63 @@ async fn mssql_backend() -> Option<Backend> {
         series_sql: MSSQL_SERIES.to_owned(),
         endless_sql: "WAITFOR DELAY '00:10:00'",
         kill: Some(("SELECT @@SPID", "KILL")),
+        _dir: None,
+    })
+}
+
+/// The demo tables in ClickHouse, whose image runs no seed scripts. A skipping index
+/// stands in for the index on `customer_id`; there are no foreign keys or unique keys.
+const CLICKHOUSE_FIXTURE: &[&str] = &[
+    "CREATE TABLE IF NOT EXISTS customers (id Int32, email String, full_name String)
+     ENGINE = MergeTree ORDER BY id",
+    "CREATE TABLE IF NOT EXISTS orders (
+        id Int32,
+        customer_id Int32,
+        total Decimal(12, 2),
+        INDEX orders_customer_id_idx customer_id TYPE minmax GRANULARITY 1
+     ) ENGINE = MergeTree ORDER BY id",
+    "CREATE VIEW IF NOT EXISTS customer_totals AS
+     SELECT c.id, count(o.id) AS orders
+     FROM customers c LEFT JOIN orders o ON o.customer_id = c.id
+     GROUP BY c.id",
+    "INSERT INTO customers
+     SELECT * FROM values('id Int32, email String, full_name String',
+                          (1, 'ada@example.com', 'Ada'), (2, 'bob@example.com', 'Bob'))
+     WHERE (SELECT count() FROM customers) = 0",
+    "INSERT INTO orders
+     SELECT * FROM values('id Int32, customer_id Int32, total Decimal(12, 2)',
+                          (1, 1, 10.50), (2, 1, 4.25), (3, 2, 7.00))
+     WHERE (SELECT count() FROM orders) = 0",
+];
+
+async fn clickhouse_backend() -> Option<Backend> {
+    let config = server_config(
+        "PLATYPUS_TEST_CLICKHOUSE_URL",
+        "clickhouse://platypus:platypus@localhost:58123/platypus",
+        "ClickHouse",
+    )
+    .await?;
+    {
+        let _seeding = SEEDING.lock().await;
+        let conn = ClickHouseDriver.connect(&config).await.unwrap();
+        for sql in CLICKHOUSE_FIXTURE {
+            run(&*conn, sql)
+                .await
+                .unwrap_or_else(|e| panic!("clickhouse: {sql}: {e}"));
+        }
+    }
+    Some(Backend {
+        name: "clickhouse",
+        product: "ClickHouse",
+        schema: config.database.clone(),
+        config,
+        series_sql: format!(
+            "SELECT number + 1 AS id, concat('row ', toString(number + 1)) AS label \
+             FROM numbers({SERIES_ROWS})"
+        ),
+        endless_sql: "SELECT count() FROM system.numbers",
+        // An HTTP session cannot be ended from another client.
+        kill: None,
         _dir: None,
     })
 }
@@ -396,6 +471,7 @@ async fn backends() -> Vec<Backend> {
     }
     all.extend(pg_wire_backends().await);
     all.extend(mssql_backend().await);
+    all.extend(clickhouse_backend().await);
     all.push(sqlite_backend().await);
     all.push(duckdb_backend().await);
     all
@@ -515,6 +591,12 @@ async fn reports_affected_rows() {
         let t = b.temp("conf_t");
         let sql = format!("INSERT INTO {t} VALUES (1, 'a'), (2, 'b'), (3, 'c')");
         assert_eq!(affected(&b, conn, &sql).await, 3, "{}: insert", b.name);
+        // ClickHouse updates and deletes are mutations: they report no row counts and do
+        // not apply to temporary tables.
+        if b.config.driver == DriverKind::ClickHouse {
+            affected(&b, conn, &format!("DROP TABLE {t}")).await;
+            continue;
+        }
         let sql = format!("UPDATE {t} SET v = 'z' WHERE id >= 2");
         assert_eq!(affected(&b, conn, &sql).await, 2, "{}: update", b.name);
         let rows = collect(&b, conn, &format!("SELECT count(*) FROM {t} WHERE v = 'z'")).await;
@@ -550,9 +632,10 @@ async fn maps_errors_with_their_position() {
             }
             other => panic!("{}: expected a database error, got {other:?}", b.name),
         }
-        // DuckDB reads `FROMM` as an alias and stops at `t`; CockroachDB gives no position.
+        // DuckDB and ClickHouse read `FROMM` as an alias and stop at `t`; CockroachDB gives
+        // no position.
         let at = match (b.config.driver, b.name) {
-            (DriverKind::DuckDb, _) => Some(16),
+            (DriverKind::DuckDb | DriverKind::ClickHouse, _) => Some(16),
             (_, "cockroach") => None,
             _ => Some(10),
         };
@@ -687,17 +770,21 @@ async fn navigates_metadata() {
         assert_eq!(by_customer.columns, ["customer_id"], "{}", b.name);
         assert!(!by_customer.unique, "{}", b.name);
 
-        assert_eq!(orders.foreign_keys.len(), 1, "{}", b.name);
-        let fk = &orders.foreign_keys[0];
-        assert_eq!(fk.columns, ["customer_id"], "{}", b.name);
-        assert_eq!(fk.ref_table, "customers", "{}", b.name);
-        assert_eq!(fk.ref_columns, ["id"], "{}", b.name);
-
         let view = conn
             .table_details(&b.schema, "customer_totals")
             .await
             .unwrap();
         assert!(view.columns.len() >= 2, "{}: view columns", b.name);
+        if !b.keys() {
+            assert_eq!(orders.foreign_keys, [], "{}", b.name);
+            continue;
+        }
+
+        assert_eq!(orders.foreign_keys.len(), 1, "{}", b.name);
+        let fk = &orders.foreign_keys[0];
+        assert_eq!(fk.columns, ["customer_id"], "{}", b.name);
+        assert_eq!(fk.ref_table, "customers", "{}", b.name);
+        assert_eq!(fk.ref_columns, ["id"], "{}", b.name);
 
         let customers = conn.table_details(&b.schema, "customers").await.unwrap();
         assert!(
@@ -745,6 +832,12 @@ async fn manual_commit_and_rollback() {
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
+        // ClickHouse has no transactions: manual commit is refused.
+        if !conn.capabilities().transactions {
+            assert!(conn.set_autocommit(false).await.is_err(), "{}", b.name);
+            assert!(conn.transaction().autocommit, "{}", b.name);
+            continue;
+        }
         affected(&b, conn, &b.create_temp("conf_tx", "id INT")).await;
         let t = b.temp("conf_tx");
         let insert = |id: u32| format!("INSERT INTO {t} VALUES ({id})");
@@ -844,6 +937,9 @@ async fn lists_catalog_columns_for_completion() {
             .map(|c| c.column.as_str())
             .collect();
         assert_eq!(orders.first(), Some(&"id"), "{}", b.name);
+        if !b.keys() {
+            continue;
+        }
 
         // Foreign keys complete JOIN conditions.
         let keys = conn.catalog_foreign_keys().await.unwrap();
@@ -1009,7 +1105,14 @@ async fn capabilities_match_optional_methods() {
     for b in backends().await {
         let conn = b.connect().await;
         let caps = conn.capabilities();
-        assert!(caps.transactions && caps.cancel, "{}", b.name);
+        assert!(caps.cancel, "{}", b.name);
+        // ClickHouse is the one database without transactions.
+        assert_eq!(
+            caps.transactions,
+            b.config.driver != DriverKind::ClickHouse,
+            "{}",
+            b.name
+        );
 
         let explain = conn.explain("SELECT 1", false).await;
         assert_eq!(
@@ -1080,8 +1183,14 @@ fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<Strin
         DriverKind::SqlServer => {
             "id INT PRIMARY KEY, code NVARCHAR(10) UNIQUE, qty INT CHECK (qty >= 0)"
         }
+        DriverKind::ClickHouse => {
+            "id Int32, code String, qty Int32, CONSTRAINT qty_ok CHECK qty >= 0"
+        }
     };
-    let create = format!("CREATE TABLE {s}.{table} ({columns})");
+    let create = format!(
+        "CREATE TABLE {s}.{table} ({columns}){}",
+        b.table_options("id")
+    );
     let drop = format!("DROP TABLE IF EXISTS {s}.{table}");
     match b.config.driver {
         DriverKind::Postgres => {
@@ -1117,8 +1226,8 @@ fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<Strin
             ],
             vec![drop],
         ),
-        // DuckDB has no triggers.
-        DriverKind::DuckDb => (vec![create], vec![drop]),
+        // DuckDB and ClickHouse have no triggers.
+        DriverKind::DuckDb | DriverKind::ClickHouse => (vec![create], vec![drop]),
         DriverKind::SqlServer => (
             vec![
                 create,
@@ -1141,8 +1250,9 @@ async fn check_probe(b: &Backend, conn: &dyn Connection, table: &str, trigger: &
         b.name,
         details.constraints
     );
-    assert!(
+    assert_eq!(
         has(ConstraintKind::Unique),
+        b.keys(),
         "{}: {:?}",
         b.name,
         details.constraints
@@ -1174,7 +1284,7 @@ async fn check_probe(b: &Backend, conn: &dyn Connection, table: &str, trigger: &
     for part in ["CREATE TABLE", "code", "qty"] {
         assert!(ddl.contains(part), "{}: {part} in {ddl}", b.name);
     }
-    if b.config.driver == DriverKind::DuckDb {
+    if matches!(b.config.driver, DriverKind::DuckDb | DriverKind::ClickHouse) {
         return;
     }
 
@@ -1215,7 +1325,11 @@ async fn check_fixture_objects(b: &Backend, conn: &dyn Connection) {
         .object_ddl(&object("orders", ObjectKind::Table))
         .await
         .unwrap();
-    assert!(ddl.contains("customers"), "{}: FK missing in {ddl}", b.name);
+    assert!(
+        ddl.contains("customers") || !b.keys(),
+        "{}: FK missing in {ddl}",
+        b.name
+    );
     let ddl = conn
         .object_ddl(&object("customer_totals", ObjectKind::View))
         .await
@@ -1225,7 +1339,8 @@ async fn check_fixture_objects(b: &Backend, conn: &dyn Connection) {
     let customers = conn.table_details(&b.schema, "customers").await.unwrap();
     let incoming = customers.referenced_by.iter().find(|r| r.table == "orders");
     assert!(
-        incoming.is_some_and(|r| r.columns == ["customer_id"] && r.ref_columns == ["id"]),
+        incoming.is_some_and(|r| r.columns == ["customer_id"] && r.ref_columns == ["id"])
+            || !b.keys(),
         "{}: {:?}",
         b.name,
         customers.referenced_by
@@ -1267,6 +1382,9 @@ async fn edit_fixture(
             "CREATE TABLE #conf_edit (id INT PRIMARY KEY, name NVARCHAR(MAX), \
                  amount DECIMAL(10, 2), data VARBINARY(MAX), at DATETIMEOFFSET, n INT DEFAULT 7)"
         }
+        DriverKind::ClickHouse => {
+            "CREATE TEMPORARY TABLE conf_edit (id Int32, name Nullable(String),                  amount Decimal(10, 2), data Nullable(String), at Nullable(DateTime64(6, 'UTC')),                  n Int32 DEFAULT 7)"
+        }
     };
     affected(b, conn, ddl).await;
     let ExecResult::Rows(stream) = conn
@@ -1294,6 +1412,11 @@ async fn edits_table_data() {
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
+        // Saving edits checks each statement's row count inside a transaction; ClickHouse
+        // has no transactions and its updates report no row counts.
+        if !conn.capabilities().transactions {
+            continue;
+        }
         let schema = edit_fixture(&b, conn).await;
         let columns: Vec<Column<'_>> = schema
             .fields()
@@ -1625,7 +1748,15 @@ async fn searches_table_data() {
         let _ = run(&*conn, &format!("DROP TABLE {qualified}")).await;
         run(
             &*conn,
-            &format!("CREATE TABLE {qualified} (id INTEGER, label VARCHAR(20))"),
+            &format!(
+                "CREATE TABLE {qualified} (id INTEGER, label {}){}",
+                if b.config.driver == DriverKind::ClickHouse {
+                    "Nullable(String)"
+                } else {
+                    "VARCHAR(20)"
+                },
+                b.table_options("id")
+            ),
         )
         .await
         .unwrap();
@@ -1771,7 +1902,8 @@ async fn reads_geometries() {
                 "SELECT ST_GeomFromText('POINT(1 2)'), ST_GeomFromText('LINESTRING(0 0, 2 1)')",
                 vec![point.clone(), line.clone()],
             ),
-            DriverKind::Sqlite | DriverKind::DuckDb => {
+            // ClickHouse geometries are tuples of coordinates: shapes come as text.
+            DriverKind::Sqlite | DriverKind::DuckDb | DriverKind::ClickHouse => {
                 ("SELECT 'POINT (1 2)'", vec![point.clone()])
             }
             // SQL Server's own serialization is not WKB: the values are converted.
@@ -1802,6 +1934,10 @@ async fn sets_the_session_up_after_connecting() {
                 "SELECT DATABASE(), @@session.time_zone",
                 vec![Some(b.schema.clone()), Some("+02:00".to_owned())],
             ),
+            DriverKind::ClickHouse => (
+                "SELECT currentDatabase(), timezone()",
+                vec![Some(b.schema.clone()), Some("Europe/Rome".to_owned())],
+            ),
             DriverKind::Sqlite | DriverKind::SqlServer => ("SELECT 1", vec![Some("1".to_owned())]),
         };
         // SQL Server names its temporary tables with a `#`.
@@ -1814,7 +1950,7 @@ async fn sets_the_session_up_after_connecting() {
             schema: (!matches!(config.driver, DriverKind::Sqlite | DriverKind::SqlServer))
                 .then(|| b.schema.clone()),
             time_zone: match config.driver {
-                DriverKind::Postgres => Some("Europe/Rome".to_owned()),
+                DriverKind::Postgres | DriverKind::ClickHouse => Some("Europe/Rome".to_owned()),
                 DriverKind::MySql => Some("+02:00".to_owned()),
                 DriverKind::Sqlite | DriverKind::DuckDb | DriverKind::SqlServer => None,
             },
