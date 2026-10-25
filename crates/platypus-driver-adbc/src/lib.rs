@@ -180,8 +180,12 @@ impl Connection for AdbcConnection {
         if state.abandoned.load(Ordering::SeqCst) {
             return Err(Error::Closed);
         }
-        state.starting.fetch_add(1, Ordering::SeqCst);
+        // Waiting before counting in: a cancel that sees the count notifies this future,
+        // even before it is first polled.
         let abandoned = state.abandon.notified();
+        tokio::pin!(abandoned);
+        abandoned.as_mut().enable();
+        state.starting.fetch_add(1, Ordering::SeqCst);
         let started = tokio::select! {
             started = started => Some(started),
             () = abandoned => None,
