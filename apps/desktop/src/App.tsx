@@ -35,13 +35,22 @@ import { ProjectRail } from "./projects/ProjectRail";
 import { ProjectDialog } from "./projects/ProjectDialog";
 import { AddConnectionsDialog } from "./projects/AddConnectionsDialog";
 import { registerAddToProject } from "./projects/actions";
+import { registerMoveToFolder } from "./projects/folders";
 import { ScriptsPanel } from "./scripts/ScriptsPanel";
 import { ContextMenu, type MenuState } from "./components/ContextMenu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 type Dialog =
-  | { kind: "connection"; connection: SavedConnection; existing: boolean; memberOf: string[]; driverChosen?: boolean }
+  | {
+      kind: "connection";
+      connection: SavedConnection;
+      existing: boolean;
+      memberOf: string[];
+      driverChosen?: boolean;
+      /** The folder of the active project the new connection goes into. */
+      folder?: string | null;
+    }
   | { kind: "add-connections" }
   | { kind: "import" }
   | { kind: "project"; project: Project | null }
@@ -238,12 +247,13 @@ export function App() {
   const connectionById = (id: string) => connections?.find((c) => c.id === id);
 
   /** A new connection goes into the active project. */
-  async function newConnection() {
+  async function newConnection(folder: string | null = null) {
     setDialog({
       kind: "connection",
       connection: await api.defaultConnection("postgres"),
       existing: false,
       memberOf: activeProject ? [activeProject] : [],
+      folder,
     });
   }
 
@@ -490,6 +500,7 @@ export function App() {
     deleteProject,
     projectFolders,
     importOpen: dialog?.kind === "import",
+    newConnection,
   };
   const shell = useRef(shellState);
   shell.current = shellState;
@@ -509,6 +520,7 @@ export function App() {
     activeProject: () => shell.current.projects.find((p) => p.id === shell.current.activeProject) ?? null,
     switchProject: (id) => shell.current.switchProject(id),
     editProject: (project) => setDialog({ kind: "project", project }),
+    newConnection: (folder) => void shell.current.newConnection(folder ?? null),
     deleteProject: (project) => shell.current.deleteProject(project),
     openTab: (kind, connectionId, init) => shell.current.addTab(createTab(kind, connectionId, init)),
     focusTab: (match) => {
@@ -530,6 +542,7 @@ export function App() {
   useEffect(() => registerShellActions(shell), []);
   // "Add to project" lists the projects as they are.
   useEffect(() => registerAddToProject(projects ?? []), [projects]);
+  useEffect(() => registerMoveToFolder(project), [project]);
 
   // Global shortcuts, captured before the editor sees them.
   useEffect(() => {
@@ -674,7 +687,13 @@ export function App() {
           memberOf={dialog.memberOf}
           driverChosen={dialog.driverChosen}
           onClose={() => setDialog(null)}
-          onSaved={(all) => void connectionsSaved(all)}
+          onSaved={async (all) => {
+            await connectionsSaved(all);
+            const saved = all.find((c) => c.id === dialog.connection.id);
+            if (dialog.folder && activeProject && saved) {
+              api.placeConnection(activeProject, saved.id, dialog.folder).then(setProjects, (e: unknown) => setToast(toCommandError(e).message));
+            }
+          }}
         />
       )}
       {dialog?.kind === "add-connections" && project && (

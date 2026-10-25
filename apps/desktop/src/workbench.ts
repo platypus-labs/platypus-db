@@ -21,6 +21,9 @@ export interface Workbench {
   /** The project shown, `null` for All connections. */
   activeProject(): Project | null;
   switchProject(id: string | null): void;
+  /** Opens the new connection dialog; the connection goes into `folder` of the active
+   *  project when given. */
+  newConnection(folder?: string | null): void;
   /** Opens the project dialog; `null` makes a new project. */
   editProject(project: Project | null): void;
   /** Deletes a project after asking, closing its tabs; its connections stay. */
