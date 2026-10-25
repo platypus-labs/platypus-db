@@ -11,30 +11,22 @@ use platypus_core::{
     CATALOG_LIMIT, CancelHandle, Canceller, Capabilities, CatalogColumn, Connection,
     ConnectionConfig, DriverKind, Error, ExecOptions, ExecResult, ObjectMeta, RecordBatchStream,
     ReferencingKey, Result, SchemaMeta, ServerInfo, SslMode, TableDetails, TextRowExt as _,
-    TransactionState, TxTracker, query_text,
+    TransactionState, TxControl, TxTracker, query_text,
 };
 use tokio::sync::{Notify, oneshot};
 
+use crate::meta;
 use crate::session::{self, CatalogRequest, CatalogRows, Command, Started};
-use crate::{control, meta};
 
-/// The queries that read the server's version and the session's schema, per database.
+/// The queries that read the server's version and the session's schema, where the
+/// database is known (Db2).
 fn version_sql(kind: DriverKind) -> Option<&'static str> {
-    match kind {
-        DriverKind::Oracle => {
-            Some("SELECT VERSION FROM PRODUCT_COMPONENT_VERSION WHERE PRODUCT LIKE 'Oracle%'")
-        }
-        DriverKind::Db2 => Some("SELECT SERVICE_LEVEL FROM TABLE (SYSPROC.ENV_GET_INST_INFO()) I"),
-        _ => None,
-    }
+    (kind == DriverKind::Db2)
+        .then_some("SELECT SERVICE_LEVEL FROM TABLE (SYSPROC.ENV_GET_INST_INFO()) I")
 }
 
 fn current_schema_sql(kind: DriverKind) -> Option<&'static str> {
-    match kind {
-        DriverKind::Oracle => Some("SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM DUAL"),
-        DriverKind::Db2 => Some("VALUES CURRENT SCHEMA"),
-        _ => None,
-    }
+    (kind == DriverKind::Db2).then_some("VALUES CURRENT SCHEMA")
 }
 
 #[derive(Debug)]
@@ -133,7 +125,6 @@ fn unexpected() -> Error {
 #[async_trait]
 impl Connection for OdbcConnection {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
-        let sql = crate::statement_text(self.kind, sql);
         let (reply, started) = oneshot::channel();
         self.send(Command::Execute {
             sql: sql.to_owned(),
@@ -154,9 +145,7 @@ impl Connection for OdbcConnection {
             }
         };
         state.starting.fetch_sub(1, Ordering::SeqCst);
-        // Oracle commits before and after DDL, in either mode.
-        self.tx
-            .after(control::effect(sql), self.kind == DriverKind::Oracle);
+        self.tx.after(TxControl::effect(sql), false);
         match started.map_err(|_| Error::Closed)?? {
             Started::Affected(rows) => Ok(ExecResult::Affected { rows }),
             Started::Rows(schema, mut rx) => {
@@ -240,8 +229,8 @@ impl Connection for OdbcConnection {
         Ok(meta::referencing_keys(rows))
     }
 
-    /// The columns of each user schema, read one schema at a time: Oracle's own schemas
-    /// hold far more columns than the user's.
+    /// The columns of each user schema, read one schema at a time: the system's schemas
+    /// often hold far more columns than the user's.
     async fn catalog_columns(&self) -> Result<Vec<CatalogColumn>> {
         let mut out = Vec::new();
         for schema in self.schemas().await?.into_iter().filter(|s| !s.system) {

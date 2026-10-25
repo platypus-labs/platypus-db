@@ -53,58 +53,11 @@ pub struct ForeignKeyRow {
     pub name: Option<String>,
 }
 
-/// Oracle's own users (`ORACLE_MAINTAINED`), sorted.
-const ORACLE_SYSTEM: &[&str] = &[
-    "ANONYMOUS",
-    "APPQOSSYS",
-    "AUDSYS",
-    "CTXSYS",
-    "DBSFWUSER",
-    "DBSNMP",
-    "DGPDB_INT",
-    "DIP",
-    "DVF",
-    "DVSYS",
-    "GGSHAREDCAP",
-    "GGSYS",
-    "GSMADMIN_INTERNAL",
-    "GSMCATUSER",
-    "GSMROOTUSER",
-    "GSMUSER",
-    "LBACSYS",
-    "MDDATA",
-    "MDSYS",
-    "OJVMSYS",
-    "OLAPSYS",
-    "ORACLE_OCM",
-    "ORDDATA",
-    "ORDPLUGINS",
-    "ORDSYS",
-    "OUTLN",
-    "PDBADMIN",
-    "REMOTE_SCHEDULER_AGENT",
-    "SI_INFORMTN_SCHEMA",
-    "SYS",
-    "SYS$UMF",
-    "SYSBACKUP",
-    "SYSDG",
-    "SYSKM",
-    "SYSRAC",
-    "SYSTEM",
-    "VECSYS",
-    "WMSYS",
-    "XDB",
-    "XS$NULL",
-];
-
-/// Schemas the database itself keeps: Oracle's own users, Db2's catalog, the standard
-/// `INFORMATION_SCHEMA` and SQL Server's `sys`.
+/// Schemas the database itself keeps: Db2's catalog, the standard `INFORMATION_SCHEMA` and
+/// SQL Server's `sys`.
 fn is_system(schema: &str, kind: DriverKind) -> bool {
     let upper = schema.to_ascii_uppercase();
     match kind {
-        DriverKind::Oracle => {
-            ORACLE_SYSTEM.binary_search(&upper.as_str()).is_ok() || upper.starts_with("APEX_")
-        }
         DriverKind::Db2 => upper.starts_with("SYS") || matches!(upper.as_str(), "NULLID" | "SQLJ"),
         _ => matches!(upper.as_str(), "INFORMATION_SCHEMA" | "SYS" | "PG_CATALOG"),
     }
@@ -298,9 +251,9 @@ mod tests {
     #[test]
     fn schemas_and_objects() {
         let s = schemas(
-            vec!["SYS".into(), "HR".into(), "APEX_230200".into(), "HR".into()],
+            vec!["SYSCAT".into(), "HR".into(), "SYSIBM".into(), "HR".into()],
             Some("HR"),
-            DriverKind::Oracle,
+            DriverKind::Db2,
         );
         let names: Vec<_> = s
             .iter()
@@ -309,12 +262,11 @@ mod tests {
         assert_eq!(
             names,
             [
-                ("APEX_230200", true, false),
                 ("HR", false, true),
-                ("SYS", true, false)
+                ("SYSCAT", true, false),
+                ("SYSIBM", true, false)
             ]
         );
-        assert!(schemas(vec!["SYSCAT".into()], None, DriverKind::Db2)[0].system);
         assert!(schemas(vec!["dbo".into(), "sys".into()], None, DriverKind::Odbc)[1].system);
         let objects = objects(vec![
             TableRow {
@@ -393,13 +345,5 @@ mod tests {
         a.name = None;
         b.name = None;
         assert_eq!(referencing_keys(vec![a, b]).len(), 2);
-    }
-
-    #[test]
-    fn oracle_system_schemas_are_sorted() {
-        assert!(ORACLE_SYSTEM.windows(2).all(|w| w[0] < w[1]));
-        assert!(is_system("xdb", DriverKind::Oracle));
-        assert!(is_system("SYS$UMF", DriverKind::Oracle));
-        assert!(!is_system("SCOTT", DriverKind::Oracle));
     }
 }

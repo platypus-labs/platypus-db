@@ -13,7 +13,6 @@ arrow-schema.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 platypus-core.workspace = true
-platypus-sql.workspace = true
 serde.workspace = true
 tokio = { workspace = true, features = ["sync", "rt"] }
 

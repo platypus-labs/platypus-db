@@ -1,6 +1,5 @@
 //! The connection string each database's ODBC driver expects, from the connection's fields.
-//! Keys checked against the drivers' documentation: Oracle's ODBC driver (Instant Client)
-//! and IBM's Data Server Driver for ODBC and CLI.
+//! Keys checked against the documentation of IBM's Data Server Driver for ODBC and CLI.
 
 use platypus_core::{ConnectionConfig, DriverKind, Error, Result, SslMode};
 
@@ -55,45 +54,32 @@ fn has_key(s: &str, key: &str) -> bool {
     })
 }
 
-/// The vendor driver of `kind` among the drivers the system has (`installed`): the newest
-/// Oracle Instant Client or Oracle client, IBM's Db2 driver. `None` for the generic driver.
+/// The vendor driver of `kind` among the drivers the system has (`installed`): IBM's Db2
+/// driver, under the name `db2cli install -setup` gives it or the one of a full client.
+/// `None` for the generic driver.
 #[must_use]
 pub fn vendor_driver(kind: DriverKind, installed: &[String]) -> Option<String> {
     let matches = |name: &str| {
         let name = name.to_ascii_uppercase();
-        match kind {
-            DriverKind::Oracle => name.starts_with("ORACLE IN "),
-            DriverKind::Db2 => {
-                name.starts_with("IBM DB2 ODBC DRIVER") || name.starts_with("IBM DATA SERVER")
-            }
-            _ => false,
-        }
+        kind == DriverKind::Db2
+            && (name.starts_with("IBM DB2 ODBC DRIVER") || name.starts_with("IBM DATA SERVER"))
     };
-    installed
-        .iter()
-        .filter(|n| matches(n))
-        // Instant Client folders carry their version: `instantclient_23_26`.
-        .max()
-        .cloned()
+    installed.iter().filter(|n| matches(n)).max().cloned()
 }
 
-/// The connection string that opens `config`. `driver` is the ODBC driver to name for
-/// Oracle and Db2, found in the system unless the connection names one.
+/// The connection string that opens `config`. `driver` is the ODBC driver to name for Db2,
+/// found in the system unless the connection names one.
 pub fn connection_string(config: &ConnectionConfig, driver: Option<&str>) -> Result<String> {
     let mut out = String::new();
     match config.driver {
-        DriverKind::Oracle | DriverKind::Db2 => {
+        DriverKind::Db2 => {
             let driver = option(config, DRIVER)
                 .or(driver)
                 .ok_or(Error::DriverMissing {
                     driver: config.driver,
                 })?;
             push(&mut out, "DRIVER", driver);
-            if config.driver == DriverKind::Oracle {
-                oracle(&mut out, config)?;
-            } else {
-                db2(&mut out, config)?;
-            }
+            db2(&mut out, config)?;
             push_login(&mut out, config);
         }
         DriverKind::Odbc => generic(&mut out, config)?,
@@ -105,27 +91,6 @@ pub fn connection_string(config: &ConnectionConfig, driver: Option<&str>) -> Res
         }
     }
     Ok(out)
-}
-
-/// `DBQ` is an Easy Connect string, `host:port/service`; without a host, `database` is a
-/// net service name (`tnsnames.ora`) or a whole connect descriptor.
-fn oracle(out: &mut String, config: &ConnectionConfig) -> Result<()> {
-    let host = config.host.trim();
-    let database = config.database.trim();
-    let dbq = match (host.is_empty(), database.is_empty()) {
-        (true, true) => {
-            return Err(Error::Config(
-                "the Oracle host, or a net service name, is required".to_owned(),
-            ));
-        }
-        (true, false) => database.to_owned(),
-        (false, _) => {
-            let port = config.port.unwrap_or(1521);
-            format!("{host}:{port}/{database}")
-        }
-    };
-    push(out, "DBQ", &dbq);
-    Ok(())
 }
 
 /// TCP/IP to `host:port`, TLS unless disabled or merely preferred (Db2 servers listen for it
@@ -192,34 +157,6 @@ mod tests {
     }
 
     #[test]
-    fn oracle_connection_string() {
-        let mut c = config(DriverKind::Oracle);
-        c.host = "db.example.com".to_owned();
-        c.database = "FREEPDB1".to_owned();
-        assert!(matches!(
-            connection_string(&c, None),
-            Err(Error::DriverMissing {
-                driver: DriverKind::Oracle
-            })
-        ));
-        assert_eq!(
-            connection_string(&c, Some("Oracle in instantclient_23_26")).unwrap(),
-            "DRIVER=Oracle in instantclient_23_26;DBQ=db.example.com:1521/FREEPDB1;UID=scott;PWD={ti;ger}}};"
-        );
-        // A net service name stands alone; a driver chosen by the user wins.
-        c.host.clear();
-        c.database = "SALES".to_owned();
-        c.options
-            .insert(DRIVER.to_owned(), "Oracle in OraClient19Home1".to_owned());
-        assert_eq!(
-            connection_string(&c, Some("Oracle in instantclient_23_26")).unwrap(),
-            "DRIVER=Oracle in OraClient19Home1;DBQ=SALES;UID=scott;PWD={ti;ger}}};"
-        );
-        c.database.clear();
-        assert!(matches!(connection_string(&c, None), Err(Error::Config(_))));
-    }
-
-    #[test]
     fn db2_connection_string() {
         let mut c = config(DriverKind::Db2);
         c.password = Some(Secret::new("pw"));
@@ -274,22 +211,19 @@ mod tests {
     fn finds_vendor_drivers() {
         let installed = [
             "SQL Server",
-            "Oracle in instantclient_19_8",
             "Oracle in instantclient_23_26",
             "IBM DB2 ODBC DRIVER - IBMDBCL1",
             "Microsoft ODBC for Oracle",
         ]
         .map(str::to_owned);
         assert_eq!(
-            vendor_driver(DriverKind::Oracle, &installed).as_deref(),
-            Some("Oracle in instantclient_23_26")
-        );
-        assert_eq!(
             vendor_driver(DriverKind::Db2, &installed).as_deref(),
             Some("IBM DB2 ODBC DRIVER - IBMDBCL1")
         );
+        // Oracle has its own native driver.
+        assert_eq!(vendor_driver(DriverKind::Oracle, &installed), None);
         assert_eq!(vendor_driver(DriverKind::Odbc, &installed), None);
-        assert_eq!(vendor_driver(DriverKind::Oracle, &installed[..1]), None);
+        assert_eq!(vendor_driver(DriverKind::Db2, &installed[..2]), None);
     }
 
     #[test]

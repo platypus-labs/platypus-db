@@ -9,10 +9,9 @@ use arrow_odbc::odbc_api::{
     self, Connection as OdbcConnection, ConnectionOptions, ResultSetMetadata as _,
 };
 use arrow_schema::{ArrowError, SchemaRef};
-use platypus_core::{DbError, Error, Result};
+use platypus_core::{DbError, Error, Result, TxControl};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::control::{Control, control};
 use crate::meta::{ColumnRow, ForeignKeyRow, KeyRow, TableRow};
 
 /// Text and binary values longer than this are an error rather than a huge buffer: columns
@@ -248,23 +247,22 @@ impl Session {
         result.map_err(odbc_error)
     }
 
-    /// Transaction statements go through the API: drivers differ in how they take them, and
-    /// Oracle reads a bare `BEGIN` as the start of a PL/SQL block.
-    fn control(&mut self, control: Control) -> Result<()> {
+    /// Transaction statements go through the API: drivers differ in how they take them.
+    fn control(&mut self, control: TxControl) -> Result<()> {
         match control {
-            Control::Begin if self.autocommit && !self.implicit => {
+            TxControl::Begin if self.autocommit && !self.implicit => {
                 self.connection.set_autocommit(false).map_err(odbc_error)?;
                 self.implicit = true;
                 Ok(())
             }
-            Control::Begin => Ok(()),
-            Control::Commit => self.end(true),
-            Control::Rollback => self.end(false),
+            TxControl::Begin => Ok(()),
+            TxControl::Commit => self.end(true),
+            TxControl::Rollback => self.end(false),
         }
     }
 
     fn execute(&mut self, sql: &str, batch_size: usize, reply: oneshot::Sender<Result<Started>>) {
-        if let Some(c) = control(sql) {
+        if let Some(c) = TxControl::of(sql) {
             let _ = reply.send(self.control(c).map(|()| Started::Affected(0)));
             return;
         }

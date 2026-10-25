@@ -1,8 +1,7 @@
 //! Databases reached through the ODBC bridge, with the drivers installed in the system:
 //! SQL Server through Windows' own `SQL Server` driver (generic ODBC), on the container of
-//! the `sqlserver` profile, and Oracle through Oracle's driver (Instant Client), on the
-//! container of the `oracle` profile (`docker compose --profile oracle up -d --wait`).
-//! Each is skipped when its driver is not installed or its container is unreachable.
+//! the `sqlserver` profile. Skipped when the driver is not installed or the container is
+//! unreachable.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,7 +21,8 @@ struct Target {
     config: ConnectionConfig,
     /// The schema the session works in, as the catalog names it.
     schema: &'static str,
-    /// Names the scenarios create, as the database stores them: Oracle in upper case.
+    /// Names the scenarios create, as the database stores them: in upper case where bare
+    /// names fold to it (Db2).
     upper: bool,
     /// 100 000 rows, one column.
     series_sql: &'static str,
@@ -94,38 +94,9 @@ async fn sql_server() -> Option<Target> {
     })
 }
 
-async fn oracle() -> Option<Target> {
-    let Ok(Some(driver)) = platypus_driver_odbc::vendor_driver_installed(DriverKind::Oracle) else {
-        println!("skipping Oracle: no Oracle ODBC driver installed");
-        return None;
-    };
-    if !reachable(51521).await {
-        println!("skipping Oracle: unreachable at 127.0.0.1:51521");
-        return None;
-    }
-    println!("Oracle through `{driver}`");
-    let mut config = ConnectionConfig::new(DriverKind::Oracle);
-    "127.0.0.1".clone_into(&mut config.host);
-    config.port = Some(51521);
-    "FREEPDB1".clone_into(&mut config.database);
-    "platypus".clone_into(&mut config.user);
-    config.password = Some(Secret::new("platypus"));
-    Some(Target {
-        name: "oracle",
-        config,
-        schema: "PLATYPUS",
-        upper: true,
-        series_sql: "SELECT LEVEL AS x FROM DUAL CONNECT BY LEVEL <= 100000",
-        sleep_sql: "BEGIN DBMS_SESSION.SLEEP(20); END;",
-        types_sql: "SELECT 1 AS i, CAST(2.5 AS NUMBER(5, 2)) AS d, 'x' AS t, \
-                    DATE '2024-01-02' AS dt, CAST(NULL AS VARCHAR2(10)) AS n FROM DUAL;",
-    })
-}
-
 async fn targets() -> Vec<Target> {
     let mut out = Vec::new();
     out.extend(sql_server().await);
-    out.extend(oracle().await);
     out
 }
 
@@ -179,14 +150,6 @@ async fn odbc_selects_types() {
         assert_eq!(cell(batch, 2, 0), "x", "{}", t.name);
         assert!(cell(batch, 3, 0).starts_with("2024-01-02"), "{}", t.name);
         assert!(batch.column(4).is_null(0), "{}", t.name);
-        if t.config.driver == DriverKind::Oracle {
-            assert_eq!(conn.server_info().product, "Oracle");
-            assert!(
-                conn.server_info().version.starts_with("23"),
-                "{:?}",
-                conn.server_info()
-            );
-        }
     }
 }
 
@@ -275,7 +238,6 @@ async fn odbc_navigates_metadata() {
         assert!(!schema.system, "{}", t.name);
         if t.upper {
             assert!(schema.current, "{}: the session's schema", t.name);
-            assert!(schemas.iter().any(|s| s.name == "SYS" && s.system));
         }
         let objects = conn.objects(t.schema).await.unwrap();
         let found = objects.iter().find(|o| o.name == parent).unwrap();
@@ -342,7 +304,7 @@ async fn odbc_commits_and_rolls_back() {
         assert_eq!(count(conn, &table).await, "1", "{}", t.name);
 
         // A typed BEGIN in autocommit mode opens a transaction until ROLLBACK, as the data
-        // editor does; Oracle would read it as a PL/SQL block.
+        // editor does.
         run(conn, "BEGIN").await;
         assert!(conn.transaction().open, "{}", t.name);
         run(conn, &insert(3)).await;

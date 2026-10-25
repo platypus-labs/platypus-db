@@ -1,7 +1,7 @@
-//! Databases reached through an ODBC driver installed in the system: Oracle through Oracle's
-//! Instant Client, Db2 through IBM's Data Server Driver, and any driver or data source the
-//! user picks. The vendor drivers are installed by the app (`platypus-drivers`); this crate
-//! finds them in the system's driver manager and opens connections with them.
+//! Databases reached through an ODBC driver installed in the system: Db2 through IBM's Data
+//! Server Driver, and any driver or data source the user picks. IBM's driver is installed by
+//! the app (`platypus-drivers`); this crate finds it in the system's driver manager and
+//! opens connections with it.
 //!
 //! ODBC is reached on Windows only for now: elsewhere the app would have to link unixODBC
 //! and would not start without it.
@@ -11,7 +11,6 @@ use platypus_core::{Connection, ConnectionConfig, Driver, DriverKind, Result};
 
 #[cfg(windows)]
 mod connection;
-mod control;
 pub mod meta;
 pub mod profile;
 #[cfg(windows)]
@@ -25,10 +24,10 @@ pub use connection::OdbcConnection;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OdbcDriver;
 
-/// The connection string that opens `config`, with the vendor driver of Oracle and Db2
-/// found among the system's drivers unless the connection names one.
+/// The connection string that opens `config`, with Db2's vendor driver found among the
+/// system's drivers unless the connection names one.
 pub fn connection_string(config: &ConnectionConfig) -> Result<String> {
-    let found = if config.driver.odbc_package().is_some()
+    let found = if config.driver.vendor_package().is_some()
         && !config.options.contains_key(profile::DRIVER)
     {
         profile::vendor_driver(config.driver, &system::list()?.driver_names())
@@ -44,17 +43,6 @@ pub fn vendor_driver_installed(kind: DriverKind) -> Result<Option<String>> {
         kind,
         &system::list()?.driver_names(),
     ))
-}
-
-/// The statement as the database takes it: Oracle refuses a final `;` after plain SQL,
-/// which PL/SQL needs.
-#[must_use]
-pub fn statement_text(kind: DriverKind, sql: &str) -> &str {
-    if kind == DriverKind::Oracle && !platypus_sql::is_plsql(sql) {
-        sql.trim_end().trim_end_matches(';').trim_end()
-    } else {
-        sql
-    }
 }
 
 #[async_trait]
@@ -82,19 +70,6 @@ impl Driver for OdbcDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn oracle_statements_lose_their_final_semicolon() {
-        assert_eq!(
-            statement_text(DriverKind::Oracle, "select 1 from dual; \n"),
-            "select 1 from dual"
-        );
-        assert_eq!(
-            statement_text(DriverKind::Oracle, "BEGIN NULL; END;"),
-            "BEGIN NULL; END;"
-        );
-        assert_eq!(statement_text(DriverKind::Db2, "values 1;"), "values 1;");
-    }
 
     #[test]
     fn generic_connection_string_needs_no_system_lookup() {
