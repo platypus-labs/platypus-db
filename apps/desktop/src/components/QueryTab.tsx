@@ -1044,7 +1044,8 @@ export function QueryTab({
             title="Run statement (Ctrl+Enter)"
             aria-label="Run"
           >
-            {toolbar.label("run", "Run")}
+            <Icon name="run" />
+            Run
           </button>
           {toolbar.visible.script && (
             <button onClick={() => void run("script")} title="Run script (Alt+X, Ctrl+Shift+Enter)" aria-label="Script">
@@ -1207,8 +1208,14 @@ export function QueryTab({
             )}
             <span className="spacer" />
             {count && <span className="muted small">{count}</span>}
-            <button type="button" onClick={() => void countRows()} title={isMongo(connection.driver) ? "Runs countDocuments with the filter" : "Runs SELECT COUNT(*) with the filter"}>
-              Count rows
+            <button
+              type="button"
+              className="square"
+              onClick={() => void countRows()}
+              aria-label="Count rows"
+              title={`Count rows: ${isMongo(connection.driver) ? "runs countDocuments" : "runs SELECT COUNT(*)"} with the filter`}
+            >
+              <Icon name="sequence" />
             </button>
           </form>
         )}

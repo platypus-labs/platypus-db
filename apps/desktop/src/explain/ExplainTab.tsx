@@ -1,3 +1,4 @@
+import { Icon } from "../ui/Icon";
 import { type CSSProperties, useEffect, useState } from "react";
 import { api, type Explain, type PlanNode, toCommandError } from "../api";
 import { fmt } from "../components/ResultPanel";
@@ -171,16 +172,23 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
         <span className="spacer" />
         {running && <span className="muted small">Running…</span>}
         {explain && (
-          <button onClick={() => void navigator.clipboard.writeText(rawPlan(explain))} title="The plan as the database returned it">
-            Copy plan
+          <button
+            className="square"
+            onClick={() => void navigator.clipboard.writeText(rawPlan(explain))}
+            title="Copy the plan, as the database returned it"
+            aria-label="Copy plan"
+          >
+            <Icon name="copy" />
           </button>
         )}
         <button
           disabled={running}
           onClick={() => setVersion((v) => v + 1)}
-          title={tab.analyze ? "Runs the statement again" : "Asks for the plan again"}
+          title={tab.analyze ? "Refresh: runs the statement again" : "Refresh: asks for the plan again"}
+          aria-label="Refresh"
+          className="square"
         >
-          Refresh
+          <Icon name="refresh" />
         </button>
       </header>
       <nav className="object-sections">

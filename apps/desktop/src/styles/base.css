@@ -150,6 +150,15 @@ button.icon:hover {
   color: var(--fg);
 }
 
+/* A bar button that shows only its icon; its title says what it does. */
+button.square {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
 button.icon > svg {
   display: block;
 }

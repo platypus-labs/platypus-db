@@ -76,7 +76,7 @@ export default async function (page) {
   await finishEdit(page, "x");
   assert.match(await page.eval(editBar), /3 rows changed/);
 
-  await page.eval(`[...${visibleTab}.querySelectorAll('.edit-bar button')].find(b => b.textContent === 'Preview SQL').click()`);
+  await page.eval(`${visibleTab}.querySelector('.edit-bar button[aria-label="Preview SQL"]').click()`);
   await page.waitFor(`document.querySelector('.sql-preview') !== null`);
   const sql = await page.eval(`document.querySelector('.sql-preview').textContent`);
   assert.equal(

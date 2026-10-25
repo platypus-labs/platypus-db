@@ -121,8 +121,11 @@ export default async function (page, { dir, shots }) {
   const runButton = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Run')`;
   await page.waitFor(`${runButton} !== undefined`);
   assert.equal(await page.eval(`${runButton}.title.startsWith('Run')`), true);
-  assert.equal(await page.eval(`${runButton}.textContent`), "");
-  assert.equal(await page.eval(`!!${runButton}.querySelector('svg')`), true);
+  // Run, the main action, keeps its word; the others show their icon alone.
+  assert.equal(await page.eval(`${runButton}.textContent`), "Run");
+  const scriptButton = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Script')`;
+  assert.equal(await page.eval(`${scriptButton}.textContent`), "");
+  assert.equal(await page.eval(`!!${scriptButton}.querySelector('svg')`), true);
   const unnamed = await page.eval(
     `JSON.stringify([...${visibleTab}.querySelectorAll('.toolbar button')].filter(b => !b.getAttribute('aria-label') || !b.title).map(b => b.outerHTML.slice(0, 80)))`,
   );

@@ -49,6 +49,7 @@ import {
   Timer,
   ToggleLeft,
   ToggleRight,
+  Trash2,
   Undo2,
   Workflow,
   X,
@@ -107,6 +108,8 @@ const ICONS = {
   maximize: Square,
   restore: Copy,
   close: X,
+  copy: Copy,
+  delete: Trash2,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;
