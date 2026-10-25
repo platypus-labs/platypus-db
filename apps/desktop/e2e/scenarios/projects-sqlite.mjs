@@ -270,6 +270,7 @@ async function members(page, dir, shots) {
     "ClickHouse",
     "SQLite",
     "DuckDB",
+    "Turso / libSQL",
     "CockroachDB",
     "YugabyteDB",
     "TimescaleDB",

@@ -162,3 +162,21 @@ services:
       timeout: 5s
       retries: 100
       start_period: 20s
+
+  # libSQL server (sqld, what Turso runs), not started by default:
+  # `docker compose --profile libsql up -d --wait`. HTTP on 58080, with JWT auth: the
+  # public key below belongs to the test-only token in the conformance tests.
+  libsql:
+    image: ghcr.io/tursodatabase/libsql-server:v0.24.33
+    profiles: [libsql]
+    environment:
+      SQLD_NODE: primary
+      SQLD_AUTH_JWT_KEY: d5YTU2j6c07m9XBnd9HP_Kc3XjXiHWiLJvRWPqYBf9c
+    ports:
+      - "58080:8080"
+    # The image has no curl: bash opens the port.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 2s
+      timeout: 3s
+      retries: 60

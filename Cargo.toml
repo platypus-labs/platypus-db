@@ -14,6 +14,7 @@ publish = false
 platypus-core = { path = "crates/platypus-core" }
 platypus-driver-clickhouse = { path = "crates/platypus-driver-clickhouse" }
 platypus-driver-duckdb = { path = "crates/platypus-driver-duckdb" }
+platypus-driver-libsql = { path = "crates/platypus-driver-libsql" }
 platypus-driver-pg = { path = "crates/platypus-driver-pg" }
 platypus-driver-mysql = { path = "crates/platypus-driver-mysql" }
 platypus-driver-mssql = { path = "crates/platypus-driver-mssql" }

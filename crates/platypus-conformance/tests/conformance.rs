@@ -1,10 +1,10 @@
 //! The same scenarios against every driver: PostgreSQL, MySQL, MariaDB, SQL Server,
-//! ClickHouse, SQLite and DuckDB.
+//! ClickHouse, SQLite, DuckDB and libSQL.
 //!
-//! Server databases come from `docker/compose.yml` (SQL Server from its `sqlserver`
-//! profile). Setting `PLATYPUS_TEST_PG_URL`, `PLATYPUS_TEST_MYSQL_URL`,
-//! `PLATYPUS_TEST_MARIADB_URL`, `PLATYPUS_TEST_MSSQL_URL` or `PLATYPUS_TEST_CLICKHOUSE_URL`
-//! makes that database required
+//! Server databases come from `docker/compose.yml` (SQL Server and libSQL from their
+//! `sqlserver` and `libsql` profiles). Setting `PLATYPUS_TEST_PG_URL`,
+//! `PLATYPUS_TEST_MYSQL_URL`, `PLATYPUS_TEST_MARIADB_URL`, `PLATYPUS_TEST_MSSQL_URL`,
+//! `PLATYPUS_TEST_CLICKHOUSE_URL` or `PLATYPUS_TEST_LIBSQL_URL` makes that database required
 //! (CI does); otherwise an unreachable default database is skipped. SQLite and DuckDB always
 //! run, on temporary files.
 
@@ -21,6 +21,7 @@ use platypus_core::{
 };
 use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
+use platypus_driver_libsql::LibsqlDriver;
 use platypus_driver_mssql::MssqlDriver;
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
@@ -47,11 +48,26 @@ struct Backend {
 }
 
 impl Backend {
+    /// SQLite, or libSQL over HTTP: the same SQL and catalog.
+    fn speaks_sqlite(&self) -> bool {
+        matches!(self.config.driver, DriverKind::Sqlite | DriverKind::Libsql)
+    }
+
     async fn connect(&self) -> Box<dyn Connection> {
         driver(self.config.driver)
             .connect(&self.config)
             .await
             .unwrap_or_else(|e| panic!("{}: cannot connect: {e}", self.name))
+    }
+
+    /// `TEMPORARY ` where the server has temporary tables: a libSQL server takes none, and
+    /// gets plain tables, dropped when the tests start.
+    fn temporary(&self) -> &'static str {
+        if self.config.driver == DriverKind::Libsql {
+            ""
+        } else {
+            "TEMPORARY "
+        }
     }
 
     /// The name of the temporary table `name`: SQL Server's start with `#`.
@@ -83,7 +99,7 @@ impl Backend {
         if self.config.driver == DriverKind::SqlServer {
             format!("CREATE TABLE {} ({columns})", self.temp(name))
         } else {
-            format!("CREATE TEMPORARY TABLE {name} ({columns})")
+            format!("CREATE {}TABLE {name} ({columns})", self.temporary())
         }
     }
 }
@@ -93,6 +109,7 @@ fn driver(kind: DriverKind) -> &'static dyn Driver {
         DriverKind::Postgres => &PgDriver,
         DriverKind::MySql => &MySqlDriver,
         DriverKind::Sqlite => &SqliteDriver,
+        DriverKind::Libsql => &LibsqlDriver,
         DriverKind::DuckDb => &DuckDbDriver,
         DriverKind::SqlServer => &MssqlDriver,
         DriverKind::ClickHouse => &ClickHouseDriver,
@@ -263,6 +280,16 @@ const SQLITE_FIXTURE: &[&str] = &[
      GROUP BY c.id",
 ];
 
+fn sqlite_series() -> String {
+    format!(
+        "WITH RECURSIVE s(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM s WHERE id < {SERIES_ROWS})
+         SELECT id, 'row ' || id AS label FROM s"
+    )
+}
+
+const SQLITE_ENDLESS: &str =
+    "WITH RECURSIVE s(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM s) SELECT count(*) FROM s";
+
 async fn sqlite_backend() -> Backend {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("conformance.db");
@@ -278,12 +305,8 @@ async fn sqlite_backend() -> Backend {
         product: "SQLite",
         config,
         schema: "main".to_owned(),
-        series_sql: format!(
-            "WITH RECURSIVE s(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM s WHERE id < {SERIES_ROWS})
-             SELECT id, 'row ' || id AS label FROM s"
-        ),
-        endless_sql: "WITH RECURSIVE s(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM s) \
-                      SELECT count(*) FROM s",
+        series_sql: sqlite_series(),
+        endless_sql: SQLITE_ENDLESS,
         kill: None,
         _dir: Some(dir),
     }
@@ -306,6 +329,58 @@ const DUCKDB_FIXTURE: &[&str] = &[
      FROM customers c LEFT JOIN orders o ON o.customer_id = c.id
      GROUP BY c.id",
 ];
+
+/// The test-only token of the `libsql` service in `docker/compose.yml`.
+const LIBSQL_TOKEN: &str = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjcyMjU2MDB9.\
+     gcA5ick0W16rnB4ROBvkn896i2bNi3Z80USgUN9a5tEtdq5kigej16LpaCi_sVzxdzVIGUQ1n9eUtayjb2GdAg";
+
+const LIBSQL_SCRATCH: &[&str] = &[
+    "conf_t",
+    "conf_tx",
+    "conf_plan",
+    "conf_big",
+    "conf_edit",
+    "init_probe",
+];
+
+static LIBSQL_CLEANED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// A libSQL server, shared by the tests: the fixture is created once.
+async fn libsql_backend() -> Option<Backend> {
+    let default = format!("libsql://:{LIBSQL_TOKEN}@localhost:58080?sslmode=disable");
+    let config = server_config("PLATYPUS_TEST_LIBSQL_URL", &default, "libSQL").await?;
+    {
+        let _seeding = SEEDING.lock().await;
+        let conn = LibsqlDriver.connect(&config).await.unwrap();
+        // The tables the scenarios create as temporary elsewhere, left by an earlier run.
+        if !LIBSQL_CLEANED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            for table in LIBSQL_SCRATCH {
+                run(&*conn, &format!("DROP TABLE IF EXISTS {table}"))
+                    .await
+                    .unwrap_or_else(|e| panic!("libsql: {e}"));
+            }
+        }
+        for sql in SQLITE_FIXTURE {
+            let sql = sql
+                .replacen("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
+                .replacen("CREATE INDEX", "CREATE INDEX IF NOT EXISTS", 1)
+                .replacen("CREATE VIEW", "CREATE VIEW IF NOT EXISTS", 1);
+            run(&*conn, &sql)
+                .await
+                .unwrap_or_else(|e| panic!("libsql: {sql}: {e}"));
+        }
+    }
+    Some(Backend {
+        name: "libsql",
+        product: "libSQL",
+        config,
+        schema: "main".to_owned(),
+        series_sql: sqlite_series(),
+        endless_sql: SQLITE_ENDLESS,
+        kill: None,
+        _dir: None,
+    })
+}
 
 async fn duckdb_backend() -> Backend {
     let dir = tempfile::tempdir().unwrap();
@@ -474,6 +549,7 @@ async fn backends() -> Vec<Backend> {
     all.extend(clickhouse_backend().await);
     all.push(sqlite_backend().await);
     all.push(duckdb_backend().await);
+    all.extend(libsql_backend().await);
     all
 }
 
@@ -654,6 +730,15 @@ async fn cancels_running_queries() {
     for b in backends().await {
         let conn = b.connect().await;
         let handle = conn.cancel_handle();
+        // libSQL over HTTP has no way to stop a statement.
+        if !conn.capabilities().cancel {
+            assert!(
+                matches!(handle.cancel().await, Err(Error::Unsupported(_))),
+                "{}",
+                b.name
+            );
+            continue;
+        }
         // Again until the query stops: a cancel that arrives before the query starts (a busy
         // YugabyteDB) is lost.
         let cancel = tokio::spawn(async move {
@@ -1016,7 +1101,8 @@ async fn explains_queries() {
         if !conn.capabilities().explain {
             continue;
         }
-        affected(&b, conn, "CREATE TEMPORARY TABLE conf_plan (id INT)").await;
+        let create = format!("CREATE {}TABLE conf_plan (id INT)", b.temporary());
+        affected(&b, conn, &create).await;
         affected(&b, conn, "INSERT INTO conf_plan VALUES (1), (2), (3)").await;
         let count = || async {
             let rows = collect(&b, conn, "SELECT count(*) FROM conf_plan").await;
@@ -1033,8 +1119,8 @@ async fn explains_queries() {
         );
 
         let plan = conn.explain(select, true).await.unwrap();
-        // SQLite has no plan that runs the statement.
-        let analyzes = b.name != "sqlite";
+        // SQLite (and libSQL) has no plan that runs the statement.
+        let analyzes = !b.speaks_sqlite();
         assert_eq!(plan.analyzed, analyzes, "{}", b.name);
         assert_eq!(
             plan_has_actuals(&plan.root),
@@ -1079,7 +1165,7 @@ async fn suggests_indexes_for_large_scans() {
         }
         run(
             conn,
-            &format!("CREATE TEMPORARY TABLE conf_big AS {}", b.series_sql),
+            &format!("CREATE {}TABLE conf_big AS {}", b.temporary(), b.series_sql),
         )
         .await
         .unwrap_or_else(|e| panic!("{}: {e}", b.name));
@@ -1089,7 +1175,7 @@ async fn suggests_indexes_for_large_scans() {
             .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         let tables: Vec<_> = plan.suggestions.iter().map(|s| s.table.as_str()).collect();
         // SQLite plans have no row counts to judge a table by.
-        let expected: &[&str] = if b.name == "sqlite" {
+        let expected: &[&str] = if b.speaks_sqlite() {
             &[]
         } else {
             &["conf_big"]
@@ -1105,7 +1191,8 @@ async fn capabilities_match_optional_methods() {
     for b in backends().await {
         let conn = b.connect().await;
         let caps = conn.capabilities();
-        assert!(caps.cancel, "{}", b.name);
+        // libSQL's HTTP protocol has no way to interrupt a statement.
+        assert_eq!(caps.cancel, b.config.driver != DriverKind::Libsql, "{}", b.name);
         // ClickHouse is the one database without transactions.
         assert_eq!(
             caps.transactions,
@@ -1176,7 +1263,9 @@ fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<Strin
         DriverKind::MySql => {
             "id INT PRIMARY KEY, code VARCHAR(10) UNIQUE, qty INT CHECK (qty >= 0)"
         }
-        DriverKind::Sqlite => "id INTEGER PRIMARY KEY, code TEXT UNIQUE, qty INT CHECK (qty >= 0)",
+        DriverKind::Sqlite | DriverKind::Libsql => {
+            "id INTEGER PRIMARY KEY, code TEXT UNIQUE, qty INT CHECK (qty >= 0)"
+        }
         DriverKind::DuckDb => {
             "id INTEGER PRIMARY KEY, code VARCHAR UNIQUE, qty INTEGER CHECK (qty >= 0)"
         }
@@ -1217,7 +1306,7 @@ fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<Strin
             ],
             vec![drop],
         ),
-        DriverKind::Sqlite => (
+        DriverKind::Sqlite | DriverKind::Libsql => (
             vec![
                 create,
                 format!(
@@ -1258,7 +1347,7 @@ async fn check_probe(b: &Backend, conn: &dyn Connection, table: &str, trigger: &
         details.constraints
     );
     // SQLite keeps checks only in the table's SQL.
-    if b.config.driver != DriverKind::Sqlite {
+    if !b.speaks_sqlite() {
         let check = details
             .constraints
             .iter()
@@ -1351,7 +1440,7 @@ async fn check_fixture_objects(b: &Backend, conn: &dyn Connection) {
         .await
         .unwrap();
     // SQLite has no catalog of owners or sizes.
-    if b.config.driver != DriverKind::Sqlite {
+    if !b.speaks_sqlite() {
         assert!(!props.is_empty(), "{}: no properties", b.name);
     }
 }
@@ -1370,7 +1459,7 @@ async fn edit_fixture(
             "CREATE TEMPORARY TABLE conf_edit (id INT PRIMARY KEY, name TEXT, \
                  amount DECIMAL(10, 2), data BLOB, at TIMESTAMP NULL, n INT DEFAULT 7)"
         }
-        DriverKind::Sqlite => {
+        DriverKind::Sqlite | DriverKind::Libsql => {
             "CREATE TEMPORARY TABLE conf_edit (id INTEGER PRIMARY KEY, name TEXT, \
                  amount NUMERIC, data BLOB, at TEXT, n INT DEFAULT 7)"
         }
@@ -1386,7 +1475,7 @@ async fn edit_fixture(
             "CREATE TEMPORARY TABLE conf_edit (id Int32, name Nullable(String),                  amount Decimal(10, 2), data Nullable(String), at Nullable(DateTime64(6, 'UTC')),                  n Int32 DEFAULT 7)"
         }
     };
-    affected(b, conn, ddl).await;
+    affected(b, conn, &ddl.replacen("TEMPORARY ", b.temporary(), 1)).await;
     let ExecResult::Rows(stream) = conn
         .execute(
             &format!("SELECT * FROM {}", b.temp("conf_edit")),
@@ -1800,10 +1889,11 @@ async fn sizes_tables_and_nests_partitions() {
         let conn = b.connect().await;
         let objects = conn.objects(&b.schema).await.unwrap();
         let customers = objects.iter().find(|o| o.name == "customers").unwrap();
-        // SQLite keeps no statistics, DuckDB only row estimates, CockroachDB no page counts.
+        // SQLite and libSQL keep no statistics, DuckDB only row estimates, CockroachDB no
+        // page counts.
         assert_eq!(
             customers.size.is_some(),
-            !b.config.driver.is_embedded() && b.name != "cockroach",
+            !b.config.driver.is_embedded() && !b.speaks_sqlite() && b.name != "cockroach",
             "{}: {customers:?}",
             b.name
         );
@@ -1903,7 +1993,7 @@ async fn reads_geometries() {
                 vec![point.clone(), line.clone()],
             ),
             // ClickHouse geometries are tuples of coordinates: shapes come as text.
-            DriverKind::Sqlite | DriverKind::DuckDb | DriverKind::ClickHouse => {
+            DriverKind::Sqlite | DriverKind::Libsql | DriverKind::DuckDb | DriverKind::ClickHouse => {
                 ("SELECT 'POINT (1 2)'", vec![point.clone()])
             }
             // SQL Server's own serialization is not WKB: the values are converted.
@@ -1938,7 +2028,9 @@ async fn sets_the_session_up_after_connecting() {
                 "SELECT currentDatabase(), timezone()",
                 vec![Some(b.schema.clone()), Some("Europe/Rome".to_owned())],
             ),
-            DriverKind::Sqlite | DriverKind::SqlServer => ("SELECT 1", vec![Some("1".to_owned())]),
+            DriverKind::Sqlite | DriverKind::Libsql | DriverKind::SqlServer => {
+                ("SELECT 1", vec![Some("1".to_owned())])
+            }
         };
         // SQL Server names its temporary tables with a `#`.
         let probe_table = if config.driver == DriverKind::SqlServer {
@@ -1947,15 +2039,23 @@ async fn sets_the_session_up_after_connecting() {
             "init_probe"
         };
         config.init = SessionInit {
-            schema: (!matches!(config.driver, DriverKind::Sqlite | DriverKind::SqlServer))
-                .then(|| b.schema.clone()),
+            schema: (!matches!(
+                config.driver,
+                DriverKind::Sqlite | DriverKind::Libsql | DriverKind::SqlServer
+            ))
+            .then(|| b.schema.clone()),
             time_zone: match config.driver {
                 DriverKind::Postgres | DriverKind::ClickHouse => Some("Europe/Rome".to_owned()),
                 DriverKind::MySql => Some("+02:00".to_owned()),
-                DriverKind::Sqlite | DriverKind::DuckDb | DriverKind::SqlServer => None,
+                DriverKind::Sqlite
+                | DriverKind::Libsql
+                | DriverKind::DuckDb
+                | DriverKind::SqlServer => None,
             },
             statements: vec![if config.driver == DriverKind::SqlServer {
                 "CREATE TABLE #init_probe (x int)".to_owned()
+            } else if config.driver == DriverKind::Libsql {
+                "CREATE TABLE IF NOT EXISTS init_probe (x int)".to_owned()
             } else {
                 "CREATE TEMPORARY TABLE init_probe (x int)".to_owned()
             }],

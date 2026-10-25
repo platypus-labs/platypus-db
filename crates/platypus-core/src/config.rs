@@ -21,6 +21,9 @@ pub enum DriverKind {
     SqlServer,
     /// Over HTTP: port 8123, or 8443 with TLS.
     ClickHouse,
+    /// A libSQL server (`sqld`, Turso) over HTTP; the password is the auth token. Without a
+    /// port, the scheme's default (443, or 80 with `sslmode=disable`).
+    Libsql,
 }
 
 impl DriverKind {
@@ -29,7 +32,7 @@ impl DriverKind {
         match self {
             Self::Postgres => Some(5432),
             Self::MySql => Some(3306),
-            Self::Sqlite | Self::DuckDb => None,
+            Self::Sqlite | Self::DuckDb | Self::Libsql => None,
             Self::SqlServer => Some(1433),
             Self::ClickHouse => Some(8123),
         }
@@ -173,8 +176,8 @@ impl ConnectionConfig {
     }
 
     /// Parses a connection URL such as `postgres://user:pass@host:5432/db?sslmode=require`,
-    /// `mysql://user@host/db`, `sqlserver://sa@host/master`, `sqlite:///path/to/file.db` or
-    /// `duckdb:///path/to/file.duckdb`.
+    /// `mysql://user@host/db`, `sqlserver://sa@host/master`, `sqlite:///path/to/file.db`,
+    /// `duckdb:///path/to/file.duckdb` or `libsql://db-org.turso.io?authToken=...`.
     pub fn from_url(input: &str) -> Result<Self> {
         let url = Url::parse(input).map_err(|e| Error::Config(format!("invalid URL: {e}")))?;
         let driver = match url.scheme() {
@@ -184,6 +187,7 @@ impl ConnectionConfig {
             "duckdb" => DriverKind::DuckDb,
             "sqlserver" | "mssql" => DriverKind::SqlServer,
             "clickhouse" => DriverKind::ClickHouse,
+            "libsql" => DriverKind::Libsql,
             other => return Err(Error::Config(format!("unsupported URL scheme `{other}`"))),
         };
         let mut config = Self::new(driver);
@@ -220,6 +224,8 @@ impl ConnectionConfig {
                 "sslcert" => config.ssl_client_cert = Some(PathBuf::from(&*value)),
                 "sslkey" => config.ssl_client_key = Some(PathBuf::from(&*value)),
                 "application_name" => config.application_name = Some(value.into_owned()),
+                // The query parameter of Turso's URLs.
+                "authToken" => config.password = Some(Secret::new(value)),
                 "connect_timeout" => {
                     let secs = value
                         .parse()
@@ -282,6 +288,17 @@ mod tests {
         let c = ConnectionConfig::from_url("mssql://sa@db:14330/").unwrap();
         assert_eq!(c.driver, DriverKind::SqlServer);
         assert_eq!(c.port, Some(14330));
+    }
+
+    #[test]
+    fn parses_libsql_url() {
+        let c = ConnectionConfig::from_url("libsql://db-acme.turso.io?authToken=tok").unwrap();
+        assert_eq!(c.driver, DriverKind::Libsql);
+        assert_eq!((c.host.as_str(), c.port), ("db-acme.turso.io", None));
+        assert_eq!(c.password, Some(Secret::new("tok")));
+        let c = ConnectionConfig::from_url("libsql://:tok@localhost:8080?sslmode=disable").unwrap();
+        assert_eq!((c.port, c.ssl_mode), (Some(8080), SslMode::Disable));
+        assert_eq!(c.password, Some(Secret::new("tok")));
     }
 
     #[test]

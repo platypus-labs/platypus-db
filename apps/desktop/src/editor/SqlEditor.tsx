@@ -154,6 +154,7 @@ const dialects = {
   duckdb: PostgreSQL,
   sqlserver: MSSQL,
   clickhouse: MySQL,
+  libsql: SQLite,
 };
 
 function language(driver: DriverKind, catalog: CompletionCatalog | null | undefined) {

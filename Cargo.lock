@@ -4543,6 +4543,7 @@ dependencies = [
  "platypus-core",
  "platypus-driver-clickhouse",
  "platypus-driver-duckdb",
+ "platypus-driver-libsql",
  "platypus-driver-mssql",
  "platypus-driver-mysql",
  "platypus-driver-pg",
@@ -4561,6 +4562,7 @@ dependencies = [
  "platypus-core",
  "platypus-driver-clickhouse",
  "platypus-driver-duckdb",
+ "platypus-driver-libsql",
  "platypus-driver-mssql",
  "platypus-driver-mysql",
  "platypus-driver-pg",
@@ -4600,6 +4602,7 @@ dependencies = [
  "platypus-core",
  "platypus-driver-clickhouse",
  "platypus-driver-duckdb",
+ "platypus-driver-libsql",
  "platypus-driver-mssql",
  "platypus-driver-mysql",
  "platypus-driver-pg",
@@ -4655,6 +4658,24 @@ dependencies = [
  "platypus-core",
  "platypus-sql",
  "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "platypus-driver-libsql"
+version = "0.2.0"
+dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "async-trait",
+ "base64 0.22.1",
+ "futures",
+ "platypus-core",
+ "platypus-driver-sqlite",
+ "platypus-tls",
+ "reqwest",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

@@ -39,7 +39,7 @@ impl SessionInit {
                     "SET search_path = '{}'",
                     quote(schema, '"').replace('\'', "''")
                 )),
-                DriverKind::Sqlite => {
+                DriverKind::Sqlite | DriverKind::Libsql => {
                     return Err(Error::Config("SQLite has no default schema".to_owned()));
                 }
                 // The default schema belongs to the login's database user, not the session.
@@ -65,7 +65,7 @@ impl SessionInit {
                         "DuckDB has no session time zone here".to_owned(),
                     ));
                 }
-                DriverKind::Sqlite => {
+                DriverKind::Sqlite | DriverKind::Libsql => {
                     return Err(Error::Config("SQLite has no session time zone".to_owned()));
                 }
                 DriverKind::SqlServer => {

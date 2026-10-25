@@ -45,6 +45,10 @@ fn program(driver: DriverKind) -> CommandResult<&'static str> {
             "cli",
             "clickhouse-client uses the native protocol (port 9000), not the HTTP port of this connection",
         )),
+        DriverKind::Libsql => Err(CommandError::new(
+            "cli",
+            "libSQL servers have no command-line client to run scripts with",
+        )),
     }
 }
 
@@ -125,7 +129,7 @@ fn invocation(
             }
             env.extend(password.map(|p| ("MYSQL_PWD", p)));
         }
-        DriverKind::Sqlite | DriverKind::DuckDb => {
+        DriverKind::Sqlite | DriverKind::DuckDb | DriverKind::Libsql => {
             args.extend(
                 ["-bail", "-header", "-column", config.database.as_str()].map(str::to_owned),
             );
@@ -327,5 +331,6 @@ mod tests {
         assert_eq!(program(DriverKind::Sqlite).ok(), Some("sqlite3"));
         assert!(program(DriverKind::DuckDb).is_err());
         assert!(program(DriverKind::ClickHouse).is_err());
+        assert!(program(DriverKind::Libsql).is_err());
     }
 }

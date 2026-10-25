@@ -82,7 +82,8 @@ that sets `connect_addr` the same way.
 TLS for a network driver comes from `platypus_tls::client_config`: a rustls `ClientConfig`
 (`ring` provider) with libpq `sslmode` semantics, root and client certificates from the
 config, or `None` with `disable`. The driver decides how a mode maps to its protocol:
-PostgreSQL negotiates TLS in-band, ClickHouse's HTTP picks `https` from `require` up.
+PostgreSQL negotiates TLS in-band, ClickHouse's HTTP picks `https` from `require` up,
+libSQL's tries it first from `prefer` up.
 
 ### Session setup
 

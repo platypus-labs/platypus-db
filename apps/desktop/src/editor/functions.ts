@@ -178,6 +178,7 @@ const LETTER: Record<DriverKind, string> = {
   duckdb: "d",
   sqlserver: "t",
   clickhouse: "c",
+  libsql: "s",
 };
 
 function options(driver: DriverKind): Completion[] {

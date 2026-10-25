@@ -48,6 +48,8 @@ const DEFAULT_PORTS: Record<DriverKind, number | null> = {
   sqlserver: 1433,
   // The HTTP interface; 8443 with TLS.
   clickhouse: 8123,
+  // The scheme's: 443, or 80 without TLS.
+  libsql: null,
 };
 
 /** The database files of the embedded drivers: file picker filter and example path. */
@@ -66,9 +68,10 @@ const SCHEMES: Record<string, DriverKind> = {
   "sqlserver:": "sqlserver",
   "mssql:": "sqlserver",
   "clickhouse:": "clickhouse",
+  "libsql:": "libsql",
 };
 
-/** Turns a `postgres://`, `mysql://`, `sqlserver://` or `clickhouse://` URL into form fields. */
+/** Turns a `postgres://`, `mysql://`, `sqlserver://`, `clickhouse://` or `libsql://` URL into form fields. */
 function applyUrl(conn: SavedConnection, input: string): SavedConnection | null {
   let url: URL;
   try {
@@ -135,6 +138,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
   const profile = profiles.find((p) => p.id === conn.network_profile) ?? null;
   const server = !isEmbedded(conn.driver);
   const file = FILES[conn.driver === "duckdb" ? "duckdb" : "sqlite"];
+  /** A libSQL server has no database or user to choose: the token picks the database. */
+  const libsql = conn.driver === "libsql";
+  const secret = libsql ? "Auth token" : "Password";
 
   // An empty password field keeps the stored one when editing.
   const passwordInput = (): PasswordInput =>
@@ -206,8 +212,10 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
     if (parsed) {
       e.preventDefault();
       setConn({ ...parsed, name: conn.name || parsed.database || parsed.host });
-      const pw = new URL(e.clipboardData.getData("text").trim()).password;
-      if (pw) setPassword(decodeURIComponent(pw));
+      const url = new URL(e.clipboardData.getData("text").trim());
+      // Turso's URLs carry the token as a parameter.
+      const pw = decodeURIComponent(url.password) || url.searchParams.get("authToken");
+      if (pw) setPassword(pw);
     }
   }
 
@@ -275,6 +283,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
                   <option value="duckdb">DuckDB</option>
                   <option value="sqlserver">SQL Server</option>
                   <option value="clickhouse">ClickHouse</option>
+                  <option value="libsql">libSQL / Turso</option>
                 </select>
               </label>
               <label className="field">
@@ -343,23 +352,27 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
                   </label>
                 </div>
 
-                <label className="field">
-                  <span>
-                    Database
-                    {conn.driver === "mysql" || conn.driver === "sqlserver" || conn.driver === "clickhouse"
-                      ? " (optional)"
-                      : ""}
-                  </span>
-                  <input value={conn.database} onChange={(e) => set("database", e.target.value)} />
-                </label>
+                {!libsql && (
+                  <label className="field">
+                    <span>
+                      Database
+                      {conn.driver === "mysql" || conn.driver === "sqlserver" || conn.driver === "clickhouse"
+                        ? " (optional)"
+                        : ""}
+                    </span>
+                    <input value={conn.database} onChange={(e) => set("database", e.target.value)} />
+                  </label>
+                )}
 
                 <div className="row">
+                  {!libsql && (
+                    <label className="field grow">
+                      <span>User</span>
+                      <input value={conn.user} onChange={(e) => set("user", e.target.value)} />
+                    </label>
+                  )}
                   <label className="field grow">
-                    <span>User</span>
-                    <input value={conn.user} onChange={(e) => set("user", e.target.value)} />
-                  </label>
-                  <label className="field grow">
-                    <span>Password from</span>
+                    <span>{secret} from</span>
                     <select
                       value={source}
                       onChange={(e) => setConn((c) => withPasswordSource(c, e.target.value as PasswordSource))}
@@ -375,7 +388,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
 
                 {source === "command" ? (
                   <label className="field">
-                    <span>Command that prints the password</span>
+                    <span>Command that prints the {secret.toLowerCase()}</span>
                     <input
                       required
                       value={conn.password_command ?? ""}
@@ -387,7 +400,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
                 ) : (
                   source !== "pgpass" && (
                     <label className="field">
-                      <span>{source === "ask" ? "Password (only to test the connection)" : "Password"}</span>
+                      <span>{source === "ask" ? `${secret} (only to test the connection)` : secret}</span>
                       <input
                         type="password"
                         value={password}
@@ -479,7 +492,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
 
           <div data-page="init" hidden={page !== "init"} className="dialog-page">
             <p className="muted small">Runs after every connection, and again when a lost connection is reopened.</p>
-            {server && (
+            {server && !libsql && (
               <div className="row">
                 {conn.driver === "postgres" && (
                   <label className="field grow">

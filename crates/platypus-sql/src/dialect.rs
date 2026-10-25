@@ -29,7 +29,7 @@ impl From<DriverKind> for Dialect {
         match kind {
             DriverKind::Postgres => Self::Postgres,
             DriverKind::MySql => Self::MySql,
-            DriverKind::Sqlite => Self::Sqlite,
+            DriverKind::Sqlite | DriverKind::Libsql => Self::Sqlite,
             DriverKind::DuckDb => Self::DuckDb,
             DriverKind::SqlServer => Self::SqlServer,
             DriverKind::ClickHouse => Self::ClickHouse,

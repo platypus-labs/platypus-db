@@ -15,6 +15,7 @@ use platypus_core::{
 };
 use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
+use platypus_driver_libsql::LibsqlDriver;
 use platypus_driver_mssql::MssqlDriver;
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
@@ -39,7 +40,8 @@ enum Command {
 struct QueryArgs {
     /// Connection URL, e.g. `postgres://user:pass@localhost:5432/db?sslmode=disable`,
     /// `mysql://user:pass@localhost:3306/db`, `sqlserver://user:pass@localhost:1433/db`,
-    /// `sqlite:///path/to/file.db` or `duckdb:///path/to/file.duckdb`
+    /// `sqlite:///path/to/file.db`, `duckdb:///path/to/file.duckdb` or
+    /// `libsql://db-org.turso.io?authToken=...`
     #[arg(short, long, env = "PLATYPUS_URL", hide_env_values = true)]
     url: String,
 
@@ -145,6 +147,7 @@ async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, Error
         DriverKind::MySql => MySqlDriver.connect(config).await,
         DriverKind::Sqlite => SqliteDriver.connect(config).await,
         DriverKind::DuckDb => DuckDbDriver.connect(config).await,
+        DriverKind::Libsql => LibsqlDriver.connect(config).await,
         DriverKind::SqlServer => MssqlDriver.connect(config).await,
         DriverKind::ClickHouse => ClickHouseDriver.connect(config).await,
     }

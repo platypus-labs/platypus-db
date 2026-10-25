@@ -1,7 +1,7 @@
 # PlatypusDB
 
 Fast, lightweight desktop SQL client for **PostgreSQL**, **MySQL/MariaDB**, **SQL Server**
-(and Azure SQL), **ClickHouse**, **SQLite** and **DuckDB**.
+(and Azure SQL), **ClickHouse**, **SQLite**, **DuckDB** and **libSQL/Turso**.
 Rust core, Tauri 2 + React UI: a 5 MB installer that starts in under half a second and
 scrolls through millions of rows.
 
@@ -203,6 +203,7 @@ crates/
   platypus-driver-duckdb/  DuckDB (duckdb, bundled; Arrow results as they come)
   platypus-driver-clickhouse/ ClickHouse over HTTP (reqwest; ArrowStream results decoded as they arrive)
   platypus-tls/            rustls client configuration with libpq `sslmode` semantics
+  platypus-driver-libsql/  libSQL servers and Turso (Hrana over HTTP; SQLite's catalog code)
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
   platypus-net/            SSH tunnels (russh)
   platypus-store/          connections (TOML + OS keychain), imports, query history (SQLite)
@@ -234,8 +235,8 @@ npm run tauri dev
 
 # core crates; the conformance suite (crates/platypus-conformance) runs the same scenarios on
 # every driver. Server databases that are down are skipped; set PLATYPUS_TEST_PG_URL,
-# PLATYPUS_TEST_MYSQL_URL, PLATYPUS_TEST_MARIADB_URL, PLATYPUS_TEST_MSSQL_URL or
-# PLATYPUS_TEST_CLICKHOUSE_URL to make them mandatory
+# PLATYPUS_TEST_MYSQL_URL, PLATYPUS_TEST_MARIADB_URL, PLATYPUS_TEST_MSSQL_URL,
+# PLATYPUS_TEST_CLICKHOUSE_URL or PLATYPUS_TEST_LIBSQL_URL to make them mandatory
 cargo test --workspace --exclude platypus-desktop
 
 # CLI: table (first 200 rows), csv, ndjson, json or parquet (json and parquet need -o); Ctrl+C or --timeout cancel server-side
@@ -247,6 +248,7 @@ cargo run -p platypus-cli -- query -u mysql://platypus:platypus@localhost:53306/
 cargo run -p platypus-cli -- query -u sqlite:///C:/data/app.db "select * from sqlite_master"
 cargo run -p platypus-cli -- query -u duckdb:///C:/data/app.duckdb "select * from duckdb_tables()"
 cargo run -p platypus-cli -- query -u clickhouse://platypus:platypus@localhost:58123/platypus "select * from system.tables"
+cargo run -p platypus-cli -- query -u "libsql://my-db-acme.turso.io?authToken=$TURSO_TOKEN" "select * from sqlite_master"
 
 # end-to-end tests (Windows): drive the release build on a throwaway profile
 cd apps/desktop
@@ -257,6 +259,7 @@ npm run e2e
 # its profile
 docker compose -f docker/compose.yml up -d --wait
 docker compose -f docker/compose.yml --profile sqlserver up -d --wait
+docker compose -f docker/compose.yml --profile libsql up -d --wait
 ```
 
 | Database   | Host port | User / password / db           |
@@ -266,6 +269,7 @@ docker compose -f docker/compose.yml --profile sqlserver up -d --wait
 | MariaDB    | 53307     | `platypus` / `platypus` / `platypus` |
 | SQL Server | 51433     | `sa` / `Platypus-2026` / `platypus` (TLS with a self-signed cert; the conformance tests create schema `demo`) |
 | ClickHouse | 58123     | `platypus` / `platypus` / `platypus` (HTTP; the conformance tests create the demo tables) |
+| libSQL     | 58080     | HTTP, no TLS; the auth token is `LIBSQL_TOKEN` in `crates/platypus-conformance/tests/conformance.rs` (the tests create the demo tables) |
 
 Each database has `customers`, `orders`, a `customer_totals` view, a `type_zoo` table with one
 column per notable type, and a 1M-row `big_table` for streaming and scrolling benchmarks.
