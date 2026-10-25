@@ -1,6 +1,6 @@
 //! Script files picked by the user in the native dialogs, and the clipboard.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::error::{CommandError, CommandResult};
 
@@ -31,9 +31,8 @@ pub fn read_clipboard() -> CommandResult<String> {
 }
 
 /// Saves the clipboard's text (CSV or TSV, as a spreadsheet copies it) to a new temporary file
-/// named `pasted.csv`, to import it like a file; returns its path.
-// shortcut: the files stay in the temporary folder until the system cleans it; delete them
-// after the import if they ever pile up.
+/// named `pasted.csv`, to import it like a file; returns its path. [`discard_pasted_file`]
+/// deletes it again.
 #[tauri::command]
 pub fn clipboard_to_file() -> CommandResult<PathBuf> {
     let text = read_clipboard()?;
@@ -44,9 +43,50 @@ pub fn clipboard_to_file() -> CommandResult<PathBuf> {
         ));
     }
     let io = |e: std::io::Error| CommandError::new("io", format!("cannot save the clipboard: {e}"));
-    let dir = std::env::temp_dir().join(format!("platypus-paste-{}", uuid::Uuid::new_v4()));
+    let dir = std::env::temp_dir().join(format!("{PASTE_PREFIX}{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&dir).map_err(io)?;
     let path = dir.join("pasted.csv");
     std::fs::write(&path, text).map_err(io)?;
     Ok(path)
+}
+
+/// The folders of [`clipboard_to_file`] start with this.
+const PASTE_PREFIX: &str = "platypus-paste-";
+
+/// Deletes the folder of a file made by [`clipboard_to_file`]; any other path is left alone.
+#[tauri::command]
+pub fn discard_pasted_file(path: PathBuf) {
+    if let Some(dir) = pasted_dir(&path, &std::env::temp_dir()) {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+/// The folder of `path` if [`clipboard_to_file`] made it in `temp`.
+fn pasted_dir<'a>(path: &'a Path, temp: &Path) -> Option<&'a Path> {
+    let dir = path.parent()?;
+    let name = dir.file_name()?.to_str()?;
+    (name.starts_with(PASTE_PREFIX) && dir.parent()? == temp && path.file_name()? == "pasted.csv")
+        .then_some(dir)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::pasted_dir;
+
+    #[test]
+    fn only_pasted_files_are_discarded() {
+        let temp = Path::new("/tmp");
+        let pasted = Path::new("/tmp/platypus-paste-1/pasted.csv");
+        assert_eq!(pasted_dir(pasted, temp), Some(Path::new("/tmp/platypus-paste-1")));
+        for other in [
+            "/tmp/other/pasted.csv",
+            "/home/platypus-paste-1/pasted.csv",
+            "/tmp/platypus-paste-1/data.csv",
+            "/tmp/platypus-paste-1/../x/pasted.csv",
+        ] {
+            assert_eq!(pasted_dir(Path::new(other), temp), None, "{other}");
+        }
+    }
 }

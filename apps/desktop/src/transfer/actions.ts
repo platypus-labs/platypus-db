@@ -122,7 +122,14 @@ registerAction({
       return workbench().showError(toCommandError(e).message);
     }
     workbench().openDialog((close) =>
-      createElement(ImportDataDialog, { target: at(connection, database, schema, null), path, onClose: close }),
+      createElement(ImportDataDialog, {
+        target: at(connection, database, schema, null),
+        path,
+        onClose: () => {
+          close();
+          void api.discardPastedFile(path);
+        },
+      }),
     );
   },
 });

@@ -798,6 +798,8 @@ export const api = {
   },
   /** Saves the clipboard's text to a new `pasted.csv`; returns its path. */
   clipboardToFile: () => invoke<string>("clipboard_to_file"),
+  /** Deletes a file of `clipboardToFile`. */
+  discardPastedFile: (path: string) => invoke<void>("discard_pasted_file", { path }),
   /** The first rows of a table of the source session, with the column types they would take in
    *  the target session's database. */
   previewTransfer: (sourceSessionId: number, schema: string | null, table: string, targetSessionId: number) =>
