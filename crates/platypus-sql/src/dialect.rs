@@ -518,10 +518,10 @@ impl Dialect {
                 format!("LOWER({expr}) LIKE LOWER({pattern}) ESCAPE '!'")
             }
             Self::Sqlite => format!("{expr} LIKE {pattern} ESCAPE '!'"),
-            // No `ESCAPE` clause: LIKE escapes with a backslash, which the replacement
-            // writes as `\\\\` (doubled again in the literal).
+            // No `ESCAPE` clause: LIKE escapes with a backslash. The replacement `\\\1`
+            // writes one before the escaped character; the literal doubles each backslash.
             Self::ClickHouse => {
-                format!(r"{expr} ILIKE replaceRegexpAll({pattern}, '!(.)', '\\\\\\\\\\1')")
+                format!(r"{expr} ILIKE replaceRegexpAll({pattern}, '!(.)', '\\\\\\1')")
             }
         }
     }
@@ -697,7 +697,7 @@ mod tests {
         );
         assert_eq!(
             ch.contains("c", "a%"),
-            r"c ILIKE replaceRegexpAll('%a!%%', '!(.)', '\\\\\\\\\\1')"
+            r"c ILIKE replaceRegexpAll('%a!%%', '!(.)', '\\\\\\1')"
         );
         assert!(
             ch.any_column_contains(&["id", "n"], "x")
