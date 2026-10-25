@@ -623,7 +623,8 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | Attività | Prio |
 |---|---|
 | Verifica su macOS e Linux: build, avvio, memoria, scroll; correzioni di piattaforma | P1 |
-| Prima release su GitHub e test reale dell'auto-update (0.1.0 → 0.1.1) | P1 |
+| ✅ Prima release su GitHub (v0.1.0, poi v0.2.0) | P1 |
+| Test reale dell'auto-update da una release pubblicata alla successiva | P1 |
 | Firma del codice: Windows (certificato o Azure Trusted Signing), macOS con notarizzazione | P2 |
 | Benchmark affiancato con DBeaver, aggiornando `BENCHMARKS.md` | P2 |
 | Benchmark in CI con soglie (avvio, memoria, decode) per bloccare le regressioni | P2 |
