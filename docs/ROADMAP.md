@@ -355,6 +355,18 @@ schema copiato; nelle viste si riscrive ogni nome uguale allo schema seguito da 
 
 ### Gruppo I — Strumenti di schema
 
+**Stato: P1 completata** (editor tabella grafico). Il crate `platypus-schema` legge il design di
+una tabella (`load`: dettagli del driver più le azioni delle FK, gli `auto_increment` e i default
+letterali di MySQL, l'`AUTOINCREMENT` di SQLite) e genera lo script da un design all'altro
+(`script`): le parti cambiate si eliminano e si ricreano, le colonne si rinominano e si
+modificano sul posto (`CHANGE COLUMN` in MySQL, `sp_rename` e il vincolo di default per nome
+in SQL Server). SQLite e DuckDB, che oltre a rinominare e aggiungere colonne non modificano
+quasi nulla, ricreano la tabella copiando le righe (SQLite con `foreign_keys` spento; i suoi
+trigger vanno ricreati a mano). `apply` esegue tutto in una transazione dove il DDL si annulla
+(non MySQL). Il tab `table-editor` mostra l'anteprima dello script prima di salvare. Limiti: i
+commenti di colonna non si scrivono in SQL Server (proprietà estese) né in SQLite; le colonne
+generate e gli indici su espressioni restano come sono solo se non si toccano.
+
 **Area:** `apps/desktop/src/erd/` (tab `erd`), `apps/desktop/src/table-editor/`, nuovo crate `platypus-schema` (modello di schema, diff, DDL)
 **Dipende da:** 0.3, 0.5; per il DDL completo serve il gruppo C
 
@@ -363,7 +375,7 @@ schema copiato; nelle viste si riscrive ogni nome uguale allo schema seguito da 
 | Diagramma ER in sola lettura dalle FK, layout automatico, export PNG/SVG | P2 | D |
 | Diagrammi personalizzati: si scelgono le tabelle, con note | P3 | D |
 | ERD in modifica: si disegna lo schema e si genera il DDL | P3 | D+ |
-| **Editor tabella grafico**: crea e modifica colonne, indici, vincoli e FK, con anteprima dell'ALTER | P1 | D |
+| ✅ **Editor tabella grafico**: crea e modifica colonne, indici, vincoli e FK, con anteprima dell'ALTER | P1 | D |
 | Creazione di viste, trigger, funzioni e sequenze da form | P3 | D |
 | **Confronto schemi** con script di migrazione | P3 | D+ |
 | **Confronto dati** tra due tabelle, con script di sincronizzazione | P3 | D+ |
