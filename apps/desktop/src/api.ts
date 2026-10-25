@@ -33,6 +33,9 @@ export interface SavedConnection {
   color: string | null;
   /** Production asks before changes and starts in manual commit. */
   connection_type?: ConnectionType | null;
+  /** What external agents (MCP, the CLI) may do; production and read-only connections
+   *  never let them write. */
+  agent_access?: AgentAccess;
   /** The SSH server the connection goes through. */
   ssh?: SavedSsh | null;
   /** Logical keys set by the user for tables without a primary key. */
@@ -40,6 +43,19 @@ export interface SavedConnection {
 }
 
 export type ConnectionType = "dev" | "test" | "prod";
+
+export type AgentAccess = "off" | "read_only" | "read_write";
+
+/** Where `platypus-mcp` is and the commands that register it with agents. */
+export interface AgentSetup {
+  mcp_path: string;
+  /** It is next to the app; a build from source may not have it. */
+  mcp_found: boolean;
+  /** `claude mcp add …` for Claude Code. */
+  claude_command: string;
+  /** The `[mcp_servers.platypus]` table of Codex's `config.toml`. */
+  codex_config: string;
+}
 
 export interface SavedInit {
   schema: string | null;
@@ -265,7 +281,12 @@ export interface HistoryEntry {
   rows: number | null;
   status: "ok" | "error" | "cancelled";
   error: string | null;
+  /** The agent that ran it, e.g. `claude-code`; `null` when run in the app. */
+  origin: string | null;
 }
+
+/** Who ran the statements the history shows: the app, or agents. */
+export type HistoryOrigin = "app" | "agent";
 
 export interface SchemaMeta {
   name: string;
@@ -633,6 +654,7 @@ export function toCommandError(e: unknown): CommandError {
 
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
+  agentSetup: () => invoke<AgentSetup>("agent_setup"),
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
   defaultConnection: (driver: DriverKind) =>
     invoke<SavedConnection>("default_connection", { driver }),
@@ -842,12 +864,15 @@ export const api = {
     connectionIds?: string[];
     text?: string;
     beforeId?: number;
+    /** Only the app's entries, or only the agents'; both when left out. */
+    origin?: HistoryOrigin | null;
     limit: number;
   }) =>
     invoke<HistoryEntry[]>("search_history", {
       connectionIds: query.connectionIds ?? null,
       text: query.text || null,
       beforeId: query.beforeId ?? null,
+      origin: query.origin ?? null,
       limit: query.limit,
     }),
   deleteHistory: (id: number) => invoke<void>("delete_history", { id }),

@@ -1,5 +1,8 @@
-//! `platypus` CLI: runs SQL through the PlatypusDB core and streams the results.
+//! `platypus` CLI: runs SQL through the PlatypusDB core and streams the results. With
+//! `--connection`, it works on the connections saved in the app, with the rules agents
+//! follow (see `agent`), and prints JSON.
 
+mod agent;
 mod output;
 
 use std::io::{Read as _, Write};
@@ -9,21 +12,18 @@ use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use futures::StreamExt;
-use platypus_core::{
-    Connection, ConnectionConfig, Driver, DriverKind, Error, ExecOptions, ExecResult,
-    RecordBatchStream,
-};
-use platypus_driver_duckdb::DuckDbDriver;
-use platypus_driver_mssql::MssqlDriver;
-use platypus_driver_mysql::MySqlDriver;
-use platypus_driver_pg::PgDriver;
-use platypus_driver_sqlite::SqliteDriver;
+use platypus_core::{ConnectionConfig, Error, ExecOptions, ExecResult, RecordBatchStream};
 
 use crate::output::{Format, Sink};
 
 #[derive(Debug, Parser)]
 #[command(name = "platypus", version = platypus_core::VERSION, about)]
 struct Cli {
+    /// A connection saved in PlatypusDB, by name or id: the command follows the agent
+    /// access the connection gives and prints JSON.
+    #[arg(short, long, global = true)]
+    connection: Option<String>,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -32,6 +32,34 @@ struct Cli {
 enum Command {
     /// Execute one SQL statement and print or export its result.
     Query(QueryArgs),
+    /// List the saved connections agents may use (JSON).
+    Connections,
+    /// List the schemas of `--connection` (JSON).
+    Schemas,
+    /// List the objects of a schema of `--connection` (JSON).
+    Objects {
+        #[arg(long)]
+        schema: String,
+    },
+    /// Describe a table or view of `--connection`: columns, keys, indexes (JSON).
+    Table {
+        #[arg(long)]
+        schema: String,
+        #[arg(long)]
+        table: String,
+    },
+    /// The CREATE statement of an object of `--connection` (JSON).
+    Ddl {
+        #[arg(long)]
+        schema: String,
+        #[arg(long)]
+        name: String,
+        /// `table`, `view`, `function`...; looked up when left out.
+        #[arg(long)]
+        kind: Option<String>,
+    },
+    /// Find objects of `--connection` whose name contains a text (JSON).
+    Search { text: String },
 }
 
 #[derive(Debug, clap::Args)]
@@ -40,22 +68,27 @@ struct QueryArgs {
     /// `mysql://user:pass@localhost:3306/db`, `sqlserver://user:pass@localhost:1433/db`,
     /// `sqlite:///path/to/file.db` or `duckdb:///path/to/file.duckdb`
     #[arg(short, long, env = "PLATYPUS_URL", hide_env_values = true)]
-    url: String,
+    url: Option<String>,
 
     /// SQL to execute; `-` reads it from stdin.
     sql: String,
 
-    #[arg(short, long, value_enum, default_value_t = OutputFormat::Table)]
-    format: OutputFormat,
+    /// Defaults to `table`, or `json` with `--connection`, which takes only these two.
+    #[arg(short, long, value_enum)]
+    format: Option<OutputFormat>,
 
     /// Write to this file instead of stdout.
     #[arg(short, long)]
     output: Option<PathBuf>,
 
     /// Stop after this many rows (the rest of the query is cancelled).
-    /// Defaults to 200 for `table`, unlimited otherwise.
+    /// Defaults to 200 for `table`, unlimited otherwise; 100 with `--connection`.
     #[arg(long)]
     max_rows: Option<usize>,
+
+    /// With `--connection`: bytes of output at most (default 32768).
+    #[arg(long)]
+    max_bytes: Option<u64>,
 
     /// Rows per Arrow record batch.
     #[arg(long, default_value_t = ExecOptions::default().batch_size)]
@@ -121,8 +154,12 @@ async fn export(
 #[tokio::main]
 async fn main() -> ExitCode {
     let cli = Cli::parse();
+    if cli.connection.is_some() || !matches!(cli.command, Command::Query(_)) {
+        return agent::main(cli).await;
+    }
     let result = match cli.command {
         Command::Query(args) => query(args).await,
+        _ => Ok(()),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -138,28 +175,25 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, Error> {
-    match config.driver {
-        DriverKind::Postgres => PgDriver.connect(config).await,
-        DriverKind::MySql => MySqlDriver.connect(config).await,
-        DriverKind::Sqlite => SqliteDriver.connect(config).await,
-        DriverKind::DuckDb => DuckDbDriver.connect(config).await,
-        DriverKind::SqlServer => MssqlDriver.connect(config).await,
+/// The SQL argument, or stdin for `-`.
+fn read_sql(sql: String) -> Result<String, Error> {
+    if sql != "-" {
+        return Ok(sql);
     }
+    let mut sql = String::new();
+    std::io::stdin()
+        .read_to_string(&mut sql)
+        .map_err(|e| Error::Other(format!("cannot read stdin: {e}")))?;
+    Ok(sql)
 }
 
 async fn query(args: QueryArgs) -> Result<(), Error> {
-    let sql = if args.sql == "-" {
-        let mut sql = String::new();
-        std::io::stdin()
-            .read_to_string(&mut sql)
-            .map_err(|e| Error::Other(format!("cannot read stdin: {e}")))?;
-        sql
-    } else {
-        args.sql
-    };
-    let config = ConnectionConfig::from_url(&args.url)?;
-    let conn = connect(&config).await?;
+    let sql = read_sql(args.sql)?;
+    let url = args.url.ok_or_else(|| {
+        Error::Config("give --url, or --connection for a saved connection".to_owned())
+    })?;
+    let config = ConnectionConfig::from_url(&url)?;
+    let conn = platypus_mcp::connect(&config).await?;
 
     // Ctrl+C and --timeout both cancel server-side, so the error path is exercised for real.
     let cancel = conn.cancel_handle();
@@ -191,7 +225,7 @@ async fn query(args: QueryArgs) -> Result<(), Error> {
         ExecResult::Rows(stream) => stream,
     };
 
-    let format = match args.format {
+    let format = match args.format.unwrap_or(OutputFormat::Table) {
         OutputFormat::Table => Format::Table,
         OutputFormat::Csv => Format::Csv,
         OutputFormat::Ndjson => Format::Ndjson,
@@ -200,7 +234,7 @@ async fn query(args: QueryArgs) -> Result<(), Error> {
                 .output
                 .as_deref()
                 .ok_or_else(|| Error::Config("json and parquet output need --output".to_owned()))?;
-            let format = if matches!(args.format, OutputFormat::Json) {
+            let format = if matches!(args.format, Some(OutputFormat::Json)) {
                 platypus_export::Format::Json
             } else {
                 platypus_export::Format::Parquet

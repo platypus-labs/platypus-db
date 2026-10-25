@@ -97,6 +97,16 @@ button.toggled {
   text-transform: uppercase;
 }
 
+/* The agent that ran the statement. */
+.history-agent {
+  color: var(--accent);
+}
+
+.history-origin {
+  margin-right: 4px;
+  font-size: 12px;
+}
+
 .history-empty {
   padding: 8px 4px;
 }

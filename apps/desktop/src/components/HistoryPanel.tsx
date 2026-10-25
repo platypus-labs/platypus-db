@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, toCommandError, type HistoryEntry } from "../api";
+import { api, toCommandError, type HistoryEntry, type HistoryOrigin } from "../api";
 import { fmt, formatMs } from "./ResultPanel";
 
 const PAGE = 100;
@@ -22,6 +22,8 @@ function when(ms: number) {
 
 export function HistoryPanel({ connectionId, refresh, onInsert, onClose }: Props) {
   const [text, setText] = useState("");
+  /** Only the app's entries, or only the agents'; `null` for both. */
+  const [origin, setOrigin] = useState<HistoryOrigin | null>(null);
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [more, setMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +33,7 @@ export function HistoryPanel({ connectionId, refresh, onInsert, onClose }: Props
     async (beforeId?: number) => {
       const token = ++search.current;
       try {
-        const page = await api.searchHistory({ connectionIds: [connectionId], text, beforeId, limit: PAGE });
+        const page = await api.searchHistory({ connectionIds: [connectionId], text, beforeId, origin, limit: PAGE });
         if (token !== search.current) return;
         setEntries((prev) => (beforeId === undefined ? page : [...prev, ...page]));
         setMore(page.length === PAGE);
@@ -40,7 +42,7 @@ export function HistoryPanel({ connectionId, refresh, onInsert, onClose }: Props
         setError(toCommandError(e).message);
       }
     },
-    [connectionId, text],
+    [connectionId, text, origin],
   );
 
   useEffect(() => {
@@ -58,6 +60,16 @@ export function HistoryPanel({ connectionId, refresh, onInsert, onClose }: Props
       <div className="history-header">
         <strong>History</strong>
         <span className="spacer" />
+        <select
+          className="history-origin"
+          value={origin ?? ""}
+          onChange={(e) => setOrigin((e.target.value || null) as HistoryOrigin | null)}
+          title="Who ran the statements"
+        >
+          <option value="">All</option>
+          <option value="app">PlatypusDB</option>
+          <option value="agent">Agents</option>
+        </select>
         <button className="icon" title="Close" onClick={onClose}>
           ×
         </button>
@@ -83,6 +95,11 @@ export function HistoryPanel({ connectionId, refresh, onInsert, onClose }: Props
               <span>{formatMs(e.duration_ms)}</span>
               {e.rows !== null && <span>{fmt.format(e.rows)} rows</span>}
               {e.status !== "ok" && <span className="history-status">{e.status}</span>}
+              {e.origin && (
+                <span className="history-agent" title="Run by an agent">
+                  {e.origin}
+                </span>
+              )}
               <span className="spacer" />
               <button className="icon" title="Insert into editor" onClick={() => onInsert(e.sql)}>
                 ↵

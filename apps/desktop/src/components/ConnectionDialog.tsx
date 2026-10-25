@@ -15,6 +15,7 @@ import {
   type ServerInfo,
   type SslMode,
 } from "../api";
+import { AgentAccessField, withEffectiveAgentAccess } from "../agents/access";
 import { CONNECTION_TYPES } from "../connections";
 import { toggled } from "../sets";
 import { basename } from "../workspace";
@@ -172,7 +173,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     e.preventDefault();
     setBusy(true);
     try {
-      onSaved(await api.saveConnection(ownNetwork(conn), passwordInput(), sshSecrets(), [...inProjects]));
+      // Saved as agents get it: a production connection keeps no read-write access for later.
+      const saved = withEffectiveAgentAccess(ownNetwork(conn));
+      onSaved(await api.saveConnection(saved, passwordInput(), sshSecrets(), [...inProjects]));
     } catch (err) {
       setResult({ ok: false, message: toCommandError(err).message });
       setBusy(false);
@@ -403,6 +406,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
               <input type="checkbox" checked={conn.read_only} onChange={(e) => set("read_only", e.target.checked)} />
               Read-only (warn before modifying data)
             </label>
+
+            <AgentAccessField conn={conn} onChange={(access) => set("agent_access", access)} />
 
             {projects.length > 0 && (
               <div className="field">

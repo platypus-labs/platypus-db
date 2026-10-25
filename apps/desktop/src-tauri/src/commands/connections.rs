@@ -72,39 +72,18 @@ fn config_of(
     config
 }
 
-/// The password from the connection's command or `.pgpass`, if it uses one of them.
+/// The password from the connection's command or `.pgpass`, if it uses one of them. A
+/// password command may take a while: it runs off the async runtime.
 async fn external_password(saved: &SavedConnection) -> CommandResult<Option<Secret>> {
-    if let Some(command) = saved.password_command.clone() {
-        let secret = tauri::async_runtime::spawn_blocking(move || {
-            platypus_store::command_password(&command)
-        })
-        .await
-        .map_err(|e| CommandError::new("other", e.to_string()))??;
-        return Ok(Some(secret));
-    }
-    if !saved.pgpass {
+    if saved.password_command.is_none() && !saved.pgpass {
         return Ok(None);
     }
-    let path = platypus_store::pgpass_path()
-        .ok_or_else(|| CommandError::new("auth", "no .pgpass location: set PGPASSFILE"))?;
-    let port = saved
-        .port
-        .or(saved.driver.default_port())
-        .unwrap_or_default();
-    let found =
-        platypus_store::pgpass_password(&path, &saved.host, port, &saved.database, &saved.user)?;
-    found.map(Some).ok_or_else(|| {
-        CommandError::new(
-            "auth",
-            format!(
-                "no line of {} matches {}:{port}:{}:{}",
-                path.display(),
-                saved.host,
-                saved.database,
-                saved.user
-            ),
-        )
-    })
+    let saved = saved.clone();
+    let secret =
+        tauri::async_runtime::spawn_blocking(move || platypus_store::external_password(&saved))
+            .await
+            .map_err(|e| CommandError::new("other", e.to_string()))??;
+    Ok(secret)
 }
 
 /// Updates the secrets of an SSH chain that changed from `old` to `new`: servers that left
