@@ -578,7 +578,54 @@ fn cursor_modifiers(
     Ok(CollectionOp::Find(find))
 }
 
-/// Whether a statement only reads, for the checks the editor makes before running it.
+/// What a statement does, for the checks the editor makes before running it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatementKind {
+    /// Reads documents or metadata.
+    Query,
+    /// Writes documents.
+    Dml,
+    /// Creates, drops or renames collections and indexes.
+    Ddl,
+    /// `runCommand`, which can do anything.
+    Other,
+}
+
+#[must_use]
+pub fn kind(command: &Command) -> StatementKind {
+    if is_read_only(command) {
+        return StatementKind::Query;
+    }
+    match command {
+        Command::CreateCollection { .. } => StatementKind::Ddl,
+        Command::Collection { op, .. } => match op {
+            CollectionOp::Drop
+            | CollectionOp::CreateIndex { .. }
+            | CollectionOp::DropIndex(_)
+            | CollectionOp::Rename { .. } => StatementKind::Ddl,
+            _ => StatementKind::Dml,
+        },
+        _ => StatementKind::Other,
+    }
+}
+
+/// The `(database, collection)` that a statement changes in every document: an
+/// `updateMany` or `deleteMany` with an empty filter.
+#[must_use]
+pub fn unfiltered(command: &Command) -> Option<(Option<&str>, &str)> {
+    let Command::Collection { db, collection, op } = command else {
+        return None;
+    };
+    let all = match op {
+        CollectionOp::Update { filter, many, .. } | CollectionOp::Delete { filter, many } => {
+            *many && filter.is_empty()
+        }
+        _ => false,
+    };
+    all.then_some((db.as_deref(), collection.as_str()))
+}
+
+/// Whether a statement only reads.
 #[must_use]
 pub fn is_read_only(command: &Command) -> bool {
     match command {
@@ -945,6 +992,21 @@ mod tests {
         assert!(!read("db.c.deleteMany({})"));
         assert!(!read("db.runCommand({ drop: 'c' })"));
         assert!(!read("db.c.renameCollection('d')"));
+        let kind_of = |src: &str| kind(&parse(src).unwrap());
+        assert_eq!(kind_of("show dbs"), StatementKind::Query);
+        assert_eq!(kind_of("db.c.insertOne({})"), StatementKind::Dml);
+        assert_eq!(kind_of("db.c.createIndex({ a: 1 })"), StatementKind::Ddl);
+        assert_eq!(kind_of("db.runCommand({ ping: 1 })"), StatementKind::Other);
+        let all = |src: &str| {
+            unfiltered(&parse(src).unwrap()).map(|(d, c)| (d.map(str::to_owned), c.to_owned()))
+        };
+        assert_eq!(all("db.c.deleteMany({})"), Some((None, "c".to_owned())));
+        assert_eq!(
+            all("db.getSiblingDB('x').c.updateMany({}, { $set: { a: 1 } })"),
+            Some((Some("x".to_owned()), "c".to_owned()))
+        );
+        assert_eq!(all("db.c.deleteMany({ a: 1 })"), None);
+        assert_eq!(all("db.c.deleteOne({})"), None);
     }
 
     #[test]
