@@ -17,6 +17,10 @@ Nella colonna **Origine**:
 - **D+**: solo nelle edizioni a pagamento di DBeaver.
 - **N**: non presente in DBeaver.
 
+Nella prima colonna delle tabelle:
+- ✅: fatto.
+- 🆕: aggiunto il 25 ottobre 2026, ancora da fare.
+
 ---
 
 ## 0. Già presente nella v0.1.0
@@ -87,14 +91,14 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 
 | Gruppo | Lock |
 |---|---|
-| A — Modifica dei dati | ✅ completato |
-| B — Griglia avanzata | ✅ completato |
+| A — Modifica dei dati | ✅ fatto (P1; P2 e P3 in parte) |
+| B — Griglia avanzata | ✅ fatto (P1; P2 e P3 in parte) |
 | C — Navigator e oggetti | ✅ completato |
-| D — Editor SQL | ✅ completato |
-| E — Explain e performance | ✅ completato |
+| D — Editor SQL | ✅ fatto (P1, P3; P2 in parte) |
+| E — Explain e performance | ✅ fatto (P1; P2 e P3 in parte) |
 | F — Connettività e credenziali | 🔒 Delfa · group-f-import-folders · 2026-10-25 |
 | G — Nuovi driver | ✅ fatto (P1; P2 e P3 in parte) |
-| H — Import, export e trasferimento | ✅ completato |
+| H — Import, export e trasferimento | ✅ fatto (P1; P2 e P3 in parte) |
 | I — Strumenti di schema | ✅ fatto (P1) |
 | J — Amministrazione del server | libero |
 | K — Shell ed ergonomia | ✅ fatto (P1) |
@@ -103,33 +107,36 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 | N — Accesso per agenti (MCP) | ✅ fatto (P1) |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
+| Q — Documentazione e catalogo dei dati | libero |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
 
 ### Gruppo A — Modifica dei dati
 
-**Stato: completato** (modifica, righe nuove/duplicate/eliminate, anteprima SQL,
+**Stato: P1 completate, P2 e P3 in parte** (modifica, righe nuove/duplicate/eliminate, anteprima SQL,
 chiave obbligatoria o virtuale, NULL/default ed editor per tipo, salvataggio tutto-o-niente,
 incolla da foglio di calcolo, risultati di query di una tabella, dictionary delle FK, script
 di undo; P3: array e tipi composti PostgreSQL modificati un elemento o campo per riga, gli
-array annidati come testo).
+array annidati come testo). Da fare: modifica di massa della selezione, BLOB caricati da file.
 
 **Area:** `apps/desktop/src/grid/edit/`, `commands/data.rs`, `platypus-sql/src/dml.rs`
 **Dipende da:** 0.3, 0.4, 0.5
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Modifica delle celle (doppio clic o F2), celle modificate evidenziate, Salva (Ctrl+S) e Annulla | P1 | D |
-| Aggiunta, duplicazione ed eliminazione di righe | P1 | D |
-| Anteprima dell'SQL generato (UPDATE/INSERT/DELETE) prima del salvataggio | P1 | D |
-| Modifica consentita solo con PK o chiave unica; altrimenti sola lettura, con il motivo indicato | P1 | D |
-| Impostare a NULL o al valore di default, editor per tipo (data, booleano, enum, JSON) | P1 | D |
-| Salvataggio in transazione: tutto o niente, rispettando la modalità manuale del tab | P1 | D |
-| **Chiavi virtuali**: chiave logica definita dall'utente per le tabelle senza PK | P2 | D |
-| Incolla da Excel/CSV come nuove righe | P2 | D |
-| Modifica di risultati di query da una sola tabella (con alias e JOIN esclusi) | P2 | D |
-| **Dictionary data**: le FK mostrano la colonna descrittiva della tabella collegata, con un menu a tendina in modifica | P2 | D |
+| ✅ Modifica delle celle (doppio clic o F2), celle modificate evidenziate, Salva (Ctrl+S) e Annulla | P1 | D |
+| ✅ Aggiunta, duplicazione ed eliminazione di righe | P1 | D |
+| ✅ Anteprima dell'SQL generato (UPDATE/INSERT/DELETE) prima del salvataggio | P1 | D |
+| ✅ Modifica consentita solo con PK o chiave unica; altrimenti sola lettura, con il motivo indicato | P1 | D |
+| ✅ Impostare a NULL o al valore di default, editor per tipo (data, booleano, enum, JSON) | P1 | D |
+| ✅ Salvataggio in transazione: tutto o niente, rispettando la modalità manuale del tab | P1 | D |
+| ✅ **Chiavi virtuali**: chiave logica definita dall'utente per le tabelle senza PK | P2 | D |
+| ✅ Incolla da Excel/CSV come nuove righe | P2 | D |
+| ✅ Modifica di risultati di query da una sola tabella (con alias e JOIN esclusi) | P2 | D |
+| ✅ **Dictionary data**: le FK mostrano la colonna descrittiva della tabella collegata, con un menu a tendina in modifica | P2 | D |
 | ✅ Array PostgreSQL e tipi composti modificabili | P3 | D |
-| Script di undo generato per le modifiche salvate | P2 | N |
+| ✅ Script di undo generato per le modifiche salvate | P2 | N |
+| 🆕 **Modifica di massa**: un valore su tutte le celle selezionate, riempi verso il basso, sostituisci testo nella selezione, sequenza numerica | P2 | D |
+| 🆕 BLOB e testi lunghi caricati da file nella cella | P3 | D |
 
 **Done:** modifica, inserimento ed eliminazione su PG, MySQL, MariaDB e SQLite, con test di
 conformance per la DML generata (quoting, NULL, binari, timestamp con fuso).
@@ -138,32 +145,35 @@ conformance per la DML generata (quoting, NULL, binari, timestamp con fuso).
 
 ### Gruppo B — Griglia avanzata (sola lettura)
 
-**Stato: completato** (P1–P3: copia avanzata, ricerca Ctrl+F, pannello valori F7, filtri
+**Stato: P1 completate, P2 e P3 in parte** (copia avanzata, ricerca Ctrl+F, pannello valori F7, filtri
 rapidi, vista record, layout delle colonne salvato per tabella, aggregati della selezione,
 navigazione delle FK e pannello References, pannello Grouping, formati di visualizzazione,
 pannelli Metadata e Calc, confronto di due righe, refresh automatico fuori dalla cronologia,
-viewer GIS su piano cartesiano senza mappa di sfondo).
+viewer GIS su piano cartesiano senza mappa di sfondo). Da fare: formattazione condizionale,
+colonne virtuali calcolate.
 
 **Area:** `apps/desktop/src/grid/features/`, `apps/desktop/src/panels/`
 **Dipende da:** 0.4
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Copia avanzata: con intestazioni, come INSERT, CSV, Markdown, JSON, HTML, IN-list | P1 | D |
-| Ricerca nella griglia (Ctrl+F) con evidenziazione | P1 | D |
-| **Pannello valori**: testo lungo, JSON e XML formattati, hex, immagini dai BLOB, salva su file | P1 | D |
-| Vista record: una riga in verticale, con navigazione avanti e indietro | P2 | D |
-| Colonne fisse, nascoste e riordinate, larghezza salvata per tabella | P2 | D |
-| Aggregati della selezione nella status bar (count, sum, avg, min, max) | P2 | D |
-| Filtri rapidi dal menu contestuale (`= valore`, `IS NULL`, `IN selezione`) | P1 | D |
-| Navigazione delle FK: apre la riga referenziata; pannello **References** con le righe che puntano a quella corrente | P2 | D |
-| Pannello **Metadata**: tipo, nullabilità e tabella di origine della colonna | P3 | D |
-| Pannello **Grouping**: conteggi per valore delle colonne selezionate | P2 | D |
-| Pannello **Calc**: calcoli sulle celle selezionate | P3 | D |
-| Formati di visualizzazione: data, numeri, locale, fuso; tempo relativo opzionale | P2 | D |
-| Refresh automatico ogni N secondi | P3 | D |
-| Viewer GIS: geometrie PostGIS e MySQL su mappa | P3 | D |
-| Confronto di due righe selezionate | P3 | N |
+| ✅ Copia avanzata: con intestazioni, come INSERT, CSV, Markdown, JSON, HTML, IN-list | P1 | D |
+| ✅ Ricerca nella griglia (Ctrl+F) con evidenziazione | P1 | D |
+| ✅ **Pannello valori**: testo lungo, JSON e XML formattati, hex, immagini dai BLOB, salva su file | P1 | D |
+| ✅ Vista record: una riga in verticale, con navigazione avanti e indietro | P2 | D |
+| ✅ Colonne fisse, nascoste e riordinate, larghezza salvata per tabella | P2 | D |
+| ✅ Aggregati della selezione nella status bar (count, sum, avg, min, max) | P2 | D |
+| ✅ Filtri rapidi dal menu contestuale (`= valore`, `IS NULL`, `IN selezione`) | P1 | D |
+| ✅ Navigazione delle FK: apre la riga referenziata; pannello **References** con le righe che puntano a quella corrente | P2 | D |
+| ✅ Pannello **Metadata**: tipo, nullabilità e tabella di origine della colonna | P3 | D |
+| ✅ Pannello **Grouping**: conteggi per valore delle colonne selezionate | P2 | D |
+| ✅ Pannello **Calc**: calcoli sulle celle selezionate | P3 | D |
+| ✅ Formati di visualizzazione: data, numeri, locale, fuso; tempo relativo opzionale | P2 | D |
+| ✅ Refresh automatico ogni N secondi | P3 | D |
+| ✅ Viewer GIS: geometrie PostGIS e MySQL su mappa | P3 | D |
+| ✅ Confronto di due righe selezionate | P3 | N |
+| 🆕 **Formattazione condizionale**: colore di cella o riga da regole (valore, intervallo, NULL, scala di colore sui numeri), salvata per tabella | P2 | D |
+| 🆕 Colonne virtuali calcolate: espressione sulle colonne della riga, solo in visualizzazione | P3 | D |
 
 ---
 
@@ -176,19 +186,19 @@ viewer GIS su piano cartesiano senza mappa di sfondo).
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Nell'albero anche funzioni, procedure, trigger, sequenze, tipi, estensioni ed eventi | P1 | D |
-| Tab oggetto con sezioni Proprietà, Colonne, Indici, Vincoli, FK, Dipendenze e **DDL** | P1 | D |
-| Menu "Genera SQL": SELECT, INSERT, UPDATE, DELETE, MERGE, DDL | P1 | D |
-| Rinomina, elimina (con cascade e anteprima), svuota tabella, copia nome qualificato | P1 | D |
-| Conteggio righe stimato e dimensione di tabelle e indici | P2 | D |
-| Ricerca nei metadati di tutto il database (oggetti, colonne, sorgenti delle funzioni) | P2 | D |
-| Ricerca full-text nei dati di più tabelle | P3 | D |
-| Segnalibri sugli oggetti | P3 | D |
-| Filtri sul navigator salvati per connessione (es. nascondere gli schemi `tmp_*`) | P2 | D |
-| Vista semplice e vista avanzata del navigator | P3 | D |
-| Più database per connessione (PG: elenco dei database, cambio senza nuova connessione) | P1 | D |
-| Partizioni mostrate sotto la tabella padre | P3 | D |
-| Cache dei metadati su disco: navigazione anche offline e avvio più rapido | P2 | N |
+| ✅ Nell'albero anche funzioni, procedure, trigger, sequenze, tipi, estensioni ed eventi | P1 | D |
+| ✅ Tab oggetto con sezioni Proprietà, Colonne, Indici, Vincoli, FK, Dipendenze e **DDL** | P1 | D |
+| ✅ Menu "Genera SQL": SELECT, INSERT, UPDATE, DELETE, MERGE, DDL | P1 | D |
+| ✅ Rinomina, elimina (con cascade e anteprima), svuota tabella, copia nome qualificato | P1 | D |
+| ✅ Conteggio righe stimato e dimensione di tabelle e indici | P2 | D |
+| ✅ Ricerca nei metadati di tutto il database (oggetti, colonne, sorgenti delle funzioni) | P2 | D |
+| ✅ Ricerca full-text nei dati di più tabelle | P3 | D |
+| ✅ Segnalibri sugli oggetti | P3 | D |
+| ✅ Filtri sul navigator salvati per connessione (es. nascondere gli schemi `tmp_*`) | P2 | D |
+| ✅ Vista semplice e vista avanzata del navigator | P3 | D |
+| ✅ Più database per connessione (PG: elenco dei database, cambio senza nuova connessione) | P1 | D |
+| ✅ Partizioni mostrate sotto la tabella padre | P3 | D |
+| ✅ Cache dei metadati su disco: navigazione anche offline e avvio più rapido | P2 | N |
 
 ---
 
@@ -197,25 +207,26 @@ viewer GIS su piano cartesiano senza mappa di sfondo).
 **Area:** `apps/desktop/src/editor/`, `platypus-sql` (formatter, parser), `apps/desktop/src/scripts/`
 **Dipende da:** 0.2, 0.5
 
-**Stato: completato** (P1, P2 e P3). Il formatter lavora sui token (`platypus-sql/src/format.rs`): cambia solo spazi e maiuscole delle parole chiave, e lascia com'è il corpo di funzioni, procedure e trigger. Le opzioni sono il case delle parole chiave e l'indentazione. I comandi dell'editor sono azioni dello scope `editor`. L'autocomplete dei JOIN usa le FK del catalogo (`Connection::catalog_foreign_keys`). Parametri (`:id`, `?`) e variabili (`${nome}`) passano dal dialog dei valori e dal pannello Variabili, sostituiti prima dell'esecuzione; i comandi client (`@set`, `@echo`, `@include`, `@export`) sono righe che iniziano con `@` all'inizio di uno statement e non arrivano al database. Gli script salvati sono file `.sql` in `scripts/<progetto>` nella cartella dati, con i link alle connessioni in `.links.json`. Il linter usa i fatti di `platypus_sql::lint` e il catalogo dell'autocomplete; l'esecuzione con `psql`, `mysql` o `sqlite3` usa le impostazioni della sessione e il suo tunnel SSH, e Cancel lo interrompe.
+**Stato: P1 e P3 completate, P2 in parte** (da fare: esecuzione su più connessioni). Il formatter lavora sui token (`platypus-sql/src/format.rs`): cambia solo spazi e maiuscole delle parole chiave, e lascia com'è il corpo di funzioni, procedure e trigger. Le opzioni sono il case delle parole chiave e l'indentazione. I comandi dell'editor sono azioni dello scope `editor`. L'autocomplete dei JOIN usa le FK del catalogo (`Connection::catalog_foreign_keys`). Parametri (`:id`, `?`) e variabili (`${nome}`) passano dal dialog dei valori e dal pannello Variabili, sostituiti prima dell'esecuzione; i comandi client (`@set`, `@echo`, `@include`, `@export`) sono righe che iniziano con `@` all'inizio di uno statement e non arrivano al database. Gli script salvati sono file `.sql` in `scripts/<progetto>` nella cartella dati, con i link alle connessioni in `.links.json`. Il linter usa i fatti di `platypus_sql::lint` e il catalogo dell'autocomplete; l'esecuzione con `psql`, `mysql` o `sqlite3` usa le impostazioni della sessione e il suo tunnel SSH, e Cancel lo interrompe.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Formattatore SQL (Ctrl+Shift+F) per dialetto, configurabile | P1 | D |
-| Duplica riga, sposta riga, multi-cursore, selezione del blocco statement | P1 | D |
-| **Parametri e variabili** (`:id`, `?`, `${var}`) con un dialog dei valori e un **pannello variabili** | P2 | D |
-| **Comandi client-side**: `@set`, `@include file.sql`, `@export`, `@echo` | P2 | D |
-| Template e snippet con Tab, modificabili | P2 | D |
-| Script salvati in un pannello progetti: cartelle, link a una connessione, rinomina. Gli script vanno nei progetti del gruppo K (`apps/desktop/src/projects/`) | P2 | D |
-| **Modalità terminale SQL**: output testuale invece della griglia | P3 | D |
-| **Query builder visuale**: tabelle trascinate, JOIN sulle FK, SQL generato | P3 | D+ |
-| Autocomplete dei JOIN dalle FK (`JOIN orders o ON` completa la condizione) | P1 | N |
-| Autocomplete di funzioni, con firma e documentazione | P2 | D |
-| Esecuzione dello script con `psql` o `mysql` locali | P3 | D |
-| Folding, outline degli statement, vai alla definizione di un oggetto (Ctrl+clic) | P2 | D |
-| Esecuzione dello statement in un nuovo tab di risultati (Ctrl+\\) | P2 | D |
-| Controllo ortografico di commenti e stringhe | P3 | D |
-| Linter SQL: colonna inesistente, `SELECT *` in produzione, JOIN senza condizione | P3 | N |
+| ✅ Formattatore SQL (Ctrl+Shift+F) per dialetto, configurabile | P1 | D |
+| ✅ Duplica riga, sposta riga, multi-cursore, selezione del blocco statement | P1 | D |
+| ✅ **Parametri e variabili** (`:id`, `?`, `${var}`) con un dialog dei valori e un **pannello variabili** | P2 | D |
+| ✅ **Comandi client-side**: `@set`, `@include file.sql`, `@export`, `@echo` | P2 | D |
+| ✅ Template e snippet con Tab, modificabili | P2 | D |
+| ✅ Script salvati in un pannello progetti: cartelle, link a una connessione, rinomina. Gli script vanno nei progetti del gruppo K (`apps/desktop/src/projects/`) | P2 | D |
+| ✅ **Modalità terminale SQL**: output testuale invece della griglia | P3 | D |
+| ✅ **Query builder visuale**: tabelle trascinate, JOIN sulle FK, SQL generato | P3 | D+ |
+| ✅ Autocomplete dei JOIN dalle FK (`JOIN orders o ON` completa la condizione) | P1 | N |
+| ✅ Autocomplete di funzioni, con firma e documentazione | P2 | D |
+| ✅ Esecuzione dello script con `psql` o `mysql` locali | P3 | D |
+| ✅ Folding, outline degli statement, vai alla definizione di un oggetto (Ctrl+clic) | P2 | D |
+| ✅ Esecuzione dello statement in un nuovo tab di risultati (Ctrl+\\) | P2 | D |
+| ✅ Controllo ortografico di commenti e stringhe | P3 | D |
+| ✅ Linter SQL: colonna inesistente, `SELECT *` in produzione, JOIN senza condizione | P3 | N |
+| 🆕 **Esecuzione su più connessioni**: lo stesso script su N connessioni scelte (es. un database per cliente), risultati uniti con una colonna della connessione ed esito per connessione | P2 | D |
 
 ---
 
@@ -224,29 +235,32 @@ viewer GIS su piano cartesiano senza mappa di sfondo).
 **Area:** `apps/desktop/src/explain/` (tab `explain`), `explain` in ogni driver, `commands/explain.rs`
 **Dipende da:** 0.3, 0.6
 
-**Stato: completato** (P1, P2 e P3). Ogni driver legge il proprio piano in un albero di `PlanNode` (`platypus-core/src/explain.rs`): PostgreSQL `EXPLAIN (FORMAT JSON)`, MySQL `FORMAT=TREE` ed `EXPLAIN ANALYZE` (il JSON di ANALYZE arriva solo con la 8.3), MariaDB `EXPLAIN`/`ANALYZE FORMAT=JSON`, SQLite `EXPLAIN QUERY PLAN` (senza costi né ANALYZE). Con ANALYZE lo statement gira in una transazione annullata (un savepoint dentro una transazione aperta), sulla sessione propria del tab `explain`. Il tab ha le viste albero, testo e tabella; si apre con `Ctrl+Shift+E` o con Explain analyze dal menu dell'editor, che applica i controlli di una normale esecuzione. `Explain::new` calcola per ogni passo costo e tempo propri, senza i figli (`self_cost`, `self_ms`): la heatmap colora i passi per la loro quota e segnala le stime di righe sbagliate di 10 volte o più. Il query manager (`Ctrl+Shift+M`) legge un log in memoria (`apps/desktop/src-tauri/src/querylog.rs`, le ultime 2000 richieste): ogni sessione ed export avvolge la connessione in `Logged`, che registra statement, richieste di metadati e comandi di transazione con durata, righe ed esito. P3: i driver segnano le scansioni complete con filtro (`PlanNode::full_scan`) e `Explain::new` suggerisce un indice per quelle che leggono almeno 10.000 righe (su PostgreSQL solo con ANALYZE: il piano semplice stima solo le righe tenute); ogni voce del log ha il tempo fino alla prima risposta e il round trip dell'ultimo keep-alive, che non entra più nel log; la soglia delle query lente è l'impostazione `performance.slow_query_seconds`.
+**Stato: P1 completate, P2 e P3 in parte** (da fare: confronto di due piani, piani incollati). Ogni driver legge il proprio piano in un albero di `PlanNode` (`platypus-core/src/explain.rs`): PostgreSQL `EXPLAIN (FORMAT JSON)`, MySQL `FORMAT=TREE` ed `EXPLAIN ANALYZE` (il JSON di ANALYZE arriva solo con la 8.3), MariaDB `EXPLAIN`/`ANALYZE FORMAT=JSON`, SQLite `EXPLAIN QUERY PLAN` (senza costi né ANALYZE). Con ANALYZE lo statement gira in una transazione annullata (un savepoint dentro una transazione aperta), sulla sessione propria del tab `explain`. Il tab ha le viste albero, testo e tabella; si apre con `Ctrl+Shift+E` o con Explain analyze dal menu dell'editor, che applica i controlli di una normale esecuzione. `Explain::new` calcola per ogni passo costo e tempo propri, senza i figli (`self_cost`, `self_ms`): la heatmap colora i passi per la loro quota e segnala le stime di righe sbagliate di 10 volte o più. Il query manager (`Ctrl+Shift+M`) legge un log in memoria (`apps/desktop/src-tauri/src/querylog.rs`, le ultime 2000 richieste): ogni sessione ed export avvolge la connessione in `Logged`, che registra statement, richieste di metadati e comandi di transazione con durata, righe ed esito. P3: i driver segnano le scansioni complete con filtro (`PlanNode::full_scan`) e `Explain::new` suggerisce un indice per quelle che leggono almeno 10.000 righe (su PostgreSQL solo con ANALYZE: il piano semplice stima solo le righe tenute); ogni voce del log ha il tempo fino alla prima risposta e il round trip dell'ultimo keep-alive, che non entra più nel log; la soglia delle query lente è l'impostazione `performance.slow_query_seconds`.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Explain plan visuale ad albero con costi, righe stimate e reali (PG `EXPLAIN (FORMAT JSON, ANALYZE)`, MySQL `FORMAT=JSON`) | P1 | D+ |
-| Explain in forma testuale e tabellare | P1 | D |
-| Heatmap dei nodi più costosi e righe stimate contro righe reali | P2 | N |
-| Suggerimenti di indice (seq scan su tabelle grandi con filtro) | P3 | N |
-| **Query manager**: log di tutte le query eseguite dall'app (anche metadati), con durata ed esito | P2 | D |
-| **Query trace**: tempi di rete, server e fetch per ogni esecuzione | P3 | D+ |
-| Avviso per query lente, oltre una soglia configurabile | P3 | N |
+| ✅ Explain plan visuale ad albero con costi, righe stimate e reali (PG `EXPLAIN (FORMAT JSON, ANALYZE)`, MySQL `FORMAT=JSON`) | P1 | D+ |
+| ✅ Explain in forma testuale e tabellare | P1 | D |
+| ✅ Heatmap dei nodi più costosi e righe stimate contro righe reali | P2 | N |
+| ✅ Suggerimenti di indice (seq scan su tabelle grandi con filtro) | P3 | N |
+| ✅ **Query manager**: log di tutte le query eseguite dall'app (anche metadati), con durata ed esito | P2 | D |
+| ✅ **Query trace**: tempi di rete, server e fetch per ogni esecuzione | P3 | D+ |
+| ✅ Avviso per query lente, oltre una soglia configurabile | P3 | N |
+| 🆕 **Confronto di due piani** affiancati (prima e dopo un indice o una riscrittura), con le differenze di costo e tempo per nodo | P2 | N |
+| 🆕 Piano incollato da testo o JSON (es. da un log del server o da un collega), aperto nel tab `explain` senza connessione | P3 | N |
 
 ---
 
-### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 e P2 fatti
+### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 fatti, P2 in parte
 
-**Stato: P1 e P2 completati** (tunnel SSH con password, chiave, agent e jump host; tipi
+**Stato: P1 completati, P2 in parte** (da fare: connessione da URL incollato, variabili
+d'ambiente nei campi) (tunnel SSH con password, chiave, agent e jump host; tipi
 Dev/Test/Prod con colore e commit manuale in Prod; import da DBeaver, DataGrip, pgAdmin e
 `pg_service.conf`, con cartelle e progetti da un export `.dbp` di DBeaver; cartelle di
 connessioni nei progetti e cartelle di progetti nella barra; profili di rete; schema, fuso orario e query di bootstrap dopo ogni
 connessione; password da `.pgpass`, da comando shell o chiesta ogni volta; master password
 con file cifrato; certificati client; latenza, keep-alive e riconnessione). La conferma
-prima di scrivere in Prod è nel gruppo L. Restano i P3.
+prima di scrivere in Prod è nel gruppo L. Restano i P2 nuovi e i P3.
 
 **Area:** nuovo crate `platypus-net`, `platypus-store`, `apps/desktop/src/connections/` (`ConnectionDialog.tsx`)
 **Dipende da:** 0.7
@@ -267,6 +281,10 @@ prima di scrivere in Prod è nel gruppo L. Restano i P3.
 | ✅ Indicatore di salute della connessione (latenza, keep-alive, riconnessione) | P2 | N |
 | ✅ Import di progetti DBeaver (`.dbp`) con cartelle; cartelle di connessioni nei progetti e cartelle di progetti nella barra | P2 | D |
 | Kubernetes port-forward, AWS SSM | P3 | D+ |
+| 🆕 Connessione da URL incollato (`postgres://…`, `mysql://…`, `Server=…;Database=…`): i campi si compilano da soli | P2 | D |
+| 🆕 Variabili d'ambiente e file `.env` nei campi della connessione (`${env:DB_PASSWORD}`) | P2 | D |
+| 🆕 Credenziali da gestori esterni: 1Password CLI, Bitwarden, HashiCorp Vault, AWS Secrets Manager | P3 | D+ |
+| 🆕 Test di tutte le connessioni di un progetto in una volta, con l'esito per ognuna | P3 | N |
 
 ---
 
@@ -316,15 +334,16 @@ conformance dedicata in `tests/mongo.rs` (profilo `mongo` di `docker/compose.yml
 
 | Driver | Prio | Note |
 |---|---|---|
-| SQL Server (`tiberius`) | P1 | Dialetto `TOP`, `[quoting]`, più result set |
-| DuckDB | P1 | Arrow nativo; serve anche al gruppo M |
+| ✅ SQL Server (`tiberius`) | P1 | Dialetto `TOP`, `[quoting]`, più result set |
+| ✅ DuckDB | P1 | Arrow nativo; serve anche al gruppo M |
 | ✅ ClickHouse | P2 | HTTP con formato Arrow |
-| File come database: CSV, Parquet, JSON, XLSX (tramite DuckDB) | P2 | ✅ Fatto con il gruppo H: viste DuckDB sul file, un foglio XLSX per tabella (calamine); si aprono col trascinamento sulla finestra |
+| ✅ File come database: CSV, Parquet, JSON, XLSX (tramite DuckDB) | P2 | Fatto con il gruppo H: viste DuckDB sul file, un foglio XLSX per tabella (calamine); si aprono col trascinamento sulla finestra |
 | ✅ CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon; AlloyDB no | P2 | Wire PG: profili e test, non driver nuovi |
 | ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | Una persona per il bridge, poi profili |
 | Oracle nativo | P3 | Licensing OCI da valutare |
 | Redis, ✅ **MongoDB** | P3 | MongoDB: sintassi mongosh, griglia dei campi + albero del documento; Redis da fare |
 | ✅ libSQL/Turso; Cloudflare D1 valutato, non fatto | P3 | Varianti di SQLite |
+| 🆕 Elasticsearch/OpenSearch, Cassandra/ScyllaDB | P3 | Query DSL e CQL; stesso schema di MongoDB (griglia + albero) |
 
 ---
 
@@ -333,7 +352,8 @@ conformance dedicata in `tests/mongo.rs` (profilo `mongo` di `docker/compose.yml
 **Area:** `platypus-transfer`, `apps/desktop/src/transfer/`, `commands/transfer.rs`
 **Dipende da:** 0.5
 
-**Stato: completato** (P1, P2 e P3).
+**Stato: P1 completate, P2 e P3 in parte** (da fare: caricamento bulk nativo, profili di
+trasferimento salvati).
 
 **P1 completate.** I file (CSV, TSV, JSON, NDJSON, Parquet, XLSX) si leggono con una
 connessione DuckDB sul file, la stessa del "file come database" del gruppo G; l'import in una
@@ -377,16 +397,18 @@ schema copiato; nelle viste si riscrive ogni nome uguale allo schema seguito da 
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Import CSV, TSV, JSON, NDJSON, Parquet e XLSX in una tabella, con mappatura e anteprima | P1 | D |
-| Import con creazione della tabella dai tipi dedotti | P1 | D |
-| Import e sostituzione (truncate e load), upsert sulla chiave | P2 | D |
-| Export XLSX, SQL INSERT, Markdown, HTML, XML | P2 | D |
-| Export di più tabelle o di un intero schema in una volta | P2 | D |
-| **Trasferimento tra database** (es. da PG a MySQL) con mappatura dei tipi, in streaming | P2 | D |
-| Migrazione di schema e dati tra database diversi | P3 | D+ |
-| Generatore di dati finti per colonna (nomi, email, date, FK coerenti) | P3 | D+ |
-| Export compresso (gzip, zstd) e su storage cloud (S3, GCS) | P3 | D+ |
-| Incolla CSV dagli appunti per creare subito una tabella | P2 | N |
+| ✅ Import CSV, TSV, JSON, NDJSON, Parquet e XLSX in una tabella, con mappatura e anteprima | P1 | D |
+| ✅ Import con creazione della tabella dai tipi dedotti | P1 | D |
+| ✅ Import e sostituzione (truncate e load), upsert sulla chiave | P2 | D |
+| ✅ Export XLSX, SQL INSERT, Markdown, HTML, XML | P2 | D |
+| ✅ Export di più tabelle o di un intero schema in una volta | P2 | D |
+| ✅ **Trasferimento tra database** (es. da PG a MySQL) con mappatura dei tipi, in streaming | P2 | D |
+| ✅ Migrazione di schema e dati tra database diversi | P3 | D+ |
+| ✅ Generatore di dati finti per colonna (nomi, email, date, FK coerenti) | P3 | D+ |
+| ✅ Export compresso (gzip, zstd) e su storage cloud (S3, GCS) | P3 | D+ |
+| ✅ Incolla CSV dagli appunti per creare subito una tabella | P2 | N |
+| 🆕 **Caricamento bulk nativo** per import e trasferimento: `COPY` in PostgreSQL, `LOAD DATA LOCAL` in MySQL, bulk copy in SQL Server, appender in DuckDB; INSERT a blocchi come ripiego | P2 | D |
+| 🆕 Profili di import, export e trasferimento salvati e riutilizzabili (anche dal task scheduler del gruppo J) | P3 | D |
 
 ---
 
@@ -418,6 +440,8 @@ generate e gli indici su espressioni restano come sono solo se non si toccano.
 | **Confronto dati** tra due tabelle, con script di sincronizzazione | P3 | D+ |
 | Changelog Liquibase/Flyway generati dal confronto | P3 | D+ |
 | Timeline delle modifiche di schema (snapshot periodici e diff) | P3 | N |
+| 🆕 **Linter dello schema**: tabelle senza PK, FK senza indice, indici duplicati o contenuti in altri, tipi diversi tra FK e colonna referenziata | P2 | N |
+| 🆕 Stato delle migrazioni di un progetto (Flyway, Liquibase, Prisma, Alembic, Rails): applicate, pendenti, divergenti | P3 | N |
 
 ---
 
@@ -436,6 +460,9 @@ generate e gli indici su espressioni restano come sono solo se non si toccano.
 | Dashboard del server: connessioni, TPS, cache hit, dimensioni, replica | P3 | D+ |
 | **Task scheduler**: script, export e backup pianificati | P3 | D+ |
 | Debugger PL/pgSQL | P3 | D+ |
+| 🆕 **Query più costose del server**: `pg_stat_statements`, `performance_schema`, Query Store di SQL Server, con apertura nell'editor e nel tab `explain` | P2 | N |
+| 🆕 Statistiche di tabelle e indici: indici mai usati, bloat, tabelle con molte scansioni complete, ultimo VACUUM/ANALYZE | P2 | N |
+| 🆕 Parametri del server (`pg_settings`, `SHOW VARIABLES`) con ricerca e differenze dai valori di default | P3 | N |
 
 ---
 
@@ -470,6 +497,9 @@ per cambiare progetto, `connections.toml` versione 2.
 | Mini-finestra di query rapida dalla system tray | P3 | N |
 | Modalità Vim nell'editor | P3 | N |
 | Log degli errori e attività in background visibili, per la diagnosi | P2 | D |
+| 🆕 Notifica di sistema alla fine di una query lunga, quando la finestra non è in primo piano | P2 | D |
+| 🆕 Zoom dell'interfaccia e dimensione del font di editor e griglia (Ctrl+= / Ctrl+-) | P2 | D |
+| 🆕 Tab staccato in una finestra separata (secondo monitor) | P3 | D |
 
 ---
 
@@ -492,6 +522,9 @@ della transazione aperta con avviso). Restano i P2/P3.
 | `LIMIT` automatico sulle SELECT senza limite, configurabile | P2 | N |
 | Mascheramento dei dati sensibili per screen share (regole su nome e tipo di colonna) | P3 | N |
 | Restrizioni di sicurezza per connessione: niente export, niente modifica | P3 | D+ |
+| 🆕 Sola lettura temporanea per un tab o una sessione, senza cambiare la connessione salvata | P2 | N |
+| 🆕 **Snapshot prima di UPDATE/DELETE manuali**: le righe toccate salvate in locale prima dello statement, con ripristino in un clic | P3 | N |
+| 🆕 Blocco dell'app dopo N minuti di inattività (con la master password), disconnessione delle sessioni Prod | P3 | N |
 
 ---
 
@@ -511,6 +544,7 @@ della transazione aperta con avviso). Restano i P2/P3.
 | Pivot dei risultati | P3 | N |
 | Notebook: celle SQL, markdown e grafici, esportabili | P3 | N |
 | Dashboard personalizzate dalle query salvate | P3 | D+ |
+| 🆕 Profilo di una tabella intera: per colonna distribuzione, distinti, pattern (email, date, numeri come testo), outlier | P3 | N |
 
 ---
 
@@ -548,15 +582,15 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| **Server MCP via stdio** (`platypus-mcp`): l'agente lo avvia da sé, senza che l'app sia aperta, e usa le connessioni salvate | P1 | D+ |
-| Tool di lettura: elenco connessioni, schemi, oggetti, dettagli di una tabella (colonne, chiavi, FK, indici), DDL, ricerca di oggetti per nome | P1 | D+ |
-| Tool `run_query`: esegue SQL con limite di righe, di byte e timeout; risultato compatto (tabella testuale o JSON) adatto al contesto di un LLM | P1 | D+ |
-| **Permessi per connessione**: disattivata per gli agenti, sola lettura (default), lettura e scrittura. Le connessioni Prod sono sempre in sola lettura per gli agenti | P1 | N |
-| Sola lettura garantita: controllo dello statement (`is_read_only`) e, dove il database lo permette, transazione `READ ONLY` | P1 | N |
-| Segreti mai esposti: nessun tool restituisce password, URL completi o chiavi SSH | P1 | N |
-| Registro delle query degli agenti nella cronologia, con l'agente come origine e filtro dedicato | P1 | N |
-| Installazione guidata: pagina "Agenti" nelle Impostazioni con i comandi pronti (`claude mcp add platypus -- platypus-mcp`, voce `[mcp_servers.platypus]` per Codex) e un pulsante Copia | P1 | N |
-| CLI per agenti senza MCP: `platypus-cli --connection <nome>` dalle connessioni salvate, output JSON stabile e documentato | P1 | N |
+| ✅ **Server MCP via stdio** (`platypus-mcp`): l'agente lo avvia da sé, senza che l'app sia aperta, e usa le connessioni salvate | P1 | D+ |
+| ✅ Tool di lettura: elenco connessioni, schemi, oggetti, dettagli di una tabella (colonne, chiavi, FK, indici), DDL, ricerca di oggetti per nome | P1 | D+ |
+| ✅ Tool `run_query`: esegue SQL con limite di righe, di byte e timeout; risultato compatto (tabella testuale o JSON) adatto al contesto di un LLM | P1 | D+ |
+| ✅ **Permessi per connessione**: disattivata per gli agenti, sola lettura (default), lettura e scrittura. Le connessioni Prod sono sempre in sola lettura per gli agenti | P1 | N |
+| ✅ Sola lettura garantita: controllo dello statement (`is_read_only`) e, dove il database lo permette, transazione `READ ONLY` | P1 | N |
+| ✅ Segreti mai esposti: nessun tool restituisce password, URL completi o chiavi SSH | P1 | N |
+| ✅ Registro delle query degli agenti nella cronologia, con l'agente come origine e filtro dedicato | P1 | N |
+| ✅ Installazione guidata: pagina "Agenti" nelle Impostazioni con i comandi pronti (`claude mcp add platypus -- platypus-mcp`, voce `[mcp_servers.platypus]` per Codex) e un pulsante Copia | P1 | N |
+| ✅ CLI per agenti senza MCP: `platypus-cli --connection <nome>` dalle connessioni salvate, output JSON stabile e documentato | P1 | N |
 | `explain` e campione di righe (`sample_rows`) come tool dedicati, con i limiti di `run_query` | P2 | D+ |
 | **Ponte con l'app aperta** (MCP su HTTP locale con token): l'agente vede le sessioni aperte e l'indicatore "agente collegato" compare nella barra | P2 | N |
 | Conferma nell'app per le scritture: dialog con lo statement e le righe stimate (riusa le guardie del gruppo L), con "consenti per questa sessione" | P2 | N |
@@ -564,6 +598,7 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | Contesto dell'utente su consenso: testo dell'editor, selezione, risultato corrente della griglia | P3 | N |
 | Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
 | Plugin pronti: plugin per Claude Code e configurazione per Codex con le istruzioni d'uso (quando usare quale tool, limiti) | P3 | N |
+| 🆕 Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate | P3 | N |
 
 ---
 
@@ -590,7 +625,8 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | Attività | Prio |
 |---|---|
 | Verifica su macOS e Linux: build, avvio, memoria, scroll; correzioni di piattaforma | P1 |
-| Prima release su GitHub e test reale dell'auto-update (0.1.0 → 0.1.1) | P1 |
+| ✅ Prima release su GitHub (v0.1.0, poi v0.2.0) | P1 |
+| Test reale dell'auto-update da una release pubblicata alla successiva | P1 |
 | Firma del codice: Windows (certificato o Azure Trusted Signing), macOS con notarizzazione | P2 |
 | Benchmark affiancato con DBeaver, aggiornando `BENCHMARKS.md` | P2 |
 | Benchmark in CI con soglie (avvio, memoria, decode) per bloccare le regressioni | P2 |
@@ -600,6 +636,28 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
 | Distribuzione: winget, Homebrew cask, Flatpak, AUR | P3 |
 | Sito e documentazione utente | P3 |
+| 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
+| 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
+
+---
+
+### Gruppo Q — Documentazione e catalogo dei dati
+
+Sapere cosa contiene un database senza chiederlo a chi l'ha scritto: note e tag sugli oggetti,
+commenti del database, documentazione esportabile, colonne sensibili segnate una volta e
+rispettate da tutta l'app.
+
+**Area:** `apps/desktop/src/catalog/`, `commands/catalog.rs`; note e tag nello store del progetto
+(`platypus-store`, con una migrazione del formato)
+**Dipende da:** il tab oggetto del gruppo C, 0.5, 0.6
+
+| Funzionalità | Prio | Origine |
+|---|---|---|
+| 🆕 **Note e tag locali** su tabelle e colonne (non scritti nel database), mostrati nel navigator, nell'intestazione della griglia e nell'autocomplete | P2 | N |
+| 🆕 Modifica dei commenti del database (`COMMENT ON`, `COMMENT` di MySQL, proprietà estese di SQL Server) dal tab oggetto | P2 | D |
+| 🆕 **Documentazione dello schema** esportata in HTML o Markdown: tabelle, colonne, chiavi, commenti, note e diagramma ER | P2 | N |
+| 🆕 **Colonne sensibili** (PII, segreti): regole su nome e tipo più scelte a mano, usate dal mascheramento del gruppo L, dagli agenti del gruppo N e dagli export | P3 | N |
+| 🆕 Dove si usa una colonna: viste, funzioni, trigger e script salvati che la nominano | P3 | N |
 
 ---
 
@@ -616,7 +674,8 @@ della fase 0 (un'API piccola), non la condivisione del file.
 | `App.tsx`, tab | C, E, I, J, K | 0.3: registro dei tipi di tab |
 | Menu e scorciatoie | tutti | 0.2: registro delle azioni |
 | `ConnectionDialog.tsx` | F, G | Sezioni per driver registrabili |
-| `platypus-store` (connessioni, segreti, cronologia) | F, N | API pubblica dello store; il formato dei file cambia solo con una migrazione |
+| `platypus-store` (connessioni, segreti, cronologia) | F, N, Q | API pubblica dello store; il formato dei file cambia solo con una migrazione |
+| Tab oggetto (`apps/desktop/src/objects/`) | C, Q | Sezioni del tab registrabili, aggiunte con un commit separato |
 
 ---
 
@@ -630,7 +689,7 @@ dell'ondata.
 | **0** | Fase 0 (1 persona) e **P** in parallelo | Codice pronto al lavoro parallelo, prima release pubblica | v0.1.x | Fase 0 fatta; P in corso |
 | **1** | **A**, **B** (P1), **C** (P1), **F** (SSH, tipi, import), **K** (P1), **L** (P1) | Sostituire DBeaver nell'uso quotidiano | v0.2 | **Fatta** (P1 di A, B, C, F, K e L; P2 di A e B), release v0.2.0 del 24 ottobre 2026 |
 | **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte; E: completato; H: completato |
-| **3** | **I**, **J**, **M**, **N**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 | Da fare |
+| **3** | **I**, **J**, **M**, **N**, **Q**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 | Da fare |
 | **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | Da fare |
 
 Per ogni gruppo, la Definition of Done segue quella dell'MVP:
