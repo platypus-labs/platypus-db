@@ -416,6 +416,10 @@ const PG_SEED: &str = include_str!("../../../docker/postgres/01-seed.sql");
 /// Serializes seeding: the tests run in parallel and each lists the backends.
 static SEEDING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+/// Held by every test: YugabyteDB fails DDL that races other sessions' DDL with `40001`
+/// (`Restart read required`) inside transactions, where it cannot be run again.
+static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Runs the PostgreSQL seed on a server that ran none (CockroachDB, YugabyteDB), once.
 async fn seed_pg_wire(config: &ConnectionConfig, name: &str) {
     let _seeding = SEEDING.lock().await;
@@ -604,6 +608,8 @@ async fn run(conn: &dyn Connection, sql: &str) -> Result<(), Error> {
 
 #[tokio::test]
 async fn connects_and_reports_the_server() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let server = conn.server_info();
@@ -614,6 +620,8 @@ async fn connects_and_reports_the_server() {
 
 #[tokio::test]
 async fn selects_scalars() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let batches = collect(
@@ -639,6 +647,8 @@ async fn selects_scalars() {
 
 #[tokio::test]
 async fn streams_large_results_in_batches() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let options = ExecOptions {
@@ -662,6 +672,8 @@ async fn streams_large_results_in_batches() {
 
 #[tokio::test]
 async fn reports_affected_rows() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
@@ -697,6 +709,8 @@ async fn reports_affected_rows() {
 
 #[tokio::test]
 async fn maps_errors_with_their_position() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         match run(&*conn, "SELECT * FROM no_such_table").await {
@@ -730,6 +744,8 @@ async fn maps_errors_with_their_position() {
 
 #[tokio::test]
 async fn cancels_running_queries() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let handle = conn.cancel_handle();
@@ -771,6 +787,8 @@ async fn cancels_running_queries() {
 
 #[tokio::test]
 async fn abandoned_results_free_the_connection() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         // Paged: read a page at a time, as the result grid does.
@@ -798,6 +816,8 @@ async fn abandoned_results_free_the_connection() {
 
 #[tokio::test]
 async fn navigates_metadata() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let schemas = conn.schemas().await.unwrap();
@@ -917,6 +937,8 @@ async fn count(b: &Backend, conn: &dyn Connection) -> String {
 
 #[tokio::test]
 async fn manual_commit_and_rollback() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
@@ -1035,6 +1057,8 @@ async fn manual_commit_and_rollback() {
 
 #[tokio::test]
 async fn lists_catalog_columns_for_completion() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let catalog = conn.catalog_columns().await.unwrap();
@@ -1082,6 +1106,8 @@ async fn lists_catalog_columns_for_completion() {
 
 #[tokio::test]
 async fn reports_lost_connections() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let Some((id_sql, kill)) = b.kill else {
             continue;
@@ -1131,6 +1157,8 @@ fn plan_has_actuals(node: &PlanNode) -> bool {
 /// rolled back, in autocommit and inside an open transaction alike.
 #[tokio::test]
 async fn explains_queries() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
@@ -1193,6 +1221,8 @@ async fn explains_queries() {
 /// A filtered full scan of a large table is suggested an index.
 #[tokio::test]
 async fn suggests_indexes_for_large_scans() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
@@ -1225,6 +1255,8 @@ async fn suggests_indexes_for_large_scans() {
 /// `Error::Unsupported`, supported ones never do.
 #[tokio::test]
 async fn capabilities_match_optional_methods() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let caps = conn.capabilities();
@@ -1279,6 +1311,8 @@ async fn capabilities_match_optional_methods() {
 /// test (with a primary key, a unique column, a check and a trigger) and on the fixtures.
 #[tokio::test]
 async fn describes_objects_and_their_ddl() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let suffix = std::process::id();
@@ -1543,6 +1577,8 @@ async fn edits_table_data() {
     use platypus_sql::Dialect;
     use platypus_sql::dml::{self, Column, Value, ValueKind};
 
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
@@ -1696,6 +1732,8 @@ async fn edit_rollbacks(
 #[tokio::test]
 async fn estimates_table_rows() {
     use platypus_sql::Dialect;
+
+    let _serial = SERIAL.lock().await;
     for b in backends().await {
         let conn = b.connect().await;
         let d = Dialect::from(b.config.driver);
@@ -1755,6 +1793,8 @@ async fn edits_arrays_and_composites() {
     use platypus_sql::Dialect;
     use platypus_sql::dml::{self, Column, Value, ValueKind};
     use platypus_sql::pg_literal::{join_array, join_composite, split_array, split_composite};
+
+    let _serial = SERIAL.lock().await;
 
     for b in backends().await {
         if b.config.driver != DriverKind::Postgres {
@@ -1835,6 +1875,8 @@ async fn edits_arrays_and_composites() {
 
 #[tokio::test]
 async fn searches_metadata() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         if !conn.capabilities().metadata_search {
@@ -1874,6 +1916,8 @@ async fn searches_metadata() {
 #[tokio::test]
 async fn searches_table_data() {
     use platypus_sql::Dialect;
+
+    let _serial = SERIAL.lock().await;
     for b in backends().await {
         let conn = b.connect().await;
         let d = Dialect::from(b.config.driver);
@@ -1930,6 +1974,8 @@ async fn searches_table_data() {
 /// Row estimates and sizes of tables, and PostgreSQL partitions under their table.
 #[tokio::test]
 async fn sizes_tables_and_nests_partitions() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let objects = conn.objects(&b.schema).await.unwrap();
@@ -1996,6 +2042,8 @@ fn shape(batch: &RecordBatch, column: usize) -> Option<geometry::Shape> {
 #[tokio::test]
 async fn reads_geometries() {
     use geometry::Shape;
+
+    let _serial = SERIAL.lock().await;
     let point = Shape::Point { x: 1.0, y: 2.0 };
     let line = Shape::Line {
         points: vec![[0.0, 0.0], [2.0, 1.0]],
@@ -2059,6 +2107,8 @@ async fn reads_geometries() {
 
 #[tokio::test]
 async fn sets_the_session_up_after_connecting() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let mut config = b.config.clone();
         let (check, expected) = match config.driver {
@@ -2149,6 +2199,8 @@ async fn agent_value(b: &Backend, conn: &dyn Connection, sql: &str) -> String {
 
 #[tokio::test]
 async fn agents_read_in_read_only_transactions() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
@@ -2199,6 +2251,8 @@ async fn agents_read_in_read_only_transactions() {
 async fn imports_data_files() {
     use platypus_sql::Dialect;
     use platypus_transfer::import::{ImportColumn, ImportMode, ImportPlan, import};
+
+    let _serial = SERIAL.lock().await;
 
     let dir = tempfile::tempdir().unwrap();
     let csv = dir.path().join("conf_import.csv");
@@ -2310,6 +2364,8 @@ async fn imports_data_files() {
 async fn transfers_tables_between_databases() {
     use platypus_sql::Dialect;
     use platypus_transfer::import::{ImportColumn, ImportMode, ImportPlan, import, target_type};
+
+    let _serial = SERIAL.lock().await;
 
     let all = backends().await;
     for b in &all {
@@ -2536,6 +2592,8 @@ async fn migrates_tables_between_databases() {
     use platypus_sql::Dialect;
     use platypus_transfer::migrate::migrate;
 
+    let _serial = SERIAL.lock().await;
+
     // ClickHouse enforces neither primary nor foreign keys.
     let all: Vec<_> = backends()
         .await
@@ -2626,7 +2684,9 @@ async fn migrates_tables_between_databases() {
             .await
             .unwrap_or_else(|e| panic!("{pair}: {e}"));
             assert_eq!(done.rows, 4, "{pair}");
-            check_migrated(to, &*target, &pair, &done.skipped, sd == td).await;
+            // Only MySQL sources have the view.
+            let same = sd == td && sd == Dialect::MySql;
+            check_migrated(to, &*target, &pair, &done.skipped, same).await;
             let _ = run(&*target, &format!("DROP VIEW {tview}")).await;
             drop_tables(&*target, td, &to.schema, &tables).await;
             let copied = td.qualified(Some(&to.schema), "conf_mig_parent_id_seq");
@@ -2742,8 +2802,15 @@ async fn fills_tables_with_fake_rows() {
     use platypus_sql::Dialect;
     use platypus_transfer::fake::{FakeColumn, Generator, fill};
 
+    let _serial = SERIAL.lock().await;
+
     let tables = ["conf_fake_parent".to_owned(), "conf_fake_child".to_owned()];
-    for b in backends().await {
+    // ClickHouse has neither unique nor foreign keys.
+    let all = backends().await;
+    for b in all
+        .iter()
+        .filter(|b| b.config.driver != DriverKind::ClickHouse)
+    {
         let conn = b.connect().await;
         let d = Dialect::from(b.config.driver);
         drop_tables(&*conn, d, &b.schema, &tables).await;
@@ -2823,7 +2890,7 @@ async fn fills_tables_with_fake_rows() {
         let check = format!(
             "SELECT COUNT(*), MIN(p.id), MAX(p.id), COUNT(DISTINCT c.email) FROM {child} c JOIN {parent} p ON p.id = c.parent_id AND p.city = c.parent_city"
         );
-        let batches = collect(&b, &*conn, &check).await;
+        let batches = collect(b, &*conn, &check).await;
         let values: Vec<_> = (0..4).map(|c| cell(&batches[0], c, 0)).collect();
         // Every child has its parent, the keys follow the seed row, the emails differ.
         let expected = ["1200", "7", "27", "1200"].map(|v| Some(v.to_owned()));
