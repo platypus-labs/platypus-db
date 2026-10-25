@@ -49,7 +49,7 @@ export default async function (page) {
       "CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customers);",
   );
   await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
-  await page.eval(`[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.textContent.includes('Script')).click()`);
+  await page.eval(`[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Script').click()`);
   await page.waitFor(`(() => { const s = ${status}; return s !== '' && !s.includes('Executing'); })()`, 15_000);
 
   // After JOIN: related tables with alias and condition. The key names no target column,

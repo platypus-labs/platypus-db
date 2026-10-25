@@ -76,7 +76,7 @@ export default async function (page, { dir }) {
   await page.waitFor(`${visibleTab} !== undefined`);
 
   await setEditor(page, "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT);\nINSERT INTO t VALUES (1, 'a'), (2, NULL);");
-  await page.eval(`[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.textContent.includes('Script')).click()`);
+  await page.eval(`[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Script').click()`);
   await waitDone(page);
 
   // DISTINCT keeps the result read-only: a plain query of one table would be editable.

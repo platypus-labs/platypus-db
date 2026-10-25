@@ -37,6 +37,7 @@ import { HealthBadge, useSessionHealth } from "./health";
 import { HistoryPanel } from "./HistoryPanel";
 import { useToolbar } from "./toolbar";
 import { isSlow, slowQuerySeconds } from "../querylog/slow";
+import { ask } from "../ui/ask";
 import { Icon } from "../ui/Icon";
 import { scrollSideways } from "../ui/scroll";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
@@ -51,6 +52,9 @@ const REFRESH_CHOICES: [number, string][] = [
   [60, "1 min"],
   [300, "5 min"],
 ];
+
+/** Asked before a run or a new filter drops the edits of the data grid. */
+const DISCARD_EDITS = "Discard the changes to the data that are not saved?";
 
 /** Statements that change which tables and columns exist. */
 const DDL = /^\s*(create|alter|drop|rename)\b/i;
@@ -428,7 +432,7 @@ export function QueryTab({
   async function run(mode: RunMode, force = false, again?: Planned[], auto = false) {
     const history = !auto;
     if (running && !force) return;
-    if (unsaved.current && !window.confirm("Discard the changes to the data that are not saved?")) return;
+    if (unsaved.current && !(await ask(DISCARD_EDITS, { confirm: "Discard", danger: true }))) return;
     const append = mode === "append";
     let planned: Planned[];
     try {
@@ -613,7 +617,7 @@ export function QueryTab({
     if (
       connection.read_only &&
       planned.some((p) => !p.readOnly) &&
-      !window.confirm(`${connection.name} is read-only and this may modify data. Run anyway?`)
+      !(await ask(`${connection.name} is read-only and this may modify data. Run anyway?`, { confirm: "Run" }))
     ) {
       return;
     }
@@ -767,8 +771,12 @@ export function QueryTab({
   function applyViewer(patch: { filter?: string; sort?: Sort | null }) {
     if (!tab.table) return;
     if (unsaved.current) {
-      if (!window.confirm("Discard the changes to the data that are not saved?")) return;
-      unsaved.current = false;
+      void ask(DISCARD_EDITS, { confirm: "Discard", danger: true }).then((yes) => {
+        if (!yes) return;
+        unsaved.current = false;
+        applyViewer(patch);
+      });
+      return;
     }
     const next = { filter: patch.filter ?? tab.filter ?? "", sort: patch.sort !== undefined ? patch.sort : (tab.sort ?? null) };
     onChange(next);
@@ -1036,7 +1044,8 @@ export function QueryTab({
             title="Run statement (Ctrl+Enter)"
             aria-label="Run"
           >
-            {toolbar.label("run", "Run")}
+            <Icon name="run" />
+            Run
           </button>
           {toolbar.visible.script && (
             <button onClick={() => void run("script")} title="Run script (Alt+X, Ctrl+Shift+Enter)" aria-label="Script">
@@ -1199,8 +1208,14 @@ export function QueryTab({
             )}
             <span className="spacer" />
             {count && <span className="muted small">{count}</span>}
-            <button type="button" onClick={() => void countRows()} title={isMongo(connection.driver) ? "Runs countDocuments with the filter" : "Runs SELECT COUNT(*) with the filter"}>
-              Count rows
+            <button
+              type="button"
+              className="square"
+              onClick={() => void countRows()}
+              aria-label="Count rows"
+              title={`Count rows: ${isMongo(connection.driver) ? "runs countDocuments" : "runs SELECT COUNT(*)"} with the filter`}
+            >
+              <Icon name="sequence" />
             </button>
           </form>
         )}

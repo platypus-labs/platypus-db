@@ -99,6 +99,18 @@
   width: min(360px, calc(100vw - 32px));
 }
 
+/* A yes/no question (ui/ask.tsx), in place of the browser's confirm box. */
+.modal.confirm {
+  width: min(420px, calc(100vw - 32px));
+}
+
+.modal.confirm p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg-strong);
+}
+
 .modal h2 {
   font-size: 17px;
   font-weight: 600;

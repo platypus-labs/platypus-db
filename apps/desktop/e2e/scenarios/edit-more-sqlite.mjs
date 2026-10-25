@@ -18,7 +18,7 @@ const grid = `${visibleTab}.querySelector('.grid-scroll')`;
 const treeRow = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
 const button = (scope, label) =>
-  `[...${scope}.querySelectorAll('button')].find(b => b.textContent === ${JSON.stringify(label)})`;
+  `[...${scope}.querySelectorAll('button')].find(b => b.textContent === ${JSON.stringify(label)} || b.getAttribute('aria-label') === ${JSON.stringify(label)})`;
 
 export function setup({ dir }) {
   const path = join(dir, "more.db");
@@ -120,7 +120,7 @@ export default async function (page, { dir, shots }) {
   // Both result tabs appear when the script starts; Ctrl+Enter is ignored until it ends.
   await page.waitFor(
     `${visibleTab}.querySelectorAll('.result-tab').length === 2 && ` +
-      `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.textContent.includes('Cancel'))?.disabled`,
+      `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')?.disabled`,
     15_000,
   );
 

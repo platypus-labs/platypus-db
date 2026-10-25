@@ -9,7 +9,9 @@ import { DatabaseSync } from "node:sqlite";
 const treeRow = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
 const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
-const button = (scope, text) => `[...${scope}.querySelectorAll('button')].find(b => b.textContent.trim().startsWith(${JSON.stringify(text)}))`;
+// By its words or, for an icon button, its accessible name.
+const button = (scope, text) =>
+  `[...${scope}.querySelectorAll('button')].find(b => b.textContent.trim().startsWith(${JSON.stringify(text)}) || b.getAttribute('aria-label') === ${JSON.stringify(text)})`;
 
 /** Sets a React-controlled field and tells React, as typing would. */
 const setField = (selector, value) => fill(`document.querySelector(${JSON.stringify(selector)})`, value);
