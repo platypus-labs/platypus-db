@@ -2,7 +2,7 @@
  * Display formats of the result grid. The backend renders the grid's text with them
  * (`src-tauri/src/formats.rs`); editing, copying and exports keep the plain values.
  */
-import { defineSetting, getSetting, useSetting } from "../settings";
+import { defineSetting, getSetting, useFormatsStored, useSetting } from "../settings";
 
 export const dateFormat = defineSetting({
   key: "results.date_format",
@@ -70,6 +70,7 @@ export function useFormatSignature(): string {
     useSetting(timeZone),
     useSetting(numberFormat),
     useSetting(relativeTime),
+    useFormatsStored(),
   ].join("\u0000");
 }
 
