@@ -77,8 +77,10 @@ and shows the ODBC drivers and data sources of the system.
 
 ![Choosing the database for a new connection](docs/screenshots/connections.png)
 
-- A new connection starts from a grid of database logos. Paste a `postgres://`, `mysql://`,
-  `sqlserver://`, `clickhouse://`, `libsql://` or `mongodb://` URL to fill the form.
+- A new connection starts from a grid of database logos, with a search on top (`Enter` takes
+  the first match); the `+` of the navigator opens it, and so does a right-click on a connection
+  or below the list. Paste a `postgres://`, `mysql://`, `sqlserver://`, `clickhouse://`,
+  `libsql://` or `mongodb://` URL to fill the form.
 - **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`, with their
   folders. A DBeaver project export (`.dbp`) brings its projects too, optionally gathered in a
   folder of the project rail.
@@ -273,6 +275,10 @@ methods and fields. `mongodb+srv://` and connection string options go in the Dat
   Dracula, Solarized Light and high contrast; your own accent, background, sidebar and text
   colors, interface size, row density, corner radius and editor font size. Inter and
   JetBrains Mono are bundled, so the app looks the same everywhere and works offline.
+- **Settings** (`Ctrl+,`) have a search: it keeps the matching settings, and finds the
+  keyboard shortcuts by their action's name.
+- **Resizable navigator**: drag the edge between the connections and the work (or focus it and
+  use the arrows); a double-click brings back the default width.
 - Every shortcut can be changed; the toolbars show icons (each says what it does on hover), and
   the SQL editor's buttons can be hidden or given their words back; `Ctrl+Shift+T` reopens the
   last closed tab.
