@@ -83,6 +83,52 @@ pub fn classify(sql: &str) -> TxEffect {
     }
 }
 
+/// A transaction statement that drivers run through their client API instead of sending it:
+/// ODBC drivers take `BEGIN` differently or not at all, and Oracle reads a bare `BEGIN` as
+/// the start of a PL/SQL block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TxControl {
+    Begin,
+    Commit,
+    Rollback,
+}
+
+impl TxControl {
+    /// The transaction statement `sql` is, if it is only that: `BEGIN [WORK | TRANSACTION]`,
+    /// `START TRANSACTION`, `COMMIT [WORK]`, `ROLLBACK [WORK]`. A PL/SQL block starting
+    /// with `BEGIN` has more words.
+    #[must_use]
+    pub fn of(sql: &str) -> Option<Self> {
+        let words = leading_words(sql, 3);
+        let words: Vec<&str> = words.iter().map(String::as_str).collect();
+        let noise = |w: &str| matches!(w, "WORK" | "TRANSACTION" | "TRAN");
+        match words.as_slice() {
+            ["BEGIN"] | ["START", "TRANSACTION"] => Some(Self::Begin),
+            ["BEGIN", w] if noise(w) => Some(Self::Begin),
+            ["COMMIT"] => Some(Self::Commit),
+            ["COMMIT", w] if noise(w) => Some(Self::Commit),
+            ["ROLLBACK"] => Some(Self::Rollback),
+            ["ROLLBACK", w] if noise(w) => Some(Self::Rollback),
+            _ => None,
+        }
+    }
+
+    /// What `sql` does to the transaction of a driver that runs [`TxControl`] statements
+    /// itself: a longer statement starting with `BEGIN` is a block (PL/SQL, Db2 compound
+    /// SQL), not a transaction.
+    #[must_use]
+    pub fn effect(sql: &str) -> TxEffect {
+        match Self::of(sql) {
+            Some(Self::Begin) => TxEffect::Begin,
+            Some(Self::Commit | Self::Rollback) => TxEffect::End,
+            None => match classify(sql) {
+                TxEffect::Begin => TxEffect::None,
+                other => other,
+            },
+        }
+    }
+}
+
 /// Refusal to switch modes or close while changes are pending.
 #[must_use]
 pub fn open_transaction_error() -> crate::Error {
@@ -195,6 +241,30 @@ mod tests {
         assert_eq!(classify("select 1"), TxEffect::None);
         assert_eq!(classify("savepoint a"), TxEffect::None);
         assert_eq!(classify(""), TxEffect::None);
+    }
+
+    #[test]
+    fn transaction_statements_run_through_the_api() {
+        assert_eq!(TxControl::of("begin"), Some(TxControl::Begin));
+        assert_eq!(TxControl::of("BEGIN TRANSACTION"), Some(TxControl::Begin));
+        assert_eq!(TxControl::of("start transaction"), Some(TxControl::Begin));
+        assert_eq!(TxControl::of("commit;"), Some(TxControl::Commit));
+        assert_eq!(
+            TxControl::of("-- done\nCOMMIT WORK"),
+            Some(TxControl::Commit)
+        );
+        assert_eq!(TxControl::of("rollback"), Some(TxControl::Rollback));
+        assert_eq!(TxControl::of("ROLLBACK TO SAVEPOINT a"), None);
+        assert_eq!(TxControl::of("BEGIN NULL; END;"), None);
+        assert_eq!(TxControl::of("begin dbms_output.put_line('x'); end;"), None);
+        assert_eq!(TxControl::of("select 1 from dual"), None);
+        assert_eq!(TxControl::effect("BEGIN NULL; END;"), TxEffect::None);
+        assert_eq!(TxControl::effect("begin"), TxEffect::Begin);
+        assert_eq!(TxControl::effect("commit"), TxEffect::End);
+        assert_eq!(
+            TxControl::effect("create table t (a int)"),
+            TxEffect::ImplicitCommit
+        );
     }
 
     #[test]

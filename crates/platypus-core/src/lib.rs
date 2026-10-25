@@ -30,7 +30,8 @@ pub use metadata::{
     group_sorted, query_catalog, query_text,
 };
 pub use transaction::{
-    TransactionState, TxEffect, TxTracker, classify, leading_words, open_transaction_error,
+    TransactionState, TxControl, TxEffect, TxTracker, classify, leading_words,
+    open_transaction_error,
 };
 
 /// Re-exported so frontends use the same Arrow version as the drivers.
