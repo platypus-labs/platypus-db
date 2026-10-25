@@ -75,7 +75,7 @@ export default async function (page) {
   await page.waitFor(`${visibleTab}.querySelector('.statusbar span')?.textContent === '1 row'`, 30_000);
 
   // Settings › Drivers lists it and removes it.
-  await page.eval(`document.querySelector('.sidebar-header button[title^="Settings"]').click()`);
+  await page.eval(`document.querySelector('button[aria-label="Settings"]').click()`);
   await page.waitFor(`document.querySelector('.modal.settings [data-driver="trino"]') !== null`);
   const listed = await page.eval(`document.querySelector('.modal.settings [data-driver="trino"]').textContent`);
   assert.ok(listed.includes("Trino"), listed);
