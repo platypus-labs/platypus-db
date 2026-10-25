@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { MSSQL, MySQL, PLSQL, PostgreSQL, SQLite, StandardSQL, sql } from "@codemirror/lang-sql";
+import { MSSQL, MySQL, PLSQL, PostgreSQL, SQLite, StandardSQL, type SQLNamespace, sql } from "@codemirror/lang-sql";
 import {
   HighlightStyle,
   bracketMatching,
@@ -30,6 +30,7 @@ import {
 import { tags as t } from "@lezer/highlight";
 import { dispatchKey } from "../actions";
 import { type CompletionCatalog, type DriverKind, isMongo, toCommandError } from "../api";
+import { annotation, catalogEntry, catalogKey, useCatalogVersion } from "../catalog/catalog";
 import { ContextMenu, type MenuState } from "../components/ContextMenu";
 import { useSetting } from "../settings";
 import { workbench } from "../workbench";
@@ -83,6 +84,9 @@ interface Props {
   readOnly?: boolean;
   /** Tables and columns to complete; keywords complete without it. */
   catalog?: CompletionCatalog | null;
+  /** With `database`, finds the notes shown in the completion info. */
+  connectionId?: string;
+  database?: string | null;
   /** The connection is a production one: the linter warns about `SELECT *`. */
   production?: boolean;
   host?: EditorHost;
@@ -168,12 +172,38 @@ const dialects = {
   databricks: MySQL,
 };
 
-function language(driver: DriverKind, catalog: CompletionCatalog | null | undefined) {
+/** The catalog's schemas with the local notes as completion info. */
+function annotatedSchemas(catalog: CompletionCatalog, connectionId: string | undefined, database: string | null | undefined) {
+  if (!connectionId) return catalog.schemas;
+  const out: SQLNamespace = {};
+  for (const [schema, tables] of Object.entries(catalog.schemas)) {
+    const ns: Record<string, SQLNamespace> = {};
+    for (const [table, columns] of Object.entries(tables)) {
+      const info = annotation(catalogEntry(connectionId, catalogKey(database, schema, table)));
+      ns[table] = {
+        self: { label: table, type: "type", ...(info ? { info } : {}) },
+        children: columns.map((col) => {
+          const cinfo = annotation(catalogEntry(connectionId, catalogKey(database, schema, table, col)));
+          return { label: col, type: "property", ...(cinfo ? { info: cinfo } : {}) };
+        }),
+      };
+    }
+    out[schema] = ns;
+  }
+  return out;
+}
+
+function language(
+  driver: DriverKind,
+  catalog: CompletionCatalog | null | undefined,
+  connectionId?: string,
+  database?: string | null,
+) {
   if (isMongo(driver)) return mongoLanguage(catalog);
   const support = sql({
     dialect: dialects[driver],
     upperCaseKeywords: true,
-    schema: catalog?.schemas,
+    schema: catalog ? annotatedSchemas(catalog, connectionId, database) : undefined,
     defaultSchema: catalog?.default_schema ?? undefined,
   });
   return [
@@ -207,6 +237,7 @@ const flashField = StateField.define<DecorationSet>({
 export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(props, ref) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
+  const catalogVersion = useCatalogVersion();
   const languageConf = useRef(new Compartment());
   const spellConf = useRef(new Compartment());
   const spellMode = useSetting(spellcheckSetting);
@@ -265,7 +296,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         flashField,
         EditorState.readOnly.of(!!props.readOnly),
         syntaxHighlighting(highlight),
-        languageConf.current.of(language(props.driver, props.catalog)),
+        languageConf.current.of(language(props.driver, props.catalog, props.connectionId, props.database)),
         // Registered editor actions take their shortcuts before the keymaps below.
         Prec.highest(
           EditorView.domEventHandlers({
@@ -338,11 +369,11 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
 
   useEffect(() => {
     view.current?.dispatch({
-      effects: languageConf.current.reconfigure(language(props.driver, props.catalog)),
+      effects: languageConf.current.reconfigure(language(props.driver, props.catalog, props.connectionId, props.database)),
     });
     // Columns are checked against the catalog, which may arrive after the text.
     if (view.current) forceLinting(view.current);
-  }, [props.driver, props.catalog]);
+  }, [props.driver, props.catalog, props.connectionId, props.database, catalogVersion]);
 
   useEffect(() => {
     view.current?.dispatch({ effects: spellConf.current.reconfigure(spellcheck(spellMode)) });

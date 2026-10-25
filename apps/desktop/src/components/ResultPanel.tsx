@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type ColumnInfo, type CommandError } from "../api";
 import type { GridSource } from "../grid/DataGrid";
 import { useFormatSignature } from "../grid/formats";
-import { ResultGrid } from "../grid/ResultGrid";
+import { type NotesScope, ResultGrid } from "../grid/ResultGrid";
 import { RowCache } from "../grid/RowCache";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
 
@@ -77,9 +77,10 @@ interface PanelProps {
   source?: GridSource | null;
   /** The table whose rows the result shows, to edit them. */
   edit?: TableEditTarget | null;
+  notes?: NotesScope | null;
 }
 
-export function ResultPanel({ result, sort, onHeaderClick, source, edit }: PanelProps) {
+export function ResultPanel({ result, sort, onHeaderClick, source, edit, notes }: PanelProps) {
   const [cache, setCache] = useState<RowCache | null>(null);
   const [version, setVersion] = useState(0);
   const { jobId, columns, status } = result;
@@ -148,6 +149,7 @@ export function ResultPanel({ result, sort, onHeaderClick, source, edit }: Panel
         onHeaderClick={onHeaderClick && ((i) => onHeaderClick(columns[i]!.name))}
         source={source}
         edit={edit}
+        notes={notes}
       />
     </>
   );

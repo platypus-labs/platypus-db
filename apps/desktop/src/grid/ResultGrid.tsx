@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnInfo } from "../api";
+import { annotation, catalogEntry, catalogKey, useCatalogVersion } from "../catalog/catalog";
 import { CalcPanel } from "../panels/CalcPanel";
 import { CompareRows } from "../panels/CompareRows";
 import { DocumentPanel } from "../panels/DocumentPanel";
@@ -69,6 +70,14 @@ function combine(below: Decorate | undefined, above: Decorate | undefined): Deco
   };
 }
 
+/** The table whose columns' notes the header shows. */
+export interface NotesScope {
+  connectionId: string;
+  database: string | null | undefined;
+  schema: string;
+  table: string;
+}
+
 interface Props {
   jobId: number;
   columns: ColumnInfo[];
@@ -80,10 +89,17 @@ interface Props {
   source?: GridSource | null;
   /** The table behind the result, to edit it and follow its foreign keys. */
   edit?: TableEditTarget | null;
+  /** Set for a data viewer: the columns' local notes show in the header. */
+  notes?: NotesScope | null;
 }
 
 /** A result's grid with its features: editing, search, column layout, totals and panels. */
-export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onHeaderClick, source, edit }: Props) {
+export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onHeaderClick, source, edit, notes }: Props) {
+  useCatalogVersion();
+  const noteOf = (col: number) =>
+    notes && columns[col]
+      ? catalogEntry(notes.connectionId, catalogKey(notes.database, notes.schema, notes.table, columns[col].name))
+      : undefined;
   const grid = useRef<GridApi>(null);
   const box = useRef<HTMLDivElement>(null);
   const editor = useTableEditor({ target: edit ?? null, jobId, columns, cache, version, grid, box });
@@ -157,6 +173,8 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
           <DataGrid
             ref={grid}
             columns={columns}
+            headerTitle={notes ? (col) => annotation(noteOf(col)) : undefined}
+            headerMarked={notes ? (col) => { const e = noteOf(col); return !!(e?.note || e?.tags.length); } : undefined}
             rowCount={rowCount}
             topRows={editor.topRows}
             cache={cache}

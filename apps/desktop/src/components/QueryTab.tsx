@@ -16,6 +16,7 @@ import {
   isMongo,
 } from "../api";
 import { asksPassword, isProduction } from "../connections";
+import type { NotesScope } from "../grid/ResultGrid";
 import type { EditSource, TableRef } from "../grid/edit/meta";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
 import { cliName } from "../editor/actions";
@@ -936,6 +937,14 @@ export function QueryTab({
    * Lets the grid edit the result's table: the data viewer's own query, or a query in the
    * editor that reads one table. Results of scripts stay read-only.
    */
+  /** The viewer's table, for the notes in the grid header; none for other results. */
+  function notesScope(result: Result): NotesScope | null {
+    const ref = tab.tableRef;
+    if (!(tab.table && ref) || isMongo(connection.driver)) return null;
+    if (result.sql !== viewerSql(connection.driver, tab.table, tab.filter ?? "", tab.sort ?? null)) return null;
+    return { connectionId: connection.id, database: tab.database, schema: ref.schema, table: ref.name };
+  }
+
   function editTarget(result: Result): TableEditTarget | null {
     // The data editor writes SQL: MongoDB results stay read-only.
     if (isMongo(connection.driver)) return null;
@@ -1224,6 +1233,8 @@ export function QueryTab({
           initialValue={tab.sql}
           driver={connection.driver}
           catalog={catalog}
+          connectionId={connection.id}
+          database={tab.database}
           production={isProduction(connection)}
           host={host}
           onChange={(sql) => onChange({ sql })}
@@ -1289,6 +1300,7 @@ export function QueryTab({
                   : undefined,
               }}
               edit={editTarget(current)}
+              notes={notesScope(current)}
             />
           )}
         </div>
