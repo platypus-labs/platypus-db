@@ -2479,12 +2479,56 @@ fn column_names(t: &platypus_schema::TableDesign) -> Vec<String> {
     t.columns.iter().map(|c| c.name.clone()).collect()
 }
 
-/// A table created, altered in place and rebuilt by the table editor, with its rows kept.
-#[tokio::test]
-async fn edits_table_designs() {
+/// `conf_design`: a key, a UNIQUE and a CHECK constraint, an index, and a comment where the
+/// database keeps one.
+fn design_parent(comments: bool) -> platypus_schema::TableDesign {
     use platypus_schema::{
         ColumnDesign, ConstraintDesign, ConstraintType, IndexDesign, TableDesign,
     };
+
+    TableDesign {
+        name: "conf_design".to_owned(),
+        columns: vec![
+            ColumnDesign {
+                primary_key: true,
+                ..design_column("id", "INT", false)
+            },
+            design_column("code", "VARCHAR(20)", false),
+            ColumnDesign {
+                default: Some("0".to_owned()),
+                ..design_column("total", "DECIMAL(10,2)", true)
+            },
+            ColumnDesign {
+                comment: comments.then(|| "free text".to_owned()),
+                ..design_column("note", "VARCHAR(100)", true)
+            },
+        ],
+        indexes: vec![IndexDesign {
+            name: "conf_design_total".to_owned(),
+            columns: vec!["total".to_owned()],
+            ..IndexDesign::default()
+        }],
+        constraints: vec![
+            ConstraintDesign {
+                name: "conf_design_code".to_owned(),
+                columns: vec!["code".to_owned()],
+                ..ConstraintDesign::default()
+            },
+            ConstraintDesign {
+                name: "conf_design_positive".to_owned(),
+                kind: ConstraintType::Check,
+                check: "total >= 0".to_owned(),
+                ..ConstraintDesign::default()
+            },
+        ],
+        ..TableDesign::default()
+    }
+}
+
+/// A table created, altered in place and rebuilt by the table editor, with its rows kept.
+#[tokio::test]
+async fn edits_table_designs() {
+    use platypus_schema::{ColumnDesign, ConstraintType, IndexDesign};
     use platypus_sql::Dialect;
 
     let tables = ["conf_design".to_owned(), "conf_design_child".to_owned()];
@@ -2493,44 +2537,7 @@ async fn edits_table_designs() {
         let d = Dialect::from(b.config.driver);
         drop_tables(&*conn, d, &b.schema, &tables).await;
         let comments = matches!(d, Dialect::Postgres | Dialect::MySql | Dialect::DuckDb);
-        let parent = TableDesign {
-            name: "conf_design".to_owned(),
-            columns: vec![
-                ColumnDesign {
-                    primary_key: true,
-                    ..design_column("id", "INT", false)
-                },
-                design_column("code", "VARCHAR(20)", false),
-                ColumnDesign {
-                    default: Some("0".to_owned()),
-                    ..design_column("total", "DECIMAL(10,2)", true)
-                },
-                ColumnDesign {
-                    comment: comments.then(|| "free text".to_owned()),
-                    ..design_column("note", "VARCHAR(100)", true)
-                },
-            ],
-            indexes: vec![IndexDesign {
-                name: "conf_design_total".to_owned(),
-                columns: vec!["total".to_owned()],
-                ..IndexDesign::default()
-            }],
-            constraints: vec![
-                ConstraintDesign {
-                    name: "conf_design_code".to_owned(),
-                    columns: vec!["code".to_owned()],
-                    ..ConstraintDesign::default()
-                },
-                ConstraintDesign {
-                    name: "conf_design_positive".to_owned(),
-                    kind: ConstraintType::Check,
-                    check: "total >= 0".to_owned(),
-                    ..ConstraintDesign::default()
-                },
-            ],
-            ..TableDesign::default()
-        };
-        let created = redesign(&b, &*conn, None, &parent).await;
+        let created = redesign(&b, &*conn, None, &design_parent(comments)).await;
         assert_eq!(
             column_names(&created),
             ["id", "code", "total", "note"],
@@ -2661,7 +2668,7 @@ async fn edit_child_design(b: &Backend, conn: &dyn Connection) {
     .unwrap_or_else(|e| panic!("{}: {e}", b.name));
     let mut changed = created.clone();
     changed.foreign_keys[0].on_delete = None;
-    changed.columns[1].name = "owner_id".to_owned();
+    "owner_id".clone_into(&mut changed.columns[1].name);
     changed.foreign_keys[0].columns = vec!["owner_id".to_owned()];
     changed.constraints.push(ConstraintDesign {
         name: "conf_design_child_id".to_owned(),
