@@ -233,10 +233,8 @@ async fn oracle_runs_plsql_and_sets_the_session_up() {
     run(&*conn, "DECLARE x NUMBER := 1; BEGIN x := x + 1; END;").await;
 }
 
-#[tokio::test]
-async fn oracle_navigates_metadata() {
-    let Some(conn) = oracle().await else { return };
-    let conn = &*conn;
+/// `ORA_PARENT` with a check and a comment, and `ORA_CHILD` pointing at it, with an index.
+async fn metadata_fixture(conn: &dyn Connection) {
     run(conn, "DROP TABLE IF EXISTS ORA_CHILD").await;
     run(conn, "DROP TABLE IF EXISTS ORA_PARENT").await;
     run(
@@ -257,6 +255,13 @@ async fn oracle_navigates_metadata() {
     )
     .await;
     run(conn, "COMMENT ON TABLE ORA_PARENT IS 'parents'").await;
+}
+
+#[tokio::test]
+async fn oracle_navigates_metadata() {
+    let Some(conn) = oracle().await else { return };
+    let conn = &*conn;
+    metadata_fixture(conn).await;
 
     let schemas = conn.schemas().await.unwrap();
     let mine = schemas.iter().find(|s| s.name == "PLATYPUS").unwrap();

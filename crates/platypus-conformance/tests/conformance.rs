@@ -123,6 +123,10 @@ fn driver(kind: DriverKind) -> &'static dyn Driver {
         | DriverKind::Adbc => {
             unreachable!("drivers with a bridge have their own tests in bridges.rs")
         }
+        DriverKind::Oracle => unreachable!("Oracle has its own tests in oracle.rs"),
+        DriverKind::Db2 | DriverKind::Odbc => {
+            unreachable!("databases reached through ODBC have their own tests in odbc.rs")
+        }
     }
 }
 
@@ -1350,6 +1354,10 @@ fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<Strin
         | DriverKind::Adbc => {
             unreachable!("drivers with a bridge have their own tests in bridges.rs")
         }
+        DriverKind::Oracle => unreachable!("Oracle has its own tests in oracle.rs"),
+        DriverKind::Db2 | DriverKind::Odbc => {
+            unreachable!("databases reached through ODBC have their own tests in odbc.rs")
+        }
         DriverKind::Postgres => "id int PRIMARY KEY, code text UNIQUE, qty int CHECK (qty >= 0)",
         DriverKind::MySql => {
             "id INT PRIMARY KEY, code VARCHAR(10) UNIQUE, qty INT CHECK (qty >= 0)"
@@ -1380,6 +1388,10 @@ fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<Strin
         | DriverKind::Trino
         | DriverKind::Adbc => {
             unreachable!("drivers with a bridge have their own tests in bridges.rs")
+        }
+        DriverKind::Oracle => unreachable!("Oracle has its own tests in oracle.rs"),
+        DriverKind::Db2 | DriverKind::Odbc => {
+            unreachable!("databases reached through ODBC have their own tests in odbc.rs")
         }
         DriverKind::Postgres => {
             let function = format!("{s}.probe_fn{suffix}()");
@@ -1557,6 +1569,10 @@ async fn edit_fixture(
         | DriverKind::Trino
         | DriverKind::Adbc => {
             unreachable!("drivers with a bridge have their own tests in bridges.rs")
+        }
+        DriverKind::Oracle => unreachable!("Oracle has its own tests in oracle.rs"),
+        DriverKind::Db2 | DriverKind::Odbc => {
+            unreachable!("databases reached through ODBC have their own tests in odbc.rs")
         }
         DriverKind::Postgres => {
             "CREATE TEMPORARY TABLE conf_edit (id INT PRIMARY KEY, name TEXT, \
@@ -2091,6 +2107,10 @@ async fn reads_geometries() {
             | DriverKind::Adbc => {
                 unreachable!("drivers with a bridge have their own tests in bridges.rs")
             }
+            DriverKind::Oracle => unreachable!("Oracle has its own tests in oracle.rs"),
+            DriverKind::Db2 | DriverKind::Odbc => {
+                unreachable!("databases reached through ODBC have their own tests in odbc.rs")
+            }
             DriverKind::Postgres => (
                 "SELECT point '(1,2)', box '(1,1),(0,0)', polygon '((0,0),(1,0),(1,1))', \
                  path '[(0,0),(2,1)]', lseg '[(0,0),(2,1)]', circle '<(1,2),3>'",
@@ -2155,6 +2175,10 @@ async fn sets_the_session_up_after_connecting() {
             | DriverKind::Adbc => {
                 unreachable!("drivers with a bridge have their own tests in bridges.rs")
             }
+            DriverKind::Oracle => unreachable!("Oracle has its own tests in oracle.rs"),
+            DriverKind::Db2 | DriverKind::Odbc => {
+                unreachable!("databases reached through ODBC have their own tests in odbc.rs")
+            }
             DriverKind::Postgres => (
                 "SELECT current_schema(), current_setting('TimeZone')",
                 vec![Some(b.schema.clone()), Some("Europe/Rome".to_owned())],
@@ -2192,6 +2216,10 @@ async fn sets_the_session_up_after_connecting() {
                 | DriverKind::Trino
                 | DriverKind::Adbc => {
                     unreachable!("drivers with a bridge have their own tests in bridges.rs")
+                }
+                DriverKind::Oracle => unreachable!("Oracle has its own tests in oracle.rs"),
+                DriverKind::Db2 | DriverKind::Odbc => {
+                    unreachable!("databases reached through ODBC have their own tests in odbc.rs")
                 }
                 DriverKind::Postgres | DriverKind::ClickHouse => Some("Europe/Rome".to_owned()),
                 DriverKind::MySql => Some("+02:00".to_owned()),
