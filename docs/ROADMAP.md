@@ -98,7 +98,7 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 | K — Shell ed ergonomia | ✅ fatto (P1) |
 | L — Sicurezza operativa | ✅ fatto (P1) |
 | M — Analisi dei dati | libero |
-| N — Accesso per agenti (MCP) | 🔒 Delfa · group-n-mcp · 2026-10-25 |
+| N — Accesso per agenti (MCP) | ✅ fatto (P1) |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
