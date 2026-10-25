@@ -120,6 +120,7 @@ fn open_main_window(app: &tauri::App, system_title_bar: bool) -> tauri::Result<(
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let vault_path = vault_path(app);
     let settings = open_settings(app);
+    // `titleBarSetting` in theme.ts: the key and its "system" value.
     let system_title_bar = settings
         .as_ref()
         .ok()

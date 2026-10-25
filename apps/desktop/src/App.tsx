@@ -28,7 +28,7 @@ import { setAnswer } from "./testAnswers";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { dbKey, provideWorkbench, workbench } from "./workbench";
 import { Icon, type IconName } from "./ui/Icon";
-import { ask } from "./ui/ask";
+import { ask, isAsking } from "./ui/ask";
 import { scrollSideways } from "./ui/scroll";
 import { type PersistedTab, loadWorkspace, saveWorkspace } from "./workspace";
 import { connectionsOf, loadActiveProject, projectKey, saveActiveProject } from "./projects/state";
@@ -555,6 +555,7 @@ export function App() {
   // Global shortcuts, captured before the editor sees them.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isAsking()) return;
       dispatchKey("global", undefined, e, (err) => setToast(toCommandError(err).message));
     };
     window.addEventListener("keydown", onKey, true);

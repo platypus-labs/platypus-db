@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { runAction, shortcutLabel, useActions } from "../actions";
 import type { Project, SavedConnection } from "../api";
 import mark from "../assets/brand/platypus-mark.png";
@@ -22,8 +22,12 @@ export function TopBar({ project, connection }: Props) {
   const keys = palette && shortcutLabel(palette);
   const type = CONNECTION_TYPES.find((t) => t.value === connection?.connection_type);
   const ownTitleBar = useSetting(titleBarSetting) !== "system" && !MAC;
+  // The window opens with the bar the setting asks for (lib.rs); a change applies at once.
+  const opened = useRef(ownTitleBar);
   useEffect(() => {
-    if (!MAC) getCurrentWindow().setDecorations(!ownTitleBar).catch((e: unknown) => console.warn("decorations", e));
+    if (MAC || ownTitleBar === opened.current) return;
+    opened.current = ownTitleBar;
+    getCurrentWindow().setDecorations(!ownTitleBar).catch((e: unknown) => console.warn("decorations", e));
   }, [ownTitleBar]);
   // The bar moves the window where nothing else takes the click (data-tauri-drag-region on
   // each element that is not a control).

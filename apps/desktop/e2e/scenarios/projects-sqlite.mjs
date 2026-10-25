@@ -379,6 +379,10 @@ async function members(page, dir, shots) {
   // Closing the tab with its transaction open asks in the app's own dialog; Cancel keeps it.
   await page.key("w", "KeyW", 87, CTRL);
   await page.waitFor(`document.querySelector('.modal.confirm p')?.textContent.includes('open transaction')`);
+  // The shortcuts wait while it asks: a second Ctrl+W opens no second question.
+  await page.key("w", "KeyW", 87, CTRL);
+  await page.sleep(200);
+  assert.equal(await page.eval(`document.querySelectorAll('.modal.confirm').length`), 1);
   await answer(page, false);
   assert.equal(await page.eval(tabCount), 1);
   await deleteInterno([true, true]);

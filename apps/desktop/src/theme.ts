@@ -426,6 +426,7 @@ export const backgroundSetting = color("appearance.background", "Background", "E
 export const sidebarSetting = color("appearance.sidebar", "Sidebar and panels", "The connections tree and menus.");
 export const textSetting = color("appearance.text", "Text", "Muted text follows it.");
 
+/** Read by the backend too, to open the window with or without the system's bar (lib.rs). */
 export const titleBarSetting = defineSetting<string>({
   key: "appearance.title_bar",
   section: SECTION,
