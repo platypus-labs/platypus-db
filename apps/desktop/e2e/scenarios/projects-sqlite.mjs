@@ -287,7 +287,16 @@ async function members(page, dir, shots) {
     "Neon",
     "AlloyDB",
   ]);
-  await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === 'SQLite').click()`);
+  // The search field has the focus, filters the tiles, Esc clears it and Enter picks the last one.
+  const tiles = `[...document.querySelectorAll('.driver-tile')].map(b => b.textContent)`;
+  assert.equal(await page.eval(`document.activeElement === document.querySelector('.driver-search')`), true);
+  await page.type("SQL");
+  await page.waitFor(`${tiles}.join() === 'SQL Server,SQLite'`);
+  await page.key("Escape", "Escape", 27);
+  await page.waitFor(`document.querySelector('.driver-search').value === '' && ${tiles}.length === 23`);
+  await page.type("sqlite");
+  await page.waitFor(`${tiles}.join() === 'SQLite'`);
+  await page.key("Enter", "Enter", 13);
   await page.waitFor(`document.querySelector('.project-chips') !== null`);
   assert.equal(await page.eval(`${chip("Interno")}.getAttribute('aria-pressed')`), "true");
   await page.eval(`(() => {

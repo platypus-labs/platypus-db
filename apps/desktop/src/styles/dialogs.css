@@ -738,6 +738,11 @@ button.danger {
   color: #fff;
 }
 
+.driver-search {
+  width: 100%;
+  margin: 4px 0 8px;
+}
+
 .driver-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

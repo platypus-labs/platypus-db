@@ -554,6 +554,8 @@ const it: Record<string, string> = {
   "not encrypted": "non cifrata",
   "Test connection": "Prova la connessione",
   "Choose the database.": "Scegli il database.",
+  "Search databases…": "Cerca un database…",
+  "No database matches.": "Nessun database corrisponde.",
   "PostgreSQL-compatible": "Compatibili con PostgreSQL",
   "JSON (array)": "JSON (array)",
   "NDJSON (one object per line)": "NDJSON (un oggetto per riga)",

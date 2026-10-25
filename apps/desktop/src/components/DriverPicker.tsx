@@ -18,6 +18,7 @@ import {
   siTrino,
   siTurso,
 } from "simple-icons";
+import { useState } from "react";
 import type { DriverKind, SavedConnection } from "../api";
 import { t, msg } from "../i18n";
 
@@ -125,15 +126,23 @@ function DriverLogo({ choice }: { choice: Choice }) {
   );
 }
 
-function Tiles({ choices, onPick, focus }: { choices: Choice[]; onPick: Props["onPick"]; focus?: boolean }) {
+/** Lower case without accents, to compare what the user types with the labels. */
+const fold = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
+/** The choices whose (translated) label contains `query`. */
+const matching = (choices: Choice[], query: string) => {
+  const needle = fold(query.trim());
+  return choices.filter((c) => fold(t(c.label)).includes(needle));
+};
+
+function Tiles({ choices, onPick }: { choices: Choice[]; onPick: Props["onPick"] }) {
   return (
     <div className="driver-grid">
-      {choices.map((c, i) => (
+      {choices.map((c) => (
         <button
           key={c.label}
           type="button"
           className="driver-tile"
-          autoFocus={focus && i === 0}
           onClick={() => onPick(c.driver, c.preset ?? {})}
         >
           <DriverLogo choice={c} />
@@ -151,14 +160,45 @@ interface Props {
 
 /** First step of a new connection: the database, as a grid of logos. */
 export function DriverPicker({ onPick, onClose }: Props) {
+  const [query, setQuery] = useState("");
+  const main = matching(CHOICES, query);
+  const compatible = matching(PG_WIRE, query);
+  const [only, ...others] = [...main, ...compatible];
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && only && others.length === 0) {
+      e.preventDefault();
+      onPick(only.driver, only.preset ?? {});
+    } else if (e.key === "Escape" && query) {
+      // The first Esc clears the field; the dialog closes on the next.
+      e.stopPropagation();
+      setQuery("");
+    }
+  }
+
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal driver-picker" role="dialog" onKeyDown={(e) => e.key === "Escape" && onClose()}>
         <h2>{t("New connection")}</h2>
         <p className="muted">{t("Choose the database.")}</p>
-        <Tiles choices={CHOICES} onPick={onPick} focus />
-        <h3 className="driver-section">{t("PostgreSQL-compatible")}</h3>
-        <Tiles choices={PG_WIRE} onPick={onPick} />
+        <input
+          className="driver-search"
+          type="search"
+          autoFocus
+          value={query}
+          placeholder={t("Search databases…")}
+          aria-label={t("Search databases…")}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onKeyDown}
+        />
+        {main.length > 0 && <Tiles choices={main} onPick={onPick} />}
+        {compatible.length > 0 && (
+          <>
+            <h3 className="driver-section">{t("PostgreSQL-compatible")}</h3>
+            <Tiles choices={compatible} onPick={onPick} />
+          </>
+        )}
+        {!only && <p className="muted">{t("No database matches.")}</p>}
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={onClose}>
