@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   api,
+  type CatalogKey,
   type ObjectKind,
   type ObjectTarget,
   type Property,
@@ -8,6 +9,9 @@ import {
   toCommandError,
 } from "../api";
 import { isRelation } from "../components/Navigator";
+import { catalogEntry, catalogKey, saveCatalog, useCatalogVersion } from "../catalog/catalog";
+import { NotesPanel } from "../catalog/NotesPanel";
+import { TagInput } from "../catalog/TagInput";
 import { Icon, objectIcon } from "../ui/Icon";
 import { SqlEditor } from "../editor/SqlEditor";
 import { onNavigatorRefresh } from "../navigatorEvents";
@@ -90,6 +94,9 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
+  useCatalogVersion();
+  const ckey = (column = "") => catalogKey(tab.database, tab.schema, tab.name, column);
   const sections = sectionsFor(tab.objectKind);
   const section = tab.section && sections.includes(tab.section) ? tab.section : sections[0]!;
   const target: ObjectTarget = { schema: tab.schema, name: tab.name, kind: tab.objectKind, parent: tab.parent };
@@ -118,6 +125,10 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
       cancelled = true;
     };
   }, [version]);
+
+  useEffect(() => {
+    api.catalogTags(tab.connectionId).then((t) => setTagSuggestions(t.map((x) => x.tag)), () => setTagSuggestions([]));
+  }, [tab.connectionId]);
 
   // Reload when the object's schema changes, e.g. after an ALTER from the navigator.
   useEffect(
@@ -191,6 +202,9 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
           <Icon name="refresh" />
         </button>
       </header>
+      {isRelation(tab.objectKind) && (
+        <NotesPanel connectionId={connection.id} catalogKey={ckey()} suggestions={tagSuggestions} />
+      )}
       <nav className="object-sections">
         {sections.map((s) => (
           <button key={s} className={s === section ? "active" : ""} onClick={() => onChange({ section: s })}>
@@ -216,7 +230,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
         )}
         {d && section === "columns" && (
           <MetaTable
-            head={["#", "Name", "Type", "Nullable", "Default", "Key", "Comment"]}
+            head={["#", "Name", "Type", "Nullable", "Default", "Key", "Comment", "Note", "Tags"]}
             rows={d.columns.map((c, i) => [
               String(i + 1),
               c.name,
@@ -225,6 +239,8 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               c.default ?? "",
               c.primary_key ? "PK" : "",
               c.comment ?? "",
+              <ColumnNote key="note" connectionId={connection.id} catalogKey={ckey(c.name)} />,
+              <ColumnTags key="tags" connectionId={connection.id} catalogKey={ckey(c.name)} suggestions={tagSuggestions} />,
             ])}
           />
         )}
@@ -320,3 +336,44 @@ function MetaTable({ head, rows }: { head: string[]; rows: React.ReactNode[][] }
   );
 }
 
+
+const reportError = (e: unknown) => workbench().showError(toCommandError(e).message);
+
+function ColumnNote({ connectionId, catalogKey }: { connectionId: string; catalogKey: CatalogKey }) {
+  useCatalogVersion();
+  const entry = catalogEntry(connectionId, catalogKey);
+  const [note, setNote] = useState(entry?.note ?? "");
+  useEffect(() => setNote(entry?.note ?? ""), [entry?.note]);
+  return (
+    <input
+      className="cell-input"
+      aria-label={`Note of ${catalogKey.column}`}
+      value={note}
+      onChange={(e) => setNote(e.target.value)}
+      onBlur={() =>
+        note !== (entry?.note ?? "") && void saveCatalog(connectionId, catalogKey, note, entry?.tags ?? []).catch(reportError)
+      }
+    />
+  );
+}
+
+function ColumnTags({
+  connectionId,
+  catalogKey,
+  suggestions,
+}: {
+  connectionId: string;
+  catalogKey: CatalogKey;
+  suggestions: string[];
+}) {
+  useCatalogVersion();
+  const entry = catalogEntry(connectionId, catalogKey);
+  return (
+    <TagInput
+      label={`Tags of ${catalogKey.column}`}
+      tags={entry?.tags ?? []}
+      suggestions={suggestions}
+      onChange={(tags) => void saveCatalog(connectionId, catalogKey, entry?.note ?? "", tags).catch(reportError)}
+    />
+  );
+}

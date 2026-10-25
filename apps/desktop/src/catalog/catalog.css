@@ -51,3 +51,10 @@
   resize: vertical;
   min-height: 28px;
 }
+
+.cell-input {
+  width: 100%;
+  min-width: 120px;
+  border: 0;
+  background: transparent;
+}
