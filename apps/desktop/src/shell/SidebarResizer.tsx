@@ -29,6 +29,10 @@ const save = (width: number) => void setStored(KEY, width === DEFAULT ? null : w
  *  set the width; a double-click goes back to the default. Saved when the drag ends. */
 export function SidebarResizer({ width, onResize }: { width: number; onResize: (width: number) => void }) {
   const [dragging, setDragging] = useState(false);
+  const resizeAndSave = (next: number) => {
+    onResize(next);
+    save(next);
+  };
 
   function start(e: React.PointerEvent<HTMLDivElement>) {
     if (e.button !== 0) return;
@@ -54,9 +58,7 @@ export function SidebarResizer({ width, onResize }: { width: number; onResize: (
     const delta = e.key === "ArrowLeft" ? -STEP : e.key === "ArrowRight" ? STEP : 0;
     if (!delta && e.key !== "Home") return;
     e.preventDefault();
-    const next = e.key === "Home" ? DEFAULT : clamp(width + delta);
-    onResize(next);
-    save(next);
+    resizeAndSave(e.key === "Home" ? DEFAULT : clamp(width + delta));
   }
 
   return (
@@ -69,10 +71,7 @@ export function SidebarResizer({ width, onResize }: { width: number; onResize: (
       tabIndex={0}
       title={t("Drag to resize, double-click to reset")}
       onPointerDown={start}
-      onDoubleClick={() => {
-        onResize(DEFAULT);
-        save(DEFAULT);
-      }}
+      onDoubleClick={() => resizeAndSave(DEFAULT)}
       onKeyDown={onKey}
     />
   );

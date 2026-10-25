@@ -17,12 +17,22 @@ const DRIVERS = msg("Drivers");
 type Value = boolean | number | string;
 
 /** The sections after the declared settings; `keywords` (English) are found by the search
- *  too, and the shortcuts are also found by their actions. */
-const PANELS: { title: string; keywords: string; render: (search: string) => ReactNode }[] = [
+ *  too, and a panel with `contains` is also found by its content, which it then filters. */
+const PANELS: {
+  title: string;
+  keywords: string;
+  contains?: (needle: string) => boolean;
+  render: (search: string) => ReactNode;
+}[] = [
   { title: SECURITY, keywords: "password encryption credentials keyring", render: () => <MasterPasswordPanel /> },
   { title: AGENTS, keywords: "MCP AI assistant", render: () => <AgentsPanel /> },
   { title: DRIVERS, keywords: "ODBC ADBC Oracle Instant Client download", render: () => <DriversPanel /> },
-  { title: SHORTCUTS, keywords: "keys keyboard", render: (search) => <ShortcutsPanel search={search} /> },
+  {
+    title: SHORTCUTS,
+    keywords: "keys keyboard",
+    contains: (needle) => allActions().some((a) => actionMatches(a, needle)),
+    render: (search) => <ShortcutsPanel search={search} />,
+  },
 ];
 
 /** Whether any of `texts`, in English or translated, contains `needle` (lowercase). */
@@ -50,11 +60,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     if (needle && !found(needle, def.section) && !settingFound(needle, def)) continue;
     sections.set(def.section, [...(sections.get(def.section) ?? []), def]);
   }
-  // A panel found by its title shows whole; the shortcuts also by their actions, filtered.
+  // A panel found by its title shows whole; one found by its content, filtered.
   const panels = PANELS.flatMap((p) => {
     if (!needle || found(needle, p.title, p.keywords)) return [{ ...p, search: "" }];
-    const byAction = p.title === SHORTCUTS && allActions().some((a) => actionMatches(a, needle));
-    return byAction ? [{ ...p, search: needle }] : [];
+    return p.contains?.(needle) ? [{ ...p, search: needle }] : [];
   });
   const titles = [...sections.keys(), ...panels.map((p) => p.title)];
   const save = (def: SettingDef<Value>, value: Value | null) => {

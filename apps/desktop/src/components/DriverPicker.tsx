@@ -127,11 +127,11 @@ function DriverLogo({ choice }: { choice: Choice }) {
   );
 }
 
-function Tiles({ choices, onPick }: { choices: Choice[]; onPick: Props["onPick"] }) {
+function Tiles({ choices, onPick }: { choices: Choice[]; onPick: (choice: Choice) => void }) {
   return (
     <div className="driver-grid">
       {choices.map((c) => (
-        <button key={c.label} type="button" className="driver-tile" onClick={() => onPick(c.driver, c.preset ?? {})}>
+        <button key={c.label} type="button" className="driver-tile" onClick={() => onPick(c)}>
           <DriverLogo choice={c} />
           <span>{t(c.label)}</span>
         </button>
@@ -157,6 +157,7 @@ export function DriverPicker({ onPick, onClose }: Props) {
   const main = matching(CHOICES, needle);
   const pgWire = matching(PG_WIRE, needle);
   const first = main[0] ?? pgWire[0];
+  const pick = (c: Choice) => onPick(c.driver, c.preset ?? {});
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal driver-picker" role="dialog" onKeyDown={(e) => e.key === "Escape" && onClose()}>
@@ -172,15 +173,15 @@ export function DriverPicker({ onPick, onClose }: Props) {
             onChange={(e) => setFilter(e.target.value)}
             onKeyDown={(e) => {
               // Enter takes the first match.
-              if (e.key === "Enter" && needle && first) onPick(first.driver, first.preset ?? {});
+              if (e.key === "Enter" && needle && first) pick(first);
             }}
           />
         </div>
-        {main.length > 0 && <Tiles choices={main} onPick={onPick} />}
+        {main.length > 0 && <Tiles choices={main} onPick={pick} />}
         {pgWire.length > 0 && (
           <>
             <h3 className="driver-section">{t("PostgreSQL-compatible")}</h3>
-            <Tiles choices={pgWire} onPick={onPick} />
+            <Tiles choices={pgWire} onPick={pick} />
           </>
         )}
         {!first && <p className="muted driver-none">{t("No database matches.")}</p>}
