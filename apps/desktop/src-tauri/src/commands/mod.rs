@@ -146,6 +146,18 @@ impl AppState {
         }
     }
 
+    /// Drops the notes of connections that are no longer saved, e.g. when removing them failed
+    /// earlier. Does nothing when the connections file could not be read.
+    pub fn prune_catalog(&self) {
+        let Ok(store) = &*lock(&self.store) else {
+            return;
+        };
+        let ids: Vec<Uuid> = store.list().iter().map(|c| c.id).collect();
+        if let Ok(catalog) = &mut *lock(&self.catalog) {
+            let _ = catalog.retain_connections(&ids);
+        }
+    }
+
     fn forget_catalog(&self, id: Uuid) {
         catalog::forget_connection(&mut lock(&self.catalog), id);
     }

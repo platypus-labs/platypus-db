@@ -141,6 +141,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         settings,
         dir(app, false).map(|d| d.join("scripts")),
     );
+    state.prune_catalog();
     app.manage(state);
     // Downloaded drivers live with the data; removals that Windows refused are finished.
     if let Ok(data) = dir(app, false) {

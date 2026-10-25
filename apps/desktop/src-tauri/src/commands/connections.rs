@@ -188,6 +188,7 @@ pub fn delete_connection(
         s.delete(id)?;
         Ok(s.list().to_vec())
     })?;
+    // Leftovers (a failed delete here) are pruned at the next start.
     state.forget_catalog(id);
     Ok(list)
 }

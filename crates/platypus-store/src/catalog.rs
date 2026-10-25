@@ -284,6 +284,37 @@ impl CatalogStore {
             .map_err(db_error)?;
         Ok(())
     }
+
+    /// Forgets the notes and tags of every connection not in `keep`, in one transaction.
+    pub fn retain_connections(&mut self, keep: &[Uuid]) -> Result<()> {
+        let keep: Vec<String> = keep.iter().map(Uuid::to_string).collect();
+        let tx = self.db.transaction().map_err(db_error)?;
+        for table in ["notes", "tags"] {
+            let mut stale = Vec::new();
+            {
+                let mut q = tx
+                    .prepare(&format!("SELECT DISTINCT connection_id FROM {table}"))
+                    .map_err(db_error)?;
+                let rows = q
+                    .query_map([], |r| r.get::<_, String>(0))
+                    .map_err(db_error)?;
+                for id in rows {
+                    let id = id.map_err(db_error)?;
+                    if !keep.contains(&id) {
+                        stale.push(id);
+                    }
+                }
+            }
+            for id in stale {
+                tx.execute(
+                    &format!("DELETE FROM {table} WHERE connection_id = ?1"),
+                    params![id],
+                )
+                .map_err(db_error)?;
+            }
+        }
+        tx.commit().map_err(db_error)
+    }
 }
 
 fn key_of(r: &rusqlite::Row<'_>) -> rusqlite::Result<CatalogKey> {
@@ -422,5 +453,20 @@ mod tests {
             normalize_tags(&tags(&[" #PII ", "two words", "", "#"])),
             ["pii", "two-words"]
         );
+    }
+
+    #[test]
+    fn retain_connections_drops_the_others() {
+        let mut s = CatalogStore::open_in_memory().unwrap();
+        let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
+        for c in [a, b] {
+            s.save(c, &key("orders", ""), "note", &tags(&["core"]))
+                .unwrap();
+        }
+        s.retain_connections(&[a]).unwrap();
+        assert_eq!(s.entries(a).unwrap().len(), 1);
+        assert_eq!(s.tags(a).unwrap().len(), 1);
+        assert!(s.entries(b).unwrap().is_empty());
+        assert!(s.tags(b).unwrap().is_empty());
     }
 }
