@@ -49,12 +49,18 @@ impl SessionInit {
                     ));
                 }
                 DriverKind::Mongo => out.push(format!("use {schema}")),
+                DriverKind::Oracle => out.push(format!(
+                    "ALTER SESSION SET CURRENT_SCHEMA = {}",
+                    quote(schema, '"')
+                )),
+                DriverKind::Db2 => out.push(format!("SET SCHEMA {}", quote(schema, '"'))),
                 // Their schema is a field of the connection, passed to the driver.
                 DriverKind::Snowflake
                 | DriverKind::BigQuery
                 | DriverKind::Databricks
                 | DriverKind::Trino
-                | DriverKind::Adbc => {
+                | DriverKind::Adbc
+                | DriverKind::Odbc => {
                     return Err(Error::Config(
                         "set the schema in the connection's own fields".to_owned(),
                     ));
@@ -93,7 +99,8 @@ impl SessionInit {
                 DriverKind::Snowflake => {
                     out.push(format!("ALTER SESSION SET TIMEZONE = '{zone}'"));
                 }
-                DriverKind::BigQuery | DriverKind::Adbc => {
+                DriverKind::Oracle => out.push(format!("ALTER SESSION SET TIME_ZONE = '{zone}'")),
+                DriverKind::BigQuery | DriverKind::Adbc | DriverKind::Db2 | DriverKind::Odbc => {
                     return Err(Error::Config(format!(
                         "{} has no session time zone here",
                         driver.name()
@@ -183,6 +190,24 @@ mod tests {
         );
         assert!(init.sql(DriverKind::Sqlite).is_err());
         assert!(init.sql(DriverKind::SqlServer).is_err());
+        let oracle = SessionInit {
+            schema: Some("HR".to_owned()),
+            time_zone: Some("+02:00".to_owned()),
+            ..SessionInit::default()
+        };
+        assert_eq!(
+            oracle.sql(DriverKind::Oracle).unwrap(),
+            [
+                "ALTER SESSION SET CURRENT_SCHEMA = \"HR\"",
+                "ALTER SESSION SET TIME_ZONE = '+02:00'"
+            ]
+        );
+        assert!(oracle.sql(DriverKind::Db2).is_err(), "no session time zone");
+        assert_eq!(
+            schema_only.sql(DriverKind::Db2).unwrap(),
+            ["SET SCHEMA \"sales\""]
+        );
+        assert!(schema_only.sql(DriverKind::Odbc).is_err());
         let only = SessionInit {
             statements: vec!["PRAGMA foreign_keys = ON".to_owned()],
             ..SessionInit::default()
