@@ -470,6 +470,16 @@ impl Ddl<'_> {
                     ));
                 }
             }
+            Dialect::ClickHouse => {
+                for c in columns {
+                    let comment = self.d.quote_literal(text(c.comment.as_ref()).unwrap_or(""));
+                    script.statements.push(format!(
+                        "ALTER TABLE {} COMMENT COLUMN {} {comment}",
+                        self.table(table),
+                        self.q(&c.name)
+                    ));
+                }
+            }
             Dialect::MySql => {}
             // shortcut: SQL Server keeps comments as extended properties, not written here;
             // add sp_addextendedproperty when someone asks.
@@ -795,6 +805,18 @@ mod tests {
             "{mysql:?}"
         );
         assert_eq!(mysql.statements.len(), 2);
+    }
+
+    #[test]
+    fn comments_clickhouse_columns() {
+        let mut design = orders();
+        design.columns[2].comment = Some("free text".to_owned());
+        let s = script(Dialect::ClickHouse, "shop", None, &design).unwrap();
+        assert_eq!(
+            s.statements.last().map(String::as_str),
+            Some("ALTER TABLE shop.orders COMMENT COLUMN note 'free text'"),
+            "{s:?}"
+        );
     }
 
     #[test]

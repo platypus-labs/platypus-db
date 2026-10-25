@@ -291,8 +291,8 @@ pub async fn load(
             "SELECT 'fk_' || {t} || '_' || id, on_delete, on_update
              FROM pragma_foreign_key_list({t}, {s}) GROUP BY id"
         )),
-        // DuckDB has no referential actions.
-        Dialect::DuckDb => None,
+        // DuckDB has no referential actions, ClickHouse no foreign keys.
+        Dialect::DuckDb | Dialect::ClickHouse => None,
     };
     if let Some(sql) = actions {
         for row in query_text(conn, &sql).await? {
