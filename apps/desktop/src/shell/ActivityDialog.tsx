@@ -22,13 +22,10 @@ function ActivityDialog({ onClose }: { onClose: () => void }) {
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div
         className="modal activity"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="activity-title"
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.key === "Escape" && onClose()}
       >
-        <h2 id="activity-title">{t("Activity")}</h2>
+        <h2>{t("Activity")}</h2>
         <p className="muted small">{t("Errors shown and work done in the background since the app started.")}</p>
         {newest.length === 0 ? (
           <p className="muted activity-empty">{t("Nothing yet.")}</p>

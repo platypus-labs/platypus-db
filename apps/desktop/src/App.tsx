@@ -293,6 +293,7 @@ export function App() {
   }
 
   const connectionById = (id: string) => connections?.find((c) => c.id === id);
+  const connectionName = (id: string) => connectionById(id)?.name ?? "?";
 
   /** A new connection goes into the active project. */
   async function newConnection(folder: string | null = null) {
@@ -633,8 +634,9 @@ export function App() {
     if (toast) logError(toast);
   }, [toast]);
   useEffect(() => {
-    const onError = (e: ErrorEvent) => logError(t("Unexpected error: {message}", { message: e.message }));
-    const onRejection = (e: PromiseRejectionEvent) => logError(t("Unexpected error: {message}", { message: toCommandError(e.reason).message }));
+    const unexpected = (message: string) => logError(t("Unexpected error: {message}", { message }));
+    const onError = (e: ErrorEvent) => unexpected(e.message);
+    const onRejection = (e: PromiseRejectionEvent) => unexpected(toCommandError(e.reason).message);
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onRejection);
     return () => {
@@ -729,10 +731,10 @@ export function App() {
               })
             }
             title={tabTitle}
-            shortTitle={(t) => tabKind(t.kind)?.label(t) || (connectionById(t.connectionId)?.name ?? "?")}
+            shortTitle={(t) => tabKind(t.kind)?.label(t) || connectionName(t.connectionId)}
             icon={tabIcon}
             color={(id) => connectionColor(connectionById(id))}
-            connectionName={(id) => connectionById(id)?.name ?? "?"}
+            connectionName={connectionName}
             onActivate={(t) => setActiveTab(t.key)}
             onClose={closeTab}
             onMenu={(t, x, y) => setMenu({ x, y, target: { scope: "tab", arg: { tab: t } } })}
@@ -748,6 +750,8 @@ export function App() {
             const connection = connectionById(t.connectionId);
             const Component = tabKind(t.kind)?.component as ComponentType<TabProps<TabModel>> | undefined;
             const pane = split ? split.indexOf(t.key) : t.key === activeTab ? 0 : -1;
+            // A click or the focus in a pane of the split makes its tab the active one.
+            const activate = () => split && t.key !== activeTab && setActiveTab(t.key);
             return (
               connection &&
               Component && (
@@ -756,9 +760,8 @@ export function App() {
                   className={`pane${split && t.key === activeTab ? " focused" : ""}`}
                   hidden={pane < 0}
                   style={{ order: pane }}
-                  // A click or the focus in a pane of the split makes its tab the active one.
-                  onMouseDownCapture={() => split && t.key !== activeTab && setActiveTab(t.key)}
-                  onFocusCapture={() => split && t.key !== activeTab && setActiveTab(t.key)}
+                  onMouseDownCapture={activate}
+                  onFocusCapture={activate}
                 >
                   <Component
                     tab={t}
