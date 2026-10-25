@@ -176,8 +176,9 @@ pub async fn import(
     if plan.columns.is_empty() {
         return Err(ImportError::Plan("no column to import".to_owned()));
     }
-    let autocommit = target.transaction().autocommit;
-    target.set_autocommit(false).await?;
+    // An explicit BEGIN, as `dml::apply` does: it works in either commit mode, and opens the
+    // transaction before DDL too.
+    exec(target, "BEGIN").await?;
     let mut created = false;
     let outcome = async {
         if plan.create {
@@ -208,14 +209,11 @@ pub async fn import(
         // The first error explains more than a failed cleanup.
         let _ = target.rollback().await;
         if created {
-            // Only MySQL still has the table; elsewhere the DROP fails, and either way the
-            // transaction it opens is ended.
+            // Only MySQL still has the table; elsewhere the DROP fails. In manual-commit mode
+            // it opens a transaction, ended here.
             let _ = exec(target, &format!("DROP TABLE {}", plan.table(dialect))).await;
             let _ = target.rollback().await;
         }
-    }
-    if autocommit {
-        let _ = target.set_autocommit(true).await;
     }
     outcome
 }

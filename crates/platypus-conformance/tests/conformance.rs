@@ -1764,6 +1764,8 @@ async fn imports_data_files() {
         let d = Dialect::from(b.config.driver);
         let table = d.qualified(Some(&b.schema), "conf_import");
         let _ = run(&*conn, &format!("DROP TABLE {table}")).await;
+        // A manual-commit session, like a production connection's: the import commits anyway.
+        conn.set_autocommit(false).await.unwrap();
         let mut plan = ImportPlan {
             source_table: "conf_import".to_owned(),
             schema: Some(b.schema.clone()),
@@ -1786,7 +1788,8 @@ async fn imports_data_files() {
         let check = format!(
             "SELECT COUNT(*), SUM(id), MAX(name), SUM(price) FROM {table} WHERE name IS NOT NULL OR id = 2"
         );
-        let batches = collect(&b, &*conn, &check).await;
+        let other = b.connect().await;
+        let batches = collect(&b, &*other, &check).await;
         let values: Vec<_> = (0..4).map(|c| cell(&batches[0], c, 0)).collect();
         assert_eq!(values[0].as_deref(), Some("3"), "{}", b.name);
         assert_eq!(values[1].as_deref(), Some("6"), "{}", b.name);
@@ -1810,5 +1813,6 @@ async fn imports_data_files() {
         let batches = collect(&b, &*conn, &format!("SELECT COUNT(*) FROM {table}")).await;
         assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
         run(&*conn, &format!("DROP TABLE {table}")).await.unwrap();
+        conn.commit().await.unwrap();
     }
 }

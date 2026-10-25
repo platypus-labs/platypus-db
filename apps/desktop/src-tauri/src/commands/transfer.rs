@@ -63,7 +63,12 @@ pub async fn preview_import(
 ) -> CommandResult<ImportPreview> {
     let dialect = Dialect::from(state.session(session_id)?.config.driver);
     let file = open_file(&path).await?;
-    let schema = file.schemas().await?.into_iter().next().map(|s| s.name);
+    let schema = file
+        .schemas()
+        .await?
+        .into_iter()
+        .find(|s| s.current)
+        .map(|s| s.name);
     let tables: Vec<String> = match schema {
         Some(schema) => file
             .objects(&schema)
