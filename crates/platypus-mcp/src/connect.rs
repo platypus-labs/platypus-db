@@ -3,6 +3,7 @@
 //! keychain, the SSH secrets, and the bootstrap statements run after connecting.
 
 use platypus_core::{Connection, ConnectionConfig, Driver, DriverKind, Error, ExecOptions, Secret};
+use platypus_driver_adbc::AdbcDriver;
 use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
 use platypus_driver_libsql::LibsqlDriver;
@@ -37,10 +38,7 @@ pub async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, E
             | DriverKind::BigQuery
             | DriverKind::Databricks
             | DriverKind::Trino
-            | DriverKind::Adbc => Err(Error::Unsupported(format!(
-                "{} is not available yet",
-                config.driver.name()
-            ))),
+            | DriverKind::Adbc => AdbcDriver::shared()?.connect(&config).await,
         }
     })
     .await

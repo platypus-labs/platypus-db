@@ -36,6 +36,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use platypus_core::{Connection, ConnectionConfig, Driver, DriverKind, Error};
+use platypus_driver_adbc::AdbcDriver;
 use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
 use platypus_driver_libsql::LibsqlDriver;
@@ -208,10 +209,7 @@ pub(crate) async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connect
             | DriverKind::BigQuery
             | DriverKind::Databricks
             | DriverKind::Trino
-            | DriverKind::Adbc => Err(Error::Unsupported(format!(
-                "{} is not available yet",
-                config.driver.name()
-            ))),
+            | DriverKind::Adbc => AdbcDriver::shared()?.connect(&config).await,
         }
     })
     .await

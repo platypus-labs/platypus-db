@@ -124,6 +124,11 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         dir(app, false).map(|d| d.join("scripts")),
     );
     app.manage(state);
+    // Downloaded drivers live with the data; removals that Windows refused are finished.
+    if let Ok(data) = dir(app, false) {
+        platypus_drivers::set_data_dir(&data);
+        platypus_drivers::purge_removed(&data);
+    }
     open_main_window(app)?;
     Ok(())
 }
