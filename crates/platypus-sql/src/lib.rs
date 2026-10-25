@@ -12,9 +12,9 @@ mod format;
 mod generate;
 mod lexer;
 mod lint;
-mod order;
 mod params;
 pub mod pg_literal;
+mod rewrite;
 mod source;
 
 pub use analysis::{Analysis, StatementKind, TableName, analyze};
@@ -23,8 +23,8 @@ pub use format::{FormatOptions, KeywordCase, format};
 pub use generate::ObjectName;
 pub use lexer::{Lexer, Token, TokenKind};
 pub use lint::{ColumnRef, Lint, LintIssue, LintKind, TableAlias, lint};
-pub use order::{count_query, set_order_by};
 pub use params::{Parameter, ParameterKind, parameters};
+pub use rewrite::{add_condition, count_query, set_order_by};
 pub use source::{SelectItem, SourceTable, source_table};
 
 /// A statement's byte range: from its first token to its last, excluding surrounding

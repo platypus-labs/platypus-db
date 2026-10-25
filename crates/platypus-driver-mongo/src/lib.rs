@@ -13,6 +13,7 @@ mod meta;
 pub mod shell;
 #[cfg(test)]
 mod tests;
+pub mod viewer;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};

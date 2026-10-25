@@ -1135,11 +1135,17 @@ export const api = {
   /** The table a query reads, when its rows are that table's rows. */
   querySource: (sql: string, driver: DriverKind) => invoke<QuerySource | null>("query_source", { sql, driver }),
   lintSql: (sql: string, driver: DriverKind) => invoke<SqlLint>("lint_sql", { sql, driver }),
-  /** `sql` sorted by `column` (or, with `null`, unsorted): only its top-level ORDER BY changes. */
+  /** `sql` sorted by `column` (or, with `null`, unsorted): only its top-level ORDER BY changes.
+   *  `null` when it is not a read-only query the sort can be placed in with certainty. */
   sqlOrderBy: (sql: string, driver: DriverKind, column: string | null, desc: boolean) =>
-    invoke<string>("sql_order_by", { sql, driver, column, desc }),
-  /** The query counting the rows of `sql`. */
-  sqlCountQuery: (sql: string, driver: DriverKind) => invoke<string>("sql_count_query", { sql, driver }),
+    invoke<string | null>("sql_order_by", { sql, driver, column, desc }),
+  /** Whether a header click may rewrite `sql` (see `sqlOrderBy`). */
+  sqlSortable: (sql: string, driver: DriverKind) => invoke<boolean>("sql_sortable", { sql, driver }),
+  /** The query counting the rows of `sql`; `null` when it cannot be counted. */
+  sqlCountQuery: (sql: string, driver: DriverKind) => invoke<string | null>("sql_count_query", { sql, driver }),
+  /** `sql` with `condition` added to its top-level WHERE; `null` when it cannot be placed. */
+  sqlAddCondition: (sql: string, driver: DriverKind, condition: string) =>
+    invoke<string | null>("sql_add_condition", { sql, driver, condition }),
   /** Saved scripts of a project, `null` for All connections. */
   listScripts: (project: string | null) => invoke<ScriptList>("list_scripts", { project }),
   /** A new empty script; returns its relative path. */
