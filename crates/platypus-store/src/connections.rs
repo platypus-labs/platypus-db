@@ -10,6 +10,9 @@ use uuid::Uuid;
 use crate::{Result, SecretStore, StoreError};
 
 mod folders;
+mod imports;
+
+pub use imports::{ImportInto, ImportRequest, ImportTarget};
 
 /// 2 added projects, 3 network profiles, 4 the agents' access, 5 folders: an older app would
 /// drop them on its first save, so it refuses the file.
@@ -678,6 +681,24 @@ impl ConnectionStore {
 
     /// Inserts or replaces (by id) a connection and updates its keychain entry.
     pub fn save(&mut self, connection: SavedConnection, password: PasswordUpdate) -> Result<()> {
+        self.check_connection(&connection)?;
+        let id = connection.id;
+        let save_password = connection.save_password;
+        match self.connections.iter_mut().find(|c| c.id == id) {
+            Some(existing) => *existing = connection,
+            None => self.connections.push(connection),
+        }
+        self.write()?;
+        match password {
+            _ if !save_password => self.secrets.delete(id),
+            PasswordUpdate::Set(secret) => self.secrets.set(id, &secret),
+            PasswordUpdate::Clear => self.secrets.delete(id),
+            PasswordUpdate::Keep => Ok(()),
+        }
+    }
+
+    /// What `save` refuses: no name, half a client certificate, an unknown network profile.
+    fn check_connection(&self, connection: &SavedConnection) -> Result<()> {
         if connection.name.trim().is_empty() {
             return Err(StoreError::Invalid(
                 "connection name is required".to_owned(),
@@ -692,19 +713,7 @@ impl ConnectionStore {
         {
             return Err(StoreError::Invalid("unknown network profile".to_owned()));
         }
-        let id = connection.id;
-        let save_password = connection.save_password;
-        match self.connections.iter_mut().find(|c| c.id == id) {
-            Some(existing) => *existing = connection,
-            None => self.connections.push(connection),
-        }
-        self.write()?;
-        match password {
-            _ if !save_password => self.secrets.delete(id),
-            PasswordUpdate::Set(secret) => self.secrets.set(id, &secret),
-            PasswordUpdate::Clear => self.secrets.delete(id),
-            PasswordUpdate::Keep => Ok(()),
-        }
+        Ok(())
     }
 
     /// Sets the virtual key of `schema.table`, or removes it when `columns` is empty.

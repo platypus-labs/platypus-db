@@ -215,7 +215,7 @@ impl ConnectionStore {
         &self.project_folders
     }
 
-    fn require_project(&self, id: Uuid) -> Result<()> {
+    pub(super) fn require_project(&self, id: Uuid) -> Result<()> {
         if self.projects.iter().any(|p| p.id == id) {
             Ok(())
         } else {

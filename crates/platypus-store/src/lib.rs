@@ -16,9 +16,9 @@ mod vault;
 
 pub use auth::{command_password, external_password, pgpass_password, pgpass_path};
 pub use connections::{
-    AgentAccess, ConnectionFolder, ConnectionStore, ConnectionType, NetworkProfile, PasswordUpdate,
-    Project, ProjectFolder, SavedConnection, SavedInit, SavedSsh, SshAuthKind, VirtualKey,
-    initials_of,
+    AgentAccess, ConnectionFolder, ConnectionStore, ConnectionType, ImportInto, ImportRequest,
+    ImportTarget, NetworkProfile, PasswordUpdate, Project, ProjectFolder, SavedConnection,
+    SavedInit, SavedSsh, SshAuthKind, VirtualKey, initials_of,
 };
 pub use history::{
     HistoryEntry, HistoryOrigin, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry,
