@@ -333,7 +333,10 @@ distinti alle colonne UNIQUE. L'export si comprime in gzip o zstd e si carica co
 un URL firmato o su un bucket S3, GCS (chiavi HMAC), R2 o MinIO con le sue chiavi, firmato con
 Signature V4 (`platypus-transfer::s3`); la chiave segreta non si salva. Conformance: migrazione
 tra le 30 coppie di database diversi, generatore su tutti; l'upload sul bucket si prova con
-`PLATYPUS_TEST_S3` contro un server S3 locale (es. `rustfs/rustfs`).
+`PLATYPUS_TEST_S3` contro un server S3 locale (es. `rustfs/rustfs`). Limiti noti: gli indici parziali
+perdono il `WHERE`; un indice su TEXT in MySQL copre i primi 255 caratteri e in SQL Server la
+colonna diventa `NVARCHAR(450)`; le chiavi esterne puntano alla tabella con lo stesso nome nello
+schema copiato; nelle viste si riscrive ogni nome uguale allo schema seguito da un punto.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
