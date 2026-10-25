@@ -49,6 +49,23 @@ async function settingsFile(dir, pattern) {
   assert.match(text, pattern);
 }
 
+/** Waits until settings.toml has been read and no longer matches `pattern`: a key that is
+ *  removed. A file that cannot be read yet never counts as "without the key". */
+async function settingsLack(dir, pattern) {
+  const deadline = Date.now() + 5000;
+  let text = null;
+  while ((text === null || pattern.test(text)) && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 100));
+    try {
+      text = readFileSync(join(dir, "settings.toml"), "utf8");
+    } catch {
+      // Not written yet.
+    }
+  }
+  assert.notEqual(text, null, "settings.toml was never written");
+  assert.doesNotMatch(text, pattern);
+}
+
 /** Opens the context menu of the tab at `index`. */
 async function tabMenu(page, index) {
   await page.eval(`${tabs}[${index}].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 200, clientY: 60 }))`);
@@ -96,13 +113,13 @@ export default async function (page, { dir, shots }) {
   await settingsFile(dir, /sidebar_width = 320/);
   await page.eval(`document.querySelector('.sidebar-handle').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
   await page.waitFor(`${sidebarWidth} === 260`);
-  await settingsFile(dir, /^(?![\s\S]*sidebar_width)/);
+  await settingsLack(dir, /sidebar_width/);
   await page.key("b", "KeyB", 66, CTRL);
   await page.waitFor(`document.querySelector('.sidebar-column').hidden`);
   await settingsFile(dir, /sidebar_collapsed = true/);
   await page.eval(`document.querySelector('.topbar button[aria-label="Toggle sidebar"]').click()`);
   await page.waitFor(`!document.querySelector('.sidebar-column').hidden`);
-  await settingsFile(dir, /^(?![\s\S]*sidebar_collapsed)/);
+  await settingsLack(dir, /sidebar_collapsed/);
 
   // The tab bar is a tab list; its menu works from the keyboard and pins a tab.
   assert.equal(await page.eval(`document.querySelector('.tabs').getAttribute('role')`), "tablist");
@@ -160,7 +177,7 @@ export default async function (page, { dir, shots }) {
   await page.key("=", "Equal", 187, CTRL);
   await settingsFile(dir, /zoom = "110"/);
   await page.key("0", "Digit0", 48, CTRL);
-  await settingsFile(dir, /^(?![\s\S]*zoom = "110")/);
+  await settingsLack(dir, /zoom = "110"/);
 
   // The Activity log has the connection that opened, and dialogs carry their role and name.
   await page.eval(`document.querySelector('.activity-button').click()`);
