@@ -92,7 +92,7 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 | E — Explain e performance | ✅ fatto (P1, P2, P3) |
 | F — Connettività e credenziali | ✅ fatto (P1, P2) |
 | G — Nuovi driver | 🔒 Delfa · group-g-p2 · 2026-10-24 |
-| H — Import, export e trasferimento | 🔒 Claude · group-h-fixes · 2026-10-25 |
+| H — Import, export e trasferimento | 🔒 Paolo · group-h-fixes · 2026-10-25 |
 | I — Strumenti di schema | libero |
 | J — Amministrazione del server | libero |
 | K — Shell ed ergonomia | ✅ fatto (P1) |
