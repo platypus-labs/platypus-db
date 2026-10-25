@@ -382,7 +382,7 @@ impl Agent {
         let start = Instant::now();
         let result = match access::check(&args.sql, dialect, access, unfiltered, &saved.name) {
             Ok(statement) => {
-                let read_only = (access == AgentAccess::ReadOnly).then_some(dialect);
+                let read_only = (access == AgentAccess::ReadOnly).then_some(saved.driver);
                 self.execute(&store, &saved, statement, read_only, &limits)
                     .await
             }
@@ -409,7 +409,7 @@ impl Agent {
         store: &ConnectionStore,
         saved: &SavedConnection,
         statement: &str,
-        read_only: Option<Dialect>,
+        read_only: Option<DriverKind>,
         limits: &Limits,
     ) -> Result<query::Outcome> {
         let lease = self.lease(store, saved).await?;

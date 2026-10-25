@@ -87,7 +87,11 @@ impl LibsqlConnection {
 impl Connection for LibsqlConnection {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
         let state = self.transaction();
-        if !state.autocommit && !state.open && classify(sql) == TxEffect::None {
+        // DDL too: it is transactional in SQLite.
+        if !state.autocommit
+            && !state.open
+            && matches!(classify(sql), TxEffect::None | TxEffect::ImplicitCommit)
+        {
             self.run("BEGIN").await?;
         }
         let result = self.run(sql).await?;

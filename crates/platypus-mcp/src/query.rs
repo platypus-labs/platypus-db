@@ -7,7 +7,9 @@ use arrow_array::{Array, RecordBatch};
 use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use arrow_schema::DataType;
 use futures::StreamExt;
-use platypus_core::{Connection, Error, ExecOptions, ExecResult, META_DB_TYPE, RecordBatchStream};
+use platypus_core::{
+    Connection, DriverKind, Error, ExecOptions, ExecResult, META_DB_TYPE, RecordBatchStream,
+};
 use platypus_sql::Dialect;
 
 use crate::error::{AgentError, Result};
@@ -144,20 +146,37 @@ async fn run_plain(conn: &dyn Connection, sql: &str) -> Result<(), Error> {
     Ok(())
 }
 
-/// Runs `statement`, already checked. With `read_only`, it runs in that dialect's
+/// The statements that open and close the read-only transaction of `driver`: its
+/// dialect's ([`Dialect::read_only_begin`]), except on libSQL servers, which refuse
+/// `PRAGMA query_only`: there a write is only rolled back.
+fn read_only_statements(driver: DriverKind) -> (&'static [&'static str], &'static [&'static str]) {
+    if driver == DriverKind::Libsql {
+        return (&["BEGIN"], &["ROLLBACK"]);
+    }
+    let dialect = Dialect::from(driver);
+    (dialect.read_only_begin(), dialect.read_only_end())
+}
+
+/// Whether the read-only transaction of `driver` refuses writes, rather than only rolling
+/// them back afterwards.
+#[must_use]
+pub fn refuses_writes_when_read_only(driver: DriverKind) -> bool {
+    driver != DriverKind::Libsql && Dialect::from(driver).refuses_writes_when_read_only()
+}
+
+/// Runs `statement`, already checked. With `read_only`, it runs in that driver's
 /// read-only transaction, always rolled back.
 pub async fn run(
     conn: &dyn Connection,
     statement: &str,
-    read_only: Option<Dialect>,
+    read_only: Option<DriverKind>,
     limits: &Limits,
 ) -> std::result::Result<Outcome, RunError> {
     let cancel = conn.cancel_handle();
+    let (begin, end) = read_only.map_or((&[][..], &[][..]), read_only_statements);
     let work = async {
-        if let Some(dialect) = read_only {
-            for sql in dialect.read_only_begin() {
-                run_plain(conn, sql).await?;
-            }
+        for sql in begin {
+            run_plain(conn, sql).await?;
         }
         execute(conn, statement, limits).await
     };
@@ -167,12 +186,10 @@ pub async fn run(
         let _ = cancel.cancel().await;
         Err(RunError::Timeout)
     };
-    if let Some(dialect) = read_only {
-        // Rolled back whatever happened; a failure here leaves a transaction open, which
-        // makes the next call open a new connection.
-        for sql in dialect.read_only_end() {
-            let _ = run_plain(conn, sql).await;
-        }
+    // Rolled back whatever happened; a failure here leaves a transaction open, which
+    // makes the next call open a new connection.
+    for sql in end {
+        let _ = run_plain(conn, sql).await;
     }
     outcome
 }

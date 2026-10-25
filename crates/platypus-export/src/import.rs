@@ -128,7 +128,14 @@ impl ImportPlan {
                 Some(t) if !t.is_empty() => Ok(format!(
                     "{} {t}{}",
                     dialect.quote_ident(&c.target),
-                    if c.not_null { " NOT NULL" } else { "" }
+                    if c.not_null {
+                        " NOT NULL"
+                    } else if dialect == Dialect::ClickHouse && !t.starts_with("Nullable(") {
+                        // ClickHouse columns are not nullable unless declared so.
+                        " NULL"
+                    } else {
+                        ""
+                    }
                 )),
                 _ => Err(ImportError::Plan(format!(
                     "column {} has no type",
@@ -343,8 +350,11 @@ pub async fn import_rows(
 ) -> Result<u64, ImportError> {
     plan.check()?;
     // An explicit BEGIN, as `dml::apply` does: it works in either commit mode, and opens the
-    // transaction before DDL too.
-    exec(target, "BEGIN").await?;
+    // transaction before DDL too. ClickHouse has none: the rows written stay on failure.
+    let transaction = target.capabilities().transactions;
+    if transaction {
+        exec(target, "BEGIN").await?;
+    }
     let mut created = false;
     let outcome = async {
         if plan.create {
@@ -365,13 +375,17 @@ pub async fn import_rows(
                 return Err(ImportError::Cancelled);
             }
         }
-        target.commit().await?;
+        if transaction {
+            target.commit().await?;
+        }
         Ok(written)
     }
     .await;
     if outcome.is_err() {
         // The first error explains more than a failed cleanup.
-        let _ = target.rollback().await;
+        if transaction {
+            let _ = target.rollback().await;
+        }
         if created {
             // Only MySQL still has the table; elsewhere the DROP fails. In manual-commit mode
             // it opens a transaction, ended here.

@@ -1009,7 +1009,10 @@ async fn manual_commit_and_rollback() {
         assert_eq!(conn.transaction().open, !mysql, "{}: DDL first", b.name);
         conn.rollback().await.unwrap();
         let kept = run(conn, &format!("SELECT * FROM {ddl}")).await.is_ok();
-        assert_eq!(kept, mysql, "{}: the CREATE rolled back", b.name);
+        // CockroachDB commits the transaction before DDL (`autocommit_before_ddl`), YugabyteDB
+        // runs DDL in a transaction of its own.
+        let ddl_commits = mysql || matches!(b.name, "cockroach" | "yugabyte");
+        assert_eq!(kept, ddl_commits, "{}: the CREATE rolled back", b.name);
         conn.rollback().await.unwrap();
         conn.set_autocommit(true).await.unwrap();
 
@@ -2136,8 +2139,8 @@ async fn agent_count(b: &Backend, conn: &dyn Connection, table: &str) -> String 
 
 /// The first value an agent's read-only query returns.
 async fn agent_value(b: &Backend, conn: &dyn Connection, sql: &str) -> String {
-    let dialect = platypus_sql::Dialect::from(b.config.driver);
-    match platypus_mcp::query::run(conn, sql, Some(dialect), &Limits::default()).await {
+    let read_only = Some(b.config.driver);
+    match platypus_mcp::query::run(conn, sql, read_only, &Limits::default()).await {
         Ok(Outcome::Rows(t)) => t.rows[0][0].text().to_owned(),
         Ok(other) => panic!("{}: {sql} returned {other:?}", b.name),
         Err(e) => panic!("{}: {sql}: {e:?}", b.name),
@@ -2149,7 +2152,6 @@ async fn agents_read_in_read_only_transactions() {
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
-        let dialect = platypus_sql::Dialect::from(b.config.driver);
         // A real table: READ ONLY transactions still write temporary ones.
         let table = "agent_read_only_probe";
         run(conn, &format!("DROP TABLE IF EXISTS {table}"))
@@ -2166,19 +2168,23 @@ async fn agents_read_in_read_only_transactions() {
             let after = collect(&b, conn, "SELECT @@LOCK_TIMEOUT").await;
             assert_eq!(cell(&after[0], 0, 0).as_deref(), Some("-1"));
         }
-        // A write that got past the statement check is refused, or rolled back.
+        // A write that got past the statement check is refused, or rolled back. ClickHouse
+        // has no transaction to do either: only the statement check stops it.
         let insert = format!("INSERT INTO {table} VALUES (1)");
-        let write =
-            platypus_mcp::query::run(conn, &insert, Some(dialect), &Limits::default()).await;
-        if dialect.refuses_writes_when_read_only() {
-            assert!(
-                write.is_err(),
-                "{}: the read-only transaction wrote",
-                b.name
-            );
+        if conn.capabilities().transactions {
+            let write =
+                platypus_mcp::query::run(conn, &insert, Some(b.config.driver), &Limits::default())
+                    .await;
+            if platypus_mcp::query::refuses_writes_when_read_only(b.config.driver) {
+                assert!(
+                    write.is_err(),
+                    "{}: the read-only transaction wrote",
+                    b.name
+                );
+            }
+            assert!(!conn.transaction().open, "{}: left a transaction", b.name);
+            assert_eq!(agent_count(&b, conn, table).await, "0", "{}", b.name);
         }
-        assert!(!conn.transaction().open, "{}: left a transaction", b.name);
-        assert_eq!(agent_count(&b, conn, table).await, "0", "{}", b.name);
 
         // Afterwards the session writes again (SQLite turns query_only off).
         assert_eq!(affected(&b, conn, &insert).await, 1, "{}", b.name);
@@ -2217,7 +2223,13 @@ async fn imports_data_files() {
     let fields = stream.schema().fields().clone();
     drop(stream);
 
-    for b in backends().await {
+    // Manual commit, replace and upsert need transactions and unique keys, which ClickHouse
+    // lacks; the transfers cover its imports.
+    let all = backends().await;
+    for b in all
+        .iter()
+        .filter(|b| b.config.driver != DriverKind::ClickHouse)
+    {
         let conn = b.connect().await;
         let d = Dialect::from(b.config.driver);
         let table = d.qualified(Some(&b.schema), "conf_import");
@@ -2255,7 +2267,7 @@ async fn imports_data_files() {
             "SELECT COUNT(*), SUM(id), MAX(name), SUM(price) FROM {table} WHERE name IS NOT NULL OR id = 2"
         );
         let other = b.connect().await;
-        let batches = collect(&b, &*other, &check).await;
+        let batches = collect(b, &*other, &check).await;
         let values: Vec<_> = (0..4).map(|c| cell(&batches[0], c, 0)).collect();
         assert_eq!(values[0].as_deref(), Some("3"), "{}", b.name);
         assert_eq!(values[1].as_deref(), Some("6"), "{}", b.name);
@@ -2263,7 +2275,7 @@ async fn imports_data_files() {
         let price: f64 = values[3].as_deref().unwrap().parse().unwrap();
         assert!((price - 109.75).abs() < 1e-9, "{}: {price}", b.name);
 
-        check_import_modes(&b, &*source, &*conn, &*other, &plan, &table).await;
+        check_import_modes(b, &*source, &*conn, &*other, &plan, &table).await;
 
         // The table exists: creating it again fails, and the rows stay.
         assert!(
@@ -2282,7 +2294,7 @@ async fn imports_data_files() {
             "{}",
             b.name
         );
-        let batches = collect(&b, &*conn, &format!("SELECT COUNT(*) FROM {table}")).await;
+        let batches = collect(b, &*conn, &format!("SELECT COUNT(*) FROM {table}")).await;
         assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
         run(&*conn, &format!("DROP TABLE {table}")).await.unwrap();
         conn.commit().await.unwrap();
@@ -2302,10 +2314,16 @@ async fn transfers_tables_between_databases() {
         let d = Dialect::from(b.config.driver);
         let src = d.qualified(Some(&b.schema), "conf_xfer_src");
         let _ = run(&*conn, &format!("DROP TABLE {src}")).await;
+        // ClickHouse columns are not nullable unless declared so.
+        let null = if b.config.driver == DriverKind::ClickHouse {
+            " NULL"
+        } else {
+            ""
+        };
         run(
             &*conn,
             &format!(
-                "CREATE TABLE {src} (id INT, name VARCHAR(20), price DECIMAL(10, 2), day DATE)"
+                "CREATE TABLE {src} (id INT{null}, name VARCHAR(20){null}, price DECIMAL(10, 2){null}, day DATE{null})"
             ),
         )
         .await
@@ -2417,7 +2435,7 @@ async fn check_import_modes(
 
     // Upsert on a unique key: a changed row is updated, a deleted one inserted again.
     // SQLite qualifies the index, not its table.
-    let on = if b.config.driver == DriverKind::Sqlite {
+    let on = if b.speaks_sqlite() {
         "conf_import"
     } else {
         table
@@ -2485,7 +2503,12 @@ async fn migrates_tables_between_databases() {
     use platypus_export::migrate::migrate;
     use platypus_sql::Dialect;
 
-    let all = backends().await;
+    // ClickHouse enforces neither primary nor foreign keys.
+    let all: Vec<_> = backends()
+        .await
+        .into_iter()
+        .filter(|b| b.config.driver != DriverKind::ClickHouse)
+        .collect();
     let tables = ["conf_mig_parent".to_owned(), "conf_mig_child".to_owned()];
     for from in &all {
         let source = from.connect().await;
@@ -2493,7 +2516,7 @@ async fn migrates_tables_between_databases() {
         let parent = sd.qualified(Some(&from.schema), "conf_mig_parent");
         let child = sd.qualified(Some(&from.schema), "conf_mig_child");
         // SQLite names the referenced table without its schema.
-        let referenced = if from.config.driver == DriverKind::Sqlite {
+        let referenced = if from.speaks_sqlite() {
             "conf_mig_parent"
         } else {
             parent.as_str()
@@ -2549,7 +2572,10 @@ async fn migrates_tables_between_databases() {
             let enforced = done.skipped.is_empty();
             assert_eq!(
                 enforced,
-                !matches!(to.config.driver, DriverKind::Sqlite | DriverKind::DuckDb),
+                !matches!(
+                    to.config.driver,
+                    DriverKind::Sqlite | DriverKind::Libsql | DriverKind::DuckDb
+                ),
                 "{pair}: {:?}",
                 done.skipped
             );
@@ -2593,7 +2619,7 @@ async fn fills_tables_with_fake_rows() {
         drop_tables(&*conn, d, &b.schema, &tables).await;
         let parent = d.qualified(Some(&b.schema), "conf_fake_parent");
         let child = d.qualified(Some(&b.schema), "conf_fake_child");
-        let referenced = if b.config.driver == DriverKind::Sqlite {
+        let referenced = if b.speaks_sqlite() {
             "conf_fake_parent"
         } else {
             parent.as_str()
