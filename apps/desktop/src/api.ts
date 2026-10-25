@@ -560,6 +560,26 @@ export type ExportEvent =
   | { type: "failed"; error: CommandError }
   | { type: "cancelled" };
 
+/** Extensions of the files that open as a database and import into a table. */
+export const DATA_FILE_EXTENSIONS = ["csv", "tsv", "json", "ndjson", "jsonl", "parquet", "xlsx", "xlsm", "xls", "ods"];
+
+export interface ImportPreview {
+  /** The tables of the file: one, or a workbook's sheets. */
+  tables: string[];
+  table: string;
+  columns: { name: string; source_type: string; target_type: string }[];
+  rows: (string | null)[][];
+}
+
+export interface ImportPlan {
+  source_table: string;
+  schema: string | null;
+  table: string;
+  /** Create the table first, from the columns' `data_type`. */
+  create: boolean;
+  columns: { source: string; target: string; data_type: string | null }[];
+}
+
 /** A set of connections worked on together; a connection can be in several. */
 export interface Project {
   id: string;
@@ -701,6 +721,17 @@ export const api = {
   exportRows: (jobId: number, path: string, options: ExportOptions) =>
     invoke<number>("export_rows", { jobId, path, options }),
   cancelExport: (exportId: number) => invoke<void>("cancel_export", { exportId }),
+  /** The tables of a data file and the first rows of `table`, with the column types they
+   *  would take in the session's database. */
+  previewImport: (sessionId: number, path: string, table: string | null) =>
+    invoke<ImportPreview>("preview_import", { sessionId, path, table }),
+  /** Imports a data file into the session's database on its own connection; cancelled with
+   *  `cancelExport`. */
+  importFile: (sessionId: number, path: string, plan: ImportPlan, onEvent: (e: ExportEvent) => void) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("import_file", { sessionId, path, plan, onEvent: channel });
+  },
   analyzeSql: (sql: string, driver: DriverKind, cursor: number) =>
     invoke<SqlAnalysis>("analyze_sql", { sql, driver, cursor }),
   formatSql: (sql: string, driver: DriverKind, settings: FormatSettings) =>

@@ -230,3 +230,114 @@ async fn opens_files_and_refuses_missing_folders() {
         Err(Error::Config(_))
     ));
 }
+
+async fn open_file(path: &std::path::Path) -> Box<dyn Connection> {
+    let mut config = ConnectionConfig::new(DriverKind::DuckDb);
+    config.database = path.to_string_lossy().into_owned();
+    DuckDbDriver.connect(&config).await.unwrap()
+}
+
+/// The single value of `sql` as text.
+async fn value(conn: &dyn Connection, sql: &str) -> String {
+    let batches = rows(conn, sql).await;
+    arrow_cast::display::array_value_to_string(batches[0].column(0), 0).unwrap()
+}
+
+#[tokio::test]
+async fn opens_data_files_as_views() {
+    let dir = tempfile::tempdir().unwrap();
+    let csv = dir.path().join("sales.csv");
+    std::fs::write(&csv, "id,item\n1,pen\n2,ink\n").unwrap();
+    let json = dir.path().join("events.ndjson");
+    std::fs::write(
+        &json,
+        "{\"id\": 1, \"ok\": true}\n{\"id\": 2, \"ok\": false}\n",
+    )
+    .unwrap();
+    let parquet = dir.path().join("p.parquet");
+    let make = memory().await;
+    let copy = format!(
+        "COPY (SELECT 42 AS answer) TO '{}' (FORMAT parquet)",
+        parquet.display()
+    );
+    make.execute(&copy, &ExecOptions::default()).await.unwrap();
+
+    let conn = open_file(&csv).await;
+    assert_eq!(value(&*conn, "SELECT sum(id) FROM sales").await, "3");
+    let objects = conn.objects("main").await.unwrap();
+    assert_eq!(objects[0].name, "sales");
+    let conn = open_file(&json).await;
+    assert_eq!(
+        value(&*conn, "SELECT count(*) FROM events WHERE ok").await,
+        "1"
+    );
+    let conn = open_file(&parquet).await;
+    assert_eq!(value(&*conn, "SELECT answer FROM p").await, "42");
+
+    let mut config = ConnectionConfig::new(DriverKind::DuckDb);
+    config.database = dir
+        .path()
+        .join("missing.csv")
+        .to_string_lossy()
+        .into_owned();
+    assert!(matches!(
+        DuckDbDriver.connect(&config).await,
+        Err(Error::Connect(_))
+    ));
+}
+
+/// A workbook with one sheet, `People`, written by hand: the parts calamine reads.
+fn write_xlsx(path: &std::path::Path) {
+    use std::io::Write as _;
+    let parts = [
+        (
+            "[Content_Types].xml",
+            r#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>"#,
+        ),
+        (
+            "_rels/.rels",
+            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>"#,
+        ),
+        (
+            "xl/workbook.xml",
+            r#"<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="People" sheetId="1" r:id="rId1"/></sheets></workbook>"#,
+        ),
+        (
+            "xl/_rels/workbook.xml.rels",
+            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#,
+        ),
+        (
+            "xl/worksheets/sheet1.xml",
+            r#"<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>name</t></is></c><c r="B1" t="inlineStr"><is><t>age</t></is></c><c r="C1" t="inlineStr"><is><t>score</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>Ada</t></is></c><c r="B2"><v>36</v></c><c r="C2"><v>9.5</v></c></row><row r="3"><c r="A3" t="inlineStr"><is><t>Alan</t></is></c><c r="B3"><v>41</v></c></row></sheetData></worksheet>"#,
+        ),
+    ];
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+    let options =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    for (name, text) in parts {
+        zip.start_file(name, options).unwrap();
+        zip.write_all(text.as_bytes()).unwrap();
+    }
+    zip.finish().unwrap();
+}
+
+#[tokio::test]
+async fn opens_workbook_sheets_as_tables() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("book.xlsx");
+    write_xlsx(&path);
+    let conn = open_file(&path).await;
+    assert_eq!(value(&*conn, "SELECT sum(age) FROM People").await, "77");
+    assert_eq!(
+        value(
+            &*conn,
+            "SELECT typeof(age) || ' ' || typeof(score) FROM People LIMIT 1"
+        )
+        .await,
+        "BIGINT DOUBLE"
+    );
+    assert_eq!(
+        value(&*conn, "SELECT count(*) FROM People WHERE score IS NULL").await,
+        "1"
+    );
+}

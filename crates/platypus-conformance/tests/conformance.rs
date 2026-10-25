@@ -1728,3 +1728,91 @@ async fn sets_the_session_up_after_connecting() {
         assert!(err.contains("no_such_table_for_init"), "{}: {err}", b.name);
     }
 }
+
+/// A CSV file imported into a table created from its inferred types, then a failed import
+/// that leaves that table as it was.
+#[tokio::test]
+async fn imports_data_files() {
+    use platypus_export::import::{ImportColumn, ImportPlan, import};
+    use platypus_sql::Dialect;
+
+    let dir = tempfile::tempdir().unwrap();
+    let csv = dir.path().join("conf_import.csv");
+    std::fs::write(
+        &csv,
+        "id,name,price,active,day,at\n\
+         1,it's,9.5,true,2024-03-01,2024-03-01 10:00:00\n\
+         2,,0.25,false,2024-12-31,2024-12-31 23:59:59\n\
+         3,ink,100,true,,\n",
+    )
+    .unwrap();
+    let mut file = ConnectionConfig::new(DriverKind::DuckDb);
+    file.database = csv.to_string_lossy().into_owned();
+    let source = DuckDbDriver.connect(&file).await.unwrap();
+    let ExecResult::Rows(stream) = source
+        .execute("SELECT * FROM conf_import LIMIT 0", &ExecOptions::default())
+        .await
+        .unwrap()
+    else {
+        panic!("no schema");
+    };
+    let fields = stream.schema().fields().clone();
+    drop(stream);
+
+    for b in backends().await {
+        let conn = b.connect().await;
+        let d = Dialect::from(b.config.driver);
+        let table = d.qualified(Some(&b.schema), "conf_import");
+        let _ = run(&*conn, &format!("DROP TABLE {table}")).await;
+        // A manual-commit session, like a production connection's: the import commits anyway.
+        conn.set_autocommit(false).await.unwrap();
+        let mut plan = ImportPlan {
+            source_table: "conf_import".to_owned(),
+            schema: Some(b.schema.clone()),
+            table: "conf_import".to_owned(),
+            create: true,
+            columns: fields
+                .iter()
+                .map(|f| ImportColumn {
+                    source: f.name().clone(),
+                    target: f.name().clone(),
+                    data_type: Some(d.column_type(f.data_type())),
+                })
+                .collect(),
+        };
+        let mut seen = 0;
+        let rows = import(&*source, &*conn, d, &plan, |n| seen = n)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!((rows, seen), (3, 3), "{}", b.name);
+        let check = format!(
+            "SELECT COUNT(*), SUM(id), MAX(name), SUM(price) FROM {table} WHERE name IS NOT NULL OR id = 2"
+        );
+        let other = b.connect().await;
+        let batches = collect(&b, &*other, &check).await;
+        let values: Vec<_> = (0..4).map(|c| cell(&batches[0], c, 0)).collect();
+        assert_eq!(values[0].as_deref(), Some("3"), "{}", b.name);
+        assert_eq!(values[1].as_deref(), Some("6"), "{}", b.name);
+        assert_eq!(values[2].as_deref(), Some("it's"), "{}", b.name);
+        let price: f64 = values[3].as_deref().unwrap().parse().unwrap();
+        assert!((price - 109.75).abs() < 1e-9, "{}: {price}", b.name);
+
+        // The table exists: creating it again fails, and the rows stay.
+        assert!(
+            import(&*source, &*conn, d, &plan, |_| {}).await.is_err(),
+            "{}",
+            b.name
+        );
+        plan.create = false;
+        plan.columns[1].target = "missing".to_owned();
+        assert!(
+            import(&*source, &*conn, d, &plan, |_| {}).await.is_err(),
+            "{}",
+            b.name
+        );
+        let batches = collect(&b, &*conn, &format!("SELECT COUNT(*) FROM {table}")).await;
+        assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
+        run(&*conn, &format!("DROP TABLE {table}")).await.unwrap();
+        conn.commit().await.unwrap();
+    }
+}

@@ -31,6 +31,7 @@ arrow-json = "60"
 arrow-schema = "60"
 async-trait = "0.1"
 bytes = "1"
+calamine = { version = "0.37", default-features = false }
 clap = { version = "4", features = ["derive", "env"] }
 criterion = "0.8"
 duckdb = { version = "1.20000", features = ["bundled", "json", "parquet"] }

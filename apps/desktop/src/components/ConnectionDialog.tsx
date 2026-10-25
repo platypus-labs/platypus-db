@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   api,
+  DATA_FILE_EXTENSIONS,
   isEmbedded,
   toCommandError,
   type ConnectionType,
@@ -29,6 +30,8 @@ interface Props {
   projects: Project[];
   /** The projects the connection is in, or (new) goes into. */
   memberOf: string[];
+  /** A new connection whose driver is decided, e.g. a dropped data file: no driver picker. */
+  driverChosen?: boolean;
   onSaved: (all: SavedConnection[]) => void;
   onClose: () => void;
 }
@@ -51,7 +54,12 @@ const DEFAULT_PORTS: Record<DriverKind, number | null> = {
 /** The database files of the embedded drivers: file picker filter and example path. */
 const FILES: Record<"sqlite" | "duckdb", { name: string; extensions: string[]; example: string }> = {
   sqlite: { name: "SQLite database", extensions: ["db", "sqlite", "sqlite3", "db3"], example: "C:\\data\\app.db" },
-  duckdb: { name: "DuckDB database", extensions: ["duckdb", "ddb", "db"], example: "C:\\data\\app.duckdb" },
+  // A data file (CSV, Parquet, Excel...) opens as an in-memory database that reads it.
+  duckdb: {
+    name: "DuckDB database or data file",
+    extensions: ["duckdb", "ddb", "db", ...DATA_FILE_EXTENSIONS],
+    example: "C:\\data\\app.duckdb",
+  },
 };
 
 const EMPTY_INIT: SavedInit = { schema: null, time_zone: null, statements: "" };
@@ -102,7 +110,7 @@ function withPasswordSource(c: SavedConnection, source: PasswordSource): SavedCo
   };
 }
 
-export function ConnectionDialog({ initial, existing, projects, memberOf, onSaved, onClose }: Props) {
+export function ConnectionDialog({ initial, existing, projects, memberOf, driverChosen, onSaved, onClose }: Props) {
   const [conn, setConn] = useState(initial);
   const [inProjects, setInProjects] = useState(() => new Set(memberOf));
   const [password, setPassword] = useState("");
@@ -110,7 +118,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
   const [sshTyped, setSshTyped] = useState<Record<string, string>>({});
   const [page, setPage] = useState<Page>("general");
   /** A new connection starts from the choice of the database. */
-  const [picking, setPicking] = useState(!existing);
+  const [picking, setPicking] = useState(!existing && !driverChosen);
   const [savedSsh] = useState(() => sshSecretIds(existing ? initial.ssh : null));
   const [profiles, setProfiles] = useState<NetworkProfile[]>([]);
   /** The network profile being edited in its own dialog, and whether it is saved. */
