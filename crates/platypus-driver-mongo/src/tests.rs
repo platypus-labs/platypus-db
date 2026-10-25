@@ -103,6 +103,10 @@ async fn reads_the_seeded_database() {
         grouped[0].column(0).as_string::<i32>().value(0),
         "cancelled"
     );
+    assert_eq!(
+        count(&rows(&*conn, "db.customers.find({ country: 'XX' })").await),
+        0
+    );
     let view = rows(&*conn, "db.customer_totals.find({ _id: 1 })").await;
     assert_eq!(count(&view), 1);
     assert!(count(&rows(&*conn, "show collections").await) >= 3);

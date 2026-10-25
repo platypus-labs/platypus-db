@@ -73,8 +73,8 @@ export default async function (page) {
   await page.type("platypus");
   await page.eval(`document.querySelector('.modal button[type=submit]').click()`);
 
-  // The current database opens by itself, with its collections and the view.
-  await page.waitFor(`${row("customers")} !== undefined && ${row("customer_totals")} !== undefined`, 20_000);
+  // The current database opens by itself, with its collections (views in their folder).
+  await page.waitFor(`${row("customers")} !== undefined && ${row("Views")} !== undefined`, 20_000);
   await page.eval(`${row("customers")}.id = 'e2e-customers'`);
   const items = await menu(page, "#e2e-customers");
   for (const item of ["Open data", "Generate SELECT", "Drop…"]) assert.ok(items.includes(item), `${item} in ${items}`);
@@ -87,12 +87,12 @@ export default async function (page) {
   assert.equal(await page.eval(editorText), "db.customers.find({})");
   assert.equal(await page.eval(`${visibleTab}.querySelector('.viewer-bar .muted').textContent`), "Filter");
   const grid = await page.eval(`(() => { const r = ${visibleTab}.querySelector('.grid-scroll').getBoundingClientRect(); return { x: r.x, y: r.y }; })()`);
-  await page.click(grid.x + 40, grid.y + 40); // a cell of the first row
+  await page.click(grid.x + 80, grid.y + 40); // a cell of the first row
   await page.waitFor(`[...${visibleTab}.querySelectorAll('.document-panel .doc-key')].some(k => k.textContent === 'address')`, 10_000);
 
   // A header click sorts with .sort(), the filter is a query document.
   await clearStatus(page);
-  await page.click(grid.x + 40, grid.y + 14);
+  await page.click(grid.x + 80, grid.y + 14);
   await waitStatus(page, "true");
   assert.match(await page.eval(editorText), /\.sort\(\{ _id: 1 \}\)$/);
   await page.eval(`${visibleTab}.querySelector('.viewer-bar input').focus()`);
@@ -112,6 +112,6 @@ export default async function (page) {
   assert.equal(await waitStatus(page, "s.includes('row')"), "1 row");
   // The grid draws its cells: read the count in the document panel.
   const counted = await page.eval(`(() => { const r = ${visibleTab}.querySelector('.grid-scroll').getBoundingClientRect(); return { x: r.x, y: r.y }; })()`);
-  await page.click(counted.x + 40, counted.y + 40);
+  await page.click(counted.x + 80, counted.y + 40);
   await page.waitFor(`[...${visibleTab}.querySelectorAll('.document-panel .doc-number')].some(n => n.textContent === '5000')`, 10_000);
 }

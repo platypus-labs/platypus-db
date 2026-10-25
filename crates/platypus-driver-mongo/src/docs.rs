@@ -12,7 +12,7 @@ use arrow_array::builder::{
     BinaryBuilder, BooleanBuilder, Float64Builder, Int32Builder, Int64Builder, StringBuilder,
     TimestampMillisecondBuilder,
 };
-use arrow_array::{ArrayRef, RecordBatch};
+use arrow_array::{ArrayRef, RecordBatch, RecordBatchOptions};
 use arrow_schema::{DataType, Field, Schema, SchemaRef, TimeUnit};
 use mongodb::bson::{Bson, Document};
 use platypus_core::{META_DB_TYPE, Result};
@@ -78,7 +78,7 @@ impl Kind {
             Self::Int32 => DataType::Int32,
             Self::Int64 => DataType::Int64,
             Self::Double => DataType::Float64,
-            Self::Date => DataType::Timestamp(TimeUnit::Millisecond, Some("UTC".into())),
+            Self::Date => DataType::Timestamp(TimeUnit::Millisecond, Some("+00:00".into())),
             Self::Binary => DataType::Binary,
             _ => DataType::Utf8,
         }
@@ -180,7 +180,13 @@ pub fn to_batch(schema: &SchemaRef, docs: &[Document]) -> Result<RecordBatch> {
         .iter()
         .map(|f| column(f, docs.iter().map(|d| d.get(f.name()))))
         .collect();
-    Ok(RecordBatch::try_new(Arc::clone(schema), columns)?)
+    // No documents means no fields: a batch without columns needs its row count.
+    let options = RecordBatchOptions::new().with_row_count(Some(docs.len()));
+    Ok(RecordBatch::try_new_with_options(
+        Arc::clone(schema),
+        columns,
+        &options,
+    )?)
 }
 
 fn kind_of_field(field: &Field) -> Kind {
@@ -214,7 +220,7 @@ fn column<'a>(field: &Field, values: impl Iterator<Item = Option<&'a Bson>>) -> 
             Arc::new(b.finish())
         }
         Kind::Date => {
-            let mut b = TimestampMillisecondBuilder::new().with_timezone("UTC");
+            let mut b = TimestampMillisecondBuilder::new().with_timezone("+00:00");
             values.for_each(|v| match v {
                 Some(Bson::DateTime(d)) => b.append_value(d.timestamp_millis()),
                 _ => b.append_null(),
@@ -337,6 +343,13 @@ mod tests {
         assert_eq!(batch.column(1).as_primitive::<Int64Type>().value(0), 7);
         assert_eq!(batch.num_columns(), 2);
         let _ = batch.column(0).as_primitive::<Int32Type>();
+    }
+
+    #[test]
+    fn makes_batches_of_no_documents() {
+        let schema = infer_schema(&[]);
+        assert!(schema.fields().is_empty());
+        assert_eq!(to_batch(&schema, &[]).unwrap().num_rows(), 0);
     }
 
     #[test]
