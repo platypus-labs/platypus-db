@@ -2031,6 +2031,31 @@ async fn check_import_modes(
     let batches = collect(b, other, &count).await;
     assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
 
+    // A new key whose name another row has fails, as an insert would: it updates nothing
+    // (MySQL's `ON DUPLICATE KEY` alone would update the other row).
+    // MySQL indexes a prefix of TEXT, SQL Server no NVARCHAR(MAX).
+    let name = if d == Dialect::MySql { "name(20)" } else { "name" };
+    if d == Dialect::SqlServer {
+        let sql = format!("ALTER TABLE {table} ALTER COLUMN name NVARCHAR(100)");
+        run(conn, &sql).await.unwrap();
+    }
+    let index = format!("CREATE UNIQUE INDEX conf_import_name ON {on} ({name})");
+    run(conn, &index).await.unwrap();
+    run(conn, &format!("UPDATE {table} SET id = 30 WHERE id = 3"))
+        .await
+        .unwrap();
+    conn.commit().await.unwrap();
+    let clash = import((source, Dialect::DuckDb), (conn, d), &again, |_| true).await;
+    assert!(clash.is_err(), "{}: upsert on another unique key", b.name);
+    let check = format!("SELECT COUNT(*), MAX(id) FROM {table} WHERE name = 'ink'");
+    let batches = collect(b, other, &check).await;
+    assert_eq!(
+        (cell(&batches[0], 0, 0), cell(&batches[0], 1, 0)),
+        (Some("1".to_owned()), Some("30".to_owned())),
+        "{}: untouched",
+        b.name
+    );
+
     // A cancelled import into a new table leaves no table, MySQL's committed DDL included.
     let cancelled = ImportPlan {
         table: "conf_import_cancel".to_owned(),
@@ -2173,13 +2198,15 @@ async fn fills_tables_with_fake_rows() {
         };
         for sql in [
             format!(
-                "CREATE TABLE {parent} (id INT NOT NULL PRIMARY KEY, name VARCHAR(40) NOT NULL)"
+                "CREATE TABLE {parent} (id INT NOT NULL PRIMARY KEY, name VARCHAR(40) NOT NULL, \
+                 city VARCHAR(80) NOT NULL UNIQUE, CONSTRAINT conf_fake_pair UNIQUE (id, city))"
             ),
             format!(
-                "CREATE TABLE {child} (id INT NOT NULL PRIMARY KEY, parent_id INT NOT NULL, email VARCHAR(80), \
-                 day DATE, price DECIMAL(10, 2), FOREIGN KEY (parent_id) REFERENCES {referenced} (id))"
+                "CREATE TABLE {child} (id INT NOT NULL PRIMARY KEY, parent_id INT NOT NULL, \
+                 parent_city VARCHAR(80) NOT NULL, email VARCHAR(80), day DATE, price DECIMAL(10, 2), \
+                 FOREIGN KEY (parent_id, parent_city) REFERENCES {referenced} (id, city))"
             ),
-            format!("INSERT INTO {parent} VALUES (7, 'seed')"),
+            format!("INSERT INTO {parent} VALUES (7, 'seed', 'Milano')"),
         ] {
             run(&*conn, &sql)
                 .await
@@ -2188,16 +2215,24 @@ async fn fills_tables_with_fake_rows() {
         let column = |name: &str, generator| FakeColumn {
             name: name.to_owned(),
             generator,
+            unique: false,
         };
-        let reference = Generator::Reference {
+        // The two columns of the composite foreign key, from one parent row.
+        let reference = |column: &str| Generator::Reference {
             schema: Some(b.schema.clone()),
             table: "conf_fake_parent".to_owned(),
-            column: "id".to_owned(),
+            column: column.to_owned(),
+            key: Some("pair".to_owned()),
         };
         let at = (Some(b.schema.as_str()), "conf_fake_parent");
+        // 20 rows with a unique city: there are fewer cities.
         let parents = vec![
             column("id", Generator::NextKey),
             column("name", Generator::FullName),
+            FakeColumn {
+                unique: true,
+                ..column("city", Generator::City)
+            },
         ];
         let rows = fill((&*conn, d), at, parents, 20, |_| true)
             .await
@@ -2205,7 +2240,8 @@ async fn fills_tables_with_fake_rows() {
         assert_eq!(rows, 20, "{}", b.name);
         let children = vec![
             column("id", Generator::NextKey),
-            column("parent_id", reference),
+            column("parent_id", reference("id")),
+            column("parent_city", reference("city")),
             column("email", Generator::Email),
             column("day", Generator::Date),
             column(
@@ -2227,7 +2263,7 @@ async fn fills_tables_with_fake_rows() {
         .await
         .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         let check = format!(
-            "SELECT COUNT(*), MIN(p.id), MAX(p.id), COUNT(DISTINCT c.email) FROM {child} c JOIN {parent} p ON p.id = c.parent_id"
+            "SELECT COUNT(*), MIN(p.id), MAX(p.id), COUNT(DISTINCT c.email) FROM {child} c JOIN {parent} p ON p.id = c.parent_id AND p.city = c.parent_city"
         );
         let batches = collect(&b, &*conn, &check).await;
         let values: Vec<_> = (0..4).map(|c| cell(&batches[0], c, 0)).collect();

@@ -196,27 +196,101 @@ impl ImportPlan {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        rows_text(batch)?
-            .chunks(ROWS_PER_INSERT)
-            .map(|chunk| {
-                let values = chunk
-                    .iter()
-                    .map(|row| {
-                        let literals = columns
-                            .iter()
-                            .zip(row)
-                            .map(|(c, text)| c.literal(dialect, text.as_deref()))
-                            .collect::<Result<Vec<_>, _>>()?;
-                        Ok(format!("({})", literals.join(", ")))
-                    })
-                    .collect::<Result<Vec<_>, ImportError>>()?
-                    .join(", ");
-                Ok(match self.mode() {
-                    ImportMode::Upsert => dialect.upsert_rows(&table, &names, &keys, &values),
-                    ImportMode::Append | ImportMode::Replace => format!("{head}{values}"),
+        let mut statements = Vec::new();
+        for chunk in rows_text(batch)?.chunks(ROWS_PER_INSERT) {
+            let values = chunk
+                .iter()
+                .map(|row| {
+                    let literals = columns
+                        .iter()
+                        .zip(row)
+                        .map(|(c, text)| c.literal(dialect, text.as_deref()))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(format!("({})", literals.join(", ")))
                 })
-            })
-            .collect()
+                .collect::<Result<Vec<_>, ImportError>>()?
+                .join(", ");
+            match (self.mode(), self.staging(dialect)) {
+                (ImportMode::Upsert, Some(staging)) => {
+                    statements.extend(self.staged_upsert(dialect, &staging, &names, &values));
+                }
+                (ImportMode::Upsert, None) => {
+                    statements.push(dialect.upsert_rows(&table, &names, &keys, &values));
+                }
+                (ImportMode::Append | ImportMode::Replace, _) => {
+                    statements.push(format!("{head}{values}"));
+                }
+            }
+        }
+        Ok(statements)
+    }
+
+    /// The temporary table an upsert goes through in MySQL, whose `ON DUPLICATE KEY UPDATE`
+    /// fires on any unique key: a row whose other unique column exists would update that row.
+    fn staging(&self, dialect: Dialect) -> Option<String> {
+        (dialect == Dialect::MySql && self.mode() == ImportMode::Upsert)
+            .then(|| dialect.qualified(self.schema.as_deref(), "platypus_import_staging"))
+    }
+
+    /// Creates the empty staging table, after dropping one a failed import may have left.
+    fn staging_sql(&self, dialect: Dialect) -> Option<[String; 2]> {
+        let staging = self.staging(dialect)?;
+        let columns: Vec<_> = self
+            .columns
+            .iter()
+            .map(|c| dialect.quote_ident(&c.target))
+            .collect();
+        Some([
+            format!("DROP TEMPORARY TABLE IF EXISTS {staging}"),
+            format!(
+                "CREATE TEMPORARY TABLE {staging} AS SELECT {} FROM {} WHERE 1 = 0",
+                columns.join(", "),
+                self.table(dialect)
+            ),
+        ])
+    }
+
+    /// MySQL's upsert of `values` through `staging`: update the rows with the key, insert the
+    /// others, so that a duplicate on another unique key fails as an insert does.
+    fn staged_upsert(
+        &self,
+        dialect: Dialect,
+        staging: &str,
+        names: &[&str],
+        values: &str,
+    ) -> [String; 4] {
+        let table = self.table(dialect);
+        let q = |c: &str| dialect.quote_ident(c).into_owned();
+        let all: Vec<_> = names.iter().map(|c| q(c)).collect();
+        let on: Vec<_> = self
+            .keys
+            .iter()
+            .map(|k| format!("t.{0} = s.{0}", q(k)))
+            .collect();
+        let on = on.join(" AND ");
+        let set: Vec<_> = names
+            .iter()
+            .filter(|c| !self.keys.iter().any(|k| k == *c))
+            .map(|c| format!("t.{0} = s.{0}", q(c)))
+            .collect();
+        // Without other columns there is nothing to update: `SET` of a key to itself.
+        let set = if set.is_empty() {
+            format!("t.{0} = s.{0}", q(&self.keys[0]))
+        } else {
+            set.join(", ")
+        };
+        let list = all.join(", ");
+        let picked: Vec<_> = all.iter().map(|c| format!("s.{c}")).collect();
+        [
+            format!("INSERT INTO {staging} ({list}) VALUES {values}"),
+            format!("UPDATE {table} t JOIN {staging} s ON {on} SET {set}"),
+            format!(
+                "INSERT INTO {table} ({list}) SELECT {} FROM {staging} s \
+                 WHERE NOT EXISTS (SELECT 1 FROM {table} t WHERE {on})",
+                picked.join(", ")
+            ),
+            format!("DELETE FROM {staging}"),
+        ]
     }
 }
 
@@ -352,6 +426,10 @@ pub async fn import_rows(
         if plan.mode() == ImportMode::Replace {
             exec(target, &format!("DELETE FROM {}", plan.table(dialect))).await?;
         }
+        // Temporary tables commit nothing in MySQL.
+        for sql in plan.staging_sql(dialect).into_iter().flatten() {
+            exec(target, &sql).await?;
+        }
         let mut written = 0;
         while let Some(batch) = rows.next().await {
             let batch = batch?;
@@ -362,6 +440,9 @@ pub async fn import_rows(
             if !progress(written) {
                 return Err(ImportError::Cancelled);
             }
+        }
+        if let Some(staging) = plan.staging(dialect) {
+            exec(target, &format!("DROP TEMPORARY TABLE {staging}")).await?;
         }
         target.commit().await?;
         Ok(written)
