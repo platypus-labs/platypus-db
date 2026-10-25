@@ -397,3 +397,17 @@ mod tests {
         assert!(query_source(src, DriverKind::Mongo).is_none());
     }
 }
+
+/// `sql` sorted by `column` (descending when `desc`) or, with no column, without the
+/// top-level `ORDER BY`; the rest of the text stays as written. The data viewer's sort.
+#[tauri::command]
+pub fn sql_order_by(sql: String, driver: DriverKind, column: Option<String>, desc: bool) -> String {
+    let order = column.as_deref().map(|c| (c, desc));
+    platypus_sql::set_order_by(&sql, Dialect::from(driver), order)
+}
+
+/// The query that counts the rows of `sql`: `SELECT COUNT(*) FROM (…) t`.
+#[tauri::command]
+pub fn sql_count_query(sql: String, driver: DriverKind) -> String {
+    platypus_sql::count_query(&sql, Dialect::from(driver))
+}

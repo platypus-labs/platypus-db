@@ -12,6 +12,7 @@ mod format;
 mod generate;
 mod lexer;
 mod lint;
+mod order;
 mod params;
 pub mod pg_literal;
 mod source;
@@ -22,6 +23,7 @@ pub use format::{FormatOptions, KeywordCase, format};
 pub use generate::ObjectName;
 pub use lexer::{Lexer, Token, TokenKind};
 pub use lint::{ColumnRef, Lint, LintIssue, LintKind, TableAlias, lint};
+pub use order::{count_query, set_order_by};
 pub use params::{Parameter, ParameterKind, parameters};
 pub use source::{SelectItem, SourceTable, source_table};
 
