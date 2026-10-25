@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { api, type ColumnMeta, type ForeignKeyMeta, type SavedConnection, toCommandError } from "../api";
+import { api, type ColumnMeta, type ForeignKeyMeta, type SavedConnection } from "../api";
 import { GuardDialog } from "../guards/GuardDialog";
 import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { workbench } from "../workbench";
+import { JobFooter, useJob } from "./job";
 
 /** How a column is filled, as the backend's `fake::Generator`; `skip` leaves it to its default. */
 export type Generator =
@@ -47,12 +48,6 @@ interface Props {
   table: string;
   onClose: () => void;
 }
-
-type Status =
-  | { state: "idle" }
-  | { state: "running"; id: number | null; rows: number }
-  | { state: "done"; rows: number }
-  | { state: "failed"; message: string };
 
 /** The generator of `kind` for `column`, with its default settings. */
 function generator(kind: Kind, column: ColumnMeta, fk: ForeignKeyMeta | undefined): Generator {
@@ -104,7 +99,7 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
   const [sid, setSid] = useState<number | null>(null);
   const [columns, setColumns] = useState<{ column: ColumnMeta; fk?: ForeignKeyMeta; generator: Generator }[]>([]);
   const [rows, setRows] = useState(100);
-  const [status, setStatus] = useState<Status>({ state: "idle" });
+  const { status, start, fail } = useJob();
   const [confirm, setConfirm] = useState<GuardRequest | null>(null);
 
   useEffect(() => {
@@ -121,7 +116,7 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
           }),
         );
       } catch (e) {
-        setStatus({ state: "failed", message: toCommandError(e).message });
+        fail(e);
       }
     })();
   }, []);
@@ -138,22 +133,11 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
 
   async function run() {
     if (sid === null) return;
-    setStatus({ state: "running", id: null, rows: 0 });
     const specs = filled.map((c) => ({ name: c.column.name, generator: c.generator }));
-    try {
-      const id = await api.fakeRows(sid, currentSchema ? null : schema, table, rows, specs, (event) => {
-        if (event.type === "progress") setStatus((s) => (s.state === "running" ? { ...s, rows: event.rows } : s));
-        else if (event.type === "failed") setStatus({ state: "failed", message: event.error.message });
-        else if (event.type === "cancelled") setStatus({ state: "idle" });
-        else {
-          setStatus({ state: "done", rows: event.rows });
-          requestNavigatorRefresh({ connectionId: connection.id, database, schema });
-        }
-      });
-      setStatus((s) => (s.state === "running" ? { ...s, id } : s));
-    } catch (e) {
-      setStatus({ state: "failed", message: toCommandError(e).message });
-    }
+    await start(
+      (onEvent) => api.fakeRows(sid, currentSchema ? null : schema, table, rows, specs, onEvent),
+      () => requestNavigatorRefresh({ connectionId: connection.id, database, schema }),
+    );
   }
 
   const running = status.state === "running";
@@ -182,24 +166,11 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
             <GeneratorRow key={column.name} column={column} fk={fk} kind={g.kind} disabled={running} onChange={(k) => choose(i, k)} />
           ))}
         </div>
-        {status.state === "running" && <div className="notice small">Adding… {status.rows.toLocaleString()} rows</div>}
-        {status.state === "done" && <div className="notice small">Added {status.rows.toLocaleString()} rows.</div>}
-        {status.state === "failed" && <div className="notice error small">Nothing was added: {status.message}</div>}
-        <div className="actions">
-          <span className="spacer" />
-          {running ? (
-            <button type="button" disabled={status.id === null} onClick={() => status.id !== null && void api.cancelExport(status.id)}>
-              Stop
-            </button>
-          ) : (
-            <button type="button" onClick={onClose}>
-              {status.state === "done" ? "Close" : "Cancel"}
-            </button>
-          )}
+        <JobFooter status={status} verbs={["Adding", "Added"]} failed="Nothing was added: " onClose={onClose}>
           <button type="button" className="primary" disabled={running || sid === null || filled.length === 0} onClick={request}>
             Generate
           </button>
-        </div>
+        </JobFooter>
       </div>
       {confirm && (
         <GuardDialog

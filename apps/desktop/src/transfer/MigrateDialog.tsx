@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { api, isDataFile, type SavedConnection, type SchemaMeta, toCommandError } from "../api";
+import { api, opensDataFile, type SavedConnection, type SchemaMeta } from "../api";
 import { GuardDialog } from "../guards/GuardDialog";
 import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { workbench } from "../workbench";
+import { JobFooter, useJob } from "./job";
 
 interface Props {
   connection: SavedConnection;
@@ -14,27 +15,18 @@ interface Props {
   onClose: () => void;
 }
 
-type Status =
-  | { state: "idle" }
-  | { state: "running"; id: number | null; rows: number }
-  | { state: "done"; rows: number; warnings: string[] }
-  | { state: "failed"; message: string };
-
-const failure = (e: unknown) => toCommandError(e).message;
-
 /** Copies tables, structure and rows, to a schema of another database: each is created with
  *  its columns mapped, NOT NULL and primary key, then the foreign keys between them follow. */
 export function MigrateDialog({ connection, database, schema, tables: chosen, onClose }: Props) {
-  // A data file's database lives in memory: a copy there would be lost.
   const targets = workbench()
     .connections()
-    .filter((c) => c.id !== connection.id && !(c.driver === "duckdb" && isDataFile(c.database)));
+    .filter((c) => c.id !== connection.id && !opensDataFile(c));
   const [tables, setTables] = useState<string[] | null>(chosen);
   const [target, setTarget] = useState<SavedConnection | null>(targets[0] ?? null);
   const [schemas, setSchemas] = useState<SchemaMeta[]>([]);
   const [targetSchema, setTargetSchema] = useState("");
   const [sids, setSids] = useState<{ source: number; target: number } | null>(null);
-  const [status, setStatus] = useState<Status>({ state: "idle" });
+  const { status, start, fail } = useJob();
   const [confirm, setConfirm] = useState<GuardRequest | null>(null);
 
   useEffect(() => {
@@ -46,7 +38,7 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, on
         const objects = await api.listObjects(sid, schema);
         setTables(objects.filter((o) => o.kind === "table").map((o) => o.name));
       })
-      .catch((e: unknown) => setStatus({ state: "failed", message: failure(e) }));
+      .catch(fail);
   }, []);
 
   useEffect(() => {
@@ -63,7 +55,7 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, on
         setTargetSchema((all.find((s) => s.current) ?? all[0])?.name ?? "");
         setSids({ source, target: to });
       } catch (e) {
-        setStatus({ state: "failed", message: failure(e) });
+        fail(e);
       }
     })();
   }, [target?.id]);
@@ -77,21 +69,10 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, on
 
   async function run() {
     if (!sids || !tables || !target) return;
-    setStatus({ state: "running", id: null, rows: 0 });
-    try {
-      const id = await api.migrateTables(sids.source, sids.target, schema, targetSchema, tables, (event) => {
-        if (event.type === "progress") setStatus((s) => (s.state === "running" ? { ...s, rows: event.rows } : s));
-        else if (event.type === "failed") setStatus({ state: "failed", message: event.error.message });
-        else if (event.type === "cancelled") setStatus({ state: "idle" });
-        else {
-          setStatus({ state: "done", rows: event.rows, warnings: event.warnings ?? [] });
-          requestNavigatorRefresh({ connectionId: target.id, database: null, schema: targetSchema });
-        }
-      });
-      setStatus((s) => (s.state === "running" ? { ...s, id } : s));
-    } catch (e) {
-      setStatus({ state: "failed", message: failure(e) });
-    }
+    await start(
+      (onEvent) => api.migrateTables(sids.source, sids.target, schema, targetSchema, tables, onEvent),
+      () => requestNavigatorRefresh({ connectionId: target.id, database: null, schema: targetSchema }),
+    );
   }
 
   const running = status.state === "running";
@@ -134,35 +115,7 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, on
             </label>
           </div>
         )}
-        {status.state === "running" && <div className="notice small">Copying… {status.rows.toLocaleString()} rows</div>}
-        {status.state === "done" && (
-          <div className={`notice small${status.warnings.length ? " warn" : ""}`}>
-            Copied {status.rows.toLocaleString()} rows.
-            {status.warnings.length > 0 && (
-              <>
-                {" "}
-                Left out:
-                <ul className="migrate-warnings">
-                  {status.warnings.map((w) => (
-                    <li key={w}>{w}</li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </div>
-        )}
-        {status.state === "failed" && <div className="notice error small">{status.message}</div>}
-        <div className="actions">
-          <span className="spacer" />
-          {running ? (
-            <button type="button" disabled={status.id === null} onClick={() => status.id !== null && void api.cancelExport(status.id)}>
-              Stop
-            </button>
-          ) : (
-            <button type="button" onClick={onClose}>
-              {status.state === "done" ? "Close" : "Cancel"}
-            </button>
-          )}
+        <JobFooter status={status} verbs={["Copying", "Copied"]} onClose={onClose}>
           <button
             type="button"
             className="primary"
@@ -171,7 +124,7 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, on
           >
             Copy
           </button>
-        </div>
+        </JobFooter>
       </div>
       {confirm && (
         <GuardDialog

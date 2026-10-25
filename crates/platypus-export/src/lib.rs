@@ -381,7 +381,6 @@ impl Exporter {
         self.into_place()
     }
 
-    /// Moves the completed file into place.
     /// Moves the completed file into place, compressed if asked, and uploads it.
     fn into_place(self) -> Result<u64> {
         let placed = match self.compression {

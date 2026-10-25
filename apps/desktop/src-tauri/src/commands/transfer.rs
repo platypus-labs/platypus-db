@@ -197,31 +197,25 @@ fn start(
     plan: ImportPlan,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
-    let session = state.session(target_session_id)?;
-    let log = Arc::clone(&state.query_log);
-    let job = Export::spawn(on_event, true, move |job| async move {
-        let (source, source_dialect) = source.await?;
-        let target = Logged::wrap(
-            Arc::from(super::connect(&session.config).await?),
-            &log,
-            &session.label,
-        );
-        let dialect = Dialect::from(session.config.driver);
-        import(
-            (&*source, source_dialect),
-            (&*target, dialect),
-            &plan,
-            |rows| {
-                job.progress(rows);
-                !job.stopping()
-            },
-        )
-        .await
-        .map_err(import_error)
-    });
-    let id = state.next_id();
-    lock(&state.exports).insert(id, job);
-    Ok(id)
+    spawn_job(
+        state,
+        target_session_id,
+        on_event,
+        move |job, target, dialect| async move {
+            let (source, source_dialect) = source.await?;
+            import(
+                (&*source, source_dialect),
+                (&*target, dialect),
+                &plan,
+                |rows| {
+                    job.progress(rows);
+                    !job.stopping()
+                },
+            )
+            .await
+            .map_err(import_error)
+        },
+    )
 }
 
 /// Creates `tables` of the source session's `source_schema` in the target session's
@@ -238,34 +232,29 @@ pub fn migrate_tables(
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
     let source = state.session(source_session_id)?;
-    let target = state.session(target_session_id)?;
-    let log = Arc::clone(&state.query_log);
-    let job = Export::spawn(on_event, true, move |job| async move {
-        let from = super::connect(&source.config).await?;
-        let to = Logged::wrap(
-            Arc::from(super::connect(&target.config).await?),
-            &log,
-            &target.label,
-        );
-        let done = migrate(
-            (&*from, Dialect::from(source.config.driver), &source_schema),
-            (&*to, Dialect::from(target.config.driver), &target_schema),
-            &tables,
-            |rows| {
-                job.progress(rows);
-                !job.stopping()
-            },
-        )
-        .await
-        .map_err(import_error)?;
-        for warning in done.skipped {
-            job.warn(warning);
-        }
-        Ok(done.rows)
-    });
-    let id = state.next_id();
-    lock(&state.exports).insert(id, job);
-    Ok(id)
+    spawn_job(
+        &state,
+        target_session_id,
+        on_event,
+        move |job, to, dialect| async move {
+            let from = super::connect(&source.config).await?;
+            let done = migrate(
+                (&*from, Dialect::from(source.config.driver), &source_schema),
+                (&*to, dialect, &target_schema),
+                &tables,
+                |rows| {
+                    job.progress(rows);
+                    !job.stopping()
+                },
+            )
+            .await
+            .map_err(import_error)?;
+            for warning in done.skipped {
+                job.warn(warning);
+            }
+            Ok(done.rows)
+        },
+    )
 }
 
 /// Adds `rows` fake rows to `table` of the session's database, on a connection of its own,
@@ -280,6 +269,38 @@ pub fn fake_rows(
     columns: Vec<FakeColumn>,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
+    spawn_job(
+        &state,
+        session_id,
+        on_event,
+        move |job, target, dialect| async move {
+            fill(
+                (&*target, dialect),
+                (schema.as_deref(), &table),
+                columns,
+                rows,
+                |n| {
+                    job.progress(n);
+                    !job.stopping()
+                },
+            )
+            .await
+            .map_err(import_error)
+        },
+    )
+}
+
+/// Runs `work` as a cancellable job on a new connection of the session, whose statements go
+/// to the query log. Returns an id for `cancel_export`.
+fn spawn_job<F>(
+    state: &AppState,
+    session_id: u64,
+    on_event: Channel<ExportEvent>,
+    work: impl FnOnce(Arc<Export>, Arc<dyn Connection>, Dialect) -> F + Send + 'static,
+) -> CommandResult<u64>
+where
+    F: Future<Output = CommandResult<u64>> + Send + 'static,
+{
     let session = state.session(session_id)?;
     let log = Arc::clone(&state.query_log);
     let job = Export::spawn(on_event, true, move |job| async move {
@@ -288,19 +309,7 @@ pub fn fake_rows(
             &log,
             &session.label,
         );
-        let dialect = Dialect::from(session.config.driver);
-        fill(
-            (&*target, dialect),
-            (schema.as_deref(), &table),
-            columns,
-            rows,
-            |n| {
-                job.progress(n);
-                !job.stopping()
-            },
-        )
-        .await
-        .map_err(import_error)
+        work(job, target, Dialect::from(session.config.driver)).await
     });
     let id = state.next_id();
     lock(&state.exports).insert(id, job);

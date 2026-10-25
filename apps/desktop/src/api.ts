@@ -575,6 +575,9 @@ export const DATA_FILE_EXTENSIONS = ["csv", "tsv", "json", "ndjson", "jsonl", "p
 /** Whether `path` names a data file, which opens as an in-memory DuckDB database on it. */
 export const isDataFile = (path: string) => DATA_FILE_EXTENSIONS.includes(path.split(".").pop()?.toLowerCase() ?? "");
 
+/** Whether `c` opens a data file: its database lives in memory, so a copy there would be lost. */
+export const opensDataFile = (c: SavedConnection) => c.driver === "duckdb" && isDataFile(c.database);
+
 export interface ImportPreview {
   /** The tables of the file: one, or a workbook's sheets. */
   tables: string[];
@@ -758,8 +761,6 @@ export const api = {
    *  would take in the session's database. */
   previewImport: (sessionId: number, path: string, table: string | null) =>
     invoke<ImportPreview>("preview_import", { sessionId, path, table }),
-  /** The first rows of a table of the source session, with the column types they would take in
-   *  the target session's database. */
   /** Creates tables of the source session's schema in the target session's and copies their
    *  rows, then their foreign keys; cancelled with `cancelExport`. */
   migrateTables: (
@@ -797,6 +798,8 @@ export const api = {
   },
   /** Saves the clipboard's text to a new `pasted.csv`; returns its path. */
   clipboardToFile: () => invoke<string>("clipboard_to_file"),
+  /** The first rows of a table of the source session, with the column types they would take in
+   *  the target session's database. */
   previewTransfer: (sourceSessionId: number, schema: string | null, table: string, targetSessionId: number) =>
     invoke<ImportPreview>("preview_transfer", { sourceSessionId, schema, table, targetSessionId }),
   /** Copies a table between the databases of two sessions; cancelled with `cancelExport`. */

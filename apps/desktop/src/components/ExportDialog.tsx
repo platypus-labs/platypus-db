@@ -38,7 +38,6 @@ const DELIMITERS = [
   { value: "|", label: "Pipe |" },
 ];
 
-/** The CSV delimiter and header row of `options`. */
 const COMPRESSIONS: { value: Compression; label: string; ext: string }[] = [
   { value: "none", label: "None", ext: "" },
   { value: "gzip", label: "gzip (.gz)", ext: "gz" },
@@ -46,7 +45,10 @@ const COMPRESSIONS: { value: Compression; label: string; ext: string }[] = [
 ];
 
 /** The extension a compressed file adds, e.g. `gz`; empty when uncompressed. */
-export const compressedExt = (c: Compression | undefined) => COMPRESSIONS.find((x) => x.value === (c ?? "none"))!.ext;
+const compressedExt = (c: Compression | undefined) => COMPRESSIONS.find((x) => x.value === (c ?? "none"))!.ext;
+
+// Parquet and Excel files are compressed already.
+const packed = (format: ExportFormat) => format === "parquet" || format === "xlsx";
 
 /** The compression of the finished file and, with `upload`, a signed URL to send it to. */
 export function OutputOptions(props: {
@@ -56,11 +58,9 @@ export function OutputOptions(props: {
   onChange: (o: ExportOptions) => void;
 }) {
   const { options, upload, disabled, onChange } = props;
-  // Parquet and Excel files are compressed already.
-  const packed = options.format === "parquet" || options.format === "xlsx";
   return (
     <>
-      {!packed && (
+      {!packed(options.format) && (
         <label className="field">
           <span>Compression</span>
           <select
@@ -91,6 +91,7 @@ export function OutputOptions(props: {
   );
 }
 
+/** The CSV delimiter and header row of `options`. */
 export function CsvOptions(props: { options: ExportOptions; disabled?: boolean; onChange: (o: ExportOptions) => void }) {
   const { options, disabled, onChange } = props;
   return (
@@ -126,8 +127,7 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const packed = options.format === "parquet" || options.format === "xlsx";
-    const chosen = { ...options, compression: packed ? "none" : options.compression } as ExportOptions;
+    const chosen = { ...options, compression: packed(options.format) ? "none" : options.compression } as ExportOptions;
     const zipped = compressedExt(chosen.compression);
     const path = await save({
       defaultPath: `${name}.${format.ext}${zipped ? `.${zipped}` : ""}`,

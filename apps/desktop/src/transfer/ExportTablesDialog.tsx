@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, type ExportFormat, type ExportOptions, type SavedConnection, toCommandError } from "../api";
+import { api, type ExportFormat, type ExportOptions, type SavedConnection } from "../api";
 import { CsvOptions, FORMATS, OutputOptions } from "../components/ExportDialog";
 import { workbench } from "../workbench";
+import { JobFooter, useJob } from "./job";
 
 type TableRef = { schema: string | null; name: string };
 
@@ -18,17 +19,11 @@ interface Props {
   onClose: () => void;
 }
 
-type Status =
-  | { state: "idle" }
-  | { state: "running"; id: number | null; rows: number }
-  | { state: "done"; rows: number }
-  | { state: "failed"; message: string };
-
 /** Exports several tables, or every table of a schema, to one file each in a folder. */
 export function ExportTablesDialog({ connection, database, schema, currentSchema, tables: chosen, onClose }: Props) {
   const [tables, setTables] = useState<TableRef[] | null>(chosen);
   const [options, setOptions] = useState<ExportOptions>({ format: "csv", delimiter: ",", header: true });
-  const [status, setStatus] = useState<Status>({ state: "idle" });
+  const { status, start, fail } = useJob();
 
   useEffect(() => {
     if (chosen) return;
@@ -40,7 +35,7 @@ export function ExportTablesDialog({ connection, database, schema, currentSchema
         const own = currentSchema ? null : schema;
         setTables(objects.filter((o) => o.kind === "table").map((o) => ({ schema: own, name: o.name })));
       })
-      .catch((e: unknown) => setStatus({ state: "failed", message: toCommandError(e).message }));
+      .catch(fail);
   }, []);
 
   async function run() {
@@ -48,18 +43,7 @@ export function ExportTablesDialog({ connection, database, schema, currentSchema
     if (typeof dir !== "string" || !tables) return;
     const sid = await workbench().sideSession(connection, database);
     if (sid === null) return;
-    setStatus({ state: "running", id: null, rows: 0 });
-    try {
-      const id = await api.exportTables(sid, tables, dir, options, (event) => {
-        if (event.type === "progress") setStatus((s) => (s.state === "running" ? { ...s, rows: event.rows } : s));
-        else if (event.type === "done") setStatus({ state: "done", rows: event.rows });
-        else if (event.type === "failed") setStatus({ state: "failed", message: event.error.message });
-        else setStatus({ state: "idle" });
-      });
-      setStatus((s) => (s.state === "running" ? { ...s, id } : s));
-    } catch (e) {
-      setStatus({ state: "failed", message: toCommandError(e).message });
-    }
+    await start((onEvent) => api.exportTables(sid, tables, dir, options, onEvent));
   }
 
   const running = status.state === "running";
@@ -88,24 +72,11 @@ export function ExportTablesDialog({ connection, database, schema, currentSchema
         </label>
         {options.format === "csv" && <CsvOptions options={options} disabled={running} onChange={setOptions} />}
         <OutputOptions options={options} upload={false} disabled={running} onChange={setOptions} />
-        {status.state === "running" && <div className="notice small">Exporting… {status.rows.toLocaleString()} rows</div>}
-        {status.state === "done" && <div className="notice small">Exported {status.rows.toLocaleString()} rows.</div>}
-        {status.state === "failed" && <div className="notice error small">{status.message}</div>}
-        <div className="actions">
-          <span className="spacer" />
-          {running ? (
-            <button type="button" disabled={status.id === null} onClick={() => status.id !== null && void api.cancelExport(status.id)}>
-              Cancel export
-            </button>
-          ) : (
-            <button type="button" onClick={onClose}>
-              {status.state === "done" ? "Close" : "Cancel"}
-            </button>
-          )}
+        <JobFooter status={status} verbs={["Exporting", "Exported"]} stop="Cancel export" onClose={onClose}>
           <button type="button" className="primary" disabled={running || count === 0} onClick={() => void run()}>
             Export to folder…
           </button>
-        </div>
+        </JobFooter>
       </div>
     </div>
   );
