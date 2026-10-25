@@ -12,11 +12,11 @@ use arrow_array::builder::{
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, DataType, Field, Schema, SchemaRef, TimeUnit};
 use futures::StreamExt;
-use platypus_core::{Connection, ExecOptions, ExecResult, RecordBatchStream};
+use platypus_core::{Connection, RecordBatchStream};
 use platypus_sql::Dialect;
 use serde::Deserialize;
 
-use crate::import::{ImportColumn, ImportError, ImportMode, ImportPlan, import_rows, rows_text};
+use crate::import::{ImportColumn, ImportError, ImportMode, ImportPlan, import_rows, query_rows};
 
 /// Rows per generated batch.
 const BATCH_ROWS: usize = 500;
@@ -84,10 +84,15 @@ pub enum Generator {
     },
     /// `values` in turn, each once: a unique foreign key's keys no row uses yet.
     #[serde(skip)]
-    Distinct { values: Vec<String> },
+    Distinct {
+        values: Vec<String>,
+    },
     /// The text of `inner` made unique with `token` (this run's) and the row number.
     #[serde(skip)]
-    Unique { inner: Box<Generator>, token: String },
+    Unique {
+        inner: Box<Generator>,
+        token: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -390,24 +395,9 @@ pub fn batch(
     RecordBatch::try_new(schema(columns), arrays)
 }
 
-/// The rows of the query `sql`, as text.
-async fn rows_of(
-    conn: &dyn Connection,
-    sql: &str,
-) -> Result<Vec<Vec<Option<String>>>, ImportError> {
-    let ExecResult::Rows(mut rows) = conn.execute(sql, &ExecOptions::default()).await? else {
-        return Ok(Vec::new());
-    };
-    let mut out = Vec::new();
-    while let Some(batch) = rows.next().await {
-        out.extend(rows_text(&batch?)?);
-    }
-    Ok(out)
-}
-
 /// The values of the one-column query `sql` other than NULL.
 async fn values(conn: &dyn Connection, sql: &str) -> Result<Vec<String>, ImportError> {
-    Ok(rows_of(conn, sql)
+    Ok(query_rows(conn, sql)
         .await?
         .into_iter()
         .filter_map(|mut r| r.swap_remove(0))
@@ -431,7 +421,7 @@ async fn keys(
         dialect.qualified(schema, table),
         not_null.join(" AND ")
     );
-    let rows = rows_of(conn, &dialect.limited(&select, REFERENCE_VALUES)).await?;
+    let rows = query_rows(conn, &dialect.limited(&select, REFERENCE_VALUES)).await?;
     let rows: Vec<Vec<String>> = rows
         .into_iter()
         .filter_map(|r| r.into_iter().collect())
@@ -605,6 +595,8 @@ pub async fn fill(
         mode: ImportMode::Append,
         keys: Vec::new(),
         primary_key: Vec::new(),
+        identity: None,
+        constraints: Vec::new(),
         columns: resolved
             .iter()
             .map(|c| ImportColumn {
@@ -612,6 +604,7 @@ pub async fn fill(
                 target: c.name.clone(),
                 data_type: None,
                 not_null: false,
+                default: None,
             })
             .collect(),
     };

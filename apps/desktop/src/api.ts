@@ -769,6 +769,8 @@ export const api = {
     sourceSchema: string,
     targetSchema: string,
     tables: string[],
+    /** Also the schema's views, routines and triggers. */
+    objects: boolean,
     onEvent: (e: ExportEvent) => void,
   ) => {
     const channel = new Channel<ExportEvent>();
@@ -779,6 +781,7 @@ export const api = {
       sourceSchema,
       targetSchema,
       tables,
+      objects,
       onEvent: channel,
     });
   },
