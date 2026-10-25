@@ -114,7 +114,6 @@ export function SearchTab({ tab, connection, active, ensureSession, sideSession,
       title: hit.table,
       table: target,
       tableRef: { schema: hit.schema.name, name: hit.table, kind: hit.kind },
-      filter: hit.condition,
       database: tab.database,
     });
   }

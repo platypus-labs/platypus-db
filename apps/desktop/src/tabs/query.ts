@@ -32,7 +32,7 @@ registerTabKind({
     if (!tab.filePath) return tab.title ?? "";
     return `${basename(tab.filePath)}${tab.sql !== tab.savedSql ? " •" : ""}`;
   },
-  persist: ({ sql, filePath, savedSql, title, table, tableRef, filter, sort, database, variables, terminal }) => ({
+  persist: ({ sql, filePath, savedSql, title, table, tableRef, sort, database, variables, terminal }) => ({
     database,
     sql,
     filePath,
@@ -40,7 +40,6 @@ registerTabKind({
     title,
     table,
     tableRef,
-    filter,
     sort,
     variables,
     terminal,
@@ -52,7 +51,6 @@ registerTabKind({
     title: text(saved.title),
     table: text(saved.table),
     tableRef: tableRef(saved.tableRef),
-    filter: text(saved.filter) ?? undefined,
     sort: (saved.sort as Sort | null | undefined) ?? null,
     database: text(saved.database),
     variables: strings(saved.variables),

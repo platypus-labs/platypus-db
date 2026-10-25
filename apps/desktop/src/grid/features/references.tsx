@@ -44,7 +44,6 @@ export function openTable(connection: SavedConnection, schema: string, table: st
     title: table,
     table: target,
     tableRef: { schema, name: table, kind: "table" },
-    filter,
   });
 }
 

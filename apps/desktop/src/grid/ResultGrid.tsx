@@ -17,7 +17,6 @@ import { type TableEditTarget, useTableEditor } from "./edit/TableEditor";
 import "./features/actions";
 import "./features/columns";
 import "./features/copy";
-import "./features/filters";
 import { useReferences } from "./features/references";
 import { useGridSearch } from "./features/search";
 import { useSelectionStats } from "./features/stats";

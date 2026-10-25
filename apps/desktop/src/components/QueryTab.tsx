@@ -83,8 +83,6 @@ export interface QueryTabModel extends TabBase {
   table?: string | null;
   /** Data viewer: the same table by schema and name, for the data editor. */
   tableRef?: TableRef | null;
-  /** Data viewer: `WHERE` clause typed by the user. */
-  filter?: string;
   /** Data viewer: server-side sort. */
   sort?: Sort | null;
   /** Values of `${name}` and `:name`, kept with the tab. */
@@ -203,7 +201,6 @@ export function QueryTab({
   const warnMinutes = useSetting(transactionWarning);
   const slowSeconds = useSetting(slowQuerySeconds);
   const warned = useRef(false);
-  const [filter, setFilter] = useState(tab.filter ?? "");
   const [count, setCount] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState<ExportProgress | null>(null);
@@ -777,8 +774,8 @@ export function QueryTab({
     }
   }
 
-  /** Data viewer: rebuilds the query from filter and sort, then runs it. */
-  function applyViewer(patch: { filter?: string; sort?: Sort | null }) {
+  /** Data viewer: rebuilds the query for a new sort, then runs it. */
+  function applyViewer(patch: { sort: Sort | null }) {
     if (!tab.table) return;
     if (unsaved.current) {
       void ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }).then((yes) => {
@@ -788,10 +785,9 @@ export function QueryTab({
       });
       return;
     }
-    const next = { filter: patch.filter ?? tab.filter ?? "", sort: patch.sort !== undefined ? patch.sort : (tab.sort ?? null) };
-    onChange(next);
+    onChange({ sort: patch.sort });
     setCount(null);
-    editor.current!.setText(viewerSql(connection.driver, tab.table, next.filter, next.sort));
+    editor.current!.setText(viewerSql(connection.driver, tab.table, "", patch.sort));
     void run("statement");
   }
 
@@ -808,10 +804,7 @@ export function QueryTab({
     setCount(t("counting…"));
     const sessionId = await sideSession();
     if (sessionId === null) return setCount(null);
-    const where = tab.filter?.trim() ? ` WHERE ${tab.filter.trim()}` : "";
-    const query = isMongo(connection.driver)
-      ? `${tab.table}.countDocuments(${tab.filter?.trim() || "{}"})`
-      : `SELECT COUNT(*) FROM ${tab.table}${where}`;
+    const query = isMongo(connection.driver) ? `${tab.table}.countDocuments({})` : `SELECT COUNT(*) FROM ${tab.table}`;
     try {
       const value = await api.queryValue(sessionId, query);
       setCount(value === null ? null : plural(Number(value), "{n} row", "{n} rows"));
@@ -953,7 +946,7 @@ export function QueryTab({
     const viewer =
       !!tab.table &&
       !!ref &&
-      result.sql === viewerSql(connection.driver, tab.table, tab.filter ?? "", tab.sort ?? null);
+      result.sql === viewerSql(connection.driver, tab.table, "", tab.sort ?? null);
     if (!viewer && results.length !== 1) return null;
     const forget = <T,>(p: Promise<T>, drop: () => void) =>
       p.catch((e: unknown) => {
@@ -996,7 +989,7 @@ export function QueryTab({
   function notesScope(result: Result): NotesScope | null {
     const ref = tab.tableRef;
     if (!(tab.table && ref) || isMongo(connection.driver)) return null;
-    if (result.sql !== viewerSql(connection.driver, tab.table, tab.filter ?? "", tab.sort ?? null)) return null;
+    if (result.sql !== viewerSql(connection.driver, tab.table, "", tab.sort ?? null)) return null;
     return { connectionId: connection.id, database: tab.database, schema: ref.schema, table: ref.name };
   }
 
@@ -1206,36 +1199,7 @@ export function QueryTab({
           )}
         </div>
         {tab.table && (
-          <form
-            className="viewer-bar"
-            onSubmit={(e) => {
-              e.preventDefault();
-              applyViewer({ filter });
-            }}
-          >
-            <span className="muted small">{isMongo(connection.driver) ? t("Filter") : "WHERE"}</span>
-            <input
-              value={filter}
-              aria-label={isMongo(connection.driver) ? t("Filter") : "WHERE"}
-              placeholder={t(
-                isMongo(connection.driver)
-                  ? "e.g. { total: { $gt: 100 }, status: 'paid' }"
-                  : "e.g. total > 100 AND status = 'paid'",
-              )}
-              onChange={(e) => setFilter(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape" && filter) {
-                  setFilter("");
-                  applyViewer({ filter: "" });
-                }
-              }}
-            />
-            <button type="submit">{t("Apply")}</button>
-            {tab.sort && (
-              <button type="button" className="link" onClick={() => applyViewer({ sort: null })}>
-                {t("Sorted by {column}", { column: tab.sort.column })} {tab.sort.desc ? "▼" : "▲"} ×
-              </button>
-            )}
+          <div className="viewer-bar">
             <span className="spacer" />
             {count && <span className="muted small">{count}</span>}
             <button
@@ -1247,7 +1211,7 @@ export function QueryTab({
             >
               <Icon name="sequence" />
             </button>
-          </form>
+          </div>
         )}
         <SqlEditor
           ref={editor}
@@ -1310,15 +1274,6 @@ export function QueryTab({
                 sql: current.sql,
                 jobId: current.jobId,
                 table: tab.table ?? null,
-                viewer: tab.table
-                  ? {
-                      filter: tab.filter ?? "",
-                      setFilter: (next) => {
-                        setFilter(next);
-                        applyViewer({ filter: next });
-                      },
-                    }
-                  : undefined,
               }}
               edit={editTarget(current)}
               notes={notesScope(current)}

@@ -200,12 +200,6 @@ button.toggled {
   background: var(--bg-sidebar);
 }
 
-.viewer-bar input {
-  flex: 1;
-  max-width: 640px;
-  font-family: var(--font-mono);
-}
-
 .tx-open {
   color: var(--warn, #e8590c);
   font-size: 12px;

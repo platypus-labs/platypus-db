@@ -264,7 +264,7 @@ export default async function (page, { shots, dir }) {
   await shot("references");
   await page.eval(`document.querySelector('.reference button').click()`);
   await page.waitFor(`${status} === '2 rows'`, 15_000);
-  assert.equal(await page.eval(`${visibleTab}.querySelector('.viewer-bar input').value`), "customer_id = 1");
+  assert.match(await page.eval(`${visibleTab}.querySelector('.cm-content').textContent`), /WHERE customer_id = 1$/);
   await closeTab(page);
 
   // A foreign key opens the row it points to.
@@ -273,7 +273,7 @@ export default async function (page, { shots, dir }) {
   await openMenu(page);
   await menu(page, "Open referenced row");
   await page.waitFor(`${status} === '1 row'`, 15_000);
-  assert.equal(await page.eval(`${visibleTab}.querySelector('.viewer-bar input').value`), "id = 1");
+  assert.match(await page.eval(`${visibleTab}.querySelector('.cm-content').textContent`), /WHERE id = 1$/);
   await closeTab(page);
 
   await page.waitFor(`${status} === '3 rows'`);
