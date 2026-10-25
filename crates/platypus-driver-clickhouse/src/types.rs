@@ -16,7 +16,7 @@ use platypus_sql::{Dialect, Lexer, TokenKind};
 /// instants are unchanged.
 const UTC: &str = "+00:00";
 
-/// Types selected as text: ClickHouse cannot write them as Arrow (`UUID`, `JSON`, ...)
+/// Types selected as text: ClickHouse cannot write them as Arrow (`UUID`, `JSON`, `NULL`, ...)
 /// or writes their bare storage (enum codes, IP addresses as numbers, 128- and 256-bit
 /// integers and fixed strings as raw bytes).
 const AS_TEXT: &[&str] = &[
@@ -34,6 +34,8 @@ const AS_TEXT: &[&str] = &[
     "Int128",
     "Int256",
     "FixedString(",
+    // The type of a bare `NULL`.
+    "Nothing",
 ];
 
 /// Whether `sql` is a query `DESCRIBE TABLE (...)` can describe.
@@ -80,7 +82,10 @@ pub fn arrow_compatible(sql: &str, columns: &[(String, String)]) -> Option<Strin
         .iter()
         .map(|(name, db_type)| {
             let q = d.quote_ident(name);
-            if as_text(db_type) {
+            if db_type.contains("Nothing") {
+                // `toString(NULL)` is still a NULL of type `Nothing`.
+                format!("CAST({q} AS Nullable(String)) AS {q}")
+            } else if as_text(db_type) {
                 format!("toString({q}) AS {q}")
             } else {
                 q.into_owned()
@@ -207,6 +212,11 @@ mod tests {
             Some("SELECT id, toString(`my id`) AS `my id` FROM (SELECT * FROM t)")
         );
         assert_eq!(arrow_compatible("SELECT 1", &columns[..1]), None);
+        let null = vec![("x".to_owned(), "Nullable(Nothing)".to_owned())];
+        assert_eq!(
+            arrow_compatible("SELECT NULL AS x", &null).as_deref(),
+            Some("SELECT CAST(x AS Nullable(String)) AS x FROM (SELECT NULL AS x)")
+        );
     }
 
     #[test]
