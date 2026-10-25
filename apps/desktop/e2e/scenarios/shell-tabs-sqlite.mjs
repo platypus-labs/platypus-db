@@ -72,6 +72,17 @@ export default async function (page, { dir, shots }) {
   await page.key("t", "KeyT", 84, CTRL);
   await page.waitFor(`${tabs}.length === 3`);
 
+  // A middle click closes the tab under it. With tabs that overflow the bar, Chromium starts
+  // its autoscroll on the press and swallows the click, unless the press is cancelled.
+  await page.eval(`document.head.insertAdjacentHTML('beforeend', '<style id="e2e-wide">.tab { min-width: 600px }</style>')`);
+  await page.waitFor(`document.querySelector('.tabs').scrollWidth > document.querySelector('.tabs').clientWidth`);
+  await page.eval(`document.querySelector('.tabs').scrollLeft = 0`);
+  await page.clickSel(".tab:nth-child(1)", { button: "middle" });
+  await page.waitFor(`${tabs}.length === 2`);
+  await page.eval(`document.getElementById('e2e-wide').remove()`);
+  await page.key("t", "KeyT", 84, CTRL);
+  await page.waitFor(`${tabs}.length === 3`);
+
   // The tab bar is a tab list; its menu works from the keyboard and pins a tab.
   assert.equal(await page.eval(`document.querySelector('.tabs').getAttribute('role')`), "tablist");
   assert.equal(await page.eval(`${tabs}.filter(t => t.getAttribute('aria-selected') === 'true').length`), 1);

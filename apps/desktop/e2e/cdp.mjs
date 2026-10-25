@@ -90,7 +90,7 @@ export class Page {
       button,
       clickCount,
       modifiers,
-      buttons: button === "right" ? 2 : 1,
+      buttons: { left: 1, right: 2, middle: 4 }[button],
     });
   }
 
