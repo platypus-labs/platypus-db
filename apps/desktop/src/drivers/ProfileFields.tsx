@@ -40,7 +40,7 @@ export function ProfileFields({ conn, profile, onChange, password }: Props) {
 
   return (
     <>
-      <div className="profile-fields">
+      <div className="field-grid">
         {profile.fields.map((f) => (
           <label key={f.key} className="field" data-field={f.key}>
             <span>{t(f.label)}</span>

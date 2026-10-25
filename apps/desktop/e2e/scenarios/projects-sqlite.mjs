@@ -299,6 +299,21 @@ async function members(page, dir, shots) {
   await page.key("Enter", "Enter", 13);
   await page.waitFor(`document.querySelector('.project-chips') !== null`);
   assert.equal(await page.eval(`${chip("Interno")}.getAttribute('aria-pressed')`), "true");
+  // The PostgreSQL form is laid out in rows of two and fits a 1366x768 window without scrolling.
+  await page.eval(`(() => {
+    const select = [...document.querySelectorAll('.modal .field')].find(f => f.textContent.startsWith('Driver')).querySelector('select');
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'postgres');
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await page.waitFor(`[...document.querySelectorAll('.modal .field')].some(f => f.textContent.startsWith('Host'))`);
+  const layout = await page.eval(`(() => {
+    const top = (label) => [...document.querySelectorAll('.modal .field')].find(f => f.querySelector('span')?.textContent === label).getBoundingClientRect().top;
+    const modal = document.querySelector('.modal');
+    return { host: top('Host') === top('Port'), database: top('Database') === top('User'), password: top('Password from') === top('Password'),
+      height: modal.offsetHeight, scrolls: modal.scrollHeight > modal.clientHeight };
+  })()`);
+  assert.deepEqual([layout.host, layout.database, layout.password, layout.scrolls], [true, true, true, false]);
+  assert.ok(layout.height <= 680, `dialog height ${layout.height}`);
   await page.eval(`(() => {
     const set = (el, value) => {
       const proto = el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
