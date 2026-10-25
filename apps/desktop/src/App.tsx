@@ -578,6 +578,8 @@ export function App() {
         onSwitch={switchProject}
         onNew={() => setDialog({ kind: "project", project: null })}
         onMenu={(p, e) => setRailMenu({ x: e.clientX, y: e.clientY, target: { scope: "project", arg: p } })}
+        folders={projectFolders}
+        onFolderMenu={(f, e) => setRailMenu({ x: e.clientX, y: e.clientY, target: { scope: "project.folder", arg: f } })}
       />
       <div className="sidebar-column">
         <Navigator
