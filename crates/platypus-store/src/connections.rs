@@ -9,9 +9,9 @@ use uuid::Uuid;
 
 use crate::{Result, SecretStore, StoreError};
 
-/// 2 added projects, 3 network profiles: an older app would drop them on its first save, so
-/// it refuses the file.
-const FILE_VERSION: u32 = 3;
+/// 2 added projects, 3 network profiles, 4 the agents' access: an older app would drop them on
+/// its first save, so it refuses the file.
+const FILE_VERSION: u32 = 4;
 
 /// A connection as the user saved it. Never contains the password.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,6 +52,10 @@ pub struct SavedConnection {
     /// Development, test or production: production asks before changes and starts in manual
     /// commit.
     pub connection_type: Option<ConnectionType>,
+    /// What external agents (MCP clients, the CLI) may do on the connection; see
+    /// [`SavedConnection::effective_agent_access`].
+    #[serde(default)]
+    pub agent_access: AgentAccess,
     /// The SSH server the connection goes through. Before `virtual_keys`: TOML writes plain
     /// values first, then tables.
     pub ssh: Option<SavedSsh>,
@@ -70,6 +74,19 @@ pub enum ConnectionType {
     Dev,
     Test,
     Prod,
+}
+
+/// What external agents may do on a connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentAccess {
+    /// Agents do not see the connection.
+    Off,
+    /// Agents read the schema and run queries that change nothing.
+    #[default]
+    ReadOnly,
+    /// Agents may also change data and schema.
+    ReadWrite,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -266,6 +283,7 @@ impl SavedConnection {
             read_only: false,
             color: None,
             connection_type: None,
+            agent_access: AgentAccess::default(),
             ssh: None,
             init: SavedInit::default(),
             virtual_keys: Vec::new(),
@@ -287,6 +305,18 @@ impl SavedConnection {
         config.init.schema.clone_from(&self.init.schema);
         config.init.time_zone.clone_from(&self.init.time_zone);
         config
+    }
+
+    /// What agents may do in fact: production and read-only connections never let them
+    /// write, whatever was chosen.
+    #[must_use]
+    pub fn effective_agent_access(&self) -> AgentAccess {
+        let capped = self.read_only || self.connection_type == Some(ConnectionType::Prod);
+        if capped {
+            self.agent_access.min(AgentAccess::ReadOnly)
+        } else {
+            self.agent_access
+        }
     }
 
     /// The password is asked at each connection: none is saved, looked up or printed by a
@@ -777,7 +807,7 @@ mod tests {
         s.save_project(project("Interno", vec![shared.id])).unwrap();
 
         let text = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
-        assert!(text.contains("version = 3"), "{text}");
+        assert!(text.contains("version = 4"), "{text}");
         assert!(text.contains("[[projects]]"), "{text}");
         let reopened = ConnectionStore::open(dir.path().join("connections.toml"), secrets).unwrap();
         let projects = reopened.projects();
@@ -788,7 +818,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_a_v1_file_and_writes_v3() {
+    fn reads_a_v1_file_and_writes_v4() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("connections.toml");
         let id = Uuid::new_v4();
@@ -804,8 +834,10 @@ mod tests {
         let old = s.get(id).unwrap().clone();
         s.save(old, PasswordUpdate::Keep).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("version = 3"), "{text}");
+        assert!(text.contains("version = 4"), "{text}");
         assert!(!text.contains("folder"), "{text}");
+        // Older files leave agents to read only.
+        assert!(text.contains("agent_access = \"read_only\""), "{text}");
     }
 
     fn profile(name: &str) -> NetworkProfile {
@@ -908,6 +940,44 @@ SET b = 2;"
         c.pgpass = false;
         c.password_command = Some("x".to_owned());
         assert!(!c.asks_password());
+    }
+
+    #[test]
+    fn agents_never_write_to_production_or_read_only_connections() {
+        let mut c = sample();
+        assert_eq!(c.agent_access, AgentAccess::ReadOnly, "the default");
+        c.agent_access = AgentAccess::ReadWrite;
+        assert_eq!(c.effective_agent_access(), AgentAccess::ReadWrite);
+        c.connection_type = Some(ConnectionType::Prod);
+        assert_eq!(c.effective_agent_access(), AgentAccess::ReadOnly);
+        c.agent_access = AgentAccess::Off;
+        assert_eq!(c.effective_agent_access(), AgentAccess::Off);
+        c.connection_type = Some(ConnectionType::Test);
+        c.agent_access = AgentAccess::ReadWrite;
+        c.read_only = true;
+        assert_eq!(c.effective_agent_access(), AgentAccess::ReadOnly);
+    }
+
+    #[test]
+    fn agent_access_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, secrets) = store(dir.path());
+        let mut conn = sample();
+        conn.agent_access = AgentAccess::Off;
+        conn.ssh = Some(SavedSsh {
+            host: "bastion".into(),
+            port: 22,
+            user: "ops".into(),
+            auth: SshAuthKind::Agent,
+            key_path: None,
+            secret_id: Uuid::new_v4(),
+            jump: None,
+        });
+        s.save(conn.clone(), PasswordUpdate::Keep).unwrap();
+        let text = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
+        assert!(text.contains("agent_access = \"off\""), "{text}");
+        let reopened = ConnectionStore::open(dir.path().join("connections.toml"), secrets).unwrap();
+        assert_eq!(reopened.get(conn.id), Some(&conn));
     }
 
     #[test]
@@ -1165,7 +1235,7 @@ SET b = 2;"
         std::fs::write(&path, "version = 99\n").unwrap();
         let err = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap_err();
         assert!(matches!(err, StoreError::Format { .. }));
-        std::fs::write(&path, "version = 4\n").unwrap();
+        std::fs::write(&path, "version = 5\n").unwrap();
         let err = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap_err();
         assert!(err.to_string().contains("newer PlatypusDB"), "{err}");
 

@@ -92,13 +92,13 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 | E — Explain e performance | ✅ fatto (P1, P2, P3) |
 | F — Connettività e credenziali | ✅ fatto (P1, P2) |
 | G — Nuovi driver | 🔒 Delfa · group-g-p2 · 2026-10-24 |
-| H — Import, export e trasferimento | 🔒 Claude · group-h-fixes · 2026-10-25 |
+| H — Import, export e trasferimento | 🔒 Paolo · group-h-fixes · 2026-10-25 |
 | I — Strumenti di schema | libero |
 | J — Amministrazione del server | libero |
 | K — Shell ed ergonomia | ✅ fatto (P1) |
 | L — Sicurezza operativa | ✅ fatto (P1) |
 | M — Analisi dei dati | libero |
-| N — Accesso per agenti (MCP) | 🔒 Delfa · group-n-mcp · 2026-10-25 |
+| N — Accesso per agenti (MCP) | ✅ fatto (P1) |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
@@ -452,6 +452,26 @@ della transazione aperta con avviso). Restano i P2/P3.
 ---
 
 ### Gruppo N — Accesso per agenti esterni (MCP)
+
+**Stato: P1 completate.** Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
+il binario `platypus-mcp`, server MCP su stdio con `rmcp`: legge il profilo dell'app (o
+`PLATYPUS_DATA_DIR`) e apre le connessioni come l'app (profili di rete, tunnel SSH, password
+da keychain, comando o `.pgpass`); con la master password i segreti restano bloccati e la
+connessione risponde con un errore chiaro. Strumenti: `list_connections` (senza host, utente
+né segreti), `list_schemas`, `list_objects`, `describe_table`, `get_ddl`, `search_objects` e
+`run_query` (uno statement, limiti di righe, byte e tempo, tabella testuale o JSON).
+`agent_access` per connessione in `connections.toml` (versione 4): `off`, `read_only`
+(default), `read_write`; Prod e connessioni read-only al massimo in sola lettura. In sola
+lettura passa solo ciò che `platypus_sql::analyze` vede come query, eseguito nella
+transazione di sola lettura del database (`Dialect::read_only_begin`: `READ ONLY` in
+PostgreSQL, MySQL e MariaDB, `query_only` in SQLite, rollback in DuckDB e SQL Server); in
+lettura e scrittura niente controllo delle transazioni e niente UPDATE/DELETE senza WHERE o
+TRUNCATE se l'impostazione Safety chiede conferma. Errori ripuliti dai segreti; ogni query
+nella cronologia con l'agente come origine (colonna `origin`) e un filtro nel pannello. Pagina
+Impostazioni "Agents" con i comandi per Claude Code e Codex e l'accesso di ogni connessione;
+selettore "Agent access" nel dialog di connessione. CLI `platypus --connection <nome>` con
+output JSON documentato nel README. Gli installer includono `platypus-mcp` come external
+binary di Tauri (`--config src-tauri/tauri.mcp.conf.json`). Restano P2 e P3.
 
 PlatypusDB non integra un proprio assistente AI. Diventa invece uno strumento che gli agenti già
 in uso (Claude Code, Codex, Cursor, altri client MCP) possono collegare: usano le connessioni

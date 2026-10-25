@@ -93,4 +93,5 @@ jobs:
           releaseBody: See the assets below to download and install this version.
           releaseDraft: true
           includeUpdaterJson: true
-          args: ${{ matrix.args }}
+          # The overlay builds platypus-mcp, the MCP server for agents, and ships it next to the app.
+          args: --config src-tauri/tauri.mcp.conf.json ${{ matrix.args }}

@@ -18,6 +18,7 @@ platypus-driver-mysql.workspace = true
 platypus-driver-pg.workspace = true
 platypus-driver-sqlite.workspace = true
 platypus-export.workspace = true
+platypus-mcp.workspace = true
 platypus-sql.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }

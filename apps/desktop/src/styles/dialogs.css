@@ -568,6 +568,36 @@ button.primary.danger:hover:not(:disabled) {
   max-width: 360px;
 }
 
+/* The Agents page of the Settings. */
+.agents-panel,
+.agent-command {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agents-panel {
+  gap: 10px;
+}
+
+.agents-connections {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.agents-connections th {
+  padding: 2px 4px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+
+.agents-connections td {
+  padding: 2px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
 /* The connection's bootstrap statements. */
 .field textarea.init-script {
   background: var(--bg-input);

@@ -137,6 +137,14 @@ scrolls through millions of rows.
 - **Shell**: `Ctrl+Shift+T` reopens the last closed tab, the mouse wheel scrolls the tab bar,
   every shortcut can be changed in the Settings and the toolbar's buttons hidden or shown as
   icons only.
+- **Agents (MCP)**: Claude Code, Codex, Cursor and other MCP clients use your saved
+  connections through `platypus-mcp`, an MCP server they start themselves (the app need not
+  be open). Each connection gives agents no access, read only (the default) or read and
+  write; production and read-only connections are never more than read only. Agents list
+  connections, schemas and objects, describe tables, read DDL, search objects and run one
+  statement at a time within row, byte and time limits. Passwords stay in the keychain and
+  no answer shows a host, a user or a secret. Their queries are in the history with the
+  agent's name, and the history filters them. See [Agents](#agents).
 - Automatic reconnection, in-app updates.
 
 | | |
@@ -144,6 +152,61 @@ scrolls through millions of rows.
 | ![Autocomplete](docs/screenshots/autocomplete.png) | ![Transactions](docs/screenshots/transaction.png) |
 | ![Platypus Light](docs/screenshots/light-theme.png) | ![Command palette](docs/screenshots/palette.png) |
 | ![Projects](docs/screenshots/projects.png) | |
+
+## Agents
+
+Settings → Agents shows the commands that register the server, with Copy buttons:
+
+```bash
+claude mcp add platypus -- "C:\Program Files\PlatypusDB\platypus-mcp.exe"
+```
+
+and for Codex, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.platypus]
+command = 'C:\Program Files\PlatypusDB\platypus-mcp.exe'
+```
+
+`platypus-mcp` sits next to the app's executable. It reads the connections of the app's
+profile, or of `PLATYPUS_DATA_DIR` when set. With a master password the saved passwords stay
+locked to agents: such connections answer with an error saying so, and work with a password
+command or `.pgpass` instead. A connection that asks for its password every time is not
+available to agents.
+
+Tools: `list_connections`, `list_schemas`, `list_objects`, `describe_table`, `get_ddl`,
+`search_objects` and `run_query`. `run_query` runs one statement and returns 100 rows,
+32 KB and 30 s at most by default (`max_rows` up to 10,000, `max_bytes` up to 1 MB,
+`timeout_seconds` up to 300), as an aligned text table or JSON, saying when rows or values
+longer than 1,000 characters were left out. On read-only connections only statements that
+change nothing run, inside the database's read-only transaction (PostgreSQL, MySQL and
+MariaDB `READ ONLY`, SQLite `query_only`; DuckDB and SQL Server roll the transaction back),
+and functions that act outside it (`pg_terminate_backend`, `dblink`, `LOAD_FILE`…) are
+refused. DuckDB sessions of agents cannot read or write other files nor load extensions,
+and close after each call so the app can open the file.
+On read-write connections changes commit at once; `BEGIN`, `COMMIT` and `ROLLBACK` are
+refused, and so are `UPDATE` or `DELETE` without `WHERE` and `TRUNCATE` unless Settings →
+Safety runs them without asking.
+
+Agents without MCP use the `platypus` CLI (crate `platypus-cli`) with `--connection`, which
+follows the same access and prints one JSON document:
+
+```bash
+platypus connections                                  # [{"name", "id", "driver", "type", "database", "agent_access"}]
+platypus --connection "Local PG" schemas              # [{"name", "system", "current"}]
+platypus --connection "Local PG" objects --schema demo
+platypus --connection "Local PG" table --schema demo --table orders
+platypus --connection "Local PG" ddl --schema demo --name orders   # {"ddl": "CREATE TABLE ..."}
+platypus --connection "Local PG" search order          # {"matches": [...], "truncated": false}
+platypus --connection "Local PG" query "select * from demo.orders" --max-rows 50
+```
+
+A query prints `{"columns": [{"name", "type"}], "rows": [[...]], "row_count",
+"truncated", "truncated_by": "max_rows" | "max_bytes" | null, "values_cut", "elapsed_ms"}`,
+with numbers and booleans as JSON values and everything else as text; a statement without
+rows prints `{"affected_rows", "elapsed_ms"}`. `-f table` prints the text table instead. A
+failure prints `{"error": {"kind", "message"}}` and exits with 1; `kind` is `not_found`,
+`denied`, `locked`, `invalid`, `connect`, `database`, `timeout` or `store`.
 
 ## Install
 
@@ -222,7 +285,8 @@ crates/
   platypus-store/          connections (TOML + OS keychain), imports, query history (SQLite)
   platypus-export/         streaming CSV, JSON, NDJSON and Parquet writers; import into tables
   platypus-conformance/    integration suite run on every driver
-  platypus-cli/            `platypus` CLI for exercising the core
+  platypus-cli/            `platypus` CLI for exercising the core, and for agents (`--connection`)
+  platypus-mcp/            `platypus-mcp`, the MCP server for agents (stdio, rmcp)
 apps/desktop/              Tauri app: React UI in src/, Rust shell in src-tauri/
 docker/                    dev databases with seed data
 ```
@@ -260,6 +324,10 @@ cargo run --release -p platypus-cli -- query -f parquet -o big.parquet --stats "
 cargo run -p platypus-cli -- query -u mysql://platypus:platypus@localhost:53306/platypus "select * from type_zoo"
 cargo run -p platypus-cli -- query -u sqlite:///C:/data/app.db "select * from sqlite_master"
 cargo run -p platypus-cli -- query -u duckdb:///C:/data/app.duckdb "select * from duckdb_tables()"
+
+# MCP server for agents; the installers ship it next to the app (tauri build with
+# --config src-tauri/tauri.mcp.conf.json, as scripts/build-windows.ps1 and the release do)
+cargo build --release -p platypus-mcp
 
 # end-to-end tests (Windows): drive the release build on a throwaway profile
 cd apps/desktop
