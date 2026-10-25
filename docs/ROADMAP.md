@@ -279,6 +279,17 @@ senza l'estensione ICU non ha fuso orario di sessione. Una nuova connessione par
 database in una griglia di loghi. Conformance su PostgreSQL, MySQL, MariaDB, SQL Server, SQLite e
 DuckDB (SQL Server dal profilo `sqlserver` di `docker/compose.yml`).
 
+libSQL/Turso (P3): crate `platypus-driver-libsql`, protocollo Hrana 3 su HTTP (`/v3/pipeline`) con
+`reqwest` e la configurazione rustls del driver PostgreSQL, invece del crate `libsql` (molte più
+dipendenze). Il token va nella password o nel parametro `authToken` degli URL `libsql://`. Le
+istruzioni girano su uno stream del server tenuto aperto dal suo baton (transazioni e stato di
+sessione); metadati, explain e tipi dei risultati riusano il codice del driver SQLite. Limiti: niente
+annullamento (HTTP non ferma un'istruzione), niente tabelle temporanee su `sqld`, risultati letti
+interi. Conformance dal profilo `libsql` (`sqld` con autenticazione JWT). Cloudflare D1: valutato,
+non implementato: la sua API HTTP (`/accounts/<id>/d1/database/<id>/query`) chiede un account e un
+token Cloudflare, non ha un server locale per i test (wrangler simula D1 solo nei Worker) e non ha
+transazioni tra richieste.
+
 | Driver | Prio | Note |
 |---|---|---|
 | SQL Server (`tiberius`) | P1 | Dialetto `TOP`, `[quoting]`, più result set |
@@ -289,7 +300,7 @@ DuckDB (SQL Server dal profilo `sqlserver` di `docker/compose.yml`).
 | ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | Una persona per il bridge, poi profili |
 | Oracle nativo | P3 | Licensing OCI da valutare |
 | Redis, MongoDB | P3 | Richiedono una UI non tabellare (gruppo dedicato in seguito) |
-| libSQL/Turso, Cloudflare D1 | P3 | Varianti di SQLite |
+| ✅ libSQL/Turso; Cloudflare D1 valutato, non fatto | P3 | Varianti di SQLite |
 
 ---
 
