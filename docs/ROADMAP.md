@@ -467,11 +467,11 @@ generate e gli indici su espressioni restano come sono solo se non si toccano.
 
 ---
 
-### Gruppo K — Shell dell'applicazione ed ergonomia — ✅ P1 fatti
+### Gruppo K — Shell dell'applicazione ed ergonomia — ✅ P1 e P2 fatti
 
-**Stato: P1 completati** (rotella sui tab, command palette con ricerca fuzzy su azioni,
+**Stato: P1 e P2 completati** (rotella sui tab, command palette con ricerca fuzzy su azioni,
 connessioni, tabelle e query recenti, riapertura del tab chiuso, pagina Impostazioni con
-sezioni, scorciatoie personalizzabili, barra degli strumenti configurabile). Restano i P2/P3.
+sezioni, scorciatoie personalizzabili, barra degli strumenti configurabile).
 Fatta anche la **nuova grafica**: temi Platypus Dark e Light, font Inter e JetBrains Mono
 inclusi, icone Lucide, navigator, tab, toolbar e dialog ridisegnati
 ([spec](superpowers/specs/2026-10-24-grafica-e-progetti-design.md), parte A). Fatti anche i
@@ -486,7 +486,15 @@ La barra superiore fa anche da barra del titolo (pulsanti della finestra, trasci
 l'impostazione "Title bar" torna quella di sistema, sempre su macOS) e le conferme sono dialog
 dell'app (`ui/ask.tsx`) al posto di `window.confirm`. I pulsanti delle barre (editor SQL, modifica
 della griglia, explain, oggetti, designer di tabella) mostrano solo l'icona, con il tooltip; Run e
-le azioni dei dialog tengono la parola.
+le azioni dei dialog tengono la parola. Poi i **P2**: menu della scheda (fissa, apri accanto, chiudi
+le altre o quelle a destra), schede raggruppate per connessione (Impostazioni › Tabs), editor
+diviso (`Ctrl+Shift+D`), tabelle e colonne trascinate dal navigator nell'editor (nome, o `SELECT`
+in un editor vuoto o con Shift), interfaccia in italiano e inglese (`i18n.ts`, `t()` con il
+testo inglese come chiave, controllo `scripts/i18n-check.mjs` nella build; la documentazione
+delle funzioni SQL nel completamento resta in inglese), accessibilità (ruoli, nome e focus dei
+dialog in `ui/modalA11y.ts`, navigator, schede e menu da tastiera, contrasto dei commenti SQL),
+log delle attività e degli errori, notifica di sistema a fine query lunga
+(`tauri-plugin-notification`), `Ctrl+=` / `Ctrl+-` / `Ctrl+0` e font della griglia. Restano i P3.
 
 **Area:** `App.tsx`, `apps/desktop/src/shell/` (tab bar, palette, impostazioni), `styles.css`, `theme.ts`
 **Dipende da:** 0.2, 0.3, 0.7
@@ -496,19 +504,19 @@ le azioni dei dialog tengono la parola.
 | ✅ **Rotella del mouse sui tab = scroll orizzontale** | P1 | N |
 | ✅ **Command palette** (Ctrl+K o Ctrl+Shift+P): azioni, oggetti, connessioni e query recenti, ricerca fuzzy | P1 | N |
 | ✅ Riapri l'ultimo tab chiuso (Ctrl+Shift+T) | P1 | N |
-| Tab colorati per connessione, raggruppabili e fissabili; menu "chiudi altri" | P2 | N |
-| Editor diviso, con due tab affiancati | P2 | N |
-| Trascinare una tabella dal navigator nell'editor inserisce il nome o un `SELECT` | P2 | N |
+| ✅ Tab colorati per connessione, raggruppabili e fissabili; menu "chiudi altri" | P2 | N |
+| ✅ Editor diviso, con due tab affiancati | P2 | N |
+| ✅ Trascinare una tabella dal navigator nell'editor inserisce il nome o un `SELECT` | P2 | N |
 | ✅ Pagina Impostazioni, scorciatoie personalizzabili, barra degli strumenti configurabile | P1 | D |
-| Lingua dell'interfaccia: italiano e inglese, con l'infrastruttura i18n | P2 | D |
-| Accessibilità: navigazione da tastiera completa, screen reader, contrasto | P2 | D |
+| ✅ Lingua dell'interfaccia: italiano e inglese, con l'infrastruttura i18n | P2 | D |
+| ✅ Accessibilità: navigazione da tastiera completa, screen reader, contrasto | P2 | D |
 | Pannelli trascinabili e layout salvato | P3 | D |
 | Modalità portable, con impostazioni accanto all'eseguibile | P3 | N |
 | Mini-finestra di query rapida dalla system tray | P3 | N |
 | Modalità Vim nell'editor | P3 | N |
-| Log degli errori e attività in background visibili, per la diagnosi | P2 | D |
-| 🆕 Notifica di sistema alla fine di una query lunga, quando la finestra non è in primo piano | P2 | D |
-| 🆕 Zoom dell'interfaccia e dimensione del font di editor e griglia (Ctrl+= / Ctrl+-) | P2 | D |
+| ✅ Log degli errori e attività in background visibili, per la diagnosi | P2 | D |
+| ✅ Notifica di sistema alla fine di una query lunga, quando la finestra non è in primo piano | P2 | D |
+| ✅ Zoom dell'interfaccia e dimensione del font di editor e griglia (Ctrl+= / Ctrl+-) | P2 | D |
 | 🆕 Tab staccato in una finestra separata (secondo monitor) | P3 | D |
 
 ---

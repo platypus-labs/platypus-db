@@ -51,8 +51,9 @@ const modalsIn = (node: Node): HTMLElement[] =>
 
 function trapTab(e: KeyboardEvent) {
   if (e.key !== "Tab") return;
-  const all = document.querySelectorAll<HTMLElement>(".modal");
-  const top = all[all.length - 1];
+  // A dialog left open in a hidden tab is not the one on top.
+  const all = [...document.querySelectorAll<HTMLElement>(".modal")].filter((m) => m.getClientRects().length > 0);
+  const top = all.at(-1);
   if (!top) return;
   const list = focusables(top);
   if (list.length === 0) return;

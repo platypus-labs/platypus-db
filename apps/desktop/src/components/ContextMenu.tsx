@@ -50,8 +50,16 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
   const actions = actionsFor(scope, arg).filter((a) => !a.hidden);
   const lines = entries(actions);
 
+  /** Closed from the keyboard or by an item: the focus goes back where it was. A click
+   *  elsewhere leaves it where the click put it. */
+  const giveBack = useRef(false);
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      giveBack.current = true;
+      onClose();
+    };
     window.addEventListener("mousedown", onClose);
     window.addEventListener("keydown", onKey);
     window.addEventListener("blur", onClose);
@@ -80,7 +88,7 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
     return () => {
       // Not when what the menu ran took the focus, e.g. a dialog it opened.
       const lost = document.activeElement === document.body || document.activeElement === null;
-      if (lost && opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true });
+      if (giveBack.current && lost && opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true });
     };
   }, []);
 
@@ -109,6 +117,7 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
   }
 
   function choose(action: Action) {
+    giveBack.current = true;
     onClose();
     runAction(action, arg, onError);
   }

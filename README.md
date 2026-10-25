@@ -271,6 +271,22 @@ methods and fields. `mongodb+srv://` and connection string options go in the Dat
 - Every shortcut can be changed; the toolbars show icons (each says what it does on hover), and
   the SQL editor's buttons can be hidden or given their words back; `Ctrl+Shift+T` reopens the
   last closed tab.
+- **Tabs**: a right-click pins a tab (it stays first, as an icon), opens it beside the active
+  one or closes the others or those to its right; Settings › Tabs groups them under their
+  connection's name, and a click on the name folds the group.
+- **Split editor** (`Ctrl+Shift+D`): two tabs side by side; a click in one makes it the active
+  one.
+- **Drag a table or a column** from the navigator into the SQL editor: its name, or a `SELECT`
+  in an empty editor or with `Shift` held.
+- **Italian or English** (Settings › Appearance › Language; System follows Windows).
+  `Ctrl+=` / `Ctrl+-` / `Ctrl+0` change the interface size; the editor and the result grid
+  have their own font size.
+- **Activity log** (the pulse icon on top): the errors shown and the work done in the
+  background, such as connections and catalog loads, with their time, to copy into a report.
+  A query that runs longer than 10 seconds (Settings › SQL editor) ends with a system
+  notification when the window is in the background.
+- From the keyboard: arrows, Enter and the menu key in the navigator, the tab bar and the
+  context menus; dialogs keep the focus inside them and give it back when they close.
 
 ## Agents (MCP) and the CLI
 
@@ -372,6 +388,8 @@ shortcuts.
 | `Ctrl+K`, `Ctrl+Shift+P` | Command palette |
 | `Ctrl+T`, `Ctrl+W`, `Ctrl+Shift+T` | New tab / close tab / reopen the closed tab |
 | `Ctrl+Tab`, `Ctrl+Shift+Tab` | Next / previous tab |
+| `Ctrl+Shift+D` | Split the editor / close the split |
+| `Ctrl+=`, `Ctrl+-`, `Ctrl+0` | Bigger / smaller / normal interface |
 | `Ctrl+1`, `Ctrl+2`… `Ctrl+9` | All connections / the projects in rail order |
 | `Ctrl+Alt+PageDown`, `Ctrl+Alt+PageUp` | Next / previous project |
 | `Ctrl+,` | Settings |

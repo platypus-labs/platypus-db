@@ -161,7 +161,7 @@ interface Row {
   /** Takes a dragged connection or folder. */
   onDrop?: (item: DragItem) => void;
   /** A table or column dragged into an editor. */
-  sql?: SqlDrag;
+  sql?: SqlDrag | (() => SqlDrag);
 }
 
 interface DragItem {
@@ -730,7 +730,8 @@ export function Navigator(props: Props) {
         onOpen: () => openData(c, db, schema, object, target),
         ...status(okey),
         menu,
-        sql: { name: target, select: selectSql(c.driver, target, null, getSetting(selectLimit)) },
+        // Built when dragged: most rows never are.
+        sql: () => ({ name: target, select: selectSql(c.driver, target, null, getSetting(selectLimit)) }),
       },
     ];
     const details = open ? loaded<TableDetails>(okey) : null;
@@ -969,10 +970,11 @@ export function Navigator(props: Props) {
             draggable={!!row.drag || !!row.sql}
             onDragStart={(e) => {
               if (row.drag) e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(row.drag));
-              if (row.sql) {
-                e.dataTransfer.setData(SQL_DRAG, JSON.stringify(row.sql));
+              const sql = typeof row.sql === "function" ? row.sql() : row.sql;
+              if (sql) {
+                e.dataTransfer.setData(SQL_DRAG, JSON.stringify(sql));
                 // Anywhere else that takes text, e.g. a filter box, gets the name.
-                e.dataTransfer.setData("text/plain", row.sql.name);
+                e.dataTransfer.setData("text/plain", sql.name);
                 e.dataTransfer.effectAllowed = "copy";
               }
             }}

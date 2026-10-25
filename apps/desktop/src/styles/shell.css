@@ -483,8 +483,7 @@
   display: none;
 }
 
-/* The right pane: its order is 1. */
-.panes.split .pane[style*="order: 1"] {
+.panes.split .pane.right {
   border-left: 1px solid var(--border);
 }
 

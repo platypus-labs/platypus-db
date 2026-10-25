@@ -209,6 +209,8 @@ export function QueryTab({
   const [results, setResults] = useState<Result[]>([]);
   const [activeResult, setActiveResult] = useState(0);
   const [running, setRunning] = useState(false);
+  /** The run going on was started by auto-refresh. */
+  const autoRun = useRef(false);
   const [blocked, setBlocked] = useState<RunMode | null>(null);
   const [panel, setPanel] = useState<SidePanel | null>(null);
   const togglePanel = (p: SidePanel) => setPanel((open) => (open === p ? null : p));
@@ -470,6 +472,7 @@ export function QueryTab({
     const base = append ? results.length : 0;
     setResults((all) => (append ? [...all, ...own] : own));
     if (!auto) setActiveResult(base);
+    autoRun.current = auto;
     setRunning(true);
     editor.current!.setError(null);
 
@@ -633,6 +636,7 @@ export function QueryTab({
     closeJobs();
     setResults([result]);
     setActiveResult(0);
+    autoRun.current = false;
     setRunning(true);
     let status: ResultStatus;
     try {
@@ -1025,11 +1029,12 @@ export function QueryTab({
     return () => clearInterval(timer);
   }, [refreshEvery, active]);
 
-  // A long run that ends while the window is in the background is notified.
+  // A long run that ends while the window is in the background is notified, unless
+  // auto-refresh started it.
   const runStart = useRef(0);
   useEffect(() => {
     if (running) runStart.current = Date.now();
-    else if (runStart.current) {
+    else if (runStart.current && !autoRun.current) {
       const failed = results.some((r) => r.status.kind === "error" || (r.status.kind === "message" && r.status.failed));
       void notifyRunEnded(runStart.current, connection.name, failed);
     }

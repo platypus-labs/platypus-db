@@ -102,7 +102,12 @@ export function App() {
   const grouped = useSetting(groupTabsSetting);
   // A new language shows at once: everything below renders again.
   useSetting(languageSetting);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, showToast] = useState<string | null>(null);
+  /** Shows an error, and keeps it in the Activity log. */
+  const setToast = (message: string | null) => {
+    showToast(message);
+    if (message) logError(message);
+  };
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   /** Closed tabs as they would be saved, newest last, for Ctrl+Shift+T. */
@@ -629,10 +634,7 @@ export function App() {
   useEffect(() => registerAddToProject(projects ?? []), [projects]);
   useEffect(() => registerMoveToFolder(project), [project]);
 
-  // Every error shown goes to the Activity log, and so do the ones nothing caught.
-  useEffect(() => {
-    if (toast) logError(toast);
-  }, [toast]);
+  // The errors nothing caught go to the Activity log too.
   useEffect(() => {
     const unexpected = (message: string) => logError(t("Unexpected error: {message}", { message }));
     const onError = (e: ErrorEvent) => unexpected(e.message);
@@ -741,7 +743,7 @@ export function App() {
           />
         )}
         {toast && (
-          <div className="notice error toast" role="alert" onClick={() => setToast(null)}>
+          <div className="notice error toast" role="alert" onClick={() => showToast(null)}>
             {toast}
           </div>
         )}
@@ -757,7 +759,7 @@ export function App() {
               Component && (
                 <div
                   key={t.key}
-                  className={`pane${split && t.key === activeTab ? " focused" : ""}`}
+                  className={`pane${split && t.key === activeTab ? " focused" : ""}${pane === 1 ? " right" : ""}`}
                   hidden={pane < 0}
                   style={{ order: pane }}
                   onMouseDownCapture={activate}
@@ -980,19 +982,14 @@ function registerShellActions(shell: { current: ShellApi }) {
     registerAction({
       id: "tab.split",
       scope: "global",
-      title: "Split editor",
+      title: "Split editor or close the split",
       shortcut: "Mod+Shift+D",
-      when: () => !s().split && index() >= 0,
+      when: () => index() >= 0,
       // Beside the next tab, or a new SQL editor when it is the only one.
-      run: () => s().openBeside(s().tabs.length > 1 ? s().tabs[(index() + 1) % s().tabs.length]! : null),
-    }),
-    registerAction({
-      id: "tab.unsplit",
-      scope: "global",
-      title: "Close split",
-      shortcut: "Mod+Shift+D",
-      when: () => !!s().split,
-      run: () => s().closeSplit(),
+      run: () => {
+        if (s().split) return s().closeSplit();
+        s().openBeside(s().tabs.length > 1 ? s().tabs[(index() + 1) % s().tabs.length]! : null);
+      },
     }),
     ...tabMenuActions(s),
     // `+` takes Shift on some keyboards and not on others, and the keypad has its own.
