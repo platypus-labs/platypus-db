@@ -97,7 +97,7 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 | D — Editor SQL | ✅ fatto (P1, P3; P2 in parte) |
 | E — Explain e performance | ✅ fatto (P1; P2 e P3 in parte) |
 | F — Connettività e credenziali | ✅ fatto (P1, P2) |
-| G — Nuovi driver | 🔒 Delfa · group-g-adbc-odbc · 2026-10-25 |
+| G — Nuovi driver | 🔒 Delfa · group-g-odbc · 2026-10-25 |
 | H — Import, export e trasferimento | ✅ fatto (P1; P2 e P3 in parte) |
 | I — Strumenti di schema | ✅ fatto (P1) |
 | J — Amministrazione del server | libero |
