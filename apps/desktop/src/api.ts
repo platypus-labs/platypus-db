@@ -752,6 +752,8 @@ export const api = {
     invoke<ImportPreview>("preview_import", { sessionId, path, table }),
   /** The first rows of a table of the source session, with the column types they would take in
    *  the target session's database. */
+  /** Saves the clipboard's text to a new `pasted.csv`; returns its path. */
+  clipboardToFile: () => invoke<string>("clipboard_to_file"),
   previewTransfer: (sourceSessionId: number, schema: string | null, table: string, targetSessionId: number) =>
     invoke<ImportPreview>("preview_transfer", { sourceSessionId, schema, table, targetSessionId }),
   /** Copies a table between the databases of two sessions; cancelled with `cancelExport`. */

@@ -226,6 +226,7 @@ pub fn run() {
             commands::files::read_text_file,
             commands::files::write_text_file,
             commands::files::read_clipboard,
+            commands::files::clipboard_to_file,
             commands::settings::get_settings,
             commands::settings::set_setting,
             commands::explain::explain,

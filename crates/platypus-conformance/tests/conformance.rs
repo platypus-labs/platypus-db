@@ -1764,7 +1764,7 @@ async fn sets_the_session_up_after_connecting() {
 /// that leaves that table as it was.
 #[tokio::test]
 async fn imports_data_files() {
-    use platypus_export::import::{ImportColumn, ImportError, ImportMode, ImportPlan, import};
+    use platypus_export::import::{ImportColumn, ImportMode, ImportPlan, import};
     use platypus_sql::Dialect;
 
     let dir = tempfile::tempdir().unwrap();
@@ -1834,84 +1834,7 @@ async fn imports_data_files() {
         let price: f64 = values[3].as_deref().unwrap().parse().unwrap();
         assert!((price - 109.75).abs() < 1e-9, "{}: {price}", b.name);
 
-        // Replace: the old rows go, in the same transaction.
-        let count = format!("SELECT COUNT(*) FROM {table}");
-        let mut again = plan.clone();
-        again.create = false;
-        again.mode = ImportMode::Replace;
-        import((&*source, Dialect::DuckDb), (&*conn, d), &again, |_| true)
-            .await
-            .unwrap_or_else(|e| panic!("{}: replace: {e}", b.name));
-        let batches = collect(&b, &*other, &count).await;
-        assert_eq!(
-            cell(&batches[0], 0, 0).as_deref(),
-            Some("3"),
-            "{}: replaced",
-            b.name
-        );
-
-        // Upsert on a unique key: a changed row is updated, a deleted one inserted again.
-        // SQLite qualifies the index, not its table.
-        let on = if b.config.driver == DriverKind::Sqlite {
-            "conf_import"
-        } else {
-            table.as_str()
-        };
-        let index = format!("CREATE UNIQUE INDEX conf_import_id ON {on} (id)");
-        run(&*conn, &index).await.unwrap();
-        run(
-            &*conn,
-            &format!("UPDATE {table} SET name = 'old' WHERE id = 3"),
-        )
-        .await
-        .unwrap();
-        run(&*conn, &format!("DELETE FROM {table} WHERE id = 1"))
-            .await
-            .unwrap();
-        conn.commit().await.unwrap();
-        again.mode = ImportMode::Upsert;
-        again.keys = vec!["id".to_owned()];
-        import((&*source, Dialect::DuckDb), (&*conn, d), &again, |_| true)
-            .await
-            .unwrap_or_else(|e| panic!("{}: upsert: {e}", b.name));
-        let check = format!(
-            "SELECT COUNT(*), MAX(CASE WHEN id = 3 THEN name END) FROM {table} WHERE id IN (1, 3)"
-        );
-        let batches = collect(&b, &*other, &check).await;
-        assert_eq!(
-            cell(&batches[0], 0, 0).as_deref(),
-            Some("2"),
-            "{}: upserted",
-            b.name
-        );
-        assert_eq!(
-            cell(&batches[0], 1, 0).as_deref(),
-            Some("ink"),
-            "{}: updated",
-            b.name
-        );
-        let batches = collect(&b, &*other, &count).await;
-        assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
-
-        // A cancelled import into a new table leaves no table, MySQL's committed DDL included.
-        let mut cancelled = plan.clone();
-        cancelled.table = "conf_import_cancel".to_owned();
-        let result = import((&*source, Dialect::DuckDb), (&*conn, d), &cancelled, |_| {
-            false
-        })
-        .await;
-        assert!(
-            matches!(result, Err(ImportError::Cancelled)),
-            "{}: {result:?}",
-            b.name
-        );
-        let gone = d.qualified(Some(&b.schema), "conf_import_cancel");
-        assert!(
-            run(&*conn, &format!("SELECT * FROM {gone}")).await.is_err(),
-            "{}",
-            b.name
-        );
-        conn.rollback().await.unwrap();
+        check_import_modes(&b, &*source, &*conn, &*other, &plan, &table).await;
 
         // The table exists: creating it again fails, and the rows stay.
         assert!(
@@ -2030,4 +1953,96 @@ async fn transfers_tables_between_databases() {
         let src = Dialect::from(b.config.driver).qualified(Some(&b.schema), "conf_xfer_src");
         run(&*conn, &format!("DROP TABLE {src}")).await.unwrap();
     }
+}
+
+/// An import that replaces the rows, one that upserts them on a unique key, and one cancelled.
+async fn check_import_modes(
+    b: &Backend,
+    source: &dyn Connection,
+    conn: &dyn Connection,
+    other: &dyn Connection,
+    plan: &platypus_export::import::ImportPlan,
+    table: &str,
+) {
+    use platypus_export::import::{ImportError, ImportMode, ImportPlan, import};
+    use platypus_sql::Dialect;
+
+    let d = Dialect::from(b.config.driver);
+    // Replace: the old rows go, in the same transaction.
+    let count = format!("SELECT COUNT(*) FROM {table}");
+    let mut again = plan.clone();
+    again.create = false;
+    again.mode = ImportMode::Replace;
+    import((source, Dialect::DuckDb), (conn, d), &again, |_| true)
+        .await
+        .unwrap_or_else(|e| panic!("{}: replace: {e}", b.name));
+    let batches = collect(b, other, &count).await;
+    assert_eq!(
+        cell(&batches[0], 0, 0).as_deref(),
+        Some("3"),
+        "{}: replaced",
+        b.name
+    );
+
+    // Upsert on a unique key: a changed row is updated, a deleted one inserted again.
+    // SQLite qualifies the index, not its table.
+    let on = if b.config.driver == DriverKind::Sqlite {
+        "conf_import"
+    } else {
+        table
+    };
+    let index = format!("CREATE UNIQUE INDEX conf_import_id ON {on} (id)");
+    run(conn, &index).await.unwrap();
+    run(
+        conn,
+        &format!("UPDATE {table} SET name = 'old' WHERE id = 3"),
+    )
+    .await
+    .unwrap();
+    run(conn, &format!("DELETE FROM {table} WHERE id = 1"))
+        .await
+        .unwrap();
+    conn.commit().await.unwrap();
+    again.mode = ImportMode::Upsert;
+    again.keys = vec!["id".to_owned()];
+    import((source, Dialect::DuckDb), (conn, d), &again, |_| true)
+        .await
+        .unwrap_or_else(|e| panic!("{}: upsert: {e}", b.name));
+    let check = format!(
+        "SELECT COUNT(*), MAX(CASE WHEN id = 3 THEN name END) FROM {table} WHERE id IN (1, 3)"
+    );
+    let batches = collect(b, other, &check).await;
+    assert_eq!(
+        cell(&batches[0], 0, 0).as_deref(),
+        Some("2"),
+        "{}: upserted",
+        b.name
+    );
+    assert_eq!(
+        cell(&batches[0], 1, 0).as_deref(),
+        Some("ink"),
+        "{}: updated",
+        b.name
+    );
+    let batches = collect(b, other, &count).await;
+    assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
+
+    // A cancelled import into a new table leaves no table, MySQL's committed DDL included.
+    let cancelled = ImportPlan {
+        table: "conf_import_cancel".to_owned(),
+        ..plan.clone()
+    };
+    let result = import((source, Dialect::DuckDb), (conn, d), &cancelled, |_| false).await;
+    assert!(
+        matches!(result, Err(ImportError::Cancelled)),
+        "{}: {result:?}",
+        b.name
+    );
+    let gone = d.qualified(Some(&b.schema), "conf_import_cancel");
+    assert!(
+        run(conn, &format!("SELECT * FROM {gone}")).await.is_err(),
+        "{}",
+        b.name
+    );
+    conn.rollback().await.unwrap();
 }

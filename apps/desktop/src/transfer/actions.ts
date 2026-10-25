@@ -2,7 +2,7 @@
 // database, tables to files.
 import { createElement } from "react";
 import { registerAction } from "../actions";
-import type { SavedConnection, SchemaMeta } from "../api";
+import { api, type SavedConnection, type SchemaMeta, toCommandError } from "../api";
 import { isRelation } from "../components/Navigator";
 import { workbench } from "../workbench";
 import { ExportTablesDialog } from "./ExportTablesDialog";
@@ -104,4 +104,23 @@ registerAction({
   group: "open",
   order: 31,
   run: ({ connection, database, schema }) => openExport(connection, database, schema, null),
+});
+
+registerAction({
+  id: "schema.paste_table",
+  scope: "navigator.schema",
+  title: "Paste CSV as a new table…",
+  group: "open",
+  order: 32,
+  run: async ({ connection, database, schema }) => {
+    let path: string;
+    try {
+      path = await api.clipboardToFile();
+    } catch (e) {
+      return workbench().showError(toCommandError(e).message);
+    }
+    workbench().openDialog((close) =>
+      createElement(ImportDataDialog, { target: at(connection, database, schema, null), path, onClose: close }),
+    );
+  },
 });
