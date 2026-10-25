@@ -16,16 +16,22 @@
     {
       "label": "Install frontend dependencies",
       "detail": "npm ci, only when node_modules is missing",
-      "type": "shell",
-      "command": "node -e \"require('fs').existsSync('apps/desktop/node_modules') || require('child_process').execSync('npm --prefix apps/desktop ci', { stdio: 'inherit' })\"",
+      // A process, not a shell: PowerShell would mangle the quotes of the script.
+      "type": "process",
+      "command": "node",
+      "args": [
+        "-e",
+        "require('fs').existsSync('apps/desktop/node_modules') || require('child_process').execSync('npm --prefix apps/desktop ci', { stdio: 'inherit' })"
+      ],
       "problemMatcher": [],
       "presentation": { "reveal": "silent" }
     },
     {
       "label": "Create sample SQLite database",
       "detail": "samples/wildlife.db from samples/wildlife.sql",
-      "type": "shell",
-      "command": "node --no-warnings scripts/sample-db.mjs",
+      "type": "process",
+      "command": "node",
+      "args": ["--no-warnings", "scripts/sample-db.mjs"],
       "problemMatcher": [],
       "presentation": { "reveal": "silent" }
     },
