@@ -484,7 +484,9 @@ barra superiore con progetto, connessione e tipo, ricerca che apre la palette, t
 impostazioni; schermata di benvenuto con apertura di un file di dati e import delle connessioni.
 La barra superiore fa anche da barra del titolo (pulsanti della finestra, trascinamento; con
 l'impostazione "Title bar" torna quella di sistema, sempre su macOS) e le conferme sono dialog
-dell'app (`ui/ask.tsx`) al posto di `window.confirm`.
+dell'app (`ui/ask.tsx`) al posto di `window.confirm`. I pulsanti delle barre (editor SQL, modifica
+della griglia, explain, oggetti, designer di tabella) mostrano solo l'icona, con il tooltip; Run e
+le azioni dei dialog tengono la parola.
 
 **Area:** `App.tsx`, `apps/desktop/src/shell/` (tab bar, palette, impostazioni), `styles.css`, `theme.ts`
 **Dipende da:** 0.2, 0.3, 0.7

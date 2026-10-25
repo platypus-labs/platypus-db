@@ -268,8 +268,9 @@ methods and fields. `mongodb+srv://` and connection string options go in the Dat
   Dracula, Solarized Light and high contrast; your own accent, background, sidebar and text
   colors, interface size, row density, corner radius and editor font size. Inter and
   JetBrains Mono are bundled, so the app looks the same everywhere and works offline.
-- Every shortcut can be changed, the toolbar's buttons hidden or shown as icons only;
-  `Ctrl+Shift+T` reopens the last closed tab.
+- Every shortcut can be changed; the toolbars show icons (each says what it does on hover), and
+  the SQL editor's buttons can be hidden or given their words back; `Ctrl+Shift+T` reopens the
+  last closed tab.
 
 ## Agents (MCP) and the CLI
 
