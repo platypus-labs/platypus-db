@@ -57,7 +57,13 @@ fn outside_effect(statement: &str, dialect: Dialect) -> Option<&str> {
     let (names, prefixes): (&[&str], &[&str]) = match dialect {
         Dialect::Postgres => (POSTGRES_OUTSIDE, POSTGRES_OUTSIDE_PREFIXES),
         Dialect::MySql => (MYSQL_OUTSIDE, &[]),
-        Dialect::Sqlite | Dialect::DuckDb | Dialect::SqlServer | Dialect::ClickHouse => {
+        Dialect::Sqlite
+        | Dialect::DuckDb
+        | Dialect::SqlServer
+        | Dialect::ClickHouse
+        | Dialect::Ansi
+        | Dialect::BigQuery
+        | Dialect::Databricks => {
             return None;
         }
     };

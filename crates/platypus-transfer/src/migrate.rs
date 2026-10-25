@@ -122,7 +122,9 @@ async fn identity(
         Dialect::Sqlite => return Ok((declared == "integer").then(|| key.name.clone())),
         Dialect::DuckDb => return Ok(serial.then(|| key.name.clone())),
         // No column numbers its rows.
-        Dialect::ClickHouse => return Ok(None),
+        Dialect::ClickHouse | Dialect::Ansi | Dialect::BigQuery | Dialect::Databricks => {
+            return Ok(None);
+        }
         Dialect::Postgres if serial => return Ok(Some(key.name.clone())),
         Dialect::Postgres => format!(
             "SELECT attidentity FROM pg_attribute WHERE attrelid = {qualified}::regclass \
@@ -251,6 +253,10 @@ const fn database(dialect: Dialect) -> &'static str {
         Dialect::DuckDb => "DuckDB",
         Dialect::SqlServer => "SQL Server",
         Dialect::ClickHouse => "ClickHouse",
+        // Snowflake, Trino or another ADBC driver.
+        Dialect::Ansi => "this database",
+        Dialect::BigQuery => "BigQuery",
+        Dialect::Databricks => "Databricks",
     }
 }
 
@@ -638,7 +644,13 @@ async fn identity_steps(
             ]
         }
         // They number after the largest value, or are the rowid; ClickHouse numbers nothing.
-        Dialect::MySql | Dialect::SqlServer | Dialect::Sqlite | Dialect::ClickHouse => Vec::new(),
+        Dialect::MySql
+        | Dialect::SqlServer
+        | Dialect::Sqlite
+        | Dialect::ClickHouse
+        | Dialect::Ansi
+        | Dialect::BigQuery
+        | Dialect::Databricks => Vec::new(),
     })
 }
 

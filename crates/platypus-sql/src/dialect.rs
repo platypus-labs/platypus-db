@@ -23,6 +23,13 @@ pub enum Dialect {
     SqlServer,
     /// Case-sensitive names; strings and quoted names take backslash escapes.
     ClickHouse,
+    /// Standard SQL with `"…"` names: Snowflake, Trino and generic ADBC drivers.
+    Ansi,
+    /// `GoogleSQL`: `` `…` `` names, `"…"` strings, backslash escapes in both.
+    BigQuery,
+    /// Spark SQL on Databricks: `` `…` `` names (a backtick doubled inside), `"…"` strings
+    /// with backslash escapes.
+    Databricks,
 }
 
 impl From<DriverKind> for Dialect {
@@ -30,14 +37,10 @@ impl From<DriverKind> for Dialect {
         match kind {
             // MongoDB speaks no SQL: the app never builds SQL for it (the editor, data
             // viewer and navigator write mongosh instead), so any dialect would do here.
-            // The drivers with a bridge get their own dialects next.
-            DriverKind::Postgres
-            | DriverKind::Mongo
-            | DriverKind::Snowflake
-            | DriverKind::BigQuery
-            | DriverKind::Databricks
-            | DriverKind::Trino
-            | DriverKind::Adbc => Self::Postgres,
+            DriverKind::Postgres | DriverKind::Mongo => Self::Postgres,
+            DriverKind::Snowflake | DriverKind::Trino | DriverKind::Adbc => Self::Ansi,
+            DriverKind::BigQuery => Self::BigQuery,
+            DriverKind::Databricks => Self::Databricks,
             DriverKind::MySql => Self::MySql,
             DriverKind::Sqlite | DriverKind::Libsql => Self::Sqlite,
             DriverKind::DuckDb => Self::DuckDb,
@@ -321,26 +324,40 @@ impl Dialect {
         let mut chars = name.chars();
         let first_ok = chars.next().is_some_and(|c| match self {
             Self::Postgres => c.is_ascii_lowercase() || c == '_',
-            Self::MySql | Self::Sqlite | Self::DuckDb | Self::SqlServer | Self::ClickHouse => {
-                c.is_ascii_alphabetic() || c == '_'
-            }
+            // Snowflake folds bare names to upper case, Trino to lower case.
+            Self::Ansi => c.is_ascii_uppercase() || c == '_',
+            Self::MySql
+            | Self::Sqlite
+            | Self::DuckDb
+            | Self::SqlServer
+            | Self::ClickHouse
+            | Self::BigQuery
+            | Self::Databricks => c.is_ascii_alphabetic() || c == '_',
         });
         let rest_ok = chars.all(|c| match self {
             Self::Postgres => c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '$',
+            Self::Ansi => c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_',
             Self::MySql => c.is_ascii_alphanumeric() || c == '_' || c == '$',
-            Self::Sqlite | Self::DuckDb | Self::SqlServer | Self::ClickHouse => {
-                c.is_ascii_alphanumeric() || c == '_'
-            }
+            Self::Sqlite
+            | Self::DuckDb
+            | Self::SqlServer
+            | Self::ClickHouse
+            | Self::BigQuery
+            | Self::Databricks => c.is_ascii_alphanumeric() || c == '_',
         });
         if first_ok && rest_ok && !is_reserved(name, self) {
             return Cow::Borrowed(name);
         }
         let (open, close) = self.ident_quotes();
-        let mut escaped = name.replace(close, &format!("{close}{close}"));
-        // A backslash escapes the next character inside ClickHouse quotes.
-        if self == Self::ClickHouse {
-            escaped = escaped.replace('\\', "\\\\");
-        }
+        let escaped = match self {
+            // A backslash escapes the next character inside BigQuery quotes.
+            Self::BigQuery => name.replace('\\', "\\\\").replace('`', "\\`"),
+            // …and inside ClickHouse quotes, which also take a doubled quote.
+            Self::ClickHouse => name
+                .replace(close, &format!("{close}{close}"))
+                .replace('\\', "\\\\"),
+            _ => name.replace(close, &format!("{close}{close}")),
+        };
         Cow::Owned(format!("{open}{escaped}{close}"))
     }
 
@@ -354,8 +371,8 @@ impl Dialect {
     #[must_use]
     pub const fn ident_quotes(self) -> (char, char) {
         match self {
-            Self::MySql | Self::ClickHouse => ('`', '`'),
-            Self::Postgres | Self::Sqlite | Self::DuckDb => ('"', '"'),
+            Self::MySql | Self::ClickHouse | Self::BigQuery | Self::Databricks => ('`', '`'),
+            Self::Postgres | Self::Sqlite | Self::DuckDb | Self::Ansi => ('"', '"'),
             Self::SqlServer => ('[', ']'),
         }
     }
@@ -379,10 +396,15 @@ impl Dialect {
             out.push('N');
         }
         out.push('\'');
+        // BigQuery and Spark read `''` as two strings, not an escaped quote.
+        let backslashes = matches!(self, Self::BigQuery | Self::Databricks);
         for c in value.chars() {
             match c {
+                '\'' if backslashes => out.push_str("\\'"),
                 '\'' => out.push_str("''"),
-                '\\' if matches!(self, Self::MySql | Self::ClickHouse) => out.push_str("\\\\"),
+                '\\' if backslashes || matches!(self, Self::MySql | Self::ClickHouse) => {
+                    out.push_str("\\\\");
+                }
                 c => out.push(c),
             }
         }
@@ -408,7 +430,8 @@ impl Dialect {
     pub fn binary_literal(self, hex: &str) -> String {
         match self {
             Self::Postgres => format!("decode('{hex}', 'hex')"),
-            Self::MySql | Self::Sqlite => format!("X'{hex}'"),
+            Self::MySql | Self::Sqlite | Self::Ansi | Self::Databricks => format!("X'{hex}'"),
+            Self::BigQuery => format!("FROM_HEX('{hex}')"),
             Self::DuckDb => format!("from_hex('{hex}')"),
             Self::ClickHouse => format!("unhex('{hex}')"),
             Self::SqlServer => format!("0x{hex}"),
@@ -424,7 +447,10 @@ impl Dialect {
     /// Whether `SAVEPOINT` works inside a transaction; DuckDB and ClickHouse have none.
     #[must_use]
     pub const fn has_savepoints(self) -> bool {
-        !matches!(self, Self::DuckDb | Self::ClickHouse)
+        !matches!(
+            self,
+            Self::DuckDb | Self::ClickHouse | Self::Ansi | Self::BigQuery | Self::Databricks
+        )
     }
 
     /// The statements that open a transaction in which the database refuses to write, where
@@ -439,8 +465,10 @@ impl Dialect {
             Self::Sqlite => &["PRAGMA query_only = ON", "BEGIN"],
             Self::DuckDb => &["BEGIN TRANSACTION"],
             Self::SqlServer => &["SET LOCK_TIMEOUT 5000", "BEGIN TRANSACTION"],
-            // No transactions, and a session's `readonly` setting cannot be turned off again.
-            Self::ClickHouse => &[],
+            // ClickHouse has no transactions, and a session's `readonly` setting cannot be
+            // turned off again; with an ADBC driver transactions vary. Only the statement
+            // check stops writes.
+            Self::ClickHouse | Self::Ansi | Self::BigQuery | Self::Databricks => &[],
         }
     }
 
@@ -452,7 +480,7 @@ impl Dialect {
             Self::Sqlite => &["ROLLBACK", "PRAGMA query_only = OFF"],
             Self::SqlServer => &["ROLLBACK", "SET LOCK_TIMEOUT -1"],
             Self::Postgres | Self::MySql | Self::DuckDb => &["ROLLBACK"],
-            Self::ClickHouse => &[],
+            Self::ClickHouse | Self::Ansi | Self::BigQuery | Self::Databricks => &[],
         }
     }
 
@@ -470,9 +498,13 @@ impl Dialect {
             Self::MySql => format!("INSERT INTO {table} () VALUES ()"),
             // An empty JSON object leaves every column to its default.
             Self::ClickHouse => format!("INSERT INTO {table} FORMAT JSONEachRow {{}}"),
-            Self::Postgres | Self::Sqlite | Self::DuckDb | Self::SqlServer => {
-                format!("INSERT INTO {table} DEFAULT VALUES")
-            }
+            Self::Postgres
+            | Self::Sqlite
+            | Self::DuckDb
+            | Self::SqlServer
+            | Self::Ansi
+            | Self::BigQuery
+            | Self::Databricks => format!("INSERT INTO {table} DEFAULT VALUES"),
         }
     }
 
@@ -481,6 +513,8 @@ impl Dialect {
     #[must_use]
     pub fn row_estimate_sql(self, schema: Option<&str>, table: &str) -> String {
         match self {
+            // A count could scan a warehouse table: unknown.
+            Self::Ansi | Self::BigQuery | Self::Databricks => "SELECT NULL".to_owned(),
             Self::Postgres => format!(
                 "SELECT CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::bigint END                  FROM pg_class c WHERE c.oid = to_regclass({})",
                 self.quote_literal(&self.qualified(schema, table))
@@ -560,7 +594,7 @@ impl Dialect {
         match self {
             Self::Postgres | Self::DuckDb => format!("{expr} ILIKE {pattern} ESCAPE '!'"),
             // A binary or case-sensitive collation would make LIKE case-sensitive.
-            Self::MySql | Self::SqlServer => {
+            Self::MySql | Self::SqlServer | Self::Ansi | Self::Databricks => {
                 format!("LOWER({expr}) LIKE LOWER({pattern}) ESCAPE '!'")
             }
             Self::Sqlite => format!("{expr} LIKE {pattern} ESCAPE '!'"),
@@ -568,6 +602,10 @@ impl Dialect {
             // writes one before the escaped character; the literal doubles each backslash.
             Self::ClickHouse => {
                 format!(r"{expr} ILIKE replaceRegexpAll({pattern}, '!(.)', '\\\\\\1')")
+            }
+            // No `ESCAPE` clause either: a raw string writes the backslash.
+            Self::BigQuery => {
+                format!(r"LOWER({expr}) LIKE LOWER(REGEXP_REPLACE({pattern}, r'!(.)', r'\\\1'))")
             }
         }
     }
@@ -579,6 +617,8 @@ impl Dialect {
             Self::Postgres | Self::Sqlite | Self::DuckDb => "TEXT",
             Self::MySql => "CHAR",
             Self::SqlServer => "NVARCHAR(MAX)",
+            Self::Ansi => "VARCHAR",
+            Self::BigQuery | Self::Databricks => "STRING",
             // `toString` keeps NULLs, where `CAST(NULL AS String)` fails.
             Self::ClickHouse => "",
         };
@@ -600,9 +640,11 @@ impl Dialect {
         use DataType as T;
         let text = match self {
             Self::Postgres | Self::Sqlite | Self::MySql => "TEXT",
-            Self::DuckDb => "VARCHAR",
+            Self::DuckDb | Self::Ansi => "VARCHAR",
             Self::SqlServer => "NVARCHAR(MAX)",
             Self::ClickHouse => return Self::clickhouse_type(data_type),
+            Self::BigQuery => return Self::bigquery_type(data_type),
+            Self::Databricks => return Self::databricks_type(data_type),
         };
         let name = match (data_type, self) {
             (T::Boolean, Self::SqlServer) => "BIT",
@@ -636,8 +678,13 @@ impl Dialect {
                     Self::Postgres => "BYTEA",
                     Self::MySql => "LONGBLOB",
                     Self::SqlServer => "VARBINARY(MAX)",
-                    // ClickHouse returned above.
-                    Self::Sqlite | Self::DuckDb | Self::ClickHouse => "BLOB",
+                    Self::Ansi => "VARBINARY",
+                    // ClickHouse, BigQuery and Databricks returned above.
+                    Self::Sqlite
+                    | Self::DuckDb
+                    | Self::ClickHouse
+                    | Self::BigQuery
+                    | Self::Databricks => "BLOB",
                 }
             }
             (T::Date32 | T::Date64, _) => "DATE",
@@ -646,9 +693,59 @@ impl Dialect {
             (T::Timestamp(_, None), Self::SqlServer) => "DATETIME2",
             (T::Timestamp(_, Some(_)), Self::SqlServer) => "DATETIMEOFFSET",
             (T::Timestamp(_, Some(_)), Self::Postgres | Self::DuckDb) => "TIMESTAMPTZ",
+            (T::Timestamp(_, Some(_)), Self::Ansi) => "TIMESTAMP WITH TIME ZONE",
             (T::Timestamp(..), _) => "TIMESTAMP",
             (T::Interval(_), Self::Postgres | Self::DuckDb) => "INTERVAL",
             _ => text,
+        };
+        name.to_owned()
+    }
+
+    /// [`column_type`](Self::column_type) in `BigQuery`: one integer and one float type.
+    fn bigquery_type(data_type: &DataType) -> String {
+        use DataType as T;
+        let name = match data_type {
+            T::Boolean => "BOOL",
+            t if t.is_integer() && *t != T::UInt64 => "INT64",
+            T::UInt64 => "NUMERIC",
+            T::Float16 | T::Float32 | T::Float64 => "FLOAT64",
+            T::Decimal32(p, s) | T::Decimal64(p, s) | T::Decimal128(p, s) | T::Decimal256(p, s) => {
+                let kind = if *p > 38 || *s > 9 {
+                    "BIGNUMERIC"
+                } else {
+                    "NUMERIC"
+                };
+                return format!("{kind}({}, {s})", (*p).min(76));
+            }
+            T::Binary | T::LargeBinary | T::BinaryView | T::FixedSizeBinary(_) => "BYTES",
+            T::Date32 | T::Date64 => "DATE",
+            T::Time32(_) | T::Time64(_) => "TIME",
+            T::Timestamp(_, Some(_)) => "TIMESTAMP",
+            T::Timestamp(_, None) => "DATETIME",
+            _ => "STRING",
+        };
+        name.to_owned()
+    }
+
+    /// [`column_type`](Self::column_type) in Spark SQL, which has no time-of-day type.
+    fn databricks_type(data_type: &DataType) -> String {
+        use DataType as T;
+        let name = match data_type {
+            T::Boolean => "BOOLEAN",
+            T::Int8 | T::Int16 | T::UInt8 => "SMALLINT",
+            T::Int32 | T::UInt16 => "INT",
+            T::Int64 | T::UInt32 => "BIGINT",
+            T::UInt64 => "DECIMAL(20, 0)",
+            T::Float16 | T::Float32 => "FLOAT",
+            T::Float64 => "DOUBLE",
+            T::Decimal32(p, s) | T::Decimal64(p, s) | T::Decimal128(p, s) | T::Decimal256(p, s) => {
+                return format!("DECIMAL({}, {s})", (*p).min(38));
+            }
+            T::Binary | T::LargeBinary | T::BinaryView | T::FixedSizeBinary(_) => "BINARY",
+            T::Date32 | T::Date64 => "DATE",
+            T::Timestamp(_, Some(_)) => "TIMESTAMP",
+            T::Timestamp(_, None) => "TIMESTAMP_NTZ",
+            _ => "STRING",
         };
         name.to_owned()
     }
@@ -939,5 +1036,88 @@ mod tests {
             duck.row_estimate_sql(None, "t")
                 .contains("lower(schema_name) = lower(current_schema())")
         );
+    }
+
+    #[test]
+    fn bridge_dialects_of_drivers() {
+        assert_eq!(Dialect::from(DriverKind::Snowflake), Dialect::Ansi);
+        assert_eq!(Dialect::from(DriverKind::Trino), Dialect::Ansi);
+        assert_eq!(Dialect::from(DriverKind::Adbc), Dialect::Ansi);
+        assert_eq!(Dialect::from(DriverKind::BigQuery), Dialect::BigQuery);
+        assert_eq!(Dialect::from(DriverKind::Databricks), Dialect::Databricks);
+    }
+
+    #[test]
+    fn bridge_dialects_quote_idents() {
+        // Snowflake folds bare names to upper case and Trino to lower case: only names
+        // that read the same either way stay bare.
+        assert_eq!(Dialect::Ansi.quote_ident("ORDERS"), "ORDERS");
+        assert_eq!(Dialect::Ansi.quote_ident("orders"), "\"orders\"");
+        assert_eq!(Dialect::Ansi.quote_ident("a\"b"), "\"a\"\"b\"");
+        assert_eq!(Dialect::BigQuery.quote_ident("orders"), "orders");
+        assert_eq!(Dialect::BigQuery.quote_ident("a b"), "`a b`");
+        assert_eq!(Dialect::BigQuery.quote_ident("a`b\\c"), "`a\\`b\\\\c`");
+        assert_eq!(Dialect::Databricks.quote_ident("a`b"), "`a``b`");
+        assert_eq!(Dialect::BigQuery.quote_ident("select"), "`select`");
+    }
+
+    #[test]
+    fn bridge_dialects_literals_and_limits() {
+        assert_eq!(Dialect::Ansi.quote_literal("it's"), "'it''s'");
+        assert_eq!(Dialect::BigQuery.quote_literal("it's \\"), "'it\\'s \\\\'");
+        assert_eq!(Dialect::Databricks.quote_literal("it's"), "'it\\'s'");
+        assert_eq!(Dialect::Ansi.binary_literal("0aff"), "X'0aff'");
+        assert_eq!(Dialect::BigQuery.binary_literal("0aff"), "FROM_HEX('0aff')");
+        assert_eq!(Dialect::Databricks.binary_literal("0aff"), "X'0aff'");
+        for d in [Dialect::Ansi, Dialect::BigQuery, Dialect::Databricks] {
+            assert_eq!(d.limit_clause(5), "LIMIT 5");
+            assert_eq!(d.limited("SELECT 1", 5), "SELECT 1 LIMIT 5");
+            assert_eq!(d.read_only_begin(), [] as [&str; 0]);
+            assert!(!d.has_savepoints());
+            // No cheap estimate: unknown.
+            assert_eq!(d.row_estimate_sql(Some("s"), "t"), "SELECT NULL");
+        }
+        assert_eq!(
+            Dialect::Ansi.contains("x", "a%"),
+            "LOWER(x) LIKE LOWER('%a!%%') ESCAPE '!'"
+        );
+        assert_eq!(
+            Dialect::Databricks.contains("x", "a"),
+            "LOWER(x) LIKE LOWER('%a%') ESCAPE '!'"
+        );
+        // BigQuery's LIKE has no ESCAPE clause: `!x` becomes `\x`.
+        assert_eq!(
+            Dialect::BigQuery.contains("x", "a"),
+            "LOWER(x) LIKE LOWER(REGEXP_REPLACE('%a%', r'!(.)', r'\\\\\\1'))"
+        );
+    }
+
+    #[test]
+    fn bridge_column_types() {
+        use platypus_core::arrow_schema::TimeUnit;
+        let zoned = DataType::Timestamp(TimeUnit::Microsecond, Some("+00:00".into()));
+        let naive = DataType::Timestamp(TimeUnit::Microsecond, None);
+        let cases: [(DataType, [&str; 3]); 9] = [
+            (DataType::Int32, ["INTEGER", "INT64", "INT"]),
+            (DataType::Int64, ["BIGINT", "INT64", "BIGINT"]),
+            (DataType::Boolean, ["BOOLEAN", "BOOL", "BOOLEAN"]),
+            (DataType::Float64, ["DOUBLE", "FLOAT64", "DOUBLE"]),
+            (
+                DataType::Decimal128(70, 2),
+                ["DECIMAL(38, 2)", "BIGNUMERIC(70, 2)", "DECIMAL(38, 2)"],
+            ),
+            (DataType::Utf8, ["VARCHAR", "STRING", "STRING"]),
+            (DataType::Binary, ["VARBINARY", "BYTES", "BINARY"]),
+            (
+                zoned,
+                ["TIMESTAMP WITH TIME ZONE", "TIMESTAMP", "TIMESTAMP"],
+            ),
+            (naive, ["TIMESTAMP", "DATETIME", "TIMESTAMP_NTZ"]),
+        ];
+        for (t, expected) in cases {
+            let got =
+                [Dialect::Ansi, Dialect::BigQuery, Dialect::Databricks].map(|d| d.column_type(&t));
+            assert_eq!(got, expected.map(str::to_owned), "{t}");
+        }
     }
 }

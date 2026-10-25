@@ -1,7 +1,20 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { tableFromIPC } from "apache-arrow";
 
-export type DriverKind = "postgres" | "mysql" | "sqlite" | "duckdb" | "sqlserver" | "clickhouse" | "libsql" | "mongo";
+export type DriverKind =
+  | "postgres"
+  | "mysql"
+  | "sqlite"
+  | "duckdb"
+  | "sqlserver"
+  | "clickhouse"
+  | "libsql"
+  | "mongo"
+  | "snowflake"
+  | "bigquery"
+  | "databricks"
+  | "trino"
+  | "adbc";
 
 /** Speaks mongosh instead of SQL (MongoDB): no SQL completion, formatter, linter or data editor. */
 export const isMongo = (driver: DriverKind) => driver === "mongo";

@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { MSSQL, MySQL, PostgreSQL, SQLite, sql } from "@codemirror/lang-sql";
+import { MSSQL, MySQL, PostgreSQL, SQLite, StandardSQL, sql } from "@codemirror/lang-sql";
 import {
   HighlightStyle,
   bracketMatching,
@@ -157,6 +157,12 @@ const dialects = {
   clickhouse: MySQL,
   libsql: SQLite,
   mongo: PostgreSQL,
+  snowflake: StandardSQL,
+  trino: StandardSQL,
+  adbc: StandardSQL,
+  // Backtick names, like MySQL.
+  bigquery: MySQL,
+  databricks: MySQL,
 };
 
 function language(driver: DriverKind, catalog: CompletionCatalog | null | undefined) {

@@ -189,7 +189,11 @@ impl ImportPlan {
             Dialect::SqlServer => format!("{declared} IDENTITY(1, 1)"),
             // The rowid, which a BIGINT key is not.
             Dialect::Sqlite => "INTEGER".to_owned(),
-            Dialect::DuckDb | Dialect::ClickHouse => declared.to_owned(),
+            Dialect::DuckDb
+            | Dialect::ClickHouse
+            | Dialect::Ansi
+            | Dialect::BigQuery
+            | Dialect::Databricks => declared.to_owned(),
         }
     }
 

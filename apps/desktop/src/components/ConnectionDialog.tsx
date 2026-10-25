@@ -54,6 +54,11 @@ const DEFAULT_PORTS: Record<DriverKind, number | null> = {
   clickhouse: 8123,
   // The scheme's: 443, or 80 without TLS.
   libsql: null,
+  snowflake: null,
+  bigquery: null,
+  databricks: null,
+  trino: 8080,
+  adbc: null,
   mongo: 27017,
 };
 
