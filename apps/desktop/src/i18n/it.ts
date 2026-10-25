@@ -1153,6 +1153,18 @@ const it: Record<string, string> = {
   "Install": "Installa",
   "Oracle connects through Oracle Instant Client, and IBM Db2 through IBM's ODBC driver: both installed from their vendors the first time a connection needs them.": "Oracle si connette con Oracle Instant Client, e IBM Db2 con il driver ODBC di IBM: entrambi installati dai produttori la prima volta che una connessione ne ha bisogno.",
   "ODBC drivers of the system ({drivers}) and data sources ({sources})": "Driver ODBC del sistema ({drivers}) e origini dati ({sources})",
+  // Connection list menu, database search, settings search, navigator width
+  "New connection…": "Nuova connessione…",
+  "Import connections…": "Importa le connessioni…",
+  "Navigator: connection list": "Navigator: elenco delle connessioni",
+  "Search databases…": "Cerca un database…",
+  "Search databases": "Cerca un database",
+  "No database matches.": "Nessun database corrisponde.",
+  "Search settings…": "Cerca nelle impostazioni…",
+  "Search settings": "Cerca nelle impostazioni",
+  "No settings match.": "Nessuna impostazione corrisponde.",
+  "Resize the connections": "Ridimensiona le connessioni",
+  "Drag to resize, double-click to reset": "Trascina per ridimensionare, doppio clic per ripristinare",
 };
 
 export default it;
