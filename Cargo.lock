@@ -5596,6 +5596,8 @@ dependencies = [
  "platypus-driver-mongo",
  "platypus-driver-mssql",
  "platypus-driver-mysql",
+ "platypus-driver-odbc",
+ "platypus-driver-oracle",
  "platypus-driver-pg",
  "platypus-driver-sqlite",
  "platypus-drivers",
