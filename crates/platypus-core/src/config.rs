@@ -19,6 +19,11 @@ pub enum DriverKind {
     DuckDb,
     /// Microsoft SQL Server and Azure SQL.
     SqlServer,
+    /// MongoDB: queries in mongosh syntax instead of SQL. `host` may list several
+    /// `host:port` pairs separated by commas, and `database` may end with the options of a
+    /// connection string (`shop?authSource=admin&replicaSet=rs0`; `srv=true` for
+    /// `mongodb+srv`).
+    Mongo,
 }
 
 impl DriverKind {
@@ -29,6 +34,7 @@ impl DriverKind {
             Self::MySql => Some(3306),
             Self::Sqlite | Self::DuckDb => None,
             Self::SqlServer => Some(1433),
+            Self::Mongo => Some(27017),
         }
     }
 
@@ -171,8 +177,15 @@ impl ConnectionConfig {
 
     /// Parses a connection URL such as `postgres://user:pass@host:5432/db?sslmode=require`,
     /// `mysql://user@host/db`, `sqlserver://sa@host/master`, `sqlite:///path/to/file.db` or
-    /// `duckdb:///path/to/file.duckdb`.
+    /// `duckdb:///path/to/file.duckdb`, or a MongoDB connection string (`mongodb://`,
+    /// `mongodb+srv://`).
     pub fn from_url(input: &str) -> Result<Self> {
+        if let Some(rest) = input.strip_prefix("mongodb+srv://") {
+            return Self::from_mongo_url(rest, true);
+        }
+        if let Some(rest) = input.strip_prefix("mongodb://") {
+            return Self::from_mongo_url(rest, false);
+        }
         let url = Url::parse(input).map_err(|e| Error::Config(format!("invalid URL: {e}")))?;
         let driver = match url.scheme() {
             "postgres" | "postgresql" => DriverKind::Postgres,
@@ -227,6 +240,78 @@ impl ConnectionConfig {
         }
         Ok(config)
     }
+
+    /// A MongoDB connection string after its scheme. It can list several hosts, which
+    /// [`Url`] does not parse; the options go to `database` for the driver, along with
+    /// `authSource` set to the path's database as the connection string means it.
+    fn from_mongo_url(rest: &str, srv: bool) -> Result<Self> {
+        let mut config = Self::new(DriverKind::Mongo);
+        let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
+        let (path, query) = path.split_once('?').unwrap_or((path, ""));
+        let hosts = match authority.rsplit_once('@') {
+            Some((userinfo, hosts)) => {
+                let (user, password) = userinfo.split_once(':').unwrap_or((userinfo, ""));
+                config.user = decode(user)?;
+                if userinfo.contains(':') {
+                    config.password = Some(Secret::new(decode(password)?));
+                }
+                hosts
+            }
+            None => authority,
+        };
+        if hosts.is_empty() {
+            return Err(Error::Config("the MongoDB URL has no host".to_owned()));
+        }
+        let single_port = hosts
+            .rsplit_once(':')
+            .filter(|(host, _)| !hosts.contains(',') && !host.ends_with(':'))
+            .and_then(|(host, port)| Some((host, port.parse::<u16>().ok()?)));
+        match single_port {
+            Some((host, port)) => {
+                host.trim_matches(['[', ']']).clone_into(&mut config.host);
+                config.port = Some(port);
+            }
+            None => hosts.trim_matches(['[', ']']).clone_into(&mut config.host),
+        }
+        let database = decode(path)?;
+        let mut options: Vec<String> = Vec::new();
+        if srv {
+            options.push("srv=true".to_owned());
+        }
+        for pair in query.split('&').filter(|p| !p.is_empty()) {
+            let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+            match key {
+                "appName" => config.application_name = Some(decode(value)?),
+                "connectTimeoutMS" => {
+                    let ms = value.parse().map_err(|_| {
+                        Error::Config(format!("invalid connectTimeoutMS `{value}`"))
+                    })?;
+                    config.connect_timeout = Some(Duration::from_millis(ms));
+                }
+                "tls" | "ssl" => {
+                    config.ssl_mode = if value == "true" {
+                        SslMode::VerifyFull
+                    } else {
+                        SslMode::Disable
+                    };
+                }
+                "tlsCAFile" => config.ssl_root_cert = Some(PathBuf::from(decode(value)?)),
+                _ => options.push(pair.to_owned()),
+            }
+        }
+        if !database.is_empty()
+            && config.password.is_some()
+            && !query.split('&').any(|p| p.starts_with("authSource="))
+        {
+            options.push(format!("authSource={database}"));
+        }
+        config.database = if options.is_empty() {
+            database
+        } else {
+            format!("{database}?{}", options.join("&"))
+        };
+        Ok(config)
+    }
 }
 
 fn decode(s: &str) -> Result<String> {
@@ -275,6 +360,29 @@ mod tests {
         let c = ConnectionConfig::from_url("mssql://sa@db:14330/").unwrap();
         assert_eq!(c.driver, DriverKind::SqlServer);
         assert_eq!(c.port, Some(14330));
+    }
+
+    #[test]
+    fn parses_mongodb_url() {
+        let c = ConnectionConfig::from_url(
+            "mongodb://us%40er:p%3Ass@db:27018/shop?replicaSet=rs0&tls=true",
+        )
+        .unwrap();
+        assert_eq!(c.driver, DriverKind::Mongo);
+        assert_eq!((c.host.as_str(), c.port), ("db", Some(27018)));
+        assert_eq!(c.user, "us@er");
+        assert_eq!(c.password, Some(Secret::new("p:ss")));
+        assert_eq!(c.ssl_mode, SslMode::VerifyFull);
+        assert_eq!(c.database, "shop?replicaSet=rs0&authSource=shop");
+
+        let c = ConnectionConfig::from_url("mongodb://a:1,b:2/?authSource=admin").unwrap();
+        assert_eq!((c.host.as_str(), c.port), ("a:1,b:2", Some(27017)));
+        assert_eq!(c.database, "?authSource=admin");
+
+        let c = ConnectionConfig::from_url("mongodb+srv://u:p@cluster0.example.net/app").unwrap();
+        assert_eq!(c.host, "cluster0.example.net");
+        assert_eq!(c.database, "app?srv=true&authSource=app");
+        assert!(ConnectionConfig::from_url("mongodb:///db").is_err());
     }
 
     #[test]

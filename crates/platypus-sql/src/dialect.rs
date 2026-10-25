@@ -30,6 +30,9 @@ impl From<DriverKind> for Dialect {
             DriverKind::Sqlite => Self::Sqlite,
             DriverKind::DuckDb => Self::DuckDb,
             DriverKind::SqlServer => Self::SqlServer,
+            // MongoDB speaks no SQL: the app never builds SQL for it (the editor, data
+            // viewer and navigator write mongosh instead), so any dialect would do here.
+            DriverKind::Mongo => Self::Postgres,
         }
     }
 }

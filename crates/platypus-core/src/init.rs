@@ -46,6 +46,7 @@ impl SessionInit {
                         "SQL Server sets the default schema per user, not per session".to_owned(),
                     ));
                 }
+                DriverKind::Mongo => out.push(format!("use {schema}")),
             }
         }
         if let Some(zone) = self.time_zone.as_deref().filter(|z| !z.is_empty()) {
@@ -69,6 +70,9 @@ impl SessionInit {
                     return Err(Error::Config(
                         "SQL Server has no session time zone".to_owned(),
                     ));
+                }
+                DriverKind::Mongo => {
+                    return Err(Error::Config("MongoDB has no session time zone".to_owned()));
                 }
             }
         }
