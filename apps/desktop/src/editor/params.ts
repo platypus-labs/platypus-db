@@ -56,7 +56,18 @@ export type ClientCommand =
 
 const unquote = (s: string) => s.trim().replace(/^(['"])(.*)\1$/, "$2");
 
-const FORMATS: Record<string, ExportFormat> = { csv: "csv", json: "json", ndjson: "ndjson", parquet: "parquet" };
+const FORMATS: Record<string, ExportFormat> = {
+  csv: "csv",
+  json: "json",
+  ndjson: "ndjson",
+  parquet: "parquet",
+  xlsx: "xlsx",
+  sql: "sql",
+  md: "markdown",
+  html: "html",
+  htm: "html",
+  xml: "xml",
+};
 
 /** Reads `@set x = 1`, `@echo text`, `@include file.sql` or `@export file.csv`. */
 export function parseCommand(text: string): ClientCommand {
@@ -75,7 +86,7 @@ export function parseCommand(text: string): ClientCommand {
       return rest.trim() ? { name: "include", path: unquote(rest) } : { name: "error", message: "Usage: @include file.sql" };
     case "export": {
       const path = unquote(rest);
-      if (!path) return { name: "error", message: "Usage: @export file.csv (also .json, .ndjson, .parquet)" };
+      if (!path) return { name: "error", message: "Usage: @export file.csv (also .json, .ndjson, .parquet, .xlsx, .sql, .md, .html, .xml)" };
       const ext = /\.(\w+)$/.exec(path)?.[1]?.toLowerCase() ?? "";
       return { name: "export", path, format: FORMATS[ext] ?? "csv" };
     }

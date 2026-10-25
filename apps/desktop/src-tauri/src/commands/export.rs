@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use platypus_export::ExportOptions;
+use platypus_sql::Dialect;
+use serde::Deserialize;
 use tauri::State;
 use tauri::ipc::Channel;
 
@@ -55,4 +57,76 @@ pub async fn export_rows(
     .await
     .map_err(|e| CommandError::new("export", e.to_string()))?
     .map_err(Into::into)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TableRef {
+    /// `None` for the session's current schema.
+    schema: Option<String>,
+    name: String,
+}
+
+/// `name` as a file name: the characters Windows refuses become `_`.
+fn file_name(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if r#"<>:"/\|?*"#.contains(c) || c.is_control() {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+/// Exports every row of each table to `<dir>/<table>.<extension>`, one after the other on a
+/// connection of its own. Returns an id for `cancel_export`; progress counts the rows of all.
+#[tauri::command]
+pub fn export_tables(
+    state: State<'_, AppState>,
+    session_id: u64,
+    tables: Vec<TableRef>,
+    dir: PathBuf,
+    options: ExportOptions,
+    on_event: Channel<ExportEvent>,
+) -> CommandResult<u64> {
+    let session = state.session(session_id)?;
+    let dialect = Dialect::from(session.config.driver);
+    let files = tables
+        .into_iter()
+        .map(|t| {
+            let sql = format!(
+                "SELECT * FROM {}",
+                dialect.qualified(t.schema.as_deref(), &t.name)
+            );
+            let path = dir.join(format!(
+                "{}.{}{}",
+                file_name(&t.name),
+                options.format.extension(),
+                options.compression.suffix()
+            ));
+            // One signed URL names one file.
+            let options = ExportOptions {
+                table: t.name,
+                driver: Some(session.config.driver),
+                upload_url: None,
+                ..options.clone()
+            };
+            (sql, path, options)
+        })
+        .collect();
+    let connection = (session.config, session.label, Arc::clone(&state.query_log));
+    let export = Export::start_many(connection, files, on_event);
+    let id = state.next_id();
+    lock(&state.exports).insert(id, export);
+    Ok(id)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn file_names_of_tables() {
+        assert_eq!(super::file_name("a/b:c"), "a_b_c");
+        assert_eq!(super::file_name("Orders 2024"), "Orders 2024");
+    }
 }

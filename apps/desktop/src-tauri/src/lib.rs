@@ -146,6 +146,7 @@ pub fn run() {
 }
 
 /// Every command the web UI can call.
+#[expect(clippy::too_many_lines, reason = "one line per command")]
 fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         commands::app_info,
@@ -208,6 +209,13 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::export::export_query,
         commands::export::export_rows,
         commands::export::cancel_export,
+        commands::export::export_tables,
+        commands::transfer::preview_import,
+        commands::transfer::import_file,
+        commands::transfer::preview_transfer,
+        commands::transfer::transfer_table,
+        commands::transfer::migrate_tables,
+        commands::transfer::fake_rows,
         commands::transactions::transaction_state,
         commands::transactions::set_autocommit,
         commands::transactions::end_transaction,
@@ -228,6 +236,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::files::read_text_file,
         commands::files::write_text_file,
         commands::files::read_clipboard,
+        commands::files::clipboard_to_file,
         commands::settings::get_settings,
         commands::settings::set_setting,
         commands::explain::explain,

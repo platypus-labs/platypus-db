@@ -112,9 +112,14 @@ rather than checking the driver. It provides:
 - statements for the navigator (`generate.rs`): `select`, `insert`, `update`, `delete`,
   `upsert`, `drop`, `rename`, `truncate`. `drop` and `rename` return `None` for an object
   kind the dialect cannot drop or rename; `dialect_support` reports the kinds to the UI.
+- `column_type`: the column type that holds an Arrow type, for tables created by an import;
+  `upsert_rows`, the upsert of a `VALUES` list (`ON CONFLICT`, `ON DUPLICATE KEY`, `MERGE`)
 
 `platypus_sql::dml` builds the data editor's `UPDATE`, `INSERT` and `DELETE` statements from
 text values and the columns' Arrow types, and `dml::apply` runs them all or none.
+`platypus_export::import` copies a data file's rows into a table the same way, read through a
+DuckDB connection on the file (`platypus_driver_duckdb::files`, which also opens data files as
+databases); a new file format is a reader there.
 `platypus_sql::analyze` tells what a statement does (query, DML, DDL) and which table an
 unfiltered `UPDATE`, `DELETE` or `TRUNCATE` changes in every row; the checks before running
 (`apps/desktop/src/guards/`) use it. `platypus_sql::source_table` tells which table a `SELECT` reads, when its rows are that

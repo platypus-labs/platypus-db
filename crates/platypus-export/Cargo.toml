@@ -1,6 +1,6 @@
 [package]
 name = "platypus-export"
-description = "Streaming result export for PlatypusDB: CSV, JSON, NDJSON and Parquet"
+description = "Streaming export of results (CSV, JSON, NDJSON, Parquet) and import of data files into tables for PlatypusDB"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,11 +13,19 @@ arrow-cast.workspace = true
 arrow-csv.workspace = true
 arrow-json.workspace = true
 arrow-schema.workspace = true
+flate2 = "1"
+futures.workspace = true
 parquet.workspace = true
+rust_xlsxwriter.workspace = true
+platypus-core.workspace = true
+platypus-sql.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+zstd = "0.14"
 
 [dev-dependencies]
+calamine.workspace = true
 tempfile.workspace = true
 
 [lints]

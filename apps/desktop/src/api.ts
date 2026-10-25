@@ -567,19 +567,62 @@ export interface SearchResult {
   truncated: boolean;
 }
 
-export type ExportFormat = "csv" | "json" | "ndjson" | "parquet";
+export type ExportFormat = "csv" | "json" | "ndjson" | "parquet" | "xlsx" | "sql" | "markdown" | "html" | "xml";
 
 export interface ExportOptions {
   format: ExportFormat;
   delimiter: string;
   header: boolean;
+  /** SQL: the table the INSERT statements write to. */
+  table?: string;
+  /** SQL: the database the statements are written for. */
+  driver?: DriverKind;
+  compression?: Compression;
+  /** A signed URL (S3, GCS) the finished file is also sent to. */
+  upload_url?: string | null;
 }
+
+export type Compression = "none" | "gzip" | "zstd";
 
 export type ExportEvent =
   | { type: "progress"; rows: number }
-  | { type: "done"; rows: number; elapsed_ms: number }
+  | { type: "done"; rows: number; elapsed_ms: number; warnings?: string[] }
   | { type: "failed"; error: CommandError }
   | { type: "cancelled" };
+
+/** Extensions of the files that open as a database and import into a table. */
+export const DATA_FILE_EXTENSIONS = ["csv", "tsv", "json", "ndjson", "jsonl", "parquet", "xlsx", "xlsm", "xls", "ods"];
+
+/** Whether `path` names a data file, which opens as an in-memory DuckDB database on it. */
+export const isDataFile = (path: string) => DATA_FILE_EXTENSIONS.includes(path.split(".").pop()?.toLowerCase() ?? "");
+
+/** Whether `c` opens a data file: its database lives in memory, so a copy there would be lost. */
+export const opensDataFile = (c: SavedConnection) => c.driver === "duckdb" && isDataFile(c.database);
+
+export interface ImportPreview {
+  /** The tables of the file: one, or a workbook's sheets. */
+  tables: string[];
+  table: string;
+  columns: { name: string; source_type: string; target_type: string }[];
+  rows: (string | null)[][];
+}
+
+/** What happens to the rows already in the table: kept, deleted first, or updated by key. */
+export type ImportMode = "append" | "replace" | "upsert";
+
+export interface ImportPlan {
+  source_table: string;
+  /** The schema of `source_table` when it is another database's. */
+  source_schema?: string | null;
+  schema: string | null;
+  table: string;
+  /** Create the table first, from the columns' `data_type`. */
+  create: boolean;
+  mode?: ImportMode;
+  /** The target columns that identify a row, for an upsert. */
+  keys?: string[];
+  columns: { source: string; target: string; data_type: string | null }[];
+}
 
 /** A set of connections worked on together; a connection can be in several. */
 export interface Project {
@@ -723,6 +766,77 @@ export const api = {
   exportRows: (jobId: number, path: string, options: ExportOptions) =>
     invoke<number>("export_rows", { jobId, path, options }),
   cancelExport: (exportId: number) => invoke<void>("cancel_export", { exportId }),
+  /** Exports each table to `<dir>/<table>.<extension>` on its own connection; cancelled with
+   *  `cancelExport`. */
+  exportTables: (
+    sessionId: number,
+    tables: { schema: string | null; name: string }[],
+    dir: string,
+    options: ExportOptions,
+    onEvent: (e: ExportEvent) => void,
+  ) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("export_tables", { sessionId, tables, dir, options, onEvent: channel });
+  },
+  /** The tables of a data file and the first rows of `table`, with the column types they
+   *  would take in the session's database. */
+  previewImport: (sessionId: number, path: string, table: string | null) =>
+    invoke<ImportPreview>("preview_import", { sessionId, path, table }),
+  /** Creates tables of the source session's schema in the target session's and copies their
+   *  rows, then their foreign keys; cancelled with `cancelExport`. */
+  migrateTables: (
+    sourceSessionId: number,
+    targetSessionId: number,
+    sourceSchema: string,
+    targetSchema: string,
+    tables: string[],
+    onEvent: (e: ExportEvent) => void,
+  ) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("migrate_tables", {
+      sourceSessionId,
+      targetSessionId,
+      sourceSchema,
+      targetSchema,
+      tables,
+      onEvent: channel,
+    });
+  },
+  /** Adds `rows` fake rows to a table, each column filled by its generator; cancelled with
+   *  `cancelExport`. */
+  fakeRows: (
+    sessionId: number,
+    schema: string | null,
+    table: string,
+    rows: number,
+    columns: { name: string; generator: object }[],
+    onEvent: (e: ExportEvent) => void,
+  ) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("fake_rows", { sessionId, schema, table, rows, columns, onEvent: channel });
+  },
+  /** Saves the clipboard's text to a new `pasted.csv`; returns its path. */
+  clipboardToFile: () => invoke<string>("clipboard_to_file"),
+  /** The first rows of a table of the source session, with the column types they would take in
+   *  the target session's database. */
+  previewTransfer: (sourceSessionId: number, schema: string | null, table: string, targetSessionId: number) =>
+    invoke<ImportPreview>("preview_transfer", { sourceSessionId, schema, table, targetSessionId }),
+  /** Copies a table between the databases of two sessions; cancelled with `cancelExport`. */
+  transferTable: (sourceSessionId: number, targetSessionId: number, plan: ImportPlan, onEvent: (e: ExportEvent) => void) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("transfer_table", { sourceSessionId, targetSessionId, plan, onEvent: channel });
+  },
+  /** Imports a data file into the session's database on its own connection; cancelled with
+   *  `cancelExport`. */
+  importFile: (sessionId: number, path: string, plan: ImportPlan, onEvent: (e: ExportEvent) => void) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("import_file", { sessionId, path, plan, onEvent: channel });
+  },
   analyzeSql: (sql: string, driver: DriverKind, cursor: number) =>
     invoke<SqlAnalysis>("analyze_sql", { sql, driver, cursor }),
   formatSql: (sql: string, driver: DriverKind, settings: FormatSettings) =>
