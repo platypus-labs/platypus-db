@@ -56,6 +56,8 @@ export interface SavedConnection {
   ssh?: SavedSsh | null;
   /** Logical keys set by the user for tables without a primary key. */
   virtual_keys?: VirtualKey[];
+  /** What a driver needs beyond the common fields, e.g. Snowflake's `warehouse`. */
+  options?: Record<string, string>;
 }
 
 export type ConnectionType = "dev" | "test" | "prod";

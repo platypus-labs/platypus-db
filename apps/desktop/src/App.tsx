@@ -36,6 +36,7 @@ import { ProjectDialog } from "./projects/ProjectDialog";
 import { AddConnectionsDialog } from "./projects/AddConnectionsDialog";
 import { registerAddToProject } from "./projects/actions";
 import { registerMoveToFolder } from "./projects/folders";
+import { withDriver } from "./drivers/DriverPopup";
 import { ScriptsPanel } from "./scripts/ScriptsPanel";
 import { ContextMenu, type MenuState } from "./components/ContextMenu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -351,7 +352,8 @@ export function App() {
       }
     }
     try {
-      const open = () => api.openSession(connection.id, password, database);
+      // A database reached through a driver not downloaded yet: offer it, then go on.
+      const open = () => withDriver(() => api.openSession(connection.id, password, database));
       let session;
       try {
         session = await open();
