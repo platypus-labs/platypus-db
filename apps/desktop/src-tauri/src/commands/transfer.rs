@@ -1,5 +1,6 @@
-//! Import of data files (CSV, TSV, JSON, NDJSON, Parquet, XLSX) into a table. The file is
-//! read through a DuckDB connection on it, the way it opens as a database.
+//! Import of data files (CSV, TSV, JSON, NDJSON, Parquet, XLSX) into a table, and transfer of
+//! a table to another database. A file is read through a DuckDB connection on it, the way it
+//! opens as a database.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -7,7 +8,7 @@ use std::sync::Arc;
 use futures::TryStreamExt;
 use platypus_core::{Connection, ConnectionConfig, DriverKind, ExecOptions, ExecResult};
 use platypus_driver_duckdb::files::is_data_file;
-use platypus_export::import::{ImportError, ImportPlan, import, rows_text};
+use platypus_export::import::{ImportError, ImportPlan, import, rows_text, target_type};
 use platypus_sql::Dialect;
 use serde::Serialize;
 use tauri::State;
@@ -81,17 +82,28 @@ pub async fn preview_import(
     let table = table
         .or_else(|| tables.first().cloned())
         .ok_or_else(|| CommandError::new("import", "the file has no data"))?;
-    let d = Dialect::DuckDb;
-    let sql = d.limited(
-        &format!("SELECT * FROM {}", d.quote_ident(&table)),
+    preview(&*file, (Dialect::DuckDb, None), tables, table, dialect).await
+}
+
+/// The first rows of `table` (in `schema`) read on `source`, with the column types they would
+/// take in `target`.
+async fn preview(
+    source: &dyn Connection,
+    (dialect, schema): (Dialect, Option<&str>),
+    tables: Vec<String>,
+    table: String,
+    target: Dialect,
+) -> CommandResult<ImportPreview> {
+    let sql = dialect.limited(
+        &format!("SELECT * FROM {}", dialect.qualified(schema, &table)),
         PREVIEW_ROWS,
     );
-    let ExecResult::Rows(stream) = file.execute(&sql, &ExecOptions::default()).await? else {
-        return Err(CommandError::new("import", "the file returned no rows"));
+    let ExecResult::Rows(stream) = source.execute(&sql, &ExecOptions::default()).await? else {
+        return Err(CommandError::new("import", "the source returned no rows"));
     };
-    let schema = stream.schema();
+    let fields = stream.schema();
     let batches: Vec<_> = stream.try_collect().await?;
-    let columns = schema
+    let columns = fields
         .fields()
         .iter()
         .map(|f| PreviewColumn {
@@ -101,7 +113,7 @@ pub async fn preview_import(
                 .get(platypus_core::META_DB_TYPE)
                 .cloned()
                 .unwrap_or_else(|| f.data_type().to_string()),
-            target_type: dialect.column_type(f.data_type()),
+            target_type: target_type(f, target),
         })
         .collect();
     let mut rows = Vec::new();
@@ -116,6 +128,31 @@ pub async fn preview_import(
     })
 }
 
+/// The first rows of `table` of the source session, with the column types they would take in
+/// the target session's database. Read on a connection of its own, outside any transaction
+/// of the session.
+#[tauri::command]
+pub async fn preview_transfer(
+    state: State<'_, AppState>,
+    source_session_id: u64,
+    schema: Option<String>,
+    table: String,
+    target_session_id: u64,
+) -> CommandResult<ImportPreview> {
+    let config = state.session(source_session_id)?.config;
+    let target = Dialect::from(state.session(target_session_id)?.config.driver);
+    let source = super::connect(&config).await?;
+    let dialect = Dialect::from(config.driver);
+    preview(
+        &*source,
+        (dialect, schema.as_deref()),
+        vec![table.clone()],
+        table,
+        target,
+    )
+    .await
+}
+
 /// Imports the file at `path` into the session's database on a connection of its own, as
 /// `plan` says. Returns an id for `cancel_export`; progress and the outcome arrive on
 /// `on_event`.
@@ -127,22 +164,61 @@ pub fn import_file(
     plan: ImportPlan,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
-    let session = state.session(session_id)?;
+    let source = async move { Ok((open_file(&path).await?, Dialect::DuckDb)) };
+    start(&state, session_id, source, plan, on_event)
+}
+
+/// Copies a table of the source session's database into the target session's, streaming on
+/// connections of their own, as `plan` says. Returns an id for `cancel_export`.
+#[tauri::command]
+pub fn transfer_table(
+    state: State<'_, AppState>,
+    source_session_id: u64,
+    target_session_id: u64,
+    plan: ImportPlan,
+    on_event: Channel<ExportEvent>,
+) -> CommandResult<u64> {
+    let config = state.session(source_session_id)?.config;
+    let source = async move {
+        let dialect = Dialect::from(config.driver);
+        Ok((super::connect(&config).await?, dialect))
+    };
+    start(&state, target_session_id, source, plan, on_event)
+}
+
+/// Runs the import of `plan` from the connection `source` opens into a new connection of
+/// the target session.
+fn start(
+    state: &AppState,
+    target_session_id: u64,
+    source: impl Future<Output = CommandResult<(Box<dyn Connection>, Dialect)>> + Send + 'static,
+    plan: ImportPlan,
+    on_event: Channel<ExportEvent>,
+) -> CommandResult<u64> {
+    let session = state.session(target_session_id)?;
     let log = Arc::clone(&state.query_log);
-    let job = Export::spawn(on_event, move |job| async move {
-        let file = open_file(&path).await?;
+    let job = Export::spawn(on_event, true, move |job| async move {
+        let (source, source_dialect) = source.await?;
         let target = Logged::wrap(
             Arc::from(super::connect(&session.config).await?),
             &log,
             &session.label,
         );
         let dialect = Dialect::from(session.config.driver);
-        import(&*file, &*target, dialect, &plan, |rows| job.progress(rows))
-            .await
-            .map_err(|e| match e {
-                ImportError::Database(e) => e.into(),
-                e => CommandError::new("import", e.to_string()),
-            })
+        import(
+            (&*source, source_dialect),
+            (&*target, dialect),
+            &plan,
+            |rows| {
+                job.progress(rows);
+                !job.stopping()
+            },
+        )
+        .await
+        .map_err(|e| match e {
+            ImportError::Database(e) => e.into(),
+            e => CommandError::new("import", e.to_string()),
+        })
     });
     let id = state.next_id();
     lock(&state.exports).insert(id, job);

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
-import type { ExportFormat, ExportOptions } from "../api";
+import type { DriverKind, ExportFormat, ExportOptions } from "../api";
 import { fmt } from "./ResultPanel";
 
 export type ExportSource = "query" | "loaded";
@@ -8,6 +8,8 @@ export type ExportSource = "query" | "loaded";
 interface Props {
   /** Suggested file name without extension. */
   name: string;
+  /** The connection's database, which SQL statements are written for. */
+  driver: DriverKind;
   loadedRows: number;
   /** Whether the result holds every row already. */
   complete: boolean;
@@ -17,11 +19,16 @@ interface Props {
   onClose: () => void;
 }
 
-const FORMATS: { value: ExportFormat; label: string; ext: string }[] = [
+export const FORMATS: { value: ExportFormat; label: string; ext: string }[] = [
   { value: "csv", label: "CSV", ext: "csv" },
   { value: "json", label: "JSON (array)", ext: "json" },
   { value: "ndjson", label: "NDJSON (one object per line)", ext: "ndjson" },
   { value: "parquet", label: "Parquet (zstd)", ext: "parquet" },
+  { value: "xlsx", label: "Excel workbook", ext: "xlsx" },
+  { value: "sql", label: "SQL INSERT statements", ext: "sql" },
+  { value: "markdown", label: "Markdown table", ext: "md" },
+  { value: "html", label: "HTML table", ext: "html" },
+  { value: "xml", label: "XML", ext: "xml" },
 ];
 
 const DELIMITERS = [
@@ -31,8 +38,37 @@ const DELIMITERS = [
   { value: "|", label: "Pipe |" },
 ];
 
-export function ExportDialog({ name, loadedRows, complete, transactionOpen, onExport, onClose }: Props) {
-  const [options, setOptions] = useState<ExportOptions>({ format: "csv", delimiter: ",", header: true });
+/** The CSV delimiter and header row of `options`. */
+export function CsvOptions(props: { options: ExportOptions; disabled?: boolean; onChange: (o: ExportOptions) => void }) {
+  const { options, disabled, onChange } = props;
+  return (
+    <div className="row">
+      <label className="field">
+        <span>Delimiter</span>
+        <select value={options.delimiter} disabled={disabled} onChange={(e) => onChange({ ...options, delimiter: e.target.value })}>
+          {DELIMITERS.map((d) => (
+            <option key={d.label} value={d.value}>
+              {d.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={options.header} disabled={disabled} onChange={(e) => onChange({ ...options, header: e.target.checked })} />
+        Header row
+      </label>
+    </div>
+  );
+}
+
+export function ExportDialog({ name, driver, loadedRows, complete, transactionOpen, onExport, onClose }: Props) {
+  const [options, setOptions] = useState<ExportOptions>({
+    format: "csv",
+    delimiter: ",",
+    header: true,
+    table: name,
+    driver,
+  });
   const [source, setSource] = useState<ExportSource>(complete ? "loaded" : "query");
   const format = FORMATS.find((f) => f.value === options.format)!;
 
@@ -63,31 +99,13 @@ export function ExportDialog({ name, loadedRows, complete, transactionOpen, onEx
             ))}
           </select>
         </label>
-        {options.format === "csv" && (
-          <div className="row">
-            <label className="field">
-              <span>Delimiter</span>
-              <select
-                value={options.delimiter}
-                onChange={(e) => setOptions({ ...options, delimiter: e.target.value })}
-              >
-                {DELIMITERS.map((d) => (
-                  <option key={d.label} value={d.value}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={options.header}
-                onChange={(e) => setOptions({ ...options, header: e.target.checked })}
-              />
-              Header row
-            </label>
-          </div>
+        {options.format === "sql" && (
+          <label className="field">
+            <span>Table name</span>
+            <input value={options.table} onChange={(e) => setOptions({ ...options, table: e.target.value })} />
+          </label>
         )}
+        {options.format === "csv" && <CsvOptions options={options} onChange={setOptions} />}
         <fieldset className="choices">
           <label className="check">
             <input type="radio" checked={source === "query"} onChange={() => setSource("query")} />

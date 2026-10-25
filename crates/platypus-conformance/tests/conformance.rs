@@ -702,6 +702,37 @@ async fn manual_commit_and_rollback() {
             conn.rollback().await.unwrap();
             conn.set_autocommit(true).await.unwrap();
         }
+
+        // DDL as the first statement opens the transaction too, where DDL is transactional.
+        let mysql = b.config.driver == DriverKind::MySql;
+        let d = platypus_sql::Dialect::from(b.config.driver);
+        let ddl = d.qualified(Some(&b.schema), "conf_tx_ddl");
+        let _ = run(conn, &format!("DROP TABLE {ddl}")).await;
+        conn.set_autocommit(false).await.unwrap();
+        run(conn, &format!("CREATE TABLE {ddl} (id INT)"))
+            .await
+            .unwrap();
+        assert_eq!(conn.transaction().open, !mysql, "{}: DDL first", b.name);
+        conn.rollback().await.unwrap();
+        let kept = run(conn, &format!("SELECT * FROM {ddl}")).await.is_ok();
+        assert_eq!(kept, mysql, "{}: the CREATE rolled back", b.name);
+        conn.rollback().await.unwrap();
+        conn.set_autocommit(true).await.unwrap();
+
+        // A read in manual-commit mode does not keep another session from writing.
+        let _ = run(conn, &format!("DROP TABLE {ddl}")).await;
+        run(conn, &format!("CREATE TABLE {ddl} (id INT)"))
+            .await
+            .unwrap();
+        conn.set_autocommit(false).await.unwrap();
+        run(conn, &format!("SELECT * FROM {ddl}")).await.unwrap();
+        let other = b.connect().await;
+        run(&*other, &format!("INSERT INTO {ddl} VALUES (1)"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: write beside a read: {e}", b.name));
+        conn.rollback().await.unwrap();
+        conn.set_autocommit(true).await.unwrap();
+        let _ = run(conn, &format!("DROP TABLE {ddl}")).await;
     }
 }
 
@@ -1733,7 +1764,7 @@ async fn sets_the_session_up_after_connecting() {
 /// that leaves that table as it was.
 #[tokio::test]
 async fn imports_data_files() {
-    use platypus_export::import::{ImportColumn, ImportPlan, import};
+    use platypus_export::import::{ImportColumn, ImportMode, ImportPlan, import};
     use platypus_sql::Dialect;
 
     let dir = tempfile::tempdir().unwrap();
@@ -1768,9 +1799,12 @@ async fn imports_data_files() {
         conn.set_autocommit(false).await.unwrap();
         let mut plan = ImportPlan {
             source_table: "conf_import".to_owned(),
+            source_schema: None,
             schema: Some(b.schema.clone()),
             table: "conf_import".to_owned(),
             create: true,
+            mode: ImportMode::Append,
+            keys: Vec::new(),
             columns: fields
                 .iter()
                 .map(|f| ImportColumn {
@@ -1781,9 +1815,12 @@ async fn imports_data_files() {
                 .collect(),
         };
         let mut seen = 0;
-        let rows = import(&*source, &*conn, d, &plan, |n| seen = n)
-            .await
-            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let rows = import((&*source, Dialect::DuckDb), (&*conn, d), &plan, |n| {
+            seen = n;
+            true
+        })
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         assert_eq!((rows, seen), (3, 3), "{}", b.name);
         let check = format!(
             "SELECT COUNT(*), SUM(id), MAX(name), SUM(price) FROM {table} WHERE name IS NOT NULL OR id = 2"
@@ -1797,16 +1834,22 @@ async fn imports_data_files() {
         let price: f64 = values[3].as_deref().unwrap().parse().unwrap();
         assert!((price - 109.75).abs() < 1e-9, "{}: {price}", b.name);
 
+        check_import_modes(&b, &*source, &*conn, &*other, &plan, &table).await;
+
         // The table exists: creating it again fails, and the rows stay.
         assert!(
-            import(&*source, &*conn, d, &plan, |_| {}).await.is_err(),
+            import((&*source, Dialect::DuckDb), (&*conn, d), &plan, |_| true)
+                .await
+                .is_err(),
             "{}",
             b.name
         );
         plan.create = false;
         plan.columns[1].target = "missing".to_owned();
         assert!(
-            import(&*source, &*conn, d, &plan, |_| {}).await.is_err(),
+            import((&*source, Dialect::DuckDb), (&*conn, d), &plan, |_| true)
+                .await
+                .is_err(),
             "{}",
             b.name
         );
@@ -1815,4 +1858,191 @@ async fn imports_data_files() {
         run(&*conn, &format!("DROP TABLE {table}")).await.unwrap();
         conn.commit().await.unwrap();
     }
+}
+
+/// A table copied from every database into every other, in a table created with the types
+/// mapped to the target's.
+#[tokio::test]
+async fn transfers_tables_between_databases() {
+    use platypus_export::import::{ImportColumn, ImportMode, ImportPlan, import, target_type};
+    use platypus_sql::Dialect;
+
+    let all = backends().await;
+    for b in &all {
+        let conn = b.connect().await;
+        let d = Dialect::from(b.config.driver);
+        let src = d.qualified(Some(&b.schema), "conf_xfer_src");
+        let _ = run(&*conn, &format!("DROP TABLE {src}")).await;
+        run(
+            &*conn,
+            &format!(
+                "CREATE TABLE {src} (id INT, name VARCHAR(20), price DECIMAL(10, 2), day DATE)"
+            ),
+        )
+        .await
+        .unwrap();
+        run(
+            &*conn,
+            &format!(
+                "INSERT INTO {src} VALUES (1, 'it''s', 1.50, '2024-03-01'), (2, NULL, 2.25, '2024-12-31'), (3, 'ink', NULL, NULL)"
+            ),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+    }
+    for from in &all {
+        let source = from.connect().await;
+        let source_dialect = Dialect::from(from.config.driver);
+        let ExecResult::Rows(stream) = source
+            .execute(
+                &format!(
+                    "SELECT * FROM {} WHERE 1 = 0",
+                    source_dialect.qualified(Some(&from.schema), "conf_xfer_src")
+                ),
+                &ExecOptions::default(),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("{}: no schema", from.name);
+        };
+        let fields = stream.schema().fields().clone();
+        drop(stream);
+        for to in &all {
+            let pair = format!("{} -> {}", from.name, to.name);
+            let target = to.connect().await;
+            let d = Dialect::from(to.config.driver);
+            let dst = d.qualified(Some(&to.schema), "conf_xfer_dst");
+            let _ = run(&*target, &format!("DROP TABLE {dst}")).await;
+            let plan = ImportPlan {
+                source_table: "conf_xfer_src".to_owned(),
+                source_schema: Some(from.schema.clone()),
+                schema: Some(to.schema.clone()),
+                table: "conf_xfer_dst".to_owned(),
+                create: true,
+                mode: ImportMode::Append,
+                keys: Vec::new(),
+                columns: fields
+                    .iter()
+                    .map(|f| ImportColumn {
+                        source: f.name().clone(),
+                        target: f.name().to_lowercase(),
+                        data_type: Some(target_type(f, d)),
+                    })
+                    .collect(),
+            };
+            let rows = import((&*source, source_dialect), (&*target, d), &plan, |_| true)
+                .await
+                .unwrap_or_else(|e| panic!("{pair}: {e}"));
+            assert_eq!(rows, 3, "{pair}");
+            let check =
+                format!("SELECT COUNT(*), SUM(id), MAX(name), SUM(price), COUNT(day) FROM {dst}");
+            let batches = collect(to, &*target, &check).await;
+            let values: Vec<_> = (0..5).map(|c| cell(&batches[0], c, 0)).collect();
+            assert_eq!(values[0].as_deref(), Some("3"), "{pair}");
+            assert_eq!(values[1].as_deref(), Some("6"), "{pair}");
+            assert_eq!(values[2].as_deref(), Some("it's"), "{pair}");
+            let price: f64 = values[3].as_deref().unwrap().parse().unwrap();
+            assert!((price - 3.75).abs() < 1e-9, "{pair}: {price}");
+            assert_eq!(values[4].as_deref(), Some("2"), "{pair}");
+            run(&*target, &format!("DROP TABLE {dst}")).await.unwrap();
+        }
+    }
+    for b in &all {
+        let conn = b.connect().await;
+        let src = Dialect::from(b.config.driver).qualified(Some(&b.schema), "conf_xfer_src");
+        run(&*conn, &format!("DROP TABLE {src}")).await.unwrap();
+    }
+}
+
+/// An import that replaces the rows, one that upserts them on a unique key, and one cancelled.
+async fn check_import_modes(
+    b: &Backend,
+    source: &dyn Connection,
+    conn: &dyn Connection,
+    other: &dyn Connection,
+    plan: &platypus_export::import::ImportPlan,
+    table: &str,
+) {
+    use platypus_export::import::{ImportError, ImportMode, ImportPlan, import};
+    use platypus_sql::Dialect;
+
+    let d = Dialect::from(b.config.driver);
+    // Replace: the old rows go, in the same transaction.
+    let count = format!("SELECT COUNT(*) FROM {table}");
+    let mut again = plan.clone();
+    again.create = false;
+    again.mode = ImportMode::Replace;
+    import((source, Dialect::DuckDb), (conn, d), &again, |_| true)
+        .await
+        .unwrap_or_else(|e| panic!("{}: replace: {e}", b.name));
+    let batches = collect(b, other, &count).await;
+    assert_eq!(
+        cell(&batches[0], 0, 0).as_deref(),
+        Some("3"),
+        "{}: replaced",
+        b.name
+    );
+
+    // Upsert on a unique key: a changed row is updated, a deleted one inserted again.
+    // SQLite qualifies the index, not its table.
+    let on = if b.config.driver == DriverKind::Sqlite {
+        "conf_import"
+    } else {
+        table
+    };
+    let index = format!("CREATE UNIQUE INDEX conf_import_id ON {on} (id)");
+    run(conn, &index).await.unwrap();
+    run(
+        conn,
+        &format!("UPDATE {table} SET name = 'old' WHERE id = 3"),
+    )
+    .await
+    .unwrap();
+    run(conn, &format!("DELETE FROM {table} WHERE id = 1"))
+        .await
+        .unwrap();
+    conn.commit().await.unwrap();
+    again.mode = ImportMode::Upsert;
+    again.keys = vec!["id".to_owned()];
+    import((source, Dialect::DuckDb), (conn, d), &again, |_| true)
+        .await
+        .unwrap_or_else(|e| panic!("{}: upsert: {e}", b.name));
+    let check = format!(
+        "SELECT COUNT(*), MAX(CASE WHEN id = 3 THEN name END) FROM {table} WHERE id IN (1, 3)"
+    );
+    let batches = collect(b, other, &check).await;
+    assert_eq!(
+        cell(&batches[0], 0, 0).as_deref(),
+        Some("2"),
+        "{}: upserted",
+        b.name
+    );
+    assert_eq!(
+        cell(&batches[0], 1, 0).as_deref(),
+        Some("ink"),
+        "{}: updated",
+        b.name
+    );
+    let batches = collect(b, other, &count).await;
+    assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
+
+    // A cancelled import into a new table leaves no table, MySQL's committed DDL included.
+    let cancelled = ImportPlan {
+        table: "conf_import_cancel".to_owned(),
+        ..plan.clone()
+    };
+    let result = import((source, Dialect::DuckDb), (conn, d), &cancelled, |_| false).await;
+    assert!(
+        matches!(result, Err(ImportError::Cancelled)),
+        "{}: {result:?}",
+        b.name
+    );
+    let gone = d.qualified(Some(&b.schema), "conf_import_cancel");
+    assert!(
+        run(conn, &format!("SELECT * FROM {gone}")).await.is_err(),
+        "{}",
+        b.name
+    );
+    conn.rollback().await.unwrap();
 }

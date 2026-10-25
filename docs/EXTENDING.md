@@ -112,7 +112,8 @@ rather than checking the driver. It provides:
 - statements for the navigator (`generate.rs`): `select`, `insert`, `update`, `delete`,
   `upsert`, `drop`, `rename`, `truncate`. `drop` and `rename` return `None` for an object
   kind the dialect cannot drop or rename; `dialect_support` reports the kinds to the UI.
-- `column_type`: the column type that holds an Arrow type, for tables created by an import
+- `column_type`: the column type that holds an Arrow type, for tables created by an import;
+  `upsert_rows`, the upsert of a `VALUES` list (`ON CONFLICT`, `ON DUPLICATE KEY`, `MERGE`)
 
 `platypus_sql::dml` builds the data editor's `UPDATE`, `INSERT` and `DELETE` statements from
 text values and the columns' Arrow types, and `dml::apply` runs them all or none.

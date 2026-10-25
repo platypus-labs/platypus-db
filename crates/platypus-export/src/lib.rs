@@ -6,6 +6,7 @@
 //! [`import`] goes the other way: rows of a data file into a table.
 
 pub mod import;
+mod text;
 
 use std::fs::File;
 use std::io::BufWriter;
@@ -21,6 +22,8 @@ use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
 use parquet::errors::ParquetError;
 use parquet::file::properties::WriterProperties;
+use platypus_core::DriverKind;
+use platypus_sql::Dialect;
 use serde::Deserialize;
 
 /// Rows per Parquet row group: large enough to compress well, small enough to bound the
@@ -37,6 +40,30 @@ pub enum Format {
     /// One JSON object per line.
     Ndjson,
     Parquet,
+    /// `INSERT` statements, one per row.
+    Sql,
+    Markdown,
+    Html,
+    Xml,
+    Xlsx,
+}
+
+impl Format {
+    /// The usual file extension.
+    #[must_use]
+    pub const fn extension(self) -> &'static str {
+        match self {
+            Self::Csv => "csv",
+            Self::Json => "json",
+            Self::Ndjson => "ndjson",
+            Self::Parquet => "parquet",
+            Self::Sql => "sql",
+            Self::Markdown => "md",
+            Self::Html => "html",
+            Self::Xml => "xml",
+            Self::Xlsx => "xlsx",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -47,6 +74,10 @@ pub struct ExportOptions {
     pub delimiter: char,
     /// CSV header row.
     pub header: bool,
+    /// SQL: the table the statements insert into, as typed (it is quoted when needed).
+    pub table: String,
+    /// SQL: the database the statements are written for.
+    pub driver: Option<DriverKind>,
 }
 
 impl Default for ExportOptions {
@@ -55,6 +86,8 @@ impl Default for ExportOptions {
             format: Format::Csv,
             delimiter: ',',
             header: true,
+            table: "export".to_owned(),
+            driver: None,
         }
     }
 }
@@ -81,6 +114,7 @@ enum Sink {
     Json(arrow_json::Writer<BufWriter<File>, JsonArray>),
     Ndjson(arrow_json::Writer<BufWriter<File>, LineDelimited>),
     Parquet(Box<ArrowWriter<BufWriter<File>>>),
+    Text(Box<text::TextSink>),
 }
 
 /// Whether a column of `data_type` is written as text in `format`.
@@ -121,6 +155,8 @@ fn as_text(data_type: &DataType, format: Format) -> bool {
                 | T::Utf8View
         ),
         Format::Parquet => matches!(data_type, T::Interval(_) | T::Duration(_)),
+        // Written from the values' text, with their types to tell numbers.
+        Format::Sql | Format::Markdown | Format::Html | Format::Xml | Format::Xlsx => false,
     }
 }
 
@@ -216,6 +252,20 @@ impl Exporter {
                     .with_explicit_nulls(true)
                     .build::<_, LineDelimited>(out),
             ),
+            format @ (Format::Sql
+            | Format::Markdown
+            | Format::Html
+            | Format::Xml
+            | Format::Xlsx) => {
+                let dialect = Dialect::from(options.driver.unwrap_or(DriverKind::Postgres));
+                let table = dialect.qualified(None, &options.table);
+                Sink::Text(Box::new(text::TextSink::new(
+                    format,
+                    &schema,
+                    out,
+                    (dialect, table),
+                )?))
+            }
             Format::Parquet => {
                 let properties = WriterProperties::builder()
                     .set_compression(Compression::ZSTD(ZstdLevel::try_new(3)?))
@@ -257,6 +307,7 @@ impl Exporter {
             Some(Sink::Json(w)) => w.write(&batch)?,
             Some(Sink::Ndjson(w)) => w.write(&batch)?,
             Some(Sink::Parquet(w)) => w.write(&batch)?,
+            Some(Sink::Text(w)) => w.write(&batch)?,
             None => {}
         }
         self.rows += batch.num_rows() as u64;
@@ -281,6 +332,10 @@ impl Exporter {
                 w.into_inner()
             }
             Some(Sink::Parquet(w)) => w.into_inner()?,
+            Some(Sink::Text(w)) => {
+                w.finish(&self.partial)?;
+                return self.into_place();
+            }
             None => return Ok(self.rows),
         };
         let file = out
@@ -288,6 +343,11 @@ impl Exporter {
             .map_err(|e| io_error(&self.partial)(e.into_error()))?;
         file.sync_all().map_err(io_error(&self.partial))?;
         drop(file);
+        self.into_place()
+    }
+
+    /// Moves the completed file into place.
+    fn into_place(self) -> Result<u64> {
         std::fs::rename(&self.partial, &self.target).map_err(io_error(&self.target))?;
         Ok(self.rows)
     }
@@ -434,5 +494,77 @@ mod tests {
         };
         let err = Exporter::create(&dir.path().join("x.csv"), &sample().schema(), &options);
         assert!(matches!(err, Err(ExportError::Options(_))));
+    }
+    fn export_as(dir: &Path, name: &str, format: Format) -> String {
+        let options = ExportOptions {
+            format,
+            table: "Items".to_owned(),
+            driver: Some(DriverKind::MySql),
+            ..ExportOptions::default()
+        };
+        std::fs::read_to_string(export(dir, name, &options)).unwrap()
+    }
+
+    #[test]
+    fn writes_sql_markdown_html_and_xml() {
+        let dir = tempfile::tempdir().unwrap();
+        let sql = export_as(dir.path(), "out.sql", Format::Sql);
+        let lines: Vec<_> = sql.lines().collect();
+        assert_eq!(
+            lines[0],
+            "INSERT INTO Items (id, price, name, raw, `at`) VALUES (1, 123.45, 'a,\"b\"', X'dead', '1970-01-01T00:00:01');"
+        );
+        assert_eq!(
+            lines[1],
+            "INSERT INTO Items (id, price, name, raw, `at`) VALUES (2, NULL, NULL, NULL, NULL);"
+        );
+        assert_eq!(lines.len(), 4);
+
+        let md = export_as(dir.path(), "out.md", Format::Markdown);
+        let lines: Vec<_> = md.lines().collect();
+        assert_eq!(lines[0], "| id | price | name | raw | at |");
+        assert_eq!(lines[1], "| --- | --- | --- | --- | --- |");
+        assert_eq!(
+            lines[2],
+            "| 1 | 123.45 | a,\"b\" | dead | 1970-01-01T00:00:01Z |"
+        );
+        assert_eq!(lines[3], "| 2 |  |  |  |  |");
+
+        let html = export_as(dir.path(), "out.html", Format::Html);
+        assert!(html.contains("<th>id</th><th>price</th>"), "{html}");
+        assert!(html.contains("<td>a,&quot;b&quot;</td>"), "{html}");
+        assert!(html.trim_end().ends_with("</html>"), "{html}");
+
+        let xml = export_as(dir.path(), "out.xml", Format::Xml);
+        assert!(xml.starts_with("<?xml"), "{xml}");
+        assert!(
+            xml.contains("<field name=\"name\">a,&quot;b&quot;</field>"),
+            "{xml}"
+        );
+        assert!(
+            xml.contains("<field name=\"name\" null=\"true\"/>"),
+            "{xml}"
+        );
+        assert_eq!(xml.matches("<row>").count(), 4);
+    }
+
+    #[test]
+    fn writes_xlsx() {
+        use calamine::{Data, Reader};
+        let dir = tempfile::tempdir().unwrap();
+        let options = ExportOptions {
+            format: Format::Xlsx,
+            ..ExportOptions::default()
+        };
+        let path = export(dir.path(), "out.xlsx", &options);
+        let mut book = calamine::open_workbook_auto(&path).unwrap();
+        let sheet = book.worksheet_range_at(0).unwrap().unwrap();
+        let rows: Vec<_> = sheet.rows().collect();
+        assert_eq!(rows.len(), 5);
+        assert_eq!(rows[0][0], Data::String("id".into()));
+        assert_eq!(rows[1][0], Data::Float(1.0));
+        assert_eq!(rows[1][1], Data::Float(123.45));
+        assert_eq!(rows[1][2], Data::String("a,\"b\"".into()));
+        assert_eq!(rows[2][2], Data::Empty);
     }
 }

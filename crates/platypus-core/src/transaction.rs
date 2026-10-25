@@ -25,6 +25,8 @@ pub enum TxEffect {
     End,
     /// DDL and friends, which MySQL commits implicitly.
     ImplicitCommit,
+    /// Cannot run inside a transaction: `CREATE DATABASE`, `VACUUM`, `... CONCURRENTLY`.
+    Outside,
     None,
 }
 
@@ -56,9 +58,17 @@ pub fn leading_words(sql: &str, n: usize) -> Vec<String> {
 /// Classifies a single statement by its leading keywords.
 #[must_use]
 pub fn classify(sql: &str) -> TxEffect {
-    let words = leading_words(sql, 2);
+    let words = leading_words(sql, 4);
     let first = words.first().map_or("", String::as_str);
     let second = words.get(1).map_or("", String::as_str);
+    let outside = matches!(
+        (first, second),
+        ("CREATE" | "DROP", "DATABASE" | "TABLESPACE") | ("ALTER", "SYSTEM") | ("VACUUM", _)
+    ) || (matches!(first, "CREATE" | "DROP" | "REINDEX")
+        && words.iter().any(|w| w == "CONCURRENTLY"));
+    if outside {
+        return TxEffect::Outside;
+    }
     match first {
         "BEGIN" if second != "ATOMIC" => TxEffect::Begin,
         "START" if second == "TRANSACTION" => TxEffect::Begin,
@@ -119,11 +129,14 @@ impl TxTracker {
     }
 
     /// Whether `effect` needs a `BEGIN` sent first: manual mode, nothing open yet, and a
-    /// statement that is not itself transaction control.
+    /// statement that is not itself transaction control nor refuses to run in one. DDL counts:
+    /// it is transactional in the drivers that ask (MySQL commits it, and does not ask).
     #[must_use]
     pub fn needs_begin(&self, effect: TxEffect) -> bool {
         let state = self.state();
-        !state.autocommit && !state.open && effect == TxEffect::None
+        !state.autocommit
+            && !state.open
+            && matches!(effect, TxEffect::None | TxEffect::ImplicitCommit)
     }
 
     /// Updates the flags after a statement ran (successfully or not: a failed statement
@@ -132,7 +145,9 @@ impl TxTracker {
         match effect {
             TxEffect::Begin => self.set_open(true),
             TxEffect::End => self.set_open(false),
-            TxEffect::ImplicitCommit if implicit_commit => self.set_open(false),
+            TxEffect::ImplicitCommit | TxEffect::Outside if implicit_commit => self.set_open(false),
+            // Ran on its own: it neither opened nor ended a transaction.
+            TxEffect::Outside => {}
             TxEffect::ImplicitCommit | TxEffect::None => {
                 if !self.state().autocommit {
                     self.set_open(true);
@@ -160,6 +175,16 @@ mod tests {
             classify("create table t (id int)"),
             TxEffect::ImplicitCommit
         );
+        assert_eq!(classify("CREATE DATABASE x"), TxEffect::Outside);
+        assert_eq!(classify("vacuum analyze t"), TxEffect::Outside);
+        assert_eq!(
+            classify("CREATE UNIQUE INDEX CONCURRENTLY i ON t (a)"),
+            TxEffect::Outside
+        );
+        assert_eq!(
+            classify("ALTER SYSTEM SET work_mem = '8MB'"),
+            TxEffect::Outside
+        );
         assert_eq!(classify("select 1"), TxEffect::None);
         assert_eq!(classify("savepoint a"), TxEffect::None);
         assert_eq!(classify(""), TxEffect::None);
@@ -175,6 +200,13 @@ mod tests {
         tx.set_autocommit(false);
         assert!(tx.needs_begin(TxEffect::None));
         assert!(!tx.needs_begin(TxEffect::Begin));
+        assert!(
+            tx.needs_begin(TxEffect::ImplicitCommit),
+            "DDL opens the transaction"
+        );
+        assert!(!tx.needs_begin(TxEffect::Outside));
+        tx.after(TxEffect::Outside, false);
+        assert!(!tx.state().open, "CREATE DATABASE runs on its own");
         tx.after(TxEffect::None, false);
         assert!(tx.state().open);
         assert!(!tx.needs_begin(TxEffect::None));

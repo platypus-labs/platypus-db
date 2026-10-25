@@ -4,7 +4,7 @@ import {
   api,
   type Capabilities,
   type CompletionCatalog,
-  DATA_FILE_EXTENSIONS,
+  isDataFile,
   type Project,
   toCommandError,
   type SavedConnection,
@@ -242,7 +242,9 @@ export function App() {
   /** A data file dropped on the window opens as a DuckDB database: a saved connection to it
    *  gets a new script, otherwise the new connection dialog starts filled in. */
   async function openDroppedFile(path: string) {
-    const saved = shell.current.connections?.find((c) => c.driver === "duckdb" && c.database === path);
+    // Windows paths ignore case and take either slash.
+    const key = (p: string) => (/^[a-z]:/i.test(p) ? p.replace(/\//g, "\\").toLowerCase() : p);
+    const saved = shell.current.connections?.find((c) => c.driver === "duckdb" && key(c.database) === key(path));
     if (saved) return workbench().openTab("query", saved.id, {});
     const connection = await api.defaultConnection("duckdb");
     const name = path.split(/[\\/]/).pop() ?? path;
@@ -251,7 +253,6 @@ export function App() {
   }
 
   useEffect(() => {
-    const isDataFile = (p: string) => DATA_FILE_EXTENSIONS.includes(p.split(".").pop()?.toLowerCase() ?? "");
     const off = getCurrentWebview().onDragDropEvent(({ payload }) => {
       const path = payload.type === "drop" ? payload.paths.find(isDataFile) : undefined;
       if (path) void openDroppedFile(path).catch((e: unknown) => setToast(toCommandError(e).message));

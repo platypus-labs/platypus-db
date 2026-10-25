@@ -15,12 +15,14 @@ arrow-json.workspace = true
 arrow-schema.workspace = true
 futures.workspace = true
 parquet.workspace = true
+rust_xlsxwriter.workspace = true
 platypus-core.workspace = true
 platypus-sql.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+calamine.workspace = true
 tempfile.workspace = true
 
 [lints]

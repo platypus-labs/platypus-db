@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use arrow_array::RecordBatch;
 use futures::StreamExt;
-use platypus_core::{ConnectionConfig, Error, ExecOptions, ExecResult};
+use platypus_core::{Connection, ConnectionConfig, Error, ExecOptions, ExecResult};
 use platypus_export::{ExportError, ExportOptions, Exporter};
 use serde::Serialize;
 use tauri::async_runtime::JoinHandle;
@@ -50,6 +50,9 @@ pub struct Export {
     task: Mutex<Option<JoinHandle<()>>>,
     /// Set once a final event was sent.
     over: AtomicBool,
+    /// Cancelling asks the work to stop instead of aborting it, so that it can clean up.
+    cooperative: bool,
+    stopping: AtomicBool,
 }
 
 impl std::fmt::Debug for Export {
@@ -81,15 +84,36 @@ impl Export {
         options: ExportOptions,
         events: Channel<ExportEvent>,
     ) -> Arc<Self> {
-        Self::spawn(events, |task| async move {
-            task.run(&config, &label, &log, &sql, path, options).await
+        Self::start_many((config, label, log), vec![(sql, path, options)], events)
+    }
+
+    /// Runs each query of `files` on one new connection and writes its rows to the file next
+    /// to it, one after the other.
+    pub fn start_many(
+        (config, label, log): (ConnectionConfig, String, Arc<QueryLog>),
+        files: Vec<(String, PathBuf, ExportOptions)>,
+        events: Channel<ExportEvent>,
+    ) -> Arc<Self> {
+        Self::spawn(events, false, |task| async move {
+            let conn = Logged::wrap(
+                Arc::from(crate::commands::connect(&config).await?),
+                &log,
+                &label,
+            );
+            let mut rows = 0;
+            for (sql, path, options) in files {
+                rows += task.write_query(&*conn, &sql, path, options, rows).await?;
+            }
+            Ok(rows)
         })
     }
 
     /// Runs `work`, a transfer of rows that reports progress on the job's events and returns
-    /// how many rows it moved, reporting its outcome when it ends.
+    /// how many rows it moved, reporting its outcome when it ends. `cooperative` work checks
+    /// [`Self::stopping`] and returns an error once it has stopped and cleaned up.
     pub fn spawn<F>(
         events: Channel<ExportEvent>,
+        cooperative: bool,
         work: impl FnOnce(Arc<Self>) -> F + Send + 'static,
     ) -> Arc<Self>
     where
@@ -99,6 +123,8 @@ impl Export {
             events,
             task: Mutex::new(None),
             over: AtomicBool::new(false),
+            cooperative,
+            stopping: AtomicBool::new(false),
         });
         let task = Arc::clone(&export);
         let handle = tauri::async_runtime::spawn(async move {
@@ -108,12 +134,18 @@ impl Export {
                     rows,
                     elapsed_ms: millis(started),
                 },
+                Err(_) if task.stopping() => ExportEvent::Cancelled,
                 Err(error) => ExportEvent::Failed { error },
             };
             task.finish(event);
         });
         *lock(&export.task) = Some(handle);
         export
+    }
+
+    /// Whether the job was cancelled.
+    pub fn stopping(&self) -> bool {
+        self.stopping.load(Ordering::Acquire)
     }
 
     /// Reports `rows` moved so far.
@@ -127,20 +159,15 @@ impl Export {
         }
     }
 
-    async fn run(
+    /// Writes the rows of `sql` to `path`; progress counts from `done` rows.
+    async fn write_query(
         &self,
-        config: &ConnectionConfig,
-        label: &str,
-        log: &Arc<QueryLog>,
+        conn: &dyn Connection,
         sql: &str,
         path: PathBuf,
         options: ExportOptions,
+        done: u64,
     ) -> Result<u64, CommandError> {
-        let conn = Logged::wrap(
-            Arc::from(crate::commands::connect(config).await?),
-            log,
-            label,
-        );
         let options_exec = ExecOptions {
             batch_size: BATCH_SIZE,
             ..ExecOptions::default()
@@ -182,7 +209,7 @@ impl Export {
                 }
             }
             if last_report.elapsed() >= PROGRESS_INTERVAL {
-                self.progress(rows);
+                self.progress(done + rows);
                 last_report = Instant::now();
             }
         }
@@ -202,6 +229,10 @@ impl Export {
 
     /// Stops the job: an export deletes its partial file.
     pub fn cancel(&self) {
+        if self.cooperative {
+            self.stopping.store(true, Ordering::Release);
+            return;
+        }
         if let Some(task) = lock(&self.task).take() {
             task.abort();
         }
