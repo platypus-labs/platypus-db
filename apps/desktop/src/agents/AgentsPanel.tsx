@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, toCommandError, type AgentSetup, type SavedConnection } from "../api";
 import { isProduction } from "../connections";
 import { agentAccessLabel, effectiveAgentAccess } from "./access";
+import { t, tNodes } from "../i18n";
 
 /** A command to paste somewhere else, with its Copy button. */
 function CopyBlock({ label, text, field }: { label: string; text: string; field: string }) {
@@ -20,7 +21,7 @@ function CopyBlock({ label, text, field }: { label: string; text: string; field:
         <strong className="small">{label}</strong>
         <span className="spacer" />
         <button type="button" onClick={() => void copy()} data-copy={field}>
-          {copied ? "Copied" : "Copy"}
+          {t(copied ? "Copied" : "Copy")}
         </button>
       </div>
       <pre className="sql-preview" data-field={field}>
@@ -46,18 +47,21 @@ export function AgentsPanel() {
   return (
     <div className="agents-panel">
       <p className="muted small">
-        Agents such as Claude Code, Codex or Cursor can use your saved connections through PlatypusDB's MCP server,{" "}
-        <code>platypus-mcp</code>. The agent starts it by itself: PlatypusDB does not need to be open. Agents read the
-        schema and run queries with the access each connection gives them; passwords stay in the keychain and never
-        reach them. Their queries are in the history, with the agent's name.
+        {tNodes(
+          "Agents such as Claude Code, Codex or Cursor can use your saved connections through PlatypusDB's MCP server, {mcp}. The agent starts it by itself: PlatypusDB does not need to be open. Agents read the schema and run queries with the access each connection gives them; passwords stay in the keychain and never reach them. Their queries are in the history, with the agent's name.",
+          { mcp: <code>platypus-mcp</code> },
+        )}
       </p>
       {error && <div className="notice error small">{error}</div>}
       {setup && !setup.mcp_found && (
         <div className="notice warn small">
           {/* One text run: the notice lays its children out side by side. */}
           <span>
-            <code>platypus-mcp</code> is not next to the app. Build it with{" "}
-            <code>cargo build --release -p platypus-mcp</code> and copy it to {setup.mcp_path}.
+            {tNodes("{mcp} is not next to the app. Build it with {build} and copy it to {path}.", {
+              mcp: <code>platypus-mcp</code>,
+              build: <code>cargo build --release -p platypus-mcp</code>,
+              path: setup.mcp_path,
+            })}
           </span>
         </div>
       )}
@@ -70,8 +74,8 @@ export function AgentsPanel() {
       <table className="agents-connections">
         <thead>
           <tr>
-            <th>Connection</th>
-            <th>Agent access</th>
+            <th>{t("Connection")}</th>
+            <th>{t("Agent access")}</th>
           </tr>
         </thead>
         <tbody>
@@ -82,7 +86,7 @@ export function AgentsPanel() {
                 <td>{c.name}</td>
                 <td className={access === "off" ? "muted" : undefined}>
                   {agentAccessLabel(access)}
-                  {isProduction(c) && access !== "off" && <span className="muted small"> · production</span>}
+                  {isProduction(c) && access !== "off" && <span className="muted small"> · {t("production")}</span>}
                 </td>
               </tr>
             );
@@ -90,15 +94,16 @@ export function AgentsPanel() {
           {connections.length === 0 && (
             <tr>
               <td colSpan={2} className="muted">
-                No saved connections yet.
+                {t("No saved connections yet.")}
               </td>
             </tr>
           )}
         </tbody>
       </table>
       <p className="muted small">
-        Change a connection's access in its settings, under Agent access. Read only is the default; production and
-        read-only connections are never more than read only.
+        {t(
+          "Change a connection's access in its settings, under Agent access. Read only is the default; production and read-only connections are never more than read only.",
+        )}
       </p>
     </div>
   );

@@ -1,4 +1,4 @@
-import { type ComponentType, type CSSProperties, Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentType, Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { dispatchKey, registerAction } from "./actions";
 import {
   api,
@@ -27,9 +27,8 @@ import "./querylog/actions";
 import { setAnswer } from "./testAnswers";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { dbKey, provideWorkbench, workbench } from "./workbench";
-import { Icon, type IconName } from "./ui/Icon";
+import type { IconName } from "./ui/Icon";
 import { ask, isAsking } from "./ui/ask";
-import { scrollSideways } from "./ui/scroll";
 import { type PersistedTab, loadWorkspace, saveWorkspace } from "./workspace";
 import { connectionsOf, loadActiveProject, projectKey, saveActiveProject } from "./projects/state";
 import { ProjectRail } from "./projects/ProjectRail";
@@ -44,6 +43,19 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { TopBar } from "./shell/TopBar";
 import { Welcome } from "./shell/Welcome";
+import { TabBar, barOrder, groupTabsSetting } from "./shell/TabBar";
+import { useSetting } from "./settings";
+import { language, languageSetting, t, plural } from "./i18n";
+import { stepZoom } from "./theme";
+import { logError, track } from "./shell/activity";
+import { openActivity } from "./shell/ActivityDialog";
+
+declare module "./actions" {
+  interface ActionScopes {
+    /** A tab of the bar, by its context menu. */
+    tab: { tab: TabModel };
+  }
+}
 
 type Dialog =
   | {
@@ -74,14 +86,28 @@ export function App() {
   const [activeProject, setActiveProject] = useState<string | null>(null);
   /** The active tab of each project while another one is shown, by `projectKey`. */
   const activeByProject = useRef(new Map<string, number>());
-  const [railMenu, setRailMenu] = useState<MenuState | null>(null);
+  const [menu, setMenu] = useState<MenuState | null>(null);
   const [storeError, setStoreError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [passwordRequest, setPasswordRequest] = useState<PasswordRequest | null>(null);
   const [unlockRequest, setUnlockRequest] = useState<{ resolve: (unlocked: boolean) => void } | null>(null);
   const [tabs, setTabs] = useState<TabModel[]>([]);
   const [activeTab, setActiveTab] = useState<number | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  /** The two tabs shown side by side, left first; the active tab is one of them. */
+  const [split, setSplit] = useState<[number, number] | null>(null);
+  /** The split's pane that had the focus last: the next tab activated replaces it. */
+  const focusedPane = useRef<number | null>(null);
+  /** Connections whose group of tabs is folded. */
+  const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
+  const grouped = useSetting(groupTabsSetting);
+  // A new language shows at once: everything below renders again.
+  useSetting(languageSetting);
+  const [toast, showToast] = useState<string | null>(null);
+  /** Shows an error, and keeps it in the Activity log. */
+  const setToast = (message: string | null) => {
+    showToast(message);
+    if (message) logError(message);
+  };
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   /** Closed tabs as they would be saved, newest last, for Ctrl+Shift+T. */
@@ -159,6 +185,7 @@ export function App() {
       const tab = createTab(kind.kind, t.connectionId, kind.restore(t));
       // A deleted project's tabs go to All connections.
       tab.project = t.project && existing.has(t.project) ? t.project : null;
+      tab.pinned = t.pinned === true;
       return tab;
     });
     for (const [key, index] of Object.entries(saved.active)) {
@@ -190,14 +217,34 @@ export function App() {
   // The window says which project is shown.
   useEffect(() => {
     const title = project ? `${project.name} — PlatypusDB` : "PlatypusDB";
+    document.documentElement.lang = language();
     document.title = title;
     getCurrentWindow()
       .setTitle(title)
       .catch((e: unknown) => console.warn("window title", e));
-  }, [project?.name]);
+  }, [project?.name, language()]);
 
-  /** The tabs of the active project, the ones the tab bar shows. */
-  const visibleTabs = tabs.filter((t) => inProject(t, activeProject));
+  /** The tabs of the active project, the ones the tab bar shows, in its order. */
+  const visibleTabs = barOrder(
+    tabs.filter((t) => inProject(t, activeProject)),
+    grouped,
+  );
+
+  // The split follows the tabs: a tab activated elsewhere takes the focused pane's place, and
+  // the split ends when one of its tabs closes or another project is shown.
+  useEffect(() => {
+    if (!split) return;
+    const shown = new Set(visibleTabs.map((t) => t.key));
+    if (activeTab === null || !split.every((k) => shown.has(k))) return setSplit(null);
+    if (split.includes(activeTab)) {
+      focusedPane.current = activeTab;
+      return;
+    }
+    const next: [number, number] = [...split];
+    next[Math.max(0, split.indexOf(focusedPane.current ?? -1))] = activeTab;
+    focusedPane.current = activeTab;
+    setSplit(next);
+  });
 
   /** Projects with an open transaction in one of their tabs, for the rail's warning dot. */
   const txProjects = new Set(tabs.filter((t) => t.txOpen).map((t) => projectKey(t.project)));
@@ -205,11 +252,11 @@ export function App() {
   /** Deletes a project once confirmed: its tabs close (those with changes ask first, and a
    *  refusal keeps the project), its connections stay. */
   async function deleteProject(p: Project) {
-    if (!(await ask(`Delete the project "${p.name}"? Its connections stay, in All connections and other projects.`, { confirm: "Delete", danger: true }))) {
+    if (!(await ask(t('Delete the project "{name}"? Its connections stay, in All connections and other projects.', { name: p.name }), { confirm: t("Delete"), danger: true }))) {
       return;
     }
     const own = tabs.filter((t) => t.project === p.id);
-    if (own.some((t) => t.unsaved || t.txOpen) && !(await ask("Some of its tabs have changes not saved or committed. Close them and discard the changes?", { confirm: "Discard", danger: true }))) {
+    if (own.some((tab) => tab.unsaved || tab.txOpen) && !(await ask(t("Some of its tabs have changes not saved or committed. Close them and discard the changes?"), { confirm: t("Discard"), danger: true }))) {
       return;
     }
     try {
@@ -251,6 +298,7 @@ export function App() {
   }
 
   const connectionById = (id: string) => connections?.find((c) => c.id === id);
+  const connectionName = (id: string) => connectionById(id)?.name ?? "?";
 
   /** A new connection goes into the active project. */
   async function newConnection(folder: string | null = null) {
@@ -304,7 +352,7 @@ export function App() {
   }
 
   async function deleteConnection(c: SavedConnection) {
-    if (!(await ask(`Delete the connection "${c.name}"?`, { confirm: "Delete", danger: true }))) return;
+    if (!(await ask(t('Delete the connection "{name}"?', { name: c.name }), { confirm: t("Delete"), danger: true }))) return;
     try {
       setConnections(await api.deleteConnection(c.id));
     } catch (e) {
@@ -356,7 +404,8 @@ export function App() {
     }
     try {
       // A database reached through a driver not downloaded yet: offer it, then go on.
-      const open = () => withDriver(() => api.openSession(connection.id, password, database));
+      const target = database ? `${connection.name}/${database}` : connection.name;
+      const open = () => track(t("Connect to {name}", { name: target }), withDriver(() => api.openSession(connection.id, password, database)));
       let session;
       try {
         session = await open();
@@ -384,7 +433,7 @@ export function App() {
       const sessionId = await navigatorSession(connection, database);
       if (sessionId === null) return catalogLoads.current.delete(key);
       try {
-        const catalog = await api.completionCatalog(sessionId);
+        const catalog = await track(t("Load the tables and columns of {name} for completion", { name: connection.name }), api.completionCatalog(sessionId));
         setCatalogs((all) => ({ ...all, [key]: catalog }));
       } catch (e) {
         catalogLoads.current.delete(key);
@@ -453,12 +502,12 @@ export function App() {
 
   function closeTab(tab: TabModel, confirmed = false) {
     const question = tab.unsaved
-      ? "This tab has unsaved changes. Close it and discard them?"
+      ? t("This tab has unsaved changes. Close it and discard them?")
       : tab.txOpen
-        ? "This tab has an open transaction. Close it and roll back the uncommitted changes?"
+        ? t("This tab has an open transaction. Close it and roll back the uncommitted changes?")
         : null;
     if (question && !confirmed) {
-      void ask(question, { confirm: "Close", danger: true }).then((yes) => yes && closeTab(tab, true));
+      void ask(question, { confirm: t("Close"), danger: true }).then((yes) => yes && closeTab(tab, true));
       return;
     }
     const saved = persistTab(tab);
@@ -471,13 +520,39 @@ export function App() {
     void session?.then((id) => {
       if (id !== null) closeSession(id);
     });
+    // Closing a tab of the split leaves the other one.
+    const beside = split?.find((k) => k !== tab.key && split.includes(tab.key));
     setTabs((all) => {
       const rest = all.filter((t) => t.key !== tab.key);
       // The next tab shown is one of the same project.
       const same = rest.filter((t) => inProject(t, tab.project ?? null));
-      setActiveTab((active) => (active === tab.key ? (same.at(-1)?.key ?? null) : active));
+      const next = same.find((t) => t.key === beside)?.key ?? same.at(-1)?.key ?? null;
+      setActiveTab((active) => (active === tab.key ? next : active));
       return rest;
     });
+  }
+
+  /** Closes several tabs, asking once if some of them have changes. */
+  async function closeTabs(list: TabModel[]) {
+    const changed = list.filter((t) => t.unsaved || t.txOpen).length;
+    const question = plural(
+      changed,
+      "One of these tabs has changes not saved or committed. Close it and discard them?",
+      "{n} of these tabs have changes not saved or committed. Close them and discard the changes?",
+    );
+    if (changed > 0 && !(await ask(question, { confirm: t("Close"), danger: true }))) return;
+    for (const t of list) closeTab(t, true);
+  }
+
+  /** Shows `tab` beside the active one, or a new SQL editor of the same connection. */
+  function openBeside(tab: TabModel | null) {
+    const active = visibleTabs.find((t) => t.key === activeTab);
+    if (!active) return;
+    const other = tab ?? { ...createTab("query", active.connectionId, { database: active.database }), project: activeProject };
+    if (!tab) setTabs((all) => [...all, other]);
+    focusedPane.current = other.key;
+    setSplit([active.key, other.key]);
+    setActiveTab(other.key);
   }
 
   // What the shell's actions and the workbench need, refreshed every render so they
@@ -490,7 +565,7 @@ export function App() {
     const saved = index >= 0 ? closed.splice(index, 1)[0] : undefined;
     const kind = saved && tabKind((saved.kind ?? "query") as TabKindName);
     if (!saved || !kind || !connectionById(saved.connectionId)) return;
-    addTab(createTab(kind.kind, saved.connectionId, kind.restore(saved)));
+    addTab({ ...createTab(kind.kind, saved.connectionId, kind.restore(saved)), pinned: saved.pinned === true });
   };
   const openPalette = () => setPaletteOpen(true);
   // `tabs` here are the active project's: the tab actions work on what the bar shows.
@@ -511,6 +586,11 @@ export function App() {
     projectFolders,
     importOpen: dialog?.kind === "import",
     newConnection,
+    closeTabs,
+    patchTab,
+    split,
+    openBeside,
+    closeSplit: () => setSplit(null),
   };
   const shell = useRef(shellState);
   shell.current = shellState;
@@ -554,6 +634,19 @@ export function App() {
   useEffect(() => registerAddToProject(projects ?? []), [projects]);
   useEffect(() => registerMoveToFolder(project), [project]);
 
+  // The errors nothing caught go to the Activity log too.
+  useEffect(() => {
+    const unexpected = (message: string) => logError(t("Unexpected error: {message}", { message }));
+    const onError = (e: ErrorEvent) => unexpected(e.message);
+    const onRejection = (e: PromiseRejectionEvent) => unexpected(toCommandError(e.reason).message);
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, []);
+
   // Global shortcuts, captured before the editor sees them.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -591,9 +684,9 @@ export function App() {
         txProjects={txProjects}
         onSwitch={switchProject}
         onNew={() => setDialog({ kind: "project", project: null })}
-        onMenu={(p, e) => setRailMenu({ x: e.clientX, y: e.clientY, target: { scope: "project", arg: p } })}
+        onMenu={(p, e) => setMenu({ x: e.clientX, y: e.clientY, target: { scope: "project", arg: p } })}
         folders={projectFolders}
-        onFolderMenu={(f, e) => setRailMenu({ x: e.clientX, y: e.clientY, target: { scope: "project.folder", arg: f } })}
+        onFolderMenu={(f, e) => setMenu({ x: e.clientX, y: e.clientY, target: { scope: "project.folder", arg: f } })}
       />
       <div className="sidebar-column">
         <Navigator
@@ -625,65 +718,70 @@ export function App() {
       <main className="workspace">
         <UpdateBanner />
         {visibleTabs.length > 0 && (
-          <div
-            className="tabs"
+          <TabBar
             ref={tabBar}
-            onWheel={scrollSideways}
-          >
-            {visibleTabs.map((t) => (
-              <div
-                key={t.key}
-                className={`tab${t.key === activeTab ? " active" : ""}`}
-                style={{ "--conn": connectionColor(connectionById(t.connectionId)) ?? "transparent" } as CSSProperties}
-                onClick={() => setActiveTab(t.key)}
-                onAuxClick={(e) => e.button === 1 && closeTab(t)}
-              >
-                <span className="tab-icon">
-                  <Icon name={tabIcon(t)} size={13} />
-                </span>
-                <span>{tabTitle(t)}</span>
-                <button
-                  className="icon"
-                  title="Close tab (Ctrl+W)"
-                  aria-label="Close tab"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    closeTab(t);
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
+            tabs={visibleTabs}
+            activeTab={activeTab}
+            besideTab={split?.find((k) => k !== activeTab) ?? null}
+            grouped={grouped}
+            folded={folded}
+            onFold={(id) =>
+              setFolded((all) => {
+                const next = new Set(all);
+                if (!next.delete(id)) next.add(id);
+                return next;
+              })
+            }
+            title={tabTitle}
+            shortTitle={(t) => tabKind(t.kind)?.label(t) || connectionName(t.connectionId)}
+            icon={tabIcon}
+            color={(id) => connectionColor(connectionById(id))}
+            connectionName={connectionName}
+            onActivate={(t) => setActiveTab(t.key)}
+            onClose={closeTab}
+            onMenu={(t, x, y) => setMenu({ x, y, target: { scope: "tab", arg: { tab: t } } })}
+          />
         )}
         {toast && (
-          <div className="notice error toast" onClick={() => setToast(null)}>
+          <div className="notice error toast" role="alert" onClick={() => showToast(null)}>
             {toast}
           </div>
         )}
-        {tabs.map((t) => {
-          const connection = connectionById(t.connectionId);
-          const Component = tabKind(t.kind)?.component as ComponentType<TabProps<TabModel>> | undefined;
-          return (
-            connection &&
-            Component && (
-              <Component
-                key={t.key}
-                tab={t}
-                connection={connection}
-                active={t.key === activeTab}
-                ensureSession={() => ensureSession(t)}
-                currentSession={() => sessions.current.get(t.key) ?? null}
-                onChange={(patch) => patchTab(t.key, patch)}
-                sideSession={() => navigatorSession(connection, t.database)}
-                catalog={catalogs[dbKey(connection.id, t.database)] ?? null}
-                onNeedCatalog={(force) => requestCatalog(connection, force, t.database)}
-                onError={setToast}
-              />
-            )
-          );
-        })}
+        <div className={`panes${split ? " split" : ""}`} hidden={visibleTabs.length === 0}>
+          {tabs.map((t) => {
+            const connection = connectionById(t.connectionId);
+            const Component = tabKind(t.kind)?.component as ComponentType<TabProps<TabModel>> | undefined;
+            const pane = split ? split.indexOf(t.key) : t.key === activeTab ? 0 : -1;
+            // A click or the focus in a pane of the split makes its tab the active one.
+            const activate = () => split && t.key !== activeTab && setActiveTab(t.key);
+            return (
+              connection &&
+              Component && (
+                <div
+                  key={t.key}
+                  className={`pane${split && t.key === activeTab ? " focused" : ""}${pane === 1 ? " right" : ""}`}
+                  hidden={pane < 0}
+                  style={{ order: pane }}
+                  onMouseDownCapture={activate}
+                  onFocusCapture={activate}
+                >
+                  <Component
+                    tab={t}
+                    connection={connection}
+                    active={pane >= 0}
+                    ensureSession={() => ensureSession(t)}
+                    currentSession={() => sessions.current.get(t.key) ?? null}
+                    onChange={(patch) => patchTab(t.key, patch)}
+                    sideSession={() => navigatorSession(connection, t.database)}
+                    catalog={catalogs[dbKey(connection.id, t.database)] ?? null}
+                    onNeedCatalog={(force) => requestCatalog(connection, force, t.database)}
+                    onError={setToast}
+                  />
+                </div>
+              )
+            );
+          })}
+        </div>
         {visibleTabs.length === 0 && (
           <Welcome
             empty={connections?.length === 0}
@@ -740,7 +838,7 @@ export function App() {
           }}
         />
       )}
-      {railMenu && <ContextMenu menu={railMenu} onClose={() => setRailMenu(null)} onError={(e) => setToast(toCommandError(e).message)} />}
+      {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} onError={(e) => setToast(toCommandError(e).message)} />}
       {dialog?.kind === "import" && (
         <ImportDialog
           existing={connections ?? []}
@@ -797,7 +895,7 @@ function tabIcon(t: TabModel): IconName {
 /** A tab as the workspace saves it, or `null` for a kind that is not kept. */
 function persistTab(tab: TabModel): PersistedTab | null {
   const state = tabKind(tab.kind)?.persist(tab);
-  return state ? { ...state, kind: tab.kind, connectionId: tab.connectionId, project: tab.project ?? null } : null;
+  return state ? { ...state, kind: tab.kind, connectionId: tab.connectionId, project: tab.project ?? null, ...(tab.pinned && { pinned: true }) } : null;
 }
 
 /** The tab belongs to the project (`null` for All connections); tabs saved before projects
@@ -821,6 +919,11 @@ interface ShellApi {
   navigatorSession: (connection: SavedConnection, database?: string | null) => Promise<number | null>;
   reopenTab: () => void;
   openPalette: () => void;
+  closeTabs: (tabs: TabModel[]) => Promise<void>;
+  patchTab: (key: number, patch: Partial<TabModel>) => void;
+  split: [number, number] | null;
+  openBeside: (tab: TabModel | null) => void;
+  closeSplit: () => void;
 }
 
 /** Closed tabs kept for reopening. */
@@ -877,12 +980,36 @@ function registerShellActions(shell: { current: ShellApi }) {
       run: () => s().reopenTab(),
     }),
     registerAction({
+      id: "tab.split",
+      scope: "global",
+      title: "Split editor or close the split",
+      shortcut: "Mod+Shift+D",
+      when: () => index() >= 0,
+      // Beside the next tab, or a new SQL editor when it is the only one.
+      run: () => {
+        if (s().split) return s().closeSplit();
+        s().openBeside(s().tabs.length > 1 ? s().tabs[(index() + 1) % s().tabs.length]! : null);
+      },
+    }),
+    ...tabMenuActions(s),
+    // `+` takes Shift on some keyboards and not on others, and the keypad has its own.
+    registerAction({
+      id: "app.zoomIn",
+      scope: "global",
+      title: "Zoom in",
+      shortcut: ["Mod+=", "Mod+Plus", "Mod+Shift+Plus"],
+      run: () => stepZoom(1),
+    }),
+    registerAction({ id: "app.zoomOut", scope: "global", title: "Zoom out", shortcut: "Mod+-", run: () => stepZoom(-1) }),
+    registerAction({ id: "app.zoomReset", scope: "global", title: "Reset zoom", shortcut: "Mod+0", run: () => stepZoom(0) }),
+    registerAction({
       id: "app.palette",
       scope: "global",
       title: "Command palette",
       shortcut: ["Mod+K", "Mod+Shift+P"],
       run: () => s().openPalette(),
     }),
+    registerAction({ id: "app.activity", scope: "global", title: "Activity and errors", run: openActivity }),
     registerAction({
       id: "app.settings",
       scope: "global",
@@ -892,6 +1019,62 @@ function registerShellActions(shell: { current: ShellApi }) {
     }),
   ];
   return () => unregister.forEach((u) => u());
+}
+
+/** The tab's context menu. */
+function tabMenuActions(s: () => ShellApi) {
+  const others = (tab: TabModel) => s().tabs.filter((t) => t.key !== tab.key && !t.pinned);
+  const right = (tab: TabModel) => s().tabs.slice(s().tabs.indexOf(tab) + 1).filter((t) => !t.pinned);
+  return [
+    registerAction({
+      id: "tab.beside",
+      scope: "tab",
+      title: "Open beside the active tab",
+      group: "view",
+      when: ({ tab }) => tab.key !== s().activeTab && !s().split?.includes(tab.key),
+      run: ({ tab }) => s().openBeside(tab),
+    }),
+    registerAction({
+      id: "tab.pin",
+      scope: "tab",
+      title: "Pin tab",
+      group: "view",
+      when: ({ tab }) => !tab.pinned,
+      run: ({ tab }) => s().patchTab(tab.key, { pinned: true }),
+    }),
+    registerAction({
+      id: "tab.unpin",
+      scope: "tab",
+      title: "Unpin tab",
+      group: "view",
+      when: ({ tab }) => !!tab.pinned,
+      run: ({ tab }) => s().patchTab(tab.key, { pinned: false }),
+    }),
+    registerAction({ id: "tab.closeThis", scope: "tab", title: "Close", group: "close", run: ({ tab }) => s().closeTab(tab) }),
+    registerAction({
+      id: "tab.closeOthers",
+      scope: "tab",
+      title: "Close others",
+      group: "close",
+      when: ({ tab }) => others(tab).length > 0,
+      run: ({ tab }) => s().closeTabs(others(tab)),
+    }),
+    registerAction({
+      id: "tab.closeRight",
+      scope: "tab",
+      title: "Close tabs to the right",
+      group: "close",
+      when: ({ tab }) => right(tab).length > 0,
+      run: ({ tab }) => s().closeTabs(right(tab)),
+    }),
+    registerAction({
+      id: "tab.closeAll",
+      scope: "tab",
+      title: "Close all",
+      group: "close",
+      run: () => s().closeTabs(s().tabs.filter((t) => !t.pinned)),
+    }),
+  ];
 }
 
 function PasswordPrompt({
@@ -912,7 +1095,7 @@ function PasswordPrompt({
         }}
         onKeyDown={(e) => e.key === "Escape" && onDone(null)}
       >
-        <h2>Password for {connection.name}</h2>
+        <h2>{t("Password for {name}", { name: connection.name })}</h2>
         <label className="field">
           <span>
             {connection.user}@{connection.host}
@@ -922,10 +1105,10 @@ function PasswordPrompt({
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={() => onDone(null)}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" className="primary">
-            Connect
+            {t("Connect")}
           </button>
         </div>
       </form>

@@ -5,6 +5,7 @@ import { ContextMenu, type MenuState } from "../components/ContextMenu";
 import { Icon } from "../ui/Icon";
 import { moveScript, registerScriptConnections } from "./actions";
 import { connectionFor, nameOf, onScriptsChanged, openScript, parentOf, scriptsChanged } from "./scripts";
+import { t } from "../i18n";
 
 interface Props {
   project: Project | null;
@@ -65,12 +66,13 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
     try {
       let path: string;
       if (folder) {
-        path = "New folder";
-        for (let n = 2; list?.entries.some((e) => e.path === path); n++) path = `New folder ${n}`;
+        const base = t("New folder");
+        path = base;
+        for (let n = 2; list?.entries.some((e) => e.path === path); n++) path = `${base} ${n}`;
         await api.createScriptFolder(projectId, path);
       } else {
         const only = connections.length === 1 ? connections[0]!.id : null;
-        path = await api.createScript(projectId, "", "Script", only);
+        path = await api.createScript(projectId, "", t("Script"), only);
       }
       setOpen(true);
       scriptsChanged();
@@ -94,16 +96,16 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
   };
 
   return (
-    <section className={`scripts-panel${open ? " open" : ""}`} aria-label="Scripts">
+    <section className={`scripts-panel${open ? " open" : ""}`} aria-label={t("Scripts")}>
       <div className="sidebar-header scripts-header" onDragOver={allowDrop} onDrop={drop("")}>
-        <button className="icon twisty-button" onClick={() => setOpen((o) => !o)} aria-expanded={open} title={open ? "Hide scripts" : "Show scripts"}>
+        <button className="icon twisty-button" onClick={() => setOpen((o) => !o)} aria-expanded={open} title={t(open ? "Hide scripts" : "Show scripts")}>
           <Icon name={open ? "chevron-down" : "chevron-right"} size={12} />
         </button>
-        <span className="sidebar-title">Scripts</span>
-        <button className="icon" title="New script" aria-label="New script" onClick={() => void create(false)}>
+        <span className="sidebar-title">{t("Scripts")}</span>
+        <button className="icon" title={t("New script")} aria-label={t("New script")} onClick={() => void create(false)}>
           <Icon name="new-file" />
         </button>
-        <button className="icon" title="New folder" aria-label="New folder" onClick={() => void create(true)}>
+        <button className="icon" title={t("New folder")} aria-label={t("New folder")} onClick={() => void create(true)}>
           <Icon name="new-folder" />
         </button>
       </div>
@@ -171,14 +173,14 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
                   <span className="tree-label">{entry.folder ? nameOf(entry.path) : nameOf(entry.path).replace(/\.sql$/i, "")}</span>
                 )}
                 {linked && (
-                  <span className="tree-detail" title={`Opens on ${linked.name}`}>
+                  <span className="tree-detail" title={t("Opens on {name}", { name: linked.name })}>
                     {linked.name}
                   </span>
                 )}
               </li>
             );
           })}
-          {list && entries.length === 0 && <li className="muted small scripts-empty">No saved scripts</li>}
+          {list && entries.length === 0 && <li className="muted small scripts-empty">{t("No saved scripts")}</li>}
         </ul>
       )}
       {menu && <ContextMenu menu={menu} onClose={closeMenu} onError={fail} />}

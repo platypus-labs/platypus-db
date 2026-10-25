@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type InstalledDriver, toCommandError } from "../api";
+import { t } from "../i18n";
 import { VendorDriversSection } from "./VendorDrivers";
 
 /** The drivers downloaded for the databases reached through ADBC, with removal. */
@@ -22,11 +23,10 @@ export function DriversPanel() {
   return (
     <div className="drivers-panel">
       <p className="muted small">
-        Snowflake, BigQuery, Databricks and Trino connect through ADBC drivers, downloaded the first time a
-        connection needs one.
+        {t("Snowflake, BigQuery, Databricks and Trino connect through ADBC drivers, downloaded the first time a connection needs one.")}
       </p>
       {error && <div className="notice error small">{error}</div>}
-      {drivers?.length === 0 && <p className="muted small">No driver downloaded yet.</p>}
+      {drivers?.length === 0 && <p className="muted small">{t("No driver downloaded yet.")}</p>}
       {drivers?.map((d) => (
         <div key={d.name} className="driver-row" data-driver={d.name}>
           <div>
@@ -37,7 +37,7 @@ export function DriversPanel() {
           </div>
           <span className="spacer" />
           <button type="button" onClick={() => void remove(d.name)}>
-            Remove
+            {t("Remove")}
           </button>
         </div>
       ))}

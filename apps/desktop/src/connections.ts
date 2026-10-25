@@ -1,10 +1,11 @@
 /** Connection types (development, test, production) and what they change in the UI. */
 import { type ConnectionType, isEmbedded, type SavedConnection } from "./api";
+import { msg } from "./i18n";
 
 export const CONNECTION_TYPES: { value: ConnectionType; label: string; color: string }[] = [
-  { value: "dev", label: "Development", color: "#2f9e44" },
-  { value: "test", label: "Test", color: "#f08c00" },
-  { value: "prod", label: "Production", color: "#c92a2a" },
+  { value: "dev", label: msg("Development"), color: "#2f9e44" },
+  { value: "test", label: msg("Test"), color: "#f08c00" },
+  { value: "prod", label: msg("Production"), color: "#c92a2a" },
 ];
 
 /** The connection's color: its own, else its type's. */

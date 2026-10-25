@@ -5,6 +5,7 @@
  * which `@set name = value` also sets.
  */
 import type { DriverKind, ExportFormat, ParameterSpan } from "../api";
+import { t } from "../i18n";
 
 /** A placeholder's key among the values: its name, or `?1`, `?2`… by position. */
 export function parameterKeys(spans: ParameterSpan[]): string[] {
@@ -78,20 +79,20 @@ export function parseCommand(text: string): ClientCommand {
       const set = /^([\w.]+)\s*(?:=\s*|\s)(.*)$/s.exec(rest);
       return set
         ? { name: "set", variable: set[1]!, value: set[2]!.trim() }
-        : { name: "error", message: "Usage: @set name = value" };
+        : { name: "error", message: t("Usage: @set name = value") };
     }
     case "echo":
       return { name: "echo", text: rest };
     case "include":
-      return rest.trim() ? { name: "include", path: unquote(rest) } : { name: "error", message: "Usage: @include file.sql" };
+      return rest.trim() ? { name: "include", path: unquote(rest) } : { name: "error", message: t("Usage: @include file.sql") };
     case "export": {
       const path = unquote(rest);
-      if (!path) return { name: "error", message: "Usage: @export file.csv (also .json, .ndjson, .parquet, .xlsx, .sql, .md, .html, .xml)" };
+      if (!path) return { name: "error", message: t("Usage: @export file.csv (also .json, .ndjson, .parquet, .xlsx, .sql, .md, .html, .xml)") };
       const ext = /\.(\w+)$/.exec(path)?.[1]?.toLowerCase() ?? "";
       return { name: "export", path, format: FORMATS[ext] ?? "csv" };
     }
     default:
-      return { name: "error", message: `Unknown command @${word}: use @set, @echo, @include or @export` };
+      return { name: "error", message: t("Unknown command @{word}: use @set, @echo, @include or @export", { word }) };
   }
 }
 

@@ -4,7 +4,8 @@
  */
 import { useEffect, useRef } from "react";
 import { api, type ColumnInfo } from "../api";
-import { type ResultStatus, describe, fmt, formatMs } from "../components/ResultPanel";
+import { type ResultStatus, describe, formatMs } from "../components/ResultPanel";
+import { t, plural } from "../i18n";
 
 /** Rows a statement shows in terminal mode; the rest is not fetched. */
 export const TERMINAL_ROWS = 500;
@@ -29,7 +30,7 @@ export function textTable(columns: string[], rows: (string | null)[][], more: bo
   const widths = columns.map((c, i) => Math.max(c.length, ...cells.map((r) => r[i]!.length)));
   const line = (values: string[]) => ` ${values.map((v, i) => v.padEnd(widths[i]!)).join(" | ")}`.trimEnd();
   const rule = widths.map((w) => "-".repeat(w + 2)).join("+");
-  const count = `(${fmt.format(rows.length)} ${rows.length === 1 ? "row" : "rows"}${more ? ", more not shown" : ""})`;
+  const count = `(${plural(rows.length, "{n} row", "{n} rows")}${more ? t(", more not shown") : ""})`;
   return [line(columns), rule, ...cells.map(line), count].join("\n");
 }
 
@@ -49,10 +50,10 @@ export async function blockText(
         columns.map((c) => c.name),
         values,
         more,
-      )}\nTime: ${formatMs(status.elapsedMs)}`;
+      )}\n${t("Time: {time}", { time: formatMs(status.elapsedMs) })}`;
     }
     case "affected":
-      return `${fmt.format(status.rows)} row(s) affected\nTime: ${formatMs(status.elapsedMs)}`;
+      return `${plural(status.rows, "{n} row affected", "{n} rows affected")}\n${t("Time: {time}", { time: formatMs(status.elapsedMs) })}`;
     case "error": {
       const e = status.error;
       return [`ERROR: ${e.code ? `${e.code}: ` : ""}${e.message}`, e.detail && `DETAIL: ${e.detail}`, e.hint && `HINT: ${e.hint}`]
@@ -74,10 +75,10 @@ export function TerminalView({ blocks, onClear }: { blocks: TerminalBlock[]; onC
   return (
     <div className="terminal-view">
       <div className="terminal-bar">
-        <span className="muted small">Terminal output</span>
+        <span className="muted small">{t("Terminal output")}</span>
         <span className="spacer" />
         <button className="link" onClick={onClear} disabled={blocks.length === 0}>
-          Clear
+          {t("Clear")}
         </button>
       </div>
       <pre className="terminal-output" tabIndex={0}>

@@ -5,6 +5,7 @@
 import type { Completion, CompletionContext, CompletionResult, CompletionSource } from "@codemirror/autocomplete";
 import type { CatalogForeignKey, CompletionCatalog, DriverKind } from "../api";
 import { quoteIdent } from "../sqlNames";
+import { t } from "../i18n";
 
 interface TableRef {
   schema: string | null;
@@ -102,7 +103,7 @@ function relatedTables(catalog: CompletionCatalog, driver: DriverKind, before: T
     const a = alias(table, used);
     const name = schema === catalog.default_schema ? quoteIdent(table, driver) : `${quoteIdent(schema, driver)}.${quoteIdent(table, driver)}`;
     const label = `${name} ${a} ON ${build(a)}`;
-    if (!options.has(label)) options.set(label, { label, type: "type", detail: "foreign key", boost: 10 });
+    if (!options.has(label)) options.set(label, { label, type: "type", detail: t("foreign key"), boost: 10 });
   };
   for (const fk of catalog.foreign_keys) {
     for (const other of before) {

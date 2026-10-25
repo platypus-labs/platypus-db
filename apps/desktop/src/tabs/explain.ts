@@ -1,12 +1,13 @@
 import { registerAction } from "../actions";
 import { ExplainTab } from "../explain/ExplainTab";
 import { registerTabKind } from "./registry";
+import { t } from "../i18n";
 
 registerTabKind({
   kind: "explain",
   component: ExplainTab,
   create: (init) => ({ sql: "", analyze: false, ...init }),
-  label: (tab) => (tab.analyze ? "Explain analyze" : "Explain"),
+  label: (tab) => t(tab.analyze ? "Explain analyze" : "Explain"),
   // Not restored: reopening would run an analyzed statement again unasked.
   persist: () => null,
   restore: () => ({}),

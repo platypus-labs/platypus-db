@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type ColumnInfo, toCommandError } from "../api";
+import { t } from "../i18n";
 
 interface Props {
   jobId: number;
@@ -54,29 +55,31 @@ export function RecordView({ jobId, columns, shown, row, rowCount, topRows, vers
   return (
     <div className="record-view" ref={box} tabIndex={0} onKeyDown={onKeyDown}>
       <div className="value-bar">
-        <button onClick={() => onMove(0)} disabled={row <= 0} title="First row (Home)">
+        <button onClick={() => onMove(0)} disabled={row <= 0} title={t("First row (Home)")} aria-label={t("First row (Home)")}>
           ⏮
         </button>
-        <button onClick={() => onMove(row - 1)} disabled={row <= 0} title="Previous row (←)">
+        <button onClick={() => onMove(row - 1)} disabled={row <= 0} title={t("Previous row (←)")} aria-label={t("Previous row (←)")}>
           ◀
         </button>
         <span className="small record-position">
-          {dataRow < 0 ? "New row" : `Row ${(dataRow + 1).toLocaleString()} of ${(rowCount - topRows).toLocaleString()}`}
+          {dataRow < 0
+            ? t("New row")
+            : t("Row {n} of {count}", { n: (dataRow + 1).toLocaleString(), count: (rowCount - topRows).toLocaleString() })}
         </span>
-        <button onClick={() => onMove(row + 1)} disabled={row >= rowCount - 1} title="Next row (→)">
+        <button onClick={() => onMove(row + 1)} disabled={row >= rowCount - 1} title={t("Next row (→)")} aria-label={t("Next row (→)")}>
           ▶
         </button>
-        <button onClick={() => onMove(rowCount - 1)} disabled={row >= rowCount - 1} title="Last row (End)">
+        <button onClick={() => onMove(rowCount - 1)} disabled={row >= rowCount - 1} title={t("Last row (End)")} aria-label={t("Last row (End)")}>
           ⏭
         </button>
         <span className="spacer" />
-        <button className="icon" title="Back to the grid" onClick={onClose}>
+        <button className="icon" title={t("Back to the grid")} aria-label={t("Back to the grid")} onClick={onClose}>
           ×
         </button>
       </div>
       {error && <div className="error-text small value-empty">{error}</div>}
       {dataRow < 0 ? (
-        <div className="muted small value-empty">A new row of the editor: it shows in the grid until saved.</div>
+        <div className="muted small value-empty">{t("A new row of the editor: it shows in the grid until saved.")}</div>
       ) : (
         <div className="record-fields">
           {shown.map((c) => {

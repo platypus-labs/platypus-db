@@ -5,13 +5,15 @@ import { projectKey } from "../projects/state";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import { parseDbKey, workbench } from "../workbench";
 import { type FuzzyMatch, fuzzy } from "./fuzzy";
+import { t } from "../i18n";
 
 /** Results shown at most. */
 const LIMIT = 60;
 
 interface Item {
   key: string;
-  kind: "Action" | "Project" | "Connection" | "Table" | "Recent query";
+  /** What it is, as shown: Action, Project, Connection, Table or Recent query. */
+  kind: string;
   label: string;
   detail?: string;
   shortcut?: string;
@@ -85,22 +87,22 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
     return [
       ...actions.map((a) => ({
         key: `action:${a.id}`,
-        kind: "Action" as const,
-        label: a.title,
+        kind: t("Action"),
+        label: t(a.title),
         shortcut: shortcutLabel(a),
         run: () => runAction(a, undefined, (e) => workbench().showError(toCommandError(e).message)),
       })),
       // Projects, to switch to; All connections first, as in the rail.
-      ...[{ id: null, name: "All connections" }, ...workbench().projects()].map((p) => ({
+      ...[{ id: null, name: t("All connections") }, ...workbench().projects()].map((p) => ({
         key: `project:${projectKey(p.id)}`,
-        kind: "Project" as const,
+        kind: t("Project"),
         label: p.name,
         run: () => workbench().switchProject(p.id),
       })),
       ...connections.map((c) => ({
         key: `connection:${c.id}`,
-        kind: "Connection" as const,
-        label: `Open SQL editor: ${c.name}`,
+        kind: t("Connection"),
+        label: t("Open SQL editor: {name}", { name: c.name }),
         detail: isEmbedded(c.driver) ? c.database : `${c.host}/${c.database}`,
         run: () => workbench().openTab("query", c.id),
       })),
@@ -111,7 +113,7 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
         return Object.entries(catalog.schemas).flatMap(([schema, tables]) =>
           Object.keys(tables).map((table) => ({
             key: `table:${connectionId}:${database ?? ""}:${schema}.${table}`,
-            kind: "Table" as const,
+            kind: t("Table"),
             label: schema === catalog.default_schema ? table : `${schema}.${table}`,
             detail: database ? `${connection.name} · ${database}` : connection.name,
             run: () => openTable(connection, database, catalog, schema, table),
@@ -124,7 +126,7 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
         return [
           {
             key: `history:${h.id}`,
-            kind: "Recent query" as const,
+            kind: t("Recent query"),
             label: h.sql.replace(/\s+/g, " ").trim().slice(0, 140),
             detail: connection.name,
             run: () => workbench().openTab("query", connection.id, { sql: h.sql }),
@@ -171,11 +173,11 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
 
   return (
     <div className="palette-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="palette" role="dialog" aria-label="Command palette">
+      <div className="palette" role="dialog" aria-label={t("Command palette")}>
         <input
           autoFocus
           value={query}
-          placeholder="Search actions, connections, tables and recent queries…"
+          placeholder={t("Search actions, connections, tables and recent queries…")}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
         />
@@ -200,7 +202,7 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
               {item.shortcut && <kbd>{item.shortcut}</kbd>}
             </li>
           ))}
-          {results.length === 0 && <li className="palette-empty muted">Nothing matches.</li>}
+          {results.length === 0 && <li className="palette-empty muted">{t("Nothing matches.")}</li>}
         </ul>
       </div>
     </div>

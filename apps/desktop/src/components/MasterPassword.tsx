@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, toCommandError, type VaultStatus } from "../api";
+import { t } from "../i18n";
 
 /** Asks for the master password; `onDone(false)` when the user goes on without it. */
 export function UnlockDialog({ onDone }: { onDone: (unlocked: boolean) => void }) {
@@ -23,20 +24,20 @@ export function UnlockDialog({ onDone }: { onDone: (unlocked: boolean) => void }
   return (
     <div className="modal-backdrop">
       <form className="modal small unlock-vault" onSubmit={unlock} onKeyDown={(e) => e.key === "Escape" && onDone(false)}>
-        <h2>Master password</h2>
-        <p className="muted small">The saved passwords are encrypted. Enter the master password to use them.</p>
+        <h2>{t("Master password")}</h2>
+        <p className="muted small">{t("The saved passwords are encrypted. Enter the master password to use them.")}</p>
         <label className="field">
-          <span>Master password</span>
+          <span>{t("Master password")}</span>
           <input autoFocus type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </label>
         {error && <div className="notice error">{error}</div>}
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={() => onDone(false)} disabled={busy}>
-            Later
+            {t("Later")}
           </button>
           <button type="submit" className="primary" disabled={busy || password === ""}>
-            Unlock
+            {t("Unlock")}
           </button>
         </div>
       </form>
@@ -92,36 +93,40 @@ export function MasterPasswordPanel() {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!ready) return;
-    if (mode === "enable") void run(() => api.enableVault(next), "Saved passwords moved into the encrypted file.");
-    if (mode === "change") void run(() => api.changeVaultPassword(current, next), "Master password changed.");
-    if (mode === "disable") void run(() => api.disableVault(current), "Saved passwords moved back to the system keychain.");
+    if (mode === "enable") void run(() => api.enableVault(next), t("Saved passwords moved into the encrypted file."));
+    if (mode === "change") void run(() => api.changeVaultPassword(current, next), t("Master password changed."));
+    if (mode === "disable") void run(() => api.disableVault(current), t("Saved passwords moved back to the system keychain."));
   }
 
   if (!status) return null;
   return (
     <div className="master-password">
       <p className="muted small">
-        {status.enabled
-          ? `Saved passwords are in an encrypted file${status.unlocked ? ", unlocked for this session" : ", locked"}.`
-          : "Saved passwords are in the system keychain. A master password moves them into a file encrypted with it (Argon2id and AES-256-GCM)."}
+        {t(
+          status.enabled
+            ? status.unlocked
+              ? "Saved passwords are in an encrypted file, unlocked for this session."
+              : "Saved passwords are in an encrypted file, locked."
+            : "Saved passwords are in the system keychain. A master password moves them into a file encrypted with it (Argon2id and AES-256-GCM).",
+        )}
       </p>
       {mode === null && (
         <div className="row tight">
           {!status.enabled && (
             <button type="button" onClick={() => start("enable")}>
-              Set a master password…
+              {t("Set a master password…")}
             </button>
           )}
           {status.enabled && (
             <>
               <button type="button" onClick={() => start("change")}>
-                Change…
+                {t("Change…")}
               </button>
               <button type="button" onClick={() => start("disable")}>
-                Turn off…
+                {t("Turn off…")}
               </button>
-              <button type="button" disabled={!status.unlocked} onClick={() => void run(() => api.lockVault(), "Locked.")}>
-                Lock now
+              <button type="button" disabled={!status.unlocked} onClick={() => void run(() => api.lockVault(), t("Locked."))}>
+                {t("Lock now")}
               </button>
             </>
           )}
@@ -131,14 +136,14 @@ export function MasterPasswordPanel() {
         <form className="master-password-form" onSubmit={submit}>
           {mode !== "enable" && (
             <label className="field">
-              <span>Current master password</span>
+              <span>{t("Current master password")}</span>
               <input autoFocus type="password" value={current} onChange={(e) => setCurrent(e.target.value)} />
             </label>
           )}
           {needsNew && (
             <>
               <label className="field">
-                <span>New master password</span>
+                <span>{t("New master password")}</span>
                 <input
                   autoFocus={mode === "enable"}
                   type="password"
@@ -147,21 +152,21 @@ export function MasterPasswordPanel() {
                 />
               </label>
               <label className="field">
-                <span>Repeat it</span>
+                <span>{t("Repeat it")}</span>
                 <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
               </label>
-              {mismatch && <div className="error-text small">The two passwords differ.</div>}
+              {mismatch && <div className="error-text small">{t("The two passwords differ.")}</div>}
               {mode === "enable" && (
-                <div className="muted small">It cannot be recovered: without it the saved passwords are lost.</div>
+                <div className="muted small">{t("It cannot be recovered: without it the saved passwords are lost.")}</div>
               )}
             </>
           )}
           <div className="row tight">
             <button type="submit" className="primary" disabled={busy || !ready}>
-              {mode === "enable" ? "Turn on" : mode === "change" ? "Change" : "Turn off"}
+              {t(mode === "enable" ? "Turn on" : mode === "change" ? "Change" : "Turn off")}
             </button>
             <button type="button" onClick={() => start(null)} disabled={busy}>
-              Cancel
+              {t("Cancel")}
             </button>
           </div>
         </form>

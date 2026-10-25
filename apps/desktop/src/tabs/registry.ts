@@ -35,6 +35,8 @@ export interface TabBase {
   txOpen?: boolean;
   /** Edits not saved yet, e.g. in the data editor: closing asks first. Not persisted. */
   unsaved?: boolean;
+  /** Kept at the start of the bar as an icon, and left open by "Close others". */
+  pinned?: boolean;
 }
 
 type OwnFields<T> = Omit<T, "key" | "kind" | "connectionId">;

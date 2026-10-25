@@ -2,6 +2,7 @@ import { useId, useRef, useState } from "react";
 import type { CellInput, FieldMeta } from "../../api";
 import { LIST_H, LIST_W, ListEditor } from "./ListEditor";
 import type { EditorKind } from "./meta";
+import { t } from "../../i18n";
 
 /** Where to go after committing: the next cell in a direction, or stay. */
 export type Move = "down" | "up" | "right" | "left" | null;
@@ -71,7 +72,7 @@ export function CellEditor({
       try {
         JSON.parse(value);
       } catch (e) {
-        setProblem(`Invalid JSON: ${(e as Error).message}`);
+        setProblem(t("Invalid JSON: {message}", { message: (e as Error).message }));
         return;
       }
     }
@@ -153,20 +154,20 @@ export function CellEditor({
                 try {
                   setText(JSON.stringify(JSON.parse(text), null, 2));
                 } catch (e) {
-                  setProblem(`Invalid JSON: ${(e as Error).message}`);
+                  setProblem(t("Invalid JSON: {message}", { message: (e as Error).message }));
                 }
               }}
             >
-              Format
+              {t("Format")}
             </button>
           )}
           <span className="spacer" />
-          <span className="muted small">Ctrl+Enter to apply</span>
+          <span className="muted small">{t("Ctrl+Enter to apply")}</span>
           <button type="button" onClick={cancel}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="button" className="primary" onClick={() => commit(null)}>
-            Apply
+            {t("Apply")}
           </button>
         </div>
       </div>

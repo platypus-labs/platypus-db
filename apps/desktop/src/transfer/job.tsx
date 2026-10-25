@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from "react";
 import { api, type ExportEvent, toCommandError } from "../api";
+import { t } from "../i18n";
 
 /** A transfer job (export, migration, generated rows) as its dialog shows it. */
 export type JobStatus =
@@ -39,29 +40,26 @@ export function useJob() {
  *  that starts it. */
 export function JobFooter(props: {
   status: JobStatus;
-  /** The verbs of the notices, e.g. `["Copying", "Copied"]`. */
-  verbs: [string, string];
+  /** The notices while it runs and once done, with `{n}` for the rows and marked with `msg`,
+   *  e.g. `["Copying… {n} rows", "Copied {n} rows."]`. */
+  messages: [string, string];
   /** Put before a failure's message. */
   failed?: string;
   stop?: string;
   onClose: () => void;
   children: ReactNode;
 }) {
-  const { status, verbs, failed = "", stop = "Stop", onClose, children } = props;
+  const { status, messages, failed = "", stop = t("Stop"), onClose, children } = props;
   return (
     <>
-      {status.state === "running" && (
-        <div className="notice small">
-          {verbs[0]}… {status.rows.toLocaleString()} rows
-        </div>
-      )}
+      {status.state === "running" && <div className="notice small">{t(messages[0], { n: status.rows.toLocaleString() })}</div>}
       {status.state === "done" && (
         <div className={`notice small${status.warnings.length ? " warn" : ""}`}>
-          {verbs[1]} {status.rows.toLocaleString()} rows.
+          {t(messages[1], { n: status.rows.toLocaleString() })}
           {status.warnings.length > 0 && (
             <>
               {" "}
-              Left out:
+              {t("Left out:")}
               <ul className="migrate-warnings">
                 {status.warnings.map((w) => (
                   <li key={w}>{w}</li>
@@ -85,7 +83,7 @@ export function JobFooter(props: {
           </button>
         ) : (
           <button type="button" onClick={onClose}>
-            {status.state === "done" ? "Close" : "Cancel"}
+            {t(status.state === "done" ? "Close" : "Cancel")}
           </button>
         )}
         {children}

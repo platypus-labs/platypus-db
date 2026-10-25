@@ -138,3 +138,12 @@ export function viewerSql(driver: DriverKind, table: string, filter: string, sor
   if (sort) sql += `\nORDER BY ${quoteIdent(sort.column, driver)} ${sort.desc ? "DESC" : "ASC"}`;
   return sql;
 }
+
+/** The drag type of a table or column dragged from the navigator: `{ name, select? }`, the
+ *  quoted name and, for a table, a query of it. */
+export const SQL_DRAG = "application/x-platypus-sql";
+
+export interface SqlDrag {
+  name: string;
+  select?: string;
+}

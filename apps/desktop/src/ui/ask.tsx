@@ -1,4 +1,5 @@
 import { workbench } from "../workbench";
+import { t } from "../i18n";
 
 let open = 0;
 
@@ -14,7 +15,7 @@ interface Options {
 
 /** Asks a yes/no question in the app's own dialog, in place of `window.confirm`: resolves to
  *  `true` once confirmed, `false` on Cancel, Escape or a click outside. */
-export function ask(message: string, { confirm = "OK", danger = false }: Options = {}): Promise<boolean> {
+export function ask(message: string, { confirm = t("OK"), danger = false }: Options = {}): Promise<boolean> {
   open++;
   let answered = false;
   return new Promise((resolve) =>
@@ -39,7 +40,7 @@ export function ask(message: string, { confirm = "OK", danger = false }: Options
             <div className="actions">
               <span className="spacer" />
               <button type="button" onClick={() => answer(false)}>
-                Cancel
+                {t("Cancel")}
               </button>
               <button type="button" className={`primary${danger ? " danger" : ""}`} autoFocus onClick={() => answer(true)}>
                 {confirm}

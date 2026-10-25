@@ -1,6 +1,7 @@
 import { type RefObject, useEffect, useState } from "react";
 import { api, type ColumnInfo, type ColumnStats, toCommandError } from "../api";
 import type { GridApi } from "../grid/DataGrid";
+import { t, plural } from "../i18n";
 
 interface Props {
   jobId: number;
@@ -53,14 +54,14 @@ export function CalcPanel({ jobId, columns, grid, selection, onClose }: Props) {
   return (
     <aside className="value-panel calc-panel">
       <div className="value-bar">
-        <strong className="small value-name">Calculate</strong>
+        <strong className="small value-name">{t("Calculate")}</strong>
         <span className="spacer" />
-        <button className="icon" title="Close" onClick={onClose}>
+        <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
           ×
         </button>
       </div>
       {error && <div className="error-text small value-empty">{error}</div>}
-      {!stats && !error && <div className="muted small value-empty">Select cells of loaded rows.</div>}
+      {!stats && !error && <div className="muted small value-empty">{t("Select cells of loaded rows.")}</div>}
       {stats && (
         <div className="calc-list">
           {stats.map((s) => (
@@ -84,7 +85,7 @@ export function CalcPanel({ jobId, columns, grid, selection, onClose }: Props) {
       )}
       {stats && (
         <div className="muted small value-size">
-          {rows.toLocaleString()} {rows === 1 ? "row" : "rows"} selected
+          {plural(rows, "{n} row selected", "{n} rows selected")}
         </div>
       )}
     </aside>
@@ -93,22 +94,22 @@ export function CalcPanel({ jobId, columns, grid, selection, onClose }: Props) {
 
 function lines(s: ColumnStats): [string, string][] {
   const out: [string, string][] = [
-    ["Count", s.values.toLocaleString()],
+    [t("Count"), s.values.toLocaleString()],
     ["NULL", s.nulls.toLocaleString()],
-    ["Distinct", s.distinct.toLocaleString()],
+    [t("Distinct"), s.distinct.toLocaleString()],
   ];
   const n = s.numbers;
   if (n) {
     out.push(
-      ["Sum", number.format(n.sum)],
-      ["Average", number.format(n.avg)],
-      ["Minimum", number.format(n.min)],
-      ["Maximum", number.format(n.max)],
-      ["Median", number.format(n.median)],
+      [t("Sum"), number.format(n.sum)],
+      [t("Average"), number.format(n.avg)],
+      [t("Minimum"), number.format(n.min)],
+      [t("Maximum"), number.format(n.max)],
+      [t("Median"), number.format(n.median)],
     );
-    if (n.stddev !== null) out.push(["Std deviation", number.format(n.stddev)]);
+    if (n.stddev !== null) out.push([t("Std deviation"), number.format(n.stddev)]);
   } else if (s.first !== null && s.last !== null) {
-    out.push(["First", s.first], ["Last", s.last]);
+    out.push([t("First"), s.first], [t("Last"), s.last]);
   }
   return out;
 }

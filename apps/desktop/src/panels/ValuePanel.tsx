@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { api, type ColumnInfo, toCommandError } from "../api";
+import { t, plural } from "../i18n";
 
 /** The focused cell of a result. */
 export interface ValueTarget {
@@ -42,7 +43,7 @@ function hexDump(bytes: Uint8Array): string {
     const ascii = Array.from(chunk, (b) => (b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : ".")).join("");
     lines.push(`${i.toString(16).padStart(8, "0")}  ${hex.padEnd(47)}  ${ascii}`);
   }
-  if (bytes.length > end) lines.push(`… ${bytes.length - end} more bytes`);
+  if (bytes.length > end) lines.push(`… ${t("{n} more bytes", { n: (bytes.length - end).toLocaleString() })}`);
   return lines.join("\n");
 }
 
@@ -135,11 +136,11 @@ export function ValuePanel({ target, onClose }: { target: ValueTarget | null; on
   }
 
   const body = (() => {
-    if (!target) return <div className="muted small value-empty">Select a cell to see its value.</div>;
+    if (!target) return <div className="muted small value-empty">{t("Select a cell to see its value.")}</div>;
     if (error) return <div className="error-text small value-empty">{error}</div>;
-    if (!bytes) return <div className="muted small value-empty">Loading…</div>;
+    if (!bytes) return <div className="muted small value-empty">{t("Loading…")}</div>;
     if (target.isNull) return <div className="muted small value-empty">NULL</div>;
-    if (bytes.length === 0) return <div className="muted small value-empty">Empty</div>;
+    if (bytes.length === 0) return <div className="muted small value-empty">{t("Empty")}</div>;
     switch (shown) {
       case "image":
         return url && <img className="value-image" src={url} alt={target.column.name} />;
@@ -158,32 +159,32 @@ export function ValuePanel({ target, onClose }: { target: ValueTarget | null; on
     <aside className="value-panel">
       <div className="value-bar">
         <strong className="small value-name" title={target?.column.db_type}>
-          {target?.column.name ?? "Value"}
+          {target?.column.name ?? t("Value")}
         </strong>
         {bytes && bytes.length > 0 && (
-          <select value={shown} onChange={(e) => setMode(e.target.value as Mode)} title="Show as">
+          <select value={shown} onChange={(e) => setMode(e.target.value as Mode)} title={t("Show as")} aria-label={t("Show as")}>
             {modes.map((m) => (
               <option key={m} value={m}>
-                {m === "json" ? "JSON" : m === "xml" ? "XML" : m[0]!.toUpperCase() + m.slice(1)}
+                {m === "json" ? "JSON" : m === "xml" ? "XML" : m === "hex" ? "Hex" : t(m === "image" ? "Image" : "Text")}
               </option>
             ))}
           </select>
         )}
         <span className="spacer" />
         {bytes && bytes.length > 0 && !binary && (
-          <button className="icon" title="Copy" onClick={() => void navigator.clipboard.writeText(shown === "text" ? text : (formatted[shown as "json" | "xml"] ?? text))}>
+          <button className="icon" title={t("Copy")} aria-label={t("Copy")} onClick={() => void navigator.clipboard.writeText(shown === "text" ? text : (formatted[shown as "json" | "xml"] ?? text))}>
             ⧉
           </button>
         )}
-        <button className="icon" title="Save to file…" onClick={() => void saveValue()} disabled={!bytes}>
+        <button className="icon" title={t("Save to file…")} aria-label={t("Save to file…")} onClick={() => void saveValue()} disabled={!bytes}>
           ⤓
         </button>
-        <button className="icon" title="Close (F7)" onClick={onClose}>
+        <button className="icon" title={t("Close (F7)")} aria-label={t("Close (F7)")} onClick={onClose}>
           ×
         </button>
       </div>
       {body}
-      {bytes && <div className="muted small value-size">{bytes.length.toLocaleString()} bytes</div>}
+      {bytes && <div className="muted small value-size">{plural(bytes.length, "{n} byte", "{n} bytes")}</div>}
     </aside>
   );
 }

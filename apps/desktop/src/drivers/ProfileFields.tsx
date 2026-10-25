@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { askDriver } from "./DriverPopup";
 import { type Profile, type ProfileField, fieldValue, withField } from "./profiles";
+import { t } from "../i18n";
 
 interface Props {
   conn: SavedConnection;
@@ -42,7 +43,7 @@ export function ProfileFields({ conn, profile, onChange, password }: Props) {
       <div className="profile-fields">
         {profile.fields.map((f) => (
           <label key={f.key} className="field" data-field={f.key}>
-            <span>{f.label}</span>
+            <span>{t(f.label)}</span>
             <div className="row tight">
               {f.choices ? (
                 <select
@@ -51,7 +52,7 @@ export function ProfileFields({ conn, profile, onChange, password }: Props) {
                 >
                   {f.choices.map((c) => (
                     <option key={c.value} value={c.value}>
-                      {c.label}
+                      {t(c.label)}
                     </option>
                   ))}
                 </select>
@@ -61,7 +62,7 @@ export function ProfileFields({ conn, profile, onChange, password }: Props) {
                     required={f.required}
                     type={f.key === "port" ? "number" : "text"}
                     value={fieldValue(conn, f.key)}
-                    placeholder={f.placeholder}
+                    placeholder={f.placeholder && t(f.placeholder)}
                     list={f.suggest}
                     onChange={(e) => onChange(withField(conn, f.key, e.target.value))}
                   />
@@ -76,7 +77,7 @@ export function ProfileFields({ conn, profile, onChange, password }: Props) {
               )}
               {f.file && (
                 <button type="button" onClick={() => void browse(f.key)}>
-                  Browse…
+                  {t("Browse…")}
                 </button>
               )}
             </div>
@@ -85,7 +86,7 @@ export function ProfileFields({ conn, profile, onChange, password }: Props) {
       </div>
       {password}
       {odbc && !odbc.available && (
-        <div className="notice small">ODBC drivers are reached on Windows only for now.</div>
+        <div className="notice small">{t("ODBC drivers are reached on Windows only for now.")}</div>
       )}
       {DOWNLOADED_DRIVERS.includes(conn.driver) && <DriverState conn={conn} />}
     </>
@@ -109,16 +110,16 @@ function DriverState({ conn }: { conn: SavedConnection }) {
   return (
     <div className="driver-state small" data-driver-state={installed ? "installed" : "missing"}>
       <span className={`dot ${installed ? "ok" : ""}`} />
-      {!status && !error && <span className="muted">Driver: checking…</span>}
-      {error && <span className="muted">Driver: {error}</span>}
+      {!status && !error && <span className="muted">{t("Driver: checking…")}</span>}
+      {error && <span className="muted">{t("Driver: {message}", { message: error })}</span>}
       {status && installed && (
         <span>
-          Driver: {installed.title} {installed.version} installed
+          {t("Driver: {name} installed", { name: `${installed.title} ${installed.version}` })}
           {newer && (
             <>
               {" · "}
               <button type="button" className="link" onClick={ask}>
-                Update to {status.package!.version}
+                {t("Update to {version}", { version: status.package!.version })}
               </button>
             </>
           )}
@@ -128,15 +129,15 @@ function DriverState({ conn }: { conn: SavedConnection }) {
             className="link"
             onClick={() => void api.removeDriver(installed.name).then(load)}
           >
-            Remove
+            {t("Remove")}
           </button>
         </span>
       )}
       {status && !installed && (
         <span>
-          Driver: not installed ·{" "}
+          {t("Driver: not installed")} ·{" "}
           <button type="button" className="link" onClick={ask}>
-            Download
+            {t("Download")}
           </button>
         </span>
       )}

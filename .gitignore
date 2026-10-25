@@ -4,6 +4,7 @@
 .idea/
 .vscode/*
 !.vscode/extensions.json
+!.vscode/tasks.json
 graphify-out/
 
 # Brainstorming mockups (visual companion)
@@ -11,3 +12,6 @@ graphify-out/
 
 # Design notes and plans kept outside the repository
 docs/superpowers/
+
+# Built by scripts/sample-db.mjs.
+/samples/*.db

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { t, tNodes } from "../i18n";
 
 interface Props {
   /** The statement, shown for context. */
@@ -26,11 +27,15 @@ export function ParamsDialog({ sql, keys, raw, initial, onRun, onCancel }: Props
           onRun(values);
         }}
       >
-        <h2>Parameters</h2>
+        <h2>{t("Parameters")}</h2>
         <pre className="params-sql">{sql}</pre>
         <p className="muted small">
-          Numbers, <code>NULL</code>, <code>true</code> and <code>'quoted'</code> text go in as typed, anything else
-          as a string. <code>{"${name}"}</code> variables go in as typed.
+          {tNodes("Numbers, {null}, {true} and {quoted} text go in as typed, anything else as a string. {raw} variables go in as typed.", {
+            null: <code>NULL</code>,
+            true: <code>true</code>,
+            quoted: <code>'quoted'</code>,
+            raw: <code>{"${name}"}</code>,
+          })}
         </p>
         {keys.map((k, i) => (
           <label className="field" key={k}>
@@ -45,10 +50,10 @@ export function ParamsDialog({ sql, keys, raw, initial, onRun, onCancel }: Props
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={onCancel}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" className="primary">
-            Run
+            {t("Run")}
           </button>
         </div>
       </form>

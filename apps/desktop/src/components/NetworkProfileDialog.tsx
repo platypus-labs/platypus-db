@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api, type DriverKind, type NetworkProfile, toCommandError } from "../api";
 import { NetworkFields, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 import { ask } from "../ui/ask";
+import { t } from "../i18n";
 
 interface Props {
   initial: NetworkProfile;
@@ -49,7 +50,7 @@ export function NetworkProfileDialog({ initial, existing, driver, onSaved, onClo
     void run(async () => onSaved(await api.saveNetworkProfile(profile, sshSecretsOf(profile.ssh, typed, saved)), profile));
   };
   const remove = async () => {
-    if (!(await ask(`Delete the network profile "${profile.name}"?`, { confirm: "Delete", danger: true }))) return;
+    if (!(await ask(t('Delete the network profile "{name}"?', { name: profile.name }), { confirm: t("Delete"), danger: true }))) return;
     void run(async () => onSaved(await api.deleteNetworkProfile(profile.id), null));
   };
 
@@ -65,16 +66,16 @@ export function NetworkProfileDialog({ initial, existing, driver, onSaved, onClo
           onClose();
         }}
       >
-        <h2>{existing ? "Edit network profile" : "New network profile"}</h2>
-        <p className="muted small">The connections that use it share its SSH tunnel and SSL settings.</p>
+        <h2>{t(existing ? "Edit network profile" : "New network profile")}</h2>
+        <p className="muted small">{t("The connections that use it share its SSH tunnel and SSL settings.")}</p>
         <label className="field">
-          <span>Name</span>
+          <span>{t("Name")}</span>
           <input
             autoFocus
             required
             value={profile.name}
             onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-            placeholder="Office VPN bastion"
+            placeholder={t("Office VPN bastion")}
           />
         </label>
         <NetworkFields
@@ -89,15 +90,15 @@ export function NetworkProfileDialog({ initial, existing, driver, onSaved, onClo
         <div className="actions">
           {existing && (
             <button type="button" onClick={() => void remove()} disabled={busy}>
-              Delete
+              {t("Delete")}
             </button>
           )}
           <span className="spacer" />
           <button type="button" onClick={onClose} disabled={busy}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" className="primary" disabled={busy}>
-            Save
+            {t("Save")}
           </button>
         </div>
       </form>

@@ -150,7 +150,7 @@ export function shortcutOf(e: KeyboardEvent): string | null {
   if (isMac && e.ctrlKey) parts.push("Ctrl");
   if (e.altKey) parts.push("Alt");
   if (e.shiftKey) parts.push("Shift");
-  const key = e.key === " " ? "Space" : e.key.length === 1 ? e.key.toUpperCase() : e.key;
+  const key = e.key === " " ? "Space" : e.key === "+" ? "Plus" : e.key.length === 1 ? e.key.toUpperCase() : e.key;
   parts.push(key);
   return parts.join("+");
 }
@@ -161,7 +161,8 @@ function matches(shortcut: string, e: KeyboardEvent): boolean {
   const mods = new Set(parts.map((p) => p.toLowerCase()));
   const mod = isMac ? e.metaKey : e.ctrlKey;
   return (
-    (e.key === " " ? "space" : e.key.toLowerCase()) === key &&
+    // `+` separates the keys, so the key itself is written `Plus`.
+    (e.key === " " ? "space" : e.key === "+" ? "plus" : e.key.toLowerCase()) === key &&
     mod === mods.has("mod") &&
     e.shiftKey === mods.has("shift") &&
     e.altKey === mods.has("alt") &&

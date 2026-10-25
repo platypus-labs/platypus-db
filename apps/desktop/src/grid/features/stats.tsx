@@ -4,6 +4,7 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { api, type SelectionStats } from "../../api";
 import type { GridApi } from "../DataGrid";
+import { t } from "../../i18n";
 
 /** Waits for the selection to settle, e.g. while dragging. */
 const DELAY_MS = 150;
@@ -36,15 +37,15 @@ export function useSelectionStats(jobId: number, grid: RefObject<GridApi | null>
 
   const summary = stats && (
     <div className="grid-summary small">
-      <span title={`${stats.cells.toLocaleString()} cells, ${(stats.cells - stats.values).toLocaleString()} NULL`}>
-        Count {stats.values.toLocaleString()}
+      <span title={t("{cells} cells, {nulls} NULL", { cells: stats.cells.toLocaleString(), nulls: (stats.cells - stats.values).toLocaleString() })}>
+        {t("Count {n}", { n: stats.values.toLocaleString() })}
       </span>
       {stats.sum !== null && (
         <>
-          <span>Sum {number.format(stats.sum)}</span>
-          <span>Avg {number.format(stats.avg!)}</span>
-          <span>Min {number.format(stats.min!)}</span>
-          <span>Max {number.format(stats.max!)}</span>
+          <span>{t("Sum {n}", { n: number.format(stats.sum) })}</span>
+          <span>{t("Avg {n}", { n: number.format(stats.avg!) })}</span>
+          <span>{t("Min {n}", { n: number.format(stats.min!) })}</span>
+          <span>{t("Max {n}", { n: number.format(stats.max!) })}</span>
         </>
       )}
     </div>

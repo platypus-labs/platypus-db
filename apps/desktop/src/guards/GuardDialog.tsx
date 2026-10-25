@@ -1,9 +1,9 @@
 import type { GuardRequest } from "./guards";
+import { t, plural } from "../i18n";
 
 /** Statements listed at most; the rest are counted. */
 const SHOWN = 20;
 
-const fmt = new Intl.NumberFormat();
 
 function preview(sql: string) {
   const line = sql.replace(/\s+/g, " ").trim();
@@ -16,24 +16,22 @@ export function GuardDialog({ request, onAnswer }: { request: GuardRequest; onAn
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onAnswer(false)}>
       <div className="modal wide guard" onKeyDown={(e) => e.key === "Escape" && onAnswer(false)}>
-        <h2>{production.length ? `Changes on ${connection.name} (production)` : "Change every row?"}</h2>
+        <h2>{production.length ? t("Changes on {name} (production)", { name: connection.name }) : t("Change every row?")}</h2>
         {unfiltered.length > 0 && (
           <div className="notice warn">
             {unfiltered.map((u, i) => (
               <div key={i}>
-                <strong>{preview(u.sql).split(" ")[0]?.toUpperCase()}</strong> without WHERE changes every row of{" "}
+                <strong>{preview(u.sql).split(" ")[0]?.toUpperCase()}</strong> {t("without WHERE changes every row of")}{" "}
                 <code>{u.table}</code>
-                {u.rows === null ? " (row count unknown)" : `: about ${fmt.format(u.rows)} ${u.rows === 1 ? "row" : "rows"}`}.
+                {u.rows === null ? ` ${t("(row count unknown)")}` : `: ${plural(u.rows, "about {n} row", "about {n} rows")}`}.
               </div>
             ))}
           </div>
         )}
-        {blocked && <p className="error-text small">The Safety settings do not allow running it. Add a WHERE, or change the setting.</p>}
+        {blocked && <p className="error-text small">{t("The Safety settings do not allow running it. Add a WHERE, or change the setting.")}</p>}
         {production.length > 0 && (
           <>
-            <p className="muted small">
-              {production.length} {production.length === 1 ? "statement changes" : "statements change"} data or schema:
-            </p>
+            <p className="muted small">{plural(production.length, "{n} statement changes data or schema:", "{n} statements change data or schema:")}</p>
             <ol className="guard-statements">
               {production.slice(0, SHOWN).map((sql, i) => (
                 <li key={i}>
@@ -41,17 +39,17 @@ export function GuardDialog({ request, onAnswer }: { request: GuardRequest; onAn
                 </li>
               ))}
             </ol>
-            {production.length > SHOWN && <p className="muted small">…and {production.length - SHOWN} more.</p>}
+            {production.length > SHOWN && <p className="muted small">{t("…and {n} more.", { n: production.length - SHOWN })}</p>}
           </>
         )}
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={() => onAnswer(false)} autoFocus>
-            {blocked ? "Close" : "Cancel"}
+            {t(blocked ? "Close" : "Cancel")}
           </button>
           {!blocked && (
             <button type="button" className="primary danger" onClick={() => onAnswer(true)}>
-              Run
+              {t("Run")}
             </button>
           )}
         </div>
