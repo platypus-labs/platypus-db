@@ -4761,10 +4761,12 @@ dependencies = [
  "arrow-csv",
  "arrow-json",
  "arrow-schema",
+ "calamine",
  "futures",
  "parquet",
  "platypus-core",
  "platypus-sql",
+ "rust_xlsxwriter",
  "serde",
  "tempfile",
  "thiserror 2.0.21",
@@ -5437,6 +5439,16 @@ dependencies = [
  "tokio",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "rust_xlsxwriter"
+version = "0.101.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49aa1d1558e9465f5053bf9fb5361fe75db827c6a4423d5e5fe72096622f8908"
+dependencies = [
+ "tempfile",
+ "zip 9.1.0",
 ]
 
 [[package]]
