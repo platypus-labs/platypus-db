@@ -50,7 +50,7 @@ function DriverPopup({ driver, onDone }: Props) {
             </p>
             <div className="actions">
               <span className="spacer" />
-              <button type="button" onClick={() => void api.cancelDriverInstall()}>
+              <button type="button" onClick={() => void api.cancelDriverInstall(driver)}>
                 Cancel
               </button>
             </div>

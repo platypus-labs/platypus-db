@@ -1043,7 +1043,8 @@ export const api = {
     channel.onmessage = onEvent;
     return invoke<InstalledDriver>("install_driver", { driver, onEvent: channel });
   },
-  cancelDriverInstall: () => invoke<void>("cancel_driver_install"),
+  /** Stops the download of `driver`'s driver. */
+  cancelDriverInstall: (driver: DriverKind) => invoke<void>("cancel_driver_install", { driver }),
   listDrivers: () => invoke<InstalledDriver[]>("list_drivers"),
   /** Removes a downloaded driver; returns the ones left. */
   removeDriver: (name: string) => invoke<InstalledDriver[]>("remove_driver", { name }),

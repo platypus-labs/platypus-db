@@ -1,7 +1,9 @@
 //! Drivers downloaded when a database needs one (ADBC): what is installed, what the
 //! registry offers, the download with its progress, and removal.
 
+use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use platypus_core::DriverKind;
@@ -11,11 +13,43 @@ use tauri::ipc::Channel;
 
 use crate::error::{CommandError, CommandResult};
 
-/// The download in progress, which `cancel_driver_install` stops.
-static INSTALLING: Mutex<Option<CancellationToken>> = Mutex::new(None);
+/// The downloads in progress by package name, which `cancel_driver_install` stops. Each
+/// has an id, so a download that ends does not forget a newer one of the same driver.
+static INSTALLING: Mutex<BTreeMap<&'static str, (u64, CancellationToken)>> =
+    Mutex::new(BTreeMap::new());
+static NEXT_INSTALL: AtomicU64 = AtomicU64::new(0);
 
-fn installing() -> MutexGuard<'static, Option<CancellationToken>> {
+fn installing() -> MutexGuard<'static, BTreeMap<&'static str, (u64, CancellationToken)>> {
     INSTALLING.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Records the download of `name`; it is forgotten when the returned guard drops.
+fn start_install(name: &'static str) -> (CancellationToken, InstallGuard) {
+    let id = NEXT_INSTALL.fetch_add(1, Ordering::Relaxed);
+    let cancel = CancellationToken::new();
+    installing().insert(name, (id, cancel.clone()));
+    (cancel, InstallGuard { name, id })
+}
+
+struct InstallGuard {
+    name: &'static str,
+    id: u64,
+}
+
+impl Drop for InstallGuard {
+    fn drop(&mut self) {
+        let mut all = installing();
+        if all.get(self.name).is_some_and(|(id, _)| *id == self.id) {
+            all.remove(self.name);
+        }
+    }
+}
+
+/// Stops the download of `name`, if one is running.
+fn cancel_install(name: &str) {
+    if let Some((_, cancel)) = installing().get(name) {
+        cancel.cancel();
+    }
 }
 
 fn data_dir() -> CommandResult<&'static Path> {
@@ -81,21 +115,21 @@ pub async fn install_driver(
     let name = package_name(driver)?;
     let registry = Registry::public(data_dir()?);
     let package = registry.package(name).await.map_err(driver_error)?;
-    let cancel = CancellationToken::new();
-    *installing() = Some(cancel.clone());
+    let (cancel, _installing) = start_install(name);
     let progress = |done, total| {
         let _ = on_event.send(InstallEvent::Progress { done, total });
     };
-    let result = registry.install(&package, progress, &cancel).await;
-    installing().take();
-    result.map_err(driver_error)
+    registry
+        .install(&package, progress, &cancel)
+        .await
+        .map_err(driver_error)
 }
 
+/// Stops the download of `driver`'s driver; others go on.
 #[tauri::command]
-pub fn cancel_driver_install() {
-    if let Some(cancel) = installing().as_ref() {
-        cancel.cancel();
-    }
+pub fn cancel_driver_install(driver: DriverKind) -> CommandResult<()> {
+    cancel_install(package_name(driver)?);
+    Ok(())
 }
 
 #[tauri::command]
@@ -109,4 +143,30 @@ pub fn remove_driver(name: String) -> CommandResult<Vec<Installed>> {
     let dir = data_dir()?;
     platypus_drivers::remove(dir, &name).map_err(driver_error)?;
     Ok(platypus_drivers::list(dir))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cancels_only_the_named_download() {
+        let (a, guard_a) = start_install("test-a");
+        let (b, _guard_b) = start_install("test-b");
+        cancel_install("test-a");
+        assert!(a.is_cancelled());
+        assert!(!b.is_cancelled());
+        drop(guard_a);
+        assert!(!installing().contains_key("test-a"));
+        assert!(installing().contains_key("test-b"));
+    }
+
+    #[test]
+    fn a_finished_download_keeps_a_newer_one() {
+        let (_, old) = start_install("test-c");
+        let (newer, _guard) = start_install("test-c");
+        drop(old);
+        cancel_install("test-c");
+        assert!(newer.is_cancelled());
+    }
 }
