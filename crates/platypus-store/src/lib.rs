@@ -3,18 +3,22 @@
 //! Saved connections live in a human-editable `connections.toml`; passwords never touch
 //! that file and are kept in the OS keychain, or in a file encrypted with a master password
 //! ([`VaultSecrets`]), through a [`SecretStore`]. Executed statements
-//! are logged to a local SQLite database by [`HistoryStore`]. Preferences live in
+//! are logged to a local SQLite database by [`HistoryStore`]. Notes and tags on tables and
+//! columns live in a local SQLite database, [`CatalogStore`]. Preferences live in
 //! `settings.toml` through [`SettingsStore`].
 
 mod auth;
+mod catalog;
 mod connections;
 mod history;
 mod import;
 mod secrets;
 mod settings;
+mod sqlite;
 mod vault;
 
 pub use auth::{command_password, external_password, pgpass_password, pgpass_path};
+pub use catalog::{CatalogEntry, CatalogKey, CatalogStore, TagCount, normalize_tags};
 pub use connections::{
     AgentAccess, ConnectionFolder, ConnectionStore, ConnectionType, ImportInto, ImportRequest,
     ImportTarget, NetworkProfile, PasswordUpdate, Project, ProjectFolder, SavedConnection,
@@ -50,6 +54,9 @@ pub enum StoreError {
 
     #[error("history error: {0}")]
     History(String),
+
+    #[error("catalog error: {0}")]
+    Catalog(String),
 
     #[error("keychain error: {0}")]
     Keychain(String),
