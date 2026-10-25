@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Code2,
   Columns3,
+  Copy,
   Database,
   Download,
   Eye,
@@ -29,6 +30,7 @@ import {
   ListOrdered,
   ListTree,
   ListVideo,
+  Minus,
   type LucideIcon,
   Pencil,
   Play,
@@ -49,6 +51,7 @@ import {
   ToggleRight,
   Undo2,
   Workflow,
+  X,
   Zap,
 } from "lucide-react";
 import type { ObjectKind } from "../api";
@@ -100,6 +103,10 @@ const ICONS = {
   "new-folder": FolderPlus,
   link: Link2,
   builder: Workflow,
+  minimize: Minus,
+  maximize: Square,
+  restore: Copy,
+  close: X,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

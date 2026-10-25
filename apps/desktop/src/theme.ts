@@ -426,6 +426,21 @@ export const backgroundSetting = color("appearance.background", "Background", "E
 export const sidebarSetting = color("appearance.sidebar", "Sidebar and panels", "The connections tree and menus.");
 export const textSetting = color("appearance.text", "Text", "Muted text follows it.");
 
+export const titleBarSetting = defineSetting<string>({
+  key: "appearance.title_bar",
+  section: SECTION,
+  label: "Title bar",
+  description: "In the top bar, as in a browser, or the system's above it. Not on macOS.",
+  default: "app",
+  control: {
+    type: "select",
+    options: [
+      { value: "app", label: "In the top bar" },
+      { value: "system", label: "System" },
+    ],
+  },
+});
+
 export const zoomSetting = defineSetting<string>({
   key: "appearance.zoom",
   section: SECTION,

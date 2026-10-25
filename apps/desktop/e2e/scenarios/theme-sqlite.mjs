@@ -164,6 +164,14 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`${cssVar("--accent")} === '#ff6600'`);
   assert.equal(await page.eval(cssVar("--accent-fg")), "#000000");
 
+  // The app draws the title bar in its top bar, with the window buttons; "System" gives it back.
+  assert.equal(await page.eval(`document.querySelectorAll('.window-controls button').length`), 3);
+  await page.eval(change(`${setting("Title bar")}.querySelector('select')`, "system"));
+  await page.waitFor(`document.querySelector('.window-controls') === null`);
+  assert.equal(await page.eval(`document.querySelector('.topbar').hasAttribute('data-tauri-drag-region')`), false);
+  await page.eval(change(`${setting("Title bar")}.querySelector('select')`, "app"));
+  await page.waitFor(`document.querySelectorAll('.window-controls button').length === 3`);
+
   await page.eval(change(`${setting("Grid rows")}.querySelector('select')`, "compact"));
   await page.waitFor(`${cssVar("--grid-row-h")} === '20'`);
 

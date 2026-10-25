@@ -94,14 +94,17 @@ fn open_history(app: &tauri::App) -> Result<HistoryStore, String> {
     Ok(history)
 }
 
-/// Creates the window declared in `tauri.conf.json` (with `create: false`).
+/// Creates the window declared in `tauri.conf.json` (with `create: false`), with the system's
+/// title bar only when `system_title_bar` (the setting) or on macOS: otherwise the app draws
+/// its own in the top bar.
 /// `PLATYPUS_DEVTOOLS_PORT` opens the web view's developer tools protocol on that port for the
 /// end-to-end tests: WebView2 does not always honour `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`
 /// when the app passes browser arguments of its own.
-fn open_main_window(app: &tauri::App) -> tauri::Result<()> {
+fn open_main_window(app: &tauri::App, system_title_bar: bool) -> tauri::Result<()> {
     let Some(mut config) = app.config().app.windows.first().cloned() else {
         return Ok(());
     };
+    config.decorations = system_title_bar || cfg!(target_os = "macos");
     if let Some(port) = std::env::var("PLATYPUS_DEVTOOLS_PORT")
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
@@ -116,15 +119,21 @@ fn open_main_window(app: &tauri::App) -> tauri::Result<()> {
 /// Opens the stores and the window.
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let vault_path = vault_path(app);
+    let settings = open_settings(app);
+    let system_title_bar = settings
+        .as_ref()
+        .ok()
+        .and_then(|s| s.get::<String>("appearance.title_bar"))
+        .is_some_and(|v| v == "system");
     let state = AppState::new(
         open_store(app, vault_path.as_deref().ok()),
         vault_path,
         open_history(app),
-        open_settings(app),
+        settings,
         dir(app, false).map(|d| d.join("scripts")),
     );
     app.manage(state);
-    open_main_window(app)?;
+    open_main_window(app, system_title_bar)?;
     Ok(())
 }
 
