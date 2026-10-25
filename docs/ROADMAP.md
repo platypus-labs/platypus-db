@@ -305,6 +305,16 @@ transazione, e una tabella creata e poi fallita si elimina. I tipi della tabella
 `Dialect::column_type`. Il rename in `platypus-transfer` non è stato fatto. Conformance su tutti i
 database ed E2E `import-sqlite`.
 
+**P2 completate.** L'import aggiunge, sostituisce (`DELETE` nella stessa transazione, non
+`TRUNCATE`, che MySQL committa) o fa l'upsert sulla chiave primaria (`Dialect::upsert_rows`:
+`ON CONFLICT`, `ON DUPLICATE KEY`, `MERGE`). Il trasferimento tra database riusa l'import con
+una connessione qualsiasi come sorgente; le colonne testuali prendono il tipo dichiarato (le
+colonne di SQLite non hanno tipo su un risultato vuoto). Export in XLSX (`rust_xlsxwriter`, a
+memoria costante), SQL INSERT, Markdown, HTML e XML; di più tabelle o di uno schema in una
+cartella. Annullare un import ora lo ferma tra un blocco e l'altro, così il rollback e la DROP
+della tabella creata vengono eseguiti. Conformance: modalità su tutti i database e
+trasferimento tra tutte le 36 coppie.
+
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | Import CSV, TSV, JSON, NDJSON, Parquet e XLSX in una tabella, con mappatura e anteprima | P1 | D |
@@ -524,7 +534,7 @@ dell'ondata.
 |---|---|---|---|---|
 | **0** | Fase 0 (1 persona) e **P** in parallelo | Codice pronto al lavoro parallelo, prima release pubblica | v0.1.x | Fase 0 fatta; P in corso |
 | **1** | **A**, **B** (P1), **C** (P1), **F** (SSH, tipi, import), **K** (P1), **L** (P1) | Sostituire DBeaver nell'uso quotidiano | v0.2 | **Fatta** (P1 di A, B, C, F, K e L; P2 di A e B), release v0.2.0 del 24 ottobre 2026 |
-| **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte; E: completato; H: P1 fatte |
+| **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte; E: completato; H: P1 e P2 fatte |
 | **3** | **I**, **J**, **M**, **N**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 | Da fare |
 | **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | Da fare |
 
