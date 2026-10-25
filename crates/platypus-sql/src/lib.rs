@@ -139,6 +139,7 @@ impl Current {
             | Dialect::SqlServer
             | Dialect::ClickHouse
             | Dialect::Ansi
+            | Dialect::Snowflake
             | Dialect::BigQuery
             | Dialect::Databricks
             | Dialect::Oracle => false,

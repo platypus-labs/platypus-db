@@ -1076,8 +1076,6 @@ export const api = {
     channel.onmessage = onEvent;
     return invoke<number>("transfer_table", { sourceSessionId, targetSessionId, plan, onEvent: channel });
   },
-  /** Imports a data file into the session's database on its own connection; cancelled with
-   *  `cancelExport`. */
   /** What is installed for `driver` and what the registry offers. */
   driverStatus: (driver: DriverKind) => invoke<DriverStatus>("driver_status", { driver }),
   /** Downloads and installs the driver of `driver`; stopped by `cancelDriverInstall`. */
@@ -1086,7 +1084,8 @@ export const api = {
     channel.onmessage = onEvent;
     return invoke<InstalledDriver>("install_driver", { driver, onEvent: channel });
   },
-  cancelDriverInstall: () => invoke<void>("cancel_driver_install"),
+  /** Stops the download of `driver`'s driver. */
+  cancelDriverInstall: (driver: DriverKind) => invoke<void>("cancel_driver_install", { driver }),
   listDrivers: () => invoke<InstalledDriver[]>("list_drivers"),
   /** Removes a downloaded driver; returns the ones left. */
   removeDriver: (name: string) => invoke<InstalledDriver[]>("remove_driver", { name }),
@@ -1101,6 +1100,8 @@ export const api = {
   /** Unregisters (as administrator) and deletes the vendor's client of `driver`. */
   removeVendorDriver: (driver: DriverKind) => invoke<VendorStatus>("remove_vendor_driver", { driver }),
   odbcSystem: () => invoke<OdbcSystem>("odbc_system"),
+  /** Imports a data file into the session's database on its own connection; cancelled with
+   *  `cancelExport`. */
   importFile: (sessionId: number, path: string, plan: ImportPlan, onEvent: (e: ExportEvent) => void) => {
     const channel = new Channel<ExportEvent>();
     channel.onmessage = onEvent;

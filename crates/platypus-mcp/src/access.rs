@@ -50,6 +50,10 @@ const POSTGRES_OUTSIDE_PREFIXES: &[&str] =
     &["dblink", "pg_advisory_", "pg_try_advisory_", "pg_file_"];
 /// MySQL and MariaDB read and write the server's files whatever the transaction.
 const MYSQL_OUTSIDE: &[&str] = &["load_file", "outfile", "dumpfile"];
+/// Snowflake's `SYSTEM$` functions run inside a `SELECT` but include ones that act on other
+/// sessions and queries (`SYSTEM$CANCEL_QUERY`, `SYSTEM$ABORT_SESSION`) or on objects
+/// (`SYSTEM$PIPE_FORCE_RESUME`): agents get none of them.
+const SNOWFLAKE_OUTSIDE_PREFIXES: &[&str] = &["system$"];
 
 /// The first word of `statement` naming something that reaches outside a read-only
 /// transaction in `dialect`, as written.
@@ -57,6 +61,9 @@ fn outside_effect(statement: &str, dialect: Dialect) -> Option<&str> {
     let (names, prefixes): (&[&str], &[&str]) = match dialect {
         Dialect::Postgres => (POSTGRES_OUTSIDE, POSTGRES_OUTSIDE_PREFIXES),
         Dialect::MySql => (MYSQL_OUTSIDE, &[]),
+        Dialect::Snowflake => (&[], SNOWFLAKE_OUTSIDE_PREFIXES),
+        // `CALL`, which runs procedures such as Trino's `system.runtime.kill_query`, is
+        // never a query: the analysis refuses it already.
         Dialect::Sqlite
         | Dialect::DuckDb
         | Dialect::SqlServer
@@ -291,6 +298,49 @@ mod tests {
         assert!(ro("select 'pg_notify' as name", PG).is_ok());
         assert!(ro("select load_file from t", PG).is_ok());
         assert!(ro("select pg_notify from t", Dialect::Sqlite).is_ok());
+    }
+
+    #[test]
+    fn read_only_refuses_snowflake_system_functions_and_calls() {
+        let ro = |sql, dialect| {
+            check(
+                sql,
+                dialect,
+                AgentAccess::ReadOnly,
+                UnfilteredRule::Allow,
+                "db",
+            )
+        };
+        let sf = Dialect::Snowflake;
+        for sql in [
+            "select system$cancel_query('01a')",
+            "SELECT SYSTEM$ABORT_SESSION(42)",
+            "select SYSTEM$CANCEL_ALL_QUERIES(42)",
+            r#"select "SYSTEM$PIPE_FORCE_RESUME"('p')"#,
+        ] {
+            assert!(
+                denied(ro(sql, sf)).contains("outside the transaction"),
+                "{sql}"
+            );
+        }
+        assert!(ro("select 'system$cancel_query' as name", sf).is_ok());
+        // A backslash-escaped quote keeps the rest inside the string in Snowflake, so the
+        // `DROP` after it is a second statement.
+        assert!(matches!(
+            ro(r"SELECT 'a\'' ; DROP TABLE t; --'", sf),
+            Err(AgentError::Invalid(m)) if m.contains("one statement at a time")
+        ));
+        for dialect in [
+            Dialect::Ansi,
+            Dialect::Snowflake,
+            Dialect::BigQuery,
+            Dialect::Databricks,
+        ] {
+            assert!(
+                denied(ro("call system.runtime.kill_query('q')", dialect)).contains("read-only"),
+                "{dialect:?}"
+            );
+        }
     }
 
     #[test]

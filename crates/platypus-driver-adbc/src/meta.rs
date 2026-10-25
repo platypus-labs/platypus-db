@@ -1,8 +1,6 @@
 //! The result of ADBC's `GetObjects`, a nested table (catalogs › schemas › tables › columns
 //! and constraints), read into plain structs, then into the app's metadata.
 
-use std::sync::Arc;
-
 use arrow_array::cast::AsArray as _;
 use arrow_array::{Array, ArrayRef, RecordBatch, StructArray};
 use arrow_schema::DataType;
@@ -66,11 +64,12 @@ fn text(array: Option<&ArrayRef>, i: usize) -> Option<String> {
     if array.is_null(i) {
         return None;
     }
-    let as_utf8 = match array.data_type() {
-        DataType::Utf8 => Arc::clone(array),
-        _ => arrow_cast::cast(array, &DataType::Utf8).ok()?,
-    };
-    Some(as_utf8.as_string::<i32>().value(i).to_owned())
+    if array.data_type() == &DataType::Utf8 {
+        return Some(array.as_string::<i32>().value(i).to_owned());
+    }
+    // Only the row is cast, not the whole column for each row.
+    let cast = arrow_cast::cast(&array.slice(i, 1), &DataType::Utf8).ok()?;
+    Some(cast.as_string::<i32>().value(0).to_owned())
 }
 
 fn int(array: Option<&ArrayRef>, i: usize) -> Option<i64> {
@@ -78,34 +77,32 @@ fn int(array: Option<&ArrayRef>, i: usize) -> Option<i64> {
     if array.is_null(i) {
         return None;
     }
-    let cast = arrow_cast::cast(array, &DataType::Int64).ok()?;
+    let cast = arrow_cast::cast(&array.slice(i, 1), &DataType::Int64).ok()?;
     Some(
         cast.as_primitive::<arrow_array::types::Int64Type>()
-            .value(i),
+            .value(0),
     )
 }
 
-/// The struct elements of row `i` of a list column (empty for null or missing).
+/// The elements of row `i` of a list column; `None` for null or missing.
+fn list_value(array: Option<&ArrayRef>, i: usize) -> Option<ArrayRef> {
+    let array = array.filter(|a| !a.is_null(i))?;
+    Some(array.as_list_opt::<i32>()?.value(i))
+}
+
+/// The struct elements of row `i` of a list column.
 fn list_items(array: Option<&ArrayRef>, i: usize) -> Option<StructArray> {
-    let array = array?;
-    if array.is_null(i) {
-        return None;
-    }
-    let list = array.as_list_opt::<i32>()?;
-    list.value(i).as_struct_opt().cloned()
+    list_value(array, i)?.as_struct_opt().cloned()
 }
 
 fn strings(array: Option<&ArrayRef>, i: usize) -> Vec<String> {
-    let Some(array) = array.filter(|a| !a.is_null(i)) else {
-        return Vec::new();
-    };
-    let Some(list) = array.as_list_opt::<i32>() else {
-        return Vec::new();
-    };
-    let values = list.value(i);
-    (0..values.len())
-        .filter_map(|j| text(Some(&values), j))
-        .collect()
+    list_value(array, i)
+        .map(|values| {
+            (0..values.len())
+                .filter_map(|j| text(Some(&values), j))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Reads the batches of `GetObjects`.
@@ -201,6 +198,14 @@ fn parse_constraints(c: &StructArray) -> Vec<Constraint> {
         .collect()
 }
 
+/// Every table of the catalogs read.
+fn tables(catalogs: &[Catalog]) -> impl Iterator<Item = &TableNode> {
+    catalogs
+        .iter()
+        .flat_map(|c| &c.schemas)
+        .flat_map(|s| &s.tables)
+}
+
 /// Schemas only the database uses.
 fn is_system(name: &str) -> bool {
     name.eq_ignore_ascii_case("information_schema")
@@ -237,10 +242,7 @@ fn kind(table_type: &str) -> ObjectKind {
 
 /// The tables and views of the catalogs read, by name.
 pub fn objects(catalogs: &[Catalog]) -> Vec<ObjectMeta> {
-    let mut out: Vec<ObjectMeta> = catalogs
-        .iter()
-        .flat_map(|c| &c.schemas)
-        .flat_map(|s| &s.tables)
+    let mut out: Vec<ObjectMeta> = tables(catalogs)
         .map(|t| ObjectMeta::new(&t.name, kind(&t.kind), None))
         .collect();
     out.sort_by(|a, b| a.name.cmp(&b.name));
@@ -249,12 +251,7 @@ pub fn objects(catalogs: &[Catalog]) -> Vec<ObjectMeta> {
 
 /// The columns, primary key and foreign keys of the one table read.
 pub fn table_details(catalogs: &[Catalog]) -> TableDetails {
-    let Some(table) = catalogs
-        .iter()
-        .flat_map(|c| &c.schemas)
-        .flat_map(|s| &s.tables)
-        .next()
-    else {
+    let Some(table) = tables(catalogs).next() else {
         return TableDetails::default();
     };
     let primary = table.constraints.iter().find(|c| c.kind == "PRIMARY KEY");

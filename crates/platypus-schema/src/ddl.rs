@@ -463,6 +463,7 @@ impl Ddl<'_> {
             Dialect::Postgres
             | Dialect::DuckDb
             | Dialect::Ansi
+            | Dialect::Snowflake
             | Dialect::Oracle
             | Dialect::Db2 => {
                 for c in columns {

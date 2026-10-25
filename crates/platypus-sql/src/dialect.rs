@@ -23,8 +23,11 @@ pub enum Dialect {
     SqlServer,
     /// Case-sensitive names; strings and quoted names take backslash escapes.
     ClickHouse,
-    /// Standard SQL with `"…"` names: Snowflake, Trino and generic ADBC drivers.
+    /// Standard SQL with `"…"` names: Trino and generic ADBC drivers.
     Ansi,
+    /// Standard SQL with `"…"` names that folds bare names to upper case; `'…'` strings
+    /// take backslash escapes (`\'`, `\\`), and `//` starts a comment.
+    Snowflake,
     /// `GoogleSQL`: `` `…` `` names, `"…"` strings, backslash escapes in both.
     BigQuery,
     /// Spark SQL on Databricks: `` `…` `` names (a backtick doubled inside), `"…"` strings
@@ -43,9 +46,8 @@ impl From<DriverKind> for Dialect {
             // MongoDB speaks no SQL: the app never builds SQL for it (the editor, data
             // viewer and navigator write mongosh instead), so any dialect would do here.
             DriverKind::Postgres | DriverKind::Mongo => Self::Postgres,
-            DriverKind::Snowflake | DriverKind::Trino | DriverKind::Adbc | DriverKind::Odbc => {
-                Self::Ansi
-            }
+            DriverKind::Snowflake => Self::Snowflake,
+            DriverKind::Trino | DriverKind::Adbc | DriverKind::Odbc => Self::Ansi,
             DriverKind::Oracle => Self::Oracle,
             DriverKind::Db2 => Self::Db2,
             DriverKind::BigQuery => Self::BigQuery,
@@ -403,7 +405,7 @@ impl Dialect {
         let first_ok = chars.next().is_some_and(|c| match self {
             Self::Postgres => c.is_ascii_lowercase() || c == '_',
             // Snowflake folds bare names to upper case, Trino to lower case.
-            Self::Ansi => c.is_ascii_uppercase() || c == '_',
+            Self::Ansi | Self::Snowflake => c.is_ascii_uppercase() || c == '_',
             // Oracle and Db2 fold bare names to upper case; a name starts with a letter.
             Self::Oracle | Self::Db2 => c.is_ascii_uppercase(),
             Self::MySql
@@ -416,7 +418,9 @@ impl Dialect {
         });
         let rest_ok = chars.all(|c| match self {
             Self::Postgres => c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '$',
-            Self::Ansi | Self::Db2 => c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_',
+            Self::Ansi | Self::Snowflake | Self::Db2 => {
+                c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_'
+            }
             Self::Oracle => {
                 c.is_ascii_uppercase() || c.is_ascii_digit() || matches!(c, '_' | '$' | '#')
             }
@@ -459,6 +463,7 @@ impl Dialect {
             | Self::Sqlite
             | Self::DuckDb
             | Self::Ansi
+            | Self::Snowflake
             | Self::Oracle
             | Self::Db2 => ('"', '"'),
             Self::SqlServer => ('[', ']'),
@@ -490,7 +495,10 @@ impl Dialect {
             match c {
                 '\'' if backslashes => out.push_str("\\'"),
                 '\'' => out.push_str("''"),
-                '\\' if backslashes || matches!(self, Self::MySql | Self::ClickHouse) => {
+                // Snowflake reads `\'` as a quote too, so `''` stays correct there.
+                '\\' if backslashes
+                    || matches!(self, Self::MySql | Self::ClickHouse | Self::Snowflake) =>
+                {
                     out.push_str("\\\\");
                 }
                 c => out.push(c),
@@ -518,7 +526,9 @@ impl Dialect {
     pub fn binary_literal(self, hex: &str) -> String {
         match self {
             Self::Postgres => format!("decode('{hex}', 'hex')"),
-            Self::MySql | Self::Sqlite | Self::Ansi | Self::Databricks => format!("X'{hex}'"),
+            Self::MySql | Self::Sqlite | Self::Ansi | Self::Snowflake | Self::Databricks => {
+                format!("X'{hex}'")
+            }
             Self::BigQuery => format!("FROM_HEX('{hex}')"),
             Self::DuckDb => format!("from_hex('{hex}')"),
             Self::ClickHouse => format!("unhex('{hex}')"),
@@ -543,6 +553,7 @@ impl Dialect {
             Self::DuckDb
                 | Self::ClickHouse
                 | Self::Ansi
+                | Self::Snowflake
                 | Self::BigQuery
                 | Self::Databricks
                 | Self::Oracle
@@ -568,6 +579,7 @@ impl Dialect {
             // statement check stops writes.
             Self::ClickHouse
             | Self::Ansi
+            | Self::Snowflake
             | Self::BigQuery
             | Self::Databricks
             | Self::Oracle
@@ -585,6 +597,7 @@ impl Dialect {
             Self::Postgres | Self::MySql | Self::DuckDb => &["ROLLBACK"],
             Self::ClickHouse
             | Self::Ansi
+            | Self::Snowflake
             | Self::BigQuery
             | Self::Databricks
             | Self::Oracle
@@ -613,6 +626,7 @@ impl Dialect {
             | Self::DuckDb
             | Self::SqlServer
             | Self::Ansi
+            | Self::Snowflake
             | Self::BigQuery
             | Self::Databricks => format!("INSERT INTO {table} DEFAULT VALUES"),
         }
@@ -624,7 +638,9 @@ impl Dialect {
     pub fn row_estimate_sql(self, schema: Option<&str>, table: &str) -> String {
         match self {
             // A count could scan a warehouse table: unknown.
-            Self::Ansi | Self::BigQuery | Self::Databricks => "SELECT NULL".to_owned(),
+            Self::Ansi | Self::Snowflake | Self::BigQuery | Self::Databricks => {
+                "SELECT NULL".to_owned()
+            }
             Self::Postgres => format!(
                 "SELECT CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::bigint END                  FROM pg_class c WHERE c.oid = to_regclass({})",
                 self.quote_literal(&self.qualified(schema, table))
@@ -723,6 +739,7 @@ impl Dialect {
             Self::MySql
             | Self::SqlServer
             | Self::Ansi
+            | Self::Snowflake
             | Self::Databricks
             | Self::Oracle
             | Self::Db2 => format!("LOWER({expr}) LIKE LOWER({pattern}) ESCAPE '!'"),
@@ -746,7 +763,7 @@ impl Dialect {
             Self::Postgres | Self::Sqlite | Self::DuckDb => "TEXT",
             Self::MySql => "CHAR",
             Self::SqlServer => "NVARCHAR(MAX)",
-            Self::Ansi => "VARCHAR",
+            Self::Ansi | Self::Snowflake => "VARCHAR",
             Self::BigQuery | Self::Databricks => "STRING",
             Self::Oracle => "VARCHAR2(4000)",
             Self::Db2 => "VARCHAR(4000)",
@@ -771,7 +788,7 @@ impl Dialect {
         use DataType as T;
         let text = match self {
             Self::Postgres | Self::Sqlite | Self::MySql => "TEXT",
-            Self::DuckDb | Self::Ansi => "VARCHAR",
+            Self::DuckDb | Self::Ansi | Self::Snowflake => "VARCHAR",
             Self::SqlServer => "NVARCHAR(MAX)",
             Self::ClickHouse => return Self::clickhouse_type(data_type),
             Self::BigQuery => return Self::bigquery_type(data_type),
@@ -815,7 +832,7 @@ impl Dialect {
                     Self::Postgres => "BYTEA",
                     Self::MySql => "LONGBLOB",
                     Self::SqlServer => "VARBINARY(MAX)",
-                    Self::Ansi => "VARBINARY",
+                    Self::Ansi | Self::Snowflake => "VARBINARY",
                     // ClickHouse, BigQuery, Databricks and Oracle returned above.
                     Self::Sqlite
                     | Self::DuckDb
@@ -832,7 +849,7 @@ impl Dialect {
             (T::Timestamp(_, None), Self::SqlServer) => "DATETIME2",
             (T::Timestamp(_, Some(_)), Self::SqlServer) => "DATETIMEOFFSET",
             (T::Timestamp(_, Some(_)), Self::Postgres | Self::DuckDb) => "TIMESTAMPTZ",
-            (T::Timestamp(_, Some(_)), Self::Ansi) => "TIMESTAMP WITH TIME ZONE",
+            (T::Timestamp(_, Some(_)), Self::Ansi | Self::Snowflake) => "TIMESTAMP WITH TIME ZONE",
             (T::Timestamp(..), _) => "TIMESTAMP",
             (T::Interval(_), Self::Postgres | Self::DuckDb) => "INTERVAL",
             _ => text,
@@ -849,12 +866,7 @@ impl Dialect {
             T::UInt64 => "NUMERIC",
             T::Float16 | T::Float32 | T::Float64 => "FLOAT64",
             T::Decimal32(p, s) | T::Decimal64(p, s) | T::Decimal128(p, s) | T::Decimal256(p, s) => {
-                let kind = if *p > 38 || *s > 9 {
-                    "BIGNUMERIC"
-                } else {
-                    "NUMERIC"
-                };
-                return format!("{kind}({}, {s})", (*p).min(76));
+                return Self::bigquery_decimal(*p, *s);
             }
             T::Binary | T::LargeBinary | T::BinaryView | T::FixedSizeBinary(_) => "BYTES",
             T::Date32 | T::Date64 => "DATE",
@@ -891,6 +903,21 @@ impl Dialect {
         name.to_owned()
     }
 
+    /// A `BigQuery` decimal type for an Arrow precision and scale. `NUMERIC(p, s)` takes
+    /// `max(1, s) <= p <= s + 29` and `s <= 9`; `BIGNUMERIC(p, s)` takes `p <= s + 38` and
+    /// `s <= 38`, so the precision is cut to fit when the integer digits would not.
+    fn bigquery_decimal(precision: u8, scale: i8) -> String {
+        // A negative Arrow scale rounds to tens: whole numbers here.
+        let scale = u8::try_from(scale).unwrap_or(0);
+        let precision = precision.max(scale).max(1);
+        if scale <= 9 && precision <= scale + 29 {
+            return format!("NUMERIC({precision}, {scale})");
+        }
+        let scale = scale.min(38);
+        let precision = precision.clamp(scale.max(1), scale + 38);
+        format!("BIGNUMERIC({precision}, {scale})")
+    }
+
     /// [`column_type`](Self::column_type) in Spark SQL, which has no time-of-day type.
     fn databricks_type(data_type: &DataType) -> String {
         use DataType as T;
@@ -903,7 +930,10 @@ impl Dialect {
             T::Float16 | T::Float32 => "FLOAT",
             T::Float64 => "DOUBLE",
             T::Decimal32(p, s) | T::Decimal64(p, s) | T::Decimal128(p, s) | T::Decimal256(p, s) => {
-                return format!("DECIMAL({}, {s})", (*p).min(38));
+                // `DECIMAL(p, s)` takes `0 <= s <= p <= 38`.
+                let scale = u8::try_from(*s).unwrap_or(0).min(38);
+                let precision = (*p).max(scale).clamp(1, 38);
+                return format!("DECIMAL({precision}, {scale})");
             }
             T::Binary | T::LargeBinary | T::BinaryView | T::FixedSizeBinary(_) => "BINARY",
             T::Date32 | T::Date64 => "DATE",
@@ -1204,7 +1234,7 @@ mod tests {
 
     #[test]
     fn bridge_dialects_of_drivers() {
-        assert_eq!(Dialect::from(DriverKind::Snowflake), Dialect::Ansi);
+        assert_eq!(Dialect::from(DriverKind::Snowflake), Dialect::Snowflake);
         assert_eq!(Dialect::from(DriverKind::Trino), Dialect::Ansi);
         assert_eq!(Dialect::from(DriverKind::Adbc), Dialect::Ansi);
         assert_eq!(Dialect::from(DriverKind::BigQuery), Dialect::BigQuery);
@@ -1216,6 +1246,8 @@ mod tests {
         // Snowflake folds bare names to upper case and Trino to lower case: only names
         // that read the same either way stay bare.
         assert_eq!(Dialect::Ansi.quote_ident("ORDERS"), "ORDERS");
+        assert_eq!(Dialect::Snowflake.quote_ident("ORDERS"), "ORDERS");
+        assert_eq!(Dialect::Snowflake.quote_ident("orders"), "\"orders\"");
         assert_eq!(Dialect::Ansi.quote_ident("orders"), "\"orders\"");
         assert_eq!(Dialect::Ansi.quote_ident("a\"b"), "\"a\"\"b\"");
         assert_eq!(Dialect::BigQuery.quote_ident("orders"), "orders");
@@ -1228,6 +1260,13 @@ mod tests {
     #[test]
     fn bridge_dialects_literals_and_limits() {
         assert_eq!(Dialect::Ansi.quote_literal("it's"), "'it''s'");
+        assert_eq!(Dialect::Ansi.quote_literal(r"C:\new"), r"'C:\new'");
+        // Snowflake reads `\n` in a string as a newline: the backslash is doubled.
+        let literal = Dialect::Snowflake.quote_literal(r"C:\new it's");
+        assert_eq!(literal, r"'C:\\new it''s'");
+        let tokens: Vec<_> = Lexer::new(&literal, Dialect::Snowflake).collect();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].kind, TokenKind::String);
         assert_eq!(Dialect::BigQuery.quote_literal("it's \\"), "'it\\'s \\\\'");
         assert_eq!(Dialect::Databricks.quote_literal("it's"), "'it\\'s'");
         assert_eq!(Dialect::Ansi.binary_literal("0aff"), "X'0aff'");
@@ -1340,7 +1379,7 @@ mod tests {
             (DataType::Float64, ["DOUBLE", "FLOAT64", "DOUBLE"]),
             (
                 DataType::Decimal128(70, 2),
-                ["DECIMAL(38, 2)", "BIGNUMERIC(70, 2)", "DECIMAL(38, 2)"],
+                ["DECIMAL(38, 2)", "BIGNUMERIC(40, 2)", "DECIMAL(38, 2)"],
             ),
             (DataType::Utf8, ["VARCHAR", "STRING", "STRING"]),
             (DataType::Binary, ["VARBINARY", "BYTES", "BINARY"]),
@@ -1354,6 +1393,29 @@ mod tests {
             let got =
                 [Dialect::Ansi, Dialect::BigQuery, Dialect::Databricks].map(|d| d.column_type(&t));
             assert_eq!(got, expected.map(str::to_owned), "{t}");
+        }
+    }
+
+    #[test]
+    fn bridge_decimal_bounds() {
+        let types = |p, s| {
+            let t = DataType::Decimal256(p, s);
+            [Dialect::BigQuery, Dialect::Databricks].map(|d| d.column_type(&t))
+        };
+        let cases = [
+            // NUMERIC holds 29 integer digits and 9 decimals.
+            ((38, 9), ["NUMERIC(38, 9)", "DECIMAL(38, 9)"]),
+            ((10, 2), ["NUMERIC(10, 2)", "DECIMAL(10, 2)"]),
+            ((31, 0), ["BIGNUMERIC(31, 0)", "DECIMAL(31, 0)"]),
+            ((12, 10), ["BIGNUMERIC(12, 10)", "DECIMAL(12, 10)"]),
+            ((76, 38), ["BIGNUMERIC(76, 38)", "DECIMAL(38, 38)"]),
+            ((76, 50), ["BIGNUMERIC(76, 38)", "DECIMAL(38, 38)"]),
+            ((50, 0), ["BIGNUMERIC(38, 0)", "DECIMAL(38, 0)"]),
+            ((5, -2), ["NUMERIC(5, 0)", "DECIMAL(5, 0)"]),
+            ((0, 0), ["NUMERIC(1, 0)", "DECIMAL(1, 0)"]),
+        ];
+        for ((p, s), expected) in cases {
+            assert_eq!(types(p, s), expected.map(str::to_owned), "({p}, {s})");
         }
     }
 }

@@ -56,7 +56,11 @@ type ExtraPalette = Record<
   | "type-test"
   | "type-test-bg"
   | "type-prod"
-  | "type-prod-bg",
+  | "type-prod-bg"
+  | "warn"
+  | "frame-dev"
+  | "frame-test"
+  | "frame-prod",
   string
 >;
 
@@ -90,6 +94,11 @@ function derive(c: BasePalette, dark: boolean): ExtraPalette {
     "type-test-bg": c["warn-bg"],
     "type-prod": c.error,
     "type-prod-bg": c["error-bg"],
+    warn: c["syn-number"],
+    // The window frame takes a tint of the active connection's type.
+    "frame-dev": mix(c.ok, 8, mix(c["bg-sidebar"], dark ? 65 : 94, "#000000")),
+    "frame-test": mix(c["syn-number"], 8, mix(c["bg-sidebar"], dark ? 65 : 94, "#000000")),
+    "frame-prod": mix(c.error, 10, mix(c["bg-sidebar"], dark ? 65 : 94, "#000000")),
   };
 }
 
@@ -103,46 +112,50 @@ export const PRESETS = {
     label: "Platypus Dark",
     dark: true,
     colors: {
-      bg: "#141519",
-      "bg-sidebar": "#17181d",
-      "bg-input": "#1d1f25",
-      "bg-rail": "#0d0e11",
-      "bg-tabbar": "#0f1013",
-      fg: "#c9ccd3",
-      "fg-strong": "#f2f3f5",
-      "fg-muted": "#6f7480",
-      border: "#23252c",
-      "border-strong": "#2b2e36",
-      active: "#24262e",
-      accent: "#6c63ff",
-      "accent-fg": "#ffffff",
-      hover: "rgba(255, 255, 255, 0.04)",
-      error: "#ff7b7b",
-      "error-bg": "#3a1518",
+      bg: "#16191b",
+      "bg-sidebar": "#1b1f22",
+      "bg-input": "#20262a",
+      "bg-rail": "#111416",
+      "bg-tabbar": "#1b1f22",
+      fg: "#d5dadd",
+      "fg-strong": "#f1f3f4",
+      "fg-muted": "#8d969b",
+      border: "#262c30",
+      "border-strong": "#343b40",
+      active: "#20262a",
+      accent: "#ff8d28",
+      "accent-fg": "#141519",
+      hover: "rgba(255, 255, 255, 0.045)",
+      error: "#ff8a8a",
+      "error-bg": "#2e1416",
       ok: "#7ed3a0",
-      "ok-bg": "#173322",
-      "warn-bg": "#3a2a12",
-      "grid-bg": "#141519",
-      "grid-bg-alt": "#17181d",
-      "grid-header": "#17181d",
-      "grid-selection": "rgba(108, 99, 255, 0.22)",
-      "syn-keyword": "#b69cff",
+      "ok-bg": "#16281d",
+      "warn-bg": "#2a2119",
+      warn: "#e9c46a",
+      "grid-bg": "#16191b",
+      "grid-bg-alt": "#181c1e",
+      "grid-header": "#1b1f22",
+      "grid-selection": "rgba(255, 141, 40, 0.22)",
+      "syn-keyword": "#7fc8db",
       "syn-string": "#7ed3a0",
       "syn-number": "#f2b16d",
-      "syn-comment": "#5c616c",
-      "syn-type": "#6fd3e8",
-      "syn-ident": "#8ea2ff",
-      "obj-db": "#8ea2ff",
-      "obj-table": "#8ea2ff",
-      "obj-view": "#b69cff",
+      "syn-comment": "#6b747a",
+      "syn-type": "#c3a6ff",
+      "syn-ident": "#d5dadd",
+      "obj-db": "#8fb8ff",
+      "obj-table": "#8fb8ff",
+      "obj-view": "#c3a6ff",
       "obj-routine": "#f2b16d",
-      "obj-trigger": "#f5d76e",
+      "obj-trigger": "#e9c46a",
       "type-dev": "#7ed3a0",
-      "type-dev-bg": "#173322",
-      "type-test": "#f2b16d",
-      "type-test-bg": "#3a2a12",
+      "type-dev-bg": "#16281d",
+      "type-test": "#8fb8ff",
+      "type-test-bg": "#17223a",
       "type-prod": "#ff8a8a",
-      "type-prod-bg": "#3a1518",
+      "type-prod-bg": "#2e1416",
+      "frame-dev": "#0f1513",
+      "frame-test": "#0f131b",
+      "frame-prod": "#1d1012",
     },
   },
   platypus_light: {
@@ -150,45 +163,49 @@ export const PRESETS = {
     dark: false,
     colors: {
       bg: "#ffffff",
-      "bg-sidebar": "#f6f7f9",
+      "bg-sidebar": "#f6f8f9",
       "bg-input": "#ffffff",
-      "bg-rail": "#eceef2",
-      "bg-tabbar": "#f1f2f5",
-      fg: "#2b2f36",
-      "fg-strong": "#111318",
-      "fg-muted": "#5f6672",
-      border: "#e6e8eb",
-      "border-strong": "#dcdfe3",
-      active: "#ebeafd",
-      accent: "#5b52f0",
+      "bg-rail": "#f1f4f5",
+      "bg-tabbar": "#f6f8f9",
+      fg: "#2a2e31",
+      "fg-strong": "#131416",
+      "fg-muted": "#5d6266",
+      border: "#e3e6e8",
+      "border-strong": "#cdd2d5",
+      active: "#e2e8ea",
+      accent: "#b85600",
       "accent-fg": "#ffffff",
       hover: "rgba(0, 0, 0, 0.04)",
-      error: "#c62828",
+      error: "#b42318",
       "error-bg": "#fdecea",
-      ok: "#2b8a3e",
-      "ok-bg": "#e6f6ea",
-      "warn-bg": "#fff3e0",
+      ok: "#1e7b4f",
+      "ok-bg": "#e3f4ea",
+      "warn-bg": "#fbf0e1",
+      warn: "#854d0e",
       "grid-bg": "#ffffff",
-      "grid-bg-alt": "#f9fafb",
-      "grid-header": "#f6f7f9",
-      "grid-selection": "rgba(91, 82, 240, 0.14)",
-      "syn-keyword": "#7c3aed",
-      "syn-string": "#2b8a3e",
-      "syn-number": "#c2410c",
-      "syn-comment": "#8b919a",
-      "syn-type": "#0b7285",
-      "syn-ident": "#4f46e5",
-      "obj-db": "#4f46e5",
-      "obj-table": "#4f46e5",
-      "obj-view": "#7c3aed",
-      "obj-routine": "#c2410c",
-      "obj-trigger": "#b7791f",
-      "type-dev": "#2f7a3a",
-      "type-dev-bg": "#e3f4e6",
-      "type-test": "#a15c07",
-      "type-test-bg": "#fdf0d9",
+      "grid-bg-alt": "#f8fafa",
+      "grid-header": "#f6f8f9",
+      "grid-selection": "rgba(184, 86, 0, 0.14)",
+      "syn-keyword": "#155e75",
+      "syn-string": "#1e7b4f",
+      "syn-number": "#a15c07",
+      "syn-comment": "#7b8186",
+      "syn-type": "#6d3fc0",
+      "syn-ident": "#2a2e31",
+      "obj-db": "#2f5fb3",
+      "obj-table": "#2f5fb3",
+      "obj-view": "#6d3fc0",
+      "obj-routine": "#a15c07",
+      "obj-trigger": "#854d0e",
+      "type-dev": "#1e7b4f",
+      "type-dev-bg": "#e3f4ea",
+      "type-test": "#2f5fb3",
+      "type-test-bg": "#e6eefa",
       "type-prod": "#b42318",
       "type-prod-bg": "#fde3e3",
+      "frame-dev": "#eef4f0",
+      "frame-test": "#edf1f8",
+      "frame-prod": "#f9ecea",
     },
   },
   // "light" and "dark" keep their keys, so a saved choice still applies.
@@ -459,10 +476,10 @@ export const editorFontSetting = defineSetting<number>({
 });
 
 const ROW_HEIGHTS: Record<string, number> = { compact: 20, normal: 24, comfortable: 30 };
-const RADII: Record<string, [number, number, number]> = {
-  square: [0, 0, 0],
-  rounded: [4, 6, 8],
-  round: [7, 10, 14],
+const RADII: Record<string, [number, number, number, number]> = {
+  square: [0, 0, 0, 0],
+  rounded: [4, 6, 10, 14],
+  round: [7, 10, 14, 20],
 };
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -524,7 +541,12 @@ function variables(): { dark: boolean; vars: Record<string, string> } {
   if (bg || sidebar || text || accent) {
     const derived = derive(vars, readableOn(vars.bg) === "#ffffff");
     if (bg) vars["bg-tabbar"] = derived["bg-tabbar"];
-    if (sidebar) vars["bg-rail"] = derived["bg-rail"];
+    if (sidebar) {
+      vars["bg-rail"] = derived["bg-rail"];
+      vars["frame-dev"] = derived["frame-dev"];
+      vars["frame-test"] = derived["frame-test"];
+      vars["frame-prod"] = derived["frame-prod"];
+    }
     if (sidebar || accent) vars.active = derived.active;
     if (text) vars["fg-strong"] = derived["fg-strong"];
   }
@@ -533,14 +555,15 @@ function variables(): { dark: boolean; vars: Record<string, string> } {
   out["--radius"] = `${radius[0]}px`;
   out["--radius-lg"] = `${radius[1]}px`;
   out["--radius-xl"] = `${radius[2]}px`;
+  out["--radius-sheet"] = `${radius[3]}px`;
   out["--grid-row-h"] = String(ROW_HEIGHTS[getSetting(densitySetting)] ?? 24);
   out["--editor-font-size"] = `${getSetting(editorFontSetting)}px`;
   return { dark: preset.dark, vars: out };
 }
 
-/** v2 since the Platypus themes: a v1 cache lacks their variables, so it is dropped. */
-const CACHE = "platypus.appearance.v2";
-const OLD_CACHE = "platypus.appearance.v1";
+/** v3 since the frame colors: an older cache lacks their variables, so it is dropped. */
+const CACHE = "platypus.appearance.v3";
+const OLD_CACHES = ["platypus.appearance.v1", "platypus.appearance.v2"];
 
 function paint(dark: boolean, vars: Record<string, string>) {
   const root = document.documentElement;
@@ -578,7 +601,7 @@ export function applyAppearance() {
 /** Paints the last applied appearance before the settings load, so the app never flashes. */
 export function paintCached() {
   try {
-    localStorage.removeItem(OLD_CACHE);
+    for (const old of OLD_CACHES) localStorage.removeItem(old);
     const cached = JSON.parse(localStorage.getItem(CACHE) ?? "null") as { dark: boolean; vars: Record<string, string> } | null;
     if (cached) {
       document.documentElement.dataset.firstPaint = "cache";

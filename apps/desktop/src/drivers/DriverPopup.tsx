@@ -36,9 +36,11 @@ function DriverPopup({ driver, onDone }: Props) {
   }
 
   const pkg = status?.package;
+  /** Closes without a download, unless one is running. */
+  const dismiss = () => !progress && onDone(false);
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && !progress && onDone(false)}>
-      <div className="modal driver-popup" onKeyDown={(e) => e.key === "Escape" && !progress && onDone(false)}>
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && dismiss()}>
+      <div className="modal driver-popup" onKeyDown={(e) => e.key === "Escape" && dismiss()}>
         {progress ? (
           <>
             <h2>Downloading the {name} driver…</h2>
@@ -49,7 +51,7 @@ function DriverPopup({ driver, onDone }: Props) {
             </p>
             <div className="actions">
               <span className="spacer" />
-              <button type="button" onClick={() => void api.cancelDriverInstall()}>
+              <button type="button" onClick={() => void api.cancelDriverInstall(driver)}>
                 Cancel
               </button>
             </div>

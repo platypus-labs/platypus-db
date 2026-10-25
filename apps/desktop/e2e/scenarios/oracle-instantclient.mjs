@@ -76,7 +76,7 @@ export default async function (page) {
   await page.waitFor(`${visibleTab}.querySelector('.statusbar span')?.textContent === '1 row'`, 60_000);
 
   // Settings › Drivers shows the client and removes it.
-  await page.eval(`document.querySelector('.sidebar-header button[title^="Settings"]').click()`);
+  await page.eval(`document.querySelector('button[aria-label="Settings"]').click()`);
   await page.waitFor(`${settingsRow}?.querySelector('[data-driver-state="installed"]') != null`, 15_000);
   const listed = await page.eval(`${settingsRow}.textContent`);
   assert.ok(listed.includes("Oracle Instant Client 23.26.4 installed"), listed);

@@ -178,7 +178,12 @@ impl Dialect {
             Self::SqlServer | Self::Db2 => self.merge(table, &all, keys, &others, rows),
             // No upsert where data editing is not offered; Oracle has no `VALUES` rows
             // before 23ai.
-            Self::ClickHouse | Self::Ansi | Self::BigQuery | Self::Databricks | Self::Oracle => {
+            Self::ClickHouse
+            | Self::Ansi
+            | Self::Snowflake
+            | Self::BigQuery
+            | Self::Databricks
+            | Self::Oracle => {
                 return None;
             }
         })
@@ -336,20 +341,20 @@ impl Dialect {
                 )),
                 _ => None,
             },
-            Self::Sqlite => (kind == ObjectKind::Table)
+            // BigQuery and Oracle take only the name, which stays in the table's schema.
+            Self::Sqlite | Self::BigQuery | Self::Oracle => (kind == ObjectKind::Table)
                 .then(|| format!("ALTER TABLE {} RENAME TO {to};", self.object(o))),
             // Snowflake, Trino and Spark resolve an unqualified new name in the session's
-            // schema; BigQuery takes only the name.
-            Self::Ansi | Self::Databricks => (kind == ObjectKind::Table).then(|| {
-                format!(
-                    "ALTER TABLE {} RENAME TO {};",
-                    self.object(o),
-                    self.qualified(o.schema, new_name)
-                )
-            }),
-            // Both take only the new name, which stays in the table's schema.
-            Self::BigQuery | Self::Oracle => (kind == ObjectKind::Table)
-                .then(|| format!("ALTER TABLE {} RENAME TO {to};", self.object(o))),
+            // schema.
+            Self::Ansi | Self::Snowflake | Self::Databricks => {
+                (kind == ObjectKind::Table).then(|| {
+                    format!(
+                        "ALTER TABLE {} RENAME TO {};",
+                        self.object(o),
+                        self.qualified(o.schema, new_name)
+                    )
+                })
+            }
             Self::Db2 => (kind == ObjectKind::Table)
                 .then(|| format!("RENAME TABLE {} TO {to};", self.object(o))),
             Self::DuckDb => match kind {

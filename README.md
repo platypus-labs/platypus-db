@@ -1,4 +1,9 @@
-# PlatypusDB
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/platypus-db-on-dark.png" />
+    <img src="docs/brand/platypus-db-on-light.png" alt="PlatypusDB" width="640" />
+  </picture>
+</h1>
 
 A fast, lightweight desktop SQL client: a Rust core with a Tauri 2 + React interface. The
 installer is about 5 MB, the window is ready in under half a second, and the results grid
@@ -258,6 +263,9 @@ methods and fields. `mongodb+srv://` and connection string options go in the Dat
 - **Projects**: a rail of colored squares on the left, one per project (a client, an
   environment, a side job). A project shows only its connections, tabs and recent queries; a
   connection can be in several projects. `Ctrl+1` is All connections, `Ctrl+2`… the projects.
+- **The frame shows where you are**: the bar on top names the project and the connection of
+  the active tab, and the window frame takes the color of its type, green for development,
+  blue for test and red for production.
 - **Command palette** (`Ctrl+K`): actions, connections, tables and recent queries, found by
   typing a few letters.
 - **Themes**: Platypus Dark and Light (what "System" follows), Classic Light and Dark, Nord,

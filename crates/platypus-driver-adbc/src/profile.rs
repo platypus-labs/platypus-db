@@ -106,7 +106,9 @@ pub fn options(config: &ConnectionConfig) -> Result<Vec<(String, String)>> {
 }
 
 /// `trino://user:password@host:port/catalog/schema?SSL=…`. Without TLS (`sslmode=disable`)
-/// the driver speaks plain HTTP; `require` skips the certificate check.
+/// the driver speaks plain HTTP; `require` skips the certificate check. The driver cannot
+/// fall back from one to the other, so `prefer` (the default) picks by port: HTTPS on 443,
+/// plain HTTP elsewhere, like Trino's own default port 8080.
 fn trino_uri(config: &ConnectionConfig) -> Result<String> {
     if config.host.trim().is_empty() {
         return Err(Error::Config("the Trino host is required".to_owned()));
@@ -133,9 +135,10 @@ fn trino_uri(config: &ConnectionConfig) -> Result<String> {
         }
     }
     uri.push_str(match config.ssl_mode {
-        SslMode::Disable => "?SSL=false",
+        SslMode::Prefer if config.port == Some(443) => "?SSL=true",
+        SslMode::Disable | SslMode::Prefer => "?SSL=false",
         SslMode::Require => "?SSL=true&SSLVerification=NONE",
-        SslMode::Prefer | SslMode::VerifyCa | SslMode::VerifyFull => "?SSL=true",
+        SslMode::VerifyCa | SslMode::VerifyFull => "?SSL=true",
     });
     Ok(uri)
 }
@@ -287,6 +290,34 @@ mod tests {
         assert_eq!(
             get(&options(&c).unwrap(), URI),
             Some("trino://luca:p%40ss@localhost:8080/memory/default?SSL=true&SSLVerification=NONE")
+        );
+        c.password = None;
+        c.ssl_mode = SslMode::VerifyFull;
+        assert_eq!(
+            get(&options(&c).unwrap(), URI),
+            Some("trino://luca@localhost:8080/memory/default?SSL=true")
+        );
+    }
+
+    #[test]
+    fn trino_prefers_tls_on_the_https_port_only() {
+        let mut c = config(DriverKind::Trino, &[]);
+        c.host = "trino.example.com".to_owned();
+        assert_eq!(c.ssl_mode, SslMode::Prefer);
+        assert_eq!(c.port, Some(8080));
+        assert_eq!(
+            get(&options(&c).unwrap(), URI),
+            Some("trino://trino.example.com:8080?SSL=false")
+        );
+        c.port = Some(443);
+        assert_eq!(
+            get(&options(&c).unwrap(), URI),
+            Some("trino://trino.example.com:443?SSL=true")
+        );
+        c.port = None;
+        assert_eq!(
+            get(&options(&c).unwrap(), URI),
+            Some("trino://trino.example.com?SSL=false")
         );
     }
 

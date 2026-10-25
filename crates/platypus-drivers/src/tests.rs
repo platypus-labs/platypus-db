@@ -210,3 +210,68 @@ async fn remove_driver() {
     assert_eq!(installed(dir.path(), "test"), None);
     assert_eq!(list(dir.path()), []);
 }
+
+#[tokio::test]
+async fn refuses_a_package_without_checksum() {
+    let dir = tempfile::tempdir().unwrap();
+    let (registry, _) = registry_with(dir.path(), None).await;
+    let mut p = registry.package("test").await.unwrap();
+    p.sha256 = None;
+    let err = registry
+        .install(&p, |_, _| {}, &CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, DriverError::NoChecksum), "{err}");
+    assert_eq!(installed(dir.path(), "test"), None);
+}
+
+#[test]
+fn reads_the_hash_prefix_in_any_case() {
+    use crate::registry::sha256_hex;
+    assert_eq!(sha256_hex("sha256:ab12").as_deref(), Some("ab12"));
+    assert_eq!(sha256_hex("  SHA256:AB12 ").as_deref(), Some("AB12"));
+    assert_eq!(sha256_hex("Sha256:ab").as_deref(), Some("ab"));
+    assert_eq!(sha256_hex("sha256:"), None);
+    assert_eq!(sha256_hex("md5:ab12"), None);
+    assert_eq!(sha256_hex("é"), None);
+}
+
+#[test]
+fn orders_releases_after_their_prereleases() {
+    use crate::registry::compare_versions;
+    use std::cmp::Ordering::{Greater, Less};
+    for (newer, older) in [
+        ("v1.10.0", "v1.9.0"),
+        ("1.0.0", "1.0.0-beta"),
+        ("v1.0.0", "v1.0.0-rc.1"),
+        ("1.0.0-rc.1", "1.0.0-beta.11"),
+        ("1.0.0-beta.11", "1.0.0-beta.2"),
+        ("1.0.0-beta", "1.0.0-alpha.1"),
+        ("1.0.0-alpha.1", "1.0.0-alpha"),
+        ("1.0.0-alpha.beta", "1.0.0-alpha.1"),
+        ("1.0.1-beta", "1.0.0"),
+    ] {
+        assert_eq!(compare_versions(newer, older), Greater, "{newer} > {older}");
+        assert_eq!(compare_versions(older, newer), Less, "{older} < {newer}");
+    }
+}
+
+#[test]
+fn refuses_driver_names_outside_the_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let adbc = dir.path().join("drivers").join("adbc");
+    std::fs::create_dir_all(adbc.join("kept")).unwrap();
+    let mut names = vec!["..", "../adbc", "a/b", "", ".", "/abs", "a/"];
+    if cfg!(windows) {
+        names.extend([r"a\b", "C:", r"..\adbc"]);
+    }
+    for name in names {
+        assert!(
+            matches!(remove(dir.path(), name), Err(DriverError::InvalidName(_))),
+            "{name:?}"
+        );
+        assert_eq!(installed(dir.path(), name), None, "{name:?}");
+    }
+    assert!(adbc.join("kept").is_dir());
+    assert!(remove(dir.path(), "missing").is_ok());
+}

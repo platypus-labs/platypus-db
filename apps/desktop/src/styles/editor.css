@@ -94,7 +94,7 @@ button.toggled {
 }
 
 .history-status {
-  text-transform: uppercase;
+  font-weight: 500;
 }
 
 /* The agent that ran the statement. */
@@ -120,8 +120,8 @@ button.toggled {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
+  padding: 7px 10px;
+  background: var(--bg-tabbar);
   overflow-x: auto;
   scrollbar-width: thin;
 }
@@ -130,6 +130,16 @@ button.toggled {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  padding: 0 10px;
+}
+
+/* Secondary actions: no box until hovered, so Run stands out. */
+.toolbar button:not(.primary):not(.toggled) {
+  border-color: transparent;
+}
+
+.toolbar button:not(.primary):not(.toggled):hover:not(:disabled) {
+  border-color: var(--border-strong);
 }
 
 .auto-refresh {
@@ -411,8 +421,7 @@ button.toggled {
   flex: none;
   width: 44px;
   color: var(--fg-muted);
-  font-size: 10px;
-  text-transform: uppercase;
+  font-size: 11px;
 }
 
 .outline-kind.dml,
@@ -598,6 +607,7 @@ button.toggled {
 
 .builder-join {
   position: absolute;
+  background: var(--bg);
   transform: translate(-50%, -50%);
   padding: 1px 6px;
   font-size: 10px;

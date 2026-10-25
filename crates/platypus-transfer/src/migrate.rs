@@ -124,6 +124,7 @@ async fn identity(
         // No column numbers its rows; Oracle's and Db2's identity columns are not read.
         Dialect::ClickHouse
         | Dialect::Ansi
+        | Dialect::Snowflake
         | Dialect::BigQuery
         | Dialect::Databricks
         | Dialect::Oracle
@@ -256,7 +257,8 @@ const fn database(dialect: Dialect) -> &'static str {
         Dialect::DuckDb => "DuckDB",
         Dialect::SqlServer => "SQL Server",
         Dialect::ClickHouse => "ClickHouse",
-        // Snowflake, Trino or another ADBC driver.
+        Dialect::Snowflake => "Snowflake",
+        // Trino or another ADBC driver.
         Dialect::Ansi => "this database",
         Dialect::BigQuery => "BigQuery",
         Dialect::Databricks => "Databricks",
@@ -654,6 +656,7 @@ async fn identity_steps(
         | Dialect::Sqlite
         | Dialect::ClickHouse
         | Dialect::Ansi
+        | Dialect::Snowflake
         | Dialect::BigQuery
         | Dialect::Databricks
         | Dialect::Oracle

@@ -304,6 +304,7 @@ pub async fn load(
         Dialect::DuckDb
         | Dialect::ClickHouse
         | Dialect::Ansi
+        | Dialect::Snowflake
         | Dialect::BigQuery
         | Dialect::Databricks => None,
     };

@@ -8,7 +8,7 @@ use std::time::Duration;
 use platypus_core::{ConnectionConfig, DriverKind, SslMode};
 use serde::{Deserialize, Serialize};
 
-use crate::{DriverError, PUBLIC_REGISTRY, drivers_dir, io_error, platform};
+use crate::{DriverError, PUBLIC_REGISTRY, drivers_dir, io_error, network_error, platform};
 
 /// A package of a driver, ready to download.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -65,28 +65,68 @@ pub(crate) fn client(https: bool) -> Result<reqwest::Client, DriverError> {
     // reqwest has no crypto provider of its own: it needs a configuration even for http.
     let tls = if https {
         platypus_tls::client_config(&config)
-            .map_err(|e| DriverError::Network(e.to_string()))?
+            .map_err(network_error)?
             .ok_or_else(|| DriverError::Network("no TLS configuration".to_owned()))?
     } else {
-        platypus_tls::plaintext_config().map_err(|e| DriverError::Network(e.to_string()))?
+        platypus_tls::plaintext_config().map_err(network_error)?
     };
     reqwest::Client::builder()
         .user_agent(concat!("platypus-db/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(Duration::from_secs(15))
         .tls_backend_preconfigured(tls)
         .build()
-        .map_err(|e| DriverError::Network(e.to_string()))
+        .map_err(network_error)
 }
 
-/// Orders `v1.10.0` after `v1.9.0`: numbers compared as numbers, the rest as text.
+/// Orders versions like semantic versions: `v1.10.0` after `v1.9.0` (numbers compared as
+/// numbers), and a release after its prereleases (`1.0.0` after `1.0.0-beta`). Build
+/// metadata (`+…`) only breaks ties.
 pub(crate) fn compare_versions(a: &str, b: &str) -> Ordering {
-    let parts = |v: &str| -> Vec<u64> {
-        v.trim_start_matches('v')
-            .split(['.', '-', '+'])
-            .map_while(|p| p.parse().ok())
-            .collect()
-    };
-    parts(a).cmp(&parts(b)).then_with(|| a.cmp(b))
+    /// The release numbers and the prerelease identifiers, if any.
+    fn parts(v: &str) -> (Vec<u64>, Option<Vec<&str>>) {
+        let v = v.trim_start_matches('v');
+        let v = v.split_once('+').map_or(v, |(v, _)| v);
+        let (release, pre) = match v.split_once('-') {
+            Some((release, pre)) => (release, Some(pre.split('.').collect())),
+            None => (v, None),
+        };
+        let numbers = release.split('.').map_while(|p| p.parse().ok()).collect();
+        (numbers, pre)
+    }
+    /// Numeric identifiers sort below text ones, and by value among themselves.
+    fn identifier(a: &str, b: &str) -> Ordering {
+        match (a.parse::<u64>(), b.parse::<u64>()) {
+            (Ok(a), Ok(b)) => a.cmp(&b),
+            (Ok(_), Err(_)) => Ordering::Less,
+            (Err(_), Ok(_)) => Ordering::Greater,
+            (Err(_), Err(_)) => a.cmp(b),
+        }
+    }
+    let ((release_a, pre_a), (release_b, pre_b)) = (parts(a), parts(b));
+    release_a
+        .cmp(&release_b)
+        .then_with(|| match (pre_a, pre_b) {
+            (None, None) => Ordering::Equal,
+            (None, Some(_)) => Ordering::Greater,
+            (Some(_), None) => Ordering::Less,
+            (Some(pa), Some(pb)) => pa
+                .iter()
+                .zip(&pb)
+                .map(|(x, y)| identifier(x, y))
+                .find(|o| o.is_ne())
+                .unwrap_or_else(|| pa.len().cmp(&pb.len())),
+        })
+        .then_with(|| a.cmp(b))
+}
+
+/// The hex digits of an index hash, `sha256:<hex>` (the prefix in any case).
+pub(crate) fn sha256_hex(hash: &str) -> Option<String> {
+    let hash = hash.trim();
+    let prefix = hash.get(..7)?;
+    prefix
+        .eq_ignore_ascii_case("sha256:")
+        .then(|| hash[7..].trim().to_owned())
+        .filter(|hex| !hex.is_empty())
 }
 
 impl Registry {
@@ -137,16 +177,15 @@ impl Registry {
     }
 
     async fn fetch_index(&self) -> Result<String, DriverError> {
-        let network = |e: reqwest::Error| DriverError::Network(e.to_string());
         self.http()?
             .get(format!("{}/index.yaml", self.url))
             .send()
             .await
             .and_then(reqwest::Response::error_for_status)
-            .map_err(network)?
+            .map_err(network_error)?
             .text()
             .await
-            .map_err(network)
+            .map_err(network_error)
     }
 
     /// The newest package of driver `name` for this platform.
@@ -180,9 +219,7 @@ impl Registry {
             version,
             license: driver.license,
             url: format!("{}/{}", self.url, package.url.trim_start_matches('/')),
-            sha256: package
-                .hash
-                .and_then(|h| h.trim().strip_prefix("sha256:").map(str::to_owned)),
+            sha256: package.hash.as_deref().and_then(sha256_hex),
         })
     }
 }

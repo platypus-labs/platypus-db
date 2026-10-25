@@ -9,7 +9,7 @@ import {
   toCommandError,
 } from "../api";
 import { askDriver } from "./DriverPopup";
-import { type Profile, fieldValue, withField } from "./profiles";
+import { type Profile, type ProfileField, fieldValue, withField } from "./profiles";
 
 interface Props {
   conn: SavedConnection;
@@ -22,17 +22,17 @@ interface Props {
 /** The fields of a database reached through an ADBC or ODBC driver, and its driver's state. */
 export function ProfileFields({ conn, profile, onChange, password }: Props) {
   const [odbc, setOdbc] = useState<OdbcSystem | null>(null);
-  const suggests = profile.fields.some((f) => f.choices);
+  const suggests = profile.fields.some((f) => f.suggest);
   useEffect(() => {
     if (suggests) api.odbcSystem().then(setOdbc, () => setOdbc(null));
   }, [suggests]);
 
-  async function browse(key: Parameters<typeof withField>[1]) {
+  async function browse(key: ProfileField["key"]) {
     const path = await open({ multiple: false });
     if (typeof path === "string") onChange(withField(conn, key, path));
   }
 
-  const choices = {
+  const suggestions = {
     "odbc-drivers": odbc?.drivers.map((d) => d.name) ?? [],
     "odbc-dsns": odbc?.data_sources.map((d) => d.name) ?? [],
   };
@@ -44,20 +44,35 @@ export function ProfileFields({ conn, profile, onChange, password }: Props) {
           <label key={f.key} className="field" data-field={f.key}>
             <span>{f.label}</span>
             <div className="row tight">
-              <input
-                required={f.required}
-                type={f.key === "port" ? "number" : "text"}
-                value={fieldValue(conn, f.key)}
-                placeholder={f.placeholder}
-                list={f.choices}
-                onChange={(e) => onChange(withField(conn, f.key, e.target.value))}
-              />
-              {f.choices && (
-                <datalist id={f.choices}>
-                  {choices[f.choices].map((c) => (
-                    <option key={c} value={c} />
+              {f.choices ? (
+                <select
+                  value={fieldValue(conn, f.key)}
+                  onChange={(e) => onChange(withField(conn, f.key, e.target.value))}
+                >
+                  {f.choices.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
                   ))}
-                </datalist>
+                </select>
+              ) : (
+                <>
+                  <input
+                    required={f.required}
+                    type={f.key === "port" ? "number" : "text"}
+                    value={fieldValue(conn, f.key)}
+                    placeholder={f.placeholder}
+                    list={f.suggest}
+                    onChange={(e) => onChange(withField(conn, f.key, e.target.value))}
+                  />
+                  {f.suggest && (
+                    <datalist id={f.suggest}>
+                      {suggestions[f.suggest].map((c) => (
+                        <option key={c} value={c} />
+                      ))}
+                    </datalist>
+                  )}
+                </>
               )}
               {f.file && (
                 <button type="button" onClick={() => void browse(f.key)}>
@@ -82,6 +97,7 @@ function DriverState({ conn }: { conn: SavedConnection }) {
   const [status, setStatus] = useState<DriverStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = () => api.driverStatus(conn.driver).then(setStatus, (e: unknown) => setError(toCommandError(e).message));
+  const ask = () => void askDriver(conn.driver).then(load);
 
   useEffect(() => {
     setStatus(null);
@@ -101,7 +117,7 @@ function DriverState({ conn }: { conn: SavedConnection }) {
           {newer && (
             <>
               {" · "}
-              <button type="button" className="link" onClick={() => void askDriver(conn.driver).then(load)}>
+              <button type="button" className="link" onClick={ask}>
                 Update to {status.package!.version}
               </button>
             </>
@@ -119,7 +135,7 @@ function DriverState({ conn }: { conn: SavedConnection }) {
       {status && !installed && (
         <span>
           Driver: not installed ·{" "}
-          <button type="button" className="link" onClick={() => void askDriver(conn.driver).then(load)}>
+          <button type="button" className="link" onClick={ask}>
             Download
           </button>
         </span>
