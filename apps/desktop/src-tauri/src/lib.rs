@@ -249,5 +249,8 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::objects::execute_statement,
         commands::objects::generate_sql,
         commands::objects::dialect_support,
+        commands::schema::table_design,
+        commands::schema::table_script,
+        commands::schema::apply_table_script,
     ]
 }

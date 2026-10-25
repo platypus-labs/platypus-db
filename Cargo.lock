@@ -4658,6 +4658,7 @@ dependencies = [
  "platypus-driver-pg",
  "platypus-driver-sqlite",
  "platypus-net",
+ "platypus-schema",
  "platypus-sql",
  "platypus-store",
  "platypus-transfer",
