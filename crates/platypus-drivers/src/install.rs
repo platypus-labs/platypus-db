@@ -64,7 +64,7 @@ impl Registry {
                     license: package.license.clone(),
                     library: PathBuf::from(library),
                 };
-                place(&tmp, &target, &record)
+                place(&tmp, &target, record)
             });
             let _ = std::fs::remove_dir_all(&tmp);
             result
@@ -175,9 +175,9 @@ fn unpack(bytes: &[u8], dir: &Path) -> Result<String, DriverError> {
 pub(crate) fn place(
     tmp: &Path,
     target: &Path,
-    record: &Installed,
+    record: Installed,
 ) -> Result<Installed, DriverError> {
-    let toml = toml::to_string(record).map_err(|e| DriverError::Format(e.to_string()))?;
+    let toml = toml::to_string(&record).map_err(|e| DriverError::Format(e.to_string()))?;
     let file = tmp.join("driver.toml");
     std::fs::write(&file, toml).map_err(io_error(&file))?;
     std::fs::create_dir_all(target).map_err(io_error(target))?;
@@ -190,6 +190,6 @@ pub(crate) fn place(
     std::fs::rename(tmp, &dir).map_err(io_error(&dir))?;
     Ok(Installed {
         library: dir.join(&record.library),
-        ..record.clone()
+        ..record
     })
 }

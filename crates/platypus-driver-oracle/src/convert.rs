@@ -5,13 +5,13 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use arrow_array::builder::{
     ArrayBuilder, BinaryBuilder, BooleanBuilder, Decimal128Builder, Float32Builder, Float64Builder,
     Int64Builder, StringBuilder, TimestampMicrosecondBuilder, TimestampSecondBuilder,
 };
-use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::{DataType, Field, Schema, SchemaRef, TimeUnit};
-use oracle::sql_type::{OracleType, Timestamp};
+use oracle::sql_type::{FromSql, OracleType, Timestamp};
 use oracle::{ColumnInfo, SqlValue};
 use platypus_core::{Error, META_DB_TYPE, Result};
 
@@ -147,8 +147,11 @@ enum Builder {
     Boolean(BooleanBuilder),
 }
 
-fn value_error(e: &oracle::Error) -> Error {
-    Error::Other(format!("cannot read a value: {e}"))
+/// The value as `T`.
+fn get<T: FromSql>(value: &SqlValue) -> Result<T> {
+    value
+        .get()
+        .map_err(|e| Error::Other(format!("cannot read a value: {e}")))
 }
 
 impl Builder {
@@ -177,68 +180,41 @@ impl Builder {
 
     fn append(&mut self, value: &SqlValue) -> Result<()> {
         match self {
-            Self::Int64(b) => {
-                b.append_option(value.get::<Option<i64>>().map_err(|e| value_error(&e))?);
-            }
+            Self::Int64(b) => b.append_option(get(value)?),
             Self::Decimal(b, scale) => {
-                let text: Option<String> = value.get().map_err(|e| value_error(&e))?;
+                let text: Option<String> = get(value)?;
                 b.append_option(text.and_then(|t| decimal(&t, *scale)));
             }
-            Self::Float32(b) => {
-                b.append_option(value.get::<Option<f32>>().map_err(|e| value_error(&e))?);
-            }
-            Self::Float64(b) => {
-                b.append_option(value.get::<Option<f64>>().map_err(|e| value_error(&e))?);
-            }
+            Self::Float32(b) => b.append_option(get(value)?),
+            Self::Float64(b) => b.append_option(get(value)?),
             // Types without a text form (cursors, files) read as NULL.
             Self::Text(b) => b.append_option(value.get::<Option<String>>().ok().flatten()),
-            Self::Binary(b) => {
-                b.append_option(
-                    value
-                        .get::<Option<Vec<u8>>>()
-                        .map_err(|e| value_error(&e))?,
-                );
-            }
+            Self::Binary(b) => b.append_option(get::<Option<Vec<u8>>>(value)?),
             Self::Date(b) => {
-                let t: Option<Timestamp> = value.get().map_err(|e| value_error(&e))?;
+                let t: Option<Timestamp> = get(value)?;
                 b.append_option(t.map(|t| epoch_seconds(&t)));
             }
             Self::Timestamp(b, zoned) => {
-                let t: Option<Timestamp> = value.get().map_err(|e| value_error(&e))?;
+                let t: Option<Timestamp> = get(value)?;
                 b.append_option(t.map(|t| epoch_micros(&t, *zoned)));
             }
-            Self::Boolean(b) => {
-                b.append_option(value.get::<Option<bool>>().map_err(|e| value_error(&e))?);
-            }
+            Self::Boolean(b) => b.append_option(get(value)?),
         }
         Ok(())
     }
 
-    fn finish(&mut self) -> ArrayRef {
+    /// The Arrow builder inside, for what all builders do alike.
+    fn array_builder(&mut self) -> &mut dyn ArrayBuilder {
         match self {
-            Self::Int64(b) => Arc::new(b.finish()),
-            Self::Decimal(b, _) => Arc::new(b.finish()),
-            Self::Float32(b) => Arc::new(b.finish()),
-            Self::Float64(b) => Arc::new(b.finish()),
-            Self::Text(b) => Arc::new(b.finish()),
-            Self::Binary(b) => Arc::new(b.finish()),
-            Self::Date(b) => Arc::new(b.finish()),
-            Self::Timestamp(b, _) => Arc::new(b.finish()),
-            Self::Boolean(b) => Arc::new(b.finish()),
-        }
-    }
-
-    fn len(&self) -> usize {
-        match self {
-            Self::Int64(b) => b.len(),
-            Self::Decimal(b, _) => b.len(),
-            Self::Float32(b) => b.len(),
-            Self::Float64(b) => b.len(),
-            Self::Text(b) => b.len(),
-            Self::Binary(b) => b.len(),
-            Self::Date(b) => b.len(),
-            Self::Timestamp(b, _) => b.len(),
-            Self::Boolean(b) => b.len(),
+            Self::Int64(b) => b,
+            Self::Decimal(b, _) => b,
+            Self::Float32(b) => b,
+            Self::Float64(b) => b,
+            Self::Text(b) => b,
+            Self::Binary(b) => b,
+            Self::Date(b) => b,
+            Self::Timestamp(b, _) => b,
+            Self::Boolean(b) => b,
         }
     }
 }
@@ -274,13 +250,19 @@ impl Batcher {
     }
 
     #[must_use]
-    pub fn rows(&self) -> usize {
-        self.builders.first().map_or(0, Builder::len)
+    pub fn rows(&mut self) -> usize {
+        self.builders
+            .first_mut()
+            .map_or(0, |b| b.array_builder().len())
     }
 
     /// The rows pushed since the last batch.
     pub fn finish(&mut self) -> Result<RecordBatch> {
-        let columns = self.builders.iter_mut().map(Builder::finish).collect();
+        let columns = self
+            .builders
+            .iter_mut()
+            .map(|b| b.array_builder().finish())
+            .collect();
         Ok(RecordBatch::try_new(Arc::clone(&self.schema), columns)?)
     }
 }

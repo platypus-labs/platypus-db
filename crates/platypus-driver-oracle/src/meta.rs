@@ -236,13 +236,11 @@ pub fn table_details(
         let (name, kind) = (first.text(0), first.text(1));
         match kind.as_str() {
             "P" | "U" => {
-                if kind == "P" {
+                let (label, constraint) = if kind == "P" {
                     for c in columns.iter_mut().filter(|c| names.contains(&c.name)) {
                         c.primary_key = true;
                     }
                     primary_name = Some(name.clone());
-                }
-                let (label, constraint) = if kind == "P" {
                     ("PRIMARY KEY", ConstraintKind::PrimaryKey)
                 } else {
                     ("UNIQUE", ConstraintKind::Unique)
@@ -271,16 +269,15 @@ pub fn table_details(
     }
     let indexes = group_sorted(
         indexes.iter().map(|r| {
-            (
-                r.text(0),
-                IndexMeta {
-                    primary: primary_name.as_deref() == Some(r.text(0).as_str()),
-                    name: r.text(0),
-                    columns: vec![r.text(2)],
-                    unique: r.text(1) == "UNIQUE",
-                    size: None,
-                },
-            )
+            let name = r.text(0);
+            let index = IndexMeta {
+                primary: primary_name.as_ref() == Some(&name),
+                name: name.clone(),
+                columns: vec![r.text(2)],
+                unique: r.text(1) == "UNIQUE",
+                size: None,
+            };
+            (name, index)
         }),
         |index, more| index.columns.extend(more.columns),
     );

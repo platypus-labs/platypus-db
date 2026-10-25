@@ -30,7 +30,7 @@ pub fn connection_string(config: &ConnectionConfig) -> Result<String> {
     let found = if config.driver.vendor_package().is_some()
         && !config.options.contains_key(profile::DRIVER)
     {
-        profile::vendor_driver(config.driver, &system::list()?.driver_names())
+        vendor_driver_installed(config.driver)?
     } else {
         None
     };
@@ -39,10 +39,7 @@ pub fn connection_string(config: &ConnectionConfig) -> Result<String> {
 
 /// Whether the vendor driver `kind` needs is installed in the system.
 pub fn vendor_driver_installed(kind: DriverKind) -> Result<Option<String>> {
-    Ok(profile::vendor_driver(
-        kind,
-        &system::list()?.driver_names(),
-    ))
+    Ok(profile::vendor_driver(kind, system::list()?.driver_names()))
 }
 
 #[async_trait]

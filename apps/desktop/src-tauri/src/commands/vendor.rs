@@ -64,7 +64,8 @@ fn system_driver(driver: DriverKind) -> CommandResult<Option<String>> {
         .map_err(|e| CommandError::new("drivers", e.to_string()))
 }
 
-fn status_of(driver: DriverKind) -> CommandResult<VendorStatus> {
+#[tauri::command]
+pub fn vendor_driver_status(driver: DriverKind) -> CommandResult<VendorStatus> {
     let name = package_name(driver)?;
     let package = platypus_drivers::vendor_package(name);
     let installed = platypus_drivers::installed_vendor(data_dir()?, name);
@@ -79,11 +80,6 @@ fn status_of(driver: DriverKind) -> CommandResult<VendorStatus> {
         system_driver,
         ready,
     })
-}
-
-#[tauri::command]
-pub fn vendor_driver_status(driver: DriverKind) -> CommandResult<VendorStatus> {
-    status_of(driver)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -141,7 +137,7 @@ pub async fn install_vendor_driver(
             ));
         }
     }
-    status_of(driver)
+    vendor_driver_status(driver)
 }
 
 #[tauri::command]
@@ -166,7 +162,7 @@ pub async fn remove_vendor_driver(driver: DriverKind) -> CommandResult<VendorSta
             .map_err(driver_error)?;
     }
     platypus_drivers::remove_vendor(dir, name).map_err(driver_error)?;
-    status_of(driver)
+    vendor_driver_status(driver)
 }
 
 #[derive(Debug, Serialize)]

@@ -65,8 +65,7 @@ fn is_system(schema: &str, kind: DriverKind) -> bool {
 
 /// The schemas named, by name, the `current` one marked.
 #[must_use]
-pub fn schemas(names: Vec<String>, current: Option<&str>, kind: DriverKind) -> Vec<SchemaMeta> {
-    let mut names = names;
+pub fn schemas(mut names: Vec<String>, current: Option<&str>, kind: DriverKind) -> Vec<SchemaMeta> {
     names.sort();
     names.dedup();
     names
@@ -121,17 +120,19 @@ fn type_text(c: &ColumnRow) -> String {
     }
 }
 
+/// What tells a foreign key column row's key apart from others.
+fn key(r: &ForeignKeyRow) -> (&str, &str, Option<&str>, &str, &str) {
+    (
+        &r.fk_schema,
+        &r.fk_table,
+        r.name.as_deref(),
+        &r.pk_schema,
+        &r.pk_table,
+    )
+}
+
 /// Groups foreign key column rows into keys, in column order.
 fn group_keys(mut rows: Vec<ForeignKeyRow>) -> Vec<Vec<ForeignKeyRow>> {
-    let key = |r: &ForeignKeyRow| {
-        (
-            r.fk_schema.clone(),
-            r.fk_table.clone(),
-            r.name.clone(),
-            r.pk_schema.clone(),
-            r.pk_table.clone(),
-        )
-    };
     rows.sort_by(|a, b| key(a).cmp(&key(b)).then(a.seq.cmp(&b.seq)));
     let mut groups: Vec<Vec<ForeignKeyRow>> = Vec::new();
     for row in rows {

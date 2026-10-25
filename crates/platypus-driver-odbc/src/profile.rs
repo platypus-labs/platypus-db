@@ -58,13 +58,22 @@ fn has_key(s: &str, key: &str) -> bool {
 /// driver, under the name `db2cli install -setup` gives it or the one of a full client.
 /// `None` for the generic driver.
 #[must_use]
-pub fn vendor_driver(kind: DriverKind, installed: &[String]) -> Option<String> {
+pub fn vendor_driver<'a>(
+    kind: DriverKind,
+    installed: impl IntoIterator<Item = &'a str>,
+) -> Option<String> {
+    if kind != DriverKind::Db2 {
+        return None;
+    }
     let matches = |name: &str| {
         let name = name.to_ascii_uppercase();
-        kind == DriverKind::Db2
-            && (name.starts_with("IBM DB2 ODBC DRIVER") || name.starts_with("IBM DATA SERVER"))
+        name.starts_with("IBM DB2 ODBC DRIVER") || name.starts_with("IBM DATA SERVER")
     };
-    installed.iter().filter(|n| matches(n)).max().cloned()
+    installed
+        .into_iter()
+        .filter(|n| matches(n))
+        .max()
+        .map(str::to_owned)
 }
 
 /// The connection string that opens `config`. `driver` is the ODBC driver to name for Db2,
@@ -142,8 +151,7 @@ fn generic(out: &mut String, config: &ConnectionConfig) -> Result<()> {
             "choose a data source (DSN) or write a connection string".to_owned(),
         ));
     }
-    let written = out.clone();
-    if !has_key(&written, "UID") && !has_key(&written, "PWD") {
+    if !has_key(out, "UID") && !has_key(out, "PWD") {
         push_login(out, config);
     }
     Ok(())
@@ -223,16 +231,18 @@ mod tests {
             "Oracle in instantclient_23_26",
             "IBM DB2 ODBC DRIVER - IBMDBCL1",
             "Microsoft ODBC for Oracle",
-        ]
-        .map(str::to_owned);
+        ];
         assert_eq!(
-            vendor_driver(DriverKind::Db2, &installed).as_deref(),
+            vendor_driver(DriverKind::Db2, installed).as_deref(),
             Some("IBM DB2 ODBC DRIVER - IBMDBCL1")
         );
         // Oracle has its own native driver.
-        assert_eq!(vendor_driver(DriverKind::Oracle, &installed), None);
-        assert_eq!(vendor_driver(DriverKind::Odbc, &installed), None);
-        assert_eq!(vendor_driver(DriverKind::Db2, &installed[..2]), None);
+        assert_eq!(vendor_driver(DriverKind::Oracle, installed), None);
+        assert_eq!(vendor_driver(DriverKind::Odbc, installed), None);
+        assert_eq!(
+            vendor_driver(DriverKind::Db2, installed[..2].iter().copied()),
+            None
+        );
     }
 
     #[test]

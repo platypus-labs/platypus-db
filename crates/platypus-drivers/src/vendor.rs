@@ -220,7 +220,7 @@ pub async fn install_vendor(
             .try_for_each(|bytes| unzip(bytes, &tmp))
             .and_then(|()| {
                 if tmp.join(&record.library).is_file() {
-                    crate::install::place(&tmp, &target, &record)
+                    crate::install::place(&tmp, &target, record)
                 } else {
                     Err(DriverError::Format(format!(
                         "the archives lack `{}`",
@@ -298,16 +298,14 @@ fn unzip(bytes: &[u8], dir: &Path) -> Result<(), DriverError> {
         }
     }
     for (link, target) in links {
-        let Some(resolved) = link_target(dir, &link, &target) else {
-            continue;
-        };
         #[cfg(unix)]
-        std::os::unix::fs::symlink(&target, &link).map_err(io_error(&link))?;
+        if link_target(dir, &link, &target).is_some() {
+            std::os::unix::fs::symlink(&target, &link).map_err(io_error(&link))?;
+        }
         #[cfg(not(unix))]
-        if resolved.is_file() {
+        if let Some(resolved) = link_target(dir, &link, &target).filter(|p| p.is_file()) {
             std::fs::copy(&resolved, &link).map_err(io_error(&link))?;
         }
-        let _ = resolved;
     }
     Ok(())
 }
@@ -325,25 +323,23 @@ fn package_dir(installed: &Installed, package: &VendorPackage) -> Option<PathBuf
 /// vendor's program. On Windows it runs as administrator: Windows asks the user first
 /// (UAC). Nothing to do for a library the app loads itself.
 pub async fn register(installed: &Installed, package: &VendorPackage) -> Result<(), DriverError> {
-    match &package.register {
-        Some(program) => run_program(installed, package, program).await,
-        None => Ok(()),
-    }
+    run_program(installed, package, package.register.as_ref()).await
 }
 
 /// Unregisters the driver, as administrator like [`register`].
 pub async fn unregister(installed: &Installed, package: &VendorPackage) -> Result<(), DriverError> {
-    match &package.unregister {
-        Some(program) => run_program(installed, package, program).await,
-        None => Ok(()),
-    }
+    run_program(installed, package, package.unregister.as_ref()).await
 }
 
+/// Runs `program` of the installed package as administrator; nothing without one.
 async fn run_program(
     installed: &Installed,
     package: &VendorPackage,
-    program: &Program,
+    program: Option<&Program>,
 ) -> Result<(), DriverError> {
+    let Some(program) = program else {
+        return Ok(());
+    };
     let dir = package_dir(installed, package)
         .ok_or_else(|| DriverError::Format("the installed driver has no folder".to_owned()))?;
     let path = dir.join(&program.path);

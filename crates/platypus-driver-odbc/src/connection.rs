@@ -82,10 +82,19 @@ impl OdbcConnection {
         query_text(self, sql).await.ok()?.first()?.opt(0)
     }
 
-    async fn catalog(&self, request: CatalogRequest) -> Result<CatalogRows> {
+    /// Sends the command made with `reply` and waits for the worker's answer.
+    async fn request<T>(
+        &self,
+        command: impl FnOnce(oneshot::Sender<Result<T>>) -> Command,
+    ) -> Result<T> {
         let (reply, answer) = oneshot::channel();
-        self.send(Command::Catalog { request, reply })?;
+        self.send(command(reply))?;
         answer.await.map_err(|_| Error::Closed)?
+    }
+
+    async fn catalog(&self, request: CatalogRequest) -> Result<CatalogRows> {
+        self.request(|reply| Command::Catalog { request, reply })
+            .await
     }
 
     async fn columns(&self, schema: &str, table: Option<&str>) -> Result<Vec<meta::ColumnRow>> {
@@ -108,13 +117,11 @@ impl OdbcConnection {
         }
     }
 
-    async fn transaction_command(
-        &self,
-        command: impl FnOnce(oneshot::Sender<Result<()>>) -> Command,
-    ) -> Result<()> {
-        let (reply, answer) = oneshot::channel();
-        self.send(command(reply))?;
-        answer.await.map_err(|_| Error::Closed)?
+    /// Commits or rolls back through the API.
+    async fn end(&self, commit: bool) -> Result<()> {
+        self.request(|reply| Command::End { commit, reply }).await?;
+        self.tx.set_open(false);
+        Ok(())
     }
 }
 
@@ -253,30 +260,18 @@ impl Connection for OdbcConnection {
 
     async fn set_autocommit(&self, on: bool) -> Result<()> {
         self.tx.ensure_closed()?;
-        self.transaction_command(|reply| Command::Autocommit { on, reply })
+        self.request(|reply| Command::Autocommit { on, reply })
             .await?;
         self.tx.set_autocommit(on);
         Ok(())
     }
 
     async fn commit(&self) -> Result<()> {
-        self.transaction_command(|reply| Command::End {
-            commit: true,
-            reply,
-        })
-        .await?;
-        self.tx.set_open(false);
-        Ok(())
+        self.end(true).await
     }
 
     async fn rollback(&self) -> Result<()> {
-        self.transaction_command(|reply| Command::End {
-            commit: false,
-            reply,
-        })
-        .await?;
-        self.tx.set_open(false);
-        Ok(())
+        self.end(false).await
     }
 
     fn capabilities(&self) -> Capabilities {

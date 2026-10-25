@@ -26,9 +26,8 @@ pub struct SystemOdbc {
 }
 
 impl SystemOdbc {
-    #[must_use]
-    pub fn driver_names(&self) -> Vec<String> {
-        self.drivers.iter().map(|d| d.name.clone()).collect()
+    pub fn driver_names(&self) -> impl Iterator<Item = &str> {
+        self.drivers.iter().map(|d| d.name.as_str())
     }
 }
 
