@@ -291,7 +291,7 @@ async function members(page, dir, shots) {
   const tiles = `[...document.querySelectorAll('.driver-tile')].map(b => b.textContent)`;
   assert.equal(await page.eval(`document.activeElement === document.querySelector('.driver-search')`), true);
   await page.type("SQL");
-  await page.waitFor(`${tiles}.join() === 'SQL Server,SQLite'`);
+  await page.waitFor(`${tiles}.join() === 'PostgreSQL,MySQL,SQL Server,SQLite,Turso / libSQL'`);
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.driver-search').value === '' && ${tiles}.length === 23`);
   await page.type("sqlite");
