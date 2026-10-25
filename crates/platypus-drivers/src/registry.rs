@@ -6,12 +6,12 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use platypus_core::{ConnectionConfig, DriverKind, SslMode};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{DriverError, PUBLIC_REGISTRY, drivers_dir, io_error, platform};
 
 /// A package of a driver, ready to download.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Package {
     /// Its name in the registry, e.g. `snowflake`.
     pub name: String,

@@ -11,6 +11,7 @@ mod install;
 mod registry;
 
 pub use registry::{Package, Registry};
+pub use tokio_util::sync::CancellationToken;
 
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
