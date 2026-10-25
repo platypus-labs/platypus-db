@@ -12,7 +12,9 @@ mod querylog;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use platypus_store::{ConnectionStore, HistoryStore, KeyringSecrets, SettingsStore, VaultSecrets};
+use platypus_store::{
+    CatalogStore, ConnectionStore, HistoryStore, KeyringSecrets, SettingsStore, VaultSecrets,
+};
 use tauri::Manager;
 
 use crate::commands::AppState;
@@ -87,6 +89,11 @@ fn open_settings(app: &tauri::App) -> Result<SettingsStore, String> {
     SettingsStore::open(dir.join("settings.toml")).map_err(|e| e.to_string())
 }
 
+fn open_catalog(app: &tauri::App) -> Result<CatalogStore, String> {
+    let dir = dir(app, false)?;
+    CatalogStore::open(&dir.join("catalog.db")).map_err(|e| e.to_string())
+}
+
 fn open_history(app: &tauri::App) -> Result<HistoryStore, String> {
     let dir = dir(app, false)?;
     let history = HistoryStore::open(&dir.join("history.db")).map_err(|e| e.to_string())?;
@@ -130,6 +137,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         open_store(app, vault_path.as_deref().ok()),
         vault_path,
         open_history(app),
+        open_catalog(app),
         settings,
         dir(app, false).map(|d| d.join("scripts")),
     );
@@ -267,6 +275,10 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::scripts::link_script,
         commands::cli::run_cli,
         commands::cli::cancel_cli,
+        commands::catalog::catalog_entries,
+        commands::catalog::save_catalog_entry,
+        commands::catalog::catalog_tags,
+        commands::catalog::rename_catalog_key,
         commands::history::search_history,
         commands::history::delete_history,
         commands::files::read_text_file,

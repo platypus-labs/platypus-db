@@ -5,6 +5,7 @@
 #![allow(clippy::needless_pass_by_value)]
 
 pub mod agents;
+pub mod catalog;
 pub mod cli;
 pub mod connections;
 pub mod data;
@@ -49,7 +50,7 @@ use platypus_driver_odbc::OdbcDriver;
 use platypus_driver_oracle::OracleDriver;
 use platypus_driver_pg::PgDriver;
 use platypus_driver_sqlite::SqliteDriver;
-use platypus_store::{ConnectionStore, HistoryStore, SettingsStore, VaultSecrets};
+use platypus_store::{CatalogStore, ConnectionStore, HistoryStore, SettingsStore, VaultSecrets};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -68,6 +69,8 @@ pub struct AppState {
     vault_path: Result<PathBuf, String>,
     /// Shared with job tasks, which record outcomes as they happen.
     history: Arc<Mutex<Result<HistoryStore, String>>>,
+    /// Notes and tags on tables and columns; `Err` when `catalog.db` cannot be opened.
+    catalog: Mutex<Result<CatalogStore, String>>,
     settings: Mutex<Result<SettingsStore, String>>,
     /// The folder of the saved scripts, see `scripts`.
     scripts: Result<PathBuf, String>,
@@ -102,6 +105,7 @@ impl AppState {
         (store, vault): (Result<ConnectionStore, String>, Option<Arc<VaultSecrets>>),
         vault_path: Result<PathBuf, String>,
         history: Result<HistoryStore, String>,
+        catalog: Result<CatalogStore, String>,
         settings: Result<SettingsStore, String>,
         scripts: Result<PathBuf, String>,
     ) -> Self {
@@ -110,6 +114,7 @@ impl AppState {
             vault: Mutex::new(vault),
             vault_path,
             history: Arc::new(Mutex::new(history)),
+            catalog: Mutex::new(catalog),
             settings: Mutex::new(settings),
             scripts,
             sessions: Mutex::new(HashMap::new()),
@@ -129,6 +134,20 @@ impl AppState {
             Ok(history) => f(history).map_err(Into::into),
             Err(e) => Err(CommandError::new("store", e.clone())),
         }
+    }
+
+    fn with_catalog<T>(
+        &self,
+        f: impl FnOnce(&mut CatalogStore) -> Result<T, platypus_store::StoreError>,
+    ) -> CommandResult<T> {
+        match &mut *lock(&self.catalog) {
+            Ok(catalog) => f(catalog).map_err(Into::into),
+            Err(e) => Err(CommandError::new("catalog", e.clone())),
+        }
+    }
+
+    fn forget_catalog(&self, id: Uuid) {
+        catalog::forget_connection(&mut lock(&self.catalog), id);
     }
 
     fn with_store<T>(
