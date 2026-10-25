@@ -7,7 +7,7 @@ import { api, type CatalogEntry, type CatalogKey, toCommandError } from "../api"
 import { workbench } from "../workbench";
 
 const loaded = new Map<string, Map<string, CatalogEntry>>();
-const loading = new Set<string>();
+const loading = new Map<string, Promise<void>>();
 const listeners = new Set<() => void>();
 let version = 0;
 let warned = false;
@@ -23,25 +23,28 @@ export function catalogKey(database: string | null | undefined, schema: string, 
   return { database: database ?? "", schema, object, column };
 }
 
-function load(connectionId: string) {
-  if (loaded.has(connectionId) || loading.has(connectionId)) return;
-  loading.add(connectionId);
-  api.catalogEntries(connectionId).then(
+function load(connectionId: string): Promise<void> {
+  const running = loading.get(connectionId);
+  if (running) return running;
+  if (loaded.has(connectionId)) return Promise.resolve();
+  const p = api.catalogEntries(connectionId).then(
     (entries) => {
       loaded.set(connectionId, new Map(entries.map((e) => [id(e.key), e])));
-      loading.delete(connectionId);
-      changed();
     },
     (e: unknown) => {
       // The app works without notes; say so once.
       loaded.set(connectionId, new Map());
-      loading.delete(connectionId);
       if (!warned) {
         warned = true;
         workbench().showError(`Notes are unavailable: ${toCommandError(e).message}`);
       }
     },
-  );
+  ).then(() => {
+    loading.delete(connectionId);
+    changed();
+  });
+  loading.set(connectionId, p);
+  return p;
 }
 
 /** The note and tags of `key`; `undefined` until loaded or when there are none. */
@@ -55,6 +58,7 @@ export function catalogEntry(connectionId: string, key: CatalogKey): CatalogEntr
 }
 
 export async function saveCatalog(connectionId: string, key: CatalogKey, note: string, tags: string[]) {
+  await load(connectionId);
   const saved = await api.saveCatalogEntry(connectionId, key, note, tags);
   const entries = loaded.get(connectionId) ?? new Map<string, CatalogEntry>();
   if (saved.note || saved.tags.length) entries.set(id(key), saved);
@@ -65,8 +69,10 @@ export async function saveCatalog(connectionId: string, key: CatalogKey, note: s
 
 export async function renameCatalog(connectionId: string, from: CatalogKey, to: CatalogKey) {
   await api.renameCatalogKey(connectionId, from, to);
-  loaded.delete(connectionId);
-  load(connectionId);
+  await loading.get(connectionId);
+  const entries = await api.catalogEntries(connectionId);
+  loaded.set(connectionId, new Map(entries.map((e) => [id(e.key), e])));
+  changed();
 }
 
 /** Re-renders the caller whenever notes are loaded or saved. */
@@ -93,7 +99,7 @@ export function parseFilter(text: string): { text: string; tags: string[] } {
 export function annotation(entry: CatalogEntry | undefined, comment?: string | null): string | undefined {
   const parts = [
     comment && `Comment (database): ${comment}`,
-    entry?.note && `Note: ${entry.note}`,
+    entry?.note && `Note (only on this computer): ${entry.note}`,
     entry?.tags.length && entry.tags.map((t) => `#${t}`).join(" "),
   ].filter(Boolean);
   return parts.length ? parts.join("\n") : undefined;
