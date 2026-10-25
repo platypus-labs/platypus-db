@@ -93,7 +93,7 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 | F — Connettività e credenziali | ✅ fatto (P1, P2) |
 | G — Nuovi driver | 🔒 Delfa · group-g-p2 · 2026-10-24 |
 | H — Import, export e trasferimento | ✅ fatto (P1, P2, P3) |
-| I — Strumenti di schema | 🔒 Paolo · group-i-table-editor · 2026-10-25 |
+| I — Strumenti di schema | ✅ fatto (P1) |
 | J — Amministrazione del server | libero |
 | K — Shell ed ergonomia | ✅ fatto (P1) |
 | L — Sicurezza operativa | ✅ fatto (P1) |
