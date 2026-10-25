@@ -172,8 +172,13 @@ export function DriverPicker({ onPick, onClose }: Props) {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             onKeyDown={(e) => {
-              // Enter takes the first match.
-              if (e.key === "Enter" && needle && first) pick(first);
+              // Enter takes the first match (PostgreSQL with no search), as the first tile
+              // did when it had the focus; Escape clears the search first, then closes.
+              if (e.key === "Enter" && first) pick(first);
+              else if (e.key === "Escape" && filter) {
+                e.stopPropagation();
+                setFilter("");
+              }
             }}
           />
         </div>

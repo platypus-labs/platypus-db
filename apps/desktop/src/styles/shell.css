@@ -7,6 +7,7 @@
   --frame: var(--bg-rail);
   --env-ink: var(--fg-strong);
   display: grid;
+  /* The navigator's width: set by App (shell/SidebarResizer.tsx, same default). */
   grid-template-columns: 52px var(--sidebar-width, 260px) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:

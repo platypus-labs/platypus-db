@@ -488,6 +488,11 @@ button.primary.danger:hover:not(:disabled) {
   margin: 0 0 0 auto;
 }
 
+/* A panel the search left out stays mounted, hidden. */
+.modal.settings section[hidden] {
+  display: none;
+}
+
 .settings-none {
   margin: 24px 0;
   text-align: center;

@@ -82,6 +82,10 @@ export default async function (page, { dir, shots }) {
   await page.eval(setInput(".driver-picker .modal-search input", "zzz"));
   await page.waitFor(`document.querySelector('.driver-none') !== null && ${tiles}.length === 0`);
   if (shots) await page.screenshot(join(shots, "polish-picker.png"));
+  // Escape clears the search first, then closes.
+  await page.key("Escape", "Escape", 27);
+  await page.waitFor(`${tiles}.includes('PostgreSQL') && ${tiles}.includes('Neon')`);
+  assert.equal(await page.eval(`document.querySelector('.modal.driver-picker') !== null`), true);
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.modal.driver-picker') === null`);
 
@@ -106,6 +110,9 @@ export default async function (page, { dir, shots }) {
   if (shots) await page.screenshot(join(shots, "polish-resized.png"));
   await page.eval(`document.querySelector('.sidebar-resizer').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
   await page.waitFor(`${sidebarWidth} === ${before}`);
+  // A click without moving saves nothing.
+  await page.click(x, y);
+  await settingsFile(dir, /^(?![\s\S]*sidebar_width)/);
 
   // The Settings' search keeps the matching settings, and their sections only.
   await page.key(",", "Comma", 188, CTRL);
@@ -117,9 +124,13 @@ export default async function (page, { dir, shots }) {
   assert.deepEqual(await page.eval(shownSettings), ["Language"]);
   assert.equal(await page.eval(`document.querySelectorAll('.settings-nav button').length`), 1);
   // An action's name finds the shortcuts, filtered to it.
+  // Panels the search leaves out are hidden.
+  const shortcutsShown = `document.querySelector('.modal.settings .shortcuts')?.closest('section').hidden === false`;
+  assert.equal(await page.eval(shortcutsShown), false);
   await page.eval(setInput(".modal.settings .modal-search input", "reopen closed tab"));
-  await page.waitFor(`document.querySelector('.modal.settings .shortcuts') !== null`);
+  await page.waitFor(shortcutsShown);
   assert.equal(await page.eval(`${shownSettings}.length`), 0);
+  assert.equal(await page.eval(`document.querySelectorAll('.modal.settings .shortcuts tbody tr:not(.shortcuts-scope)').length`), 1);
   await page.eval(setInput(".modal.settings .modal-search input", "zzzz"));
   await page.waitFor(`document.querySelector('.settings-none') !== null`);
   if (shots) await page.screenshot(join(shots, "polish-settings.png"));

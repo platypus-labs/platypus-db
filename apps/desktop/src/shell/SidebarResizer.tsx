@@ -1,25 +1,33 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getStored, setStored } from "../settings";
 import { t } from "../i18n";
 
 /** Where the width of the connections column is kept, in pixels. */
 const KEY = "layout.sidebar_width";
+/** Also the fallback of `--sidebar-width` in shell.css. */
 const DEFAULT = 260;
 const MIN = 180;
 const STEP = 16;
 
-/** Wide enough to read, and leaving room for the work. */
+/** The widest the column may be: room is left for the work. */
+const maxWidth = () => Math.max(MIN, Math.min(640, window.innerWidth - 420));
+
 function clamp(width: number): number {
-  const max = Math.max(MIN, Math.min(640, window.innerWidth - 420));
-  return Math.round(Math.max(MIN, Math.min(max, width)));
+  return Math.round(Math.max(MIN, Math.min(maxWidth(), width)));
 }
 
-/** The width of the connections column: the one saved, else the default. */
+/** The width of the connections column: the one saved, else the default; narrowed when
+ *  the window gets too small for it. */
 export function useSidebarWidth(): [number, (width: number) => void] {
   const [width, setWidth] = useState(() => {
     const saved = getStored(KEY);
     return typeof saved === "number" ? clamp(saved) : DEFAULT;
   });
+  useEffect(() => {
+    const onResize = () => setWidth((w) => clamp(w));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   return [width, (w) => setWidth(clamp(w))];
 }
 
@@ -34,23 +42,33 @@ export function SidebarResizer({ width, onResize }: { width: number; onResize: (
     save(next);
   };
 
+  /** While dragging only the shell's variable changes, so the app is not rendered again at
+   *  every move; the width is set and saved once, at the end. */
   function start(e: React.PointerEvent<HTMLDivElement>) {
     if (e.button !== 0) return;
     e.preventDefault();
+    const handle = e.currentTarget;
+    const shell = handle.closest<HTMLElement>(".shell");
     const startX = e.clientX;
     let last = width;
+    handle.setPointerCapture(e.pointerId);
     const onMove = (ev: PointerEvent) => {
       last = clamp(width + ev.clientX - startX);
-      onResize(last);
+      shell?.style.setProperty("--sidebar-width", `${last}px`);
     };
-    const onUp = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+    // Released, cancelled by the system, or the capture lost (e.g. the window left).
+    const onEnd = () => {
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onEnd);
+      handle.removeEventListener("pointercancel", onEnd);
+      handle.removeEventListener("lostpointercapture", onEnd);
       setDragging(false);
-      save(last);
+      if (last !== width) resizeAndSave(last);
     };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onEnd);
+    handle.addEventListener("pointercancel", onEnd);
+    handle.addEventListener("lostpointercapture", onEnd);
     setDragging(true);
   }
 
@@ -68,6 +86,8 @@ export function SidebarResizer({ width, onResize }: { width: number; onResize: (
       aria-orientation="vertical"
       aria-label={t("Resize the connections")}
       aria-valuenow={width}
+      aria-valuemin={MIN}
+      aria-valuemax={maxWidth()}
       tabIndex={0}
       title={t("Drag to resize, double-click to reset")}
       onPointerDown={start}

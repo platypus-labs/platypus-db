@@ -60,12 +60,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     if (needle && !found(needle, def.section) && !settingFound(needle, def)) continue;
     sections.set(def.section, [...(sections.get(def.section) ?? []), def]);
   }
-  // A panel found by its title shows whole; one found by its content, filtered.
-  const panels = PANELS.flatMap((p) => {
-    if (!needle || found(needle, p.title, p.keywords)) return [{ ...p, search: "" }];
-    return p.contains?.(needle) ? [{ ...p, search: needle }] : [];
+  // A panel found by its title shows whole; one found by its content, filtered. The others
+  // are hidden, not unmounted: they keep what was typed in them and don't load again.
+  const panels = PANELS.map((p) => {
+    if (!needle || found(needle, p.title, p.keywords)) return { ...p, shown: true, search: "" };
+    return { ...p, shown: !!p.contains?.(needle), search: needle };
   });
-  const titles = [...sections.keys(), ...panels.map((p) => p.title)];
+  const titles = [...sections.keys(), ...panels.filter((p) => p.shown).map((p) => p.title)];
   const save = (def: SettingDef<Value>, value: Value | null) => {
     setError(null);
     setSetting(def, value).catch((e: unknown) => setError(`${t(def.label)}: ${toCommandError(e).message}`));
@@ -127,7 +128,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               </section>
             ))}
             {panels.map((p) => (
-              <section key={p.title} data-section={p.title}>
+              <section key={p.title} data-section={p.title} hidden={!p.shown}>
                 <h3>{t(p.title)}</h3>
                 {p.render(p.search)}
               </section>
