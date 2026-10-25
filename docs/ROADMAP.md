@@ -532,6 +532,9 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | Benchmark affiancato con DBeaver, aggiornando `BENCHMARKS.md` | P2 |
 | Benchmark in CI con soglie (avvio, memoria, decode) per bloccare le regressioni | P2 |
 | Crash report opt-in e log su file con rotazione | P2 |
+| **Un solo eseguibile anche per gli agenti**: l'app fa da server MCP con un'opzione (`platypus-db --mcp`) invece di un secondo binario `platypus-mcp` che ricontiene tutti i driver (circa 50-60 MB in meno nell'installer) | P2 |
+| **DuckDB scaricato al primo uso** invece che incluso nell'installer (circa 35 MB): chi non apre file CSV, Parquet o DuckDB non lo scarica mai | P2 |
+| Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
 | Distribuzione: winget, Homebrew cask, Flatpak, AUR | P3 |
 | Sito e documentazione utente | P3 |
 
