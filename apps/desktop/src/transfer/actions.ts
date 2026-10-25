@@ -1,23 +1,52 @@
-// Import of data files from the navigator: into an existing table, or into a new one.
+// Transfers from the navigator: data files into an existing or a new table, a table to another
+// database, tables to files.
 import { createElement } from "react";
 import { registerAction } from "../actions";
 import type { SavedConnection, SchemaMeta } from "../api";
+import { isRelation } from "../components/Navigator";
 import { workbench } from "../workbench";
 import { ExportTablesDialog } from "./ExportTablesDialog";
-import { ImportDataDialog } from "./ImportDataDialog";
+import { ImportDataDialog, type TableAt } from "./ImportDataDialog";
+
+const at = (connection: SavedConnection, database: string | null, schema: SchemaMeta, table: string | null): TableAt => ({
+  connection,
+  database,
+  schema: schema.name,
+  currentSchema: schema.current,
+  table,
+});
 
 function openImport(connection: SavedConnection, database: string | null, schema: SchemaMeta, table: string | null) {
   workbench().openDialog((close) =>
-    createElement(ImportDataDialog, {
-      connection,
-      database,
-      schema: schema.name,
-      currentSchema: schema.current,
-      table,
-      onClose: close,
-    }),
+    createElement(ImportDataDialog, { target: at(connection, database, schema, table), onClose: close }),
   );
 }
+
+registerAction({
+  id: "object.transfer",
+  scope: "navigator.object",
+  title: "Copy to a database…",
+  group: "manage",
+  order: 72,
+  when: ({ object }) => isRelation(object.kind),
+  run: ({ connection, database, schema, object }) => {
+    // Another connection by default, in its current schema; else a copy next to the table.
+    const other = workbench()
+      .connections()
+      .find((c) => c.id !== connection.id);
+    const target: TableAt = other
+      ? { connection: other, database: null, schema: "", currentSchema: true, table: null }
+      : at(connection, database, schema, null);
+    workbench().openDialog((close) =>
+      createElement(ImportDataDialog, {
+        source: { ...at(connection, database, schema, object.name), table: object.name },
+        target,
+        newTable: other ? object.name : `${object.name}_copy`,
+        onClose: close,
+      }),
+    );
+  },
+});
 
 registerAction({
   id: "object.import_data",

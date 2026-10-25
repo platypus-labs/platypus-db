@@ -750,6 +750,16 @@ export const api = {
    *  would take in the session's database. */
   previewImport: (sessionId: number, path: string, table: string | null) =>
     invoke<ImportPreview>("preview_import", { sessionId, path, table }),
+  /** The first rows of a table of the source session, with the column types they would take in
+   *  the target session's database. */
+  previewTransfer: (sourceSessionId: number, schema: string | null, table: string, targetSessionId: number) =>
+    invoke<ImportPreview>("preview_transfer", { sourceSessionId, schema, table, targetSessionId }),
+  /** Copies a table between the databases of two sessions; cancelled with `cancelExport`. */
+  transferTable: (sourceSessionId: number, targetSessionId: number, plan: ImportPlan, onEvent: (e: ExportEvent) => void) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("transfer_table", { sourceSessionId, targetSessionId, plan, onEvent: channel });
+  },
   /** Imports a data file into the session's database on its own connection; cancelled with
    *  `cancelExport`. */
   importFile: (sessionId: number, path: string, plan: ImportPlan, onEvent: (e: ExportEvent) => void) => {
