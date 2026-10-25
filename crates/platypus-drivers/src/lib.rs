@@ -3,6 +3,7 @@
 //! `<data>/drivers/adbc/<name>/<version>/` with a `driver.toml` that names the library.
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +11,19 @@ mod install;
 mod registry;
 
 pub use registry::{Package, Registry};
+
+static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Sets the folder that holds the app's data, where drivers are kept; once, at start.
+pub fn set_data_dir(dir: &Path) {
+    let _ = DATA_DIR.set(dir.to_owned());
+}
+
+/// The folder set by [`set_data_dir`].
+#[must_use]
+pub fn data_dir() -> Option<&'static Path> {
+    DATA_DIR.get().map(PathBuf::as_path)
+}
 
 /// The registry `dbc` installs from.
 pub const PUBLIC_REGISTRY: &str = "https://dbc-cdn.columnar.tech";

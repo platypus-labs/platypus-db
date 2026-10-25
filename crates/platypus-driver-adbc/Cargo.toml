@@ -1,0 +1,36 @@
+[package]
+name = "platypus-driver-adbc"
+description = "PlatypusDB driver for databases reached through an ADBC driver loaded at run time"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+adbc_core = "0.24"
+adbc_driver_manager = "0.24"
+# ADBC 0.24 builds on arrow 59; the rest of the workspace is on arrow 60. Batches cross over
+# as Arrow IPC, which needs no unsafe code.
+arrow-array-59 = { package = "arrow-array", version = "59" }
+arrow-ipc-59 = { package = "arrow-ipc", version = "59" }
+arrow-schema-59 = { package = "arrow-schema", version = "59" }
+arrow-array.workspace = true
+arrow-ipc.workspace = true
+arrow-cast.workspace = true
+arrow-schema.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+percent-encoding.workspace = true
+platypus-core.workspace = true
+platypus-drivers.workspace = true
+platypus-sql.workspace = true
+tokio = { workspace = true, features = ["sync", "rt"] }
+
+[dev-dependencies]
+arrow-json.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[lints]
+workspace = true
