@@ -63,10 +63,10 @@ async fn trino() -> Option<Box<dyn Connection>> {
     }
     let dir = trino_driver().await?;
     let mut config = ConnectionConfig::new(DriverKind::Trino);
-    config.host = TRINO.0.to_owned();
+    TRINO.0.clone_into(&mut config.host);
     config.port = Some(TRINO.1);
-    config.user = "platypus".to_owned();
-    config.database = "memory".to_owned();
+    "platypus".clone_into(&mut config.user);
+    "memory".clone_into(&mut config.database);
     config.ssl_mode = SslMode::Disable;
     config
         .options
