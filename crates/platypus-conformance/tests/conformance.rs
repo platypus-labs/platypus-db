@@ -1750,7 +1750,7 @@ async fn sets_the_session_up_after_connecting() {
 /// that leaves that table as it was.
 #[tokio::test]
 async fn imports_data_files() {
-    use platypus_export::import::{ImportColumn, ImportPlan, import};
+    use platypus_export::import::{ImportColumn, ImportError, ImportPlan, import};
     use platypus_sql::Dialect;
 
     let dir = tempfile::tempdir().unwrap();
@@ -1798,9 +1798,12 @@ async fn imports_data_files() {
                 .collect(),
         };
         let mut seen = 0;
-        let rows = import(&*source, &*conn, d, &plan, |n| seen = n)
-            .await
-            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let rows = import(&*source, &*conn, d, &plan, |n| {
+            seen = n;
+            true
+        })
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         assert_eq!((rows, seen), (3, 3), "{}", b.name);
         let check = format!(
             "SELECT COUNT(*), SUM(id), MAX(name), SUM(price) FROM {table} WHERE name IS NOT NULL OR id = 2"
@@ -1814,16 +1817,33 @@ async fn imports_data_files() {
         let price: f64 = values[3].as_deref().unwrap().parse().unwrap();
         assert!((price - 109.75).abs() < 1e-9, "{}: {price}", b.name);
 
+        // A cancelled import into a new table leaves no table, MySQL's committed DDL included.
+        let mut cancelled = plan.clone();
+        cancelled.table = "conf_import_cancel".to_owned();
+        let result = import(&*source, &*conn, d, &cancelled, |_| false).await;
+        assert!(
+            matches!(result, Err(ImportError::Cancelled)),
+            "{}: {result:?}",
+            b.name
+        );
+        let gone = d.qualified(Some(&b.schema), "conf_import_cancel");
+        assert!(
+            run(&*conn, &format!("SELECT * FROM {gone}")).await.is_err(),
+            "{}",
+            b.name
+        );
+        conn.rollback().await.unwrap();
+
         // The table exists: creating it again fails, and the rows stay.
         assert!(
-            import(&*source, &*conn, d, &plan, |_| {}).await.is_err(),
+            import(&*source, &*conn, d, &plan, |_| true).await.is_err(),
             "{}",
             b.name
         );
         plan.create = false;
         plan.columns[1].target = "missing".to_owned();
         assert!(
-            import(&*source, &*conn, d, &plan, |_| {}).await.is_err(),
+            import(&*source, &*conn, d, &plan, |_| true).await.is_err(),
             "{}",
             b.name
         );

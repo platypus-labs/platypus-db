@@ -49,6 +49,8 @@ pub enum ImportError {
     Arrow(#[from] ArrowError),
     #[error("{0}")]
     Plan(String),
+    #[error("the import was cancelled")]
+    Cancelled,
 }
 
 impl ImportPlan {
@@ -164,14 +166,14 @@ async fn exec(conn: &dyn Connection, sql: &str) -> Result<(), platypus_core::Err
 }
 
 /// Copies the rows of `plan` from `source`, a DuckDB connection on the file, to `target`, a
-/// connection of its own in `dialect`; `progress` gets the rows written so far. Returns how
-/// many rows were imported.
+/// connection of its own in `dialect`; `progress` gets the rows written so far and returns
+/// false to stop, which rolls back like a failure. Returns how many rows were imported.
 pub async fn import(
     source: &dyn Connection,
     target: &dyn Connection,
     dialect: Dialect,
     plan: &ImportPlan,
-    mut progress: impl FnMut(u64),
+    mut progress: impl FnMut(u64) -> bool,
 ) -> Result<u64, ImportError> {
     if plan.columns.is_empty() {
         return Err(ImportError::Plan("no column to import".to_owned()));
@@ -199,7 +201,9 @@ pub async fn import(
                 exec(target, &sql).await?;
             }
             written += batch.num_rows() as u64;
-            progress(written);
+            if !progress(written) {
+                return Err(ImportError::Cancelled);
+            }
         }
         target.commit().await?;
         Ok(written)

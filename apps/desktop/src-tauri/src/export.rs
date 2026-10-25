@@ -50,6 +50,9 @@ pub struct Export {
     task: Mutex<Option<JoinHandle<()>>>,
     /// Set once a final event was sent.
     over: AtomicBool,
+    /// Cancelling asks the work to stop instead of aborting it, so that it can clean up.
+    cooperative: bool,
+    stopping: AtomicBool,
 }
 
 impl std::fmt::Debug for Export {
@@ -81,15 +84,17 @@ impl Export {
         options: ExportOptions,
         events: Channel<ExportEvent>,
     ) -> Arc<Self> {
-        Self::spawn(events, |task| async move {
+        Self::spawn(events, false, |task| async move {
             task.run(&config, &label, &log, &sql, path, options).await
         })
     }
 
     /// Runs `work`, a transfer of rows that reports progress on the job's events and returns
-    /// how many rows it moved, reporting its outcome when it ends.
+    /// how many rows it moved, reporting its outcome when it ends. `cooperative` work checks
+    /// [`Self::stopping`] and returns an error once it has stopped and cleaned up.
     pub fn spawn<F>(
         events: Channel<ExportEvent>,
+        cooperative: bool,
         work: impl FnOnce(Arc<Self>) -> F + Send + 'static,
     ) -> Arc<Self>
     where
@@ -99,6 +104,8 @@ impl Export {
             events,
             task: Mutex::new(None),
             over: AtomicBool::new(false),
+            cooperative,
+            stopping: AtomicBool::new(false),
         });
         let task = Arc::clone(&export);
         let handle = tauri::async_runtime::spawn(async move {
@@ -108,12 +115,18 @@ impl Export {
                     rows,
                     elapsed_ms: millis(started),
                 },
+                Err(_) if task.stopping() => ExportEvent::Cancelled,
                 Err(error) => ExportEvent::Failed { error },
             };
             task.finish(event);
         });
         *lock(&export.task) = Some(handle);
         export
+    }
+
+    /// Whether the job was cancelled.
+    pub fn stopping(&self) -> bool {
+        self.stopping.load(Ordering::Acquire)
     }
 
     /// Reports `rows` moved so far.
@@ -202,6 +215,10 @@ impl Export {
 
     /// Stops the job: an export deletes its partial file.
     pub fn cancel(&self) {
+        if self.cooperative {
+            self.stopping.store(true, Ordering::Release);
+            return;
+        }
         if let Some(task) = lock(&self.task).take() {
             task.abort();
         }

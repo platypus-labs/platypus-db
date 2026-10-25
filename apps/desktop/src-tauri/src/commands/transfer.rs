@@ -129,7 +129,7 @@ pub fn import_file(
 ) -> CommandResult<u64> {
     let session = state.session(session_id)?;
     let log = Arc::clone(&state.query_log);
-    let job = Export::spawn(on_event, move |job| async move {
+    let job = Export::spawn(on_event, true, move |job| async move {
         let file = open_file(&path).await?;
         let target = Logged::wrap(
             Arc::from(super::connect(&session.config).await?),
@@ -137,12 +137,15 @@ pub fn import_file(
             &session.label,
         );
         let dialect = Dialect::from(session.config.driver);
-        import(&*file, &*target, dialect, &plan, |rows| job.progress(rows))
-            .await
-            .map_err(|e| match e {
-                ImportError::Database(e) => e.into(),
-                e => CommandError::new("import", e.to_string()),
-            })
+        import(&*file, &*target, dialect, &plan, |rows| {
+            job.progress(rows);
+            !job.stopping()
+        })
+        .await
+        .map_err(|e| match e {
+            ImportError::Database(e) => e.into(),
+            e => CommandError::new("import", e.to_string()),
+        })
     });
     let id = state.next_id();
     lock(&state.exports).insert(id, job);
