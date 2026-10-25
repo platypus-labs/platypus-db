@@ -86,9 +86,14 @@ function DriverPopup({ driver, onDone }: Props) {
   );
 }
 
+/** The popups open, by driver: sessions opened at once share one. */
+const asking = new Map<DriverKind, Promise<boolean>>();
+
 /** Shows the popup for `driver`; resolves `true` once its driver is installed. */
 export function askDriver(driver: DriverKind): Promise<boolean> {
-  return new Promise((resolve) =>
+  const open = asking.get(driver);
+  if (open) return open;
+  const answer = new Promise<boolean>((resolve) =>
     workbench().openDialog((close) =>
       createElement(DriverPopup, {
         driver,
@@ -98,7 +103,9 @@ export function askDriver(driver: DriverKind): Promise<boolean> {
         },
       }),
     ),
-  );
+  ).finally(() => asking.delete(driver));
+  asking.set(driver, answer);
+  return answer;
 }
 
 /** Runs `run`; when it fails for want of a driver, offers to download it and runs it again. */
