@@ -35,6 +35,13 @@ pub struct Running {
     pub complete: bool,
 }
 
+impl Running {
+    /// Releases the session once the statement is over on the server: nothing to stop.
+    pub fn finish(mut self) {
+        self.complete = true;
+    }
+}
+
 impl Drop for Running {
     fn drop(&mut self) {
         if let Ok(mut current) = self.current.lock() {
@@ -96,8 +103,8 @@ impl Decoder {
 
     /// The statement is over on the server: nothing to stop.
     fn release(&mut self) {
-        if let Some(mut running) = self.running.take() {
-            running.complete = true;
+        if let Some(running) = self.running.take() {
+            running.finish();
         }
     }
 
@@ -204,9 +211,7 @@ pub async fn text_rows(
         .try_collect()
         .await
         .map_err(transport)?;
-    let mut running = running;
-    running.complete = true;
-    drop(running);
+    running.finish();
     let text = String::from_utf8_lossy(&body.concat()).into_owned();
     let schema: SchemaRef = Arc::new(Schema::new(vec![Field::new(format, DataType::Utf8, false)]));
     let lines = StringArray::from_iter_values(text.lines());

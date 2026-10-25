@@ -81,10 +81,13 @@ const SCHEMES: Record<string, DriverKind> = {
   "libsql:": "libsql",
 };
 
+/** The form fields of a pasted URL, and the password it carries. */
+type ParsedUrl = { conn: SavedConnection; password: string };
+
 /** Turns a `mongodb://` or `mongodb+srv://` connection string into form fields, as
  *  `ConnectionConfig::from_mongo_url` does: several hosts stay in the host field, and the
  *  options follow the database after a `?`. */
-function applyMongoUrl(conn: SavedConnection, input: string): { conn: SavedConnection; password: string } | null {
+function applyMongoUrl(conn: SavedConnection, input: string): ParsedUrl | null {
   const match = /^mongodb(\+srv)?:\/\/([^/?]*)\/?([^?]*)\??(.*)$/.exec(input.trim());
   if (!match) return null;
   const [, srv, authority = "", path = "", query = ""] = match;
@@ -121,7 +124,7 @@ function applyMongoUrl(conn: SavedConnection, input: string): { conn: SavedConne
 
 /** Turns a `postgres://`, `mysql://`, `sqlserver://`, `clickhouse://`, `libsql://` or `mongodb://` URL
  *  into form fields. */
-function applyUrl(conn: SavedConnection, input: string): { conn: SavedConnection; password: string } | null {
+function applyUrl(conn: SavedConnection, input: string): ParsedUrl | null {
   const mongo = applyMongoUrl(conn, input);
   if (mongo) return mongo;
   let url: URL;

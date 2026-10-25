@@ -142,7 +142,7 @@ impl MongoConnection {
                         .await,
                 )?;
                 let docs = documents(reply.get_array("databases").ok());
-                docs_result(&docs, &["name", "sizeOnDisk", "empty"])
+                docs_result(docs, &["name", "sizeOnDisk", "empty"])
             }
             Command::ShowCollections => {
                 let names = self.track(self.db(None).list_collection_names().await)?;
@@ -182,8 +182,8 @@ impl MongoConnection {
                     .ok()
                     .and_then(|c| c.get_array("firstBatch").ok());
                 match first_batch {
-                    Some(items) => docs_result(&documents(Some(items)), &[]),
-                    None => docs_result(&[reply], &[]),
+                    Some(items) => docs_result(documents(Some(items)), &[]),
+                    None => docs_result(vec![reply], &[]),
                 }
             }
             Command::CreateCollection { db, name, options } => {
@@ -238,25 +238,16 @@ impl MongoConnection {
                 if let Some(limit) = limit {
                     count = count.limit(limit);
                 }
-                let n = self.track(count.await)?;
-                docs_result(
-                    &[doc! { "count": i64::try_from(n).unwrap_or(i64::MAX) }],
-                    &[],
-                )
+                count_result(self.track(count.await)?)
             }
             CollectionOp::EstimatedDocumentCount => {
-                let n = self.track(coll.estimated_document_count().comment(comment).await)?;
-                docs_result(
-                    &[doc! { "count": i64::try_from(n).unwrap_or(i64::MAX) }],
-                    &[],
-                )
+                count_result(self.track(coll.estimated_document_count().comment(comment).await)?)
             }
             CollectionOp::Distinct { field, filter } => {
                 let values = self.track(coll.distinct(&field, filter).comment(comment).await)?;
                 let schema = docs::value_schema(&field, &values);
                 let rows: Vec<Document> = values.into_iter().map(|v| doc! { &field: v }).collect();
-                let batch = docs::to_batch(&schema, &rows)?;
-                Ok(rows_of(schema, vec![batch]))
+                batch_result(schema, &rows)
             }
             op @ (CollectionOp::InsertOne(_)
             | CollectionOp::InsertMany(_)
@@ -484,17 +475,19 @@ fn documents(items: Option<&Vec<Bson>>) -> Vec<Document> {
         .collect()
 }
 
-fn rows_of(schema: arrow_schema::SchemaRef, batches: Vec<arrow_array::RecordBatch>) -> ExecResult {
-    ExecResult::Rows(RecordBatchStream::new(
+/// Documents read at once, as a single batch of `schema`.
+fn batch_result(schema: arrow_schema::SchemaRef, docs: &[Document]) -> Result<ExecResult> {
+    let batch = docs::to_batch(&schema, docs)?;
+    Ok(ExecResult::Rows(RecordBatchStream::new(
         schema,
-        stream::iter(batches.into_iter().map(Ok)).boxed(),
-    ))
+        stream::iter([Ok(batch)]).boxed(),
+    )))
 }
 
 /// Rows of a few documents read at once; `fields` keeps only those fields when not empty.
-fn docs_result(docs: &[Document], fields: &[&str]) -> Result<ExecResult> {
+fn docs_result(docs: Vec<Document>, fields: &[&str]) -> Result<ExecResult> {
     let docs: Vec<Document> = if fields.is_empty() {
-        docs.to_vec()
+        docs
     } else {
         docs.iter()
             .map(|d| {
@@ -505,17 +498,24 @@ fn docs_result(docs: &[Document], fields: &[&str]) -> Result<ExecResult> {
             })
             .collect()
     };
-    let schema = docs::infer_schema(&docs);
-    let batch = docs::to_batch(&schema, &docs)?;
-    Ok(rows_of(schema, vec![batch]))
+    batch_result(docs::infer_schema(&docs), &docs)
+}
+
+/// A `{ count: n }` document.
+fn count_result(n: u64) -> Result<ExecResult> {
+    docs_result(
+        vec![doc! { "count": i64::try_from(n).unwrap_or(i64::MAX) }],
+        &[],
+    )
 }
 
 fn names_result(mut names: Vec<String>) -> Result<ExecResult> {
     names.sort();
     let docs: Vec<Document> = names.into_iter().map(|n| doc! { "name": n }).collect();
-    let schema = docs::value_schema("name", &[Bson::String(String::new())]);
-    let batch = docs::to_batch(&schema, &docs)?;
-    Ok(rows_of(schema, vec![batch]))
+    batch_result(
+        docs::value_schema("name", &[Bson::String(String::new())]),
+        &docs,
+    )
 }
 
 struct MongoCanceller {

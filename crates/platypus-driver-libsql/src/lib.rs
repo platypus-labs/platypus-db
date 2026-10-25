@@ -100,10 +100,11 @@ impl Connection for LibsqlConnection {
                 rows: result.affected_row_count,
             });
         }
-        let (schema, kinds, rows) = typed_rows(result, options.batch_size.max(1))?;
+        let batch_size = options.batch_size.max(1);
+        let (schema, kinds, rows) = typed_rows(result, batch_size)?;
         Ok(ExecResult::Rows(RecordBatchStream::new(
             Arc::clone(&schema),
-            batches(schema, kinds, rows, options.batch_size.max(1)).boxed(),
+            batches(schema, kinds, rows, batch_size).boxed(),
         )))
     }
 

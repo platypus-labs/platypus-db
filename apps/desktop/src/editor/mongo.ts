@@ -78,12 +78,15 @@ function collections(catalog: CompletionCatalog | null | undefined): Record<stri
   return catalog.schemas[catalog.default_schema] ?? {};
 }
 
-/** The collection named at the start of the statement around `pos`: `db.name.` or
+/** The collection named at the start of `text`, a statement: `db.name.` or
  *  `db.getCollection("name").`. */
 function statementCollection(text: string): string | null {
   const m = /db\s*\.\s*(?:getCollection\(\s*["'`]([^"'`]+)["'`]\s*\)|([A-Za-z_$][\w$]*))\s*\.\s*[A-Za-z]+\s*\(/.exec(text);
   return m ? (m[1] ?? m[2] ?? null) : null;
 }
+
+/** What completions stay valid for while the user types a name. */
+const IDENT = /^[\w$]*$/;
 
 function completeMongo(catalog: CompletionCatalog | null | undefined) {
   return (context: CompletionContext): CompletionResult | null => {
@@ -96,28 +99,27 @@ function completeMongo(catalog: CompletionCatalog | null | undefined) {
     // `db.` → collections and database methods.
     if (/(^|[^\w$.])db\s*\.\s*[\w$]*$/.test(before)) {
       const names = Object.keys(colls).map((name): Completion => ({ label: name, type: "class", boost: 1 }));
-      return { from, options: [...names, ...DB_METHODS], validFor: /^[\w$]*$/ };
+      return { from, options: [...names, ...DB_METHODS], validFor: IDENT };
     }
     // `db.name.` → collection methods; `….find(…).` → cursor methods.
     if (/db\s*\.\s*(?:getCollection\([^)]*\)|[\w$]+)\s*\.\s*[\w$]*$/.test(before)) {
-      return { from, options: COLLECTION_METHODS, validFor: /^[\w$]*$/ };
+      return { from, options: COLLECTION_METHODS, validFor: IDENT };
     }
     if (/\)\s*\.\s*[\w$]*$/.test(before)) {
-      return { from, options: CURSOR_METHODS, validFor: /^[\w$]*$/ };
+      return { from, options: CURSOR_METHODS, validFor: IDENT };
     }
     // A `$` operator, or a field of the statement's collection where a key goes.
     if (/[{,]\s*["']?\$?[\w$]*$/.test(before)) {
-      const start = context.state.doc.sliceString(Math.max(0, context.pos - 2000), context.pos);
-      const statement = start.slice(start.lastIndexOf("db.") >= 0 ? start.lastIndexOf("db.") : 0);
-      const coll = statementCollection(statement);
-      const fields = (coll ? colls[coll] : undefined) ?? [];
       const dollar = context.matchBefore(/\$[\w$]*/);
       if (dollar) return { from: dollar.from, options: OPERATORS, validFor: /^\$[\w$]*$/ };
       if (!word || (word.from === word.to && !context.explicit)) return null;
+      const start = context.state.doc.sliceString(Math.max(0, context.pos - 2000), context.pos);
+      const coll = statementCollection(start.slice(Math.max(0, start.lastIndexOf("db."))));
+      const fields = (coll ? colls[coll] : undefined) ?? [];
       return {
         from,
         options: fields.map((f): Completion => ({ label: f, type: "property" })),
-        validFor: /^[\w$]*$/,
+        validFor: IDENT,
       };
     }
     // The start of a statement.

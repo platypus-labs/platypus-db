@@ -11,7 +11,7 @@ use platypus_core::{
 };
 
 use crate::MongoConnection;
-use crate::literal::{integer, to_shell};
+use crate::literal::{integer, quote, to_shell};
 
 /// Documents read to guess the fields of a collection.
 const SAMPLE: i32 = 100;
@@ -200,21 +200,21 @@ pub fn index_name(keys: &Document) -> String {
         .join("_")
 }
 
-fn entry_of<'a>(entries: &'a [Document], name: &str) -> Result<&'a Document> {
-    entries
-        .iter()
-        .find(|c| c.get_str("name") == Ok(name))
-        .ok_or_else(|| Error::Other(format!("collection `{name}` not found")))
+/// The `listCollections` entry of a collection or view.
+async fn entry(conn: &MongoConnection, object: &ObjectRef<'_>) -> Result<Document> {
+    collections(conn, object.schema)
+        .await?
+        .into_iter()
+        .find(|c| c.get_str("name") == Ok(object.name))
+        .ok_or_else(|| Error::Other(format!("collection `{}` not found", object.name)))
 }
 
 pub async fn object_ddl(conn: &MongoConnection, object: &ObjectRef<'_>) -> Result<String> {
-    let entries = collections(conn, object.schema).await?;
-    let entry = entry_of(&entries, object.name)?;
-    let name = to_shell(&Bson::String(object.name.to_owned()));
+    let entry = entry(conn, object).await?;
+    let name = quote(object.name);
     let mut options = entry.get_document("options").cloned().unwrap_or_default();
     let mut out = String::new();
-    if kind_of(entry) == ObjectKind::View {
-        let source = options.get_str("viewOn").unwrap_or_default().to_owned();
+    if kind_of(&entry) == ObjectKind::View {
         let pipeline = options
             .get("pipeline")
             .cloned()
@@ -222,7 +222,7 @@ pub async fn object_ddl(conn: &MongoConnection, object: &ObjectRef<'_>) -> Resul
         let _ = writeln!(
             out,
             "db.createView({name}, {}, {});",
-            to_shell(&Bson::String(source)),
+            quote(options.get_str("viewOn").unwrap_or_default()),
             to_shell(&pipeline)
         );
         return Ok(out);
@@ -271,8 +271,7 @@ pub async fn object_properties(
     conn: &MongoConnection,
     object: &ObjectRef<'_>,
 ) -> Result<Vec<Property>> {
-    let entries = collections(conn, object.schema).await?;
-    let entry = entry_of(&entries, object.name)?;
+    let entry = entry(conn, object).await?;
     let options = entry.get_document("options").cloned().unwrap_or_default();
     let mut out = vec![Property::new(
         "Type",

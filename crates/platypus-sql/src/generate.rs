@@ -93,21 +93,13 @@ impl Dialect {
             .filter(|(_, c)| !keys.contains(c))
             .map(|(q, _)| format!("{q} = ?"))
             .collect();
-        if self == Self::ClickHouse {
-            return format!(
-                "ALTER TABLE {}
-UPDATE {}
-WHERE {};",
-                self.object(table),
-                set.join(
-                    ",
-    "
-                ),
-                self.key_filter(columns, keys)
-            );
-        }
+        let (head, set_kw) = if self == Self::ClickHouse {
+            ("ALTER TABLE", "UPDATE")
+        } else {
+            ("UPDATE", "SET")
+        };
         format!(
-            "UPDATE {}\nSET {}\nWHERE {};",
+            "{head} {}\n{set_kw} {}\nWHERE {};",
             self.object(table),
             set.join(",\n    "),
             self.key_filter(columns, keys)
@@ -330,21 +322,18 @@ WHERE {};",
                 _ => None,
             },
             // `RENAME TABLE` also moves views; dictionaries have their own statement.
-            Self::ClickHouse => match kind {
-                ObjectKind::Table | ObjectKind::View | ObjectKind::MaterializedView => {
-                    Some(format!(
-                        "RENAME TABLE {} TO {};",
-                        self.object(o),
-                        self.qualified(o.schema, new_name)
-                    ))
-                }
-                ObjectKind::Dictionary => Some(format!(
-                    "RENAME DICTIONARY {} TO {};",
+            Self::ClickHouse => {
+                let what = match kind {
+                    ObjectKind::Table | ObjectKind::View | ObjectKind::MaterializedView => "TABLE",
+                    ObjectKind::Dictionary => "DICTIONARY",
+                    _ => return None,
+                };
+                Some(format!(
+                    "RENAME {what} {} TO {};",
                     self.object(o),
                     self.qualified(o.schema, new_name)
-                )),
-                _ => None,
-            },
+                ))
+            }
             // `sp_rename` keeps the schema; it does not rewrite the source of routines.
             Self::SqlServer => matches!(
                 kind,

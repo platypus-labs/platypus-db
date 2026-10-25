@@ -283,8 +283,7 @@ impl<'a> Reader<'a> {
         if matches!(self.peek(), Some('-' | '+')) {
             self.pos += 1;
         }
-        if let Some(word) = self.rest().strip_prefix("Infinity") {
-            let _ = word;
+        if self.rest().starts_with("Infinity") {
             self.pos += "Infinity".len();
             let negative = self.src[start..].starts_with('-');
             return Ok(Bson::Double(if negative {
@@ -557,10 +556,15 @@ pub fn resolve_extended(value: Bson) -> Bson {
     }
 }
 
+/// A string literal as mongosh reads it back: JSON's double-quoted string.
+#[must_use]
+pub fn quote(s: &str) -> String {
+    serde_json::Value::String(s.to_owned()).to_string()
+}
+
 /// A value written as mongosh reads it back: `{ a: 1, "b-c": ObjectId("…") }`.
 #[must_use]
 pub fn to_shell(value: &Bson) -> String {
-    let quote = |s: &str| serde_json::Value::String(s.to_owned()).to_string();
     match value {
         Bson::Document(doc) => {
             if doc.is_empty() {

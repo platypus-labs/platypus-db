@@ -109,7 +109,7 @@ impl ClickHouseConnection {
         if let Ok(mut current) = self.current.lock() {
             *current = Some(query_id.clone());
         }
-        let mut running = Running {
+        let running = Running {
             _guard: guard,
             current: Arc::clone(&self.current),
             http: self.http.clone(),
@@ -123,7 +123,7 @@ impl ClickHouseConnection {
         let response = match self.http.send(sql, &params).await {
             Ok(response) => response,
             Err(e) => {
-                running.complete = true;
+                running.finish();
                 return Err(e);
             }
         };
@@ -132,7 +132,7 @@ impl ClickHouseConnection {
                 let rows = written_rows(response.headers());
                 // The body is empty; reading it ends the request.
                 let read = response.bytes().await.map_err(error::transport);
-                running.complete = true;
+                running.finish();
                 read?;
                 Ok(ExecResult::Affected { rows })
             }
@@ -144,9 +144,7 @@ impl ClickHouseConnection {
             )),
         }
     }
-}
 
-impl ClickHouseConnection {
     /// The declared column types of a query; empty for other statements, or when the
     /// query cannot be described (its own run then reports why).
     async fn describe(&self, sql: &str, params: &[(&str, &str)]) -> Vec<(String, String)> {

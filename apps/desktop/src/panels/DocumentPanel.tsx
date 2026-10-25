@@ -46,7 +46,7 @@ function wrapped(value: { [key: string]: Json }): string | null {
   const keys = Object.keys(value);
   if (keys.length !== 1) return null;
   const inner = value[keys[0]!];
-  const text = typeof inner === "string" ? JSON.stringify(inner) : JSON.stringify(inner);
+  const text = JSON.stringify(inner);
   switch (keys[0]) {
     case "$oid":
       return `ObjectId(${text})`;

@@ -4,7 +4,7 @@
 
 use std::ops::Range;
 
-use mongodb::bson::{Bson, Document};
+use mongodb::bson::{Bson, Document, doc};
 
 use crate::literal::{ParseError, ParseResult, Reader, integer, resolve_extended};
 
@@ -351,7 +351,7 @@ fn db_method(db: Option<String>, segment: Segment) -> ParseResult<Command> {
             let command = match args.next() {
                 Some(Bson::Document(d)) => d,
                 // `db.runCommand("ping")` is `{ ping: 1 }`.
-                Some(Bson::String(name)) => mongodb::bson::doc! { name: 1 },
+                Some(Bson::String(name)) => doc! { name: 1 },
                 _ => return err(offset, "runCommand() expects a command document"),
             };
             Command::RunCommand {
@@ -366,7 +366,7 @@ fn db_method(db: Option<String>, segment: Segment) -> ParseResult<Command> {
             let options = if view {
                 let source = args.string("the source collection")?;
                 let pipeline = args.docs("pipeline stages")?;
-                mongodb::bson::doc! { "viewOn": source, "pipeline": pipeline }
+                doc! { "viewOn": source, "pipeline": pipeline }
             } else {
                 args.opt_doc("the options")?
             };
@@ -374,15 +374,15 @@ fn db_method(db: Option<String>, segment: Segment) -> ParseResult<Command> {
         }
         "dropDatabase" => Command::RunCommand {
             db,
-            command: mongodb::bson::doc! { "dropDatabase": 1 },
+            command: doc! { "dropDatabase": 1 },
         },
         "stats" => Command::RunCommand {
             db,
-            command: mongodb::bson::doc! { "dbStats": 1 },
+            command: doc! { "dbStats": 1 },
         },
         "version" => Command::RunCommand {
             db,
-            command: mongodb::bson::doc! { "buildInfo": 1 },
+            command: doc! { "buildInfo": 1 },
         },
         name => return err(offset, format!("unknown method `db.{name}()`")),
     })
@@ -692,15 +692,11 @@ pub fn split(src: &str) -> Vec<Range<usize>> {
             }
             b'(' | b'[' | b'{' => depth += 1,
             b')' | b']' | b'}' => depth = depth.saturating_sub(1),
-            b';' if depth == 0 => {
-                push(&mut out, start, i);
-                start = i + 1;
-                last = b';';
-                i += 1;
-                continue;
-            }
-            b'\n'
-                if depth == 0 && !continues(&src[i + 1..]) && !src[start..i].trim().is_empty() =>
+            // A `;`, or a line break after a statement that the next line does not continue.
+            b';' | b'\n'
+                if depth == 0
+                    && (c == b';'
+                        || (!continues(&src[i + 1..]) && !src[start..i].trim().is_empty())) =>
             {
                 push(&mut out, start, i);
                 start = i + 1;

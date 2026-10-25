@@ -102,21 +102,24 @@ impl Kind {
         }
     }
 
+    /// The kind of that [`Self::name`]; [`Self::Mixed`] for the other types.
     fn from_name(name: &str) -> Self {
-        match name {
-            "bool" => Self::Bool,
-            "int" => Self::Int32,
-            "long" => Self::Int64,
-            "double" => Self::Double,
-            "string" => Self::String,
-            "objectId" => Self::ObjectId,
-            "date" => Self::Date,
-            "decimal" => Self::Decimal,
-            "binData" => Self::Binary,
-            "document" => Self::Document,
-            "array" => Self::Array,
-            _ => Self::Mixed,
-        }
+        [
+            Self::Bool,
+            Self::Int32,
+            Self::Int64,
+            Self::Double,
+            Self::String,
+            Self::ObjectId,
+            Self::Date,
+            Self::Decimal,
+            Self::Binary,
+            Self::Document,
+            Self::Array,
+        ]
+        .into_iter()
+        .find(|kind| kind.name() == name)
+        .unwrap_or(Self::Mixed)
     }
 }
 

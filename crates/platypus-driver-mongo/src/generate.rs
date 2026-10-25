@@ -4,7 +4,7 @@
 use mongodb::bson::{Bson, Document, doc};
 use platypus_core::ObjectKind;
 
-use crate::literal::to_shell;
+use crate::literal::{quote, to_shell};
 
 /// What to generate for a collection or view.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,7 +32,6 @@ fn plain(name: &str) -> bool {
 /// `getSiblingDB("db")` first when `db` is not the session's database.
 #[must_use]
 pub fn collection_ref(db: Option<&str>, name: &str) -> String {
-    let quote = |s: &str| to_shell(&Bson::String(s.to_owned()));
     let base = db.map_or_else(
         || "db".to_owned(),
         |d| format!("db.getSiblingDB({})", quote(d)),
@@ -86,10 +85,7 @@ pub fn statement(
         ),
         Statement::Delete => format!("{c}.deleteOne({id});"),
         Statement::Truncate => format!("{c}.deleteMany({{}});"),
-        Statement::Rename { new_name } => format!(
-            "{c}.renameCollection({});",
-            to_shell(&Bson::String((*new_name).to_owned()))
-        ),
+        Statement::Rename { new_name } => format!("{c}.renameCollection({});", quote(new_name)),
         Statement::Drop => return None,
     })
 }
