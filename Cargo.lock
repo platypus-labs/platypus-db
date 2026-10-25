@@ -4617,6 +4617,7 @@ dependencies = [
  "platypus-driver-pg",
  "platypus-driver-sqlite",
  "platypus-mcp",
+ "platypus-schema",
  "platypus-sql",
  "platypus-transfer",
  "tempfile",
@@ -4657,6 +4658,7 @@ dependencies = [
  "platypus-driver-pg",
  "platypus-driver-sqlite",
  "platypus-net",
+ "platypus-schema",
  "platypus-sql",
  "platypus-store",
  "platypus-transfer",
@@ -4801,6 +4803,15 @@ dependencies = [
  "russh",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "platypus-schema"
+version = "0.2.0"
+dependencies = [
+ "platypus-core",
+ "platypus-sql",
+ "serde",
 ]
 
 [[package]]

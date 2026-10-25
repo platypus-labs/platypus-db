@@ -2439,3 +2439,249 @@ async fn fills_tables_with_fake_rows() {
         drop_tables(&*conn, d, &b.schema, &tables).await;
     }
 }
+
+/// Runs the table editor's script from `old` to `new`, then reads the table back.
+async fn redesign(
+    b: &Backend,
+    conn: &dyn Connection,
+    old: Option<&platypus_schema::TableDesign>,
+    new: &platypus_schema::TableDesign,
+) -> platypus_schema::TableDesign {
+    let d = platypus_sql::Dialect::from(b.config.driver);
+    let script = platypus_schema::script(d, &b.schema, old, new)
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+    platypus_schema::apply(conn, &script)
+        .await
+        .unwrap_or_else(|e| {
+            panic!(
+                "{}: {}: {}\n{}",
+                b.name,
+                e.statement,
+                e.error,
+                script.text()
+            )
+        });
+    platypus_schema::load(conn, d, &b.schema, &new.name)
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name))
+}
+
+fn design_column(name: &str, data_type: &str, nullable: bool) -> platypus_schema::ColumnDesign {
+    platypus_schema::ColumnDesign {
+        name: name.to_owned(),
+        data_type: data_type.to_owned(),
+        nullable,
+        ..platypus_schema::ColumnDesign::default()
+    }
+}
+
+fn column_names(t: &platypus_schema::TableDesign) -> Vec<String> {
+    t.columns.iter().map(|c| c.name.clone()).collect()
+}
+
+/// `conf_design`: a key, a UNIQUE and a CHECK constraint, an index, and a comment where the
+/// database keeps one.
+fn design_parent(comments: bool) -> platypus_schema::TableDesign {
+    use platypus_schema::{
+        ColumnDesign, ConstraintDesign, ConstraintType, IndexDesign, TableDesign,
+    };
+
+    TableDesign {
+        name: "conf_design".to_owned(),
+        columns: vec![
+            ColumnDesign {
+                primary_key: true,
+                ..design_column("id", "INT", false)
+            },
+            design_column("code", "VARCHAR(20)", false),
+            ColumnDesign {
+                default: Some("0".to_owned()),
+                ..design_column("total", "DECIMAL(10,2)", true)
+            },
+            ColumnDesign {
+                comment: comments.then(|| "free text".to_owned()),
+                ..design_column("note", "VARCHAR(100)", true)
+            },
+        ],
+        indexes: vec![IndexDesign {
+            name: "conf_design_total".to_owned(),
+            columns: vec!["total".to_owned()],
+            ..IndexDesign::default()
+        }],
+        constraints: vec![
+            ConstraintDesign {
+                name: "conf_design_code".to_owned(),
+                columns: vec!["code".to_owned()],
+                ..ConstraintDesign::default()
+            },
+            ConstraintDesign {
+                name: "conf_design_positive".to_owned(),
+                kind: ConstraintType::Check,
+                check: "total >= 0".to_owned(),
+                ..ConstraintDesign::default()
+            },
+        ],
+        ..TableDesign::default()
+    }
+}
+
+/// A table created, altered in place and rebuilt by the table editor, with its rows kept.
+#[tokio::test]
+async fn edits_table_designs() {
+    use platypus_schema::{ColumnDesign, ConstraintType, IndexDesign};
+    use platypus_sql::Dialect;
+
+    let tables = ["conf_design".to_owned(), "conf_design_child".to_owned()];
+    for b in backends().await {
+        let conn = b.connect().await;
+        let d = Dialect::from(b.config.driver);
+        drop_tables(&*conn, d, &b.schema, &tables).await;
+        let comments = matches!(d, Dialect::Postgres | Dialect::MySql | Dialect::DuckDb);
+        let created = redesign(&b, &*conn, None, &design_parent(comments)).await;
+        assert_eq!(
+            column_names(&created),
+            ["id", "code", "total", "note"],
+            "{}",
+            b.name
+        );
+        assert!(created.columns[0].primary_key, "{}", b.name);
+        assert_eq!(created.indexes.len(), 1, "{}: {created:?}", b.name);
+        assert_eq!(created.constraints.len(), 2, "{}: {created:?}", b.name);
+        if comments {
+            assert_eq!(
+                created.columns[3].comment.as_deref(),
+                Some("free text"),
+                "{}",
+                b.name
+            );
+        }
+        let table = d.qualified(Some(&b.schema), "conf_design");
+        run(
+            &*conn,
+            &format!("INSERT INTO {table} (id, code, total, note) VALUES (1, 'a', 5, 'x')"),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+
+        // In place where the database can: a rename, a new type, NOT NULL, a new column
+        // and another index.
+        let mut altered = created.clone();
+        altered.columns[3].name = "remark".to_owned();
+        altered.columns[2].data_type = "DECIMAL(12,2)".to_owned();
+        altered.columns[2].nullable = false;
+        altered.columns.push(ColumnDesign {
+            default: Some("'new'".to_owned()),
+            ..design_column("status", "VARCHAR(10)", true)
+        });
+        altered.indexes = vec![IndexDesign {
+            name: "conf_design_status".to_owned(),
+            columns: vec!["status".to_owned()],
+            ..IndexDesign::default()
+        }];
+        let read = redesign(&b, &*conn, Some(&created), &altered).await;
+        assert_eq!(
+            column_names(&read),
+            ["id", "code", "total", "remark", "status"],
+            "{}",
+            b.name
+        );
+        assert!(!read.columns[2].nullable, "{}", b.name);
+        assert!(
+            read.columns[2].data_type.contains("12"),
+            "{}: {read:?}",
+            b.name
+        );
+        assert_eq!(read.indexes.len(), 1, "{}: {read:?}", b.name);
+        assert_eq!(read.indexes[0].name, "conf_design_status", "{}", b.name);
+        let rows = collect(&b, &*conn, &format!("SELECT remark FROM {table}")).await;
+        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("x"), "{}", b.name);
+
+        edit_child_design(&b, &*conn).await;
+
+        // What SQLite and DuckDB rebuild: a dropped column and a dropped CHECK.
+        let mut reduced = read.clone();
+        reduced.columns.retain(|c| c.name != "remark");
+        reduced
+            .constraints
+            .retain(|c| c.kind != ConstraintType::Check);
+        let read = redesign(&b, &*conn, Some(&read), &reduced).await;
+        assert_eq!(
+            column_names(&read),
+            ["id", "code", "total", "status"],
+            "{}",
+            b.name
+        );
+        assert_eq!(read.constraints.len(), 1, "{}: {read:?}", b.name);
+        assert!(read.columns[0].primary_key, "{}", b.name);
+        let rows = collect(&b, &*conn, &format!("SELECT code FROM {table}")).await;
+        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("a"), "{}", b.name);
+        drop_tables(&*conn, d, &b.schema, &tables).await;
+    }
+}
+
+/// A child of `conf_design` with a cascading foreign key, then the key changed, its column
+/// renamed and a CHECK added; dropped at the end.
+async fn edit_child_design(b: &Backend, conn: &dyn Connection) {
+    use platypus_schema::{
+        ColumnDesign, ConstraintDesign, ConstraintType, ForeignKeyDesign, TableDesign,
+    };
+    use platypus_sql::Dialect;
+
+    let d = Dialect::from(b.config.driver);
+    let actions = d != Dialect::DuckDb;
+    let child = TableDesign {
+        name: "conf_design_child".to_owned(),
+        columns: vec![
+            ColumnDesign {
+                primary_key: true,
+                ..design_column("id", "INT", false)
+            },
+            design_column("parent_id", "INT", true),
+        ],
+        foreign_keys: vec![ForeignKeyDesign {
+            name: "conf_design_parent".to_owned(),
+            columns: vec!["parent_id".to_owned()],
+            ref_schema: b.schema.clone(),
+            ref_table: "conf_design".to_owned(),
+            ref_columns: vec!["id".to_owned()],
+            on_delete: actions.then(|| "CASCADE".to_owned()),
+            ..ForeignKeyDesign::default()
+        }],
+        ..TableDesign::default()
+    };
+    let created = redesign(b, conn, None, &child).await;
+    assert_eq!(created.foreign_keys.len(), 1, "{}", b.name);
+    if actions {
+        assert_eq!(
+            created.foreign_keys[0].on_delete.as_deref(),
+            Some("CASCADE"),
+            "{}",
+            b.name
+        );
+    }
+    let table = d.qualified(Some(&b.schema), "conf_design_child");
+    run(
+        conn,
+        &format!("INSERT INTO {table} (id, parent_id) VALUES (10, 1)"),
+    )
+    .await
+    .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+    let mut changed = created.clone();
+    changed.foreign_keys[0].on_delete = None;
+    "owner_id".clone_into(&mut changed.columns[1].name);
+    changed.foreign_keys[0].columns = vec!["owner_id".to_owned()];
+    changed.constraints.push(ConstraintDesign {
+        name: "conf_design_child_id".to_owned(),
+        kind: ConstraintType::Check,
+        check: "id > 0".to_owned(),
+        ..ConstraintDesign::default()
+    });
+    let read = redesign(b, conn, Some(&created), &changed).await;
+    assert_eq!(column_names(&read), ["id", "owner_id"], "{}", b.name);
+    assert_eq!(read.foreign_keys[0].on_delete, None, "{}", b.name);
+    assert_eq!(read.foreign_keys[0].columns, ["owner_id"], "{}", b.name);
+    assert_eq!(read.constraints.len(), 1, "{}: {read:?}", b.name);
+    let rows = collect(b, conn, &format!("SELECT owner_id FROM {table}")).await;
+    assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("1"), "{}", b.name);
+    run(conn, &format!("DROP TABLE {table}")).await.unwrap();
+}
