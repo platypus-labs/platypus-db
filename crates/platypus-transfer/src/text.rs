@@ -20,6 +20,9 @@ const XLSX_MAX_ROWS: u32 = 1_048_576;
 /// Integers beyond this lose digits as Excel numbers, so they are written as text.
 const XLSX_MAX_EXACT: f64 = 9_007_199_254_740_992.0;
 
+/// Significant digits an Excel number keeps: decimals with more are written as text.
+const XLSX_DIGITS: usize = 15;
+
 pub struct TextSink {
     format: Format,
     names: Vec<String>,
@@ -247,6 +250,7 @@ fn xlsx_row(
     for ((c, kind), v) in (0u16..).zip(kinds).zip(row) {
         let Some(v) = v else { continue };
         let number = match kind {
+            ValueKind::Decimal if significant_digits(v) > XLSX_DIGITS => None,
             ValueKind::Integer | ValueKind::Float | ValueKind::Decimal => v
                 .parse::<f64>()
                 .ok()
@@ -260,4 +264,17 @@ fn xlsx_row(
         };
     }
     Ok(())
+}
+
+/// The significant digits of a decimal's text, e.g. 3 for `-0.0120`.
+fn significant_digits(v: &str) -> usize {
+    let v = if v.contains('.') {
+        v.trim_end_matches('0')
+    } else {
+        v
+    };
+    v.chars()
+        .filter(char::is_ascii_digit)
+        .skip_while(|&c| c == '0')
+        .count()
 }

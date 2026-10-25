@@ -580,6 +580,21 @@ export interface ExportOptions {
   compression?: Compression;
   /** A signed URL (S3, GCS) the finished file is also sent to. */
   upload_url?: string | null;
+  /** A bucket the finished file is also sent to, signed with its keys. */
+  bucket?: Bucket | null;
+}
+
+/** A bucket of S3 or a service with its API (GCS with HMAC keys, R2, MinIO), as `s3::Bucket`. */
+export interface Bucket {
+  /** e.g. `https://s3.eu-west-1.amazonaws.com`. */
+  endpoint: string;
+  /** `auto` for GCS and R2. */
+  region: string;
+  bucket: string;
+  /** The folder of the files in the bucket. */
+  prefix: string;
+  access_key: string;
+  secret_key: string;
 }
 
 export type Compression = "none" | "gzip" | "zstd";
@@ -791,6 +806,8 @@ export const api = {
     sourceSchema: string,
     targetSchema: string,
     tables: string[],
+    /** Also the schema's views, routines and triggers. */
+    objects: boolean,
     onEvent: (e: ExportEvent) => void,
   ) => {
     const channel = new Channel<ExportEvent>();
@@ -801,6 +818,7 @@ export const api = {
       sourceSchema,
       targetSchema,
       tables,
+      objects,
       onEvent: channel,
     });
   },
@@ -820,6 +838,8 @@ export const api = {
   },
   /** Saves the clipboard's text to a new `pasted.csv`; returns its path. */
   clipboardToFile: () => invoke<string>("clipboard_to_file"),
+  /** Deletes a file of `clipboardToFile`. */
+  discardPastedFile: (path: string) => invoke<void>("discard_pasted_file", { path }),
   /** The first rows of a table of the source session, with the column types they would take in
    *  the target session's database. */
   previewTransfer: (sourceSessionId: number, schema: string | null, table: string, targetSessionId: number) =>

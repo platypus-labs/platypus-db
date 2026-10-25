@@ -22,6 +22,7 @@ import "./tabs";
 import "./objects/actions";
 import "./transfer/actions";
 import "./querylog/actions";
+import { setAnswer } from "./testAnswers";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { dbKey, provideWorkbench, workbench } from "./workbench";
 import { Icon, type IconName } from "./ui/Icon";
@@ -116,6 +117,8 @@ export function App() {
           switchProject: (id: string | null) => shell.current.switchProject(id),
           // What a file dropped on the window does; CDP cannot drop files.
           openDroppedFile: (path: string) => openDroppedFile(path),
+          // The folder picker and the clipboard.
+          answer: setAnswer,
         };
       }
     }, console.error);

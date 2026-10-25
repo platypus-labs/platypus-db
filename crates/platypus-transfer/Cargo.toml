@@ -1,6 +1,6 @@
 [package]
-name = "platypus-export"
-description = "Streaming export of results (CSV, JSON, NDJSON, Parquet) and import of data files into tables for PlatypusDB"
+name = "platypus-transfer"
+description = "Streaming export of results, import of data files, copies of tables between databases and fake rows for PlatypusDB"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,13 +13,16 @@ arrow-cast.workspace = true
 arrow-csv.workspace = true
 arrow-json.workspace = true
 arrow-schema.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 flate2 = "1"
 futures.workspace = true
+hmac = "0.13"
 parquet.workspace = true
 rust_xlsxwriter.workspace = true
 platypus-core.workspace = true
 platypus-sql.workspace = true
 serde.workspace = true
+sha2 = "0.11"
 thiserror.workspace = true
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 zstd = "0.14"

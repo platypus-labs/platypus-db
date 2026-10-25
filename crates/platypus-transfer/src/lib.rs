@@ -8,6 +8,7 @@
 pub mod fake;
 pub mod import;
 pub mod migrate;
+pub mod s3;
 mod text;
 
 use std::fs::File;
@@ -105,6 +106,8 @@ pub struct ExportOptions {
     pub compression: Compression,
     /// A signed URL (S3, GCS) the finished file is also sent to with a `PUT`.
     pub upload_url: Option<String>,
+    /// A bucket the finished file is also sent to, with the keys to sign the `PUT`.
+    pub bucket: Option<s3::Bucket>,
 }
 
 impl Default for ExportOptions {
@@ -117,6 +120,7 @@ impl Default for ExportOptions {
             driver: None,
             compression: Compression::None,
             upload_url: None,
+            bucket: None,
         }
     }
 }
@@ -229,6 +233,7 @@ pub struct Exporter {
     rows: u64,
     compression: Compression,
     upload_url: Option<String>,
+    bucket: Option<s3::Bucket>,
 }
 
 impl std::fmt::Debug for Exporter {
@@ -320,6 +325,7 @@ impl Exporter {
             rows: 0,
             compression: options.compression,
             upload_url: options.upload_url.clone(),
+            bucket: options.bucket.clone(),
         })
     }
 
@@ -393,6 +399,9 @@ impl Exporter {
         placed?;
         if let Some(url) = &self.upload_url {
             upload(&self.target, url)?;
+        }
+        if let Some(bucket) = &self.bucket {
+            s3::put(&self.target, bucket)?;
         }
         Ok(self.rows)
     }
@@ -660,6 +669,22 @@ mod tests {
         assert_eq!(rows[1][1], Data::Float(123.45));
         assert_eq!(rows[1][2], Data::String("a,\"b\"".into()));
         assert_eq!(rows[2][2], Data::Empty);
+
+        // A decimal with more digits than an Excel number keeps stays exact, as text.
+        let schema = Schema::new(vec![Field::new("d", DataType::Decimal128(38, 4), true)]);
+        let wide = Decimal128Array::from(vec![12_345_678_901_234_567_890_i128, -1_200])
+            .with_precision_and_scale(38, 4)
+            .unwrap();
+        let batch = RecordBatch::try_new(Arc::new(schema.clone()), vec![Arc::new(wide)]).unwrap();
+        let path = dir.path().join("wide.xlsx");
+        let mut exporter = Exporter::create(&path, &schema, &options).unwrap();
+        exporter.write(&batch).unwrap();
+        exporter.finish().unwrap();
+        let mut book = calamine::open_workbook_auto(&path).unwrap();
+        let sheet = book.worksheet_range_at(0).unwrap().unwrap();
+        let rows: Vec<_> = sheet.rows().collect();
+        assert_eq!(rows[1][0], Data::String("1234567890123456.7890".into()));
+        assert_eq!(rows[2][0], Data::Float(-0.12));
     }
     #[test]
     fn compresses_with_gzip_and_zstd() {

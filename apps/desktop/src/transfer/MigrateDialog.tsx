@@ -16,7 +16,8 @@ interface Props {
 }
 
 /** Copies tables, structure and rows, to a schema of another database: each is created with
- *  its columns mapped, NOT NULL and primary key, then the foreign keys between them follow. */
+ *  its columns mapped, NOT NULL, primary key and identity, then the defaults, indexes, foreign
+ *  keys and CHECKs follow; a whole schema brings its views and routines too. */
 export function MigrateDialog({ connection, database, schema, tables: chosen, onClose }: Props) {
   const targets = workbench()
     .connections()
@@ -70,7 +71,7 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, on
   async function run() {
     if (!sids || !tables || !target) return;
     await start(
-      (onEvent) => api.migrateTables(sids.source, sids.target, schema, targetSchema, tables, onEvent),
+      (onEvent) => api.migrateTables(sids.source, sids.target, schema, targetSchema, tables, chosen === null, onEvent),
       () => requestNavigatorRefresh({ connectionId: target.id, database: null, schema: targetSchema }),
     );
   }
@@ -85,7 +86,7 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, on
         <p className="muted small">
           {tables === null
             ? "Reading the tables…"
-            : `Each table is created with its columns, NOT NULL and primary key, then filled; the foreign keys between them come last. ${tables.join(", ") || "No tables"}.`}
+            : `Each table is created with its columns, NOT NULL, primary key and identity, then filled; defaults, indexes, foreign keys and CHECKs come last${chosen ? "" : ", then the views and routines"}. ${tables.join(", ") || "No tables"}.`}
         </p>
         {targets.length === 0 ? (
           <div className="notice small">Save another connection to copy the tables to.</div>

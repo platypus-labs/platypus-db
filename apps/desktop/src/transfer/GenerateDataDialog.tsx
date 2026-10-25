@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type ColumnMeta, type ForeignKeyMeta, type SavedConnection } from "../api";
+import { api, type ColumnMeta, type ForeignKeyMeta, type SavedConnection, type TableDetails } from "../api";
 import { GuardDialog } from "../guards/GuardDialog";
 import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { requestNavigatorRefresh } from "../navigatorEvents";
@@ -12,7 +12,7 @@ export type Generator =
   | { kind: "integer"; min: number; max: number }
   | { kind: "decimal"; min: number; max: number; scale: number }
   | { kind: "next_key" }
-  | { kind: "reference"; schema: string | null; table: string; column: string }
+  | { kind: "reference"; schema: string | null; table: string; column: string; key: string }
   | { kind: "choice"; values: string[] }
   | { kind: "bool" | "first_name" | "last_name" | "full_name" | "email" | "city" | "phone" | "text" | "date" | "timestamp" | "uuid" | "null" };
 
@@ -62,6 +62,8 @@ function generator(kind: Kind, column: ColumnMeta, fk: ForeignKeyMeta | undefine
         schema: fk!.ref_schema || null,
         table: fk!.ref_table,
         column: fk!.ref_columns[fk!.columns.indexOf(column.name)] ?? fk!.ref_columns[0]!,
+        // The columns of a composite key take their values from one referenced row.
+        key: fk!.name,
       };
     case "choice":
       return { kind, values: column.enum_values };
@@ -70,13 +72,26 @@ function generator(kind: Kind, column: ColumnMeta, fk: ForeignKeyMeta | undefine
   }
 }
 
+/** Generators that repeat values, which a unique column refuses. */
+const REPEATING: Kind[] = ["integer", "decimal", "bool", "choice", "date", "timestamp"];
+
+/** Whether `column` takes no value twice: a unique index or constraint of its own. */
+function isUnique(details: TableDetails, column: string): boolean {
+  const only = (columns: string[]) => columns.length === 1 && columns[0] === column;
+  return (
+    details.indexes.some((i) => i.unique && !i.primary && only(i.columns)) ||
+    details.constraints.some((c) => c.kind === "unique" && only(c.columns))
+  );
+}
+
 /** The generator a column most likely wants, from its keys, name and type. */
-export function suggest(column: ColumnMeta, fk: ForeignKeyMeta | undefined): Kind {
+export function suggest(column: ColumnMeta, fk: ForeignKeyMeta | undefined, unique = false): Kind {
   const name = column.name.toLowerCase();
   const type = column.data_type.toLowerCase();
   const integer = /int|serial|number/.test(type);
   if (fk) return "reference";
   if (column.default !== null) return "skip";
+  if (unique && /int|serial|number|numeric|decimal/.test(type)) return "next_key";
   if (column.primary_key) return integer ? "next_key" : /uuid|uniqueidentifier/.test(type) ? "uuid" : "next_key";
   if (column.enum_values.length > 0) return "choice";
   if (name.includes("email")) return "email";
@@ -97,7 +112,7 @@ export function suggest(column: ColumnMeta, fk: ForeignKeyMeta | undefined): Kin
 /** Adds fake rows to a table, each column filled by a generator picked for it. */
 export function GenerateDataDialog({ connection, database, schema, currentSchema, table, onClose }: Props) {
   const [sid, setSid] = useState<number | null>(null);
-  const [columns, setColumns] = useState<{ column: ColumnMeta; fk?: ForeignKeyMeta; generator: Generator }[]>([]);
+  const [columns, setColumns] = useState<{ column: ColumnMeta; fk?: ForeignKeyMeta; unique: boolean; generator: Generator }[]>([]);
   const [rows, setRows] = useState(100);
   const { status, start, fail } = useJob();
   const [confirm, setConfirm] = useState<GuardRequest | null>(null);
@@ -112,7 +127,11 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
         setColumns(
           details.columns.map((column) => {
             const fk = details.foreign_keys.find((k) => k.columns.includes(column.name));
-            return { column, fk, generator: generator(suggest(column, fk), column, fk) };
+            const unique = isUnique(details, column.name);
+            const kind = suggest(column, fk, unique);
+            // A unique column with no generator of distinct values to suggest is left to its default.
+            const usable = unique && REPEATING.includes(kind) ? "skip" : kind;
+            return { column, fk, unique, generator: generator(usable, column, fk) };
           }),
         );
       } catch (e) {
@@ -133,7 +152,7 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
 
   async function run() {
     if (sid === null) return;
-    const specs = filled.map((c) => ({ name: c.column.name, generator: c.generator }));
+    const specs = filled.map((c) => ({ name: c.column.name, generator: c.generator, unique: c.unique }));
     await start(
       (onEvent) => api.fakeRows(sid, currentSchema ? null : schema, table, rows, specs, onEvent),
       () => requestNavigatorRefresh({ connectionId: connection.id, database, schema }),
@@ -162,8 +181,8 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
         <div className="import-mapping two">
           <span className="muted small">Column</span>
           <span className="muted small">Filled with</span>
-          {columns.map(({ column, fk, generator: g }, i) => (
-            <GeneratorRow key={column.name} column={column} fk={fk} kind={g.kind} disabled={running} onChange={(k) => choose(i, k)} />
+          {columns.map(({ column, fk, unique, generator: g }, i) => (
+            <GeneratorRow key={column.name} column={column} fk={fk} unique={unique} kind={g.kind} disabled={running} onChange={(k) => choose(i, k)} />
           ))}
         </div>
         <JobFooter status={status} verbs={["Adding", "Added"]} failed="Nothing was added: " onClose={onClose}>
@@ -188,18 +207,19 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
 function GeneratorRow(props: {
   column: ColumnMeta;
   fk: ForeignKeyMeta | undefined;
+  unique: boolean;
   kind: Kind;
   disabled: boolean;
   onChange: (kind: Kind) => void;
 }) {
-  const { column, fk, kind, disabled, onChange } = props;
+  const { column, fk, unique, kind, disabled, onChange } = props;
   const kinds = (Object.keys(LABELS) as Kind[]).filter(
-    (k) => (k !== "reference" || fk) && (k !== "choice" || column.enum_values.length > 0),
+    (k) => (k !== "reference" || fk) && (k !== "choice" || column.enum_values.length > 0) && !(unique && REPEATING.includes(k)),
   );
   return (
     <>
       <span>
-        {column.name} <span className="muted small">{column.data_type}</span>
+        {column.name} <span className="muted small">{unique ? `${column.data_type}, unique` : column.data_type}</span>
       </span>
       <select value={kind} disabled={disabled} aria-label={`Generator of ${column.name}`} onChange={(e) => onChange(e.target.value as Kind)}>
         {kinds.map((k) => (

@@ -4595,8 +4595,8 @@ dependencies = [
  "clap",
  "futures",
  "platypus-core",
- "platypus-export",
  "platypus-mcp",
+ "platypus-transfer",
  "rusqlite",
  "serde_json",
  "tempfile",
@@ -4616,9 +4616,9 @@ dependencies = [
  "platypus-driver-mysql",
  "platypus-driver-pg",
  "platypus-driver-sqlite",
- "platypus-export",
  "platypus-mcp",
  "platypus-sql",
+ "platypus-transfer",
  "tempfile",
  "tokio",
 ]
@@ -4656,10 +4656,10 @@ dependencies = [
  "platypus-driver-mysql",
  "platypus-driver-pg",
  "platypus-driver-sqlite",
- "platypus-export",
  "platypus-net",
  "platypus-sql",
  "platypus-store",
+ "platypus-transfer",
  "serde",
  "serde_json",
  "tauri",
@@ -4759,29 +4759,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "platypus-export"
-version = "0.2.0"
-dependencies = [
- "arrow-array",
- "arrow-cast",
- "arrow-csv",
- "arrow-json",
- "arrow-schema",
- "calamine",
- "flate2",
- "futures",
- "parquet",
- "platypus-core",
- "platypus-sql",
- "rust_xlsxwriter",
- "serde",
- "tempfile",
- "thiserror 2.0.21",
- "ureq",
- "zstd",
-]
-
-[[package]]
 name = "platypus-mcp"
 version = "0.2.0"
 dependencies = [
@@ -4848,6 +4825,32 @@ dependencies = [
  "thiserror 2.0.21",
  "toml 1.1.8+spec-1.1.0",
  "uuid",
+]
+
+[[package]]
+name = "platypus-transfer"
+version = "0.2.0"
+dependencies = [
+ "arrow-array",
+ "arrow-cast",
+ "arrow-csv",
+ "arrow-json",
+ "arrow-schema",
+ "calamine",
+ "chrono",
+ "flate2",
+ "futures",
+ "hmac",
+ "parquet",
+ "platypus-core",
+ "platypus-sql",
+ "rust_xlsxwriter",
+ "serde",
+ "sha2 0.11.1",
+ "tempfile",
+ "thiserror 2.0.21",
+ "ureq",
+ "zstd",
 ]
 
 [[package]]
