@@ -278,6 +278,10 @@ e la transazione segue `@@TRANCOUNT`. DuckDB è incorporato come SQLite, con ris
 senza l'estensione ICU non ha fuso orario di sessione. Una nuova connessione parte dalla scelta del
 database in una griglia di loghi. Conformance su PostgreSQL, MySQL, MariaDB, SQL Server, SQLite e
 DuckDB (SQL Server dal profilo `sqlserver` di `docker/compose.yml`).
+MongoDB (`platypus-driver-mongo`, driver ufficiale con rustls): l'editor scrive mongosh, che un
+parser proprio traduce in comandi; i risultati sono una griglia dei campi di primo livello con
+l'albero del documento selezionato accanto. Niente transazioni, explain né modifica dei dati;
+conformance dedicata in `tests/mongo.rs` (profilo `mongo` di `docker/compose.yml`).
 
 | Driver | Prio | Note |
 |---|---|---|
@@ -288,7 +292,7 @@ DuckDB (SQL Server dal profilo `sqlserver` di `docker/compose.yml`).
 | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | P2 | Wire PG: profili e test, non driver nuovi |
 | ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | Una persona per il bridge, poi profili |
 | Oracle nativo | P3 | Licensing OCI da valutare |
-| Redis, MongoDB | P3 | Richiedono una UI non tabellare (gruppo dedicato in seguito) |
+| Redis, ✅ **MongoDB** | P3 | MongoDB: sintassi mongosh, griglia dei campi + albero del documento; Redis da fare |
 | libSQL/Turso, Cloudflare D1 | P3 | Varianti di SQLite |
 
 ---

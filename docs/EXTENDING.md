@@ -126,6 +126,28 @@ names a composite type's fields.
 Add dialect rules there, with tests. `apps/desktop/src/sqlNames.ts` mirrors `quote_ident`
 for the UI.
 
+### Drivers without SQL (MongoDB)
+
+A driver whose language is not SQL still implements `Connection`: `execute` takes the
+statement in its own language and returns Arrow batches. `platypus-driver-mongo` is the
+example:
+- `shell` parses the mongosh subset into a `Command`, and `split`/`statement_at` cut a script
+  into statements; `kind` and `unfiltered` feed the checks before running (the desktop
+  `analyze_sql` command calls them instead of `platypus_sql` for `DriverKind::Mongo`).
+- `docs` turns documents into batches: one column per top-level field of the first batch,
+  nested values as JSON text, the BSON type in the `META_DB_TYPE` field metadata
+  (`document`, `array`, `objectId`, ...), which the UI reads (`DocumentPanel`).
+- `generate` writes the navigator's object statements in mongosh; the desktop
+  `generate_sql` and `dialect_support` commands route there.
+- `Dialect::from(DriverKind::Mongo)` maps to an inert dialect: commands that build SQL
+  (`lint_sql`, `format_sql`, `query_source`) return early for MongoDB, and the UI hides SQL-only
+  features with `isMongo` (`apps/desktop/src/api.ts`): the data editor, explain, the visual query
+  builder, data search and the grid's SQL filters. `sqlNames.ts` writes the data viewer's query
+  (`viewerSql`) and collection references in mongosh; `editor/mongo.ts` is the editor language.
+
+Conformance scenarios that are not SQL-specific have a MongoDB version in
+`crates/platypus-conformance/tests/mongo.rs`.
+
 ### Connections file
 
 `platypus_store::ConnectionStore` keeps `connections.toml`, now `version = 3`: a list of
