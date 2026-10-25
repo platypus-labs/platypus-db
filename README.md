@@ -111,6 +111,11 @@ scrolls through millions of rows.
 - **Copy a table to another database** (right-click it, *Copy to a database…*): PostgreSQL to
   MySQL, SQL Server to SQLite and every other pair, streamed, into a new table with the types
   mapped or into an existing one.
+- **Copy a schema** (or several tables) to another database: each table created with its
+  columns, NOT NULL and primary key, filled, then the foreign keys between them.
+- **Fake data** for a table (*Generate data…*): names, emails, numbers, dates, enum values,
+  keys after the largest and foreign keys that point at existing rows.
+- **Compressed exports** (gzip, zstd), and an optional upload to a signed S3 or GCS URL.
 - **Data files as databases**: drop a CSV, JSON, Parquet or Excel file on the window (or pick
   it as a DuckDB database) to query it with SQL; each Excel sheet is a table.
 - **Transactions**: auto-commit or manual commit with Commit/Rollback; an open transaction

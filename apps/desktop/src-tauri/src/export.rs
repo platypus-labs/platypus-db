@@ -27,9 +27,19 @@ const PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ExportEvent {
-    Progress { rows: u64 },
-    Done { rows: u64, elapsed_ms: u64 },
-    Failed { error: CommandError },
+    Progress {
+        rows: u64,
+    },
+    Done {
+        rows: u64,
+        elapsed_ms: u64,
+        /// What the job left out, e.g. a foreign key the target could not add.
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        warnings: Vec<String>,
+    },
+    Failed {
+        error: CommandError,
+    },
     Cancelled,
 }
 
@@ -53,6 +63,7 @@ pub struct Export {
     /// Cancelling asks the work to stop instead of aborting it, so that it can clean up.
     cooperative: bool,
     stopping: AtomicBool,
+    warnings: Mutex<Vec<String>>,
 }
 
 impl std::fmt::Debug for Export {
@@ -125,6 +136,7 @@ impl Export {
             over: AtomicBool::new(false),
             cooperative,
             stopping: AtomicBool::new(false),
+            warnings: Mutex::new(Vec::new()),
         });
         let task = Arc::clone(&export);
         let handle = tauri::async_runtime::spawn(async move {
@@ -133,6 +145,7 @@ impl Export {
                 Ok(rows) => ExportEvent::Done {
                     rows,
                     elapsed_ms: millis(started),
+                    warnings: std::mem::take(&mut *lock(&task.warnings)),
                 },
                 Err(_) if task.stopping() => ExportEvent::Cancelled,
                 Err(error) => ExportEvent::Failed { error },
@@ -141,6 +154,11 @@ impl Export {
         });
         *lock(&export.task) = Some(handle);
         export
+    }
+
+    /// Notes something the job left out, reported when it is done.
+    pub fn warn(&self, warning: String) {
+        lock(&self.warnings).push(warning);
     }
 
     /// Whether the job was cancelled.

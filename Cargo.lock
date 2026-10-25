@@ -4762,6 +4762,7 @@ dependencies = [
  "arrow-json",
  "arrow-schema",
  "calamine",
+ "flate2",
  "futures",
  "parquet",
  "platypus-core",
@@ -4770,6 +4771,8 @@ dependencies = [
  "serde",
  "tempfile",
  "thiserror 2.0.21",
+ "ureq",
+ "zstd",
 ]
 
 [[package]]

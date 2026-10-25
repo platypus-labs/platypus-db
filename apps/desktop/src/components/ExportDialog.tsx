@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
-import type { DriverKind, ExportFormat, ExportOptions } from "../api";
+import type { Compression, DriverKind, ExportFormat, ExportOptions } from "../api";
 import { fmt } from "./ResultPanel";
 
 export type ExportSource = "query" | "loaded";
@@ -38,6 +38,65 @@ const DELIMITERS = [
   { value: "|", label: "Pipe |" },
 ];
 
+const COMPRESSIONS: { value: Compression; label: string; ext: string }[] = [
+  { value: "none", label: "None", ext: "" },
+  { value: "gzip", label: "gzip (.gz)", ext: "gz" },
+  { value: "zstd", label: "zstd (.zst)", ext: "zst" },
+];
+
+/** The extension a compressed file adds, e.g. `gz`; empty when uncompressed. */
+const compressedExt = (c: Compression | undefined) => COMPRESSIONS.find((x) => x.value === (c ?? "none"))!.ext;
+
+// Parquet and Excel files are compressed already.
+const packed = (format: ExportFormat) => format === "parquet" || format === "xlsx";
+
+/** `options` as sent: Parquet and Excel files take no compression, whatever was picked before. */
+export const sentOptions = (options: ExportOptions): ExportOptions => ({
+  ...options,
+  compression: packed(options.format) ? "none" : options.compression,
+});
+
+/** The compression of the finished file and, with `upload`, a signed URL to send it to. */
+export function OutputOptions(props: {
+  options: ExportOptions;
+  upload: boolean;
+  disabled?: boolean;
+  onChange: (o: ExportOptions) => void;
+}) {
+  const { options, upload, disabled, onChange } = props;
+  return (
+    <>
+      {!packed(options.format) && (
+        <label className="field">
+          <span>Compression</span>
+          <select
+            value={options.compression ?? "none"}
+            disabled={disabled}
+            onChange={(e) => onChange({ ...options, compression: e.target.value as Compression })}
+          >
+            {COMPRESSIONS.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {upload && (
+        <label className="field">
+          <span>Also upload to (signed S3 or GCS URL, optional)</span>
+          <input
+            value={options.upload_url ?? ""}
+            disabled={disabled}
+            placeholder="https://bucket.s3.amazonaws.com/file.csv?X-Amz-Signature=…"
+            onChange={(e) => onChange({ ...options, upload_url: e.target.value.trim() || null })}
+          />
+        </label>
+      )}
+    </>
+  );
+}
+
 /** The CSV delimiter and header row of `options`. */
 export function CsvOptions(props: { options: ExportOptions; disabled?: boolean; onChange: (o: ExportOptions) => void }) {
   const { options, disabled, onChange } = props;
@@ -74,11 +133,13 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    const chosen = sentOptions(options);
+    const zipped = compressedExt(chosen.compression);
     const path = await save({
-      defaultPath: `${name}.${format.ext}`,
-      filters: [{ name: format.label, extensions: [format.ext] }],
+      defaultPath: `${name}.${format.ext}${zipped ? `.${zipped}` : ""}`,
+      filters: [{ name: format.label, extensions: [zipped || format.ext] }],
     });
-    if (path) onExport(path, options, source);
+    if (path) onExport(path, chosen, source);
   }
 
   return (
@@ -106,6 +167,7 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
           </label>
         )}
         {options.format === "csv" && <CsvOptions options={options} onChange={setOptions} />}
+        <OutputOptions options={options} upload onChange={setOptions} />
         <fieldset className="choices">
           <label className="check">
             <input type="radio" checked={source === "query"} onChange={() => setSource("query")} />

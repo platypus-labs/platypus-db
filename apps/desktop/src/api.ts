@@ -556,11 +556,16 @@ export interface ExportOptions {
   table?: string;
   /** SQL: the database the statements are written for. */
   driver?: DriverKind;
+  compression?: Compression;
+  /** A signed URL (S3, GCS) the finished file is also sent to. */
+  upload_url?: string | null;
 }
+
+export type Compression = "none" | "gzip" | "zstd";
 
 export type ExportEvent =
   | { type: "progress"; rows: number }
-  | { type: "done"; rows: number; elapsed_ms: number }
+  | { type: "done"; rows: number; elapsed_ms: number; warnings?: string[] }
   | { type: "failed"; error: CommandError }
   | { type: "cancelled" };
 
@@ -569,6 +574,9 @@ export const DATA_FILE_EXTENSIONS = ["csv", "tsv", "json", "ndjson", "jsonl", "p
 
 /** Whether `path` names a data file, which opens as an in-memory DuckDB database on it. */
 export const isDataFile = (path: string) => DATA_FILE_EXTENSIONS.includes(path.split(".").pop()?.toLowerCase() ?? "");
+
+/** Whether `c` opens a data file: its database lives in memory, so a copy there would be lost. */
+export const opensDataFile = (c: SavedConnection) => c.driver === "duckdb" && isDataFile(c.database);
 
 export interface ImportPreview {
   /** The tables of the file: one, or a workbook's sheets. */
@@ -753,10 +761,45 @@ export const api = {
    *  would take in the session's database. */
   previewImport: (sessionId: number, path: string, table: string | null) =>
     invoke<ImportPreview>("preview_import", { sessionId, path, table }),
-  /** The first rows of a table of the source session, with the column types they would take in
-   *  the target session's database. */
+  /** Creates tables of the source session's schema in the target session's and copies their
+   *  rows, then their foreign keys; cancelled with `cancelExport`. */
+  migrateTables: (
+    sourceSessionId: number,
+    targetSessionId: number,
+    sourceSchema: string,
+    targetSchema: string,
+    tables: string[],
+    onEvent: (e: ExportEvent) => void,
+  ) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("migrate_tables", {
+      sourceSessionId,
+      targetSessionId,
+      sourceSchema,
+      targetSchema,
+      tables,
+      onEvent: channel,
+    });
+  },
+  /** Adds `rows` fake rows to a table, each column filled by its generator; cancelled with
+   *  `cancelExport`. */
+  fakeRows: (
+    sessionId: number,
+    schema: string | null,
+    table: string,
+    rows: number,
+    columns: { name: string; generator: object }[],
+    onEvent: (e: ExportEvent) => void,
+  ) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("fake_rows", { sessionId, schema, table, rows, columns, onEvent: channel });
+  },
   /** Saves the clipboard's text to a new `pasted.csv`; returns its path. */
   clipboardToFile: () => invoke<string>("clipboard_to_file"),
+  /** The first rows of a table of the source session, with the column types they would take in
+   *  the target session's database. */
   previewTransfer: (sourceSessionId: number, schema: string | null, table: string, targetSessionId: number) =>
     invoke<ImportPreview>("preview_transfer", { sourceSessionId, schema, table, targetSessionId }),
   /** Copies a table between the databases of two sessions; cancelled with `cancelExport`. */

@@ -8,7 +8,9 @@ use std::sync::Arc;
 use futures::TryStreamExt;
 use platypus_core::{Connection, ConnectionConfig, DriverKind, ExecOptions, ExecResult};
 use platypus_driver_duckdb::files::is_data_file;
+use platypus_export::fake::{FakeColumn, fill};
 use platypus_export::import::{ImportError, ImportPlan, import, rows_text, target_type};
+use platypus_export::migrate::migrate;
 use platypus_sql::Dialect;
 use serde::Serialize;
 use tauri::State;
@@ -195,32 +197,128 @@ fn start(
     plan: ImportPlan,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
-    let session = state.session(target_session_id)?;
+    spawn_job(
+        state,
+        target_session_id,
+        on_event,
+        move |job, target, dialect| async move {
+            let (source, source_dialect) = source.await?;
+            import(
+                (&*source, source_dialect),
+                (&*target, dialect),
+                &plan,
+                |rows| {
+                    job.progress(rows);
+                    !job.stopping()
+                },
+            )
+            .await
+            .map_err(import_error)
+        },
+    )
+}
+
+/// Creates `tables` of the source session's `source_schema` in the target session's
+/// `target_schema` and copies their rows, then their foreign keys; the keys left out arrive as
+/// warnings. Returns an id for `cancel_export`.
+#[tauri::command]
+pub fn migrate_tables(
+    state: State<'_, AppState>,
+    source_session_id: u64,
+    target_session_id: u64,
+    source_schema: String,
+    target_schema: String,
+    tables: Vec<String>,
+    on_event: Channel<ExportEvent>,
+) -> CommandResult<u64> {
+    let source = state.session(source_session_id)?;
+    spawn_job(
+        &state,
+        target_session_id,
+        on_event,
+        move |job, to, dialect| async move {
+            let from = super::connect(&source.config).await?;
+            let done = migrate(
+                (&*from, Dialect::from(source.config.driver), &source_schema),
+                (&*to, dialect, &target_schema),
+                &tables,
+                |rows| {
+                    job.progress(rows);
+                    !job.stopping()
+                },
+            )
+            .await
+            .map_err(import_error)?;
+            for warning in done.skipped {
+                job.warn(warning);
+            }
+            Ok(done.rows)
+        },
+    )
+}
+
+/// Adds `rows` fake rows to `table` of the session's database, on a connection of its own,
+/// each column filled as `columns` says. Returns an id for `cancel_export`.
+#[tauri::command]
+pub fn fake_rows(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: Option<String>,
+    table: String,
+    rows: u64,
+    columns: Vec<FakeColumn>,
+    on_event: Channel<ExportEvent>,
+) -> CommandResult<u64> {
+    spawn_job(
+        &state,
+        session_id,
+        on_event,
+        move |job, target, dialect| async move {
+            fill(
+                (&*target, dialect),
+                (schema.as_deref(), &table),
+                columns,
+                rows,
+                |n| {
+                    job.progress(n);
+                    !job.stopping()
+                },
+            )
+            .await
+            .map_err(import_error)
+        },
+    )
+}
+
+/// Runs `work` as a cancellable job on a new connection of the session, whose statements go
+/// to the query log. Returns an id for `cancel_export`.
+fn spawn_job<F>(
+    state: &AppState,
+    session_id: u64,
+    on_event: Channel<ExportEvent>,
+    work: impl FnOnce(Arc<Export>, Arc<dyn Connection>, Dialect) -> F + Send + 'static,
+) -> CommandResult<u64>
+where
+    F: Future<Output = CommandResult<u64>> + Send + 'static,
+{
+    let session = state.session(session_id)?;
     let log = Arc::clone(&state.query_log);
     let job = Export::spawn(on_event, true, move |job| async move {
-        let (source, source_dialect) = source.await?;
         let target = Logged::wrap(
             Arc::from(super::connect(&session.config).await?),
             &log,
             &session.label,
         );
-        let dialect = Dialect::from(session.config.driver);
-        import(
-            (&*source, source_dialect),
-            (&*target, dialect),
-            &plan,
-            |rows| {
-                job.progress(rows);
-                !job.stopping()
-            },
-        )
-        .await
-        .map_err(|e| match e {
-            ImportError::Database(e) => e.into(),
-            e => CommandError::new("import", e.to_string()),
-        })
+        work(job, target, Dialect::from(session.config.driver)).await
     });
     let id = state.next_id();
     lock(&state.exports).insert(id, job);
     Ok(id)
+}
+
+fn import_error(e: ImportError) -> CommandError {
+    match e {
+        ImportError::Database(e) => e.into(),
+        e => CommandError::new("import", e.to_string()),
+    }
 }

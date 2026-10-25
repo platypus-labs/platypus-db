@@ -2,11 +2,13 @@
 // database, tables to files.
 import { createElement } from "react";
 import { registerAction } from "../actions";
-import { api, isDataFile, type SavedConnection, type SchemaMeta, toCommandError } from "../api";
+import { api, opensDataFile, type SavedConnection, type SchemaMeta, toCommandError } from "../api";
 import { isRelation } from "../components/Navigator";
 import { workbench } from "../workbench";
 import { ExportTablesDialog } from "./ExportTablesDialog";
+import { GenerateDataDialog } from "./GenerateDataDialog";
 import { ImportDataDialog, type TableAt } from "./ImportDataDialog";
+import { MigrateDialog } from "./MigrateDialog";
 
 const at = (connection: SavedConnection, database: string | null, schema: SchemaMeta, table: string | null): TableAt => ({
   connection,
@@ -33,7 +35,7 @@ registerAction({
     // Another connection by default, in its current schema; else a copy next to the table.
     const other = workbench()
       .connections()
-      .find((c) => c.id !== connection.id && !(c.driver === "duckdb" && isDataFile(c.database)));
+      .find((c) => c.id !== connection.id && !opensDataFile(c));
     const target: TableAt = other
       ? { connection: other, database: null, schema: "", currentSchema: true, table: null }
       : at(connection, database, schema, null);
@@ -123,4 +125,51 @@ registerAction({
       createElement(ImportDataDialog, { target: at(connection, database, schema, null), path, onClose: close }),
     );
   },
+});
+
+function openMigrate(connection: SavedConnection, database: string | null, schema: string, tables: string[] | null) {
+  workbench().openDialog((close) => createElement(MigrateDialog, { connection, database, schema, tables, onClose: close }));
+}
+
+registerAction({
+  id: "object.migrate",
+  scope: "navigator.object",
+  title: "Copy tables to a database…",
+  group: "manage",
+  order: 73,
+  multiple: true,
+  // One table has "Copy to a database…", with its columns to map.
+  when: ({ schema, selection }) =>
+    (selection?.length ?? 0) > 1 && selection!.every((s) => s.object.kind === "table" && s.schema.name === schema.name),
+  run: ({ connection, database, schema, selection }) =>
+    openMigrate(connection, database, schema.name, selection!.map((s) => s.object.name)),
+});
+
+registerAction({
+  id: "schema.migrate",
+  scope: "navigator.schema",
+  title: "Copy schema to a database…",
+  group: "open",
+  order: 33,
+  run: ({ connection, database, schema }) => openMigrate(connection, database, schema.name, null),
+});
+
+registerAction({
+  id: "object.generate_data",
+  scope: "navigator.object",
+  title: "Generate data…",
+  group: "manage",
+  order: 74,
+  when: ({ object }) => object.kind === "table",
+  run: ({ connection, database, schema, object }) =>
+    workbench().openDialog((close) =>
+      createElement(GenerateDataDialog, {
+        connection,
+        database,
+        schema: schema.name,
+        currentSchema: schema.current,
+        table: object.name,
+        onClose: close,
+      }),
+    ),
 });

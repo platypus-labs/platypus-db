@@ -53,3 +53,8 @@
   gap: 4px 16px;
   margin-top: 8px;
 }
+
+.migrate-warnings {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}

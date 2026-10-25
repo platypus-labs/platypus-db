@@ -13,6 +13,7 @@ arrow-cast.workspace = true
 arrow-csv.workspace = true
 arrow-json.workspace = true
 arrow-schema.workspace = true
+flate2 = "1"
 futures.workspace = true
 parquet.workspace = true
 rust_xlsxwriter.workspace = true
@@ -20,6 +21,8 @@ platypus-core.workspace = true
 platypus-sql.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+zstd = "0.14"
 
 [dev-dependencies]
 calamine.workspace = true
