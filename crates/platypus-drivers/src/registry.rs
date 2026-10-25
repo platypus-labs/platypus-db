@@ -58,6 +58,26 @@ struct IndexPackage {
     hash: Option<String>,
 }
 
+/// An HTTP client that names the app, verifying certificates when `https`.
+pub(crate) fn client(https: bool) -> Result<reqwest::Client, DriverError> {
+    let mut config = ConnectionConfig::new(DriverKind::Adbc);
+    config.ssl_mode = SslMode::VerifyFull;
+    // reqwest has no crypto provider of its own: it needs a configuration even for http.
+    let tls = if https {
+        platypus_tls::client_config(&config)
+            .map_err(|e| DriverError::Network(e.to_string()))?
+            .ok_or_else(|| DriverError::Network("no TLS configuration".to_owned()))?
+    } else {
+        platypus_tls::plaintext_config().map_err(|e| DriverError::Network(e.to_string()))?
+    };
+    reqwest::Client::builder()
+        .user_agent(concat!("platypus-db/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(Duration::from_secs(15))
+        .tls_backend_preconfigured(tls)
+        .build()
+        .map_err(|e| DriverError::Network(e.to_string()))
+}
+
 /// Orders `v1.10.0` after `v1.9.0`: numbers compared as numbers, the rest as text.
 pub(crate) fn compare_versions(a: &str, b: &str) -> Ordering {
     let parts = |v: &str| -> Vec<u64> {
@@ -90,22 +110,7 @@ impl Registry {
 
     /// An HTTP client that names the app, as the registry asks of tools other than `dbc`.
     pub(crate) fn http(&self) -> Result<reqwest::Client, DriverError> {
-        let mut config = ConnectionConfig::new(DriverKind::Adbc);
-        config.ssl_mode = SslMode::VerifyFull;
-        // reqwest has no crypto provider of its own: it needs a configuration even for http.
-        let tls = if self.url.starts_with("https:") {
-            platypus_tls::client_config(&config)
-                .map_err(|e| DriverError::Network(e.to_string()))?
-                .ok_or_else(|| DriverError::Network("no TLS configuration".to_owned()))?
-        } else {
-            platypus_tls::plaintext_config().map_err(|e| DriverError::Network(e.to_string()))?
-        };
-        reqwest::Client::builder()
-            .user_agent(concat!("platypus-db/", env!("CARGO_PKG_VERSION")))
-            .connect_timeout(Duration::from_secs(15))
-            .tls_backend_preconfigured(tls)
-            .build()
-            .map_err(|e| DriverError::Network(e.to_string()))
+        client(self.url.starts_with("https:"))
     }
 
     /// The index from the registry, saved as the cache; the cached one when the registry

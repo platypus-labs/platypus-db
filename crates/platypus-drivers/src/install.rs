@@ -15,7 +15,7 @@ use crate::{DriverError, Installed, Package, REMOVED_MARK, Registry, drivers_dir
 pub(crate) const TMP_PREFIX: &str = ".tmp-";
 
 /// Far more than any driver library; a bigger file in a package is refused, not unpacked.
-const MAX_FILE: u64 = 512 << 20;
+pub(crate) const MAX_FILE: u64 = 512 << 20;
 
 /// The package's own description of its files.
 #[derive(Deserialize)]
@@ -38,60 +38,74 @@ impl Registry {
         progress: impl Fn(u64, Option<u64>),
         cancel: &CancellationToken,
     ) -> Result<Installed, DriverError> {
-        let bytes = self.download(package, progress, cancel).await?;
+        let bytes = download(&self.http()?, &package.url, progress, cancel).await?;
         if let Some(expected) = &package.sha256 {
-            let actual = hex(&Sha256::digest(&bytes));
-            if !actual.eq_ignore_ascii_case(expected) {
-                return Err(DriverError::Checksum);
-            }
+            check(&bytes, expected)?;
         }
         let root = drivers_dir(&self.data_dir);
         let tmp = root.join(format!("{TMP_PREFIX}{}", uuid::Uuid::new_v4()));
         let package = package.clone();
         let target = root.join("adbc").join(&package.name);
         tokio::task::spawn_blocking(move || {
-            let result =
-                unpack(&bytes, &tmp).and_then(|library| place(&tmp, &target, &package, &library));
+            let result = unpack(&bytes, &tmp).and_then(|library| {
+                let record = Installed {
+                    name: package.name.clone(),
+                    title: package.title.clone(),
+                    version: package.version.clone(),
+                    license: package.license.clone(),
+                    library: PathBuf::from(library),
+                };
+                place(&tmp, &target, &record)
+            });
             let _ = std::fs::remove_dir_all(&tmp);
             result
         })
         .await
         .map_err(|e| DriverError::Format(e.to_string()))?
     }
+}
 
-    async fn download(
-        &self,
-        package: &Package,
-        progress: impl Fn(u64, Option<u64>),
-        cancel: &CancellationToken,
-    ) -> Result<Vec<u8>, DriverError> {
-        if cancel.is_cancelled() {
-            return Err(DriverError::Cancelled);
+/// Downloads `url` whole; `progress` gets the bytes received and the total when known.
+pub(crate) async fn download(
+    client: &reqwest::Client,
+    url: &str,
+    progress: impl Fn(u64, Option<u64>),
+    cancel: &CancellationToken,
+) -> Result<Vec<u8>, DriverError> {
+    if cancel.is_cancelled() {
+        return Err(DriverError::Cancelled);
+    }
+    let network = |e: reqwest::Error| DriverError::Network(e.to_string());
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(network)?;
+    let total = response.content_length();
+    let mut bytes = Vec::with_capacity(usize::try_from(total.unwrap_or(0)).unwrap_or(0));
+    let mut stream = response.bytes_stream();
+    loop {
+        let chunk = tokio::select! {
+            () = cancel.cancelled() => return Err(DriverError::Cancelled),
+            chunk = stream.next() => chunk,
+        };
+        let Some(chunk) = chunk else { break };
+        bytes.extend_from_slice(&chunk.map_err(network)?);
+        if bytes.len() as u64 > MAX_FILE {
+            return Err(DriverError::TooLarge);
         }
-        let network = |e: reqwest::Error| DriverError::Network(e.to_string());
-        let response = self
-            .http()?
-            .get(&package.url)
-            .send()
-            .await
-            .and_then(reqwest::Response::error_for_status)
-            .map_err(network)?;
-        let total = response.content_length();
-        let mut bytes = Vec::with_capacity(usize::try_from(total.unwrap_or(0)).unwrap_or(0));
-        let mut stream = response.bytes_stream();
-        loop {
-            let chunk = tokio::select! {
-                () = cancel.cancelled() => return Err(DriverError::Cancelled),
-                chunk = stream.next() => chunk,
-            };
-            let Some(chunk) = chunk else { break };
-            bytes.extend_from_slice(&chunk.map_err(network)?);
-            if bytes.len() as u64 > MAX_FILE {
-                return Err(DriverError::TooLarge);
-            }
-            progress(bytes.len() as u64, total);
-        }
-        Ok(bytes)
+        progress(bytes.len() as u64, total);
+    }
+    Ok(bytes)
+}
+
+/// Fails unless `bytes` have the SHA-256 `expected` (hex digits).
+pub(crate) fn check(bytes: &[u8], expected: &str) -> Result<(), DriverError> {
+    if hex(&Sha256::digest(bytes)).eq_ignore_ascii_case(expected) {
+        Ok(())
+    } else {
+        Err(DriverError::Checksum)
     }
 }
 
@@ -148,33 +162,26 @@ fn unpack(bytes: &[u8], dir: &Path) -> Result<String, DriverError> {
     Ok(library)
 }
 
-/// Records the unpacked package and moves it to `target/<version>`.
-fn place(
+/// Records the unpacked package (`record.library` relative to `tmp`) and moves it to
+/// `target/<version>`.
+pub(crate) fn place(
     tmp: &Path,
     target: &Path,
-    package: &Package,
-    library: &str,
+    record: &Installed,
 ) -> Result<Installed, DriverError> {
-    let record = Installed {
-        name: package.name.clone(),
-        title: package.title.clone(),
-        version: package.version.clone(),
-        license: package.license.clone(),
-        library: PathBuf::from(library),
-    };
-    let toml = toml::to_string(&record).map_err(|e| DriverError::Format(e.to_string()))?;
+    let toml = toml::to_string(record).map_err(|e| DriverError::Format(e.to_string()))?;
     let file = tmp.join("driver.toml");
     std::fs::write(&file, toml).map_err(io_error(&file))?;
     std::fs::create_dir_all(target).map_err(io_error(target))?;
     // Installed again after a removal that could not delete the files.
     let _ = std::fs::remove_file(target.join(REMOVED_MARK));
-    let dir = target.join(&package.version);
+    let dir = target.join(&record.version);
     if dir.exists() {
         std::fs::remove_dir_all(&dir).map_err(io_error(&dir))?;
     }
     std::fs::rename(tmp, &dir).map_err(io_error(&dir))?;
     Ok(Installed {
-        library: dir.join(library),
-        ..record
+        library: dir.join(&record.library),
+        ..record.clone()
     })
 }

@@ -54,7 +54,7 @@ fn index(hash: &str) -> String {
 }
 
 /// Serves `files` by path until the test ends; returns the base URL.
-async fn serve(files: Vec<(&'static str, Vec<u8>)>) -> String {
+pub(crate) async fn serve(files: Vec<(&'static str, Vec<u8>)>) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let files = Arc::new(files);
