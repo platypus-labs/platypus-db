@@ -119,14 +119,11 @@ impl TxTracker {
     }
 
     /// Whether `effect` needs a `BEGIN` sent first: manual mode, nothing open yet, and a
-    /// statement that is not itself transaction control. DDL counts: it is transactional in
-    /// the drivers that ask (MySQL, which commits it, tracks its transactions itself).
+    /// statement that is not itself transaction control.
     #[must_use]
     pub fn needs_begin(&self, effect: TxEffect) -> bool {
         let state = self.state();
-        !state.autocommit
-            && !state.open
-            && matches!(effect, TxEffect::None | TxEffect::ImplicitCommit)
+        !state.autocommit && !state.open && effect == TxEffect::None
     }
 
     /// Updates the flags after a statement ran (successfully or not: a failed statement
@@ -178,10 +175,6 @@ mod tests {
         tx.set_autocommit(false);
         assert!(tx.needs_begin(TxEffect::None));
         assert!(!tx.needs_begin(TxEffect::Begin));
-        assert!(
-            tx.needs_begin(TxEffect::ImplicitCommit),
-            "DDL opens the transaction"
-        );
         tx.after(TxEffect::None, false);
         assert!(tx.state().open);
         assert!(!tx.needs_begin(TxEffect::None));
