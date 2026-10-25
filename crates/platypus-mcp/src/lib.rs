@@ -20,7 +20,7 @@ pub mod query;
 mod redact;
 
 pub use access::AgentAccess;
-pub use agent::{Agent, ConnectionInfo, QueryArgs, SEARCH_RESULTS};
+pub use agent::{Agent, ConnectionInfo, QueryArgs, SEARCH_RESULTS, origin_name};
 pub use connect::connect;
 pub use error::{AgentError, Result};
 pub use output::{Format, QueryResult};

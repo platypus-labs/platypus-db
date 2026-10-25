@@ -411,13 +411,15 @@ impl Dialect {
     /// The statements that open a transaction in which the database refuses to write, where
     /// it has one (PostgreSQL, MySQL and MariaDB `READ ONLY` transactions, SQLite's
     /// `query_only`), or else a plain transaction: [`read_only_end`](Self::read_only_end)
-    /// always rolls it back, so a write that got through is undone.
+    /// always rolls it back, so a write that got through is undone. SQL Server waits 5
+    /// seconds at most for a lock meanwhile, so such a write cannot hang on other sessions.
     #[must_use]
     pub const fn read_only_begin(self) -> &'static [&'static str] {
         match self {
             Self::Postgres | Self::MySql => &["START TRANSACTION READ ONLY"],
             Self::Sqlite => &["PRAGMA query_only = ON", "BEGIN"],
-            Self::DuckDb | Self::SqlServer => &["BEGIN TRANSACTION"],
+            Self::DuckDb => &["BEGIN TRANSACTION"],
+            Self::SqlServer => &["SET LOCK_TIMEOUT 5000", "BEGIN TRANSACTION"],
         }
     }
 
@@ -427,7 +429,8 @@ impl Dialect {
     pub const fn read_only_end(self) -> &'static [&'static str] {
         match self {
             Self::Sqlite => &["ROLLBACK", "PRAGMA query_only = OFF"],
-            Self::Postgres | Self::MySql | Self::DuckDb | Self::SqlServer => &["ROLLBACK"],
+            Self::SqlServer => &["ROLLBACK", "SET LOCK_TIMEOUT -1"],
+            Self::Postgres | Self::MySql | Self::DuckDb => &["ROLLBACK"],
         }
     }
 

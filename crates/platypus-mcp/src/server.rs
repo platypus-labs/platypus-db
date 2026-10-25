@@ -18,9 +18,6 @@ agent access set by the user: read_only connections run only statements that cha
 inside a read-only transaction; read_write connections also accept changes, which commit at \
 once. Production connections are always read-only. Passwords never reach you.";
 
-/// The agent's name in the query history when the client does not give one.
-const UNNAMED_CLIENT: &str = "agent";
-
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct ConnectionArgs {
     /// The connection's name, as `list_connections` shows it.
@@ -208,11 +205,11 @@ impl PlatypusServer {
         Parameters(args): Parameters<QueryArgs>,
         peer: Peer<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
+        // The history trims and caps the name, and calls a client without one `agent`.
         let origin = peer
             .peer_info()
             .map(|info| info.client_info.name.clone())
-            .filter(|name| !name.trim().is_empty())
-            .unwrap_or_else(|| UNNAMED_CLIENT.to_owned());
+            .unwrap_or_default();
         let format = args.format.unwrap_or_default();
         let result = self
             .agent

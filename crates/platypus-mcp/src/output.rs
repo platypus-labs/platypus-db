@@ -8,7 +8,7 @@ use std::time::Duration;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::query::{Cell, Cut, Limits, MAX_VALUE_CHARS, Outcome};
+use crate::query::{Cell, Cut, Limits, MAX_VALUE_CHARS, Outcome, Table};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
@@ -41,10 +41,20 @@ impl QueryResult {
         u64::try_from(self.elapsed.as_millis()).unwrap_or(u64::MAX)
     }
 
-    /// The text table, then a line on how many rows it shows and why some were left out.
+    /// Why the rendering of the first `shown` rows has fewer rows than the statement
+    /// returned, if it does.
+    fn cut(table: &Table, shown: usize) -> Option<Cut> {
+        if shown < table.rows.len() {
+            Some(Cut::MaxBytes)
+        } else {
+            table.cut
+        }
+    }
+
+    /// The text table, then a line on how many rows it shows and why some were left out;
+    /// the whole of it within the byte limit.
     #[must_use]
     pub fn text(&self) -> String {
-        let limits = &self.limits;
         let table = match &self.outcome {
             Outcome::Affected(rows) => {
                 return format!("{rows} {} affected.", rows_word(*rows == 1));
@@ -56,58 +66,42 @@ impl QueryResult {
             .iter()
             .map(|row| row.iter().map(|c| one_line(c.text())).collect())
             .collect();
-        // Per column: the width in characters, and the most bytes a value has beyond its
-        // characters, so `width + extra` bounds the bytes of any padded value.
-        let mut widths: Vec<(usize, usize)> = table
-            .columns
-            .iter()
-            .map(|c| (width(&c.name), c.name.len() - width(&c.name)))
-            .collect();
-        let line = |widths: &[(usize, usize)]| {
-            widths.iter().map(|(w, extra)| w + extra).sum::<usize>()
-                + 3 * widths.len().saturating_sub(1)
-                + 1
-        };
-        // Every line is at most as long as the widest: grow the table while it fits.
-        let mut shown = 0;
-        for row in &cells {
-            let mut grown = widths.clone();
-            for ((w, extra), value) in grown.iter_mut().zip(row) {
-                let chars = width(value);
-                *w = (*w).max(chars);
-                *extra = (*extra).max(value.len() - chars);
+        let render = |shown: usize| {
+            let rows = &cells[..shown];
+            let mut widths: Vec<usize> = table.columns.iter().map(|c| width(&c.name)).collect();
+            for row in rows {
+                for (w, value) in widths.iter_mut().zip(row) {
+                    *w = (*w).max(width(value));
+                }
             }
-            if (shown + 3) * line(&grown) > limits.max_bytes {
-                break;
+            let mut out = String::new();
+            let names: Vec<&str> = table.columns.iter().map(|c| c.name.as_str()).collect();
+            push_line(&mut out, &names, &widths);
+            let rule: Vec<String> = widths.iter().map(|w| "-".repeat(*w)).collect();
+            out.push_str(&rule.join("-+-"));
+            out.push('\n');
+            for row in rows {
+                let row: Vec<&str> = row.iter().map(String::as_str).collect();
+                push_line(&mut out, &row, &widths);
             }
-            widths = grown;
-            shown += 1;
-        }
-        let widths: Vec<usize> = widths.into_iter().map(|(w, _)| w).collect();
-        let cut = if shown < cells.len() {
-            Some(Cut::MaxBytes)
-        } else {
-            table.cut
+            let cut = Self::cut(table, shown);
+            out.push_str(&footer(
+                shown,
+                cut,
+                table.values_cut,
+                self.elapsed,
+                &self.limits,
+            ));
+            out
         };
-        let mut out = String::new();
-        let names: Vec<&str> = table.columns.iter().map(|c| c.name.as_str()).collect();
-        push_line(&mut out, &names, &widths);
-        let rule: Vec<String> = widths.iter().map(|w| "-".repeat(*w)).collect();
-        out.push_str(&rule.join("-+-"));
-        out.push('\n');
-        for row in &cells[..shown] {
-            let row: Vec<&str> = row.iter().map(String::as_str).collect();
-            push_line(&mut out, &row, &widths);
-        }
-        out.push_str(&footer(shown, cut, table.values_cut, self.elapsed, limits));
-        out
+        fit(cells.len(), self.limits.max_bytes, render, String::len)
     }
 
     /// The JSON document: `columns`, `rows`, `row_count`, `truncated`, `truncated_by`,
-    /// `values_cut` and `elapsed_ms`; or `affected_rows` and `elapsed_ms`.
+    /// `values_cut` and `elapsed_ms`; or `affected_rows` and `elapsed_ms`. Within the byte
+    /// limit as serialized.
     #[must_use]
     pub fn json(&self) -> Value {
-        let limits = &self.limits;
         let table = match &self.outcome {
             Outcome::Affected(rows) => {
                 return json!({ "affected_rows": rows, "elapsed_ms": self.elapsed_ms() });
@@ -119,34 +113,50 @@ impl QueryResult {
             .iter()
             .map(|c| json!({ "name": c.name, "type": c.db_type }))
             .collect();
-        let mut size = Value::Array(columns.clone()).to_string().len() + 160;
-        let mut rows = Vec::with_capacity(table.rows.len());
-        for row in &table.rows {
-            let row = Value::Array(row.iter().map(cell_json).collect());
-            size += row.to_string().len() + 1;
-            if size > limits.max_bytes {
-                break;
-            }
-            rows.push(row);
-        }
-        let cut = if rows.len() < table.rows.len() {
-            Some(Cut::MaxBytes)
-        } else {
-            table.cut
+        let rows: Vec<Value> = table
+            .rows
+            .iter()
+            .map(|row| Value::Array(row.iter().map(cell_json).collect()))
+            .collect();
+        let render = |shown: usize| {
+            let cut = Self::cut(table, shown);
+            json!({
+                "columns": columns,
+                "row_count": shown,
+                "rows": rows[..shown],
+                "truncated": cut.is_some(),
+                "truncated_by": cut.map(|c| match c {
+                    Cut::MaxRows => "max_rows",
+                    Cut::MaxBytes => "max_bytes",
+                }),
+                "values_cut": table.values_cut,
+                "elapsed_ms": self.elapsed_ms(),
+            })
         };
-        json!({
-            "columns": columns,
-            "row_count": rows.len(),
-            "rows": rows,
-            "truncated": cut.is_some(),
-            "truncated_by": cut.map(|c| match c {
-                Cut::MaxRows => "max_rows",
-                Cut::MaxBytes => "max_bytes",
-            }),
-            "values_cut": table.values_cut,
-            "elapsed_ms": self.elapsed_ms(),
+        fit(rows.len(), self.limits.max_bytes, render, |doc| {
+            doc.to_string().len()
         })
     }
+}
+
+/// The rendering of the first `total` rows, or of as many as fit in `max` bytes; at least
+/// the one of none. Renderings grow with the rows, so the most that fit are found by
+/// halving.
+fn fit<T>(total: usize, max: usize, render: impl Fn(usize) -> T, size: impl Fn(&T) -> usize) -> T {
+    let all = render(total);
+    if size(&all) <= max {
+        return all;
+    }
+    let (mut fits, mut too_many) = (0, total);
+    while too_many - fits > 1 {
+        let middle = fits + (too_many - fits) / 2;
+        if size(&render(middle)) <= max {
+            fits = middle;
+        } else {
+            too_many = middle;
+        }
+    }
+    render(fits)
 }
 
 fn cell_json(cell: &Cell) -> Value {
@@ -222,7 +232,7 @@ fn footer(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::query::{Column, Table};
+    use crate::query::Column;
 
     fn table(rows: usize, cut: Option<Cut>, limits: Limits) -> QueryResult {
         QueryResult {
@@ -276,14 +286,15 @@ mod tests {
 
     #[test]
     fn text_tables_stay_within_the_byte_limit() {
+        // The footer counts too.
         let limits = Limits {
-            max_bytes: 60,
+            max_bytes: 200,
             ..Limits::default()
         };
         let out = table(50, None, limits).text();
-        let body = out.split("\n(").next().unwrap();
-        assert!(body.len() <= 60, "{out}");
-        assert!(out.contains("output cut at 60 bytes"), "{out}");
+        assert!(out.len() <= 200, "{}: {out}", out.len());
+        assert!(out.contains("output cut at 200 bytes"), "{out}");
+        assert!(out.contains("1  | n\\n1"), "{out}");
     }
 
     #[test]

@@ -4789,6 +4789,7 @@ dependencies = [
  "arrow-cast",
  "arrow-schema",
  "dirs",
+ "duckdb",
  "futures",
  "platypus-core",
  "platypus-driver-duckdb",

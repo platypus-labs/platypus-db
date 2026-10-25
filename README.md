@@ -180,7 +180,10 @@ Tools: `list_connections`, `list_schemas`, `list_objects`, `describe_table`, `ge
 `timeout_seconds` up to 300), as an aligned text table or JSON, saying when rows or values
 longer than 1,000 characters were left out. On read-only connections only statements that
 change nothing run, inside the database's read-only transaction (PostgreSQL, MySQL and
-MariaDB `READ ONLY`, SQLite `query_only`; DuckDB and SQL Server roll the transaction back).
+MariaDB `READ ONLY`, SQLite `query_only`; DuckDB and SQL Server roll the transaction back),
+and functions that act outside it (`pg_terminate_backend`, `dblink`, `LOAD_FILE`…) are
+refused. DuckDB sessions of agents cannot read or write other files nor load extensions,
+and close after each call so the app can open the file.
 On read-write connections changes commit at once; `BEGIN`, `COMMIT` and `ROLLBACK` are
 refused, and so are `UPDATE` or `DELETE` without `WHERE` and `TRUNCATE` unless Settings →
 Safety runs them without asking.

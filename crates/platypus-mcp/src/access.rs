@@ -2,7 +2,7 @@
 //! with the same analysis the app runs before a statement (`platypus_sql::analyze`).
 
 use platypus_core::{TxEffect, classify};
-use platypus_sql::{Dialect, StatementKind};
+use platypus_sql::{Dialect, Lexer, StatementKind, TokenKind};
 pub use platypus_store::AgentAccess;
 use platypus_store::SettingsStore;
 
@@ -30,6 +30,45 @@ impl UnfilteredRule {
             _ => Self::Refuse,
         }
     }
+}
+
+/// PostgreSQL functions that act outside the transaction (other sessions, the server's
+/// configuration and files, notifications, session locks): a `READ ONLY` transaction lets
+/// them run.
+const POSTGRES_OUTSIDE: &[&str] = &[
+    "pg_terminate_backend",
+    "pg_cancel_backend",
+    "pg_reload_conf",
+    "pg_rotate_logfile",
+    "pg_promote",
+    "lo_import",
+    "lo_export",
+    "pg_notify",
+];
+/// Families of them: `dblink_exec`, `pg_advisory_lock`, adminpack's `pg_file_write`…
+const POSTGRES_OUTSIDE_PREFIXES: &[&str] =
+    &["dblink", "pg_advisory_", "pg_try_advisory_", "pg_file_"];
+/// MySQL and MariaDB read and write the server's files whatever the transaction.
+const MYSQL_OUTSIDE: &[&str] = &["load_file", "outfile", "dumpfile"];
+
+/// The first word of `statement` naming something that reaches outside a read-only
+/// transaction in `dialect`, as written.
+fn outside_effect(statement: &str, dialect: Dialect) -> Option<&str> {
+    let (names, prefixes): (&[&str], &[&str]) = match dialect {
+        Dialect::Postgres => (POSTGRES_OUTSIDE, POSTGRES_OUTSIDE_PREFIXES),
+        Dialect::MySql => (MYSQL_OUTSIDE, &[]),
+        Dialect::Sqlite | Dialect::DuckDb | Dialect::SqlServer => return None,
+    };
+    Lexer::new(statement, dialect)
+        .filter_map(|t| match t.kind {
+            TokenKind::Word => Some(t.text(statement)),
+            TokenKind::QuotedIdent => Some(t.text(statement).trim_matches(['"', '`', '[', ']'])),
+            _ => None,
+        })
+        .find(|word| {
+            let word = word.to_ascii_lowercase();
+            names.contains(&word.as_str()) || prefixes.iter().any(|p| word.starts_with(p))
+        })
 }
 
 /// The single statement of `sql`, if agents may run it on `connection` with `access`.
@@ -60,7 +99,13 @@ pub fn check<'a>(
             "client commands such as `@set` belong to PlatypusDB's editor: send plain SQL"
                 .to_owned(),
         )),
-        (AgentAccess::ReadOnly, StatementKind::Query) => Ok(statement),
+        (AgentAccess::ReadOnly, StatementKind::Query) => match outside_effect(statement, dialect) {
+            Some(word) => Err(AgentError::Denied(format!(
+                "`{connection}` is read-only for agents, and `{word}` acts outside the \
+                 transaction or on the server's files, which a read-only transaction does not stop"
+            ))),
+            None => Ok(statement),
+        },
         (AgentAccess::ReadOnly, kind) => Err(AgentError::Denied(format!(
             "`{connection}` is read-only for agents: only statements that change nothing may run, \
              and this one {}. The user can allow agents to write in PlatypusDB's connection \
@@ -122,6 +167,43 @@ mod tests {
         assert!(denied(ro("select * into copy from t")).contains("data"));
         assert!(denied(ro("begin")).contains("session"));
         assert!(denied(ro("@set x = 1")).contains("client commands"));
+    }
+
+    #[test]
+    fn read_only_refuses_effects_outside_the_transaction() {
+        let ro = |sql, dialect| {
+            check(
+                sql,
+                dialect,
+                AgentAccess::ReadOnly,
+                UnfilteredRule::Allow,
+                "db",
+            )
+        };
+        for sql in [
+            "select pg_terminate_backend(42)",
+            "select pg_reload_conf()",
+            "SELECT pg_catalog.PG_NOTIFY('c', 'x')",
+            "select * from dblink('host=x', 'select 1') as t(a int)",
+            "select dblink_exec('drop table t')",
+            "select pg_advisory_lock(1)",
+            "select pg_try_advisory_lock_shared(1)",
+            "select lo_export(1, '/tmp/x')",
+            "select pg_file_write('x', 'y', false)",
+            r#"select "pg_promote"()"#,
+        ] {
+            // pg_terminate_backend is caught by the analysis already.
+            assert!(!denied(ro(sql, PG)).is_empty(), "{sql}");
+        }
+        assert!(denied(ro("select pg_reload_conf()", PG)).contains("outside the transaction"));
+        let my = Dialect::MySql;
+        assert!(denied(ro("SELECT LOAD_FILE('/etc/passwd')", my)).contains("`LOAD_FILE`"));
+        assert!(ro("select * from t into outfile '/tmp/x'", my).is_err());
+        assert!(ro("select * from t into dumpfile '/tmp/x'", my).is_err());
+        // Names in strings are only text, and other databases have no such functions.
+        assert!(ro("select 'pg_notify' as name", PG).is_ok());
+        assert!(ro("select load_file from t", PG).is_ok());
+        assert!(ro("select pg_notify from t", Dialect::Sqlite).is_ok());
     }
 
     #[test]

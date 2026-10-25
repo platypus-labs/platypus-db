@@ -1763,9 +1763,13 @@ async fn sets_the_session_up_after_connecting() {
 
 /// The rows of `table` an agent's read-only query sees.
 async fn agent_count(b: &Backend, conn: &dyn Connection, table: &str) -> String {
+    agent_value(b, conn, &format!("SELECT count(*) FROM {table}")).await
+}
+
+/// The first value an agent's read-only query returns.
+async fn agent_value(b: &Backend, conn: &dyn Connection, sql: &str) -> String {
     let dialect = platypus_sql::Dialect::from(b.config.driver);
-    let sql = format!("SELECT count(*) FROM {table}");
-    match platypus_mcp::query::run(conn, &sql, Some(dialect), &Limits::default()).await {
+    match platypus_mcp::query::run(conn, sql, Some(dialect), &Limits::default()).await {
         Ok(Outcome::Rows(t)) => t.rows[0][0].text().to_owned(),
         Ok(other) => panic!("{}: {sql} returned {other:?}", b.name),
         Err(e) => panic!("{}: {sql}: {e:?}", b.name),
@@ -1788,6 +1792,12 @@ async fn agents_read_in_read_only_transactions() {
             .unwrap_or_else(|e| panic!("{}: {e}", b.name));
 
         assert_eq!(agent_count(&b, conn, table).await, "0", "{}", b.name);
+        if b.config.driver == DriverKind::SqlServer {
+            // Waits for locks briefly while read-only, then as before.
+            assert_eq!(agent_value(&b, conn, "SELECT @@LOCK_TIMEOUT").await, "5000");
+            let after = collect(&b, conn, "SELECT @@LOCK_TIMEOUT").await;
+            assert_eq!(cell(&after[0], 0, 0).as_deref(), Some("-1"));
+        }
         // A write that got past the statement check is refused, or rolled back.
         let insert = format!("INSERT INTO {table} VALUES (1)");
         let write =

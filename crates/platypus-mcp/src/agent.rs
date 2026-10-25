@@ -1,13 +1,14 @@
 //! What agents can do with the saved connections: the tools the MCP server and the CLI
 //! expose. Each call reads the connections again, so a change of agent access in the app
 //! applies at once; open connections are kept between calls and reopened when their
-//! settings change.
+//! settings change, except DuckDB's, closed after each call.
 
 use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Instant, SystemTime};
 
-use platypus_core::{Connection, Error, ObjectKind, ObjectMeta, ObjectRef};
+use platypus_core::{Connection, DriverKind, Error, ObjectKind, ObjectMeta, ObjectRef};
 use platypus_sql::Dialect;
 use platypus_store::{
     AgentAccess, ConnectionStore, HistoryStatus, HistoryStore, NewHistoryEntry, SavedConnection,
@@ -27,6 +28,35 @@ use crate::redact::Redactor;
 
 /// Search hits returned at most.
 pub const SEARCH_RESULTS: usize = 200;
+
+/// Characters of an agent's name the history keeps.
+const ORIGIN_CHARS: usize = 64;
+
+/// An agent's name as the history keeps it: trimmed, without control characters, at most
+/// 64 characters, and `agent` when nothing is left.
+#[must_use]
+pub fn origin_name(name: &str) -> String {
+    let name: String = name
+        .trim()
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(ORIGIN_CHARS)
+        .collect();
+    match name.trim_end() {
+        "" => "agent".to_owned(),
+        trimmed => trimmed.to_owned(),
+    }
+}
+
+/// What tells two sets of connection settings apart: a hash of the effective connection,
+/// its network profile in place.
+fn fingerprint(effective: &SavedConnection) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    serde_json::to_string(effective)
+        .unwrap_or_default()
+        .hash(&mut hasher);
+    hasher.finish()
+}
 
 /// The arguments of `run_query`.
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
@@ -87,8 +117,9 @@ impl<'a> From<&'a ObjectMeta> for ObjectInfo<'a> {
 
 /// An open connection kept for the next calls.
 struct Session {
-    /// The settings it was opened with, to notice when they change.
-    saved: SavedConnection,
+    /// The [`fingerprint`] of the settings it was opened with, to notice when they change.
+    fingerprint: u64,
+    driver: DriverKind,
     conn: Box<dyn Connection>,
     redactor: Redactor,
 }
@@ -138,6 +169,20 @@ impl Lease {
                 self.discard();
                 Err(AgentError::Timeout(Limits::DEFAULT_TIMEOUT))
             }
+        }
+    }
+}
+
+impl Drop for Lease {
+    /// DuckDB locks its file for the process that opens it: a session kept open would keep
+    /// the app out of it.
+    fn drop(&mut self) {
+        if self
+            .slot
+            .as_ref()
+            .is_some_and(|s| s.driver == DriverKind::DuckDb)
+        {
+            *self.slot = None;
         }
     }
 }
@@ -238,15 +283,16 @@ impl Agent {
     /// dropped it or a transaction was left open.
     async fn lease(&self, store: &ConnectionStore, saved: &SavedConnection) -> Result<Lease> {
         let mut slot = self.slot(saved.id).lock_owned().await;
-        let effective = store.effective(saved);
+        let fingerprint = fingerprint(&store.effective(saved));
         let reusable = slot.as_ref().is_some_and(|s| {
-            s.saved == effective && !s.conn.is_closed() && !s.conn.transaction().open
+            s.fingerprint == fingerprint && !s.conn.is_closed() && !s.conn.transaction().open
         });
         if !reusable {
             *slot = None;
             let (conn, redactor) = connect::open(store, saved).await?;
             *slot = Some(Session {
-                saved: effective,
+                fingerprint,
+                driver: saved.driver,
                 conn,
                 redactor,
             });
@@ -324,7 +370,8 @@ impl Agent {
     }
 
     /// Runs one statement within the connection's agent access and the limits, and
-    /// records it in the query history with `origin`, the agent's name.
+    /// records it in the query history with `origin`, the agent's name (see
+    /// [`origin_name`]).
     pub async fn run_query(&self, args: &QueryArgs, origin: &str) -> Result<QueryResult> {
         let limits = Limits::new(args.max_rows, args.max_bytes, args.timeout_seconds)?;
         let (store, saved) = self.find(&args.connection)?;
@@ -346,7 +393,14 @@ impl Agent {
             elapsed: start.elapsed(),
             limits,
         });
-        self.record(&saved, args.sql.trim(), started_at, start, &result, origin);
+        self.record(
+            &saved,
+            args.sql.trim(),
+            started_at,
+            start,
+            &result,
+            &origin_name(origin),
+        );
         result
     }
 
@@ -473,4 +527,84 @@ async fn search_names(conn: &dyn Connection, text: &str) -> Result<Vec<Value>, E
         }
     }
     Ok(found)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+
+    #[test]
+    fn origin_names_are_trimmed_and_capped() {
+        assert_eq!(origin_name("  claude-code \n"), "claude-code");
+        assert_eq!(origin_name(" \t "), "agent");
+        assert_eq!(origin_name("a\u{7}b"), "ab");
+        assert_eq!(origin_name(&"é".repeat(100)).chars().count(), ORIGIN_CHARS);
+    }
+
+    fn sqlite(path: &Path, rows: u32) {
+        let db = rusqlite::Connection::open(path).unwrap();
+        db.execute_batch("CREATE TABLE t (id INTEGER)").unwrap();
+        for id in 0..rows {
+            db.execute("INSERT INTO t VALUES (?1)", [id]).unwrap();
+        }
+    }
+
+    fn save_connection(dir: &Path, driver: &str, database: &Path) {
+        std::fs::write(
+            dir.join("connections.toml"),
+            format!(
+                "version = 4\n\n[[connections]]\nid = \"00000000-0000-4000-8000-000000000001\"\n\
+                 name = \"Db\"\ndriver = \"{driver}\"\ndatabase = '{}'\n",
+                database.display()
+            ),
+        )
+        .unwrap();
+    }
+
+    async fn count(agent: &Agent) -> String {
+        let args = QueryArgs {
+            connection: "Db".to_owned(),
+            sql: "SELECT count(*) AS n FROM t".to_owned(),
+            max_rows: None,
+            max_bytes: None,
+            timeout_seconds: None,
+            format: None,
+        };
+        let result = agent.run_query(&args, "test").await.unwrap();
+        result.json()["rows"][0][0].to_string()
+    }
+
+    #[tokio::test]
+    async fn a_changed_connection_is_opened_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let (one, two) = (dir.path().join("one.db"), dir.path().join("two.db"));
+        sqlite(&one, 1);
+        sqlite(&two, 2);
+        let agent = Agent::new(Profile::at(dir.path()));
+        save_connection(dir.path(), "sqlite", &one);
+        assert_eq!(count(&agent).await, "1");
+        save_connection(dir.path(), "sqlite", &two);
+        assert_eq!(count(&agent).await, "2");
+    }
+
+    #[tokio::test]
+    async fn duckdb_files_are_free_between_calls() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("data.duckdb");
+        duckdb::Connection::open(&path)
+            .unwrap()
+            .execute_batch("CREATE TABLE t (id INTEGER); INSERT INTO t VALUES (1), (2), (3);")
+            .unwrap();
+        save_connection(dir.path(), "duckdb", &path);
+        let agent = Agent::new(Profile::at(dir.path()));
+        assert_eq!(count(&agent).await, "3");
+        // Another instance, as the app would open, gets the file.
+        duckdb::Connection::open(&path)
+            .unwrap()
+            .execute_batch("INSERT INTO t VALUES (4)")
+            .unwrap();
+        assert_eq!(count(&agent).await, "4");
+    }
 }
