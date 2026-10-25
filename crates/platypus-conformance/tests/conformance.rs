@@ -718,6 +718,20 @@ async fn manual_commit_and_rollback() {
         assert_eq!(kept, mysql, "{}: the CREATE rolled back", b.name);
         conn.rollback().await.unwrap();
         conn.set_autocommit(true).await.unwrap();
+
+        // A read in manual-commit mode does not keep another session from writing.
+        let _ = run(conn, &format!("DROP TABLE {ddl}")).await;
+        run(conn, &format!("CREATE TABLE {ddl} (id INT)"))
+            .await
+            .unwrap();
+        conn.set_autocommit(false).await.unwrap();
+        run(conn, &format!("SELECT * FROM {ddl}")).await.unwrap();
+        let other = b.connect().await;
+        run(&*other, &format!("INSERT INTO {ddl} VALUES (1)"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: write beside a read: {e}", b.name));
+        conn.rollback().await.unwrap();
+        conn.set_autocommit(true).await.unwrap();
         let _ = run(conn, &format!("DROP TABLE {ddl}")).await;
     }
 }
