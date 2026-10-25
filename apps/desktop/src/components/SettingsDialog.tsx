@@ -3,11 +3,13 @@ import { AgentsPanel } from "../agents/AgentsPanel";
 import { toCommandError } from "../api";
 import { type SettingDef, getSetting, setSetting, settingDefs, useSettingsVersion } from "../settings";
 import { ShortcutsPanel } from "../shell/ShortcutsPanel";
+import { DriversPanel } from "../drivers/DriversPanel";
 import { MasterPasswordPanel } from "./MasterPassword";
 
 const SHORTCUTS = "Keyboard shortcuts";
 const SECURITY = "Master password";
 const AGENTS = "Agents";
+const DRIVERS = "Drivers";
 
 type Value = boolean | number | string;
 
@@ -37,7 +39,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         {error && <div className="notice error small">{error}</div>}
         <div className="settings-layout">
           <nav className="settings-nav">
-            {[...sections.keys(), SECURITY, AGENTS, SHORTCUTS].map((section) => (
+            {[...sections.keys(), SECURITY, AGENTS, DRIVERS, SHORTCUTS].map((section) => (
               <button
                 key={section}
                 type="button"
@@ -67,6 +69,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <section data-section={AGENTS}>
               <h3>{AGENTS}</h3>
               <AgentsPanel />
+            </section>
+            <section data-section={DRIVERS}>
+              <h3>{DRIVERS}</h3>
+              <DriversPanel />
             </section>
             <section data-section={SHORTCUTS}>
               <h3>{SHORTCUTS}</h3>

@@ -1,16 +1,21 @@
 import {
+  siApachearrow,
   siClickhouse,
   siCockroachlabs,
+  siDatabricks,
   siDuckdb,
+  siGooglebigquery,
   siGooglecloud,
   siMariadb,
   siMongodb,
   siMysql,
   siNeon,
   siPostgresql,
+  siSnowflake,
   siSqlite,
   siSupabase,
   siTimescale,
+  siTrino,
   siTurso,
 } from "simple-icons";
 import type { DriverKind, SavedConnection } from "../api";
@@ -57,6 +62,12 @@ const CHOICES: Choice[] = [
     preset: { ssl_mode: "verify-full" },
   },
   { driver: "mongo", label: "MongoDB", path: siMongodb.path, bg: DARK, fg: `#${siMongodb.hex}` },
+  // Through ADBC drivers, downloaded when a connection first needs one.
+  { driver: "snowflake", label: "Snowflake", path: siSnowflake.path, bg: `#${siSnowflake.hex}`, fg: "#fff" },
+  { driver: "bigquery", label: "BigQuery", path: siGooglebigquery.path, bg: `#${siGooglebigquery.hex}`, fg: "#fff" },
+  { driver: "databricks", label: "Databricks", path: siDatabricks.path, bg: `#${siDatabricks.hex}`, fg: "#fff" },
+  { driver: "trino", label: "Trino", path: siTrino.path, bg: `#${siTrino.hex}`, fg: "#fff" },
+  { driver: "adbc", label: "Other ADBC driver", path: siApachearrow.path, bg: DARK, fg: "#fff" },
 ];
 
 /** Servers and services that speak the PostgreSQL protocol: the PostgreSQL driver, preset. */
