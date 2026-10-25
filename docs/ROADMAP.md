@@ -295,7 +295,7 @@ parallelizzabile: **una persona per driver**.
 **Dipende da:** 0.5, 0.6
 
 **Stato: P1 completate, P2 e P3 in parte** (P2: ClickHouse e i server con protocollo PostgreSQL;
-P3: libSQL/Turso e MongoDB. Da fare: ADBC/ODBC, Oracle, Redis). SQL Server usa `tiberius` copiato
+P3: libSQL/Turso e MongoDB; ADBC con Snowflake, BigQuery, Databricks e Trino, driver scaricati al primo uso. Da fare: ODBC (Oracle, Db2), Redis). SQL Server usa `tiberius` copiato
 in `vendor/` con le patch per la negoziazione della cifratura; il dialetto Transact-SQL scrive `TOP (n)` e `[nomi]`,
 e la transazione segue `@@TRANCOUNT`. DuckDB è incorporato come SQLite, con risultati Arrow nativi;
 senza l'estensione ICU non ha fuso orario di sessione. Una nuova connessione parte dalla scelta del
@@ -339,7 +339,7 @@ conformance dedicata in `tests/mongo.rs` (profilo `mongo` di `docker/compose.yml
 | ✅ ClickHouse | P2 | HTTP con formato Arrow |
 | ✅ File come database: CSV, Parquet, JSON, XLSX (tramite DuckDB) | P2 | Fatto con il gruppo H: viste DuckDB sul file, un foglio XLSX per tabella (calamine); si aprono col trascinamento sulla finestra |
 | ✅ CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon; AlloyDB no | P2 | Wire PG: profili e test, non driver nuovi |
-| ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | Una persona per il bridge, poi profili |
+| ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | ✅ ADBC (Snowflake, BigQuery, Databricks, Trino, ADBC generico; driver scaricati dal registro dbc). Da fare: ODBC (Oracle, Db2, ODBC generico) |
 | Aggiornamento automatico dei driver di tutti i database (scaricati ADBC/ODBC e nativi), con verifica che i dialetti restino compatibili; scelta di versioni precedenti di un driver | P3 | Scaricati: registro con più versioni. Nativi: compilati nell'app, si aggiornano con l'app; versioni vecchie = più versioni dello stesso crate o driver caricabili a parte. Test di compatibilità per versione |
 | Oracle nativo | P3 | Licensing OCI da valutare |
 | Redis, ✅ **MongoDB** | P3 | MongoDB: sintassi mongosh, griglia dei campi + albero del documento; Redis da fare |

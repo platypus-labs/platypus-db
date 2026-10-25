@@ -54,6 +54,12 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | libSQL / Turso | Hrana over HTTP | Token in the password or in `authToken` |
 | MongoDB | official driver | mongosh syntax; no transactions, explain or data editing |
 | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | PostgreSQL driver | Profiles with their default port, user, database and SSL |
+| Snowflake, BigQuery, Databricks, Trino | ADBC driver, downloaded on first use | Queries, results, navigator and autocompletion; no data editing, explain or manual commit yet |
+| Any database with an ADBC driver | ADBC driver library you choose | Its URI and options as the driver documents them |
+
+The ADBC drivers come from the [dbc driver registry](https://docs.columnar.tech/dbc/) (Columnar):
+the first connection that needs one asks to download it, checks its SHA-256 and keeps it with
+the app's data. *Settings › Drivers* lists and removes them.
 
 ## Features
 
