@@ -50,9 +50,10 @@ pub fn describable(sql: &str) -> bool {
     })
 }
 
-/// The statement that describes the columns of `sql`, one JSON array per line.
+/// The statement that describes the columns of `sql`, one JSON array per line. The line
+/// break keeps a comment at the end of `sql` from hiding the parenthesis.
 pub fn describe_sql(sql: &str) -> String {
-    format!("DESCRIBE TABLE ({sql}) FORMAT JSONCompactEachRow")
+    format!("DESCRIBE TABLE ({sql}\n) FORMAT JSONCompactEachRow")
 }
 
 /// `(name, type)` of each column, from the output of [`describe_sql`].
@@ -92,7 +93,7 @@ pub fn arrow_compatible(sql: &str, columns: &[(String, String)]) -> Option<Strin
             }
         })
         .collect();
-    Some(format!("SELECT {} FROM ({sql})", list.join(", ")))
+    Some(format!("SELECT {} FROM ({sql}\n)", list.join(", ")))
 }
 
 /// The type inside `Nullable(...)` and `LowCardinality(...)`.
@@ -193,6 +194,10 @@ mod tests {
         assert!(!describable("INSERT INTO t SELECT 1"));
         assert!(!describable("SHOW TABLES"));
         assert_eq!(
+            describe_sql("SELECT 1 -- one"),
+            "DESCRIBE TABLE (SELECT 1 -- one\n) FORMAT JSONCompactEachRow"
+        );
+        assert_eq!(
             parse_describe("[\"id\",\"UInt8\",\"\",\"\"]\n[\"u\",\"Nullable(UUID)\"]\n"),
             [
                 ("id".to_owned(), "UInt8".to_owned()),
@@ -209,13 +214,13 @@ mod tests {
         ];
         assert_eq!(
             arrow_compatible("SELECT * FROM t", &columns).as_deref(),
-            Some("SELECT id, toString(`my id`) AS `my id` FROM (SELECT * FROM t)")
+            Some("SELECT id, toString(`my id`) AS `my id` FROM (SELECT * FROM t\n)")
         );
         assert_eq!(arrow_compatible("SELECT 1", &columns[..1]), None);
         let null = vec![("x".to_owned(), "Nullable(Nothing)".to_owned())];
         assert_eq!(
             arrow_compatible("SELECT NULL AS x", &null).as_deref(),
-            Some("SELECT CAST(x AS Nullable(String)) AS x FROM (SELECT NULL AS x)")
+            Some("SELECT CAST(x AS Nullable(String)) AS x FROM (SELECT NULL AS x\n)")
         );
     }
 

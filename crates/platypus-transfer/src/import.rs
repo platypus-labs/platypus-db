@@ -144,8 +144,12 @@ impl ImportPlan {
                         .map_or_else(String::new, |d| format!(" DEFAULT {d}")),
                     if c.not_null {
                         " NOT NULL"
-                    } else if dialect == Dialect::ClickHouse && !t.starts_with("Nullable(") {
-                        // ClickHouse columns are not nullable unless declared so.
+                    } else if dialect == Dialect::ClickHouse
+                        && !t.starts_with("Nullable(")
+                        && !t.starts_with("LowCardinality(Nullable(")
+                    {
+                        // ClickHouse columns are not nullable unless declared so; `NULL`
+                        // fails on types that already are.
                         " NULL"
                     } else {
                         ""
@@ -641,6 +645,13 @@ mod tests {
         assert_eq!(
             p.create_sql(Dialect::Postgres).unwrap(),
             r#"CREATE TABLE public."Sales" (id BIGINT, item TEXT)"#
+        );
+        let mut ch = plan(true);
+        ch.columns[0].data_type = Some("Int64".to_owned());
+        ch.columns[1].data_type = Some("LowCardinality(Nullable(String))".to_owned());
+        assert_eq!(
+            ch.create_sql(Dialect::ClickHouse).unwrap(),
+            "CREATE TABLE public.Sales (id Int64 NULL, item LowCardinality(Nullable(String)))"
         );
         assert_eq!(
             p.source_sql(Dialect::DuckDb),

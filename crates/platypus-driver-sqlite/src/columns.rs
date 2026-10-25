@@ -163,7 +163,8 @@ impl Mismatch {
                 .cloned()
                 .unwrap_or_default(),
             message: format!(
-                "a {} value follows {} values in the first rows; use CAST(... AS TEXT)                  for columns with mixed types",
+                "a {} value follows {} values in the first rows; use CAST(... AS TEXT) \
+                 for columns with mixed types",
                 self.found, self.expected
             ),
         }

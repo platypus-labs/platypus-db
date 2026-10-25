@@ -1014,8 +1014,9 @@ export function QueryTab({
 
   const health = useSessionHealth(currentSession, active && !running && !guard);
   const toolbar = useToolbar();
-  // ClickHouse has no transactions (`capabilities.transactions` is false): no commit mode.
-  const showTx = toolbar.visible.transactions && connection.driver !== "clickhouse";
+  // ClickHouse and MongoDB have no transactions (`capabilities.transactions` is false): no
+  // commit mode.
+  const showTx = toolbar.visible.transactions && connection.driver !== "clickhouse" && !isMongo(connection.driver);
   const current = results[activeResult];
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
   const rowsResult = current?.status.kind === "rows" && current.columns ? current : null;

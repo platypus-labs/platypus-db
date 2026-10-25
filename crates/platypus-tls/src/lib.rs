@@ -41,6 +41,17 @@ pub fn client_config(config: &ConnectionConfig) -> Result<Option<ClientConfig>> 
     Ok(Some(tls))
 }
 
+/// A configuration that trusts nothing, for plaintext HTTP clients: reqwest built without
+/// a crypto provider of its own wants one even for `http`, and panics without it.
+pub fn plaintext_config() -> Result<ClientConfig> {
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    Ok(ClientConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .map_err(tls_error)?
+        .with_root_certificates(RootCertStore::empty())
+        .with_no_client_auth())
+}
+
 #[expect(
     clippy::needless_pass_by_value,
     reason = "used directly as a `map_err` callback"

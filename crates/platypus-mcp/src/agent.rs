@@ -375,12 +375,17 @@ impl Agent {
     pub async fn run_query(&self, args: &QueryArgs, origin: &str) -> Result<QueryResult> {
         let limits = Limits::new(args.max_rows, args.max_bytes, args.timeout_seconds)?;
         let (store, saved) = self.find(&args.connection)?;
-        let dialect = Dialect::from(saved.driver);
         let access = saved.effective_agent_access();
         let unfiltered = UnfilteredRule::from_settings(self.profile.settings().as_ref());
         let started_at = SystemTime::now();
         let start = Instant::now();
-        let result = match access::check(&args.sql, dialect, access, unfiltered, &saved.name) {
+        let checked = if saved.driver == DriverKind::Mongo {
+            access::check_mongo(&args.sql, access, unfiltered, &saved.name)
+        } else {
+            let dialect = Dialect::from(saved.driver);
+            access::check(&args.sql, dialect, access, unfiltered, &saved.name)
+        };
+        let result = match checked {
             Ok(statement) => {
                 let read_only = (access == AgentAccess::ReadOnly).then_some(saved.driver);
                 self.execute(&store, &saved, statement, read_only, &limits)

@@ -248,6 +248,13 @@ impl ConnectionConfig {
                 other => return Err(Error::Config(format!("unknown URL parameter `{other}`"))),
             }
         }
+        // ClickHouse serves HTTPS on another port than HTTP.
+        if driver == DriverKind::ClickHouse
+            && url.port().is_none()
+            && !matches!(config.ssl_mode, SslMode::Disable | SslMode::Prefer)
+        {
+            config.port = Some(8443);
+        }
         Ok(config)
     }
 
@@ -370,6 +377,10 @@ mod tests {
         let c = ConnectionConfig::from_url("clickhouse://default@ch/logs").unwrap();
         assert_eq!(c.driver, DriverKind::ClickHouse);
         assert_eq!((c.port, c.database.as_str()), (Some(8123), "logs"));
+        let c = ConnectionConfig::from_url("clickhouse://ch/logs?sslmode=require").unwrap();
+        assert_eq!(c.port, Some(8443));
+        let c = ConnectionConfig::from_url("clickhouse://ch:9443/?sslmode=verify-full").unwrap();
+        assert_eq!(c.port, Some(9443));
         let c = ConnectionConfig::from_url("mssql://sa@db:14330/").unwrap();
         assert_eq!(c.driver, DriverKind::SqlServer);
         assert_eq!(c.port, Some(14330));

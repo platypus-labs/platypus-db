@@ -26,11 +26,17 @@ pub struct Session {
 
 /// A request that failed before reaching a statement: network, TLS, HTTP status.
 #[derive(Debug)]
-struct Transport(String);
+struct Transport {
+    message: String,
+    /// The server refused the request with an HTTP status, so it ran nothing. Otherwise
+    /// the request may have reached it.
+    answered: bool,
+}
 
 impl Session {
     /// Opens a session, checking that the server answers; returns it with whether it uses
-    /// TLS and the SQLite version. `prefer` falls back to plain HTTP when HTTPS fails.
+    /// TLS and the SQLite version. `prefer` falls back to plain HTTP when HTTPS cannot be
+    /// reached, but not when the server answers it: that would send the token in clear.
     pub async fn open(config: &ConnectionConfig) -> Result<(Self, bool, String)> {
         let schemes: &[&str] = match config.ssl_mode {
             SslMode::Disable => &["http"],
@@ -42,8 +48,11 @@ impl Session {
             let mut session = Self::new(config, scheme)?;
             match session.request("SELECT sqlite_version()").await {
                 Ok(result) => return Ok((session, *scheme == "https", version(result)?)),
-                Err(Ok(Transport(message))) => {
+                Err(Ok(Transport { message, answered })) => {
                     failure = Some(format!("{}: {message}", session.origin));
+                    if answered {
+                        break;
+                    }
                 }
                 Err(Err(e)) => return Err(e),
             }
@@ -59,11 +68,13 @@ impl Session {
         if let Some(timeout) = config.connect_timeout {
             builder = builder.connect_timeout(timeout);
         }
-        if scheme == "https"
-            && let Some(tls) = platypus_tls::client_config(config)?
-        {
-            builder = builder.tls_backend_preconfigured(tls);
-        }
+        // reqwest has no crypto provider of its own: it panics without a configuration, even
+        // for `http`.
+        let tls = match platypus_tls::client_config(config)? {
+            Some(tls) if scheme == "https" => tls,
+            _ => platypus_tls::plaintext_config()?,
+        };
+        builder = builder.tls_backend_preconfigured(tls);
         // Through a tunnel: the host still names the server, for TLS and routing.
         let port = match config.connect_addr {
             Some(addr) => {
@@ -91,14 +102,15 @@ impl Session {
         })
     }
 
-    /// Runs `sql` on the stream. A stream that expired outside a transaction is replaced.
+    /// Runs `sql` on the stream. A stream the server no longer knows, outside a transaction,
+    /// is replaced and the statement sent again.
     pub async fn execute(&mut self, sql: &str) -> Result<StmtResult> {
         let resumed = self.baton.is_some();
         match self.request(sql).await {
             Ok(result) => Ok(result),
             Err(Err(e)) => Err(e),
-            Err(Ok(Transport(message))) if !resumed => Err(Error::Connect(message)),
-            Err(Ok(Transport(message))) => {
+            Err(Ok(Transport { message, .. })) if !resumed => Err(Error::Connect(message)),
+            Err(Ok(Transport { message, answered })) => {
                 self.baton = None;
                 self.base.clone_from(&self.origin);
                 if self.in_transaction.swap(false, Ordering::AcqRel) {
@@ -107,8 +119,13 @@ impl Session {
                         "the transaction was lost with the server stream: {message}"
                     )));
                 }
+                // After a network failure the statement may have run: sending it again could
+                // apply it twice.
+                if !answered {
+                    return Err(Error::Connect(message));
+                }
                 self.request(sql).await.map_err(|e| match e {
-                    Ok(Transport(message)) => Error::Connect(message),
+                    Ok(Transport { message, .. }) => Error::Connect(message),
                     Err(e) => e,
                 })
             }
@@ -136,12 +153,20 @@ impl Session {
         if let Some(token) = &self.token {
             request = request.bearer_auth(token);
         }
-        let transport = |e: reqwest::Error| Ok(Transport(error_chain(&e)));
+        let transport = |e: reqwest::Error| {
+            Ok(Transport {
+                message: error_chain(&e),
+                answered: false,
+            })
+        };
         let response = request.send().await.map_err(transport)?;
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(Ok(Transport(format!("HTTP {status}: {text}"))));
+            return Err(Ok(Transport {
+                message: format!("HTTP {status}: {text}"),
+                answered: true,
+            }));
         }
         let response: PipelineResponse = response.json().await.map_err(transport)?;
         self.baton = response.baton;
@@ -230,6 +255,16 @@ mod tests {
         let session = Session::new(&config, "https").unwrap();
         assert_eq!(session.origin, "https://db.example:40000");
         assert_eq!(session.token, None);
+    }
+
+    #[test]
+    fn builds_plaintext_clients() {
+        let mut config = ConnectionConfig::new(platypus_core::DriverKind::Libsql);
+        config.host = "db.example".to_owned();
+        config.ssl_mode = SslMode::Disable;
+        assert!(Session::new(&config, "http").is_ok());
+        config.ssl_mode = SslMode::Prefer;
+        assert!(Session::new(&config, "http").is_ok());
     }
 
     #[test]

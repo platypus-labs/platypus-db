@@ -63,7 +63,7 @@ impl Http {
             platypus_tls::client_config(config)?
                 .ok_or_else(|| Error::Config("TLS is disabled".to_owned()))?
         } else {
-            unused_tls()?
+            platypus_tls::plaintext_config()?
         };
         rustls.alpn_protocols = vec![b"http/1.1".to_vec()];
         builder = builder.use_preconfigured_tls(rustls);
@@ -130,16 +130,6 @@ impl Http {
         response.bytes().await.map_err(transport)?;
         Ok(())
     }
-}
-
-/// A configuration that trusts nothing, for plaintext clients.
-fn unused_tls() -> Result<rustls::ClientConfig> {
-    let provider = std::sync::Arc::new(rustls::crypto::ring::default_provider());
-    Ok(rustls::ClientConfig::builder_with_provider(provider)
-        .with_safe_default_protocol_versions()
-        .map_err(|e| Error::Config(format!("TLS setup failed: {e}")))?
-        .with_root_certificates(rustls::RootCertStore::empty())
-        .with_no_client_auth())
 }
 
 /// The rows a statement inserted, from the `X-ClickHouse-Summary` header.

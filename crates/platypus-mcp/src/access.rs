@@ -142,11 +142,88 @@ pub fn check<'a>(
     }
 }
 
+/// [`check`] for MongoDB, whose statements are mongosh: checked with the editor's analysis
+/// of them ([`platypus_driver_mongo::shell`]). There is no transaction to run them in, so
+/// read-only access lets only the statements that read run.
+pub fn check_mongo<'a>(
+    sql: &'a str,
+    access: AgentAccess,
+    unfiltered: UnfilteredRule,
+    connection: &str,
+) -> Result<&'a str> {
+    use platypus_driver_mongo::shell::{self, Command, StatementKind};
+
+    let statement = match shell::split(sql).as_slice() {
+        [] => {
+            return Err(AgentError::Invalid(
+                "there is no statement to run".to_owned(),
+            ));
+        }
+        [one] => &sql[one.clone()],
+        many => {
+            return Err(AgentError::Invalid(format!(
+                "run_query runs one statement at a time and this script has {}: send them in separate calls",
+                many.len()
+            )));
+        }
+    };
+    if access == AgentAccess::Off {
+        return Err(AgentError::NotFound(format!(
+            "`{connection}` is not available to agents"
+        )));
+    }
+    let command = shell::parse(statement).map_err(|e| AgentError::Invalid(e.message))?;
+    match (access, shell::kind(&command)) {
+        // `use` would change the database of later statements on the shared connection.
+        (AgentAccess::ReadOnly, StatementKind::Query) if !matches!(command, Command::Use(_)) => {
+            Ok(statement)
+        }
+        (AgentAccess::ReadOnly, kind) => Err(AgentError::Denied(format!(
+            "`{connection}` is read-only for agents: only statements that change nothing may run, \
+             and this one {}. The user can allow agents to write in PlatypusDB's connection \
+             settings (Agent access), except on production and read-only connections",
+            match kind {
+                StatementKind::Dml => "changes documents",
+                StatementKind::Ddl => "changes collections or indexes",
+                StatementKind::Other => "runs a database command, which can change anything",
+                StatementKind::Query => "changes the session's database",
+            }
+        ))),
+        _ => match (shell::unfiltered(&command), unfiltered) {
+            (Some((db, name)), UnfilteredRule::Refuse) => Err(AgentError::Denied(format!(
+                "this statement changes every document of `{}`: add a filter. PlatypusDB's \
+                 Safety settings ask before such changes, and agents cannot answer",
+                db.map_or_else(|| name.to_owned(), |db| format!("{db}.{name}"))
+            ))),
+            _ => Ok(statement),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const PG: Dialect = Dialect::Postgres;
+
+    #[test]
+    fn checks_mongosh_statements() {
+        let ro = |sql| check_mongo(sql, AgentAccess::ReadOnly, UnfilteredRule::Refuse, "m");
+        assert_eq!(
+            ro(" db.orders.find({ a: 1 }); ").unwrap(),
+            "db.orders.find({ a: 1 })"
+        );
+        assert!(denied(ro("db.orders.deleteOne({ a: 1 })")).contains("changes documents"));
+        assert!(denied(ro("db.runCommand({ drop: 'orders' })")).contains("command"));
+        assert!(denied(ro("use other")).contains("database"));
+        assert!(matches!(
+            ro("db.a.find()\ndb.b.find()"),
+            Err(AgentError::Invalid(_))
+        ));
+        let rw = |sql| check_mongo(sql, AgentAccess::ReadWrite, UnfilteredRule::Refuse, "m");
+        assert!(rw("db.orders.deleteMany({ a: 1 })").is_ok());
+        assert!(denied(rw("db.orders.deleteMany({})")).contains("every document of `orders`"));
+    }
 
     fn denied(r: Result<&str>) -> String {
         match r {

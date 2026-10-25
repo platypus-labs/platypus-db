@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use mongodb::options::{ClientOptions, Credential, Tls, TlsOptions};
+use mongodb::options::{ClientOptions, Credential, Tls};
 use platypus_core::{ConnectionConfig, Error, Result, SslMode};
 
 /// What [`client_options`] makes of a config.
@@ -110,19 +110,26 @@ pub async fn client_options(config: &ConnectionConfig) -> Result<Target> {
 }
 
 /// TLS from the SSL mode; `Prefer` keeps what the connection string implies (on for
-/// `mongodb+srv`, off otherwise), as MongoDB has no opportunistic TLS.
+/// `mongodb+srv`, off otherwise), as MongoDB has no opportunistic TLS. The connection
+/// string's TLS options (`tlsCAFile`, `tlsCertificateKeyFile`, …) are kept in every mode.
 fn tls(config: &ConnectionConfig, parsed: Option<Tls>) -> Result<Option<Tls>> {
+    let (from_string, parsed) = match parsed {
+        Some(Tls::Enabled(options)) => (Some(options), None),
+        other => (None, other),
+    };
     let mut options = match config.ssl_mode {
         SslMode::Disable => return Ok(Some(Tls::Disabled)),
-        SslMode::Prefer => match parsed {
-            Some(Tls::Enabled(options)) => options,
-            _ => return Ok(parsed),
+        SslMode::Prefer => match from_string {
+            Some(options) => options,
+            None => return Ok(parsed),
         },
-        SslMode::Require => TlsOptions::builder()
-            .allow_invalid_certificates(true)
-            .build(),
+        SslMode::Require => {
+            let mut options = from_string.unwrap_or_default();
+            options.allow_invalid_certificates = Some(true);
+            options
+        }
         // rustls cannot skip only the host name check: `verify-ca` verifies it too.
-        SslMode::VerifyCa | SslMode::VerifyFull => TlsOptions::builder().build(),
+        SslMode::VerifyCa | SslMode::VerifyFull => from_string.unwrap_or_default(),
     };
     if let Some(ca) = &config.ssl_root_cert {
         options.ca_file_path = Some(ca.clone());
@@ -192,6 +199,15 @@ mod tests {
         assert_eq!(credential.source.as_deref(), Some("users"));
         assert_eq!(credential.password.as_deref(), Some("p"));
         assert_eq!(target.options.repl_set_name.as_deref(), Some("rs0"));
+
+        // `tls=true` became the SSL mode; the other TLS options stay in the string.
+        let mut c = config("?tlsCAFile=ca.pem");
+        c.ssl_mode = SslMode::VerifyFull;
+        let target = client_options(&c).await.unwrap();
+        match target.options.tls {
+            Some(Tls::Enabled(tls)) => assert_eq!(tls.ca_file_path, Some("ca.pem".into())),
+            other => panic!("{other:?}"),
+        }
 
         let mut c = config("");
         c.user = "u".into();
