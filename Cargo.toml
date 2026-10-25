@@ -15,6 +15,7 @@ platypus-core = { path = "crates/platypus-core" }
 platypus-driver-duckdb = { path = "crates/platypus-driver-duckdb" }
 platypus-driver-pg = { path = "crates/platypus-driver-pg" }
 platypus-driver-mysql = { path = "crates/platypus-driver-mysql" }
+platypus-driver-mongo = { path = "crates/platypus-driver-mongo" }
 platypus-driver-mssql = { path = "crates/platypus-driver-mssql" }
 platypus-driver-sqlite = { path = "crates/platypus-driver-sqlite" }
 platypus-export = { path = "crates/platypus-export" }
@@ -37,6 +38,7 @@ duckdb = { version = "1.20000", features = ["bundled", "json", "parquet"] }
 fallible-iterator = "0.2"
 futures = "0.3"
 keyring = "4"
+mongodb = "3.9.1"
 parquet = { version = "60", default-features = false, features = ["arrow", "snap", "zstd", "simdutf8"] }
 mysql_async = { version = "0.37", default-features = false, features = ["default-rustls-ring"] }
 percent-encoding = "2"

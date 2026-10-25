@@ -14,6 +14,7 @@ use platypus_core::{
     RecordBatchStream,
 };
 use platypus_driver_duckdb::DuckDbDriver;
+use platypus_driver_mongo::MongoDriver;
 use platypus_driver_mssql::MssqlDriver;
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
@@ -145,6 +146,7 @@ async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, Error
         DriverKind::Sqlite => SqliteDriver.connect(config).await,
         DriverKind::DuckDb => DuckDbDriver.connect(config).await,
         DriverKind::SqlServer => MssqlDriver.connect(config).await,
+        DriverKind::Mongo => MongoDriver.connect(config).await,
     }
 }
 
