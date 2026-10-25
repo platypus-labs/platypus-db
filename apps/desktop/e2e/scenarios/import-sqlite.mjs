@@ -1,5 +1,6 @@
 // Import of data files: a CSV into an existing SQLite table, then into a new table created
-// from the inferred types; and a CSV opened as a database, as when dropped on the window.
+// from the inferred types, both confirmed as on any production connection; and a CSV opened
+// as a database, as when dropped on the window.
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -25,6 +26,7 @@ id = "00000000-0000-4000-8000-000000000021"
 name = "${NAME}"
 driver = "sqlite"
 database = '${join(dir, "import.db")}'
+connection_type = "prod"
 save_password = false
 `,
   );
@@ -59,6 +61,9 @@ async function chooseFile(page, path) {
 async function runImport(page) {
   await page.waitFor(`!${button(dialog, "Import")}.disabled`);
   await page.eval(`${button(dialog, "Import")}.click()`);
+  // A production connection lists the changes first.
+  await page.waitFor(`document.querySelector('.modal.guard')?.textContent.includes('INSERT INTO')`);
+  await page.eval(`${button("document.querySelector('.modal.guard')", "Run")}.click()`);
   await page.waitFor(`${dialog}.textContent.includes('Imported 3 rows') || ${dialog}.textContent.includes('Nothing was imported')`, 20_000);
   const text = await page.eval(`${dialog}.textContent`);
   assert.ok(text.includes("Imported 3 rows"), text);
@@ -109,4 +114,8 @@ export default async function (page, { dir }) {
   await page.waitFor(`${row("Views")} !== undefined`, 15_000);
   await page.eval(`${row("Views")}.querySelector('.twisty').click()`);
   await page.waitFor(`[...document.querySelectorAll('.tree-label')].filter(l => l.textContent === 'items').length === 2`, 15_000);
+
+  // The same file dropped again, spelled in other case, opens a script on that connection.
+  await page.eval(`window.__platypus.openDroppedFile(${JSON.stringify(csv.toUpperCase())})`);
+  await page.waitFor(`document.querySelector('.tab.active') !== null && document.querySelector('.modal') === null`);
 }

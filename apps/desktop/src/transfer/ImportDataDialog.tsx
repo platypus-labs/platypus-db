@@ -9,6 +9,8 @@ import {
   type SavedConnection,
   toCommandError,
 } from "../api";
+import { GuardDialog } from "../guards/GuardDialog";
+import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { workbench } from "../workbench";
 
@@ -55,6 +57,8 @@ export function ImportDataDialog({ connection, database, schema, currentSchema, 
   const [mapping, setMapping] = useState<string[]>([]);
   const [status, setStatus] = useState<Status>({ state: "idle" });
   const [error, setError] = useState<string | null>(null);
+  /** The confirmation a production connection asks before the import. */
+  const [confirm, setConfirm] = useState<GuardRequest | null>(null);
 
   useEffect(() => {
     void workbench()
@@ -124,6 +128,13 @@ export function ImportDataDialog({ connection, database, schema, currentSchema, 
       create: false,
       columns: targets.flatMap((t, i) => (mapping[i] ? [{ source: mapping[i], target: t.name, data_type: null }] : [])),
     };
+  }
+
+  /** Runs the import, once confirmed on a production connection. */
+  function request() {
+    if (!preview) return;
+    if (!needsProductionConfirm(connection)) return void run();
+    setConfirm({ connection, unfiltered: [], production: changes(plan(preview)), blocked: false });
   }
 
   async function run() {
@@ -277,13 +288,32 @@ export function ImportDataDialog({ connection, database, schema, currentSchema, 
               {status.state === "done" ? "Close" : "Cancel"}
             </button>
           )}
-          <button type="button" className="primary" disabled={!ready || running || status.state === "done"} onClick={() => void run()}>
+          <button type="button" className="primary" disabled={!ready || running || status.state === "done"} onClick={request}>
             Import
           </button>
         </div>
       </div>
+      {confirm && (
+        <GuardDialog
+          request={confirm}
+          onAnswer={(go) => {
+            setConfirm(null);
+            if (go) void run();
+          }}
+        />
+      )}
     </div>
   );
+}
+
+/** What the import changes, as statements, for the production confirmation. */
+function changes(p: ImportPlan): string[] {
+  const table = p.schema ? `${p.schema}.${p.table}` : p.table;
+  const columns = p.columns.map((c) => c.target).join(", ");
+  return [
+    ...(p.create ? [`CREATE TABLE ${table} (${p.columns.map((c) => `${c.target} ${c.data_type}`).join(", ")})`] : []),
+    `INSERT INTO ${table} (${columns}) VALUES ... -- every row of ${p.source_table}`,
+  ];
 }
 
 function NewColumnRow(props: { name: string; column: NewColumn | undefined; disabled: boolean; onChange: (c: Partial<NewColumn>) => void }) {
