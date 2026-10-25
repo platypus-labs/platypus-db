@@ -13,8 +13,9 @@ use tauri::ipc::Channel;
 
 use crate::error::{CommandError, CommandResult};
 
-/// The downloads in progress by package name, which `cancel_driver_install` stops. Each
-/// has an id, so a download that ends does not forget a newer one of the same driver.
+/// The downloads in progress by package name (the vendors' clients too), which
+/// `cancel_driver_install` and `cancel_vendor_install` stop. Each has an id, so a download
+/// that ends does not forget a newer one of the same driver.
 static INSTALLING: Mutex<BTreeMap<&'static str, (u64, CancellationToken)>> =
     Mutex::new(BTreeMap::new());
 static NEXT_INSTALL: AtomicU64 = AtomicU64::new(0);
@@ -24,14 +25,14 @@ fn installing() -> MutexGuard<'static, BTreeMap<&'static str, (u64, Cancellation
 }
 
 /// Records the download of `name`; it is forgotten when the returned guard drops.
-fn start_install(name: &'static str) -> (CancellationToken, InstallGuard) {
+pub(super) fn start_install(name: &'static str) -> (CancellationToken, InstallGuard) {
     let id = NEXT_INSTALL.fetch_add(1, Ordering::Relaxed);
     let cancel = CancellationToken::new();
     installing().insert(name, (id, cancel.clone()));
     (cancel, InstallGuard { name, id })
 }
 
-struct InstallGuard {
+pub(super) struct InstallGuard {
     name: &'static str,
     id: u64,
 }
@@ -46,7 +47,7 @@ impl Drop for InstallGuard {
 }
 
 /// Stops the download of `name`, if one is running.
-fn cancel_install(name: &str) {
+pub(super) fn cancel_install(name: &str) {
     if let Some((_, cancel)) = installing().get(name) {
         cancel.cancel();
     }

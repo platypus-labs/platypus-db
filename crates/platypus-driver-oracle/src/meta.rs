@@ -11,10 +11,103 @@ fn lit(value: &str) -> String {
     Dialect::Oracle.quote_literal(value)
 }
 
-/// The schemas (users), Oracle's own marked as system ones.
-pub const SCHEMAS: &str = "SELECT USERNAME, ORACLE_MAINTAINED, \
-     CASE WHEN USERNAME = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') THEN 'Y' ELSE 'N' END \
-     FROM ALL_USERS ORDER BY USERNAME";
+/// Oracle's own users on servers before 12.1, which do not mark them (`ORACLE_MAINTAINED`).
+const LEGACY_SYSTEM: &str = "'ANONYMOUS', 'APEX_PUBLIC_USER', 'APPQOSSYS', 'CTXSYS', 'DBSNMP', \
+     'DIP', 'DVSYS', 'EXFSYS', 'FLOWS_FILES', 'LBACSYS', 'MDDATA', 'MDSYS', 'MGMT_VIEW', 'OLAPSYS', \
+     'ORACLE_OCM', 'ORDDATA', 'ORDPLUGINS', 'ORDSYS', 'OUTLN', 'OWBSYS', 'OWBSYS_AUDIT', \
+     'SI_INFORMTN_SCHEMA', 'SPATIAL_CSW_ADMIN_USR', 'SPATIAL_WFS_ADMIN_USR', 'SYS', 'SYSMAN', \
+     'SYSTEM', 'WMSYS', 'XDB', 'XS$NULL'";
+
+/// What the server's dictionary offers: before 12.1 users are not marked as Oracle's own,
+/// and there is no `FETCH FIRST`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Dictionary {
+    pub legacy: bool,
+}
+
+impl Dictionary {
+    /// From the server's version, e.g. `23.26.0.0.0`.
+    #[must_use]
+    pub fn of(version: &str) -> Self {
+        let major: u32 = version
+            .split('.')
+            .next()
+            .and_then(|m| m.parse().ok())
+            .unwrap_or(99);
+        Self { legacy: major < 12 }
+    }
+
+    /// `'Y'` for Oracle's own user in `column`, `'N'` otherwise.
+    fn system(self, column: &str) -> String {
+        if self.legacy {
+            format!("CASE WHEN {column} IN ({LEGACY_SYSTEM}) THEN 'Y' ELSE 'N' END")
+        } else {
+            "ORACLE_MAINTAINED".to_owned()
+        }
+    }
+
+    /// A condition true when `owner` is a user's schema, not Oracle's own.
+    fn user_owner(self, owner: &str) -> String {
+        if self.legacy {
+            format!("{owner} NOT IN ({LEGACY_SYSTEM})")
+        } else {
+            format!("{owner} IN (SELECT USERNAME FROM ALL_USERS WHERE ORACLE_MAINTAINED = 'N')")
+        }
+    }
+
+    /// `query` cut to `limit` rows.
+    fn limited(self, query: &str, limit: usize) -> String {
+        if self.legacy {
+            format!("SELECT * FROM ({query}) WHERE ROWNUM <= {limit}")
+        } else {
+            format!("{query} FETCH FIRST {limit} ROWS ONLY")
+        }
+    }
+
+    /// The schemas (users), Oracle's own marked as system ones.
+    #[must_use]
+    pub fn schemas_sql(self) -> String {
+        format!(
+            "SELECT USERNAME, {}, \
+             CASE WHEN USERNAME = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') THEN 'Y' ELSE 'N' END \
+             FROM ALL_USERS ORDER BY USERNAME",
+            self.system("USERNAME")
+        )
+    }
+
+    /// The columns of the tables and views in the users' schemas, for autocompletion.
+    #[must_use]
+    pub fn catalog_columns_sql(self, limit: usize) -> String {
+        self.limited(
+            &format!(
+                "SELECT c.OWNER, c.TABLE_NAME, c.COLUMN_NAME FROM ALL_TAB_COLUMNS c \
+                 WHERE {} AND c.TABLE_NAME NOT LIKE 'BIN$%' \
+                 ORDER BY c.OWNER, c.TABLE_NAME, c.COLUMN_ID",
+                self.user_owner("c.OWNER")
+            ),
+            limit,
+        )
+    }
+
+    /// The foreign keys between the users' tables, one row per column.
+    #[must_use]
+    pub fn catalog_foreign_keys_sql(self) -> String {
+        format!(
+            "SELECT c.OWNER, c.TABLE_NAME, c.CONSTRAINT_NAME, cc.COLUMN_NAME, r.OWNER, \
+             r.TABLE_NAME, rc.COLUMN_NAME \
+             FROM ALL_CONSTRAINTS c \
+             JOIN ALL_CONSTRAINTS r ON r.OWNER = c.R_OWNER \
+               AND r.CONSTRAINT_NAME = c.R_CONSTRAINT_NAME \
+             JOIN ALL_CONS_COLUMNS cc ON cc.OWNER = c.OWNER \
+               AND cc.CONSTRAINT_NAME = c.CONSTRAINT_NAME \
+             JOIN ALL_CONS_COLUMNS rc ON rc.OWNER = r.OWNER \
+               AND rc.CONSTRAINT_NAME = r.CONSTRAINT_NAME AND rc.POSITION = cc.POSITION \
+             WHERE c.CONSTRAINT_TYPE = 'R' AND {} \
+             ORDER BY c.OWNER, c.TABLE_NAME, c.CONSTRAINT_NAME, cc.POSITION",
+            self.user_owner("c.OWNER")
+        )
+    }
+}
 
 #[must_use]
 pub fn schemas(rows: &[TextRow]) -> Vec<SchemaMeta> {
@@ -138,13 +231,13 @@ fn column(r: &TextRow) -> ColumnMeta {
 }
 
 /// The constraints of a table, one row per column: name, type (`P`, `U`, `C`, `R`), column,
-/// check condition, and for a foreign key the referenced schema, table and column.
-/// The `NOT NULL` checks Oracle names itself are left out: the columns show them.
+/// check condition (a `LONG` in every version), for a foreign key the referenced schema,
+/// table and column, and whether Oracle named the constraint.
 #[must_use]
 pub fn constraints_sql(schema: &str, table: &str) -> String {
     format!(
-        "SELECT c.CONSTRAINT_NAME, c.CONSTRAINT_TYPE, cc.COLUMN_NAME, c.SEARCH_CONDITION_VC, \
-         r.OWNER, r.TABLE_NAME, rc.COLUMN_NAME \
+        "SELECT c.CONSTRAINT_NAME, c.CONSTRAINT_TYPE, cc.COLUMN_NAME, c.SEARCH_CONDITION, \
+         r.OWNER, r.TABLE_NAME, rc.COLUMN_NAME, c.GENERATED \
          FROM ALL_CONSTRAINTS c \
          LEFT JOIN ALL_CONS_COLUMNS cc ON cc.OWNER = c.OWNER \
            AND cc.CONSTRAINT_NAME = c.CONSTRAINT_NAME \
@@ -153,8 +246,6 @@ pub fn constraints_sql(schema: &str, table: &str) -> String {
          LEFT JOIN ALL_CONS_COLUMNS rc ON rc.OWNER = r.OWNER \
            AND rc.CONSTRAINT_NAME = r.CONSTRAINT_NAME AND rc.POSITION = cc.POSITION \
          WHERE c.OWNER = {} AND c.TABLE_NAME = {} AND c.CONSTRAINT_TYPE IN ('P', 'U', 'C', 'R') \
-           AND NOT (c.CONSTRAINT_TYPE = 'C' AND c.GENERATED = 'GENERATED NAME' \
-             AND c.SEARCH_CONDITION_VC LIKE '% IS NOT NULL') \
          ORDER BY c.CONSTRAINT_NAME, cc.POSITION",
         lit(schema),
         lit(table)
@@ -222,8 +313,17 @@ pub fn table_details(
     indexes: &[TextRow],
     referencing: &[TextRow],
 ) -> platypus_core::TableDetails {
+    // The `NOT NULL` checks Oracle names itself are left out: the columns show them.
+    let not_null = |r: &TextRow| {
+        r.text(1) == "C"
+            && r.text(7) == "GENERATED NAME"
+            && r.text(3).trim().ends_with("IS NOT NULL")
+    };
     let grouped = group_sorted(
-        constraints.iter().map(|r| (r.text(0), vec![r.clone()])),
+        constraints
+            .iter()
+            .filter(|r| !not_null(r))
+            .map(|r| (r.text(0), vec![r.clone()])),
         Extend::extend,
     );
     let mut columns: Vec<ColumnMeta> = columns.iter().map(column).collect();
@@ -290,17 +390,6 @@ pub fn table_details(
     }
 }
 
-/// The columns of the tables and views in the users' schemas, for autocompletion.
-#[must_use]
-pub fn catalog_columns_sql(limit: usize) -> String {
-    format!(
-        "SELECT c.OWNER, c.TABLE_NAME, c.COLUMN_NAME FROM ALL_TAB_COLUMNS c \
-         JOIN ALL_USERS u ON u.USERNAME = c.OWNER \
-         WHERE u.ORACLE_MAINTAINED = 'N' AND c.TABLE_NAME NOT LIKE 'BIN$%' \
-         ORDER BY c.OWNER, c.TABLE_NAME, c.COLUMN_ID FETCH FIRST {limit} ROWS ONLY"
-    )
-}
-
 #[must_use]
 pub fn catalog_columns(rows: &[TextRow]) -> Vec<CatalogColumn> {
     rows.iter()
@@ -311,18 +400,6 @@ pub fn catalog_columns(rows: &[TextRow]) -> Vec<CatalogColumn> {
         })
         .collect()
 }
-
-/// The foreign keys between the users' tables, one row per column.
-pub const CATALOG_FOREIGN_KEYS: &str = "SELECT c.OWNER, c.TABLE_NAME, c.CONSTRAINT_NAME, \
-     cc.COLUMN_NAME, r.OWNER, r.TABLE_NAME, rc.COLUMN_NAME \
-     FROM ALL_CONSTRAINTS c \
-     JOIN ALL_USERS u ON u.USERNAME = c.OWNER \
-     JOIN ALL_CONSTRAINTS r ON r.OWNER = c.R_OWNER AND r.CONSTRAINT_NAME = c.R_CONSTRAINT_NAME \
-     JOIN ALL_CONS_COLUMNS cc ON cc.OWNER = c.OWNER AND cc.CONSTRAINT_NAME = c.CONSTRAINT_NAME \
-     JOIN ALL_CONS_COLUMNS rc ON rc.OWNER = r.OWNER AND rc.CONSTRAINT_NAME = r.CONSTRAINT_NAME \
-       AND rc.POSITION = cc.POSITION \
-     WHERE c.CONSTRAINT_TYPE = 'R' AND u.ORACLE_MAINTAINED = 'N' \
-     ORDER BY c.OWNER, c.TABLE_NAME, c.CONSTRAINT_NAME, cc.POSITION";
 
 #[must_use]
 pub fn catalog_foreign_keys(rows: &[TextRow]) -> Vec<CatalogForeignKey> {
@@ -397,6 +474,50 @@ mod tests {
         assert!(objects_sql("O'X").contains("o.OWNER = 'O''X'"));
     }
 
+    /// The constraints of `EMP`, one row per column, as `constraints_sql` reads them.
+    fn emp_constraints() -> Vec<TextRow> {
+        vec![
+            row(&[
+                Some("EMP_CHK"),
+                Some("C"),
+                None,
+                Some("PAY > 0"),
+                None,
+                None,
+                None,
+            ]),
+            row(&[
+                Some("EMP_DEPT_FK"),
+                Some("R"),
+                Some("DEPT_ID"),
+                None,
+                Some("HR"),
+                Some("DEPT"),
+                Some("ID"),
+            ]),
+            row(&[
+                Some("EMP_PK"),
+                Some("P"),
+                Some("ID"),
+                None,
+                None,
+                None,
+                None,
+            ]),
+            // A `NOT NULL` Oracle named: left to the column.
+            row(&[
+                Some("SYS_C008"),
+                Some("C"),
+                Some("NAME"),
+                Some("\"NAME\" IS NOT NULL"),
+                None,
+                None,
+                None,
+                Some("GENERATED NAME"),
+            ]),
+        ]
+    }
+
     /// An `EMP` table with a check, a foreign key, a primary key, an index of two columns
     /// and a key pointing at it.
     fn emp_details() -> platypus_core::TableDetails {
@@ -457,35 +578,7 @@ mod tests {
                 None,
             ]),
         ];
-        let constraints = [
-            row(&[
-                Some("EMP_CHK"),
-                Some("C"),
-                None,
-                Some("PAY > 0"),
-                None,
-                None,
-                None,
-            ]),
-            row(&[
-                Some("EMP_DEPT_FK"),
-                Some("R"),
-                Some("DEPT_ID"),
-                None,
-                Some("HR"),
-                Some("DEPT"),
-                Some("ID"),
-            ]),
-            row(&[
-                Some("EMP_PK"),
-                Some("P"),
-                Some("ID"),
-                None,
-                None,
-                None,
-                None,
-            ]),
-        ];
+        let constraints = emp_constraints();
         let indexes = [
             row(&[Some("EMP_NAME_IX"), Some("NONUNIQUE"), Some("NAME")]),
             row(&[Some("EMP_NAME_IX"), Some("NONUNIQUE"), Some("PAY")]),
@@ -526,6 +619,18 @@ mod tests {
         assert_eq!(d.indexes[0].columns, ["NAME", "PAY"]);
         assert!(d.indexes[1].primary && d.indexes[1].unique);
         assert_eq!(d.referenced_by[0].table, "PROJ");
+    }
+
+    #[test]
+    fn older_dictionaries() {
+        let old = Dictionary::of("11.2.0.4.0");
+        assert!(old.legacy && !Dictionary::of("23.26.0.0.0").legacy);
+        assert!(old.schemas_sql().contains("IN ('ANONYMOUS'"));
+        let columns = old.catalog_columns_sql(10);
+        assert!(columns.ends_with("WHERE ROWNUM <= 10"), "{columns}");
+        assert!(!columns.contains("ORACLE_MAINTAINED"));
+        let modern = Dictionary::of("19.3.0.0.0").catalog_columns_sql(10);
+        assert!(modern.ends_with("FETCH FIRST 10 ROWS ONLY"), "{modern}");
     }
 
     #[test]

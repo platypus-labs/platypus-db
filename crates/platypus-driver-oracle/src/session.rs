@@ -8,6 +8,7 @@ use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use oracle::{Connection, Connector};
 use platypus_core::{Error, Result, TxControl};
+use platypus_sql::{Dialect, Lexer, TokenKind};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::convert::Batcher;
@@ -193,9 +194,26 @@ impl Session {
                 })
                 .map(Started::Affected)
                 .map_err(|e| oracle_error(&e));
+            // Oracle commits around DDL: a transaction a `BEGIN` opened is over.
+            if result.is_ok() && statement.is_ddl() {
+                self.implicit = false;
+            }
             let _ = reply.send(result);
             return;
         }
+        Self::stream(&mut statement, batch_size, reply);
+        // The rows a `SELECT … FOR UPDATE` locked stay locked until a commit.
+        if self.autocommit && !self.implicit && locks_rows(sql) {
+            let _ = self.connection.commit();
+        }
+    }
+
+    /// Answers with the rows of a query, read in batches while the receiver takes them.
+    fn stream(
+        statement: &mut oracle::Statement,
+        batch_size: usize,
+        reply: oneshot::Sender<Result<Started>>,
+    ) {
         let mut rows = match statement.query(&[]) {
             Ok(rows) => rows,
             Err(e) => {
@@ -249,5 +267,26 @@ impl Session {
                 }
             };
         }
+    }
+}
+
+/// Whether a query locks the rows it reads (`FOR UPDATE`).
+fn locks_rows(sql: &str) -> bool {
+    let words: Vec<String> = Lexer::new(sql, Dialect::Oracle)
+        .filter(|t| t.kind == TokenKind::Word)
+        .map(|t| t.text(sql).to_ascii_uppercase())
+        .collect();
+    words.windows(2).any(|w| w[0] == "FOR" && w[1] == "UPDATE")
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn queries_that_lock_rows() {
+        assert!(super::locks_rows(
+            "select * from emp where id = 1 for update nowait"
+        ));
+        assert!(!super::locks_rows("select 'for update' from dual"));
+        assert!(!super::locks_rows("select * from emp"));
     }
 }

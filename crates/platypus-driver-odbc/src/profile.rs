@@ -36,12 +36,14 @@ fn push(out: &mut String, key: &str, v: &str) {
     out.push(';');
 }
 
-/// Appends the user and password, when given, as `UID` and `PWD`.
+/// Appends the user and password, when given and not in `out` already, as `UID` and `PWD`.
 fn push_login(out: &mut String, config: &ConnectionConfig) {
-    if !config.user.is_empty() {
+    if !config.user.is_empty() && !has_key(out, "UID") {
         push(out, "UID", &config.user);
     }
-    if let Some(password) = config.password.as_ref().filter(|p| !p.expose().is_empty()) {
+    if let Some(password) = config.password.as_ref().filter(|p| !p.expose().is_empty())
+        && !has_key(out, "PWD")
+    {
         push(out, "PWD", password.expose());
     }
 }
@@ -151,9 +153,7 @@ fn generic(out: &mut String, config: &ConnectionConfig) -> Result<()> {
             "choose a data source (DSN) or write a connection string".to_owned(),
         ));
     }
-    if !has_key(out, "UID") && !has_key(out, "PWD") {
-        push_login(out, config);
-    }
+    push_login(out, config);
     Ok(())
 }
 
@@ -220,6 +220,15 @@ mod tests {
         assert_eq!(
             connection_string(&c, None).unwrap(),
             "driver={PostgreSQL Unicode};Server=h;UID=scott;PWD=pw;"
+        );
+        // The password goes with a user written in the connection string.
+        c.options.insert(
+            CONNECTION_STRING.to_owned(),
+            "Driver={x};Server=h;UID=sa".to_owned(),
+        );
+        assert_eq!(
+            connection_string(&c, None).unwrap(),
+            "Driver={x};Server=h;UID=sa;PWD=pw;"
         );
         assert!(connection_string(&config(DriverKind::Postgres), None).is_err());
     }

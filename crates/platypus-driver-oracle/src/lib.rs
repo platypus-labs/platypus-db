@@ -72,6 +72,21 @@ pub(crate) fn oracle_error(e: &oracle::Error) -> Error {
     })
 }
 
+/// `e` with its position counted in characters of `sql`, as the editor counts: Oracle
+/// counts bytes.
+fn in_characters(mut e: Error, sql: &str) -> Error {
+    if let Error::Database(db) = &mut e
+        && let Some(position) = db.position
+    {
+        let byte = usize::try_from(position - 1)
+            .unwrap_or(usize::MAX)
+            .min(sql.len());
+        let chars = sql.char_indices().take_while(|(i, _)| *i < byte).count();
+        db.position = u32::try_from(chars + 1).ok();
+    }
+    e
+}
+
 /// The connect string of `config`: Easy Connect (`host:port/service`, `tcps://` with TLS,
 /// the local end of the SSH tunnel when there is one) when a host is given, else the
 /// database field as written (a net service name or a connect descriptor).
@@ -158,6 +173,7 @@ pub struct OracleConnection {
     commands: Mutex<std_mpsc::Sender<Command>>,
     canceller: OracleCanceller,
     server: ServerInfo,
+    dictionary: meta::Dictionary,
     tx: TxTracker,
 }
 
@@ -183,6 +199,7 @@ impl OracleConnection {
         let (commands, opened) = session::spawn(login)?;
         let opened = opened.await.map_err(|_| Error::Closed)??;
         Ok(Self {
+            dictionary: meta::Dictionary::of(&opened.version),
             commands: Mutex::new(commands),
             canceller: OracleCanceller {
                 connection: opened.cancel,
@@ -235,7 +252,7 @@ impl Connection for OracleConnection {
         let started = started.await.map_err(|_| Error::Closed)?;
         // Oracle commits before and after DDL, in either mode.
         self.tx.after(TxControl::effect(sql), true);
-        match started? {
+        match started.map_err(|e| in_characters(e, sql))? {
             Started::Affected(rows) => Ok(ExecResult::Affected { rows }),
             Started::Rows(schema, mut rx) => {
                 let stream = futures::stream::poll_fn(move |cx| rx.poll_recv(cx));
@@ -263,7 +280,9 @@ impl Connection for OracleConnection {
     }
 
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {
-        Ok(meta::schemas(&query_text(self, meta::SCHEMAS).await?))
+        Ok(meta::schemas(
+            &query_text(self, &self.dictionary.schemas_sql()).await?,
+        ))
     }
 
     async fn objects(&self, schema: &str) -> Result<Vec<ObjectMeta>> {
@@ -293,13 +312,13 @@ impl Connection for OracleConnection {
 
     async fn catalog_columns(&self) -> Result<Vec<CatalogColumn>> {
         Ok(meta::catalog_columns(
-            &query_text(self, &meta::catalog_columns_sql(CATALOG_LIMIT)).await?,
+            &query_text(self, &self.dictionary.catalog_columns_sql(CATALOG_LIMIT)).await?,
         ))
     }
 
     async fn catalog_foreign_keys(&self) -> Result<Vec<CatalogForeignKey>> {
         Ok(meta::catalog_foreign_keys(
-            &query_text(self, meta::CATALOG_FOREIGN_KEYS).await?,
+            &query_text(self, &self.dictionary.catalog_foreign_keys_sql()).await?,
         ))
     }
 
@@ -403,6 +422,25 @@ mod tests {
         c.ssl_mode = SslMode::Disable;
         c.connect_addr = Some("127.0.0.1:40001".parse().unwrap());
         assert_eq!(connect_string(&c).unwrap(), "127.0.0.1:40001/ORCL");
+    }
+
+    #[test]
+    fn positions_in_characters() {
+        let db = |position| {
+            Error::Database(DbError {
+                position: Some(position),
+                ..DbError::default()
+            })
+        };
+        // `à` takes two bytes: byte 15 (1-based) is the 14th character.
+        let Error::Database(e) = in_characters(db(15), "SELECT 'à' FROM t") else {
+            unreachable!()
+        };
+        assert_eq!(e.position, Some(14));
+        let Error::Database(e) = in_characters(db(3), "abc") else {
+            unreachable!()
+        };
+        assert_eq!(e.position, Some(3));
     }
 
     #[test]

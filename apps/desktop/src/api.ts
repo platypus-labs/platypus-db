@@ -1096,7 +1096,8 @@ export const api = {
     channel.onmessage = onEvent;
     return invoke<VendorStatus>("install_vendor_driver", { driver, onEvent: channel });
   },
-  cancelVendorInstall: () => invoke<void>("cancel_vendor_install"),
+  /** Stops the download of `driver`'s client. */
+  cancelVendorInstall: (driver: DriverKind) => invoke<void>("cancel_vendor_install", { driver }),
   /** Unregisters (as administrator) and deletes the vendor's client of `driver`. */
   removeVendorDriver: (driver: DriverKind) => invoke<VendorStatus>("remove_vendor_driver", { driver }),
   odbcSystem: () => invoke<OdbcSystem>("odbc_system"),

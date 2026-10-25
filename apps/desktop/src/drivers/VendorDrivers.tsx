@@ -82,7 +82,7 @@ export function VendorPopup({ driver, onDone }: Props) {
             </p>
             <div className="actions">
               <span className="spacer" />
-              <button type="button" onClick={() => void api.cancelVendorInstall()}>
+              <button type="button" onClick={() => void api.cancelVendorInstall(driver)}>
                 Cancel
               </button>
             </div>

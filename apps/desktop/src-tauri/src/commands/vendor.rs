@@ -1,24 +1,13 @@
 //! The vendors' client libraries the app installs (Oracle Instant Client, IBM's ODBC driver
 //! for Db2), and the ODBC drivers and data sources the system has.
 
-use std::sync::Mutex;
-
 use platypus_core::DriverKind;
 use platypus_driver_odbc::system::{self, SystemOdbc};
-use platypus_drivers::{CancellationToken, DriverError, Installed, VendorPackage};
+use platypus_drivers::{DriverError, Installed, VendorPackage};
 use serde::Serialize;
 use tauri::ipc::Channel;
 
 use crate::error::{CommandError, CommandResult};
-
-/// The download in progress, which `cancel_vendor_install` stops.
-static INSTALLING: Mutex<Option<CancellationToken>> = Mutex::new(None);
-
-fn installing() -> std::sync::MutexGuard<'static, Option<CancellationToken>> {
-    INSTALLING
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
 
 fn driver_error(e: DriverError) -> CommandError {
     let kind = match e {
@@ -116,14 +105,13 @@ pub async fn install_vendor_driver(
     let installed = if let Some(installed) = current {
         installed
     } else {
-        let cancel = CancellationToken::new();
-        *installing() = Some(cancel.clone());
+        let (cancel, _guard) = super::drivers::start_install(name);
         let progress = |done, total| {
             let _ = on_event.send(VendorEvent::Progress { done, total });
         };
-        let result = platypus_drivers::install_vendor(dir, &package, progress, &cancel).await;
-        installing().take();
-        result.map_err(driver_error)?
+        platypus_drivers::install_vendor(dir, &package, progress, &cancel)
+            .await
+            .map_err(driver_error)?
     };
     if package.register.is_some() && system_driver(driver)?.is_none() {
         let _ = on_event.send(VendorEvent::Registering);
@@ -140,10 +128,11 @@ pub async fn install_vendor_driver(
     vendor_driver_status(driver)
 }
 
+/// Stops the download of `driver`'s client, if one is running.
 #[tauri::command]
-pub fn cancel_vendor_install() {
-    if let Some(cancel) = installing().as_ref() {
-        cancel.cancel();
+pub fn cancel_vendor_install(driver: DriverKind) {
+    if let Some(name) = driver.vendor_package() {
+        super::drivers::cancel_install(name);
     }
 }
 
