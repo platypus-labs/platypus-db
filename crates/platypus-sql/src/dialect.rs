@@ -735,12 +735,7 @@ impl Dialect {
             T::UInt64 => "NUMERIC",
             T::Float16 | T::Float32 | T::Float64 => "FLOAT64",
             T::Decimal32(p, s) | T::Decimal64(p, s) | T::Decimal128(p, s) | T::Decimal256(p, s) => {
-                let kind = if *p > 38 || *s > 9 {
-                    "BIGNUMERIC"
-                } else {
-                    "NUMERIC"
-                };
-                return format!("{kind}({}, {s})", (*p).min(76));
+                return Self::bigquery_decimal(*p, *s);
             }
             T::Binary | T::LargeBinary | T::BinaryView | T::FixedSizeBinary(_) => "BYTES",
             T::Date32 | T::Date64 => "DATE",
@@ -750,6 +745,21 @@ impl Dialect {
             _ => "STRING",
         };
         name.to_owned()
+    }
+
+    /// A `BigQuery` decimal type for an Arrow precision and scale. `NUMERIC(p, s)` takes
+    /// `max(1, s) <= p <= s + 29` and `s <= 9`; `BIGNUMERIC(p, s)` takes `p <= s + 38` and
+    /// `s <= 38`, so the precision is cut to fit when the integer digits would not.
+    fn bigquery_decimal(precision: u8, scale: i8) -> String {
+        // A negative Arrow scale rounds to tens: whole numbers here.
+        let scale = u8::try_from(scale).unwrap_or(0);
+        let precision = precision.max(scale).max(1);
+        if scale <= 9 && precision <= scale + 29 {
+            return format!("NUMERIC({precision}, {scale})");
+        }
+        let scale = scale.min(38);
+        let precision = precision.clamp(scale.max(1), scale + 38);
+        format!("BIGNUMERIC({precision}, {scale})")
     }
 
     /// [`column_type`](Self::column_type) in Spark SQL, which has no time-of-day type.
@@ -764,7 +774,10 @@ impl Dialect {
             T::Float16 | T::Float32 => "FLOAT",
             T::Float64 => "DOUBLE",
             T::Decimal32(p, s) | T::Decimal64(p, s) | T::Decimal128(p, s) | T::Decimal256(p, s) => {
-                return format!("DECIMAL({}, {s})", (*p).min(38));
+                // `DECIMAL(p, s)` takes `0 <= s <= p <= 38`.
+                let scale = u8::try_from(*s).unwrap_or(0).min(38);
+                let precision = (*p).max(scale).clamp(1, 38);
+                return format!("DECIMAL({precision}, {scale})");
             }
             T::Binary | T::LargeBinary | T::BinaryView | T::FixedSizeBinary(_) => "BINARY",
             T::Date32 | T::Date64 => "DATE",
@@ -1138,7 +1151,7 @@ mod tests {
             (DataType::Float64, ["DOUBLE", "FLOAT64", "DOUBLE"]),
             (
                 DataType::Decimal128(70, 2),
-                ["DECIMAL(38, 2)", "BIGNUMERIC(70, 2)", "DECIMAL(38, 2)"],
+                ["DECIMAL(38, 2)", "BIGNUMERIC(40, 2)", "DECIMAL(38, 2)"],
             ),
             (DataType::Utf8, ["VARCHAR", "STRING", "STRING"]),
             (DataType::Binary, ["VARBINARY", "BYTES", "BINARY"]),
@@ -1152,6 +1165,29 @@ mod tests {
             let got =
                 [Dialect::Ansi, Dialect::BigQuery, Dialect::Databricks].map(|d| d.column_type(&t));
             assert_eq!(got, expected.map(str::to_owned), "{t}");
+        }
+    }
+
+    #[test]
+    fn bridge_decimal_bounds() {
+        let types = |p, s| {
+            let t = DataType::Decimal256(p, s);
+            [Dialect::BigQuery, Dialect::Databricks].map(|d| d.column_type(&t))
+        };
+        let cases = [
+            // NUMERIC holds 29 integer digits and 9 decimals.
+            ((38, 9), ["NUMERIC(38, 9)", "DECIMAL(38, 9)"]),
+            ((10, 2), ["NUMERIC(10, 2)", "DECIMAL(10, 2)"]),
+            ((31, 0), ["BIGNUMERIC(31, 0)", "DECIMAL(31, 0)"]),
+            ((12, 10), ["BIGNUMERIC(12, 10)", "DECIMAL(12, 10)"]),
+            ((76, 38), ["BIGNUMERIC(76, 38)", "DECIMAL(38, 38)"]),
+            ((76, 50), ["BIGNUMERIC(76, 38)", "DECIMAL(38, 38)"]),
+            ((50, 0), ["BIGNUMERIC(38, 0)", "DECIMAL(38, 0)"]),
+            ((5, -2), ["NUMERIC(5, 0)", "DECIMAL(5, 0)"]),
+            ((0, 0), ["NUMERIC(1, 0)", "DECIMAL(1, 0)"]),
+        ];
+        for ((p, s), expected) in cases {
+            assert_eq!(types(p, s), expected.map(str::to_owned), "({p}, {s})");
         }
     }
 }
