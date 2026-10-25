@@ -73,9 +73,16 @@ function formatBytes(bytes: number): string {
   return `${unit === 0 ? value : value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
 }
 
-/** `~1.2K rows · 3.4 MB`, from what the statistics say. */
+const exact = new Intl.NumberFormat();
+
+/** `~1.2K`: the row count the statistics say, compact, for the end of the row. */
+function rowCount(object: ObjectMeta): string | undefined {
+  return object.rows == null ? undefined : compact.format(object.rows);
+}
+
+/** `~1,234 rows · 3.4 MB`, for the row's tooltip. */
 function sizeDetail(object: ObjectMeta): string | undefined {
-  const parts = [object.rows != null && `~${compact.format(object.rows)} rows`, object.size != null && formatBytes(object.size)];
+  const parts = [object.rows != null && `~${t("{n} rows", { n: exact.format(object.rows) })}`, object.size != null && formatBytes(object.size)];
   return parts.filter(Boolean).join(" · ") || undefined;
 }
 
@@ -146,6 +153,8 @@ interface Row {
   /** A short tag after the label, e.g. PROD. */
   badge?: string | null;
   detail?: string;
+  /** A compact number at the end of the row, muted; it gives way before the label does. */
+  count?: string;
   title?: string;
   /** Has a local note or tags: a discreet mark after the label. */
   marked?: boolean;
@@ -736,8 +745,8 @@ export function Navigator(props: Props) {
         depth,
         label: object.name,
         icon,
-        detail: sizeDetail(object),
-        title,
+        count: rowCount(object),
+        title: [title, sizeDetail(object)].filter(Boolean).join("\n") || undefined,
           marked,
         expanded: open,
         onToggle: () => toggle(okey, () => void loadDetails(c, db, schema.name, object.name)),
@@ -1047,6 +1056,7 @@ export function Navigator(props: Props) {
             {row.connected && <span className="connected-mark" role="img" aria-label={t("Connected")} />}
             {row.badge && <span className={`type-badge ${row.badge.toLowerCase()}`}>{row.badge}</span>}
             {row.detail && <span className="tree-detail">{row.detail}</span>}
+            {row.count && <span className="tree-count">{row.count}</span>}
             {row.actions && (
               <span className="tree-actions" onClick={(e) => e.stopPropagation()}>
                 {row.actions}

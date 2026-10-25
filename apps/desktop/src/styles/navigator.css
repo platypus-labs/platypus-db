@@ -186,6 +186,19 @@
   font-size: 11px;
 }
 
+/* The row count at the row's end. Its shrink factor is far above the label's, so it is the
+   first to give way: the name is cut only once the number is gone. */
+.tree-count {
+  flex: 0 1000 auto;
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: clip;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
 .tree-actions {
   display: none;
   margin-left: auto;

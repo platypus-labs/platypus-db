@@ -69,8 +69,10 @@ export default async function (page, { shots }) {
   await page.eval(`${row("demo")}.querySelector(".twisty").click()`);
   await page.waitFor(`${row("orders")} !== undefined`, 15_000);
 
-  // Tables show their estimated rows and size.
-  assert.match(await page.eval(`${row("orders")}.querySelector('.tree-detail')?.textContent ?? ''`), /\d+(\.\d)? (B|KB|MB)$/);
+  // Tables show their estimated rows at the end of the row, and in the tooltip with the size.
+  assert.match(await page.eval(`${row("orders")}.title`), /\d+(\.\d)? (B|KB|MB)$/);
+  assert.equal(await page.eval(`${row("orders")}.querySelector('.tree-detail')`), null);
+  assert.match(await page.eval(`${row("orders")}.querySelector('.tree-count')?.textContent ?? '0'`), /^\d/);
 
   // Metadata search: names and columns; a hit opens the object.
   await rightClick(page, NAME);
