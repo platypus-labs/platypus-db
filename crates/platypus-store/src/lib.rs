@@ -24,7 +24,8 @@ pub use history::{
     HistoryEntry, HistoryOrigin, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry,
 };
 pub use import::{
-    ImportFile, ImportSource, detect as detect_imports, import as import_connections,
+    ImportFile, ImportSource, ImportedProject, detect as detect_imports,
+    import as import_connections,
 };
 pub use secrets::{KeyringSecrets, MemorySecrets, SecretStore};
 pub use settings::SettingsStore;

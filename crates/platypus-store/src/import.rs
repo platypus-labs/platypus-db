@@ -1,7 +1,9 @@
-//! Connections imported from other tools: DBeaver (`data-sources.json`), DataGrip
-//! (`dataSources.xml`), pgAdmin (an exported `servers.json`) and libpq's `pg_service.conf`.
-//! Passwords are not imported: each connection asks for its password on first use.
+//! Connections imported from other tools: DBeaver (`data-sources.json`, or the projects of
+//! a `.dbp` export), DataGrip (`dataSources.xml`), pgAdmin (an exported `servers.json`) and
+//! libpq's `pg_service.conf`. Folders come along; passwords do not: each connection asks for
+//! its password on first use.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use platypus_core::{DriverKind, SslMode};
@@ -11,6 +13,8 @@ use uuid::Uuid;
 
 use crate::connections::{ConnectionType, SavedConnection, SavedSsh, SshAuthKind};
 use crate::{Result, StoreError};
+
+mod dbp;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -26,6 +30,54 @@ pub enum ImportSource {
 pub struct ImportFile {
     pub source: ImportSource,
     pub path: PathBuf,
+}
+
+/// What a file holds for one project: its connections and their folders. Files of a single
+/// set of connections give one project without a name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportedProject {
+    pub name: Option<String>,
+    /// Each folder as its names from the root; parents before their children.
+    pub folders: Vec<Vec<String>>,
+    pub connections: Vec<SavedConnection>,
+    /// The folder of each connection not at the root.
+    pub placement: BTreeMap<Uuid, Vec<String>>,
+}
+
+impl ImportedProject {
+    fn new(connections: Vec<SavedConnection>) -> Self {
+        Self {
+            name: None,
+            folders: Vec::new(),
+            connections,
+            placement: BTreeMap::new(),
+        }
+    }
+
+    /// Adds the folder at `path` (`A/B`), and its parents; returns its names.
+    fn add_folder(&mut self, path: &str) -> Vec<String> {
+        let parts: Vec<String> = path
+            .split('/')
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(str::to_owned)
+            .collect();
+        for end in 1..=parts.len() {
+            if !self.folders.iter().any(|f| f[..] == parts[..end]) {
+                self.folders.push(parts[..end].to_vec());
+            }
+        }
+        self.folders.sort();
+        parts
+    }
+
+    /// Puts a connection in the folder at `path`, made if missing.
+    fn place(&mut self, connection: Uuid, path: &str) {
+        let parts = self.add_folder(path);
+        if !parts.is_empty() {
+            self.placement.insert(connection, parts);
+        }
+    }
 }
 
 fn home() -> Option<PathBuf> {
@@ -65,32 +117,43 @@ pub fn detect() -> Vec<ImportFile> {
     found
 }
 
-/// The connections in `path`, as `source` writes them, with new ids.
-pub fn import(source: ImportSource, path: &Path) -> Result<Vec<SavedConnection>> {
+/// The projects in `path`, as `source` writes them, with new ids. A DBeaver file is either
+/// a `data-sources.json` or a `.dbp` export with several projects.
+pub fn import(source: ImportSource, path: &Path) -> Result<Vec<ImportedProject>> {
     let read = |p: &Path| {
-        std::fs::read_to_string(p).map_err(|source| StoreError::Io {
+        std::fs::read(p).map_err(|source| StoreError::Io {
             path: p.to_owned(),
             source,
         })
     };
-    let text = read(path)?;
+    let read_text = |p: &Path| read(p).map(|b| String::from_utf8_lossy(&b).into_owned());
     let invalid = |message: String| StoreError::Format {
         path: path.to_owned(),
         message,
     };
+    let one = |connections| Ok(vec![ImportedProject::new(connections)]);
     match source {
-        ImportSource::Dbeaver => dbeaver(&text).map_err(invalid),
-        ImportSource::Pgadmin => pgadmin(&text).map_err(invalid),
-        ImportSource::PgService => Ok(pg_service(&text)),
+        ImportSource::Dbeaver => {
+            let bytes = read(path)?;
+            if bytes.starts_with(b"PK\x03\x04") {
+                dbp::projects(&bytes).map_err(invalid)
+            } else {
+                dbeaver(&String::from_utf8_lossy(&bytes))
+                    .map(|p| vec![p])
+                    .map_err(invalid)
+            }
+        }
+        ImportSource::Pgadmin => pgadmin(&read_text(path)?).map(|p| vec![p]).map_err(invalid),
+        ImportSource::PgService => one(pg_service(&read_text(path)?)),
         ImportSource::Datagrip => {
             // User names are in the local file next to the shared one.
             let local = path.with_file_name("dataSources.local.xml");
             let users = if local.is_file() {
-                read(&local)?
+                read_text(&local)?
             } else {
                 String::new()
             };
-            Ok(datagrip(&text, &users))
+            one(datagrip(&read_text(path)?, &users))
         }
     }
 }
@@ -152,10 +215,19 @@ fn text(v: &Value, key: &str) -> Option<String> {
     }
 }
 
-fn dbeaver(json: &str) -> Result<Vec<SavedConnection>, String> {
+fn dbeaver(json: &str) -> Result<ImportedProject, String> {
     let root: Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
+    let mut project = ImportedProject::new(Vec::new());
+    for folder in root
+        .get("folders")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flat_map(|f| f.keys())
+    {
+        project.add_folder(folder);
+    }
     let Some(connections) = root.get("connections").and_then(Value::as_object) else {
-        return Ok(Vec::new());
+        return Ok(project);
     };
     let mut out = Vec::new();
     for entry in connections.values() {
@@ -226,17 +298,22 @@ fn dbeaver(json: &str) -> Result<Vec<SavedConnection>, String> {
                 jump: None,
             });
         }
+        if let Some(folder) = text(entry, "folder") {
+            project.place(c.id, &folder);
+        }
         out.push(c);
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(out)
+    project.connections = out;
+    Ok(project)
 }
 
-fn pgadmin(json: &str) -> Result<Vec<SavedConnection>, String> {
+fn pgadmin(json: &str) -> Result<ImportedProject, String> {
     let root: Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
     let Some(servers) = root.get("Servers").and_then(Value::as_object) else {
         return Err("no \"Servers\": not a file exported by pgAdmin".to_owned());
     };
+    let mut project = ImportedProject::new(Vec::new());
     let mut out: Vec<(u64, SavedConnection)> = Vec::new();
     for (key, s) in servers {
         let mut c = connection(
@@ -271,10 +348,15 @@ fn pgadmin(json: &str) -> Result<Vec<SavedConnection>, String> {
                 jump: None,
             });
         }
+        // "Servers" is pgAdmin's default group, no folder.
+        if let Some(group) = text(s, "Group").filter(|g| g != "Servers") {
+            project.place(c.id, &group);
+        }
         out.push((key.parse().unwrap_or(u64::MAX), c));
     }
     out.sort_by_key(|(k, _)| *k);
-    Ok(out.into_iter().map(|(_, c)| c).collect())
+    project.connections = out.into_iter().map(|(_, c)| c).collect();
+    Ok(project)
 }
 
 fn pg_service(ini: &str) -> Vec<SavedConnection> {
@@ -381,7 +463,7 @@ mod tests {
               "configuration": {"url": "jdbc:sqlite:C:/data/app.db"}},
             "oracle-1": {"provider": "oracle", "name": "Skip me", "configuration": {"url": "jdbc:oracle:thin:@x"}}
         }}"#;
-        let found = dbeaver(json).unwrap();
+        let found = dbeaver(json).unwrap().connections;
         assert_eq!(found.len(), 2);
         let local = &found[0];
         assert_eq!(
@@ -409,7 +491,7 @@ mod tests {
             "Username": "u", "SSLMode": "require", "Group": "Team"},
             "1": {"Name": "A", "Host": "a", "Port": 5432, "Username": "v", "UseSSHTunnel": 1,
             "TunnelHost": "jump", "TunnelUsername": "j", "TunnelAuthentication": 0}}}"#;
-        let found = pgadmin(json).unwrap();
+        let found = pgadmin(json).unwrap().connections;
         assert_eq!(
             found.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
             ["A", "B"]
@@ -457,5 +539,123 @@ mod tests {
             ("pg & co", "::1")
         );
         assert_eq!(found[1].port, Some(5432));
+    }
+
+    fn path(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|p| (*p).to_owned()).collect()
+    }
+
+    const FOLDERED: &str = r#"{"folders": {"Prod": {}, "Prod/Replica": {"parent": "Prod"}, "Empty": {}},
+        "connections": {
+          "a": {"provider": "postgresql", "name": "replica", "folder": "Prod/Replica",
+                "configuration": {"host": "r", "database": "app"}},
+          "b": {"provider": "postgresql", "name": "local", "folder": "Dev/Local",
+                "configuration": {"host": "localhost", "database": "app"}},
+          "c": {"provider": "postgresql", "name": "root", "configuration": {"host": "x"}}}}"#;
+
+    #[test]
+    fn dbeaver_folders() {
+        let project = dbeaver(FOLDERED).unwrap();
+        assert_eq!(project.name, None);
+        assert_eq!(
+            project.folders,
+            [
+                path(&["Dev"]),
+                path(&["Dev", "Local"]),
+                path(&["Empty"]),
+                path(&["Prod"]),
+                path(&["Prod", "Replica"]),
+            ]
+        );
+        let by_name = |n: &str| project.connections.iter().find(|c| c.name == n).unwrap().id;
+        assert_eq!(
+            project.placement.get(&by_name("replica")),
+            Some(&path(&["Prod", "Replica"]))
+        );
+        assert_eq!(
+            project.placement.get(&by_name("local")),
+            Some(&path(&["Dev", "Local"]))
+        );
+        assert_eq!(project.placement.get(&by_name("root")), None);
+    }
+
+    /// Writes a `.dbp` like DBeaver's File › Export › DBeaver project.
+    fn dbp(dir: &Path, meta: bool) -> PathBuf {
+        use std::io::Write as _;
+        let path = dir.join("work.dbp");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        if meta {
+            zip.start_file("meta.xml", options).unwrap();
+            zip.write_all(
+                br#"<?xml version="1.0" encoding="UTF-8"?><archive version="1"><projects>
+                <project name="Interno" description=""/><project name="Cliente &amp; Rossi"/>
+                <project name="Vuoto"/></projects></archive>"#,
+            )
+            .unwrap();
+        }
+        zip.start_file(
+            "projects/Cliente & Rossi/.dbeaver/data-sources.json",
+            options,
+        )
+        .unwrap();
+        zip.write_all(FOLDERED.as_bytes()).unwrap();
+        zip.start_file("projects/Interno/.dbeaver/data-sources.json", options)
+            .unwrap();
+        zip.write_all(
+            br#"{"connections": {"crm": {"provider": "mysql", "name": "crm",
+                "configuration": {"host": "db01", "database": "crm"}}}}"#,
+        )
+        .unwrap();
+        zip.add_directory("projects/Vuoto/", options).unwrap();
+        zip.start_file("projects/Interno/Scripts/a.sql", options)
+            .unwrap();
+        zip.write_all(b"select 1").unwrap();
+        zip.finish().unwrap();
+        path
+    }
+
+    #[test]
+    fn dbp_two_projects() {
+        let dir = tempfile::tempdir().unwrap();
+        let projects = import(ImportSource::Dbeaver, &dbp(dir.path(), true)).unwrap();
+        let names: Vec<_> = projects.iter().map(|p| p.name.as_deref()).collect();
+        // In the order of meta.xml; a project without connections is left out.
+        assert_eq!(names, [Some("Interno"), Some("Cliente & Rossi")]);
+        assert_eq!(projects[0].connections.len(), 1);
+        assert_eq!(projects[0].connections[0].driver, DriverKind::MySql);
+        assert_eq!(projects[1].connections.len(), 3);
+        assert_eq!(projects[1].folders.len(), 5);
+    }
+
+    #[test]
+    fn dbp_without_meta() {
+        let dir = tempfile::tempdir().unwrap();
+        let projects = import(ImportSource::Dbeaver, &dbp(dir.path(), false)).unwrap();
+        let names: Vec<_> = projects.iter().map(|p| p.name.as_deref()).collect();
+        assert_eq!(names, [Some("Cliente & Rossi"), Some("Interno")]);
+    }
+
+    #[test]
+    fn dbeaver_source_accepts_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let json = dir.path().join("data-sources.json");
+        std::fs::write(&json, FOLDERED).unwrap();
+        let projects = import(ImportSource::Dbeaver, &json).unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].connections.len(), 3);
+    }
+
+    #[test]
+    fn pgadmin_groups_become_folders() {
+        let json = r#"{"Servers": {"1": {"Name": "A", "Host": "a", "Group": "Team"},
+            "2": {"Name": "B", "Host": "b", "Group": "Servers"}}}"#;
+        let project = pgadmin(json).unwrap();
+        assert_eq!(project.folders, [path(&["Team"])]);
+        let a = project.connections[0].id;
+        assert_eq!(project.placement.get(&a), Some(&path(&["Team"])));
+        // pgAdmin's default group is no folder.
+        assert_eq!(project.placement.len(), 1);
     }
 }
