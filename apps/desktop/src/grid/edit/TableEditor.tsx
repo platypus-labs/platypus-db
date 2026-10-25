@@ -545,7 +545,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
                 <Icon name="rollback" />
               </button>
               <button className="square" onClick={edit.discard} disabled={busy} title="Discard the changes" aria-label="Discard">
-                <Icon name="close" />
+                <Icon name="discard" />
               </button>
             </>
           ) : (

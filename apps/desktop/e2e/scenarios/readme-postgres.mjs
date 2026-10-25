@@ -67,8 +67,8 @@ export default async function (page) {
       "SELECT status, count(*) FROM demo.orders GROUP BY status;\nSELECT * FROM demo.customer_totals LIMIT 20;",
   );
   await page.eval(`(() => { const s = ${queryTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
-  await page.eval(`[...${queryTab}.querySelectorAll('.toolbar button')].find(b => b.textContent.includes('Script')).click()`);
-  const idle = `[...${queryTab}.querySelectorAll('.toolbar button')].find(b => b.textContent.includes('Cancel'))?.disabled`;
+  await page.eval(`[...${queryTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Script').click()`);
+  const idle = `[...${queryTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')?.disabled`;
   await page.waitFor(`${idle} && /rows?$/.test(${queryTab}.querySelector('.statusbar span')?.textContent ?? '')`, 30_000);
 
   await setEditor(

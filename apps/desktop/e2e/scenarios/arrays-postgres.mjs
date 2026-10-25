@@ -25,7 +25,7 @@ async function run(page, sql, script = false) {
   await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
   if (script) await page.key("x", "KeyX", 88, ALT);
   else await page.key("Enter", "Enter", 13, CTRL);
-  const idle = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.textContent.includes('Cancel'))?.disabled`;
+  const idle = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')?.disabled`;
   await page.waitFor(`${idle} && ${status} !== '' && !${status}.includes('Executing')`, 15_000);
 }
 

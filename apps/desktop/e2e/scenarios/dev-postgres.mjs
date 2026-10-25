@@ -47,7 +47,7 @@ save_password = false
 
 /** Waits until no statement runs (Cancel is disabled) and the status passes `test`. */
 async function waitStatus(page, test) {
-  const idle = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.textContent.includes('Cancel'))?.disabled`;
+  const idle = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')?.disabled`;
   await page.waitFor(`(() => { const s = ${status}; return ${idle} && s !== '' && !s.includes('Executing') && (${test}); })()`, 15_000);
   return page.eval(status);
 }

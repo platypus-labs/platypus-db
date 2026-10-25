@@ -15,6 +15,7 @@ import {
   Copy,
   Database,
   Download,
+  Eraser,
   Eye,
   FileCode,
   FilePlus,
@@ -37,6 +38,7 @@ import {
   Plus,
   Puzzle,
   RefreshCw,
+  RotateCcw,
   Save,
   Search,
   Settings,
@@ -110,6 +112,8 @@ const ICONS = {
   close: X,
   copy: Copy,
   delete: Trash2,
+  discard: Eraser,
+  revert: RotateCcw,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;
