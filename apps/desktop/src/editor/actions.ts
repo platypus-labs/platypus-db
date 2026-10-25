@@ -84,7 +84,8 @@ registerAction({
   shortcut: "Mod+Shift+F",
   group: "sql",
   order: 10,
-  when: writable,
+  // The formatter knows SQL only.
+  when: (t) => writable(t) && t.driver !== "mongo",
   run: async ({ view, driver }) => {
     const sel = view.state.selection.main;
     const [from, to] = sel.empty ? [0, view.state.doc.length] : [sel.from, sel.to];

@@ -40,6 +40,8 @@ registerAction({
   title: "Visual query builder",
   group: "open",
   order: 15,
+  // The builder writes SQL.
+  when: ({ connection }) => connection.driver !== "mongo",
   run: ({ connection, database, schema }) => workbench().openTab("builder", connection.id, { database, schema: schema.name }),
 });
 
@@ -49,7 +51,8 @@ registerAction({
   title: "Visual query builder",
   group: "open",
   order: 30,
-  when: ({ object }) => object.kind === "table" || object.kind === "view",
+  when: ({ connection, object }) =>
+    connection.driver !== "mongo" && (object.kind === "table" || object.kind === "view"),
   run: ({ connection, database, schema, object }) =>
     workbench().openTab("builder", connection.id, {
       database,

@@ -1,7 +1,8 @@
 # PlatypusDB
 
 Fast, lightweight desktop SQL client for **PostgreSQL**, **MySQL/MariaDB**, **SQL Server**
-(and Azure SQL), **ClickHouse**, **SQLite**, **DuckDB** and **libSQL/Turso**.
+(and Azure SQL), **ClickHouse**, **SQLite**, **DuckDB** and **libSQL/Turso**, and for **MongoDB** in
+mongosh syntax.
 Rust core, Tauri 2 + React UI: a 5 MB installer that starts in under half a second and
 scrolls through millions of rows.
 
@@ -10,7 +11,8 @@ scrolls through millions of rows.
 ## Features
 
 - **Connections** started from a grid of database logos, with TLS (libpq `sslmode` semantics), passwords in the system keychain,
-  colors and a read-only flag; paste a `postgres://`, `mysql://`, `sqlserver://` or `clickhouse://` URL to fill the form.
+  colors and a read-only flag; paste a `postgres://`, `mysql://`, `sqlserver://`, `clickhouse://`, `libsql://`
+  or `mongodb://` URL to fill the form.
   ClickHouse connects to its HTTP interface (port 8123, or 8443 with `sslmode=require`) and
   reads results as Arrow; its tables are browsed and queried, not edited in the grid.
   **SSH tunnels** with a password, a key or the SSH agent, optionally through a jump host;
@@ -24,6 +26,16 @@ scrolls through millions of rows.
   connecting, a default schema, a time zone and bootstrap statements run on every
   connection and reconnection. Idle sessions are checked every minute: the status bar shows
   the latency, and a connection the server dropped is reopened.
+- **MongoDB**: statements in mongosh syntax (`db.orders.find({ status: 'paid' }).sort({ placed_at: -1 }).limit(10)`,
+  `aggregate`, `countDocuments`, `distinct`, `insertOne`/`insertMany`, `updateOne`/`updateMany`,
+  `replaceOne`, `deleteOne`/`deleteMany`, `createIndex`, `db.runCommand`, `show dbs`, `show collections`,
+  `use`), with the shell's values (`ObjectId(...)`, `ISODate(...)`, `NumberLong(...)`, `/regex/i`) and
+  Extended JSON. Results are a grid of the top-level fields with the focused row's document as a tree
+  beside it (F7); nested documents and arrays are JSON. Databases and collections in the navigator,
+  fields sampled from the documents, indexes, and the collection's `createCollection`/`createIndex`
+  script as its DDL. The editor completes collections after `db.`, their methods and the fields of the
+  collection. `mongodb+srv://` and connection string options go in the Database field
+  (`shop?authSource=admin&replicaSet=rs0`). No transactions, data editor or explain on MongoDB.
 - **Navigator**: databases (PostgreSQL), schemas, tables, views, routines, triggers, types,
   extensions and events, loaded lazily, with a filter. Estimated rows and sizes of tables
   and indexes; PostgreSQL partitions under their table. Bookmarks, per-connection filters
@@ -204,6 +216,7 @@ crates/
   platypus-driver-clickhouse/ ClickHouse over HTTP (reqwest; ArrowStream results decoded as they arrive)
   platypus-tls/            rustls client configuration with libpq `sslmode` semantics
   platypus-driver-libsql/  libSQL servers and Turso (Hrana over HTTP; SQLite's catalog code)
+  platypus-driver-mongo/   MongoDB (official driver, rustls); mongosh parser, documents to Arrow
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
   platypus-net/            SSH tunnels (russh)
   platypus-store/          connections (TOML + OS keychain), imports, query history (SQLite)
@@ -236,7 +249,8 @@ npm run tauri dev
 # core crates; the conformance suite (crates/platypus-conformance) runs the same scenarios on
 # every driver. Server databases that are down are skipped; set PLATYPUS_TEST_PG_URL,
 # PLATYPUS_TEST_MYSQL_URL, PLATYPUS_TEST_MARIADB_URL, PLATYPUS_TEST_MSSQL_URL,
-# PLATYPUS_TEST_CLICKHOUSE_URL or PLATYPUS_TEST_LIBSQL_URL to make them mandatory
+# PLATYPUS_TEST_CLICKHOUSE_URL, PLATYPUS_TEST_LIBSQL_URL or PLATYPUS_TEST_MONGO to make them
+# mandatory
 cargo test --workspace --exclude platypus-desktop
 
 # CLI: table (first 200 rows), csv, ndjson, json or parquet (json and parquet need -o); Ctrl+C or --timeout cancel server-side
@@ -260,6 +274,7 @@ npm run e2e
 docker compose -f docker/compose.yml up -d --wait
 docker compose -f docker/compose.yml --profile sqlserver up -d --wait
 docker compose -f docker/compose.yml --profile libsql up -d --wait
+docker compose -f docker/compose.yml --profile mongo up -d --wait
 ```
 
 | Database   | Host port | User / password / db           |
@@ -270,6 +285,7 @@ docker compose -f docker/compose.yml --profile libsql up -d --wait
 | SQL Server | 51433     | `sa` / `Platypus-2026` / `platypus` (TLS with a self-signed cert; the conformance tests create schema `demo`) |
 | ClickHouse | 58123     | `platypus` / `platypus` / `platypus` (HTTP; the conformance tests create the demo tables) |
 | libSQL     | 58080     | HTTP, no TLS; the auth token is `LIBSQL_TOKEN` in `crates/platypus-conformance/tests/conformance.rs` (the tests create the demo tables) |
+| MongoDB    | 57017     | `platypus` / `platypus` (auth database `admin`) / `platypus` (collections only, no `type_zoo` or `big_table`) |
 
 Each database has `customers`, `orders`, a `customer_totals` view, a `type_zoo` table with one
 column per notable type, and a 1M-row `big_table` for streaming and scrolling benchmarks.

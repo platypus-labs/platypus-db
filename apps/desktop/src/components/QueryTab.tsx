@@ -13,6 +13,7 @@ import {
   type SavedConnection,
   type TableDetails,
   type TransactionState,
+  isMongo,
 } from "../api";
 import { asksPassword, isProduction } from "../connections";
 import type { EditSource, TableRef } from "../grid/edit/meta";
@@ -708,7 +709,7 @@ export function QueryTab({
     openObject: (schema, name) => void openObject(schema, name),
     runCli: cliName(connection.driver) ? () => void runCli() : undefined,
     runAppend: () => void run("append"),
-    explain: (analyze) => void explain(analyze),
+    explain: isMongo(connection.driver) ? undefined : (analyze) => void explain(analyze),
   };
 
   /** Closes a result tab and frees its rows. */
@@ -787,8 +788,11 @@ export function QueryTab({
     const sessionId = await sideSession();
     if (sessionId === null) return setCount(null);
     const where = tab.filter?.trim() ? ` WHERE ${tab.filter.trim()}` : "";
+    const query = isMongo(connection.driver)
+      ? `${tab.table}.countDocuments(${tab.filter?.trim() || "{}"})`
+      : `SELECT COUNT(*) FROM ${tab.table}${where}`;
     try {
-      const value = await api.queryValue(sessionId, `SELECT COUNT(*) FROM ${tab.table}${where}`);
+      const value = await api.queryValue(sessionId, query);
       setCount(value === null ? null : `${fmt.format(Number(value))} rows`);
     } catch (e) {
       setCount(null);
@@ -922,6 +926,8 @@ export function QueryTab({
    * editor that reads one table. Results of scripts stay read-only.
    */
   function editTarget(result: Result): TableEditTarget | null {
+    // The data editor writes SQL: MongoDB results stay read-only.
+    if (isMongo(connection.driver)) return null;
     const ref = tab.tableRef;
     const viewer =
       !!tab.table &&
@@ -1165,10 +1171,14 @@ export function QueryTab({
               applyViewer({ filter });
             }}
           >
-            <span className="muted small">WHERE</span>
+            <span className="muted small">{isMongo(connection.driver) ? "Filter" : "WHERE"}</span>
             <input
               value={filter}
-              placeholder="e.g. total > 100 AND status = 'paid'"
+              placeholder={
+                isMongo(connection.driver)
+                  ? "e.g. { total: { $gt: 100 }, status: 'paid' }"
+                  : "e.g. total > 100 AND status = 'paid'"
+              }
               onChange={(e) => setFilter(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Escape" && filter) {
@@ -1185,7 +1195,7 @@ export function QueryTab({
             )}
             <span className="spacer" />
             {count && <span className="muted small">{count}</span>}
-            <button type="button" onClick={() => void countRows()} title="Runs SELECT COUNT(*) with the filter">
+            <button type="button" onClick={() => void countRows()} title={isMongo(connection.driver) ? "Runs countDocuments with the filter" : "Runs SELECT COUNT(*) with the filter"}>
               Count rows
             </button>
           </form>

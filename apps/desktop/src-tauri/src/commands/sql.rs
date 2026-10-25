@@ -78,8 +78,11 @@ impl Utf16Map {
 /// Splits `sql` into statements and finds the one under `cursor` (UTF-16 offset).
 #[tauri::command]
 pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysis {
-    let dialect = Dialect::from(driver);
     let map = Utf16Map::new(&sql);
+    if driver == DriverKind::Mongo {
+        return analyze_mongo(&sql, &map, cursor);
+    }
+    let dialect = Dialect::from(driver);
     let statements = platypus_sql::split(&sql, dialect);
     let at = platypus_sql::statement_at(&sql, dialect, map.to_byte(cursor));
     SqlAnalysis {
@@ -125,6 +128,41 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
                             end: map.to_utf16(s.start + p.end),
                         })
                         .collect(),
+                }
+            })
+            .collect(),
+    }
+}
+
+/// [`analyze_sql`] for mongosh statements, which have no parameters.
+fn analyze_mongo(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
+    use platypus_driver_mongo::shell::{self, StatementKind as Kind};
+    let statements = shell::split(src);
+    let at = shell::statement_at(src, map.to_byte(cursor));
+    SqlAnalysis {
+        at_cursor: at.and_then(|at| statements.iter().position(|s| *s == at)),
+        statements: statements
+            .iter()
+            .map(|range| {
+                let parsed = shell::parse(&src[range.clone()]).ok();
+                let kind = parsed.as_ref().map_or(Kind::Other, shell::kind);
+                StatementSpan {
+                    start: map.to_utf16(range.start),
+                    end: map.to_utf16(range.end),
+                    read_only: kind == Kind::Query,
+                    kind: match kind {
+                        Kind::Query => "query",
+                        Kind::Dml => "dml",
+                        Kind::Ddl => "ddl",
+                        Kind::Other => "other",
+                    },
+                    unfiltered: parsed.as_ref().and_then(shell::unfiltered).map(
+                        |(schema, name)| UnfilteredTable {
+                            schema: schema.map(str::to_owned),
+                            name: name.to_owned(),
+                        },
+                    ),
+                    parameters: Vec::new(),
                 }
             })
             .collect(),
@@ -179,6 +217,10 @@ pub fn lint_sql(sql: String, driver: DriverKind) -> SqlLint {
         issues: Vec::new(),
         statements: Vec::new(),
     };
+    // The linter checks SQL; mongosh has none of its issues.
+    if driver == DriverKind::Mongo {
+        return out;
+    }
     for s in platypus_sql::split(&sql, dialect) {
         let text = s.text(&sql);
         if text.starts_with('@') {
@@ -237,6 +279,9 @@ pub struct FormatSettings {
 /// Formats `sql` for the editor; only whitespace and the case of keywords change.
 #[tauri::command]
 pub fn format_sql(sql: String, driver: DriverKind, settings: FormatSettings) -> String {
+    if driver == DriverKind::Mongo {
+        return sql;
+    }
     let keyword_case = match settings.keyword_case.as_str() {
         "lower" => KeywordCase::Lower,
         "preserve" => KeywordCase::Preserve,
@@ -273,6 +318,9 @@ pub struct QuerySource {
 /// and anything but a plain `SELECT`.
 #[tauri::command]
 pub fn query_source(sql: String, driver: DriverKind) -> Option<QuerySource> {
+    if driver == DriverKind::Mongo {
+        return None;
+    }
     let source = platypus_sql::source_table(&sql, Dialect::from(driver))?;
     Some(QuerySource {
         schema: source.schema,
@@ -328,9 +376,24 @@ mod tests {
             (p.kind, p.name.as_str(), p.start, p.end),
             ("named", "id", 24, 27)
         );
-        let lint = lint_sql(sql, DriverKind::Postgres);
+        let lint = lint_sql(sql.clone(), DriverKind::Postgres);
+        assert!(lint_sql(sql, DriverKind::Mongo).issues.is_empty());
         assert_eq!(lint.statements.len(), 1);
         assert_eq!(lint.issues[0].kind, "join_without_condition");
         assert_eq!(lint.statements[0].tables[0].name.as_deref(), Some("t"));
+    }
+
+    #[test]
+    fn splits_mongosh_scripts() {
+        let src = "db.a.find()\ndb.b.deleteMany({})\nshow dbs".to_owned();
+        let a = analyze_sql(src.clone(), DriverKind::Mongo, src.len());
+        let kinds: Vec<_> = a.statements.iter().map(|s| (s.kind, s.read_only)).collect();
+        assert_eq!(kinds, [("query", true), ("dml", false), ("query", true)]);
+        assert_eq!(a.at_cursor, Some(2));
+        assert_eq!(
+            a.statements[1].unfiltered.as_ref().map(|t| t.name.as_str()),
+            Some("b")
+        );
+        assert!(query_source(src, DriverKind::Mongo).is_none());
     }
 }

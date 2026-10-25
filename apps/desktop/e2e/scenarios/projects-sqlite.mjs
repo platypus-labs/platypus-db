@@ -271,6 +271,7 @@ async function members(page, dir, shots) {
     "SQLite",
     "DuckDB",
     "Turso / libSQL",
+    "MongoDB",
     "CockroachDB",
     "YugabyteDB",
     "TimescaleDB",

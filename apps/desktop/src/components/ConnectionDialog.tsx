@@ -50,6 +50,7 @@ const DEFAULT_PORTS: Record<DriverKind, number | null> = {
   clickhouse: 8123,
   // The scheme's: 443, or 80 without TLS.
   libsql: null,
+  mongo: 27017,
 };
 
 /** The database files of the embedded drivers: file picker filter and example path. */
@@ -71,8 +72,49 @@ const SCHEMES: Record<string, DriverKind> = {
   "libsql:": "libsql",
 };
 
-/** Turns a `postgres://`, `mysql://`, `sqlserver://`, `clickhouse://` or `libsql://` URL into form fields. */
-function applyUrl(conn: SavedConnection, input: string): SavedConnection | null {
+/** Turns a `mongodb://` or `mongodb+srv://` connection string into form fields, as
+ *  `ConnectionConfig::from_mongo_url` does: several hosts stay in the host field, and the
+ *  options follow the database after a `?`. */
+function applyMongoUrl(conn: SavedConnection, input: string): { conn: SavedConnection; password: string } | null {
+  const match = /^mongodb(\+srv)?:\/\/([^/?]*)\/?([^?]*)\??(.*)$/.exec(input.trim());
+  if (!match) return null;
+  const [, srv, authority = "", path = "", query = ""] = match;
+  const at = authority.lastIndexOf("@");
+  const userinfo = at < 0 ? "" : authority.slice(0, at);
+  const hosts = authority.slice(at + 1);
+  if (!hosts) return null;
+  const colon = userinfo.indexOf(":");
+  const user = decodeURIComponent(colon < 0 ? userinfo : userinfo.slice(0, colon));
+  const password = colon < 0 ? "" : decodeURIComponent(userinfo.slice(colon + 1));
+  const single = /^(\[[^\]]+\]|[^:,]+):(\d+)$/.exec(hosts);
+  const options = srv ? ["srv=true"] : [];
+  let ssl_mode = conn.ssl_mode;
+  for (const pair of query.split("&").filter(Boolean)) {
+    if (pair === "tls=true" || pair === "ssl=true") ssl_mode = "verify-full";
+    else if (pair === "tls=false" || pair === "ssl=false") ssl_mode = "disable";
+    else options.push(pair);
+  }
+  const database = decodeURIComponent(path);
+  if (database && user && !query.includes("authSource=")) options.push(`authSource=${database}`);
+  return {
+    conn: {
+      ...conn,
+      driver: "mongo",
+      host: (single ? single[1]! : hosts).replace(/^\[|\]$/g, ""),
+      port: single ? Number(single[2]) : DEFAULT_PORTS.mongo,
+      database: options.length ? `${database}?${options.join("&")}` : database,
+      user,
+      ssl_mode,
+    },
+    password,
+  };
+}
+
+/** Turns a `postgres://`, `mysql://`, `sqlserver://`, `clickhouse://`, `libsql://` or `mongodb://` URL
+ *  into form fields. */
+function applyUrl(conn: SavedConnection, input: string): { conn: SavedConnection; password: string } | null {
+  const mongo = applyMongoUrl(conn, input);
+  if (mongo) return mongo;
   let url: URL;
   try {
     url = new URL(input.trim());
@@ -83,13 +125,17 @@ function applyUrl(conn: SavedConnection, input: string): SavedConnection | null 
   if (!driver) return null;
   const ssl = (url.searchParams.get("sslmode") ?? url.searchParams.get("ssl-mode")) as SslMode | null;
   return {
-    ...conn,
-    driver,
-    host: decodeURIComponent(url.hostname.replace(/^\[|\]$/g, "")) || conn.host,
-    port: url.port ? Number(url.port) : DEFAULT_PORTS[driver],
-    database: decodeURIComponent(url.pathname.replace(/^\//, "")),
-    user: decodeURIComponent(url.username),
-    ssl_mode: ssl && SSL_MODES.some((m) => m.value === ssl) ? ssl : conn.ssl_mode,
+    conn: {
+      ...conn,
+      driver,
+      host: decodeURIComponent(url.hostname.replace(/^\[|\]$/g, "")) || conn.host,
+      port: url.port ? Number(url.port) : DEFAULT_PORTS[driver],
+      database: decodeURIComponent(url.pathname.replace(/^\//, "")),
+      user: decodeURIComponent(url.username),
+      ssl_mode: ssl && SSL_MODES.some((m) => m.value === ssl) ? ssl : conn.ssl_mode,
+    },
+    // Turso's URLs carry the token as a parameter.
+    password: decodeURIComponent(url.password) || (url.searchParams.get("authToken") ?? ""),
   };
 }
 
@@ -211,11 +257,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
     const parsed = applyUrl(conn, e.clipboardData.getData("text"));
     if (parsed) {
       e.preventDefault();
-      setConn({ ...parsed, name: conn.name || parsed.database || parsed.host });
-      const url = new URL(e.clipboardData.getData("text").trim());
-      // Turso's URLs carry the token as a parameter.
-      const pw = decodeURIComponent(url.password) || url.searchParams.get("authToken");
-      if (pw) setPassword(pw);
+      const next = parsed.conn;
+      setConn({ ...next, name: conn.name || next.database.split("?")[0] || next.host });
+      if (parsed.password) setPassword(parsed.password);
     }
   }
 
@@ -269,7 +313,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
                 value={conn.name}
                 onChange={(e) => set("name", e.target.value)}
                 onPaste={onPaste}
-                placeholder="My database — or paste a postgres:// or mysql:// URL"
+                placeholder="My database — or paste a postgres://, mysql:// or mongodb:// URL"
               />
             </label>
 
@@ -284,6 +328,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
                   <option value="sqlserver">SQL Server</option>
                   <option value="clickhouse">ClickHouse</option>
                   <option value="libsql">libSQL / Turso</option>
+                  <option value="mongo">MongoDB</option>
                 </select>
               </label>
               <label className="field">
@@ -356,11 +401,23 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
                   <label className="field">
                     <span>
                       Database
-                      {conn.driver === "mysql" || conn.driver === "sqlserver" || conn.driver === "clickhouse"
+                      {conn.driver === "mysql" ||
+                      conn.driver === "sqlserver" ||
+                      conn.driver === "clickhouse" ||
+                      conn.driver === "mongo"
                         ? " (optional)"
                         : ""}
                     </span>
-                    <input value={conn.database} onChange={(e) => set("database", e.target.value)} />
+                    <input
+                      value={conn.database}
+                      onChange={(e) => set("database", e.target.value)}
+                      placeholder={conn.driver === "mongo" ? "test?authSource=admin&replicaSet=rs0" : undefined}
+                      title={
+                        conn.driver === "mongo"
+                          ? "The default database, then connection string options after ?; srv=true for mongodb+srv. Users authenticate against admin unless authSource says otherwise."
+                          : undefined
+                      }
+                    />
                   </label>
                 )}
 

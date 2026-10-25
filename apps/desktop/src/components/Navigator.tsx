@@ -1052,6 +1052,8 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       title: "Search data…",
       group: "open",
       order: 20,
+      // The data search builds SQL conditions.
+      when: ({ connection }) => connection.driver !== "mongo",
       run: ({ connection, database, schema }) =>
         workbench().openTab("search", connection.id, { database, mode: "data", schema: schema.name }),
     }),

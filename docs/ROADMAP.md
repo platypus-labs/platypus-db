@@ -297,6 +297,11 @@ non implementato: la sua API HTTP (`/accounts/<id>/d1/database/<id>/query`) chie
 token Cloudflare, non ha un server locale per i test (wrangler simula D1 solo nei Worker) e non ha
 transazioni tra richieste.
 
+MongoDB (`platypus-driver-mongo`, driver ufficiale con rustls): l'editor scrive mongosh, che un
+parser proprio traduce in comandi; i risultati sono una griglia dei campi di primo livello con
+l'albero del documento selezionato accanto. Niente transazioni, explain né modifica dei dati;
+conformance dedicata in `tests/mongo.rs` (profilo `mongo` di `docker/compose.yml`).
+
 | Driver | Prio | Note |
 |---|---|---|
 | SQL Server (`tiberius`) | P1 | Dialetto `TOP`, `[quoting]`, più result set |
@@ -306,7 +311,7 @@ transazioni tra richieste.
 | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | P2 | Wire PG: profili e test, non driver nuovi |
 | ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | Una persona per il bridge, poi profili |
 | Oracle nativo | P3 | Licensing OCI da valutare |
-| Redis, MongoDB | P3 | Richiedono una UI non tabellare (gruppo dedicato in seguito) |
+| Redis, ✅ **MongoDB** | P3 | MongoDB: sintassi mongosh, griglia dei campi + albero del documento; Redis da fare |
 | ✅ libSQL/Turso; Cloudflare D1 valutato, non fatto | P3 | Varianti di SQLite |
 
 ---

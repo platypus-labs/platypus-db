@@ -49,6 +49,11 @@ fn program(driver: DriverKind) -> CommandResult<&'static str> {
             "cli",
             "libSQL servers have no command-line client to run scripts with",
         )),
+        // mongosh takes the password only on its command line, where other users see it.
+        DriverKind::Mongo => Err(CommandError::new(
+            "cli",
+            "terminal mode is not available for MongoDB",
+        )),
     }
 }
 
@@ -138,8 +143,8 @@ fn invocation(
             args = sqlcmd_args(config, host, port);
             env.extend(password.map(|p| ("SQLCMDPASSWORD", p)));
         }
-        // No client: `program` refuses it.
-        DriverKind::ClickHouse => {}
+        // No client: `program` refuses them.
+        DriverKind::ClickHouse | DriverKind::Mongo => {}
     }
     (args, env)
 }
@@ -332,5 +337,6 @@ mod tests {
         assert!(program(DriverKind::DuckDb).is_err());
         assert!(program(DriverKind::ClickHouse).is_err());
         assert!(program(DriverKind::Libsql).is_err());
+        assert!(program(DriverKind::Mongo).is_err());
     }
 }

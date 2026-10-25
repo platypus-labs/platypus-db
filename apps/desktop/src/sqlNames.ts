@@ -1,4 +1,5 @@
 import type { DriverKind } from "./api";
+import { collectionRef, shellString } from "./editor/mongo";
 import { defineSetting } from "./settings";
 
 /** Words that cannot be bare identifiers in at least one supported dialect. */
@@ -37,6 +38,8 @@ const TSQL_RESERVED = new Set(
 /** Quotes an identifier only when the dialect requires it. Mirrors `Dialect::quote_ident`
  *  in `crates/platypus-sql/src/dialect.rs`; keep the two in sync. */
 export function quoteIdent(name: string, driver: DriverKind): string {
+  // A field name as a mongosh document key.
+  if (driver === "mongo") return /^[A-Za-z_$][\w$]*$/.test(name) ? name : shellString(name);
   const upper = name.toUpperCase();
   const reserved = RESERVED.has(upper);
   if (driver === "sqlserver") {
@@ -62,6 +65,7 @@ export function qualifiedName(
   schema: { name: string; current: boolean },
   name: string,
 ): string {
+  if (driver === "mongo") return collectionRef(schema.current ? null : schema.name, name);
   const table = quoteIdent(name, driver);
   return schema.current ? table : `${quoteIdent(schema.name, driver)}.${table}`;
 }
@@ -80,6 +84,10 @@ export function selectSql(
   columns: string[] | null,
   limit: number | null,
 ): string {
+  if (driver === "mongo") {
+    const projection = columns?.length ? `, { ${columns.map((c) => `${quoteIdent(c, driver)}: 1`).join(", ")} }` : "";
+    return `${target}.find({}${projection})${limit === null ? "" : `.limit(${limit})`};`;
+  }
   const list = columns?.length ? columns.map((c) => quoteIdent(c, driver)).join(",\n       ") : "*";
   // Transact-SQL has no LIMIT: `SELECT TOP (n)`, as `Dialect::limited` writes it.
   if (driver === "sqlserver" && limit !== null) return `SELECT TOP (${limit}) ${list}\nFROM ${target};`;
@@ -91,8 +99,13 @@ export interface Sort {
   desc: boolean;
 }
 
-/** The data viewer's query for a table (already quoted), a `WHERE` filter and a sort. */
+/** The data viewer's query for a table (already quoted), a `WHERE` filter and a sort. On
+ *  MongoDB the table is a collection reference and the filter a query document. */
 export function viewerSql(driver: DriverKind, table: string, filter: string, sort: Sort | null): string {
+  if (driver === "mongo") {
+    const order = sort ? `.sort({ ${quoteIdent(sort.column, driver)}: ${sort.desc ? -1 : 1} })` : "";
+    return `${table}.find(${filter.trim() || "{}"})${order}`;
+  }
   let sql = `SELECT *\nFROM ${table}`;
   if (filter.trim()) sql += `\nWHERE ${filter.trim()}`;
   if (sort) sql += `\nORDER BY ${quoteIdent(sort.column, driver)} ${sort.desc ? "DESC" : "ASC"}`;

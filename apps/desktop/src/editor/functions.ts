@@ -171,6 +171,7 @@ const FUNCTIONS: Entry[] = [
   ["formatReadableSize", "bytes", "A size such as '1.50 MiB'.", "c"],
 ];
 
+// MongoDB has no SQL functions: a letter no function lists.
 const LETTER: Record<DriverKind, string> = {
   postgres: "p",
   mysql: "m",
@@ -179,6 +180,7 @@ const LETTER: Record<DriverKind, string> = {
   sqlserver: "t",
   clickhouse: "c",
   libsql: "s",
+  mongo: "-",
 };
 
 function options(driver: DriverKind): Completion[] {

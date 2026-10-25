@@ -4,6 +4,7 @@ import {
   siDuckdb,
   siGooglecloud,
   siMariadb,
+  siMongodb,
   siMysql,
   siNeon,
   siPostgresql,
@@ -55,6 +56,7 @@ const CHOICES: Choice[] = [
     fg: `#${siTurso.hex}`,
     preset: { ssl_mode: "verify-full" },
   },
+  { driver: "mongo", label: "MongoDB", path: siMongodb.path, bg: DARK, fg: `#${siMongodb.hex}` },
 ];
 
 /** Servers and services that speak the PostgreSQL protocol: the PostgreSQL driver, preset. */

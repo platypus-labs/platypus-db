@@ -3,7 +3,9 @@
 
 use std::collections::BTreeMap;
 
-use platypus_core::{CatalogForeignKey, ObjectMeta, ReferencingKey, SchemaMeta, TableDetails};
+use platypus_core::{
+    CatalogForeignKey, DriverKind, ObjectMeta, ReferencingKey, SchemaMeta, TableDetails,
+};
 use platypus_sql::Dialect;
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -101,9 +103,14 @@ pub async fn estimate_rows(
     schema: Option<String>,
     table: String,
 ) -> CommandResult<Option<u64>> {
-    let dialect = Dialect::from(state.session(session_id)?.config.driver);
+    let driver = state.session(session_id)?.config.driver;
     let conn = state.live(session_id).await?;
-    let sql = dialect.row_estimate_sql(schema.as_deref(), &table);
+    let sql = if driver == DriverKind::Mongo {
+        let collection = platypus_driver_mongo::generate::collection_ref(schema.as_deref(), &table);
+        format!("{collection}.estimatedDocumentCount()")
+    } else {
+        Dialect::from(driver).row_estimate_sql(schema.as_deref(), &table)
+    };
     let rows = platypus_core::query_text(conn.as_ref(), &sql).await?;
     Ok(rows
         .into_iter()
