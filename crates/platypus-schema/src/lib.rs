@@ -377,7 +377,7 @@ async fn mysql_columns(
                         format!("({d})")
                     },
                 )
-            } else if d.parse::<f64>().is_ok() {
+            } else if d.parse::<f64>().is_ok() || is_bit_or_hex_literal(&d) {
                 Some(d)
             } else {
                 Some(Dialect::MySql.quote_literal(&d))
@@ -385,6 +385,13 @@ async fn mysql_columns(
         });
     }
     Ok(())
+}
+
+/// `b'101'`, `x'1F'` or `0x1F`, which MySQL prints as they are written.
+fn is_bit_or_hex_literal(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.starts_with("0x")
+        || ((lower.starts_with("b'") || lower.starts_with("x'")) && lower.ends_with('\''))
 }
 
 /// Why [`apply`] stopped: the statement that failed and the database's error.
@@ -410,10 +417,18 @@ pub async fn apply(
         let statement = statement.to_owned();
         move |error| Box::new(ApplyError { statement, error })
     };
+    let autocommit = conn.transaction().autocommit;
+    // SQLite ignores `PRAGMA foreign_keys` inside a transaction: dropping the old table would
+    // then cascade into the tables that reference it.
+    if !script.before.is_empty() && !autocommit {
+        return Err(fail("PRAGMA foreign_keys = OFF")(Error::Other(
+            "the table must be rebuilt outside a transaction: commit or roll back first".to_owned(),
+        )));
+    }
     for s in &script.before {
         exec(conn, s).await.map_err(fail(s))?;
     }
-    let tx = script.transactional && script.statements.len() > 1 && conn.transaction().autocommit;
+    let tx = script.transactional && script.statements.len() > 1 && autocommit;
     let mut result = if tx {
         exec(conn, "BEGIN").await.map_err(fail("BEGIN"))
     } else {
@@ -455,6 +470,13 @@ mod tests {
             "(a > 0) AND (b > 0)"
         );
         assert_eq!(check_condition("a IN ('(', 'b')"), "a IN ('(', 'b')");
+    }
+
+    #[test]
+    fn bit_and_hex_literals_keep_their_form() {
+        assert!(is_bit_or_hex_literal("b'1'"));
+        assert!(is_bit_or_hex_literal("0x1F"));
+        assert!(!is_bit_or_hex_literal("bob"));
     }
 
     #[test]

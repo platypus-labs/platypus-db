@@ -88,7 +88,8 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
   const [original, setOriginal] = useState<TableDesign | null>(null);
   const [design, setDesign] = useState<TableDesign | null>(tab.table === null ? blank : null);
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<Preview | null>(null);
+  // The script of the design it was made for: Save waits until it matches the design shown.
+  const [preview, setPreview] = useState<{ of: TableDesign; preview: Preview } | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [running, setRunning] = useState(false);
   const [version, setVersion] = useState(0);
@@ -130,8 +131,8 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
     let current = true;
     const timer = setTimeout(() => {
       api.tableScript(connection.driver, tab.schema, original, design).then(
-        (p) => current && setPreview(p),
-        (e: unknown) => current && setPreview({ error: toCommandError(e).message }),
+        (p) => current && setPreview({ of: design, preview: p }),
+        (e: unknown) => current && setPreview({ of: design, preview: { error: toCommandError(e).message } }),
       );
     }, 250);
     return () => {
@@ -148,7 +149,8 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
     );
   }
 
-  const ready = preview && !("error" in preview) && preview.script.statements.length > 0 ? preview : null;
+  const fresh = preview?.of === design ? preview.preview : null;
+  const ready = fresh && !("error" in fresh) && fresh.script.statements.length > 0 ? fresh : null;
   const columnNames = design.columns.map((c) => c.name).filter(Boolean);
   const tables = Object.keys(catalog?.schemas[tab.schema] ?? {});
 
@@ -362,7 +364,7 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
             addLabel="Add constraint"
           />
         )}
-        {section === "sql" && <ScriptView preview={preview} />}
+        {section === "sql" && <ScriptView preview={preview?.preview ?? null} />}
       </div>
       {confirming && ready && (
         <div className="modal-backdrop" onMouseDown={() => !running && setConfirming(false)}>

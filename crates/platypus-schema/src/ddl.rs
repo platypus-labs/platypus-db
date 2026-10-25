@@ -247,11 +247,22 @@ impl<'a> Diff<'a> {
                     .kept_columns
                     .iter()
                     .any(|(o, n)| definition_changed(o, n))
-                || self
-                    .added_columns
-                    .iter()
-                    .any(|c| !c.nullable || c.primary_key))
+                || self.added_columns.iter().any(|c| {
+                    !c.nullable
+                        || c.primary_key
+                        || text(c.default.as_ref()).is_some_and(|d| !constant(d))
+                }))
     }
+}
+
+/// Whether `default` is a literal, the only kind of default SQLite's `ADD COLUMN` takes.
+fn constant(default: &str) -> bool {
+    let d = default.trim();
+    d.parse::<f64>().is_ok()
+        || (d.len() >= 2 && d.starts_with('\'') && d.ends_with('\''))
+        || ["NULL", "TRUE", "FALSE"]
+            .iter()
+            .any(|k| d.eq_ignore_ascii_case(k))
 }
 
 fn primary_key(design: &TableDesign) -> Vec<String> {
@@ -545,7 +556,13 @@ impl Ddl<'_> {
             } else {
                 "ADD COLUMN"
             };
-            out.push(format!("ALTER TABLE {t} {add} {}", self.column(c)));
+            // Without WITH VALUES SQL Server leaves the rows there NULL, unlike the others.
+            let values = if self.d == Dialect::SqlServer && c.nullable && c.default.is_some() {
+                " WITH VALUES"
+            } else {
+                ""
+            };
+            out.push(format!("ALTER TABLE {t} {add} {}{values}", self.column(c)));
         }
         let key = primary_key(new);
         if diff.primary_key_changed && !key.is_empty() {
@@ -684,7 +701,23 @@ impl Ddl<'_> {
             warning.push_str(" Its triggers are dropped with it.");
         }
         script.warnings.push(warning);
-        self.indexes_and_comments(new, &new.name, script);
+        // The drivers list an expression index's key parts as `(expression)`, not its SQL.
+        let (indexes, expressions): (Vec<IndexDesign>, Vec<IndexDesign>) = new
+            .indexes
+            .iter()
+            .cloned()
+            .partition(|i| !i.columns.iter().any(|c| c == "(expression)"));
+        for i in &expressions {
+            script.warnings.push(format!(
+                "Index {} is on an expression: create it again by hand.",
+                i.name
+            ));
+        }
+        let new = TableDesign {
+            indexes,
+            ..new.clone()
+        };
+        self.indexes_and_comments(&new, &new.name, script);
     }
 }
 
@@ -956,6 +989,51 @@ mod tests {
             s.statements[0].starts_with("CREATE TABLE main._platypus_orders AS"),
             "{s:?}"
         );
+    }
+
+    #[test]
+    fn review_cases_of_new_columns_and_rebuilds() {
+        let old = orders();
+        let added = |default: &str| {
+            let mut new = old.clone();
+            new.columns.push(ColumnDesign {
+                original: None,
+                default: Some(default.to_owned()),
+                ..column("status", "text")
+            });
+            new
+        };
+        // SQLite adds a column with a literal default in place, not one with an expression.
+        let s = script(Dialect::Sqlite, "main", Some(&old), &added("'new'")).unwrap();
+        assert_eq!(
+            s.statements,
+            ["ALTER TABLE main.orders ADD COLUMN status text DEFAULT 'new'"]
+        );
+        let s = script(
+            Dialect::Sqlite,
+            "main",
+            Some(&old),
+            &added("CURRENT_TIMESTAMP"),
+        )
+        .unwrap();
+        assert!(s.statements[0].contains(" AS SELECT "), "{s:?}");
+        // SQL Server fills the rows already there.
+        let s = script(Dialect::SqlServer, "dbo", Some(&old), &added("'new'")).unwrap();
+        assert_eq!(
+            s.statements,
+            ["ALTER TABLE dbo.orders ADD status text NULL DEFAULT 'new' WITH VALUES"]
+        );
+        // A rebuild leaves out expression indexes, with a warning.
+        let mut old = orders();
+        old.indexes[0].columns = vec!["(expression)".to_owned()];
+        let mut new = old.clone();
+        new.columns.remove(2);
+        let s = script(Dialect::Sqlite, "main", Some(&old), &new).unwrap();
+        assert!(
+            !s.statements.iter().any(|x| x.contains("expression")),
+            "{s:?}"
+        );
+        assert_eq!(s.warnings.len(), 2, "{s:?}");
     }
 
     #[test]
