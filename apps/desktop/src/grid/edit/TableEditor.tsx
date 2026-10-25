@@ -1,3 +1,4 @@
+import { Icon } from "../../ui/Icon";
 import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { api, type CellInput, type ColumnInfo, type SavedConnection, toCommandError } from "../../api";
 import type { Cell, CellDecoration, GridApi } from "../DataGrid";
@@ -517,11 +518,17 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
         <span className="muted small">Checking the table's keys…</span>
       ) : (
         <>
-          <button onClick={edit.addRow} disabled={!editable} title="Add a row (Insert)">
-            + Row
+          <button className="square" onClick={edit.addRow} disabled={!editable} title="Add a row (Insert)" aria-label="Add a row">
+            <Icon name="plus" />
           </button>
-          <button onClick={edit.deleteSelection} disabled={!editable} title="Delete the selected rows (Delete)">
-            − Row
+          <button
+            className="square"
+            onClick={edit.deleteSelection}
+            disabled={!editable}
+            title="Delete the selected rows (Delete)"
+            aria-label="Delete the selected rows"
+          >
+            <Icon name="delete" />
           </button>
           {dirty ? (
             <>
@@ -531,14 +538,14 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
               <button className="primary" onClick={() => void edit.save()} disabled={!editable} title="Save (Ctrl+S)">
                 {busy ? "Saving…" : "Save"}
               </button>
-              <button onClick={() => void edit.preview()} disabled={busy}>
-                Preview SQL
+              <button className="square" onClick={() => void edit.preview()} disabled={busy} title="Preview SQL" aria-label="Preview SQL">
+                <Icon name="sql" />
               </button>
-              <button onClick={edit.undo} disabled={busy || !edit.canUndo} title="Undo (Ctrl+Z)">
-                Undo
+              <button className="square" onClick={edit.undo} disabled={busy || !edit.canUndo} title="Undo (Ctrl+Z)" aria-label="Undo">
+                <Icon name="rollback" />
               </button>
-              <button onClick={edit.discard} disabled={busy}>
-                Discard
+              <button className="square" onClick={edit.discard} disabled={busy} title="Discard the changes" aria-label="Discard">
+                <Icon name="discard" />
               </button>
             </>
           ) : (

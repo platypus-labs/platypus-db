@@ -112,17 +112,32 @@ export default async function (page, { dir, shots }) {
   await page.eval(`${settingRow("History")}.querySelector('input').click()`);
   await page.eval(`(() => {
     const el = ${settingRow("Buttons")}.querySelector('select');
-    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, 'icons');
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, 'text');
     el.dispatchEvent(new Event('change', { bubbles: true }));
   })()`);
   await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);
   await page.waitFor(`![...${visibleTab}.querySelectorAll('.toolbar button')].some(b => b.getAttribute('aria-label') === 'History')`);
+  // With words, then icons alone (the default) once the setting is reset.
+  const scriptText = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Script')?.textContent`;
+  await page.waitFor(`${scriptText} === 'Script'`);
+  await page.key(",", "Comma", 188, CTRL);
+  await page.waitFor(`document.querySelector('.modal.settings') !== null`);
+  await page.eval(`(() => {
+    const el = ${settingRow("Buttons")}.querySelector('select');
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, 'icons');
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);
+  await page.waitFor(`${scriptText} === ''`);
   // Without words a button keeps its name for screen readers and in the tooltip.
   const runButton = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Run')`;
   await page.waitFor(`${runButton} !== undefined`);
   assert.equal(await page.eval(`${runButton}.title.startsWith('Run')`), true);
-  assert.equal(await page.eval(`${runButton}.textContent`), "");
-  assert.equal(await page.eval(`!!${runButton}.querySelector('svg')`), true);
+  // Run, the main action, keeps its word; the others show their icon alone.
+  assert.equal(await page.eval(`${runButton}.textContent`), "Run");
+  const scriptButton = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Script')`;
+  assert.equal(await page.eval(`${scriptButton}.textContent`), "");
+  assert.equal(await page.eval(`!!${scriptButton}.querySelector('svg')`), true);
   const unnamed = await page.eval(
     `JSON.stringify([...${visibleTab}.querySelectorAll('.toolbar button')].filter(b => !b.getAttribute('aria-label') || !b.title).map(b => b.outerHTML.slice(0, 80)))`,
   );

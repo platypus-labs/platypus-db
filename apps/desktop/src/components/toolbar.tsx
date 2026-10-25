@@ -20,7 +20,7 @@ export const toolbarLabels = defineSetting<string>({
   key: "toolbar.labels",
   section: "Toolbar",
   label: "Buttons",
-  default: "text",
+  default: "icons",
   control: {
     type: "select",
     options: [
@@ -43,7 +43,7 @@ export function useToolbar() {
   };
   const iconsOnly = useSetting(toolbarLabels) === "icons";
   /** The icon and the words, or the icon alone: the button's `aria-label` and tooltip keep
-   *  the words. */
+   *  the words. Run is not labelled here: it keeps its word either way. */
   const label = (icon: IconName, text: string): ReactNode =>
     iconsOnly ? (
       <Icon name={icon} />

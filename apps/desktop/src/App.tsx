@@ -644,6 +644,8 @@ export function App() {
                 <span>{tabTitle(t)}</span>
                 <button
                   className="icon"
+                  title="Close tab (Ctrl+W)"
+                  aria-label="Close tab"
                   onClick={(e) => {
                     e.stopPropagation();
                     closeTab(t);

@@ -231,8 +231,8 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
           </span>
         </label>
         <span className="spacer" />
-        <button disabled={!dirty} onClick={() => setDesign(original ?? blank())}>
-          Revert
+        <button className="square" disabled={!dirty} onClick={() => setDesign(original ?? blank())} title="Revert the changes" aria-label="Revert">
+          <Icon name="revert" />
         </button>
         <button
           className="primary"

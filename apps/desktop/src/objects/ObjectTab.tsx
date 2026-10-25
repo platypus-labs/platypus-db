@@ -187,8 +187,8 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
             Edit DDL in editor
           </button>
         )}
-        <button onClick={() => setVersion((v) => v + 1)} title="Reload from the database">
-          Refresh
+        <button className="square" onClick={() => setVersion((v) => v + 1)} title="Refresh from the database" aria-label="Refresh">
+          <Icon name="refresh" />
         </button>
       </header>
       <nav className="object-sections">
