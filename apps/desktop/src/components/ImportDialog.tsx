@@ -14,6 +14,7 @@ import {
   type Workspace,
 } from "../api";
 import { connectionColor, typeBadge } from "../connections";
+import { answerFor } from "../testAnswers";
 import { Icon } from "../ui/Icon";
 import { checkState, connectionsUnder, defaultInto, type FolderView, importRequest, projectTree, toggleAll } from "./importTree";
 
@@ -91,7 +92,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
   }, [source]);
 
   async function choose() {
-    const path = await open({ multiple: false, title: `${label(source)} connections` });
+    const path = await answerFor("file", () => open({ multiple: false, title: `${label(source)} connections` }));
     if (typeof path === "string") await load({ source, path });
   }
 
