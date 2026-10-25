@@ -39,6 +39,11 @@ fn program(driver: DriverKind) -> CommandResult<&'static str> {
             "cli",
             "the duckdb client cannot open a database file that PlatypusDB has open",
         )),
+        // mongosh takes the password only on its command line, where other users see it.
+        DriverKind::Mongo => Err(CommandError::new(
+            "cli",
+            "terminal mode is not available for MongoDB",
+        )),
     }
 }
 
@@ -128,6 +133,7 @@ fn invocation(
             args = sqlcmd_args(config, host, port);
             env.extend(password.map(|p| ("SQLCMDPASSWORD", p)));
         }
+        DriverKind::Mongo => {}
     }
     (args, env)
 }
@@ -318,5 +324,6 @@ mod tests {
     fn has_no_client_for_duckdb() {
         assert_eq!(program(DriverKind::Sqlite).ok(), Some("sqlite3"));
         assert!(program(DriverKind::DuckDb).is_err());
+        assert!(program(DriverKind::Mongo).is_err());
     }
 }
