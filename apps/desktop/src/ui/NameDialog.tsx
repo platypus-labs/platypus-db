@@ -1,4 +1,5 @@
 import { createElement, useState } from "react";
+import { toCommandError } from "../api";
 import { workbench } from "../workbench";
 
 interface Props {
@@ -18,7 +19,7 @@ function NameDialog({ title, initial, onSave, onClose }: Props) {
       await onSave(name.trim());
       onClose();
     } catch (e) {
-      setError(e && typeof e === "object" && "message" in e ? String(e.message) : String(e));
+      setError(toCommandError(e).message);
     }
   }
 

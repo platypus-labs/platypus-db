@@ -210,6 +210,8 @@ export function App() {
     }
     try {
       setProjects(await api.deleteProject(p.id));
+      // Its rail folder lost it, or went away.
+      setProjectFolders(await api.listProjectFolders());
     } catch (e) {
       return setToast(toCommandError(e).message);
     }

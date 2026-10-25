@@ -64,6 +64,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
   const [into, setInto] = useState<ImportInto[]>([]);
   const [railFolder, setRailFolder] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.detectImports().then(setFound, () => setFound([]));
@@ -74,6 +75,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
     setSource(next.source);
     setError(null);
     setRead(null);
+    setTicked(new Set());
     try {
       const all = await api.readImport(next.source, next.path);
       setRead(all);
@@ -98,16 +100,20 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
     if (typeof path === "string") await load({ source, path });
   }
 
-  async function save() {
-    try {
-      onImported(await api.saveImported(importRequest(read!, ticked, into, railFolder)));
-    } catch (e) {
-      setError(toCommandError(e).message);
-    }
-  }
-
   const count = ticked.size;
   const newProjects = (read ?? []).filter((p, i) => into[i]?.kind === "new_project" && p.connections.some((c) => ticked.has(c.id)));
+
+  async function save() {
+    if (!read || saving) return;
+    setSaving(true);
+    try {
+      // The rail folder is offered for two new projects or more.
+      onImported(await api.saveImported(importRequest(read, ticked, into, newProjects.length > 1 ? railFolder : null)));
+    } catch (e) {
+      setError(toCommandError(e).message);
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -187,7 +193,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
           <button type="button" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="primary" disabled={count === 0} onClick={() => void save()}>
+          <button type="button" className="primary" disabled={!read || count === 0 || saving} onClick={() => void save()}>
             Import {count > 0 ? count : ""}
           </button>
         </div>

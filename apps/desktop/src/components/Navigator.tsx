@@ -170,18 +170,20 @@ interface DragItem {
 const DRAG_TYPE = "application/x-platypus-navigator";
 
 /** Lets a dragged connection or folder be dropped here, when `onDrop` is given. */
+/** Takes a dragged connection or folder; without `onDrop` it refuses one, so a drop on a
+ *  row that takes nothing does not reach the list below it. */
 const dropTarget = (onDrop: ((item: DragItem) => void) | undefined) => ({
   onDragOver: (e: React.DragEvent) => {
-    if (!onDrop || !e.dataTransfer.types.includes(DRAG_TYPE)) return;
-    e.preventDefault();
+    if (!e.dataTransfer.types.includes(DRAG_TYPE)) return;
     e.stopPropagation();
+    if (onDrop) e.preventDefault();
   },
   onDrop: (e: React.DragEvent) => {
     const data = e.dataTransfer.getData(DRAG_TYPE);
-    if (!onDrop || !data) return;
+    if (!data) return;
     e.preventDefault();
     e.stopPropagation();
-    onDrop(JSON.parse(data) as DragItem);
+    onDrop?.(JSON.parse(data) as DragItem);
   },
 });
 
@@ -513,10 +515,13 @@ export function Navigator(props: Props) {
   }
 
   /** A connection's rows, `level` deeper for the folders it is in. */
-  function addConnection(c: SavedConnection, level: number) {
+  function addConnection(c: SavedConnection, level: number, folder: string | null = null) {
     const start = rows.length;
     connectionRows(c);
     for (let i = start; i < rows.length; i++) rows[i] = { ...rows[i]!, depth: rows[i]!.depth + level };
+    // A drop on a connection goes where it is.
+    const p = project;
+    if (p && rows[start]) rows[start] = { ...rows[start], onDrop: (item) => dropInto(p, folder, item) };
   }
 
   /** Drops a dragged connection or folder into `folder`, or at the root for `null`. */
@@ -546,7 +551,7 @@ export function Navigator(props: Props) {
     });
     if (!fOpen) return;
     for (const child of node.children) addFolder(p, child, level + 1);
-    for (const c of node.connections) addConnection(c, level + 1);
+    for (const c of node.connections) addConnection(c, level + 1, node.folder.id);
   }
 
   if (project) {

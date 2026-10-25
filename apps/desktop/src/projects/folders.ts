@@ -136,9 +136,11 @@ export function registerMoveToFolder(project: Project | null): () => void {
       order: 85,
       run: ({ connection }) =>
         askName("New folder", "New folder", async (name) => {
-          const after = (await api.createConnectionFolder(project.id, name, null)).find((p) => p.id === project.id);
-          const made = after?.folders?.find((f) => !f.parent && f.name === name);
-          await save(api.placeConnection(project.id, connection.id, made?.id ?? null));
+          const before = new Set((project.folders ?? []).map((f) => f.id));
+          const all = await api.createConnectionFolder(project.id, name, null);
+          workbench().setProjects(all);
+          const made = all.find((p) => p.id === project.id)?.folders?.find((f) => !before.has(f.id));
+          if (made) await save(api.placeConnection(project.id, connection.id, made.id));
         }),
     }),
     ...folderPaths(project).map(({ id, label }) =>
