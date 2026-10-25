@@ -58,17 +58,22 @@ async function chooseFile(page, path) {
   await page.waitFor(`${dialog}.querySelectorAll('.import-preview tbody tr').length === 3`, 15_000);
 }
 
-async function runImport(page) {
-  await page.waitFor(`!${button(dialog, "Import")}.disabled`);
-  await page.eval(`${button(dialog, "Import")}.click()`);
-  // A production connection lists the changes first.
-  await page.waitFor(`document.querySelector('.modal.guard')?.textContent.includes('INSERT INTO')`);
-  await page.eval(`${button("document.querySelector('.modal.guard')", "Run")}.click()`);
+/** Runs the dialog's import (`action` is its button) and waits until it is done. */
+async function runImport(page, { action = "Import", production = true } = {}) {
+  await page.waitFor(`!${button(dialog, action)}.disabled`);
+  await page.eval(`${button(dialog, action)}.click()`);
+  if (production) await confirmProduction(page);
   await page.waitFor(`${dialog}.textContent.includes('Imported 3 rows') || ${dialog}.textContent.includes('Nothing was imported')`, 20_000);
   const text = await page.eval(`${dialog}.textContent`);
   assert.ok(text.includes("Imported 3 rows"), text);
   await page.eval(`${button(dialog, "Close")}.click()`);
   await page.waitFor(`${dialog} === null`);
+}
+
+/** A production connection lists the changes first. */
+async function confirmProduction(page) {
+  await page.waitFor(`document.querySelector('.modal.guard')?.textContent.includes('INSERT INTO')`);
+  await page.eval(`${button("document.querySelector('.modal.guard')", "Run")}.click()`);
 }
 
 export default async function (page, { dir }) {
@@ -82,6 +87,12 @@ export default async function (page, { dir }) {
   await chooseFile(page, csv);
   const mapped = await page.eval(`[...${dialog}.querySelectorAll('.import-mapping select')].map(s => s.value)`);
   assert.deepEqual(mapped, ["ID", "Name", "price"]);
+  await runImport(page);
+
+  // Again, replacing the rows: still three.
+  await menu(page, "items", "Import data");
+  await chooseFile(page, csv);
+  await page.eval(`[...${dialog}.querySelectorAll('.import-modes label')].find(l => l.textContent.startsWith('Replace')).querySelector('input').click()`);
   await runImport(page);
 
   // Into a new table, with the types DuckDB inferred; the name it suggests, the file's, is taken.
@@ -118,4 +129,15 @@ export default async function (page, { dir }) {
   // The same file dropped again, spelled in other case, opens a script on that connection.
   await page.eval(`window.__platypus.openDroppedFile(${JSON.stringify(csv.toUpperCase())})`);
   await page.waitFor(`document.querySelector('.tab.active') !== null && document.querySelector('.modal') === null`);
+
+  // The SQLite table copied to the other connection, the DuckDB database on the CSV.
+  await menu(page, "items", "Copy to a database");
+  await page.waitFor(`${dialog}.querySelectorAll('.import-preview tbody tr').length === 3`, 15_000);
+  const target = await page.eval(`${dialog}.querySelector('select').selectedOptions[0].textContent`);
+  assert.equal(target, "items.csv");
+  // Its view is named `items` already.
+  await page.eval(
+    fill(`[...${dialog}.querySelectorAll('label.field')].find(l => l.querySelector('span').textContent === 'New table').querySelector('input')`, "items_copy"),
+  );
+  await runImport(page, { action: "Copy", production: false });
 }
