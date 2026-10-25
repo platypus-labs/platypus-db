@@ -17,6 +17,10 @@ Nella colonna **Origine**:
 - **D+**: solo nelle edizioni a pagamento di DBeaver.
 - **N**: non presente in DBeaver.
 
+Nella prima colonna delle tabelle:
+- ✅: fatto.
+- 🆕: aggiunto il 25 ottobre 2026, ancora da fare.
+
 ---
 
 ## 0. Già presente nella v0.1.0
@@ -119,20 +123,20 @@ array annidati come testo). Da fare: modifica di massa della selezione, BLOB car
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Modifica delle celle (doppio clic o F2), celle modificate evidenziate, Salva (Ctrl+S) e Annulla | P1 | D |
-| Aggiunta, duplicazione ed eliminazione di righe | P1 | D |
-| Anteprima dell'SQL generato (UPDATE/INSERT/DELETE) prima del salvataggio | P1 | D |
-| Modifica consentita solo con PK o chiave unica; altrimenti sola lettura, con il motivo indicato | P1 | D |
-| Impostare a NULL o al valore di default, editor per tipo (data, booleano, enum, JSON) | P1 | D |
-| Salvataggio in transazione: tutto o niente, rispettando la modalità manuale del tab | P1 | D |
-| **Chiavi virtuali**: chiave logica definita dall'utente per le tabelle senza PK | P2 | D |
-| Incolla da Excel/CSV come nuove righe | P2 | D |
-| Modifica di risultati di query da una sola tabella (con alias e JOIN esclusi) | P2 | D |
-| **Dictionary data**: le FK mostrano la colonna descrittiva della tabella collegata, con un menu a tendina in modifica | P2 | D |
+| ✅ Modifica delle celle (doppio clic o F2), celle modificate evidenziate, Salva (Ctrl+S) e Annulla | P1 | D |
+| ✅ Aggiunta, duplicazione ed eliminazione di righe | P1 | D |
+| ✅ Anteprima dell'SQL generato (UPDATE/INSERT/DELETE) prima del salvataggio | P1 | D |
+| ✅ Modifica consentita solo con PK o chiave unica; altrimenti sola lettura, con il motivo indicato | P1 | D |
+| ✅ Impostare a NULL o al valore di default, editor per tipo (data, booleano, enum, JSON) | P1 | D |
+| ✅ Salvataggio in transazione: tutto o niente, rispettando la modalità manuale del tab | P1 | D |
+| ✅ **Chiavi virtuali**: chiave logica definita dall'utente per le tabelle senza PK | P2 | D |
+| ✅ Incolla da Excel/CSV come nuove righe | P2 | D |
+| ✅ Modifica di risultati di query da una sola tabella (con alias e JOIN esclusi) | P2 | D |
+| ✅ **Dictionary data**: le FK mostrano la colonna descrittiva della tabella collegata, con un menu a tendina in modifica | P2 | D |
 | ✅ Array PostgreSQL e tipi composti modificabili | P3 | D |
-| Script di undo generato per le modifiche salvate | P2 | N |
-| **Modifica di massa**: un valore su tutte le celle selezionate, riempi verso il basso, sostituisci testo nella selezione, sequenza numerica | P2 | D |
-| BLOB e testi lunghi caricati da file nella cella | P3 | D |
+| ✅ Script di undo generato per le modifiche salvate | P2 | N |
+| 🆕 **Modifica di massa**: un valore su tutte le celle selezionate, riempi verso il basso, sostituisci testo nella selezione, sequenza numerica | P2 | D |
+| 🆕 BLOB e testi lunghi caricati da file nella cella | P3 | D |
 
 **Done:** modifica, inserimento ed eliminazione su PG, MySQL, MariaDB e SQLite, con test di
 conformance per la DML generata (quoting, NULL, binari, timestamp con fuso).
@@ -153,23 +157,23 @@ colonne virtuali calcolate.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Copia avanzata: con intestazioni, come INSERT, CSV, Markdown, JSON, HTML, IN-list | P1 | D |
-| Ricerca nella griglia (Ctrl+F) con evidenziazione | P1 | D |
-| **Pannello valori**: testo lungo, JSON e XML formattati, hex, immagini dai BLOB, salva su file | P1 | D |
-| Vista record: una riga in verticale, con navigazione avanti e indietro | P2 | D |
-| Colonne fisse, nascoste e riordinate, larghezza salvata per tabella | P2 | D |
-| Aggregati della selezione nella status bar (count, sum, avg, min, max) | P2 | D |
-| Filtri rapidi dal menu contestuale (`= valore`, `IS NULL`, `IN selezione`) | P1 | D |
-| Navigazione delle FK: apre la riga referenziata; pannello **References** con le righe che puntano a quella corrente | P2 | D |
-| Pannello **Metadata**: tipo, nullabilità e tabella di origine della colonna | P3 | D |
-| Pannello **Grouping**: conteggi per valore delle colonne selezionate | P2 | D |
-| Pannello **Calc**: calcoli sulle celle selezionate | P3 | D |
-| Formati di visualizzazione: data, numeri, locale, fuso; tempo relativo opzionale | P2 | D |
-| Refresh automatico ogni N secondi | P3 | D |
-| Viewer GIS: geometrie PostGIS e MySQL su mappa | P3 | D |
-| Confronto di due righe selezionate | P3 | N |
-| **Formattazione condizionale**: colore di cella o riga da regole (valore, intervallo, NULL, scala di colore sui numeri), salvata per tabella | P2 | D |
-| Colonne virtuali calcolate: espressione sulle colonne della riga, solo in visualizzazione | P3 | D |
+| ✅ Copia avanzata: con intestazioni, come INSERT, CSV, Markdown, JSON, HTML, IN-list | P1 | D |
+| ✅ Ricerca nella griglia (Ctrl+F) con evidenziazione | P1 | D |
+| ✅ **Pannello valori**: testo lungo, JSON e XML formattati, hex, immagini dai BLOB, salva su file | P1 | D |
+| ✅ Vista record: una riga in verticale, con navigazione avanti e indietro | P2 | D |
+| ✅ Colonne fisse, nascoste e riordinate, larghezza salvata per tabella | P2 | D |
+| ✅ Aggregati della selezione nella status bar (count, sum, avg, min, max) | P2 | D |
+| ✅ Filtri rapidi dal menu contestuale (`= valore`, `IS NULL`, `IN selezione`) | P1 | D |
+| ✅ Navigazione delle FK: apre la riga referenziata; pannello **References** con le righe che puntano a quella corrente | P2 | D |
+| ✅ Pannello **Metadata**: tipo, nullabilità e tabella di origine della colonna | P3 | D |
+| ✅ Pannello **Grouping**: conteggi per valore delle colonne selezionate | P2 | D |
+| ✅ Pannello **Calc**: calcoli sulle celle selezionate | P3 | D |
+| ✅ Formati di visualizzazione: data, numeri, locale, fuso; tempo relativo opzionale | P2 | D |
+| ✅ Refresh automatico ogni N secondi | P3 | D |
+| ✅ Viewer GIS: geometrie PostGIS e MySQL su mappa | P3 | D |
+| ✅ Confronto di due righe selezionate | P3 | N |
+| 🆕 **Formattazione condizionale**: colore di cella o riga da regole (valore, intervallo, NULL, scala di colore sui numeri), salvata per tabella | P2 | D |
+| 🆕 Colonne virtuali calcolate: espressione sulle colonne della riga, solo in visualizzazione | P3 | D |
 
 ---
 
@@ -182,19 +186,19 @@ colonne virtuali calcolate.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Nell'albero anche funzioni, procedure, trigger, sequenze, tipi, estensioni ed eventi | P1 | D |
-| Tab oggetto con sezioni Proprietà, Colonne, Indici, Vincoli, FK, Dipendenze e **DDL** | P1 | D |
-| Menu "Genera SQL": SELECT, INSERT, UPDATE, DELETE, MERGE, DDL | P1 | D |
-| Rinomina, elimina (con cascade e anteprima), svuota tabella, copia nome qualificato | P1 | D |
-| Conteggio righe stimato e dimensione di tabelle e indici | P2 | D |
-| Ricerca nei metadati di tutto il database (oggetti, colonne, sorgenti delle funzioni) | P2 | D |
-| Ricerca full-text nei dati di più tabelle | P3 | D |
-| Segnalibri sugli oggetti | P3 | D |
-| Filtri sul navigator salvati per connessione (es. nascondere gli schemi `tmp_*`) | P2 | D |
-| Vista semplice e vista avanzata del navigator | P3 | D |
-| Più database per connessione (PG: elenco dei database, cambio senza nuova connessione) | P1 | D |
-| Partizioni mostrate sotto la tabella padre | P3 | D |
-| Cache dei metadati su disco: navigazione anche offline e avvio più rapido | P2 | N |
+| ✅ Nell'albero anche funzioni, procedure, trigger, sequenze, tipi, estensioni ed eventi | P1 | D |
+| ✅ Tab oggetto con sezioni Proprietà, Colonne, Indici, Vincoli, FK, Dipendenze e **DDL** | P1 | D |
+| ✅ Menu "Genera SQL": SELECT, INSERT, UPDATE, DELETE, MERGE, DDL | P1 | D |
+| ✅ Rinomina, elimina (con cascade e anteprima), svuota tabella, copia nome qualificato | P1 | D |
+| ✅ Conteggio righe stimato e dimensione di tabelle e indici | P2 | D |
+| ✅ Ricerca nei metadati di tutto il database (oggetti, colonne, sorgenti delle funzioni) | P2 | D |
+| ✅ Ricerca full-text nei dati di più tabelle | P3 | D |
+| ✅ Segnalibri sugli oggetti | P3 | D |
+| ✅ Filtri sul navigator salvati per connessione (es. nascondere gli schemi `tmp_*`) | P2 | D |
+| ✅ Vista semplice e vista avanzata del navigator | P3 | D |
+| ✅ Più database per connessione (PG: elenco dei database, cambio senza nuova connessione) | P1 | D |
+| ✅ Partizioni mostrate sotto la tabella padre | P3 | D |
+| ✅ Cache dei metadati su disco: navigazione anche offline e avvio più rapido | P2 | N |
 
 ---
 
@@ -207,22 +211,22 @@ colonne virtuali calcolate.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Formattatore SQL (Ctrl+Shift+F) per dialetto, configurabile | P1 | D |
-| Duplica riga, sposta riga, multi-cursore, selezione del blocco statement | P1 | D |
-| **Parametri e variabili** (`:id`, `?`, `${var}`) con un dialog dei valori e un **pannello variabili** | P2 | D |
-| **Comandi client-side**: `@set`, `@include file.sql`, `@export`, `@echo` | P2 | D |
-| Template e snippet con Tab, modificabili | P2 | D |
-| Script salvati in un pannello progetti: cartelle, link a una connessione, rinomina. Gli script vanno nei progetti del gruppo K (`apps/desktop/src/projects/`) | P2 | D |
-| **Modalità terminale SQL**: output testuale invece della griglia | P3 | D |
-| **Query builder visuale**: tabelle trascinate, JOIN sulle FK, SQL generato | P3 | D+ |
-| Autocomplete dei JOIN dalle FK (`JOIN orders o ON` completa la condizione) | P1 | N |
-| Autocomplete di funzioni, con firma e documentazione | P2 | D |
-| Esecuzione dello script con `psql` o `mysql` locali | P3 | D |
-| Folding, outline degli statement, vai alla definizione di un oggetto (Ctrl+clic) | P2 | D |
-| Esecuzione dello statement in un nuovo tab di risultati (Ctrl+\\) | P2 | D |
-| Controllo ortografico di commenti e stringhe | P3 | D |
-| Linter SQL: colonna inesistente, `SELECT *` in produzione, JOIN senza condizione | P3 | N |
-| **Esecuzione su più connessioni**: lo stesso script su N connessioni scelte (es. un database per cliente), risultati uniti con una colonna della connessione ed esito per connessione | P2 | D |
+| ✅ Formattatore SQL (Ctrl+Shift+F) per dialetto, configurabile | P1 | D |
+| ✅ Duplica riga, sposta riga, multi-cursore, selezione del blocco statement | P1 | D |
+| ✅ **Parametri e variabili** (`:id`, `?`, `${var}`) con un dialog dei valori e un **pannello variabili** | P2 | D |
+| ✅ **Comandi client-side**: `@set`, `@include file.sql`, `@export`, `@echo` | P2 | D |
+| ✅ Template e snippet con Tab, modificabili | P2 | D |
+| ✅ Script salvati in un pannello progetti: cartelle, link a una connessione, rinomina. Gli script vanno nei progetti del gruppo K (`apps/desktop/src/projects/`) | P2 | D |
+| ✅ **Modalità terminale SQL**: output testuale invece della griglia | P3 | D |
+| ✅ **Query builder visuale**: tabelle trascinate, JOIN sulle FK, SQL generato | P3 | D+ |
+| ✅ Autocomplete dei JOIN dalle FK (`JOIN orders o ON` completa la condizione) | P1 | N |
+| ✅ Autocomplete di funzioni, con firma e documentazione | P2 | D |
+| ✅ Esecuzione dello script con `psql` o `mysql` locali | P3 | D |
+| ✅ Folding, outline degli statement, vai alla definizione di un oggetto (Ctrl+clic) | P2 | D |
+| ✅ Esecuzione dello statement in un nuovo tab di risultati (Ctrl+\\) | P2 | D |
+| ✅ Controllo ortografico di commenti e stringhe | P3 | D |
+| ✅ Linter SQL: colonna inesistente, `SELECT *` in produzione, JOIN senza condizione | P3 | N |
+| 🆕 **Esecuzione su più connessioni**: lo stesso script su N connessioni scelte (es. un database per cliente), risultati uniti con una colonna della connessione ed esito per connessione | P2 | D |
 
 ---
 
@@ -235,15 +239,15 @@ colonne virtuali calcolate.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Explain plan visuale ad albero con costi, righe stimate e reali (PG `EXPLAIN (FORMAT JSON, ANALYZE)`, MySQL `FORMAT=JSON`) | P1 | D+ |
-| Explain in forma testuale e tabellare | P1 | D |
-| Heatmap dei nodi più costosi e righe stimate contro righe reali | P2 | N |
-| Suggerimenti di indice (seq scan su tabelle grandi con filtro) | P3 | N |
-| **Query manager**: log di tutte le query eseguite dall'app (anche metadati), con durata ed esito | P2 | D |
-| **Query trace**: tempi di rete, server e fetch per ogni esecuzione | P3 | D+ |
-| Avviso per query lente, oltre una soglia configurabile | P3 | N |
-| **Confronto di due piani** affiancati (prima e dopo un indice o una riscrittura), con le differenze di costo e tempo per nodo | P2 | N |
-| Piano incollato da testo o JSON (es. da un log del server o da un collega), aperto nel tab `explain` senza connessione | P3 | N |
+| ✅ Explain plan visuale ad albero con costi, righe stimate e reali (PG `EXPLAIN (FORMAT JSON, ANALYZE)`, MySQL `FORMAT=JSON`) | P1 | D+ |
+| ✅ Explain in forma testuale e tabellare | P1 | D |
+| ✅ Heatmap dei nodi più costosi e righe stimate contro righe reali | P2 | N |
+| ✅ Suggerimenti di indice (seq scan su tabelle grandi con filtro) | P3 | N |
+| ✅ **Query manager**: log di tutte le query eseguite dall'app (anche metadati), con durata ed esito | P2 | D |
+| ✅ **Query trace**: tempi di rete, server e fetch per ogni esecuzione | P3 | D+ |
+| ✅ Avviso per query lente, oltre una soglia configurabile | P3 | N |
+| 🆕 **Confronto di due piani** affiancati (prima e dopo un indice o una riscrittura), con le differenze di costo e tempo per nodo | P2 | N |
+| 🆕 Piano incollato da testo o JSON (es. da un log del server o da un collega), aperto nel tab `explain` senza connessione | P3 | N |
 
 ---
 
@@ -275,10 +279,10 @@ prima di scrivere in Prod è nel gruppo L. Restano i P2 nuovi e i P3.
 | ✅ Import delle connessioni da DBeaver (`data-sources.json`), DataGrip, pgAdmin, `~/.pg_service.conf` | P1 | D |
 | ✅ Indicatore di salute della connessione (latenza, keep-alive, riconnessione) | P2 | N |
 | Kubernetes port-forward, AWS SSM | P3 | D+ |
-| Connessione da URL incollato (`postgres://…`, `mysql://…`, `Server=…;Database=…`): i campi si compilano da soli | P2 | D |
-| Variabili d'ambiente e file `.env` nei campi della connessione (`${env:DB_PASSWORD}`) | P2 | D |
-| Credenziali da gestori esterni: 1Password CLI, Bitwarden, HashiCorp Vault, AWS Secrets Manager | P3 | D+ |
-| Test di tutte le connessioni di un progetto in una volta, con l'esito per ognuna | P3 | N |
+| 🆕 Connessione da URL incollato (`postgres://…`, `mysql://…`, `Server=…;Database=…`): i campi si compilano da soli | P2 | D |
+| 🆕 Variabili d'ambiente e file `.env` nei campi della connessione (`${env:DB_PASSWORD}`) | P2 | D |
+| 🆕 Credenziali da gestori esterni: 1Password CLI, Bitwarden, HashiCorp Vault, AWS Secrets Manager | P3 | D+ |
+| 🆕 Test di tutte le connessioni di un progetto in una volta, con l'esito per ognuna | P3 | N |
 
 ---
 
@@ -328,16 +332,16 @@ conformance dedicata in `tests/mongo.rs` (profilo `mongo` di `docker/compose.yml
 
 | Driver | Prio | Note |
 |---|---|---|
-| SQL Server (`tiberius`) | P1 | Dialetto `TOP`, `[quoting]`, più result set |
-| DuckDB | P1 | Arrow nativo; serve anche al gruppo M |
+| ✅ SQL Server (`tiberius`) | P1 | Dialetto `TOP`, `[quoting]`, più result set |
+| ✅ DuckDB | P1 | Arrow nativo; serve anche al gruppo M |
 | ✅ ClickHouse | P2 | HTTP con formato Arrow |
-| File come database: CSV, Parquet, JSON, XLSX (tramite DuckDB) | P2 | ✅ Fatto con il gruppo H: viste DuckDB sul file, un foglio XLSX per tabella (calamine); si aprono col trascinamento sulla finestra |
+| ✅ File come database: CSV, Parquet, JSON, XLSX (tramite DuckDB) | P2 | Fatto con il gruppo H: viste DuckDB sul file, un foglio XLSX per tabella (calamine); si aprono col trascinamento sulla finestra |
 | ✅ CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon; AlloyDB no | P2 | Wire PG: profili e test, non driver nuovi |
 | ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | Una persona per il bridge, poi profili |
 | Oracle nativo | P3 | Licensing OCI da valutare |
 | Redis, ✅ **MongoDB** | P3 | MongoDB: sintassi mongosh, griglia dei campi + albero del documento; Redis da fare |
 | ✅ libSQL/Turso; Cloudflare D1 valutato, non fatto | P3 | Varianti di SQLite |
-| Elasticsearch/OpenSearch, Cassandra/ScyllaDB | P3 | Query DSL e CQL; stesso schema di MongoDB (griglia + albero) |
+| 🆕 Elasticsearch/OpenSearch, Cassandra/ScyllaDB | P3 | Query DSL e CQL; stesso schema di MongoDB (griglia + albero) |
 
 ---
 
@@ -391,18 +395,18 @@ schema copiato; nelle viste si riscrive ogni nome uguale allo schema seguito da 
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Import CSV, TSV, JSON, NDJSON, Parquet e XLSX in una tabella, con mappatura e anteprima | P1 | D |
-| Import con creazione della tabella dai tipi dedotti | P1 | D |
-| Import e sostituzione (truncate e load), upsert sulla chiave | P2 | D |
-| Export XLSX, SQL INSERT, Markdown, HTML, XML | P2 | D |
-| Export di più tabelle o di un intero schema in una volta | P2 | D |
-| **Trasferimento tra database** (es. da PG a MySQL) con mappatura dei tipi, in streaming | P2 | D |
-| Migrazione di schema e dati tra database diversi | P3 | D+ |
-| Generatore di dati finti per colonna (nomi, email, date, FK coerenti) | P3 | D+ |
-| Export compresso (gzip, zstd) e su storage cloud (S3, GCS) | P3 | D+ |
-| Incolla CSV dagli appunti per creare subito una tabella | P2 | N |
-| **Caricamento bulk nativo** per import e trasferimento: `COPY` in PostgreSQL, `LOAD DATA LOCAL` in MySQL, bulk copy in SQL Server, appender in DuckDB; INSERT a blocchi come ripiego | P2 | D |
-| Profili di import, export e trasferimento salvati e riutilizzabili (anche dal task scheduler del gruppo J) | P3 | D |
+| ✅ Import CSV, TSV, JSON, NDJSON, Parquet e XLSX in una tabella, con mappatura e anteprima | P1 | D |
+| ✅ Import con creazione della tabella dai tipi dedotti | P1 | D |
+| ✅ Import e sostituzione (truncate e load), upsert sulla chiave | P2 | D |
+| ✅ Export XLSX, SQL INSERT, Markdown, HTML, XML | P2 | D |
+| ✅ Export di più tabelle o di un intero schema in una volta | P2 | D |
+| ✅ **Trasferimento tra database** (es. da PG a MySQL) con mappatura dei tipi, in streaming | P2 | D |
+| ✅ Migrazione di schema e dati tra database diversi | P3 | D+ |
+| ✅ Generatore di dati finti per colonna (nomi, email, date, FK coerenti) | P3 | D+ |
+| ✅ Export compresso (gzip, zstd) e su storage cloud (S3, GCS) | P3 | D+ |
+| ✅ Incolla CSV dagli appunti per creare subito una tabella | P2 | N |
+| 🆕 **Caricamento bulk nativo** per import e trasferimento: `COPY` in PostgreSQL, `LOAD DATA LOCAL` in MySQL, bulk copy in SQL Server, appender in DuckDB; INSERT a blocchi come ripiego | P2 | D |
+| 🆕 Profili di import, export e trasferimento salvati e riutilizzabili (anche dal task scheduler del gruppo J) | P3 | D |
 
 ---
 
@@ -434,8 +438,8 @@ generate e gli indici su espressioni restano come sono solo se non si toccano.
 | **Confronto dati** tra due tabelle, con script di sincronizzazione | P3 | D+ |
 | Changelog Liquibase/Flyway generati dal confronto | P3 | D+ |
 | Timeline delle modifiche di schema (snapshot periodici e diff) | P3 | N |
-| **Linter dello schema**: tabelle senza PK, FK senza indice, indici duplicati o contenuti in altri, tipi diversi tra FK e colonna referenziata | P2 | N |
-| Stato delle migrazioni di un progetto (Flyway, Liquibase, Prisma, Alembic, Rails): applicate, pendenti, divergenti | P3 | N |
+| 🆕 **Linter dello schema**: tabelle senza PK, FK senza indice, indici duplicati o contenuti in altri, tipi diversi tra FK e colonna referenziata | P2 | N |
+| 🆕 Stato delle migrazioni di un progetto (Flyway, Liquibase, Prisma, Alembic, Rails): applicate, pendenti, divergenti | P3 | N |
 
 ---
 
@@ -454,9 +458,9 @@ generate e gli indici su espressioni restano come sono solo se non si toccano.
 | Dashboard del server: connessioni, TPS, cache hit, dimensioni, replica | P3 | D+ |
 | **Task scheduler**: script, export e backup pianificati | P3 | D+ |
 | Debugger PL/pgSQL | P3 | D+ |
-| **Query più costose del server**: `pg_stat_statements`, `performance_schema`, Query Store di SQL Server, con apertura nell'editor e nel tab `explain` | P2 | N |
-| Statistiche di tabelle e indici: indici mai usati, bloat, tabelle con molte scansioni complete, ultimo VACUUM/ANALYZE | P2 | N |
-| Parametri del server (`pg_settings`, `SHOW VARIABLES`) con ricerca e differenze dai valori di default | P3 | N |
+| 🆕 **Query più costose del server**: `pg_stat_statements`, `performance_schema`, Query Store di SQL Server, con apertura nell'editor e nel tab `explain` | P2 | N |
+| 🆕 Statistiche di tabelle e indici: indici mai usati, bloat, tabelle con molte scansioni complete, ultimo VACUUM/ANALYZE | P2 | N |
+| 🆕 Parametri del server (`pg_settings`, `SHOW VARIABLES`) con ricerca e differenze dai valori di default | P3 | N |
 
 ---
 
@@ -491,9 +495,9 @@ per cambiare progetto, `connections.toml` versione 2.
 | Mini-finestra di query rapida dalla system tray | P3 | N |
 | Modalità Vim nell'editor | P3 | N |
 | Log degli errori e attività in background visibili, per la diagnosi | P2 | D |
-| Notifica di sistema alla fine di una query lunga, quando la finestra non è in primo piano | P2 | D |
-| Zoom dell'interfaccia e dimensione del font di editor e griglia (Ctrl+= / Ctrl+-) | P2 | D |
-| Tab staccato in una finestra separata (secondo monitor) | P3 | D |
+| 🆕 Notifica di sistema alla fine di una query lunga, quando la finestra non è in primo piano | P2 | D |
+| 🆕 Zoom dell'interfaccia e dimensione del font di editor e griglia (Ctrl+= / Ctrl+-) | P2 | D |
+| 🆕 Tab staccato in una finestra separata (secondo monitor) | P3 | D |
 
 ---
 
@@ -516,9 +520,9 @@ della transazione aperta con avviso). Restano i P2/P3.
 | `LIMIT` automatico sulle SELECT senza limite, configurabile | P2 | N |
 | Mascheramento dei dati sensibili per screen share (regole su nome e tipo di colonna) | P3 | N |
 | Restrizioni di sicurezza per connessione: niente export, niente modifica | P3 | D+ |
-| Sola lettura temporanea per un tab o una sessione, senza cambiare la connessione salvata | P2 | N |
-| **Snapshot prima di UPDATE/DELETE manuali**: le righe toccate salvate in locale prima dello statement, con ripristino in un clic | P3 | N |
-| Blocco dell'app dopo N minuti di inattività (con la master password), disconnessione delle sessioni Prod | P3 | N |
+| 🆕 Sola lettura temporanea per un tab o una sessione, senza cambiare la connessione salvata | P2 | N |
+| 🆕 **Snapshot prima di UPDATE/DELETE manuali**: le righe toccate salvate in locale prima dello statement, con ripristino in un clic | P3 | N |
+| 🆕 Blocco dell'app dopo N minuti di inattività (con la master password), disconnessione delle sessioni Prod | P3 | N |
 
 ---
 
@@ -538,7 +542,7 @@ della transazione aperta con avviso). Restano i P2/P3.
 | Pivot dei risultati | P3 | N |
 | Notebook: celle SQL, markdown e grafici, esportabili | P3 | N |
 | Dashboard personalizzate dalle query salvate | P3 | D+ |
-| Profilo di una tabella intera: per colonna distribuzione, distinti, pattern (email, date, numeri come testo), outlier | P3 | N |
+| 🆕 Profilo di una tabella intera: per colonna distribuzione, distinti, pattern (email, date, numeri come testo), outlier | P3 | N |
 
 ---
 
@@ -576,15 +580,15 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| **Server MCP via stdio** (`platypus-mcp`): l'agente lo avvia da sé, senza che l'app sia aperta, e usa le connessioni salvate | P1 | D+ |
-| Tool di lettura: elenco connessioni, schemi, oggetti, dettagli di una tabella (colonne, chiavi, FK, indici), DDL, ricerca di oggetti per nome | P1 | D+ |
-| Tool `run_query`: esegue SQL con limite di righe, di byte e timeout; risultato compatto (tabella testuale o JSON) adatto al contesto di un LLM | P1 | D+ |
-| **Permessi per connessione**: disattivata per gli agenti, sola lettura (default), lettura e scrittura. Le connessioni Prod sono sempre in sola lettura per gli agenti | P1 | N |
-| Sola lettura garantita: controllo dello statement (`is_read_only`) e, dove il database lo permette, transazione `READ ONLY` | P1 | N |
-| Segreti mai esposti: nessun tool restituisce password, URL completi o chiavi SSH | P1 | N |
-| Registro delle query degli agenti nella cronologia, con l'agente come origine e filtro dedicato | P1 | N |
-| Installazione guidata: pagina "Agenti" nelle Impostazioni con i comandi pronti (`claude mcp add platypus -- platypus-mcp`, voce `[mcp_servers.platypus]` per Codex) e un pulsante Copia | P1 | N |
-| CLI per agenti senza MCP: `platypus-cli --connection <nome>` dalle connessioni salvate, output JSON stabile e documentato | P1 | N |
+| ✅ **Server MCP via stdio** (`platypus-mcp`): l'agente lo avvia da sé, senza che l'app sia aperta, e usa le connessioni salvate | P1 | D+ |
+| ✅ Tool di lettura: elenco connessioni, schemi, oggetti, dettagli di una tabella (colonne, chiavi, FK, indici), DDL, ricerca di oggetti per nome | P1 | D+ |
+| ✅ Tool `run_query`: esegue SQL con limite di righe, di byte e timeout; risultato compatto (tabella testuale o JSON) adatto al contesto di un LLM | P1 | D+ |
+| ✅ **Permessi per connessione**: disattivata per gli agenti, sola lettura (default), lettura e scrittura. Le connessioni Prod sono sempre in sola lettura per gli agenti | P1 | N |
+| ✅ Sola lettura garantita: controllo dello statement (`is_read_only`) e, dove il database lo permette, transazione `READ ONLY` | P1 | N |
+| ✅ Segreti mai esposti: nessun tool restituisce password, URL completi o chiavi SSH | P1 | N |
+| ✅ Registro delle query degli agenti nella cronologia, con l'agente come origine e filtro dedicato | P1 | N |
+| ✅ Installazione guidata: pagina "Agenti" nelle Impostazioni con i comandi pronti (`claude mcp add platypus -- platypus-mcp`, voce `[mcp_servers.platypus]` per Codex) e un pulsante Copia | P1 | N |
+| ✅ CLI per agenti senza MCP: `platypus-cli --connection <nome>` dalle connessioni salvate, output JSON stabile e documentato | P1 | N |
 | `explain` e campione di righe (`sample_rows`) come tool dedicati, con i limiti di `run_query` | P2 | D+ |
 | **Ponte con l'app aperta** (MCP su HTTP locale con token): l'agente vede le sessioni aperte e l'indicatore "agente collegato" compare nella barra | P2 | N |
 | Conferma nell'app per le scritture: dialog con lo statement e le righe stimate (riusa le guardie del gruppo L), con "consenti per questa sessione" | P2 | N |
@@ -592,7 +596,7 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | Contesto dell'utente su consenso: testo dell'editor, selezione, risultato corrente della griglia | P3 | N |
 | Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
 | Plugin pronti: plugin per Claude Code e configurazione per Codex con le istruzioni d'uso (quando usare quale tool, limiti) | P3 | N |
-| Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate | P3 | N |
+| 🆕 Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate | P3 | N |
 
 ---
 
@@ -629,8 +633,8 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
 | Distribuzione: winget, Homebrew cask, Flatpak, AUR | P3 |
 | Sito e documentazione utente | P3 |
-| Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
-| Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
+| 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
+| 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
 
 ---
 
@@ -646,11 +650,11 @@ rispettate da tutta l'app.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| **Note e tag locali** su tabelle e colonne (non scritti nel database), mostrati nel navigator, nell'intestazione della griglia e nell'autocomplete | P2 | N |
-| Modifica dei commenti del database (`COMMENT ON`, `COMMENT` di MySQL, proprietà estese di SQL Server) dal tab oggetto | P2 | D |
-| **Documentazione dello schema** esportata in HTML o Markdown: tabelle, colonne, chiavi, commenti, note e diagramma ER | P2 | N |
-| **Colonne sensibili** (PII, segreti): regole su nome e tipo più scelte a mano, usate dal mascheramento del gruppo L, dagli agenti del gruppo N e dagli export | P3 | N |
-| Dove si usa una colonna: viste, funzioni, trigger e script salvati che la nominano | P3 | N |
+| 🆕 **Note e tag locali** su tabelle e colonne (non scritti nel database), mostrati nel navigator, nell'intestazione della griglia e nell'autocomplete | P2 | N |
+| 🆕 Modifica dei commenti del database (`COMMENT ON`, `COMMENT` di MySQL, proprietà estese di SQL Server) dal tab oggetto | P2 | D |
+| 🆕 **Documentazione dello schema** esportata in HTML o Markdown: tabelle, colonne, chiavi, commenti, note e diagramma ER | P2 | N |
+| 🆕 **Colonne sensibili** (PII, segreti): regole su nome e tipo più scelte a mano, usate dal mascheramento del gruppo L, dagli agenti del gruppo N e dagli export | P3 | N |
+| 🆕 Dove si usa una colonna: viste, funzioni, trigger e script salvati che la nominano | P3 | N |
 
 ---
 
