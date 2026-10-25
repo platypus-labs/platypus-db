@@ -314,8 +314,19 @@ impl ConnectionStore {
         {
             return Err(StoreError::NotFound(folder));
         }
-        self.leave_project_folder(project);
-        // The folder may have gone away if the project was its only one.
+        // Within its own folder it only moves: leaving first could empty the folder away.
+        let own = folder.is_some_and(|id| {
+            self.project_folders
+                .iter()
+                .any(|f| f.id == id && f.projects.contains(&project))
+        });
+        if own {
+            for f in &mut self.project_folders {
+                f.projects.retain(|p| *p != project);
+            }
+        } else {
+            self.leave_project_folder(project);
+        }
         if let Some(f) = folder.and_then(|id| self.project_folders.iter_mut().find(|f| f.id == id))
         {
             let at = index.map_or(f.projects.len(), |i| i.min(f.projects.len()));
@@ -585,6 +596,17 @@ mod tests {
         assert_eq!(s.group_projects(ids[1], ids[2]).unwrap(), f);
         assert_eq!(folder(&s, f).projects, ids);
         assert!(invalid(&s.group_projects(ids[0], ids[0])));
+    }
+
+    #[test]
+    fn moving_into_its_own_folder_keeps_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, ids) = projects(dir.path(), 2);
+        let f = s.group_projects(ids[0], ids[1]).unwrap();
+        s.set_project_folder(ids[1], None, None).unwrap();
+        // The last project dropped into its own folder: the folder stays.
+        s.set_project_folder(ids[0], Some(f), None).unwrap();
+        assert_eq!(folder(&s, f).projects, [ids[0]]);
     }
 
     #[test]

@@ -71,6 +71,15 @@ impl ImportedProject {
         parts
     }
 
+    /// Adds what another file of the same project holds.
+    fn merge(&mut self, other: ImportedProject) {
+        for folder in other.folders {
+            self.add_folder(&folder.join("/"));
+        }
+        self.connections.extend(other.connections);
+        self.placement.extend(other.placement);
+    }
+
     /// Puts a connection in the folder at `path`, made if missing.
     fn place(&mut self, connection: Uuid, path: &str) {
         let parts = self.add_folder(path);
@@ -627,6 +636,59 @@ mod tests {
         assert_eq!(projects[0].connections[0].driver, DriverKind::MySql);
         assert_eq!(projects[1].connections.len(), 3);
         assert_eq!(projects[1].folders.len(), 5);
+    }
+
+    #[test]
+    fn dbp_reads_every_data_sources_file() {
+        use std::io::Write as _;
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("more.dbp");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&file).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("projects/P/.dbeaver/data-sources.json", options)
+            .unwrap();
+        zip.write_all(FOLDERED.as_bytes()).unwrap();
+        zip.start_file("projects/P/.dbeaver/data-sources-2.json", options)
+            .unwrap();
+        zip.write_all(
+            br#"{"folders": {"Other": {}}, "connections": {"x": {"provider": "mysql",
+                "name": "extra", "folder": "Other", "configuration": {"host": "h"}}}}"#,
+        )
+        .unwrap();
+        zip.finish().unwrap();
+        let projects = import(ImportSource::Dbeaver, &file).unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].connections.len(), 4);
+        assert!(projects[0].folders.contains(&path(&["Other"])));
+        let extra = projects[0]
+            .connections
+            .iter()
+            .find(|c| c.name == "extra")
+            .unwrap();
+        assert_eq!(
+            projects[0].placement.get(&extra.id),
+            Some(&path(&["Other"]))
+        );
+    }
+
+    #[test]
+    fn dbp_refuses_huge_entries() {
+        use std::io::Write as _;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("huge.dbp");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        zip.start_file("projects/P/.dbeaver/data-sources.json", options)
+            .unwrap();
+        // Compresses to almost nothing, unpacks past the limit.
+        let chunk = vec![b' '; 1 << 20];
+        for _ in 0..40 {
+            zip.write_all(&chunk).unwrap();
+        }
+        zip.finish().unwrap();
+        let err = import(ImportSource::Dbeaver, &path).unwrap_err();
+        assert!(err.to_string().contains("too large"), "{err}");
     }
 
     #[test]

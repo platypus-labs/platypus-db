@@ -1,12 +1,13 @@
 //! A DBeaver project export (File › Export › DBeaver project): a zip with `meta.xml`,
 //! which lists the projects, and each project's folder under `projects/<name>/`. Only the
-//! connections are read (`.dbeaver/data-sources.json`), not the scripts.
+//! connections are read (`.dbeaver/data-sources*.json`), not the scripts.
 
 use std::io::Cursor;
 
 use super::{ImportedProject, dbeaver, unescape};
 
-const SOURCES: &str = "/.dbeaver/data-sources.json";
+/// Far more than any `data-sources.json`: a bigger entry is refused, not unpacked.
+const MAX_ENTRY: u64 = 16 << 20;
 
 /// The projects with connections, in the order of `meta.xml` (by name without it).
 pub(super) fn projects(bytes: &[u8]) -> Result<Vec<ImportedProject>, String> {
@@ -18,14 +19,18 @@ pub(super) fn projects(bytes: &[u8]) -> Result<Vec<ImportedProject>, String> {
         let name = file.name().map_err(|e| e.to_string())?.into_owned();
         if name == "meta.xml" {
             order = project_names(&read(&mut file)?);
-        } else if let Some(project) = name
-            .strip_prefix("projects/")
-            .and_then(|rest| rest.strip_suffix(SOURCES))
-            .filter(|p| !p.contains('/'))
-        {
-            let mut imported = dbeaver(&read(&mut file)?)?;
-            imported.name = Some(project.to_owned());
-            found.push(imported);
+        } else if let Some(project) = sources_of(&name) {
+            let imported = dbeaver(&read(&mut file)?)?;
+            match found
+                .iter_mut()
+                .find(|p: &&mut ImportedProject| p.name.as_deref() == Some(project))
+            {
+                Some(existing) => existing.merge(imported),
+                None => found.push(ImportedProject {
+                    name: Some(project.to_owned()),
+                    ..imported
+                }),
+            }
         }
     }
     found.retain(|p| !p.connections.is_empty());
@@ -39,9 +44,25 @@ pub(super) fn projects(bytes: &[u8]) -> Result<Vec<ImportedProject>, String> {
     Ok(found)
 }
 
+/// The project of a `projects/<name>/.dbeaver/data-sources*.json` entry.
+fn sources_of(entry: &str) -> Option<&str> {
+    let (project, file) = entry.strip_prefix("projects/")?.split_once("/.dbeaver/")?;
+    let named = file.starts_with("data-sources")
+        && std::path::Path::new(file)
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("json"));
+    (named && !project.contains('/') && !file.contains('/')).then_some(project)
+}
+
 fn read(file: &mut impl std::io::Read) -> Result<String, String> {
+    use std::io::Read as _;
     let mut text = String::new();
-    file.read_to_string(&mut text).map_err(|e| e.to_string())?;
+    file.take(MAX_ENTRY + 1)
+        .read_to_string(&mut text)
+        .map_err(|e| e.to_string())?;
+    if text.len() as u64 > MAX_ENTRY {
+        return Err("an entry of the archive is too large".to_owned());
+    }
     Ok(text)
 }
 

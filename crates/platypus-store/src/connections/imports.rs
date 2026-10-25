@@ -52,6 +52,17 @@ impl ConnectionStore {
                 self.check_connection(c)?;
             }
         }
+        let mut ids = std::collections::HashSet::new();
+        if request
+            .targets
+            .iter()
+            .flat_map(|t| &t.project.connections)
+            .any(|c| !ids.insert(c.id) || self.connections.iter().any(|s| s.id == c.id))
+        {
+            return Err(crate::StoreError::Invalid(
+                "these connections are saved already".to_owned(),
+            ));
+        }
         let before = (
             self.projects.clone(),
             self.project_folders.clone(),
@@ -276,6 +287,24 @@ mod tests {
         .unwrap();
         assert_eq!(s.list().len(), 2);
         assert_eq!(s.projects(), []);
+    }
+
+    #[test]
+    fn import_twice_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = store(dir.path());
+        let request = ImportRequest {
+            targets: vec![new_project(imported("Rossi"))],
+            rail_folder: None,
+        };
+        s.apply_import(request.clone()).unwrap();
+        // A second submit of the same pick: the connections are saved already.
+        assert!(matches!(
+            s.apply_import(request),
+            Err(StoreError::Invalid(_))
+        ));
+        assert_eq!(s.list().len(), 2);
+        assert_eq!(s.projects().len(), 1);
     }
 
     #[test]
