@@ -1,5 +1,6 @@
 import type { ColumnInfo } from "../api";
 import { type ColumnLayout, hideColumn, moveColumn, pinColumn, resolveLayout } from "./layout";
+import { t } from "../i18n";
 
 interface Props {
   columns: ColumnInfo[];
@@ -17,8 +18,8 @@ export function ColumnsDialog({ columns, layout, onChange, onClose }: Props) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal small" onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>Columns</h2>
-        <p className="muted small">Pinned columns stay on the left while scrolling. Headers also drag to move columns.</p>
+        <h2>{t("Columns")}</h2>
+        <p className="muted small">{t("Pinned columns stay on the left while scrolling. Headers also drag to move columns.")}</p>
         <div className="columns-list">
           {resolved.view.map((c, d) => {
             const name = columns[c]!.name;
@@ -38,21 +39,23 @@ export function ColumnsDialog({ columns, layout, onChange, onClose }: Props) {
                 <button
                   className={pinned ? "toggled" : ""}
                   onClick={() => onChange(pinColumn(layout, name, !pinned))}
-                  title={pinned ? "Unpin" : "Pin to the left"}
+                  title={t(pinned ? "Unpin" : "Pin to the left")}
                 >
-                  Pin
+                  {t("Pin")}
                 </button>
                 <button
                   onClick={() => onChange(moveColumn(layout, columns, resolved, d, d - 1))}
                   disabled={d === 0}
-                  title="Move left"
+                  title={t("Move left")}
+                  aria-label={t("Move left")}
                 >
                   ↑
                 </button>
                 <button
                   onClick={() => onChange(moveColumn(layout, columns, resolved, d, d + 1))}
                   disabled={d === resolved.view.length - 1}
-                  title="Move right"
+                  title={t("Move right")}
+                  aria-label={t("Move right")}
                 >
                   ↓
                 </button>
@@ -71,7 +74,7 @@ export function ColumnsDialog({ columns, layout, onChange, onClose }: Props) {
         <div className="actions">
           <span className="spacer" />
           <button type="button" className="primary" onClick={onClose} autoFocus>
-            Close
+            {t("Close")}
           </button>
         </div>
       </div>

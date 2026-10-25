@@ -1,6 +1,7 @@
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { api, toCommandError } from "../../api";
 import type { CellDecoration, GridApi } from "../DataGrid";
+import { t } from "../../i18n";
 
 const MATCH: CellDecoration = { background: "rgba(255, 212, 59, 0.45)" };
 const CURRENT: CellDecoration = { background: "rgba(255, 146, 43, 0.75)" };
@@ -98,7 +99,8 @@ export function useGridSearch(
         ref={input}
         autoFocus
         value={text}
-        placeholder="Find in loaded rows"
+        placeholder={t("Find in loaded rows")}
+        aria-label={t("Find in loaded rows")}
         spellCheck={false}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
@@ -108,15 +110,15 @@ export function useGridSearch(
         }}
       />
       <span className={`small ${error ? "error-text" : "muted"}`} title={error ?? undefined}>
-        {error ? "error" : !text ? "" : count === 0 ? "no matches" : `${index + 1} of ${count}${found?.truncated ? "+" : ""}`}
+        {error ? t("error") : !text ? "" : count === 0 ? t("no matches") : t("{index} of {count}", { index: index + 1, count: `${count}${found?.truncated ? "+" : ""}` })}
       </span>
-      <button className="icon" onClick={() => step(-1)} disabled={count === 0} title="Previous (Shift+Enter)">
+      <button className="icon" onClick={() => step(-1)} disabled={count === 0} title={t("Previous (Shift+Enter)")} aria-label={t("Previous (Shift+Enter)")}>
         ↑
       </button>
-      <button className="icon" onClick={() => step(1)} disabled={count === 0} title="Next (Enter)">
+      <button className="icon" onClick={() => step(1)} disabled={count === 0} title={t("Next (Enter)")} aria-label={t("Next (Enter)")}>
         ↓
       </button>
-      <button className="icon" onClick={close} title="Close (Escape)">
+      <button className="icon" onClick={close} title={t("Close (Escape)")} aria-label={t("Close (Escape)")}>
         ×
       </button>
     </div>

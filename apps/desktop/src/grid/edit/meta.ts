@@ -1,5 +1,6 @@
 /** What the data editor needs to know about the table behind a result. */
 import type { ColumnInfo, ColumnMeta, ObjectKind, SourceItem, TableDetails, VirtualKey } from "../../api";
+import { msg } from "../../i18n";
 
 /** The table a data viewer browses. */
 export interface TableRef {
@@ -56,7 +57,7 @@ export function resultColumns(source: EditSource, columns: ColumnInfo[]): (Colum
         item.kind === "all" ? source.details.columns.map((c) => c.name) : [item.kind === "column" ? item.name : null],
       )
     : columns.map((c) => c.name);
-  if (expected.length !== columns.length) return "its columns do not match the query";
+  if (expected.length !== columns.length) return msg("its columns do not match the query");
   const seen = new Set<ColumnMeta>();
   return columns.map((column, i) => {
     const name = expected[i];
@@ -75,11 +76,11 @@ export function resultColumns(source: EditSource, columns: ColumnInfo[]): (Colum
 export function editMeta(source: EditSource, columns: ColumnInfo[], virtualKeys: VirtualKey[]): EditMeta | ReadOnly {
   const { table, details } = source;
   const mapped = resultColumns(source, columns);
-  if (typeof mapped === "string") return { reason: table.kind === "table" ? mapped : "only tables can be edited" };
+  if (typeof mapped === "string") return { reason: table.kind === "table" ? mapped : msg("only tables can be edited") };
   // Read-only results still describe their columns, e.g. in the metadata panel.
   const catalog = { table, columns: mapped };
-  if (table.kind !== "table") return { reason: "only tables can be edited", catalog };
-  if (mapped.every((c) => !c)) return { reason: "the result has none of the table's columns" };
+  if (table.kind !== "table") return { reason: msg("only tables can be edited"), catalog };
+  if (mapped.every((c) => !c)) return { reason: msg("the result has none of the table's columns") };
   const index = new Map(mapped.flatMap((c, i) => (c ? [[c.name, i] as const] : [])));
   const present = (names: string[]) => names.length > 0 && names.every((n) => index.has(n));
   const find = byName(details);
@@ -103,9 +104,9 @@ export function editMeta(source: EditSource, columns: ColumnInfo[], virtualKeys:
   if (unique) return meta(unique.columns, null);
   if (virtual && present(virtual)) return meta(virtual, virtual);
   const keyed = primary.length > 0 || uniques.length > 0 || virtual !== undefined;
-  if (keyed) return { reason: "the result does not include the table's key columns", catalog };
+  if (keyed) return { reason: msg("the result does not include the table's key columns"), catalog };
   return {
-    reason: "the table has no primary key or unique key on non-null columns",
+    reason: msg("the table has no primary key or unique key on non-null columns"),
     noKey: { table, columns: details.columns.map((c) => c.name) },
     catalog,
   };

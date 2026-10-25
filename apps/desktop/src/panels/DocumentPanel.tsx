@@ -3,6 +3,7 @@
 // and `array`) and unfold here.
 import { useEffect, useMemo, useState } from "react";
 import { api, type ColumnInfo, toCommandError } from "../api";
+import { t } from "../i18n";
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
@@ -133,23 +134,23 @@ export function DocumentPanel({ jobId, columns, row, field, version, onClose }: 
   return (
     <aside className="value-panel document-panel">
       <div className="value-bar">
-        <strong className="small value-name">Document</strong>
+        <strong className="small value-name">{t("Document")}</strong>
         <span className="spacer" />
         {doc && (
-          <button className="icon" title="Copy as JSON" onClick={() => void navigator.clipboard.writeText(JSON.stringify(doc, null, 2))}>
+          <button className="icon" title={t("Copy as JSON")} aria-label={t("Copy as JSON")} onClick={() => void navigator.clipboard.writeText(JSON.stringify(doc, null, 2))}>
             ⧉
           </button>
         )}
-        <button className="icon" title="Close (F7)" onClick={onClose}>
+        <button className="icon" title={t("Close (F7)")} aria-label={t("Close (F7)")} onClick={onClose}>
           ×
         </button>
       </div>
       {error ? (
         <div className="error-text small value-empty">{error}</div>
       ) : row === null ? (
-        <div className="muted small value-empty">Select a row to see its document.</div>
+        <div className="muted small value-empty">{t("Select a row to see its document.")}</div>
       ) : !doc ? (
-        <div className="muted small value-empty">Loading…</div>
+        <div className="muted small value-empty">{t("Loading…")}</div>
       ) : (
         <div className="doc-tree">
           {Object.entries(doc).map(([k, v]) => (

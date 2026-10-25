@@ -2,6 +2,7 @@ import { registerAction } from "../actions";
 import { type BuilderTable, QueryBuilder } from "../builder/QueryBuilder";
 import { workbench } from "../workbench";
 import { registerTabKind } from "./registry";
+import { t } from "../i18n";
 
 const text = (v: unknown) => (typeof v === "string" ? v : null);
 
@@ -23,7 +24,7 @@ registerTabKind({
   kind: "builder",
   component: QueryBuilder,
   create: (init) => ({ schema: null, tables: [], leftJoins: [], where: "", ...init }),
-  label: () => "Query builder",
+  label: () => t("Query builder"),
   persist: ({ schema, tables, leftJoins, where, database }) => ({ schema, tables, leftJoins, where, database }),
   restore: (saved) => ({
     schema: text(saved.schema),

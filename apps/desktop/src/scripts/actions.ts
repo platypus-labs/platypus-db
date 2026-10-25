@@ -4,6 +4,7 @@ import { api, type SavedConnection, type ScriptEntry } from "../api";
 import { workbench } from "../workbench";
 import { ask } from "../ui/ask";
 import { connectionFor, nameOf, openScript, parentOf, scriptFile, scriptsChanged } from "./scripts";
+import { t } from "../i18n";
 
 declare module "../actions" {
   interface ActionScopes {
@@ -41,7 +42,7 @@ registerAction({
   when: ({ entry }) => entry.folder,
   run: async ({ entry, project, connections, rename }) => {
     const only = connections.length === 1 ? connections[0]!.id : null;
-    const path = await api.createScript(project, entry.path, "Script", only);
+    const path = await api.createScript(project, entry.path, t("Script"), only);
     scriptsChanged();
     rename(path);
   },
@@ -55,7 +56,7 @@ registerAction({
   order: 11,
   when: ({ entry }) => entry.folder,
   run: async ({ entry, project, rename }) => {
-    const path = `${entry.path}/New folder`;
+    const path = `${entry.path}/${t("New folder")}`;
     await api.createScriptFolder(project, path);
     scriptsChanged();
     rename(path);
@@ -101,8 +102,10 @@ registerAction({
   group: "danger",
   order: 90,
   run: async ({ entry, project }) => {
-    const what = entry.folder ? `the folder ${nameOf(entry.path)} and every script in it` : nameOf(entry.path);
-    if (!(await ask(`Delete ${what}? The file${entry.folder ? "s are" : " is"} removed from disk.`, { confirm: "Delete", danger: true }))) return;
+    const question = entry.folder
+      ? t("Delete the folder {name} and every script in it? The files are removed from disk.", { name: nameOf(entry.path) })
+      : t("Delete {name}? The file is removed from disk.", { name: nameOf(entry.path) });
+    if (!(await ask(question, { confirm: t("Delete"), danger: true }))) return;
     await api.deleteScript(project, entry.path);
     scriptsChanged();
   },

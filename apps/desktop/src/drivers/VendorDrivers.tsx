@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type DriverKind, type OdbcSystem, type VendorStatus, toCommandError } from "../api";
 import { askDriver } from "./DriverPopup";
 import { DRIVER_NAMES } from "./names";
+import { t, msg, tNodes } from "../i18n";
 
 const megabytes = (bytes: number) => `${(bytes / 1048576).toFixed(1)} MB`;
 
@@ -16,15 +17,16 @@ function Address({ url }: { url: string }) {
 
 /** What the vendor's client is for, in the popup. */
 const PURPOSE: Partial<Record<DriverKind, string>> = {
-  oracle: "Oracle's client library, downloaded once for all Oracle connections.",
-  db2: "IBM's ODBC driver, downloaded once and registered with the Windows ODBC driver manager.",
+  oracle: msg("Oracle's client library, downloaded once for all Oracle connections."),
+  db2: msg("IBM's ODBC driver, downloaded once and registered with the Windows ODBC driver manager."),
 };
 
 /** Where the app installs nothing: what to do instead. */
 const ELSEWHERE: Partial<Record<DriverKind, string>> = {
-  oracle:
+  oracle: msg(
     "PlatypusDB downloads Oracle Instant Client on Windows and Linux. Here, install Instant Client from Oracle and add its folder to the library path, then try again.",
-  db2: "IBM Db2 is reached through ODBC, on Windows only for now.",
+  ),
+  db2: msg("IBM Db2 is reached through ODBC, on Windows only for now."),
 };
 
 interface Props {
@@ -74,64 +76,59 @@ export function VendorPopup({ driver, onDone }: Props) {
       >
         {phase === "download" && (
           <>
-            <h2>Downloading {pkg?.title ?? `the ${name} client`}…</h2>
+            <h2>{pkg?.title ? t("Downloading {name}…", { name: pkg.title }) : t("Downloading the {name} client…", { name })}</h2>
             <progress max={progress.total ?? undefined} value={progress.total ? progress.done : undefined} />
             <p className="muted small">
-              {megabytes(progress.done)}
-              {progress.total ? ` of ${megabytes(progress.total)}` : ""}
+              {progress.total ? t("{done} of {total}", { done: megabytes(progress.done), total: megabytes(progress.total) }) : megabytes(progress.done)}
             </p>
             <div className="actions">
               <span className="spacer" />
               <button type="button" onClick={() => void api.cancelVendorInstall(driver)}>
-                Cancel
+                {t("Cancel")}
               </button>
             </div>
           </>
         )}
         {phase === "register" && (
           <>
-            <h2>Registering the driver…</h2>
+            <h2>{t("Registering the driver…")}</h2>
             <p className="small">
-              Confirm the Windows prompt (User Account Control) to register {pkg?.title} with the ODBC driver
-              manager.
+              {t("Confirm the Windows prompt (User Account Control) to register {name} with the ODBC driver manager.", { name: pkg?.title ?? "" })}
             </p>
           </>
         )}
         {phase === "ask" && (
           <>
-            <h2>
-              {name} needs {pkg?.title ?? "a client library"}
-            </h2>
-            <p className="muted small">{PURPOSE[driver]}</p>
+            <h2>{pkg?.title ? t("{name} needs {client}", { name, client: pkg.title }) : t("{name} needs a client library", { name })}</h2>
+            <p className="muted small">{PURPOSE[driver] && t(PURPOSE[driver])}</p>
             {pkg && (
               <div className="driver-package">
                 <strong>{pkg.title}</strong> · {pkg.version} ·{" "}
                 {megabytes(pkg.archives.reduce((sum, a) => sum + a.size, 0))}
                 <div className="muted small">
-                  License: {pkg.license} (<Address url={pkg.license_url} />)
+                  {tNodes("License: {license} ({address})", { license: pkg.license, address: <Address url={pkg.license_url} /> })}
                 </div>
                 <div className="muted small">
-                  From the vendor (<Address url={pkg.vendor_url} />) · checked with SHA-256
+                  {tNodes("From the vendor ({address}) · checked with SHA-256", { address: <Address url={pkg.vendor_url} /> })}
                 </div>
               </div>
             )}
             {pkg?.register && (
               <div className="notice small" data-notice="uac">
-                Windows will ask for administrator permission (User Account Control) to register the driver with
-                the system's ODBC driver manager.
+                {t("Windows will ask for administrator permission (User Account Control) to register the driver with the system's ODBC driver manager.")}
               </div>
             )}
-            {status && !pkg && <div className="notice small">{ELSEWHERE[driver]}</div>}
-            {!status && !error && <p className="muted small">Looking up the client…</p>}
+            {status && !pkg && <div className="notice small">{ELSEWHERE[driver] && t(ELSEWHERE[driver])}</div>}
+            {!status && !error && <p className="muted small">{t("Looking up the client…")}</p>}
             {error && <div className="notice error small">{error}</div>}
             <div className="actions">
-              <span className="muted small">Later: Settings › Drivers</span>
+              <span className="muted small">{t("Later: Settings › Drivers")}</span>
               <span className="spacer" />
               <button type="button" onClick={() => onDone(false)}>
-                Cancel
+                {t("Cancel")}
               </button>
               <button type="button" className="primary" disabled={!pkg} onClick={() => void install()}>
-                {error ? "Try again" : pkg?.register ? "Download and install" : "Download and connect"}
+                {t(error ? "Try again" : pkg?.register ? "Download and install" : "Download and connect")}
               </button>
             </div>
           </>
@@ -167,20 +164,20 @@ export function VendorDriverState({ driver }: { driver: DriverKind }) {
   return (
     <div className="driver-state small" data-driver-state={status?.ready ? "installed" : "missing"}>
       <span className={`dot ${status?.ready ? "ok" : ""}`} />
-      {!status && !error && <span className="muted">Client: checking…</span>}
-      {error && <span className="muted">Client: {error}</span>}
+      {!status && !error && <span className="muted">{t("Client: checking…")}</span>}
+      {error && <span className="muted">{t("Client: {message}", { message: error })}</span>}
       {status && (
         <span>
           {installed
-            ? `Client: ${installed.title} ${installed.version} installed`
+            ? t("Client: {name} installed", { name: `${installed.title} ${installed.version}` })
             : status.system_driver
-              ? `Client: ${status.system_driver} (installed in the system)`
-              : "Client: not installed"}
+              ? t("Client: {name} (installed in the system)", { name: status.system_driver })
+              : t("Client: not installed")}
           {status.package && !installed && (
             <>
               {" · "}
               <button type="button" className="link" onClick={() => void askDriver(driver).then(load)}>
-                Install
+                {t("Install")}
               </button>
             </>
           )}
@@ -188,7 +185,7 @@ export function VendorDriverState({ driver }: { driver: DriverKind }) {
             <>
               {" · "}
               <button type="button" className="link" onClick={() => void remove()}>
-                Remove
+                {t("Remove")}
               </button>
             </>
           )}
@@ -208,8 +205,7 @@ export function VendorDriversSection() {
   return (
     <div className="vendor-drivers">
       <p className="muted small">
-        Oracle connects through Oracle Instant Client, and IBM Db2 through IBM's ODBC driver: both installed from
-        their vendors the first time a connection needs them.
+        {t("Oracle connects through Oracle Instant Client, and IBM Db2 through IBM's ODBC driver: both installed from their vendors the first time a connection needs them.")}
       </p>
       {(["oracle", "db2"] as const).map((d) => (
         <div key={d} className="driver-row" data-vendor-driver={d}>
@@ -221,7 +217,7 @@ export function VendorDriversSection() {
       {odbc?.available && (
         <details className="odbc-system">
           <summary className="small">
-            ODBC drivers of the system ({odbc.drivers.length}) and data sources ({odbc.data_sources.length})
+            {t("ODBC drivers of the system ({drivers}) and data sources ({sources})", { drivers: odbc.drivers.length, sources: odbc.data_sources.length })}
           </summary>
           <ul className="small">
             {odbc.drivers.map((d) => (

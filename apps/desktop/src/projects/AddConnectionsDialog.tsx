@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api, type Project, type SavedConnection, toCommandError } from "../api";
 import { workbench } from "../workbench";
 import { toggled } from "../sets";
+import { t } from "../i18n";
 
 interface Props {
   project: Project;
@@ -31,9 +32,9 @@ export function AddConnectionsDialog({ project, connections, onSaved, onClose }:
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal small add-connections" onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>Add connections to {project.name}</h2>
+        <h2>{t("Add connections to {name}", { name: project.name })}</h2>
         {outside.length === 0 ? (
-          <p className="muted small">Every saved connection is in this project already.</p>
+          <p className="muted small">{t("Every saved connection is in this project already.")}</p>
         ) : (
           <div className="import-list">
             {outside.map((c) => (
@@ -48,10 +49,10 @@ export function AddConnectionsDialog({ project, connections, onSaved, onClose }:
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="button" className="primary" disabled={picked.size === 0} onClick={() => void save()}>
-            Add {picked.size > 0 ? picked.size : ""}
+            {picked.size > 0 ? t("Add {n}", { n: picked.size }) : t("Add")}
           </button>
         </div>
       </div>

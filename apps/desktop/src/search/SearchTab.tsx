@@ -4,6 +4,7 @@ import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { Icon, objectIcon } from "../ui/Icon";
 import { workbench } from "../workbench";
+import { t, plural } from "../i18n";
 
 export type SearchMode = "metadata" | "data";
 
@@ -135,17 +136,18 @@ export function SearchTab({ tab, connection, active, ensureSession, sideSession,
           <input
             autoFocus
             className="search-input"
-            placeholder={tab.mode === "metadata" ? "Name, column or text in a source…" : "Text in any column…"}
+            placeholder={t(tab.mode === "metadata" ? "Name, column or text in a source…" : "Text in any column…")}
+            aria-label={t("Search")}
             value={tab.query}
             onChange={(e) => onChange({ query: e.target.value })}
           />
           {running === null ? (
             <button type="submit" className="primary" disabled={!tab.query.trim()}>
-              Search
+              {t("Search")}
             </button>
           ) : (
             <button type="button" disabled={tab.mode === "metadata"} onClick={() => (stop.current = true)}>
-              Stop
+              {t("Stop")}
             </button>
           )}
         </form>
@@ -161,23 +163,24 @@ export function SearchTab({ tab, connection, active, ensureSession, sideSession,
               setResults(null);
             }}
           >
-            {mode === "metadata" ? "Objects" : "Data"}
+            {t(mode === "metadata" ? "Objects" : "Data")}
           </button>
         ))}
       </nav>
       <div className="object-body">
         <p className="muted small">
           {tab.mode === "metadata" ? (
-            <>Names of objects and columns, and sources of views, routines and triggers, in {scope}.</>
+            <>{t("Names of objects and columns, and sources of views, routines and triggers, in {scope}.", { scope })}</>
           ) : (
             <>
-              Rows of every table in {tab.schema === null ? `the user schemas of ${scope}` : `${scope} · ${tab.schema}`}{" "}
-              that contain the text in any column. Each table is read in full.
+              {tab.schema === null
+                ? t("Rows of every table in the user schemas of {scope} that contain the text in any column. Each table is read in full.", { scope })
+                : t("Rows of every table in {scope} that contain the text in any column. Each table is read in full.", { scope: `${scope} · ${tab.schema}` })}
               {tab.schema !== null && running === null && (
                 <>
                   {" "}
                   <button className="link" onClick={() => onChange({ schema: null })}>
-                    Search all schemas
+                    {t("Search all schemas")}
                   </button>
                 </>
               )}
@@ -185,7 +188,7 @@ export function SearchTab({ tab, connection, active, ensureSession, sideSession,
           )}
         </p>
         {error && <div className="notice error">{error}</div>}
-        {running && <div className="muted small">Reading {running}…</div>}
+        {running && <div className="muted small">{t("Reading {table}…", { table: running })}</div>}
         {results?.mode === "metadata" && <MetadataResults results={results} onOpen={openHit} />}
         {results?.mode === "data" && <DataResults results={results} done={running === null} onOpen={openRows} />}
       </div>
@@ -200,14 +203,14 @@ function MetadataResults({
   results: Results & { mode: "metadata" };
   onOpen: (hit: MetadataMatch, schemas: SchemaMeta[]) => void;
 }) {
-  if (results.hits.length === 0) return <div className="muted small">Nothing found.</div>;
+  if (results.hits.length === 0) return <div className="muted small">{t("Nothing found.")}</div>;
   return (
     <table className="meta-table search-results">
       <thead>
         <tr>
-          <th>Object</th>
-          <th>Schema</th>
-          <th>Matched</th>
+          <th>{t("Object")}</th>
+          <th>{t("Schema")}</th>
+          <th>{t("Matched")}</th>
         </tr>
       </thead>
       <tbody>
@@ -218,10 +221,10 @@ function MetadataResults({
                 <Icon name={objectIcon(h.kind)} />
               </span>
               {h.name}
-              {h.parent && <span className="muted"> on {h.parent}</span>}
+              {h.parent && <span className="muted"> {t("on {table}", { table: h.parent })}</span>}
             </td>
             <td>{h.schema}</td>
-            <td>{h.column ? `${h.matched} ${h.column}` : h.matched}</td>
+            <td>{h.column ? `${t(h.matched === "name" ? "name" : h.matched === "column" ? "column" : "source")} ${h.column}` : t(h.matched === "name" ? "name" : h.matched === "column" ? "column" : "source")}</td>
           </tr>
         ))}
       </tbody>
@@ -238,16 +241,17 @@ function DataResults({
   done: boolean;
   onOpen: (hit: TableHit) => void;
 }) {
-  const summary = `${results.searched} tables searched${results.failed ? `, ${results.failed} could not be read` : ""}.`;
+  const searched = plural(results.searched, "{n} table searched", "{n} tables searched");
+  const summary = results.failed ? `${searched}, ${plural(results.failed, "{n} could not be read", "{n} could not be read")}.` : `${searched}.`;
   return (
     <>
-      {done && <div className="muted small">{results.hits.length === 0 ? `Nothing found; ${summary}` : summary}</div>}
+      {done && <div className="muted small">{results.hits.length === 0 ? t("Nothing found; {summary}", { summary }) : summary}</div>}
       {results.hits.length > 0 && (
         <table className="meta-table search-results">
           <thead>
             <tr>
-              <th>Table</th>
-              <th>Rows</th>
+              <th>{t("Table")}</th>
+              <th>{t("Rows")}</th>
             </tr>
           </thead>
           <tbody>

@@ -14,6 +14,7 @@ import { onNavigatorRefresh } from "../navigatorEvents";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
+import { t, msg } from "../i18n";
 
 export type ObjectSection =
   | "properties"
@@ -44,28 +45,28 @@ declare module "../tabs/registry" {
 }
 
 const KIND_LABELS: Record<ObjectKind, string> = {
-  table: "Table",
-  view: "View",
-  materialized_view: "Materialized view",
-  foreign_table: "Foreign table",
-  sequence: "Sequence",
-  function: "Function",
-  procedure: "Procedure",
-  trigger: "Trigger",
-  type: "Type",
-  domain: "Domain",
-  extension: "Extension",
-  event: "Event",
-  dictionary: "Dictionary",
+  table: msg("Table"),
+  view: msg("View"),
+  materialized_view: msg("Materialized view"),
+  foreign_table: msg("Foreign table"),
+  sequence: msg("Sequence"),
+  function: msg("Function"),
+  procedure: msg("Procedure"),
+  trigger: msg("Trigger"),
+  type: msg("Type"),
+  domain: msg("Domain"),
+  extension: msg("Extension"),
+  event: msg("Event"),
+  dictionary: msg("Dictionary"),
 };
 
 const SECTION_LABELS: Record<ObjectSection, string> = {
-  properties: "Properties",
-  columns: "Columns",
-  indexes: "Indexes",
-  constraints: "Constraints",
-  foreign_keys: "Foreign keys",
-  references: "References",
+  properties: msg("Properties"),
+  columns: msg("Columns"),
+  indexes: msg("Indexes"),
+  constraints: msg("Constraints"),
+  foreign_keys: msg("Foreign keys"),
+  references: msg("References"),
   ddl: "DDL",
 };
 
@@ -153,8 +154,8 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
         <div className="object-title">
           <strong>{tab.name}</strong>
           <span className="muted small">
-            {KIND_LABELS[tab.objectKind]} in {tab.schema}
-            {tab.parent ? ` · ${tab.objectKind === "trigger" ? "on" : "partition of"} ${tab.parent}` : ""}
+            {t("{kind} in {schema}", { kind: t(KIND_LABELS[tab.objectKind]), schema: tab.schema })}
+            {tab.parent ? ` · ${t(tab.objectKind === "trigger" ? "on {table}" : "partition of {table}", { table: tab.parent })}` : ""}
             {tab.database ? ` · ${tab.database}` : ""}
           </span>
         </div>
@@ -171,7 +172,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               })
             }
           >
-            Open data
+            {t("Open data")}
           </button>
         )}
         {data?.ddl && (
@@ -179,49 +180,49 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
             onClick={() =>
               workbench().openTab("query", connection.id, {
                 sql: data.ddl!,
-                title: `${tab.name} DDL`,
+                title: t("{name} DDL", { name: tab.name }),
                 database: tab.database,
               })
             }
           >
-            Edit DDL in editor
+            {t("Edit DDL in editor")}
           </button>
         )}
-        <button className="square" onClick={() => setVersion((v) => v + 1)} title="Refresh from the database" aria-label="Refresh">
+        <button className="square" onClick={() => setVersion((v) => v + 1)} title={t("Refresh from the database")} aria-label={t("Refresh")}>
           <Icon name="refresh" />
         </button>
       </header>
       <nav className="object-sections">
         {sections.map((s) => (
           <button key={s} className={s === section ? "active" : ""} onClick={() => onChange({ section: s })}>
-            {SECTION_LABELS[s]}
+            {t(SECTION_LABELS[s])}
             {d && s !== "properties" && s !== "ddl" && <span className="count">{count(d, s)}</span>}
           </button>
         ))}
       </nav>
       <div className="object-body">
         {error && <div className="notice error">{error}</div>}
-        {!data && !error && <div className="muted small">Loading…</div>}
+        {!data && !error && <div className="muted small">{t("Loading…")}</div>}
         {data && section === "properties" && (
           <MetaTable
-            head={["Property", "Value"]}
+            head={[t("Property"), t("Value")]}
             rows={[
-              ["Name", tab.name],
-              ["Kind", KIND_LABELS[tab.objectKind]],
-              ["Schema", tab.schema],
-              ...(tab.parent ? [[tab.objectKind === "trigger" ? "Table" : "Partition of", tab.parent]] : []),
+              [t("Name"), tab.name],
+              [t("Kind"), t(KIND_LABELS[tab.objectKind])],
+              [t("Schema"), tab.schema],
+              ...(tab.parent ? [[t(tab.objectKind === "trigger" ? "Table" : "Partition of"), tab.parent]] : []),
               ...data.properties.map((p) => [p.name, p.value]),
             ]}
           />
         )}
         {d && section === "columns" && (
           <MetaTable
-            head={["#", "Name", "Type", "Nullable", "Default", "Key", "Comment"]}
+            head={["#", t("Name"), t("Type"), t("Nullable"), t("Default"), t("Key"), t("Comment")]}
             rows={d.columns.map((c, i) => [
               String(i + 1),
               c.name,
               c.data_type,
-              c.nullable ? "yes" : "no",
+              t(c.nullable ? "yes" : "no"),
               c.default ?? "",
               c.primary_key ? "PK" : "",
               c.comment ?? "",
@@ -230,19 +231,19 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
         )}
         {d && section === "indexes" && (
           <MetaTable
-            head={["Name", "Columns", "Unique", "Primary"]}
-            rows={d.indexes.map((i) => [i.name, i.columns.join(", "), i.unique ? "yes" : "", i.primary ? "yes" : ""])}
+            head={[t("Name"), t("Columns"), t("Unique"), t("Primary")]}
+            rows={d.indexes.map((i) => [i.name, i.columns.join(", "), i.unique ? t("yes") : "", i.primary ? t("yes") : ""])}
           />
         )}
         {d && section === "constraints" && (
           <MetaTable
-            head={["Name", "Kind", "Columns", "Definition"]}
+            head={[t("Name"), t("Kind"), t("Columns"), t("Definition")]}
             rows={d.constraints.map((c) => [c.name, c.kind.replace("_", " "), c.columns.join(", "), c.definition])}
           />
         )}
         {d && section === "foreign_keys" && (
           <MetaTable
-            head={["Name", "Columns", "References", "Referenced columns"]}
+            head={[t("Name"), t("Columns"), t("References"), t("Referenced columns")]}
             rows={d.foreign_keys.map((f) => [
               f.name,
               f.columns.join(", "),
@@ -255,7 +256,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
         )}
         {d && section === "references" && (
           <MetaTable
-            head={["Table", "Foreign key", "Columns", "Referenced columns"]}
+            head={[t("Table"), t("Foreign key"), t("Columns"), t("Referenced columns")]}
             rows={d.referenced_by.map((r) => [
               <button key="ref" className="link" onClick={() => openReferenced(r.schema, r.table)}>
                 {r.schema === tab.schema ? r.table : `${r.schema}.${r.table}`}
@@ -268,7 +269,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
         )}
         {data && section === "ddl" &&
           (data.ddl === null ? (
-            <div className="notice muted">This driver cannot show the DDL of objects.</div>
+            <div className="notice muted">{t("This driver cannot show the DDL of objects.")}</div>
           ) : (
             <div className="object-ddl">
               <SqlEditor key={data.ddl} initialValue={data.ddl} driver={connection.driver} readOnly />
@@ -297,7 +298,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
 }
 
 function MetaTable({ head, rows }: { head: string[]; rows: React.ReactNode[][] }) {
-  if (rows.length === 0) return <div className="muted small">None</div>;
+  if (rows.length === 0) return <div className="muted small">{t("None")}</div>;
   return (
     <table className="meta-table">
       <thead>

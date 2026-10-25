@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { t, tNodes } from "../i18n";
 
 interface Props {
   variables: Record<string, string>;
@@ -20,15 +21,18 @@ export function VariablesPanel({ variables, onChange, onClose }: Props) {
   return (
     <aside className="history side-panel variables-panel">
       <div className="history-header">
-        <strong>Variables</strong>
+        <strong>{t("Variables")}</strong>
         <span className="spacer" />
-        <button className="icon" title="Close" onClick={onClose}>
+        <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
           ×
         </button>
       </div>
       <p className="muted small side-panel-hint">
-        <code>{"${name}"}</code> goes in as typed, <code>:name</code> as a literal. <code>@set name = value</code> sets
-        one from a script.
+        {tNodes("{raw} goes in as typed, {literal} as a literal. {set} sets one from a script.", {
+          raw: <code>{"${name}"}</code>,
+          literal: <code>:name</code>,
+          set: <code>@set name = value</code>,
+        })}
       </p>
       <ul className="history-list">
         {entries.map(([key, value]) => (
@@ -36,13 +40,13 @@ export function VariablesPanel({ variables, onChange, onClose }: Props) {
             <span className="variable-name" title={key}>
               {key}
             </span>
-            <input aria-label={`Value of ${key}`} value={value} onChange={(e) => set(key, e.target.value)} />
-            <button className="icon" title="Delete" onClick={() => set(key, null)}>
+            <input aria-label={t("Value of {name}", { name: key })} value={value} onChange={(e) => set(key, e.target.value)} />
+            <button className="icon" title={t("Delete")} aria-label={t("Delete")} onClick={() => set(key, null)}>
               ×
             </button>
           </li>
         ))}
-        {entries.length === 0 && <li className="muted history-empty">No variables yet</li>}
+        {entries.length === 0 && <li className="muted history-empty">{t("No variables yet")}</li>}
       </ul>
       <form
         className="variable-add"
@@ -54,8 +58,8 @@ export function VariablesPanel({ variables, onChange, onClose }: Props) {
           setName("");
         }}
       >
-        <input placeholder="New variable" value={name} onChange={(e) => setName(e.target.value)} />
-        <button type="submit">Add</button>
+        <input placeholder={t("New variable")} aria-label={t("New variable")} value={name} onChange={(e) => setName(e.target.value)} />
+        <button type="submit">{t("Add")}</button>
       </form>
     </aside>
   );

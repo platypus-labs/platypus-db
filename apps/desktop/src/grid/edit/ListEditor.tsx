@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type CellInput, type FieldMeta, toCommandError } from "../../api";
 import type { Move } from "./CellEditor";
+import { t, plural } from "../../i18n";
 
 interface Props {
   /** Where the popup goes, inside the grid. */
@@ -84,7 +85,7 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
       }
       const split = await api.splitLiteral(composite, text);
       if (!split) {
-        setProblem(composite ? "Not a composite value: (a,b,…)" : "Not a one-dimensional array: {a,b,…}");
+        setProblem(t(composite ? "Not a composite value: (a,b,…)" : "Not a one-dimensional array: {a,b,…}"));
         return;
       }
       setItems(split);
@@ -119,7 +120,7 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
     >
       <div className="list-editor-head muted small">
         <span>{type}</span>
-        {!asText && items && !composite && <span>{items.length === 1 ? "1 element" : `${items.length} elements`}</span>}
+        {!asText && items && !composite && <span>{plural(items.length, "{n} element", "{n} elements")}</span>}
       </div>
       {asText ? (
         <textarea
@@ -154,7 +155,8 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
                 <button
                   type="button"
                   className="icon"
-                  title="Remove the element"
+                  title={t("Remove the element")}
+                  aria-label={t("Remove the element")}
                   onClick={() => edit((all) => all.filter((_, j) => j !== i))}
                 >
                   ×
@@ -164,7 +166,7 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
           ))}
           {!composite && items && (
             <button type="button" className="list-editor-add" onClick={() => edit((all) => [...all, ""])}>
-              + Element
+              {t("+ Element")}
             </button>
           )}
         </div>
@@ -172,20 +174,20 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
       {problem && <div className="error-text small">{problem}</div>}
       <div className="cell-popup-actions">
         <button type="button" onClick={() => void toggleText()}>
-          {asText ? "Edit as list" : "Edit as text"}
+          {t(asText ? "Edit as list" : "Edit as text")}
         </button>
         {nullable && (
           <button type="button" onClick={() => void commit({ kind: "null" })}>
-            Set NULL
+            {t("Set NULL")}
           </button>
         )}
         <span className="spacer" />
-        <span className="muted small">Ctrl+Enter to apply</span>
+        <span className="muted small">{t("Ctrl+Enter to apply")}</span>
         <button type="button" onClick={cancel}>
-          Cancel
+          {t("Cancel")}
         </button>
         <button type="button" className="primary" onClick={() => void commit()}>
-          Apply
+          {t("Apply")}
         </button>
       </div>
     </div>

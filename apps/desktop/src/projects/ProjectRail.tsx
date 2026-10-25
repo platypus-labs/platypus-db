@@ -2,6 +2,7 @@ import { api, type Project, type ProjectFolder, toCommandError, type Workspace }
 import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
 import { railItems } from "./state";
+import { t } from "../i18n";
 
 interface Props {
   projects: Project[];
@@ -81,7 +82,7 @@ export function ProjectRail({ projects, folders, active, txProjects, onSwitch, o
   return (
     <nav
       className="project-rail"
-      aria-label="Projects"
+      aria-label={t("Projects")}
       {...dropTarget(null, (dragged) =>
         // Dropped on the rail itself: out of its folder, at the end.
         change(async () => {
@@ -94,7 +95,8 @@ export function ProjectRail({ projects, folders, active, txProjects, onSwitch, o
         type="button"
         className={square("all", active === null, txProjects.has("all"))}
         data-project="all"
-        title="All connections"
+        title={t("All connections")}
+        aria-label={t("All connections")}
         aria-pressed={active === null}
         onClick={() => onSwitch(null)}
       >
@@ -141,7 +143,7 @@ export function ProjectRail({ projects, folders, active, txProjects, onSwitch, o
           </div>
         );
       })}
-      <button type="button" className="project-add" title="New project" onClick={onNew}>
+      <button type="button" className="project-add" title={t("New project")} aria-label={t("New project")} onClick={onNew}>
         <Icon name="plus" size={14} />
       </button>
     </nav>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { SavedConnection } from "../api";
 import { navigatorFilter, setNavigatorFilter } from "./prefs";
+import { t, tNodes } from "../i18n";
 
 /** Edits the name patterns of the schemas and objects the navigator hides for a connection. */
 export function FilterDialog({ connection, onClose }: { connection: SavedConnection; onClose: () => void }) {
@@ -20,16 +21,14 @@ export function FilterDialog({ connection, onClose }: { connection: SavedConnect
           onClose();
         }}
       >
-        <h2>Navigator filters: {connection.name}</h2>
-        <p className="muted small">
-          Names separated by commas; <code>*</code> matches any text, case is ignored.
-        </p>
+        <h2>{t("Navigator filters: {name}", { name: connection.name })}</h2>
+        <p className="muted small">{tNodes("Names separated by commas; {star} matches any text, case is ignored.", { star: <code>*</code> })}</p>
         <label className="field">
-          <span>Hide schemas</span>
+          <span>{t("Hide schemas")}</span>
           <input autoFocus placeholder="tmp_*, audit" value={schemas} onChange={(e) => setSchemas(e.target.value)} />
         </label>
         <label className="field">
-          <span>Hide objects</span>
+          <span>{t("Hide objects")}</span>
           <input placeholder="*_backup, old_*" value={objects} onChange={(e) => setObjects(e.target.value)} />
         </label>
         <div className="actions">
@@ -42,14 +41,14 @@ export function FilterDialog({ connection, onClose }: { connection: SavedConnect
               onClose();
             }}
           >
-            Remove filters
+            {t("Remove filters")}
           </button>
           <span className="spacer" />
           <button type="button" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" className="primary">
-            Save
+            {t("Save")}
           </button>
         </div>
       </form>

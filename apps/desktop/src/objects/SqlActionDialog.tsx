@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type SavedConnection, toCommandError } from "../api";
 import { workbench } from "../workbench";
+import { t } from "../i18n";
 
 export interface SqlActionOptions {
   /** Shown as a CASCADE checkbox when the dialect supports it. */
@@ -84,19 +85,19 @@ export function SqlActionDialog(props: Props) {
         <p className="muted small">{props.description}</p>
         {renaming && (
           <label className="field">
-            <span>New name</span>
+            <span>{t("New name")}</span>
             <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} />
           </label>
         )}
         {options.cascade && (
           <label className="check">
             <input type="checkbox" checked={cascade} onChange={(e) => setCascade(e.target.checked)} />
-            <span>CASCADE: also drop the objects that depend on it</span>
+            <span>{t("CASCADE: also drop the objects that depend on it")}</span>
           </label>
         )}
-        <pre className="sql-preview">{sql ?? (unchanged ? "Type a new name." : "…")}</pre>
+        <pre className="sql-preview">{sql ?? (unchanged ? t("Type a new name.") : "…")}</pre>
         {connection.read_only && (
-          <div className="notice warn small">{connection.name} is read-only: this statement cannot be run.</div>
+          <div className="notice warn small">{t("{name} is read-only: this statement cannot be run.", { name: connection.name })}</div>
         )}
         {error && <div className="notice error small">{error}</div>}
         <div className="actions">
@@ -109,11 +110,11 @@ export function SqlActionDialog(props: Props) {
               props.onClose();
             }}
           >
-            Open in editor
+            {t("Open in editor")}
           </button>
           <span className="spacer" />
           <button type="button" onClick={props.onClose}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             type="submit"
@@ -121,7 +122,7 @@ export function SqlActionDialog(props: Props) {
             autoFocus={!renaming}
             disabled={!sql || running || connection.read_only}
           >
-            {running ? "Running…" : props.confirm}
+            {running ? t("Running…") : props.confirm}
           </button>
         </div>
       </form>

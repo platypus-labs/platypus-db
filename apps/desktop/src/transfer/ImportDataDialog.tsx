@@ -17,6 +17,7 @@ import { GuardDialog } from "../guards/GuardDialog";
 import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { workbench } from "../workbench";
+import { t, plural, msg } from "../i18n";
 
 /** A table of a connection: where rows come from or go to. */
 export interface TableAt {
@@ -55,12 +56,11 @@ type Status =
   | { state: "failed"; message: string };
 
 const MODES: { value: ImportMode; label: string }[] = [
-  { value: "append", label: "Add the rows" },
-  { value: "replace", label: "Replace all rows" },
-  { value: "upsert", label: "Update rows with the same key, add the others" },
+  { value: "append", label: msg("Add the rows") },
+  { value: "replace", label: msg("Replace all rows") },
+  { value: "upsert", label: msg("Update rows with the same key, add the others") },
 ];
 
-const plural = (n: number, word: string) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 const failure = (e: unknown) => toCommandError(e).message;
 
@@ -179,8 +179,8 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
   async function choose() {
     const file = await open({
       multiple: false,
-      title: "Import data from a file",
-      filters: [{ name: "Data files", extensions: DATA_FILE_EXTENSIONS }],
+      title: t("Import data from a file"),
+      filters: [{ name: t("Data files"), extensions: DATA_FILE_EXTENSIONS }],
     });
     if (typeof file !== "string") return;
     setPath(file);
@@ -280,12 +280,12 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
   const close = () => !running && onClose();
   const editColumn = (i: number, change: Partial<NewColumn>) =>
     setNewColumns((cs) => cs.map((c, j) => (j === i ? { ...c, ...change } : c)));
-  const from = transfer ? "Source column" : "File column";
+  const from = t(transfer ? "Source column" : "File column");
   const title = source
-    ? `Copy ${source.table} to a database`
+    ? t("Copy {table} to a database", { table: source.table })
     : target.table === null
-      ? `Import data into a new table in ${target.schema}`
-      : `Import data into ${target.table}`;
+      ? t("Import data into a new table in {schema}", { schema: target.schema })
+      : t("Import data into {table}", { table: target.table });
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
@@ -294,7 +294,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
         {transfer ? (
           <div className="row">
             <label className="field grow">
-              <span>Connection</span>
+              <span>{t("Connection")}</span>
               <select value={target.connection.id} disabled={running} onChange={(e) => chooseConnection(e.target.value)}>
                 {workbench()
                   .connections()
@@ -307,7 +307,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
               </select>
             </label>
             <label className="field">
-              <span>Schema</span>
+              <span>{t("Schema")}</span>
               <select
                 value={target.schema}
                 disabled={running}
@@ -322,11 +322,11 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
               </select>
             </label>
             <label className="field grow">
-              <span>{existing === null ? "New table" : "Existing table"}</span>
+              <span>{t(existing === null ? "New table" : "Existing table")}</span>
               <input value={newTable} disabled={running} onChange={(e) => setNewTable(e.target.value)} list="import-tables" />
               <datalist id="import-tables">
-                {tables.map((t) => (
-                  <option key={t} value={t} />
+                {tables.map((table) => (
+                  <option key={table} value={table} />
                 ))}
               </datalist>
             </label>
@@ -334,25 +334,25 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
         ) : (
           <div className="row">
             <label className="field grow">
-              <span>File</span>
+              <span>{t("File")}</span>
               <input
                 value={path}
                 disabled={running}
-                placeholder="CSV, TSV, JSON, NDJSON, Parquet or Excel"
+                placeholder={t("CSV, TSV, JSON, NDJSON, Parquet or Excel")}
                 title={path}
                 onChange={(e) => setPath(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && path.trim() && void loadFile(path.trim(), null)}
               />
             </label>
             <button type="button" className="align-end" disabled={running || sid === null} onClick={() => void choose()}>
-              Choose file…
+              {t("Choose file…")}
             </button>
             {preview && preview.tables.length > 1 && (
               <label className="field">
-                <span>Sheet</span>
+                <span>{t("Sheet")}</span>
                 <select value={preview.table} disabled={running} onChange={(e) => void loadFile(loaded!, e.target.value)}>
-                  {preview.tables.map((t) => (
-                    <option key={t}>{t}</option>
+                  {preview.tables.map((sheet) => (
+                    <option key={sheet}>{sheet}</option>
                   ))}
                 </select>
               </label>
@@ -387,20 +387,20 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
               </table>
             </div>
             <p className="muted small">
-              First {plural(preview.rows.length, "row")} of {preview.table}.
+              {plural(preview.rows.length, "First {n} row of {table}.", "First {n} rows of {table}.", { table: preview.table })}
             </p>
             {existing === null ? (
               <>
                 {!transfer && (
                   <label className="field">
-                    <span>Table name</span>
+                    <span>{t("Table name")}</span>
                     <input value={newTable} disabled={running} onChange={(e) => setNewTable(e.target.value)} />
                   </label>
                 )}
                 <div className="import-mapping">
                   <span className="muted small">{from}</span>
-                  <span className="muted small">Column</span>
-                  <span className="muted small">Type</span>
+                  <span className="muted small">{t("Column")}</span>
+                  <span className="muted small">{t("Type")}</span>
                   {preview.columns.map((c, i) => (
                     <NewColumnRow key={c.name} name={c.name} column={newColumns[i]} disabled={running} onChange={(ch) => editColumn(i, ch)} />
                   ))}
@@ -408,11 +408,11 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
               </>
             ) : (
               <>
-                <div className="import-modes" role="radiogroup" aria-label="Rows already in the table">
+                <div className="import-modes" role="radiogroup" aria-label={t("Rows already in the table")}>
                   {MODES.map((m) => {
                     const off = m.value === "upsert" && keys.length === 0;
                     return (
-                      <label key={m.value} className="check" title={off ? "The table has no primary key" : undefined}>
+                      <label key={m.value} className="check" title={off ? t("The table has no primary key") : undefined}>
                         <input
                           type="radio"
                           name="import-mode"
@@ -420,18 +420,18 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
                           disabled={running || off}
                           onChange={() => setMode(m.value)}
                         />
-                        {m.label}
+                        {t(m.label)}
                       </label>
                     );
                   })}
                 </div>
                 <div className="import-mapping two">
-                  <span className="muted small">Column of {existing}</span>
-                  <span className="muted small">From {from.toLowerCase()}</span>
-                  {targets.map((t, i) => (
+                  <span className="muted small">{t("Column of {table}", { table: existing })}</span>
+                  <span className="muted small">{t("From {source}", { source: from.toLowerCase() })}</span>
+                  {targets.map((column, i) => (
                     <MappingRow
-                      key={t.name}
-                      target={t}
+                      key={column.name}
+                      target={column}
                       sources={preview.columns.map((c) => c.name)}
                       value={mapping[i] ?? ""}
                       disabled={running}
@@ -443,26 +443,26 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
             )}
           </>
         )}
-        {status.state === "running" && <div className="notice small">Copying… {plural(status.rows, "row")}</div>}
+        {status.state === "running" && <div className="notice small">{plural(status.rows, "Copying… {n} row", "Copying… {n} rows")}</div>}
         {status.state === "done" && (
           <div className="notice small">
-            Imported {plural(status.rows, "row")} in {(status.ms / 1000).toFixed(1)} s.
+            {plural(status.rows, "Imported {n} row in {time} s.", "Imported {n} rows in {time} s.", { time: (status.ms / 1000).toFixed(1) })}
           </div>
         )}
-        {status.state === "failed" && <div className="notice error small">Nothing was imported: {status.message}</div>}
+        {status.state === "failed" && <div className="notice error small">{t("Nothing was imported: {message}", { message: status.message })}</div>}
         <div className="actions">
           <span className="spacer" />
           {running ? (
             <button type="button" disabled={status.id === null} onClick={() => status.id !== null && void api.cancelExport(status.id)}>
-              Cancel import
+              {t("Cancel import")}
             </button>
           ) : (
             <button type="button" onClick={onClose}>
-              {status.state === "done" ? "Close" : "Cancel"}
+              {t(status.state === "done" ? "Close" : "Cancel")}
             </button>
           )}
           <button type="button" className="primary" disabled={!ready || running || status.state === "done"} onClick={request}>
-            {transfer ? "Copy" : "Import"}
+            {t(transfer ? "Copy" : "Import")}
           </button>
         </div>
       </div>
@@ -483,12 +483,12 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
 function changes(p: ImportPlan): string[] {
   const table = p.schema ? `${p.schema}.${p.table}` : p.table;
   const columns = p.columns.map((c) => c.target).join(", ");
-  const rows = `VALUES ... -- every row of ${p.source_table}`;
+  const rows = `VALUES ... -- ${t("every row of {table}", { table: p.source_table })}`;
   return [
     ...(p.mode === "replace" ? [`DELETE FROM ${table}`] : []),
     ...(p.create ? [`CREATE TABLE ${table} (${p.columns.map((c) => `${c.target} ${c.data_type}`).join(", ")})`] : []),
     p.mode === "upsert"
-      ? `INSERT INTO ${table} (${columns}) ${rows}, updating the rows with the same ${p.keys!.join(", ")}`
+      ? `INSERT INTO ${table} (${columns}) ${rows}, ${t("updating the rows with the same {keys}", { keys: p.keys!.join(", ") })}`
       : `INSERT INTO ${table} (${columns}) ${rows}`,
   ];
 }
@@ -503,8 +503,8 @@ function NewColumnRow(props: { name: string; column: NewColumn | undefined; disa
         <input type="checkbox" checked={column.include} disabled={disabled} onChange={(e) => onChange({ include: e.target.checked })} />
         {name}
       </label>
-      <input value={column.target} disabled={off} aria-label={`Name of ${name}`} onChange={(e) => onChange({ target: e.target.value })} />
-      <input value={column.type} disabled={off} aria-label={`Type of ${name}`} onChange={(e) => onChange({ type: e.target.value })} />
+      <input value={column.target} disabled={off} aria-label={t("Name of {column}", { column: name })} onChange={(e) => onChange({ target: e.target.value })} />
+      <input value={column.type} disabled={off} aria-label={t("Type of {column}", { column: name })} onChange={(e) => onChange({ type: e.target.value })} />
     </>
   );
 }
@@ -516,8 +516,8 @@ function MappingRow(props: { target: ColumnMeta; sources: string[]; value: strin
       <span>
         {target.name} <span className="muted small">{target.data_type}</span>
       </span>
-      <select value={value} disabled={disabled} aria-label={`Source of ${target.name}`} onChange={(e) => onChange(e.target.value)}>
-        <option value="">— not imported —</option>
+      <select value={value} disabled={disabled} aria-label={t("Source of {column}", { column: target.name })} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{t("— not imported —")}</option>
         {sources.map((f) => (
           <option key={f}>{f}</option>
         ))}

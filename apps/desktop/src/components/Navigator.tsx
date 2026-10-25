@@ -11,13 +11,13 @@ import {
   type SchemaMeta,
   type TableDetails,
 } from "../api";
-import { defineSetting, useSetting } from "../settings";
+import { defineSetting, getSetting, useSetting } from "../settings";
 import { dropCached, loadCached, pruneCached, saveCached } from "../navigator/diskCache";
 import { FilterDialog } from "../navigator/FilterDialog";
 import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
 import { onNavigatorRefresh } from "../navigatorEvents";
 import { toggled } from "../sets";
-import { qualifiedName, viewerSql } from "../sqlNames";
+import { SQL_DRAG, type SqlDrag, qualifiedName, quoteIdent, selectLimit, selectSql, viewerSql } from "../sqlNames";
 import type { TabInit, TabModel } from "../tabs/registry";
 import { registerAction } from "../actions";
 import { workbench } from "../workbench";
@@ -25,6 +25,7 @@ import { connectionColor, typeBadge } from "../connections";
 import { Icon, type IconName, objectIcon } from "../ui/Icon";
 import { ContextMenu, type MenuState, type MenuTarget } from "./ContextMenu";
 import { type FolderNode, folderTree, newFolder } from "../projects/folders";
+import { t, msg } from "../i18n";
 
 /** `cached`: read from the disk cache, not yet reloaded from the server. */
 type Load<T> =
@@ -159,6 +160,8 @@ interface Row {
   drag?: DragItem;
   /** Takes a dragged connection or folder. */
   onDrop?: (item: DragItem) => void;
+  /** A table or column dragged into an editor. */
+  sql?: SqlDrag | (() => SqlDrag);
 }
 
 interface DragItem {
@@ -435,7 +438,7 @@ export function Navigator(props: Props) {
   const rows: Row[] = [];
   const status = (key: string): Pick<Row, "status" | "detail"> => {
     const entry = cache.get(key);
-    if (entry?.state === "loading") return { status: "loading", detail: "loading…" };
+    if (entry?.state === "loading") return { status: "loading", detail: t("loading…") };
     if (entry?.state === "error") return { status: "error", detail: entry.message };
     return {};
   };
@@ -453,10 +456,10 @@ export function Navigator(props: Props) {
       label: c.name,
       color: connectionColor(c),
       badge: typeBadge(c),
-      detail: [isOffline && "offline", filtered && "filtered"].filter(Boolean).join(" · ") || undefined,
+      detail: [isOffline && t("offline"), filtered && t("filtered")].filter(Boolean).join(" · ") || undefined,
       title: isOffline
-        ? `${target}\nNot connected: showing the metadata cached on disk. Refresh to retry.`
-        : `${target}${active.has(c.id) ? "\nConnected" : ""}`,
+        ? `${target}\n${t("Not connected: showing the metadata cached on disk. Refresh to retry.")}`
+        : `${target}${active.has(c.id) ? `\n${t("Connected")}` : ""}`,
       expanded: open,
       connected: active.has(c.id),
       onToggle: () => toggle(ckey, () => void openConnection(c)),
@@ -466,10 +469,10 @@ export function Navigator(props: Props) {
       drag: project ? { kind: "connection", id: c.id } : undefined,
       actions: (
         <>
-          <button className="icon" title="Open SQL editor" onClick={() => onOpenTab(c)}>
+          <button className="icon" title={t("Open SQL editor")} aria-label={t("Open SQL editor")} onClick={() => onOpenTab(c)}>
             <Icon name="sql" />
           </button>
-          <button className="icon" title="Edit" onClick={() => onEdit(c)}>
+          <button className="icon" title={t("Edit")} aria-label={t("Edit")} onClick={() => onEdit(c)}>
             <Icon name="edit" />
           </button>
         </>
@@ -493,7 +496,7 @@ export function Navigator(props: Props) {
         depth: 1,
         label: name,
         icon: "database",
-        detail: db === null ? "default" : undefined,
+        detail: db === null ? t("default") : undefined,
         expanded: dOpen,
         onToggle: () => {
           setExpanded((s) => {
@@ -601,7 +604,7 @@ export function Navigator(props: Props) {
       });
       if (!sOpen || !matches) continue;
       if (matches.length === 0) {
-        out.push({ key: `${skey}#empty`, depth: depth + 1, label: "No objects", muted: true });
+        out.push({ key: `${skey}#empty`, depth: depth + 1, label: t("No objects"), muted: true });
         continue;
       }
       // Partitions show under their table, when it is listed too.
@@ -659,7 +662,7 @@ export function Navigator(props: Props) {
       {
         key: fkey,
         depth: 1,
-        label: "Bookmarks",
+        label: t("Bookmarks"),
         icon: "bookmark",
         detail: String(marks.length),
         expanded: fOpen,
@@ -705,10 +708,11 @@ export function Navigator(props: Props) {
           depth,
           label: object.name,
           icon,
-          detail: object.parent ? `on ${object.parent}` : undefined,
+          detail: object.parent ? t("on {table}", { table: object.parent }) : undefined,
           title: object.comment ?? undefined,
           onOpen: () => openObject(c, db, schema, object),
           menu,
+          sql: { name: target },
         },
       ];
     }
@@ -726,6 +730,8 @@ export function Navigator(props: Props) {
         onOpen: () => openData(c, db, schema, object, target),
         ...status(okey),
         menu,
+        // Built when dragged: most rows never are.
+        sql: () => ({ name: target, select: selectSql(c.driver, target, null, getSetting(selectLimit)) }),
       },
     ];
     const details = open ? loaded<TableDetails>(okey) : null;
@@ -738,7 +744,7 @@ export function Navigator(props: Props) {
       out.push({
         key,
         depth: depth + 1,
-        label: name,
+        label: t(name),
         detail: String(count),
         expanded: isOpen,
         onToggle: () =>
@@ -753,40 +759,41 @@ export function Navigator(props: Props) {
       if (isOpen) out.push(...children);
     };
     section(
-      "Columns",
+      msg("Columns"),
       details.columns.length,
       details.columns.map((col) => ({
         key: `${okey}.${col.name}`,
         depth: depth + 2,
         label: col.name,
         icon: col.primary_key ? "key" : "column",
-        detail: `${col.data_type}${col.nullable ? "" : " · not null"}`,
-        title: [col.default && `default ${col.default}`, col.comment].filter(Boolean).join("\n") || undefined,
+        detail: `${col.data_type}${col.nullable ? "" : ` · ${t("not null")}`}`,
+        title: [col.default && t("default {value}", { value: col.default }), col.comment].filter(Boolean).join("\n") || undefined,
         menu: {
           scope: "navigator.column",
           arg: { connection: c, database: db, schema, object, column: col.name },
         },
+        sql: { name: quoteIdent(col.name, c.driver) },
       })),
     );
     section(
-      "Indexes",
+      msg("Indexes"),
       details.indexes.length,
       details.indexes.map((ix) => ({
         key: `${okey}:ix:${ix.name}`,
         depth: depth + 2,
         label: ix.name,
         icon: ix.primary ? "key" : "index",
-        detail: `(${ix.columns.join(", ")})${ix.primary ? " · primary" : ix.unique ? " · unique" : ""}${ix.size != null ? ` · ${formatBytes(ix.size)}` : ""}`,
+        detail: `(${ix.columns.join(", ")})${ix.primary ? ` · ${t("primary")}` : ix.unique ? ` · ${t("unique")}` : ""}${ix.size != null ? ` · ${formatBytes(ix.size)}` : ""}`,
       })),
     );
     const parts = partitions.get(object.name) ?? [];
     section(
-      "Partitions",
+      msg("Partitions"),
       parts.length,
       parts.flatMap((p) => objectRows(c, db, schema, p, partitions, depth + 2)),
     );
     section(
-      "Foreign keys",
+      msg("Foreign keys"),
       details.foreign_keys.length,
       details.foreign_keys.map((fk) => ({
         key: `${okey}:fk:${fk.name}`,
@@ -797,7 +804,7 @@ export function Navigator(props: Props) {
       })),
     );
     section(
-      "References",
+      msg("References"),
       details.referenced_by.length,
       details.referenced_by.map((r) => ({
         key: `${okey}:ref:${r.schema}.${r.table}.${r.name}`,
@@ -825,6 +832,48 @@ export function Navigator(props: Props) {
     setSelected(e.ctrlKey || e.metaKey ? toggled(selected, key) : new Set([key]));
   }
 
+  /** The row the keys move from: the one clicked or reached last, if still shown. */
+  const current = anchor.current !== null && rows.some((r) => r.key === anchor.current) ? anchor.current : null;
+
+  /** The tree from the keyboard: arrows move and open or close, Enter opens, the menu key
+   *  shows the row's menu, as in a file explorer. */
+  function onTreeKey(e: React.KeyboardEvent<HTMLUListElement>) {
+    if (!(e.target instanceof HTMLLIElement) || rows.length === 0) return;
+    const at = Math.max(0, rows.findIndex((r) => r.key === current));
+    const row = rows[at]!;
+    const go = (i: number) => {
+      const index = Math.max(0, Math.min(rows.length - 1, i));
+      anchor.current = rows[index]!.key;
+      setSelected(new Set([rows[index]!.key]));
+      const li = e.currentTarget.querySelector<HTMLElement>(`[data-row="${index}"]`);
+      li?.focus();
+      li?.scrollIntoView({ block: "nearest" });
+    };
+    const parent = () => {
+      for (let i = at - 1; i >= 0; i--) if (rows[i]!.depth < row.depth) return i;
+      return at;
+    };
+    if (e.key === "ArrowDown") go(at + 1);
+    else if (e.key === "ArrowUp") go(at - 1);
+    else if (e.key === "Home") go(0);
+    else if (e.key === "End") go(rows.length - 1);
+    else if (e.key === "ArrowRight") {
+      if (row.expanded === false) row.onToggle?.();
+      else if (row.expanded) go(at + 1);
+    } else if (e.key === "ArrowLeft") {
+      if (row.expanded) row.onToggle?.();
+      else go(parent());
+    } else if (e.key === "Enter") {
+      if (row.onOpen) row.onOpen();
+      else row.onToggle?.();
+    } else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      const target = menuOf(row);
+      const r = e.target.getBoundingClientRect();
+      if (target) setMenu({ x: r.left + 24, y: r.bottom, target });
+    } else return;
+    e.preventDefault();
+  }
+
   /** The menu of `row`: with several objects selected, their actions get them all. */
   function menuOf(row: Row): MenuTarget | undefined {
     const target = row.menu;
@@ -850,18 +899,18 @@ export function Navigator(props: Props) {
               {project.name}
             </span>
           ) : (
-            "Connections"
+            t("Connections")
           )}
         </span>
-        <button className="icon" title="Import connections from DBeaver, DataGrip, pgAdmin…" onClick={onImport}>
+        <button className="icon" title={t("Import connections from DBeaver, DataGrip, pgAdmin…")} aria-label={t("Import connections")} onClick={onImport}>
           <Icon name="import" />
         </button>
         {project && (
-          <button className="icon" title="New folder" onClick={() => newFolder(project, null)}>
+          <button className="icon" title={t("New folder")} aria-label={t("New folder")} onClick={() => newFolder(project, null)}>
             <Icon name="new-folder" />
           </button>
         )}
-        <button className="icon" title="New connection" onClick={onNew}>
+        <button className="icon" title={t("New connection")} aria-label={t("New connection")} onClick={onNew}>
           <Icon name="plus" />
         </button>
       </div>
@@ -870,7 +919,8 @@ export function Navigator(props: Props) {
           <Icon name="search" className="tree-search-icon" />
           <input
             className="tree-filter"
-            placeholder="Filter objects…"
+            placeholder={t("Filter objects…")}
+            aria-label={t("Filter objects")}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             onKeyDown={(e) => e.key === "Escape" && setFilter("")}
@@ -880,37 +930,54 @@ export function Navigator(props: Props) {
       {error && <div className="notice error small">{error}</div>}
       {project && connections.length === 0 && !error && (
         <div className="project-empty">
-          <p className="muted small">No connections in this project.</p>
-          <button onClick={onNew}>New connection</button>
-          <button onClick={onAddExisting}>Add existing…</button>
-          <button onClick={onImport}>Import…</button>
+          <p className="muted small">{t("No connections in this project.")}</p>
+          <button onClick={onNew}>{t("New connection")}</button>
+          <button onClick={onAddExisting}>{t("Add existing…")}</button>
+          <button onClick={onImport}>{t("Import…")}</button>
         </div>
       )}
       {!project && connections.length === 0 && !error && (
         <>
           <button className="empty-cta" onClick={onNew}>
-            Add your first connection
+            {t("Add your first connection")}
           </button>
           <button className="link small empty-import" onClick={onImport}>
-            or import them from DBeaver, DataGrip, pgAdmin…
+            {t("or import them from DBeaver, DataGrip, pgAdmin…")}
           </button>
         </>
       )}
       <ul
         className="tree"
         role="tree"
+        aria-label={t("Connections")}
+        aria-multiselectable="true"
+        onKeyDown={onTreeKey}
         // Dropped below the rows: to the project's root.
         {...dropTarget(project ? (item) => dropInto(project, null, item) : undefined)}
       >
-        {rows.map((row) => (
+        {rows.map((row, i) => (
           <li
             key={row.key}
+            data-row={i}
             role="treeitem"
             aria-expanded={row.expanded}
+            aria-level={row.depth + 1}
+            aria-selected={selected.has(row.key)}
+            // One row takes the Tab stop: the current one, else the first.
+            tabIndex={row.key === (current ?? rows[0]?.key) ? 0 : -1}
             className={`tree-row${row.muted ? " muted" : ""}${row.status === "error" ? " failed" : ""}${selected.has(row.key) ? " selected" : ""}`}
             style={{ paddingLeft: 6 + row.depth * 16 }}
-            draggable={!!row.drag}
-            onDragStart={(e) => row.drag && e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(row.drag))}
+            draggable={!!row.drag || !!row.sql}
+            onDragStart={(e) => {
+              if (row.drag) e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(row.drag));
+              const sql = typeof row.sql === "function" ? row.sql() : row.sql;
+              if (sql) {
+                e.dataTransfer.setData(SQL_DRAG, JSON.stringify(sql));
+                // Anywhere else that takes text, e.g. a filter box, gets the name.
+                e.dataTransfer.setData("text/plain", sql.name);
+                e.dataTransfer.effectAllowed = "copy";
+              }
+            }}
             {...dropTarget(row.onDrop)}
             title={
               row.status === "error"
@@ -952,7 +1019,7 @@ export function Navigator(props: Props) {
               )
             )}
             <span className="tree-label">{row.label}</span>
-            {row.connected && <span className="connected-mark" role="img" aria-label="Connected" />}
+            {row.connected && <span className="connected-mark" role="img" aria-label={t("Connected")} />}
             {row.badge && <span className={`type-badge ${row.badge.toLowerCase()}`}>{row.badge}</span>}
             {row.detail && <span className="tree-detail">{row.detail}</span>}
             {row.actions && (

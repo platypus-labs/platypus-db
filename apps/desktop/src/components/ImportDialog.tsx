@@ -17,6 +17,7 @@ import { connectionColor, typeBadge } from "../connections";
 import { answerFor } from "../testAnswers";
 import { Icon } from "../ui/Icon";
 import { checkState, connectionsUnder, defaultInto, type FolderView, importRequest, projectTree, toggleAll } from "./importTree";
+import { t, msg } from "../i18n";
 
 interface Props {
   existing: SavedConnection[];
@@ -35,16 +36,16 @@ const SOURCES: { value: ImportSource; label: string; file: string }[] = [
 ];
 
 const HINTS: Record<ImportSource, string> = {
-  dbeaver: "File › Export › DBeaver project (.dbp), or data-sources.json in the workspace's .dbeaver folder.",
-  datagrip: "dataSources.xml, in the project's .idea folder.",
-  pgadmin: "servers.json, from Tools › Export Servers.",
-  pg_service: "The libpq service file, .pg_service.conf.",
+  dbeaver: msg("File › Export › DBeaver project (.dbp), or data-sources.json in the workspace's .dbeaver folder."),
+  datagrip: msg("dataSources.xml, in the project's .idea folder."),
+  pgadmin: msg("servers.json, from Tools › Export Servers."),
+  pg_service: msg("The libpq service file, .pg_service.conf."),
 };
 
 const label = (source: ImportSource) => SOURCES.find((s) => s.value === source)!.label;
 const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 /** The rail folder's default name: the file's, without its extension. */
-const railName = (path: string) => fileName(path).replace(/\.[^.]+$/, "") || "Imported";
+const railName = (path: string) => fileName(path).replace(/\.[^.]+$/, "") || t("Imported");
 
 /** Whether `c` looks like a connection that is already saved. */
 function duplicate(c: SavedConnection, existing: SavedConnection[]) {
@@ -118,8 +119,8 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal wide import-dialog" onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>Import connections and projects</h2>
-        <span className="muted small">Source</span>
+        <h2>{t("Import connections and projects")}</h2>
+        <span className="muted small">{t("Source")}</span>
         <div className="import-sources">
           {SOURCES.map((s) => (
             <button
@@ -141,7 +142,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
               title={f.path}
               onClick={() => void load(f)}
             >
-              <strong>Found: {label(f.source)}</strong>
+              <strong>{t("Found: {source}", { source: label(f.source) })}</strong>
               <span className="muted small">{fileName(f.path)}</span>
             </button>
           ))}
@@ -153,15 +154,15 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
               {fileName(file.path)}
             </span>
           ) : (
-            <span className="muted">Drop a file here, or</span>
+            <span className="muted">{t("Drop a file here, or")}</span>
           )}
           <button type="button" className="import-choose" onClick={() => void choose()}>
-            {file ? "Choose another…" : "Choose file…"}
+            {t(file ? "Choose another…" : "Choose file…")}
           </button>
-          <span className="muted small import-hint">{HINTS[source]}</span>
+          <span className="muted small import-hint">{t(HINTS[source])}</span>
         </div>
         {error && <div className="notice error small">{error}</div>}
-        {read && read.length === 0 && <p className="muted small">No connections found in this file.</p>}
+        {read && read.length === 0 && <p className="muted small">{t("No connections found in this file.")}</p>}
         {read && read.length > 0 && (
           <>
             <div className="import-tree" role="tree">
@@ -178,23 +179,23 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
                 />
               ))}
             </div>
-            <p className="muted small">Passwords are not imported: each connection asks for its own the first time.</p>
+            <p className="muted small">{t("Passwords are not imported: each connection asks for its own the first time.")}</p>
           </>
         )}
         <div className="actions">
           {newProjects.length > 1 && (
             <label className="check import-rail">
               <input type="checkbox" checked={railFolder !== null} onChange={(e) => setRailFolder(e.target.checked ? railName(file?.path ?? "") : null)} />
-              Put in a rail folder
+              {t("Put in a rail folder")}
               {railFolder !== null && <input className="import-rail-name" value={railFolder} onChange={(e) => setRailFolder(e.target.value)} />}
             </label>
           )}
           <span className="spacer" />
           <button type="button" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="button" className="primary" disabled={!read || count === 0 || saving} onClick={() => void save()}>
-            Import {count > 0 ? count : ""}
+            {count > 0 ? t("Import {n}", { n: count }) : t("Import")}
           </button>
         </div>
       </div>
@@ -237,22 +238,22 @@ function ProjectRows({ project, ticked, existing, projects, into, onTicked, onIn
       <div className="import-row project" role="treeitem">
         <Tick ids={ids} ticked={ticked} onTicked={onTicked} />
         <Icon name="database" />
-        <strong>{project.name ?? "Connections"}</strong>
+        <strong>{project.name ?? t("Connections")}</strong>
         <select
           className="import-into"
           value={value}
           onChange={(e) => {
             const v = e.target.value;
-            onInto(v === "new_project" ? { kind: "new_project", name: name || "Imported" } : v === "none" ? { kind: "none" } : { kind: "existing", id: v });
+            onInto(v === "new_project" ? { kind: "new_project", name: name || t("Imported") } : v === "none" ? { kind: "none" } : { kind: "existing", id: v });
           }}
         >
-          <option value="new_project">New project{name ? ` "${name}"` : ""}</option>
+          <option value="new_project">{name ? t('New project "{name}"', { name }) : t("New project")}</option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
-              Into “{p.name}”
+              {t("Into “{name}”", { name: p.name })}
             </option>
           ))}
-          <option value="none">No project</option>
+          <option value="none">{t("No project")}</option>
         </select>
       </div>
       <FolderRows folder={root} depth={1} ticked={ticked} existing={existing} onTicked={onTicked} />
@@ -297,7 +298,7 @@ function FolderRows({
             <span className="muted small import-target">
               {isEmbedded(c.driver) ? c.database : `${c.user ? `${c.user}@` : ""}${c.host}:${c.port ?? ""}/${c.database}`}
               {c.ssh ? ` · SSH ${c.ssh.host}` : ""}
-              {saved ? " · already saved" : ""}
+              {saved ? ` · ${t("already saved")}` : ""}
             </span>
           </label>
         );

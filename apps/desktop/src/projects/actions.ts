@@ -7,6 +7,7 @@ import { askName } from "../ui/NameDialog";
 import { workbench } from "../workbench";
 import { PROJECT_COLORS } from "./ProjectDialog";
 import { railOrder } from "./state";
+import { t, msg } from "../i18n";
 
 declare module "../actions" {
   interface ActionScopes {
@@ -26,11 +27,24 @@ function step(delta: number) {
   workbench().switchProject(all[(at + delta + all.length) % all.length] ?? null);
 }
 
+/** Ctrl+1 to Ctrl+9; written out so the translation check sees each one. */
+const SWITCH_TITLES = [
+  msg("Switch to All connections"),
+  msg("Switch to project 1"),
+  msg("Switch to project 2"),
+  msg("Switch to project 3"),
+  msg("Switch to project 4"),
+  msg("Switch to project 5"),
+  msg("Switch to project 6"),
+  msg("Switch to project 7"),
+  msg("Switch to project 8"),
+];
+
 for (let n = 1; n <= 9; n++) {
   registerAction({
     id: `project.switch.${n}`,
     scope: "global",
-    title: n === 1 ? "Switch to All connections" : `Switch to project ${n - 1}`,
+    title: SWITCH_TITLES[n - 1]!,
     shortcut: `Mod+${n}`,
     hidden: n > 1,
     run: () => {
@@ -120,7 +134,7 @@ export function registerAddToProject(projects: Project[]): () => void {
   return () => removers.forEach((remove) => remove());
 }
 
-const COLOR_NAMES = ["Purple", "Amber", "Blue", "Violet", "Green", "Red", "Teal", "Gray"];
+const COLOR_NAMES = [msg("Purple"), msg("Amber"), msg("Blue"), msg("Violet"), msg("Green"), msg("Red"), msg("Teal"), msg("Gray")];
 
 const saveFolder = async (folder: ProjectFolder) => workbench().setWorkspace(await api.saveProjectFolder(folder));
 
@@ -129,7 +143,7 @@ registerAction({
   scope: "project.folder",
   title: "Rename folder…",
   order: 10,
-  run: (folder) => askName("Rename folder", folder.name, (name) => saveFolder({ ...folder, name })),
+  run: (folder) => askName(t("Rename folder"), folder.name, (name) => saveFolder({ ...folder, name })),
 });
 
 PROJECT_COLORS.forEach((color, i) =>

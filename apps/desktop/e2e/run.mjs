@@ -13,7 +13,7 @@
 // through the WebView2 DevTools protocol.
 
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -46,6 +46,7 @@ for (const file of scenarios) {
   const ctx = { dir, shots: process.env.PLATYPUS_E2E_SHOTS ?? null };
   if (ctx.shots) mkdirSync(ctx.shots, { recursive: true });
   await scenario.setup?.(ctx);
+  englishInterface(dir);
   const app = spawn(exe, [], {
     env: {
       ...process.env,
@@ -145,3 +146,13 @@ function diagnose(exit, output) {
 
 console.log(`${passed} passed, ${failed} failed, ${scenarios.length - passed - failed} skipped`);
 process.exit(failed ? 1 : 0);
+
+/** Scenarios read the English interface whatever the language of the machine, unless one
+ *  sets the language itself. */
+function englishInterface(dir) {
+  const file = join(dir, "settings.toml");
+  const text = existsSync(file) ? readFileSync(file, "utf8") : "";
+  if (/^language\s*=/m.test(text)) return;
+  const line = 'language = "en"';
+  writeFileSync(file, text.includes("[appearance]") ? text.replace("[appearance]", `[appearance]\n${line}`) : `[appearance]\n${line}\n\n${text}`);
+}

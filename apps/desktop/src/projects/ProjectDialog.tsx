@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Project, toCommandError } from "../api";
+import { t } from "../i18n";
 
 /** The colors offered for a project; any other can be picked too. */
 export const PROJECT_COLORS = ["#6c63ff", "#d08f20", "#3d7bf7", "#a46be0", "#2f9e6e", "#e05a5a", "#1aa3b8", "#8a93a3"];
@@ -49,12 +50,12 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form className="modal small project-dialog" onSubmit={save} onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>{project ? "Edit project" : "New project"}</h2>
+        <h2>{t(project ? "Edit project" : "New project")}</h2>
         <div className="project-dialog-preview" style={{ background: color }} aria-hidden>
           {initials}
         </div>
         <label className="field">
-          <span>Name</span>
+          <span>{t("Name")}</span>
           <input
             autoFocus
             required
@@ -63,11 +64,11 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
               setName(e.target.value);
               setError(null);
             }}
-            placeholder="Client, product or team"
+            placeholder={t("Client, product or team")}
           />
         </label>
         <label className="field">
-          <span>Color</span>
+          <span>{t("Color")}</span>
           <div className="swatches">
             {PROJECT_COLORS.map((c) => (
               <button
@@ -79,11 +80,11 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
                 onClick={() => setColor(c)}
               />
             ))}
-            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} title="Another color" />
+            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} title={t("Another color")} aria-label={t("Another color")} />
           </div>
         </label>
         <label className="field">
-          <span>Initials — on the project's square</span>
+          <span>{t("Initials — on the project's square")}</span>
           <input
             className="project-initials"
             value={initials}
@@ -98,10 +99,10 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" className="primary">
-            Save
+            {t("Save")}
           </button>
         </div>
       </form>

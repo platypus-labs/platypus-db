@@ -358,6 +358,7 @@ database of the same server (PostgreSQL), and sessions and tabs opened from ther
 | `grid` | `{ grid: GridApi, source }` | grid menu, and shortcuts while the grid has focus |
 | `editor` | `{ view: EditorView, driver, readOnly, host? }` | editor menu, and shortcuts while the editor has focus (before CodeMirror's own keymaps). `host` is what the tab offers (`EditorHost` in `editor/SqlEditor.tsx`): open an object, run with the CLI, run into a new result tab |
 | `project` | `Project` | menu of a project's square in the rail |
+| `tab` | `{ tab }` | menu of a tab of the bar (pin, open beside, close others…) |
 | `script` | `{ entry, project, root, connections, rename }` | menu of a saved script or folder in the Scripts panel |
 
 To add a scope, augment `ActionScopes` from the feature's own module:
@@ -398,6 +399,32 @@ without props. It provides:
   resolves to the answer (never `window.confirm`, which has no app style and no test hook);
 - `projects`, `setProjects`, `activeProject` and `switchProject`, and `editProject` and
   `deleteProject`, which open the project dialog or ask before deleting.
+
+A dialog is a `.modal` element: `ui/modalA11y.ts` gives every one its `dialog` role, a name
+from its first heading, the focus inside and back after, and Tab kept within it, so a new
+dialog needs none of that itself. Work in the background that the user may want to follow
+goes through `track(label, promise)` of `shell/activity.ts`, and shows in the Activity log
+(the errors shown with `showError` go there too).
+
+### Interface language
+
+The interface speaks English and Italian (`i18n.ts`, setting `appearance.language`; "System"
+follows the system's language). Text is written in English and passed to `t`, which looks it
+up in `i18n/it.ts`, keyed by the English text:
+
+```ts
+t("Delete the connection \"{name}\"?", { name: c.name });
+plural(n, "{n} row", "{n} rows");
+tNodes("{star} matches any text.", { star: <code>*</code> }); // React nodes in the text
+```
+
+Action titles and setting labels, sections and descriptions stay in English where they are
+declared: the menus, the palette and the Settings translate them when they show them. Text
+declared at load time anywhere else (a table of labels, a helper's argument) is marked with
+`msg("…")`, which returns it as it is, and translated with `t` where it is shown.
+`npm run build` runs `scripts/i18n-check.mjs`, which fails on text without its Italian, or on
+an entry nothing uses; `node scripts/i18n-check.mjs --untranslated` lists the text left in
+JSX without `t`. Messages from the databases and the backend stay as they come.
 
 ### Projects
 
@@ -550,6 +577,9 @@ A scenario in `e2e/scenarios/` exports:
 - optionally `env(ctx)`, extra environment variables for the app;
 - optionally `ready`, the condition to wait for before the steps (by default the navigator
   showing a connection; a scenario with no saved connections waits for something else).
+
+The runner writes `language = "en"` into the scenario's `settings.toml`, so scenarios read
+English text on any machine; a scenario that sets `language` itself keeps its own.
 
 Set `PLATYPUS_E2E_SHOTS` to a folder to get a screenshot of each failure, plus the ones the
 scenarios take: `visual-sqlite` saves the main screens in Platypus Dark and Light, to compare

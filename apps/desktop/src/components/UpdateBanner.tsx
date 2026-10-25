@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { type Update, check } from "@tauri-apps/plugin-updater";
+import { t } from "../i18n";
 
 /** Looks for a newer release once at startup and offers to install it. */
 export function UpdateBanner() {
@@ -23,20 +24,21 @@ export function UpdateBanner() {
         if (event.event === "Started") total = event.data.contentLength ?? 0;
         if (event.event === "Progress") {
           done += event.data.chunkLength;
-          setProgress(total ? `Downloading… ${Math.round((done / total) * 100)}%` : "Downloading…");
+          setProgress(total ? t("Downloading… {n}%", { n: Math.round((done / total) * 100) }) : t("Downloading…"));
         }
-        if (event.event === "Finished") setProgress("Installing…");
+        if (event.event === "Finished") setProgress(t("Installing…"));
       });
       await relaunch();
     } catch (e) {
-      setProgress(`Update failed: ${String(e)}`);
+      setProgress(t("Update failed: {message}", { message: String(e) }));
     }
   }
 
   return (
     <div className="update-banner">
       <span>
-        PlatypusDB {update.version} is available{update.body ? ` — ${update.body.split("\n")[0]}` : ""}.
+        {t("PlatypusDB {version} is available", { version: update.version })}
+        {update.body ? ` — ${update.body.split("\n")[0]}` : ""}.
       </span>
       <span className="spacer" />
       {progress ? (
@@ -44,9 +46,9 @@ export function UpdateBanner() {
       ) : (
         <>
           <button className="primary" onClick={() => void install(update)}>
-            Install and restart
+            {t("Install and restart")}
           </button>
-          <button onClick={() => setUpdate(null)}>Later</button>
+          <button onClick={() => setUpdate(null)}>{t("Later")}</button>
         </>
       )}
     </div>

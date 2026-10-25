@@ -5,6 +5,7 @@ import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { workbench } from "../workbench";
 import { JobFooter, useJob } from "./job";
+import { t, plural, msg } from "../i18n";
 
 /** How a column is filled, as the backend's `fake::Generator`; `skip` leaves it to its default. */
 export type Generator =
@@ -19,23 +20,23 @@ export type Generator =
 type Kind = Generator["kind"];
 
 const LABELS: Record<Kind, string> = {
-  skip: "Default (not filled)",
-  next_key: "Next key (after the largest)",
-  reference: "Existing key of the referenced table",
-  integer: "Whole number",
-  decimal: "Decimal number",
-  bool: "True or false",
-  first_name: "First name",
-  last_name: "Last name",
-  full_name: "Full name",
-  email: "Email",
-  city: "City",
-  phone: "Phone number",
-  text: "Words",
-  date: "Date",
-  timestamp: "Date and time",
+  skip: msg("Default (not filled)"),
+  next_key: msg("Next key (after the largest)"),
+  reference: msg("Existing key of the referenced table"),
+  integer: msg("Whole number"),
+  decimal: msg("Decimal number"),
+  bool: msg("True or false"),
+  first_name: msg("First name"),
+  last_name: msg("Last name"),
+  full_name: msg("Full name"),
+  email: msg("Email"),
+  city: msg("City"),
+  phone: msg("Phone number"),
+  text: msg("Words"),
+  date: msg("Date"),
+  timestamp: msg("Date and time"),
   uuid: "UUID",
-  choice: "One of the enum's values",
+  choice: msg("One of the enum's values"),
   null: "NULL",
 };
 
@@ -146,7 +147,7 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
   function request() {
     if (!needsProductionConfirm(connection)) return void run();
     const names = filled.map((c) => c.column.name).join(", ");
-    const production = [`INSERT INTO ${qualified} (${names}) VALUES ... -- ${rows} fake rows`];
+    const production = [`INSERT INTO ${qualified} (${names}) VALUES ... -- ${plural(rows, "{n} fake row", "{n} fake rows")}`];
     setConfirm({ connection, unfiltered: [], production, blocked: false });
   }
 
@@ -166,9 +167,9 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div className="modal wide generate-data" onKeyDown={(e) => e.key === "Escape" && close()}>
-        <h2>Generate data for {table}</h2>
+        <h2>{t("Generate data for {table}", { table })}</h2>
         <label className="field">
-          <span>Rows</span>
+          <span>{t("Rows")}</span>
           <input
             type="number"
             min={1}
@@ -179,15 +180,15 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
           />
         </label>
         <div className="import-mapping two">
-          <span className="muted small">Column</span>
-          <span className="muted small">Filled with</span>
+          <span className="muted small">{t("Column")}</span>
+          <span className="muted small">{t("Filled with")}</span>
           {columns.map(({ column, fk, unique, generator: g }, i) => (
             <GeneratorRow key={column.name} column={column} fk={fk} unique={unique} kind={g.kind} disabled={running} onChange={(k) => choose(i, k)} />
           ))}
         </div>
-        <JobFooter status={status} verbs={["Adding", "Added"]} failed="Nothing was added: " onClose={onClose}>
+        <JobFooter status={status} messages={[msg("Adding… {n} rows"), msg("Added {n} rows.")]} failed={t("Nothing was added: ")} onClose={onClose}>
           <button type="button" className="primary" disabled={running || sid === null || filled.length === 0} onClick={request}>
-            Generate
+            {t("Generate")}
           </button>
         </JobFooter>
       </div>
@@ -219,12 +220,12 @@ function GeneratorRow(props: {
   return (
     <>
       <span>
-        {column.name} <span className="muted small">{unique ? `${column.data_type}, unique` : column.data_type}</span>
+        {column.name} <span className="muted small">{unique ? t("{type}, unique", { type: column.data_type }) : column.data_type}</span>
       </span>
-      <select value={kind} disabled={disabled} aria-label={`Generator of ${column.name}`} onChange={(e) => onChange(e.target.value as Kind)}>
+      <select value={kind} disabled={disabled} aria-label={t("Generator of {column}", { column: column.name })} onChange={(e) => onChange(e.target.value as Kind)}>
         {kinds.map((k) => (
           <option key={k} value={k}>
-            {k === "reference" && fk ? `${LABELS[k]} (${fk.ref_table})` : LABELS[k]}
+            {k === "reference" && fk ? `${t(LABELS[k])} (${fk.ref_table})` : t(LABELS[k])}
           </option>
         ))}
       </select>

@@ -5,6 +5,7 @@ import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { workbench } from "../workbench";
 import { JobFooter, useJob } from "./job";
+import { t, plural, msg } from "../i18n";
 
 interface Props {
   connection: SavedConnection;
@@ -64,7 +65,7 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, on
   function request() {
     if (!target || !tables) return;
     if (!needsProductionConfirm(target)) return void run();
-    const production = tables.map((t) => `CREATE TABLE ${targetSchema}.${t} (...) -- and every row of ${schema}.${t}`);
+    const production = tables.map((table) => `CREATE TABLE ${targetSchema}.${table} (...) -- ${t("and every row of {table}", { table: `${schema}.${table}` })}`);
     setConfirm({ connection: target, unfiltered: [], production, blocked: false });
   }
 
@@ -82,18 +83,22 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, on
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div className="modal migrate" onKeyDown={(e) => e.key === "Escape" && close()}>
-        <h2>{chosen ? `Copy ${count} ${count === 1 ? "table" : "tables"} to a database` : `Copy ${schema} to a database`}</h2>
+        <h2>{chosen ? plural(count, "Copy {n} table to a database", "Copy {n} tables to a database") : t("Copy {schema} to a database", { schema })}</h2>
         <p className="muted small">
           {tables === null
-            ? "Reading the tables…"
-            : `Each table is created with its columns, NOT NULL, primary key and identity, then filled; defaults, indexes, foreign keys and CHECKs come last${chosen ? "" : ", then the views and routines"}. ${tables.join(", ") || "No tables"}.`}
+            ? t("Reading the tables…")
+            : `${t(
+                chosen
+                  ? "Each table is created with its columns, NOT NULL, primary key and identity, then filled; defaults, indexes, foreign keys and CHECKs come last."
+                  : "Each table is created with its columns, NOT NULL, primary key and identity, then filled; defaults, indexes, foreign keys and CHECKs come last, then the views and routines.",
+              )} ${tables.join(", ") || t("No tables")}.`}
         </p>
         {targets.length === 0 ? (
-          <div className="notice small">Save another connection to copy the tables to.</div>
+          <div className="notice small">{t("Save another connection to copy the tables to.")}</div>
         ) : (
           <div className="row">
             <label className="field grow">
-              <span>Connection</span>
+              <span>{t("Connection")}</span>
               <select
                 value={target?.id ?? ""}
                 disabled={running}
@@ -107,7 +112,7 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, on
               </select>
             </label>
             <label className="field">
-              <span>Schema</span>
+              <span>{t("Schema")}</span>
               <select value={targetSchema} disabled={running} onChange={(e) => setTargetSchema(e.target.value)}>
                 {schemas.map((s) => (
                   <option key={s.name}>{s.name}</option>
@@ -116,14 +121,14 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, on
             </label>
           </div>
         )}
-        <JobFooter status={status} verbs={["Copying", "Copied"]} onClose={onClose}>
+        <JobFooter status={status} messages={[msg("Copying… {n} rows"), msg("Copied {n} rows.")]} onClose={onClose}>
           <button
             type="button"
             className="primary"
             disabled={running || status.state === "done" || !sids || !targetSchema || count === 0}
             onClick={request}
           >
-            Copy
+            {t("Copy")}
           </button>
         </JobFooter>
       </div>

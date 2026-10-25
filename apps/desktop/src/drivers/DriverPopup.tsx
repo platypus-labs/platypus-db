@@ -2,6 +2,7 @@ import { createElement, useEffect, useState } from "react";
 import { api, type DriverKind, type DriverStatus, VENDOR_DRIVERS, toCommandError } from "../api";
 import { DRIVER_NAMES } from "./names";
 import { workbench } from "../workbench";
+import { t } from "../i18n";
 import { VendorPopup } from "./VendorDrivers";
 
 interface Props {
@@ -43,43 +44,42 @@ function DriverPopup({ driver, onDone }: Props) {
       <div className="modal driver-popup" onKeyDown={(e) => e.key === "Escape" && dismiss()}>
         {progress ? (
           <>
-            <h2>Downloading the {name} driver…</h2>
+            <h2>{t("Downloading the {name} driver…", { name })}</h2>
             <progress max={progress.total ?? undefined} value={progress.total ? progress.done : undefined} />
             <p className="muted small">
-              {megabytes(progress.done)}
-              {progress.total ? ` of ${megabytes(progress.total)}` : ""}
+              {progress.total ? t("{done} of {total}", { done: megabytes(progress.done), total: megabytes(progress.total) }) : megabytes(progress.done)}
             </p>
             <div className="actions">
               <span className="spacer" />
               <button type="button" onClick={() => void api.cancelDriverInstall(driver)}>
-                Cancel
+                {t("Cancel")}
               </button>
             </div>
           </>
         ) : (
           <>
-            <h2>{name} needs a driver</h2>
-            <p className="muted small">An ADBC driver, downloaded once for all {name} connections.</p>
+            <h2>{t("{name} needs a driver", { name })}</h2>
+            <p className="muted small">{t("An ADBC driver, downloaded once for all {name} connections.", { name })}</p>
             {pkg && (
               <div className="driver-package">
                 <strong>{pkg.title}</strong> · {pkg.version}
                 <div className="muted small">
-                  License: {pkg.license} · from the dbc driver registry (Columnar)
-                  {pkg.sha256 ? " · checked with SHA-256" : ""}
+                  {t("License: {license} · from the dbc driver registry (Columnar)", { license: pkg.license })}
+                  {pkg.sha256 ? ` · ${t("checked with SHA-256")}` : ""}
                 </div>
               </div>
             )}
-            {!status && !error && <p className="muted small">Looking up the driver…</p>}
+            {!status && !error && <p className="muted small">{t("Looking up the driver…")}</p>}
             {status?.error && <div className="notice error small">{status.error}</div>}
             {error && <div className="notice error small">{error}</div>}
             <div className="actions">
-              <span className="muted small">Later: Settings › Drivers</span>
+              <span className="muted small">{t("Later: Settings › Drivers")}</span>
               <span className="spacer" />
               <button type="button" onClick={() => onDone(false)}>
-                Cancel
+                {t("Cancel")}
               </button>
               <button type="button" className="primary" disabled={!pkg} onClick={() => void download()}>
-                {error ? "Try again" : "Download and connect"}
+                {t(error ? "Try again" : "Download and connect")}
               </button>
             </div>
           </>

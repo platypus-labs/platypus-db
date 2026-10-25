@@ -3,6 +3,7 @@ import { type CSSProperties, useEffect, useState } from "react";
 import { api, type Explain, type PlanNode, toCommandError } from "../api";
 import { fmt } from "../components/ResultPanel";
 import type { TabBase, TabProps } from "../tabs/registry";
+import { t, msg } from "../i18n";
 
 export type ExplainView = "tree" | "text" | "table";
 
@@ -22,9 +23,9 @@ declare module "../tabs/registry" {
 }
 
 const VIEWS: [ExplainView, string][] = [
-  ["tree", "Tree"],
-  ["text", "Text"],
-  ["table", "Table"],
+  ["tree", msg("Tree")],
+  ["text", msg("Text")],
+  ["table", msg("Table")],
 ];
 
 /** A node with its place in the tree; `path` is its child indexes from the root. */
@@ -70,9 +71,9 @@ function Misestimate({ node }: { node: PlanNode }) {
   return (
     <span
       className="explain-misestimate"
-      title={`Estimated ${num(node.rows)} rows, got ${num(node.actual_rows)}: the planner may have chosen badly`}
+      title={t("Estimated {rows} rows, got {actual}: the planner may have chosen badly", { rows: num(node.rows), actual: num(node.actual_rows) })}
     >
-      {times}× {factor > 0 ? "more" : "fewer"} rows
+      {t(factor > 0 ? "{n}× more rows" : "{n}× fewer rows", { n: times })}
     </span>
   );
 }
@@ -151,7 +152,7 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
   const node = all.find((s) => s.path === selected)?.node ?? explain?.root;
   const share = shares(all, explain?.analyzed ?? false);
   const heated = [...share.values()].some((v) => v > 0);
-  const own = explain?.analyzed ? "time" : "cost";
+  const own = t(explain?.analyzed ? "time" : "cost");
   const shareOf = (n: PlanNode) => share.get(n) ?? 0;
   const toggle = (path: string) =>
     setCollapsed((c) => {
@@ -164,19 +165,19 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
     <div className="object-tab explain-tab" style={{ display: active ? "flex" : "none" }}>
       <header className="object-header">
         <div className="object-title">
-          <strong>{tab.analyze ? "Explain analyze" : "Explain"}</strong>
+          <strong>{t(tab.analyze ? "Explain analyze" : "Explain")}</strong>
           <code className="explain-sql muted small" title={tab.sql}>
             {tab.sql}
           </code>
         </div>
         <span className="spacer" />
-        {running && <span className="muted small">Running…</span>}
+        {running && <span className="muted small">{t("Running…")}</span>}
         {explain && (
           <button
             className="square"
             onClick={() => void navigator.clipboard.writeText(rawPlan(explain))}
-            title="Copy the plan, as the database returned it"
-            aria-label="Copy plan"
+            title={t("Copy the plan, as the database returned it")}
+            aria-label={t("Copy plan")}
           >
             <Icon name="copy" />
           </button>
@@ -184,8 +185,8 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
         <button
           disabled={running}
           onClick={() => setVersion((v) => v + 1)}
-          title={tab.analyze ? "Refresh: runs the statement again" : "Refresh: asks for the plan again"}
-          aria-label="Refresh"
+          title={t(tab.analyze ? "Refresh: runs the statement again" : "Refresh: asks for the plan again")}
+          aria-label={t("Refresh")}
           className="square"
         >
           <Icon name="refresh" />
@@ -194,20 +195,25 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
       <nav className="object-sections">
         {VIEWS.map(([v, label]) => (
           <button key={v} className={v === view ? "active" : ""} onClick={() => onChange({ view: v })}>
-            {label}
+            {t(label)}
           </button>
         ))}
       </nav>
       <div className="object-body">
         {error && <div className="notice error">{error}</div>}
         {tab.analyze && explain && !explain.analyzed && (
-          <div className="notice small">This database cannot run a statement for its plan: estimates only.</div>
+          <div className="notice small">{t("This database cannot run a statement for its plan: estimates only.")}</div>
         )}
         {explain?.suggestions.map((s, i) => (
           <div key={i} className="notice warn small explain-suggestion">
-            <strong>{s.table}</strong> is read in full
-            {s.rows_read === null ? "" : ` (${explain.analyzed ? "" : "about "}${num(s.rows_read)} rows)`} to keep the rows
-            where <code>{s.filter}</code>: an index on the columns of that condition may help.
+            <strong>{s.table}</strong>{" "}
+            {s.rows_read === null
+              ? t("is read in full to keep the rows where")
+              : t(explain.analyzed ? "is read in full ({n} rows) to keep the rows where" : "is read in full (about {n} rows) to keep the rows where", {
+                  n: num(s.rows_read),
+                })}{" "}
+            <code>{s.filter}</code>
+            {t(": an index on the columns of that condition may help.")}
           </div>
         ))}
         {explain && view === "tree" && (
@@ -225,7 +231,7 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
                 >
                   <button
                     className="explain-toggle"
-                    aria-label={collapsed.has(path) ? "Expand" : "Collapse"}
+                    aria-label={t(collapsed.has(path) ? "Expand" : "Collapse")}
                     style={{ visibility: n.children.length ? "visible" : "hidden" }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -240,7 +246,7 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
                   <Misestimate node={n} />
                   <Figures node={n} />
                   {heated && (
-                    <span className="explain-share" title={`Share of the ${own} spent in this step itself`}>
+                    <span className="explain-share" title={t("Share of the {what} spent in this step itself", { what: own })}>
                       {percent.format(shareOf(n))}
                     </span>
                   )}
@@ -255,13 +261,13 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
           <table className="meta-table explain-table">
             <thead>
               <tr>
-                <th>Operation</th>
-                <th>Cost</th>
-                <th>Rows</th>
-                <th>Actual rows</th>
-                <th>Loops</th>
-                <th>Time (ms)</th>
-                {heated && <th>Own {own}</th>}
+                <th>{t("Operation")}</th>
+                <th>{t("Cost")}</th>
+                <th>{t("Rows")}</th>
+                <th>{t("Actual rows")}</th>
+                <th>{t("Loops")}</th>
+                <th>{t("Time (ms)")}</th>
+                {heated && <th>{t("Own {what}", { what: own })}</th>}
               </tr>
             </thead>
             <tbody>
@@ -293,30 +299,30 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
 function Figures({ node }: { node: PlanNode }) {
   return (
     <span className="explain-figures">
-      {node.rows !== null && <span title="Rows the planner expects">est {num(node.rows)}</span>}
+      {node.rows !== null && <span title={t("Rows the planner expects")}>{t("est {n}", { n: num(node.rows) })}</span>}
       {node.actual_rows !== null && (
-        <span title="Rows per loop">
-          actual {num(node.actual_rows)}
+        <span title={t("Rows per loop")}>
+          {t("actual {n}", { n: num(node.actual_rows) })}
           {node.loops !== null && node.loops !== 1 ? ` × ${num(node.loops)}` : ""}
         </span>
       )}
-      {node.actual_ms !== null && <span title="Time to the last row, per loop">{num(node.actual_ms)} ms</span>}
+      {node.actual_ms !== null && <span title={t("Time to the last row, per loop")}>{num(node.actual_ms)} ms</span>}
     </span>
   );
 }
 
 function Properties({ node }: { node: PlanNode }) {
   const rows: [string, string][] = [
-    ["Operation", node.operation],
-    ...(node.detail ? [["On", node.detail] as [string, string]] : []),
+    [t("Operation"), node.operation],
+    ...(node.detail ? [[t("On"), node.detail] as [string, string]] : []),
     ...([
-      ["Cost", node.cost],
-      ["Estimated rows", node.rows],
-      ["Actual rows", node.actual_rows],
-      ["Loops", node.loops],
-      ["Time (ms)", node.actual_ms],
-      ["Own cost", node.self_cost],
-      ["Own time, all loops (ms)", node.self_ms],
+      [t("Cost"), node.cost],
+      [t("Estimated rows"), node.rows],
+      [t("Actual rows"), node.actual_rows],
+      [t("Loops"), node.loops],
+      [t("Time (ms)"), node.actual_ms],
+      [t("Own cost"), node.self_cost],
+      [t("Own time, all loops (ms)"), node.self_ms],
     ] as const)
       .filter(([, v]) => v !== null)
       .map(([k, v]) => [k, num(v)] as [string, string]),

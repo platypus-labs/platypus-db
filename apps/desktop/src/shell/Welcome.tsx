@@ -4,6 +4,7 @@ import { DATA_FILE_EXTENSIONS, toCommandError } from "../api";
 import bannerOnDark from "../assets/brand/platypus-db-on-dark.png";
 import bannerOnLight from "../assets/brand/platypus-db-on-light.png";
 import { Icon } from "../ui/Icon";
+import { t } from "../i18n";
 
 interface Props {
   /** No connection saved yet: the first start. */
@@ -22,14 +23,14 @@ const SHORTCUTS = ["app.palette", "tab.new", "tab.reopen", "app.settings"];
 /** What the workspace shows with no tab open. */
 export function Welcome({ empty, version, onNew, onImport, onOpenFile, onError }: Props) {
   async function pickFile() {
-    const path = await open({ multiple: false, filters: [{ name: "Data files", extensions: DATA_FILE_EXTENSIONS }] });
+    const path = await open({ multiple: false, filters: [{ name: t("Data files"), extensions: DATA_FILE_EXTENSIONS }] });
     if (typeof path === "string") onOpenFile(path);
   }
   const global = useActions("global", undefined);
   const shortcuts = SHORTCUTS.flatMap((id) => {
     const action = global.find((a) => a.id === id);
     const keys = action && shortcutLabel(action);
-    return action && keys ? [{ id, title: action.title, keys }] : [];
+    return action && keys ? [{ id, title: t(action.title), keys }] : [];
   });
   return (
     <div className="welcome">
@@ -40,12 +41,12 @@ export function Welcome({ empty, version, onNew, onImport, onOpenFile, onError }
         </h1>
         <p className="welcome-lead">
           {empty
-            ? "A SQL client for your databases and data files. Add a connection to get started."
-            : "Double-click a connection to open a SQL editor, or expand it to browse."}
+            ? t("A SQL client for your databases and data files. Add a connection to get started.")
+            : t("Double-click a connection to open a SQL editor, or expand it to browse.")}
         </p>
         <button type="button" className="primary welcome-cta" onClick={onNew}>
           <Icon name="plus" size={15} />
-          New connection
+          {t("New connection")}
         </button>
         <p className="muted small">v{version}</p>
       </div>
@@ -53,15 +54,15 @@ export function Welcome({ empty, version, onNew, onImport, onOpenFile, onError }
         <button type="button" className="welcome-card" onClick={() => pickFile().catch((e: unknown) => onError(toCommandError(e).message))}>
           <Icon name="file" size={18} />
           <span>
-            <strong>Open a data file</strong>
-            <span className="muted">CSV, Parquet, JSON or a spreadsheet, queried with DuckDB. You can also drop it on the window.</span>
+            <strong>{t("Open a data file")}</strong>
+            <span className="muted">{t("CSV, Parquet, JSON or a spreadsheet, queried with DuckDB. You can also drop it on the window.")}</span>
           </span>
         </button>
         <button type="button" className="welcome-card" onClick={onImport}>
           <Icon name="import" size={18} />
           <span>
-            <strong>Import connections</strong>
-            <span className="muted">From DBeaver, DataGrip or pgAdmin.</span>
+            <strong>{t("Import connections")}</strong>
+            <span className="muted">{t("From DBeaver, DataGrip or pgAdmin.")}</span>
           </span>
         </button>
         <dl className="welcome-keys">

@@ -148,6 +148,44 @@
   background: var(--hover);
 }
 
+/* The Activity button: the errors not seen yet, or a dot while work runs. */
+.activity-button {
+  position: relative;
+}
+
+.activity-button .badge {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--bg);
+  background: var(--error);
+}
+
+.activity-button .busy {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
 /* The app's own title bar: the top bar moves the window, and the window buttons sit at its
    right end, full height, as Windows draws them. */
 .topbar.own-title-bar {
@@ -372,6 +410,85 @@
 .tab > button.icon:hover {
   opacity: 1;
   background: var(--hover);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--radius);
+}
+
+/* A pinned tab: its icon alone, first in the bar. */
+.tab.pinned {
+  padding: 0 10px;
+}
+
+/* The other tab of a split editor. */
+.tab.beside {
+  color: var(--fg);
+  box-shadow: inset 0 -2px 0 var(--border-strong);
+}
+
+/* The name of a connection before its tabs, when tabs are grouped. */
+.tab-group {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  margin: 0 2px 0 8px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--conn) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--conn) 40%, transparent);
+}
+
+.tab-group:first-child {
+  margin-left: 0;
+}
+
+.tab-group:hover {
+  background: color-mix(in srgb, var(--conn) 26%, transparent);
+}
+
+.tab-count {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg);
+  color: var(--fg-muted);
+}
+
+/* The tabs' content: one pane, or two side by side when the editor is split. */
+.panes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.pane {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.panes[hidden],
+.pane[hidden] {
+  display: none;
+}
+
+.panes.split .pane.right {
+  border-left: 1px solid var(--border);
+}
+
+.panes.split .pane.focused {
+  box-shadow: inset 0 2px 0 var(--accent);
 }
 
 .statusbar {
