@@ -16,7 +16,7 @@ use platypus_core::{
 use platypus_sql::{Dialect, Lexer, TokenKind};
 
 use crate::import::{
-    ImportColumn, ImportError, ImportMode, ImportPlan, import, query_rows, target_type,
+    ImportColumn, ImportError, ImportMode, ImportPlan, import, query_rows, query_value, target_type,
 };
 
 /// What a migration did.
@@ -136,12 +136,7 @@ async fn identity(
             format!("SELECT COLUMNPROPERTY(OBJECT_ID({qualified}), {column}, 'IsIdentity')")
         }
     };
-    let value = query_rows(source, &query)
-        .await?
-        .into_iter()
-        .next()
-        .and_then(|mut r| r.swap_remove(0))
-        .unwrap_or_default();
+    let value = query_value(source, &query).await?.unwrap_or_default();
     let found = match dialect {
         Dialect::MySql => value.contains("auto_increment"),
         Dialect::SqlServer => value == "1",
@@ -277,6 +272,16 @@ impl Migration<'_> {
         self.target.qualified(Some(self.schema), name)
     }
 
+    /// Whether the table `fk` points at is copied too; a warning under `label` if not.
+    fn copied(&mut self, label: &str, fk: &ForeignKeyMeta) -> bool {
+        let copied = self.names.contains(fk.ref_table.as_str());
+        if !copied {
+            self.skipped
+                .push(format!("{label}: {} was not copied", fk.ref_table));
+        }
+        copied
+    }
+
     /// The plan that creates `table` in the target, its constraints declared there when the
     /// target allows no other way; `created` are the tables made before it.
     fn plan(&mut self, table: &Table, created: &[&Table]) -> ImportPlan {
@@ -369,9 +374,7 @@ impl Migration<'_> {
         let mut clauses = Vec::new();
         for fk in &table.details.foreign_keys {
             let label = format!("{}.{}", table.name, fk.name);
-            if !self.names.contains(fk.ref_table.as_str()) {
-                self.skipped
-                    .push(format!("{label}: {} was not copied", fk.ref_table));
+            if !self.copied(&label, fk) {
                 continue;
             }
             let referenced = if fk.ref_table == table.name {
@@ -446,9 +449,7 @@ impl Migration<'_> {
         let t = self.table(&table.name);
         for fk in &table.details.foreign_keys {
             let label = format!("{}.{}", table.name, fk.name);
-            if !self.names.contains(fk.ref_table.as_str()) {
-                self.skipped
-                    .push(format!("{label}: {} was not copied", fk.ref_table));
+            if !self.copied(&label, fk) {
                 continue;
             }
             let sql = foreign_key_sql(self.target, self.schema, &table.name, fk);
@@ -610,11 +611,8 @@ async fn identity_steps(
             ),
         }],
         Dialect::DuckDb => {
-            let max = query_rows(target, &format!("SELECT MAX({c}) FROM {t}"))
+            let max = query_value(target, &format!("SELECT MAX({c}) FROM {t}"))
                 .await?
-                .into_iter()
-                .next()
-                .and_then(|mut r| r.swap_remove(0))
                 .and_then(|m| m.parse::<i64>().ok())
                 .unwrap_or(0);
             let sequence = dialect.qualified(Some(schema), &format!("{table}_{column}_seq"));

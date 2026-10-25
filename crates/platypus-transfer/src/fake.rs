@@ -16,7 +16,9 @@ use platypus_core::{Connection, RecordBatchStream};
 use platypus_sql::Dialect;
 use serde::Deserialize;
 
-use crate::import::{ImportColumn, ImportError, ImportMode, ImportPlan, import_rows, query_rows};
+use crate::import::{
+    ImportColumn, ImportError, ImportMode, ImportPlan, import_rows, query_rows, query_value,
+};
 
 /// Rows per generated batch.
 const BATCH_ROWS: usize = 500;
@@ -395,15 +397,6 @@ pub fn batch(
     RecordBatch::try_new(schema(columns), arrays)
 }
 
-/// The values of the one-column query `sql` other than NULL.
-async fn values(conn: &dyn Connection, sql: &str) -> Result<Vec<String>, ImportError> {
-    Ok(query_rows(conn, sql)
-        .await?
-        .into_iter()
-        .filter_map(|mut r| r.swap_remove(0))
-        .collect())
-}
-
 /// The keys a foreign key can take, at most [`REFERENCE_VALUES`]: the rows of `columns` of
 /// `table` without NULL, `filter` added to their `WHERE`.
 async fn keys(
@@ -501,7 +494,7 @@ async fn resolve(
     let generator = match column.generator {
         Generator::NextKey => {
             let sql = format!("SELECT MAX({}) FROM {table}", dialect.quote_ident(name));
-            let max = values(conn, &sql).await?.into_iter().next();
+            let max = query_value(conn, &sql).await?;
             let start = max.and_then(|m| m.parse::<i64>().ok()).unwrap_or(0) + 1;
             Generator::Sequence { start }
         }

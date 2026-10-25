@@ -1,5 +1,5 @@
 //! Upload of a finished export to a bucket of S3, or of a service that speaks its API (GCS
-//! with HMAC keys, Cloudflare R2, MinIO), in one `PUT` signed with AWS Signature Version 4.
+//! with HMAC keys, Cloudflare R2, `MinIO`), in one `PUT` signed with AWS Signature Version 4.
 
 use std::fmt::{self, Write as _};
 use std::fs::File;
@@ -107,7 +107,10 @@ fn host(endpoint: &str) -> Result<(&str, &str)> {
             "the endpoint must be an address like https://s3.eu-west-1.amazonaws.com, not {endpoint:?}"
         ))
     };
-    let (scheme, rest) = endpoint.trim_end_matches('/').split_once("://").ok_or_else(invalid)?;
+    let (scheme, rest) = endpoint
+        .trim_end_matches('/')
+        .split_once("://")
+        .ok_or_else(invalid)?;
     if !matches!(scheme, "http" | "https") || rest.is_empty() || rest.contains(['/', '?', '@']) {
         return Err(invalid());
     }
@@ -126,7 +129,10 @@ fn tag<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
 /// Sends the file at `path` to `bucket`, under its own name in the bucket's `prefix`.
 pub fn put(path: &Path, bucket: &Bucket) -> Result<()> {
     let (scheme, host) = host(&bucket.endpoint)?;
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("export");
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("export");
     let prefix = bucket.prefix.trim_matches('/');
     let key = if prefix.is_empty() {
         name.to_owned()
@@ -148,7 +154,8 @@ pub fn put(path: &Path, bucket: &Bucket) -> Result<()> {
     let now = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
     let file = File::open(path).map_err(io_error(path))?;
     let length = file.metadata().map_err(io_error(path))?.len();
-    let failed = |e: &dyn fmt::Display| ExportError::Upload(format!("{scheme}://{host}{object}: {e}"));
+    let failed =
+        |e: &dyn fmt::Display| ExportError::Upload(format!("{scheme}://{host}{object}: {e}"));
     let mut response = ureq::put(format!("{scheme}://{host}{object}"))
         .config()
         .http_status_as_error(false)
@@ -230,13 +237,27 @@ mod tests {
             host("https://s3.eu-west-1.amazonaws.com/").unwrap(),
             ("https", "s3.eu-west-1.amazonaws.com")
         );
-        assert_eq!(host("http://localhost:9000").unwrap(), ("http", "localhost:9000"));
-        assert_eq!(host("https://example.com:443").unwrap(), ("https", "example.com"));
-        for bad in ["s3.amazonaws.com", "ftp://x", "https://x/path", "https://user@x"] {
+        assert_eq!(
+            host("http://localhost:9000").unwrap(),
+            ("http", "localhost:9000")
+        );
+        assert_eq!(
+            host("https://example.com:443").unwrap(),
+            ("https", "example.com")
+        );
+        for bad in [
+            "s3.amazonaws.com",
+            "ftp://x",
+            "https://x/path",
+            "https://user@x",
+        ] {
             assert!(host(bad).is_err(), "{bad}");
         }
         assert_eq!(
-            tag("<Error><Code>AccessDenied</Code><Message>No</Message></Error>", "Code"),
+            tag(
+                "<Error><Code>AccessDenied</Code><Message>No</Message></Error>",
+                "Code"
+            ),
             Some("AccessDenied")
         );
         assert!(!format!("{:?}", bucket()).contains("EXAMPLEKEY"));
@@ -282,7 +303,10 @@ mod tests {
             secret_key: "rustfsadmin".to_owned(),
         };
         let (status, body) = call(&bucket, "PUT", "/platypus-test");
-        assert!(status == 200 || body.contains("BucketAlready"), "{status} {body}");
+        assert!(
+            status == 200 || body.contains("BucketAlready"),
+            "{status} {body}"
+        );
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("a b.csv");
         std::fs::write(&path, "id,name\n1,ü\n").unwrap();

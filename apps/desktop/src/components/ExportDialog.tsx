@@ -62,12 +62,14 @@ const BUCKET_KEY = "platypus.export.bucket";
 
 /** The bucket of the last upload, without its secret key, which is never kept. */
 function lastBucket(): Bucket {
-  const empty = { endpoint: "https://s3.amazonaws.com", region: "us-east-1", bucket: "", prefix: "", access_key: "" };
+  let kept: Partial<Bucket> = {};
   try {
-    return { ...empty, ...(JSON.parse(localStorage.getItem(BUCKET_KEY) ?? "{}") as Partial<Bucket>), secret_key: "" };
+    kept = JSON.parse(localStorage.getItem(BUCKET_KEY) ?? "{}") as Partial<Bucket>;
   } catch {
-    return { ...empty, secret_key: "" };
+    // Nothing kept, or nothing readable.
   }
+  const empty = { endpoint: "https://s3.amazonaws.com", region: "us-east-1", bucket: "", prefix: "", access_key: "" };
+  return { ...empty, ...kept, secret_key: "" };
 }
 
 function keepBucket({ secret_key: _, ...rest }: Bucket) {

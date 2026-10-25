@@ -1823,8 +1823,8 @@ async fn agents_read_in_read_only_transactions() {
 /// that leaves that table as it was.
 #[tokio::test]
 async fn imports_data_files() {
-    use platypus_transfer::import::{ImportColumn, ImportMode, ImportPlan, import};
     use platypus_sql::Dialect;
+    use platypus_transfer::import::{ImportColumn, ImportMode, ImportPlan, import};
 
     let dir = tempfile::tempdir().unwrap();
     let csv = dir.path().join("conf_import.csv");
@@ -1928,8 +1928,8 @@ async fn imports_data_files() {
 /// mapped to the target's.
 #[tokio::test]
 async fn transfers_tables_between_databases() {
-    use platypus_transfer::import::{ImportColumn, ImportMode, ImportPlan, import, target_type};
     use platypus_sql::Dialect;
+    use platypus_transfer::import::{ImportColumn, ImportMode, ImportPlan, import, target_type};
 
     let all = backends().await;
     for b in &all {
@@ -2033,8 +2033,8 @@ async fn check_import_modes(
     plan: &platypus_transfer::import::ImportPlan,
     table: &str,
 ) {
-    use platypus_transfer::import::{ImportError, ImportMode, ImportPlan, import};
     use platypus_sql::Dialect;
+    use platypus_transfer::import::{ImportError, ImportMode, ImportPlan, import};
 
     let d = Dialect::from(b.config.driver);
     // Replace: the old rows go, in the same transaction.
@@ -2147,8 +2147,8 @@ async fn check_import_modes(
 /// CHECK, the foreign key, and the view between databases of one kind.
 #[tokio::test]
 async fn migrates_tables_between_databases() {
-    use platypus_transfer::migrate::migrate;
     use platypus_sql::Dialect;
+    use platypus_transfer::migrate::migrate;
 
     let all = backends().await;
     let tables = ["conf_mig_parent".to_owned(), "conf_mig_child".to_owned()];
@@ -2341,8 +2341,8 @@ async fn drop_tables(
 /// at existing rows, values every column type takes.
 #[tokio::test]
 async fn fills_tables_with_fake_rows() {
-    use platypus_transfer::fake::{FakeColumn, Generator, fill};
     use platypus_sql::Dialect;
+    use platypus_transfer::fake::{FakeColumn, Generator, fill};
 
     let tables = ["conf_fake_parent".to_owned(), "conf_fake_child".to_owned()];
     for b in backends().await {

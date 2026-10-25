@@ -435,6 +435,18 @@ pub(crate) async fn query_rows(
     Ok(out)
 }
 
+/// The first value of the query `sql`: none for no rows or NULL.
+pub(crate) async fn query_value(
+    conn: &dyn Connection,
+    sql: &str,
+) -> Result<Option<String>, ImportError> {
+    Ok(query_rows(conn, sql)
+        .await?
+        .into_iter()
+        .next()
+        .and_then(|mut r| r.swap_remove(0)))
+}
+
 async fn exec(conn: &dyn Connection, sql: &str) -> Result<(), platypus_core::Error> {
     // Dropping a stream of rows ends the statement.
     conn.execute(sql, &ExecOptions::default()).await.map(|_| ())
