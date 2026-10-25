@@ -95,6 +95,24 @@
   box-shadow: var(--shadow);
 }
 
+/* Menus and dialogs are a faint glass: a little of what is behind shows through, blurred
+   enough that the text on them reads as on a solid one. */
+@supports (background: color-mix(in srgb, red 50%, transparent)) and ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .context-menu,
+  .modal {
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
+  }
+
+  .context-menu {
+    background: color-mix(in srgb, var(--bg-sidebar) 88%, transparent);
+  }
+
+  .modal {
+    background: color-mix(in srgb, var(--bg-sidebar) 92%, transparent);
+  }
+}
+
 .modal.small {
   width: min(360px, calc(100vw - 32px));
 }
@@ -453,6 +471,28 @@ button.primary.danger:hover:not(:disabled) {
   overflow: hidden;
 }
 
+.settings-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.settings-header h2 {
+  margin: 0;
+}
+
+.settings-header .modal-search {
+  flex: 1;
+  max-width: 320px;
+  margin: 0 0 0 auto;
+}
+
+.settings-none {
+  margin: 24px 0;
+  text-align: center;
+}
+
 .settings-layout {
   display: grid;
   grid-template-columns: 170px 1fr;
@@ -738,11 +778,41 @@ button.danger {
   color: #fff;
 }
 
+.modal.driver-picker {
+  width: min(640px, calc(100vw - 32px));
+}
+
+/* A search field at the top of a dialog: the database picker, the settings. */
+.modal-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 8px 0 10px;
+}
+
+.modal-search-icon {
+  position: absolute;
+  left: 9px;
+  color: var(--fg-muted);
+  pointer-events: none;
+}
+
+.modal-search input {
+  flex: 1;
+  min-width: 0;
+  padding-left: 30px;
+}
+
 .driver-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   margin: 4px 0 12px;
+}
+
+.driver-none {
+  margin: 12px 0;
+  text-align: center;
 }
 
 .driver-tile {

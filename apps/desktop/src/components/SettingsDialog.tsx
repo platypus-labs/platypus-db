@@ -1,8 +1,10 @@
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
+import { allActions } from "../actions";
 import { AgentsPanel } from "../agents/AgentsPanel";
 import { toCommandError } from "../api";
 import { type SettingDef, getSetting, setSetting, settingDefs, useSettingsVersion } from "../settings";
-import { ShortcutsPanel } from "../shell/ShortcutsPanel";
+import { ShortcutsPanel, actionMatches } from "../shell/ShortcutsPanel";
+import { Icon } from "../ui/Icon";
 import { DriversPanel } from "../drivers/DriversPanel";
 import { MasterPasswordPanel } from "./MasterPassword";
 import { msg, t } from "../i18n";
@@ -14,16 +16,47 @@ const DRIVERS = msg("Drivers");
 
 type Value = boolean | number | string;
 
+/** The sections after the declared settings; `keywords` (English) are found by the search
+ *  too, and the shortcuts are also found by their actions. */
+const PANELS: { title: string; keywords: string; render: (search: string) => ReactNode }[] = [
+  { title: SECURITY, keywords: "password encryption credentials keyring", render: () => <MasterPasswordPanel /> },
+  { title: AGENTS, keywords: "MCP AI assistant", render: () => <AgentsPanel /> },
+  { title: DRIVERS, keywords: "ODBC ADBC Oracle Instant Client download", render: () => <DriversPanel /> },
+  { title: SHORTCUTS, keywords: "keys keyboard", render: (search) => <ShortcutsPanel search={search} /> },
+];
+
+/** Whether any of `texts`, in English or translated, contains `needle` (lowercase). */
+function found(needle: string, ...texts: (string | undefined)[]): boolean {
+  return texts.some((s) => !!s && (s.toLowerCase().includes(needle) || t(s).toLowerCase().includes(needle)));
+}
+
+function settingFound(needle: string, def: SettingDef<Value>): boolean {
+  const c = def.control;
+  const options = c.type === "select" || c.type === "swatches" ? c.options.map((o) => o.label) : [];
+  return found(needle, def.label, def.description, def.key, ...options);
+}
+
 /** Every declared setting, by section, then the keyboard shortcuts; the list on the left
- *  jumps to a section. Changes apply and save at once. */
+ *  jumps to a section, the search keeps only the settings that match. Changes apply and
+ *  save at once. */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   useSettingsVersion();
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const needle = search.trim().toLowerCase();
   const body = useRef<HTMLDivElement>(null);
   const sections = new Map<string, SettingDef<Value>[]>();
   for (const def of settingDefs()) {
+    if (needle && !found(needle, def.section) && !settingFound(needle, def)) continue;
     sections.set(def.section, [...(sections.get(def.section) ?? []), def]);
   }
+  // A panel found by its title shows whole; the shortcuts also by their actions, filtered.
+  const panels = PANELS.flatMap((p) => {
+    if (!needle || found(needle, p.title, p.keywords)) return [{ ...p, search: "" }];
+    const byAction = p.title === SHORTCUTS && allActions().some((a) => actionMatches(a, needle));
+    return byAction ? [{ ...p, search: needle }] : [];
+  });
+  const titles = [...sections.keys(), ...panels.map((p) => p.title)];
   const save = (def: SettingDef<Value>, value: Value | null) => {
     setError(null);
     setSetting(def, value).catch((e: unknown) => setError(`${t(def.label)}: ${toCommandError(e).message}`));
@@ -36,11 +69,32 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.key === "Escape" && onClose()}
       >
-        <h2>{t("Settings")}</h2>
+        <div className="settings-header">
+          <h2>{t("Settings")}</h2>
+          <div className="modal-search">
+            <Icon name="search" className="modal-search-icon" />
+            <input
+              autoFocus
+              placeholder={t("Search settings…")}
+              aria-label={t("Search settings")}
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                body.current?.scrollTo({ top: 0 });
+              }}
+              onKeyDown={(e) => {
+                // Escape clears the search first, then closes.
+                if (e.key !== "Escape" || !search) return;
+                e.stopPropagation();
+                setSearch("");
+              }}
+            />
+          </div>
+        </div>
         {error && <div className="notice error small">{error}</div>}
         <div className="settings-layout">
           <nav className="settings-nav">
-            {[...sections.keys(), SECURITY, AGENTS, DRIVERS, SHORTCUTS].map((section) => (
+            {titles.map((section) => (
               <button
                 key={section}
                 type="button"
@@ -63,28 +117,19 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 ))}
               </section>
             ))}
-            <section data-section={SECURITY}>
-              <h3>{t(SECURITY)}</h3>
-              <MasterPasswordPanel />
-            </section>
-            <section data-section={AGENTS}>
-              <h3>{t(AGENTS)}</h3>
-              <AgentsPanel />
-            </section>
-            <section data-section={DRIVERS}>
-              <h3>{t(DRIVERS)}</h3>
-              <DriversPanel />
-            </section>
-            <section data-section={SHORTCUTS}>
-              <h3>{t(SHORTCUTS)}</h3>
-              <ShortcutsPanel />
-            </section>
+            {panels.map((p) => (
+              <section key={p.title} data-section={p.title}>
+                <h3>{t(p.title)}</h3>
+                {p.render(p.search)}
+              </section>
+            ))}
+            {titles.length === 0 && <p className="muted settings-none">{t("No settings match.")}</p>}
           </div>
         </div>
         <div className="actions">
           <span className="muted small">{t("Saved in settings.toml")}</span>
           <span className="spacer" />
-          <button className="primary" autoFocus onClick={onClose}>
+          <button className="primary" onClick={onClose}>
             {t("Done")}
           </button>
         </div>

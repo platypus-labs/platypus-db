@@ -18,7 +18,9 @@ import {
   siTrino,
   siTurso,
 } from "simple-icons";
+import { useState } from "react";
 import type { DriverKind, SavedConnection } from "../api";
+import { Icon } from "../ui/Icon";
 import { t, msg } from "../i18n";
 
 /** What a profile fills in beyond the driver's defaults. */
@@ -125,17 +127,11 @@ function DriverLogo({ choice }: { choice: Choice }) {
   );
 }
 
-function Tiles({ choices, onPick, focus }: { choices: Choice[]; onPick: Props["onPick"]; focus?: boolean }) {
+function Tiles({ choices, onPick }: { choices: Choice[]; onPick: Props["onPick"] }) {
   return (
     <div className="driver-grid">
-      {choices.map((c, i) => (
-        <button
-          key={c.label}
-          type="button"
-          className="driver-tile"
-          autoFocus={focus && i === 0}
-          onClick={() => onPick(c.driver, c.preset ?? {})}
-        >
+      {choices.map((c) => (
+        <button key={c.label} type="button" className="driver-tile" onClick={() => onPick(c.driver, c.preset ?? {})}>
           <DriverLogo choice={c} />
           <span>{t(c.label)}</span>
         </button>
@@ -149,16 +145,45 @@ interface Props {
   onClose: () => void;
 }
 
-/** First step of a new connection: the database, as a grid of logos. */
+/** The choices whose name, or driver, contains `needle`. */
+function matching(choices: Choice[], needle: string): Choice[] {
+  return choices.filter((c) => t(c.label).toLowerCase().includes(needle) || c.driver.includes(needle));
+}
+
+/** First step of a new connection: the database, as a grid of logos, with a search. */
 export function DriverPicker({ onPick, onClose }: Props) {
+  const [filter, setFilter] = useState("");
+  const needle = filter.trim().toLowerCase();
+  const main = matching(CHOICES, needle);
+  const pgWire = matching(PG_WIRE, needle);
+  const first = main[0] ?? pgWire[0];
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal driver-picker" role="dialog" onKeyDown={(e) => e.key === "Escape" && onClose()}>
         <h2>{t("New connection")}</h2>
         <p className="muted">{t("Choose the database.")}</p>
-        <Tiles choices={CHOICES} onPick={onPick} focus />
-        <h3 className="driver-section">{t("PostgreSQL-compatible")}</h3>
-        <Tiles choices={PG_WIRE} onPick={onPick} />
+        <div className="modal-search">
+          <Icon name="search" className="modal-search-icon" />
+          <input
+            autoFocus
+            placeholder={t("Search databases…")}
+            aria-label={t("Search databases")}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter takes the first match.
+              if (e.key === "Enter" && needle && first) onPick(first.driver, first.preset ?? {});
+            }}
+          />
+        </div>
+        {main.length > 0 && <Tiles choices={main} onPick={onPick} />}
+        {pgWire.length > 0 && (
+          <>
+            <h3 className="driver-section">{t("PostgreSQL-compatible")}</h3>
+            <Tiles choices={pgWire} onPick={onPick} />
+          </>
+        )}
+        {!first && <p className="muted driver-none">{t("No database matches.")}</p>}
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={onClose}>
