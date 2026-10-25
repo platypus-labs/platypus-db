@@ -242,7 +242,8 @@ viewer GIS su piano cartesiano senza mappa di sfondo).
 
 **Stato: P1 e P2 completati** (tunnel SSH con password, chiave, agent e jump host; tipi
 Dev/Test/Prod con colore e commit manuale in Prod; import da DBeaver, DataGrip, pgAdmin e
-`pg_service.conf`; profili di rete; schema, fuso orario e query di bootstrap dopo ogni
+`pg_service.conf`, con cartelle e progetti da un export `.dbp` di DBeaver; cartelle di
+connessioni nei progetti e cartelle di progetti nella barra; profili di rete; schema, fuso orario e query di bootstrap dopo ogni
 connessione; password da `.pgpass`, da comando shell o chiesta ogni volta; master password
 con file cifrato; certificati client; latenza, keep-alive e riconnessione). La conferma
 prima di scrivere in Prod è nel gruppo L. Restano i P3.
@@ -264,6 +265,7 @@ prima di scrivere in Prod è nel gruppo L. Restano i P3.
 | ✅ Gestione certificati SSL: CA personalizzate, certificato client | P2 | D |
 | ✅ Import delle connessioni da DBeaver (`data-sources.json`), DataGrip, pgAdmin, `~/.pg_service.conf` | P1 | D |
 | ✅ Indicatore di salute della connessione (latenza, keep-alive, riconnessione) | P2 | N |
+| ✅ Import di progetti DBeaver (`.dbp`) con cartelle; cartelle di connessioni nei progetti e cartelle di progetti nella barra | P2 | D |
 | Kubernetes port-forward, AWS SSM | P3 | D+ |
 
 ---
