@@ -1,0 +1,29 @@
+[package]
+name = "platypus-driver-odbc"
+description = "PlatypusDB driver for databases reached through an ODBC driver installed in the system"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+arrow-array.workspace = true
+arrow-schema.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+platypus-core.workspace = true
+platypus-sql.workspace = true
+serde.workspace = true
+tokio = { workspace = true, features = ["sync", "rt"] }
+
+# The system's driver manager: odbc32.dll ships with Windows. Elsewhere unixODBC would be
+# linked into the app, which would then not start without it: ODBC is Windows-only for now.
+[target.'cfg(windows)'.dependencies]
+arrow-odbc = "26"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[lints]
+workspace = true
