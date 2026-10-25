@@ -1,6 +1,6 @@
 [package]
-name = "platypus-export"
-description = "Streaming export of results (CSV, JSON, NDJSON, Parquet) and import of data files into tables for PlatypusDB"
+name = "platypus-transfer"
+description = "Streaming export of results, import of data files, copies of tables between databases and fake rows for PlatypusDB"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

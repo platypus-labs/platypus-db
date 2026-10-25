@@ -34,7 +34,7 @@ Questi punti non vanno ripianificati: al massimo si migliorano dentro il gruppo 
 | Autocomplete di keyword, tabelle e `alias.colonna` | `SqlEditor.tsx`, `platypus-sql` | D |
 | Storico ricercabile, file `.sql`, sessione dei tab ripristinata | `HistoryPanel.tsx`, `workspace.ts` | — |
 | Autocommit, commit/rollback, avviso alla chiusura con una transazione aperta | `commands.rs` | L |
-| Export CSV/JSON/NDJSON/Parquet in streaming | `platypus-export` | H |
+| Export CSV/JSON/NDJSON/Parquet in streaming | `platypus-transfer` | H |
 | Tema chiaro/scuro, auto-update | `theme.ts`, `UpdateBanner.tsx` | — |
 
 ---
@@ -295,12 +295,12 @@ DuckDB (SQL Server dal profilo `sqlserver` di `docker/compose.yml`).
 
 ### Gruppo H — Import, export e trasferimento dati
 
-**Area:** `platypus-export` (da rinominare in `platypus-transfer`), `apps/desktop/src/transfer/`, `commands/transfer.rs`
+**Area:** `platypus-transfer`, `apps/desktop/src/transfer/`, `commands/transfer.rs`
 **Dipende da:** 0.5
 
 **Stato: P1 completate.** I file (CSV, TSV, JSON, NDJSON, Parquet, XLSX) si leggono con una
 connessione DuckDB sul file, la stessa del "file come database" del gruppo G; l'import in una
-tabella esistente o nuova (`platypus-export::import`) scrive INSERT da 500 righe in una sola
+tabella esistente o nuova (`platypus-transfer::import`) scrive INSERT da 500 righe in una sola
 transazione, e una tabella creata e poi fallita si elimina. I tipi della tabella nuova vengono da
 `Dialect::column_type`. Il rename in `platypus-transfer` non è stato fatto. Conformance su tutti i
 database ed E2E `import-sqlite`.
@@ -315,7 +315,7 @@ cartella. Annullare un import ora lo ferma tra un blocco e l'altro, così il rol
 della tabella creata vengono eseguiti. Conformance: modalità su tutti i database e
 trasferimento tra tutte le 36 coppie.
 
-**P3 completate.** La migrazione (`platypus-export::migrate`) crea ogni tabella con colonne,
+**P3 completate.** La migrazione (`platypus-transfer::migrate`) crea ogni tabella con colonne,
 NOT NULL e chiave primaria (i `varchar(n)` restano `VARCHAR(n)`, perché MySQL non indicizza
 TEXT), la riempie in una transazione sua e alla fine aggiunge le chiavi esterne tra le tabelle
 copiate; SQLite e DuckDB non le aggiungono a una tabella esistente e finiscono tra gli avvisi.

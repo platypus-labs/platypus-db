@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use arrow_array::RecordBatch;
 use futures::StreamExt;
 use platypus_core::{Connection, ConnectionConfig, Error, ExecOptions, ExecResult};
-use platypus_export::{ExportError, ExportOptions, Exporter};
+use platypus_transfer::{ExportError, ExportOptions, Exporter};
 use serde::Serialize;
 use tauri::async_runtime::JoinHandle;
 use tauri::ipc::Channel;

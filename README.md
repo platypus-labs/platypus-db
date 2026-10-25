@@ -283,7 +283,7 @@ crates/
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
   platypus-net/            SSH tunnels (russh)
   platypus-store/          connections (TOML + OS keychain), imports, query history (SQLite)
-  platypus-export/         streaming CSV, JSON, NDJSON and Parquet writers; import into tables
+  platypus-transfer/       streaming exports, imports, copies between databases, fake rows
   platypus-conformance/    integration suite run on every driver
   platypus-cli/            `platypus` CLI for exercising the core, and for agents (`--connection`)
   platypus-mcp/            `platypus-mcp`, the MCP server for agents (stdio, rmcp)

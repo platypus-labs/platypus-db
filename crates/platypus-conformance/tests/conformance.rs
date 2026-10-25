@@ -1823,7 +1823,7 @@ async fn agents_read_in_read_only_transactions() {
 /// that leaves that table as it was.
 #[tokio::test]
 async fn imports_data_files() {
-    use platypus_export::import::{ImportColumn, ImportMode, ImportPlan, import};
+    use platypus_transfer::import::{ImportColumn, ImportMode, ImportPlan, import};
     use platypus_sql::Dialect;
 
     let dir = tempfile::tempdir().unwrap();
@@ -1928,7 +1928,7 @@ async fn imports_data_files() {
 /// mapped to the target's.
 #[tokio::test]
 async fn transfers_tables_between_databases() {
-    use platypus_export::import::{ImportColumn, ImportMode, ImportPlan, import, target_type};
+    use platypus_transfer::import::{ImportColumn, ImportMode, ImportPlan, import, target_type};
     use platypus_sql::Dialect;
 
     let all = backends().await;
@@ -2030,10 +2030,10 @@ async fn check_import_modes(
     source: &dyn Connection,
     conn: &dyn Connection,
     other: &dyn Connection,
-    plan: &platypus_export::import::ImportPlan,
+    plan: &platypus_transfer::import::ImportPlan,
     table: &str,
 ) {
-    use platypus_export::import::{ImportError, ImportMode, ImportPlan, import};
+    use platypus_transfer::import::{ImportError, ImportMode, ImportPlan, import};
     use platypus_sql::Dialect;
 
     let d = Dialect::from(b.config.driver);
@@ -2147,7 +2147,7 @@ async fn check_import_modes(
 /// CHECK, the foreign key, and the view between databases of one kind.
 #[tokio::test]
 async fn migrates_tables_between_databases() {
-    use platypus_export::migrate::migrate;
+    use platypus_transfer::migrate::migrate;
     use platypus_sql::Dialect;
 
     let all = backends().await;
@@ -2341,7 +2341,7 @@ async fn drop_tables(
 /// at existing rows, values every column type takes.
 #[tokio::test]
 async fn fills_tables_with_fake_rows() {
-    use platypus_export::fake::{FakeColumn, Generator, fill};
+    use platypus_transfer::fake::{FakeColumn, Generator, fill};
     use platypus_sql::Dialect;
 
     let tables = ["conf_fake_parent".to_owned(), "conf_fake_child".to_owned()];

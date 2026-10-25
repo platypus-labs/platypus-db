@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use platypus_export::ExportOptions;
+use platypus_transfer::ExportOptions;
 use platypus_sql::Dialect;
 use serde::Deserialize;
 use tauri::State;
