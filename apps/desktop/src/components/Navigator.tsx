@@ -27,7 +27,7 @@ import { connectionColor, typeBadge } from "../connections";
 import { Icon, type IconName, objectIcon } from "../ui/Icon";
 import { ContextMenu, type MenuState, type MenuTarget } from "./ContextMenu";
 import { type FolderNode, folderTree, newFolder } from "../projects/folders";
-import { t, msg } from "../i18n";
+import { t, msg, plural } from "../i18n";
 
 /** `cached`: read from the disk cache, not yet reloaded from the server. */
 type Load<T> =
@@ -73,8 +73,6 @@ function formatBytes(bytes: number): string {
   return `${unit === 0 ? value : value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
 }
 
-const exact = new Intl.NumberFormat();
-
 /** `~1.2K`: the row count the statistics say, compact, for the end of the row. */
 function rowCount(object: ObjectMeta): string | undefined {
   return object.rows == null ? undefined : compact.format(object.rows);
@@ -82,7 +80,7 @@ function rowCount(object: ObjectMeta): string | undefined {
 
 /** `~1,234 rows · 3.4 MB`, for the row's tooltip. */
 function sizeDetail(object: ObjectMeta): string | undefined {
-  const parts = [object.rows != null && `~${t("{n} rows", { n: exact.format(object.rows) })}`, object.size != null && formatBytes(object.size)];
+  const parts = [object.rows != null && `~${plural(object.rows, "{n} row", "{n} rows")}`, object.size != null && formatBytes(object.size)];
   return parts.filter(Boolean).join(" · ") || undefined;
 }
 
