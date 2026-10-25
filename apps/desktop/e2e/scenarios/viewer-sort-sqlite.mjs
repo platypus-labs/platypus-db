@@ -77,8 +77,7 @@ export default async function (page) {
   await page.waitFor(`${visibleTab}.querySelector('.viewer-bar .muted')?.textContent === '3 rows'`, 15_000);
 
   // With a script, the sort rewrites the statement that ran, not the first one.
-  const script = "SELECT * FROM items WHERE grp = 2;
-SELECT * FROM items WHERE grp = 1";
+  const script = "SELECT * FROM items WHERE grp = 2;\nSELECT * FROM items WHERE grp = 1";
   await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
   await page.key("a", "KeyA", 65, CTRL);
   await page.type(script);
@@ -86,9 +85,8 @@ SELECT * FROM items WHERE grp = 1";
   await afterRun(page, () => page.key("Enter", "Enter", 13, CTRL));
   assert.equal(await page.eval(status), "3 rows");
   await afterRun(page, header);
-  assert.match(await page.eval(editorText), /^SELECT * FROM items WHERE grp = 2;
-SELECT * FROM items WHERE grp = 1
-ORDER BY w+ ASC$/);
+  const sorted = await page.eval(editorText);
+  assert.ok(/\nORDER BY id (ASC|DESC)$/.test(sorted) && sorted.startsWith(script), sorted);
 
   // A statement that is not a read-only query is never rewritten: the headers do not sort.
   const update = "UPDATE items SET name = name WHERE id = 1 RETURNING id, name";
