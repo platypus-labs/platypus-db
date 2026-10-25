@@ -5,9 +5,7 @@
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 10px 0;
-  background: var(--bg-rail);
-  border-right: 1px solid var(--border);
+  padding: 4px 0 10px;
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -64,7 +62,7 @@
   height: 9px;
   border-radius: 50%;
   background: var(--type-test);
-  box-shadow: 0 0 0 2px var(--bg-rail);
+  box-shadow: 0 0 0 2px var(--frame);
 }
 
 /* A closed folder of projects: the colors of its first four, as in Discord. */
@@ -114,7 +112,7 @@
   height: 9px;
   border-radius: 50%;
   background: var(--type-test);
-  box-shadow: 0 0 0 2px var(--bg-rail);
+  box-shadow: 0 0 0 2px var(--frame);
 }
 
 /* An open folder: its icon, then its projects, on one background. */
@@ -144,7 +142,7 @@
 
 .project-add {
   background: transparent;
-  border: 1px dashed var(--border);
+  border: 1px dashed var(--border-strong);
   color: var(--fg-muted);
 }
 

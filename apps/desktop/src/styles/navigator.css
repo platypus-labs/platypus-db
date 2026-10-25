@@ -1,8 +1,7 @@
 /* The connections tree. */
 
+/* The navigator sits on the window frame, left of the sheet. */
 .sidebar {
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -12,14 +11,15 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 10px 8px 6px 12px;
+  padding: 2px 6px 6px 10px;
 }
 
 .sidebar-title {
   flex: 1;
-  font-weight: 600;
+  min-width: 0;
+  font-weight: 500;
   font-size: 13px;
-  color: var(--fg-strong);
+  color: var(--fg-muted);
 }
 
 .empty-cta {
@@ -67,7 +67,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  margin: 0 8px 6px;
+  margin: 0 8px 6px 6px;
 }
 
 .tree-search-icon {
@@ -80,19 +80,18 @@
 .tree-filter {
   flex: 1;
   min-width: 0;
-  padding: 4px 56px 4px 28px;
+  padding: 4px 10px 4px 28px;
+  border-color: transparent;
 }
 
-.tree-search-kbd {
-  position: absolute;
-  right: 6px;
-  cursor: pointer;
+.tree-filter:hover {
+  border-color: var(--border-strong);
 }
 
 .tree {
   list-style: none;
   margin: 0;
-  padding: 2px 4px 8px;
+  padding: 2px 8px 8px 4px;
   overflow: auto;
   flex: 1;
 }
@@ -101,9 +100,9 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 24px;
+  height: 28px;
   padding-right: 6px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   cursor: default;
   user-select: none;
   white-space: nowrap;
@@ -116,6 +115,11 @@
 .tree-row.selected {
   background: var(--active);
   color: var(--fg-strong);
+}
+
+.tree-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .tree-row.muted .tree-label {
@@ -200,12 +204,10 @@
 
 .type-badge {
   margin-left: 4px;
-  padding: 1px 5px;
+  padding: 1px 6px;
   border-radius: var(--radius);
-  font-size: 9.5px;
-  font-weight: 650;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 600;
   color: var(--type-dev);
   background: var(--type-dev-bg);
 }
@@ -226,8 +228,6 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
 }
 
 .sidebar-column > .sidebar {
@@ -240,7 +240,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-top: 1px solid var(--border);
+  margin-top: 6px;
 }
 
 .scripts-panel.open {

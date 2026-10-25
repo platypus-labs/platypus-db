@@ -59,6 +59,8 @@ connection_type = "dev"
 async function screens(page, theme, shots) {
   const shot = (name) => shots && page.screenshot(join(shots, `visual-${theme}-${name}.png`));
   await page.waitFor(`document.fonts.status === 'loaded'`);
+  // The frame fades to the new theme's colors.
+  await page.waitFor(`document.getAnimations().length === 0`);
   await shot("workspace");
 
   await page.key("k", "KeyK", 75, CTRL);
@@ -84,7 +86,7 @@ async function screens(page, theme, shots) {
 }
 
 export default async function (page, { shots }) {
-  await page.waitFor(`${cssVar("--bg")} === '#141519'`);
+  await page.waitFor(`${cssVar("--bg")} === '#16191b'`);
   // All connections, then the two projects (they load after the theme); Negozio becomes the
   // workspace shown.
   await page.waitFor(`document.querySelectorAll('.project-square').length === 3`);
