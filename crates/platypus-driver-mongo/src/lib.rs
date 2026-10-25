@@ -7,6 +7,7 @@
 mod config;
 pub mod docs;
 mod error;
+pub mod generate;
 pub mod literal;
 mod meta;
 pub mod shell;
@@ -209,7 +210,6 @@ impl MongoConnection {
         let database = self.db(db);
         let coll = database.collection::<Document>(name);
         let comment = Bson::String(self.comment.clone());
-        let affected = |rows: u64| Ok(ExecResult::Affected { rows });
         match op {
             CollectionOp::Find(find) => {
                 let cursor = self.track(self.find(&coll, find, batch).await)?;
@@ -262,32 +262,11 @@ impl MongoConnection {
             | CollectionOp::InsertMany(_)
             | CollectionOp::Update { .. }
             | CollectionOp::Replace { .. }
-            | CollectionOp::Delete { .. }) => self.write_op(&coll, op).await.map(affected_rows),
-            CollectionOp::Drop => {
-                self.track(coll.drop().await)?;
-                affected(0)
-            }
-            CollectionOp::CreateIndex {
-                keys,
-                options: index,
-            } => {
-                let mut spec = doc! { "key": keys.clone(), "name": meta::index_name(&keys) };
-                spec.extend(index);
-                self.track(
-                    database
-                        .run_command(doc! { "createIndexes": name, "indexes": [spec] })
-                        .await,
-                )?;
-                affected(0)
-            }
-            CollectionOp::DropIndex(index) => {
-                self.track(
-                    database
-                        .run_command(doc! { "dropIndexes": name, "index": index })
-                        .await,
-                )?;
-                affected(0)
-            }
+            | CollectionOp::Delete { .. }
+            | CollectionOp::Drop
+            | CollectionOp::CreateIndex { .. }
+            | CollectionOp::DropIndex(_)
+            | CollectionOp::Rename { .. }) => self.write_op(&coll, op).await.map(affected_rows),
             CollectionOp::GetIndexes => {
                 let cursor = self.track(
                     database
@@ -300,7 +279,7 @@ impl MongoConnection {
         }
     }
 
-    /// The rows a write changed.
+    /// The documents a write changed (0 for changes to collections and indexes).
     async fn write_op(
         &self,
         coll: &mongodb::Collection<Document>,
@@ -354,6 +333,46 @@ impl MongoConnection {
                     self.track(coll.delete_one(filter).await)?
                 };
                 Ok(result.deleted_count)
+            }
+            CollectionOp::Drop => {
+                self.track(coll.drop().await)?;
+                Ok(0)
+            }
+            CollectionOp::CreateIndex {
+                keys,
+                options: index,
+            } => {
+                let mut spec = doc! { "key": keys.clone(), "name": meta::index_name(&keys) };
+                spec.extend(index);
+                self.track(
+                    self.client
+                        .database(&coll.namespace().db)
+                        .run_command(doc! { "createIndexes": coll.name(), "indexes": [spec] })
+                        .await,
+                )?;
+                Ok(0)
+            }
+            CollectionOp::DropIndex(index) => {
+                self.track(
+                    self.client
+                        .database(&coll.namespace().db)
+                        .run_command(doc! { "dropIndexes": coll.name(), "index": index })
+                        .await,
+                )?;
+                Ok(0)
+            }
+            CollectionOp::Rename { to, drop_target } => {
+                let from = coll.namespace().to_string();
+                let to = format!("{}.{to}", coll.namespace().db);
+                self.track(
+                    self.client
+                        .database("admin")
+                        .run_command(
+                            doc! { "renameCollection": from, "to": to, "dropTarget": drop_target },
+                        )
+                        .await,
+                )?;
+                Ok(0)
             }
             _ => unreachable!("not a write"),
         }

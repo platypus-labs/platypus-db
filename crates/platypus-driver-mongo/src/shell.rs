@@ -80,6 +80,10 @@ pub enum CollectionOp {
     },
     DropIndex(Bson),
     GetIndexes,
+    Rename {
+        to: String,
+        drop_target: bool,
+    },
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -459,6 +463,14 @@ fn collection_op(method: Segment, modifiers: Vec<Segment>) -> ParseResult<Collec
                     CollectionOp::DropIndex(index)
                 }
                 _ => return err(offset, "dropIndex() expects an index name or key document"),
+            }
+        }
+        "renameCollection" => {
+            let mut args = Args::new(method, 2)?;
+            let to = args.string("the new name")?;
+            CollectionOp::Rename {
+                to,
+                drop_target: matches!(args.next(), Some(Bson::Boolean(true))),
             }
         }
         "getIndexes" | "getIndices" => {
@@ -887,6 +899,13 @@ mod tests {
             }
         );
         assert_eq!(op("db.c.drop()"), CollectionOp::Drop);
+        assert_eq!(
+            op("db.c.renameCollection('d', true)"),
+            CollectionOp::Rename {
+                to: "d".into(),
+                drop_target: true
+            }
+        );
     }
 
     #[test]
@@ -925,6 +944,7 @@ mod tests {
         assert!(!read("db.c.aggregate([{ $out: 'x' }])"));
         assert!(!read("db.c.deleteMany({})"));
         assert!(!read("db.runCommand({ drop: 'c' })"));
+        assert!(!read("db.c.renameCollection('d')"));
     }
 
     #[test]

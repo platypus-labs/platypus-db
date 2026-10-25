@@ -200,7 +200,10 @@ async fn writes_documents() {
     );
     assert_eq!(count(&rows(&*conn, "db.t_writes.getIndexes()").await), 2);
     assert_eq!(affected(&*conn, "db.t_writes.deleteMany({})").await, 3);
-    affected(&*conn, "db.t_writes.drop()").await;
+    scratch(&*conn, "t_renamed").await;
+    affected(&*conn, "db.t_writes.renameCollection('t_renamed')").await;
+    assert_eq!(count(&rows(&*conn, "db.t_renamed.getIndexes()").await), 2);
+    affected(&*conn, "db.t_renamed.drop()").await;
 }
 
 #[tokio::test]

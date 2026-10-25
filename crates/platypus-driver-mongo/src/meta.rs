@@ -200,25 +200,6 @@ pub fn index_name(keys: &Document) -> String {
         .join("_")
 }
 
-/// A collection in mongosh: `db.name`, or `db.getCollection("name")` for other names.
-pub fn collection_ref(name: &str) -> String {
-    let plain = name
-        .chars()
-        .next()
-        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '$')
-        && name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
-    if plain {
-        format!("db.{name}")
-    } else {
-        format!(
-            "db.getCollection({})",
-            to_shell(&Bson::String(name.to_owned()))
-        )
-    }
-}
-
 fn entry_of<'a>(entries: &'a [Document], name: &str) -> Result<&'a Document> {
     entries
         .iter()
@@ -256,7 +237,7 @@ pub async fn object_ddl(conn: &MongoConnection, object: &ObjectRef<'_>) -> Resul
             to_shell(&Bson::Document(options))
         );
     }
-    let target = collection_ref(object.name);
+    let target = crate::generate::collection_ref(None, object.name);
     for index in indexes(conn, object.schema, object.name).await? {
         let name = index.get_str("name").unwrap_or_default().to_owned();
         if name == "_id_" {
@@ -336,12 +317,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn names_indexes_and_collections() {
+    fn names_indexes() {
         assert_eq!(index_name(&doc! { "a": 1, "b": -1 }), "a_1_b_-1");
         assert_eq!(index_name(&doc! { "t": "text" }), "t_text");
-        assert_eq!(collection_ref("users"), "db.users");
-        assert_eq!(collection_ref("my-coll"), "db.getCollection(\"my-coll\")");
-        assert_eq!(collection_ref("1x"), "db.getCollection(\"1x\")");
     }
 
     #[test]
