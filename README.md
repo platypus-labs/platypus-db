@@ -1,7 +1,7 @@
 # PlatypusDB
 
 Fast, lightweight desktop SQL client for **PostgreSQL**, **MySQL/MariaDB**, **SQL Server**
-(and Azure SQL), **SQLite** and **DuckDB**.
+(and Azure SQL), **ClickHouse**, **SQLite** and **DuckDB**.
 Rust core, Tauri 2 + React UI: a 5 MB installer that starts in under half a second and
 scrolls through millions of rows.
 
@@ -10,7 +10,9 @@ scrolls through millions of rows.
 ## Features
 
 - **Connections** started from a grid of database logos, with TLS (libpq `sslmode` semantics), passwords in the system keychain,
-  colors and a read-only flag; paste a `postgres://`, `mysql://` or `sqlserver://` URL to fill the form.
+  colors and a read-only flag; paste a `postgres://`, `mysql://`, `sqlserver://` or `clickhouse://` URL to fill the form.
+  ClickHouse connects to its HTTP interface (port 8123, or 8443 with `sslmode=require`) and
+  reads results as Arrow; its tables are browsed and queried, not edited in the grid.
   **SSH tunnels** with a password, a key or the SSH agent, optionally through a jump host;
   server keys are checked against `~/.ssh/known_hosts`. Connection **types** Development,
   Test and Production: production shows a PROD badge in red and opens in manual commit.
@@ -199,6 +201,8 @@ crates/
   platypus-driver-mssql/   SQL Server / Azure SQL (tiberius, vendored with patches in vendor/)
   platypus-driver-sqlite/  SQLite (rusqlite)
   platypus-driver-duckdb/  DuckDB (duckdb, bundled; Arrow results as they come)
+  platypus-driver-clickhouse/ ClickHouse over HTTP (reqwest; ArrowStream results decoded as they arrive)
+  platypus-tls/            rustls client configuration with libpq `sslmode` semantics
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
   platypus-net/            SSH tunnels (russh)
   platypus-store/          connections (TOML + OS keychain), imports, query history (SQLite)
@@ -230,8 +234,8 @@ npm run tauri dev
 
 # core crates; the conformance suite (crates/platypus-conformance) runs the same scenarios on
 # every driver. Server databases that are down are skipped; set PLATYPUS_TEST_PG_URL,
-# PLATYPUS_TEST_MYSQL_URL, PLATYPUS_TEST_MARIADB_URL or PLATYPUS_TEST_MSSQL_URL to make them
-# mandatory
+# PLATYPUS_TEST_MYSQL_URL, PLATYPUS_TEST_MARIADB_URL, PLATYPUS_TEST_MSSQL_URL or
+# PLATYPUS_TEST_CLICKHOUSE_URL to make them mandatory
 cargo test --workspace --exclude platypus-desktop
 
 # CLI: table (first 200 rows), csv, ndjson, json or parquet (json and parquet need -o); Ctrl+C or --timeout cancel server-side
@@ -242,13 +246,15 @@ cargo run --release -p platypus-cli -- query -f parquet -o big.parquet --stats "
 cargo run -p platypus-cli -- query -u mysql://platypus:platypus@localhost:53306/platypus "select * from type_zoo"
 cargo run -p platypus-cli -- query -u sqlite:///C:/data/app.db "select * from sqlite_master"
 cargo run -p platypus-cli -- query -u duckdb:///C:/data/app.duckdb "select * from duckdb_tables()"
+cargo run -p platypus-cli -- query -u clickhouse://platypus:platypus@localhost:58123/platypus "select * from system.tables"
 
 # end-to-end tests (Windows): drive the release build on a throwaway profile
 cd apps/desktop
 npm run tauri build -- --no-bundle
 npm run e2e
 
-# dev databases (PostgreSQL 17, MySQL 8.4, MariaDB 11.4); SQL Server 2022 with its profile
+# dev databases (PostgreSQL 17, MySQL 8.4, MariaDB 11.4, ClickHouse 26.3); SQL Server 2022 with
+# its profile
 docker compose -f docker/compose.yml up -d --wait
 docker compose -f docker/compose.yml --profile sqlserver up -d --wait
 ```
@@ -259,6 +265,7 @@ docker compose -f docker/compose.yml --profile sqlserver up -d --wait
 | MySQL      | 53306     | `platypus` / `platypus` / `platypus` |
 | MariaDB    | 53307     | `platypus` / `platypus` / `platypus` |
 | SQL Server | 51433     | `sa` / `Platypus-2026` / `platypus` (TLS with a self-signed cert; the conformance tests create schema `demo`) |
+| ClickHouse | 58123     | `platypus` / `platypus` / `platypus` (HTTP; the conformance tests create the demo tables) |
 
 Each database has `customers`, `orders`, a `customer_totals` view, a `type_zoo` table with one
 column per notable type, and a 1M-row `big_table` for streaming and scrolling benchmarks.

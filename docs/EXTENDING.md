@@ -79,6 +79,11 @@ only see `connect_addr`, the local end of the tunnel, while `host` still names t
 for TLS. A new kind of path (a proxy, a port-forward) is a new module of `platypus-net`
 that sets `connect_addr` the same way.
 
+TLS for a network driver comes from `platypus_tls::client_config`: a rustls `ClientConfig`
+(`ring` provider) with libpq `sslmode` semantics, root and client certificates from the
+config, or `None` with `disable`. The driver decides how a mode maps to its protocol:
+PostgreSQL negotiates TLS in-band, ClickHouse's HTTP picks `https` from `require` up.
+
 ### Session setup
 
 `ConnectionConfig.init` (`platypus_core::SessionInit`) holds the default schema, the time

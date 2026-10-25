@@ -278,6 +278,13 @@ e la transazione segue `@@TRANCOUNT`. DuckDB è incorporato come SQLite, con ris
 senza l'estensione ICU non ha fuso orario di sessione. Una nuova connessione parte dalla scelta del
 database in una griglia di loghi. Conformance su PostgreSQL, MySQL, MariaDB, SQL Server, SQLite e
 DuckDB (SQL Server dal profilo `sqlserver` di `docker/compose.yml`).
+**P2 in corso:** ClickHouse via HTTP (`platypus-driver-clickhouse`, `reqwest` + TLS condiviso
+in `platypus-tls`): una sessione HTTP per connessione (`SET`, `USE`, tabelle temporanee),
+risultati `ArrowStream` decodificati man mano, cancel con `KILL QUERY` per `query_id`. Le query
+sono descritte prima (`DESCRIBE`) per tipizzare `DateTime` e leggere come testo i tipi che
+Arrow non ha (UUID, JSON, enum, IP). Niente transazioni né chiavi esterne: niente modifica dei
+dati in griglia. Nuovo tipo di oggetto `dictionary`. Servizio `clickhouse` (porta 58123) tra
+quelli di default in `docker/compose.yml`, conformance compresa.
 
 | Driver | Prio | Note |
 |---|---|---|
