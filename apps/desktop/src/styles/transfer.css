@@ -46,3 +46,10 @@
 .import-mapping.two {
   grid-template-columns: minmax(140px, 1fr) 1fr;
 }
+
+.import-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 8px;
+}

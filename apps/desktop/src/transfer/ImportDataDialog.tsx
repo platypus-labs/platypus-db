@@ -4,6 +4,7 @@ import {
   api,
   type ColumnMeta,
   DATA_FILE_EXTENSIONS,
+  type ImportMode,
   type ImportPlan,
   type ImportPreview,
   type SavedConnection,
@@ -40,6 +41,12 @@ type Status =
   | { state: "done"; rows: number; ms: number }
   | { state: "failed"; message: string };
 
+const MODES: { value: ImportMode; label: string }[] = [
+  { value: "append", label: "Add the rows" },
+  { value: "replace", label: "Replace all rows" },
+  { value: "upsert", label: "Update rows with the same key, add the others" },
+];
+
 const plural = (n: number, word: string) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
 
 /** Imports a CSV, TSV, JSON, NDJSON, Parquet or Excel file into a table: an existing one, with
@@ -55,6 +62,7 @@ export function ImportDataDialog({ connection, database, schema, currentSchema, 
   const [targets, setTargets] = useState<ColumnMeta[]>([]);
   /** For each target column, the file column that feeds it ("" for none). */
   const [mapping, setMapping] = useState<string[]>([]);
+  const [mode, setMode] = useState<ImportMode>("append");
   const [status, setStatus] = useState<Status>({ state: "idle" });
   const [error, setError] = useState<string | null>(null);
   /** The confirmation a production connection asks before the import. */
@@ -126,6 +134,8 @@ export function ImportDataDialog({ connection, database, schema, currentSchema, 
       ...base,
       table,
       create: false,
+      mode,
+      keys: mode === "upsert" ? keys : [],
       columns: targets.flatMap((t, i) => (mapping[i] ? [{ source: mapping[i], target: t.name, data_type: null }] : [])),
     };
   }
@@ -164,12 +174,15 @@ export function ImportDataDialog({ connection, database, schema, currentSchema, 
   }
 
   const running = status.state === "running";
+  /** The primary key of the existing table: what an upsert matches. */
+  const keys = targets.filter((t) => t.primary_key).map((t) => t.name);
   const p = preview ? plan(preview) : null;
   const ready =
     p !== null &&
     loaded === path.trim() &&
     p.table !== "" &&
     p.columns.length > 0 &&
+    (p.mode !== "upsert" || keys.every((k) => p.columns.some((c) => c.target === k))) &&
     p.columns.every((c) => c.target !== "" && (c.data_type === null || c.data_type !== ""));
   const close = () => !running && onClose();
   const editColumn = (i: number, change: Partial<NewColumn>) =>
@@ -251,6 +264,24 @@ export function ImportDataDialog({ connection, database, schema, currentSchema, 
                 </div>
               </>
             ) : (
+              <>
+              <div className="import-modes" role="radiogroup" aria-label="Rows already in the table">
+                {MODES.map((m) => {
+                  const off = m.value === "upsert" && keys.length === 0;
+                  return (
+                    <label key={m.value} className="check" title={off ? "The table has no primary key" : undefined}>
+                      <input
+                        type="radio"
+                        name="import-mode"
+                        checked={mode === m.value}
+                        disabled={running || off}
+                        onChange={() => setMode(m.value)}
+                      />
+                      {m.label}
+                    </label>
+                  );
+                })}
+              </div>
               <div className="import-mapping two">
                 <span className="muted small">Column of {table}</span>
                 <span className="muted small">From file column</span>
@@ -265,6 +296,7 @@ export function ImportDataDialog({ connection, database, schema, currentSchema, 
                   />
                 ))}
               </div>
+              </>
             )}
           </>
         )}
@@ -310,9 +342,13 @@ export function ImportDataDialog({ connection, database, schema, currentSchema, 
 function changes(p: ImportPlan): string[] {
   const table = p.schema ? `${p.schema}.${p.table}` : p.table;
   const columns = p.columns.map((c) => c.target).join(", ");
+  const rows = `VALUES ... -- every row of ${p.source_table}`;
   return [
+    ...(p.mode === "replace" ? [`DELETE FROM ${table}`] : []),
     ...(p.create ? [`CREATE TABLE ${table} (${p.columns.map((c) => `${c.target} ${c.data_type}`).join(", ")})`] : []),
-    `INSERT INTO ${table} (${columns}) VALUES ... -- every row of ${p.source_table}`,
+    p.mode === "upsert"
+      ? `INSERT INTO ${table} (${columns}) ${rows}, updating the rows with the same ${p.keys!.join(", ")}`
+      : `INSERT INTO ${table} (${columns}) ${rows}`,
   ];
 }
 

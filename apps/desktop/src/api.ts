@@ -571,12 +571,20 @@ export interface ImportPreview {
   rows: (string | null)[][];
 }
 
+/** What happens to the rows already in the table: kept, deleted first, or updated by key. */
+export type ImportMode = "append" | "replace" | "upsert";
+
 export interface ImportPlan {
   source_table: string;
+  /** The schema of `source_table` when it is another database's. */
+  source_schema?: string | null;
   schema: string | null;
   table: string;
   /** Create the table first, from the columns' `data_type`. */
   create: boolean;
+  mode?: ImportMode;
+  /** The target columns that identify a row, for an upsert. */
+  keys?: string[];
   columns: { source: string; target: string; data_type: string | null }[];
 }
 
