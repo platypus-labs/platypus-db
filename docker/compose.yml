@@ -200,3 +200,18 @@ services:
       interval: 2s
       timeout: 3s
       retries: 60
+
+  # Trino, reached through its ADBC driver, not started by default:
+  # `docker compose --profile trino up -d --wait`. HTTP on 58085, any user, no password;
+  # the `memory` catalog holds the tables the tests create.
+  trino:
+    image: trinodb/trino:484
+    profiles: [trino]
+    ports:
+      - "58085:8080"
+    healthcheck:
+      test: ["CMD", "/usr/lib/trino/bin/health-check"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
