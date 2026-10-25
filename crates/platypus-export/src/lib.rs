@@ -48,6 +48,24 @@ pub enum Format {
     Xlsx,
 }
 
+impl Format {
+    /// The usual file extension.
+    #[must_use]
+    pub const fn extension(self) -> &'static str {
+        match self {
+            Self::Csv => "csv",
+            Self::Json => "json",
+            Self::Ndjson => "ndjson",
+            Self::Parquet => "parquet",
+            Self::Sql => "sql",
+            Self::Markdown => "md",
+            Self::Html => "html",
+            Self::Xml => "xml",
+            Self::Xlsx => "xlsx",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct ExportOptions {

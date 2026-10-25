@@ -19,7 +19,7 @@ interface Props {
   onClose: () => void;
 }
 
-const FORMATS: { value: ExportFormat; label: string; ext: string }[] = [
+export const FORMATS: { value: ExportFormat; label: string; ext: string }[] = [
   { value: "csv", label: "CSV", ext: "csv" },
   { value: "json", label: "JSON (array)", ext: "json" },
   { value: "ndjson", label: "NDJSON (one object per line)", ext: "ndjson" },
@@ -31,7 +31,7 @@ const FORMATS: { value: ExportFormat; label: string; ext: string }[] = [
   { value: "xml", label: "XML", ext: "xml" },
 ];
 
-const DELIMITERS = [
+export const DELIMITERS = [
   { value: ",", label: "Comma ," },
   { value: ";", label: "Semicolon ;" },
   { value: "\t", label: "Tab" },

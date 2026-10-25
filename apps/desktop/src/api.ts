@@ -733,6 +733,19 @@ export const api = {
   exportRows: (jobId: number, path: string, options: ExportOptions) =>
     invoke<number>("export_rows", { jobId, path, options }),
   cancelExport: (exportId: number) => invoke<void>("cancel_export", { exportId }),
+  /** Exports each table to `<dir>/<table>.<extension>` on its own connection; cancelled with
+   *  `cancelExport`. */
+  exportTables: (
+    sessionId: number,
+    tables: { schema: string | null; name: string }[],
+    dir: string,
+    options: ExportOptions,
+    onEvent: (e: ExportEvent) => void,
+  ) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("export_tables", { sessionId, tables, dir, options, onEvent: channel });
+  },
   /** The tables of a data file and the first rows of `table`, with the column types they
    *  would take in the session's database. */
   previewImport: (sessionId: number, path: string, table: string | null) =>

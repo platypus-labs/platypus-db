@@ -201,6 +201,7 @@ pub fn run() {
             commands::export::export_query,
             commands::export::export_rows,
             commands::export::cancel_export,
+            commands::export::export_tables,
             commands::transfer::preview_import,
             commands::transfer::import_file,
             commands::transactions::transaction_state,
