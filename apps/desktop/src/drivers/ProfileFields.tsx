@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, DOWNLOADED_DRIVERS, type DriverStatus, type SavedConnection, toCommandError } from "../api";
+import {
+  api,
+  DOWNLOADED_DRIVERS,
+  type DriverStatus,
+  type OdbcSystem,
+  type SavedConnection,
+  toCommandError,
+} from "../api";
 import { askDriver } from "./DriverPopup";
 import { type Profile, fieldValue, withField } from "./profiles";
 
@@ -12,12 +19,23 @@ interface Props {
   password: React.ReactNode;
 }
 
-/** The fields of a database reached through an ADBC driver, and its driver's state. */
+/** The fields of a database reached through an ADBC or ODBC driver, and its driver's state. */
 export function ProfileFields({ conn, profile, onChange, password }: Props) {
+  const [odbc, setOdbc] = useState<OdbcSystem | null>(null);
+  const suggests = profile.fields.some((f) => f.choices);
+  useEffect(() => {
+    if (suggests) api.odbcSystem().then(setOdbc, () => setOdbc(null));
+  }, [suggests]);
+
   async function browse(key: Parameters<typeof withField>[1]) {
     const path = await open({ multiple: false });
     if (typeof path === "string") onChange(withField(conn, key, path));
   }
+
+  const choices = {
+    "odbc-drivers": odbc?.drivers.map((d) => d.name) ?? [],
+    "odbc-dsns": odbc?.data_sources.map((d) => d.name) ?? [],
+  };
 
   return (
     <>
@@ -31,8 +49,16 @@ export function ProfileFields({ conn, profile, onChange, password }: Props) {
                 type={f.key === "port" ? "number" : "text"}
                 value={fieldValue(conn, f.key)}
                 placeholder={f.placeholder}
+                list={f.choices}
                 onChange={(e) => onChange(withField(conn, f.key, e.target.value))}
               />
+              {f.choices && (
+                <datalist id={f.choices}>
+                  {choices[f.choices].map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+              )}
               {f.file && (
                 <button type="button" onClick={() => void browse(f.key)}>
                   Browse…
@@ -43,6 +69,9 @@ export function ProfileFields({ conn, profile, onChange, password }: Props) {
         ))}
       </div>
       {password}
+      {odbc && !odbc.available && (
+        <div className="notice small">ODBC drivers are reached on Windows only for now.</div>
+      )}
       {DOWNLOADED_DRIVERS.includes(conn.driver) && <DriverState conn={conn} />}
     </>
   );

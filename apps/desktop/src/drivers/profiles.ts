@@ -1,7 +1,8 @@
 /**
- * The connection fields of the databases reached through an ADBC driver: what the dialog
- * asks, kept in the connection's own fields or in its `options`
- * (`crates/platypus-driver-adbc/src/profile.rs` reads them).
+ * The connection fields of the databases reached through an ADBC driver or the generic ODBC
+ * driver: what the dialog asks, kept in the connection's own fields or in its `options`
+ * (`crates/platypus-driver-adbc/src/profile.rs` and `crates/platypus-driver-odbc/src/profile.rs`
+ * read them).
  */
 import type { DriverKind, SavedConnection } from "../api";
 
@@ -14,6 +15,8 @@ export interface ProfileField {
   required?: boolean;
   /** Picked with the file dialog. */
   file?: boolean;
+  /** Suggested from the system's ODBC drivers or data sources. */
+  choices?: "odbc-drivers" | "odbc-dsns";
 }
 
 export interface Profile {
@@ -72,6 +75,19 @@ export const PROFILES: Partial<Record<DriverKind, Profile>> = {
       { key: "user", label: "User" },
     ],
     secret: "Password",
+  },
+  odbc: {
+    fields: [
+      { key: "options.dsn", label: "Data source (DSN)", choices: "odbc-dsns" },
+      { key: "options.driver", label: "or driver", choices: "odbc-drivers" },
+      {
+        key: "options.connection_string",
+        label: "Connection string (with the driver: the rest of it)",
+        placeholder: "Server=host;Database=sales",
+      },
+      { key: "user", label: "User" },
+    ],
+    secret: "Password (optional)",
   },
 };
 

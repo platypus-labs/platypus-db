@@ -14,7 +14,10 @@ export type DriverKind =
   | "bigquery"
   | "databricks"
   | "trino"
-  | "adbc";
+  | "adbc"
+  | "oracle"
+  | "db2"
+  | "odbc";
 
 /** Speaks mongosh instead of SQL (MongoDB): no SQL completion, formatter, linter or data editor. */
 export const isMongo = (driver: DriverKind) => driver === "mongo";
@@ -248,6 +251,44 @@ export type DriverInstallEvent = { kind: "progress"; done: number; total: number
 
 /** The databases whose driver is downloaded when needed (ADBC). */
 export const DOWNLOADED_DRIVERS: readonly DriverKind[] = ["snowflake", "bigquery", "databricks", "trino"];
+
+/** The databases whose vendor client the app installs: Oracle Instant Client, IBM's ODBC driver. */
+export const VENDOR_DRIVERS: readonly DriverKind[] = ["oracle", "db2"];
+
+/** A vendor's client library, as the app would download it here. */
+export interface VendorPackage {
+  name: string;
+  title: string;
+  version: string;
+  license: string;
+  license_url: string;
+  /** The vendor's download page. */
+  vendor_url: string;
+  archives: { url: string; sha256: string; size: number }[];
+  library: string;
+  /** Registers an ODBC driver with the system, which Windows asks administrator rights for. */
+  register: { path: string; args: string[] } | null;
+  unregister: { path: string; args: string[] } | null;
+}
+
+export interface VendorStatus {
+  /** `null` where the app installs nothing on this system. */
+  package: VendorPackage | null;
+  installed: InstalledDriver | null;
+  /** The ODBC driver the system has for the database (Db2), wherever it came from. */
+  system_driver: string | null;
+  ready: boolean;
+}
+
+export type VendorInstallEvent = { kind: "progress"; done: number; total: number | null } | { kind: "registering" };
+
+/** The ODBC drivers and data sources (DSNs) of the system. */
+export interface OdbcSystem {
+  /** Whether this build reaches ODBC drivers (Windows). */
+  available: boolean;
+  drivers: { name: string; path: string | null }[];
+  data_sources: { name: string; driver: string }[];
+}
 
 export interface ColumnInfo {
   name: string;
@@ -1049,6 +1090,17 @@ export const api = {
   listDrivers: () => invoke<InstalledDriver[]>("list_drivers"),
   /** Removes a downloaded driver; returns the ones left. */
   removeDriver: (name: string) => invoke<InstalledDriver[]>("remove_driver", { name }),
+  vendorDriverStatus: (driver: DriverKind) => invoke<VendorStatus>("vendor_driver_status", { driver }),
+  /** Downloads the vendor's client of `driver` and registers it where needed (UAC on Windows). */
+  installVendorDriver: (driver: DriverKind, onEvent: (e: VendorInstallEvent) => void) => {
+    const channel = new Channel<VendorInstallEvent>();
+    channel.onmessage = onEvent;
+    return invoke<VendorStatus>("install_vendor_driver", { driver, onEvent: channel });
+  },
+  cancelVendorInstall: () => invoke<void>("cancel_vendor_install"),
+  /** Unregisters (as administrator) and deletes the vendor's client of `driver`. */
+  removeVendorDriver: (driver: DriverKind) => invoke<VendorStatus>("remove_vendor_driver", { driver }),
+  odbcSystem: () => invoke<OdbcSystem>("odbc_system"),
   importFile: (sessionId: number, path: string, plan: ImportPlan, onEvent: (e: ExportEvent) => void) => {
     const channel = new Channel<ExportEvent>();
     channel.onmessage = onEvent;
