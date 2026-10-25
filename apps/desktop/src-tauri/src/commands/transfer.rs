@@ -8,10 +8,10 @@ use std::sync::Arc;
 use futures::TryStreamExt;
 use platypus_core::{Connection, ConnectionConfig, DriverKind, ExecOptions, ExecResult};
 use platypus_driver_duckdb::files::is_data_file;
-use platypus_export::fake::{FakeColumn, fill};
-use platypus_export::import::{ImportError, ImportPlan, import, rows_text, target_type};
-use platypus_export::migrate::migrate;
 use platypus_sql::Dialect;
+use platypus_transfer::fake::{FakeColumn, fill};
+use platypus_transfer::import::{ImportError, ImportPlan, import, rows_text, target_type};
+use platypus_transfer::migrate::migrate;
 use serde::Serialize;
 use tauri::State;
 use tauri::ipc::Channel;
@@ -219,9 +219,11 @@ fn start(
 }
 
 /// Creates `tables` of the source session's `source_schema` in the target session's
-/// `target_schema` and copies their rows, then their foreign keys; the keys left out arrive as
+/// `target_schema` and copies their rows, then their defaults, indexes, foreign keys and
+/// CHECKs, and with `objects` the schema's views and routines; what is left out arrives as
 /// warnings. Returns an id for `cancel_export`.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn migrate_tables(
     state: State<'_, AppState>,
     source_session_id: u64,
@@ -229,6 +231,7 @@ pub fn migrate_tables(
     source_schema: String,
     target_schema: String,
     tables: Vec<String>,
+    objects: bool,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
     let source = state.session(source_session_id)?;
@@ -242,6 +245,7 @@ pub fn migrate_tables(
                 (&*from, Dialect::from(source.config.driver), &source_schema),
                 (&*to, dialect, &target_schema),
                 &tables,
+                objects,
                 |rows| {
                     job.progress(rows);
                     !job.stopping()

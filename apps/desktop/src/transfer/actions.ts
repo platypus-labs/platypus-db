@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { registerAction } from "../actions";
 import { api, opensDataFile, type SavedConnection, type SchemaMeta, toCommandError } from "../api";
 import { isRelation } from "../components/Navigator";
+import { answerFor } from "../testAnswers";
 import { workbench } from "../workbench";
 import { ExportTablesDialog } from "./ExportTablesDialog";
 import { GenerateDataDialog } from "./GenerateDataDialog";
@@ -117,12 +118,19 @@ registerAction({
   run: async ({ connection, database, schema }) => {
     let path: string;
     try {
-      path = await api.clipboardToFile();
+      path = await answerFor("clipboard", () => api.clipboardToFile());
     } catch (e) {
       return workbench().showError(toCommandError(e).message);
     }
     workbench().openDialog((close) =>
-      createElement(ImportDataDialog, { target: at(connection, database, schema, null), path, onClose: close }),
+      createElement(ImportDataDialog, {
+        target: at(connection, database, schema, null),
+        path,
+        onClose: () => {
+          close();
+          void api.discardPastedFile(path);
+        },
+      }),
     );
   },
 });

@@ -123,7 +123,7 @@ rather than checking the driver. It provides:
 
 `platypus_sql::dml` builds the data editor's `UPDATE`, `INSERT` and `DELETE` statements from
 text values and the columns' Arrow types, and `dml::apply` runs them all or none.
-`platypus_export::import` copies a data file's rows into a table the same way, read through a
+`platypus_transfer::import` copies a data file's rows into a table the same way, read through a
 DuckDB connection on the file (`platypus_driver_duckdb::files`, which also opens data files as
 databases); a new file format is a reader there.
 `platypus_sql::analyze` tells what a statement does (query, DML, DDL) and which table an

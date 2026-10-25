@@ -131,6 +131,13 @@
   gap: 6px;
 }
 
+/* The bucket of an upload: two fields a row. */
+.bucket-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+}
+
 .row.tight > input {
   flex: 1;
   min-width: 0;

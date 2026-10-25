@@ -237,6 +237,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::files::write_text_file,
         commands::files::read_clipboard,
         commands::files::clipboard_to_file,
+        commands::files::discard_pasted_file,
         commands::settings::get_settings,
         commands::settings::set_setting,
         commands::explain::explain,

@@ -20,7 +20,7 @@ arrow-schema.workspace = true
 clap.workspace = true
 futures.workspace = true
 platypus-core.workspace = true
-platypus-export.workspace = true
+platypus-transfer.workspace = true
 platypus-mcp.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time"] }

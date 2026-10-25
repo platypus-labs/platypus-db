@@ -9,7 +9,7 @@ use platypus_core::{
     SEARCH_LIMIT, SchemaMeta, TableDetails, TextRowExt, group_sorted, query_catalog, query_text,
     unsupported,
 };
-use platypus_sql::Dialect;
+use platypus_sql::{Dialect, Lexer, Token, TokenKind};
 
 fn literal(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
@@ -312,7 +312,18 @@ pub async fn table_details(
         },
     );
 
-    let constraints = key_constraints(&indexes);
+    let mut constraints = key_constraints(&indexes);
+    let sql = query_text(
+        conn,
+        &format!(
+            "SELECT sql FROM {}.sqlite_master WHERE type = 'table' AND name = {table_lit}",
+            ident(schema)
+        ),
+    )
+    .await?;
+    if let Some(sql) = sql.first().and_then(|r| r.opt(0)) {
+        constraints.extend(check_constraints(table, &sql));
+    }
     let referenced_by = referencing_keys(conn, schema, table).await?;
 
     Ok(TableDetails {
@@ -349,6 +360,56 @@ fn key_constraints(indexes: &[IndexMeta]) -> Vec<ConstraintMeta> {
             }
         })
         .collect()
+}
+
+/// The CHECK constraints of a table's `CREATE TABLE`, as SQLite keeps them nowhere else;
+/// an unnamed one is numbered, column ones included.
+fn check_constraints(table: &str, sql: &str) -> Vec<ConstraintMeta> {
+    let tokens: Vec<Token> = Lexer::new(sql, Dialect::Sqlite)
+        .filter(|t| !t.is_trivia())
+        .collect();
+    let text = |i: usize| tokens.get(i).map_or("", |t| t.text(sql));
+    let word = |i: usize, w: &str| {
+        tokens
+            .get(i)
+            .is_some_and(|t| t.kind == TokenKind::Word && t.text(sql).eq_ignore_ascii_case(w))
+    };
+    let mut checks = Vec::new();
+    for i in 0..tokens.len() {
+        if !word(i, "CHECK") || text(i + 1) != "(" {
+            continue;
+        }
+        let mut depth = 0;
+        let Some(end) = (i + 1..tokens.len()).find(|&j| {
+            match text(j) {
+                "(" => depth += 1,
+                ")" => depth -= 1,
+                _ => {}
+            }
+            depth == 0
+        }) else {
+            break;
+        };
+        let name = if i >= 2 && word(i - 2, "CONSTRAINT") {
+            let quoted = tokens[i - 1].kind == TokenKind::QuotedIdent;
+            let name = text(i - 1);
+            if quoted {
+                &name[1..name.len() - 1]
+            } else {
+                name
+            }
+            .to_owned()
+        } else {
+            format!("{table}_check{}", checks.len() + 1)
+        };
+        checks.push(ConstraintMeta {
+            name,
+            kind: ConstraintKind::Check,
+            columns: Vec::new(),
+            definition: sql[tokens[i].start..tokens[end].end].to_owned(),
+        });
+    }
+    checks
 }
 
 /// SQLite keys only point within their own database, so the other tables of `schema` are
@@ -458,6 +519,23 @@ fn plan_steps(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_checks_from_the_table_sql() {
+        let sql = "CREATE TABLE t (qty INT CHECK (qty >= (0)), note TEXT DEFAULT 'CHECK (x)', \
+                   CONSTRAINT \"positive\" CHECK (qty < 10))";
+        let checks: Vec<_> = check_constraints("t", sql)
+            .into_iter()
+            .map(|c| (c.name, c.definition))
+            .collect();
+        assert_eq!(
+            checks,
+            [
+                ("t_check1".to_owned(), "CHECK (qty >= (0))".to_owned()),
+                ("positive".to_owned(), "CHECK (qty < 10)".to_owned()),
+            ]
+        );
+    }
 
     #[test]
     fn nests_plan_steps_by_parent() {

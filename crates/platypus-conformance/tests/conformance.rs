@@ -2197,8 +2197,8 @@ async fn agents_read_in_read_only_transactions() {
 /// that leaves that table as it was.
 #[tokio::test]
 async fn imports_data_files() {
-    use platypus_export::import::{ImportColumn, ImportMode, ImportPlan, import};
     use platypus_sql::Dialect;
+    use platypus_transfer::import::{ImportColumn, ImportMode, ImportPlan, import};
 
     let dir = tempfile::tempdir().unwrap();
     let csv = dir.path().join("conf_import.csv");
@@ -2245,6 +2245,8 @@ async fn imports_data_files() {
             mode: ImportMode::Append,
             keys: Vec::new(),
             primary_key: Vec::new(),
+            identity: None,
+            constraints: Vec::new(),
             columns: fields
                 .iter()
                 .map(|f| ImportColumn {
@@ -2252,6 +2254,7 @@ async fn imports_data_files() {
                     target: f.name().clone(),
                     data_type: Some(d.column_type(f.data_type())),
                     not_null: false,
+                    default: None,
                 })
                 .collect(),
         };
@@ -2305,8 +2308,8 @@ async fn imports_data_files() {
 /// mapped to the target's.
 #[tokio::test]
 async fn transfers_tables_between_databases() {
-    use platypus_export::import::{ImportColumn, ImportMode, ImportPlan, import, target_type};
     use platypus_sql::Dialect;
+    use platypus_transfer::import::{ImportColumn, ImportMode, ImportPlan, import, target_type};
 
     let all = backends().await;
     for b in &all {
@@ -2370,6 +2373,8 @@ async fn transfers_tables_between_databases() {
                 mode: ImportMode::Append,
                 keys: Vec::new(),
                 primary_key: Vec::new(),
+                identity: None,
+                constraints: Vec::new(),
                 columns: fields
                     .iter()
                     .map(|f| ImportColumn {
@@ -2377,6 +2382,7 @@ async fn transfers_tables_between_databases() {
                         target: f.name().to_lowercase(),
                         data_type: Some(target_type(f, d)),
                         not_null: false,
+                        default: None,
                     })
                     .collect(),
             };
@@ -2410,11 +2416,11 @@ async fn check_import_modes(
     source: &dyn Connection,
     conn: &dyn Connection,
     other: &dyn Connection,
-    plan: &platypus_export::import::ImportPlan,
+    plan: &platypus_transfer::import::ImportPlan,
     table: &str,
 ) {
-    use platypus_export::import::{ImportError, ImportMode, ImportPlan, import};
     use platypus_sql::Dialect;
+    use platypus_transfer::import::{ImportError, ImportMode, ImportPlan, import};
 
     let d = Dialect::from(b.config.driver);
     // Replace: the old rows go, in the same transaction.
@@ -2476,6 +2482,32 @@ async fn check_import_modes(
     let batches = collect(b, other, &count).await;
     assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
 
+    // A new key whose name another row has fails, as an insert would: it updates nothing
+    // (MySQL's `ON DUPLICATE KEY` alone would update the other row).
+    // MySQL indexes a prefix of TEXT, SQL Server no NVARCHAR(MAX).
+    let name = if d == Dialect::MySql {
+        "name(20)"
+    } else {
+        "name"
+    };
+    if d == Dialect::SqlServer {
+        let sql = format!("ALTER TABLE {table} ALTER COLUMN name NVARCHAR(100)");
+        run(conn, &sql).await.unwrap();
+    }
+    let index = format!("CREATE UNIQUE INDEX conf_import_name ON {on} ({name})");
+    run(conn, &index).await.unwrap();
+    run(conn, &format!("UPDATE {table} SET id = 30 WHERE id = 3"))
+        .await
+        .unwrap();
+    conn.commit().await.unwrap();
+    let clash = import((source, Dialect::DuckDb), (conn, d), &again, |_| true).await;
+    assert!(clash.is_err(), "{}: upsert on another unique key", b.name);
+    let check = format!("SELECT COUNT(*), MAX(id) FROM {table} WHERE name = 'ink'");
+    let batches = collect(b, other, &check).await;
+    let values = (cell(&batches[0], 0, 0), cell(&batches[0], 1, 0));
+    let expected = (Some("1".to_owned()), Some("30".to_owned()));
+    assert_eq!(values, expected, "{}: untouched", b.name);
+
     // A cancelled import into a new table leaves no table, MySQL's committed DDL included.
     let cancelled = ImportPlan {
         table: "conf_import_cancel".to_owned(),
@@ -2496,12 +2528,13 @@ async fn check_import_modes(
     conn.rollback().await.unwrap();
 }
 
-/// Two tables with a foreign key between them, migrated from every database to every other:
-/// columns, NOT NULL, primary keys and rows, then the foreign key where the target can add it.
+/// Two tables with a foreign key between them and a view, migrated from every database to
+/// every other: columns, NOT NULL, primary key, identity, rows, defaults, a unique index, a
+/// CHECK, the foreign key, and the view between databases of one kind.
 #[tokio::test]
 async fn migrates_tables_between_databases() {
-    use platypus_export::migrate::migrate;
     use platypus_sql::Dialect;
+    use platypus_transfer::migrate::migrate;
 
     // ClickHouse enforces neither primary nor foreign keys.
     let all: Vec<_> = backends()
@@ -2515,29 +2548,70 @@ async fn migrates_tables_between_databases() {
         let sd = Dialect::from(from.config.driver);
         let parent = sd.qualified(Some(&from.schema), "conf_mig_parent");
         let child = sd.qualified(Some(&from.schema), "conf_mig_child");
-        // SQLite names the referenced table without its schema.
-        let referenced = if from.speaks_sqlite() {
-            "conf_mig_parent"
+        let view = sd.qualified(Some(&from.schema), "conf_mig_view");
+        // SQLite names the referenced table without its schema, and qualifies the index.
+        let (referenced, index) = if from.speaks_sqlite() {
+            ("conf_mig_parent", format!("{}.conf_mig_code", from.schema))
         } else {
-            parent.as_str()
+            (parent.as_str(), "conf_mig_code".to_owned())
+        };
+        let sequence = format!("{}.conf_mig_seq", from.schema);
+        let id = match from.config.driver {
+            DriverKind::Postgres => {
+                "id INT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY".to_owned()
+            }
+            DriverKind::MySql => "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY".to_owned(),
+            DriverKind::SqlServer => "id INT IDENTITY(1, 1) PRIMARY KEY".to_owned(),
+            DriverKind::Sqlite | DriverKind::Libsql => "id INTEGER PRIMARY KEY".to_owned(),
+            DriverKind::DuckDb => format!("id INTEGER DEFAULT nextval('{sequence}') PRIMARY KEY"),
+            DriverKind::ClickHouse | DriverKind::Mongo => unreachable!("{}", from.name),
         };
         for to in all.iter().filter(|to| to.name != from.name) {
             let pair = format!("{} -> {}", from.name, to.name);
             let target = to.connect().await;
             let td = Dialect::from(to.config.driver);
-            drop_tables(&*source, sd, &from.schema, &tables).await;
-            drop_tables(&*target, td, &to.schema, &tables).await;
-            for sql in [
+            let tview = td.qualified(Some(&to.schema), "conf_mig_view");
+            for (conn, d, schema, view) in [
+                (&*source, sd, &from.schema, &view),
+                (&*target, td, &to.schema, &tview),
+            ] {
+                let _ = run(conn, &format!("DROP VIEW {view}")).await;
+                drop_tables(conn, d, schema, &tables).await;
+            }
+            let _ = run(&*source, &format!("DROP SEQUENCE {sequence}")).await;
+            let mut setup = Vec::new();
+            if from.config.driver == DriverKind::DuckDb {
+                setup.push(format!("CREATE SEQUENCE {sequence}"));
+            }
+            setup.extend([
                 format!(
-                    "CREATE TABLE {parent} (id INT NOT NULL PRIMARY KEY, name VARCHAR(20) NOT NULL)"
+                    "CREATE TABLE {parent} ({id}, name VARCHAR(20) NOT NULL, \
+                     code VARCHAR(20) DEFAULT 'new', qty INT DEFAULT 0, \
+                     CONSTRAINT conf_mig_qty CHECK (qty >= 0))"
+                ),
+                format!(
+                    "CREATE UNIQUE INDEX {index} ON {} (code)",
+                    if from.speaks_sqlite() {
+                        referenced
+                    } else {
+                        &parent
+                    }
                 ),
                 format!(
                     "CREATE TABLE {child} (id INT NOT NULL PRIMARY KEY, parent_id INT, \
                      CONSTRAINT conf_mig_fk FOREIGN KEY (parent_id) REFERENCES {referenced} (id))"
                 ),
-                format!("INSERT INTO {parent} VALUES (1, 'a'), (2, 'b')"),
+                format!("INSERT INTO {parent} (name, code) VALUES ('a', 'x'), ('b', 'y')"),
                 format!("INSERT INTO {child} VALUES (10, 1), (11, NULL)"),
-            ] {
+            ]);
+            // The view travels only between databases of one kind: MySQL and MariaDB. Elsewhere
+            // it would race the metadata search of the other tests, which reads every view.
+            if sd == Dialect::MySql {
+                setup.push(format!(
+                    "CREATE VIEW {view} AS SELECT id, name FROM {referenced}"
+                ));
+            }
+            for sql in setup {
                 run(&*source, &sql)
                     .await
                     .unwrap_or_else(|e| panic!("{}: {sql}: {e}", from.name));
@@ -2546,46 +2620,102 @@ async fn migrates_tables_between_databases() {
                 (&*source, sd, &from.schema),
                 (&*target, td, &to.schema),
                 &tables,
+                true,
                 |_| true,
             )
             .await
             .unwrap_or_else(|e| panic!("{pair}: {e}"));
             assert_eq!(done.rows, 4, "{pair}");
-            let tchild = td.qualified(Some(&to.schema), "conf_mig_child");
-            let tparent = td.qualified(Some(&to.schema), "conf_mig_parent");
-            // The primary key and NOT NULL came along.
-            assert!(
-                run(
-                    &*target,
-                    &format!("INSERT INTO {tparent} VALUES (1, 'dup')")
-                )
-                .await
-                .is_err(),
-                "{pair}: key"
-            );
-            assert!(
-                run(&*target, &format!("INSERT INTO {tparent} VALUES (3, NULL)"))
-                    .await
-                    .is_err(),
-                "{pair}: not null"
-            );
-            let enforced = done.skipped.is_empty();
-            assert_eq!(
-                enforced,
-                !matches!(
-                    to.config.driver,
-                    DriverKind::Sqlite | DriverKind::Libsql | DriverKind::DuckDb
-                ),
-                "{pair}: {:?}",
-                done.skipped
-            );
-            if enforced {
-                let orphan = run(&*target, &format!("INSERT INTO {tchild} VALUES (12, 99)")).await;
-                assert!(orphan.is_err(), "{pair}: foreign key");
-            }
+            check_migrated(to, &*target, &pair, &done.skipped, sd == td).await;
+            let _ = run(&*target, &format!("DROP VIEW {tview}")).await;
             drop_tables(&*target, td, &to.schema, &tables).await;
+            let copied = td.qualified(Some(&to.schema), "conf_mig_parent_id_seq");
+            let _ = run(&*target, &format!("DROP SEQUENCE {copied}")).await;
         }
+        let _ = run(&*source, &format!("DROP VIEW {view}")).await;
         drop_tables(&*source, sd, &from.schema, &tables).await;
+        let _ = run(&*source, &format!("DROP SEQUENCE {sequence}")).await;
+    }
+}
+
+/// What [`migrates_tables_between_databases`] expects of the copy in `to`; `same` says whether
+/// both databases are of one kind, which copies the view.
+async fn check_migrated(
+    to: &Backend,
+    target: &dyn Connection,
+    pair: &str,
+    skipped: &[String],
+    same: bool,
+) {
+    use platypus_sql::Dialect;
+
+    let td = Dialect::from(to.config.driver);
+    let tparent = td.qualified(Some(&to.schema), "conf_mig_parent");
+    let tchild = td.qualified(Some(&to.schema), "conf_mig_child");
+    let files = to.speaks_sqlite() || to.config.driver == DriverKind::DuckDb;
+    // Only a CHECK written for another database may stay behind, in SQLite and DuckDB, and the
+    // view between databases of different kinds (the schema's other objects are not ours).
+    let unexpected: Vec<_> = skipped
+        .iter()
+        .filter(|w| w.contains("conf_mig"))
+        .filter(|w| (!files || !w.contains("CHECK")) && (same || !w.contains("are not copied to")))
+        .collect();
+    assert!(unexpected.is_empty(), "{pair}: {unexpected:?}");
+    // Identity and defaults: a new row is numbered after the copied ones.
+    run(
+        target,
+        &format!("INSERT INTO {tparent} (name) VALUES ('c')"),
+    )
+    .await
+    .unwrap_or_else(|e| panic!("{pair}: identity: {e}"));
+    let check = format!(
+        "SELECT MAX(id), MAX(CASE WHEN name = 'c' THEN code END), MAX(CASE WHEN name = 'c' THEN qty END) FROM {tparent}"
+    );
+    let batches = collect(to, target, &check).await;
+    let values: Vec<_> = (0..3).map(|c| cell(&batches[0], c, 0)).collect();
+    assert_eq!(
+        values,
+        [
+            Some("3".to_owned()),
+            Some("new".to_owned()),
+            Some("0".to_owned())
+        ],
+        "{pair}: identity and defaults"
+    );
+    for (what, sql) in [
+        (
+            "not null",
+            format!("INSERT INTO {tparent} (name) VALUES (NULL)"),
+        ),
+        (
+            "unique index",
+            format!("INSERT INTO {tparent} (name, code) VALUES ('d', 'x')"),
+        ),
+    ] {
+        assert!(run(target, &sql).await.is_err(), "{pair}: {what}");
+    }
+    if !files {
+        let sql = format!("INSERT INTO {tparent} (name, code, qty) VALUES ('e', 'z', -1)");
+        assert!(run(target, &sql).await.is_err(), "{pair}: check");
+    }
+    // The foreign key is declared; SQLite checks it only with `PRAGMA foreign_keys`.
+    let details = target
+        .table_details(&to.schema, "conf_mig_child")
+        .await
+        .unwrap();
+    assert_eq!(details.foreign_keys.len(), 1, "{pair}: foreign key");
+    if !to.speaks_sqlite() {
+        let orphan = run(target, &format!("INSERT INTO {tchild} VALUES (12, 99)")).await;
+        assert!(orphan.is_err(), "{pair}: foreign key");
+    }
+    if same {
+        let tview = td.qualified(Some(&to.schema), "conf_mig_view");
+        let batches = collect(to, target, &format!("SELECT COUNT(*) FROM {tview}")).await;
+        assert_eq!(
+            cell(&batches[0], 0, 0).as_deref(),
+            Some("3"),
+            "{pair}: view"
+        );
     }
 }
 
@@ -2609,8 +2739,8 @@ async fn drop_tables(
 /// at existing rows, values every column type takes.
 #[tokio::test]
 async fn fills_tables_with_fake_rows() {
-    use platypus_export::fake::{FakeColumn, Generator, fill};
     use platypus_sql::Dialect;
+    use platypus_transfer::fake::{FakeColumn, Generator, fill};
 
     let tables = ["conf_fake_parent".to_owned(), "conf_fake_child".to_owned()];
     for b in backends().await {
@@ -2626,13 +2756,15 @@ async fn fills_tables_with_fake_rows() {
         };
         for sql in [
             format!(
-                "CREATE TABLE {parent} (id INT NOT NULL PRIMARY KEY, name VARCHAR(40) NOT NULL)"
+                "CREATE TABLE {parent} (id INT NOT NULL PRIMARY KEY, name VARCHAR(40) NOT NULL, \
+                 city VARCHAR(80) NOT NULL UNIQUE, CONSTRAINT conf_fake_pair UNIQUE (id, city))"
             ),
             format!(
-                "CREATE TABLE {child} (id INT NOT NULL PRIMARY KEY, parent_id INT NOT NULL, email VARCHAR(80), \
-                 day DATE, price DECIMAL(10, 2), FOREIGN KEY (parent_id) REFERENCES {referenced} (id))"
+                "CREATE TABLE {child} (id INT NOT NULL PRIMARY KEY, parent_id INT NOT NULL, \
+                 parent_city VARCHAR(80) NOT NULL, email VARCHAR(80), day DATE, price DECIMAL(10, 2), \
+                 FOREIGN KEY (parent_id, parent_city) REFERENCES {referenced} (id, city))"
             ),
-            format!("INSERT INTO {parent} VALUES (7, 'seed')"),
+            format!("INSERT INTO {parent} VALUES (7, 'seed', 'Milano')"),
         ] {
             run(&*conn, &sql)
                 .await
@@ -2641,16 +2773,24 @@ async fn fills_tables_with_fake_rows() {
         let column = |name: &str, generator| FakeColumn {
             name: name.to_owned(),
             generator,
+            unique: false,
         };
-        let reference = Generator::Reference {
+        // The two columns of the composite foreign key, from one parent row.
+        let reference = |column: &str| Generator::Reference {
             schema: Some(b.schema.clone()),
             table: "conf_fake_parent".to_owned(),
-            column: "id".to_owned(),
+            column: column.to_owned(),
+            key: Some("pair".to_owned()),
         };
         let at = (Some(b.schema.as_str()), "conf_fake_parent");
+        // 20 rows with a unique city: there are fewer cities.
         let parents = vec![
             column("id", Generator::NextKey),
             column("name", Generator::FullName),
+            FakeColumn {
+                unique: true,
+                ..column("city", Generator::City)
+            },
         ];
         let rows = fill((&*conn, d), at, parents, 20, |_| true)
             .await
@@ -2658,7 +2798,8 @@ async fn fills_tables_with_fake_rows() {
         assert_eq!(rows, 20, "{}", b.name);
         let children = vec![
             column("id", Generator::NextKey),
-            column("parent_id", reference),
+            column("parent_id", reference("id")),
+            column("parent_city", reference("city")),
             column("email", Generator::Email),
             column("day", Generator::Date),
             column(
@@ -2680,29 +2821,13 @@ async fn fills_tables_with_fake_rows() {
         .await
         .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         let check = format!(
-            "SELECT COUNT(*), MIN(p.id), MAX(p.id), COUNT(DISTINCT c.email) FROM {child} c JOIN {parent} p ON p.id = c.parent_id"
+            "SELECT COUNT(*), MIN(p.id), MAX(p.id), COUNT(DISTINCT c.email) FROM {child} c JOIN {parent} p ON p.id = c.parent_id AND p.city = c.parent_city"
         );
         let batches = collect(&b, &*conn, &check).await;
         let values: Vec<_> = (0..4).map(|c| cell(&batches[0], c, 0)).collect();
-        assert_eq!(
-            values[0].as_deref(),
-            Some("1200"),
-            "{}: every child has its parent",
-            b.name
-        );
-        assert_eq!(
-            values[1].as_deref(),
-            Some("7"),
-            "{}: keys after the seed row",
-            b.name
-        );
-        assert_eq!(values[2].as_deref(), Some("27"), "{}", b.name);
-        assert_eq!(
-            values[3].as_deref(),
-            Some("1200"),
-            "{}: distinct emails",
-            b.name
-        );
+        // Every child has its parent, the keys follow the seed row, the emails differ.
+        let expected = ["1200", "7", "27", "1200"].map(|v| Some(v.to_owned()));
+        assert_eq!(values, expected, "{}", b.name);
         drop_tables(&*conn, d, &b.schema, &tables).await;
     }
 }

@@ -20,7 +20,7 @@ platypus-driver-mysql = { path = "crates/platypus-driver-mysql" }
 platypus-driver-mongo = { path = "crates/platypus-driver-mongo" }
 platypus-driver-mssql = { path = "crates/platypus-driver-mssql" }
 platypus-driver-sqlite = { path = "crates/platypus-driver-sqlite" }
-platypus-export = { path = "crates/platypus-export" }
+platypus-transfer = { path = "crates/platypus-transfer" }
 platypus-mcp = { path = "crates/platypus-mcp" }
 platypus-net = { path = "crates/platypus-net" }
 platypus-sql = { path = "crates/platypus-sql" }

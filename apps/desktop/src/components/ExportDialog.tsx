@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
-import type { Compression, DriverKind, ExportFormat, ExportOptions } from "../api";
+import type { Bucket, Compression, DriverKind, ExportFormat, ExportOptions } from "../api";
 import { fmt } from "./ResultPanel";
 
 export type ExportSource = "query" | "loaded";
@@ -50,20 +50,59 @@ const compressedExt = (c: Compression | undefined) => COMPRESSIONS.find((x) => x
 // Parquet and Excel files are compressed already.
 const packed = (format: ExportFormat) => format === "parquet" || format === "xlsx";
 
-/** `options` as sent: Parquet and Excel files take no compression, whatever was picked before. */
+/** `options` as sent: Parquet and Excel files take no compression, whatever was picked before,
+ *  and an empty signed URL is none. */
 export const sentOptions = (options: ExportOptions): ExportOptions => ({
   ...options,
   compression: packed(options.format) ? "none" : options.compression,
+  upload_url: options.upload_url?.trim() || null,
 });
 
-/** The compression of the finished file and, with `upload`, a signed URL to send it to. */
+const BUCKET_KEY = "platypus.export.bucket";
+
+/** The bucket of the last upload, without its secret key, which is never kept. */
+function lastBucket(): Bucket {
+  let kept: Partial<Bucket> = {};
+  try {
+    kept = JSON.parse(localStorage.getItem(BUCKET_KEY) ?? "{}") as Partial<Bucket>;
+  } catch {
+    // Nothing kept, or nothing readable.
+  }
+  const empty = { endpoint: "https://s3.amazonaws.com", region: "us-east-1", bucket: "", prefix: "", access_key: "" };
+  return { ...empty, ...kept, secret_key: "" };
+}
+
+function keepBucket({ secret_key: _, ...rest }: Bucket) {
+  try {
+    localStorage.setItem(BUCKET_KEY, JSON.stringify(rest));
+  } catch {
+    // Remembering it is a convenience.
+  }
+}
+
+const BUCKET_FIELDS: { key: keyof Bucket; label: string; placeholder?: string }[] = [
+  { key: "endpoint", label: "Endpoint", placeholder: "https://s3.eu-west-1.amazonaws.com" },
+  { key: "region", label: "Region", placeholder: "us-east-1, auto for GCS and R2" },
+  { key: "bucket", label: "Bucket" },
+  { key: "prefix", label: "Folder (optional)" },
+  { key: "access_key", label: "Access key" },
+  { key: "secret_key", label: "Secret key" },
+];
+
+/** The compression of the finished file and where to upload it: a signed URL (with
+ *  `signedUrl`, one file) or a bucket with its keys. */
 export function OutputOptions(props: {
   options: ExportOptions;
-  upload: boolean;
+  signedUrl: boolean;
   disabled?: boolean;
   onChange: (o: ExportOptions) => void;
 }) {
-  const { options, upload, disabled, onChange } = props;
+  const { options, signedUrl, disabled, onChange } = props;
+  const upload = options.bucket ? "bucket" : options.upload_url != null ? "url" : "none";
+  const setBucket = (bucket: Bucket) => {
+    keepBucket(bucket);
+    onChange({ ...options, bucket });
+  };
   return (
     <>
       {!packed(options.format) && (
@@ -82,16 +121,48 @@ export function OutputOptions(props: {
           </select>
         </label>
       )}
-      {upload && (
+      <label className="field">
+        <span>Also upload</span>
+        <select
+          value={upload}
+          disabled={disabled}
+          onChange={(e) => {
+            const to = e.target.value;
+            onChange({ ...options, upload_url: to === "url" ? "" : null, bucket: to === "bucket" ? lastBucket() : null });
+          }}
+        >
+          <option value="none">No</option>
+          {signedUrl && <option value="url">To a signed URL (S3, GCS)</option>}
+          <option value="bucket">To a bucket (S3, GCS, R2, MinIO)</option>
+        </select>
+      </label>
+      {upload === "url" && (
         <label className="field">
-          <span>Also upload to (signed S3 or GCS URL, optional)</span>
+          <span>Signed URL</span>
           <input
             value={options.upload_url ?? ""}
             disabled={disabled}
             placeholder="https://bucket.s3.amazonaws.com/file.csv?X-Amz-Signature=…"
-            onChange={(e) => onChange({ ...options, upload_url: e.target.value.trim() || null })}
+            onChange={(e) => onChange({ ...options, upload_url: e.target.value.trim() })}
           />
         </label>
+      )}
+      {options.bucket && (
+        <div className="bucket-fields">
+          {BUCKET_FIELDS.map(({ key, label, placeholder }) => (
+            <label key={key} className="field">
+              <span>{label}</span>
+              <input
+                type={key === "secret_key" ? "password" : "text"}
+                value={options.bucket![key]}
+                disabled={disabled}
+                placeholder={placeholder}
+                autoComplete="off"
+                onChange={(e) => setBucket({ ...options.bucket!, [key]: e.target.value.trim() })}
+              />
+            </label>
+          ))}
+        </div>
       )}
     </>
   );
@@ -167,7 +238,7 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
           </label>
         )}
         {options.format === "csv" && <CsvOptions options={options} onChange={setOptions} />}
-        <OutputOptions options={options} upload onChange={setOptions} />
+        <OutputOptions options={options} signedUrl onChange={setOptions} />
         <fieldset className="choices">
           <label className="check">
             <input type="radio" checked={source === "query"} onChange={() => setSource("query")} />

@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { api, type ExportFormat, type ExportOptions, type SavedConnection } from "../api";
 import { CsvOptions, FORMATS, OutputOptions, sentOptions } from "../components/ExportDialog";
 import { workbench } from "../workbench";
+import { answerFor } from "../testAnswers";
 import { JobFooter, useJob } from "./job";
 
 type TableRef = { schema: string | null; name: string };
@@ -39,7 +40,7 @@ export function ExportTablesDialog({ connection, database, schema, currentSchema
   }, []);
 
   async function run() {
-    const dir = await open({ directory: true, title: "Export to the folder" });
+    const dir = await answerFor("folder", () => open({ directory: true, title: "Export to the folder" }));
     if (typeof dir !== "string" || !tables) return;
     const sid = await workbench().sideSession(connection, database);
     if (sid === null) return;
@@ -71,7 +72,7 @@ export function ExportTablesDialog({ connection, database, schema, currentSchema
           </select>
         </label>
         {options.format === "csv" && <CsvOptions options={options} disabled={running} onChange={setOptions} />}
-        <OutputOptions options={options} upload={false} disabled={running} onChange={setOptions} />
+        <OutputOptions options={options} signedUrl={false} disabled={running} onChange={setOptions} />
         <JobFooter status={status} verbs={["Exporting", "Exported"]} stop="Cancel export" onClose={onClose}>
           <button type="button" className="primary" disabled={running || count === 0} onClick={() => void run()}>
             Export to folder…

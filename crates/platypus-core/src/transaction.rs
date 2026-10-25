@@ -74,6 +74,8 @@ pub fn classify(sql: &str) -> TxEffect {
         "START" if second == "TRANSACTION" => TxEffect::Begin,
         "COMMIT" | "END" | "ABORT" => TxEffect::End,
         "ROLLBACK" if second != "TO" => TxEffect::End,
+        // MySQL commits no temporary table.
+        "CREATE" | "DROP" if matches!(second, "TEMPORARY" | "TEMP") => TxEffect::None,
         "CREATE" | "ALTER" | "DROP" | "RENAME" | "TRUNCATE" | "GRANT" | "REVOKE" | "LOCK" => {
             TxEffect::ImplicitCommit
         }
@@ -175,6 +177,11 @@ mod tests {
             classify("create table t (id int)"),
             TxEffect::ImplicitCommit
         );
+        assert_eq!(
+            classify("CREATE TEMPORARY TABLE t AS SELECT 1"),
+            TxEffect::None
+        );
+        assert_eq!(classify("drop temporary table t"), TxEffect::None);
         assert_eq!(classify("CREATE DATABASE x"), TxEffect::Outside);
         assert_eq!(classify("vacuum analyze t"), TxEffect::Outside);
         assert_eq!(

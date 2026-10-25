@@ -115,21 +115,21 @@ enum OutputFormat {
     Parquet,
 }
 
-/// Writes the result with `platypus-export`, which handles the file formats.
+/// Writes the result with `platypus-transfer`, which handles the file formats.
 async fn export(
     mut stream: RecordBatchStream,
     path: &std::path::Path,
-    format: platypus_export::Format,
+    format: platypus_transfer::Format,
     max_rows: Option<usize>,
     stats: bool,
     started: Instant,
 ) -> Result<(), Error> {
-    let options = platypus_export::ExportOptions {
+    let options = platypus_transfer::ExportOptions {
         format,
         ..Default::default()
     };
-    let export_error = |e: platypus_export::ExportError| Error::Other(e.to_string());
-    let mut exporter = platypus_export::Exporter::create(path, &stream.schema(), &options)
+    let export_error = |e: platypus_transfer::ExportError| Error::Other(e.to_string());
+    let mut exporter = platypus_transfer::Exporter::create(path, &stream.schema(), &options)
         .map_err(export_error)?;
     let max = max_rows.unwrap_or(usize::MAX);
     let mut rows = 0;
@@ -236,9 +236,9 @@ async fn query(args: QueryArgs) -> Result<(), Error> {
                 .as_deref()
                 .ok_or_else(|| Error::Config("json and parquet output need --output".to_owned()))?;
             let format = if matches!(args.format, Some(OutputFormat::Json)) {
-                platypus_export::Format::Json
+                platypus_transfer::Format::Json
             } else {
-                platypus_export::Format::Parquet
+                platypus_transfer::Format::Parquet
             };
             return export(stream, path, format, args.max_rows, args.stats, started).await;
         }
