@@ -50,12 +50,19 @@ connection_string = "Server=127.0.0.1,${PORT};Database=platypus"
 export default async function (page) {
   await page.waitFor(`window.__platypus !== undefined && ${treeRow(NAME)} !== undefined`);
   await page.eval(`${treeRow(NAME)}.id = 'e2e-conn'`);
-  await page.clickSel("#e2e-conn", { clickCount: 2 });
+  // Expanding the connection connects: no saved password, the app asks for it.
+  const rows = await page.eval(`document.querySelectorAll('.tree-row').length`);
+  await page.eval(`${treeRow(NAME)}.querySelector(".twisty").click()`);
   await page.waitFor(`document.querySelector('.modal input[type=password]') !== null`, 15_000);
   await page.eval(`document.querySelector('.modal input[type=password]').focus()`);
   await page.type("Platypus-2026");
   await page.eval(`document.querySelector('.modal button[type=submit]').click()`);
+  await page.waitFor(`document.querySelector('.modal input[type=password]') === null`, 30_000);
+  // Connected once the navigator shows the schemas: the editor then reuses the password.
+  const tree = `[...document.querySelectorAll('.tree-row')]`;
+  await page.waitFor(`${tree}.length > ${rows} && !${tree}.some(r => r.textContent.includes('loading…'))`, 60_000);
 
+  await page.clickSel("#e2e-conn", { clickCount: 2 });
   await page.waitFor(`${visibleTab} !== undefined`, 30_000);
   await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
   await page.type("SELECT 42 AS answer");
