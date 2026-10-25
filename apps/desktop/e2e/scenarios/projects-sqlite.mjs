@@ -214,11 +214,11 @@ async function dialogs(page, dir) {
   await page.waitFor(`document.querySelector('.project-dialog') === null`);
 
   // Deleting a project keeps its connections.
-  await page.eval(`window.confirm = () => true`);
   const r = await page.rect(`.project-square[title="Personale"]`);
   await page.click(r.x + r.w / 2, r.y + r.h / 2, { button: "right" });
   await page.waitFor(`[...document.querySelectorAll('.context-menu button')].some(b => b.textContent.includes('Delete project'))`);
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.includes('Delete project')).click()`);
+  await answer(page, true);
   await page.waitFor(`document.querySelector('.project-square[title="Personale"]') === null && ${activeSquare} === 'all'`);
   assert.deepEqual(await navigator(page), ["A dev", "B dev", "Shared"]);
   assert.doesNotMatch(readFileSync(join(dir, "connections.toml"), "utf8"), /Personale/);
@@ -338,11 +338,11 @@ async function members(page, dir, shots) {
   await page.waitFor(`${treeRow("Shared")} !== undefined && document.querySelector('.project-empty') === null`);
 
   // A deleted connection leaves every project.
-  await page.eval(`window.confirm = () => true`);
   await page.key("1", "Digit1", 49, CTRL);
   await page.waitFor(`${activeSquare} === 'all'`);
   await rowMenu(page, "Shared");
   await page.eval(`${menuButton("Delete")}.click()`);
+  await answer(page, true);
   await page.waitFor(`${treeRow("Shared")} === undefined`);
   for (const key of ["2", "3"]) {
     await page.key(key, `Digit${key}`, 48 + Number(key), CTRL);
@@ -366,20 +366,37 @@ async function members(page, dir, shots) {
   await page.key("Enter", "Enter", 13, CTRL);
   await page.waitFor(`${visibleTab}.querySelector('.tx-open') !== null`, 15_000);
   const deleteInterno = async (answers) => {
-    await page.eval(`window.__answers = ${JSON.stringify(answers)}; window.confirm = () => window.__answers.shift()`);
     const r = await page.rect(`.project-square[data-project="${INTERNO}"]`);
     await page.click(r.x + r.w / 2, r.y + r.h / 2, { button: "right" });
     await page.waitFor(`${menuButton("Delete project")} !== undefined`);
     await page.eval(`${menuButton("Delete project")}.click()`);
+    for (const yes of answers) await answer(page, yes);
   };
   await deleteInterno([true, false]);
   await page.sleep(300);
   assert.equal(await page.eval(`${square(INTERNO)} !== null && ${activeSquare} === '${INTERNO}'`), true);
   assert.equal(await page.eval(tabCount), 1);
-  await deleteInterno([true, true, true]);
+  // Closing the tab with its transaction open asks in the app's own dialog; Cancel keeps it.
+  await page.key("w", "KeyW", 87, CTRL);
+  await page.waitFor(`document.querySelector('.modal.confirm p')?.textContent.includes('open transaction')`);
+  await answer(page, false);
+  assert.equal(await page.eval(tabCount), 1);
+  await deleteInterno([true, true]);
   await page.waitFor(`${square(INTERNO)} === null && ${activeSquare} === 'all'`);
   // All connections still has its two tabs; Interno's closed with it.
   await page.waitFor(`${tabCount} === 2`);
+}
+
+/** Answers the app's yes/no dialog (ui/ask.tsx): its confirming button, or Cancel. */
+async function answer(page, yes) {
+  // Another question may follow at once: wait for this one to go, not for none.
+  await page.waitFor(`document.querySelector('.modal.confirm:not([data-answered])') !== null`);
+  await page.eval(`(() => {
+    const dialog = document.querySelector('.modal.confirm:not([data-answered])');
+    dialog.dataset.answered = '';
+    [...dialog.querySelectorAll('button')].find(b => (b.textContent === 'Cancel') === ${!yes}).click();
+  })()`);
+  await page.waitFor(`document.querySelector('.modal.confirm[data-answered]') === null`);
 }
 
 /** Runs `sql` in a new editor on `name` and waits for its row. */

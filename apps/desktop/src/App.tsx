@@ -28,6 +28,7 @@ import { setAnswer } from "./testAnswers";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { dbKey, provideWorkbench, workbench } from "./workbench";
 import { Icon, type IconName } from "./ui/Icon";
+import { ask } from "./ui/ask";
 import { scrollSideways } from "./ui/scroll";
 import { type PersistedTab, loadWorkspace, saveWorkspace } from "./workspace";
 import { connectionsOf, loadActiveProject, projectKey, saveActiveProject } from "./projects/state";
@@ -203,11 +204,11 @@ export function App() {
   /** Deletes a project once confirmed: its tabs close (those with changes ask first, and a
    *  refusal keeps the project), its connections stay. */
   async function deleteProject(p: Project) {
-    if (!window.confirm(`Delete the project "${p.name}"? Its connections stay, in All connections and other projects.`)) {
+    if (!(await ask(`Delete the project "${p.name}"? Its connections stay, in All connections and other projects.`, { confirm: "Delete", danger: true }))) {
       return;
     }
     const own = tabs.filter((t) => t.project === p.id);
-    if (own.some((t) => t.unsaved || t.txOpen) && !window.confirm("Some of its tabs have changes not saved or committed. Close them and discard the changes?")) {
+    if (own.some((t) => t.unsaved || t.txOpen) && !(await ask("Some of its tabs have changes not saved or committed. Close them and discard the changes?", { confirm: "Discard", danger: true }))) {
       return;
     }
     try {
@@ -302,7 +303,7 @@ export function App() {
   }
 
   async function deleteConnection(c: SavedConnection) {
-    if (!window.confirm(`Delete the connection "${c.name}"?`)) return;
+    if (!(await ask(`Delete the connection "${c.name}"?`, { confirm: "Delete", danger: true }))) return;
     try {
       setConnections(await api.deleteConnection(c.id));
     } catch (e) {
@@ -454,7 +455,10 @@ export function App() {
       : tab.txOpen
         ? "This tab has an open transaction. Close it and roll back the uncommitted changes?"
         : null;
-    if (question && !confirmed && !window.confirm(question)) return;
+    if (question && !confirmed) {
+      void ask(question, { confirm: "Close", danger: true }).then((yes) => yes && closeTab(tab, true));
+      return;
+    }
     const saved = persistTab(tab);
     if (saved) {
       closedTabs.current.push(saved);
