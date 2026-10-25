@@ -8,6 +8,7 @@
 pub mod fake;
 pub mod import;
 pub mod migrate;
+pub mod s3;
 mod text;
 
 use std::fs::File;
@@ -105,6 +106,8 @@ pub struct ExportOptions {
     pub compression: Compression,
     /// A signed URL (S3, GCS) the finished file is also sent to with a `PUT`.
     pub upload_url: Option<String>,
+    /// A bucket the finished file is also sent to, with the keys to sign the `PUT`.
+    pub bucket: Option<s3::Bucket>,
 }
 
 impl Default for ExportOptions {
@@ -117,6 +120,7 @@ impl Default for ExportOptions {
             driver: None,
             compression: Compression::None,
             upload_url: None,
+            bucket: None,
         }
     }
 }
@@ -229,6 +233,7 @@ pub struct Exporter {
     rows: u64,
     compression: Compression,
     upload_url: Option<String>,
+    bucket: Option<s3::Bucket>,
 }
 
 impl std::fmt::Debug for Exporter {
@@ -320,6 +325,7 @@ impl Exporter {
             rows: 0,
             compression: options.compression,
             upload_url: options.upload_url.clone(),
+            bucket: options.bucket.clone(),
         })
     }
 
@@ -393,6 +399,9 @@ impl Exporter {
         placed?;
         if let Some(url) = &self.upload_url {
             upload(&self.target, url)?;
+        }
+        if let Some(bucket) = &self.bucket {
+            s3::put(&self.target, bucket)?;
         }
         Ok(self.rows)
     }

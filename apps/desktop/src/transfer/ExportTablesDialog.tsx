@@ -71,7 +71,7 @@ export function ExportTablesDialog({ connection, database, schema, currentSchema
           </select>
         </label>
         {options.format === "csv" && <CsvOptions options={options} disabled={running} onChange={setOptions} />}
-        <OutputOptions options={options} upload={false} disabled={running} onChange={setOptions} />
+        <OutputOptions options={options} signedUrl={false} disabled={running} onChange={setOptions} />
         <JobFooter status={status} verbs={["Exporting", "Exported"]} stop="Cancel export" onClose={onClose}>
           <button type="button" className="primary" disabled={running || count === 0} onClick={() => void run()}>
             Export to folder…

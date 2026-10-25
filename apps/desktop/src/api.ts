@@ -559,6 +559,21 @@ export interface ExportOptions {
   compression?: Compression;
   /** A signed URL (S3, GCS) the finished file is also sent to. */
   upload_url?: string | null;
+  /** A bucket the finished file is also sent to, signed with its keys. */
+  bucket?: Bucket | null;
+}
+
+/** A bucket of S3 or a service with its API (GCS with HMAC keys, R2, MinIO), as `s3::Bucket`. */
+export interface Bucket {
+  /** e.g. `https://s3.eu-west-1.amazonaws.com`. */
+  endpoint: string;
+  /** `auto` for GCS and R2. */
+  region: string;
+  bucket: string;
+  /** The folder of the files in the bucket. */
+  prefix: string;
+  access_key: string;
+  secret_key: string;
 }
 
 export type Compression = "none" | "gzip" | "zstd";
