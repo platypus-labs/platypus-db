@@ -101,7 +101,7 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 | H — Import, export e trasferimento | ✅ fatto (P1; P2 e P3 in parte) |
 | I — Strumenti di schema | ✅ fatto (P1) |
 | J — Amministrazione del server | libero |
-| K — Shell ed ergonomia | 🔒 Mattia · group-k-ui-polish · 2026-10-25 |
+| K — Shell ed ergonomia | ✅ fatto (P1, P2) |
 | L — Sicurezza operativa | ✅ fatto (P1) |
 | M — Analisi dei dati | libero |
 | N — Accesso per agenti (MCP) | ✅ fatto (P1) |
