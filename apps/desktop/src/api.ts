@@ -715,6 +715,57 @@ export interface Project {
   /** One or two characters on the project's square. */
   initials: string;
   connections: string[];
+  /** Folders of the project's connections; absent when there are none. */
+  folders?: ConnectionFolder[];
+  /** The folder of each connection not at the root, by connection id. */
+  placement?: Record<string, string>;
+}
+
+/** A folder of connections inside a project. */
+export interface ConnectionFolder {
+  id: string;
+  name: string;
+  /** Absent at the project's root. */
+  parent?: string | null;
+}
+
+/** A folder of projects in the rail; a project is in one at most. */
+export interface ProjectFolder {
+  id: string;
+  name: string;
+  /** `#rrggbb`. */
+  color: string;
+  projects: string[];
+  collapsed: boolean;
+}
+
+/** One project read from another tool's file; `name` is null for files of one set of
+ *  connections. */
+export interface ImportedProject {
+  name: string | null;
+  /** Each folder as its names from the root, parents first. */
+  folders: string[][];
+  connections: SavedConnection[];
+  /** The folder of each connection not at the root, by connection id. */
+  placement: Record<string, string[]>;
+}
+
+export type ImportInto =
+  | { kind: "new_project"; name: string }
+  | { kind: "existing"; id: string }
+  | { kind: "none" };
+
+export interface ImportRequest {
+  targets: { project: ImportedProject; into: ImportInto }[];
+  /** A rail folder with this name holds the new projects. */
+  rail_folder: string | null;
+}
+
+/** Connections, projects and rail folders, after a change that touches more than one. */
+export interface Workspace {
+  connections: SavedConnection[];
+  projects: Project[];
+  project_folders: ProjectFolder[];
 }
 
 export interface AppInfo {
@@ -748,11 +799,10 @@ export const api = {
     projects: string[] | null = null,
   ) => invoke<SavedConnection[]>("save_connection", { connection, password, sshSecrets, projects }),
   detectImports: () => invoke<ImportFile[]>("detect_imports"),
-  /** The connections in another tool's file; nothing is saved yet. */
-  readImport: (source: ImportSource, path: string) => invoke<SavedConnection[]>("read_import", { source, path }),
-  /** Saves imported connections, into `project` when given. */
-  saveImported: (connections: SavedConnection[], project: string | null = null) =>
-    invoke<SavedConnection[]>("save_imported", { connections, project }),
+  /** The projects and connections in another tool's file; nothing is saved yet. */
+  readImport: (source: ImportSource, path: string) => invoke<ImportedProject[]>("read_import", { source, path }),
+  /** Saves what was picked from an import, all or nothing. */
+  saveImported: (request: ImportRequest) => invoke<Workspace>("save_imported", { request }),
   listProjects: () => invoke<Project[]>("list_projects"),
   saveProject: (project: Project) => invoke<Project[]>("save_project", { project }),
   /** Deletes a project; its connections stay. */
@@ -761,6 +811,27 @@ export const api = {
     invoke<Project[]>("set_project_membership", { connectionId, projectId, member }),
   /** The initials a project gets from its name. */
   projectInitials: (name: string) => invoke<string>("project_initials", { name }),
+  createConnectionFolder: (projectId: string, name: string, parent: string | null) =>
+    invoke<Project[]>("create_connection_folder", { projectId, name, parent }),
+  renameConnectionFolder: (projectId: string, folderId: string, name: string) =>
+    invoke<Project[]>("rename_connection_folder", { projectId, folderId, name }),
+  moveConnectionFolder: (projectId: string, folderId: string, parent: string | null) =>
+    invoke<Project[]>("move_connection_folder", { projectId, folderId, parent }),
+  /** Deletes a folder; what it holds moves up to its parent. */
+  deleteConnectionFolder: (projectId: string, folderId: string) =>
+    invoke<Project[]>("delete_connection_folder", { projectId, folderId }),
+  /** Puts a connection into a folder of the project, or at its root with `null`. */
+  placeConnection: (projectId: string, connectionId: string, folderId: string | null) =>
+    invoke<Project[]>("place_connection", { projectId, connectionId, folderId }),
+  listProjectFolders: () => invoke<ProjectFolder[]>("list_project_folders"),
+  /** Drops `dragged` onto `target` in the rail: both end up in one folder. */
+  groupProjects: (target: string, dragged: string) => invoke<Workspace>("group_projects", { target, dragged }),
+  saveProjectFolder: (folder: ProjectFolder) => invoke<Workspace>("save_project_folder", { folder }),
+  /** Moves a project into a rail folder at `index`, or out of any with `null`. */
+  setProjectFolder: (projectId: string, folderId: string | null, index: number | null = null) =>
+    invoke<Workspace>("set_project_folder", { projectId, folderId, index }),
+  ungroupProjects: (folderId: string) => invoke<Workspace>("ungroup_projects", { folderId }),
+  reorderProjects: (order: string[]) => invoke<Workspace>("reorder_projects", { order }),
   deleteConnection: (id: string) => invoke<SavedConnection[]>("delete_connection", { id }),
   /** Sets a table's virtual key; no columns remove it. */
   setVirtualKey: (connectionId: string, schema: string, table: string, columns: string[]) =>

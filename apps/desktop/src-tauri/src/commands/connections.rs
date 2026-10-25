@@ -7,8 +7,8 @@ use std::sync::Arc;
 use platypus_core::{Capabilities, Connection, ConnectionConfig, DriverKind, Secret, ServerInfo};
 use platypus_sql::Dialect;
 use platypus_store::{
-    ConnectionStore, ConnectionType, ImportFile, ImportSource, NetworkProfile, PasswordUpdate,
-    SavedConnection, SavedSsh,
+    ConnectionStore, ConnectionType, ImportFile, ImportRequest, ImportSource, ImportedProject,
+    NetworkProfile, PasswordUpdate, SavedConnection, SavedSsh,
 };
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -159,35 +159,23 @@ pub fn detect_imports() -> Vec<ImportFile> {
     platypus_store::detect_imports()
 }
 
-/// The connections of another tool's file, for the user to pick from; nothing is saved.
+/// The projects and connections of another tool's file, for the user to pick from;
+/// nothing is saved.
 #[tauri::command]
-pub fn read_import(source: ImportSource, path: PathBuf) -> CommandResult<Vec<SavedConnection>> {
+pub fn read_import(source: ImportSource, path: PathBuf) -> CommandResult<Vec<ImportedProject>> {
     Ok(platypus_store::import_connections(source, &path)?)
 }
 
-/// Saves imported connections, into `project` when one is given; they ask for their
+/// Saves what was picked from an import, all or nothing; the connections ask for their
 /// passwords on first use.
 #[tauri::command]
 pub fn save_imported(
     state: State<'_, AppState>,
-    connections: Vec<SavedConnection>,
-    project: Option<Uuid>,
-) -> CommandResult<Vec<SavedConnection>> {
+    request: ImportRequest,
+) -> CommandResult<super::projects::Workspace> {
     state.with_store(|s| {
-        // A project deleted meanwhile is refused before anything is saved.
-        if let Some(project) = project
-            && !s.projects().iter().any(|p| p.id == project)
-        {
-            return Err(platypus_store::StoreError::NotFound(project));
-        }
-        let ids: Vec<Uuid> = connections.iter().map(|c| c.id).collect();
-        for connection in connections {
-            s.save(connection, PasswordUpdate::Clear)?;
-        }
-        if let Some(project) = project {
-            s.add_to_project(project, &ids)?;
-        }
-        Ok(s.list().to_vec())
+        s.apply_import(request)?;
+        Ok(super::projects::Workspace::of(s))
     })
 }
 
