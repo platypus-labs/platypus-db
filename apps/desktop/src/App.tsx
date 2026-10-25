@@ -1,4 +1,4 @@
-import { type ComponentType, Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentType, type CSSProperties, Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { dispatchKey, registerAction } from "./actions";
 import {
   api,
@@ -41,6 +41,8 @@ import { ScriptsPanel } from "./scripts/ScriptsPanel";
 import { ContextMenu, type MenuState } from "./components/ContextMenu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { TopBar } from "./shell/TopBar";
+import { Welcome } from "./shell/Welcome";
 
 type Dialog =
   | {
@@ -573,8 +575,11 @@ export function App() {
     return label ? `${label} — ${name}` : name;
   }
 
+  const activeConnection = connectionById(visibleTabs.find((t) => t.key === activeTab)?.connectionId ?? "");
   return (
-    <div className="shell">
+    // The frame takes the tint of the active tab's connection type.
+    <div className="shell" data-env={activeConnection?.connection_type ?? "local"}>
+      <TopBar project={project} connection={activeConnection} />
       <ProjectRail
         projects={projects ?? []}
         active={activeProject}
@@ -624,7 +629,7 @@ export function App() {
               <div
                 key={t.key}
                 className={`tab${t.key === activeTab ? " active" : ""}`}
-                style={{ borderTopColor: connectionColor(connectionById(t.connectionId)) ?? "transparent" }}
+                style={{ "--conn": connectionColor(connectionById(t.connectionId)) ?? "transparent" } as CSSProperties}
                 onClick={() => setActiveTab(t.key)}
                 onAuxClick={(e) => e.button === 1 && closeTab(t)}
               >
@@ -673,15 +678,14 @@ export function App() {
           );
         })}
         {visibleTabs.length === 0 && (
-          <div className="welcome">
-            <h1>PlatypusDB</h1>
-            <p className="muted">
-              {connections?.length === 0
-                ? "Add a connection to get started."
-                : "Double-click a connection to open a SQL editor, or expand it to browse."}
-            </p>
-            <p className="muted small">v{version}</p>
-          </div>
+          <Welcome
+            empty={connections?.length === 0}
+            version={version}
+            onNew={() => void newConnection()}
+            onImport={() => setDialog({ kind: "import" })}
+            onOpenFile={(path) => void openDroppedFile(path).catch((e: unknown) => setToast(toCommandError(e).message))}
+            onError={setToast}
+          />
         )}
       </main>
 

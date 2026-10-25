@@ -19,8 +19,7 @@ import { onNavigatorRefresh } from "../navigatorEvents";
 import { toggled } from "../sets";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabInit, TabModel } from "../tabs/registry";
-import { PRESETS, cycleTheme, themeName, themeSetting } from "../theme";
-import { actionsFor, registerAction, runAction, shortcutLabel } from "../actions";
+import { registerAction } from "../actions";
 import { workbench } from "../workbench";
 import { connectionColor, typeBadge } from "../connections";
 import { Icon, type IconName, objectIcon } from "../ui/Icon";
@@ -854,10 +853,6 @@ export function Navigator(props: Props) {
             "Connections"
           )}
         </span>
-        <ThemeButton />
-        <button className="icon" title="Settings (Ctrl+,)" onClick={() => workbench().openSettings()}>
-          <Icon name="settings" />
-        </button>
         <button className="icon" title="Import connections from DBeaver, DataGrip, pgAdmin…" onClick={onImport}>
           <Icon name="import" />
         </button>
@@ -880,7 +875,6 @@ export function Navigator(props: Props) {
             onChange={(e) => setFilter(e.target.value)}
             onKeyDown={(e) => e.key === "Escape" && setFilter("")}
           />
-          <PaletteHint />
         </div>
       )}
       {error && <div className="notice error small">{error}</div>}
@@ -973,30 +967,6 @@ export function Navigator(props: Props) {
         <ContextMenu menu={menu} onClose={closeMenu} onError={(e) => onError(toCommandError(e).message)} />
       )}
     </aside>
-  );
-}
-
-/** The palette's shortcut beside the filter; a click opens the palette. */
-function PaletteHint() {
-  const action = actionsFor("global", undefined).find((a) => a.id === "app.palette");
-  const keys = action && shortcutLabel(action);
-  if (!action || !keys) return null;
-  return (
-    <kbd className="tree-search-kbd" title="Search everything" onClick={() => runAction(action, undefined, () => {})}>
-      {keys}
-    </kbd>
-  );
-}
-
-/** Cycles system, Platypus Light and Platypus Dark; the other themes are in the Settings. */
-function ThemeButton() {
-  useSetting(themeSetting);
-  const name = themeName();
-  const label = name === "system" ? "System" : PRESETS[name].label;
-  return (
-    <button className="icon" title={`Theme: ${label} (click to change; more in the Settings)`} onClick={cycleTheme}>
-      <Icon name="theme" />
-    </button>
   );
 }
 

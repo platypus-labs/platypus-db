@@ -243,7 +243,7 @@ export default async function (page) {
   await page.sleep(300);
   await shot("light-theme");
   await page.eval(`${toggle}.click()`);
-  await page.waitFor(`getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() === '#141519'`);
+  await page.waitFor(`getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() === '#16191b'`);
 
   // Command palette.
   await page.key("k", "KeyK", 75, CTRL);

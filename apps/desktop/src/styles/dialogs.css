@@ -21,7 +21,7 @@
   background: none;
   text-align: left;
   align-items: center;
-  height: 28px;
+  height: 30px;
   padding: 0 8px 0 10px;
   border-radius: var(--radius-lg);
 }
@@ -75,7 +75,7 @@
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.5);
   display: grid;
   place-items: center;
   z-index: 10;
@@ -84,14 +84,14 @@
 .modal {
   background: var(--bg-sidebar);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-xl);
-  padding: 18px 20px;
+  border-radius: var(--radius-sheet);
+  padding: 20px 22px;
   width: min(520px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   box-shadow: var(--shadow);
 }
 
@@ -100,8 +100,9 @@
 }
 
 .modal h2 {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--fg-strong);
   margin: 0 0 4px;
 }
@@ -114,8 +115,9 @@
 }
 
 .field > span {
-  font-size: 11px;
-  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-strong);
 }
 
 .row {
@@ -171,28 +173,30 @@
 
 .swatch.selected {
   outline: 2px solid var(--fg);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 .actions {
   display: flex;
+  align-items: center;
   gap: 8px;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .modal.settings section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  border-radius: var(--radius-xl);
+  background: var(--bg);
 }
 
 .modal.settings h3 {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
-  margin: 8px 0 0;
-  color: var(--fg-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  margin: 0 0 2px;
+  color: var(--fg-strong);
 }
 
 .setting {
@@ -237,7 +241,7 @@ button.primary.danger:hover:not(:disabled) {
   font-size: 12px;
   background: var(--bg-sidebar);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-lg);
   white-space: pre-wrap;
 }
 
@@ -290,10 +294,11 @@ button.primary.danger:hover:not(:disabled) {
   width: 104px;
   padding: 5px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   background: var(--bg-input);
   cursor: pointer;
   font-size: 11px;
+  white-space: normal;
 }
 
 .theme-card.selected {
@@ -337,7 +342,7 @@ button.primary.danger:hover:not(:disabled) {
   justify-content: center;
   align-items: flex-start;
   padding-top: 12vh;
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(0, 0, 0, 0.35);
 }
 
 .palette {
@@ -347,14 +352,25 @@ button.primary.danger:hover:not(:disabled) {
   max-height: 60vh;
   background: var(--bg-sidebar);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-sheet);
   box-shadow: var(--shadow);
   overflow: hidden;
 }
 
 .palette input {
-  margin: 10px 10px 6px;
-  font-size: 13px;
+  /* Over the 30px of every text input in base.css, whose selector is more specific. */
+  height: 44px !important;
+  margin: 0;
+  padding: 0 16px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  font-size: 14px;
+}
+
+.palette input:focus {
+  box-shadow: none;
 }
 
 .palette ul {
@@ -368,22 +384,22 @@ button.primary.danger:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 8px;
-  border-radius: var(--radius);
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   white-space: nowrap;
 }
 
 .palette li.selected {
-  background: var(--grid-selection);
+  background: var(--active);
+  color: var(--fg-strong);
 }
 
 .palette-kind {
   flex: none;
   width: 92px;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 12px;
   color: var(--fg-muted);
 }
 
@@ -441,12 +457,13 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .settings-nav button {
+  min-height: 30px;
   border: none;
   background: none;
   text-align: left;
-  padding: 5px 8px;
-  border-radius: var(--radius);
-  color: var(--fg-muted);
+  padding: 0 10px;
+  border-radius: var(--radius-xl);
+  color: var(--fg);
 }
 
 .settings-nav button:hover {
@@ -457,9 +474,9 @@ button.primary.danger:hover:not(:disabled) {
 .settings-body {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   overflow: auto;
-  padding-right: 6px;
+  padding-right: 4px;
 }
 
 .shortcuts table {
