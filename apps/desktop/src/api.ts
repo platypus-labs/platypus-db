@@ -567,6 +567,9 @@ export type ExportEvent =
 /** Extensions of the files that open as a database and import into a table. */
 export const DATA_FILE_EXTENSIONS = ["csv", "tsv", "json", "ndjson", "jsonl", "parquet", "xlsx", "xlsm", "xls", "ods"];
 
+/** Whether `path` names a data file, which opens as an in-memory DuckDB database on it. */
+export const isDataFile = (path: string) => DATA_FILE_EXTENSIONS.includes(path.split(".").pop()?.toLowerCase() ?? "");
+
 export interface ImportPreview {
   /** The tables of the file: one, or a workbook's sheets. */
   tables: string[];

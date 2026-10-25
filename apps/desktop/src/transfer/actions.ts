@@ -2,7 +2,7 @@
 // database, tables to files.
 import { createElement } from "react";
 import { registerAction } from "../actions";
-import { api, type SavedConnection, type SchemaMeta, toCommandError } from "../api";
+import { api, isDataFile, type SavedConnection, type SchemaMeta, toCommandError } from "../api";
 import { isRelation } from "../components/Navigator";
 import { workbench } from "../workbench";
 import { ExportTablesDialog } from "./ExportTablesDialog";
@@ -33,7 +33,7 @@ registerAction({
     // Another connection by default, in its current schema; else a copy next to the table.
     const other = workbench()
       .connections()
-      .find((c) => c.id !== connection.id);
+      .find((c) => c.id !== connection.id && !(c.driver === "duckdb" && isDataFile(c.database)));
     const target: TableAt = other
       ? { connection: other, database: null, schema: "", currentSchema: true, table: null }
       : at(connection, database, schema, null);

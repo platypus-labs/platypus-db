@@ -130,14 +130,16 @@ export default async function (page, { dir }) {
   await page.eval(`window.__platypus.openDroppedFile(${JSON.stringify(csv.toUpperCase())})`);
   await page.waitFor(`document.querySelector('.tab.active') !== null && document.querySelector('.modal') === null`);
 
-  // The SQLite table copied to the other connection, the DuckDB database on the CSV.
+  // A copy of the SQLite table: the DuckDB database on the CSV lives in memory, so it is no
+  // target, and the copy goes next to the table.
   await menu(page, "items", "Copy to a database");
   await page.waitFor(`${dialog}.querySelectorAll('.import-preview tbody tr').length === 3`, 15_000);
   const target = await page.eval(`${dialog}.querySelector('select').selectedOptions[0].textContent`);
-  assert.equal(target, "items.csv");
-  // Its view is named `items` already.
-  await page.eval(
-    fill(`[...${dialog}.querySelectorAll('label.field')].find(l => l.querySelector('span').textContent === 'New table').querySelector('input')`, "items_copy"),
-  );
-  await runImport(page, { action: "Copy", production: false });
+  assert.equal(target, NAME);
+  const options = await page.eval(`[...${dialog}.querySelector('select').options].map(o => o.textContent)`);
+  assert.deepEqual(options, [NAME]);
+  // `items_copy` was imported above.
+  await page.eval(fill(`${dialog}.querySelector('input[list]')`, "items_copy2"));
+  await page.waitFor(`[...${dialog}.querySelectorAll('label.field span')].some(s => s.textContent === 'New table')`);
+  await runImport(page, { action: "Copy" });
 }

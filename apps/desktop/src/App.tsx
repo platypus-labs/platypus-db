@@ -4,7 +4,7 @@ import {
   api,
   type Capabilities,
   type CompletionCatalog,
-  DATA_FILE_EXTENSIONS,
+  isDataFile,
   type Project,
   toCommandError,
   type SavedConnection,
@@ -253,7 +253,6 @@ export function App() {
   }
 
   useEffect(() => {
-    const isDataFile = (p: string) => DATA_FILE_EXTENSIONS.includes(p.split(".").pop()?.toLowerCase() ?? "");
     const off = getCurrentWebview().onDragDropEvent(({ payload }) => {
       const path = payload.type === "drop" ? payload.paths.find(isDataFile) : undefined;
       if (path) void openDroppedFile(path).catch((e: unknown) => setToast(toCommandError(e).message));

@@ -5,6 +5,7 @@ import {
   type ColumnMeta,
   DATA_FILE_EXTENSIONS,
   type ExportEvent,
+  isDataFile,
   type ImportMode,
   type ImportPlan,
   type ImportPreview,
@@ -297,6 +298,8 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
               <select value={target.connection.id} disabled={running} onChange={(e) => chooseConnection(e.target.value)}>
                 {workbench()
                   .connections()
+                  // A data file's database lives in memory: a copy there would be lost.
+                  .filter((c) => c.id === target.connection.id || !(c.driver === "duckdb" && isDataFile(c.database)))
                   .map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
