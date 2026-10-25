@@ -175,15 +175,21 @@ impl Dialect {
                     .collect();
                 format!("{insert}\nON DUPLICATE KEY UPDATE {}", set.join(",\n    "))
             }
-            Self::SqlServer => self.merge(table, &all, keys, &others, rows),
-            // No upsert where data editing is not offered.
-            Self::ClickHouse | Self::Ansi | Self::Snowflake | Self::BigQuery | Self::Databricks => {
+            Self::SqlServer | Self::Db2 => self.merge(table, &all, keys, &others, rows),
+            // No upsert where data editing is not offered; Oracle has no `VALUES` rows
+            // before 23ai.
+            Self::ClickHouse
+            | Self::Ansi
+            | Self::Snowflake
+            | Self::BigQuery
+            | Self::Databricks
+            | Self::Oracle => {
                 return None;
             }
         })
     }
 
-    /// Transact-SQL's upsert: `MERGE` of the `rows` on the key.
+    /// The upsert of Transact-SQL and Db2: `MERGE` of the `rows` on the key.
     fn merge(
         self,
         table: &str,
@@ -204,10 +210,11 @@ impl Dialect {
             format!("\nWHEN MATCHED THEN\n  UPDATE SET {}", set.join(",\n    "))
         };
         let values: Vec<String> = all.iter().map(|q| format!("source.{q}")).collect();
-        // A MERGE must end with a semicolon.
+        // A Transact-SQL MERGE must end with a semicolon; Db2 takes none.
+        let end = if self == Self::SqlServer { ";" } else { "" };
         format!(
             "MERGE INTO {table} AS target\nUSING (VALUES {rows}) AS source ({})\nON {}{matched}\n\
-             WHEN NOT MATCHED THEN\n  INSERT ({}) VALUES ({});",
+             WHEN NOT MATCHED THEN\n  INSERT ({}) VALUES ({}){end}",
             all.join(", "),
             on.join(" AND "),
             all.join(", "),
@@ -224,22 +231,41 @@ impl Dialect {
             (_, ObjectKind::View) | (Self::ClickHouse, ObjectKind::MaterializedView) => "VIEW",
             // ClickHouse has no triggers.
             (
-                Self::Postgres | Self::MySql | Self::Sqlite | Self::DuckDb | Self::SqlServer,
+                Self::Postgres
+                | Self::MySql
+                | Self::Sqlite
+                | Self::DuckDb
+                | Self::SqlServer
+                | Self::Oracle
+                | Self::Db2,
                 ObjectKind::Trigger,
             ) => "TRIGGER",
-            (Self::Postgres, ObjectKind::MaterializedView) => "MATERIALIZED VIEW",
+            (Self::Postgres | Self::Oracle, ObjectKind::MaterializedView) => "MATERIALIZED VIEW",
             (Self::Postgres, ObjectKind::ForeignTable) => "FOREIGN TABLE",
-            (Self::Postgres | Self::DuckDb | Self::SqlServer, ObjectKind::Type) => "TYPE",
+            (Self::Postgres | Self::DuckDb | Self::SqlServer | Self::Oracle, ObjectKind::Type) => {
+                "TYPE"
+            }
             (Self::Postgres, ObjectKind::Domain) => "DOMAIN",
             (Self::Postgres, ObjectKind::Extension) => "EXTENSION",
             (
-                Self::Postgres | Self::MySql | Self::DuckDb | Self::SqlServer,
+                Self::Postgres
+                | Self::MySql
+                | Self::DuckDb
+                | Self::SqlServer
+                | Self::Oracle
+                | Self::Db2,
                 ObjectKind::Sequence,
             ) => "SEQUENCE",
             // DuckDB's user functions are macros.
             (Self::DuckDb, ObjectKind::Function) => "MACRO",
-            (Self::Postgres | Self::MySql | Self::SqlServer, ObjectKind::Function) => "FUNCTION",
-            (Self::Postgres | Self::MySql | Self::SqlServer, ObjectKind::Procedure) => "PROCEDURE",
+            (
+                Self::Postgres | Self::MySql | Self::SqlServer | Self::Oracle | Self::Db2,
+                ObjectKind::Function,
+            ) => "FUNCTION",
+            (
+                Self::Postgres | Self::MySql | Self::SqlServer | Self::Oracle | Self::Db2,
+                ObjectKind::Procedure,
+            ) => "PROCEDURE",
             (Self::MySql, ObjectKind::Event) => "EVENT",
             (Self::ClickHouse, ObjectKind::Dictionary) => "DICTIONARY",
             _ => return None,
@@ -273,11 +299,12 @@ impl Dialect {
         Some(format!("DROP {keyword} {target}{cascade};"))
     }
 
-    /// Removes every row: SQLite has no `TRUNCATE`.
+    /// Removes every row: SQLite has no `TRUNCATE`, Db2 asks for `IMMEDIATE`.
     #[must_use]
     pub fn truncate(self, table: &ObjectName<'_>) -> String {
         match self {
             Self::Sqlite => format!("DELETE FROM {};", self.object(table)),
+            Self::Db2 => format!("TRUNCATE TABLE {} IMMEDIATE;", self.object(table)),
             _ => format!("TRUNCATE TABLE {};", self.object(table)),
         }
     }
@@ -314,8 +341,8 @@ impl Dialect {
                 )),
                 _ => None,
             },
-            // BigQuery takes only the name.
-            Self::Sqlite | Self::BigQuery => (kind == ObjectKind::Table)
+            // BigQuery and Oracle take only the name, which stays in the table's schema.
+            Self::Sqlite | Self::BigQuery | Self::Oracle => (kind == ObjectKind::Table)
                 .then(|| format!("ALTER TABLE {} RENAME TO {to};", self.object(o))),
             // Snowflake, Trino and Spark resolve an unqualified new name in the session's
             // schema.
@@ -328,6 +355,8 @@ impl Dialect {
                     )
                 })
             }
+            Self::Db2 => (kind == ObjectKind::Table)
+                .then(|| format!("RENAME TABLE {} TO {to};", self.object(o))),
             Self::DuckDb => match kind {
                 ObjectKind::Table | ObjectKind::View => Some(format!(
                     "ALTER {} {} RENAME TO {to};",
@@ -526,6 +555,51 @@ mod tests {
             pg.rename(ObjectKind::MaterializedView, &ORDERS, "Big")
                 .unwrap(),
             "ALTER MATERIALIZED VIEW demo.orders RENAME TO \"Big\";"
+        );
+    }
+
+    #[test]
+    fn oracle_and_db2_statements() {
+        let t = ObjectName::new(Some("HR"), "EMP");
+        let cols = ["ID", "NAME"];
+        assert_eq!(
+            Dialect::Oracle.select(&t, &[], Some(5)),
+            "SELECT *
+FROM HR.EMP
+FETCH FIRST 5 ROWS ONLY;"
+        );
+        assert_eq!(Dialect::Oracle.upsert(&t, &cols, &["ID"]), None);
+        let merge = Dialect::Db2.upsert(&t, &cols, &["ID"]).unwrap();
+        assert!(merge.starts_with("MERGE INTO HR.EMP AS target"), "{merge}");
+        assert!(
+            merge.ends_with("VALUES (source.ID, source.NAME);"),
+            "{merge}"
+        );
+        assert!(
+            !Dialect::Db2
+                .upsert_rows("T", &cols, &["ID"], "(1, 'a')")
+                .unwrap()
+                .ends_with(';')
+        );
+        assert_eq!(
+            Dialect::Db2.truncate(&t),
+            "TRUNCATE TABLE HR.EMP IMMEDIATE;"
+        );
+        assert_eq!(
+            Dialect::Oracle
+                .rename(ObjectKind::Table, &t, "STAFF")
+                .unwrap(),
+            "ALTER TABLE HR.EMP RENAME TO STAFF;"
+        );
+        assert_eq!(
+            Dialect::Db2.rename(ObjectKind::Table, &t, "STAFF").unwrap(),
+            "RENAME TABLE HR.EMP TO STAFF;"
+        );
+        assert_eq!(
+            Dialect::Oracle
+                .drop(ObjectKind::Procedure, &t, true)
+                .unwrap(),
+            "DROP PROCEDURE HR.EMP;"
         );
     }
 }

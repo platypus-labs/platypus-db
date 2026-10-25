@@ -97,7 +97,7 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 | D — Editor SQL | ✅ fatto (P1, P3; P2 in parte) |
 | E — Explain e performance | ✅ fatto (P1; P2 e P3 in parte) |
 | F — Connettività e credenziali | ✅ fatto (P1, P2) |
-| G — Nuovi driver | 🔒 Delfa · group-g-odbc · 2026-10-25 |
+| G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
 | H — Import, export e trasferimento | ✅ fatto (P1; P2 e P3 in parte) |
 | I — Strumenti di schema | ✅ fatto (P1) |
 | J — Amministrazione del server | libero |
@@ -107,7 +107,7 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 | N — Accesso per agenti (MCP) | ✅ fatto (P1) |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
-| Q — Documentazione e catalogo dei dati | libero |
+| Q — Documentazione e catalogo dei dati | 🔒 Delfa · group-q-catalog · 2026-10-25 |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
 
 ### Gruppo A — Modifica dei dati
@@ -294,8 +294,10 @@ prima di scrivere in Prod è nel gruppo L. Restano i P2 nuovi e i P3.
 parallelizzabile: **una persona per driver**.
 **Dipende da:** 0.5, 0.6
 
-**Stato: P1 completate, P2 e P3 in parte** (P2: ClickHouse e i server con protocollo PostgreSQL;
-P3: libSQL/Turso e MongoDB; ADBC con Snowflake, BigQuery, Databricks e Trino, driver scaricati al primo uso. Da fare: ODBC (Oracle, Db2), Redis). SQL Server usa `tiberius` copiato
+**Stato: P1 e P2 completate, P3 in parte** (P2: ClickHouse, i server con protocollo PostgreSQL,
+ADBC con Snowflake, BigQuery, Databricks e Trino, driver scaricati al primo uso, ODBC con Db2 e
+ODBC generico; P3: libSQL/Turso, MongoDB, Oracle nativo con Instant Client scaricato al primo uso.
+Da fare: aggiornamento automatico dei driver, Redis, Elasticsearch/OpenSearch, Cassandra/ScyllaDB). SQL Server usa `tiberius` copiato
 in `vendor/` con le patch per la negoziazione della cifratura; il dialetto Transact-SQL scrive `TOP (n)` e `[nomi]`,
 e la transazione segue `@@TRANCOUNT`. DuckDB è incorporato come SQLite, con risultati Arrow nativi;
 senza l'estensione ICU non ha fuso orario di sessione. Una nuova connessione parte dalla scelta del
@@ -332,6 +334,21 @@ parser proprio traduce in comandi; i risultati sono una griglia dei campi di pri
 l'albero del documento selezionato accanto. Niente transazioni, explain né modifica dei dati;
 conformance dedicata in `tests/mongo.rs` (profilo `mongo` di `docker/compose.yml`).
 
+Oracle (`platypus-driver-oracle`): crate `oracle` (ODPI-C), che carica Oracle Instant Client a
+runtime: quello scaricato dall'app (`platypus-drivers`, Basic Light 23.26.4 per Windows x64 e
+Linux, SHA-256 di Oracle, licenza mostrata nel popup) o quello del sistema; niente ODBC né UAC.
+Un thread per connessione, cancel vero con `break_execution` (attraverso il port forwarding di
+Docker Desktop un `DBMS_SESSION.SLEEP` non lo sente: le query sì), metadati dalle viste `ALL_*`,
+DDL da `DBMS_METADATA`, numeri con precisione come interi o decimali, `NUMBER` senza precisione
+come testo esatto. Dialetto Oracle e splitter PL/SQL (fine al `/` su riga propria). Senza
+Visual C++ Redistributable (Windows) o `libaio` (Linux) l'errore lo dice. Conformance sul
+profilo `oracle` (`gvenzl/oracle-free`), saltata senza Instant Client
+(`PLATYPUS_TEST_ORACLE_CLIENT=download` lo scarica). ODBC (`platypus-driver-odbc`, `odbc-api` +
+`arrow-odbc`, solo Windows: altrove bisognerebbe linkare unixODBC): Db2 col driver IBM
+(clidriver 12.1.4, registrato con `db2cli install -setup` come amministratore) e ODBC generico
+(DSN, driver e connection string suggeriti dal sistema); niente `SQLCancel` senza unsafe, come
+ADBC. Conformance ODBC su SQL Server col driver `SQL Server` di Windows; Db2 senza container.
+
 | Driver | Prio | Note |
 |---|---|---|
 | ✅ SQL Server (`tiberius`) | P1 | Dialetto `TOP`, `[quoting]`, più result set |
@@ -339,9 +356,9 @@ conformance dedicata in `tests/mongo.rs` (profilo `mongo` di `docker/compose.yml
 | ✅ ClickHouse | P2 | HTTP con formato Arrow |
 | ✅ File come database: CSV, Parquet, JSON, XLSX (tramite DuckDB) | P2 | Fatto con il gruppo H: viste DuckDB sul file, un foglio XLSX per tabella (calamine); si aprono col trascinamento sulla finestra |
 | ✅ CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon; AlloyDB no | P2 | Wire PG: profili e test, non driver nuovi |
-| ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | ✅ ADBC (Snowflake, BigQuery, Databricks, Trino, ADBC generico; driver scaricati dal registro dbc). Da fare: ODBC (Oracle, Db2, ODBC generico) |
+| ✅ ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | ADBC (Snowflake, BigQuery, Databricks, Trino, ADBC generico; driver scaricati dal registro dbc). Oracle con driver nativo (crate `oracle`, Instant Client scaricato da Oracle al primo uso, cancel con break, metadati da `ALL_*`). ODBC (`platypus-driver-odbc`, solo Windows): Db2 col driver IBM installato al primo uso (registrazione con UAC), ODBC generico con DSN o connection string |
 | Aggiornamento automatico dei driver di tutti i database (scaricati ADBC/ODBC e nativi), con verifica che i dialetti restino compatibili; scelta di versioni precedenti di un driver | P3 | Scaricati: registro con più versioni. Nativi: compilati nell'app, si aggiornano con l'app; versioni vecchie = più versioni dello stesso crate o driver caricabili a parte. Test di compatibilità per versione |
-| Oracle nativo | P3 | Licensing OCI da valutare |
+| ✅ Oracle nativo | P3 | Crate `oracle` con Instant Client scaricato al primo uso (Oracle Free Use Terms) |
 | Redis, ✅ **MongoDB** | P3 | MongoDB: sintassi mongosh, griglia dei campi + albero del documento; Redis da fare |
 | ✅ libSQL/Turso; Cloudflare D1 valutato, non fatto | P3 | Varianti di SQLite |
 | 🆕 Elasticsearch/OpenSearch, Cassandra/ScyllaDB | P3 | Query DSL e CQL; stesso schema di MongoDB (griglia + albero) |

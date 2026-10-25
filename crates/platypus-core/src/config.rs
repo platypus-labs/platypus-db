@@ -44,6 +44,14 @@ pub enum DriverKind {
     Trino,
     /// Any ADBC driver: `options` hold `driver_file`, `uri` and the driver's own options.
     Adbc,
+    /// Oracle Database through its native client library (Oracle Instant Client, downloaded
+    /// by the app): `database` is the service name, or a net service name without a host.
+    Oracle,
+    /// IBM Db2 through IBM's ODBC (CLI) driver.
+    Db2,
+    /// Any ODBC driver or data source: `options` hold `dsn`, `driver` or
+    /// `connection_string`.
+    Odbc,
 }
 
 /// How the app reaches a database whose driver is not built in.
@@ -51,6 +59,8 @@ pub enum DriverKind {
 pub enum Bridge {
     /// An ADBC driver library, loaded at run time.
     Adbc,
+    /// An ODBC driver registered with the system's driver manager.
+    Odbc,
 }
 
 impl DriverKind {
@@ -63,13 +73,16 @@ impl DriverKind {
             Self::ClickHouse => Some(8123),
             Self::Mongo => Some(27017),
             Self::Trino => Some(8080),
+            Self::Oracle => Some(1521),
+            Self::Db2 => Some(50000),
             Self::Sqlite
             | Self::DuckDb
             | Self::Libsql
             | Self::Snowflake
             | Self::BigQuery
             | Self::Databricks
-            | Self::Adbc => None,
+            | Self::Adbc
+            | Self::Odbc => None,
         }
     }
 
@@ -80,6 +93,7 @@ impl DriverKind {
             Self::Snowflake | Self::BigQuery | Self::Databricks | Self::Trino | Self::Adbc => {
                 Some(Bridge::Adbc)
             }
+            Self::Db2 | Self::Odbc => Some(Bridge::Odbc),
             _ => None,
         }
     }
@@ -101,6 +115,9 @@ impl DriverKind {
             Self::Databricks => "Databricks",
             Self::Trino => "Trino",
             Self::Adbc => "ADBC",
+            Self::Oracle => "Oracle",
+            Self::Db2 => "Db2",
+            Self::Odbc => "ODBC",
         }
     }
 
@@ -113,6 +130,18 @@ impl DriverKind {
             Self::BigQuery => Some("bigquery"),
             Self::Databricks => Some("databricks"),
             Self::Trino => Some("trino"),
+            _ => None,
+        }
+    }
+
+    /// The name of the vendor's client library the app downloads for this database:
+    /// Oracle's Instant Client, IBM's ODBC driver. `None` for the generic ODBC driver,
+    /// which uses what the system has.
+    #[must_use]
+    pub const fn vendor_package(self) -> Option<&'static str> {
+        match self {
+            Self::Oracle => Some("oracle"),
+            Self::Db2 => Some("db2"),
             _ => None,
         }
     }
@@ -426,6 +455,9 @@ mod tests {
             (DriverKind::Databricks, "databricks"),
             (DriverKind::Trino, "trino"),
             (DriverKind::Adbc, "adbc"),
+            (DriverKind::Oracle, "oracle"),
+            (DriverKind::Db2, "db2"),
+            (DriverKind::Odbc, "odbc"),
         ] {
             let json = serde_json::to_string(&kind).unwrap();
             assert_eq!(json, format!("\"{name}\""));
@@ -448,6 +480,19 @@ mod tests {
         assert_eq!(DriverKind::Trino.default_port(), Some(8080));
         assert_eq!(DriverKind::Snowflake.default_port(), None);
         assert!(!DriverKind::Trino.is_embedded());
+        for kind in [DriverKind::Db2, DriverKind::Odbc] {
+            assert_eq!(kind.bridge(), Some(Bridge::Odbc));
+            assert_eq!(kind.adbc_package(), None);
+        }
+        // Native, with a client library downloaded by the app.
+        assert_eq!(DriverKind::Oracle.bridge(), None);
+        assert_eq!(DriverKind::Oracle.vendor_package(), Some("oracle"));
+        assert_eq!(DriverKind::Db2.vendor_package(), Some("db2"));
+        assert_eq!(DriverKind::Odbc.vendor_package(), None);
+        assert_eq!(DriverKind::Snowflake.vendor_package(), None);
+        assert_eq!(DriverKind::Oracle.default_port(), Some(1521));
+        assert_eq!(DriverKind::Db2.default_port(), Some(50000));
+        assert_eq!(DriverKind::Odbc.default_port(), None);
         assert!(
             Error::DriverMissing {
                 driver: DriverKind::Trino

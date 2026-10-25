@@ -1,6 +1,7 @@
 import { ProfileFields } from "../drivers/ProfileFields";
 import { PROFILES } from "../drivers/profiles";
 import { withDriver } from "../drivers/DriverPopup";
+import { VendorDriverState } from "../drivers/VendorDrivers";
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -63,6 +64,9 @@ const DEFAULT_PORTS: Record<DriverKind, number | null> = {
   databricks: null,
   trino: 8080,
   adbc: null,
+  oracle: 1521,
+  db2: 50000,
+  odbc: null,
   mongo: 27017,
 };
 
@@ -360,6 +364,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   <option value="databricks">Databricks</option>
                   <option value="trino">Trino</option>
                   <option value="adbc">{t("Other ADBC driver")}</option>
+                  <option value="oracle">Oracle</option>
+                  <option value="db2">IBM Db2</option>
+                  <option value="odbc">{t("Other ODBC driver")}</option>
                 </select>
               </label>
               <label className="field">
@@ -454,21 +461,32 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       {t(
                         conn.driver === "mysql" || conn.driver === "sqlserver" || conn.driver === "clickhouse" || conn.driver === "mongo"
                           ? "Database (optional)"
-                          : "Database",
+                          : conn.driver === "oracle"
+                            ? "Service name"
+                            : "Database",
                       )}
                     </span>
                     <input
                       value={conn.database}
                       onChange={(e) => set("database", e.target.value)}
-                      placeholder={conn.driver === "mongo" ? "test?authSource=admin&replicaSet=rs0" : undefined}
+                      placeholder={
+                        conn.driver === "mongo"
+                          ? "test?authSource=admin&replicaSet=rs0"
+                          : conn.driver === "oracle"
+                            ? "FREEPDB1"
+                            : undefined
+                      }
                       title={
                         conn.driver === "mongo"
                           ? t("The default database, then connection string options after ?; srv=true for mongodb+srv. Users authenticate against admin unless authSource says otherwise.")
-                          : undefined
+                          : conn.driver === "oracle"
+                            ? t("The service name; with an empty host, a net service name (tnsnames.ora) or a whole connect descriptor.")
+                            : undefined
                       }
                     />
                   </label>
                 )}
+                {conn.driver === "oracle" || conn.driver === "db2" ? <VendorDriverState driver={conn.driver} /> : null}
 
                 <div className="row">
                   {!libsql && (

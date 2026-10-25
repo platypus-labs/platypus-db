@@ -24,7 +24,8 @@ import { t, msg } from "../i18n";
 /** What a profile fills in beyond the driver's defaults. */
 export type Preset = Partial<Pick<SavedConnection, "port" | "user" | "database" | "ssl_mode">>;
 
-/** A generic database cylinder, for SQL Server and YugabyteDB, which simple-icons lacks. */
+/** A generic database cylinder, for SQL Server, YugabyteDB, Oracle, Db2 and ODBC, which
+ *  simple-icons lacks. */
 const DATABASE_PATH =
   "M12 2C7.03 2 3 3.57 3 5.5v13C3 20.43 7.03 22 12 22s9-1.57 9-3.5v-13C21 3.57 16.97 2 12 2zm0 2c4.42 0 " +
   "7 1.27 7 1.5S16.42 7 12 7 5 5.73 5 5.5 7.58 4 12 4zM5 8.1C6.6 8.68 9.1 9 12 9s5.4-.32 7-.9v3.4c0 .23-2.58 " +
@@ -69,6 +70,10 @@ const CHOICES: Choice[] = [
   { driver: "databricks", label: "Databricks", path: siDatabricks.path, bg: `#${siDatabricks.hex}`, fg: "#fff" },
   { driver: "trino", label: "Trino", path: siTrino.path, bg: `#${siTrino.hex}`, fg: "#fff" },
   { driver: "adbc", label: msg("Other ADBC driver"), path: siApachearrow.path, bg: DARK, fg: "#fff" },
+  // Oracle through Instant Client, Db2 and the rest through ODBC: installed when needed.
+  { driver: "oracle", label: "Oracle", path: DATABASE_PATH, bg: "#c74634", fg: "#fff" },
+  { driver: "db2", label: "IBM Db2", path: DATABASE_PATH, bg: "#0f62fe", fg: "#fff" },
+  { driver: "odbc", label: msg("Other ODBC driver"), path: DATABASE_PATH, bg: DARK, fg: "#fff" },
 ];
 
 /** Servers and services that speak the PostgreSQL protocol: the PostgreSQL driver, preset. */

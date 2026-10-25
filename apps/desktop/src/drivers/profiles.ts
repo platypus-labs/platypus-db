@@ -1,7 +1,8 @@
 /**
- * The connection fields of the databases reached through an ADBC driver: what the dialog
- * asks, kept in the connection's own fields or in its `options`
- * (`crates/platypus-driver-adbc/src/profile.rs` reads them).
+ * The connection fields of the databases reached through an ADBC driver or the generic ODBC
+ * driver: what the dialog asks, kept in the connection's own fields or in its `options`
+ * (`crates/platypus-driver-adbc/src/profile.rs` and `crates/platypus-driver-odbc/src/profile.rs`
+ * read them).
  */
 import type { DriverKind, SavedConnection, SslMode } from "../api";
 import { msg } from "../i18n";
@@ -19,6 +20,8 @@ export interface ProfileField {
   file?: boolean;
   /** Picked from a list instead of typed. */
   choices?: { value: string; label: string }[];
+  /** Typed, with suggestions from the system's ODBC drivers or data sources. */
+  suggest?: "odbc-drivers" | "odbc-dsns";
 }
 
 export interface Profile {
@@ -88,6 +91,19 @@ export const PROFILES: Partial<Record<DriverKind, Profile>> = {
       { key: "user", label: msg("User") },
     ],
     secret: msg("Password"),
+  },
+  odbc: {
+    fields: [
+      { key: "options.dsn", label: msg("Data source (DSN)"), suggest: "odbc-dsns" },
+      { key: "options.driver", label: msg("or driver"), suggest: "odbc-drivers" },
+      {
+        key: "options.connection_string",
+        label: msg("Connection string (with the driver: the rest of it)"),
+        placeholder: "Server=host;Database=sales",
+      },
+      { key: "user", label: msg("User") },
+    ],
+    secret: msg("Password (optional)"),
   },
 };
 

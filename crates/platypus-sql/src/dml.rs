@@ -6,6 +6,7 @@
 //! key (primary key or non-null unique key); every statement must hit exactly one row, which
 //! [`apply`] checks while running them all or none.
 
+use std::borrow::Cow;
 use std::fmt;
 
 use platypus_core::arrow_schema::DataType;
@@ -272,7 +273,10 @@ pub fn insert(
         literals.push(c.literal(dialect, text)?);
     }
     if names.is_empty() {
-        return Ok(dialect.insert_defaults(table));
+        let any = columns
+            .first()
+            .map_or(Cow::Borrowed(""), |c| dialect.quote_ident(c.name));
+        return Ok(dialect.insert_defaults(table, &any));
     }
     Ok(format!(
         "INSERT INTO {table} ({}) VALUES ({})",

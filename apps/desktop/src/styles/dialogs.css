@@ -896,3 +896,24 @@ button.danger {
 .activity-empty {
   margin: 12px 0;
 }
+
+/* A vendor's address, shown to copy: the app opens no browser. */
+.driver-popup .address {
+  user-select: text;
+  font-family: var(--font-mono, monospace);
+}
+
+.vendor-drivers {
+  margin-top: 14px;
+}
+
+.vendor-drivers .driver-state {
+  margin: 0;
+}
+
+.odbc-system ul {
+  margin: 4px 0 8px;
+  padding-left: 18px;
+  max-height: 140px;
+  overflow: auto;
+}

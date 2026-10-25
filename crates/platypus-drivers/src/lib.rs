@@ -1,6 +1,8 @@
 //! Drivers that PlatypusDB downloads when a connection needs them, instead of shipping them:
 //! ADBC drivers from the `dbc` driver registry (Columnar), kept under
-//! `<data>/drivers/adbc/<name>/<version>/` with a `driver.toml` that names the library.
+//! `<data>/drivers/adbc/<name>/<version>/` with a `driver.toml` that names the library, and
+//! the vendors' client libraries (Oracle Instant Client, IBM's ODBC driver) under
+//! `<data>/drivers/vendor/` ([`vendor_package`]).
 
 use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
@@ -9,9 +11,14 @@ use serde::{Deserialize, Serialize};
 
 mod install;
 mod registry;
+mod vendor;
 
 pub use registry::{Package, Registry};
 pub use tokio_util::sync::CancellationToken;
+pub use vendor::{
+    Archive, Program, VendorPackage, install_vendor, installed_vendor, register, remove_vendor,
+    unregister, vendor_package,
+};
 
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -47,6 +54,13 @@ pub enum DriverError {
     TooLarge,
     #[error("cancelled")]
     Cancelled,
+    #[error(
+        "the driver was not registered: Windows asks for administrator rights to register it, \
+         and the request was declined"
+    )]
+    ElevationDeclined,
+    #[error("cannot register the driver: {0}")]
+    Register(String),
     #[error("invalid driver package: {0}")]
     Format(String),
     #[error("cannot write {path}: {source}")]
@@ -116,10 +130,15 @@ pub(crate) fn is_plain_name(name: &str) -> bool {
 /// The installed driver `name`, the newest if several versions are there.
 #[must_use]
 pub fn installed(data_dir: &Path, name: &str) -> Option<Installed> {
+    installed_in(&adbc_dir(data_dir), name)
+}
+
+/// The newest version of `name` under `root`, unless it was removed.
+pub(crate) fn installed_in(root: &Path, name: &str) -> Option<Installed> {
     if !is_plain_name(name) {
         return None;
     }
-    let dir = adbc_dir(data_dir).join(name);
+    let dir = root.join(name);
     if dir.join(REMOVED_MARK).exists() {
         return None;
     }
@@ -154,10 +173,15 @@ pub fn list(data_dir: &Path) -> Vec<Installed> {
 /// Deletes an installed driver. A library still loaded cannot be deleted on Windows: the
 /// driver is marked removed, and [`purge_removed`] deletes it at the next start.
 pub fn remove(data_dir: &Path, name: &str) -> Result<(), DriverError> {
+    remove_in(&adbc_dir(data_dir), name)
+}
+
+/// Deletes `root/name`, or marks it removed when Windows keeps its files locked.
+pub(crate) fn remove_in(root: &Path, name: &str) -> Result<(), DriverError> {
     if !is_plain_name(name) {
         return Err(DriverError::InvalidName(name.to_owned()));
     }
-    let dir = adbc_dir(data_dir).join(name);
+    let dir = root.join(name);
     if !dir.exists() {
         return Ok(());
     }
@@ -179,11 +203,13 @@ pub fn purge_removed(data_dir: &Path) {
             let _ = std::fs::remove_dir_all(entry.path());
         }
     }
-    for entry in std::fs::read_dir(adbc_dir(data_dir))
-        .into_iter()
-        .flatten()
-        .flatten()
-    {
+    purge_marked(&adbc_dir(data_dir));
+    vendor::purge_removed_vendor(data_dir);
+}
+
+/// Deletes the folders under `root` marked removed.
+pub(crate) fn purge_marked(root: &Path) {
+    for entry in std::fs::read_dir(root).into_iter().flatten().flatten() {
         if entry.path().join(REMOVED_MARK).exists() {
             let _ = std::fs::remove_dir_all(entry.path());
         }

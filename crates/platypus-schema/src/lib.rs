@@ -291,6 +291,15 @@ pub async fn load(
             "SELECT 'fk_' || {t} || '_' || id, on_delete, on_update
              FROM pragma_foreign_key_list({t}, {s}) GROUP BY id"
         )),
+        // Oracle has no `ON UPDATE`.
+        Dialect::Oracle => Some(format!(
+            "SELECT CONSTRAINT_NAME, DELETE_RULE, NULL FROM ALL_CONSTRAINTS
+             WHERE CONSTRAINT_TYPE = 'R' AND OWNER = {s} AND TABLE_NAME = {t}"
+        )),
+        Dialect::Db2 => Some(format!(
+            "SELECT CONSTNAME, DELETERULE, UPDATERULE FROM SYSCAT.REFERENCES
+             WHERE TABSCHEMA = {s} AND TABNAME = {t}"
+        )),
         // DuckDB has no referential actions, ClickHouse no foreign keys.
         Dialect::DuckDb
         | Dialect::ClickHouse

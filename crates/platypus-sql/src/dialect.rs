@@ -33,6 +33,11 @@ pub enum Dialect {
     /// Spark SQL on Databricks: `` `…` `` names (a backtick doubled inside), `"…"` strings
     /// with backslash escapes.
     Databricks,
+    /// Oracle Database: bare names fold to upper case, rows capped with `FETCH FIRST`,
+    /// no boolean literals before 23ai.
+    Oracle,
+    /// IBM Db2: bare names fold to upper case, rows capped with `FETCH FIRST`.
+    Db2,
 }
 
 impl From<DriverKind> for Dialect {
@@ -42,7 +47,9 @@ impl From<DriverKind> for Dialect {
             // viewer and navigator write mongosh instead), so any dialect would do here.
             DriverKind::Postgres | DriverKind::Mongo => Self::Postgres,
             DriverKind::Snowflake => Self::Snowflake,
-            DriverKind::Trino | DriverKind::Adbc => Self::Ansi,
+            DriverKind::Trino | DriverKind::Adbc | DriverKind::Odbc => Self::Ansi,
+            DriverKind::Oracle => Self::Oracle,
+            DriverKind::Db2 => Self::Db2,
             DriverKind::BigQuery => Self::BigQuery,
             DriverKind::Databricks => Self::Databricks,
             DriverKind::MySql => Self::MySql,
@@ -297,11 +304,80 @@ const TSQL_RESERVED: &[&str] = &[
     "WRITETEXT",
 ];
 
+/// Further words that Oracle reserves (`V$RESERVED_WORDS` with `RESERVED = 'Y'`).
+const ORACLE_RESERVED: &[&str] = &[
+    "ACCESS",
+    "ADD",
+    "ALTER",
+    "AUDIT",
+    "CHAR",
+    "CLUSTER",
+    "COMMENT",
+    "COMPRESS",
+    "CONNECT",
+    "CURRENT",
+    "DATE",
+    "DECIMAL",
+    "EXCLUSIVE",
+    "FILE",
+    "FLOAT",
+    "IDENTIFIED",
+    "IMMEDIATE",
+    "INCREMENT",
+    "INITIAL",
+    "INTEGER",
+    "LEVEL",
+    "LOCK",
+    "LONG",
+    "MAXEXTENTS",
+    "MINUS",
+    "MLSLABEL",
+    "MODE",
+    "MODIFY",
+    "NOAUDIT",
+    "NOCOMPRESS",
+    "NOWAIT",
+    "NUMBER",
+    "OF",
+    "OFFLINE",
+    "ONLINE",
+    "OPTION",
+    "PCTFREE",
+    "PRIOR",
+    "PUBLIC",
+    "RAW",
+    "RENAME",
+    "RESOURCE",
+    "REVOKE",
+    "ROWID",
+    "ROWNUM",
+    "SESSION",
+    "SHARE",
+    "SIZE",
+    "SMALLINT",
+    "START",
+    "SUCCESSFUL",
+    "SYNONYM",
+    "SYSDATE",
+    "TRIGGER",
+    "UID",
+    "VALIDATE",
+    "VARCHAR",
+    "VARCHAR2",
+    "VIEW",
+    "WHENEVER",
+];
+
 fn is_reserved(name: &str, dialect: Dialect) -> bool {
-    // Both lists are sorted; the `sorted_reserved_words` test keeps them so.
+    // The lists are sorted; the `sorted_reserved_words` test keeps them so.
     let upper = name.to_ascii_uppercase();
     let found = |list: &[&str]| list.binary_search(&upper.as_str()).is_ok();
-    found(RESERVED) || (dialect == Dialect::SqlServer && found(TSQL_RESERVED))
+    found(RESERVED)
+        || match dialect {
+            Dialect::SqlServer => found(TSQL_RESERVED),
+            Dialect::Oracle => found(ORACLE_RESERVED),
+            _ => false,
+        }
 }
 
 /// The `LIKE` pattern, with `!` as the escape character, of the texts containing `needle`.
@@ -330,6 +406,8 @@ impl Dialect {
             Self::Postgres => c.is_ascii_lowercase() || c == '_',
             // Snowflake folds bare names to upper case, Trino to lower case.
             Self::Ansi | Self::Snowflake => c.is_ascii_uppercase() || c == '_',
+            // Oracle and Db2 fold bare names to upper case; a name starts with a letter.
+            Self::Oracle | Self::Db2 => c.is_ascii_uppercase(),
             Self::MySql
             | Self::Sqlite
             | Self::DuckDb
@@ -340,8 +418,11 @@ impl Dialect {
         });
         let rest_ok = chars.all(|c| match self {
             Self::Postgres => c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '$',
-            Self::Ansi | Self::Snowflake => {
+            Self::Ansi | Self::Snowflake | Self::Db2 => {
                 c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_'
+            }
+            Self::Oracle => {
+                c.is_ascii_uppercase() || c.is_ascii_digit() || matches!(c, '_' | '$' | '#')
             }
             Self::MySql => c.is_ascii_alphanumeric() || c == '_' || c == '$',
             Self::Sqlite
@@ -378,9 +459,13 @@ impl Dialect {
     pub const fn ident_quotes(self) -> (char, char) {
         match self {
             Self::MySql | Self::ClickHouse | Self::BigQuery | Self::Databricks => ('`', '`'),
-            Self::Postgres | Self::Sqlite | Self::DuckDb | Self::Ansi | Self::Snowflake => {
-                ('"', '"')
-            }
+            Self::Postgres
+            | Self::Sqlite
+            | Self::DuckDb
+            | Self::Ansi
+            | Self::Snowflake
+            | Self::Oracle
+            | Self::Db2 => ('"', '"'),
             Self::SqlServer => ('[', ']'),
         }
     }
@@ -424,12 +509,12 @@ impl Dialect {
     }
 
     /// A boolean literal; SQLite has no boolean type and stores 1 and 0, SQL Server's `bit`
-    /// takes them too.
+    /// takes them too, and so do Oracle's `NUMBER(1)` flags and its 23ai `BOOLEAN`.
     #[must_use]
     pub const fn bool_literal(self, value: bool) -> &'static str {
         match (self, value) {
-            (Self::Sqlite | Self::SqlServer, true) => "1",
-            (Self::Sqlite | Self::SqlServer, false) => "0",
+            (Self::Sqlite | Self::SqlServer | Self::Oracle, true) => "1",
+            (Self::Sqlite | Self::SqlServer | Self::Oracle, false) => "0",
             (_, true) => "TRUE",
             (_, false) => "FALSE",
         }
@@ -448,6 +533,8 @@ impl Dialect {
             Self::DuckDb => format!("from_hex('{hex}')"),
             Self::ClickHouse => format!("unhex('{hex}')"),
             Self::SqlServer => format!("0x{hex}"),
+            Self::Oracle => format!("HEXTORAW('{hex}')"),
+            Self::Db2 => format!("BX'{hex}'"),
         }
     }
 
@@ -457,7 +544,8 @@ impl Dialect {
         !matches!(self, Self::Sqlite)
     }
 
-    /// Whether `SAVEPOINT` works inside a transaction; DuckDB and ClickHouse have none.
+    /// Whether `SAVEPOINT`, `ROLLBACK TO SAVEPOINT` and `RELEASE SAVEPOINT` work inside a
+    /// transaction; DuckDB and ClickHouse have none, Oracle no `RELEASE`, Db2 another syntax.
     #[must_use]
     pub const fn has_savepoints(self) -> bool {
         !matches!(
@@ -468,6 +556,8 @@ impl Dialect {
                 | Self::Snowflake
                 | Self::BigQuery
                 | Self::Databricks
+                | Self::Oracle
+                | Self::Db2
         )
     }
 
@@ -484,11 +574,16 @@ impl Dialect {
             Self::DuckDb => &["BEGIN TRANSACTION"],
             Self::SqlServer => &["SET LOCK_TIMEOUT 5000", "BEGIN TRANSACTION"],
             // ClickHouse has no transactions, and a session's `readonly` setting cannot be
-            // turned off again; with an ADBC driver transactions vary. Only the statement
-            // check stops writes.
-            Self::ClickHouse | Self::Ansi | Self::Snowflake | Self::BigQuery | Self::Databricks => {
-                &[]
-            }
+            // turned off again; with an ADBC driver transactions vary. Oracle's `SET
+            // TRANSACTION READ ONLY` ends with the statement in autocommit mode. Only the
+            // statement check stops writes.
+            Self::ClickHouse
+            | Self::Ansi
+            | Self::Snowflake
+            | Self::BigQuery
+            | Self::Databricks
+            | Self::Oracle
+            | Self::Db2 => &[],
         }
     }
 
@@ -500,9 +595,13 @@ impl Dialect {
             Self::Sqlite => &["ROLLBACK", "PRAGMA query_only = OFF"],
             Self::SqlServer => &["ROLLBACK", "SET LOCK_TIMEOUT -1"],
             Self::Postgres | Self::MySql | Self::DuckDb => &["ROLLBACK"],
-            Self::ClickHouse | Self::Ansi | Self::Snowflake | Self::BigQuery | Self::Databricks => {
-                &[]
-            }
+            Self::ClickHouse
+            | Self::Ansi
+            | Self::Snowflake
+            | Self::BigQuery
+            | Self::Databricks
+            | Self::Oracle
+            | Self::Db2 => &[],
         }
     }
 
@@ -513,11 +612,13 @@ impl Dialect {
         matches!(self, Self::Postgres | Self::MySql | Self::Sqlite)
     }
 
-    /// An `INSERT` of a row where every column takes its default.
+    /// An `INSERT` of a row where every column takes its default; `column` is any of the
+    /// table's columns, quoted, for Oracle and Db2, which have no `DEFAULT VALUES`.
     #[must_use]
-    pub fn insert_defaults(self, table: &str) -> String {
+    pub fn insert_defaults(self, table: &str, column: &str) -> String {
         match self {
             Self::MySql => format!("INSERT INTO {table} () VALUES ()"),
+            Self::Oracle | Self::Db2 => format!("INSERT INTO {table} ({column}) VALUES (DEFAULT)"),
             // An empty JSON object leaves every column to its default.
             Self::ClickHouse => format!("INSERT INTO {table} FORMAT JSONEachRow {{}}"),
             Self::Postgres
@@ -561,6 +662,21 @@ impl Dialect {
                 schema.map_or_else(|| "currentDatabase()".to_owned(), |s| self.quote_literal(s)),
                 self.quote_literal(table)
             ),
+            Self::Oracle => format!(
+                "SELECT NUM_ROWS FROM ALL_TABLES WHERE OWNER = {} AND TABLE_NAME = {}",
+                schema.map_or_else(
+                    || "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')".to_owned(),
+                    |s| self.quote_literal(s)
+                ),
+                self.quote_literal(table)
+            ),
+            // `CARD` is -1 until statistics are collected.
+            Self::Db2 => format!(
+                "SELECT CASE WHEN CARD < 0 THEN NULL ELSE CARD END FROM SYSCAT.TABLES \
+                 WHERE TABSCHEMA = {} AND TABNAME = {}",
+                schema.map_or_else(|| "CURRENT SCHEMA".to_owned(), |s| self.quote_literal(s)),
+                self.quote_literal(table)
+            ),
             // Heaps (index 0) or clustered indexes (index 1) hold the rows.
             Self::SqlServer => format!(
                 "SELECT SUM(p.rows) FROM sys.partitions p \
@@ -576,18 +692,19 @@ impl Dialect {
     pub fn limit_clause(self, limit: u64) -> String {
         match self {
             Self::SqlServer => format!("OFFSET 0 ROWS FETCH NEXT {limit} ROWS ONLY"),
+            Self::Oracle | Self::Db2 => format!("FETCH FIRST {limit} ROWS ONLY"),
             _ => format!("LIMIT {limit}"),
         }
     }
 
     /// `select` (one `SELECT`, without set operations, a row cap or a trailing `;`)
-    /// returning at most `limit` rows: `SELECT [DISTINCT] TOP (n)` in Transact-SQL, a
-    /// `LIMIT` clause elsewhere. Transact-SQL queries that do not start with `SELECT` are
-    /// wrapped in a derived table.
+    /// returning at most `limit` rows: `SELECT [DISTINCT] TOP (n)` in Transact-SQL, the
+    /// [`limit_clause`](Self::limit_clause) elsewhere. Transact-SQL queries that do not
+    /// start with `SELECT` are wrapped in a derived table.
     #[must_use]
     pub fn limited(self, select: &str, limit: u64) -> String {
         if self != Self::SqlServer {
-            return format!("{select} LIMIT {limit}");
+            return format!("{select} {}", self.limit_clause(limit));
         }
         let mut words = Lexer::new(select, self).filter(|t| !t.is_trivia());
         let is = |t: &Token, word: &str| {
@@ -619,9 +736,13 @@ impl Dialect {
         match self {
             Self::Postgres | Self::DuckDb => format!("{expr} ILIKE {pattern} ESCAPE '!'"),
             // A binary or case-sensitive collation would make LIKE case-sensitive.
-            Self::MySql | Self::SqlServer | Self::Ansi | Self::Snowflake | Self::Databricks => {
-                format!("LOWER({expr}) LIKE LOWER({pattern}) ESCAPE '!'")
-            }
+            Self::MySql
+            | Self::SqlServer
+            | Self::Ansi
+            | Self::Snowflake
+            | Self::Databricks
+            | Self::Oracle
+            | Self::Db2 => format!("LOWER({expr}) LIKE LOWER({pattern}) ESCAPE '!'"),
             Self::Sqlite => format!("{expr} LIKE {pattern} ESCAPE '!'"),
             // No `ESCAPE` clause: LIKE escapes with a backslash. The replacement `\\\1`
             // writes one before the escaped character; the literal doubles each backslash.
@@ -644,6 +765,8 @@ impl Dialect {
             Self::SqlServer => "NVARCHAR(MAX)",
             Self::Ansi | Self::Snowflake => "VARCHAR",
             Self::BigQuery | Self::Databricks => "STRING",
+            Self::Oracle => "VARCHAR2(4000)",
+            Self::Db2 => "VARCHAR(4000)",
             // `toString` keeps NULLs, where `CAST(NULL AS String)` fails.
             Self::ClickHouse => "",
         };
@@ -670,6 +793,8 @@ impl Dialect {
             Self::ClickHouse => return Self::clickhouse_type(data_type),
             Self::BigQuery => return Self::bigquery_type(data_type),
             Self::Databricks => return Self::databricks_type(data_type),
+            Self::Oracle => return Self::oracle_type(data_type),
+            Self::Db2 => "CLOB",
         };
         let name = match (data_type, self) {
             (T::Boolean, Self::SqlServer) => "BIT",
@@ -695,7 +820,11 @@ impl Dialect {
                 if self == Self::Sqlite {
                     return "NUMERIC".to_owned();
                 }
-                let max = if self == Self::MySql { 65 } else { 38 };
+                let max = match self {
+                    Self::MySql => 65,
+                    Self::Db2 => 31,
+                    _ => 38,
+                };
                 return format!("DECIMAL({}, {s})", (*p).min(max));
             }
             (T::Binary | T::LargeBinary | T::BinaryView | T::FixedSizeBinary(_), dialect) => {
@@ -704,12 +833,14 @@ impl Dialect {
                     Self::MySql => "LONGBLOB",
                     Self::SqlServer => "VARBINARY(MAX)",
                     Self::Ansi | Self::Snowflake => "VARBINARY",
-                    // ClickHouse, BigQuery and Databricks returned above.
+                    // ClickHouse, BigQuery, Databricks and Oracle returned above.
                     Self::Sqlite
                     | Self::DuckDb
                     | Self::ClickHouse
                     | Self::BigQuery
-                    | Self::Databricks => "BLOB",
+                    | Self::Databricks
+                    | Self::Oracle
+                    | Self::Db2 => "BLOB",
                 }
             }
             (T::Date32 | T::Date64, _) => "DATE",
@@ -743,6 +874,31 @@ impl Dialect {
             T::Timestamp(_, Some(_)) => "TIMESTAMP",
             T::Timestamp(_, None) => "DATETIME",
             _ => "STRING",
+        };
+        name.to_owned()
+    }
+
+    /// [`column_type`](Self::column_type) in Oracle: numbers are `NUMBER`, no time-of-day
+    /// type, text that may be long is a `CLOB`.
+    fn oracle_type(data_type: &DataType) -> String {
+        use DataType as T;
+        let name = match data_type {
+            T::Boolean => "NUMBER(1)",
+            T::Int8 | T::Int16 | T::UInt8 => "NUMBER(5)",
+            T::Int32 | T::UInt16 => "NUMBER(10)",
+            T::Int64 | T::UInt32 => "NUMBER(19)",
+            T::UInt64 => "NUMBER(20)",
+            T::Float16 | T::Float32 => "BINARY_FLOAT",
+            T::Float64 => "BINARY_DOUBLE",
+            T::Decimal32(p, s) | T::Decimal64(p, s) | T::Decimal128(p, s) | T::Decimal256(p, s) => {
+                return format!("NUMBER({}, {s})", (*p).min(38));
+            }
+            T::Binary | T::LargeBinary | T::BinaryView | T::FixedSizeBinary(_) => "BLOB",
+            T::Date32 | T::Date64 => "DATE",
+            T::Timestamp(_, Some(_)) => "TIMESTAMP WITH TIME ZONE",
+            T::Timestamp(_, None) => "TIMESTAMP",
+            T::Interval(_) => "INTERVAL DAY TO SECOND",
+            _ => "CLOB",
         };
         name.to_owned()
     }
@@ -881,7 +1037,7 @@ mod tests {
 
     #[test]
     fn sorted_reserved_words() {
-        for list in [RESERVED, TSQL_RESERVED] {
+        for list in [RESERVED, TSQL_RESERVED, ORACLE_RESERVED] {
             assert!(list.windows(2).all(|w| w[0] < w[1]), "{list:?}");
         }
     }
@@ -970,7 +1126,7 @@ mod tests {
         assert_eq!(ms.quote_literal("it's \\ ok"), "N'it''s \\ ok'");
         assert_eq!(ms.bool_literal(true), "1");
         assert_eq!(ms.binary_literal("00ff"), "0x00ff");
-        assert_eq!(ms.insert_defaults("t"), "INSERT INTO t DEFAULT VALUES");
+        assert_eq!(ms.insert_defaults("t", "a"), "INSERT INTO t DEFAULT VALUES");
         assert_eq!(ms.limit_clause(5), "OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY");
         assert_eq!(
             ms.limited("SELECT a FROM t ORDER BY a", 10),
@@ -1014,7 +1170,7 @@ mod tests {
         assert_eq!(ch.binary_literal("00ff"), "unhex('00ff')");
         assert!(!ch.has_savepoints() && ch.has_default_keyword());
         assert_eq!(
-            ch.insert_defaults("t"),
+            ch.insert_defaults("t", "a"),
             "INSERT INTO t FORMAT JSONEachRow {}"
         );
         assert_eq!(ch.limited("SELECT 1", 2), "SELECT 1 LIMIT 2");
@@ -1047,11 +1203,11 @@ mod tests {
         assert!(Dialect::DuckDb.has_default_keyword());
         assert!(!Dialect::DuckDb.has_savepoints() && Dialect::Postgres.has_savepoints());
         assert_eq!(
-            Dialect::MySql.insert_defaults("t"),
+            Dialect::MySql.insert_defaults("t", "a"),
             "INSERT INTO t () VALUES ()"
         );
         assert_eq!(
-            Dialect::DuckDb.insert_defaults("t"),
+            Dialect::DuckDb.insert_defaults("t", "a"),
             "INSERT INTO t DEFAULT VALUES"
         );
     }
@@ -1137,6 +1293,78 @@ mod tests {
             Dialect::BigQuery.contains("x", "a"),
             "LOWER(x) LIKE LOWER(REGEXP_REPLACE('%a%', r'!(.)', r'\\\\\\1'))"
         );
+    }
+
+    #[test]
+    fn oracle_and_db2_rules() {
+        let (ora, db2) = (Dialect::Oracle, Dialect::Db2);
+        assert_eq!(Dialect::from(DriverKind::Oracle), ora);
+        assert_eq!(Dialect::from(DriverKind::Db2), db2);
+        assert_eq!(Dialect::from(DriverKind::Odbc), Dialect::Ansi);
+        for d in [ora, db2] {
+            assert_eq!(d.quote_ident("ORDERS"), "ORDERS");
+            assert_eq!(d.quote_ident("Orders"), "\"Orders\"");
+            assert_eq!(d.quote_ident("_X"), "\"_X\"");
+            assert_eq!(d.quote_ident("SELECT"), "\"SELECT\"");
+            assert_eq!(d.quote_literal("it's \\"), "'it''s \\'");
+            assert_eq!(d.limit_clause(5), "FETCH FIRST 5 ROWS ONLY");
+            assert_eq!(d.limited("SELECT 1", 5), "SELECT 1 FETCH FIRST 5 ROWS ONLY");
+            assert!(!d.has_savepoints() && d.has_default_keyword());
+            assert_eq!(d.read_only_begin(), [] as [&str; 0]);
+            assert_eq!(
+                d.insert_defaults("T", "ID"),
+                "INSERT INTO T (ID) VALUES (DEFAULT)"
+            );
+            assert_eq!(
+                d.contains("X", "a"),
+                "LOWER(X) LIKE LOWER('%a%') ESCAPE '!'"
+            );
+        }
+        // Oracle reserves more words, and allows `$` and `#` in bare names.
+        assert_eq!(ora.quote_ident("NUMBER"), "\"NUMBER\"");
+        assert_eq!(db2.quote_ident("NUMBER"), "NUMBER");
+        assert_eq!(ora.quote_ident("A$B#"), "A$B#");
+        assert_eq!(db2.quote_ident("A$B"), "\"A$B\"");
+        assert_eq!(ora.bool_literal(true), "1");
+        assert_eq!(db2.bool_literal(true), "TRUE");
+        assert_eq!(ora.binary_literal("0aff"), "HEXTORAW('0aff')");
+        assert_eq!(db2.binary_literal("0aff"), "BX'0aff'");
+        assert!(
+            ora.row_estimate_sql(None, "T")
+                .contains("OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AND TABLE_NAME = 'T'")
+        );
+        assert!(
+            db2.row_estimate_sql(Some("S"), "T")
+                .ends_with("WHERE TABSCHEMA = 'S' AND TABNAME = 'T'")
+        );
+        assert!(
+            ora.any_column_contains(&["A"], "x")
+                .starts_with("LOWER(CAST(A AS VARCHAR2(4000)))")
+        );
+    }
+
+    #[test]
+    fn oracle_and_db2_column_types() {
+        use platypus_core::arrow_schema::TimeUnit;
+        let zoned = DataType::Timestamp(TimeUnit::Microsecond, Some("+00:00".into()));
+        let cases: [(DataType, [&str; 2]); 9] = [
+            (DataType::Boolean, ["NUMBER(1)", "BOOLEAN"]),
+            (DataType::Int32, ["NUMBER(10)", "INTEGER"]),
+            (DataType::Int64, ["NUMBER(19)", "BIGINT"]),
+            (DataType::Float32, ["BINARY_FLOAT", "REAL"]),
+            (DataType::Float64, ["BINARY_DOUBLE", "DOUBLE"]),
+            (
+                DataType::Decimal128(40, 2),
+                ["NUMBER(38, 2)", "DECIMAL(31, 2)"],
+            ),
+            (DataType::Utf8, ["CLOB", "CLOB"]),
+            (DataType::Binary, ["BLOB", "BLOB"]),
+            (zoned, ["TIMESTAMP WITH TIME ZONE", "TIMESTAMP"]),
+        ];
+        for (t, expected) in cases {
+            let got = [Dialect::Oracle, Dialect::Db2].map(|d| d.column_type(&t));
+            assert_eq!(got, expected.map(str::to_owned), "{t}");
+        }
     }
 
     #[test]

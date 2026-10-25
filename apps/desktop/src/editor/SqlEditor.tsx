@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { MSSQL, MySQL, PostgreSQL, SQLite, StandardSQL, sql } from "@codemirror/lang-sql";
+import { MSSQL, MySQL, PLSQL, PostgreSQL, SQLite, StandardSQL, sql } from "@codemirror/lang-sql";
 import {
   HighlightStyle,
   bracketMatching,
@@ -162,6 +162,9 @@ const dialects = {
   snowflake: StandardSQL,
   trino: StandardSQL,
   adbc: StandardSQL,
+  oracle: PLSQL,
+  db2: StandardSQL,
+  odbc: StandardSQL,
   // Backtick names, like MySQL.
   bigquery: MySQL,
   databricks: MySQL,

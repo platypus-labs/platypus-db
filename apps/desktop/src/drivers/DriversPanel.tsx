@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type InstalledDriver, toCommandError } from "../api";
 import { t } from "../i18n";
+import { VendorDriversSection } from "./VendorDrivers";
 
 /** The drivers downloaded for the databases reached through ADBC, with removal. */
 export function DriversPanel() {
@@ -40,6 +41,7 @@ export function DriversPanel() {
           </button>
         </div>
       ))}
+      <VendorDriversSection />
     </div>
   );
 }

@@ -58,6 +58,26 @@ struct IndexPackage {
     hash: Option<String>,
 }
 
+/// An HTTP client that names the app, verifying certificates when `https`.
+pub(crate) fn client(https: bool) -> Result<reqwest::Client, DriverError> {
+    let mut config = ConnectionConfig::new(DriverKind::Adbc);
+    config.ssl_mode = SslMode::VerifyFull;
+    // reqwest has no crypto provider of its own: it needs a configuration even for http.
+    let tls = if https {
+        platypus_tls::client_config(&config)
+            .map_err(network_error)?
+            .ok_or_else(|| DriverError::Network("no TLS configuration".to_owned()))?
+    } else {
+        platypus_tls::plaintext_config().map_err(network_error)?
+    };
+    reqwest::Client::builder()
+        .user_agent(concat!("platypus-db/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(Duration::from_secs(15))
+        .tls_backend_preconfigured(tls)
+        .build()
+        .map_err(network_error)
+}
+
 /// Orders versions like semantic versions: `v1.10.0` after `v1.9.0` (numbers compared as
 /// numbers), and a release after its prereleases (`1.0.0` after `1.0.0-beta`). Build
 /// metadata (`+…`) only breaks ties.
@@ -130,22 +150,7 @@ impl Registry {
 
     /// An HTTP client that names the app, as the registry asks of tools other than `dbc`.
     pub(crate) fn http(&self) -> Result<reqwest::Client, DriverError> {
-        let mut config = ConnectionConfig::new(DriverKind::Adbc);
-        config.ssl_mode = SslMode::VerifyFull;
-        // reqwest has no crypto provider of its own: it needs a configuration even for http.
-        let tls = if self.url.starts_with("https:") {
-            platypus_tls::client_config(&config)
-                .map_err(network_error)?
-                .ok_or_else(|| DriverError::Network("no TLS configuration".to_owned()))?
-        } else {
-            platypus_tls::plaintext_config().map_err(network_error)?
-        };
-        reqwest::Client::builder()
-            .user_agent(concat!("platypus-db/", env!("CARGO_PKG_VERSION")))
-            .connect_timeout(Duration::from_secs(15))
-            .tls_backend_preconfigured(tls)
-            .build()
-            .map_err(network_error)
+        client(self.url.starts_with("https:"))
     }
 
     /// The index from the registry, saved as the cache; the cached one when the registry

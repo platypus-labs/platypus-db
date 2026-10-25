@@ -58,7 +58,10 @@ fn program(driver: DriverKind) -> CommandResult<&'static str> {
         | DriverKind::BigQuery
         | DriverKind::Databricks
         | DriverKind::Trino
-        | DriverKind::Adbc => Err(CommandError::new(
+        | DriverKind::Adbc
+        | DriverKind::Oracle
+        | DriverKind::Db2
+        | DriverKind::Odbc => Err(CommandError::new(
             "cli",
             format!("terminal mode is not available for {}", driver.name()),
         )),
@@ -158,7 +161,10 @@ fn invocation(
         | DriverKind::BigQuery
         | DriverKind::Databricks
         | DriverKind::Trino
-        | DriverKind::Adbc => {}
+        | DriverKind::Adbc
+        | DriverKind::Oracle
+        | DriverKind::Db2
+        | DriverKind::Odbc => {}
     }
     (args, env)
 }

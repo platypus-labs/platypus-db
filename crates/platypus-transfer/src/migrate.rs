@@ -121,14 +121,14 @@ async fn identity(
         // An INTEGER PRIMARY KEY is the rowid.
         Dialect::Sqlite => return Ok((declared == "integer").then(|| key.name.clone())),
         Dialect::DuckDb => return Ok(serial.then(|| key.name.clone())),
-        // No column numbers its rows.
+        // No column numbers its rows; Oracle's and Db2's identity columns are not read.
         Dialect::ClickHouse
         | Dialect::Ansi
         | Dialect::Snowflake
         | Dialect::BigQuery
-        | Dialect::Databricks => {
-            return Ok(None);
-        }
+        | Dialect::Databricks
+        | Dialect::Oracle
+        | Dialect::Db2 => return Ok(None),
         Dialect::Postgres if serial => return Ok(Some(key.name.clone())),
         Dialect::Postgres => format!(
             "SELECT attidentity FROM pg_attribute WHERE attrelid = {qualified}::regclass \
@@ -262,6 +262,8 @@ const fn database(dialect: Dialect) -> &'static str {
         Dialect::Ansi => "this database",
         Dialect::BigQuery => "BigQuery",
         Dialect::Databricks => "Databricks",
+        Dialect::Oracle => "Oracle",
+        Dialect::Db2 => "Db2",
     }
 }
 
@@ -656,7 +658,9 @@ async fn identity_steps(
         | Dialect::Ansi
         | Dialect::Snowflake
         | Dialect::BigQuery
-        | Dialect::Databricks => Vec::new(),
+        | Dialect::Databricks
+        | Dialect::Oracle
+        | Dialect::Db2 => Vec::new(),
     })
 }
 

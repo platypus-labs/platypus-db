@@ -194,7 +194,9 @@ impl ImportPlan {
             | Dialect::Ansi
             | Dialect::Snowflake
             | Dialect::BigQuery
-            | Dialect::Databricks => declared.to_owned(),
+            | Dialect::Databricks
+            | Dialect::Oracle
+            | Dialect::Db2 => declared.to_owned(),
         }
     }
 
