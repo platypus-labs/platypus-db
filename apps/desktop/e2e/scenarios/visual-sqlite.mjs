@@ -108,6 +108,6 @@ export default async function (page, { shots }) {
   await page.waitFor(`${toggle}.title.startsWith('Theme: System')`);
   await page.eval(`${toggle}.click()`);
   await page.waitFor(`${cssVar("--bg")} === '#ffffff'`);
-  assert.equal(await page.eval(cssVar("--accent")), "#5b52f0");
+  assert.equal(await page.eval(cssVar("--accent")), "#b85600");
   await screens(page, "light", shots);
 }
