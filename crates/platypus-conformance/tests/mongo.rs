@@ -38,7 +38,10 @@ async fn rows(conn: &dyn Connection, src: &str) -> usize {
         panic!("{src}: expected rows");
     };
     let batches: Vec<_> = stream.try_collect().await.unwrap();
-    batches.iter().map(|b| b.num_rows()).sum()
+    batches
+        .iter()
+        .map(platypus_core::arrow_array::RecordBatch::num_rows)
+        .sum()
 }
 
 #[tokio::test]
@@ -46,7 +49,7 @@ async fn connects_and_reports_the_server() {
     let Some(conn) = connect().await else { return };
     let info = conn.server_info();
     assert_eq!(info.product, "MongoDB");
-    assert!(!info.version.is_empty());
+    assert_ne!(info.version, "");
     assert!(!info.encrypted);
     assert!(!conn.is_closed());
     assert!(!conn.transaction().open && conn.transaction().autocommit);
@@ -101,13 +104,16 @@ async fn navigates_metadata() {
     let details = conn.table_details("platypus", "customers").await.unwrap();
     assert!(details.columns.iter().any(|c| c.name == "email"));
     assert!(details.indexes.iter().any(|i| i.primary));
-    assert!(
+    assert_eq!(
         conn.referencing_keys("platypus", "customers")
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
+        [] as [platypus_core::ReferencingKey; 0]
     );
-    assert!(!conn.catalog_columns().await.unwrap().is_empty());
+    assert_ne!(
+        conn.catalog_columns().await.unwrap(),
+        [] as [platypus_core::CatalogColumn; 0]
+    );
 }
 
 #[tokio::test]
