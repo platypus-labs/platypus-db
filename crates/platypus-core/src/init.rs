@@ -49,6 +49,16 @@ impl SessionInit {
                     ));
                 }
                 DriverKind::Mongo => out.push(format!("use {schema}")),
+                // Their schema is a field of the connection, passed to the driver.
+                DriverKind::Snowflake
+                | DriverKind::BigQuery
+                | DriverKind::Databricks
+                | DriverKind::Trino
+                | DriverKind::Adbc => {
+                    return Err(Error::Config(
+                        "set the schema in the connection's own fields".to_owned(),
+                    ));
+                }
             }
         }
         if let Some(zone) = self.time_zone.as_deref().filter(|z| !z.is_empty()) {
@@ -76,6 +86,18 @@ impl SessionInit {
                 }
                 DriverKind::Mongo => {
                     return Err(Error::Config("MongoDB has no session time zone".to_owned()));
+                }
+                DriverKind::Trino | DriverKind::Databricks => {
+                    out.push(format!("SET TIME ZONE '{zone}'"));
+                }
+                DriverKind::Snowflake => {
+                    out.push(format!("ALTER SESSION SET TIMEZONE = '{zone}'"));
+                }
+                DriverKind::BigQuery | DriverKind::Adbc => {
+                    return Err(Error::Config(format!(
+                        "{} has no session time zone here",
+                        driver.name()
+                    )));
                 }
             }
         }

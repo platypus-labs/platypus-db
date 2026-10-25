@@ -89,7 +89,14 @@ impl Current {
             }
             // MySQL bodies rely on `DELIMITER` instead; DuckDB and ClickHouse have no
             // statement bodies.
-            Dialect::MySql | Dialect::DuckDb | Dialect::SqlServer | Dialect::ClickHouse => false,
+            Dialect::MySql
+            | Dialect::DuckDb
+            | Dialect::SqlServer
+            | Dialect::ClickHouse
+            | Dialect::Ansi
+            | Dialect::Snowflake
+            | Dialect::BigQuery
+            | Dialect::Databricks => false,
         };
         if opens_block {
             self.block_depth += 1;

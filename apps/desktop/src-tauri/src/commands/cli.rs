@@ -54,6 +54,14 @@ fn program(driver: DriverKind) -> CommandResult<&'static str> {
             "cli",
             "terminal mode is not available for MongoDB",
         )),
+        DriverKind::Snowflake
+        | DriverKind::BigQuery
+        | DriverKind::Databricks
+        | DriverKind::Trino
+        | DriverKind::Adbc => Err(CommandError::new(
+            "cli",
+            format!("terminal mode is not available for {}", driver.name()),
+        )),
     }
 }
 
@@ -144,7 +152,13 @@ fn invocation(
             env.extend(password.map(|p| ("SQLCMDPASSWORD", p)));
         }
         // No client: `program` refuses them.
-        DriverKind::ClickHouse | DriverKind::Mongo => {}
+        DriverKind::ClickHouse
+        | DriverKind::Mongo
+        | DriverKind::Snowflake
+        | DriverKind::BigQuery
+        | DriverKind::Databricks
+        | DriverKind::Trino
+        | DriverKind::Adbc => {}
     }
     (args, env)
 }

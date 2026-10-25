@@ -1,3 +1,6 @@
+import { ProfileFields } from "../drivers/ProfileFields";
+import { PROFILES } from "../drivers/profiles";
+import { withDriver } from "../drivers/DriverPopup";
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -54,6 +57,11 @@ const DEFAULT_PORTS: Record<DriverKind, number | null> = {
   clickhouse: 8123,
   // The scheme's: 443, or 80 without TLS.
   libsql: null,
+  snowflake: null,
+  bigquery: null,
+  databricks: null,
+  trino: 8080,
+  adbc: null,
   mongo: 27017,
 };
 
@@ -198,7 +206,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const file = FILES[conn.driver === "duckdb" ? "duckdb" : "sqlite"];
   /** A libSQL server has no database or user to choose: the token picks the database. */
   const libsql = conn.driver === "libsql";
-  const secret = libsql ? "Auth token" : "Password";
+  /** The fields of a database reached through an ADBC driver. */
+  const adbcProfile = PROFILES[conn.driver];
+  const secret = adbcProfile?.secret ?? (libsql ? "Auth token" : "Password");
 
   // An empty password field keeps the stored one when editing.
   const passwordInput = (): PasswordInput =>
@@ -219,7 +229,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     setBusy(true);
     setResult(null);
     try {
-      setResult({ ok: true, server: await api.testConnection(ownNetwork(conn), passwordInput(), sshSecrets()) });
+      const server = await withDriver(() => api.testConnection(ownNetwork(conn), passwordInput(), sshSecrets()));
+      setResult({ ok: true, server });
     } catch (e) {
       setResult({ ok: false, message: toCommandError(e).message });
     } finally {
@@ -314,7 +325,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           <h2>{existing ? "Edit connection" : "New connection"}</h2>
           <div className="dialog-tabs" role="tablist">
             {tab("general", "General")}
-            {server && tab("network", `Network${networkSet ? " ●" : ""}`)}
+            {server && !adbcProfile && tab("network", `Network${networkSet ? " ●" : ""}`)}
             {tab("init", `Init${initSet ? " ●" : ""}`)}
           </div>
 
@@ -343,6 +354,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   <option value="clickhouse">ClickHouse</option>
                   <option value="libsql">libSQL / Turso</option>
                   <option value="mongo">MongoDB</option>
+                  <option value="snowflake">Snowflake</option>
+                  <option value="bigquery">BigQuery</option>
+                  <option value="databricks">Databricks</option>
+                  <option value="trino">Trino</option>
+                  <option value="adbc">Other ADBC driver</option>
                 </select>
               </label>
               <label className="field">
@@ -392,6 +408,26 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   </button>
                 </div>
               </label>
+            ) : adbcProfile ? (
+              <ProfileFields
+                conn={conn}
+                profile={adbcProfile}
+                onChange={setConn}
+                password={
+                  adbcProfile.secret === null ? null : (
+                    <label className="field">
+                      <span>{adbcProfile.secret}</span>
+                      <input
+                        type="password"
+                        value={password}
+                        placeholder={existing && conn.save_password ? "•••••• (saved)" : ""}
+                        onChange={(e) => setPassword(e.target.value)}
+                        autoComplete="off"
+                      />
+                    </label>
+                  )
+                }
+              />
             ) : (
               <>
                 <div className="row">

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -29,6 +30,27 @@ pub enum DriverKind {
     /// connection string (`shop?authSource=admin&replicaSet=rs0`; `srv=true` for
     /// `mongodb+srv`).
     Mongo,
+    /// Snowflake through its ADBC driver: `host` is the account, `options` hold
+    /// `warehouse`, `role` and `schema`.
+    Snowflake,
+    /// Google `BigQuery` through its ADBC driver: `options` hold `project`, `dataset` and
+    /// `credentials_file` (empty for Application Default Credentials).
+    #[serde(rename = "bigquery")]
+    BigQuery,
+    /// Databricks through its ADBC driver: `host` is the workspace, `database` the catalog,
+    /// `options` hold `http_path` and `schema`; the password is the access token.
+    Databricks,
+    /// Trino through its ADBC driver: `database` is the catalog, `options` hold `schema`.
+    Trino,
+    /// Any ADBC driver: `options` hold `driver_file`, `uri` and the driver's own options.
+    Adbc,
+}
+
+/// How the app reaches a database whose driver is not built in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Bridge {
+    /// An ADBC driver library, loaded at run time.
+    Adbc,
 }
 
 impl DriverKind {
@@ -37,10 +59,61 @@ impl DriverKind {
         match self {
             Self::Postgres => Some(5432),
             Self::MySql => Some(3306),
-            Self::Sqlite | Self::DuckDb | Self::Libsql => None,
             Self::SqlServer => Some(1433),
             Self::ClickHouse => Some(8123),
             Self::Mongo => Some(27017),
+            Self::Trino => Some(8080),
+            Self::Sqlite
+            | Self::DuckDb
+            | Self::Libsql
+            | Self::Snowflake
+            | Self::BigQuery
+            | Self::Databricks
+            | Self::Adbc => None,
+        }
+    }
+
+    /// The bridge to the driver of a database that is not built in.
+    #[must_use]
+    pub const fn bridge(self) -> Option<Bridge> {
+        match self {
+            Self::Snowflake | Self::BigQuery | Self::Databricks | Self::Trino | Self::Adbc => {
+                Some(Bridge::Adbc)
+            }
+            _ => None,
+        }
+    }
+
+    /// The product's name, for messages.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Postgres => "PostgreSQL",
+            Self::MySql => "MySQL",
+            Self::Sqlite => "SQLite",
+            Self::DuckDb => "DuckDB",
+            Self::SqlServer => "SQL Server",
+            Self::ClickHouse => "ClickHouse",
+            Self::Libsql => "libSQL",
+            Self::Mongo => "MongoDB",
+            Self::Snowflake => "Snowflake",
+            Self::BigQuery => "BigQuery",
+            Self::Databricks => "Databricks",
+            Self::Trino => "Trino",
+            Self::Adbc => "ADBC",
+        }
+    }
+
+    /// The name of the ADBC driver package in the driver registry; `None` for built-in
+    /// drivers and for the generic ADBC driver, whose file the user picks.
+    #[must_use]
+    pub const fn adbc_package(self) -> Option<&'static str> {
+        match self {
+            Self::Snowflake => Some("snowflake"),
+            Self::BigQuery => Some("bigquery"),
+            Self::Databricks => Some("databricks"),
+            Self::Trino => Some("trino"),
+            _ => None,
         }
     }
 
@@ -157,6 +230,8 @@ pub struct ConnectionConfig {
     pub ssh: Option<SshConfig>,
     /// Default schema, time zone and bootstrap statements, run by the driver after connecting.
     pub init: SessionInit,
+    /// What a driver needs beyond the fields above, e.g. Snowflake's `warehouse`.
+    pub options: BTreeMap<String, String>,
 }
 
 impl ConnectionConfig {
@@ -178,6 +253,7 @@ impl ConnectionConfig {
             connect_addr: None,
             ssh: None,
             init: SessionInit::default(),
+            options: BTreeMap::new(),
         }
     }
 
@@ -341,6 +417,45 @@ fn decode(s: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn driver_kinds_round_trip() {
+        for (kind, name) in [
+            (DriverKind::Snowflake, "snowflake"),
+            (DriverKind::BigQuery, "bigquery"),
+            (DriverKind::Databricks, "databricks"),
+            (DriverKind::Trino, "trino"),
+            (DriverKind::Adbc, "adbc"),
+        ] {
+            let json = serde_json::to_string(&kind).unwrap();
+            assert_eq!(json, format!("\"{name}\""));
+            assert_eq!(serde_json::from_str::<DriverKind>(&json).unwrap(), kind);
+        }
+    }
+
+    #[test]
+    fn bridge_and_packages() {
+        assert_eq!(DriverKind::Postgres.bridge(), None);
+        assert_eq!(DriverKind::Postgres.adbc_package(), None);
+        assert_eq!(DriverKind::Snowflake.bridge(), Some(Bridge::Adbc));
+        assert_eq!(DriverKind::Snowflake.adbc_package(), Some("snowflake"));
+        assert_eq!(DriverKind::BigQuery.adbc_package(), Some("bigquery"));
+        assert_eq!(DriverKind::Databricks.adbc_package(), Some("databricks"));
+        assert_eq!(DriverKind::Trino.adbc_package(), Some("trino"));
+        // The generic driver takes the file the user picks.
+        assert_eq!(DriverKind::Adbc.bridge(), Some(Bridge::Adbc));
+        assert_eq!(DriverKind::Adbc.adbc_package(), None);
+        assert_eq!(DriverKind::Trino.default_port(), Some(8080));
+        assert_eq!(DriverKind::Snowflake.default_port(), None);
+        assert!(!DriverKind::Trino.is_embedded());
+        assert!(
+            Error::DriverMissing {
+                driver: DriverKind::Trino
+            }
+            .to_string()
+            .contains("not installed")
+        );
+    }
 
     #[test]
     fn parses_postgres_url() {

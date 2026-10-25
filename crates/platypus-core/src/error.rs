@@ -19,6 +19,10 @@ pub enum Error {
     #[error("connection closed")]
     Closed,
 
+    /// The driver of a database that is not built in has not been downloaded yet.
+    #[error("the {} driver is not installed", .driver.name())]
+    DriverMissing { driver: crate::DriverKind },
+
     #[error("unsupported: {0}")]
     Unsupported(String),
 

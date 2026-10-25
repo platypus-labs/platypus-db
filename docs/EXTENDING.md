@@ -159,15 +159,44 @@ example:
 Conformance scenarios that are not SQL-specific have a MongoDB version in
 `crates/platypus-conformance/tests/mongo.rs`.
 
+### Drivers loaded at run time (ADBC)
+
+Snowflake, BigQuery, Databricks and Trino are reached through ADBC drivers that the app
+downloads instead of building in:
+- `DriverKind::bridge()` says a kind needs one, `DriverKind::adbc_package()` names its package
+  in the `dbc` driver registry. `ConnectionConfig::options` / `SavedConnection::options` hold the
+  fields of the kind beyond host, port, database and user (file version 6).
+- `platypus-drivers` reads the registry's `index.yaml` (cached under `<data>/drivers/`), picks
+  the newest package for the platform, refuses `LicenseRef-*` licenses, checks the SHA-256 and
+  unpacks to `<data>/drivers/adbc/<name>/<version>/` (library named by the package's
+  `MANIFEST`, recorded in `driver.toml`). `set_data_dir` is called at start by the app and by
+  `platypus-mcp`; agents never download.
+- `platypus-driver-adbc`: `profile::options` turns a config into the driver's database options
+  (one function per kind, with tests); `session` runs the ADBC connection on a thread of its
+  own; batches cross from arrow 59 (ADBC 0.24) to arrow 60 as IPC (`ipc`); `GetObjects` feeds
+  the navigator and autocompletion (`meta`). A missing driver is `Error::DriverMissing`, which
+  the desktop sends as the `driver_missing` error kind with the kind in `code`:
+  `withDriver` (`apps/desktop/src/drivers/DriverPopup.tsx`) shows the download popup and runs
+  the command again.
+- Adding a database: a `DriverKind` with its package, a branch in `profile::options` with a
+  test, its fields in `apps/desktop/src/drivers/profiles.ts`, a tile in `DriverPicker.tsx`,
+  and its dialect (`Dialect::Ansi`, `Snowflake`, `BigQuery` or `Databricks`, or a new one).
+- Cancelling: ADBC drivers written in Go do not stop a running statement on a connection-level
+  cancel, and the statement's own cancel waits for the lock `execute` holds; a statement still
+  waiting to start is given up with its session (`is_closed`), and the app opens another.
+
+Conformance: `crates/platypus-conformance/tests/bridges.rs` runs Trino (`--profile trino`)
+through the bridge, downloading its driver to `target/conformance-drivers`.
+
 ### Connections file
 
-`platypus_store::ConnectionStore` keeps `connections.toml`, now `version = 5`: a list of
+`platypus_store::ConnectionStore` keeps `connections.toml`, now `version = 6`: a list of
 `[[projects]]` (`id`, `name`, `color` as `#rrggbb`, `initials`, `connections`, the ids of
 its connections, with their `folders` and `placement`), then the `[[project_folders]]` of
 the rail, then the `[[network_profiles]]` (an SSH tunnel and SSL settings that
 connections reference by `network_profile`; `ConnectionStore::effective` puts them in place
 of the connection's own), before the `[[connections]]`. A connection can be in several
-projects, or in none. Older files are read and written back as version 5; a file with a
+projects, or in none. Older files are read and written back as version 6; a file with a
 newer version is refused, so an older app never drops what it cannot read. Ids of
 connections that no longer exist are dropped when the file is opened, and deleting a
 connection removes it from every project. Version 4 added each connection's

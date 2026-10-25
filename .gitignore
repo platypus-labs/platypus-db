@@ -8,3 +8,6 @@ graphify-out/
 
 # Brainstorming mockups (visual companion)
 .superpowers/
+
+# Design notes and plans kept outside the repository
+docs/superpowers/

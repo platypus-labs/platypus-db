@@ -517,7 +517,7 @@ mod tests {
     }
 
     #[test]
-    fn v4_file_reads_and_writes_v5() {
+    fn v4_file_reads_and_writes_v6() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("connections.toml");
         let (p, c) = (Uuid::new_v4(), Uuid::new_v4());
@@ -534,7 +534,7 @@ mod tests {
         assert_eq!(project(&s, p).folders, []);
         s.create_folder(p, "F", None).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("version = 5"), "{text}");
+        assert!(text.contains("version = 6"), "{text}");
     }
 
     #[test]

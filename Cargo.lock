@@ -3,6 +3,45 @@
 version = 4
 
 [[package]]
+name = "adbc_core"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "365059b13a01bbf6f324b5bfe328232a819679731431f78105e2883256236858"
+dependencies = [
+ "arrow-array 59.3.1",
+ "arrow-schema 59.3.1",
+]
+
+[[package]]
+name = "adbc_driver_manager"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3aac8bb789ff1f493bcb5d423c65b7a1b21ba5516f5e60797b4e1c64b34a2b61"
+dependencies = [
+ "adbc_core",
+ "adbc_ffi",
+ "arrow-array 59.3.1",
+ "arrow-schema 59.3.1",
+ "libloading 0.8.9",
+ "path-slash",
+ "regex",
+ "toml 1.1.8+spec-1.1.0",
+ "windows-registry",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "adbc_ffi"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12cdef84c12e9e8858b300440c36ca94ba24fb2e188175251dc39bb44ba3584e"
+dependencies = [
+ "adbc_core",
+ "arrow-array 59.3.1",
+ "arrow-schema 59.3.1",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -228,14 +267,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "234ce58e76c04e8162c2e4bc3fe53fa7c2418ef5fba7bb2838b8531b7d4fbf14"
 dependencies = [
  "arrow-arith",
- "arrow-array",
- "arrow-buffer",
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
  "arrow-cast",
- "arrow-data",
+ "arrow-data 60.0.0",
  "arrow-ord",
  "arrow-row",
- "arrow-schema",
- "arrow-select",
+ "arrow-schema 60.0.0",
+ "arrow-select 60.0.0",
  "arrow-string",
 ]
 
@@ -245,11 +284,30 @@ version = "60.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2303ebedb1071f4f72d71171e383859a9a285c94d99e4892685a96fca9890720"
 dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-data",
- "arrow-schema",
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
+ "arrow-data 60.0.0",
+ "arrow-schema 60.0.0",
  "chrono",
+ "num-traits",
+]
+
+[[package]]
+name = "arrow-array"
+version = "59.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2dae1d91737421e92c6dd7c7f9d0f2d25198fd6fc539738b628f4dad10adf533"
+dependencies = [
+ "ahash",
+ "arrow-buffer 59.3.1",
+ "arrow-data 59.3.1",
+ "arrow-schema 59.3.1",
+ "chrono",
+ "half",
+ "hashbrown 0.17.1",
+ "libc",
+ "num-complex",
+ "num-integer",
  "num-traits",
 ]
 
@@ -260,15 +318,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51dff6e4b9f158864a0aeb6a131ad53858ecbae7a2fc8989307b9b3c6b2f122e"
 dependencies = [
  "ahash",
- "arrow-buffer",
- "arrow-data",
- "arrow-schema",
+ "arrow-buffer 60.0.0",
+ "arrow-data 60.0.0",
+ "arrow-schema 60.0.0",
  "chrono",
  "half",
  "hashbrown 0.17.1",
  "libc",
  "num-complex",
  "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "arrow-buffer"
+version = "59.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fe9cd0064f2d7cf8ecfaf77cd70e67a980bc71aea92b63102bd37a7d3379a09"
+dependencies = [
+ "bytes",
+ "half",
+ "num-bigint 0.5.1",
  "num-traits",
 ]
 
@@ -290,12 +360,12 @@ version = "60.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d52cf840f0c34aeeb7e8b05aba72d66878e6c001827f423331f0b260209e7b7e"
 dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-data",
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
+ "arrow-data 60.0.0",
  "arrow-ord",
- "arrow-schema",
- "arrow-select",
+ "arrow-schema 60.0.0",
+ "arrow-select 60.0.0",
  "atoi",
  "base64 0.23.1",
  "chrono",
@@ -312,9 +382,9 @@ version = "60.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73a0e9adb28d95739fabcdae637261a2c14e618caf58ba1b88857120f9ee2687"
 dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-schema",
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
+ "arrow-schema 60.0.0",
 ]
 
 [[package]]
@@ -323,9 +393,9 @@ version = "60.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ad83176cc677f996096d694a3cccd7310069faeee4b3df9e2dabf92fdcf8b4b"
 dependencies = [
- "arrow-array",
+ "arrow-array 60.0.0",
  "arrow-cast",
- "arrow-schema",
+ "arrow-schema 60.0.0",
  "chrono",
  "csv",
  "csv-core",
@@ -334,15 +404,42 @@ dependencies = [
 
 [[package]]
 name = "arrow-data"
+version = "59.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54f128c73bb7fe9f7137218f910edd5b436f390e0f040b1956f5028390787897"
+dependencies = [
+ "arrow-buffer 59.3.1",
+ "arrow-schema 59.3.1",
+ "half",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "arrow-data"
 version = "60.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5aa06d5e22786c4966ffc4d2f171d0cb65d95f6bdea108a14e8c335e9faa437f"
 dependencies = [
- "arrow-buffer",
- "arrow-schema",
+ "arrow-buffer 60.0.0",
+ "arrow-schema 60.0.0",
  "half",
  "num-integer",
  "num-traits",
+]
+
+[[package]]
+name = "arrow-ipc"
+version = "59.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e244f39b82fa7a823e8b5984a0bd988234f9c92c1df79378fb85090e6e4c821"
+dependencies = [
+ "arrow-array 59.3.1",
+ "arrow-buffer 59.3.1",
+ "arrow-data 59.3.1",
+ "arrow-schema 59.3.1",
+ "arrow-select 59.3.1",
+ "flatbuffers",
 ]
 
 [[package]]
@@ -351,11 +448,11 @@ version = "60.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "86c523472d22e31f984df7a44fc36e6323d3c9b05ffe53d267ee4c3aa7c128d2"
 dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-data",
- "arrow-schema",
- "arrow-select",
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
+ "arrow-data 60.0.0",
+ "arrow-schema 60.0.0",
+ "arrow-select 60.0.0",
  "flatbuffers",
 ]
 
@@ -365,12 +462,12 @@ version = "60.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "342fc6600a93a48038d853431803c941436b7b51f756763e76cad9784b7e3718"
 dependencies = [
- "arrow-array",
- "arrow-buffer",
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
  "arrow-cast",
  "arrow-ord",
- "arrow-schema",
- "arrow-select",
+ "arrow-schema 60.0.0",
+ "arrow-select 60.0.0",
  "chrono",
  "half",
  "indexmap 2.14.2",
@@ -390,12 +487,12 @@ version = "60.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a7ac2c6a9cdc782fa9548d3763461eaec8c93347e297fddbaa44807e70a3698"
 dependencies = [
- "arrow-array",
- "arrow-buffer",
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
  "arrow-cmp",
- "arrow-data",
- "arrow-schema",
- "arrow-select",
+ "arrow-data 60.0.0",
+ "arrow-schema 60.0.0",
+ "arrow-select 60.0.0",
 ]
 
 [[package]]
@@ -404,11 +501,20 @@ version = "60.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "758b87e9648d80001e0916c083334ed93074c677a81a96144d5c84bd2d8eab2a"
 dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-data",
- "arrow-schema",
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
+ "arrow-data 60.0.0",
+ "arrow-schema 60.0.0",
  "half",
+]
+
+[[package]]
+name = "arrow-schema"
+version = "59.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37b6c8a6b12cf3869d299ce36ed8e1cd6fe9836264b68fb6c6538473a36124a1"
+dependencies = [
+ "bitflags 2.13.2",
 ]
 
 [[package]]
@@ -422,16 +528,30 @@ dependencies = [
 
 [[package]]
 name = "arrow-select"
+version = "59.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e523e85fa9fb3181a391bf0edfa6a1ae0dc46df8cbf7f6b96034dcb1e2a7a04a"
+dependencies = [
+ "ahash",
+ "arrow-array 59.3.1",
+ "arrow-buffer 59.3.1",
+ "arrow-data 59.3.1",
+ "arrow-schema 59.3.1",
+ "num-traits",
+]
+
+[[package]]
+name = "arrow-select"
 version = "60.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba3482b7d03bf4a3bf0b195f08a7f2b071595ccd54897e35b975ac63d3104977"
 dependencies = [
  "ahash",
- "arrow-array",
- "arrow-buffer",
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
  "arrow-cmp",
- "arrow-data",
- "arrow-schema",
+ "arrow-data 60.0.0",
+ "arrow-schema 60.0.0",
  "num-traits",
 ]
 
@@ -441,11 +561,11 @@ version = "60.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f300b4400b1e7cd58f7cbbd5dd2a0072cc59e73bfaee2a152b3ac660e46d9dd1"
 dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-data",
- "arrow-schema",
- "arrow-select",
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
+ "arrow-data 60.0.0",
+ "arrow-schema 60.0.0",
+ "arrow-select 60.0.0",
  "memchr",
  "num-traits",
  "regex",
@@ -3651,7 +3771,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e9ec52138abedcc58dc17a7c6c0c00a2bdb4f3427c7f63fa97fd0d859155caf"
 dependencies = [
  "gtk-sys",
- "libloading",
+ "libloading 0.7.4",
  "once_cell",
 ]
 
@@ -3694,6 +3814,16 @@ checksum = "b67380fd3b2fbe7527a606e18729d21c6f3951633d0500574c4dc22d2d638b9f"
 dependencies = [
  "cfg-if",
  "winapi",
+]
+
+[[package]]
+name = "libloading"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
+dependencies = [
+ "cfg-if",
+ "windows-link",
 ]
 
 [[package]]
@@ -4712,12 +4842,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8af83d2940bc0510f9aef86d865f56fdc6095f87ab115ac885a80b7c5226d3ba"
 dependencies = [
  "ahash",
- "arrow-array",
- "arrow-buffer",
- "arrow-data",
- "arrow-ipc",
- "arrow-schema",
- "arrow-select",
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
+ "arrow-data 60.0.0",
+ "arrow-ipc 60.0.0",
+ "arrow-schema 60.0.0",
+ "arrow-select 60.0.0",
  "base64 0.23.1",
  "bytes",
  "chrono",
@@ -4747,6 +4877,12 @@ name = "pastey"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
+
+[[package]]
+name = "path-slash"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e91099d4268b0e11973f036e885d652fb0b21fedcf69738c627f94db6a44f42"
 
 [[package]]
 name = "pbkdf2"
@@ -4902,11 +5038,11 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 name = "platypus-cli"
 version = "0.2.0"
 dependencies = [
- "arrow-array",
+ "arrow-array 60.0.0",
  "arrow-cast",
  "arrow-csv",
  "arrow-json",
- "arrow-schema",
+ "arrow-schema 60.0.0",
  "clap",
  "futures",
  "platypus-core",
@@ -4922,10 +5058,12 @@ dependencies = [
 name = "platypus-conformance"
 version = "0.2.0"
 dependencies = [
- "arrow-array",
+ "arrow-array 60.0.0",
  "arrow-cast",
+ "arrow-schema 60.0.0",
  "futures",
  "platypus-core",
+ "platypus-driver-adbc",
  "platypus-driver-clickhouse",
  "platypus-driver-duckdb",
  "platypus-driver-libsql",
@@ -4934,25 +5072,28 @@ dependencies = [
  "platypus-driver-mysql",
  "platypus-driver-pg",
  "platypus-driver-sqlite",
+ "platypus-drivers",
  "platypus-mcp",
  "platypus-schema",
  "platypus-sql",
  "platypus-transfer",
  "tempfile",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
 name = "platypus-core"
 version = "0.2.0"
 dependencies = [
- "arrow-array",
+ "arrow-array 60.0.0",
  "arrow-cast",
- "arrow-schema",
+ "arrow-schema 60.0.0",
  "async-trait",
  "futures",
  "percent-encoding",
  "serde",
+ "serde_json",
  "thiserror 2.0.21",
  "url",
 ]
@@ -4962,14 +5103,15 @@ name = "platypus-desktop"
 version = "0.2.0"
 dependencies = [
  "arboard",
- "arrow-array",
+ "arrow-array 60.0.0",
  "arrow-cast",
- "arrow-ipc",
- "arrow-schema",
+ "arrow-ipc 60.0.0",
+ "arrow-schema 60.0.0",
  "async-trait",
  "chrono",
  "futures",
  "platypus-core",
+ "platypus-driver-adbc",
  "platypus-driver-clickhouse",
  "platypus-driver-duckdb",
  "platypus-driver-libsql",
@@ -4978,6 +5120,7 @@ dependencies = [
  "platypus-driver-mysql",
  "platypus-driver-pg",
  "platypus-driver-sqlite",
+ "platypus-drivers",
  "platypus-net",
  "platypus-schema",
  "platypus-sql",
@@ -4996,14 +5139,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "platypus-driver-adbc"
+version = "0.2.0"
+dependencies = [
+ "adbc_core",
+ "adbc_driver_manager",
+ "arrow-array 59.3.1",
+ "arrow-array 60.0.0",
+ "arrow-cast",
+ "arrow-ipc 59.3.1",
+ "arrow-ipc 60.0.0",
+ "arrow-json",
+ "arrow-schema 59.3.1",
+ "arrow-schema 60.0.0",
+ "async-trait",
+ "futures",
+ "percent-encoding",
+ "platypus-core",
+ "platypus-drivers",
+ "platypus-sql",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "platypus-driver-clickhouse"
 version = "0.2.0"
 dependencies = [
- "arrow-array",
- "arrow-buffer",
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
  "arrow-cast",
- "arrow-ipc",
- "arrow-schema",
+ "arrow-ipc 60.0.0",
+ "arrow-schema 60.0.0",
  "async-trait",
  "bytes",
  "futures",
@@ -5020,9 +5187,9 @@ dependencies = [
 name = "platypus-driver-duckdb"
 version = "0.2.0"
 dependencies = [
- "arrow-array",
+ "arrow-array 60.0.0",
  "arrow-cast",
- "arrow-schema",
+ "arrow-schema 60.0.0",
  "async-trait",
  "calamine",
  "duckdb",
@@ -5038,8 +5205,8 @@ dependencies = [
 name = "platypus-driver-libsql"
 version = "0.2.0"
 dependencies = [
- "arrow-array",
- "arrow-schema",
+ "arrow-array 60.0.0",
+ "arrow-schema 60.0.0",
  "async-trait",
  "base64 0.22.1",
  "futures",
@@ -5056,8 +5223,8 @@ dependencies = [
 name = "platypus-driver-mongo"
 version = "0.2.0"
 dependencies = [
- "arrow-array",
- "arrow-schema",
+ "arrow-array 60.0.0",
+ "arrow-schema 60.0.0",
  "async-trait",
  "futures",
  "mongodb",
@@ -5070,9 +5237,9 @@ dependencies = [
 name = "platypus-driver-mssql"
 version = "0.2.0"
 dependencies = [
- "arrow-array",
+ "arrow-array 60.0.0",
  "arrow-cast",
- "arrow-schema",
+ "arrow-schema 60.0.0",
  "async-trait",
  "futures",
  "platypus-core",
@@ -5086,8 +5253,8 @@ dependencies = [
 name = "platypus-driver-mysql"
 version = "0.2.0"
 dependencies = [
- "arrow-array",
- "arrow-schema",
+ "arrow-array 60.0.0",
+ "arrow-schema 60.0.0",
  "async-trait",
  "futures",
  "mysql_async",
@@ -5101,9 +5268,9 @@ dependencies = [
 name = "platypus-driver-pg"
 version = "0.2.0"
 dependencies = [
- "arrow-array",
+ "arrow-array 60.0.0",
  "arrow-cast",
- "arrow-schema",
+ "arrow-schema 60.0.0",
  "async-trait",
  "criterion",
  "fallible-iterator 0.2.0",
@@ -5122,8 +5289,8 @@ dependencies = [
 name = "platypus-driver-sqlite"
 version = "0.2.0"
 dependencies = [
- "arrow-array",
- "arrow-schema",
+ "arrow-array 60.0.0",
+ "arrow-schema 60.0.0",
  "async-trait",
  "futures",
  "platypus-core",
@@ -5134,16 +5301,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "platypus-drivers"
+version = "0.2.0"
+dependencies = [
+ "flate2",
+ "futures",
+ "platypus-core",
+ "platypus-tls",
+ "reqwest",
+ "serde",
+ "serde_yaml_ng",
+ "sha2 0.11.1",
+ "tar",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "toml 1.1.8+spec-1.1.0",
+ "uuid",
+]
+
+[[package]]
 name = "platypus-mcp"
 version = "0.2.0"
 dependencies = [
- "arrow-array",
+ "arrow-array 60.0.0",
  "arrow-cast",
- "arrow-schema",
+ "arrow-schema 60.0.0",
  "dirs",
  "duckdb",
  "futures",
  "platypus-core",
+ "platypus-driver-adbc",
  "platypus-driver-clickhouse",
  "platypus-driver-duckdb",
  "platypus-driver-libsql",
@@ -5152,6 +5341,7 @@ dependencies = [
  "platypus-driver-mysql",
  "platypus-driver-pg",
  "platypus-driver-sqlite",
+ "platypus-drivers",
  "platypus-net",
  "platypus-sql",
  "platypus-store",
@@ -5228,11 +5418,11 @@ dependencies = [
 name = "platypus-transfer"
 version = "0.2.0"
 dependencies = [
- "arrow-array",
+ "arrow-array 60.0.0",
  "arrow-cast",
  "arrow-csv",
  "arrow-json",
- "arrow-schema",
+ "arrow-schema 60.0.0",
  "calamine",
  "chrono",
  "flate2",
@@ -6534,6 +6724,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
+]
+
+[[package]]
+name = "serde_yaml_ng"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b4db627b98b36d4203a7b458cf3573730f2bb591b28871d916dfa9efabfd41f"
+dependencies = [
+ "indexmap 2.14.2",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
 ]
 
 [[package]]
@@ -8045,6 +8248,12 @@ dependencies = [
  "crypto-common 0.2.2",
  "ctutils",
 ]
+
+[[package]]
+name = "unsafe-libyaml"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
 
 [[package]]
 name = "untrusted"

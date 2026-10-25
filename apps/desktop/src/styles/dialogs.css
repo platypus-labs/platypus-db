@@ -769,3 +769,53 @@ button.danger {
   font-weight: 600;
   color: var(--fg-muted);
 }
+
+/* Drivers downloaded when a database needs one. */
+
+.driver-popup {
+  width: min(460px, 92vw);
+}
+
+.driver-popup progress {
+  width: 100%;
+}
+
+.driver-package {
+  margin: 8px 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-input);
+}
+
+.profile-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 10px;
+}
+
+.driver-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.driver-state .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+
+.driver-state .dot.ok {
+  background: var(--type-dev, #2f9e44);
+}
+
+.driver-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
