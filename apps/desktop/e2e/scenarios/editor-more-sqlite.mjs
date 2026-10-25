@@ -102,6 +102,13 @@ export default async function (page, { dir }) {
     tabs.map((t) => t.replace(/×$/, "")),
     ["1. who = 'x'", "2. hello 'x'", "3. Included 2 statements", "4. 1 row", "5. 1 row", "6. 1 row"],
   );
+  // The wheel scrolls the result tabs sideways, once they overflow their bar.
+  const bar = `${visibleTab}.querySelector('.result-tabs')`;
+  await page.eval(`${bar}.style.maxWidth = '200px'`);
+  const r = await page.rect(".query-tab:not([style*='none']) .result-tabs");
+  await page.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: r.x + 50, y: r.y + r.h / 2, deltaX: 0, deltaY: 100 });
+  await page.waitFor(`${bar}.scrollLeft > 0`);
+  await page.eval(`${bar}.style.maxWidth = ''`);
 
   // @export writes the next statement's rows to a file instead of the grid.
   const out = join(dir, "out.csv");

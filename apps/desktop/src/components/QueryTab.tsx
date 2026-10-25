@@ -38,6 +38,7 @@ import { HistoryPanel } from "./HistoryPanel";
 import { useToolbar } from "./toolbar";
 import { isSlow, slowQuerySeconds } from "../querylog/slow";
 import { Icon } from "../ui/Icon";
+import { scrollSideways } from "../ui/scroll";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
 
 /** Auto-refresh intervals in seconds, `0` for off. */
@@ -1224,7 +1225,7 @@ export function QueryTab({
           )}
           {tab.terminal && <TerminalView blocks={terminalLog} onClear={() => setTerminalLog([])} />}
           {!tab.terminal && results.length > 1 && (
-            <div className="result-tabs">
+            <div className="result-tabs" onWheel={scrollSideways}>
               {results.map((r, i) => (
                 <button
                   key={r.id}
