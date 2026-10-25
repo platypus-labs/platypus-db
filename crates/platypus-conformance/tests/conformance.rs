@@ -114,10 +114,13 @@ macro_rules! bridged {
             | DriverKind::Databricks
             | DriverKind::Trino
             | DriverKind::Adbc
+            | DriverKind::Oracle
+            | DriverKind::Db2
+            | DriverKind::Odbc
     };
 }
 
-const BRIDGED: &str = "drivers with a bridge have their own tests in bridges.rs";
+const BRIDGED: &str = "drivers with a bridge or a vendor client have their own tests in      bridges.rs, oracle.rs and odbc.rs";
 
 fn driver(kind: DriverKind) -> &'static dyn Driver {
     match kind {

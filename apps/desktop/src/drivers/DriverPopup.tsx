@@ -1,7 +1,8 @@
 import { createElement, useEffect, useState } from "react";
-import { api, type DriverKind, type DriverStatus, toCommandError } from "../api";
+import { api, type DriverKind, type DriverStatus, VENDOR_DRIVERS, toCommandError } from "../api";
 import { DRIVER_NAMES } from "./names";
 import { workbench } from "../workbench";
+import { VendorPopup } from "./VendorDrivers";
 
 interface Props {
   driver: DriverKind;
@@ -91,13 +92,14 @@ function DriverPopup({ driver, onDone }: Props) {
 /** The popups open, by driver: sessions opened at once share one. */
 const asking = new Map<DriverKind, Promise<boolean>>();
 
-/** Shows the popup for `driver`; resolves `true` once its driver is installed. */
+/** Shows the popup for `driver` (a vendor's client for Oracle and Db2); resolves `true` once
+ *  its driver is installed. */
 export function askDriver(driver: DriverKind): Promise<boolean> {
   const open = asking.get(driver);
   if (open) return open;
   const answer = new Promise<boolean>((resolve) =>
     workbench().openDialog((close) =>
-      createElement(DriverPopup, {
+      createElement(VENDOR_DRIVERS.includes(driver) ? VendorPopup : DriverPopup, {
         driver,
         onDone: (installed: boolean) => {
           close();

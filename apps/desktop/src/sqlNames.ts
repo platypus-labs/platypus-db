@@ -35,6 +35,17 @@ const TSQL_RESERVED = new Set(
   ).split(" "),
 );
 
+/** Further words that Oracle reserves (`ORACLE_RESERVED` in `dialect.rs`). */
+const ORACLE_RESERVED = new Set(
+  (
+    "ACCESS ADD ALTER AUDIT CHAR CLUSTER COMMENT COMPRESS CONNECT CURRENT DATE DECIMAL EXCLUSIVE " +
+    "FILE FLOAT IDENTIFIED IMMEDIATE INCREMENT INITIAL INTEGER LEVEL LOCK LONG MAXEXTENTS MINUS " +
+    "MLSLABEL MODE MODIFY NOAUDIT NOCOMPRESS NOWAIT NUMBER OF OFFLINE ONLINE OPTION PCTFREE PRIOR " +
+    "PUBLIC RAW RENAME RESOURCE REVOKE ROWID ROWNUM SESSION SHARE SIZE SMALLINT START SUCCESSFUL " +
+    "SYNONYM SYSDATE TRIGGER UID VALIDATE VARCHAR VARCHAR2 VIEW WHENEVER"
+  ).split(" "),
+);
+
 /** Quotes an identifier only when the dialect requires it. Mirrors `Dialect::quote_ident`
  *  in `crates/platypus-sql/src/dialect.rs`; keep the two in sync. */
 export function quoteIdent(name: string, driver: DriverKind): string {
@@ -61,9 +72,16 @@ export function quoteIdent(name: string, driver: DriverKind): string {
       driver === "bigquery" ? name.replaceAll("\\", "\\\\").replaceAll("`", "\\`") : name.replaceAll("`", "``");
     return `\`${escaped}\``;
   }
+  // Oracle and Db2 fold bare names to upper case; Oracle allows `$` and `#` in them.
+  if (driver === "oracle" || driver === "db2") {
+    const oracle = driver === "oracle";
+    const bare = oracle ? /^[A-Z][A-Z0-9_$#]*$/ : /^[A-Z][A-Z0-9_]*$/;
+    const bareOk = bare.test(name) && !reserved && !(oracle && ORACLE_RESERVED.has(upper));
+    return bareOk ? name : `"${name.replaceAll('"', '""')}"`;
+  }
   // PostgreSQL folds bare names to lower case, Snowflake to upper case and Trino to lower
   // case (only names that read the same either way stay bare); SQLite and DuckDB ignore case.
-  const ansi = driver === "snowflake" || driver === "trino" || driver === "adbc";
+  const ansi = driver === "snowflake" || driver === "trino" || driver === "adbc" || driver === "odbc";
   const bare = driver === "postgres" ? /^[a-z_][a-z0-9_$]*$/ : ansi ? /^[A-Z_][A-Z0-9_]*$/ : /^[A-Za-z_][A-Za-z0-9_]*$/;
   return bare.test(name) && !reserved ? name : `"${name.replaceAll('"', '""')}"`;
 }

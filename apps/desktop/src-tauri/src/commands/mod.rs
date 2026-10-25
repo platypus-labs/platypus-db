@@ -30,6 +30,7 @@ pub mod summary;
 pub mod transactions;
 pub mod transfer;
 pub mod vault;
+pub mod vendor;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -44,6 +45,8 @@ use platypus_driver_libsql::LibsqlDriver;
 use platypus_driver_mongo::MongoDriver;
 use platypus_driver_mssql::MssqlDriver;
 use platypus_driver_mysql::MySqlDriver;
+use platypus_driver_odbc::OdbcDriver;
+use platypus_driver_oracle::OracleDriver;
 use platypus_driver_pg::PgDriver;
 use platypus_driver_sqlite::SqliteDriver;
 use platypus_store::{ConnectionStore, HistoryStore, SettingsStore, VaultSecrets};
@@ -211,6 +214,8 @@ pub(crate) async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connect
             | DriverKind::Databricks
             | DriverKind::Trino
             | DriverKind::Adbc => AdbcDriver::shared()?.connect(&config).await,
+            DriverKind::Oracle => OracleDriver::shared()?.connect(&config).await,
+            DriverKind::Db2 | DriverKind::Odbc => OdbcDriver.connect(&config).await,
         }
     })
     .await

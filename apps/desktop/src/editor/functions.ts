@@ -187,6 +187,9 @@ const LETTER: Record<DriverKind, string> = {
   databricks: "-",
   trino: "-",
   adbc: "-",
+  oracle: "-",
+  db2: "-",
+  odbc: "-",
 };
 
 function options(driver: DriverKind): Completion[] {

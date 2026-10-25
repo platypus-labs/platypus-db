@@ -61,10 +61,15 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | PostgreSQL driver | Profiles with their default port, user, database and SSL |
 | Snowflake, BigQuery, Databricks, Trino | ADBC driver, downloaded on first use | Queries, results, navigator and autocompletion; no data editing, explain or manual commit yet |
 | Any database with an ADBC driver | ADBC driver library you choose | Its URI and options as the driver documents them |
+| Oracle | native driver with Oracle Instant Client, downloaded on first use | PL/SQL blocks (end them with a `/` line in scripts), real cancel, navigator, DDL; Windows needs the Visual C++ Redistributable, Linux `libaio` |
+| IBM Db2 | IBM's ODBC driver, installed on first use (Windows) | Registering the driver asks for administrator rights (UAC) |
+| Any ODBC driver or DSN (Windows) | the system's ODBC driver manager | A DSN, or a driver and its connection string |
 
 The ADBC drivers come from the [dbc driver registry](https://docs.columnar.tech/dbc/) (Columnar):
 the first connection that needs one asks to download it, checks its SHA-256 and keeps it with
-the app's data. *Settings › Drivers* lists and removes them.
+the app's data. Oracle Instant Client and IBM's ODBC driver come from Oracle's and IBM's sites
+in the same way, with their license shown first. *Settings › Drivers* lists and removes them,
+and shows the ODBC drivers and data sources of the system.
 
 ## Features
 

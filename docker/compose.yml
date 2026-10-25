@@ -215,3 +215,22 @@ services:
       timeout: 5s
       retries: 60
       start_period: 10s
+
+  # Oracle Database Free, reached through Oracle's ODBC driver (Instant Client), not started
+  # by default: `docker compose --profile oracle up -d --wait`. The image creates the user
+  # `platypus` / `platypus` in the pluggable database (service) `FREEPDB1`.
+  oracle:
+    image: gvenzl/oracle-free:23.26.3-slim-faststart
+    profiles: [oracle]
+    environment:
+      ORACLE_PASSWORD: platypus
+      APP_USER: platypus
+      APP_USER_PASSWORD: platypus
+    ports:
+      - "51521:1521"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+      start_period: 10s

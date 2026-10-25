@@ -15,4 +15,7 @@ export const DRIVER_NAMES: Record<DriverKind, string> = {
   databricks: "Databricks",
   trino: "Trino",
   adbc: "ADBC",
+  oracle: "Oracle",
+  db2: "Db2",
+  odbc: "ODBC",
 };
