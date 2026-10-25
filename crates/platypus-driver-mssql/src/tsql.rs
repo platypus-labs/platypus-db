@@ -106,6 +106,12 @@ pub fn prepare(sql: &str) -> Prepared<'_> {
             effect: TxEffect::None,
         };
     }
+    // Statements SQL Server refuses inside a transaction.
+    if is(first, &["BACKUP", "RESTORE"])
+        || (is(first, &["CREATE", "ALTER", "DROP"]) && is(second, &["DATABASE"]))
+    {
+        return keep(TxEffect::Outside);
+    }
     keep(TxEffect::None)
 }
 
@@ -179,6 +185,8 @@ mod tests {
         assert_eq!(effect("-- note\nCREATE TABLE t (id INT)"), TxEffect::None);
         assert_eq!(effect("END"), TxEffect::None);
         assert_eq!(effect("SELECT 1"), TxEffect::None);
+        assert_eq!(effect("create database x"), TxEffect::Outside);
+        assert_eq!(effect("BACKUP DATABASE x TO DISK = 'f'"), TxEffect::Outside);
     }
 
     #[test]

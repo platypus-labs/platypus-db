@@ -702,6 +702,23 @@ async fn manual_commit_and_rollback() {
             conn.rollback().await.unwrap();
             conn.set_autocommit(true).await.unwrap();
         }
+
+        // DDL as the first statement opens the transaction too, where DDL is transactional.
+        let mysql = b.config.driver == DriverKind::MySql;
+        let d = platypus_sql::Dialect::from(b.config.driver);
+        let ddl = d.qualified(Some(&b.schema), "conf_tx_ddl");
+        let _ = run(conn, &format!("DROP TABLE {ddl}")).await;
+        conn.set_autocommit(false).await.unwrap();
+        run(conn, &format!("CREATE TABLE {ddl} (id INT)"))
+            .await
+            .unwrap();
+        assert_eq!(conn.transaction().open, !mysql, "{}: DDL first", b.name);
+        conn.rollback().await.unwrap();
+        let kept = run(conn, &format!("SELECT * FROM {ddl}")).await.is_ok();
+        assert_eq!(kept, mysql, "{}: the CREATE rolled back", b.name);
+        conn.rollback().await.unwrap();
+        conn.set_autocommit(true).await.unwrap();
+        let _ = run(conn, &format!("DROP TABLE {ddl}")).await;
     }
 }
 
