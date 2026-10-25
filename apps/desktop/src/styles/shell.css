@@ -27,6 +27,19 @@
   margin-bottom: 4px;
 }
 
+/* The banner art is 4:1 with its own margins; one version per background. */
+.welcome .banner {
+  display: block;
+  width: min(480px, 80vw);
+  height: auto;
+  margin: 0 auto;
+}
+
+:root[data-theme="dark"] .welcome .banner-on-light,
+:root:not([data-theme="dark"]) .welcome .banner-on-dark {
+  display: none;
+}
+
 /* Tabs */
 
 .tabs {

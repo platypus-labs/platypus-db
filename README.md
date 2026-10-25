@@ -1,4 +1,9 @@
-# PlatypusDB
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/platypus-db-on-dark.png" />
+    <img src="docs/brand/platypus-db-on-light.png" alt="PlatypusDB" width="640" />
+  </picture>
+</h1>
 
 A fast, lightweight desktop SQL client: a Rust core with a Tauri 2 + React interface. The
 installer is about 5 MB, the window is ready in under half a second, and the results grid

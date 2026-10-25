@@ -106,7 +106,7 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`${cssVar("--bg")} === '#141519'`);
   assert.deepEqual(
     [await css("--bg-sidebar"), await css("--bg-rail"), await css("--border"), await css("--accent")],
-    ["#17181d", "#0d0e11", "#23252c", "#6c63ff"],
+    ["#17181d", "#0d0e11", "#23252c", "#ff8d28"],
   );
   await pick("Classic Dark");
   await page.waitFor(`${cssVar("--bg")} === '#1b1d21'`); // the former "Dark"

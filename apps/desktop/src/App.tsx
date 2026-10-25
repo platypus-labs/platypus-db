@@ -40,6 +40,8 @@ import { ScriptsPanel } from "./scripts/ScriptsPanel";
 import { ContextMenu, type MenuState } from "./components/ContextMenu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import bannerOnDark from "./assets/brand/platypus-db-on-dark.png";
+import bannerOnLight from "./assets/brand/platypus-db-on-light.png";
 
 type Dialog =
   | {
@@ -672,7 +674,10 @@ export function App() {
         })}
         {visibleTabs.length === 0 && (
           <div className="welcome">
-            <h1>PlatypusDB</h1>
+            <h1>
+              <img className="banner banner-on-light" src={bannerOnLight} alt="PlatypusDB" />
+              <img className="banner banner-on-dark" src={bannerOnDark} alt="PlatypusDB" />
+            </h1>
             <p className="muted">
               {connections?.length === 0
                 ? "Add a connection to get started."
