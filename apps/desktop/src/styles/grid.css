@@ -585,3 +585,36 @@
   color: var(--fg-muted);
   font-style: italic;
 }
+
+/* MongoDB document tree (DocumentPanel). */
+.doc-tree {
+  overflow: auto;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.doc-tree .doc-node > div,
+.doc-tree .doc-node > details {
+  margin-left: 14px;
+}
+.doc-tree summary {
+  cursor: pointer;
+}
+.doc-key {
+  color: var(--syn-ident);
+}
+.doc-focused {
+  background: var(--grid-selection);
+}
+.doc-string {
+  color: var(--syn-string);
+  word-break: break-all;
+}
+.doc-number {
+  color: var(--syn-number);
+}
+.doc-null {
+  color: var(--fg-muted);
+  font-style: italic;
+}

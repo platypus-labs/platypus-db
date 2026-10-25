@@ -3,6 +3,7 @@ import {
   siDuckdb,
   siGooglecloud,
   siMariadb,
+  siMongodb,
   siMysql,
   siNeon,
   siPostgresql,
@@ -42,6 +43,7 @@ const CHOICES: Choice[] = [
   { driver: "sqlite", label: "SQLite", path: siSqlite.path, bg: `#${siSqlite.hex}`, fg: "#fff" },
   // DuckDB's yellow needs a dark badge.
   { driver: "duckdb", label: "DuckDB", path: siDuckdb.path, bg: DARK, fg: `#${siDuckdb.hex}` },
+  { driver: "mongo", label: "MongoDB", path: siMongodb.path, bg: DARK, fg: `#${siMongodb.hex}` },
 ];
 
 /** Servers and services that speak the PostgreSQL protocol: the PostgreSQL driver, preset. */

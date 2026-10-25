@@ -1,7 +1,7 @@
 // Quick filters of the data viewer: conditions on the focused cell's column, added to the
 // viewer's WHERE from the grid's menu.
 import { registerAction } from "../../actions";
-import { api } from "../../api";
+import { api, isMongo } from "../../api";
 import { quoteIdent } from "../../sqlNames";
 import type { GridActionContext } from "../DataGrid";
 
@@ -28,6 +28,8 @@ function target({ grid, source }: GridActionContext) {
   const row = focused ? grid.dataRow(focused.row) : null;
   const column = focused ? grid.columns()[focused.col] : undefined;
   if (!source?.viewer || source.jobId === null || row === null || !column || !focused) return null;
+  // The conditions are SQL; a MongoDB filter is a query document typed by hand.
+  if (isMongo(source.connection.driver)) return null;
   return {
     viewer: source.viewer,
     jobId: source.jobId,

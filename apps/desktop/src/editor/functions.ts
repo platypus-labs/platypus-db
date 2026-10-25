@@ -143,7 +143,8 @@ const FUNCTIONS: Entry[] = [
   ["isjson", "text", "1 when the text is valid JSON.", "t"],
 ];
 
-const LETTER: Record<DriverKind, string> = { postgres: "p", mysql: "m", sqlite: "s", duckdb: "d", sqlserver: "t" };
+// MongoDB has no SQL functions: a letter no function lists.
+const LETTER: Record<DriverKind, string> = { postgres: "p", mysql: "m", sqlite: "s", duckdb: "d", sqlserver: "t", mongo: "-" };
 
 function options(driver: DriverKind): Completion[] {
   return FUNCTIONS.filter((f) => f.at(3)!.includes(LETTER[driver])).map(([name, args, doc]) =>

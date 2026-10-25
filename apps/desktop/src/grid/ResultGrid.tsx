@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnInfo } from "../api";
 import { CalcPanel } from "../panels/CalcPanel";
 import { CompareRows } from "../panels/CompareRows";
+import { DocumentPanel } from "../panels/DocumentPanel";
 import { GroupingPanel } from "../panels/GroupingPanel";
 import { MapPanel } from "../panels/MapPanel";
 import { MetadataPanel } from "../panels/MetadataPanel";
@@ -88,7 +89,12 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   const editor = useTableEditor({ target: edit ?? null, jobId, columns, cache, version, grid, box });
   const search = useGridSearch(jobId, columns.length, editor.topRows, grid);
   const stats = useSelectionStats(jobId, grid);
-  const panelOpen = useSetting(valuePanelSetting);
+  const valuePanelOpen = useSetting(valuePanelSetting);
+  // MongoDB results show the focused row's document in place of the value panel, open
+  // from the start: nested fields are only readable there.
+  const mongo = source?.connection.driver === "mongo";
+  const [documentOpen, setDocumentOpen] = useState(true);
+  const panelOpen = mongo ? documentOpen : valuePanelOpen;
   const [focused, setFocused] = useState<Cell | null>(null);
   const [recordView, setRecordView] = useState(false);
   const [grouping, setGrouping] = useState<number[] | null>(null);
@@ -122,7 +128,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   const features: GridFeatures = {
     find: search.open,
     valuePanelOpen: panelOpen,
-    toggleValuePanel: () => void setSetting(valuePanelSetting, !panelOpen),
+    toggleValuePanel: () => (mongo ? setDocumentOpen(!documentOpen) : void setSetting(valuePanelSetting, !panelOpen)),
     openColumns: () => setColumnsOpen(true),
     recordView,
     toggleRecordView: () => {
@@ -185,7 +191,19 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
             />
           )}
         </div>
-        {panelOpen && <ValuePanel target={valueTarget} onClose={features.toggleValuePanel} />}
+        {panelOpen &&
+          (mongo ? (
+            <DocumentPanel
+              jobId={jobId}
+              columns={columns}
+              row={dataRow ?? null}
+              field={column?.name ?? null}
+              version={version}
+              onClose={features.toggleValuePanel}
+            />
+          ) : (
+            <ValuePanel target={valueTarget} onClose={features.toggleValuePanel} />
+          ))}
         {metadataOpen && (
           <MetadataPanel
             column={column}
