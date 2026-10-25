@@ -3,6 +3,7 @@
 //! databases are downloaded by the app (`platypus-drivers`); this crate loads them.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
 
@@ -18,7 +19,7 @@ use platypus_core::{
     RecordBatchStream, ReferencingKey, Result, SchemaMeta, ServerInfo, TableDetails,
     TransactionState,
 };
-use tokio::sync::oneshot;
+use tokio::sync::{Notify, oneshot};
 
 mod ipc;
 mod meta;
@@ -121,7 +122,10 @@ impl AdbcConnection {
         .or(opened.schema);
         Ok(Self {
             commands: Mutex::new(commands),
-            canceller: AdbcCanceller(Arc::new(opened.cancel)),
+            canceller: AdbcCanceller {
+                connection: Arc::new(opened.cancel),
+                state: Arc::default(),
+            },
             server: ServerInfo {
                 product: match config.driver {
                     DriverKind::Adbc => opened.vendor.unwrap_or_else(|| "ADBC".to_owned()),
@@ -172,7 +176,21 @@ impl Connection for AdbcConnection {
             batch_size: options.batch_size.max(1),
             reply,
         })?;
-        match started.await.map_err(|_| Error::Closed)?? {
+        let state = &self.canceller.state;
+        if state.abandoned.load(Ordering::SeqCst) {
+            return Err(Error::Closed);
+        }
+        state.starting.fetch_add(1, Ordering::SeqCst);
+        let abandoned = state.abandon.notified();
+        let started = tokio::select! {
+            started = started => started,
+            () = abandoned => {
+                state.starting.fetch_sub(1, Ordering::SeqCst);
+                return Err(Error::Cancelled);
+            }
+        };
+        state.starting.fetch_sub(1, Ordering::SeqCst);
+        match started.map_err(|_| Error::Closed)?? {
             Started::Affected(rows) => Ok(ExecResult::Affected { rows }),
             Started::Rows(schema, mut rx) => {
                 let stream = futures::stream::poll_fn(move |cx| rx.poll_recv(cx));
@@ -192,8 +210,10 @@ impl Connection for AdbcConnection {
         &self.server
     }
 
+    /// After a cancelled statement that had not started returning: the worker is still
+    /// waiting for it, so the app opens another session.
     fn is_closed(&self) -> bool {
-        false
+        self.canceller.state.abandoned.load(Ordering::SeqCst)
     }
 
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {
@@ -259,10 +279,23 @@ impl Connection for AdbcConnection {
     }
 }
 
-/// Cancels through a handle on the same connection: the worker holds only the statement's
-/// lock while it runs.
+/// Whether a statement is waiting to start, and whether the session was given up.
+#[derive(Debug, Default)]
+struct CancelState {
+    starting: AtomicUsize,
+    abandoned: AtomicBool,
+    abandon: Notify,
+}
+
+/// Asks the driver to cancel, through a handle on the same connection. Drivers written in
+/// Go cancel only their own calls that way, and a running statement holds the lock that
+/// cancelling it needs: a statement still waiting to start is given up instead, with its
+/// session, which the app replaces.
 #[derive(Clone)]
-struct AdbcCanceller(Arc<ManagedConnection>);
+struct AdbcCanceller {
+    connection: Arc<ManagedConnection>,
+    state: Arc<CancelState>,
+}
 
 impl std::fmt::Debug for AdbcCanceller {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -273,14 +306,19 @@ impl std::fmt::Debug for AdbcCanceller {
 #[async_trait]
 impl Canceller for AdbcCanceller {
     async fn cancel(&self) -> Result<()> {
-        let connection = Arc::clone(&self.0);
+        let connection = Arc::clone(&self.connection);
         tokio::task::spawn_blocking(move || {
             let mut connection = (*connection).clone();
             // Drivers without cancellation report it; nothing else to do then.
             let _ = connection.cancel();
         })
         .await
-        .map_err(|e| Error::Unsupported(e.to_string()))
+        .map_err(|e| Error::Unsupported(e.to_string()))?;
+        if self.state.starting.load(Ordering::SeqCst) > 0 {
+            self.state.abandoned.store(true, Ordering::SeqCst);
+            self.state.abandon.notify_waiters();
+        }
+        Ok(())
     }
 }
 

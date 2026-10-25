@@ -5060,8 +5060,10 @@ version = "0.2.0"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
+ "arrow-schema 60.0.0",
  "futures",
  "platypus-core",
+ "platypus-driver-adbc",
  "platypus-driver-clickhouse",
  "platypus-driver-duckdb",
  "platypus-driver-libsql",
@@ -5070,12 +5072,14 @@ dependencies = [
  "platypus-driver-mysql",
  "platypus-driver-pg",
  "platypus-driver-sqlite",
+ "platypus-drivers",
  "platypus-mcp",
  "platypus-schema",
  "platypus-sql",
  "platypus-transfer",
  "tempfile",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
