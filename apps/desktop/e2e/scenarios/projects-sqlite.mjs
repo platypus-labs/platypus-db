@@ -269,6 +269,7 @@ async function members(page, dir, shots) {
     "SQL Server",
     "SQLite",
     "DuckDB",
+    "Turso / libSQL",
     "CockroachDB",
     "YugabyteDB",
     "TimescaleDB",

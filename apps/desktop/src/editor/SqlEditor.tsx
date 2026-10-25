@@ -146,7 +146,14 @@ const theme = EditorView.theme({
 });
 
 // DuckDB has no CodeMirror dialect; its syntax follows PostgreSQL.
-const dialects = { postgres: PostgreSQL, mysql: MySQL, sqlite: SQLite, duckdb: PostgreSQL, sqlserver: MSSQL };
+const dialects = {
+  postgres: PostgreSQL,
+  mysql: MySQL,
+  sqlite: SQLite,
+  duckdb: PostgreSQL,
+  sqlserver: MSSQL,
+  libsql: SQLite,
+};
 
 function language(driver: DriverKind, catalog: CompletionCatalog | null | undefined) {
   const support = sql({

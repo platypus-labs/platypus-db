@@ -9,6 +9,7 @@ import {
   siSqlite,
   siSupabase,
   siTimescale,
+  siTurso,
 } from "simple-icons";
 import type { DriverKind, SavedConnection } from "../api";
 
@@ -42,6 +43,15 @@ const CHOICES: Choice[] = [
   { driver: "sqlite", label: "SQLite", path: siSqlite.path, bg: `#${siSqlite.hex}`, fg: "#fff" },
   // DuckDB's yellow needs a dark badge.
   { driver: "duckdb", label: "DuckDB", path: siDuckdb.path, bg: DARK, fg: `#${siDuckdb.hex}` },
+  // Turso's cloud takes verified TLS; a local sqld usually runs without it.
+  {
+    driver: "libsql",
+    label: "Turso / libSQL",
+    path: siTurso.path,
+    bg: DARK,
+    fg: `#${siTurso.hex}`,
+    preset: { ssl_mode: "verify-full" },
+  },
 ];
 
 /** Servers and services that speak the PostgreSQL protocol: the PostgreSQL driver, preset. */
