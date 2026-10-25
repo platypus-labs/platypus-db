@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -9,9 +9,11 @@ use uuid::Uuid;
 
 use crate::{Result, SecretStore, StoreError};
 
-/// 2 added projects, 3 network profiles, 4 the agents' access: an older app would drop them on
-/// its first save, so it refuses the file.
-const FILE_VERSION: u32 = 4;
+mod folders;
+
+/// 2 added projects, 3 network profiles, 4 the agents' access, 5 folders: an older app would
+/// drop them on its first save, so it refuses the file.
+const FILE_VERSION: u32 = 5;
 
 /// A connection as the user saved it. Never contains the password.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -192,9 +194,39 @@ pub struct Project {
     /// In the order they were added.
     #[serde(default)]
     pub connections: Vec<Uuid>,
+    /// Folders of the project's connections, nested through `parent`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub folders: Vec<ConnectionFolder>,
+    /// The folder of each connection in one; connections not here are at the root.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub placement: BTreeMap<Uuid, Uuid>,
+}
+
+/// A folder of connections inside a project.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectionFolder {
+    pub id: Uuid,
+    pub name: String,
+    /// `None` at the project's root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<Uuid>,
 }
 
 impl Project {
+    /// An empty project; the initials are computed from the name.
+    #[must_use]
+    pub fn new(name: &str, color: &str) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name: name.to_owned(),
+            color: color.to_owned(),
+            initials: initials_of(name),
+            connections: Vec::new(),
+            folders: Vec::new(),
+            placement: BTreeMap::new(),
+        }
+    }
+
     /// Adds the connection (at the end) or takes it out; false when it was already so.
     fn set_member(&mut self, connection: Uuid, member: bool) -> bool {
         let present = self.connections.contains(&connection);
@@ -202,6 +234,7 @@ impl Project {
             self.connections.push(connection);
         } else if !member && present {
             self.connections.retain(|c| *c != connection);
+            self.placement.remove(&connection);
         } else {
             return false;
         }
@@ -401,6 +434,7 @@ impl ConnectionStore {
             if p.initials.trim().is_empty() {
                 p.initials = initials_of(&p.name);
             }
+            p.drop_dangling();
         }
         Ok(Self {
             path,
@@ -448,8 +482,15 @@ impl ConnectionStore {
         }
         let known = self.connections.iter().map(|c| c.id).collect();
         keep_known(&mut project.connections, &known);
-        match self.projects.iter_mut().find(|p| p.id == project.id) {
-            Some(existing) => *existing = project,
+        // Folders change through their own operations: the project dialog does not send them.
+        let at = self.projects.iter().position(|p| p.id == project.id);
+        if let Some(existing) = at.map(|i| &mut self.projects[i]) {
+            project.folders = std::mem::take(&mut existing.folders);
+            project.placement = std::mem::take(&mut existing.placement);
+        }
+        project.drop_dangling();
+        match at {
+            Some(i) => self.projects[i] = project,
             None => self.projects.push(project),
         }
         self.write()
@@ -664,7 +705,7 @@ impl ConnectionStore {
         };
         let removed = self.connections.remove(index);
         for p in &mut self.projects {
-            p.connections.retain(|c| *c != id);
+            p.set_member(id, false);
         }
         self.write()?;
         for ssh in removed.ssh.iter().flat_map(SavedSsh::chain) {
@@ -784,6 +825,8 @@ mod tests {
             color: "#d08f20".to_owned(),
             initials: String::new(),
             connections,
+            folders: Vec::new(),
+            placement: BTreeMap::new(),
         }
     }
 
@@ -807,7 +850,7 @@ mod tests {
         s.save_project(project("Interno", vec![shared.id])).unwrap();
 
         let text = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
-        assert!(text.contains("version = 4"), "{text}");
+        assert!(text.contains("version = 5"), "{text}");
         assert!(text.contains("[[projects]]"), "{text}");
         let reopened = ConnectionStore::open(dir.path().join("connections.toml"), secrets).unwrap();
         let projects = reopened.projects();
@@ -818,7 +861,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_a_v1_file_and_writes_v4() {
+    fn reads_a_v1_file_and_writes_v5() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("connections.toml");
         let id = Uuid::new_v4();
@@ -834,7 +877,7 @@ mod tests {
         let old = s.get(id).unwrap().clone();
         s.save(old, PasswordUpdate::Keep).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("version = 4"), "{text}");
+        assert!(text.contains("version = 5"), "{text}");
         assert!(!text.contains("folder"), "{text}");
         // Older files leave agents to read only.
         assert!(text.contains("agent_access = \"read_only\""), "{text}");
@@ -1235,7 +1278,7 @@ SET b = 2;"
         std::fs::write(&path, "version = 99\n").unwrap();
         let err = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap_err();
         assert!(matches!(err, StoreError::Format { .. }));
-        std::fs::write(&path, "version = 5\n").unwrap();
+        std::fs::write(&path, "version = 6\n").unwrap();
         let err = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap_err();
         assert!(err.to_string().contains("newer PlatypusDB"), "{err}");
 
