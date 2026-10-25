@@ -26,13 +26,26 @@ export function ProfileFields({ conn, profile, onChange, password }: Props) {
           <label key={f.key} className="field" data-field={f.key}>
             <span>{f.label}</span>
             <div className="row tight">
-              <input
-                required={f.required}
-                type={f.key === "port" ? "number" : "text"}
-                value={fieldValue(conn, f.key)}
-                placeholder={f.placeholder}
-                onChange={(e) => onChange(withField(conn, f.key, e.target.value))}
-              />
+              {f.choices ? (
+                <select
+                  value={fieldValue(conn, f.key)}
+                  onChange={(e) => onChange(withField(conn, f.key, e.target.value))}
+                >
+                  {f.choices.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  required={f.required}
+                  type={f.key === "port" ? "number" : "text"}
+                  value={fieldValue(conn, f.key)}
+                  placeholder={f.placeholder}
+                  onChange={(e) => onChange(withField(conn, f.key, e.target.value))}
+                />
+              )}
               {f.file && (
                 <button type="button" onClick={() => void browse(f.key)}>
                   Browse…

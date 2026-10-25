@@ -3,11 +3,11 @@
  * asks, kept in the connection's own fields or in its `options`
  * (`crates/platypus-driver-adbc/src/profile.rs` reads them).
  */
-import type { DriverKind, SavedConnection } from "../api";
+import type { DriverKind, SavedConnection, SslMode } from "../api";
 
 const OPTION = "options.";
 
-type Key = "host" | "port" | "database" | "user" | `${typeof OPTION}${string}`;
+type Key = "host" | "port" | "database" | "user" | "ssl_mode" | `${typeof OPTION}${string}`;
 
 export interface ProfileField {
   key: Key;
@@ -16,6 +16,8 @@ export interface ProfileField {
   required?: boolean;
   /** Picked with the file dialog. */
   file?: boolean;
+  /** Picked from a list instead of typed. */
+  choices?: { value: string; label: string }[];
 }
 
 export interface Profile {
@@ -64,6 +66,17 @@ export const PROFILES: Partial<Record<DriverKind, Profile>> = {
       { key: "user", label: "User", required: true },
       { key: "database", label: "Catalog", placeholder: "hive" },
       { key: "options.schema", label: "Schema" },
+      {
+        key: "ssl_mode",
+        label: "TLS",
+        // `profile.rs` maps these to the driver's `SSL` options.
+        choices: [
+          { value: "prefer", label: "Automatic — HTTPS on port 443, HTTP otherwise" },
+          { value: "disable", label: "Off — HTTP" },
+          { value: "verify-full", label: "On — HTTPS, verify certificate" },
+          { value: "require", label: "On — HTTPS, unverified" },
+        ],
+      },
     ],
     secret: "Password (optional)",
   },
@@ -80,6 +93,7 @@ export const PROFILES: Partial<Record<DriverKind, Profile>> = {
 export function fieldValue(conn: SavedConnection, key: Key): string {
   if (key.startsWith(OPTION)) return conn.options?.[key.slice(OPTION.length)] ?? "";
   if (key === "port") return conn.port === null ? "" : String(conn.port);
+  if (key === "ssl_mode") return conn.ssl_mode;
   return conn[key as "host" | "database" | "user"];
 }
 
@@ -92,5 +106,6 @@ export function withField(conn: SavedConnection, key: Key, value: string): Saved
     return { ...conn, options };
   }
   if (key === "port") return { ...conn, port: value ? Number(value) : null };
+  if (key === "ssl_mode") return { ...conn, ssl_mode: value as SslMode };
   return { ...conn, [key]: value };
 }
