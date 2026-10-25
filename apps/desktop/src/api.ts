@@ -556,7 +556,12 @@ export interface ExportOptions {
   table?: string;
   /** SQL: the database the statements are written for. */
   driver?: DriverKind;
+  compression?: Compression;
+  /** A signed URL (S3, GCS) the finished file is also sent to. */
+  upload_url?: string | null;
 }
+
+export type Compression = "none" | "gzip" | "zstd";
 
 export type ExportEvent =
   | { type: "progress"; rows: number }

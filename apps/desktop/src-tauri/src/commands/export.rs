@@ -100,13 +100,16 @@ pub fn export_tables(
                 dialect.qualified(t.schema.as_deref(), &t.name)
             );
             let path = dir.join(format!(
-                "{}.{}",
+                "{}.{}{}",
                 file_name(&t.name),
-                options.format.extension()
+                options.format.extension(),
+                options.compression.suffix()
             ));
+            // One signed URL names one file.
             let options = ExportOptions {
                 table: t.name,
                 driver: Some(session.config.driver),
+                upload_url: None,
                 ..options.clone()
             };
             (sql, path, options)
