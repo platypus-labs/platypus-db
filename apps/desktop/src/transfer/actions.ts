@@ -6,6 +6,7 @@ import { api, isDataFile, type SavedConnection, type SchemaMeta, toCommandError 
 import { isRelation } from "../components/Navigator";
 import { workbench } from "../workbench";
 import { ExportTablesDialog } from "./ExportTablesDialog";
+import { GenerateDataDialog } from "./GenerateDataDialog";
 import { ImportDataDialog, type TableAt } from "./ImportDataDialog";
 import { MigrateDialog } from "./MigrateDialog";
 
@@ -151,4 +152,24 @@ registerAction({
   group: "open",
   order: 33,
   run: ({ connection, database, schema }) => openMigrate(connection, database, schema.name, null),
+});
+
+registerAction({
+  id: "object.generate_data",
+  scope: "navigator.object",
+  title: "Generate data…",
+  group: "manage",
+  order: 74,
+  when: ({ object }) => object.kind === "table",
+  run: ({ connection, database, schema, object }) =>
+    workbench().openDialog((close) =>
+      createElement(GenerateDataDialog, {
+        connection,
+        database,
+        schema: schema.name,
+        currentSchema: schema.current,
+        table: object.name,
+        onClose: close,
+      }),
+    ),
 });

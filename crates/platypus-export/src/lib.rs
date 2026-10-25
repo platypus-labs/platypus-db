@@ -5,6 +5,7 @@
 //! exporter dropped before that (cancelled or failed export) deletes the partial file.
 //! [`import`] goes the other way: rows of a data file into a table.
 
+pub mod fake;
 pub mod import;
 pub mod migrate;
 mod text;

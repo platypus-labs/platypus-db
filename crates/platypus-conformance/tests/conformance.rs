@@ -2151,3 +2151,105 @@ async fn drop_tables(
         .await;
     }
 }
+
+/// Fake rows for a parent and a child table: keys after the largest, foreign keys that point
+/// at existing rows, values every column type takes.
+#[tokio::test]
+async fn fills_tables_with_fake_rows() {
+    use platypus_export::fake::{FakeColumn, Generator, fill};
+    use platypus_sql::Dialect;
+
+    let tables = ["conf_fake_parent".to_owned(), "conf_fake_child".to_owned()];
+    for b in backends().await {
+        let conn = b.connect().await;
+        let d = Dialect::from(b.config.driver);
+        drop_tables(&*conn, d, &b.schema, &tables).await;
+        let parent = d.qualified(Some(&b.schema), "conf_fake_parent");
+        let child = d.qualified(Some(&b.schema), "conf_fake_child");
+        let referenced = if b.config.driver == DriverKind::Sqlite {
+            "conf_fake_parent"
+        } else {
+            parent.as_str()
+        };
+        for sql in [
+            format!(
+                "CREATE TABLE {parent} (id INT NOT NULL PRIMARY KEY, name VARCHAR(40) NOT NULL)"
+            ),
+            format!(
+                "CREATE TABLE {child} (id INT NOT NULL PRIMARY KEY, parent_id INT NOT NULL, email VARCHAR(80), \
+                 day DATE, price DECIMAL(10, 2), FOREIGN KEY (parent_id) REFERENCES {referenced} (id))"
+            ),
+            format!("INSERT INTO {parent} VALUES (7, 'seed')"),
+        ] {
+            run(&*conn, &sql)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name));
+        }
+        let column = |name: &str, generator| FakeColumn {
+            name: name.to_owned(),
+            generator,
+        };
+        let reference = Generator::Reference {
+            schema: Some(b.schema.clone()),
+            table: "conf_fake_parent".to_owned(),
+            column: "id".to_owned(),
+        };
+        let at = (Some(b.schema.as_str()), "conf_fake_parent");
+        let parents = vec![
+            column("id", Generator::NextKey),
+            column("name", Generator::FullName),
+        ];
+        let rows = fill((&*conn, d), at, parents, 20, |_| true)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(rows, 20, "{}", b.name);
+        let children = vec![
+            column("id", Generator::NextKey),
+            column("parent_id", reference),
+            column("email", Generator::Email),
+            column("day", Generator::Date),
+            column(
+                "price",
+                Generator::Decimal {
+                    min: 0.0,
+                    max: 100.0,
+                    scale: 2,
+                },
+            ),
+        ];
+        fill(
+            (&*conn, d),
+            (Some(b.schema.as_str()), "conf_fake_child"),
+            children,
+            1200,
+            |_| true,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let check = format!(
+            "SELECT COUNT(*), MIN(p.id), MAX(p.id), COUNT(DISTINCT c.email) FROM {child} c JOIN {parent} p ON p.id = c.parent_id"
+        );
+        let batches = collect(&b, &*conn, &check).await;
+        let values: Vec<_> = (0..4).map(|c| cell(&batches[0], c, 0)).collect();
+        assert_eq!(
+            values[0].as_deref(),
+            Some("1200"),
+            "{}: every child has its parent",
+            b.name
+        );
+        assert_eq!(
+            values[1].as_deref(),
+            Some("7"),
+            "{}: keys after the seed row",
+            b.name
+        );
+        assert_eq!(values[2].as_deref(), Some("27"), "{}", b.name);
+        assert_eq!(
+            values[3].as_deref(),
+            Some("1200"),
+            "{}: distinct emails",
+            b.name
+        );
+        drop_tables(&*conn, d, &b.schema, &tables).await;
+    }
+}

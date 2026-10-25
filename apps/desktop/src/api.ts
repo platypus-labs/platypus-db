@@ -776,6 +776,20 @@ export const api = {
       onEvent: channel,
     });
   },
+  /** Adds `rows` fake rows to a table, each column filled by its generator; cancelled with
+   *  `cancelExport`. */
+  fakeRows: (
+    sessionId: number,
+    schema: string | null,
+    table: string,
+    rows: number,
+    columns: { name: string; generator: object }[],
+    onEvent: (e: ExportEvent) => void,
+  ) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("fake_rows", { sessionId, schema, table, rows, columns, onEvent: channel });
+  },
   /** Saves the clipboard's text to a new `pasted.csv`; returns its path. */
   clipboardToFile: () => invoke<string>("clipboard_to_file"),
   previewTransfer: (sourceSessionId: number, schema: string | null, table: string, targetSessionId: number) =>

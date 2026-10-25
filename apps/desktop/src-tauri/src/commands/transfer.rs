@@ -8,6 +8,7 @@ use std::sync::Arc;
 use futures::TryStreamExt;
 use platypus_core::{Connection, ConnectionConfig, DriverKind, ExecOptions, ExecResult};
 use platypus_driver_duckdb::files::is_data_file;
+use platypus_export::fake::{FakeColumn, fill};
 use platypus_export::import::{ImportError, ImportPlan, import, rows_text, target_type};
 use platypus_export::migrate::migrate;
 use platypus_sql::Dialect;
@@ -216,10 +217,7 @@ fn start(
             },
         )
         .await
-        .map_err(|e| match e {
-            ImportError::Database(e) => e.into(),
-            e => CommandError::new("import", e.to_string()),
-        })
+        .map_err(import_error)
     });
     let id = state.next_id();
     lock(&state.exports).insert(id, job);
@@ -259,10 +257,7 @@ pub fn migrate_tables(
             },
         )
         .await
-        .map_err(|e| match e {
-            ImportError::Database(e) => e.into(),
-            e => CommandError::new("import", e.to_string()),
-        })?;
+        .map_err(import_error)?;
         for warning in done.skipped {
             job.warn(warning);
         }
@@ -271,4 +266,50 @@ pub fn migrate_tables(
     let id = state.next_id();
     lock(&state.exports).insert(id, job);
     Ok(id)
+}
+
+/// Adds `rows` fake rows to `table` of the session's database, on a connection of its own,
+/// each column filled as `columns` says. Returns an id for `cancel_export`.
+#[tauri::command]
+pub fn fake_rows(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: Option<String>,
+    table: String,
+    rows: u64,
+    columns: Vec<FakeColumn>,
+    on_event: Channel<ExportEvent>,
+) -> CommandResult<u64> {
+    let session = state.session(session_id)?;
+    let log = Arc::clone(&state.query_log);
+    let job = Export::spawn(on_event, true, move |job| async move {
+        let target = Logged::wrap(
+            Arc::from(super::connect(&session.config).await?),
+            &log,
+            &session.label,
+        );
+        let dialect = Dialect::from(session.config.driver);
+        fill(
+            (&*target, dialect),
+            (schema.as_deref(), &table),
+            columns,
+            rows,
+            |n| {
+                job.progress(n);
+                !job.stopping()
+            },
+        )
+        .await
+        .map_err(import_error)
+    });
+    let id = state.next_id();
+    lock(&state.exports).insert(id, job);
+    Ok(id)
+}
+
+fn import_error(e: ImportError) -> CommandError {
+    match e {
+        ImportError::Database(e) => e.into(),
+        e => CommandError::new("import", e.to_string()),
+    }
 }
