@@ -16,6 +16,7 @@ import { dropCached, loadCached, pruneCached, saveCached } from "../navigator/di
 import { FilterDialog } from "../navigator/FilterDialog";
 import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
 import { onNavigatorRefresh } from "../navigatorEvents";
+import { annotation, catalogEntry, catalogKey, parseFilter, useCatalogVersion } from "../catalog/catalog";
 import { toggled } from "../sets";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabInit, TabModel } from "../tabs/registry";
@@ -144,6 +145,8 @@ interface Row {
   badge?: string | null;
   detail?: string;
   title?: string;
+  /** Has a local note or tags: a discreet mark after the label. */
+  marked?: boolean;
   muted?: boolean;
   /** `undefined`: leaf. */
   expanded?: boolean;
@@ -190,6 +193,7 @@ export function Navigator(props: Props) {
   const { connections, project, onAddExisting, error, onNew, onImport, onEdit, onOpenTab, session, disconnect, active, onError } = props;
   // The ref is the source of truth, so a load sees what was merged just before it.
   const cacheRef = useRef<Cache>(new Map());
+  useCatalogVersion();
   const [cache, setCache] = useState<Cache>(cacheRef.current);
   const updateCache = (change: (m: Cache) => Cache) => {
     cacheRef.current = change(cacheRef.current);
@@ -431,7 +435,9 @@ export function Navigator(props: Props) {
     [],
   );
 
-  const needle = filter.trim().toLowerCase();
+  const parsed = parseFilter(filter);
+  const needle = parsed.text.toLowerCase();
+  const needTags = parsed.tags;
   const rows: Row[] = [];
   const status = (key: string): Pick<Row, "status" | "detail"> => {
     const entry = cache.get(key);
@@ -583,11 +589,13 @@ export function Navigator(props: Props) {
       const matches = objects?.filter(
         (o) =>
           (!needle || o.name.toLowerCase().includes(needle)) &&
+          (needTags.length === 0 ||
+            needTags.every((t) => catalogEntry(c.id, catalogKey(db, schema.name, o.name))?.tags.includes(t))) &&
           (!simple || SIMPLE_KINDS.has(o.kind)) &&
           !hiddenObject(o.name),
       );
-      if (needle && objects && matches?.length === 0) continue;
-      const sOpen = expanded.has(skey) || (!!needle && !!matches?.length);
+      if ((needle || needTags.length > 0) && objects && matches?.length === 0) continue;
+      const sOpen = expanded.has(skey) || ((!!needle || needTags.length > 0) && !!matches?.length);
       out.push({
         key: skey,
         depth,
@@ -619,7 +627,7 @@ export function Navigator(props: Props) {
         if (items.length === 0) continue;
         const fkey = `${skey}#${folder.kind}`;
         const fOpen =
-          expanded.has(fkey) || !!needle || (folder.kind === "table" && !expanded.has(`${fkey}!`));
+          expanded.has(fkey) || !!needle || needTags.length > 0 || (folder.kind === "table" && !expanded.has(`${fkey}!`));
         out.push({
           key: fkey,
           depth: depth + 1,
@@ -694,6 +702,9 @@ export function Navigator(props: Props) {
     depth: number,
   ): Row[] {
     const icon = objectIcon(object.kind);
+    const entry = catalogEntry(c.id, catalogKey(db, schema.name, object.name));
+    const marked = !!(entry?.note || entry?.tags.length);
+    const title = annotation(entry, object.comment);
     // Triggers are named per table in PostgreSQL: the key includes the table.
     const okey = `${baseKey(c, db)}/${schema.name}/${object.kind === "trigger" && object.parent ? `${object.parent}.` : ""}${object.name}`;
     const target = qualifiedName(c.driver, schema, object.name);
@@ -706,7 +717,8 @@ export function Navigator(props: Props) {
           label: object.name,
           icon,
           detail: object.parent ? `on ${object.parent}` : undefined,
-          title: object.comment ?? undefined,
+          title,
+          marked,
           onOpen: () => openObject(c, db, schema, object),
           menu,
         },
@@ -720,7 +732,8 @@ export function Navigator(props: Props) {
         label: object.name,
         icon,
         detail: sizeDetail(object),
-        title: object.comment ?? undefined,
+        title,
+          marked,
         expanded: open,
         onToggle: () => toggle(okey, () => void loadDetails(c, db, schema.name, object.name)),
         onOpen: () => openData(c, db, schema, object, target),
@@ -755,18 +768,22 @@ export function Navigator(props: Props) {
     section(
       "Columns",
       details.columns.length,
-      details.columns.map((col) => ({
-        key: `${okey}.${col.name}`,
-        depth: depth + 2,
-        label: col.name,
-        icon: col.primary_key ? "key" : "column",
-        detail: `${col.data_type}${col.nullable ? "" : " · not null"}`,
-        title: [col.default && `default ${col.default}`, col.comment].filter(Boolean).join("\n") || undefined,
-        menu: {
-          scope: "navigator.column",
-          arg: { connection: c, database: db, schema, object, column: col.name },
-        },
-      })),
+      details.columns.map((col) => {
+        const centry = catalogEntry(c.id, catalogKey(db, schema.name, object.name, col.name));
+        return {
+          key: `${okey}.${col.name}`,
+          depth: depth + 2,
+          label: col.name,
+          icon: col.primary_key ? "key" : "column",
+          detail: `${col.data_type}${col.nullable ? "" : " · not null"}`,
+          title: [col.default && `default ${col.default}`, annotation(centry, col.comment)].filter(Boolean).join("\n") || undefined,
+          marked: !!(centry?.note || centry?.tags.length),
+          menu: {
+            scope: "navigator.column",
+            arg: { connection: c, database: db, schema, object, column: col.name },
+          },
+        };
+      }),
     );
     section(
       "Indexes",
@@ -952,6 +969,7 @@ export function Navigator(props: Props) {
               )
             )}
             <span className="tree-label">{row.label}</span>
+            {row.marked && <span className="catalog-mark" aria-label="Has notes" />}
             {row.connected && <span className="connected-mark" role="img" aria-label="Connected" />}
             {row.badge && <span className={`type-badge ${row.badge.toLowerCase()}`}>{row.badge}</span>}
             {row.detail && <span className="tree-detail">{row.detail}</span>}
