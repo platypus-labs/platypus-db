@@ -25,6 +25,7 @@ import { workbench } from "../workbench";
 import { connectionColor, typeBadge } from "../connections";
 import { Icon, type IconName, objectIcon } from "../ui/Icon";
 import { ContextMenu, type MenuState, type MenuTarget } from "./ContextMenu";
+import { type FolderNode, folderTree, newFolder } from "../projects/folders";
 
 /** `cached`: read from the disk cache, not yet reloaded from the server. */
 type Load<T> =
@@ -155,7 +156,18 @@ interface Row {
   menu?: MenuTarget;
   actions?: React.ReactNode;
   status?: "loading" | "error";
+  /** A connection or folder that can be dragged into a folder of the project. */
+  drag?: DragItem;
+  /** Takes a dragged connection or folder. */
+  onDrop?: (item: DragItem) => void;
 }
+
+interface DragItem {
+  kind: "connection" | "folder";
+  id: string;
+}
+
+const DRAG_TYPE = "application/x-platypus-navigator";
 
 export function Navigator(props: Props) {
   const { connections, project, onAddExisting, error, onNew, onImport, onEdit, onOpenTab, session, disconnect, active, onError } = props;
@@ -411,7 +423,8 @@ export function Navigator(props: Props) {
     return {};
   };
 
-  for (const c of connections) {
+  /** The rows of a connection and what is open below it. */
+  function connectionRows(c: SavedConnection) {
     const ckey = c.id;
     const open = expanded.has(ckey);
     const filtered = !!prefs.filters[c.id];
@@ -433,6 +446,7 @@ export function Navigator(props: Props) {
       onOpen: () => onOpenTab(c),
       ...status(ckey),
       menu: { scope: "navigator.connection", arg: { connection: c } },
+      drag: project ? { kind: "connection", id: c.id } : undefined,
       actions: (
         <>
           <button className="icon" title="Open SQL editor" onClick={() => onOpenTab(c)}>
@@ -444,12 +458,12 @@ export function Navigator(props: Props) {
         </>
       ),
     });
-    if (!open) continue;
+    if (!open) return;
     rows.push(...bookmarkRows(c));
     const databases = loaded<string[]>(`${c.id}#dbs`);
     if (!databases || databases.length < 2) {
       rows.push(...schemaRows(c, null, 1));
-      continue;
+      return;
     }
     // One node per database; the saved one starts open, `!` remembers it was closed.
     for (const name of databases) {
@@ -480,6 +494,51 @@ export function Navigator(props: Props) {
       });
       if (dOpen) rows.push(...schemaRows(c, db, 2));
     }
+  }
+
+  /** A connection's rows, `level` deeper for the folders it is in. */
+  function addConnection(c: SavedConnection, level: number) {
+    const start = rows.length;
+    connectionRows(c);
+    for (let i = start; i < rows.length; i++) rows[i] = { ...rows[i]!, depth: rows[i]!.depth + level };
+  }
+
+  /** Drops a dragged connection or folder into `folder`, or at the root for `null`. */
+  function dropInto(p: Project, folder: string | null, item: DragItem) {
+    if (item.id === folder) return;
+    const change =
+      item.kind === "connection"
+        ? api.placeConnection(p.id, item.id, folder)
+        : api.moveConnectionFolder(p.id, item.id, folder);
+    change.then(workbench().setProjects, (e: unknown) => onError(toCommandError(e).message));
+  }
+
+  function addFolder(p: Project, node: FolderNode, level: number) {
+    const fkey = `folder:${node.folder.id}`;
+    // Folders start open; `!` remembers one was closed.
+    const fOpen = !expanded.has(`${fkey}!`) || !!needle;
+    rows.push({
+      key: fkey,
+      depth: level,
+      label: node.folder.name,
+      icon: fOpen ? "open" : "folder",
+      expanded: fOpen,
+      onToggle: () => setExpanded((s) => toggled(s, `${fkey}!`)),
+      menu: { scope: "navigator.folder", arg: { project: p, folder: node.folder } },
+      drag: { kind: "folder", id: node.folder.id },
+      onDrop: (item) => dropInto(p, node.folder.id, item),
+    });
+    if (!fOpen) return;
+    for (const child of node.children) addFolder(p, child, level + 1);
+    for (const c of node.connections) addConnection(c, level + 1);
+  }
+
+  if (project) {
+    const tree = folderTree(project, connections);
+    for (const node of tree.folders) addFolder(project, node, 0);
+    for (const c of tree.loose) addConnection(c, 0);
+  } else {
+    for (const c of connections) addConnection(c, 0);
   }
 
   function schemaRows(c: SavedConnection, db: string | null, depth: number): Row[] {
@@ -781,6 +840,11 @@ export function Navigator(props: Props) {
         <button className="icon" title="Import connections from DBeaver, DataGrip, pgAdmin…" onClick={onImport}>
           <Icon name="import" />
         </button>
+        {project && (
+          <button className="icon" title="New folder" onClick={() => newFolder(project, null)}>
+            <Icon name="new-folder" />
+          </button>
+        )}
         <button className="icon" title="New connection" onClick={onNew}>
           <Icon name="plus" />
         </button>
@@ -817,7 +881,18 @@ export function Navigator(props: Props) {
           </button>
         </>
       )}
-      <ul className="tree" role="tree">
+      <ul
+        className="tree"
+        role="tree"
+        onDragOver={(e) => project && e.dataTransfer.types.includes(DRAG_TYPE) && e.preventDefault()}
+        onDrop={(e) => {
+          // Dropped below the rows: to the project's root.
+          const data = e.dataTransfer.getData(DRAG_TYPE);
+          if (!project || !data) return;
+          e.preventDefault();
+          dropInto(project, null, JSON.parse(data) as DragItem);
+        }}
+      >
         {rows.map((row) => (
           <li
             key={row.key}
@@ -825,6 +900,20 @@ export function Navigator(props: Props) {
             aria-expanded={row.expanded}
             className={`tree-row${row.muted ? " muted" : ""}${row.status === "error" ? " failed" : ""}${selected.has(row.key) ? " selected" : ""}`}
             style={{ paddingLeft: 6 + row.depth * 16 }}
+            draggable={!!row.drag}
+            onDragStart={(e) => row.drag && e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(row.drag))}
+            onDragOver={(e) => {
+              if (!row.onDrop || !e.dataTransfer.types.includes(DRAG_TYPE)) return;
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDrop={(e) => {
+              const data = e.dataTransfer.getData(DRAG_TYPE);
+              if (!row.onDrop || !data) return;
+              e.preventDefault();
+              e.stopPropagation();
+              row.onDrop(JSON.parse(data) as DragItem);
+            }}
             title={
               row.status === "error"
                 ? row.detail
