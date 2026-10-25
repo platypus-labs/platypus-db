@@ -39,6 +39,10 @@ fn program(driver: DriverKind) -> CommandResult<&'static str> {
             "cli",
             "the duckdb client cannot open a database file that PlatypusDB has open",
         )),
+        DriverKind::Libsql => Err(CommandError::new(
+            "cli",
+            "libSQL servers have no command-line client to run scripts with",
+        )),
     }
 }
 
@@ -119,7 +123,7 @@ fn invocation(
             }
             env.extend(password.map(|p| ("MYSQL_PWD", p)));
         }
-        DriverKind::Sqlite | DriverKind::DuckDb => {
+        DriverKind::Sqlite | DriverKind::DuckDb | DriverKind::Libsql => {
             args.extend(
                 ["-bail", "-header", "-column", config.database.as_str()].map(str::to_owned),
             );
@@ -318,5 +322,6 @@ mod tests {
     fn has_no_client_for_duckdb() {
         assert_eq!(program(DriverKind::Sqlite).ok(), Some("sqlite3"));
         assert!(program(DriverKind::DuckDb).is_err());
+        assert!(program(DriverKind::Libsql).is_err());
     }
 }

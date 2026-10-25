@@ -28,6 +28,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 futures.workspace = true
 platypus-core.workspace = true
 platypus-driver-duckdb.workspace = true
+platypus-driver-libsql.workspace = true
 platypus-driver-mssql.workspace = true
 platypus-driver-mysql.workspace = true
 platypus-driver-pg.workspace = true
