@@ -139,7 +139,7 @@ export const PRESETS = {
       "syn-keyword": "#7fc8db",
       "syn-string": "#7ed3a0",
       "syn-number": "#f2b16d",
-      "syn-comment": "#6b747a",
+      "syn-comment": "#80898f",
       "syn-type": "#c3a6ff",
       "syn-ident": "#d5dadd",
       "obj-db": "#8fb8ff",
@@ -189,7 +189,7 @@ export const PRESETS = {
       "syn-keyword": "#155e75",
       "syn-string": "#1e7b4f",
       "syn-number": "#a15c07",
-      "syn-comment": "#7b8186",
+      "syn-comment": "#6b7176",
       "syn-type": "#6d3fc0",
       "syn-ident": "#2a2e31",
       "obj-db": "#2f5fb3",
@@ -442,6 +442,8 @@ export const titleBarSetting = defineSetting<string>({
   },
 });
 
+const ZOOM_STEPS = ["80", "90", "100", "110", "125", "150"];
+
 export const zoomSetting = defineSetting<string>({
   key: "appearance.zoom",
   section: SECTION,
@@ -449,9 +451,17 @@ export const zoomSetting = defineSetting<string>({
   default: "100",
   control: {
     type: "select",
-    options: ["80", "90", "100", "110", "125", "150"].map((v) => ({ value: v, label: `${v}%` })),
+    options: ZOOM_STEPS.map((v) => ({ value: v, label: `${v}%` })),
   },
 });
+
+/** One step bigger (`1`) or smaller (`-1`) on the scale of the setting, or back to 100%
+ *  (`0`): Ctrl+= and Ctrl+-, as in a browser. */
+export function stepZoom(step: -1 | 0 | 1) {
+  const at = ZOOM_STEPS.indexOf(getSetting(zoomSetting));
+  const next = step === 0 ? "100" : ZOOM_STEPS[Math.min(ZOOM_STEPS.length - 1, Math.max(0, (at < 0 ? 2 : at) + step))]!;
+  void setSetting(zoomSetting, next);
+}
 
 export const densitySetting = defineSetting<string>({
   key: "appearance.density",
@@ -489,6 +499,14 @@ export const editorFontSetting = defineSetting<number>({
   label: "SQL editor font size",
   default: 13,
   control: { type: "number", min: 9, max: 28, step: 1 },
+});
+
+export const gridFontSetting = defineSetting<number>({
+  key: "appearance.grid_font_size",
+  section: SECTION,
+  label: "Result grid font size",
+  default: 12,
+  control: { type: "number", min: 9, max: 24, step: 1 },
 });
 
 const ROW_HEIGHTS: Record<string, number> = { compact: 20, normal: 24, comfortable: 30 };
@@ -572,7 +590,10 @@ function variables(): { dark: boolean; vars: Record<string, string> } {
   out["--radius-lg"] = `${radius[1]}px`;
   out["--radius-xl"] = `${radius[2]}px`;
   out["--radius-sheet"] = `${radius[3]}px`;
-  out["--grid-row-h"] = String(ROW_HEIGHTS[getSetting(densitySetting)] ?? 24);
+  const gridFont = getSetting(gridFontSetting);
+  // A bigger font needs taller rows than the density gives at 12px.
+  out["--grid-row-h"] = String((ROW_HEIGHTS[getSetting(densitySetting)] ?? 24) + Math.max(0, gridFont - 12));
+  out["--grid-font-size"] = String(gridFont);
   out["--editor-font-size"] = `${getSetting(editorFontSetting)}px`;
   return { dark: preset.dark, vars: out };
 }

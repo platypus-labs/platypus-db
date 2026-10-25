@@ -72,6 +72,41 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
     });
   }, [menu.x, menu.y]);
 
+  // From the keyboard: the focus goes to the first item, and back where it was on closing.
+  useEffect(() => {
+    const opener = document.activeElement;
+    ref.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+    return () => {
+      // Not when what the menu ran took the focus, e.g. a dialog it opened.
+      const lost = document.activeElement === document.body || document.activeElement === null;
+      if (lost && opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, []);
+
+  /** Up and down through the items of the menu (or submenu) the focus is in; right opens a
+   *  submenu, left goes back from it. */
+  function onKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    const item = e.target as HTMLElement;
+    const list = item.closest(".context-menu");
+    if (!list) return;
+    const items = [...list.querySelectorAll<HTMLElement>(":scope > [role=menuitem], :scope > .submenu-anchor > [role=menuitem]")];
+    const at = items.indexOf(item);
+    if (e.key === "ArrowDown") items[(at + 1) % items.length]?.focus();
+    else if (e.key === "ArrowUp") items[(at - 1 + items.length) % items.length]?.focus();
+    else if (e.key === "Home") items[0]?.focus();
+    else if (e.key === "End") items.at(-1)?.focus();
+    else if (e.key === "ArrowRight" && item.getAttribute("aria-haspopup")) {
+      item.click();
+      requestAnimationFrame(() => item.parentElement?.querySelector<HTMLElement>(".submenu [role=menuitem]")?.focus());
+    } else if (e.key === "ArrowLeft" && list.classList.contains("submenu")) {
+      const anchor = list.parentElement?.querySelector<HTMLElement>(":scope > [role=menuitem]");
+      setOpen(null);
+      anchor?.focus();
+    } else return;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
   function choose(action: Action) {
     onClose();
     runAction(action, arg, onError);
@@ -82,7 +117,9 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
     <div
       ref={ref}
       className="context-menu"
+      role="menu"
       style={pos}
+      onKeyDown={onKey}
       onMouseDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -90,20 +127,20 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
         <Fragment key={"action" in entry ? entry.action.id : `submenu:${entry.submenu}`}>
           {i > 0 && groupOf(entry) !== groupOf(lines[i - 1]!) && <hr />}
           {"action" in entry ? (
-            <button onClick={() => choose(entry.action)} onMouseEnter={() => setOpen(null)}>
+            <button role="menuitem" onClick={() => choose(entry.action)} onMouseEnter={() => setOpen(null)}>
               <span>{entry.action.title}</span>
               {shortcutLabel(entry.action) && <kbd className="shortcut">{shortcutLabel(entry.action)}</kbd>}
             </button>
           ) : (
             <div className="submenu-anchor" onMouseEnter={() => setOpen(entry.submenu)}>
-              <button onClick={() => setOpen(entry.submenu)} aria-expanded={open === entry.submenu}>
+              <button role="menuitem" aria-haspopup="menu" onClick={() => setOpen(entry.submenu)} aria-expanded={open === entry.submenu}>
                 <span>{entry.submenu}</span>
                 <span className="shortcut">▸</span>
               </button>
               {open === entry.submenu && (
-                <div className="context-menu submenu">
+                <div className="context-menu submenu" role="menu">
                   {entry.actions.map((action) => (
-                    <button key={action.id} onClick={() => choose(action)}>
+                    <button key={action.id} role="menuitem" onClick={() => choose(action)}>
                       <span>{action.title}</span>
                       {shortcutLabel(action) && <kbd className="shortcut">{shortcutLabel(action)}</kbd>}
                     </button>

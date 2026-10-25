@@ -165,10 +165,11 @@ function readTheme(el: Element): Theme {
   const rowHeight = Number(v("--grid-row-h"));
   if (rowHeight >= 16) ROW_H = rowHeight;
   const mono = v("--font-mono") || MONO_FALLBACK;
-  FONT = `12px ${mono}`;
-  FONT_BOLD = `600 12px ${mono}`;
-  FONT_SMALL = `11px ${mono}`;
-  FONT_NULL = `italic 12px ${mono}`;
+  const size = Number(v("--grid-font-size")) || 12;
+  FONT = `${size}px ${mono}`;
+  FONT_BOLD = `600 ${size}px ${mono}`;
+  FONT_SMALL = `${size - 1}px ${mono}`;
+  FONT_NULL = `italic ${size}px ${mono}`;
   // Canvas text does not load a font face by itself.
   void document.fonts.load(FONT).catch(() => {});
   return {

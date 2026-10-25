@@ -3,6 +3,7 @@
  * icon is one more name here, and only the icons named here end up in the bundle.
  */
 import {
+  Activity,
   ArrowLeft,
   ArrowRight,
   Bookmark,
@@ -11,6 +12,7 @@ import {
   ChevronDown,
   ChevronRight,
   Code2,
+  Columns2,
   Columns3,
   Copy,
   Database,
@@ -34,6 +36,7 @@ import {
   Minus,
   type LucideIcon,
   Pencil,
+  Pin,
   Play,
   Plus,
   Puzzle,
@@ -114,6 +117,9 @@ const ICONS = {
   delete: Trash2,
   discard: Eraser,
   revert: RotateCcw,
+  pin: Pin,
+  split: Columns2,
+  activity: Activity,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

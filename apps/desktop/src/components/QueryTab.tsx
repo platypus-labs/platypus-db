@@ -40,6 +40,7 @@ import { isSlow, slowQuerySeconds } from "../querylog/slow";
 import { ask } from "../ui/ask";
 import { Icon } from "../ui/Icon";
 import { scrollSideways } from "../ui/scroll";
+import { notifyRunEnded } from "../shell/notify";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
 
 /** Auto-refresh intervals in seconds, `0` for off. */
@@ -1020,6 +1021,16 @@ export function QueryTab({
     return () => clearInterval(timer);
   }, [refreshEvery, active]);
 
+  // A long run that ends while the window is in the background is notified.
+  const runStart = useRef(0);
+  useEffect(() => {
+    if (running) runStart.current = Date.now();
+    else if (runStart.current) {
+      const failed = results.some((r) => r.status.kind === "error" || (r.status.kind === "message" && r.status.failed));
+      void notifyRunEnded(runStart.current, connection.name, failed);
+    }
+  }, [running]);
+
   const health = useSessionHealth(currentSession, active && !running && !guard);
   const toolbar = useToolbar();
   // ClickHouse and MongoDB have no transactions (`capabilities.transactions` is false): no
@@ -1292,7 +1303,7 @@ export function QueryTab({
             />
           )}
         </div>
-        <div className="statusbar">
+        <div className="statusbar" role="status">
           {current && (
             <>
               <span>{describe(current)}</span>

@@ -11,13 +11,13 @@ import {
   type SchemaMeta,
   type TableDetails,
 } from "../api";
-import { defineSetting, useSetting } from "../settings";
+import { defineSetting, getSetting, useSetting } from "../settings";
 import { dropCached, loadCached, pruneCached, saveCached } from "../navigator/diskCache";
 import { FilterDialog } from "../navigator/FilterDialog";
 import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
 import { onNavigatorRefresh } from "../navigatorEvents";
 import { toggled } from "../sets";
-import { qualifiedName, viewerSql } from "../sqlNames";
+import { SQL_DRAG, type SqlDrag, qualifiedName, quoteIdent, selectLimit, selectSql, viewerSql } from "../sqlNames";
 import type { TabInit, TabModel } from "../tabs/registry";
 import { registerAction } from "../actions";
 import { workbench } from "../workbench";
@@ -159,6 +159,8 @@ interface Row {
   drag?: DragItem;
   /** Takes a dragged connection or folder. */
   onDrop?: (item: DragItem) => void;
+  /** A table or column dragged into an editor. */
+  sql?: SqlDrag;
 }
 
 interface DragItem {
@@ -709,6 +711,7 @@ export function Navigator(props: Props) {
           title: object.comment ?? undefined,
           onOpen: () => openObject(c, db, schema, object),
           menu,
+          sql: { name: target },
         },
       ];
     }
@@ -726,6 +729,7 @@ export function Navigator(props: Props) {
         onOpen: () => openData(c, db, schema, object, target),
         ...status(okey),
         menu,
+        sql: { name: target, select: selectSql(c.driver, target, null, getSetting(selectLimit)) },
       },
     ];
     const details = open ? loaded<TableDetails>(okey) : null;
@@ -766,6 +770,7 @@ export function Navigator(props: Props) {
           scope: "navigator.column",
           arg: { connection: c, database: db, schema, object, column: col.name },
         },
+        sql: { name: quoteIdent(col.name, c.driver) },
       })),
     );
     section(
@@ -823,6 +828,48 @@ export function Navigator(props: Props) {
     }
     anchor.current = key;
     setSelected(e.ctrlKey || e.metaKey ? toggled(selected, key) : new Set([key]));
+  }
+
+  /** The row the keys move from: the one clicked or reached last, if still shown. */
+  const current = anchor.current !== null && rows.some((r) => r.key === anchor.current) ? anchor.current : null;
+
+  /** The tree from the keyboard: arrows move and open or close, Enter opens, the menu key
+   *  shows the row's menu, as in a file explorer. */
+  function onTreeKey(e: React.KeyboardEvent<HTMLUListElement>) {
+    if (!(e.target instanceof HTMLLIElement) || rows.length === 0) return;
+    const at = Math.max(0, rows.findIndex((r) => r.key === current));
+    const row = rows[at]!;
+    const go = (i: number) => {
+      const index = Math.max(0, Math.min(rows.length - 1, i));
+      anchor.current = rows[index]!.key;
+      setSelected(new Set([rows[index]!.key]));
+      const li = e.currentTarget.querySelector<HTMLElement>(`[data-row="${index}"]`);
+      li?.focus();
+      li?.scrollIntoView({ block: "nearest" });
+    };
+    const parent = () => {
+      for (let i = at - 1; i >= 0; i--) if (rows[i]!.depth < row.depth) return i;
+      return at;
+    };
+    if (e.key === "ArrowDown") go(at + 1);
+    else if (e.key === "ArrowUp") go(at - 1);
+    else if (e.key === "Home") go(0);
+    else if (e.key === "End") go(rows.length - 1);
+    else if (e.key === "ArrowRight") {
+      if (row.expanded === false) row.onToggle?.();
+      else if (row.expanded) go(at + 1);
+    } else if (e.key === "ArrowLeft") {
+      if (row.expanded) row.onToggle?.();
+      else go(parent());
+    } else if (e.key === "Enter") {
+      if (row.onOpen) row.onOpen();
+      else row.onToggle?.();
+    } else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      const target = menuOf(row);
+      const r = e.target.getBoundingClientRect();
+      if (target) setMenu({ x: r.left + 24, y: r.bottom, target });
+    } else return;
+    e.preventDefault();
   }
 
   /** The menu of `row`: with several objects selected, their actions get them all. */
@@ -899,18 +946,34 @@ export function Navigator(props: Props) {
       <ul
         className="tree"
         role="tree"
+        aria-label="Connections"
+        aria-multiselectable="true"
+        onKeyDown={onTreeKey}
         // Dropped below the rows: to the project's root.
         {...dropTarget(project ? (item) => dropInto(project, null, item) : undefined)}
       >
-        {rows.map((row) => (
+        {rows.map((row, i) => (
           <li
             key={row.key}
+            data-row={i}
             role="treeitem"
             aria-expanded={row.expanded}
+            aria-level={row.depth + 1}
+            aria-selected={selected.has(row.key)}
+            // One row takes the Tab stop: the current one, else the first.
+            tabIndex={row.key === (current ?? rows[0]?.key) ? 0 : -1}
             className={`tree-row${row.muted ? " muted" : ""}${row.status === "error" ? " failed" : ""}${selected.has(row.key) ? " selected" : ""}`}
             style={{ paddingLeft: 6 + row.depth * 16 }}
-            draggable={!!row.drag}
-            onDragStart={(e) => row.drag && e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(row.drag))}
+            draggable={!!row.drag || !!row.sql}
+            onDragStart={(e) => {
+              if (row.drag) e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(row.drag));
+              if (row.sql) {
+                e.dataTransfer.setData(SQL_DRAG, JSON.stringify(row.sql));
+                // Anywhere else that takes text, e.g. a filter box, gets the name.
+                e.dataTransfer.setData("text/plain", row.sql.name);
+                e.dataTransfer.effectAllowed = "copy";
+              }
+            }}
             {...dropTarget(row.onDrop)}
             title={
               row.status === "error"

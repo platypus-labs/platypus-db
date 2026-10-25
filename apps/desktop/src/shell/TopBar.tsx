@@ -8,6 +8,8 @@ import { useSetting } from "../settings";
 import { PRESETS, cycleTheme, themeName, themeSetting, titleBarSetting } from "../theme";
 import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
+import { useActivity } from "./activity";
+import { openActivity } from "./ActivityDialog";
 
 interface Props {
   project: Project | null;
@@ -60,6 +62,7 @@ export function TopBar({ project, connection }: Props) {
         <span>Search tables, queries, commands</span>
         {keys && <kbd>{keys}</kbd>}
       </button>
+      <ActivityButton />
       <ThemeButton />
       <button type="button" className="icon" title="Settings (Ctrl+,)" aria-label="Settings" onClick={() => workbench().openSettings()}>
         <Icon name="settings" />
@@ -99,6 +102,25 @@ function WindowControls() {
         <Icon name="close" size={16} />
       </button>
     </div>
+  );
+}
+
+/** Opens the Activity log; it counts the errors not seen yet and shows when work runs. */
+function ActivityButton() {
+  const { entries, unseen } = useActivity();
+  const running = entries.filter((e) => e.status === "running").length;
+  const label = [unseen > 0 && `${unseen} new ${unseen === 1 ? "error" : "errors"}`, running > 0 && `${running} running`].filter(Boolean).join(", ");
+  return (
+    <button
+      type="button"
+      className="icon activity-button"
+      title={`Activity and errors${label ? ` (${label})` : ""}`}
+      aria-label={`Activity${label ? `, ${label}` : ""}`}
+      onClick={openActivity}
+    >
+      <Icon name="activity" />
+      {unseen > 0 ? <span className="badge">{unseen > 99 ? "99+" : unseen}</span> : running > 0 && <span className="busy" aria-hidden="true" />}
+    </button>
   );
 }
 

@@ -831,3 +831,68 @@ button.danger {
   padding: 6px 0;
   border-bottom: 1px solid var(--border);
 }
+
+/* The Activity log (shell/ActivityDialog.tsx). */
+.modal.activity {
+  width: min(720px, calc(100vw - 32px));
+}
+
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 55vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}
+
+.activity-entry {
+  display: grid;
+  grid-template-columns: auto 64px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.activity-entry:last-child {
+  border-bottom: 0;
+}
+
+.activity-entry time,
+.activity-ms {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-state {
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+
+.activity-entry.failed .activity-state {
+  color: var(--error);
+}
+
+.activity-entry.running .activity-state {
+  color: var(--accent);
+}
+
+.activity-text {
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+.activity-detail {
+  display: block;
+  color: var(--error);
+}
+
+.activity-empty {
+  margin: 12px 0;
+}
