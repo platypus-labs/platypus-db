@@ -2990,13 +2990,19 @@ async fn edits_table_designs() {
     use platypus_schema::{ColumnDesign, ConstraintType, IndexDesign};
     use platypus_sql::Dialect;
 
+    let _serial = SERIAL.lock().await;
     let tables = ["conf_design".to_owned(), "conf_design_child".to_owned()];
-    for b in backends().await {
+    // ClickHouse has no primary, unique or foreign keys to design.
+    let all = backends().await;
+    for b in all
+        .iter()
+        .filter(|b| b.config.driver != DriverKind::ClickHouse)
+    {
         let conn = b.connect().await;
         let d = Dialect::from(b.config.driver);
         drop_tables(&*conn, d, &b.schema, &tables).await;
         let comments = matches!(d, Dialect::Postgres | Dialect::MySql | Dialect::DuckDb);
-        let created = redesign(&b, &*conn, None, &design_parent(comments)).await;
+        let created = redesign(b, &*conn, None, &design_parent(comments)).await;
         assert_eq!(
             column_names(&created),
             ["id", "code", "total", "note"],
@@ -3026,7 +3032,11 @@ async fn edits_table_designs() {
         // and another index.
         let mut altered = created.clone();
         altered.columns[3].name = "remark".to_owned();
-        altered.columns[2].data_type = "DECIMAL(12,2)".to_owned();
+        // CockroachDB rewrites no column with a CHECK to a new type.
+        let retype = b.name != "cockroach";
+        if retype {
+            altered.columns[2].data_type = "DECIMAL(12,2)".to_owned();
+        }
         altered.columns[2].nullable = false;
         altered.columns.push(ColumnDesign {
             default: Some("'new'".to_owned()),
@@ -3037,7 +3047,7 @@ async fn edits_table_designs() {
             columns: vec!["status".to_owned()],
             ..IndexDesign::default()
         }];
-        let read = redesign(&b, &*conn, Some(&created), &altered).await;
+        let read = redesign(b, &*conn, Some(&created), &altered).await;
         assert_eq!(
             column_names(&read),
             ["id", "code", "total", "remark", "status"],
@@ -3046,16 +3056,16 @@ async fn edits_table_designs() {
         );
         assert!(!read.columns[2].nullable, "{}", b.name);
         assert!(
-            read.columns[2].data_type.contains("12"),
+            !retype || read.columns[2].data_type.contains("12"),
             "{}: {read:?}",
             b.name
         );
         assert_eq!(read.indexes.len(), 1, "{}: {read:?}", b.name);
         assert_eq!(read.indexes[0].name, "conf_design_status", "{}", b.name);
-        let rows = collect(&b, &*conn, &format!("SELECT remark FROM {table}")).await;
+        let rows = collect(b, &*conn, &format!("SELECT remark FROM {table}")).await;
         assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("x"), "{}", b.name);
 
-        edit_child_design(&b, &*conn).await;
+        edit_child_design(b, &*conn).await;
 
         // What SQLite and DuckDB rebuild: a dropped column and a dropped CHECK.
         let mut reduced = read.clone();
@@ -3063,7 +3073,7 @@ async fn edits_table_designs() {
         reduced
             .constraints
             .retain(|c| c.kind != ConstraintType::Check);
-        let read = redesign(&b, &*conn, Some(&read), &reduced).await;
+        let read = redesign(b, &*conn, Some(&read), &reduced).await;
         assert_eq!(
             column_names(&read),
             ["id", "code", "total", "status"],
@@ -3072,7 +3082,7 @@ async fn edits_table_designs() {
         );
         assert_eq!(read.constraints.len(), 1, "{}: {read:?}", b.name);
         assert!(read.columns[0].primary_key, "{}", b.name);
-        let rows = collect(&b, &*conn, &format!("SELECT code FROM {table}")).await;
+        let rows = collect(b, &*conn, &format!("SELECT code FROM {table}")).await;
         assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("a"), "{}", b.name);
         drop_tables(&*conn, d, &b.schema, &tables).await;
     }
