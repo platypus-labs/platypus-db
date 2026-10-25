@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type DriverKind, type StatementSpan } from "../api";
+import { t } from "../i18n";
 
 interface Props {
   text: string;
@@ -33,22 +34,22 @@ export function OutlinePanel({ text, driver, onSelect, onClose }: Props) {
   return (
     <aside className="history side-panel outline-panel">
       <div className="history-header">
-        <strong>Outline</strong>
+        <strong>{t("Outline")}</strong>
         <span className="spacer" />
-        <button className="icon" title="Close" onClick={onClose}>
+        <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
           ×
         </button>
       </div>
       <ul className="history-list">
         {statements.map((s, i) => (
-          <li key={`${s.start}`} className="outline-row" onClick={() => onSelect(s.start, s.end)} title="Select the statement">
+          <li key={`${s.start}`} className="outline-row" onClick={() => onSelect(s.start, s.end)} title={t("Select the statement")}>
             <span className={`outline-kind ${s.kind}`}>{s.kind === "command" ? "@" : s.kind}</span>
             <span className="outline-text">
               {i + 1}. {headline(text.slice(s.start, s.end))}
             </span>
           </li>
         ))}
-        {statements.length === 0 && <li className="muted history-empty">No statements</li>}
+        {statements.length === 0 && <li className="muted history-empty">{t("No statements")}</li>}
       </ul>
     </aside>
   );

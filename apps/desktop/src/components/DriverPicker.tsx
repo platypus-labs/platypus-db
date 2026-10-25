@@ -19,6 +19,7 @@ import {
   siTurso,
 } from "simple-icons";
 import type { DriverKind, SavedConnection } from "../api";
+import { t, msg } from "../i18n";
 
 /** What a profile fills in beyond the driver's defaults. */
 export type Preset = Partial<Pick<SavedConnection, "port" | "user" | "database" | "ssl_mode">>;
@@ -67,7 +68,7 @@ const CHOICES: Choice[] = [
   { driver: "bigquery", label: "BigQuery", path: siGooglebigquery.path, bg: `#${siGooglebigquery.hex}`, fg: "#fff" },
   { driver: "databricks", label: "Databricks", path: siDatabricks.path, bg: `#${siDatabricks.hex}`, fg: "#fff" },
   { driver: "trino", label: "Trino", path: siTrino.path, bg: `#${siTrino.hex}`, fg: "#fff" },
-  { driver: "adbc", label: "Other ADBC driver", path: siApachearrow.path, bg: DARK, fg: "#fff" },
+  { driver: "adbc", label: msg("Other ADBC driver"), path: siApachearrow.path, bg: DARK, fg: "#fff" },
 ];
 
 /** Servers and services that speak the PostgreSQL protocol: the PostgreSQL driver, preset. */
@@ -131,7 +132,7 @@ function Tiles({ choices, onPick, focus }: { choices: Choice[]; onPick: Props["o
           onClick={() => onPick(c.driver, c.preset ?? {})}
         >
           <DriverLogo choice={c} />
-          <span>{c.label}</span>
+          <span>{t(c.label)}</span>
         </button>
       ))}
     </div>
@@ -148,15 +149,15 @@ export function DriverPicker({ onPick, onClose }: Props) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal driver-picker" role="dialog" onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>New connection</h2>
-        <p className="muted">Choose the database.</p>
+        <h2>{t("New connection")}</h2>
+        <p className="muted">{t("Choose the database.")}</p>
         <Tiles choices={CHOICES} onPick={onPick} focus />
-        <h3 className="driver-section">PostgreSQL-compatible</h3>
+        <h3 className="driver-section">{t("PostgreSQL-compatible")}</h3>
         <Tiles choices={PG_WIRE} onPick={onPick} />
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </button>
         </div>
       </div>

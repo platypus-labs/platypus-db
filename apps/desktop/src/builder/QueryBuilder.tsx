@@ -9,6 +9,7 @@ import { quoteIdent } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
+import { t } from "../i18n";
 
 export interface BuilderTable {
   id: number;
@@ -127,7 +128,7 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
   const fail = (e: unknown) => onError(toCommandError(e).message);
   const session = async () => {
     const id = await sideSession();
-    if (id === null) throw new Error("no connection");
+    if (id === null) throw new Error(t("no connection"));
     return id;
   };
 
@@ -221,21 +222,21 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
   return (
     <div className="builder-tab" style={{ display: active ? "flex" : "none" }}>
       <aside className="builder-tables">
-        <select aria-label="Schema" value={tab.schema ?? ""} onChange={(e) => onChange({ schema: e.target.value })}>
+        <select aria-label={t("Schema")} value={tab.schema ?? ""} onChange={(e) => onChange({ schema: e.target.value })}>
           {schemas.map((s) => (
             <option key={s.name} value={s.name}>
               {s.name}
             </option>
           ))}
         </select>
-        <input placeholder="Filter tables…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input placeholder={t("Filter tables…")} aria-label={t("Filter tables…")} value={filter} onChange={(e) => setFilter(e.target.value)} />
         <ul className="tree">
           {visible.map((o) => (
             <li
               key={o.name}
               className="tree-row builder-source"
               draggable
-              title="Drag onto the canvas, or double-click"
+              title={t("Drag onto the canvas, or double-click")}
               onDragStart={(e) => e.dataTransfer.setData("application/x-platypus-table", o.name)}
               onDoubleClick={() => add(o.name)}
             >
@@ -261,7 +262,7 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
             add(name, Math.max(0, e.clientX - r.left + el.scrollLeft - BOX / 2), Math.max(0, e.clientY - r.top + el.scrollTop - 12));
           }}
         >
-          {tab.tables.length === 0 && <p className="muted builder-empty">Drag tables here from the list. Their foreign keys join them.</p>}
+          {tab.tables.length === 0 && <p className="muted builder-empty">{t("Drag tables here from the list. Their foreign keys join them.")}</p>}
           <svg className="builder-lines">
             {joins.map((j) => {
               const a = center(j.left);
@@ -278,7 +279,7 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
                 key={j.key}
                 className="builder-join"
                 style={{ left: (a.x + b.x) / 2, top: (a.y + b.y) / 2 }}
-                title={`${j.on.map(([l, r]) => `${j.right.alias}.${r} = ${j.left.alias}.${l}`).join(" AND ")}\nClick for ${left ? "JOIN" : "LEFT JOIN"}`}
+                title={`${j.on.map(([l, r]) => `${j.right.alias}.${r} = ${j.left.alias}.${l}`).join(" AND ")}\n${t("Click for {join}", { join: left ? "JOIN" : "LEFT JOIN" })}`}
                 onClick={() =>
                   onChange({ leftJoins: left ? tab.leftJoins.filter((k) => k !== j.key) : [...tab.leftJoins, j.key] })
                 }
@@ -287,19 +288,20 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
               </button>
             );
           })}
-          {tab.tables.map((t) => {
-            const columns = details.get(detailsKey(t))?.columns.map((c) => c.name) ?? [];
+          {tab.tables.map((box) => {
+            const columns = details.get(detailsKey(box))?.columns.map((c) => c.name) ?? [];
             return (
-              <div key={t.id} className="builder-box" data-table={t.name} style={{ left: t.x, top: t.y, width: BOX }}>
-                <div className="builder-box-header" onMouseDown={(e) => move(e, t)}>
+              <div key={box.id} className="builder-box" data-table={box.name} style={{ left: box.x, top: box.y, width: BOX }}>
+                <div className="builder-box-header" onMouseDown={(e) => move(e, box)}>
                   <span className="tree-label">
-                    {t.name} <span className="muted">{t.alias}</span>
+                    {box.name} <span className="muted">{box.alias}</span>
                   </span>
                   <button
                     className="icon"
-                    title="Remove"
+                    title={t("Remove")}
+                    aria-label={t("Remove")}
                     onMouseDown={(e) => e.stopPropagation()}
-                    onClick={() => setTables(tab.tables.filter((x) => x.id !== t.id))}
+                    onClick={() => setTables(tab.tables.filter((x) => x.id !== box.id))}
                   >
                     ×
                   </button>
@@ -308,7 +310,7 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
                   {columns.map((c) => (
                     <li key={c}>
                       <label>
-                        <input type="checkbox" checked={t.columns.includes(c)} onChange={() => toggleColumn(t, c, columns)} />
+                        <input type="checkbox" checked={box.columns.includes(c)} onChange={() => toggleColumn(box, c, columns)} />
                         {c}
                       </label>
                     </li>
@@ -321,16 +323,16 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
         <div className="builder-bottom">
           <label className="builder-where">
             <span className="muted small">WHERE</span>
-            <input value={tab.where} placeholder="e.g. o.total > 100" onChange={(e) => onChange({ where: e.target.value })} />
+            <input value={tab.where} placeholder={t("e.g. o.total > 100")} onChange={(e) => onChange({ where: e.target.value })} />
           </label>
-          <pre className="builder-sql">{sql || "-- No tables yet"}</pre>
+          <pre className="builder-sql">{sql || `-- ${t("No tables yet")}`}</pre>
           <div className="actions">
             <span className="spacer" />
             <button disabled={!sql} onClick={() => open(false)}>
-              Open in editor
+              {t("Open in editor")}
             </button>
             <button className="primary" disabled={!sql} onClick={() => open(true)}>
-              Run
+              {t("Run")}
             </button>
           </div>
         </div>

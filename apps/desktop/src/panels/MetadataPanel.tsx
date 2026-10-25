@@ -1,5 +1,6 @@
 import type { ColumnInfo, ColumnMeta } from "../api";
 import type { TableRef } from "../grid/edit/meta";
+import { t } from "../i18n";
 
 interface Props {
   /** The focused result column; `undefined` before a cell is focused. */
@@ -17,30 +18,30 @@ interface Props {
 export function MetadataPanel({ column, table, meta, inKey, onClose }: Props) {
   const rows: [string, string | null][] = column
     ? [
-        ["Type", meta?.data_type ?? column.db_type],
-        ["Table", table && meta ? `${table.schema}.${table.name}` : null],
-        ["Column", meta?.name ?? null],
-        ["Nullable", meta ? (meta.nullable ? "yes" : "no") : null],
-        ["Default", meta?.default ?? null],
-        ["Primary key", meta ? (meta.primary_key ? "yes" : "no") : null],
-        ["Row key", table ? (inKey ? "yes" : "no") : null],
-        ["Values", meta?.enum_values.length ? meta.enum_values.join(", ") : null],
-        ["Fields", meta?.fields.length ? meta.fields.map((f) => `${f.name} ${f.data_type}`).join(", ") : null],
-        ["Comment", meta?.comment ?? null],
+        [t("Type"), meta?.data_type ?? column.db_type],
+        [t("Table"), table && meta ? `${table.schema}.${table.name}` : null],
+        [t("Column"), meta?.name ?? null],
+        [t("Nullable"), meta ? t(meta.nullable ? "yes" : "no") : null],
+        [t("Default"), meta?.default ?? null],
+        [t("Primary key"), meta ? t(meta.primary_key ? "yes" : "no") : null],
+        [t("Row key"), table ? t(inKey ? "yes" : "no") : null],
+        [t("Values"), meta?.enum_values.length ? meta.enum_values.join(", ") : null],
+        [t("Fields"), meta?.fields.length ? meta.fields.map((f) => `${f.name} ${f.data_type}`).join(", ") : null],
+        [t("Comment"), meta?.comment ?? null],
       ]
     : [];
   return (
     <aside className="value-panel metadata-panel">
       <div className="value-bar">
         <strong className="small value-name" title={column?.name}>
-          {column ? column.name : "Column metadata"}
+          {column ? column.name : t("Column metadata")}
         </strong>
         <span className="spacer" />
-        <button className="icon" title="Close" onClick={onClose}>
+        <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
           ×
         </button>
       </div>
-      {!column && <div className="muted small value-empty">Select a cell to see its column.</div>}
+      {!column && <div className="muted small value-empty">{t("Select a cell to see its column.")}</div>}
       {column && (
         <dl className="metadata-list small">
           {rows
@@ -55,7 +56,7 @@ export function MetadataPanel({ column, table, meta, inKey, onClose }: Props) {
       )}
       {column && !meta && (
         <div className="muted small value-size">
-          {table ? "Computed in the query: not a column of the table." : "Not known to come from one table."}
+          {t(table ? "Computed in the query: not a column of the table." : "Not known to come from one table.")}
         </div>
       )}
     </aside>

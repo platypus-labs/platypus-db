@@ -6,6 +6,7 @@ import { registerAction } from "../actions";
 import { api, type ConnectionFolder, type Project, type SavedConnection } from "../api";
 import { askName } from "../ui/NameDialog";
 import { workbench } from "../workbench";
+import { t } from "../i18n";
 
 declare module "../actions" {
   interface ActionScopes {
@@ -60,7 +61,7 @@ const save = async (change: Promise<Project[]>) => workbench().setProjects(await
 
 /** Asks for a name and makes a folder in the project, inside `parent` or at the root. */
 export function newFolder(project: Project, parent: string | null) {
-  askName(parent ? "New subfolder" : "New folder", "New folder", (name) =>
+  askName(t(parent ? "New subfolder" : "New folder"), t("New folder"), (name) =>
     save(api.createConnectionFolder(project.id, name, parent)),
   );
 }
@@ -90,7 +91,7 @@ registerAction({
   group: "manage",
   order: 20,
   run: ({ project, folder }) =>
-    askName("Rename folder", folder.name, (name) => save(api.renameConnectionFolder(project.id, folder.id, name))),
+    askName(t("Rename folder"), folder.name, (name) => save(api.renameConnectionFolder(project.id, folder.id, name))),
 });
 
 registerAction({
@@ -135,7 +136,7 @@ export function registerMoveToFolder(project: Project | null): () => void {
       group: "project",
       order: 85,
       run: ({ connection }) =>
-        askName("New folder", "New folder", async (name) => {
+        askName(t("New folder"), t("New folder"), async (name) => {
           const before = new Set((project.folders ?? []).map((f) => f.id));
           const all = await api.createConnectionFolder(project.id, name, null);
           workbench().setProjects(all);

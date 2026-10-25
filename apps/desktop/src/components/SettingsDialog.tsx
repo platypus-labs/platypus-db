@@ -5,11 +5,12 @@ import { type SettingDef, getSetting, setSetting, settingDefs, useSettingsVersio
 import { ShortcutsPanel } from "../shell/ShortcutsPanel";
 import { DriversPanel } from "../drivers/DriversPanel";
 import { MasterPasswordPanel } from "./MasterPassword";
+import { msg, t } from "../i18n";
 
-const SHORTCUTS = "Keyboard shortcuts";
-const SECURITY = "Master password";
-const AGENTS = "Agents";
-const DRIVERS = "Drivers";
+const SHORTCUTS = msg("Keyboard shortcuts");
+const SECURITY = msg("Master password");
+const AGENTS = msg("Agents");
+const DRIVERS = msg("Drivers");
 
 type Value = boolean | number | string;
 
@@ -25,7 +26,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   }
   const save = (def: SettingDef<Value>, value: Value | null) => {
     setError(null);
-    setSetting(def, value).catch((e: unknown) => setError(`${def.label}: ${toCommandError(e).message}`));
+    setSetting(def, value).catch((e: unknown) => setError(`${t(def.label)}: ${toCommandError(e).message}`));
   };
 
   return (
@@ -35,7 +36,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.key === "Escape" && onClose()}
       >
-        <h2>Settings</h2>
+        <h2>{t("Settings")}</h2>
         {error && <div className="notice error small">{error}</div>}
         <div className="settings-layout">
           <nav className="settings-nav">
@@ -49,42 +50,42 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                     ?.scrollIntoView({ block: "start", behavior: "smooth" })
                 }
               >
-                {section}
+                {t(section)}
               </button>
             ))}
           </nav>
           <div className="settings-body" ref={body}>
             {[...sections].map(([section, defs]) => (
               <section key={section} data-section={section}>
-                <h3>{section}</h3>
+                <h3>{t(section)}</h3>
                 {defs.map((def) => (
                   <SettingRow key={def.key} def={def} onSave={(v) => save(def, v)} />
                 ))}
               </section>
             ))}
             <section data-section={SECURITY}>
-              <h3>{SECURITY}</h3>
+              <h3>{t(SECURITY)}</h3>
               <MasterPasswordPanel />
             </section>
             <section data-section={AGENTS}>
-              <h3>{AGENTS}</h3>
+              <h3>{t(AGENTS)}</h3>
               <AgentsPanel />
             </section>
             <section data-section={DRIVERS}>
-              <h3>{DRIVERS}</h3>
+              <h3>{t(DRIVERS)}</h3>
               <DriversPanel />
             </section>
             <section data-section={SHORTCUTS}>
-              <h3>{SHORTCUTS}</h3>
+              <h3>{t(SHORTCUTS)}</h3>
               <ShortcutsPanel />
             </section>
           </div>
         </div>
         <div className="actions">
-          <span className="muted small">Saved in settings.toml</span>
+          <span className="muted small">{t("Saved in settings.toml")}</span>
           <span className="spacer" />
           <button className="primary" autoFocus onClick={onClose}>
-            Done
+            {t("Done")}
           </button>
         </div>
       </div>
@@ -125,11 +126,11 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
       const hex = /^#[0-9a-f]{6}$/i.test(value as string) ? (value as string) : null;
       input = (
         <div className="color-control">
-          {!hex && <span className="muted small">Theme's</span>}
+          {!hex && <span className="muted small">{t("Theme's")}</span>}
           <input
             type="color"
             value={hex ?? "#808080"}
-            title={hex ?? "The theme's color"}
+            title={hex ?? t("The theme's color")}
             onChange={(e) => onSave(e.target.value)}
           />
         </div>
@@ -153,7 +154,7 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
                   <span key={i} style={{ background: color }} />
                 ))}
               </span>
-              {o.label}
+              {t(o.label)}
             </button>
           ))}
         </div>
@@ -164,7 +165,7 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
         <select value={value as string} onChange={(e) => onSave(e.target.value)}>
           {c.options.map((o) => (
             <option key={o.value} value={o.value}>
-              {o.label}
+              {t(o.label)}
             </option>
           ))}
         </select>
@@ -176,16 +177,16 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
       type="button"
       className="link"
       style={{ visibility: changed ? "visible" : "hidden", gridColumn: c.type === "swatches" ? 3 : undefined }}
-      title={c.type === "color" ? "Back to the theme's color" : `Default: ${String(def.default)}`}
+      title={c.type === "color" ? t("Back to the theme's color") : t("Default: {value}", { value: String(def.default) })}
       onClick={() => onSave(null)}
     >
-      Reset
+      {t("Reset")}
     </button>
   );
   const text = (
     <span>
-      {def.label}
-      {def.description && <span className="muted small">{def.description}</span>}
+      {t(def.label)}
+      {def.description && <span className="muted small">{t(def.description)}</span>}
     </span>
   );
   // Cards take a row of their own, under the label.

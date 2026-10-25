@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { workbench } from "../workbench";
 import { type ActivityEntry, clearActivity, markSeen, useActivity } from "./activity";
+import { t } from "../i18n";
 
 /** Opens the log of the errors shown and the work done in the background. */
 export function openActivity() {
@@ -27,39 +28,39 @@ function ActivityDialog({ onClose }: { onClose: () => void }) {
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.key === "Escape" && onClose()}
       >
-        <h2 id="activity-title">Activity</h2>
-        <p className="muted small">Errors shown and work done in the background since the app started.</p>
+        <h2 id="activity-title">{t("Activity")}</h2>
+        <p className="muted small">{t("Errors shown and work done in the background since the app started.")}</p>
         {newest.length === 0 ? (
-          <p className="muted activity-empty">Nothing yet.</p>
+          <p className="muted activity-empty">{t("Nothing yet.")}</p>
         ) : (
           <ol className="activity-list" aria-live="polite">
             {newest.map((e) => (
               <li key={e.id} className={`activity-entry ${e.kind} ${e.status}`}>
                 <time>{time(e.at)}</time>
-                <span className="activity-state">{e.kind === "error" ? "Error" : e.status === "running" ? "Running" : e.status === "done" ? "Done" : "Failed"}</span>
+                <span className="activity-state">{t(e.kind === "error" ? "Error" : e.status === "running" ? "Running" : e.status === "done" ? "Done" : "Failed")}</span>
                 <span className="activity-text">
                   {e.text}
                   {e.detail && <span className="activity-detail">{e.detail}</span>}
                 </span>
-                {e.ms !== undefined && <span className="muted activity-ms">{e.ms} ms</span>}
+                {e.ms !== undefined && <span className="muted activity-ms">{e.ms.toLocaleString()} ms</span>}
               </li>
             ))}
           </ol>
         )}
         <div className="actions">
           <button type="button" disabled={entries.length === 0} onClick={clearActivity}>
-            Clear
+            {t("Clear")}
           </button>
           <button
             type="button"
             disabled={entries.length === 0}
             onClick={() => void navigator.clipboard.writeText(entries.map(line).join("\n")).catch(() => {})}
           >
-            Copy
+            {t("Copy")}
           </button>
           <span className="spacer" />
           <button type="button" className="primary" autoFocus onClick={onClose}>
-            Done
+            {t("Done")}
           </button>
         </div>
       </div>

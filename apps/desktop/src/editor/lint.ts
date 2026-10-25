@@ -7,6 +7,7 @@ import type { Diagnostic } from "@codemirror/lint";
 import type { EditorView } from "@codemirror/view";
 import { api, type CompletionCatalog, type DriverKind } from "../api";
 import { defineSetting, getSetting } from "../settings";
+import { t } from "../i18n";
 
 export const lintSetting = defineSetting<boolean>({
   key: "editor.lint",
@@ -48,14 +49,14 @@ export async function lintSql(view: EditorView, context: LintContext): Promise<D
         from: issue.from,
         to: issue.to,
         severity: "warning",
-        message: "SELECT * on a production connection: name the columns you need.",
+        message: t("SELECT * on a production connection: name the columns you need."),
       });
     } else if (issue.kind === "join_without_condition") {
       out.push({
         from: issue.from,
         to: issue.to,
         severity: "warning",
-        message: "JOIN without ON or USING joins every row with every row; write CROSS JOIN if that is meant.",
+        message: t("JOIN without ON or USING joins every row with every row; write CROSS JOIN if that is meant."),
       });
     }
   }
@@ -71,7 +72,7 @@ export async function lintSql(view: EditorView, context: LintContext): Promise<D
         from: ref.from,
         to: ref.to,
         severity: "error",
-        message: `Column ${ref.column} does not exist in ${table.schema ? `${table.schema}.` : ""}${table.name}.`,
+        message: t("Column {column} does not exist in {table}.", { column: ref.column, table: `${table.schema ? `${table.schema}.` : ""}${table.name}` }),
       });
     }
   }

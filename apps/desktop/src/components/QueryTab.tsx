@@ -42,10 +42,11 @@ import { Icon } from "../ui/Icon";
 import { scrollSideways } from "../ui/scroll";
 import { notifyRunEnded } from "../shell/notify";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
+import { t, plural, msg } from "../i18n";
 
 /** Auto-refresh intervals in seconds, `0` for off. */
 const REFRESH_CHOICES: [number, string][] = [
-  [0, "Off"],
+  [0, msg("Off")],
   [2, "2 s"],
   [5, "5 s"],
   [10, "10 s"],
@@ -55,7 +56,7 @@ const REFRESH_CHOICES: [number, string][] = [
 ];
 
 /** Asked before a run or a new filter drops the edits of the data grid. */
-const DISCARD_EDITS = "Discard the changes to the data that are not saved?";
+const DISCARD_EDITS = msg("Discard the changes to the data that are not saved?");
 
 /** Statements that change which tables and columns exist. */
 const DDL = /^\s*(create|alter|drop|rename)\b/i;
@@ -399,12 +400,13 @@ export function QueryTab({
       api
         .exportQuery(sessionId, sql, path, options, (event) => {
           if (event.type === "done") {
-            const text = `Exported ${fmt.format(event.rows)} rows to ${path} in ${formatMs(event.elapsed_ms)}`;
-            resolve({ kind: "message", summary: `Exported ${fmt.format(event.rows)} rows`, text });
+            const rows = fmt.format(event.rows);
+            const text = t("Exported {rows} rows to {path} in {time}", { rows, path, time: formatMs(event.elapsed_ms) });
+            resolve({ kind: "message", summary: t("Exported {rows} rows", { rows }), text });
           } else if (event.type === "failed") {
             resolve({ kind: "error", error: event.error });
           } else if (event.type === "cancelled") {
-            resolve({ kind: "error", error: clientError("Export cancelled", "cancelled") });
+            resolve({ kind: "error", error: clientError(t("Export cancelled"), "cancelled") });
           }
         })
         .catch((e: unknown) => resolve({ kind: "error", error: toCommandError(e) }));
@@ -433,7 +435,7 @@ export function QueryTab({
   async function run(mode: RunMode, force = false, again?: Planned[], auto = false) {
     const history = !auto;
     if (running && !force) return;
-    if (unsaved.current && !(await ask(DISCARD_EDITS, { confirm: "Discard", danger: true }))) return;
+    if (unsaved.current && !(await ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }))) return;
     const append = mode === "append";
     let planned: Planned[];
     try {
@@ -490,20 +492,20 @@ export function QueryTab({
           keepVariables();
           return { kind: "message", summary: `${c.variable} = ${c.value}`, text: `${c.variable} = ${c.value}` };
         case "echo":
-          return { kind: "message", summary: c.text.slice(0, 60) || "(empty)", text: c.text };
+          return { kind: "message", summary: c.text.slice(0, 60) || t("(empty)"), text: c.text };
         case "export": {
           const path = resolvePath(c.path, tab.filePath);
-          if (!path) return { kind: "error", error: clientError("Save the script first, or give @export an absolute path.") };
+          if (!path) return { kind: "error", error: clientError(t("Save the script first, or give @export an absolute path.")) };
           pending.export = { path, format: c.format };
-          return { kind: "message", summary: `Next rows to ${c.path}`, text: `The next statement's rows go to ${path}.` };
+          return { kind: "message", summary: t("Next rows to {path}", { path: c.path }), text: t("The next statement's rows go to {path}.", { path }) };
         }
         case "error":
           return { kind: "error", error: clientError(c.message) };
         case "include": {
           const path = resolvePath(c.path, tab.filePath);
-          if (!path) return { kind: "error", error: clientError("Save the script first, or give @include an absolute path.") };
+          if (!path) return { kind: "error", error: clientError(t("Save the script first, or give @include an absolute path.")) };
           if (p.depth >= INCLUDE_DEPTH) {
-            return { kind: "error", error: clientError(`@include nests more than ${INCLUDE_DEPTH} files.`) };
+            return { kind: "error", error: clientError(t("@include nests more than {n} files.", { n: INCLUDE_DEPTH })) };
           }
           try {
             const text = await api.readTextFile(path);
@@ -511,9 +513,9 @@ export function QueryTab({
             const added = plannedOf(text, spans, -1, p.depth + 1);
             // The file's statements get the checks the editor's had before the run.
             if (connection.read_only && added.some((a) => !a.readOnly)) {
-              return { kind: "error", error: clientError(`${connection.name} is read-only and ${path} may modify data.`) };
+              return { kind: "error", error: clientError(t("{name} is read-only and {path} may modify data.", { name: connection.name, path })) };
             }
-            if (!(await confirmed(added))) return { kind: "error", error: clientError("Cancelled", "cancelled") };
+            if (!(await confirmed(added))) return { kind: "error", error: clientError(t("Cancelled"), "cancelled") };
             const addedResults = added.map((a) => resultOf(a, false));
             queue.splice(i + 1, 0, ...added);
             own.splice(i + 1, 0, ...addedResults);
@@ -525,8 +527,8 @@ export function QueryTab({
             const n = added.length;
             return {
               kind: "message",
-              summary: `Included ${n} statement${n === 1 ? "" : "s"}`,
-              text: `Included ${path}: ${n} statement${n === 1 ? "" : "s"}`,
+              summary: plural(n, "Included {n} statement", "Included {n} statements"),
+              text: plural(n, "Included {path}: {n} statement", "Included {path}: {n} statements", { path }),
             };
           } catch (e) {
             return { kind: "error", error: toCommandError(e) };
@@ -555,7 +557,7 @@ export function QueryTab({
       } else {
         const values = p.params.length ? await fillParams(p, variables, defined) : variables;
         if (!values) {
-          status = { kind: "error", error: clientError("Cancelled", "cancelled") };
+          status = { kind: "error", error: clientError(t("Cancelled"), "cancelled") };
         } else {
           if (p.params.length) {
             sql = substitute(p.sql, p.params, values, connection.driver);
@@ -588,7 +590,7 @@ export function QueryTab({
         failed = i;
         // The editor may have changed since the statements were planned: no marker there.
         if (!auto) showError(p, status);
-        else onError(`Auto-refresh stopped: ${status.error.message}`);
+        else onError(t("Auto-refresh stopped: {message}", { message: status.error.message }));
         const skipped = new Set(own.slice(i + 1).map((r) => r.id));
         setResults((all) => all.map((r) => (skipped.has(r.id) ? { ...r, status: { kind: "skipped" } } : r)));
         break;
@@ -618,7 +620,7 @@ export function QueryTab({
     if (
       connection.read_only &&
       planned.some((p) => !p.readOnly) &&
-      !(await ask(`${connection.name} is read-only and this may modify data. Run anyway?`, { confirm: "Run" }))
+      !(await ask(t("{name} is read-only and this may modify data. Run anyway?", { name: connection.name }), { confirm: t("Run") }))
     ) {
       return;
     }
@@ -639,8 +641,10 @@ export function QueryTab({
       const failed = out.status !== 0;
       status = {
         kind: "message",
-        summary: `${client} ${failed ? `failed (exit ${out.status ?? "signal"})` : "finished"} in ${formatMs(out.elapsed_ms)}`,
-        text: out.output || "(no output)",
+        summary: failed
+          ? t("{client} failed (exit {code}) in {time}", { client: client ?? "", code: out.status ?? "signal", time: formatMs(out.elapsed_ms) })
+          : t("{client} finished in {time}", { client: client ?? "", time: formatMs(out.elapsed_ms) }),
+        text: out.output || t("(no output)"),
         failed,
       };
     } catch (e) {
@@ -680,7 +684,7 @@ export function QueryTab({
           return;
         }
       }
-      onError(`No table, view or routine named ${schema ? `${schema}.` : ""}${name}`);
+      onError(t("No table, view or routine named {name}", { name: schema ? `${schema}.${name}` : name }));
     } catch (e) {
       onError(toCommandError(e).message);
     }
@@ -705,7 +709,7 @@ export function QueryTab({
     // Analyze runs the statement: the checks of a run apply.
     if (analyze) {
       if (connection.read_only && !p.readOnly) {
-        onError(`${connection.name} is read-only and this statement may modify data.`);
+        onError(t("{name} is read-only and this statement may modify data.", { name: connection.name }));
         return;
       }
       if (!(await confirmed([p]))) return;
@@ -772,7 +776,7 @@ export function QueryTab({
   function applyViewer(patch: { filter?: string; sort?: Sort | null }) {
     if (!tab.table) return;
     if (unsaved.current) {
-      void ask(DISCARD_EDITS, { confirm: "Discard", danger: true }).then((yes) => {
+      void ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }).then((yes) => {
         if (!yes) return;
         unsaved.current = false;
         applyViewer(patch);
@@ -796,7 +800,7 @@ export function QueryTab({
 
   async function countRows() {
     if (!tab.table) return;
-    setCount("counting…");
+    setCount(t("counting…"));
     const sessionId = await sideSession();
     if (sessionId === null) return setCount(null);
     const where = tab.filter?.trim() ? ` WHERE ${tab.filter.trim()}` : "";
@@ -805,7 +809,7 @@ export function QueryTab({
       : `SELECT COUNT(*) FROM ${tab.table}${where}`;
     try {
       const value = await api.queryValue(sessionId, query);
-      setCount(value === null ? null : `${fmt.format(Number(value))} rows`);
+      setCount(value === null ? null : plural(Number(value), "{n} row", "{n} rows"));
     } catch (e) {
       setCount(null);
       onError(toCommandError(e).message);
@@ -823,9 +827,9 @@ export function QueryTab({
       setExporting({ exportId: null, rows: result.rows, done: null, failed: false });
       try {
         const rows = await api.exportRows(result.jobId, path, options);
-        finish(`Exported ${fmt.format(rows)} rows to ${file} in ${formatMs(Math.round(performance.now() - started))}`);
+        finish(t("Exported {rows} rows to {path} in {time}", { rows: fmt.format(rows), path: file, time: formatMs(Math.round(performance.now() - started)) }));
       } catch (e) {
-        finish(`Export failed: ${toCommandError(e).message}`, true);
+        finish(t("Export failed: {message}", { message: toCommandError(e).message }), true);
       }
       return;
     }
@@ -839,19 +843,19 @@ export function QueryTab({
             setExporting((e) => e && { ...e, rows: event.rows });
             break;
           case "done":
-            finish(`Exported ${fmt.format(event.rows)} rows to ${file} in ${formatMs(event.elapsed_ms)}`);
+            finish(t("Exported {rows} rows to {path} in {time}", { rows: fmt.format(event.rows), path: file, time: formatMs(event.elapsed_ms) }));
             break;
           case "failed":
-            finish(`Export failed: ${event.error.message}`, true);
+            finish(t("Export failed: {message}", { message: event.error.message }), true);
             break;
           case "cancelled":
-            finish("Export cancelled");
+            finish(t("Export cancelled"));
             break;
         }
       });
       setExporting((e) => e && e.done === null ? { ...e, exportId } : e);
     } catch (e) {
-      finish(`Export failed: ${toCommandError(e).message}`, true);
+      finish(t("Export failed: {message}", { message: toCommandError(e).message }), true);
     }
   }
 
@@ -913,7 +917,7 @@ export function QueryTab({
 
   async function sideId(): Promise<number> {
     const id = await sideSession();
-    if (id === null) throw new Error("no connection");
+    if (id === null) throw new Error(t("no connection"));
     return id;
   }
 
@@ -999,7 +1003,7 @@ export function QueryTab({
   useEffect(() => {
     if (!txLong || warned.current) return;
     warned.current = true;
-    onError(`A transaction on ${connection.name} has been open for ${warnMinutes} minutes: commit or roll back.`);
+    onError(t("A transaction on {name} has been open for {n} minutes: commit or roll back.", { name: connection.name, n: warnMinutes }));
   }, [txLong]);
 
   // Auto-refresh: the last statements again, if they only read, while the tab is shown and
@@ -1010,7 +1014,7 @@ export function QueryTab({
     if (running || guard || unsaved.current || again.length === 0) return;
     if (again.some((p) => !p.readOnly)) {
       setRefreshEvery(null);
-      onError("Auto-refresh stopped: the last statements change data.");
+      onError(t("Auto-refresh stopped: the last statements change data."));
       return;
     }
     void run("statement", false, again, true);
@@ -1052,25 +1056,25 @@ export function QueryTab({
           <button
             className="primary"
             onClick={() => void run("statement")}
-            title="Run statement (Ctrl+Enter)"
-            aria-label="Run"
+            title={t("Run statement (Ctrl+Enter)")}
+            aria-label={t("Run")}
           >
             <Icon name="run" />
-            Run
+            {t("Run")}
           </button>
           {toolbar.visible.script && (
-            <button onClick={() => void run("script")} title="Run script (Alt+X, Ctrl+Shift+Enter)" aria-label="Script">
-              {toolbar.label("script", "Script")}
+            <button onClick={() => void run("script")} title={t("Run script (Alt+X, Ctrl+Shift+Enter)")} aria-label={t("Script")}>
+              {toolbar.label("script", t("Script"))}
             </button>
           )}
           {toolbar.visible.cancel && (
             <button
               onClick={() => void cancel()}
               disabled={!running}
-              title="Cancel the running statement"
-              aria-label="Cancel"
+              title={t("Cancel the running statement")}
+              aria-label={t("Cancel")}
             >
-              {toolbar.label("cancel", "Cancel")}
+              {toolbar.label("cancel", t("Cancel"))}
             </button>
           )}
           <ConnectionChip connection={connection} database={tab.database ?? null} schema={catalog?.default_schema ?? null} />
@@ -1080,16 +1084,16 @@ export function QueryTab({
             className={manual ? "toggled" : ""}
             onClick={() => void toggleAutocommit()}
             disabled={running || !!tx?.open}
-            aria-label={manual ? "Manual commit" : "Auto-commit"}
-            title={
+            aria-label={t(manual ? "Manual commit" : "Auto-commit")}
+            title={t(
               tx?.open
                 ? "Commit or roll back before switching"
                 : manual
                   ? "Manual commit: changes wait for Commit"
-                  : "Auto-commit: every statement commits on its own"
-            }
+                  : "Auto-commit: every statement commits on its own",
+            )}
           >
-            {toolbar.label(manual ? "manual-commit" : "autocommit", manual ? "Manual commit" : "Auto-commit")}
+            {toolbar.label(manual ? "manual-commit" : "autocommit", t(manual ? "Manual commit" : "Auto-commit"))}
           </button>
           )}
           {showTx && manual && (
@@ -1097,37 +1101,37 @@ export function QueryTab({
               <button
                 onClick={() => void endTransaction(true)}
                 disabled={running || !tx.open}
-                title="Commit"
-                aria-label="Commit"
+                title={t("Commit")}
+                aria-label={t("Commit")}
               >
-                {toolbar.label("commit", "Commit")}
+                {toolbar.label("commit", t("Commit"))}
               </button>
               <button
                 onClick={() => void endTransaction(false)}
                 disabled={running || !tx.open}
-                title="Rollback"
-                aria-label="Rollback"
+                title={t("Rollback")}
+                aria-label={t("Rollback")}
               >
-                {toolbar.label("rollback", "Rollback")}
+                {toolbar.label("rollback", t("Rollback"))}
               </button>
             </>
           )}
           {tx?.open && (
             <span
               className={`tx-open${txLong ? " long" : ""}`}
-              title="A transaction is open: changes are not visible to others yet, and locks are held"
+              title={t("A transaction is open: changes are not visible to others yet, and locks are held")}
             >
-              ● Transaction open {elapsed(txAge)}
+              ● {t("Transaction open {time}", { time: elapsed(txAge) })}
             </span>
           )}
           {toolbar.visible.files && (
             <>
               <span className="divider" />
-              <button onClick={() => void openFile()} title="Open script (Ctrl+O)" aria-label="Open">
-                {toolbar.label("open", "Open")}
+              <button onClick={() => void openFile()} title={t("Open script (Ctrl+O)")} aria-label={t("Open")}>
+                {toolbar.label("open", t("Open"))}
               </button>
-              <button onClick={() => void saveFile()} title="Save script (Ctrl+S)" aria-label="Save">
-                {toolbar.label("save", "Save")}
+              <button onClick={() => void saveFile()} title={t("Save script (Ctrl+S)")} aria-label={t("Save")}>
+                {toolbar.label("save", t("Save"))}
                 {dirty ? " •" : ""}
               </button>
             </>
@@ -1135,17 +1139,17 @@ export function QueryTab({
           {toolbar.visible.refresh && (
             <label
               className={`auto-refresh${refreshEvery !== null ? " toggled" : ""}`}
-              title="Run the last statements again every few seconds, if they only read data"
+              title={t("Run the last statements again every few seconds, if they only read data")}
             >
               <Icon name="refresh" />
               <select
-                aria-label="Auto-refresh"
+                aria-label={t("Auto-refresh")}
                 value={refreshEvery ?? 0}
                 onChange={(e) => setRefreshEvery(Number(e.target.value) || null)}
               >
                 {REFRESH_CHOICES.map(([seconds, label]) => (
                   <option key={seconds} value={seconds}>
-                    {label}
+                    {t(label)}
                   </option>
                 ))}
               </select>
@@ -1158,32 +1162,32 @@ export function QueryTab({
               <button
                 className={tab.terminal ? "toggled" : ""}
                 onClick={() => onChange({ terminal: !tab.terminal })}
-                title="Terminal mode: results as text, kept across runs"
-                aria-label="Terminal"
+                title={t("Terminal mode: results as text, kept across runs")}
+                aria-label={t("Terminal")}
               >
-                {toolbar.label("terminal", "Terminal")}
+                {toolbar.label("terminal", t("Terminal"))}
               </button>
               <button
                 className={panel === "variables" ? "toggled" : ""}
                 onClick={() => togglePanel("variables")}
-                title="Variables of ${name} and :name"
-                aria-label="Variables"
+                title={t("Variables of ${name} and :name")}
+                aria-label={t("Variables")}
               >
-                {toolbar.label("variables", "Variables")}
+                {toolbar.label("variables", t("Variables"))}
               </button>
               <button
                 className={panel === "outline" ? "toggled" : ""}
                 onClick={() => togglePanel("outline")}
-                title="Statements of the editor"
-                aria-label="Outline"
+                title={t("Statements of the editor")}
+                aria-label={t("Outline")}
               >
-                {toolbar.label("outline", "Outline")}
+                {toolbar.label("outline", t("Outline"))}
               </button>
             </>
           )}
           {toolbar.visible.history && (
-            <button className={panel === "history" ? "toggled" : ""} onClick={() => togglePanel("history")} title="History" aria-label="History">
-              {toolbar.label("history", "History")}
+            <button className={panel === "history" ? "toggled" : ""} onClick={() => togglePanel("history")} title={t("History")} aria-label={t("History")}>
+              {toolbar.label("history", t("History"))}
             </button>
           )}
         </div>
@@ -1195,14 +1199,15 @@ export function QueryTab({
               applyViewer({ filter });
             }}
           >
-            <span className="muted small">{isMongo(connection.driver) ? "Filter" : "WHERE"}</span>
+            <span className="muted small">{isMongo(connection.driver) ? t("Filter") : "WHERE"}</span>
             <input
               value={filter}
-              placeholder={
+              aria-label={isMongo(connection.driver) ? t("Filter") : "WHERE"}
+              placeholder={t(
                 isMongo(connection.driver)
                   ? "e.g. { total: { $gt: 100 }, status: 'paid' }"
-                  : "e.g. total > 100 AND status = 'paid'"
-              }
+                  : "e.g. total > 100 AND status = 'paid'",
+              )}
               onChange={(e) => setFilter(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Escape" && filter) {
@@ -1211,10 +1216,10 @@ export function QueryTab({
                 }
               }}
             />
-            <button type="submit">Apply</button>
+            <button type="submit">{t("Apply")}</button>
             {tab.sort && (
               <button type="button" className="link" onClick={() => applyViewer({ sort: null })}>
-                Sorted by {tab.sort.column} {tab.sort.desc ? "▼" : "▲"} ×
+                {t("Sorted by {column}", { column: tab.sort.column })} {tab.sort.desc ? "▼" : "▲"} ×
               </button>
             )}
             <span className="spacer" />
@@ -1223,8 +1228,8 @@ export function QueryTab({
               type="button"
               className="square"
               onClick={() => void countRows()}
-              aria-label="Count rows"
-              title={`Count rows: ${isMongo(connection.driver) ? "runs countDocuments" : "runs SELECT COUNT(*)"} with the filter`}
+              aria-label={t("Count rows")}
+              title={t(isMongo(connection.driver) ? "Count rows: runs countDocuments with the filter" : "Count rows: runs SELECT COUNT(*) with the filter")}
             >
               <Icon name="sequence" />
             </button>
@@ -1246,8 +1251,8 @@ export function QueryTab({
         <div className="results">
           {blocked !== null && (
             <div className="notice warn">
-              <strong>{connection.name}</strong> is read-only and this may modify data.
-              <button onClick={() => void run(blocked, true)}>Run anyway</button>
+              {t("{name} is read-only and this may modify data.", { name: connection.name })}
+              <button onClick={() => void run(blocked, true)}>{t("Run anyway")}</button>
             </div>
           )}
           {tab.terminal && <TerminalView blocks={terminalLog} onClear={() => setTerminalLog([])} />}
@@ -1265,8 +1270,8 @@ export function QueryTab({
                   <span
                     className="result-tab-close"
                     role="button"
-                    aria-label="Close result"
-                    title="Close result"
+                    aria-label={t("Close result")}
+                    title={t("Close result")}
                     onClick={(e) => {
                       e.stopPropagation();
                       closeResult(r.id);
@@ -1309,41 +1314,42 @@ export function QueryTab({
               <span>{describe(current)}</span>
               {(current.status.kind === "rows" || current.status.kind === "affected") && (
                 <span className="muted">
-                  {current.status.kind === "rows" && !current.status.finished ? "first rows" : "took"}{" "}
-                  {formatMs(current.status.elapsedMs)}
+                  {t(current.status.kind === "rows" && !current.status.finished ? "first rows in {time}" : "took {time}", {
+                    time: formatMs(current.status.elapsedMs),
+                  })}
                 </span>
               )}
               {(current.status.kind === "rows" || current.status.kind === "affected") &&
                 isSlow(current.status.elapsedMs, slowSeconds) && (
                   <span
                     className="slow-query"
-                    title={`Slower than ${slowSeconds} s (Settings). Explain (Ctrl+Shift+E) shows where the time goes.`}
+                    title={t("Slower than {n} s (Settings). Explain (Ctrl+Shift+E) shows where the time goes.", { n: slowSeconds })}
                   >
-                    slow
+                    {t("slow")}
                   </span>
                 )}
               {current.status.kind === "rows" && !current.status.finished && (
                 <button className="link" onClick={() => fetchAll(current)}>
-                  Fetch all
+                  {t("Fetch all")}
                 </button>
               )}
               {rowsResult && !exportBusy && (
                 <button className="link" onClick={() => setExportOpen(true)}>
-                  Export…
+                  {t("Export…")}
                 </button>
               )}
             </>
           )}
           {exporting && (
             <span className={exporting.failed ? "error-text" : "muted"}>
-              {exporting.done ?? `Exporting… ${fmt.format(exporting.rows)} rows`}
+              {exporting.done ?? t("Exporting… {rows} rows", { rows: fmt.format(exporting.rows) })}
               {exportBusy && exporting.exportId !== null && (
                 <button className="link" onClick={() => void api.cancelExport(exporting.exportId!)}>
-                  Cancel
+                  {t("Cancel")}
                 </button>
               )}
               {!exportBusy && (
-                <button className="link" onClick={() => setExporting(null)} title="Dismiss">
+                <button className="link" onClick={() => setExporting(null)} title={t("Dismiss")} aria-label={t("Dismiss")}>
                   ×
                 </button>
               )}
@@ -1351,22 +1357,24 @@ export function QueryTab({
           )}
           {undoScript && (
             <span className="muted">
-              Changes saved.
+              {t("Changes saved.")}
               <button
                 className="link"
                 onClick={() => workbench().openTab("query", connection.id, { sql: undoScript })}
-                title="Opens the SQL that puts the rows back as they were"
+                title={t("Opens the SQL that puts the rows back as they were")}
               >
-                Undo script
+                {t("Undo script")}
               </button>
-              <button className="link" onClick={() => setUndoScript(null)} title="Dismiss">
+              <button className="link" onClick={() => setUndoScript(null)} title={t("Dismiss")} aria-label={t("Dismiss")}>
                 ×
               </button>
             </span>
           )}
           <span className="spacer" />
           <HealthBadge health={health} />
-          <span className="muted">Ctrl+Enter statement · Alt+X script · {connection.name}</span>
+          <span className="muted">
+            {t("Ctrl+Enter statement · Alt+X script")} · {connection.name}
+          </span>
         </div>
       </div>
       {panel === "history" && (
@@ -1431,7 +1439,7 @@ export function QueryTab({
 function ConnectionChip({ connection, database, schema }: { connection: SavedConnection; database: string | null; schema: string | null }) {
   const parts = [connection.name, database, schema].filter(Boolean);
   return (
-    <span className={`conn-chip${connection.connection_type ? ` ${connection.connection_type}` : ""}`} title="Statements run here">
+    <span className={`conn-chip${connection.connection_type ? ` ${connection.connection_type}` : ""}`} title={t("Statements run here")}>
       <span className="conn-chip-dot" />
       {parts.join(" · ")}
     </span>

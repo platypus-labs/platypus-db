@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { type Action, type ActionScope, type ActionScopes, actionsFor, runAction, shortcutLabel } from "../actions";
+import { t } from "../i18n";
 
 /** Where a context menu was opened: the scope whose actions it lists, and their argument. */
 export type MenuTarget = { [S in ActionScope]: { scope: S; arg: ActionScopes[S] } }[ActionScope];
@@ -128,20 +129,20 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
           {i > 0 && groupOf(entry) !== groupOf(lines[i - 1]!) && <hr />}
           {"action" in entry ? (
             <button role="menuitem" onClick={() => choose(entry.action)} onMouseEnter={() => setOpen(null)}>
-              <span>{entry.action.title}</span>
+              <span>{t(entry.action.title)}</span>
               {shortcutLabel(entry.action) && <kbd className="shortcut">{shortcutLabel(entry.action)}</kbd>}
             </button>
           ) : (
             <div className="submenu-anchor" onMouseEnter={() => setOpen(entry.submenu)}>
               <button role="menuitem" aria-haspopup="menu" onClick={() => setOpen(entry.submenu)} aria-expanded={open === entry.submenu}>
-                <span>{entry.submenu}</span>
+                <span>{t(entry.submenu)}</span>
                 <span className="shortcut">▸</span>
               </button>
               {open === entry.submenu && (
                 <div className="context-menu submenu" role="menu">
                   {entry.actions.map((action) => (
                     <button key={action.id} role="menuitem" onClick={() => choose(action)}>
-                      <span>{action.title}</span>
+                      <span>{t(action.title)}</span>
                       {shortcutLabel(action) && <kbd className="shortcut">{shortcutLabel(action)}</kbd>}
                     </button>
                   ))}

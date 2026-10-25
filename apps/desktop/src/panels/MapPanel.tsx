@@ -1,6 +1,7 @@
 import { type PointerEvent as ReactPointerEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { api, type ColumnInfo, type Geometries, type Shape, toCommandError } from "../api";
 import type { GridApi } from "../grid/DataGrid";
+import { t, plural } from "../i18n";
 
 interface Props {
   jobId: number;
@@ -140,13 +141,14 @@ export function MapPanel({ jobId, columns, grid, selection, rows, version, focus
     <aside className="value-panel map-panel">
       <div className="value-bar">
         <strong className="small value-name" title={names}>
-          Map{names && ` · ${names}`}
+          {t("Map")}
+          {names && ` · ${names}`}
         </strong>
         <span className="spacer" />
-        <button className="icon" title="Show all" disabled={!view} onClick={() => setView(null)}>
+        <button className="icon" title={t("Show all")} aria-label={t("Show all")} disabled={!view} onClick={() => setView(null)}>
           ⤢
         </button>
-        <button className="icon" title="Close" onClick={onClose}>
+        <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
           ×
         </button>
       </div>
@@ -160,9 +162,9 @@ export function MapPanel({ jobId, columns, grid, selection, rows, version, focus
         onPointerUp={onPointerUp}
         onDoubleClick={() => setView(null)}
       >
-        {cols.length === 0 && <div className="muted small value-empty">Select a column with geometries.</div>}
+        {cols.length === 0 && <div className="muted small value-empty">{t("Select a column with geometries.")}</div>}
         {data && shapes.length === 0 && !error && (
-          <div className="muted small value-empty">No geometries in the selected columns.</div>
+          <div className="muted small value-empty">{t("No geometries in the selected columns.")}</div>
         )}
         {v && shapes.length > 0 && (
           <svg width={size.w} height={size.h}>
@@ -173,9 +175,7 @@ export function MapPanel({ jobId, columns, grid, selection, rows, version, focus
                 data-col={s.column}
                 className={s.row === focusedRow ? "map-shape focused" : "map-shape"}
               >
-                <title>
-                  Row {s.row + 1} · {columns[s.column]?.name}
-                </title>
+                <title>{`${t("Row {n}", { n: s.row + 1 })} · ${columns[s.column]?.name ?? ""}`}</title>
                 <ShapeView shape={s.shape} toScreen={toScreen} scale={v.scale} />
               </g>
             ))}
@@ -184,9 +184,9 @@ export function MapPanel({ jobId, columns, grid, selection, rows, version, focus
       </div>
       {data && (
         <div className="muted small value-size">
-          {shapes.length.toLocaleString()} {shapes.length === 1 ? "geometry" : "geometries"}
-          {data.truncated && " (more not shown)"}
-          {data.unreadable > 0 && ` · ${data.unreadable.toLocaleString()} not readable`}
+          {plural(shapes.length, "{n} geometry", "{n} geometries")}
+          {data.truncated && ` ${t("(more not shown)")}`}
+          {data.unreadable > 0 && ` · ${t("{n} not readable", { n: data.unreadable.toLocaleString() })}`}
         </div>
       )}
     </aside>

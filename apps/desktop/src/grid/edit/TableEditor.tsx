@@ -13,6 +13,7 @@ import { PreviewDialog } from "./PreviewDialog";
 import * as edits from "./state";
 import { VirtualKeyDialog } from "./VirtualKeyDialog";
 import "./actions";
+import { t, plural, msg } from "../../i18n";
 
 /** A result the editor may change: the data viewer's, or a query's of one table. */
 export interface TableEditTarget {
@@ -154,25 +155,25 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
   latest.current = target;
 
   const reason = !target
-    ? "not a table"
+    ? msg("not a table")
     : target.connection.read_only
-      ? "the connection is read-only"
+      ? msg("the connection is read-only")
       : // Saving checks each change's row count in a transaction: ClickHouse has neither.
         target.connection.driver === "clickhouse"
-        ? "ClickHouse tables are not edited in place"
+        ? msg("ClickHouse tables are not edited in place")
         : target.readOnly;
   const virtualKeys = target?.connection.virtual_keys ?? [];
   const virtualSignature = JSON.stringify(virtualKeys);
   useEffect(() => {
-    const t = latest.current;
-    if (reason !== null || !t) return;
+    const current = latest.current;
+    if (reason !== null || !current) return;
     let live = true;
-    t.load().then(
+    current.load().then(
       (source) => {
         if (!live) return;
-        setMeta(source ? editMeta(source, columns, virtualKeys) : { reason: "the rows are not one table's", hidden: true });
+        setMeta(source ? editMeta(source, columns, virtualKeys) : { reason: msg("the rows are not one table's"), hidden: true });
       },
-      (e) => live && setMeta({ reason: `its keys could not be read (${toCommandError(e).message})` }),
+      (e) => live && setMeta({ reason: t("its keys could not be read ({message})", { message: toCommandError(e).message }) }),
     );
     return () => {
       live = false;
@@ -226,7 +227,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
   async function editCell(cell: Cell, typed?: string) {
     if (!editable || !keys) return;
     if (!writable(cell.col)) {
-      setError(`${columns[cell.col]?.name ?? "This column"} is not a column of ${keys.table.name}: it cannot be edited`);
+      setError(t("{column} is not a column of {table}: it cannot be edited", { column: columns[cell.col]?.name ?? "?", table: keys.table.name }));
       return;
     }
     const s = current.current;
@@ -507,53 +508,53 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
     <div className="edit-bar" hidden={!showBar}>
       {readOnly !== null ? (
         <>
-          <span className="muted small">Read-only: {readOnly}.</span>
+          <span className="muted small">{t("Read-only: {reason}.", { reason: t(readOnly) })}</span>
           {noKey && (
-            <button onClick={() => setKeyDialog(true)} title="Columns that tell the rows apart">
-              Set a virtual key…
+            <button onClick={() => setKeyDialog(true)} title={t("Columns that tell the rows apart")}>
+              {t("Set a virtual key…")}
             </button>
           )}
         </>
       ) : meta === null ? (
-        <span className="muted small">Checking the table's keys…</span>
+        <span className="muted small">{t("Checking the table's keys…")}</span>
       ) : (
         <>
-          <button className="square" onClick={edit.addRow} disabled={!editable} title="Add a row (Insert)" aria-label="Add a row">
+          <button className="square" onClick={edit.addRow} disabled={!editable} title={t("Add a row (Insert)")} aria-label={t("Add a row")}>
             <Icon name="plus" />
           </button>
           <button
             className="square"
             onClick={edit.deleteSelection}
             disabled={!editable}
-            title="Delete the selected rows (Delete)"
-            aria-label="Delete the selected rows"
+            title={t("Delete the selected rows (Delete)")}
+            aria-label={t("Delete the selected rows")}
           >
             <Icon name="delete" />
           </button>
           {dirty ? (
             <>
               <span className="edit-count">
-                {edits.changedRows(state)} {edits.changedRows(state) === 1 ? "row" : "rows"} changed
+                {plural(edits.changedRows(state), "{n} row changed", "{n} rows changed")}
               </span>
-              <button className="primary" onClick={() => void edit.save()} disabled={!editable} title="Save (Ctrl+S)">
-                {busy ? "Saving…" : "Save"}
+              <button className="primary" onClick={() => void edit.save()} disabled={!editable} title={t("Save (Ctrl+S)")}>
+                {t(busy ? "Saving…" : "Save")}
               </button>
-              <button className="square" onClick={() => void edit.preview()} disabled={busy} title="Preview SQL" aria-label="Preview SQL">
+              <button className="square" onClick={() => void edit.preview()} disabled={busy} title={t("Preview SQL")} aria-label={t("Preview SQL")}>
                 <Icon name="sql" />
               </button>
-              <button className="square" onClick={edit.undo} disabled={busy || !edit.canUndo} title="Undo (Ctrl+Z)" aria-label="Undo">
+              <button className="square" onClick={edit.undo} disabled={busy || !edit.canUndo} title={t("Undo (Ctrl+Z)")} aria-label={t("Undo")}>
                 <Icon name="rollback" />
               </button>
-              <button className="square" onClick={edit.discard} disabled={busy} title="Discard the changes" aria-label="Discard">
+              <button className="square" onClick={edit.discard} disabled={busy} title={t("Discard the changes")} aria-label={t("Discard")}>
                 <Icon name="discard" />
               </button>
             </>
           ) : (
-            <span className="muted small">Double-click, F2 or type to edit a cell</span>
+            <span className="muted small">{t("Double-click, F2 or type to edit a cell")}</span>
           )}
           {keys?.virtualKey && (
-            <button className="link small" onClick={() => setKeyDialog(true)} title="Change the virtual key">
-              Virtual key: {keys.virtualKey.join(", ")}
+            <button className="link small" onClick={() => setKeyDialog(true)} title={t("Change the virtual key")}>
+              {t("Virtual key: {columns}", { columns: keys.virtualKey.join(", ") })}
             </button>
           )}
         </>
@@ -561,7 +562,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
       {error && (
         <span className="error-text small edit-error" title={error}>
           {error}
-          <button className="link" onClick={() => setError(null)} title="Dismiss">
+          <button className="link" onClick={() => setError(null)} title={t("Dismiss")} aria-label={t("Dismiss")}>
             ×
           </button>
         </span>

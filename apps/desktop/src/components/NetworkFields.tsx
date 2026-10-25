@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import type { DriverKind, PasswordInput, SavedSsh, SshSecrets, SslMode } from "../api";
 import { SshFields, newSsh } from "./SshFields";
+import { t, msg } from "../i18n";
 
 /** The SSH tunnel and SSL settings of a connection or of a network profile. */
 export interface NetworkSettings {
@@ -12,11 +13,11 @@ export interface NetworkSettings {
 }
 
 export const SSL_MODES: { value: SslMode; label: string }[] = [
-  { value: "disable", label: "disable — plaintext" },
-  { value: "prefer", label: "prefer — TLS if available, unverified" },
-  { value: "require", label: "require — TLS, unverified" },
-  { value: "verify-ca", label: "verify-ca — TLS, verify certificate" },
-  { value: "verify-full", label: "verify-full — TLS, verify certificate and host" },
+  { value: "disable", label: msg("disable — plaintext") },
+  { value: "prefer", label: msg("prefer — TLS if available, unverified") },
+  { value: "require", label: msg("require — TLS, unverified") },
+  { value: "verify-ca", label: msg("verify-ca — TLS, verify certificate") },
+  { value: "verify-full", label: msg("verify-full — TLS, verify certificate and host") },
 ];
 
 /** An SSH server and its jump hosts. */
@@ -78,7 +79,7 @@ export function NetworkFields<T extends NetworkSettings>({ value, onChange, driv
           type="button"
           onClick={() => void browse(label).then((path) => path && set(key, path))}
         >
-          Browse…
+          {t("Browse…")}
         </button>
       </div>
     </label>
@@ -88,7 +89,7 @@ export function NetworkFields<T extends NetworkSettings>({ value, onChange, driv
     <>
       <label className="check">
         <input type="checkbox" checked={ssh !== null} onChange={(e) => set("ssh", e.target.checked ? newSsh() : null)} />
-        Connect through an SSH tunnel
+        {t("Connect through an SSH tunnel")}
       </label>
       {ssh && (
         <fieldset className="ssh-section">
@@ -105,11 +106,11 @@ export function NetworkFields<T extends NetworkSettings>({ value, onChange, driv
               checked={ssh.jump !== null}
               onChange={(e) => set("ssh", { ...ssh, jump: e.target.checked ? newSsh() : null })}
             />
-            Through a jump host first
+            {t("Through a jump host first")}
           </label>
           {ssh.jump && (
             <fieldset className="ssh-section">
-              <legend className="muted small">Jump host</legend>
+              <legend className="muted small">{t("Jump host")}</legend>
               <SshFields
                 ssh={ssh.jump}
                 onChange={(jump) => set("ssh", { ...ssh, jump })}
@@ -123,11 +124,11 @@ export function NetworkFields<T extends NetworkSettings>({ value, onChange, driv
       )}
 
       <label className="field">
-        <span>SSL mode</span>
+        <span>{t("SSL mode")}</span>
         <select value={value.ssl_mode} onChange={(e) => set("ssl_mode", e.target.value as SslMode)}>
           {SSL_MODES.map((m) => (
             <option key={m.value} value={m.value}>
-              {m.label}
+              {t(m.label)}
             </option>
           ))}
         </select>
@@ -135,17 +136,21 @@ export function NetworkFields<T extends NetworkSettings>({ value, onChange, driv
       {verifies &&
         pathField(
           "ssl_root_cert",
-          `CA certificate (PEM) — empty uses the ${driver === "mysql" ? "built-in Mozilla roots" : "system trust store"}`,
+          t(
+            driver === "mysql"
+              ? "CA certificate (PEM) — empty uses the built-in Mozilla roots"
+              : "CA certificate (PEM) — empty uses the system trust store",
+          ),
           "C:\\certs\\root.crt",
         )}
       {value.ssl_mode !== "disable" && (
         <>
           {pathField(
             "ssl_client_cert",
-            "Client certificate (PEM) — for servers that authenticate clients by certificate",
+            t("Client certificate (PEM) — for servers that authenticate clients by certificate"),
             "C:\\certs\\client.crt",
           )}
-          {pathField("ssl_client_key", "Client key (PEM)", "C:\\certs\\client.key")}
+          {pathField("ssl_client_key", t("Client key (PEM)"), "C:\\certs\\client.key")}
         </>
       )}
     </>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, toCommandError, type HistoryEntry, type HistoryOrigin } from "../api";
-import { fmt, formatMs } from "./ResultPanel";
+import { formatMs } from "./ResultPanel";
+import { t, plural } from "../i18n";
 
 const PAGE = 100;
 
@@ -58,25 +59,27 @@ export function HistoryPanel({ connectionId, refresh, onInsert, onClose }: Props
   return (
     <aside className="history">
       <div className="history-header">
-        <strong>History</strong>
+        <strong>{t("History")}</strong>
         <span className="spacer" />
         <select
           className="history-origin"
           value={origin ?? ""}
           onChange={(e) => setOrigin((e.target.value || null) as HistoryOrigin | null)}
-          title="Who ran the statements"
+          title={t("Who ran the statements")}
+          aria-label={t("Who ran the statements")}
         >
-          <option value="">All</option>
+          <option value="">{t("All")}</option>
           <option value="app">PlatypusDB</option>
-          <option value="agent">Agents</option>
+          <option value="agent">{t("Agents")}</option>
         </select>
-        <button className="icon" title="Close" onClick={onClose}>
+        <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
           ×
         </button>
       </div>
       <input
         className="history-search"
-        placeholder="Search SQL…"
+        placeholder={t("Search SQL…")}
+        aria-label={t("Search SQL…")}
         value={text}
         onChange={(e) => setText(e.target.value)}
       />
@@ -86,35 +89,35 @@ export function HistoryPanel({ connectionId, refresh, onInsert, onClose }: Props
           <li
             key={e.id}
             className={`history-entry ${e.status}`}
-            title={e.error ?? "Double-click to insert into the editor"}
+            title={e.error ?? t("Double-click to insert into the editor")}
             onDoubleClick={() => onInsert(e.sql)}
           >
             <pre>{e.sql}</pre>
             <div className="history-meta">
               <span>{when(e.started_at)}</span>
               <span>{formatMs(e.duration_ms)}</span>
-              {e.rows !== null && <span>{fmt.format(e.rows)} rows</span>}
-              {e.status !== "ok" && <span className="history-status">{e.status}</span>}
+              {e.rows !== null && <span>{plural(e.rows, "{n} row", "{n} rows")}</span>}
+              {e.status !== "ok" && <span className="history-status">{t(e.status === "error" ? "error" : "cancelled")}</span>}
               {e.origin && (
-                <span className="history-agent" title="Run by an agent">
+                <span className="history-agent" title={t("Run by an agent")}>
                   {e.origin}
                 </span>
               )}
               <span className="spacer" />
-              <button className="icon" title="Insert into editor" onClick={() => onInsert(e.sql)}>
+              <button className="icon" title={t("Insert into editor")} aria-label={t("Insert into editor")} onClick={() => onInsert(e.sql)}>
                 ↵
               </button>
-              <button className="icon" title="Delete" onClick={() => void remove(e.id)}>
+              <button className="icon" title={t("Delete")} aria-label={t("Delete")} onClick={() => void remove(e.id)}>
                 ×
               </button>
             </div>
           </li>
         ))}
-        {entries.length === 0 && !error && <li className="muted history-empty">No history yet</li>}
+        {entries.length === 0 && !error && <li className="muted history-empty">{t("No history yet")}</li>}
       </ul>
       {more && (
         <button className="link history-more" onClick={() => void load(entries.at(-1)?.id)}>
-          Load more
+          {t("Load more")}
         </button>
       )}
     </aside>

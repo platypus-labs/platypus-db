@@ -45,6 +45,7 @@ import { TopBar } from "./shell/TopBar";
 import { Welcome } from "./shell/Welcome";
 import { TabBar, barOrder, groupTabsSetting } from "./shell/TabBar";
 import { useSetting } from "./settings";
+import { language, languageSetting, t, plural } from "./i18n";
 import { stepZoom } from "./theme";
 import { logError, track } from "./shell/activity";
 import { openActivity } from "./shell/ActivityDialog";
@@ -99,6 +100,8 @@ export function App() {
   /** Connections whose group of tabs is folded. */
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const grouped = useSetting(groupTabsSetting);
+  // A new language shows at once: everything below renders again.
+  useSetting(languageSetting);
   const [toast, setToast] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -209,11 +212,12 @@ export function App() {
   // The window says which project is shown.
   useEffect(() => {
     const title = project ? `${project.name} — PlatypusDB` : "PlatypusDB";
+    document.documentElement.lang = language();
     document.title = title;
     getCurrentWindow()
       .setTitle(title)
       .catch((e: unknown) => console.warn("window title", e));
-  }, [project?.name]);
+  }, [project?.name, language()]);
 
   /** The tabs of the active project, the ones the tab bar shows, in its order. */
   const visibleTabs = barOrder(
@@ -243,11 +247,11 @@ export function App() {
   /** Deletes a project once confirmed: its tabs close (those with changes ask first, and a
    *  refusal keeps the project), its connections stay. */
   async function deleteProject(p: Project) {
-    if (!(await ask(`Delete the project "${p.name}"? Its connections stay, in All connections and other projects.`, { confirm: "Delete", danger: true }))) {
+    if (!(await ask(t('Delete the project "{name}"? Its connections stay, in All connections and other projects.', { name: p.name }), { confirm: t("Delete"), danger: true }))) {
       return;
     }
     const own = tabs.filter((t) => t.project === p.id);
-    if (own.some((t) => t.unsaved || t.txOpen) && !(await ask("Some of its tabs have changes not saved or committed. Close them and discard the changes?", { confirm: "Discard", danger: true }))) {
+    if (own.some((tab) => tab.unsaved || tab.txOpen) && !(await ask(t("Some of its tabs have changes not saved or committed. Close them and discard the changes?"), { confirm: t("Discard"), danger: true }))) {
       return;
     }
     try {
@@ -342,7 +346,7 @@ export function App() {
   }
 
   async function deleteConnection(c: SavedConnection) {
-    if (!(await ask(`Delete the connection "${c.name}"?`, { confirm: "Delete", danger: true }))) return;
+    if (!(await ask(t('Delete the connection "{name}"?', { name: c.name }), { confirm: t("Delete"), danger: true }))) return;
     try {
       setConnections(await api.deleteConnection(c.id));
     } catch (e) {
@@ -394,7 +398,8 @@ export function App() {
     }
     try {
       // A database reached through a driver not downloaded yet: offer it, then go on.
-      const open = () => track(`Connect to ${connection.name}${database ? `/${database}` : ""}`, withDriver(() => api.openSession(connection.id, password, database)));
+      const target = database ? `${connection.name}/${database}` : connection.name;
+      const open = () => track(t("Connect to {name}", { name: target }), withDriver(() => api.openSession(connection.id, password, database)));
       let session;
       try {
         session = await open();
@@ -422,7 +427,7 @@ export function App() {
       const sessionId = await navigatorSession(connection, database);
       if (sessionId === null) return catalogLoads.current.delete(key);
       try {
-        const catalog = await track(`Load the tables and columns of ${connection.name} for completion`, api.completionCatalog(sessionId));
+        const catalog = await track(t("Load the tables and columns of {name} for completion", { name: connection.name }), api.completionCatalog(sessionId));
         setCatalogs((all) => ({ ...all, [key]: catalog }));
       } catch (e) {
         catalogLoads.current.delete(key);
@@ -491,12 +496,12 @@ export function App() {
 
   function closeTab(tab: TabModel, confirmed = false) {
     const question = tab.unsaved
-      ? "This tab has unsaved changes. Close it and discard them?"
+      ? t("This tab has unsaved changes. Close it and discard them?")
       : tab.txOpen
-        ? "This tab has an open transaction. Close it and roll back the uncommitted changes?"
+        ? t("This tab has an open transaction. Close it and roll back the uncommitted changes?")
         : null;
     if (question && !confirmed) {
-      void ask(question, { confirm: "Close", danger: true }).then((yes) => yes && closeTab(tab, true));
+      void ask(question, { confirm: t("Close"), danger: true }).then((yes) => yes && closeTab(tab, true));
       return;
     }
     const saved = persistTab(tab);
@@ -524,11 +529,12 @@ export function App() {
   /** Closes several tabs, asking once if some of them have changes. */
   async function closeTabs(list: TabModel[]) {
     const changed = list.filter((t) => t.unsaved || t.txOpen).length;
-    const question =
-      changed === 1
-        ? "One of these tabs has changes not saved or committed. Close it and discard them?"
-        : `${changed} of these tabs have changes not saved or committed. Close them and discard the changes?`;
-    if (changed > 0 && !(await ask(question, { confirm: "Close", danger: true }))) return;
+    const question = plural(
+      changed,
+      "One of these tabs has changes not saved or committed. Close it and discard them?",
+      "{n} of these tabs have changes not saved or committed. Close them and discard the changes?",
+    );
+    if (changed > 0 && !(await ask(question, { confirm: t("Close"), danger: true }))) return;
     for (const t of list) closeTab(t, true);
   }
 
@@ -627,8 +633,8 @@ export function App() {
     if (toast) logError(toast);
   }, [toast]);
   useEffect(() => {
-    const onError = (e: ErrorEvent) => logError(`Unexpected error: ${e.message}`);
-    const onRejection = (e: PromiseRejectionEvent) => logError(`Unexpected error: ${toCommandError(e.reason).message}`);
+    const onError = (e: ErrorEvent) => logError(t("Unexpected error: {message}", { message: e.message }));
+    const onRejection = (e: PromiseRejectionEvent) => logError(t("Unexpected error: {message}", { message: toCommandError(e.reason).message }));
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onRejection);
     return () => {
@@ -1089,7 +1095,7 @@ function PasswordPrompt({
         }}
         onKeyDown={(e) => e.key === "Escape" && onDone(null)}
       >
-        <h2>Password for {connection.name}</h2>
+        <h2>{t("Password for {name}", { name: connection.name })}</h2>
         <label className="field">
           <span>
             {connection.user}@{connection.host}
@@ -1099,10 +1105,10 @@ function PasswordPrompt({
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={() => onDone(null)}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" className="primary">
-            Connect
+            {t("Connect")}
           </button>
         </div>
       </form>

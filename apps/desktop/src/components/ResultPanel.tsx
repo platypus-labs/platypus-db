@@ -5,6 +5,7 @@ import { useFormatSignature } from "../grid/formats";
 import { ResultGrid } from "../grid/ResultGrid";
 import { RowCache } from "../grid/RowCache";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
+import { t, plural } from "../i18n";
 
 export type ResultStatus =
   | { kind: "pending" }
@@ -43,25 +44,25 @@ export function describe(result: Result): string {
   const s = result.status;
   switch (s.kind) {
     case "pending":
-      return "Waiting";
+      return t("Waiting");
     case "running":
-      return "Executing…";
+      return t("Executing…");
     case "rows": {
-      const rows = `${fmt.format(result.rows)} ${result.rows === 1 ? "row" : "rows"}`;
-      if (!s.finished) return `${rows} loaded · more available`;
-      if (s.stopped) return `${rows} · fetching stopped`;
+      const rows = plural(result.rows, "{n} row", "{n} rows");
+      if (!s.finished) return t("{rows} loaded · more available", { rows });
+      if (s.stopped) return t("{rows} · fetching stopped", { rows });
       if (!s.complete && result.limit !== null && result.rows >= result.limit) {
-        return `first ${rows} (script limit)`;
+        return t("first {rows} (script limit)", { rows });
       }
-      if (!s.complete) return `${rows} · stopped at the memory limit`;
+      if (!s.complete) return t("{rows} · stopped at the memory limit", { rows });
       return rows;
     }
     case "affected":
-      return `${fmt.format(s.rows)} row(s) affected`;
+      return plural(s.rows, "{n} row affected", "{n} rows affected");
     case "error":
-      return s.error.kind === "cancelled" ? "Cancelled" : "Error";
+      return t(s.error.kind === "cancelled" ? "Cancelled" : "Error");
     case "skipped":
-      return "Not executed";
+      return t("Not executed");
     case "message":
       return s.summary;
   }
@@ -105,20 +106,20 @@ export function ResultPanel({ result, sort, onHeaderClick, source, edit }: Panel
           <strong>{e.code ? `${e.code}: ` : ""}</strong>
           {e.message}
         </div>
-        {e.detail && <div>DETAIL: {e.detail}</div>}
-        {e.hint && <div>HINT: {e.hint}</div>}
+        {e.detail && <div>{t("DETAIL: {text}", { text: e.detail })}</div>}
+        {e.hint && <div>{t("HINT: {text}", { text: e.hint })}</div>}
       </div>
     );
   }
   if (status.kind === "affected") {
     return (
       <div className="notice ok">
-        {fmt.format(status.rows)} row(s) affected in {formatMs(status.elapsedMs)}
+        {plural(status.rows, "{n} row affected in {time}", "{n} rows affected in {time}", { time: formatMs(status.elapsedMs) })}
       </div>
     );
   }
   if (status.kind === "skipped") {
-    return <div className="notice muted">Not executed: an earlier statement failed.</div>;
+    return <div className="notice muted">{t("Not executed: an earlier statement failed.")}</div>;
   }
   if (status.kind === "message") {
     return <pre className={`message-output${status.failed ? " failed" : ""}`}>{status.text}</pre>;
@@ -126,12 +127,12 @@ export function ResultPanel({ result, sort, onHeaderClick, source, edit }: Panel
   // A thin bar while the statement runs or rows are on their way.
   const loading =
     status.kind === "running" || (status.kind === "rows" && !status.finished && result.fetching) || !!cache?.loading;
-  const bar = loading && <div className="result-loading" role="progressbar" aria-label="Loading rows" />;
+  const bar = loading && <div className="result-loading" role="progressbar" aria-label={t("Loading rows")} />;
   if (!(columns && cache && jobId !== null)) {
     return status.kind === "running" ? (
       <>
         {bar}
-        <div className="notice muted result-running">Executing…</div>
+        <div className="notice muted result-running">{t("Executing…")}</div>
       </>
     ) : null;
   }

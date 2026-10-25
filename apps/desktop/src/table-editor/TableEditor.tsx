@@ -12,6 +12,7 @@ import { requestNavigatorRefresh } from "../navigatorEvents";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { Icon, objectIcon } from "../ui/Icon";
 import { workbench } from "../workbench";
+import { t, msg } from "../i18n";
 
 export type TableEditorSection = "columns" | "indexes" | "foreign_keys" | "constraints" | "sql";
 
@@ -31,10 +32,10 @@ declare module "../tabs/registry" {
 }
 
 const SECTION_LABELS: Record<TableEditorSection, string> = {
-  columns: "Columns",
-  indexes: "Indexes",
-  foreign_keys: "Foreign keys",
-  constraints: "Constraints",
+  columns: msg("Columns"),
+  indexes: msg("Indexes"),
+  foreign_keys: msg("Foreign keys"),
+  constraints: msg("Constraints"),
   sql: "SQL",
 };
 
@@ -144,7 +145,7 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
   if (!design) {
     return (
       <div className="object-tab" style={{ display: active ? "flex" : "none" }}>
-        <div className="object-body">{error ? <div className="notice error">{error}</div> : <div className="muted small">Loading…</div>}</div>
+        <div className="object-body">{error ? <div className="notice error">{error}</div> : <div className="muted small">{t("Loading…")}</div>}</div>
       </div>
     );
   }
@@ -224,58 +225,58 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
           <Icon name={objectIcon("table")} size={16} />
         </span>
         <label className="table-name">
-          <input value={design.name} placeholder="Table name" autoFocus={tab.table === null} onChange={(e) => update({ name: e.target.value })} />
+          <input value={design.name} placeholder={t("Table name")} aria-label={t("Table name")} autoFocus={tab.table === null} onChange={(e) => update({ name: e.target.value })} />
           <span className="muted small">
-            in {tab.schema}
+            {t("in {schema}", { schema: tab.schema })}
             {tab.database ? ` · ${tab.database}` : ""}
           </span>
         </label>
         <span className="spacer" />
-        <button className="square" disabled={!dirty} onClick={() => setDesign(original ?? blank())} title="Revert the changes" aria-label="Revert">
+        <button className="square" disabled={!dirty} onClick={() => setDesign(original ?? blank())} title={t("Revert the changes")} aria-label={t("Revert")}>
           <Icon name="revert" />
         </button>
         <button
           className="primary"
           disabled={!ready || connection.read_only}
-          title={connection.read_only ? `${connection.name} is read-only` : undefined}
+          title={connection.read_only ? t("{name} is read-only", { name: connection.name }) : undefined}
           onClick={() => setConfirming(true)}
         >
-          {tab.table === null ? "Create…" : "Save…"}
+          {t(tab.table === null ? "Create…" : "Save…")}
         </button>
       </header>
       <nav className="object-sections">
         {(Object.keys(SECTION_LABELS) as TableEditorSection[]).map((s) => (
           <button key={s} className={s === section ? "active" : ""} onClick={() => onChange({ section: s })}>
-            {SECTION_LABELS[s]}
+            {t(SECTION_LABELS[s])}
             {s !== "sql" && <span className="count">{s === "columns" ? design.columns.length : design[s].length}</span>}
           </button>
         ))}
       </nav>
       <datalist id={id("types")}>
-        {(TYPES[connection.driver] ?? []).map((t) => (
-          <option key={t} value={t} />
+        {(TYPES[connection.driver] ?? []).map((type) => (
+          <option key={type} value={type} />
         ))}
       </datalist>
       <datalist id={id("tables")}>
-        {tables.map((t) => (
-          <option key={t} value={t} />
+        {tables.map((table) => (
+          <option key={table} value={table} />
         ))}
       </datalist>
       <div className="object-body">
         {error && <div className="notice error">{error}</div>}
         {section === "columns" && (
           <EditTable
-            head={["Name", "Type", "Not null", "Default", "Key", "Comment", ""]}
+            head={[t("Name"), t("Type"), t("Not null"), t("Default"), t("Key"), t("Comment"), ""]}
             rows={design.columns.map((c, i) => [
-              <input value={c.name} onChange={(e) => setColumn(i, { name: e.target.value })} aria-label="Column name" />,
+              <input value={c.name} onChange={(e) => setColumn(i, { name: e.target.value })} aria-label={t("Column name")} />,
               <span className="type-cell">
-                <input value={c.data_type} list={id("types")} onChange={(e) => setColumn(i, { data_type: e.target.value })} aria-label="Type" />
+                <input value={c.data_type} list={id("types")} onChange={(e) => setColumn(i, { data_type: e.target.value })} aria-label={t("Type")} />
                 {c.extra && <span className="muted small">{c.extra}</span>}
               </span>,
-              <input type="checkbox" checked={!c.nullable || c.primary_key} disabled={c.primary_key} onChange={(e) => setColumn(i, { nullable: !e.target.checked })} aria-label="Not null" />,
-              <input value={c.default ?? ""} placeholder="none" onChange={(e) => setColumn(i, { default: orNull(e.target.value) })} aria-label="Default" />,
-              <input type="checkbox" checked={c.primary_key} onChange={(e) => setColumn(i, { primary_key: e.target.checked })} aria-label="Primary key" title="Primary key" />,
-              <input value={c.comment ?? ""} onChange={(e) => setColumn(i, { comment: orNull(e.target.value) })} aria-label="Comment" />,
+              <input type="checkbox" checked={!c.nullable || c.primary_key} disabled={c.primary_key} onChange={(e) => setColumn(i, { nullable: !e.target.checked })} aria-label={t("Not null")} />,
+              <input value={c.default ?? ""} placeholder={t("none")} onChange={(e) => setColumn(i, { default: orNull(e.target.value) })} aria-label={t("Default")} />,
+              <input type="checkbox" checked={c.primary_key} onChange={(e) => setColumn(i, { primary_key: e.target.checked })} aria-label={t("Primary key")} title={t("Primary key")} />,
+              <input value={c.comment ?? ""} onChange={(e) => setColumn(i, { comment: orNull(e.target.value) })} aria-label={t("Comment")} />,
               <RemoveButton onClick={() => removeColumn(i)} />,
             ])}
             onAdd={() =>
@@ -286,32 +287,32 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
                 ],
               })
             }
-            addLabel="Add column"
+            addLabel={t("Add column")}
           />
         )}
         {section === "indexes" && (
           <EditTable
-            head={["Name", "Columns", "Unique", ""]}
+            head={[t("Name"), t("Columns"), t("Unique"), ""]}
             rows={design.indexes.map((x, i) => [
-              <input value={x.name} onChange={(e) => setPart("indexes", i, { name: e.target.value })} aria-label="Index name" />,
+              <input value={x.name} onChange={(e) => setPart("indexes", i, { name: e.target.value })} aria-label={t("Index name")} />,
               <NamesInput value={x.columns} onChange={(columns) => setPart("indexes", i, { columns })} hint={columnNames} />,
-              <input type="checkbox" checked={x.unique} onChange={(e) => setPart("indexes", i, { unique: e.target.checked })} aria-label="Unique" />,
+              <input type="checkbox" checked={x.unique} onChange={(e) => setPart("indexes", i, { unique: e.target.checked })} aria-label={t("Unique")} />,
               <RemoveButton onClick={() => removePart("indexes", i)} />,
             ])}
             onAdd={() =>
               addPart("indexes", { original: null, name: `${prefix}_idx${design.indexes.length + 1}`, columns: [], unique: false })
             }
-            addLabel="Add index"
+            addLabel={t("Add index")}
           />
         )}
         {section === "foreign_keys" && (
           <EditTable
-            head={["Name", "Columns", "Schema", "References", "Referenced columns", "On delete", "On update", ""]}
+            head={[t("Name"), t("Columns"), t("Schema"), t("References"), t("Referenced columns"), t("On delete"), t("On update"), ""]}
             rows={design.foreign_keys.map((f, i) => [
-              <input value={f.name} onChange={(e) => setPart("foreign_keys", i, { name: e.target.value })} aria-label="Foreign key name" />,
+              <input value={f.name} onChange={(e) => setPart("foreign_keys", i, { name: e.target.value })} aria-label={t("Foreign key name")} />,
               <NamesInput value={f.columns} onChange={(columns) => setPart("foreign_keys", i, { columns })} hint={columnNames} />,
-              <input value={f.ref_schema} onChange={(e) => setPart("foreign_keys", i, { ref_schema: e.target.value })} aria-label="Referenced schema" />,
-              <input value={f.ref_table} list={id("tables")} onChange={(e) => setPart("foreign_keys", i, { ref_table: e.target.value })} aria-label="Referenced table" />,
+              <input value={f.ref_schema} onChange={(e) => setPart("foreign_keys", i, { ref_schema: e.target.value })} aria-label={t("Referenced schema")} />,
+              <input value={f.ref_table} list={id("tables")} onChange={(e) => setPart("foreign_keys", i, { ref_table: e.target.value })} aria-label={t("Referenced table")} />,
               <NamesInput
                 value={f.ref_columns}
                 onChange={(ref_columns) => setPart("foreign_keys", i, { ref_columns })}
@@ -333,22 +334,22 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
                 on_update: null,
               })
             }
-            addLabel="Add foreign key"
+            addLabel={t("Add foreign key")}
           />
         )}
         {section === "constraints" && (
           <EditTable
-            head={["Name", "Kind", "Columns or condition", ""]}
+            head={[t("Name"), t("Kind"), t("Columns or condition"), ""]}
             rows={design.constraints.map((c, i) => [
-              <input value={c.name} onChange={(e) => setPart("constraints", i, { name: e.target.value })} aria-label="Constraint name" />,
-              <select value={c.kind} onChange={(e) => setPart("constraints", i, { kind: e.target.value as ConstraintDesign["kind"] })} aria-label="Kind">
+              <input value={c.name} onChange={(e) => setPart("constraints", i, { name: e.target.value })} aria-label={t("Constraint name")} />,
+              <select value={c.kind} onChange={(e) => setPart("constraints", i, { kind: e.target.value as ConstraintDesign["kind"] })} aria-label={t("Kind")}>
                 <option value="unique">UNIQUE</option>
                 <option value="check">CHECK</option>
               </select>,
               c.kind === "unique" ? (
                 <NamesInput value={c.columns} onChange={(columns) => setPart("constraints", i, { columns })} hint={columnNames} />
               ) : (
-                <input value={c.check} placeholder="total >= 0" onChange={(e) => setPart("constraints", i, { check: e.target.value })} aria-label="Condition" />
+                <input value={c.check} placeholder="total >= 0" onChange={(e) => setPart("constraints", i, { check: e.target.value })} aria-label={t("Condition")} />
               ),
               <RemoveButton onClick={() => removePart("constraints", i)} />,
             ])}
@@ -361,7 +362,7 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
                 check: "",
               })
             }
-            addLabel="Add constraint"
+            addLabel={t("Add constraint")}
           />
         )}
         {section === "sql" && <ScriptView preview={preview?.preview ?? null} />}
@@ -377,7 +378,7 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
               void apply();
             }}
           >
-            <h2>{tab.table === null ? `Create ${design.name}` : `Alter ${tab.table}`}</h2>
+            <h2>{tab.table === null ? t("Create {name}", { name: design.name }) : t("Alter {name}", { name: tab.table })}</h2>
             <ScriptView preview={ready} />
             {error && <div className="notice error small">{error}</div>}
             <div className="actions">
@@ -389,14 +390,14 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
                   setConfirming(false);
                 }}
               >
-                Open in editor
+                {t("Open in editor")}
               </button>
               <span className="spacer" />
               <button type="button" disabled={running} onClick={() => setConfirming(false)}>
-                Cancel
+                {t("Cancel")}
               </button>
               <button type="submit" className="primary" autoFocus disabled={running}>
-                {running ? "Running…" : tab.table === null ? "Create" : "Apply"}
+                {t(running ? "Running…" : tab.table === null ? "Create" : "Apply")}
               </button>
             </div>
           </form>
@@ -427,7 +428,7 @@ function ScriptView({ preview }: { preview: Preview | null }) {
           {w}
         </div>
       ))}
-      <pre className="sql-preview">{preview.sql || "No changes."}</pre>
+      <pre className="sql-preview">{preview.sql || t("No changes.")}</pre>
     </>
   );
 }
@@ -467,20 +468,20 @@ function NamesInput({ value, onChange, hint }: { value: string[]; onChange: (nam
     <input
       key={text}
       defaultValue={text}
-      placeholder={hint.slice(0, 3).join(", ") || "column, …"}
-      title={hint.length ? `Columns: ${hint.join(", ")}` : undefined}
+      placeholder={hint.slice(0, 3).join(", ") || t("column, …")}
+      title={hint.length ? t("Columns: {names}", { names: hint.join(", ") }) : undefined}
       onBlur={(e) => {
         const next = names(e.target.value);
         if (next.join(", ") !== text) onChange(next);
       }}
-      aria-label="Columns"
+      aria-label={t("Columns")}
     />
   );
 }
 
 function ActionSelect({ value, onChange }: { value: string | null; onChange: (action: string | null) => void }) {
   return (
-    <select value={value ?? ""} onChange={(e) => onChange(orNull(e.target.value))} aria-label="Referential action">
+    <select value={value ?? ""} onChange={(e) => onChange(orNull(e.target.value))} aria-label={t("Referential action")}>
       <option value="">NO ACTION</option>
       {ACTIONS.map((a) => (
         <option key={a} value={a}>
@@ -493,7 +494,7 @@ function ActionSelect({ value, onChange }: { value: string | null; onChange: (ac
 
 function RemoveButton({ onClick }: { onClick: () => void }) {
   return (
-    <button className="icon" title="Remove" aria-label="Remove" onClick={onClick}>
+    <button className="icon" title={t("Remove")} aria-label={t("Remove")} onClick={onClick}>
       ×
     </button>
   );

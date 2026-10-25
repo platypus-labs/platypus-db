@@ -2,6 +2,7 @@ import { registerAction } from "../actions";
 import { TableEditor, type TableEditorSection } from "../table-editor/TableEditor";
 import { workbench } from "../workbench";
 import { registerTabKind } from "./registry";
+import { t } from "../i18n";
 
 const text = (v: unknown) => (typeof v === "string" ? v : null);
 
@@ -9,7 +10,7 @@ registerTabKind({
   kind: "table-editor",
   component: TableEditor,
   create: (init) => ({ schema: "", table: null, ...init }),
-  label: (tab) => tab.title ?? tab.table ?? "New table",
+  label: (tab) => tab.title ?? tab.table ?? t("New table"),
   persist: ({ schema, table, section, title, database }) => ({ schema, table, section, title, database }),
   restore: (saved) => ({
     schema: text(saved.schema) ?? "",

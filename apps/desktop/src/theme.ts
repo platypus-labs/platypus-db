@@ -6,6 +6,7 @@
  */
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { defineSetting, getSetting, onSettingsChanged, setSetting } from "./settings";
+import { msg } from "./i18n";
 
 /** Fired on `window` when the theme changes, for code that caches colors (the grid). */
 export const THEME_EVENT = "platypus-theme";
@@ -210,7 +211,7 @@ export const PRESETS = {
   },
   // "light" and "dark" keep their keys, so a saved choice still applies.
   light: {
-    label: "Classic Light",
+    label: msg("Classic Light"),
     dark: false,
     colors: {
       bg: "#ffffff",
@@ -240,7 +241,7 @@ export const PRESETS = {
     },
   },
   dark: {
-    label: "Classic Dark",
+    label: msg("Classic Dark"),
     dark: true,
     colors: {
       bg: "#1b1d21",
@@ -360,7 +361,7 @@ export const PRESETS = {
     },
   },
   high_contrast: {
-    label: "High contrast",
+    label: msg("High contrast"),
     dark: true,
     colors: {
       bg: "#000000",
@@ -394,7 +395,7 @@ export const PRESETS = {
 export type PresetName = keyof typeof PRESETS;
 export type ThemeName = "system" | PresetName;
 
-const SECTION = "Appearance";
+const SECTION = msg("Appearance");
 
 export const themeSetting = defineSetting<string>({
   key: "appearance.theme",
@@ -421,10 +422,10 @@ export const themeSetting = defineSetting<string>({
 const color = (key: string, label: string, description: string) =>
   defineSetting<string>({ key, section: SECTION, label, description, default: "", control: { type: "color" } });
 
-export const accentSetting = color("appearance.accent", "Accent color", "Buttons, selection and focus.");
-export const backgroundSetting = color("appearance.background", "Background", "Editor and results; Reset keeps the theme's.");
-export const sidebarSetting = color("appearance.sidebar", "Sidebar and panels", "The connections tree and menus.");
-export const textSetting = color("appearance.text", "Text", "Muted text follows it.");
+export const accentSetting = color("appearance.accent", msg("Accent color"), msg("Buttons, selection and focus."));
+export const backgroundSetting = color("appearance.background", msg("Background"), msg("Editor and results; Reset keeps the theme's."));
+export const sidebarSetting = color("appearance.sidebar", msg("Sidebar and panels"), msg("The connections tree and menus."));
+export const textSetting = color("appearance.text", msg("Text"), msg("Muted text follows it."));
 
 /** Read by the backend too, to open the window with or without the system's bar (lib.rs). */
 export const titleBarSetting = defineSetting<string>({

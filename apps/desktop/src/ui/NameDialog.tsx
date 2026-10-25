@@ -1,6 +1,7 @@
 import { createElement, useState } from "react";
 import { toCommandError } from "../api";
 import { workbench } from "../workbench";
+import { t } from "../i18n";
 
 interface Props {
   title: string;
@@ -35,17 +36,17 @@ function NameDialog({ title, initial, onSave, onClose }: Props) {
       >
         <h2>{title}</h2>
         <label className="field">
-          <span>Name</span>
+          <span>{t("Name")}</span>
           <input autoFocus value={name} onFocus={(e) => e.target.select()} onChange={(e) => setName(e.target.value)} />
         </label>
         {error && <div className="notice error small">{error}</div>}
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" className="primary" disabled={!name.trim()}>
-            Save
+            {t("Save")}
           </button>
         </div>
       </form>

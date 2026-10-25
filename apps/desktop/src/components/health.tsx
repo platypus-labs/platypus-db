@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, toCommandError } from "../api";
 import { defineSetting, useSetting } from "../settings";
+import { t } from "../i18n";
 
 export const keepAliveSeconds = defineSetting({
   key: "connections.keepalive_seconds",
@@ -54,16 +55,16 @@ export function HealthBadge({ health }: { health: Health | null }) {
   if (health.state === "lost") {
     return (
       <span className="health lost" title={health.message}>
-        <span className="dot">●</span> connection lost
+        <span className="dot">●</span> {t("connection lost")}
       </span>
     );
   }
   return (
     <span
       className={`health ${health.reconnected ? "reconnected" : "ok"}`}
-      title={health.reconnected ? "The connection was lost and has been reopened" : "Latency of the last check"}
+      title={t(health.reconnected ? "The connection was lost and has been reopened" : "Latency of the last check")}
     >
-      <span className="dot">●</span> {health.latencyMs} ms{health.reconnected ? " · reconnected" : ""}
+      <span className="dot">●</span> {health.latencyMs} ms{health.reconnected ? ` · ${t("reconnected")}` : ""}
     </span>
   );
 }

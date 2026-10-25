@@ -5,6 +5,7 @@ import { CsvOptions, FORMATS, OutputOptions, sentOptions } from "../components/E
 import { workbench } from "../workbench";
 import { answerFor } from "../testAnswers";
 import { JobFooter, useJob } from "./job";
+import { t, plural, msg } from "../i18n";
 
 type TableRef = { schema: string | null; name: string };
 
@@ -53,12 +54,14 @@ export function ExportTablesDialog({ connection, database, schema, currentSchema
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div className="modal small export-tables" onKeyDown={(e) => e.key === "Escape" && close()}>
-        <h2>{chosen ? `Export ${count} ${count === 1 ? "table" : "tables"}` : `Export the tables of ${schema}`}</h2>
+        <h2>{chosen ? plural(count, "Export {n} table", "Export {n} tables") : t("Export the tables of {schema}", { schema })}</h2>
         <p className="muted small">
-          {tables === null ? "Reading the tables…" : `One file per table, named after it: ${tables.map((t) => t.name).join(", ") || "no tables"}.`}
+          {tables === null
+            ? t("Reading the tables…")
+            : t("One file per table, named after it: {names}.", { names: tables.map((table) => table.name).join(", ") || t("no tables") })}
         </p>
         <label className="field">
-          <span>Format</span>
+          <span>{t("Format")}</span>
           <select
             value={options.format}
             disabled={running}
@@ -66,16 +69,16 @@ export function ExportTablesDialog({ connection, database, schema, currentSchema
           >
             {FORMATS.map((f) => (
               <option key={f.value} value={f.value}>
-                {f.label}
+                {t(f.label)}
               </option>
             ))}
           </select>
         </label>
         {options.format === "csv" && <CsvOptions options={options} disabled={running} onChange={setOptions} />}
         <OutputOptions options={options} signedUrl={false} disabled={running} onChange={setOptions} />
-        <JobFooter status={status} verbs={["Exporting", "Exported"]} stop="Cancel export" onClose={onClose}>
+        <JobFooter status={status} messages={[msg("Exporting… {n} rows"), msg("Exported {n} rows.")]} stop={t("Cancel export")} onClose={onClose}>
           <button type="button" className="primary" disabled={running || count === 0} onClick={() => void run()}>
-            Export to folder…
+            {t("Export to folder…")}
           </button>
         </JobFooter>
       </div>

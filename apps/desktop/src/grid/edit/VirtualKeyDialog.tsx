@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api, type SavedConnection, toCommandError } from "../../api";
 import { workbench } from "../../workbench";
 import type { TableRef } from "./meta";
+import { t } from "../../i18n";
 
 interface Props {
   connection: SavedConnection;
@@ -38,10 +39,11 @@ export function VirtualKeyDialog({ connection, table, columns, current, onClose 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal small" onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>Virtual key of {table.name}</h2>
+        <h2>{t("Virtual key of {table}", { table: table.name })}</h2>
         <p className="muted small">
-          The columns whose values tell the rows apart. Saving checks that every change hits exactly one row,
-          so a key that is not unique cannot change other rows.
+          {t(
+            "The columns whose values tell the rows apart. Saving checks that every change hits exactly one row, so a key that is not unique cannot change other rows.",
+          )}
         </p>
         <div className="virtual-key-columns">
           {columns.map((name) => (
@@ -55,12 +57,12 @@ export function VirtualKeyDialog({ connection, table, columns, current, onClose 
         <div className="actions">
           {current && (
             <button type="button" onClick={() => void save([])}>
-              Remove
+              {t("Remove")}
             </button>
           )}
           <span className="spacer" />
           <button type="button" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             type="button"
@@ -69,7 +71,7 @@ export function VirtualKeyDialog({ connection, table, columns, current, onClose 
             // In table order, whatever the order of the clicks.
             onClick={() => void save(columns.filter((c) => picked.has(c)))}
           >
-            Save
+            {t("Save")}
           </button>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { api, type LogEntry, toCommandError } from "../api";
 import { fmt, formatMs } from "../components/ResultPanel";
 import { useSetting } from "../settings";
 import { isSlow, slowQuerySeconds } from "./slow";
+import { t, msg } from "../i18n";
 
 /** How often the open dialog asks for what changed. */
 const POLL_MS = 1000;
@@ -10,11 +11,11 @@ const POLL_MS = 1000;
 const KEPT = 2000;
 
 const STATUS_LABELS: Record<LogEntry["status"], string> = {
-  running: "Running",
-  fetching: "Reading rows",
-  done: "Done",
-  closed: "Closed early",
-  failed: "Failed",
+  running: msg("Running"),
+  fetching: msg("Reading rows"),
+  done: msg("Done"),
+  closed: msg("Closed early"),
+  failed: msg("Failed"),
 };
 
 /** Below 10 ms the tenths tell fast from instant. */
@@ -37,24 +38,25 @@ function trace(e: LogEntry) {
 }
 
 function Trace({ entry }: { entry: LogEntry }) {
-  const t = trace(entry);
-  if (!t) return null;
-  const parts: [string, number | null, string][] = [
-    ["Network", t.network, "The connection's last keep-alive round trip"],
-    ["Server", t.server, "Until the first answer, less the network"],
-    ["Fetch", t.fetch, "Reading the rows after the first answer"],
+  const times = trace(entry);
+  if (!times) return null;
+  /** The part's class, its label, its time and what it is. */
+  const parts: [string, string, number | null, string][] = [
+    ["network", t("Network"), times.network, t("The connection's last keep-alive round trip")],
+    ["server", t("Server"), times.server, t("Until the first answer, less the network")],
+    ["fetch", t("Fetch"), times.fetch, t("Reading the rows after the first answer")],
   ];
-  const total = parts.reduce((sum, [, ms]) => sum + (ms ?? 0), 0);
+  const total = parts.reduce((sum, [, , ms]) => sum + (ms ?? 0), 0);
   return (
     <div className="query-trace">
       <div className="query-trace-bar">
-        {parts.map(([label, ms]) => (
-          <span key={label} className={label.toLowerCase()} style={{ flexGrow: total > 0 ? (ms ?? 0) / total : 0 }} />
+        {parts.map(([part, , ms]) => (
+          <span key={part} className={part} style={{ flexGrow: total > 0 ? (ms ?? 0) / total : 0 }} />
         ))}
       </div>
-      {parts.map(([label, ms, title]) => (
-        <span key={label} className={label.toLowerCase()} title={title}>
-          {label} {ms === null ? "unknown" : duration(ms)}
+      {parts.map(([part, label, ms, title]) => (
+        <span key={part} className={part} title={title}>
+          {label} {ms === null ? t("unknown") : duration(ms)}
         </span>
       ))}
     </div>
@@ -120,39 +122,38 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.key === "Escape" && onClose()}
       >
-        <h2>Query manager</h2>
+        <h2>{t("Query manager")}</h2>
         <div className="query-manager-bar">
           <input
             autoFocus
-            placeholder="Filter by statement or connection"
+            placeholder={t("Filter by statement or connection")}
+            aria-label={t("Filter by statement or connection")}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
           <label>
-            <input type="checkbox" checked={metadata} onChange={(e) => setMetadata(e.target.checked)} /> Metadata
+            <input type="checkbox" checked={metadata} onChange={(e) => setMetadata(e.target.checked)} /> {t("Metadata")}
           </label>
           {slowSeconds > 0 && (
-            <label title={`Slower than ${slowSeconds} s (Settings)`}>
-              <input type="checkbox" checked={slowOnly} onChange={(e) => setSlowOnly(e.target.checked)} /> Slow only
+            <label title={t("Slower than {n} s (Settings)", { n: slowSeconds })}>
+              <input type="checkbox" checked={slowOnly} onChange={(e) => setSlowOnly(e.target.checked)} /> {t("Slow only")}
             </label>
           )}
           <span className="spacer" />
-          <span className="muted small">
-            {fmt.format(shown.length)} of {fmt.format(entries.length)}
-          </span>
-          <button onClick={() => void clear()}>Clear</button>
+          <span className="muted small">{t("{index} of {count}", { index: fmt.format(shown.length), count: fmt.format(entries.length) })}</span>
+          <button onClick={() => void clear()}>{t("Clear")}</button>
         </div>
         {error && <div className="notice error small">{error}</div>}
         <div className="query-manager-list">
           <table className="meta-table">
             <thead>
               <tr>
-                <th>Time</th>
-                <th>Connection</th>
-                <th>Statement</th>
-                <th>Duration</th>
-                <th>Rows</th>
-                <th>Result</th>
+                <th>{t("Time")}</th>
+                <th>{t("Connection")}</th>
+                <th>{t("Statement")}</th>
+                <th>{t("Duration")}</th>
+                <th>{t("Rows")}</th>
+                <th>{t("Result")}</th>
               </tr>
             </thead>
             <tbody>
@@ -169,7 +170,7 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
                   </td>
                   <td>{e.elapsed_ms === null ? "" : duration(e.elapsed_ms)}</td>
                   <td>{e.rows === null ? "" : fmt.format(e.rows)}</td>
-                  <td title={e.error ?? undefined}>{STATUS_LABELS[e.status]}</td>
+                  <td title={e.error ?? undefined}>{t(STATUS_LABELS[e.status])}</td>
                 </tr>
               ))}
             </tbody>
@@ -183,8 +184,8 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
           </>
         )}
         <div className="actions">
-          {current && <button onClick={() => void navigator.clipboard.writeText(current.text)}>Copy statement</button>}
-          <button onClick={onClose}>Close</button>
+          {current && <button onClick={() => void navigator.clipboard.writeText(current.text)}>{t("Copy statement")}</button>}
+          <button onClick={onClose}>{t("Close")}</button>
         </div>
       </div>
     </div>

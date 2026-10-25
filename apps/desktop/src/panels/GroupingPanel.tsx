@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type ColumnInfo, type GroupCounts, toCommandError } from "../api";
+import { t, plural } from "../i18n";
 
 interface Props {
   jobId: number;
@@ -38,15 +39,15 @@ export function GroupingPanel({ jobId, cols, columns, rows, onClose }: Props) {
     <aside className="value-panel grouping-panel">
       <div className="value-bar">
         <strong className="small value-name" title={names.join(", ")}>
-          Count by {names.join(", ")}
+          {t("Count by {columns}", { columns: names.join(", ") })}
         </strong>
         <span className="spacer" />
-        <button className="icon" title="Close" onClick={onClose}>
+        <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
           ×
         </button>
       </div>
       {error && <div className="error-text small value-empty">{error}</div>}
-      {!counts && !error && <div className="muted small value-empty">Counting…</div>}
+      {!counts && !error && <div className="muted small value-empty">{t("Counting…")}</div>}
       {counts && (
         <div className="grouping-list">
           <table>
@@ -55,7 +56,7 @@ export function GroupingPanel({ jobId, cols, columns, rows, onClose }: Props) {
                 {names.map((n, i) => (
                   <th key={i}>{n}</th>
                 ))}
-                <th className="num">Rows</th>
+                <th className="num">{t("Rows")}</th>
               </tr>
             </thead>
             <tbody>
@@ -78,9 +79,8 @@ export function GroupingPanel({ jobId, cols, columns, rows, onClose }: Props) {
       )}
       {counts && (
         <div className="muted small value-size">
-          {counts.distinct.toLocaleString()} {counts.distinct === 1 ? "value" : "values"} in{" "}
-          {counts.rows.toLocaleString()} loaded rows
-          {counts.distinct > counts.groups.length && ` (top ${counts.groups.length.toLocaleString()} shown)`}
+          {plural(counts.distinct, "{n} value in {rows} loaded rows", "{n} values in {rows} loaded rows", { rows: counts.rows.toLocaleString() })}
+          {counts.distinct > counts.groups.length && ` ${t("(top {n} shown)", { n: counts.groups.length.toLocaleString() })}`}
         </div>
       )}
     </aside>

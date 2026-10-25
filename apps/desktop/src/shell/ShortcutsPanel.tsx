@@ -12,17 +12,25 @@ import {
 } from "../actions";
 import { toCommandError } from "../api";
 import { useSettingsVersion } from "../settings";
+import { msg, t } from "../i18n";
 
 const SCOPES: Record<string, string> = {
-  global: "Everywhere",
-  grid: "Results grid",
-  "navigator.connection": "Navigator: connection",
-  "navigator.schema": "Navigator: schema",
-  "navigator.object": "Navigator: table or routine",
-  "navigator.column": "Navigator: column",
+  global: msg("Everywhere"),
+  grid: msg("Results grid"),
+  editor: msg("SQL editor"),
+  tab: msg("Tab"),
+  "navigator.connection": msg("Navigator: connection"),
+  "navigator.schema": msg("Navigator: schema"),
+  "navigator.object": msg("Navigator: table or routine"),
+  "navigator.column": msg("Navigator: column"),
+  "navigator.database": msg("Navigator: database"),
+  "navigator.folder": msg("Navigator: folder"),
+  project: msg("Project"),
+  "project.folder": msg("Project folder"),
+  script: msg("Saved script"),
 };
 
-const scopeLabel = (scope: ActionScope) => SCOPES[scope] ?? scope;
+const scopeLabel = (scope: ActionScope) => t(SCOPES[scope] ?? scope);
 
 /** Every action with its shortcut: click one, press the new keys; Backspace removes it. */
 export function ShortcutsPanel() {
@@ -38,8 +46,8 @@ export function ShortcutsPanel() {
   const [error, setError] = useState<string | null>(null);
   const needle = filter.trim().toLowerCase();
   const actions = allActions()
-    .filter((a) => !needle || a.title.toLowerCase().includes(needle) || a.id.includes(needle))
-    .sort((a, b) => a.scope.localeCompare(b.scope) || a.title.localeCompare(b.title));
+    .filter((a) => !needle || t(a.title).toLowerCase().includes(needle) || a.title.toLowerCase().includes(needle) || a.id.includes(needle))
+    .sort((a, b) => a.scope.localeCompare(b.scope) || t(a.title).localeCompare(t(b.title)));
 
   /** Other actions of the same scope that answer to `shortcut`. */
   const clashes = (action: Action, shortcut: string) =>
@@ -71,7 +79,7 @@ export function ShortcutsPanel() {
     <div className="shortcuts">
       <input
         className="shortcuts-filter"
-        placeholder="Filter actions…"
+        placeholder={t("Filter actions…")}
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
       />
@@ -92,7 +100,7 @@ export function ShortcutsPanel() {
             const clash = label ? clashes(a, shortcutsOf(a)[0]!) : [];
             rows.push(
               <tr key={a.id}>
-                <td title={a.id}>{a.title}</td>
+                <td title={a.id}>{t(a.title)}</td>
                 <td>
                   <button
                     type="button"
@@ -100,21 +108,21 @@ export function ShortcutsPanel() {
                     onClick={() => setRecording(a.id)}
                     onKeyDown={(e) => recording === a.id && record(a, e)}
                     onBlur={() => recording === a.id && setRecording(null)}
-                    title="Click, then press the keys; Backspace removes the shortcut"
+                    title={t("Click, then press the keys; Backspace removes the shortcut")}
                   >
-                    {recording === a.id ? "Press keys…" : (label ?? "—")}
+                    {recording === a.id ? t("Press keys…") : (label ?? "—")}
                   </button>
                   {clash.length > 0 && (
-                    <span className="error-text small" title={clash.map((c) => c.title).join(", ")}>
+                    <span className="error-text small" title={clash.map((c) => t(c.title)).join(", ")}>
                       {" "}
-                      also {clash[0]!.title}
+                      {t("also {action}", { action: t(clash[0]!.title) })}
                     </span>
                   )}
                 </td>
                 <td>
                   {shortcutChanged(a) && (
-                    <button type="button" className="link" onClick={() => save(a, null)} title="Back to the default">
-                      Reset
+                    <button type="button" className="link" onClick={() => save(a, null)} title={t("Back to the default")}>
+                      {t("Reset")}
                     </button>
                   )}
                 </td>

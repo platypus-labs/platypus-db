@@ -16,6 +16,7 @@ import { workbench } from "../../workbench";
 import type { Cell, GridActionContext } from "../DataGrid";
 import { type EditSource, resultColumns } from "../edit/meta";
 import type { TableEditTarget } from "../edit/TableEditor";
+import { t, plural } from "../../i18n";
 
 /** Foreign keys of a result's table, for grid actions in `source.references`. */
 export interface GridReferences {
@@ -113,7 +114,7 @@ export function useReferences({ edit, jobId, columns, row, onError }: Options) {
             const at = indexOf(mapped);
             const values = await literals(jobId, cell.row, fk.columns.map((c) => at(c)!));
             const filter = condition(edit.connection.driver, fk.ref_columns, values);
-            if (filter === null) return onError("The foreign key is NULL: it points to no row.");
+            if (filter === null) return onError(t("The foreign key is NULL: it points to no row."));
             openTable(edit.connection, fk.ref_schema, fk.ref_table, filter);
           },
           panelOpen,
@@ -215,16 +216,16 @@ function ReferencesPanel({
   return (
     <aside className="value-panel references-panel">
       <div className="value-bar">
-        <strong className="small value-name">References to {name}</strong>
+        <strong className="small value-name">{t("References to {name}", { name })}</strong>
         <span className="spacer" />
-        <button className="icon" title="Close" onClick={onClose}>
+        <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
           ×
         </button>
       </div>
       {error && <div className="error-text small value-empty">{error}</div>}
-      {keys?.length === 0 && <div className="muted small value-empty">No foreign key points at {name}.</div>}
+      {keys?.length === 0 && <div className="muted small value-empty">{t("No foreign key points at {name}.", { name })}</div>}
       {keys && keys.length > 0 && row === null && (
-        <div className="muted small value-empty">Focus a row of the result.</div>
+        <div className="muted small value-empty">{t("Focus a row of the result.")}</div>
       )}
       <div className="references-list">
         {row !== null &&
@@ -236,16 +237,16 @@ function ReferencesPanel({
               </div>
               <span className="spacer" />
               {filter === null ? (
-                <span className="muted small" title="The key columns are not all in the result">
-                  {count === "0" ? "0 rows" : "–"}
+                <span className="muted small" title={t("The key columns are not all in the result")}>
+                  {count === "0" ? plural(0, "{n} row", "{n} rows") : "–"}
                 </span>
               ) : (
                 <button
                   className="link small"
                   onClick={() => openTable(edit.connection, key.schema, key.table, filter)}
-                  title={`Opens ${key.table} WHERE ${filter}`}
+                  title={t("Opens {table} WHERE {filter}", { table: key.table, filter })}
                 >
-                  {count ?? "?"} {count === "1" ? "row" : "rows"}
+                  {count === null ? t("? rows") : plural(Number(count), "{n} row", "{n} rows")}
                 </button>
               )}
             </div>

@@ -21,6 +21,7 @@ import { defineSetting, getSetting } from "../settings";
 import { workbench } from "../workbench";
 import type { EditorHost } from "./SqlEditor";
 import { SnippetsDialog } from "./SnippetsDialog";
+import { msg } from "../i18n";
 
 declare module "../actions" {
   interface ActionScopes {
@@ -143,18 +144,18 @@ function command(
   });
 }
 
-command("toggle_comment", "Toggle comment", "Mod+/", "sql", 12, toggleComment);
-command("duplicate_line", "Duplicate line", "Shift+Alt+ArrowDown", "lines", 20, copyLineDown);
-command("duplicate_line_up", "Duplicate line above", "Shift+Alt+ArrowUp", "lines", 21, copyLineUp);
-command("move_line_up", "Move line up", "Alt+ArrowUp", "lines", 22, moveLineUp);
-command("move_line_down", "Move line down", "Alt+ArrowDown", "lines", 23, moveLineDown);
-command("delete_line", "Delete line", "Mod+Shift+K", "lines", 24, deleteLine);
-command("add_cursor_above", "Add cursor above", "Mod+Alt+ArrowUp", "cursors", 30, addCursorAbove, false);
-command("add_cursor_below", "Add cursor below", "Mod+Alt+ArrowDown", "cursors", 31, addCursorBelow, false);
-command("select_next", "Select next occurrence", "Mod+D", "cursors", 32, selectNextOccurrence, false);
-command("select_all_matches", "Select all occurrences", "Mod+Shift+L", "cursors", 33, selectSelectionMatches, false);
-command("fold_all", "Fold all", "Mod+Alt+[", "folding", 40, foldAll, false);
-command("unfold_all", "Unfold all", "Mod+Alt+]", "folding", 41, unfoldAll, false);
+command("toggle_comment", msg("Toggle comment"), "Mod+/", "sql", 12, toggleComment);
+command("duplicate_line", msg("Duplicate line"), "Shift+Alt+ArrowDown", "lines", 20, copyLineDown);
+command("duplicate_line_up", msg("Duplicate line above"), "Shift+Alt+ArrowUp", "lines", 21, copyLineUp);
+command("move_line_up", msg("Move line up"), "Alt+ArrowUp", "lines", 22, moveLineUp);
+command("move_line_down", msg("Move line down"), "Alt+ArrowDown", "lines", 23, moveLineDown);
+command("delete_line", msg("Delete line"), "Mod+Shift+K", "lines", 24, deleteLine);
+command("add_cursor_above", msg("Add cursor above"), "Mod+Alt+ArrowUp", "cursors", 30, addCursorAbove, false);
+command("add_cursor_below", msg("Add cursor below"), "Mod+Alt+ArrowDown", "cursors", 31, addCursorBelow, false);
+command("select_next", msg("Select next occurrence"), "Mod+D", "cursors", 32, selectNextOccurrence, false);
+command("select_all_matches", msg("Select all occurrences"), "Mod+Shift+L", "cursors", 33, selectSelectionMatches, false);
+command("fold_all", msg("Fold all"), "Mod+Alt+[", "folding", 40, foldAll, false);
+command("unfold_all", msg("Unfold all"), "Mod+Alt+]", "folding", 41, unfoldAll, false);
 
 /** DuckDB has none: its client cannot open a file the session holds. ClickHouse neither:
  *  clickhouse-client speaks the native protocol, not HTTP. */

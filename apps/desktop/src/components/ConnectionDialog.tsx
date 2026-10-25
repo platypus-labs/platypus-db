@@ -25,6 +25,7 @@ import { basename } from "../workspace";
 import { DriverPicker } from "./DriverPicker";
 import { NetworkFields, SSL_MODES, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 import { NetworkProfileDialog, newNetworkProfile } from "./NetworkProfileDialog";
+import { t, msg } from "../i18n";
 
 interface Props {
   initial: SavedConnection;
@@ -67,10 +68,10 @@ const DEFAULT_PORTS: Record<DriverKind, number | null> = {
 
 /** The database files of the embedded drivers: file picker filter and example path. */
 const FILES: Record<"sqlite" | "duckdb", { name: string; extensions: string[]; example: string }> = {
-  sqlite: { name: "SQLite database", extensions: ["db", "sqlite", "sqlite3", "db3"], example: "C:\\data\\app.db" },
+  sqlite: { name: msg("SQLite database"), extensions: ["db", "sqlite", "sqlite3", "db3"], example: "C:\\data\\app.db" },
   // A data file (CSV, Parquet, Excel...) opens as an in-memory database that reads it.
   duckdb: {
-    name: "DuckDB database or data file",
+    name: msg("DuckDB database or data file"),
     extensions: ["duckdb", "ddb", "db", ...DATA_FILE_EXTENSIONS],
     example: "C:\\data\\app.duckdb",
   },
@@ -208,7 +209,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const libsql = conn.driver === "libsql";
   /** The fields of a database reached through an ADBC driver. */
   const adbcProfile = PROFILES[conn.driver];
-  const secret = adbcProfile?.secret ?? (libsql ? "Auth token" : "Password");
+  const secret = t(adbcProfile?.secret ?? (libsql ? "Auth token" : "Password"));
 
   // An empty password field keeps the stored one when editing.
   const passwordInput = (): PasswordInput =>
@@ -270,8 +271,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     const path = await open({
       multiple: false,
       filters: [
-        { name: file.name, extensions: file.extensions },
-        { name: "All files", extensions: ["*"] },
+        { name: t(file.name), extensions: file.extensions },
+        { name: t("All files"), extensions: ["*"] },
       ],
     });
     if (typeof path !== "string") return;
@@ -322,29 +323,29 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
             if (tab === "general" || tab === "network" || tab === "init") setPage(tab);
           }}
         >
-          <h2>{existing ? "Edit connection" : "New connection"}</h2>
+          <h2>{t(existing ? "Edit connection" : "New connection")}</h2>
           <div className="dialog-tabs" role="tablist">
-            {tab("general", "General")}
-            {server && !adbcProfile && tab("network", `Network${networkSet ? " ●" : ""}`)}
-            {tab("init", `Init${initSet ? " ●" : ""}`)}
+            {tab("general", t("General"))}
+            {server && !adbcProfile && tab("network", `${t("Network")}${networkSet ? " ●" : ""}`)}
+            {tab("init", `${t("Init")}${initSet ? " ●" : ""}`)}
           </div>
 
           <div data-page="general" hidden={page !== "general"} className="dialog-page">
             <label className="field">
-              <span>Name</span>
+              <span>{t("Name")}</span>
               <input
                 autoFocus
                 required
                 value={conn.name}
                 onChange={(e) => set("name", e.target.value)}
                 onPaste={onPaste}
-                placeholder="My database — or paste a postgres://, mysql:// or mongodb:// URL"
+                placeholder={t("My database — or paste a postgres://, mysql:// or mongodb:// URL")}
               />
             </label>
 
             <div className="row">
               <label className="field">
-                <span>Driver</span>
+                <span>{t("Driver")}</span>
                 <select value={conn.driver} onChange={(e) => changeDriver(e.target.value as DriverKind)}>
                   <option value="postgres">PostgreSQL</option>
                   <option value="mysql">MySQL / MariaDB</option>
@@ -358,26 +359,26 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   <option value="bigquery">BigQuery</option>
                   <option value="databricks">Databricks</option>
                   <option value="trino">Trino</option>
-                  <option value="adbc">Other ADBC driver</option>
+                  <option value="adbc">{t("Other ADBC driver")}</option>
                 </select>
               </label>
               <label className="field">
-                <span>Type</span>
+                <span>{t("Type")}</span>
                 <select
                   value={conn.connection_type ?? ""}
                   onChange={(e) => set("connection_type", (e.target.value || null) as ConnectionType | null)}
-                  title="Production asks before changes and starts in manual commit"
+                  title={t("Production asks before changes and starts in manual commit")}
                 >
-                  <option value="">None</option>
-                  {CONNECTION_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
+                  <option value="">{t("None")}</option>
+                  {CONNECTION_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {t(type.label)}
                     </option>
                   ))}
                 </select>
               </label>
               <label className="field">
-                <span>Color</span>
+                <span>{t("Color")}</span>
                 <div className="swatches">
                   {COLORS.map((c) => (
                     <button
@@ -385,7 +386,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       key={c || "none"}
                       className={`swatch${(conn.color ?? "") === c ? " selected" : ""}`}
                       style={{ background: c || "transparent" }}
-                      title={c || "No color"}
+                      title={c || t("No color")}
                       onClick={() => set("color", c || null)}
                     />
                   ))}
@@ -395,7 +396,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
 
             {!server ? (
               <label className="field">
-                <span>Database file</span>
+                <span>{t("Database file")}</span>
                 <div className="row tight">
                   <input
                     required
@@ -404,7 +405,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     placeholder={file.example}
                   />
                   <button type="button" onClick={() => void browseFile()}>
-                    Browse…
+                    {t("Browse…")}
                   </button>
                 </div>
               </label>
@@ -416,11 +417,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                 password={
                   adbcProfile.secret === null ? null : (
                     <label className="field">
-                      <span>{adbcProfile.secret}</span>
+                      <span>{t(adbcProfile.secret)}</span>
                       <input
                         type="password"
                         value={password}
-                        placeholder={existing && conn.save_password ? "•••••• (saved)" : ""}
+                        placeholder={existing && conn.save_password ? t("•••••• (saved)") : ""}
                         onChange={(e) => setPassword(e.target.value)}
                         autoComplete="off"
                       />
@@ -432,11 +433,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
               <>
                 <div className="row">
                   <label className="field grow">
-                    <span>Host</span>
+                    <span>{t("Host")}</span>
                     <input required value={conn.host} onChange={(e) => set("host", e.target.value)} />
                   </label>
                   <label className="field port">
-                    <span>Port</span>
+                    <span>{t("Port")}</span>
                     <input
                       type="number"
                       min={1}
@@ -450,13 +451,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                 {!libsql && (
                   <label className="field">
                     <span>
-                      Database
-                      {conn.driver === "mysql" ||
-                      conn.driver === "sqlserver" ||
-                      conn.driver === "clickhouse" ||
-                      conn.driver === "mongo"
-                        ? " (optional)"
-                        : ""}
+                      {t(
+                        conn.driver === "mysql" || conn.driver === "sqlserver" || conn.driver === "clickhouse" || conn.driver === "mongo"
+                          ? "Database (optional)"
+                          : "Database",
+                      )}
                     </span>
                     <input
                       value={conn.database}
@@ -464,7 +463,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       placeholder={conn.driver === "mongo" ? "test?authSource=admin&replicaSet=rs0" : undefined}
                       title={
                         conn.driver === "mongo"
-                          ? "The default database, then connection string options after ?; srv=true for mongodb+srv. Users authenticate against admin unless authSource says otherwise."
+                          ? t("The default database, then connection string options after ?; srv=true for mongodb+srv. Users authenticate against admin unless authSource says otherwise.")
                           : undefined
                       }
                     />
@@ -474,28 +473,28 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                 <div className="row">
                   {!libsql && (
                     <label className="field grow">
-                      <span>User</span>
+                      <span>{t("User")}</span>
                       <input value={conn.user} onChange={(e) => set("user", e.target.value)} />
                     </label>
                   )}
                   <label className="field grow">
-                    <span>{secret} from</span>
+                    <span>{t("{secret} from", { secret })}</span>
                     <select
                       value={source}
                       onChange={(e) => setConn((c) => withPasswordSource(c, e.target.value as PasswordSource))}
                       data-field="password_source"
                     >
-                      <option value="keychain">Saved in the keychain</option>
-                      <option value="ask">Ask every time</option>
-                      {conn.driver === "postgres" && <option value="pgpass">.pgpass file</option>}
-                      <option value="command">Shell command</option>
+                      <option value="keychain">{t("Saved in the keychain")}</option>
+                      <option value="ask">{t("Ask every time")}</option>
+                      {conn.driver === "postgres" && <option value="pgpass">{t(".pgpass file")}</option>}
+                      <option value="command">{t("Shell command")}</option>
                     </select>
                   </label>
                 </div>
 
                 {source === "command" ? (
                   <label className="field">
-                    <span>Command that prints the {secret.toLowerCase()}</span>
+                    <span>{t("Command that prints the {secret}", { secret: secret.toLowerCase() })}</span>
                     <input
                       required
                       value={conn.password_command ?? ""}
@@ -507,11 +506,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                 ) : (
                   source !== "pgpass" && (
                     <label className="field">
-                      <span>{source === "ask" ? `${secret} (only to test the connection)` : secret}</span>
+                      <span>{source === "ask" ? t("{secret} (only to test the connection)", { secret }) : secret}</span>
                       <input
                         type="password"
                         value={password}
-                        placeholder={existing && conn.save_password ? "•••••• (saved)" : ""}
+                        placeholder={existing && conn.save_password ? t("•••••• (saved)") : ""}
                         onChange={(e) => setPassword(e.target.value)}
                         autoComplete="off"
                       />
@@ -523,14 +522,14 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
 
             <label className="check">
               <input type="checkbox" checked={conn.read_only} onChange={(e) => set("read_only", e.target.checked)} />
-              Read-only (warn before modifying data)
+              {t("Read-only (warn before modifying data)")}
             </label>
 
             <AgentAccessField conn={conn} onChange={(access) => set("agent_access", access)} />
 
             {projects.length > 0 && (
               <div className="field">
-                <span>Projects</span>
+                <span>{t("Projects")}</span>
                 <div className="project-chips">
                   {projects.map((p) => {
                     const on = inProjects.has(p.id);
@@ -555,14 +554,14 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           {server && (
             <div data-page="network" hidden={page !== "network"} className="dialog-page">
               <label className="field">
-                <span>Network profile</span>
+                <span>{t("Network profile")}</span>
                 <div className="row tight">
                   <select
                     value={conn.network_profile ?? ""}
                     onChange={(e) => set("network_profile", e.target.value || null)}
                     data-field="network_profile"
                   >
-                    <option value="">None — this connection's own settings</option>
+                    <option value="">{t("None — this connection's own settings")}</option>
                     {profiles.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
@@ -571,20 +570,20 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   </select>
                   {profile && (
                     <button type="button" onClick={() => setEditing({ profile, existing: true })}>
-                      Edit…
+                      {t("Edit…")}
                     </button>
                   )}
                   <button type="button" onClick={() => setEditing({ profile: newNetworkProfile(), existing: false })}>
-                    New…
+                    {t("New…")}
                   </button>
                 </div>
               </label>
               {profile ? (
                 <p className="muted small" data-field="profile_summary">
-                  {profile.ssh ? `SSH through ${profile.ssh.user ? `${profile.ssh.user}@` : ""}${profile.ssh.host}` : "No SSH tunnel"}
+                  {profile.ssh ? t("SSH through {host}", { host: `${profile.ssh.user ? `${profile.ssh.user}@` : ""}${profile.ssh.host}` }) : t("No SSH tunnel")}
                   {" · SSL "}
                   {profile.ssl_mode}
-                  {profile.ssl_client_cert ? " with a client certificate" : ""}
+                  {profile.ssl_client_cert ? ` ${t("with a client certificate")}` : ""}
                 </p>
               ) : (
                 <NetworkFields
@@ -600,12 +599,12 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           )}
 
           <div data-page="init" hidden={page !== "init"} className="dialog-page">
-            <p className="muted small">Runs after every connection, and again when a lost connection is reopened.</p>
+            <p className="muted small">{t("Runs after every connection, and again when a lost connection is reopened.")}</p>
             {server && !libsql && (
               <div className="row">
                 {conn.driver === "postgres" && (
                   <label className="field grow">
-                    <span>Default schema</span>
+                    <span>{t("Default schema")}</span>
                     <input
                       value={init.schema ?? ""}
                       onChange={(e) => setInit("schema", e.target.value || null)}
@@ -615,18 +614,18 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   </label>
                 )}
                 <label className="field grow">
-                  <span>Time zone</span>
+                  <span>{t("Time zone")}</span>
                   <input
                     value={init.time_zone ?? ""}
                     onChange={(e) => setInit("time_zone", e.target.value || null)}
-                    placeholder={conn.driver === "mysql" ? "+01:00 or Europe/Rome" : "Europe/Rome"}
+                    placeholder={conn.driver === "mysql" ? t("+01:00 or Europe/Rome") : "Europe/Rome"}
                     data-field="init_time_zone"
                   />
                 </label>
               </div>
             )}
             <label className="field">
-              <span>Bootstrap statements</span>
+              <span>{t("Bootstrap statements")}</span>
               <textarea
                 className="init-script"
                 rows={6}
@@ -642,8 +641,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           {result && (
             <div className={result.ok ? "notice ok" : "notice error"}>
               {result.ok
-                ? `Connected: ${result.server.product} ${result.server.version}${
-                    !server ? "" : result.server.encrypted ? " · TLS" : " · not encrypted"
+                ? `${t("Connected: {server}", { server: `${result.server.product} ${result.server.version}` })}${
+                    !server ? "" : result.server.encrypted ? " · TLS" : ` · ${t("not encrypted")}`
                   }`
                 : result.message}
             </div>
@@ -651,14 +650,14 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
 
           <div className="actions">
             <button type="button" onClick={test} disabled={busy}>
-              Test connection
+              {t("Test connection")}
             </button>
             <span className="spacer" />
             <button type="button" onClick={onClose} disabled={busy}>
-              Cancel
+              {t("Cancel")}
             </button>
             <button type="submit" className="primary" disabled={busy}>
-              Save
+              {t("Save")}
             </button>
           </div>
         </form>

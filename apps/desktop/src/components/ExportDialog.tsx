@@ -2,6 +2,7 @@ import { useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import type { Bucket, Compression, DriverKind, ExportFormat, ExportOptions } from "../api";
 import { fmt } from "./ResultPanel";
+import { t, msg } from "../i18n";
 
 export type ExportSource = "query" | "loaded";
 
@@ -21,25 +22,25 @@ interface Props {
 
 export const FORMATS: { value: ExportFormat; label: string; ext: string }[] = [
   { value: "csv", label: "CSV", ext: "csv" },
-  { value: "json", label: "JSON (array)", ext: "json" },
-  { value: "ndjson", label: "NDJSON (one object per line)", ext: "ndjson" },
+  { value: "json", label: msg("JSON (array)"), ext: "json" },
+  { value: "ndjson", label: msg("NDJSON (one object per line)"), ext: "ndjson" },
   { value: "parquet", label: "Parquet (zstd)", ext: "parquet" },
-  { value: "xlsx", label: "Excel workbook", ext: "xlsx" },
-  { value: "sql", label: "SQL INSERT statements", ext: "sql" },
-  { value: "markdown", label: "Markdown table", ext: "md" },
-  { value: "html", label: "HTML table", ext: "html" },
+  { value: "xlsx", label: msg("Excel workbook"), ext: "xlsx" },
+  { value: "sql", label: msg("SQL INSERT statements"), ext: "sql" },
+  { value: "markdown", label: msg("Markdown table"), ext: "md" },
+  { value: "html", label: msg("HTML table"), ext: "html" },
   { value: "xml", label: "XML", ext: "xml" },
 ];
 
 const DELIMITERS = [
-  { value: ",", label: "Comma ," },
-  { value: ";", label: "Semicolon ;" },
-  { value: "\t", label: "Tab" },
-  { value: "|", label: "Pipe |" },
+  { value: ",", label: msg("Comma ,") },
+  { value: ";", label: msg("Semicolon ;") },
+  { value: "\t", label: msg("Tab character") },
+  { value: "|", label: msg("Pipe |") },
 ];
 
 const COMPRESSIONS: { value: Compression; label: string; ext: string }[] = [
-  { value: "none", label: "None", ext: "" },
+  { value: "none", label: msg("None"), ext: "" },
   { value: "gzip", label: "gzip (.gz)", ext: "gz" },
   { value: "zstd", label: "zstd (.zst)", ext: "zst" },
 ];
@@ -81,12 +82,12 @@ function keepBucket({ secret_key: _, ...rest }: Bucket) {
 }
 
 const BUCKET_FIELDS: { key: keyof Bucket; label: string; placeholder?: string }[] = [
-  { key: "endpoint", label: "Endpoint", placeholder: "https://s3.eu-west-1.amazonaws.com" },
-  { key: "region", label: "Region", placeholder: "us-east-1, auto for GCS and R2" },
-  { key: "bucket", label: "Bucket" },
-  { key: "prefix", label: "Folder (optional)" },
-  { key: "access_key", label: "Access key" },
-  { key: "secret_key", label: "Secret key" },
+  { key: "endpoint", label: msg("Endpoint"), placeholder: "https://s3.eu-west-1.amazonaws.com" },
+  { key: "region", label: msg("Region"), placeholder: msg("us-east-1, auto for GCS and R2") },
+  { key: "bucket", label: msg("Bucket") },
+  { key: "prefix", label: msg("Folder (optional)") },
+  { key: "access_key", label: msg("Access key") },
+  { key: "secret_key", label: msg("Secret key") },
 ];
 
 /** The compression of the finished file and where to upload it: a signed URL (with
@@ -107,7 +108,7 @@ export function OutputOptions(props: {
     <>
       {!packed(options.format) && (
         <label className="field">
-          <span>Compression</span>
+          <span>{t("Compression")}</span>
           <select
             value={options.compression ?? "none"}
             disabled={disabled}
@@ -115,14 +116,14 @@ export function OutputOptions(props: {
           >
             {COMPRESSIONS.map((c) => (
               <option key={c.value} value={c.value}>
-                {c.label}
+                {t(c.label)}
               </option>
             ))}
           </select>
         </label>
       )}
       <label className="field">
-        <span>Also upload</span>
+        <span>{t("Also upload")}</span>
         <select
           value={upload}
           disabled={disabled}
@@ -131,14 +132,14 @@ export function OutputOptions(props: {
             onChange({ ...options, upload_url: to === "url" ? "" : null, bucket: to === "bucket" ? lastBucket() : null });
           }}
         >
-          <option value="none">No</option>
-          {signedUrl && <option value="url">To a signed URL (S3, GCS)</option>}
-          <option value="bucket">To a bucket (S3, GCS, R2, MinIO)</option>
+          <option value="none">{t("No")}</option>
+          {signedUrl && <option value="url">{t("To a signed URL (S3, GCS)")}</option>}
+          <option value="bucket">{t("To a bucket (S3, GCS, R2, MinIO)")}</option>
         </select>
       </label>
       {upload === "url" && (
         <label className="field">
-          <span>Signed URL</span>
+          <span>{t("Signed URL")}</span>
           <input
             value={options.upload_url ?? ""}
             disabled={disabled}
@@ -151,12 +152,12 @@ export function OutputOptions(props: {
         <div className="bucket-fields">
           {BUCKET_FIELDS.map(({ key, label, placeholder }) => (
             <label key={key} className="field">
-              <span>{label}</span>
+              <span>{t(label)}</span>
               <input
                 type={key === "secret_key" ? "password" : "text"}
                 value={options.bucket![key]}
                 disabled={disabled}
-                placeholder={placeholder}
+                placeholder={placeholder && t(placeholder)}
                 autoComplete="off"
                 onChange={(e) => setBucket({ ...options.bucket!, [key]: e.target.value.trim() })}
               />
@@ -174,18 +175,18 @@ export function CsvOptions(props: { options: ExportOptions; disabled?: boolean; 
   return (
     <div className="row">
       <label className="field">
-        <span>Delimiter</span>
+        <span>{t("Delimiter")}</span>
         <select value={options.delimiter} disabled={disabled} onChange={(e) => onChange({ ...options, delimiter: e.target.value })}>
           {DELIMITERS.map((d) => (
             <option key={d.label} value={d.value}>
-              {d.label}
+              {t(d.label)}
             </option>
           ))}
         </select>
       </label>
       <label className="check">
         <input type="checkbox" checked={options.header} disabled={disabled} onChange={(e) => onChange({ ...options, header: e.target.checked })} />
-        Header row
+        {t("Header row")}
       </label>
     </div>
   );
@@ -208,7 +209,7 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
     const zipped = compressedExt(chosen.compression);
     const path = await save({
       defaultPath: `${name}.${format.ext}${zipped ? `.${zipped}` : ""}`,
-      filters: [{ name: format.label, extensions: [zipped || format.ext] }],
+      filters: [{ name: t(format.label), extensions: [zipped || format.ext] }],
     });
     if (path) onExport(path, chosen, source);
   }
@@ -216,9 +217,9 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form className="modal small" onSubmit={submit} onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>Export result</h2>
+        <h2>{t("Export result")}</h2>
         <label className="field">
-          <span>Format</span>
+          <span>{t("Format")}</span>
           <select
             autoFocus
             value={options.format}
@@ -226,14 +227,14 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
           >
             {FORMATS.map((f) => (
               <option key={f.value} value={f.value}>
-                {f.label}
+                {t(f.label)}
               </option>
             ))}
           </select>
         </label>
         {options.format === "sql" && (
           <label className="field">
-            <span>Table name</span>
+            <span>{t("Table name")}</span>
             <input value={options.table} onChange={(e) => setOptions({ ...options, table: e.target.value })} />
           </label>
         )}
@@ -242,26 +243,25 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
         <fieldset className="choices">
           <label className="check">
             <input type="radio" checked={source === "query"} onChange={() => setSource("query")} />
-            All rows — run the query again and stream it to the file
+            {t("All rows — run the query again and stream it to the file")}
           </label>
           <label className="check">
             <input type="radio" checked={source === "loaded"} onChange={() => setSource("loaded")} />
-            Rows already loaded ({fmt.format(loadedRows)}
-            {complete ? ", the whole result" : ""})
+            {t(complete ? "Rows already loaded ({n}, the whole result)" : "Rows already loaded ({n})", { n: fmt.format(loadedRows) })}
           </label>
         </fieldset>
         {source === "query" && transactionOpen && (
           <div className="notice warn small">
-            The export uses its own connection: uncommitted changes in this tab are not included.
+            {t("The export uses its own connection: uncommitted changes in this tab are not included.")}
           </div>
         )}
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" className="primary">
-            Export…
+            {t("Export…")}
           </button>
         </div>
       </form>

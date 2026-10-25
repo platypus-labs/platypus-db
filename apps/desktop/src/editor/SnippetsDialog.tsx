@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { toCommandError } from "../api";
 import { DEFAULT_SNIPPETS, type Snippet, saveSnippets, snippets } from "./snippets";
+import { t, tNodes } from "../i18n";
 
 /** Edits the snippet list: a name typed then Tab writes the template. */
 export function SnippetsDialog({ onClose }: { onClose: () => void }) {
@@ -10,8 +11,8 @@ export function SnippetsDialog({ onClose }: { onClose: () => void }) {
 
   async function save() {
     const names = list.map((s) => s.name.trim());
-    if (names.some((n) => !/^[A-Za-z_]\w*$/.test(n))) return setError("Names are letters, digits and _, starting with a letter.");
-    if (new Set(names).size !== names.length) return setError("Two snippets have the same name.");
+    if (names.some((n) => !/^[A-Za-z_]\w*$/.test(n))) return setError(t("Names are letters, digits and _, starting with a letter."));
+    if (new Set(names).size !== names.length) return setError(t("Two snippets have the same name."));
     try {
       await saveSnippets(list.map((s) => ({ ...s, name: s.name.trim() })));
       onClose();
@@ -31,22 +32,23 @@ export function SnippetsDialog({ onClose }: { onClose: () => void }) {
           void save();
         }}
       >
-        <h2>Snippets</h2>
+        <h2>{t("Snippets")}</h2>
         <p className="muted small">
-          Type a name in the editor and press Tab. <code>#{"{field}"}</code> marks a field to fill; Tab goes to the
-          next one.
+          {tNodes("Type a name in the editor and press Tab. {field} marks a field to fill; Tab goes to the next one.", {
+            field: <code>#{"{field}"}</code>,
+          })}
         </p>
         <div className="snippet-list">
           {list.map((s, i) => (
             <div className="snippet-row" key={i}>
-              <input aria-label="Name" value={s.name} onChange={(e) => patch(i, { name: e.target.value })} />
+              <input aria-label={t("Name")} value={s.name} onChange={(e) => patch(i, { name: e.target.value })} />
               <textarea
-                aria-label="Template"
+                aria-label={t("Template")}
                 rows={Math.min(6, s.template.split("\n").length)}
                 value={s.template}
                 onChange={(e) => patch(i, { template: e.target.value })}
               />
-              <button type="button" className="icon" title="Delete" onClick={() => setList((l) => l.filter((_, j) => j !== i))}>
+              <button type="button" className="icon" title={t("Delete")} aria-label={t("Delete")} onClick={() => setList((l) => l.filter((_, j) => j !== i))}>
                 ×
               </button>
             </div>
@@ -55,17 +57,17 @@ export function SnippetsDialog({ onClose }: { onClose: () => void }) {
         {error && <div className="notice error small">{error}</div>}
         <div className="actions">
           <button type="button" onClick={() => setList((l) => [...l, { name: "", template: "" }])}>
-            Add
+            {t("Add")}
           </button>
           <button type="button" className="link" onClick={() => setList(DEFAULT_SNIPPETS)}>
-            Restore defaults
+            {t("Restore defaults")}
           </button>
           <span className="spacer" />
           <button type="button" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" className="primary">
-            Save
+            {t("Save")}
           </button>
         </div>
       </form>

@@ -3,6 +3,7 @@ import { defineSetting } from "../settings";
 import type { TabModel } from "../tabs/registry";
 import { Icon, type IconName } from "../ui/Icon";
 import { scrollSideways } from "../ui/scroll";
+import { t } from "../i18n";
 
 export const groupTabsSetting = defineSetting<boolean>({
   key: "tabs.group_by_connection",
@@ -69,65 +70,65 @@ export const TabBar = forwardRef<HTMLDivElement, Props>(function TabBar(props, r
     e.preventDefault();
   };
   /** A folded group shows only its active tab. */
-  const hidden = (t: TabModel) => grouped && !t.pinned && folded.has(t.connectionId) && t.key !== activeTab && t.key !== besideTab;
+  const hidden = (tab: TabModel) => grouped && !tab.pinned && folded.has(tab.connectionId) && tab.key !== activeTab && tab.key !== besideTab;
   return (
-    <div className="tabs" role="tablist" aria-label="Open tabs" ref={ref} onWheel={scrollSideways}>
-      {tabs.map((t, i) => {
+    <div className="tabs" role="tablist" aria-label={t("Open tabs")} ref={ref} onWheel={scrollSideways}>
+      {tabs.map((tab, i) => {
         const prev = tabs[i - 1];
-        const header = grouped && !t.pinned && (!prev || prev.pinned || prev.connectionId !== t.connectionId);
-        const conn = { "--conn": props.color(t.connectionId) ?? "transparent" } as CSSProperties;
-        const count = header ? tabs.filter((o) => !o.pinned && o.connectionId === t.connectionId).length : 0;
-        const isFolded = folded.has(t.connectionId);
+        const header = grouped && !tab.pinned && (!prev || prev.pinned || prev.connectionId !== tab.connectionId);
+        const conn = { "--conn": props.color(tab.connectionId) ?? "transparent" } as CSSProperties;
+        const count = header ? tabs.filter((o) => !o.pinned && o.connectionId === tab.connectionId).length : 0;
+        const isFolded = folded.has(tab.connectionId);
         return (
-          <Fragment key={t.key}>
+          <Fragment key={tab.key}>
             {header && (
               <button
                 type="button"
                 className="tab-group"
                 style={conn}
                 aria-expanded={!isFolded}
-                title={isFolded ? "Show the tabs of this connection" : "Fold the tabs of this connection"}
-                onClick={() => props.onFold(t.connectionId)}
+                title={t(isFolded ? "Show the tabs of this connection" : "Fold the tabs of this connection")}
+                onClick={() => props.onFold(tab.connectionId)}
               >
-                {props.connectionName(t.connectionId)}
+                {props.connectionName(tab.connectionId)}
                 {isFolded && <span className="tab-count">{count}</span>}
               </button>
             )}
-            {!hidden(t) && (
+            {!hidden(tab) && (
               <div
-                data-tab={t.key}
+                data-tab={tab.key}
                 role="tab"
-                aria-selected={t.key === activeTab}
-                tabIndex={t.key === activeTab ? 0 : -1}
-                className={`tab${t.key === activeTab ? " active" : ""}${t.key === besideTab ? " beside" : ""}${t.pinned ? " pinned" : ""}`}
+                aria-selected={tab.key === activeTab}
+                tabIndex={tab.key === activeTab ? 0 : -1}
+                className={`tab${tab.key === activeTab ? " active" : ""}${tab.key === besideTab ? " beside" : ""}${tab.pinned ? " pinned" : ""}`}
                 style={conn}
-                title={t.pinned ? props.title(t) : undefined}
-                onClick={() => props.onActivate(t)}
-                onAuxClick={(e) => e.button === 1 && props.onClose(t)}
+                title={tab.pinned ? props.title(tab) : undefined}
+                onClick={() => props.onActivate(tab)}
+                onAuxClick={(e) => e.button === 1 && props.onClose(tab)}
                 onContextMenu={(e: MouseEvent) => {
                   e.preventDefault();
-                  props.onMenu(t, e.clientX, e.clientY);
+                  props.onMenu(tab, e.clientX, e.clientY);
                 }}
-                onKeyDown={(e) => onKey(e, t)}
+                onKeyDown={(e) => onKey(e, tab)}
               >
                 <span className="tab-icon">
-                  <Icon name={t.pinned ? "pin" : props.icon(t)} size={13} />
+                  <Icon name={tab.pinned ? "pin" : props.icon(tab)} size={13} />
                 </span>
-                {t.pinned ? (
-                  <span className="sr-only">{props.title(t)}</span>
+                {tab.pinned ? (
+                  <span className="sr-only">{props.title(tab)}</span>
                 ) : (
-                  <span>{grouped ? props.shortTitle(t) : props.title(t)}</span>
+                  <span>{grouped ? props.shortTitle(tab) : props.title(tab)}</span>
                 )}
-                {!t.pinned && (
+                {!tab.pinned && (
                   <button
                     type="button"
                     className="icon"
                     tabIndex={-1}
-                    title="Close tab (Ctrl+W)"
-                    aria-label="Close tab"
+                    title={t("Close tab (Ctrl+W)")}
+                    aria-label={t("Close tab")}
                     onClick={(e) => {
                       e.stopPropagation();
-                      props.onClose(t);
+                      props.onClose(tab);
                     }}
                   >
                     ×

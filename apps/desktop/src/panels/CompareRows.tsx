@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type ColumnInfo, toCommandError } from "../api";
+import { t } from "../i18n";
 
 interface Props {
   jobId: number;
@@ -31,23 +32,21 @@ export function CompareRows({ jobId, columns, rows, onClose }: Props) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal compare-rows" onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>
-          Rows {a + 1} and {b + 1}
-        </h2>
+        <h2>{t("Rows {a} and {b}", { a: a + 1, b: b + 1 })}</h2>
         {error && <div className="notice error small">{error}</div>}
         {values && (
           <>
             <label className="check small">
               <input type="checkbox" checked={onlyDifferent} onChange={(e) => setOnlyDifferent(e.target.checked)} />
-              Only the {differing === 1 ? "column" : `${differing} columns`} that differ
+              {differing === 1 ? t("Only the column that differs") : t("Only the {n} columns that differ", { n: differing })}
             </label>
             <div className="compare-list">
               <table>
                 <thead>
                   <tr>
-                    <th>Column</th>
-                    <th>Row {a + 1}</th>
-                    <th>Row {b + 1}</th>
+                    <th>{t("Column")}</th>
+                    <th>{t("Row {n}", { n: a + 1 })}</th>
+                    <th>{t("Row {n}", { n: b + 1 })}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -68,7 +67,7 @@ export function CompareRows({ jobId, columns, rows, onClose }: Props) {
         <div className="actions">
           <span className="spacer" />
           <button type="button" autoFocus onClick={onClose}>
-            Close
+            {t("Close")}
           </button>
         </div>
       </div>

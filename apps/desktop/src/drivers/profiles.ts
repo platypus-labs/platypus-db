@@ -4,6 +4,7 @@
  * (`crates/platypus-driver-adbc/src/profile.rs` reads them).
  */
 import type { DriverKind, SavedConnection, SslMode } from "../api";
+import { msg } from "../i18n";
 
 const OPTION = "options.";
 
@@ -29,22 +30,22 @@ export interface Profile {
 export const PROFILES: Partial<Record<DriverKind, Profile>> = {
   snowflake: {
     fields: [
-      { key: "host", label: "Account", placeholder: "xy12345.eu-west-1", required: true },
-      { key: "user", label: "User" },
-      { key: "options.warehouse", label: "Warehouse", placeholder: "COMPUTE_WH" },
-      { key: "options.role", label: "Role" },
-      { key: "database", label: "Database" },
-      { key: "options.schema", label: "Schema" },
+      { key: "host", label: msg("Account"), placeholder: "xy12345.eu-west-1", required: true },
+      { key: "user", label: msg("User") },
+      { key: "options.warehouse", label: msg("Warehouse"), placeholder: "COMPUTE_WH" },
+      { key: "options.role", label: msg("Role") },
+      { key: "database", label: msg("Database") },
+      { key: "options.schema", label: msg("Schema") },
     ],
-    secret: "Password",
+    secret: msg("Password"),
   },
   bigquery: {
     fields: [
-      { key: "options.project", label: "Project", placeholder: "my-project-123", required: true },
-      { key: "options.dataset", label: "Dataset" },
+      { key: "options.project", label: msg("Project"), placeholder: "my-project-123", required: true },
+      { key: "options.dataset", label: msg("Dataset") },
       {
         key: "options.credentials_file",
-        label: "Service account key (JSON; empty: Google's default credentials)",
+        label: msg("Service account key (JSON; empty: Google's default credentials)"),
         file: true,
       },
     ],
@@ -52,41 +53,41 @@ export const PROFILES: Partial<Record<DriverKind, Profile>> = {
   },
   databricks: {
     fields: [
-      { key: "host", label: "Server hostname", placeholder: "dbc-1234.cloud.databricks.com", required: true },
-      { key: "options.http_path", label: "HTTP path", placeholder: "/sql/1.0/warehouses/…", required: true },
-      { key: "database", label: "Catalog", placeholder: "main" },
-      { key: "options.schema", label: "Schema", placeholder: "default" },
+      { key: "host", label: msg("Server hostname"), placeholder: "dbc-1234.cloud.databricks.com", required: true },
+      { key: "options.http_path", label: msg("HTTP path"), placeholder: "/sql/1.0/warehouses/…", required: true },
+      { key: "database", label: msg("Catalog"), placeholder: "main" },
+      { key: "options.schema", label: msg("Schema"), placeholder: "default" },
     ],
-    secret: "Access token",
+    secret: msg("Access token"),
   },
   trino: {
     fields: [
-      { key: "host", label: "Host", required: true },
-      { key: "port", label: "Port" },
-      { key: "user", label: "User", required: true },
-      { key: "database", label: "Catalog", placeholder: "hive" },
-      { key: "options.schema", label: "Schema" },
+      { key: "host", label: msg("Host"), required: true },
+      { key: "port", label: msg("Port") },
+      { key: "user", label: msg("User"), required: true },
+      { key: "database", label: msg("Catalog"), placeholder: "hive" },
+      { key: "options.schema", label: msg("Schema") },
       {
         key: "ssl_mode",
-        label: "TLS",
+        label: msg("TLS"),
         // `profile.rs` maps these to the driver's `SSL` options.
         choices: [
-          { value: "prefer", label: "Automatic — HTTPS on port 443, HTTP otherwise" },
-          { value: "disable", label: "Off — HTTP" },
-          { value: "verify-full", label: "On — HTTPS, verify certificate" },
-          { value: "require", label: "On — HTTPS, unverified" },
+          { value: "prefer", label: msg("Automatic — HTTPS on port 443, HTTP otherwise") },
+          { value: "disable", label: msg("Off — HTTP") },
+          { value: "verify-full", label: msg("On — HTTPS, verify certificate") },
+          { value: "require", label: msg("On — HTTPS, unverified") },
         ],
       },
     ],
-    secret: "Password (optional)",
+    secret: msg("Password (optional)"),
   },
   adbc: {
     fields: [
-      { key: "options.driver_file", label: "Driver library", required: true, file: true },
-      { key: "options.uri", label: "URI", placeholder: "grpc+tls://host:port" },
-      { key: "user", label: "User" },
+      { key: "options.driver_file", label: msg("Driver library"), required: true, file: true },
+      { key: "options.uri", label: msg("URI"), placeholder: "grpc+tls://host:port" },
+      { key: "user", label: msg("User") },
     ],
-    secret: "Password",
+    secret: msg("Password"),
   },
 };
 

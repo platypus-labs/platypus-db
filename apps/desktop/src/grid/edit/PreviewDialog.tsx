@@ -1,3 +1,5 @@
+import { t, plural } from "../../i18n";
+
 interface Props {
   statements: string[];
   busy: boolean;
@@ -13,23 +15,26 @@ export function PreviewDialog({ statements, busy, production = false, onSave, on
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal wide" onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>Changes to save</h2>
-        {production && <div className="notice warn">This is a production connection: check the SQL before saving.</div>}
+        <h2>{t("Changes to save")}</h2>
+        {production && <div className="notice warn">{t("This is a production connection: check the SQL before saving.")}</div>}
         <p className="muted small">
-          {statements.length} {statements.length === 1 ? "statement runs" : "statements run"} in one transaction:
-          all of them, or none if one fails.
+          {plural(
+            statements.length,
+            "{n} statement runs in one transaction: all of them, or none if one fails.",
+            "{n} statements run in one transaction: all of them, or none if one fails.",
+          )}
         </p>
         <pre className="sql-preview">{script}</pre>
         <div className="actions">
           <button type="button" onClick={() => void navigator.clipboard.writeText(script)}>
-            Copy
+            {t("Copy")}
           </button>
           <span className="spacer" />
           <button type="button" onClick={onClose} autoFocus>
-            Close
+            {t("Close")}
           </button>
           <button type="button" className="primary" onClick={onSave} disabled={busy}>
-            Save
+            {t("Save")}
           </button>
         </div>
       </div>
