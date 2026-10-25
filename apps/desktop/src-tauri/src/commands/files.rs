@@ -79,7 +79,10 @@ mod tests {
     fn only_pasted_files_are_discarded() {
         let temp = Path::new("/tmp");
         let pasted = Path::new("/tmp/platypus-paste-1/pasted.csv");
-        assert_eq!(pasted_dir(pasted, temp), Some(Path::new("/tmp/platypus-paste-1")));
+        assert_eq!(
+            pasted_dir(pasted, temp),
+            Some(Path::new("/tmp/platypus-paste-1"))
+        );
         for other in [
             "/tmp/other/pasted.csv",
             "/home/platypus-paste-1/pasted.csv",
