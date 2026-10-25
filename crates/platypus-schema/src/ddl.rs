@@ -460,7 +460,7 @@ impl Ddl<'_> {
         }
         match self.d {
             // Snowflake and Trino take the standard statement.
-            Dialect::Postgres | Dialect::DuckDb | Dialect::Ansi => {
+            Dialect::Postgres | Dialect::DuckDb | Dialect::Ansi | Dialect::Snowflake => {
                 for c in columns {
                     let comment = text(c.comment.as_ref())
                         .map_or_else(|| "NULL".to_owned(), |t| self.d.quote_literal(t));

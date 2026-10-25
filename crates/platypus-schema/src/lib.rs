@@ -292,7 +292,12 @@ pub async fn load(
              FROM pragma_foreign_key_list({t}, {s}) GROUP BY id"
         )),
         // DuckDB has no referential actions, ClickHouse no foreign keys.
-        Dialect::DuckDb | Dialect::ClickHouse | Dialect::Ansi | Dialect::BigQuery | Dialect::Databricks => None,
+        Dialect::DuckDb
+        | Dialect::ClickHouse
+        | Dialect::Ansi
+        | Dialect::Snowflake
+        | Dialect::BigQuery
+        | Dialect::Databricks => None,
     };
     if let Some(sql) = actions {
         for row in query_text(conn, &sql).await? {

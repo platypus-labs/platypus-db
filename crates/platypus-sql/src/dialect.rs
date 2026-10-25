@@ -23,8 +23,11 @@ pub enum Dialect {
     SqlServer,
     /// Case-sensitive names; strings and quoted names take backslash escapes.
     ClickHouse,
-    /// Standard SQL with `"…"` names: Snowflake, Trino and generic ADBC drivers.
+    /// Standard SQL with `"…"` names: Trino and generic ADBC drivers.
     Ansi,
+    /// Standard SQL with `"…"` names that folds bare names to upper case; `'…'` strings
+    /// take backslash escapes (`\'`, `\\`), and `//` starts a comment.
+    Snowflake,
     /// `GoogleSQL`: `` `…` `` names, `"…"` strings, backslash escapes in both.
     BigQuery,
     /// Spark SQL on Databricks: `` `…` `` names (a backtick doubled inside), `"…"` strings
@@ -38,7 +41,8 @@ impl From<DriverKind> for Dialect {
             // MongoDB speaks no SQL: the app never builds SQL for it (the editor, data
             // viewer and navigator write mongosh instead), so any dialect would do here.
             DriverKind::Postgres | DriverKind::Mongo => Self::Postgres,
-            DriverKind::Snowflake | DriverKind::Trino | DriverKind::Adbc => Self::Ansi,
+            DriverKind::Snowflake => Self::Snowflake,
+            DriverKind::Trino | DriverKind::Adbc => Self::Ansi,
             DriverKind::BigQuery => Self::BigQuery,
             DriverKind::Databricks => Self::Databricks,
             DriverKind::MySql => Self::MySql,
@@ -325,7 +329,7 @@ impl Dialect {
         let first_ok = chars.next().is_some_and(|c| match self {
             Self::Postgres => c.is_ascii_lowercase() || c == '_',
             // Snowflake folds bare names to upper case, Trino to lower case.
-            Self::Ansi => c.is_ascii_uppercase() || c == '_',
+            Self::Ansi | Self::Snowflake => c.is_ascii_uppercase() || c == '_',
             Self::MySql
             | Self::Sqlite
             | Self::DuckDb
@@ -336,7 +340,9 @@ impl Dialect {
         });
         let rest_ok = chars.all(|c| match self {
             Self::Postgres => c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '$',
-            Self::Ansi => c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_',
+            Self::Ansi | Self::Snowflake => {
+                c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_'
+            }
             Self::MySql => c.is_ascii_alphanumeric() || c == '_' || c == '$',
             Self::Sqlite
             | Self::DuckDb
@@ -372,7 +378,9 @@ impl Dialect {
     pub const fn ident_quotes(self) -> (char, char) {
         match self {
             Self::MySql | Self::ClickHouse | Self::BigQuery | Self::Databricks => ('`', '`'),
-            Self::Postgres | Self::Sqlite | Self::DuckDb | Self::Ansi => ('"', '"'),
+            Self::Postgres | Self::Sqlite | Self::DuckDb | Self::Ansi | Self::Snowflake => {
+                ('"', '"')
+            }
             Self::SqlServer => ('[', ']'),
         }
     }
@@ -402,7 +410,10 @@ impl Dialect {
             match c {
                 '\'' if backslashes => out.push_str("\\'"),
                 '\'' => out.push_str("''"),
-                '\\' if backslashes || matches!(self, Self::MySql | Self::ClickHouse) => {
+                // Snowflake reads `\'` as a quote too, so `''` stays correct there.
+                '\\' if backslashes
+                    || matches!(self, Self::MySql | Self::ClickHouse | Self::Snowflake) =>
+                {
                     out.push_str("\\\\");
                 }
                 c => out.push(c),
@@ -430,7 +441,9 @@ impl Dialect {
     pub fn binary_literal(self, hex: &str) -> String {
         match self {
             Self::Postgres => format!("decode('{hex}', 'hex')"),
-            Self::MySql | Self::Sqlite | Self::Ansi | Self::Databricks => format!("X'{hex}'"),
+            Self::MySql | Self::Sqlite | Self::Ansi | Self::Snowflake | Self::Databricks => {
+                format!("X'{hex}'")
+            }
             Self::BigQuery => format!("FROM_HEX('{hex}')"),
             Self::DuckDb => format!("from_hex('{hex}')"),
             Self::ClickHouse => format!("unhex('{hex}')"),
@@ -449,7 +462,12 @@ impl Dialect {
     pub const fn has_savepoints(self) -> bool {
         !matches!(
             self,
-            Self::DuckDb | Self::ClickHouse | Self::Ansi | Self::BigQuery | Self::Databricks
+            Self::DuckDb
+                | Self::ClickHouse
+                | Self::Ansi
+                | Self::Snowflake
+                | Self::BigQuery
+                | Self::Databricks
         )
     }
 
@@ -468,7 +486,9 @@ impl Dialect {
             // ClickHouse has no transactions, and a session's `readonly` setting cannot be
             // turned off again; with an ADBC driver transactions vary. Only the statement
             // check stops writes.
-            Self::ClickHouse | Self::Ansi | Self::BigQuery | Self::Databricks => &[],
+            Self::ClickHouse | Self::Ansi | Self::Snowflake | Self::BigQuery | Self::Databricks => {
+                &[]
+            }
         }
     }
 
@@ -480,7 +500,9 @@ impl Dialect {
             Self::Sqlite => &["ROLLBACK", "PRAGMA query_only = OFF"],
             Self::SqlServer => &["ROLLBACK", "SET LOCK_TIMEOUT -1"],
             Self::Postgres | Self::MySql | Self::DuckDb => &["ROLLBACK"],
-            Self::ClickHouse | Self::Ansi | Self::BigQuery | Self::Databricks => &[],
+            Self::ClickHouse | Self::Ansi | Self::Snowflake | Self::BigQuery | Self::Databricks => {
+                &[]
+            }
         }
     }
 
@@ -503,6 +525,7 @@ impl Dialect {
             | Self::DuckDb
             | Self::SqlServer
             | Self::Ansi
+            | Self::Snowflake
             | Self::BigQuery
             | Self::Databricks => format!("INSERT INTO {table} DEFAULT VALUES"),
         }
@@ -514,7 +537,9 @@ impl Dialect {
     pub fn row_estimate_sql(self, schema: Option<&str>, table: &str) -> String {
         match self {
             // A count could scan a warehouse table: unknown.
-            Self::Ansi | Self::BigQuery | Self::Databricks => "SELECT NULL".to_owned(),
+            Self::Ansi | Self::Snowflake | Self::BigQuery | Self::Databricks => {
+                "SELECT NULL".to_owned()
+            }
             Self::Postgres => format!(
                 "SELECT CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::bigint END                  FROM pg_class c WHERE c.oid = to_regclass({})",
                 self.quote_literal(&self.qualified(schema, table))
@@ -594,7 +619,7 @@ impl Dialect {
         match self {
             Self::Postgres | Self::DuckDb => format!("{expr} ILIKE {pattern} ESCAPE '!'"),
             // A binary or case-sensitive collation would make LIKE case-sensitive.
-            Self::MySql | Self::SqlServer | Self::Ansi | Self::Databricks => {
+            Self::MySql | Self::SqlServer | Self::Ansi | Self::Snowflake | Self::Databricks => {
                 format!("LOWER({expr}) LIKE LOWER({pattern}) ESCAPE '!'")
             }
             Self::Sqlite => format!("{expr} LIKE {pattern} ESCAPE '!'"),
@@ -617,7 +642,7 @@ impl Dialect {
             Self::Postgres | Self::Sqlite | Self::DuckDb => "TEXT",
             Self::MySql => "CHAR",
             Self::SqlServer => "NVARCHAR(MAX)",
-            Self::Ansi => "VARCHAR",
+            Self::Ansi | Self::Snowflake => "VARCHAR",
             Self::BigQuery | Self::Databricks => "STRING",
             // `toString` keeps NULLs, where `CAST(NULL AS String)` fails.
             Self::ClickHouse => "",
@@ -640,7 +665,7 @@ impl Dialect {
         use DataType as T;
         let text = match self {
             Self::Postgres | Self::Sqlite | Self::MySql => "TEXT",
-            Self::DuckDb | Self::Ansi => "VARCHAR",
+            Self::DuckDb | Self::Ansi | Self::Snowflake => "VARCHAR",
             Self::SqlServer => "NVARCHAR(MAX)",
             Self::ClickHouse => return Self::clickhouse_type(data_type),
             Self::BigQuery => return Self::bigquery_type(data_type),
@@ -678,7 +703,7 @@ impl Dialect {
                     Self::Postgres => "BYTEA",
                     Self::MySql => "LONGBLOB",
                     Self::SqlServer => "VARBINARY(MAX)",
-                    Self::Ansi => "VARBINARY",
+                    Self::Ansi | Self::Snowflake => "VARBINARY",
                     // ClickHouse, BigQuery and Databricks returned above.
                     Self::Sqlite
                     | Self::DuckDb
@@ -693,7 +718,7 @@ impl Dialect {
             (T::Timestamp(_, None), Self::SqlServer) => "DATETIME2",
             (T::Timestamp(_, Some(_)), Self::SqlServer) => "DATETIMEOFFSET",
             (T::Timestamp(_, Some(_)), Self::Postgres | Self::DuckDb) => "TIMESTAMPTZ",
-            (T::Timestamp(_, Some(_)), Self::Ansi) => "TIMESTAMP WITH TIME ZONE",
+            (T::Timestamp(_, Some(_)), Self::Ansi | Self::Snowflake) => "TIMESTAMP WITH TIME ZONE",
             (T::Timestamp(..), _) => "TIMESTAMP",
             (T::Interval(_), Self::Postgres | Self::DuckDb) => "INTERVAL",
             _ => text,
@@ -1040,7 +1065,7 @@ mod tests {
 
     #[test]
     fn bridge_dialects_of_drivers() {
-        assert_eq!(Dialect::from(DriverKind::Snowflake), Dialect::Ansi);
+        assert_eq!(Dialect::from(DriverKind::Snowflake), Dialect::Snowflake);
         assert_eq!(Dialect::from(DriverKind::Trino), Dialect::Ansi);
         assert_eq!(Dialect::from(DriverKind::Adbc), Dialect::Ansi);
         assert_eq!(Dialect::from(DriverKind::BigQuery), Dialect::BigQuery);
@@ -1052,6 +1077,8 @@ mod tests {
         // Snowflake folds bare names to upper case and Trino to lower case: only names
         // that read the same either way stay bare.
         assert_eq!(Dialect::Ansi.quote_ident("ORDERS"), "ORDERS");
+        assert_eq!(Dialect::Snowflake.quote_ident("ORDERS"), "ORDERS");
+        assert_eq!(Dialect::Snowflake.quote_ident("orders"), "\"orders\"");
         assert_eq!(Dialect::Ansi.quote_ident("orders"), "\"orders\"");
         assert_eq!(Dialect::Ansi.quote_ident("a\"b"), "\"a\"\"b\"");
         assert_eq!(Dialect::BigQuery.quote_ident("orders"), "orders");
@@ -1064,6 +1091,13 @@ mod tests {
     #[test]
     fn bridge_dialects_literals_and_limits() {
         assert_eq!(Dialect::Ansi.quote_literal("it's"), "'it''s'");
+        assert_eq!(Dialect::Ansi.quote_literal(r"C:\new"), r"'C:\new'");
+        // Snowflake reads `\n` in a string as a newline: the backslash is doubled.
+        let literal = Dialect::Snowflake.quote_literal(r"C:\new it's");
+        assert_eq!(literal, r"'C:\\new it''s'");
+        let tokens: Vec<_> = Lexer::new(&literal, Dialect::Snowflake).collect();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].kind, TokenKind::String);
         assert_eq!(Dialect::BigQuery.quote_literal("it's \\"), "'it\\'s \\\\'");
         assert_eq!(Dialect::Databricks.quote_literal("it's"), "'it\\'s'");
         assert_eq!(Dialect::Ansi.binary_literal("0aff"), "X'0aff'");

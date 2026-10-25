@@ -63,6 +63,12 @@ fn backslashes(dialect: Dialect) -> bool {
     )
 }
 
+/// Whether a backslash escapes the next character inside `'…'` strings: Snowflake reads
+/// `\'` there, but not in `"…"` names.
+fn string_backslashes(dialect: Dialect) -> bool {
+    backslashes(dialect) || dialect == Dialect::Snowflake
+}
+
 fn is_ident_char(c: char, dialect: Dialect) -> bool {
     c.is_alphanumeric()
         || c == '_'
@@ -205,13 +211,16 @@ impl<'a> Lexer<'a> {
         {
             self.eat_while(|c| c != '\n');
             TokenKind::LineComment
+        } else if c == '/' && self.peek_at(1) == Some('/') && d == Dialect::Snowflake {
+            self.eat_while(|c| c != '\n');
+            TokenKind::LineComment
         } else if c == '/' && self.peek_at(1) == Some('*') {
             self.pos += 2;
             self.block_comment();
             TokenKind::BlockComment
         } else if c == '\'' {
             self.bump();
-            self.quoted('\'', backslashes(d));
+            self.quoted('\'', string_backslashes(d));
             TokenKind::String
         } else if (c == 'e' || c == 'E')
             && self.peek_at(1) == Some('\'')
@@ -485,6 +494,37 @@ mod tests {
             [
                 (TokenKind::QuotedIdent, r#""x""#),
                 (TokenKind::String, "'it''s'")
+            ]
+        );
+    }
+
+    #[test]
+    fn snowflake_strings_take_backslash_escapes() {
+        let src = r"SELECT 'a\'' ; DROP TABLE t; --'";
+        assert_eq!(
+            kinds(src, Dialect::Snowflake),
+            [
+                (TokenKind::Word, "SELECT"),
+                (TokenKind::String, r"'a\''"),
+                (TokenKind::Symbol, ";"),
+                (TokenKind::Word, "DROP"),
+                (TokenKind::Word, "TABLE"),
+                (TokenKind::Word, "t"),
+                (TokenKind::Symbol, ";"),
+                (TokenKind::LineComment, "--'"),
+            ]
+        );
+        // Trino reads the backslash literally and `''` as a quote: all one string.
+        assert_eq!(
+            kinds(src, Dialect::Ansi)[1..],
+            [(TokenKind::String, r"'a\'' ; DROP TABLE t; --'")]
+        );
+        // Names take no backslash escapes, and `//` starts a comment.
+        assert_eq!(
+            kinds(r#""a\" // x"#, Dialect::Snowflake),
+            [
+                (TokenKind::QuotedIdent, r#""a\""#),
+                (TokenKind::LineComment, "// x"),
             ]
         );
     }

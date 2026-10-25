@@ -192,6 +192,7 @@ impl ImportPlan {
             Dialect::DuckDb
             | Dialect::ClickHouse
             | Dialect::Ansi
+            | Dialect::Snowflake
             | Dialect::BigQuery
             | Dialect::Databricks => declared.to_owned(),
         }

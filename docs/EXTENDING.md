@@ -180,7 +180,7 @@ downloads instead of building in:
   the command again.
 - Adding a database: a `DriverKind` with its package, a branch in `profile::options` with a
   test, its fields in `apps/desktop/src/drivers/profiles.ts`, a tile in `DriverPicker.tsx`,
-  and its dialect (`Dialect::Ansi`, `BigQuery` or `Databricks`, or a new one).
+  and its dialect (`Dialect::Ansi`, `Snowflake`, `BigQuery` or `Databricks`, or a new one).
 - Cancelling: ADBC drivers written in Go do not stop a running statement on a connection-level
   cancel, and the statement's own cancel waits for the lock `execute` holds; a statement still
   waiting to start is given up with its session (`is_closed`), and the app opens another.
