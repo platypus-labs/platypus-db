@@ -7,7 +7,8 @@
   --frame: var(--bg-rail);
   --env-ink: var(--fg-strong);
   display: grid;
-  grid-template-columns: 52px 260px minmax(0, 1fr);
+  /* The navigator's width: set by App (shell/SidebarResizer.tsx, same default). */
+  grid-template-columns: 52px var(--sidebar-width, 260px) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
     "top top top"
@@ -38,6 +39,48 @@
 
 .shell > .sidebar-column {
   grid-area: side;
+  position: relative;
+}
+
+/* The handle on the edge between the connections and the sheet: a thin line shows on hover. */
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 8px;
+  right: -5px;
+  width: 9px;
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.sidebar-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.15s ease-out 0.1s;
+}
+
+.sidebar-resizer:hover::after,
+.sidebar-resizer:focus-visible::after,
+.sidebar-resizer.dragging::after {
+  opacity: 0.6;
+}
+
+.sidebar-resizer:focus-visible {
+  outline: none;
+}
+
+/* While dragging, the cursor stays and nothing gets selected. */
+.shell:has(.sidebar-resizer.dragging) {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .workspace {

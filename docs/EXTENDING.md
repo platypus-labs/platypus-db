@@ -347,6 +347,7 @@ registerAction({
 | Scope | Argument | Shown in |
 |---|---|---|
 | `global` | — | shortcuts anywhere, including in the editor |
+| `navigator.list` | `{ project }` (`null`: All connections) | navigator menu, below the rows |
 | `navigator.connection` | `{ connection }` | navigator menu |
 | `navigator.database` | `{ connection, database, name }` | navigator menu |
 | `navigator.schema` | `{ connection, database, schema }` | navigator menu |

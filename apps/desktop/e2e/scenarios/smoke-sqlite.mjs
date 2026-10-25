@@ -61,6 +61,7 @@ export default async function (page, { dir }) {
   // Navigator menu, built from the registered actions.
   await page.eval(`${connectionRow}.id = 'e2e-connection'`);
   assert.deepEqual(await rightClick(page, "#e2e-connection"), [
+    "New connection…",
     "New SQL script",
     "New saved script",
     "Search objects…",
