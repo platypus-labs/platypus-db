@@ -118,9 +118,14 @@ rather than checking the driver. It provides:
 - statements for the navigator (`generate.rs`): `select`, `insert`, `update`, `delete`,
   `upsert`, `drop`, `rename`, `truncate`. `drop` and `rename` return `None` for an object
   kind the dialect cannot drop or rename; `dialect_support` reports the kinds to the UI.
+- `column_type`: the column type that holds an Arrow type, for tables created by an import;
+  `upsert_rows`, the upsert of a `VALUES` list (`ON CONFLICT`, `ON DUPLICATE KEY`, `MERGE`)
 
 `platypus_sql::dml` builds the data editor's `UPDATE`, `INSERT` and `DELETE` statements from
 text values and the columns' Arrow types, and `dml::apply` runs them all or none.
+`platypus_export::import` copies a data file's rows into a table the same way, read through a
+DuckDB connection on the file (`platypus_driver_duckdb::files`, which also opens data files as
+databases); a new file format is a reader there.
 `platypus_sql::analyze` tells what a statement does (query, DML, DDL) and which table an
 unfiltered `UPDATE`, `DELETE` or `TRUNCATE` changes in every row; the checks before running
 (`apps/desktop/src/guards/`) use it. `platypus_sql::source_table` tells which table a `SELECT` reads, when its rows are that
@@ -156,19 +161,72 @@ Conformance scenarios that are not SQL-specific have a MongoDB version in
 
 ### Connections file
 
-`platypus_store::ConnectionStore` keeps `connections.toml`, now `version = 3`: a list of
+`platypus_store::ConnectionStore` keeps `connections.toml`, now `version = 4`: a list of
 `[[projects]]` (`id`, `name`, `color` as `#rrggbb`, `initials`, `connections`, the ids of
 its connections), then the `[[network_profiles]]` (an SSH tunnel and SSL settings that
 connections reference by `network_profile`; `ConnectionStore::effective` puts them in place
 of the connection's own), before the `[[connections]]`. A connection can be in several
-projects, or in none. Older files are read and written back as version 3; a file with a
+projects, or in none. Older files are read and written back as version 4; a file with a
 newer version is refused, so an older app never drops what it cannot read. Ids of
 connections that no longer exist are dropped when the file is opened, and deleting a
-connection removes it from every project.
+connection removes it from every project. Version 4 added each connection's
+`agent_access` (`off`, `read_only` by default, `read_write`); see [Agents](#agents-mcp).
 
 The projects' commands are in `commands/projects.rs`: `list_projects`, `save_project`,
 `delete_project`, `set_project_membership` and `project_initials`. `save_connection` and
 `save_imported` take the projects a connection joins.
+
+### Agents (MCP)
+
+`crates/platypus-mcp` lets external agents use the saved connections. Its library is the
+`Agent` (`agent.rs`), with one method per tool; the binary `platypus-mcp` serves them over
+stdio with `rmcp` (`server.rs`), and the `platypus` CLI calls the same methods for
+`--connection` (`crates/platypus-cli/src/agent.rs`). The pieces:
+- `Profile` finds the app's folders the way Tauri does (`dirs::config_dir()` and
+  `dirs::data_dir()` with the bundle identifier), or `PLATYPUS_DATA_DIR`. It reopens
+  `connections.toml` at every call, so a change in the app applies at once; with a master
+  password the `VaultSecrets` stay locked, and a connection needing them fails with
+  `AgentError::Locked`.
+- `connect.rs` opens a saved connection like the app: `ConnectionStore::effective` (network
+  profile), the password from `platypus_store::external_password` or the store, the SSH
+  secrets, the bootstrap statements, and `platypus_net::connect`. A DuckDB session for
+  agents then turns external access off (no `read_text`, `glob`, `COPY` to files or
+  `INSTALL`; a data file may read only itself, through `allowed_paths`) and locks its
+  configuration. Connections stay open between calls, one per saved connection, and are
+  reopened when the fingerprint of their effective settings changes; DuckDB's close after
+  each call, since its file lock would keep the app out.
+- `access.rs` decides what runs. `SavedConnection::effective_agent_access` caps production
+  and read-only connections at read-only. `access::check` takes one statement
+  (`platypus_sql::split`) and runs `platypus_sql::analyze`: read-only access runs only
+  `StatementKind::Query`, and refuses by name the functions a read-only transaction lets
+  act outside it (PostgreSQL's `pg_terminate_backend`, `pg_reload_conf`, `pg_notify`,
+  `dblink`, `lo_export`, advisory locks…; MySQL's `LOAD_FILE`, `INTO OUTFILE`); read-write
+  refuses transaction control and, unless the `safety.unfiltered` setting is `off`, the
+  `unfiltered` changes the app would confirm.
+- `query.rs` runs the statement within `Limits` (rows, bytes, timeout; the timeout cancels
+  through the connection's `CancelHandle`). On read-only access it runs between
+  `Dialect::read_only_begin` and `Dialect::read_only_end`: a `READ ONLY` transaction where
+  the database has one (`Dialect::refuses_writes_when_read_only`), else a transaction that
+  is always rolled back. DuckDB and SQL Server have no read-only transaction: a write that
+  got past the checks runs and is rolled back, holding its locks until then; SQL Server
+  waits 5 seconds at most for a lock meanwhile (`LOCK_TIMEOUT`), and effects outside the
+  transaction are not undone. A new driver adds its case to those `Dialect` methods; the
+  conformance test `agents_read_in_read_only_transactions` checks it.
+- `output.rs` renders a result as an aligned text table or the JSON documented in the README
+  ([Agents](../README.md#agents)); the whole rendering stays within the byte limit, rows
+  dropped from the end until it fits. Change that JSON only by adding fields.
+- `redact.rs` masks the connection's password, SSH secrets, password command and the
+  password of any URL in every error an agent reads. Tools never return the host, the user
+  or SSH settings.
+
+Every `run_query` is recorded in the query history with `origin`, the MCP client's name
+(`clientInfo.name`, trimmed to 64 characters, `agent` when empty) or `platypus-cli`; `HistoryQuery::origin` filters the app's entries
+(`NULL`) or the agents'. A new tool is a method on `Agent`, a `#[tool]` in `server.rs` and,
+for the CLI, a subcommand. `commands/agents.rs` gives the Settings' Agents page
+(`apps/desktop/src/agents/`) the server's path and the commands for Claude Code and Codex.
+The installers ship `platypus-mcp` as a Tauri external binary: `tauri build --config
+src-tauri/tauri.mcp.conf.json` runs `scripts/stage-mcp.mjs`, which builds it into
+`src-tauri/binaries/`; plain builds and `cargo` commands do not need it.
 
 ### Settings storage
 

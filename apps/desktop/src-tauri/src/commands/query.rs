@@ -57,6 +57,7 @@ pub async fn run_query(
                 rows,
                 status,
                 error,
+                origin: None,
             });
         }
     };

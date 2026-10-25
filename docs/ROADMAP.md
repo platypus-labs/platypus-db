@@ -92,13 +92,13 @@ scaduto. Procedura completa: [CLAUDE.md](../CLAUDE.md).
 | E — Explain e performance | ✅ fatto (P1, P2, P3) |
 | F — Connettività e credenziali | ✅ fatto (P1, P2) |
 | G — Nuovi driver | 🔒 Delfa · group-g-p2 · 2026-10-24 |
-| H — Import, export e trasferimento | libero |
+| H — Import, export e trasferimento | 🔒 Paolo · group-h-fixes · 2026-10-25 |
 | I — Strumenti di schema | libero |
 | J — Amministrazione del server | libero |
 | K — Shell ed ergonomia | ✅ fatto (P1) |
 | L — Sicurezza operativa | ✅ fatto (P1) |
 | M — Analisi dei dati | libero |
-| N — Accesso per agenti (MCP) | libero |
+| N — Accesso per agenti (MCP) | ✅ fatto (P1) |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
@@ -307,7 +307,7 @@ conformance dedicata in `tests/mongo.rs` (profilo `mongo` di `docker/compose.yml
 | SQL Server (`tiberius`) | P1 | Dialetto `TOP`, `[quoting]`, più result set |
 | DuckDB | P1 | Arrow nativo; serve anche al gruppo M |
 | ClickHouse | P2 | HTTP con formato Arrow |
-| File come database: CSV, Parquet, JSON, XLSX (tramite DuckDB) | P2 | Si aprono con il trascinamento sulla finestra |
+| File come database: CSV, Parquet, JSON, XLSX (tramite DuckDB) | P2 | ✅ Fatto con il gruppo H: viste DuckDB sul file, un foglio XLSX per tabella (calamine); si aprono col trascinamento sulla finestra |
 | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | P2 | Wire PG: profili e test, non driver nuovi |
 | ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | Una persona per il bridge, poi profili |
 | Oracle nativo | P3 | Licensing OCI da valutare |
@@ -320,6 +320,32 @@ conformance dedicata in `tests/mongo.rs` (profilo `mongo` di `docker/compose.yml
 
 **Area:** `platypus-export` (da rinominare in `platypus-transfer`), `apps/desktop/src/transfer/`, `commands/transfer.rs`
 **Dipende da:** 0.5
+
+**Stato: P1 completate.** I file (CSV, TSV, JSON, NDJSON, Parquet, XLSX) si leggono con una
+connessione DuckDB sul file, la stessa del "file come database" del gruppo G; l'import in una
+tabella esistente o nuova (`platypus-export::import`) scrive INSERT da 500 righe in una sola
+transazione, e una tabella creata e poi fallita si elimina. I tipi della tabella nuova vengono da
+`Dialect::column_type`. Il rename in `platypus-transfer` non è stato fatto. Conformance su tutti i
+database ed E2E `import-sqlite`.
+
+**P2 completate.** L'import aggiunge, sostituisce (`DELETE` nella stessa transazione, non
+`TRUNCATE`, che MySQL committa) o fa l'upsert sulla chiave primaria (`Dialect::upsert_rows`:
+`ON CONFLICT`, `ON DUPLICATE KEY`, `MERGE`). Il trasferimento tra database riusa l'import con
+una connessione qualsiasi come sorgente; le colonne testuali prendono il tipo dichiarato (le
+colonne di SQLite non hanno tipo su un risultato vuoto). Export in XLSX (`rust_xlsxwriter`, a
+memoria costante), SQL INSERT, Markdown, HTML e XML; di più tabelle o di uno schema in una
+cartella. Annullare un import ora lo ferma tra un blocco e l'altro, così il rollback e la DROP
+della tabella creata vengono eseguiti. Conformance: modalità su tutti i database e
+trasferimento tra tutte le 36 coppie.
+
+**P3 completate.** La migrazione (`platypus-export::migrate`) crea ogni tabella con colonne,
+NOT NULL e chiave primaria (i `varchar(n)` restano `VARCHAR(n)`, perché MySQL non indicizza
+TEXT), la riempie in una transazione sua e alla fine aggiunge le chiavi esterne tra le tabelle
+copiate; SQLite e DuckDB non le aggiungono a una tabella esistente e finiscono tra gli avvisi.
+Il generatore (`fake`) sceglie per nome e tipo della colonna, dà chiavi dopo la più grande e
+chiavi esterne prese dalla tabella referenziata. L'export si comprime in gzip o zstd e si
+carica con un `PUT` su un URL firmato S3 o GCS: niente credenziali cloud salvate nell'app.
+Conformance: migrazione tra le 30 coppie di database diversi, generatore su tutti.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
@@ -450,6 +476,26 @@ della transazione aperta con avviso). Restano i P2/P3.
 
 ### Gruppo N — Accesso per agenti esterni (MCP)
 
+**Stato: P1 completate.** Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
+il binario `platypus-mcp`, server MCP su stdio con `rmcp`: legge il profilo dell'app (o
+`PLATYPUS_DATA_DIR`) e apre le connessioni come l'app (profili di rete, tunnel SSH, password
+da keychain, comando o `.pgpass`); con la master password i segreti restano bloccati e la
+connessione risponde con un errore chiaro. Strumenti: `list_connections` (senza host, utente
+né segreti), `list_schemas`, `list_objects`, `describe_table`, `get_ddl`, `search_objects` e
+`run_query` (uno statement, limiti di righe, byte e tempo, tabella testuale o JSON).
+`agent_access` per connessione in `connections.toml` (versione 4): `off`, `read_only`
+(default), `read_write`; Prod e connessioni read-only al massimo in sola lettura. In sola
+lettura passa solo ciò che `platypus_sql::analyze` vede come query, eseguito nella
+transazione di sola lettura del database (`Dialect::read_only_begin`: `READ ONLY` in
+PostgreSQL, MySQL e MariaDB, `query_only` in SQLite, rollback in DuckDB e SQL Server); in
+lettura e scrittura niente controllo delle transazioni e niente UPDATE/DELETE senza WHERE o
+TRUNCATE se l'impostazione Safety chiede conferma. Errori ripuliti dai segreti; ogni query
+nella cronologia con l'agente come origine (colonna `origin`) e un filtro nel pannello. Pagina
+Impostazioni "Agents" con i comandi per Claude Code e Codex e l'accesso di ogni connessione;
+selettore "Agent access" nel dialog di connessione. CLI `platypus --connection <nome>` con
+output JSON documentato nel README. Gli installer includono `platypus-mcp` come external
+binary di Tauri (`--config src-tauri/tauri.mcp.conf.json`). Restano P2 e P3.
+
 PlatypusDB non integra un proprio assistente AI. Diventa invece uno strumento che gli agenti già
 in uso (Claude Code, Codex, Cursor, altri client MCP) possono collegare: usano le connessioni
 salvate, leggono lo schema ed eseguono query con i permessi decisi dall'utente. Le credenziali
@@ -509,6 +555,9 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | Benchmark affiancato con DBeaver, aggiornando `BENCHMARKS.md` | P2 |
 | Benchmark in CI con soglie (avvio, memoria, decode) per bloccare le regressioni | P2 |
 | Crash report opt-in e log su file con rotazione | P2 |
+| **Un solo eseguibile anche per gli agenti**: l'app fa da server MCP con un'opzione (`platypus-db --mcp`) invece di un secondo binario `platypus-mcp` che ricontiene tutti i driver (circa 50-60 MB in meno nell'installer) | P2 |
+| **DuckDB scaricato al primo uso** invece che incluso nell'installer (circa 35 MB): chi non apre file CSV, Parquet o DuckDB non lo scarica mai | P2 |
+| Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
 | Distribuzione: winget, Homebrew cask, Flatpak, AUR | P3 |
 | Sito e documentazione utente | P3 |
 
@@ -540,7 +589,7 @@ dell'ondata.
 |---|---|---|---|---|
 | **0** | Fase 0 (1 persona) e **P** in parallelo | Codice pronto al lavoro parallelo, prima release pubblica | v0.1.x | Fase 0 fatta; P in corso |
 | **1** | **A**, **B** (P1), **C** (P1), **F** (SSH, tipi, import), **K** (P1), **L** (P1) | Sostituire DBeaver nell'uso quotidiano | v0.2 | **Fatta** (P1 di A, B, C, F, K e L; P2 di A e B), release v0.2.0 del 24 ottobre 2026 |
-| **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte; E: completato |
+| **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte; E: completato; H: completato |
 | **3** | **I**, **J**, **M**, **N**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 | Da fare |
 | **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | Da fare |
 

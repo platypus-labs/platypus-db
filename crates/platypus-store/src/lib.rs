@@ -14,12 +14,14 @@ mod secrets;
 mod settings;
 mod vault;
 
-pub use auth::{command_password, pgpass_password, pgpass_path};
+pub use auth::{command_password, external_password, pgpass_password, pgpass_path};
 pub use connections::{
-    ConnectionStore, ConnectionType, NetworkProfile, PasswordUpdate, Project, SavedConnection,
-    SavedInit, SavedSsh, SshAuthKind, VirtualKey, initials_of,
+    AgentAccess, ConnectionStore, ConnectionType, NetworkProfile, PasswordUpdate, Project,
+    SavedConnection, SavedInit, SavedSsh, SshAuthKind, VirtualKey, initials_of,
 };
-pub use history::{HistoryEntry, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry};
+pub use history::{
+    HistoryEntry, HistoryOrigin, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry,
+};
 pub use import::{
     ImportFile, ImportSource, detect as detect_imports, import as import_connections,
 };

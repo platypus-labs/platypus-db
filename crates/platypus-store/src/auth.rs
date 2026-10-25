@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use platypus_core::Secret;
 
-use crate::{Result, StoreError};
+use crate::{Result, SavedConnection, StoreError};
 
 /// How long a password command may run.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
@@ -76,6 +76,34 @@ fn pgpass_fields(line: &str) -> Option<[String; 5]> {
         }
     }
     fields.try_into().ok()
+}
+
+/// The password from the connection's command or `.pgpass`, if it uses one of them; `None`
+/// when it uses neither. Runs the command, so call it off the async runtime.
+pub fn external_password(saved: &SavedConnection) -> Result<Option<Secret>> {
+    if let Some(command) = &saved.password_command {
+        return command_password(command).map(Some);
+    }
+    if !saved.pgpass {
+        return Ok(None);
+    }
+    let path = pgpass_path()
+        .ok_or_else(|| StoreError::Invalid("no .pgpass location: set PGPASSFILE".to_owned()))?;
+    let port = saved
+        .port
+        .or(saved.driver.default_port())
+        .unwrap_or_default();
+    pgpass_password(&path, &saved.host, port, &saved.database, &saved.user)?
+        .map(Some)
+        .ok_or_else(|| {
+            StoreError::Invalid(format!(
+                "no line of {} matches {}:{port}:{}:{}",
+                path.display(),
+                saved.host,
+                saved.database,
+                saved.user
+            ))
+        })
 }
 
 /// Runs `command` in the system shell and returns the first line it prints.
@@ -177,6 +205,18 @@ mod tests {
         assert_eq!(
             pgpass_password(&dir.path().join("missing"), "h", 1, "d", "u").unwrap(),
             None
+        );
+    }
+
+    #[test]
+    fn external_passwords_come_from_the_command_first() {
+        let mut saved = SavedConnection::new("x", platypus_core::DriverKind::Postgres);
+        assert_eq!(external_password(&saved).unwrap(), None);
+        saved.pgpass = true;
+        saved.password_command = Some("echo from-command".to_owned());
+        assert_eq!(
+            external_password(&saved).unwrap().unwrap().expose(),
+            "from-command"
         );
     }
 

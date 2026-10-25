@@ -127,18 +127,33 @@ WHERE {};",
     /// ClickHouse, whose keys are not unique.
     #[must_use]
     pub fn upsert(self, table: &ObjectName<'_>, columns: &[&str], keys: &[&str]) -> Option<String> {
-        if keys.is_empty() || self == Self::ClickHouse {
+        if keys.is_empty() {
             return None;
         }
-        let insert = self.insert(table, columns);
-        let insert = insert.trim_end_matches(';');
-        let others: Vec<String> = self
-            .columns(columns)
-            .into_iter()
+        let row = format!("({})", vec!["?"; columns.len()].join(", "));
+        let sql = self.upsert_rows(&self.object(table), columns, keys, &row)?;
+        Some(format!("{};", sql.trim_end_matches(';')))
+    }
+
+    /// Inserts `rows`, a `VALUES` list such as `(1, 'a'), (2, 'b')`, into `table` (quoted
+    /// already), updating the rows whose `keys` exist. `keys` must not be empty. `None` in
+    /// ClickHouse, whose keys are not unique.
+    #[must_use]
+    pub fn upsert_rows(
+        self,
+        table: &str,
+        columns: &[&str],
+        keys: &[&str],
+        rows: &str,
+    ) -> Option<String> {
+        let all = self.columns(columns);
+        let others: Vec<String> = all
+            .iter()
             .zip(columns)
             .filter(|(_, c)| !keys.contains(c))
-            .map(|(q, _)| q)
+            .map(|(q, _)| q.clone())
             .collect();
+        let insert = format!("INSERT INTO {table} ({})\nVALUES {rows}", all.join(", "));
         Some(match self {
             Self::Postgres | Self::Sqlite | Self::DuckDb => {
                 let action = if others.is_empty() {
@@ -151,7 +166,7 @@ WHERE {};",
                     format!("DO UPDATE SET {}", set.join(",\n    "))
                 };
                 format!(
-                    "{insert}\nON CONFLICT ({}) {action};",
+                    "{insert}\nON CONFLICT ({}) {action}",
                     self.columns(keys).join(", ")
                 )
             }
@@ -166,22 +181,22 @@ WHERE {};",
                     .iter()
                     .map(|q| format!("{q} = VALUES({q})"))
                     .collect();
-                format!("{insert}\nON DUPLICATE KEY UPDATE {};", set.join(",\n    "))
+                format!("{insert}\nON DUPLICATE KEY UPDATE {}", set.join(",\n    "))
             }
-            Self::SqlServer => self.merge(table, columns, keys, &others),
+            Self::SqlServer => self.merge(table, &all, keys, &others, rows),
             Self::ClickHouse => return None,
         })
     }
 
-    /// Transact-SQL's upsert: `MERGE` of a one-row source on the key.
+    /// Transact-SQL's upsert: `MERGE` of the `rows` on the key.
     fn merge(
         self,
-        table: &ObjectName<'_>,
-        columns: &[&str],
+        table: &str,
+        all: &[String],
         keys: &[&str],
         others: &[String],
+        rows: &str,
     ) -> String {
-        let all = self.columns(columns);
         let on: Vec<String> = self
             .columns(keys)
             .iter()
@@ -194,11 +209,10 @@ WHERE {};",
             format!("\nWHEN MATCHED THEN\n  UPDATE SET {}", set.join(",\n    "))
         };
         let values: Vec<String> = all.iter().map(|q| format!("source.{q}")).collect();
+        // A MERGE must end with a semicolon.
         format!(
-            "MERGE INTO {} AS target\nUSING (VALUES ({})) AS source ({})\nON {}{matched}\n\
+            "MERGE INTO {table} AS target\nUSING (VALUES {rows}) AS source ({})\nON {}{matched}\n\
              WHEN NOT MATCHED THEN\n  INSERT ({}) VALUES ({});",
-            self.object(table),
-            vec!["?"; columns.len()].join(", "),
             all.join(", "),
             on.join(" AND "),
             all.join(", "),

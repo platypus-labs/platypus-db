@@ -387,7 +387,9 @@ export function QueryTab({
   /** Exports the rows of `sql` to `path` instead of showing them (`@export`). */
   function exportTo(sessionId: number, sql: string, path: string, format: ExportFormat): Promise<ResultStatus> {
     return new Promise((resolve) => {
-      const options: ExportOptions = { format, delimiter: ",", header: true };
+      // SQL statements insert into a table named after the file.
+      const table = path.split(/[\\/]/).pop()!.replace(/\.\w+$/, "");
+      const options: ExportOptions = { format, delimiter: ",", header: true, table, driver: connection.driver };
       api
         .exportQuery(sessionId, sql, path, options, (event) => {
           if (event.type === "done") {
@@ -1384,6 +1386,7 @@ export function QueryTab({
       {exportOpen && rowsResult && (
         <ExportDialog
           name={tab.title ?? "result"}
+          driver={connection.driver}
           loadedRows={rowsResult.rows}
           complete={rowsResult.status.kind === "rows" && rowsResult.status.finished && rowsResult.status.complete}
           transactionOpen={!!tx?.open}

@@ -1,0 +1,60 @@
+/* Import of data files. */
+
+.modal.import-data {
+  width: min(900px, 92vw);
+}
+
+.import-preview {
+  max-height: 30vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.import-preview table {
+  border-collapse: collapse;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.import-preview th,
+.import-preview td {
+  padding: 2px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.import-preview th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-sidebar);
+}
+
+.import-mapping {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 1fr 1fr;
+  gap: 4px 8px;
+  align-items: center;
+  max-height: 30vh;
+  overflow: auto;
+  margin-top: 8px;
+}
+
+.import-mapping.two {
+  grid-template-columns: minmax(140px, 1fr) 1fr;
+}
+
+.import-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 8px;
+}
+
+.migrate-warnings {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}

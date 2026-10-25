@@ -150,7 +150,14 @@ impl SqliteConnection {
 impl Connection for SqliteConnection {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
         let state = self.transaction();
-        if !state.autocommit && !state.open && classify(sql) == TxEffect::None {
+        // DDL is transactional in SQLite and opens the transaction too; VACUUM cannot run in one.
+        // A read does not: it has nothing to commit, and its transaction would hold the file's
+        // lock until COMMIT, so that no other session (the navigator, an import) could write.
+        if !state.autocommit
+            && !state.open
+            && matches!(classify(sql), TxEffect::None | TxEffect::ImplicitCommit)
+            && !platypus_sql::is_read_only(sql, platypus_sql::Dialect::Sqlite)
+        {
             self.send("BEGIN", 1).await?;
         }
         let (job, started) = self.send(sql, options.batch_size.max(1)).await?;

@@ -1,0 +1,50 @@
+[package]
+name = "platypus-mcp"
+description = "PlatypusDB for external agents: an MCP server over stdio on the saved connections"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "platypus_mcp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "platypus-mcp"
+path = "src/main.rs"
+
+[dependencies]
+arrow-array.workspace = true
+arrow-cast.workspace = true
+arrow-schema.workspace = true
+dirs = "7"
+futures.workspace = true
+platypus-core.workspace = true
+platypus-driver-clickhouse.workspace = true
+platypus-driver-duckdb.workspace = true
+platypus-driver-libsql.workspace = true
+platypus-driver-mongo.workspace = true
+platypus-driver-mssql.workspace = true
+platypus-driver-mysql.workspace = true
+platypus-driver-pg.workspace = true
+platypus-driver-sqlite.workspace = true
+platypus-net.workspace = true
+platypus-sql.workspace = true
+platypus-store.workspace = true
+rmcp = { version = "3.7", default-features = false, features = ["server", "macros", "transport-io"] }
+schemars = "1"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "io-std"] }
+uuid.workspace = true
+
+[dev-dependencies]
+duckdb.workspace = true
+rusqlite.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

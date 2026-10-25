@@ -3,6 +3,12 @@
 //!
 //! Output goes to `<file>.part` and is renamed into place by [`Exporter::finish`]; an
 //! exporter dropped before that (cancelled or failed export) deletes the partial file.
+//! [`import`] goes the other way: rows of a data file into a table.
+
+pub mod fake;
+pub mod import;
+pub mod migrate;
+mod text;
 
 use std::fs::File;
 use std::io::BufWriter;
@@ -15,9 +21,11 @@ use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use arrow_json::writer::{JsonArray, LineDelimited};
 use arrow_schema::{ArrowError, DataType, Field, Schema, SchemaRef};
 use parquet::arrow::ArrowWriter;
-use parquet::basic::{Compression, ZstdLevel};
+use parquet::basic::{Compression as ParquetCompression, ZstdLevel};
 use parquet::errors::ParquetError;
 use parquet::file::properties::WriterProperties;
+use platypus_core::DriverKind;
+use platypus_sql::Dialect;
 use serde::Deserialize;
 
 /// Rows per Parquet row group: large enough to compress well, small enough to bound the
@@ -34,6 +42,52 @@ pub enum Format {
     /// One JSON object per line.
     Ndjson,
     Parquet,
+    /// `INSERT` statements, one per row.
+    Sql,
+    Markdown,
+    Html,
+    Xml,
+    Xlsx,
+}
+
+impl Format {
+    /// The usual file extension.
+    #[must_use]
+    pub const fn extension(self) -> &'static str {
+        match self {
+            Self::Csv => "csv",
+            Self::Json => "json",
+            Self::Ndjson => "ndjson",
+            Self::Parquet => "parquet",
+            Self::Sql => "sql",
+            Self::Markdown => "md",
+            Self::Html => "html",
+            Self::Xml => "xml",
+            Self::Xlsx => "xlsx",
+        }
+    }
+}
+
+/// How the finished file is compressed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Compression {
+    #[default]
+    None,
+    Gzip,
+    Zstd,
+}
+
+impl Compression {
+    /// What the compressed file adds to its name, e.g. `.gz`.
+    #[must_use]
+    pub const fn suffix(self) -> &'static str {
+        match self {
+            Self::None => "",
+            Self::Gzip => ".gz",
+            Self::Zstd => ".zst",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -44,6 +98,13 @@ pub struct ExportOptions {
     pub delimiter: char,
     /// CSV header row.
     pub header: bool,
+    /// SQL: the table the statements insert into, as typed (it is quoted when needed).
+    pub table: String,
+    /// SQL: the database the statements are written for.
+    pub driver: Option<DriverKind>,
+    pub compression: Compression,
+    /// A signed URL (S3, GCS) the finished file is also sent to with a `PUT`.
+    pub upload_url: Option<String>,
 }
 
 impl Default for ExportOptions {
@@ -52,6 +113,10 @@ impl Default for ExportOptions {
             format: Format::Csv,
             delimiter: ',',
             header: true,
+            table: "export".to_owned(),
+            driver: None,
+            compression: Compression::None,
+            upload_url: None,
         }
     }
 }
@@ -69,6 +134,8 @@ pub enum ExportError {
     Parquet(#[from] ParquetError),
     #[error("invalid export options: {0}")]
     Options(String),
+    #[error("upload failed: {0}")]
+    Upload(String),
 }
 
 pub type Result<T, E = ExportError> = std::result::Result<T, E>;
@@ -78,6 +145,7 @@ enum Sink {
     Json(arrow_json::Writer<BufWriter<File>, JsonArray>),
     Ndjson(arrow_json::Writer<BufWriter<File>, LineDelimited>),
     Parquet(Box<ArrowWriter<BufWriter<File>>>),
+    Text(Box<text::TextSink>),
 }
 
 /// Whether a column of `data_type` is written as text in `format`.
@@ -118,6 +186,8 @@ fn as_text(data_type: &DataType, format: Format) -> bool {
                 | T::Utf8View
         ),
         Format::Parquet => matches!(data_type, T::Interval(_) | T::Duration(_)),
+        // Written from the values' text, with their types to tell numbers.
+        Format::Sql | Format::Markdown | Format::Html | Format::Xml | Format::Xlsx => false,
     }
 }
 
@@ -157,6 +227,8 @@ pub struct Exporter {
     partial: PathBuf,
     target: PathBuf,
     rows: u64,
+    compression: Compression,
+    upload_url: Option<String>,
 }
 
 impl std::fmt::Debug for Exporter {
@@ -213,9 +285,23 @@ impl Exporter {
                     .with_explicit_nulls(true)
                     .build::<_, LineDelimited>(out),
             ),
+            format @ (Format::Sql
+            | Format::Markdown
+            | Format::Html
+            | Format::Xml
+            | Format::Xlsx) => {
+                let dialect = Dialect::from(options.driver.unwrap_or(DriverKind::Postgres));
+                let table = dialect.qualified(None, &options.table);
+                Sink::Text(Box::new(text::TextSink::new(
+                    format,
+                    &schema,
+                    out,
+                    (dialect, table),
+                )?))
+            }
             Format::Parquet => {
                 let properties = WriterProperties::builder()
-                    .set_compression(Compression::ZSTD(ZstdLevel::try_new(3)?))
+                    .set_compression(ParquetCompression::ZSTD(ZstdLevel::try_new(3)?))
                     .set_max_row_group_row_count(Some(ROW_GROUP_ROWS))
                     .build();
                 Sink::Parquet(Box::new(ArrowWriter::try_new(
@@ -232,6 +318,8 @@ impl Exporter {
             partial,
             target: path.to_owned(),
             rows: 0,
+            compression: options.compression,
+            upload_url: options.upload_url.clone(),
         })
     }
 
@@ -254,6 +342,7 @@ impl Exporter {
             Some(Sink::Json(w)) => w.write(&batch)?,
             Some(Sink::Ndjson(w)) => w.write(&batch)?,
             Some(Sink::Parquet(w)) => w.write(&batch)?,
+            Some(Sink::Text(w)) => w.write(&batch)?,
             None => {}
         }
         self.rows += batch.num_rows() as u64;
@@ -278,6 +367,10 @@ impl Exporter {
                 w.into_inner()
             }
             Some(Sink::Parquet(w)) => w.into_inner()?,
+            Some(Sink::Text(w)) => {
+                w.finish(&self.partial)?;
+                return self.into_place();
+            }
             None => return Ok(self.rows),
         };
         let file = out
@@ -285,9 +378,73 @@ impl Exporter {
             .map_err(|e| io_error(&self.partial)(e.into_error()))?;
         file.sync_all().map_err(io_error(&self.partial))?;
         drop(file);
-        std::fs::rename(&self.partial, &self.target).map_err(io_error(&self.target))?;
+        self.into_place()
+    }
+
+    /// Moves the completed file into place, compressed if asked, and uploads it.
+    fn into_place(self) -> Result<u64> {
+        let placed = match self.compression {
+            Compression::None => {
+                std::fs::rename(&self.partial, &self.target).map_err(io_error(&self.target))
+            }
+            c => compress(&self.partial, &self.target, c),
+        };
+        let _ = std::fs::remove_file(&self.partial);
+        placed?;
+        if let Some(url) = &self.upload_url {
+            upload(&self.target, url)?;
+        }
         Ok(self.rows)
     }
+}
+
+/// Writes `from` compressed to `to`, through a partial file of its own.
+fn compress(from: &Path, to: &Path, compression: Compression) -> Result<()> {
+    let mut partial = to.as_os_str().to_owned();
+    // Not `.part`: that is `from`.
+    partial.push(".compressing");
+    let partial = PathBuf::from(partial);
+    let write = || -> std::io::Result<()> {
+        let mut input = File::open(from)?;
+        let out = BufWriter::new(File::create(&partial)?);
+        let out = match compression {
+            Compression::Gzip => {
+                let mut e = flate2::write::GzEncoder::new(out, flate2::Compression::default());
+                std::io::copy(&mut input, &mut e)?;
+                e.finish()?
+            }
+            Compression::Zstd | Compression::None => {
+                let mut e = zstd::Encoder::new(out, 3)?;
+                std::io::copy(&mut input, &mut e)?;
+                e.finish()?
+            }
+        };
+        out.into_inner()
+            .map_err(std::io::IntoInnerError::into_error)?
+            .sync_all()
+    };
+    let written = write().and_then(|()| std::fs::rename(&partial, to));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&partial);
+    }
+    written.map_err(io_error(to))
+}
+
+/// Sends the file at `path` to `url` with a `PUT`, as a signed S3 or GCS URL takes it. Errors
+/// leave the URL out: its signature is a credential.
+pub fn upload(path: &Path, url: &str) -> Result<()> {
+    let file = File::open(path).map_err(io_error(path))?;
+    // S3 takes no chunked body: the length goes first.
+    let length = file.metadata().map_err(io_error(path))?.len();
+    let redact = |e: &dyn std::fmt::Display| {
+        let host = url.split('?').next().unwrap_or_default();
+        ExportError::Upload(e.to_string().replace(url, host))
+    };
+    ureq::put(url)
+        .header("Content-Length", length.to_string())
+        .send(ureq::SendBody::from_owned_reader(file))
+        .map(|_| ())
+        .map_err(|e| redact(&e))
 }
 
 impl Drop for Exporter {
@@ -431,5 +588,169 @@ mod tests {
         };
         let err = Exporter::create(&dir.path().join("x.csv"), &sample().schema(), &options);
         assert!(matches!(err, Err(ExportError::Options(_))));
+    }
+    fn export_as(dir: &Path, name: &str, format: Format) -> String {
+        let options = ExportOptions {
+            format,
+            table: "Items".to_owned(),
+            driver: Some(DriverKind::MySql),
+            ..ExportOptions::default()
+        };
+        std::fs::read_to_string(export(dir, name, &options)).unwrap()
+    }
+
+    #[test]
+    fn writes_sql_markdown_html_and_xml() {
+        let dir = tempfile::tempdir().unwrap();
+        let sql = export_as(dir.path(), "out.sql", Format::Sql);
+        let lines: Vec<_> = sql.lines().collect();
+        assert_eq!(
+            lines[0],
+            "INSERT INTO Items (id, price, name, raw, `at`) VALUES (1, 123.45, 'a,\"b\"', X'dead', '1970-01-01T00:00:01');"
+        );
+        assert_eq!(
+            lines[1],
+            "INSERT INTO Items (id, price, name, raw, `at`) VALUES (2, NULL, NULL, NULL, NULL);"
+        );
+        assert_eq!(lines.len(), 4);
+
+        let md = export_as(dir.path(), "out.md", Format::Markdown);
+        let lines: Vec<_> = md.lines().collect();
+        assert_eq!(lines[0], "| id | price | name | raw | at |");
+        assert_eq!(lines[1], "| --- | --- | --- | --- | --- |");
+        assert_eq!(
+            lines[2],
+            "| 1 | 123.45 | a,\"b\" | dead | 1970-01-01T00:00:01Z |"
+        );
+        assert_eq!(lines[3], "| 2 |  |  |  |  |");
+
+        let html = export_as(dir.path(), "out.html", Format::Html);
+        assert!(html.contains("<th>id</th><th>price</th>"), "{html}");
+        assert!(html.contains("<td>a,&quot;b&quot;</td>"), "{html}");
+        assert!(html.trim_end().ends_with("</html>"), "{html}");
+
+        let xml = export_as(dir.path(), "out.xml", Format::Xml);
+        assert!(xml.starts_with("<?xml"), "{xml}");
+        assert!(
+            xml.contains("<field name=\"name\">a,&quot;b&quot;</field>"),
+            "{xml}"
+        );
+        assert!(
+            xml.contains("<field name=\"name\" null=\"true\"/>"),
+            "{xml}"
+        );
+        assert_eq!(xml.matches("<row>").count(), 4);
+    }
+
+    #[test]
+    fn writes_xlsx() {
+        use calamine::{Data, Reader};
+        let dir = tempfile::tempdir().unwrap();
+        let options = ExportOptions {
+            format: Format::Xlsx,
+            ..ExportOptions::default()
+        };
+        let path = export(dir.path(), "out.xlsx", &options);
+        let mut book = calamine::open_workbook_auto(&path).unwrap();
+        let sheet = book.worksheet_range_at(0).unwrap().unwrap();
+        let rows: Vec<_> = sheet.rows().collect();
+        assert_eq!(rows.len(), 5);
+        assert_eq!(rows[0][0], Data::String("id".into()));
+        assert_eq!(rows[1][0], Data::Float(1.0));
+        assert_eq!(rows[1][1], Data::Float(123.45));
+        assert_eq!(rows[1][2], Data::String("a,\"b\"".into()));
+        assert_eq!(rows[2][2], Data::Empty);
+    }
+    #[test]
+    fn compresses_with_gzip_and_zstd() {
+        use std::io::Read as _;
+        let dir = tempfile::tempdir().unwrap();
+        for compression in [Compression::Gzip, Compression::Zstd] {
+            let options = ExportOptions {
+                compression,
+                ..ExportOptions::default()
+            };
+            let path = export(dir.path(), "out.csv.z", &options);
+            let bytes = std::fs::read(&path).unwrap();
+            let text = match compression {
+                Compression::Gzip => {
+                    let mut s = String::new();
+                    flate2::read::GzDecoder::new(&bytes[..])
+                        .read_to_string(&mut s)
+                        .unwrap();
+                    s
+                }
+                _ => String::from_utf8(zstd::decode_all(&bytes[..]).unwrap()).unwrap(),
+            };
+            assert!(
+                text.starts_with("id,price,name,raw,at\n1,123.45,"),
+                "{compression:?}: {text}"
+            );
+            assert!(!dir.path().join("out.csv.z.part").exists());
+        }
+    }
+
+    /// A one-request HTTP server answering `status`; returns its URL and the request it got.
+    fn server(status: u16) -> (String, std::thread::JoinHandle<String>) {
+        use std::io::{BufRead as _, BufReader, Read as _, Write as _};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!(
+            "http://{}/bucket/out.csv?X-Amz-Signature=secret",
+            listener.local_addr().unwrap()
+        );
+        let handle = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream);
+            let mut head = String::new();
+            let mut length = 0;
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                    length = v.trim().parse().unwrap();
+                }
+                head.push_str(&line);
+                if line == "\r\n" {
+                    break;
+                }
+            }
+            let mut body = vec![0; length];
+            reader.read_exact(&mut body).unwrap();
+            let reply =
+                format!("HTTP/1.1 {status} X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            reader.get_mut().write_all(reply.as_bytes()).unwrap();
+            head + &String::from_utf8(body).unwrap()
+        });
+        (url, handle)
+    }
+
+    #[test]
+    fn uploads_to_a_signed_url() {
+        let dir = tempfile::tempdir().unwrap();
+        let (url, request) = server(200);
+        let options = ExportOptions {
+            upload_url: Some(url),
+            ..ExportOptions::default()
+        };
+        let path = export(dir.path(), "out.csv", &options);
+        let request = request.join().unwrap();
+        assert!(
+            request.starts_with("PUT /bucket/out.csv?X-Amz-Signature=secret"),
+            "{request}"
+        );
+        assert!(
+            request.ends_with(&std::fs::read_to_string(path).unwrap()),
+            "{request}"
+        );
+
+        // A refused upload says so, without the signature.
+        let (url, request) = server(403);
+        std::fs::write(dir.path().join("x.csv"), "a\n").unwrap();
+        let err = upload(&dir.path().join("x.csv"), &url)
+            .unwrap_err()
+            .to_string();
+        request.join().unwrap();
+        assert!(err.contains("403"), "{err}");
+        assert!(!err.contains("secret"), "{err}");
     }
 }

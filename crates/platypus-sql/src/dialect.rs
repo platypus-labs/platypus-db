@@ -8,6 +8,7 @@
 use std::borrow::Cow;
 
 use platypus_core::DriverKind;
+use platypus_core::arrow_schema::DataType;
 
 use crate::{Lexer, Token, TokenKind};
 
@@ -419,6 +420,42 @@ impl Dialect {
         !matches!(self, Self::DuckDb | Self::ClickHouse)
     }
 
+    /// The statements that open a transaction in which the database refuses to write, where
+    /// it has one (PostgreSQL, MySQL and MariaDB `READ ONLY` transactions, SQLite's
+    /// `query_only`), or else a plain transaction: [`read_only_end`](Self::read_only_end)
+    /// always rolls it back, so a write that got through is undone. SQL Server waits 5
+    /// seconds at most for a lock meanwhile, so such a write cannot hang on other sessions.
+    #[must_use]
+    pub const fn read_only_begin(self) -> &'static [&'static str] {
+        match self {
+            Self::Postgres | Self::MySql => &["START TRANSACTION READ ONLY"],
+            Self::Sqlite => &["PRAGMA query_only = ON", "BEGIN"],
+            Self::DuckDb => &["BEGIN TRANSACTION"],
+            Self::SqlServer => &["SET LOCK_TIMEOUT 5000", "BEGIN TRANSACTION"],
+            // No transactions, and a session's `readonly` setting cannot be turned off again.
+            Self::ClickHouse => &[],
+        }
+    }
+
+    /// The statements that close what [`read_only_begin`](Self::read_only_begin) opened,
+    /// rolling it back.
+    #[must_use]
+    pub const fn read_only_end(self) -> &'static [&'static str] {
+        match self {
+            Self::Sqlite => &["ROLLBACK", "PRAGMA query_only = OFF"],
+            Self::SqlServer => &["ROLLBACK", "SET LOCK_TIMEOUT -1"],
+            Self::Postgres | Self::MySql | Self::DuckDb => &["ROLLBACK"],
+            Self::ClickHouse => &[],
+        }
+    }
+
+    /// Whether the transaction of [`read_only_begin`](Self::read_only_begin) refuses writes,
+    /// rather than only rolling them back afterwards.
+    #[must_use]
+    pub const fn refuses_writes_when_read_only(self) -> bool {
+        matches!(self, Self::Postgres | Self::MySql | Self::Sqlite)
+    }
+
     /// An `INSERT` of a row where every column takes its default.
     #[must_use]
     pub fn insert_defaults(self, table: &str) -> String {
@@ -548,11 +585,157 @@ impl Dialect {
             .collect::<Vec<_>>()
             .join(" OR ")
     }
+
+    /// The column type that holds values of `data_type`, e.g. for a table created to import
+    /// a file. Types the dialect lacks (nested values, intervals) fall back to text.
+    #[must_use]
+    pub fn column_type(self, data_type: &DataType) -> String {
+        use DataType as T;
+        let text = match self {
+            Self::Postgres | Self::Sqlite | Self::MySql => "TEXT",
+            Self::DuckDb => "VARCHAR",
+            Self::SqlServer => "NVARCHAR(MAX)",
+            Self::ClickHouse => return Self::clickhouse_type(data_type),
+        };
+        let name = match (data_type, self) {
+            (T::Boolean, Self::SqlServer) => "BIT",
+            (T::Boolean, _) => "BOOLEAN",
+            (t, Self::Sqlite) if t.is_integer() => "INTEGER",
+            (T::UInt64, Self::DuckDb) => "UBIGINT",
+            (T::UInt64, Self::MySql) => "BIGINT UNSIGNED",
+            (T::UInt64, _) => "NUMERIC(20, 0)",
+            (T::Int8 | T::Int16 | T::UInt8, _) => "SMALLINT",
+            (T::Int32 | T::UInt16, Self::MySql | Self::SqlServer) => "INT",
+            (T::Int32 | T::UInt16, _) => "INTEGER",
+            (T::Int64 | T::UInt32, _) => "BIGINT",
+            (T::Float16 | T::Float32, Self::MySql) | (T::Float64, Self::SqlServer) => "FLOAT",
+            (T::Float16 | T::Float32 | T::Float64, Self::Sqlite) | (T::Float16 | T::Float32, _) => {
+                "REAL"
+            }
+            (T::Float64, Self::Postgres) => "DOUBLE PRECISION",
+            (T::Float64, _) => "DOUBLE",
+            (
+                T::Decimal32(p, s) | T::Decimal64(p, s) | T::Decimal128(p, s) | T::Decimal256(p, s),
+                _,
+            ) => {
+                if self == Self::Sqlite {
+                    return "NUMERIC".to_owned();
+                }
+                let max = if self == Self::MySql { 65 } else { 38 };
+                return format!("DECIMAL({}, {s})", (*p).min(max));
+            }
+            (T::Binary | T::LargeBinary | T::BinaryView | T::FixedSizeBinary(_), dialect) => {
+                match dialect {
+                    Self::Postgres => "BYTEA",
+                    Self::MySql => "LONGBLOB",
+                    Self::SqlServer => "VARBINARY(MAX)",
+                    // ClickHouse returned above.
+                    Self::Sqlite | Self::DuckDb | Self::ClickHouse => "BLOB",
+                }
+            }
+            (T::Date32 | T::Date64, _) => "DATE",
+            (T::Time32(_) | T::Time64(_), dialect) if dialect != Self::Sqlite => "TIME",
+            (T::Timestamp(..), Self::MySql) => "DATETIME(6)",
+            (T::Timestamp(_, None), Self::SqlServer) => "DATETIME2",
+            (T::Timestamp(_, Some(_)), Self::SqlServer) => "DATETIMEOFFSET",
+            (T::Timestamp(_, Some(_)), Self::Postgres | Self::DuckDb) => "TIMESTAMPTZ",
+            (T::Timestamp(..), _) => "TIMESTAMP",
+            (T::Interval(_), Self::Postgres | Self::DuckDb) => "INTERVAL",
+            _ => text,
+        };
+        name.to_owned()
+    }
+
+    /// [`column_type`](Self::column_type) in ClickHouse, whose type names are its own.
+    fn clickhouse_type(data_type: &DataType) -> String {
+        use DataType as T;
+        let name = match data_type {
+            T::Boolean => "Bool",
+            T::Int8 => "Int8",
+            T::Int16 => "Int16",
+            T::Int32 => "Int32",
+            T::Int64 => "Int64",
+            T::UInt8 => "UInt8",
+            T::UInt16 => "UInt16",
+            T::UInt32 => "UInt32",
+            T::UInt64 => "UInt64",
+            T::Float16 | T::Float32 => "Float32",
+            T::Float64 => "Float64",
+            T::Decimal32(p, s) | T::Decimal64(p, s) | T::Decimal128(p, s) | T::Decimal256(p, s) => {
+                return format!("Decimal({}, {s})", (*p).min(76));
+            }
+            T::Date32 | T::Date64 => "Date32",
+            T::Timestamp(..) => "DateTime64(6)",
+            _ => "String",
+        };
+        name.to_owned()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn column_types_of_arrow_types() {
+        use platypus_core::arrow_schema::TimeUnit;
+        let zoned = DataType::Timestamp(TimeUnit::Microsecond, Some("+00:00".into()));
+        let cases = [
+            (
+                DataType::Int64,
+                ["BIGINT", "BIGINT", "INTEGER", "BIGINT", "BIGINT"],
+            ),
+            (
+                DataType::Boolean,
+                ["BOOLEAN", "BOOLEAN", "BOOLEAN", "BOOLEAN", "BIT"],
+            ),
+            (
+                DataType::Float64,
+                ["DOUBLE PRECISION", "DOUBLE", "REAL", "DOUBLE", "FLOAT"],
+            ),
+            (
+                DataType::Decimal128(70, 2),
+                [
+                    "DECIMAL(38, 2)",
+                    "DECIMAL(65, 2)",
+                    "NUMERIC",
+                    "DECIMAL(38, 2)",
+                    "DECIMAL(38, 2)",
+                ],
+            ),
+            (
+                DataType::Utf8,
+                ["TEXT", "TEXT", "TEXT", "VARCHAR", "NVARCHAR(MAX)"],
+            ),
+            (
+                zoned,
+                [
+                    "TIMESTAMPTZ",
+                    "DATETIME(6)",
+                    "TIMESTAMP",
+                    "TIMESTAMPTZ",
+                    "DATETIMEOFFSET",
+                ],
+            ),
+            (DataType::Date32, ["DATE"; 5]),
+        ];
+        let dialects = [
+            Dialect::Postgres,
+            Dialect::MySql,
+            Dialect::Sqlite,
+            Dialect::DuckDb,
+            Dialect::SqlServer,
+        ];
+        for (data_type, expected) in cases {
+            for (dialect, want) in dialects.iter().zip(expected) {
+                assert_eq!(
+                    dialect.column_type(&data_type),
+                    want,
+                    "{data_type} in {dialect:?}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn sorted_reserved_words() {
