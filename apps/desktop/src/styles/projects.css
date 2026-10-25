@@ -67,6 +67,81 @@
   box-shadow: 0 0 0 2px var(--bg-rail);
 }
 
+/* A closed folder of projects: the colors of its first four, as in Discord. */
+.project-folder {
+  position: relative;
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 1fr;
+  gap: 3px;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 4px;
+  border: none;
+  border-radius: 10px;
+  background: var(--hover);
+  cursor: pointer;
+}
+
+.project-folder i {
+  display: block;
+  border-radius: 3px;
+}
+
+.project-folder:hover {
+  border-radius: 12px;
+}
+
+.project-folder.active::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 6px;
+  width: 4px;
+  height: 20px;
+  border-radius: 0 3px 3px 0;
+  background: var(--fg);
+}
+
+.project-folder.tx::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--type-test);
+  box-shadow: 0 0 0 2px var(--bg-rail);
+}
+
+/* An open folder: its icon, then its projects, on one background. */
+.project-folder-open {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 6px;
+  width: 40px;
+  border-radius: 12px;
+  background: var(--hover);
+}
+
+.project-folder-head {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+}
+
 .project-add {
   background: transparent;
   border: 1px dashed var(--border);

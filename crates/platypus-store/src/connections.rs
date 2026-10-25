@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -9,9 +9,14 @@ use uuid::Uuid;
 
 use crate::{Result, SecretStore, StoreError};
 
-/// 2 added projects, 3 network profiles, 4 the agents' access: an older app would drop them on
-/// its first save, so it refuses the file.
-const FILE_VERSION: u32 = 4;
+mod folders;
+mod imports;
+
+pub use imports::{ImportInto, ImportRequest, ImportTarget};
+
+/// 2 added projects, 3 network profiles, 4 the agents' access, 5 folders: an older app would
+/// drop them on its first save, so it refuses the file.
+const FILE_VERSION: u32 = 5;
 
 /// A connection as the user saved it. Never contains the password.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -192,9 +197,53 @@ pub struct Project {
     /// In the order they were added.
     #[serde(default)]
     pub connections: Vec<Uuid>,
+    /// Folders of the project's connections, nested through `parent`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub folders: Vec<ConnectionFolder>,
+    /// The folder of each connection in one; connections not here are at the root.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub placement: BTreeMap<Uuid, Uuid>,
+}
+
+/// A folder of projects in the rail. A project is in one folder at most.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectFolder {
+    pub id: Uuid,
+    pub name: String,
+    /// `#rrggbb`.
+    pub color: String,
+    /// In order.
+    #[serde(default)]
+    pub projects: Vec<Uuid>,
+    #[serde(default)]
+    pub collapsed: bool,
+}
+
+/// A folder of connections inside a project.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectionFolder {
+    pub id: Uuid,
+    pub name: String,
+    /// `None` at the project's root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<Uuid>,
 }
 
 impl Project {
+    /// An empty project; the initials are computed from the name.
+    #[must_use]
+    pub fn new(name: &str, color: &str) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name: name.to_owned(),
+            color: color.to_owned(),
+            initials: initials_of(name),
+            connections: Vec::new(),
+            folders: Vec::new(),
+            placement: BTreeMap::new(),
+        }
+    }
+
     /// Adds the connection (at the end) or takes it out; false when it was already so.
     fn set_member(&mut self, connection: Uuid, member: bool) -> bool {
         let present = self.connections.contains(&connection);
@@ -202,6 +251,7 @@ impl Project {
             self.connections.push(connection);
         } else if !member && present {
             self.connections.retain(|c| *c != connection);
+            self.placement.remove(&connection);
         } else {
             return false;
         }
@@ -344,6 +394,8 @@ struct ConnectionsFile {
     #[serde(default)]
     projects: Vec<Project>,
     #[serde(default)]
+    project_folders: Vec<ProjectFolder>,
+    #[serde(default)]
     network_profiles: Vec<NetworkProfile>,
     #[serde(default)]
     connections: Vec<SavedConnection>,
@@ -354,6 +406,8 @@ struct ConnectionsFile {
 struct FileOut<'a> {
     version: u32,
     projects: &'a [Project],
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    project_folders: &'a [ProjectFolder],
     network_profiles: &'a [NetworkProfile],
     connections: &'a [SavedConnection],
 }
@@ -363,6 +417,7 @@ pub struct ConnectionStore {
     path: PathBuf,
     secrets: Arc<dyn SecretStore>,
     projects: Vec<Project>,
+    project_folders: Vec<ProjectFolder>,
     network_profiles: Vec<NetworkProfile>,
     connections: Vec<SavedConnection>,
 }
@@ -371,29 +426,35 @@ impl ConnectionStore {
     /// Loads `path`, or starts empty if it does not exist yet.
     pub fn open(path: impl Into<PathBuf>, secrets: Arc<dyn SecretStore>) -> Result<Self> {
         let path = path.into();
-        let (mut projects, network_profiles, connections) = match std::fs::read_to_string(&path) {
-            Ok(text) => {
-                let file: ConnectionsFile =
-                    toml::from_str(&text).map_err(|e| StoreError::Format {
-                        path: path.clone(),
-                        message: e.to_string(),
-                    })?;
-                if file.version > FILE_VERSION {
-                    return Err(StoreError::Format {
-                        path,
-                        message: format!(
-                            "written by a newer PlatypusDB (version {})",
-                            file.version
-                        ),
-                    });
+        let (mut projects, mut project_folders, network_profiles, connections) =
+            match std::fs::read_to_string(&path) {
+                Ok(text) => {
+                    let file: ConnectionsFile =
+                        toml::from_str(&text).map_err(|e| StoreError::Format {
+                            path: path.clone(),
+                            message: e.to_string(),
+                        })?;
+                    if file.version > FILE_VERSION {
+                        return Err(StoreError::Format {
+                            path,
+                            message: format!(
+                                "written by a newer PlatypusDB (version {})",
+                                file.version
+                            ),
+                        });
+                    }
+                    (
+                        file.projects,
+                        file.project_folders,
+                        file.network_profiles,
+                        file.connections,
+                    )
                 }
-                (file.projects, file.network_profiles, file.connections)
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                (Vec::new(), Vec::new(), Vec::new())
-            }
-            Err(source) => return Err(StoreError::Io { path, source }),
-        };
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    (Vec::new(), Vec::new(), Vec::new(), Vec::new())
+                }
+                Err(source) => return Err(StoreError::Io { path, source }),
+            };
         // Files edited by hand: ids of missing connections and empty initials.
         let known = connections.iter().map(|c| c.id).collect();
         for p in &mut projects {
@@ -401,11 +462,19 @@ impl ConnectionStore {
             if p.initials.trim().is_empty() {
                 p.initials = initials_of(&p.name);
             }
+            p.drop_dangling();
         }
+        let mut seen = HashSet::new();
+        for f in &mut project_folders {
+            f.projects
+                .retain(|id| projects.iter().any(|p| p.id == *id) && seen.insert(*id));
+        }
+        project_folders.retain(|f| !f.projects.is_empty());
         Ok(Self {
             path,
             secrets,
             projects,
+            project_folders,
             network_profiles,
             connections,
         })
@@ -448,8 +517,15 @@ impl ConnectionStore {
         }
         let known = self.connections.iter().map(|c| c.id).collect();
         keep_known(&mut project.connections, &known);
-        match self.projects.iter_mut().find(|p| p.id == project.id) {
-            Some(existing) => *existing = project,
+        // Folders change through their own operations: the project dialog does not send them.
+        let at = self.projects.iter().position(|p| p.id == project.id);
+        if let Some(existing) = at.map(|i| &mut self.projects[i]) {
+            project.folders = std::mem::take(&mut existing.folders);
+            project.placement = std::mem::take(&mut existing.placement);
+        }
+        project.drop_dangling();
+        match at {
+            Some(i) => self.projects[i] = project,
             None => self.projects.push(project),
         }
         self.write()
@@ -462,6 +538,7 @@ impl ConnectionStore {
         if self.projects.len() == before {
             return Err(StoreError::NotFound(id));
         }
+        self.leave_project_folder(id);
         self.write()
     }
 
@@ -604,6 +681,24 @@ impl ConnectionStore {
 
     /// Inserts or replaces (by id) a connection and updates its keychain entry.
     pub fn save(&mut self, connection: SavedConnection, password: PasswordUpdate) -> Result<()> {
+        self.check_connection(&connection)?;
+        let id = connection.id;
+        let save_password = connection.save_password;
+        match self.connections.iter_mut().find(|c| c.id == id) {
+            Some(existing) => *existing = connection,
+            None => self.connections.push(connection),
+        }
+        self.write()?;
+        match password {
+            _ if !save_password => self.secrets.delete(id),
+            PasswordUpdate::Set(secret) => self.secrets.set(id, &secret),
+            PasswordUpdate::Clear => self.secrets.delete(id),
+            PasswordUpdate::Keep => Ok(()),
+        }
+    }
+
+    /// What `save` refuses: no name, half a client certificate, an unknown network profile.
+    fn check_connection(&self, connection: &SavedConnection) -> Result<()> {
         if connection.name.trim().is_empty() {
             return Err(StoreError::Invalid(
                 "connection name is required".to_owned(),
@@ -618,19 +713,7 @@ impl ConnectionStore {
         {
             return Err(StoreError::Invalid("unknown network profile".to_owned()));
         }
-        let id = connection.id;
-        let save_password = connection.save_password;
-        match self.connections.iter_mut().find(|c| c.id == id) {
-            Some(existing) => *existing = connection,
-            None => self.connections.push(connection),
-        }
-        self.write()?;
-        match password {
-            _ if !save_password => self.secrets.delete(id),
-            PasswordUpdate::Set(secret) => self.secrets.set(id, &secret),
-            PasswordUpdate::Clear => self.secrets.delete(id),
-            PasswordUpdate::Keep => Ok(()),
-        }
+        Ok(())
     }
 
     /// Sets the virtual key of `schema.table`, or removes it when `columns` is empty.
@@ -664,7 +747,7 @@ impl ConnectionStore {
         };
         let removed = self.connections.remove(index);
         for p in &mut self.projects {
-            p.connections.retain(|c| *c != id);
+            p.set_member(id, false);
         }
         self.write()?;
         for ssh in removed.ssh.iter().flat_map(SavedSsh::chain) {
@@ -740,6 +823,7 @@ impl ConnectionStore {
         let text = toml::to_string_pretty(&FileOut {
             version: FILE_VERSION,
             projects: &self.projects,
+            project_folders: &self.project_folders,
             network_profiles: &self.network_profiles,
             connections: &self.connections,
         })
@@ -784,6 +868,8 @@ mod tests {
             color: "#d08f20".to_owned(),
             initials: String::new(),
             connections,
+            folders: Vec::new(),
+            placement: BTreeMap::new(),
         }
     }
 
@@ -807,7 +893,7 @@ mod tests {
         s.save_project(project("Interno", vec![shared.id])).unwrap();
 
         let text = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
-        assert!(text.contains("version = 4"), "{text}");
+        assert!(text.contains("version = 5"), "{text}");
         assert!(text.contains("[[projects]]"), "{text}");
         let reopened = ConnectionStore::open(dir.path().join("connections.toml"), secrets).unwrap();
         let projects = reopened.projects();
@@ -818,7 +904,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_a_v1_file_and_writes_v4() {
+    fn reads_a_v1_file_and_writes_v5() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("connections.toml");
         let id = Uuid::new_v4();
@@ -834,7 +920,7 @@ mod tests {
         let old = s.get(id).unwrap().clone();
         s.save(old, PasswordUpdate::Keep).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("version = 4"), "{text}");
+        assert!(text.contains("version = 5"), "{text}");
         assert!(!text.contains("folder"), "{text}");
         // Older files leave agents to read only.
         assert!(text.contains("agent_access = \"read_only\""), "{text}");
@@ -1235,7 +1321,7 @@ SET b = 2;"
         std::fs::write(&path, "version = 99\n").unwrap();
         let err = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap_err();
         assert!(matches!(err, StoreError::Format { .. }));
-        std::fs::write(&path, "version = 5\n").unwrap();
+        std::fs::write(&path, "version = 6\n").unwrap();
         let err = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap_err();
         assert!(err.to_string().contains("newer PlatypusDB"), "{err}");
 

@@ -16,14 +16,16 @@ mod vault;
 
 pub use auth::{command_password, external_password, pgpass_password, pgpass_path};
 pub use connections::{
-    AgentAccess, ConnectionStore, ConnectionType, NetworkProfile, PasswordUpdate, Project,
-    SavedConnection, SavedInit, SavedSsh, SshAuthKind, VirtualKey, initials_of,
+    AgentAccess, ConnectionFolder, ConnectionStore, ConnectionType, ImportInto, ImportRequest,
+    ImportTarget, NetworkProfile, PasswordUpdate, Project, ProjectFolder, SavedConnection,
+    SavedInit, SavedSsh, SshAuthKind, VirtualKey, initials_of,
 };
 pub use history::{
     HistoryEntry, HistoryOrigin, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry,
 };
 pub use import::{
-    ImportFile, ImportSource, detect as detect_imports, import as import_connections,
+    ImportFile, ImportSource, ImportedProject, detect as detect_imports,
+    import as import_connections,
 };
 pub use secrets::{KeyringSecrets, MemorySecrets, SecretStore};
 pub use settings::SettingsStore;

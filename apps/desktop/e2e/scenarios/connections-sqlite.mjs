@@ -73,10 +73,10 @@ export const ready = `document.querySelector('.empty-import') !== null`;
 export default async function (page, { dir, shots }) {
   await page.waitFor(`document.querySelector('.empty-import') !== null`);
   await page.eval(`document.querySelector('.empty-import').click()`);
-  await page.waitFor(`document.querySelector('.import-found') !== null`);
-  await page.eval(`${button("document.querySelector('.import-found')", "DBeaver")}.click()`);
-  await page.waitFor(`document.querySelectorAll('.import-list label').length === 2`);
-  await page.eval(`${button("document.querySelector('.modal')", "Import")}.click()`);
+  await page.waitFor(`document.querySelector('.import-tile.found') !== null`);
+  await page.eval(`document.querySelector('.import-tile.found').click()`);
+  await page.waitFor(`document.querySelectorAll('.import-row.connection').length === 2`);
+  await page.eval(`${button("document.querySelector('.modal')", "Import 2")}.click()`);
   await page.waitFor(`${treeRow("Prod copy")} !== undefined && ${treeRow("Remote PG")} !== undefined`);
 
   const saved = readFileSync(join(dir, "connections.toml"), "utf8");
@@ -135,7 +135,7 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`document.querySelector('.modal') === null`);
 
   const after = readFileSync(join(dir, "connections.toml"), "utf8");
-  assert.match(after, /^version = 4/m);
+  assert.match(after, /^version = 5/m);
   assert.match(after, /\[\[network_profiles\]\][^[]*name = "Office VPN"/);
   assert.match(after, /\[network_profiles\.ssh\]\s+host = "jump.example.com"/);
   assert.match(after, /password_command = "echo s3cret"/);

@@ -2,18 +2,23 @@
 // rail order), the menu of a project's square, and adding a connection to a project from
 // the navigator.
 import { registerAction } from "../actions";
-import { api, type Project } from "../api";
+import { api, type Project, type ProjectFolder } from "../api";
+import { askName } from "../ui/NameDialog";
 import { workbench } from "../workbench";
+import { PROJECT_COLORS } from "./ProjectDialog";
+import { railOrder } from "./state";
 
 declare module "../actions" {
   interface ActionScopes {
     /** A project's square in the rail. */
     project: Project;
+    /** A folder of projects in the rail. */
+    "project.folder": ProjectFolder;
   }
 }
 
 /** All connections, then the projects, as the rail shows them. */
-const order = () => [null, ...workbench().projects().map((p) => p.id)];
+const order = () => [null, ...railOrder(workbench().projects(), workbench().projectFolders()).map((p) => p.id)];
 
 function step(delta: number) {
   const all = order();
@@ -114,3 +119,36 @@ export function registerAddToProject(projects: Project[]): () => void {
   );
   return () => removers.forEach((remove) => remove());
 }
+
+const COLOR_NAMES = ["Purple", "Amber", "Blue", "Violet", "Green", "Red", "Teal", "Gray"];
+
+const saveFolder = async (folder: ProjectFolder) => workbench().setWorkspace(await api.saveProjectFolder(folder));
+
+registerAction({
+  id: "project_folder.rename",
+  scope: "project.folder",
+  title: "Rename folder…",
+  order: 10,
+  run: (folder) => askName("Rename folder", folder.name, (name) => saveFolder({ ...folder, name })),
+});
+
+PROJECT_COLORS.forEach((color, i) =>
+  registerAction({
+    id: `project_folder.color.${i}`,
+    scope: "project.folder",
+    title: COLOR_NAMES[i] ?? color,
+    submenu: "Color",
+    order: 11,
+    when: (folder) => folder.color !== color,
+    run: (folder) => saveFolder({ ...folder, color }),
+  }),
+);
+
+registerAction({
+  id: "project_folder.ungroup",
+  scope: "project.folder",
+  title: "Ungroup",
+  group: "danger",
+  order: 20,
+  run: async (folder) => workbench().setWorkspace(await api.ungroupProjects(folder.id)),
+});

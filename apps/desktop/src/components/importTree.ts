@@ -1,0 +1,94 @@
+/**
+ * The import dialog's preview: each imported project as a tree of folders and connections,
+ * what is ticked in it, and the request that saves the ticked part.
+ */
+import type { ImportedProject, ImportInto, ImportRequest, SavedConnection } from "../api";
+
+export interface FolderView {
+  /** Names from the project's root; empty for the root itself. */
+  path: string[];
+  folders: FolderView[];
+  connections: SavedConnection[];
+}
+
+const samePath = (a: string[], b: string[]) => a.length === b.length && a.every((n, i) => n === b[i]);
+
+/** The project's folders as a tree, folders before connections, both in file order. */
+export function projectTree(project: ImportedProject): FolderView {
+  const root: FolderView = { path: [], folders: [], connections: [] };
+  const find = (path: string[]): FolderView => {
+    let at = root;
+    for (let end = 1; end <= path.length; end++) {
+      const sub = path.slice(0, end);
+      let next = at.folders.find((f) => samePath(f.path, sub));
+      if (!next) {
+        next = { path: sub, folders: [], connections: [] };
+        at.folders.push(next);
+      }
+      at = next;
+    }
+    return at;
+  };
+  for (const path of project.folders) find(path);
+  for (const c of project.connections) find(project.placement[c.id] ?? []).connections.push(c);
+  return root;
+}
+
+/** The connections in a folder and its subfolders. */
+export function connectionsUnder(folder: FolderView): SavedConnection[] {
+  return [...folder.connections, ...folder.folders.flatMap(connectionsUnder)];
+}
+
+export type Check = "on" | "off" | "mixed";
+
+export function checkState(ids: string[], picked: ReadonlySet<string>): Check {
+  const on = ids.filter((id) => picked.has(id)).length;
+  return on === 0 ? "off" : on === ids.length ? "on" : "mixed";
+}
+
+/** Ticks all of `ids`, or unticks them when they are all ticked already. */
+export function toggleAll(ids: string[], picked: ReadonlySet<string>): Set<string> {
+  const next = new Set(picked);
+  const on = checkState(ids, picked) === "on";
+  for (const id of ids) {
+    if (on) next.delete(id);
+    else next.add(id);
+  }
+  return next;
+}
+
+/** A named project becomes a new project; a file of plain connections joins the active
+ *  project, or no project in All connections. */
+export function defaultInto(project: ImportedProject, active: string | null): ImportInto {
+  if (project.name) return { kind: "new_project", name: project.name };
+  return active ? { kind: "existing", id: active } : { kind: "none" };
+}
+
+/** The ticked part of each project. A folder comes along when it holds a ticked
+ *  connection, or was empty in the file. */
+function picked(project: ImportedProject, ticked: ReadonlySet<string>): ImportedProject {
+  const connections = project.connections.filter((c) => ticked.has(c.id));
+  const under = (path: string[]) =>
+    project.connections.filter((c) => {
+      const at = project.placement[c.id] ?? [];
+      return at.length >= path.length && samePath(at.slice(0, path.length), path);
+    });
+  const folders = project.folders.filter((path) => {
+    const inside = under(path);
+    return inside.length === 0 || inside.some((c) => ticked.has(c.id));
+  });
+  const placement = Object.fromEntries(Object.entries(project.placement).filter(([id]) => ticked.has(id)));
+  return { ...project, connections, folders, placement };
+}
+
+export function importRequest(
+  projects: ImportedProject[],
+  ticked: ReadonlySet<string>,
+  into: ImportInto[],
+  railFolder: string | null,
+): ImportRequest {
+  const targets = projects
+    .map((p, i) => ({ project: picked(p, ticked), into: into[i] ?? { kind: "none" as const } }))
+    .filter((t) => t.project.connections.length > 0);
+  return { targets, rail_folder: railFolder?.trim() || null };
+}

@@ -161,20 +161,31 @@ Conformance scenarios that are not SQL-specific have a MongoDB version in
 
 ### Connections file
 
-`platypus_store::ConnectionStore` keeps `connections.toml`, now `version = 4`: a list of
+`platypus_store::ConnectionStore` keeps `connections.toml`, now `version = 5`: a list of
 `[[projects]]` (`id`, `name`, `color` as `#rrggbb`, `initials`, `connections`, the ids of
-its connections), then the `[[network_profiles]]` (an SSH tunnel and SSL settings that
+its connections, with their `folders` and `placement`), then the `[[project_folders]]` of
+the rail, then the `[[network_profiles]]` (an SSH tunnel and SSL settings that
 connections reference by `network_profile`; `ConnectionStore::effective` puts them in place
 of the connection's own), before the `[[connections]]`. A connection can be in several
-projects, or in none. Older files are read and written back as version 4; a file with a
+projects, or in none. Older files are read and written back as version 5; a file with a
 newer version is refused, so an older app never drops what it cannot read. Ids of
 connections that no longer exist are dropped when the file is opened, and deleting a
 connection removes it from every project. Version 4 added each connection's
 `agent_access` (`off`, `read_only` by default, `read_write`); see [Agents](#agents-mcp).
+Version 5 added folders (`connections/folders.rs`): a project's `folders` (`id`, `name`,
+`parent`) and `placement` (connection id → folder id), and the rail's `project_folders`
+(`id`, `name`, `color`, `projects`, `collapsed`); a project is in one rail folder at most.
 
 The projects' commands are in `commands/projects.rs`: `list_projects`, `save_project`,
-`delete_project`, `set_project_membership` and `project_initials`. `save_connection` and
-`save_imported` take the projects a connection joins.
+`delete_project`, `set_project_membership` and `project_initials`; for folders
+`create_connection_folder`, `rename_connection_folder`, `move_connection_folder`,
+`delete_connection_folder` and `place_connection`, and for the rail `list_project_folders`,
+`group_projects`, `save_project_folder`, `set_project_folder`, `ungroup_projects` and
+`reorder_projects`, which return a `Workspace` (connections, projects and rail folders).
+`save_connection` takes the projects a connection joins. Imports (`platypus_store::import`)
+read each file into `ImportedProject`s (a DBeaver `.dbp` gives one per project), and
+`save_imported` saves the ticked part as an `ImportRequest` in one write
+(`connections/imports.rs`).
 
 ### Agents (MCP)
 

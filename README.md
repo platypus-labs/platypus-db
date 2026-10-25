@@ -63,7 +63,11 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 
 - A new connection starts from a grid of database logos. Paste a `postgres://`, `mysql://`,
   `sqlserver://`, `clickhouse://`, `libsql://` or `mongodb://` URL to fill the form.
-- **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`.
+- **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`, with their
+  folders. A DBeaver project export (`.dbp`) brings its projects too, optionally gathered in a
+  folder of the project rail.
+- **Folders**: connections inside a project go in nested folders (drag them, or *Move to
+  folder*); projects in the rail go in folders too, by dropping one project on another.
 - **TLS** with libpq `sslmode` semantics, custom CAs, and client certificates for PostgreSQL and
   MySQL.
 - **SSH tunnels** with a password, a key or the SSH agent, optionally through a jump host;

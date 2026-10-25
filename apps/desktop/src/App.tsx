@@ -6,6 +6,8 @@ import {
   type CompletionCatalog,
   isDataFile,
   type Project,
+  type ProjectFolder,
+  type Workspace,
   toCommandError,
   type SavedConnection,
 } from "./api";
@@ -33,13 +35,22 @@ import { ProjectRail } from "./projects/ProjectRail";
 import { ProjectDialog } from "./projects/ProjectDialog";
 import { AddConnectionsDialog } from "./projects/AddConnectionsDialog";
 import { registerAddToProject } from "./projects/actions";
+import { registerMoveToFolder } from "./projects/folders";
 import { ScriptsPanel } from "./scripts/ScriptsPanel";
 import { ContextMenu, type MenuState } from "./components/ContextMenu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 type Dialog =
-  | { kind: "connection"; connection: SavedConnection; existing: boolean; memberOf: string[]; driverChosen?: boolean }
+  | {
+      kind: "connection";
+      connection: SavedConnection;
+      existing: boolean;
+      memberOf: string[];
+      driverChosen?: boolean;
+      /** The folder of the active project the new connection goes into. */
+      folder?: string | null;
+    }
   | { kind: "add-connections" }
   | { kind: "import" }
   | { kind: "project"; project: Project | null }
@@ -54,6 +65,7 @@ export function App() {
   const [connections, setConnections] = useState<SavedConnection[] | null>(null);
   /** `null` until loaded. */
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const [projectFolders, setProjectFolders] = useState<ProjectFolder[]>([]);
   /** The project shown; `null` is All connections. */
   const [activeProject, setActiveProject] = useState<string | null>(null);
   /** The active tab of each project while another one is shown, by `projectKey`. */
@@ -110,6 +122,7 @@ export function App() {
       },
       () => setProjects([]),
     );
+    api.listProjectFolders().then(setProjectFolders, () => setProjectFolders([]));
     api.appInfo().then((i) => {
       setVersion(i.version);
       // The end-to-end tests drive what has no button yet through these.
@@ -197,6 +210,8 @@ export function App() {
     }
     try {
       setProjects(await api.deleteProject(p.id));
+      // Its rail folder lost it, or went away.
+      setProjectFolders(await api.listProjectFolders());
     } catch (e) {
       return setToast(toCommandError(e).message);
     }
@@ -234,12 +249,13 @@ export function App() {
   const connectionById = (id: string) => connections?.find((c) => c.id === id);
 
   /** A new connection goes into the active project. */
-  async function newConnection() {
+  async function newConnection(folder: string | null = null) {
     setDialog({
       kind: "connection",
       connection: await api.defaultConnection("postgres"),
       existing: false,
       memberOf: activeProject ? [activeProject] : [],
+      folder,
     });
   }
 
@@ -258,11 +274,19 @@ export function App() {
 
   useEffect(() => {
     const off = getCurrentWebview().onDragDropEvent(({ payload }) => {
+      // The import dialog reads the files dropped on it.
+      if (shell.current.importOpen) return;
       const path = payload.type === "drop" ? payload.paths.find(isDataFile) : undefined;
       if (path) void openDroppedFile(path).catch((e: unknown) => setToast(toCommandError(e).message));
     });
     return () => void off.then((unlisten) => unlisten());
   }, []);
+
+  function setWorkspace(w: Workspace) {
+    setConnections(w.connections);
+    setProjects(w.projects);
+    setProjectFolders(w.project_folders);
+  }
 
   /** After a command that saved connections: the projects they joined or left changed too. */
   async function connectionsSaved(all: SavedConnection[]) {
@@ -476,6 +500,9 @@ export function App() {
     openPalette,
     switchProject,
     deleteProject,
+    projectFolders,
+    importOpen: dialog?.kind === "import",
+    newConnection,
   };
   const shell = useRef(shellState);
   shell.current = shellState;
@@ -490,9 +517,12 @@ export function App() {
     setConnections,
     projects: () => shell.current.projects,
     setProjects,
+    projectFolders: () => shell.current.projectFolders,
+    setWorkspace: (w) => setWorkspace(w),
     activeProject: () => shell.current.projects.find((p) => p.id === shell.current.activeProject) ?? null,
     switchProject: (id) => shell.current.switchProject(id),
     editProject: (project) => setDialog({ kind: "project", project }),
+    newConnection: (folder) => void shell.current.newConnection(folder ?? null),
     deleteProject: (project) => shell.current.deleteProject(project),
     openTab: (kind, connectionId, init) => shell.current.addTab(createTab(kind, connectionId, init)),
     focusTab: (match) => {
@@ -514,6 +544,7 @@ export function App() {
   useEffect(() => registerShellActions(shell), []);
   // "Add to project" lists the projects as they are.
   useEffect(() => registerAddToProject(projects ?? []), [projects]);
+  useEffect(() => registerMoveToFolder(project), [project]);
 
   // Global shortcuts, captured before the editor sees them.
   useEffect(() => {
@@ -549,6 +580,8 @@ export function App() {
         onSwitch={switchProject}
         onNew={() => setDialog({ kind: "project", project: null })}
         onMenu={(p, e) => setRailMenu({ x: e.clientX, y: e.clientY, target: { scope: "project", arg: p } })}
+        folders={projectFolders}
+        onFolderMenu={(f, e) => setRailMenu({ x: e.clientX, y: e.clientY, target: { scope: "project.folder", arg: f } })}
       />
       <div className="sidebar-column">
         <Navigator
@@ -658,7 +691,13 @@ export function App() {
           memberOf={dialog.memberOf}
           driverChosen={dialog.driverChosen}
           onClose={() => setDialog(null)}
-          onSaved={(all) => void connectionsSaved(all)}
+          onSaved={async (all) => {
+            await connectionsSaved(all);
+            const saved = all.find((c) => c.id === dialog.connection.id);
+            if (dialog.folder && activeProject && saved) {
+              api.placeConnection(activeProject, saved.id, dialog.folder).then(setProjects, (e: unknown) => setToast(toCommandError(e).message));
+            }
+          }}
         />
       )}
       {dialog?.kind === "add-connections" && project && (
@@ -692,9 +731,13 @@ export function App() {
       {dialog?.kind === "import" && (
         <ImportDialog
           existing={connections ?? []}
+          projects={projects ?? []}
           project={activeProject}
           onClose={() => setDialog(null)}
-          onImported={(all) => void connectionsSaved(all)}
+          onImported={(w) => {
+            setWorkspace(w);
+            setDialog(null);
+          }}
         />
       )}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
