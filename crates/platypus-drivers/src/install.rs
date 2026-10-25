@@ -1,0 +1,180 @@
+//! Downloading a package, checking it and unpacking it where drivers are kept. Nothing reaches
+//! the driver's folder until the package is whole and checked.
+
+use std::io::Read as _;
+use std::path::{Path, PathBuf};
+
+use futures::StreamExt as _;
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use tokio_util::sync::CancellationToken;
+
+use crate::{DriverError, Installed, Package, REMOVED_MARK, Registry, drivers_dir, io_error};
+
+/// Names of the folders a download unpacks into before it is moved in place.
+pub(crate) const TMP_PREFIX: &str = ".tmp-";
+
+/// Far more than any driver library; a bigger file in a package is refused, not unpacked.
+const MAX_FILE: u64 = 512 << 20;
+
+/// The package's own description of its files.
+#[derive(Deserialize)]
+struct Manifest {
+    #[serde(rename = "Files")]
+    files: ManifestFiles,
+}
+
+#[derive(Deserialize)]
+struct ManifestFiles {
+    driver: String,
+}
+
+impl Registry {
+    /// Downloads `package`, checks its SHA-256, unpacks it and records it. `progress` gets
+    /// the bytes received and the total when known.
+    pub async fn install(
+        &self,
+        package: &Package,
+        progress: impl Fn(u64, Option<u64>),
+        cancel: &CancellationToken,
+    ) -> Result<Installed, DriverError> {
+        let bytes = self.download(package, progress, cancel).await?;
+        if let Some(expected) = &package.sha256 {
+            let actual = hex(&Sha256::digest(&bytes));
+            if !actual.eq_ignore_ascii_case(expected) {
+                return Err(DriverError::Checksum);
+            }
+        }
+        let root = drivers_dir(&self.data_dir);
+        let tmp = root.join(format!("{TMP_PREFIX}{}", uuid::Uuid::new_v4()));
+        let package = package.clone();
+        let target = root.join("adbc").join(&package.name);
+        tokio::task::spawn_blocking(move || {
+            let result =
+                unpack(&bytes, &tmp).and_then(|library| place(&tmp, &target, &package, &library));
+            let _ = std::fs::remove_dir_all(&tmp);
+            result
+        })
+        .await
+        .map_err(|e| DriverError::Format(e.to_string()))?
+    }
+
+    async fn download(
+        &self,
+        package: &Package,
+        progress: impl Fn(u64, Option<u64>),
+        cancel: &CancellationToken,
+    ) -> Result<Vec<u8>, DriverError> {
+        if cancel.is_cancelled() {
+            return Err(DriverError::Cancelled);
+        }
+        let network = |e: reqwest::Error| DriverError::Network(e.to_string());
+        let response = self
+            .http()?
+            .get(&package.url)
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(network)?;
+        let total = response.content_length();
+        let mut bytes = Vec::with_capacity(usize::try_from(total.unwrap_or(0)).unwrap_or(0));
+        let mut stream = response.bytes_stream();
+        loop {
+            let chunk = tokio::select! {
+                () = cancel.cancelled() => return Err(DriverError::Cancelled),
+                chunk = stream.next() => chunk,
+            };
+            let Some(chunk) = chunk else { break };
+            bytes.extend_from_slice(&chunk.map_err(network)?);
+            if bytes.len() as u64 > MAX_FILE {
+                return Err(DriverError::TooLarge);
+            }
+            progress(bytes.len() as u64, total);
+        }
+        Ok(bytes)
+    }
+}
+
+/// Lower-case hex digits of `bytes`.
+pub(crate) fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    bytes.iter().fold(String::new(), |mut out, b| {
+        let _ = write!(out, "{b:02x}");
+        out
+    })
+}
+
+/// Unpacks the `.tar.gz` into `dir`; returns the library's file name from `MANIFEST`.
+fn unpack(bytes: &[u8], dir: &Path) -> Result<String, DriverError> {
+    std::fs::create_dir_all(dir).map_err(io_error(dir))?;
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
+    let format = |e: std::io::Error| DriverError::Format(e.to_string());
+    for entry in archive.entries().map_err(format)? {
+        let mut entry = entry.map_err(format)?;
+        if !entry.header().entry_type().is_file() {
+            continue;
+        }
+        let path = entry.path().map_err(format)?.into_owned();
+        // Only plain names: a package cannot write outside its folder.
+        let Some(name) = path.file_name().filter(|_| path.components().count() == 1) else {
+            continue;
+        };
+        if entry.header().size().map_err(format)? > MAX_FILE {
+            return Err(DriverError::TooLarge);
+        }
+        let mut data = Vec::new();
+        entry
+            .by_ref()
+            .take(MAX_FILE + 1)
+            .read_to_end(&mut data)
+            .map_err(format)?;
+        if data.len() as u64 > MAX_FILE {
+            return Err(DriverError::TooLarge);
+        }
+        let out = dir.join(name);
+        std::fs::write(&out, data).map_err(io_error(&out))?;
+    }
+    let manifest = dir.join("MANIFEST");
+    let text = std::fs::read_to_string(&manifest)
+        .map_err(|_| DriverError::Format("the package has no MANIFEST".to_owned()))?;
+    let manifest: Manifest =
+        toml::from_str(&text).map_err(|e| DriverError::Format(format!("MANIFEST: {e}")))?;
+    let library = manifest.files.driver;
+    if Path::new(&library).components().count() != 1 || !dir.join(&library).is_file() {
+        return Err(DriverError::Format(format!(
+            "the package lacks its library `{library}`"
+        )));
+    }
+    Ok(library)
+}
+
+/// Records the unpacked package and moves it to `target/<version>`.
+fn place(
+    tmp: &Path,
+    target: &Path,
+    package: &Package,
+    library: &str,
+) -> Result<Installed, DriverError> {
+    let record = Installed {
+        name: package.name.clone(),
+        title: package.title.clone(),
+        version: package.version.clone(),
+        license: package.license.clone(),
+        library: PathBuf::from(library),
+    };
+    let toml = toml::to_string(&record).map_err(|e| DriverError::Format(e.to_string()))?;
+    let file = tmp.join("driver.toml");
+    std::fs::write(&file, toml).map_err(io_error(&file))?;
+    std::fs::create_dir_all(target).map_err(io_error(target))?;
+    // Installed again after a removal that could not delete the files.
+    let _ = std::fs::remove_file(target.join(REMOVED_MARK));
+    let dir = target.join(&package.version);
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).map_err(io_error(&dir))?;
+    }
+    std::fs::rename(tmp, &dir).map_err(io_error(&dir))?;
+    Ok(Installed {
+        library: dir.join(library),
+        ..record
+    })
+}
