@@ -87,8 +87,9 @@ impl Current {
                     && self.head.first().is_some_and(|w| w == "CREATE")
                     && self.head.iter().take(3).any(|w| w == "TRIGGER")
             }
-            // MySQL bodies rely on `DELIMITER` instead; DuckDB has no statement bodies.
-            Dialect::MySql | Dialect::DuckDb | Dialect::SqlServer => false,
+            // MySQL bodies rely on `DELIMITER` instead; DuckDB and ClickHouse have no
+            // statement bodies.
+            Dialect::MySql | Dialect::DuckDb | Dialect::SqlServer | Dialect::ClickHouse => false,
         };
         if opens_block {
             self.block_depth += 1;
@@ -405,6 +406,15 @@ mod tests {
                 "SELECT m('x')",
                 "COMMIT"
             ]
+        );
+    }
+
+    #[test]
+    fn clickhouse_splits_on_semicolons_outside_quotes() {
+        let src = "SELECT 'a\\';b'; # c;\nSELECT `x;y` FROM t; SELECT $h$;$h$";
+        assert_eq!(
+            texts(src, Dialect::ClickHouse),
+            ["SELECT 'a\\';b'", "SELECT `x;y` FROM t", "SELECT $h$;$h$"]
         );
     }
 

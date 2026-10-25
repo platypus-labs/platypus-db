@@ -21,16 +21,21 @@ pub enum Dialect {
     DuckDb,
     /// Transact-SQL: Microsoft SQL Server and Azure SQL.
     SqlServer,
+    /// Case-sensitive names; strings and quoted names take backslash escapes.
+    ClickHouse,
 }
 
 impl From<DriverKind> for Dialect {
     fn from(kind: DriverKind) -> Self {
         match kind {
-            DriverKind::Postgres => Self::Postgres,
+            // MongoDB speaks no SQL: the app never builds SQL for it (the editor, data
+            // viewer and navigator write mongosh instead), so any dialect would do here.
+            DriverKind::Postgres | DriverKind::Mongo => Self::Postgres,
             DriverKind::MySql => Self::MySql,
-            DriverKind::Sqlite => Self::Sqlite,
+            DriverKind::Sqlite | DriverKind::Libsql => Self::Sqlite,
             DriverKind::DuckDb => Self::DuckDb,
             DriverKind::SqlServer => Self::SqlServer,
+            DriverKind::ClickHouse => Self::ClickHouse,
         }
     }
 }
@@ -309,20 +314,26 @@ impl Dialect {
         let mut chars = name.chars();
         let first_ok = chars.next().is_some_and(|c| match self {
             Self::Postgres => c.is_ascii_lowercase() || c == '_',
-            Self::MySql | Self::Sqlite | Self::DuckDb | Self::SqlServer => {
+            Self::MySql | Self::Sqlite | Self::DuckDb | Self::SqlServer | Self::ClickHouse => {
                 c.is_ascii_alphabetic() || c == '_'
             }
         });
         let rest_ok = chars.all(|c| match self {
             Self::Postgres => c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '$',
             Self::MySql => c.is_ascii_alphanumeric() || c == '_' || c == '$',
-            Self::Sqlite | Self::DuckDb | Self::SqlServer => c.is_ascii_alphanumeric() || c == '_',
+            Self::Sqlite | Self::DuckDb | Self::SqlServer | Self::ClickHouse => {
+                c.is_ascii_alphanumeric() || c == '_'
+            }
         });
         if first_ok && rest_ok && !is_reserved(name, self) {
             return Cow::Borrowed(name);
         }
         let (open, close) = self.ident_quotes();
-        let escaped = name.replace(close, &format!("{close}{close}"));
+        let mut escaped = name.replace(close, &format!("{close}{close}"));
+        // A backslash escapes the next character inside ClickHouse quotes.
+        if self == Self::ClickHouse {
+            escaped = escaped.replace('\\', "\\\\");
+        }
         Cow::Owned(format!("{open}{escaped}{close}"))
     }
 
@@ -336,7 +347,7 @@ impl Dialect {
     #[must_use]
     pub const fn ident_quotes(self) -> (char, char) {
         match self {
-            Self::MySql => ('`', '`'),
+            Self::MySql | Self::ClickHouse => ('`', '`'),
             Self::Postgres | Self::Sqlite | Self::DuckDb => ('"', '"'),
             Self::SqlServer => ('[', ']'),
         }
@@ -352,7 +363,7 @@ impl Dialect {
     }
 
     /// A string literal. MySQL treats backslashes as escapes by default
-    /// (`NO_BACKSLASH_ESCAPES` off), so they are doubled there. Transact-SQL literals are
+    /// (`NO_BACKSLASH_ESCAPES` off), and ClickHouse always, so they are doubled there. Transact-SQL literals are
     /// `N'...'`, so that text outside the database's code page survives.
     #[must_use]
     pub fn quote_literal(self, value: &str) -> String {
@@ -364,7 +375,7 @@ impl Dialect {
         for c in value.chars() {
             match c {
                 '\'' => out.push_str("''"),
-                '\\' if self == Self::MySql => out.push_str("\\\\"),
+                '\\' if matches!(self, Self::MySql | Self::ClickHouse) => out.push_str("\\\\"),
                 c => out.push(c),
             }
         }
@@ -392,6 +403,7 @@ impl Dialect {
             Self::Postgres => format!("decode('{hex}', 'hex')"),
             Self::MySql | Self::Sqlite => format!("X'{hex}'"),
             Self::DuckDb => format!("from_hex('{hex}')"),
+            Self::ClickHouse => format!("unhex('{hex}')"),
             Self::SqlServer => format!("0x{hex}"),
         }
     }
@@ -402,10 +414,10 @@ impl Dialect {
         !matches!(self, Self::Sqlite)
     }
 
-    /// Whether `SAVEPOINT` works inside a transaction; DuckDB has none.
+    /// Whether `SAVEPOINT` works inside a transaction; DuckDB and ClickHouse have none.
     #[must_use]
     pub const fn has_savepoints(self) -> bool {
-        !matches!(self, Self::DuckDb)
+        !matches!(self, Self::DuckDb | Self::ClickHouse)
     }
 
     /// The statements that open a transaction in which the database refuses to write, where
@@ -420,6 +432,8 @@ impl Dialect {
             Self::Sqlite => &["PRAGMA query_only = ON", "BEGIN"],
             Self::DuckDb => &["BEGIN TRANSACTION"],
             Self::SqlServer => &["SET LOCK_TIMEOUT 5000", "BEGIN TRANSACTION"],
+            // No transactions, and a session's `readonly` setting cannot be turned off again.
+            Self::ClickHouse => &[],
         }
     }
 
@@ -431,6 +445,7 @@ impl Dialect {
             Self::Sqlite => &["ROLLBACK", "PRAGMA query_only = OFF"],
             Self::SqlServer => &["ROLLBACK", "SET LOCK_TIMEOUT -1"],
             Self::Postgres | Self::MySql | Self::DuckDb => &["ROLLBACK"],
+            Self::ClickHouse => &[],
         }
     }
 
@@ -446,6 +461,8 @@ impl Dialect {
     pub fn insert_defaults(self, table: &str) -> String {
         match self {
             Self::MySql => format!("INSERT INTO {table} () VALUES ()"),
+            // An empty JSON object leaves every column to its default.
+            Self::ClickHouse => format!("INSERT INTO {table} FORMAT JSONEachRow {{}}"),
             Self::Postgres | Self::Sqlite | Self::DuckDb | Self::SqlServer => {
                 format!("INSERT INTO {table} DEFAULT VALUES")
             }
@@ -471,6 +488,11 @@ impl Dialect {
                 "SELECT estimated_size FROM duckdb_tables() \
                  WHERE database_name = current_database()                  AND lower(schema_name) = lower({}) AND lower(table_name) = lower({})",
                 schema.map_or_else(|| "current_schema()".to_owned(), |s| self.quote_literal(s)),
+                self.quote_literal(table)
+            ),
+            Self::ClickHouse => format!(
+                "SELECT total_rows FROM system.tables WHERE database = {} AND name = {}",
+                schema.map_or_else(|| "currentDatabase()".to_owned(), |s| self.quote_literal(s)),
                 self.quote_literal(table)
             ),
             // Heaps (index 0) or clustered indexes (index 1) hold the rows.
@@ -535,6 +557,11 @@ impl Dialect {
                 format!("LOWER({expr}) LIKE LOWER({pattern}) ESCAPE '!'")
             }
             Self::Sqlite => format!("{expr} LIKE {pattern} ESCAPE '!'"),
+            // No `ESCAPE` clause: LIKE escapes with a backslash. The replacement `\\\1`
+            // writes one before the escaped character; the literal doubles each backslash.
+            Self::ClickHouse => {
+                format!(r"{expr} ILIKE replaceRegexpAll({pattern}, '!(.)', '\\\\\\1')")
+            }
         }
     }
 
@@ -545,10 +572,16 @@ impl Dialect {
             Self::Postgres | Self::Sqlite | Self::DuckDb => "TEXT",
             Self::MySql => "CHAR",
             Self::SqlServer => "NVARCHAR(MAX)",
+            // `toString` keeps NULLs, where `CAST(NULL AS String)` fails.
+            Self::ClickHouse => "",
+        };
+        let as_text = |c: &str| match self {
+            Self::ClickHouse => format!("toString({})", self.quote_ident(c)),
+            _ => format!("CAST({} AS {text})", self.quote_ident(c)),
         };
         columns
             .iter()
-            .map(|c| self.contains(&format!("CAST({} AS {text})", self.quote_ident(c)), needle))
+            .map(|c| self.contains(&as_text(c), needle))
             .collect::<Vec<_>>()
             .join(" OR ")
     }
@@ -562,6 +595,7 @@ impl Dialect {
             Self::Postgres | Self::Sqlite | Self::MySql => "TEXT",
             Self::DuckDb => "VARCHAR",
             Self::SqlServer => "NVARCHAR(MAX)",
+            Self::ClickHouse => return Self::clickhouse_type(data_type),
         };
         let name = match (data_type, self) {
             (T::Boolean, Self::SqlServer) => "BIT",
@@ -595,7 +629,8 @@ impl Dialect {
                     Self::Postgres => "BYTEA",
                     Self::MySql => "LONGBLOB",
                     Self::SqlServer => "VARBINARY(MAX)",
-                    Self::Sqlite | Self::DuckDb => "BLOB",
+                    // ClickHouse returned above.
+                    Self::Sqlite | Self::DuckDb | Self::ClickHouse => "BLOB",
                 }
             }
             (T::Date32 | T::Date64, _) => "DATE",
@@ -607,6 +642,31 @@ impl Dialect {
             (T::Timestamp(..), _) => "TIMESTAMP",
             (T::Interval(_), Self::Postgres | Self::DuckDb) => "INTERVAL",
             _ => text,
+        };
+        name.to_owned()
+    }
+
+    /// [`column_type`](Self::column_type) in ClickHouse, whose type names are its own.
+    fn clickhouse_type(data_type: &DataType) -> String {
+        use DataType as T;
+        let name = match data_type {
+            T::Boolean => "Bool",
+            T::Int8 => "Int8",
+            T::Int16 => "Int16",
+            T::Int32 => "Int32",
+            T::Int64 => "Int64",
+            T::UInt8 => "UInt8",
+            T::UInt16 => "UInt16",
+            T::UInt32 => "UInt32",
+            T::UInt64 => "UInt64",
+            T::Float16 | T::Float32 => "Float32",
+            T::Float64 => "Float64",
+            T::Decimal32(p, s) | T::Decimal64(p, s) | T::Decimal128(p, s) | T::Decimal256(p, s) => {
+                return format!("Decimal({}, {s})", (*p).min(76));
+            }
+            T::Date32 | T::Date64 => "Date32",
+            T::Timestamp(..) => "DateTime64(6)",
+            _ => "String",
         };
         name.to_owned()
     }
@@ -798,6 +858,35 @@ mod tests {
         assert!(
             ms.row_estimate_sql(Some("dbo"), "t")
                 .contains("OBJECT_ID(N'dbo.t')")
+        );
+    }
+
+    #[test]
+    fn clickhouse_rules() {
+        let ch = Dialect::ClickHouse;
+        assert_eq!(ch.quote_ident("Orders"), "Orders");
+        assert_eq!(ch.quote_ident("select"), "`select`");
+        assert_eq!(ch.quote_ident("a`b\\c"), "`a``b\\\\c`");
+        assert_eq!(ch.quote_literal("it's \\"), "'it''s \\\\'");
+        assert_eq!(ch.bool_literal(false), "FALSE");
+        assert_eq!(ch.binary_literal("00ff"), "unhex('00ff')");
+        assert!(!ch.has_savepoints() && ch.has_default_keyword());
+        assert_eq!(
+            ch.insert_defaults("t"),
+            "INSERT INTO t FORMAT JSONEachRow {}"
+        );
+        assert_eq!(ch.limited("SELECT 1", 2), "SELECT 1 LIMIT 2");
+        assert_eq!(
+            ch.row_estimate_sql(None, "t"),
+            "SELECT total_rows FROM system.tables WHERE database = currentDatabase() AND name = 't'"
+        );
+        assert_eq!(
+            ch.contains("c", "a%"),
+            r"c ILIKE replaceRegexpAll('%a!%%', '!(.)', '\\\\\\1')"
+        );
+        assert!(
+            ch.any_column_contains(&["id", "n"], "x")
+                .starts_with("toString(id) ILIKE")
         );
     }
 

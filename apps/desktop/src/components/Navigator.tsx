@@ -116,11 +116,16 @@ const FOLDERS: { kind: ObjectKind; label: string }[] = [
   { kind: "domain", label: "Domains" },
   { kind: "extension", label: "Extensions" },
   { kind: "event", label: "Events" },
+  { kind: "dictionary", label: "Dictionaries" },
 ];
 
 
 export const isRelation = (kind: ObjectKind) =>
-  kind === "table" || kind === "view" || kind === "materialized_view" || kind === "foreign_table";
+  kind === "table" ||
+  kind === "view" ||
+  kind === "materialized_view" ||
+  kind === "foreign_table" ||
+  kind === "dictionary";
 
 /** The cache key under which a database's schemas live. */
 const baseKey = (c: SavedConnection, database: string | null) => (database === null ? c.id : `${c.id}@${database}`);
@@ -1047,6 +1052,8 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       title: "Search data…",
       group: "open",
       order: 20,
+      // The data search builds SQL conditions.
+      when: ({ connection }) => connection.driver !== "mongo",
       run: ({ connection, database, schema }) =>
         workbench().openTab("search", connection.id, { database, mode: "data", schema: schema.name }),
     }),

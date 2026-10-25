@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use arrow_array::ArrayRef;
 use arrow_array::builder::{BinaryBuilder, Float64Builder, Int64Builder, StringBuilder};
-use arrow_schema::{DataType, Field};
+use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use rusqlite::types::ValueRef;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,11 +122,53 @@ pub enum ColumnBuilder {
     Blob(BinaryBuilder),
 }
 
+/// The schema of a result with `columns` (name, declared type), each column's kind
+/// inferred from the `first` rows.
+#[must_use]
+pub fn schema(
+    columns: &[(String, Option<String>)],
+    first: &[Vec<Owned>],
+) -> (SchemaRef, Vec<Kind>) {
+    let kinds: Vec<Kind> = columns
+        .iter()
+        .enumerate()
+        .map(|(i, (_, decl))| infer(decl.as_deref(), first.iter().map(|r| r[i].value())))
+        .collect();
+    let schema = Arc::new(Schema::new(
+        columns
+            .iter()
+            .zip(&kinds)
+            .map(|((name, decl), kind)| field(name, decl.as_deref(), *kind))
+            .collect::<Vec<_>>(),
+    ));
+    (schema, kinds)
+}
+
 /// A value that does not fit the column's inferred type.
 #[derive(Debug)]
 pub struct Mismatch {
     pub found: &'static str,
     pub expected: &'static str,
+}
+
+impl Mismatch {
+    /// The decoding error for a value of `field` that does not fit.
+    #[must_use]
+    pub fn error(&self, field: &Field) -> platypus_core::Error {
+        platypus_core::Error::Decode {
+            column: field.name().clone(),
+            db_type: field
+                .metadata()
+                .get(platypus_core::META_DB_TYPE)
+                .cloned()
+                .unwrap_or_default(),
+            message: format!(
+                "a {} value follows {} values in the first rows; use CAST(... AS TEXT) \
+                 for columns with mixed types",
+                self.found, self.expected
+            ),
+        }
+    }
 }
 
 fn storage_class(value: ValueRef<'_>) -> &'static str {

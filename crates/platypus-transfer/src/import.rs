@@ -142,7 +142,18 @@ impl ImportPlan {
                     c.default
                         .as_ref()
                         .map_or_else(String::new, |d| format!(" DEFAULT {d}")),
-                    if c.not_null { " NOT NULL" } else { "" }
+                    if c.not_null {
+                        " NOT NULL"
+                    } else if dialect == Dialect::ClickHouse
+                        && !t.starts_with("Nullable(")
+                        && !t.starts_with("LowCardinality(Nullable(")
+                    {
+                        // ClickHouse columns are not nullable unless declared so; `NULL`
+                        // fails on types that already are.
+                        " NULL"
+                    } else {
+                        ""
+                    }
                 )),
                 _ => Err(ImportError::Plan(format!(
                     "column {} has no type",
@@ -178,7 +189,7 @@ impl ImportPlan {
             Dialect::SqlServer => format!("{declared} IDENTITY(1, 1)"),
             // The rowid, which a BIGINT key is not.
             Dialect::Sqlite => "INTEGER".to_owned(),
-            Dialect::DuckDb => declared.to_owned(),
+            Dialect::DuckDb | Dialect::ClickHouse => declared.to_owned(),
         }
     }
 
@@ -265,7 +276,13 @@ impl ImportPlan {
                     statements.extend(self.staged_upsert(dialect, &staging, &names, &values));
                 }
                 (ImportMode::Upsert, None) => {
-                    statements.push(dialect.upsert_rows(&table, &names, &keys, &values));
+                    statements.push(
+                        dialect
+                            .upsert_rows(&table, &names, &keys, &values)
+                            .ok_or_else(|| {
+                                ImportError::Plan("ClickHouse has no upsert".to_owned())
+                            })?,
+                    );
                 }
                 (ImportMode::Append | ImportMode::Replace, _) => {
                     statements.push(format!("{head}{values}"));
@@ -508,8 +525,11 @@ pub async fn import_rows(
 ) -> Result<u64, ImportError> {
     plan.check()?;
     // An explicit BEGIN, as `dml::apply` does: it works in either commit mode, and opens the
-    // transaction before DDL too.
-    exec(target, "BEGIN").await?;
+    // transaction before DDL too. ClickHouse has none: the rows written stay on failure.
+    let transaction = target.capabilities().transactions;
+    if transaction {
+        exec(target, "BEGIN").await?;
+    }
     let mut created = false;
     let outcome = async {
         if plan.create {
@@ -543,13 +563,17 @@ pub async fn import_rows(
         if let Some(sql) = plan.identity_insert(dialect, false) {
             exec(target, &sql).await?;
         }
-        target.commit().await?;
+        if transaction {
+            target.commit().await?;
+        }
         Ok(written)
     }
     .await;
     if outcome.is_err() {
         // The first error explains more than a failed cleanup.
-        let _ = target.rollback().await;
+        if transaction {
+            let _ = target.rollback().await;
+        }
         if created {
             // Only MySQL still has the table; elsewhere the DROP fails. In manual-commit mode
             // it opens a transaction, ended here.
@@ -621,6 +645,13 @@ mod tests {
         assert_eq!(
             p.create_sql(Dialect::Postgres).unwrap(),
             r#"CREATE TABLE public."Sales" (id BIGINT, item TEXT)"#
+        );
+        let mut ch = plan(true);
+        ch.columns[0].data_type = Some("Int64".to_owned());
+        ch.columns[1].data_type = Some("LowCardinality(Nullable(String))".to_owned());
+        assert_eq!(
+            ch.create_sql(Dialect::ClickHouse).unwrap(),
+            "CREATE TABLE public.Sales (id Int64 NULL, item LowCardinality(Nullable(String)))"
         );
         assert_eq!(
             p.source_sql(Dialect::DuckDb),

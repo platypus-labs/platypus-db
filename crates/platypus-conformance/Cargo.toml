@@ -12,7 +12,10 @@ arrow-array.workspace = true
 arrow-cast.workspace = true
 futures.workspace = true
 platypus-core.workspace = true
+platypus-driver-clickhouse.workspace = true
 platypus-driver-duckdb.workspace = true
+platypus-driver-libsql.workspace = true
+platypus-driver-mongo.workspace = true
 platypus-driver-mssql.workspace = true
 platypus-driver-mysql.workspace = true
 platypus-driver-pg.workspace = true
@@ -22,7 +25,7 @@ platypus-mcp.workspace = true
 platypus-schema.workspace = true
 platypus-sql.workspace = true
 tempfile.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 
 [lints]
 workspace = true

@@ -65,6 +65,26 @@ services:
       timeout: 3s
       retries: 90
 
+  # Over HTTP on 58123; the conformance tests create their demo tables.
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.3.25.2
+    environment:
+      CLICKHOUSE_USER: platypus
+      CLICKHOUSE_PASSWORD: platypus
+      CLICKHOUSE_DB: platypus
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    ports:
+      - "58123:8123"
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "platypus", "--password", "platypus", "-q", "SELECT 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
   # Not started by default (a large image): `docker compose --profile sqlserver up -d --wait`.
   # The image runs no seed scripts: the healthcheck creates the `platypus` database and the
   # conformance tests create their demo schema. Test-only login: `sa`, `Platypus-2026`.
@@ -86,3 +106,97 @@ services:
       timeout: 10s
       retries: 90
       start_period: 10s
+
+  # Not started by default: `docker compose --profile mongo up -d --wait`. The root user
+  # `platypus` / `platypus` authenticates against `admin`; the seed fills the `platypus`
+  # database.
+  mongo:
+    image: mongo:8.0.32
+    profiles: [mongo]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: platypus
+      MONGO_INITDB_ROOT_PASSWORD: platypus
+    ports:
+      - "57017:27017"
+    volumes:
+      - ./mongo:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "-u", "platypus", "-p", "platypus", "--eval", "if (!db.getSiblingDB('platypus').getCollectionNames().includes('customer_totals')) quit(1)"]
+      interval: 2s
+      timeout: 10s
+      retries: 90
+      start_period: 5s
+
+  # PostgreSQL-compatible servers, not started by default:
+  # `docker compose --profile pgwire up -d --wait`. TimescaleDB runs the PostgreSQL seed;
+  # CockroachDB and YugabyteDB run none, and the conformance tests seed them.
+  timescale:
+    image: timescale/timescaledb:2.30.2-pg17
+    profiles: [pgwire]
+    environment:
+      POSTGRES_USER: platypus
+      POSTGRES_PASSWORD: platypus
+      POSTGRES_DB: platypus
+    ports:
+      - "55433:5432"
+    volumes:
+      - ./postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platypus -d platypus"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  # Insecure single node: user `root`, no password. The healthcheck turns temporary tables
+  # on, experimental in CockroachDB and used by the conformance tests.
+  cockroach:
+    image: cockroachdb/cockroach:v26.2.7
+    profiles: [pgwire]
+    command: start-single-node --insecure
+    environment:
+      COCKROACH_DATABASE: platypus
+    ports:
+      - "56257:26257"
+    healthcheck:
+      test:
+        - CMD
+        - cockroach
+        - sql
+        - --insecure
+        - -e
+        - SET CLUSTER SETTING sql.defaults.experimental_temporary_tables.enabled = true
+      interval: 2s
+      timeout: 5s
+      retries: 90
+
+  # User `yugabyte`, password `yugabyte`, database `yugabyte`.
+  yugabyte:
+    image: yugabytedb/yugabyte:2025.2.6.0-b111
+    profiles: [pgwire]
+    command: bin/yugabyted start --background=false
+    ports:
+      - "55434:5433"
+    healthcheck:
+      test: ["CMD-SHELL", "bin/ysqlsh -h $$(hostname) -c 'SELECT 1'"]
+      interval: 3s
+      timeout: 5s
+      retries: 100
+      start_period: 20s
+
+  # libSQL server (sqld, what Turso runs), not started by default:
+  # `docker compose --profile libsql up -d --wait`. HTTP on 58080, with JWT auth: the
+  # public key below belongs to the test-only token in the conformance tests.
+  libsql:
+    image: ghcr.io/tursodatabase/libsql-server:v0.24.33
+    profiles: [libsql]
+    environment:
+      SQLD_NODE: primary
+      SQLD_AUTH_JWT_KEY: d5YTU2j6c07m9XBnd9HP_Kc3XjXiHWiLJvRWPqYBf9c
+    ports:
+      - "58080:8080"
+    # The image has no curl: bash opens the port.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 2s
+      timeout: 3s
+      retries: 60

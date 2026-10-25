@@ -5,9 +5,11 @@
 //! the worker only steps the statement as fast as batches are consumed. Cancellation uses
 //! `sqlite3_interrupt`.
 
+// Shared with the libSQL driver, which runs the same SQL over HTTP.
 #[doc(hidden)]
 pub mod columns;
-mod meta;
+#[doc(hidden)]
+pub mod meta;
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -15,7 +17,7 @@ use std::sync::{Arc, Mutex, MutexGuard, mpsc as std_mpsc};
 use std::time::Duration;
 
 use arrow_array::RecordBatch;
-use arrow_schema::{Schema, SchemaRef};
+use arrow_schema::SchemaRef;
 use async_trait::async_trait;
 use futures::StreamExt;
 use platypus_core::{
@@ -423,18 +425,7 @@ fn stream_rows(
         }
     }
 
-    let kinds: Vec<Kind> = columns
-        .iter()
-        .enumerate()
-        .map(|(i, (_, decl))| columns::infer(decl.as_deref(), first.iter().map(|r| r[i].value())))
-        .collect();
-    let schema: SchemaRef = Arc::new(Schema::new(
-        columns
-            .iter()
-            .zip(&kinds)
-            .map(|((name, decl), kind)| columns::field(name, decl.as_deref(), *kind))
-            .collect::<Vec<_>>(),
-    ));
+    let (schema, kinds) = columns::schema(&columns, &first);
     let (tx, rx) = mpsc::channel(1);
     if reply
         .send(Ok(Started::Rows(Arc::clone(&schema), rx)))
@@ -518,20 +509,7 @@ impl BatchOut {
     }
 
     fn mismatch(&self, column: usize, m: &Mismatch) -> Error {
-        let field = self.schema.field(column);
-        Error::Decode {
-            column: field.name().clone(),
-            db_type: field
-                .metadata()
-                .get(platypus_core::META_DB_TYPE)
-                .cloned()
-                .unwrap_or_default(),
-            message: format!(
-                "a {} value follows {} values in the first rows; use CAST(... AS TEXT) \
-                 for columns with mixed types",
-                m.found, m.expected
-            ),
-        }
+        m.error(self.schema.field(column))
     }
 
     /// Sends the rows appended so far, or `status` when it is an error, waiting for the

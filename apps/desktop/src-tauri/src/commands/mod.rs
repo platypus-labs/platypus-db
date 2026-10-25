@@ -36,7 +36,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use platypus_core::{Connection, ConnectionConfig, Driver, DriverKind, Error};
+use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
+use platypus_driver_libsql::LibsqlDriver;
+use platypus_driver_mongo::MongoDriver;
 use platypus_driver_mssql::MssqlDriver;
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
@@ -197,7 +200,10 @@ pub(crate) async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connect
             DriverKind::MySql => MySqlDriver.connect(&config).await,
             DriverKind::Sqlite => SqliteDriver.connect(&config).await,
             DriverKind::DuckDb => DuckDbDriver.connect(&config).await,
+            DriverKind::Libsql => LibsqlDriver.connect(&config).await,
             DriverKind::SqlServer => MssqlDriver.connect(&config).await,
+            DriverKind::ClickHouse => ClickHouseDriver.connect(&config).await,
+            DriverKind::Mongo => MongoDriver.connect(&config).await,
         }
     })
     .await

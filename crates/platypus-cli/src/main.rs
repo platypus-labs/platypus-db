@@ -66,7 +66,8 @@ enum Command {
 struct QueryArgs {
     /// Connection URL, e.g. `postgres://user:pass@localhost:5432/db?sslmode=disable`,
     /// `mysql://user:pass@localhost:3306/db`, `sqlserver://user:pass@localhost:1433/db`,
-    /// `sqlite:///path/to/file.db` or `duckdb:///path/to/file.duckdb`
+    /// `sqlite:///path/to/file.db`, `duckdb:///path/to/file.duckdb` or
+    /// `libsql://db-org.turso.io?authToken=...`
     #[arg(short, long, env = "PLATYPUS_URL", hide_env_values = true)]
     url: Option<String>,
 

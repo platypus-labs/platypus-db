@@ -121,6 +121,8 @@ async fn identity(
         // An INTEGER PRIMARY KEY is the rowid.
         Dialect::Sqlite => return Ok((declared == "integer").then(|| key.name.clone())),
         Dialect::DuckDb => return Ok(serial.then(|| key.name.clone())),
+        // No column numbers its rows.
+        Dialect::ClickHouse => return Ok(None),
         Dialect::Postgres if serial => return Ok(Some(key.name.clone())),
         Dialect::Postgres => format!(
             "SELECT attidentity FROM pg_attribute WHERE attrelid = {qualified}::regclass \
@@ -248,6 +250,7 @@ const fn database(dialect: Dialect) -> &'static str {
         Dialect::Sqlite => "SQLite",
         Dialect::DuckDb => "DuckDB",
         Dialect::SqlServer => "SQL Server",
+        Dialect::ClickHouse => "ClickHouse",
     }
 }
 
@@ -634,8 +637,8 @@ async fn identity_steps(
                 },
             ]
         }
-        // They number after the largest value, or are the rowid.
-        Dialect::MySql | Dialect::SqlServer | Dialect::Sqlite => Vec::new(),
+        // They number after the largest value, or are the rowid; ClickHouse numbers nothing.
+        Dialect::MySql | Dialect::SqlServer | Dialect::Sqlite | Dialect::ClickHouse => Vec::new(),
     })
 }
 

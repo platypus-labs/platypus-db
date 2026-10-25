@@ -1,7 +1,10 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { tableFromIPC } from "apache-arrow";
 
-export type DriverKind = "postgres" | "mysql" | "sqlite" | "duckdb" | "sqlserver";
+export type DriverKind = "postgres" | "mysql" | "sqlite" | "duckdb" | "sqlserver" | "clickhouse" | "libsql" | "mongo";
+
+/** Speaks mongosh instead of SQL (MongoDB): no SQL completion, formatter, linter or data editor. */
+export const isMongo = (driver: DriverKind) => driver === "mongo";
 
 /** Runs in-process on a local file (SQLite, DuckDB): no server, host, user or password. */
 export const isEmbedded = (driver: DriverKind) => driver === "sqlite" || driver === "duckdb";
@@ -306,7 +309,8 @@ export type ObjectKind =
   | "type"
   | "domain"
   | "extension"
-  | "event";
+  | "event"
+  | "dictionary";
 
 export interface ObjectMeta {
   name: string;

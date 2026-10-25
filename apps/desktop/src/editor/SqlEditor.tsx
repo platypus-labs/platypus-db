@@ -29,7 +29,7 @@ import {
 } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 import { dispatchKey } from "../actions";
-import { type CompletionCatalog, type DriverKind, toCommandError } from "../api";
+import { type CompletionCatalog, type DriverKind, isMongo, toCommandError } from "../api";
 import { ContextMenu, type MenuState } from "../components/ContextMenu";
 import { useSetting } from "../settings";
 import { workbench } from "../workbench";
@@ -37,6 +37,7 @@ import "./actions";
 import { functionCompletion } from "./functions";
 import { joinCompletion } from "./joinCompletion";
 import { lintSql } from "./lint";
+import { mongoLanguage } from "./mongo";
 import { expandSnippet, snippetSource } from "./snippets";
 import { spellcheck, spellcheckSetting } from "./spellcheck";
 
@@ -145,10 +146,21 @@ const theme = EditorView.theme({
   ".cm-searchMatch": { backgroundColor: "rgba(250, 176, 5, 0.3)" },
 });
 
-// DuckDB has no CodeMirror dialect; its syntax follows PostgreSQL.
-const dialects = { postgres: PostgreSQL, mysql: MySQL, sqlite: SQLite, duckdb: PostgreSQL, sqlserver: MSSQL };
+// DuckDB and ClickHouse have no CodeMirror dialect: DuckDB's syntax follows PostgreSQL,
+// ClickHouse's backtick names and `#` comments MySQL's. MongoDB is mongosh.
+const dialects = {
+  postgres: PostgreSQL,
+  mysql: MySQL,
+  sqlite: SQLite,
+  duckdb: PostgreSQL,
+  sqlserver: MSSQL,
+  clickhouse: MySQL,
+  libsql: SQLite,
+  mongo: PostgreSQL,
+};
 
 function language(driver: DriverKind, catalog: CompletionCatalog | null | undefined) {
+  if (isMongo(driver)) return mongoLanguage(catalog);
   const support = sql({
     dialect: dialects[driver],
     upperCaseKeywords: true,
@@ -231,7 +243,9 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         lintGutter(),
         linter(
           (view) =>
-            lintSql(view, {
+            isMongo(callbacks.current.driver)
+              ? []
+              : lintSql(view, {
               driver: callbacks.current.driver,
               catalog: callbacks.current.catalog,
               production: !!callbacks.current.production,

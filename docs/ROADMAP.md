@@ -272,24 +272,55 @@ prima di scrivere in Prod è nel gruppo L. Restano i P3.
 parallelizzabile: **una persona per driver**.
 **Dipende da:** 0.5, 0.6
 
-**Stato: P1 completate** (SQL Server e DuckDB). SQL Server usa `tiberius` copiato in `vendor/` con
-le patch per la negoziazione della cifratura; il dialetto Transact-SQL scrive `TOP (n)` e `[nomi]`,
+**Stato: P1 completate, P2 e P3 in parte** (P2: ClickHouse e i server con protocollo PostgreSQL;
+P3: libSQL/Turso e MongoDB. Da fare: ADBC/ODBC, Oracle, Redis). SQL Server usa `tiberius` copiato
+in `vendor/` con le patch per la negoziazione della cifratura; il dialetto Transact-SQL scrive `TOP (n)` e `[nomi]`,
 e la transazione segue `@@TRANCOUNT`. DuckDB è incorporato come SQLite, con risultati Arrow nativi;
 senza l'estensione ICU non ha fuso orario di sessione. Una nuova connessione parte dalla scelta del
 database in una griglia di loghi. Conformance su PostgreSQL, MySQL, MariaDB, SQL Server, SQLite e
 DuckDB (SQL Server dal profilo `sqlserver` di `docker/compose.yml`).
+ClickHouse (P2) via HTTP (`platypus-driver-clickhouse`, `reqwest` + TLS condiviso
+in `platypus-tls`): una sessione HTTP per connessione (`SET`, `USE`, tabelle temporanee),
+risultati `ArrowStream` decodificati man mano, cancel con `KILL QUERY` per `query_id`. Le query
+sono descritte prima (`DESCRIBE`) per tipizzare `DateTime` e leggere come testo i tipi che
+Arrow non ha (UUID, JSON, enum, IP). Niente transazioni né chiavi esterne: niente modifica dei
+dati in griglia. Nuovo tipo di oggetto `dictionary`. Servizio `clickhouse` (porta 58123) tra
+quelli di default in `docker/compose.yml`, conformance compresa.
+
+CockroachDB, YugabyteDB, TimescaleDB, Supabase e Neon (P2) passano dal driver PostgreSQL, che
+riconosce CockroachDB e YugabyteDB da `version()`; nel picker sono profili con porta, utente,
+database o SSL di default. CockroachDB non ha dimensioni delle tabelle né explain. Conformance su
+CockroachDB, YugabyteDB e TimescaleDB dal profilo `pgwire` di `docker/compose.yml`. YugabyteDB fa
+fallire con `40001` il DDL che ne incrocia un altro dentro una transazione: i test di conformance
+girano uno alla volta.
+
+libSQL/Turso (P3): crate `platypus-driver-libsql`, protocollo Hrana 3 su HTTP (`/v3/pipeline`) con
+`reqwest` e la configurazione rustls di `platypus-tls`, invece del crate `libsql` (molte più
+dipendenze). Il token va nella password o nel parametro `authToken` degli URL `libsql://`. Le
+istruzioni girano su uno stream del server tenuto aperto dal suo baton (transazioni e stato di
+sessione); metadati, explain e tipi dei risultati riusano il codice del driver SQLite. Limiti: niente
+annullamento (HTTP non ferma un'istruzione), niente tabelle temporanee su `sqld`, risultati letti
+interi. Conformance dal profilo `libsql` (`sqld` con autenticazione JWT). Cloudflare D1: valutato,
+non implementato: la sua API HTTP (`/accounts/<id>/d1/database/<id>/query`) chiede un account e un
+token Cloudflare, non ha un server locale per i test (wrangler simula D1 solo nei Worker) e non ha
+transazioni tra richieste.
+
+MongoDB (`platypus-driver-mongo`, driver ufficiale con rustls): l'editor scrive mongosh, che un
+parser proprio traduce in comandi; i risultati sono una griglia dei campi di primo livello con
+l'albero del documento selezionato accanto. Niente transazioni, explain né modifica dei dati;
+conformance dedicata in `tests/mongo.rs` (profilo `mongo` di `docker/compose.yml`).
 
 | Driver | Prio | Note |
 |---|---|---|
 | SQL Server (`tiberius`) | P1 | Dialetto `TOP`, `[quoting]`, più result set |
 | DuckDB | P1 | Arrow nativo; serve anche al gruppo M |
-| ClickHouse | P2 | HTTP con formato Arrow |
+| ✅ ClickHouse | P2 | HTTP con formato Arrow |
 | File come database: CSV, Parquet, JSON, XLSX (tramite DuckDB) | P2 | ✅ Fatto con il gruppo H: viste DuckDB sul file, un foglio XLSX per tabella (calamine); si aprono col trascinamento sulla finestra |
-| CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | P2 | Wire PG: profili e test, non driver nuovi |
+| ✅ CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon; AlloyDB no | P2 | Wire PG: profili e test, non driver nuovi |
 | ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | Una persona per il bridge, poi profili |
 | Oracle nativo | P3 | Licensing OCI da valutare |
-| Redis, MongoDB | P3 | Richiedono una UI non tabellare (gruppo dedicato in seguito) |
-| libSQL/Turso, Cloudflare D1 | P3 | Varianti di SQLite |
+| Redis, ✅ **MongoDB** | P3 | MongoDB: sintassi mongosh, griglia dei campi + albero del documento; Redis da fare |
+| ✅ libSQL/Turso; Cloudflare D1 valutato, non fatto | P3 | Varianti di SQLite |
 
 ---
 

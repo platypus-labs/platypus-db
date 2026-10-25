@@ -56,6 +56,7 @@ const KIND_LABELS: Record<ObjectKind, string> = {
   domain: "Domain",
   extension: "Extension",
   event: "Event",
+  dictionary: "Dictionary",
 };
 
 const SECTION_LABELS: Record<ObjectSection, string> = {
@@ -72,7 +73,9 @@ function sectionsFor(kind: ObjectKind): ObjectSection[] {
   if (kind === "table" || kind === "foreign_table") {
     return ["properties", "columns", "indexes", "constraints", "foreign_keys", "references", "ddl"];
   }
-  if (kind === "view" || kind === "materialized_view") return ["properties", "columns", "ddl"];
+  if (kind === "view" || kind === "materialized_view" || kind === "dictionary") {
+    return ["properties", "columns", "ddl"];
+  }
   return ["properties", "ddl"];
 }
 

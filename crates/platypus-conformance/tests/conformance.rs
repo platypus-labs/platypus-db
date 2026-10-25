@@ -1,9 +1,10 @@
-//! The same scenarios against every driver: PostgreSQL, MySQL, MariaDB, SQL Server, SQLite
-//! and DuckDB.
+//! The same scenarios against every driver: PostgreSQL, MySQL, MariaDB, SQL Server,
+//! ClickHouse, SQLite, DuckDB and libSQL.
 //!
-//! Server databases come from `docker/compose.yml` (SQL Server from its `sqlserver`
-//! profile). Setting `PLATYPUS_TEST_PG_URL`, `PLATYPUS_TEST_MYSQL_URL`,
-//! `PLATYPUS_TEST_MARIADB_URL` or `PLATYPUS_TEST_MSSQL_URL` makes that database required
+//! Server databases come from `docker/compose.yml` (SQL Server and libSQL from their
+//! `sqlserver` and `libsql` profiles). Setting `PLATYPUS_TEST_PG_URL`,
+//! `PLATYPUS_TEST_MYSQL_URL`, `PLATYPUS_TEST_MARIADB_URL`, `PLATYPUS_TEST_MSSQL_URL`,
+//! `PLATYPUS_TEST_CLICKHOUSE_URL` or `PLATYPUS_TEST_LIBSQL_URL` makes that database required
 //! (CI does); otherwise an unreachable default database is skipped. SQLite and DuckDB always
 //! run, on temporary files.
 
@@ -18,7 +19,10 @@ use platypus_core::{
     Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, Error, ExecOptions,
     ExecResult, MatchKind, ObjectKind, ObjectRef, PlanNode, SessionInit,
 };
+use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
+use platypus_driver_libsql::LibsqlDriver;
+use platypus_driver_mongo::MongoDriver;
 use platypus_driver_mssql::MssqlDriver;
 use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
@@ -46,11 +50,26 @@ struct Backend {
 }
 
 impl Backend {
+    /// SQLite, or libSQL over HTTP: the same SQL and catalog.
+    fn speaks_sqlite(&self) -> bool {
+        matches!(self.config.driver, DriverKind::Sqlite | DriverKind::Libsql)
+    }
+
     async fn connect(&self) -> Box<dyn Connection> {
         driver(self.config.driver)
             .connect(&self.config)
             .await
             .unwrap_or_else(|e| panic!("{}: cannot connect: {e}", self.name))
+    }
+
+    /// `TEMPORARY ` where the server has temporary tables: a libSQL server takes none, and
+    /// gets plain tables, dropped when the tests start.
+    fn temporary(&self) -> &'static str {
+        if self.config.driver == DriverKind::Libsql {
+            ""
+        } else {
+            "TEMPORARY "
+        }
     }
 
     /// The name of the temporary table `name`: SQL Server's start with `#`.
@@ -62,12 +81,27 @@ impl Backend {
         }
     }
 
+    /// Whether the database has foreign keys and unique constraints: ClickHouse has
+    /// neither, its primary key only orders the data.
+    fn keys(&self) -> bool {
+        self.config.driver != DriverKind::ClickHouse
+    }
+
+    /// What follows the column list of a `CREATE TABLE`: ClickHouse needs an engine.
+    fn table_options(&self, order_by: &str) -> String {
+        if self.config.driver == DriverKind::ClickHouse {
+            format!(" ENGINE = MergeTree ORDER BY {order_by}")
+        } else {
+            String::new()
+        }
+    }
+
     /// Creates the temporary table `name`, visible to the session only.
     fn create_temp(&self, name: &str, columns: &str) -> String {
         if self.config.driver == DriverKind::SqlServer {
             format!("CREATE TABLE {} ({columns})", self.temp(name))
         } else {
-            format!("CREATE TEMPORARY TABLE {name} ({columns})")
+            format!("CREATE {}TABLE {name} ({columns})", self.temporary())
         }
     }
 }
@@ -77,8 +111,11 @@ fn driver(kind: DriverKind) -> &'static dyn Driver {
         DriverKind::Postgres => &PgDriver,
         DriverKind::MySql => &MySqlDriver,
         DriverKind::Sqlite => &SqliteDriver,
+        DriverKind::Libsql => &LibsqlDriver,
         DriverKind::DuckDb => &DuckDbDriver,
         DriverKind::SqlServer => &MssqlDriver,
+        DriverKind::ClickHouse => &ClickHouseDriver,
+        DriverKind::Mongo => &MongoDriver,
     }
 }
 
@@ -171,6 +208,63 @@ async fn mssql_backend() -> Option<Backend> {
     })
 }
 
+/// The demo tables in ClickHouse, whose image runs no seed scripts. A skipping index
+/// stands in for the index on `customer_id`; there are no foreign keys or unique keys.
+const CLICKHOUSE_FIXTURE: &[&str] = &[
+    "CREATE TABLE IF NOT EXISTS customers (id Int32, email String, full_name String)
+     ENGINE = MergeTree ORDER BY id",
+    "CREATE TABLE IF NOT EXISTS orders (
+        id Int32,
+        customer_id Int32,
+        total Decimal(12, 2),
+        INDEX orders_customer_id_idx customer_id TYPE minmax GRANULARITY 1
+     ) ENGINE = MergeTree ORDER BY id",
+    "CREATE VIEW IF NOT EXISTS customer_totals AS
+     SELECT c.id, count(o.id) AS orders
+     FROM customers c LEFT JOIN orders o ON o.customer_id = c.id
+     GROUP BY c.id",
+    "INSERT INTO customers
+     SELECT * FROM values('id Int32, email String, full_name String',
+                          (1, 'ada@example.com', 'Ada'), (2, 'bob@example.com', 'Bob'))
+     WHERE (SELECT count() FROM customers) = 0",
+    "INSERT INTO orders
+     SELECT * FROM values('id Int32, customer_id Int32, total Decimal(12, 2)',
+                          (1, 1, 10.50), (2, 1, 4.25), (3, 2, 7.00))
+     WHERE (SELECT count() FROM orders) = 0",
+];
+
+async fn clickhouse_backend() -> Option<Backend> {
+    let config = server_config(
+        "PLATYPUS_TEST_CLICKHOUSE_URL",
+        "clickhouse://platypus:platypus@localhost:58123/platypus",
+        "ClickHouse",
+    )
+    .await?;
+    {
+        let _seeding = SEEDING.lock().await;
+        let conn = ClickHouseDriver.connect(&config).await.unwrap();
+        for sql in CLICKHOUSE_FIXTURE {
+            run(&*conn, sql)
+                .await
+                .unwrap_or_else(|e| panic!("clickhouse: {sql}: {e}"));
+        }
+    }
+    Some(Backend {
+        name: "clickhouse",
+        product: "ClickHouse",
+        schema: config.database.clone(),
+        config,
+        series_sql: format!(
+            "SELECT number + 1 AS id, concat('row ', toString(number + 1)) AS label \
+             FROM numbers({SERIES_ROWS})"
+        ),
+        endless_sql: "SELECT count() FROM system.numbers",
+        // An HTTP session cannot be ended from another client.
+        kill: None,
+        _dir: None,
+    })
+}
+
 const SQLITE_FIXTURE: &[&str] = &[
     "CREATE TABLE customers (
         id INTEGER PRIMARY KEY,
@@ -189,6 +283,16 @@ const SQLITE_FIXTURE: &[&str] = &[
      GROUP BY c.id",
 ];
 
+fn sqlite_series() -> String {
+    format!(
+        "WITH RECURSIVE s(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM s WHERE id < {SERIES_ROWS})
+         SELECT id, 'row ' || id AS label FROM s"
+    )
+}
+
+const SQLITE_ENDLESS: &str =
+    "WITH RECURSIVE s(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM s) SELECT count(*) FROM s";
+
 async fn sqlite_backend() -> Backend {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("conformance.db");
@@ -204,12 +308,8 @@ async fn sqlite_backend() -> Backend {
         product: "SQLite",
         config,
         schema: "main".to_owned(),
-        series_sql: format!(
-            "WITH RECURSIVE s(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM s WHERE id < {SERIES_ROWS})
-             SELECT id, 'row ' || id AS label FROM s"
-        ),
-        endless_sql: "WITH RECURSIVE s(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM s) \
-                      SELECT count(*) FROM s",
+        series_sql: sqlite_series(),
+        endless_sql: SQLITE_ENDLESS,
         kill: None,
         _dir: Some(dir),
     }
@@ -232,6 +332,58 @@ const DUCKDB_FIXTURE: &[&str] = &[
      FROM customers c LEFT JOIN orders o ON o.customer_id = c.id
      GROUP BY c.id",
 ];
+
+/// The test-only token of the `libsql` service in `docker/compose.yml`.
+const LIBSQL_TOKEN: &str = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjcyMjU2MDB9.\
+     gcA5ick0W16rnB4ROBvkn896i2bNi3Z80USgUN9a5tEtdq5kigej16LpaCi_sVzxdzVIGUQ1n9eUtayjb2GdAg";
+
+const LIBSQL_SCRATCH: &[&str] = &[
+    "conf_t",
+    "conf_tx",
+    "conf_plan",
+    "conf_big",
+    "conf_edit",
+    "init_probe",
+];
+
+static LIBSQL_CLEANED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// A libSQL server, shared by the tests: the fixture is created once.
+async fn libsql_backend() -> Option<Backend> {
+    let default = format!("libsql://:{LIBSQL_TOKEN}@localhost:58080?sslmode=disable");
+    let config = server_config("PLATYPUS_TEST_LIBSQL_URL", &default, "libSQL").await?;
+    {
+        let _seeding = SEEDING.lock().await;
+        let conn = LibsqlDriver.connect(&config).await.unwrap();
+        // The tables the scenarios create as temporary elsewhere, left by an earlier run.
+        if !LIBSQL_CLEANED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            for table in LIBSQL_SCRATCH {
+                run(&*conn, &format!("DROP TABLE IF EXISTS {table}"))
+                    .await
+                    .unwrap_or_else(|e| panic!("libsql: {e}"));
+            }
+        }
+        for sql in SQLITE_FIXTURE {
+            let sql = sql
+                .replacen("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
+                .replacen("CREATE INDEX", "CREATE INDEX IF NOT EXISTS", 1)
+                .replacen("CREATE VIEW", "CREATE VIEW IF NOT EXISTS", 1);
+            run(&*conn, &sql)
+                .await
+                .unwrap_or_else(|e| panic!("libsql: {sql}: {e}"));
+        }
+    }
+    Some(Backend {
+        name: "libsql",
+        product: "libSQL",
+        config,
+        schema: "main".to_owned(),
+        series_sql: sqlite_series(),
+        endless_sql: SQLITE_ENDLESS,
+        kill: None,
+        _dir: None,
+    })
+}
 
 async fn duckdb_backend() -> Backend {
     let dir = tempfile::tempdir().unwrap();
@@ -257,6 +409,97 @@ async fn duckdb_backend() -> Backend {
         kill: None,
         _dir: Some(dir),
     }
+}
+
+const PG_SEED: &str = include_str!("../../../docker/postgres/01-seed.sql");
+
+/// Serializes seeding: the tests run in parallel and each lists the backends.
+static SEEDING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Held by every test: YugabyteDB fails DDL that races other sessions' DDL with `40001`
+/// (`Restart read required`) inside transactions, where it cannot be run again.
+static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Runs the PostgreSQL seed on a server that ran none (CockroachDB, YugabyteDB), once.
+async fn seed_pg_wire(config: &ConnectionConfig, name: &str) {
+    let _seeding = SEEDING.lock().await;
+    let conn = PgDriver.connect(config).await.unwrap();
+    // The orders are seeded last: a seed cut short is run again.
+    let seeded = platypus_core::query_text(&*conn, "SELECT count(*) FROM demo.orders").await;
+    if seeded.is_ok_and(|rows| rows == [[Some("20000".to_owned())]]) {
+        return;
+    }
+    run(&*conn, "DROP SCHEMA IF EXISTS demo CASCADE")
+        .await
+        .unwrap_or_else(|e| panic!("{name}: {e}"));
+    for statement in platypus_sql::split(PG_SEED, platypus_sql::Dialect::Postgres) {
+        let sql = statement.text(PG_SEED);
+        // The type zoo and the large table are for the PostgreSQL driver's own tests.
+        if ["mood", "type_zoo", "big_table"]
+            .iter()
+            .any(|t| sql.contains(t))
+        {
+            continue;
+        }
+        run(&*conn, sql)
+            .await
+            .unwrap_or_else(|e| panic!("{name}: seed: {sql}: {e}"));
+    }
+}
+
+/// The servers that speak the PostgreSQL protocol, run with the PostgreSQL driver.
+async fn pg_wire_backends() -> Vec<Backend> {
+    let mut all = Vec::new();
+    for (name, product, env, default, seed) in [
+        (
+            "timescale",
+            "PostgreSQL",
+            "PLATYPUS_TEST_TIMESCALE_URL",
+            "postgres://platypus:platypus@localhost:55433/platypus?sslmode=disable",
+            false,
+        ),
+        (
+            "cockroach",
+            "CockroachDB",
+            "PLATYPUS_TEST_COCKROACH_URL",
+            "postgres://root@localhost:56257/platypus?sslmode=disable",
+            true,
+        ),
+        (
+            "yugabyte",
+            "YugabyteDB",
+            "PLATYPUS_TEST_YUGABYTE_URL",
+            "postgres://yugabyte:yugabyte@localhost:55434/yugabyte?sslmode=disable",
+            true,
+        ),
+    ] {
+        let Some(config) = server_config(env, default, product).await else {
+            continue;
+        };
+        if seed {
+            seed_pg_wire(&config, name).await;
+        }
+        all.push(Backend {
+            name,
+            product,
+            config,
+            schema: "demo".to_owned(),
+            series_sql: format!(
+                "SELECT g AS id, 'row ' || g AS label FROM generate_series(1, {SERIES_ROWS}) g"
+            ),
+            endless_sql: "SELECT pg_sleep(600)",
+            kill: Some(if name == "cockroach" {
+                (
+                    "SELECT quote_literal(current_setting('session_id'))",
+                    "CANCEL SESSION",
+                )
+            } else {
+                ("SELECT pg_backend_pid()", "SELECT pg_terminate_backend")
+            }),
+            _dir: None,
+        });
+    }
+    all
 }
 
 async fn backends() -> Vec<Backend> {
@@ -308,9 +551,12 @@ async fn backends() -> Vec<Backend> {
             });
         }
     }
+    all.extend(pg_wire_backends().await);
     all.extend(mssql_backend().await);
+    all.extend(clickhouse_backend().await);
     all.push(sqlite_backend().await);
     all.push(duckdb_backend().await);
+    all.extend(libsql_backend().await);
     all
 }
 
@@ -324,8 +570,24 @@ async fn collect(b: &Backend, conn: &dyn Connection, sql: &str) -> Vec<RecordBat
     }
 }
 
+/// Runs `sql`, again after a serialization failure outside a transaction: YugabyteDB
+/// fails DDL that races the other tests' DDL with `40001`, which clients are to retry.
+async fn execute(conn: &dyn Connection, sql: &str) -> Result<ExecResult, Error> {
+    for _ in 0..20 {
+        match conn.execute(sql, &ExecOptions::default()).await {
+            Err(Error::Database(e))
+                if e.code.as_deref() == Some("40001") && !conn.transaction().open =>
+            {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            other => return other,
+        }
+    }
+    conn.execute(sql, &ExecOptions::default()).await
+}
+
 async fn affected(b: &Backend, conn: &dyn Connection, sql: &str) -> u64 {
-    match conn.execute(sql, &ExecOptions::default()).await {
+    match execute(conn, sql).await {
         Ok(ExecResult::Affected { rows }) => rows,
         other => panic!("{}: expected a row count from {sql}, got {other:?}", b.name),
     }
@@ -338,7 +600,7 @@ fn cell(batch: &RecordBatch, column: usize, row: usize) -> Option<String> {
 
 /// Runs `sql` to completion, returning the first error from either phase.
 async fn run(conn: &dyn Connection, sql: &str) -> Result<(), Error> {
-    match conn.execute(sql, &ExecOptions::default()).await? {
+    match execute(conn, sql).await? {
         ExecResult::Rows(stream) => stream.try_for_each(|_| async { Ok(()) }).await,
         ExecResult::Affected { .. } => Ok(()),
     }
@@ -346,6 +608,8 @@ async fn run(conn: &dyn Connection, sql: &str) -> Result<(), Error> {
 
 #[tokio::test]
 async fn connects_and_reports_the_server() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let server = conn.server_info();
@@ -356,6 +620,8 @@ async fn connects_and_reports_the_server() {
 
 #[tokio::test]
 async fn selects_scalars() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let batches = collect(
@@ -381,6 +647,8 @@ async fn selects_scalars() {
 
 #[tokio::test]
 async fn streams_large_results_in_batches() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let options = ExecOptions {
@@ -404,6 +672,8 @@ async fn streams_large_results_in_batches() {
 
 #[tokio::test]
 async fn reports_affected_rows() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
@@ -412,6 +682,12 @@ async fn reports_affected_rows() {
         let t = b.temp("conf_t");
         let sql = format!("INSERT INTO {t} VALUES (1, 'a'), (2, 'b'), (3, 'c')");
         assert_eq!(affected(&b, conn, &sql).await, 3, "{}: insert", b.name);
+        // ClickHouse updates and deletes are mutations: they report no row counts and do
+        // not apply to temporary tables.
+        if b.config.driver == DriverKind::ClickHouse {
+            affected(&b, conn, &format!("DROP TABLE {t}")).await;
+            continue;
+        }
         let sql = format!("UPDATE {t} SET v = 'z' WHERE id >= 2");
         assert_eq!(affected(&b, conn, &sql).await, 2, "{}: update", b.name);
         let rows = collect(&b, conn, &format!("SELECT count(*) FROM {t} WHERE v = 'z'")).await;
@@ -433,6 +709,8 @@ async fn reports_affected_rows() {
 
 #[tokio::test]
 async fn maps_errors_with_their_position() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         match run(&*conn, "SELECT * FROM no_such_table").await {
@@ -447,14 +725,15 @@ async fn maps_errors_with_their_position() {
             }
             other => panic!("{}: expected a database error, got {other:?}", b.name),
         }
-        // DuckDB reads `FROMM` as an alias and stops at `t`.
-        let at = if b.config.driver == DriverKind::DuckDb {
-            16
-        } else {
-            10
+        // DuckDB and ClickHouse read `FROMM` as an alias and stop at `t`; CockroachDB gives
+        // no position.
+        let at = match (b.config.driver, b.name) {
+            (DriverKind::DuckDb | DriverKind::ClickHouse, _) => Some(16),
+            (_, "cockroach") => None,
+            _ => Some(10),
         };
         match run(&*conn, "SELECT * FROMM t").await {
-            Err(Error::Database(e)) => assert_eq!(e.position, Some(at), "{}: {e}", b.name),
+            Err(Error::Database(e)) => assert_eq!(e.position, at, "{}: {e}", b.name),
             other => panic!("{}: expected a syntax error, got {other:?}", b.name),
         }
         // The session is still usable after errors.
@@ -465,17 +744,37 @@ async fn maps_errors_with_their_position() {
 
 #[tokio::test]
 async fn cancels_running_queries() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let handle = conn.cancel_handle();
+        // libSQL over HTTP has no way to stop a statement.
+        if !conn.capabilities().cancel {
+            assert!(
+                matches!(handle.cancel().await, Err(Error::Unsupported(_))),
+                "{}",
+                b.name
+            );
+            continue;
+        }
+        // Again until the query stops: a cancel that arrives before the query starts (a busy
+        // YugabyteDB) is lost.
         let cancel = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(500)).await;
-            handle.cancel().await
+            loop {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                if let Err(e) = handle.cancel().await {
+                    return e;
+                }
+            }
         });
         let result = tokio::time::timeout(Duration::from_secs(30), run(&*conn, b.endless_sql))
             .await
             .unwrap_or_else(|_| panic!("{}: cancel did not stop the query", b.name));
-        cancel.await.unwrap().unwrap();
+        cancel.abort();
+        if let Ok(e) = cancel.await {
+            panic!("{}: cancel failed: {e}", b.name);
+        }
         assert!(
             matches!(result, Err(Error::Cancelled)),
             "{}: got {result:?}",
@@ -488,6 +787,8 @@ async fn cancels_running_queries() {
 
 #[tokio::test]
 async fn abandoned_results_free_the_connection() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         // Paged: read a page at a time, as the result grid does.
@@ -515,6 +816,8 @@ async fn abandoned_results_free_the_connection() {
 
 #[tokio::test]
 async fn navigates_metadata() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let schemas = conn.schemas().await.unwrap();
@@ -575,17 +878,21 @@ async fn navigates_metadata() {
         assert_eq!(by_customer.columns, ["customer_id"], "{}", b.name);
         assert!(!by_customer.unique, "{}", b.name);
 
-        assert_eq!(orders.foreign_keys.len(), 1, "{}", b.name);
-        let fk = &orders.foreign_keys[0];
-        assert_eq!(fk.columns, ["customer_id"], "{}", b.name);
-        assert_eq!(fk.ref_table, "customers", "{}", b.name);
-        assert_eq!(fk.ref_columns, ["id"], "{}", b.name);
-
         let view = conn
             .table_details(&b.schema, "customer_totals")
             .await
             .unwrap();
         assert!(view.columns.len() >= 2, "{}: view columns", b.name);
+        if !b.keys() {
+            assert_eq!(orders.foreign_keys, [], "{}", b.name);
+            continue;
+        }
+
+        assert_eq!(orders.foreign_keys.len(), 1, "{}", b.name);
+        let fk = &orders.foreign_keys[0];
+        assert_eq!(fk.columns, ["customer_id"], "{}", b.name);
+        assert_eq!(fk.ref_table, "customers", "{}", b.name);
+        assert_eq!(fk.ref_columns, ["id"], "{}", b.name);
 
         let customers = conn.table_details(&b.schema, "customers").await.unwrap();
         assert!(
@@ -630,9 +937,17 @@ async fn count(b: &Backend, conn: &dyn Connection) -> String {
 
 #[tokio::test]
 async fn manual_commit_and_rollback() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
+        // ClickHouse has no transactions: manual commit is refused.
+        if !conn.capabilities().transactions {
+            assert!(conn.set_autocommit(false).await.is_err(), "{}", b.name);
+            assert!(conn.transaction().autocommit, "{}", b.name);
+            continue;
+        }
         affected(&b, conn, &b.create_temp("conf_tx", "id INT")).await;
         let t = b.temp("conf_tx");
         let insert = |id: u32| format!("INSERT INTO {t} VALUES ({id})");
@@ -716,7 +1031,10 @@ async fn manual_commit_and_rollback() {
         assert_eq!(conn.transaction().open, !mysql, "{}: DDL first", b.name);
         conn.rollback().await.unwrap();
         let kept = run(conn, &format!("SELECT * FROM {ddl}")).await.is_ok();
-        assert_eq!(kept, mysql, "{}: the CREATE rolled back", b.name);
+        // CockroachDB commits the transaction before DDL (`autocommit_before_ddl`), YugabyteDB
+        // runs DDL in a transaction of its own.
+        let ddl_commits = mysql || matches!(b.name, "cockroach" | "yugabyte");
+        assert_eq!(kept, ddl_commits, "{}: the CREATE rolled back", b.name);
         conn.rollback().await.unwrap();
         conn.set_autocommit(true).await.unwrap();
 
@@ -739,6 +1057,8 @@ async fn manual_commit_and_rollback() {
 
 #[tokio::test]
 async fn lists_catalog_columns_for_completion() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let catalog = conn.catalog_columns().await.unwrap();
@@ -763,6 +1083,9 @@ async fn lists_catalog_columns_for_completion() {
             .map(|c| c.column.as_str())
             .collect();
         assert_eq!(orders.first(), Some(&"id"), "{}", b.name);
+        if !b.keys() {
+            continue;
+        }
 
         // Foreign keys complete JOIN conditions.
         let keys = conn.catalog_foreign_keys().await.unwrap();
@@ -783,6 +1106,8 @@ async fn lists_catalog_columns_for_completion() {
 
 #[tokio::test]
 async fn reports_lost_connections() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let Some((id_sql, kill)) = b.kill else {
             continue;
@@ -832,6 +1157,8 @@ fn plan_has_actuals(node: &PlanNode) -> bool {
 /// rolled back, in autocommit and inside an open transaction alike.
 #[tokio::test]
 async fn explains_queries() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
@@ -839,7 +1166,8 @@ async fn explains_queries() {
         if !conn.capabilities().explain {
             continue;
         }
-        affected(&b, conn, "CREATE TEMPORARY TABLE conf_plan (id INT)").await;
+        let create = format!("CREATE {}TABLE conf_plan (id INT)", b.temporary());
+        affected(&b, conn, &create).await;
         affected(&b, conn, "INSERT INTO conf_plan VALUES (1), (2), (3)").await;
         let count = || async {
             let rows = collect(&b, conn, "SELECT count(*) FROM conf_plan").await;
@@ -856,8 +1184,8 @@ async fn explains_queries() {
         );
 
         let plan = conn.explain(select, true).await.unwrap();
-        // SQLite has no plan that runs the statement.
-        let analyzes = b.name != "sqlite";
+        // SQLite (and libSQL) has no plan that runs the statement.
+        let analyzes = !b.speaks_sqlite();
         assert_eq!(plan.analyzed, analyzes, "{}", b.name);
         assert_eq!(
             plan_has_actuals(&plan.root),
@@ -893,6 +1221,8 @@ async fn explains_queries() {
 /// A filtered full scan of a large table is suggested an index.
 #[tokio::test]
 async fn suggests_indexes_for_large_scans() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
@@ -902,7 +1232,7 @@ async fn suggests_indexes_for_large_scans() {
         }
         run(
             conn,
-            &format!("CREATE TEMPORARY TABLE conf_big AS {}", b.series_sql),
+            &format!("CREATE {}TABLE conf_big AS {}", b.temporary(), b.series_sql),
         )
         .await
         .unwrap_or_else(|e| panic!("{}: {e}", b.name));
@@ -912,7 +1242,7 @@ async fn suggests_indexes_for_large_scans() {
             .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         let tables: Vec<_> = plan.suggestions.iter().map(|s| s.table.as_str()).collect();
         // SQLite plans have no row counts to judge a table by.
-        let expected: &[&str] = if b.name == "sqlite" {
+        let expected: &[&str] = if b.speaks_sqlite() {
             &[]
         } else {
             &["conf_big"]
@@ -925,10 +1255,25 @@ async fn suggests_indexes_for_large_scans() {
 /// `Error::Unsupported`, supported ones never do.
 #[tokio::test]
 async fn capabilities_match_optional_methods() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let caps = conn.capabilities();
-        assert!(caps.transactions && caps.cancel, "{}", b.name);
+        // libSQL's HTTP protocol has no way to interrupt a statement.
+        assert_eq!(
+            caps.cancel,
+            b.config.driver != DriverKind::Libsql,
+            "{}",
+            b.name
+        );
+        // ClickHouse is the one database without transactions.
+        assert_eq!(
+            caps.transactions,
+            b.config.driver != DriverKind::ClickHouse,
+            "{}",
+            b.name
+        );
 
         let explain = conn.explain("SELECT 1", false).await;
         assert_eq!(
@@ -966,6 +1311,8 @@ async fn capabilities_match_optional_methods() {
 /// test (with a primary key, a unique column, a check and a trigger) and on the fixtures.
 #[tokio::test]
 async fn describes_objects_and_their_ddl() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let suffix = std::process::id();
@@ -988,21 +1335,31 @@ async fn describes_objects_and_their_ddl() {
 fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<String>, Vec<String>) {
     let s = &b.schema;
     let columns = match b.config.driver {
+        DriverKind::Mongo => unreachable!("MongoDB has its own tests in mongo.rs"),
         DriverKind::Postgres => "id int PRIMARY KEY, code text UNIQUE, qty int CHECK (qty >= 0)",
         DriverKind::MySql => {
             "id INT PRIMARY KEY, code VARCHAR(10) UNIQUE, qty INT CHECK (qty >= 0)"
         }
-        DriverKind::Sqlite => "id INTEGER PRIMARY KEY, code TEXT UNIQUE, qty INT CHECK (qty >= 0)",
+        DriverKind::Sqlite | DriverKind::Libsql => {
+            "id INTEGER PRIMARY KEY, code TEXT UNIQUE, qty INT CHECK (qty >= 0)"
+        }
         DriverKind::DuckDb => {
             "id INTEGER PRIMARY KEY, code VARCHAR UNIQUE, qty INTEGER CHECK (qty >= 0)"
         }
         DriverKind::SqlServer => {
             "id INT PRIMARY KEY, code NVARCHAR(10) UNIQUE, qty INT CHECK (qty >= 0)"
         }
+        DriverKind::ClickHouse => {
+            "id Int32, code String, qty Int32, CONSTRAINT qty_ok CHECK qty >= 0"
+        }
     };
-    let create = format!("CREATE TABLE {s}.{table} ({columns})");
+    let create = format!(
+        "CREATE TABLE {s}.{table} ({columns}){}",
+        b.table_options("id")
+    );
     let drop = format!("DROP TABLE IF EXISTS {s}.{table}");
     match b.config.driver {
+        DriverKind::Mongo => unreachable!("MongoDB has its own tests in mongo.rs"),
         DriverKind::Postgres => {
             let function = format!("{s}.probe_fn{suffix}()");
             (
@@ -1027,7 +1384,7 @@ fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<Strin
             ],
             vec![drop],
         ),
-        DriverKind::Sqlite => (
+        DriverKind::Sqlite | DriverKind::Libsql => (
             vec![
                 create,
                 format!(
@@ -1036,8 +1393,8 @@ fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<Strin
             ],
             vec![drop],
         ),
-        // DuckDB has no triggers.
-        DriverKind::DuckDb => (vec![create], vec![drop]),
+        // DuckDB and ClickHouse have no triggers.
+        DriverKind::DuckDb | DriverKind::ClickHouse => (vec![create], vec![drop]),
         DriverKind::SqlServer => (
             vec![
                 create,
@@ -1060,14 +1417,15 @@ async fn check_probe(b: &Backend, conn: &dyn Connection, table: &str, trigger: &
         b.name,
         details.constraints
     );
-    assert!(
+    assert_eq!(
         has(ConstraintKind::Unique),
+        b.keys(),
         "{}: {:?}",
         b.name,
         details.constraints
     );
     // SQLite keeps checks only in the table's SQL.
-    if b.config.driver != DriverKind::Sqlite {
+    if !b.speaks_sqlite() {
         let check = details
             .constraints
             .iter()
@@ -1093,7 +1451,7 @@ async fn check_probe(b: &Backend, conn: &dyn Connection, table: &str, trigger: &
     for part in ["CREATE TABLE", "code", "qty"] {
         assert!(ddl.contains(part), "{}: {part} in {ddl}", b.name);
     }
-    if b.config.driver == DriverKind::DuckDb {
+    if matches!(b.config.driver, DriverKind::DuckDb | DriverKind::ClickHouse) {
         return;
     }
 
@@ -1134,7 +1492,11 @@ async fn check_fixture_objects(b: &Backend, conn: &dyn Connection) {
         .object_ddl(&object("orders", ObjectKind::Table))
         .await
         .unwrap();
-    assert!(ddl.contains("customers"), "{}: FK missing in {ddl}", b.name);
+    assert!(
+        ddl.contains("customers") || !b.keys(),
+        "{}: FK missing in {ddl}",
+        b.name
+    );
     let ddl = conn
         .object_ddl(&object("customer_totals", ObjectKind::View))
         .await
@@ -1144,7 +1506,8 @@ async fn check_fixture_objects(b: &Backend, conn: &dyn Connection) {
     let customers = conn.table_details(&b.schema, "customers").await.unwrap();
     let incoming = customers.referenced_by.iter().find(|r| r.table == "orders");
     assert!(
-        incoming.is_some_and(|r| r.columns == ["customer_id"] && r.ref_columns == ["id"]),
+        incoming.is_some_and(|r| r.columns == ["customer_id"] && r.ref_columns == ["id"])
+            || !b.keys(),
         "{}: {:?}",
         b.name,
         customers.referenced_by
@@ -1155,7 +1518,7 @@ async fn check_fixture_objects(b: &Backend, conn: &dyn Connection) {
         .await
         .unwrap();
     // SQLite has no catalog of owners or sizes.
-    if b.config.driver != DriverKind::Sqlite {
+    if !b.speaks_sqlite() {
         assert!(!props.is_empty(), "{}: no properties", b.name);
     }
 }
@@ -1166,6 +1529,7 @@ async fn edit_fixture(
     conn: &dyn Connection,
 ) -> platypus_core::arrow_schema::SchemaRef {
     let ddl = match b.config.driver {
+        DriverKind::Mongo => unreachable!("MongoDB has its own tests in mongo.rs"),
         DriverKind::Postgres => {
             "CREATE TEMPORARY TABLE conf_edit (id INT PRIMARY KEY, name TEXT, \
                  amount NUMERIC(10, 2), data BYTEA, at TIMESTAMPTZ, n INT DEFAULT 7)"
@@ -1174,7 +1538,7 @@ async fn edit_fixture(
             "CREATE TEMPORARY TABLE conf_edit (id INT PRIMARY KEY, name TEXT, \
                  amount DECIMAL(10, 2), data BLOB, at TIMESTAMP NULL, n INT DEFAULT 7)"
         }
-        DriverKind::Sqlite => {
+        DriverKind::Sqlite | DriverKind::Libsql => {
             "CREATE TEMPORARY TABLE conf_edit (id INTEGER PRIMARY KEY, name TEXT, \
                  amount NUMERIC, data BLOB, at TEXT, n INT DEFAULT 7)"
         }
@@ -1186,8 +1550,11 @@ async fn edit_fixture(
             "CREATE TABLE #conf_edit (id INT PRIMARY KEY, name NVARCHAR(MAX), \
                  amount DECIMAL(10, 2), data VARBINARY(MAX), at DATETIMEOFFSET, n INT DEFAULT 7)"
         }
+        DriverKind::ClickHouse => {
+            "CREATE TEMPORARY TABLE conf_edit (id Int32, name Nullable(String),                  amount Decimal(10, 2), data Nullable(String), at Nullable(DateTime64(6, 'UTC')),                  n Int32 DEFAULT 7)"
+        }
     };
-    affected(b, conn, ddl).await;
+    affected(b, conn, &ddl.replacen("TEMPORARY ", b.temporary(), 1)).await;
     let ExecResult::Rows(stream) = conn
         .execute(
             &format!("SELECT * FROM {}", b.temp("conf_edit")),
@@ -1210,9 +1577,16 @@ async fn edits_table_data() {
     use platypus_sql::Dialect;
     use platypus_sql::dml::{self, Column, Value, ValueKind};
 
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
+        // Saving edits checks each statement's row count inside a transaction; ClickHouse
+        // has no transactions and its updates report no row counts.
+        if !conn.capabilities().transactions {
+            continue;
+        }
         let schema = edit_fixture(&b, conn).await;
         let columns: Vec<Column<'_>> = schema
             .fields()
@@ -1358,6 +1732,8 @@ async fn edit_rollbacks(
 #[tokio::test]
 async fn estimates_table_rows() {
     use platypus_sql::Dialect;
+
+    let _serial = SERIAL.lock().await;
     for b in backends().await {
         let conn = b.connect().await;
         let d = Dialect::from(b.config.driver);
@@ -1380,7 +1756,8 @@ async fn arrays_fixture(conn: &dyn Connection) {
     for sql in [
         "DROP TABLE IF EXISTS demo.conf_arrays",
         "DROP TYPE IF EXISTS demo.conf_pair",
-        "CREATE TYPE demo.conf_pair AS (label TEXT, n INT)",
+        // INT4: `INT` is 64-bit in CockroachDB.
+        "CREATE TYPE demo.conf_pair AS (label TEXT, n INT4)",
         "CREATE TABLE demo.conf_arrays (id INT PRIMARY KEY, tags TEXT[], nums INT[], \
          pair demo.conf_pair, pairs demo.conf_pair[])",
         "INSERT INTO demo.conf_arrays (id) VALUES (1)",
@@ -1416,6 +1793,8 @@ async fn edits_arrays_and_composites() {
     use platypus_sql::Dialect;
     use platypus_sql::dml::{self, Column, Value, ValueKind};
     use platypus_sql::pg_literal::{join_array, join_composite, split_array, split_composite};
+
+    let _serial = SERIAL.lock().await;
 
     for b in backends().await {
         if b.config.driver != DriverKind::Postgres {
@@ -1496,6 +1875,8 @@ async fn edits_arrays_and_composites() {
 
 #[tokio::test]
 async fn searches_metadata() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         if !conn.capabilities().metadata_search {
@@ -1535,6 +1916,8 @@ async fn searches_metadata() {
 #[tokio::test]
 async fn searches_table_data() {
     use platypus_sql::Dialect;
+
+    let _serial = SERIAL.lock().await;
     for b in backends().await {
         let conn = b.connect().await;
         let d = Dialect::from(b.config.driver);
@@ -1543,7 +1926,15 @@ async fn searches_table_data() {
         let _ = run(&*conn, &format!("DROP TABLE {qualified}")).await;
         run(
             &*conn,
-            &format!("CREATE TABLE {qualified} (id INTEGER, label VARCHAR(20))"),
+            &format!(
+                "CREATE TABLE {qualified} (id INTEGER, label {}){}",
+                if b.config.driver == DriverKind::ClickHouse {
+                    "Nullable(String)"
+                } else {
+                    "VARCHAR(20)"
+                },
+                b.table_options("id")
+            ),
         )
         .await
         .unwrap();
@@ -1583,18 +1974,21 @@ async fn searches_table_data() {
 /// Row estimates and sizes of tables, and PostgreSQL partitions under their table.
 #[tokio::test]
 async fn sizes_tables_and_nests_partitions() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let objects = conn.objects(&b.schema).await.unwrap();
         let customers = objects.iter().find(|o| o.name == "customers").unwrap();
-        // SQLite keeps no statistics, DuckDB only row estimates.
+        // SQLite and libSQL keep no statistics, DuckDB only row estimates, CockroachDB no
+        // page counts.
         assert_eq!(
             customers.size.is_some(),
-            !b.config.driver.is_embedded(),
+            !b.config.driver.is_embedded() && !b.speaks_sqlite() && b.name != "cockroach",
             "{}: {customers:?}",
             b.name
         );
-        if b.config.driver != DriverKind::Postgres {
+        if b.config.driver != DriverKind::Postgres || b.name == "cockroach" {
             continue;
         }
         let details = conn.table_details(&b.schema, "customers").await.unwrap();
@@ -1648,13 +2042,20 @@ fn shape(batch: &RecordBatch, column: usize) -> Option<geometry::Shape> {
 #[tokio::test]
 async fn reads_geometries() {
     use geometry::Shape;
+
+    let _serial = SERIAL.lock().await;
     let point = Shape::Point { x: 1.0, y: 2.0 };
     let line = Shape::Line {
         points: vec![[0.0, 0.0], [2.0, 1.0]],
     };
     for b in backends().await {
+        // CockroachDB has none of PostgreSQL's geometric types.
+        if b.name == "cockroach" {
+            continue;
+        }
         let conn = b.connect().await;
         let (sql, expected) = match b.config.driver {
+            DriverKind::Mongo => unreachable!("MongoDB has its own tests in mongo.rs"),
             DriverKind::Postgres => (
                 "SELECT point '(1,2)', box '(1,1),(0,0)', polygon '((0,0),(1,0),(1,1))', \
                  path '[(0,0),(2,1)]', lseg '[(0,0),(2,1)]', circle '<(1,2),3>'",
@@ -1685,9 +2086,11 @@ async fn reads_geometries() {
                 "SELECT ST_GeomFromText('POINT(1 2)'), ST_GeomFromText('LINESTRING(0 0, 2 1)')",
                 vec![point.clone(), line.clone()],
             ),
-            DriverKind::Sqlite | DriverKind::DuckDb => {
-                ("SELECT 'POINT (1 2)'", vec![point.clone()])
-            }
+            // ClickHouse geometries are tuples of coordinates: shapes come as text.
+            DriverKind::Sqlite
+            | DriverKind::Libsql
+            | DriverKind::DuckDb
+            | DriverKind::ClickHouse => ("SELECT 'POINT (1 2)'", vec![point.clone()]),
             // SQL Server's own serialization is not WKB: the values are converted.
             DriverKind::SqlServer => (
                 "SELECT geometry::Point(1, 2, 0).STAsBinary(), \
@@ -1704,9 +2107,12 @@ async fn reads_geometries() {
 
 #[tokio::test]
 async fn sets_the_session_up_after_connecting() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let mut config = b.config.clone();
         let (check, expected) = match config.driver {
+            DriverKind::Mongo => unreachable!("MongoDB has its own tests in mongo.rs"),
             DriverKind::Postgres => (
                 "SELECT current_schema(), current_setting('TimeZone')",
                 vec![Some(b.schema.clone()), Some("Europe/Rome".to_owned())],
@@ -1716,7 +2122,13 @@ async fn sets_the_session_up_after_connecting() {
                 "SELECT DATABASE(), @@session.time_zone",
                 vec![Some(b.schema.clone()), Some("+02:00".to_owned())],
             ),
-            DriverKind::Sqlite | DriverKind::SqlServer => ("SELECT 1", vec![Some("1".to_owned())]),
+            DriverKind::ClickHouse => (
+                "SELECT currentDatabase(), timezone()",
+                vec![Some(b.schema.clone()), Some("Europe/Rome".to_owned())],
+            ),
+            DriverKind::Sqlite | DriverKind::Libsql | DriverKind::SqlServer => {
+                ("SELECT 1", vec![Some("1".to_owned())])
+            }
         };
         // SQL Server names its temporary tables with a `#`.
         let probe_table = if config.driver == DriverKind::SqlServer {
@@ -1725,15 +2137,24 @@ async fn sets_the_session_up_after_connecting() {
             "init_probe"
         };
         config.init = SessionInit {
-            schema: (!matches!(config.driver, DriverKind::Sqlite | DriverKind::SqlServer))
-                .then(|| b.schema.clone()),
+            schema: (!matches!(
+                config.driver,
+                DriverKind::Sqlite | DriverKind::Libsql | DriverKind::SqlServer
+            ))
+            .then(|| b.schema.clone()),
             time_zone: match config.driver {
-                DriverKind::Postgres => Some("Europe/Rome".to_owned()),
+                DriverKind::Mongo => unreachable!("MongoDB has its own tests in mongo.rs"),
+                DriverKind::Postgres | DriverKind::ClickHouse => Some("Europe/Rome".to_owned()),
                 DriverKind::MySql => Some("+02:00".to_owned()),
-                DriverKind::Sqlite | DriverKind::DuckDb | DriverKind::SqlServer => None,
+                DriverKind::Sqlite
+                | DriverKind::Libsql
+                | DriverKind::DuckDb
+                | DriverKind::SqlServer => None,
             },
             statements: vec![if config.driver == DriverKind::SqlServer {
                 "CREATE TABLE #init_probe (x int)".to_owned()
+            } else if config.driver == DriverKind::Libsql {
+                "CREATE TABLE IF NOT EXISTS init_probe (x int)".to_owned()
             } else {
                 "CREATE TEMPORARY TABLE init_probe (x int)".to_owned()
             }],
@@ -1768,8 +2189,8 @@ async fn agent_count(b: &Backend, conn: &dyn Connection, table: &str) -> String 
 
 /// The first value an agent's read-only query returns.
 async fn agent_value(b: &Backend, conn: &dyn Connection, sql: &str) -> String {
-    let dialect = platypus_sql::Dialect::from(b.config.driver);
-    match platypus_mcp::query::run(conn, sql, Some(dialect), &Limits::default()).await {
+    let read_only = Some(b.config.driver);
+    match platypus_mcp::query::run(conn, sql, read_only, &Limits::default()).await {
         Ok(Outcome::Rows(t)) => t.rows[0][0].text().to_owned(),
         Ok(other) => panic!("{}: {sql} returned {other:?}", b.name),
         Err(e) => panic!("{}: {sql}: {e:?}", b.name),
@@ -1778,10 +2199,11 @@ async fn agent_value(b: &Backend, conn: &dyn Connection, sql: &str) -> String {
 
 #[tokio::test]
 async fn agents_read_in_read_only_transactions() {
+    let _serial = SERIAL.lock().await;
+
     for b in backends().await {
         let conn = b.connect().await;
         let conn = &*conn;
-        let dialect = platypus_sql::Dialect::from(b.config.driver);
         // A real table: READ ONLY transactions still write temporary ones.
         let table = "agent_read_only_probe";
         run(conn, &format!("DROP TABLE IF EXISTS {table}"))
@@ -1798,19 +2220,23 @@ async fn agents_read_in_read_only_transactions() {
             let after = collect(&b, conn, "SELECT @@LOCK_TIMEOUT").await;
             assert_eq!(cell(&after[0], 0, 0).as_deref(), Some("-1"));
         }
-        // A write that got past the statement check is refused, or rolled back.
+        // A write that got past the statement check is refused, or rolled back. ClickHouse
+        // has no transaction to do either: only the statement check stops it.
         let insert = format!("INSERT INTO {table} VALUES (1)");
-        let write =
-            platypus_mcp::query::run(conn, &insert, Some(dialect), &Limits::default()).await;
-        if dialect.refuses_writes_when_read_only() {
-            assert!(
-                write.is_err(),
-                "{}: the read-only transaction wrote",
-                b.name
-            );
+        if conn.capabilities().transactions {
+            let write =
+                platypus_mcp::query::run(conn, &insert, Some(b.config.driver), &Limits::default())
+                    .await;
+            if platypus_mcp::query::refuses_writes_when_read_only(b.config.driver) {
+                assert!(
+                    write.is_err(),
+                    "{}: the read-only transaction wrote",
+                    b.name
+                );
+            }
+            assert!(!conn.transaction().open, "{}: left a transaction", b.name);
+            assert_eq!(agent_count(&b, conn, table).await, "0", "{}", b.name);
         }
-        assert!(!conn.transaction().open, "{}: left a transaction", b.name);
-        assert_eq!(agent_count(&b, conn, table).await, "0", "{}", b.name);
 
         // Afterwards the session writes again (SQLite turns query_only off).
         assert_eq!(affected(&b, conn, &insert).await, 1, "{}", b.name);
@@ -1825,6 +2251,8 @@ async fn agents_read_in_read_only_transactions() {
 async fn imports_data_files() {
     use platypus_sql::Dialect;
     use platypus_transfer::import::{ImportColumn, ImportMode, ImportPlan, import};
+
+    let _serial = SERIAL.lock().await;
 
     let dir = tempfile::tempdir().unwrap();
     let csv = dir.path().join("conf_import.csv");
@@ -1849,7 +2277,13 @@ async fn imports_data_files() {
     let fields = stream.schema().fields().clone();
     drop(stream);
 
-    for b in backends().await {
+    // Manual commit, replace and upsert need transactions and unique keys, which ClickHouse
+    // lacks; the transfers cover its imports.
+    let all = backends().await;
+    for b in all
+        .iter()
+        .filter(|b| b.config.driver != DriverKind::ClickHouse)
+    {
         let conn = b.connect().await;
         let d = Dialect::from(b.config.driver);
         let table = d.qualified(Some(&b.schema), "conf_import");
@@ -1890,7 +2324,7 @@ async fn imports_data_files() {
             "SELECT COUNT(*), SUM(id), MAX(name), SUM(price) FROM {table} WHERE name IS NOT NULL OR id = 2"
         );
         let other = b.connect().await;
-        let batches = collect(&b, &*other, &check).await;
+        let batches = collect(b, &*other, &check).await;
         let values: Vec<_> = (0..4).map(|c| cell(&batches[0], c, 0)).collect();
         assert_eq!(values[0].as_deref(), Some("3"), "{}", b.name);
         assert_eq!(values[1].as_deref(), Some("6"), "{}", b.name);
@@ -1898,7 +2332,7 @@ async fn imports_data_files() {
         let price: f64 = values[3].as_deref().unwrap().parse().unwrap();
         assert!((price - 109.75).abs() < 1e-9, "{}: {price}", b.name);
 
-        check_import_modes(&b, &*source, &*conn, &*other, &plan, &table).await;
+        check_import_modes(b, &*source, &*conn, &*other, &plan, &table).await;
 
         // The table exists: creating it again fails, and the rows stay.
         assert!(
@@ -1917,7 +2351,7 @@ async fn imports_data_files() {
             "{}",
             b.name
         );
-        let batches = collect(&b, &*conn, &format!("SELECT COUNT(*) FROM {table}")).await;
+        let batches = collect(b, &*conn, &format!("SELECT COUNT(*) FROM {table}")).await;
         assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
         run(&*conn, &format!("DROP TABLE {table}")).await.unwrap();
         conn.commit().await.unwrap();
@@ -1931,16 +2365,24 @@ async fn transfers_tables_between_databases() {
     use platypus_sql::Dialect;
     use platypus_transfer::import::{ImportColumn, ImportMode, ImportPlan, import, target_type};
 
+    let _serial = SERIAL.lock().await;
+
     let all = backends().await;
     for b in &all {
         let conn = b.connect().await;
         let d = Dialect::from(b.config.driver);
         let src = d.qualified(Some(&b.schema), "conf_xfer_src");
         let _ = run(&*conn, &format!("DROP TABLE {src}")).await;
+        // ClickHouse columns are not nullable unless declared so.
+        let null = if b.config.driver == DriverKind::ClickHouse {
+            " NULL"
+        } else {
+            ""
+        };
         run(
             &*conn,
             &format!(
-                "CREATE TABLE {src} (id INT, name VARCHAR(20), price DECIMAL(10, 2), day DATE)"
+                "CREATE TABLE {src} (id INT{null}, name VARCHAR(20){null}, price DECIMAL(10, 2){null}, day DATE{null})"
             ),
         )
         .await
@@ -2055,7 +2497,7 @@ async fn check_import_modes(
 
     // Upsert on a unique key: a changed row is updated, a deleted one inserted again.
     // SQLite qualifies the index, not its table.
-    let on = if b.config.driver == DriverKind::Sqlite {
+    let on = if b.speaks_sqlite() {
         "conf_import"
     } else {
         table
@@ -2150,7 +2592,14 @@ async fn migrates_tables_between_databases() {
     use platypus_sql::Dialect;
     use platypus_transfer::migrate::migrate;
 
-    let all = backends().await;
+    let _serial = SERIAL.lock().await;
+
+    // ClickHouse enforces neither primary nor foreign keys.
+    let all: Vec<_> = backends()
+        .await
+        .into_iter()
+        .filter(|b| b.config.driver != DriverKind::ClickHouse)
+        .collect();
     let tables = ["conf_mig_parent".to_owned(), "conf_mig_child".to_owned()];
     for from in &all {
         let source = from.connect().await;
@@ -2159,7 +2608,7 @@ async fn migrates_tables_between_databases() {
         let child = sd.qualified(Some(&from.schema), "conf_mig_child");
         let view = sd.qualified(Some(&from.schema), "conf_mig_view");
         // SQLite names the referenced table without its schema, and qualifies the index.
-        let (referenced, index) = if from.config.driver == DriverKind::Sqlite {
+        let (referenced, index) = if from.speaks_sqlite() {
             ("conf_mig_parent", format!("{}.conf_mig_code", from.schema))
         } else {
             (parent.as_str(), "conf_mig_code".to_owned())
@@ -2171,8 +2620,9 @@ async fn migrates_tables_between_databases() {
             }
             DriverKind::MySql => "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY".to_owned(),
             DriverKind::SqlServer => "id INT IDENTITY(1, 1) PRIMARY KEY".to_owned(),
-            DriverKind::Sqlite => "id INTEGER PRIMARY KEY".to_owned(),
+            DriverKind::Sqlite | DriverKind::Libsql => "id INTEGER PRIMARY KEY".to_owned(),
             DriverKind::DuckDb => format!("id INTEGER DEFAULT nextval('{sequence}') PRIMARY KEY"),
+            DriverKind::ClickHouse | DriverKind::Mongo => unreachable!("{}", from.name),
         };
         for to in all.iter().filter(|to| to.name != from.name) {
             let pair = format!("{} -> {}", from.name, to.name);
@@ -2199,7 +2649,7 @@ async fn migrates_tables_between_databases() {
                 ),
                 format!(
                     "CREATE UNIQUE INDEX {index} ON {} (code)",
-                    if from.config.driver == DriverKind::Sqlite {
+                    if from.speaks_sqlite() {
                         referenced
                     } else {
                         &parent
@@ -2234,7 +2684,9 @@ async fn migrates_tables_between_databases() {
             .await
             .unwrap_or_else(|e| panic!("{pair}: {e}"));
             assert_eq!(done.rows, 4, "{pair}");
-            check_migrated(to, &*target, &pair, &done.skipped, sd == td).await;
+            // Only MySQL sources have the view.
+            let same = sd == td && sd == Dialect::MySql;
+            check_migrated(to, &*target, &pair, &done.skipped, same).await;
             let _ = run(&*target, &format!("DROP VIEW {tview}")).await;
             drop_tables(&*target, td, &to.schema, &tables).await;
             let copied = td.qualified(Some(&to.schema), "conf_mig_parent_id_seq");
@@ -2260,7 +2712,7 @@ async fn check_migrated(
     let td = Dialect::from(to.config.driver);
     let tparent = td.qualified(Some(&to.schema), "conf_mig_parent");
     let tchild = td.qualified(Some(&to.schema), "conf_mig_child");
-    let files = matches!(to.config.driver, DriverKind::Sqlite | DriverKind::DuckDb);
+    let files = to.speaks_sqlite() || to.config.driver == DriverKind::DuckDb;
     // Only a CHECK written for another database may stay behind, in SQLite and DuckDB, and the
     // view between databases of different kinds (the schema's other objects are not ours).
     let unexpected: Vec<_> = skipped
@@ -2312,7 +2764,7 @@ async fn check_migrated(
         .await
         .unwrap();
     assert_eq!(details.foreign_keys.len(), 1, "{pair}: foreign key");
-    if to.config.driver != DriverKind::Sqlite {
+    if !to.speaks_sqlite() {
         let orphan = run(target, &format!("INSERT INTO {tchild} VALUES (12, 99)")).await;
         assert!(orphan.is_err(), "{pair}: foreign key");
     }
@@ -2350,14 +2802,21 @@ async fn fills_tables_with_fake_rows() {
     use platypus_sql::Dialect;
     use platypus_transfer::fake::{FakeColumn, Generator, fill};
 
+    let _serial = SERIAL.lock().await;
+
     let tables = ["conf_fake_parent".to_owned(), "conf_fake_child".to_owned()];
-    for b in backends().await {
+    // ClickHouse has neither unique nor foreign keys.
+    let all = backends().await;
+    for b in all
+        .iter()
+        .filter(|b| b.config.driver != DriverKind::ClickHouse)
+    {
         let conn = b.connect().await;
         let d = Dialect::from(b.config.driver);
         drop_tables(&*conn, d, &b.schema, &tables).await;
         let parent = d.qualified(Some(&b.schema), "conf_fake_parent");
         let child = d.qualified(Some(&b.schema), "conf_fake_child");
-        let referenced = if b.config.driver == DriverKind::Sqlite {
+        let referenced = if b.speaks_sqlite() {
             "conf_fake_parent"
         } else {
             parent.as_str()
@@ -2431,7 +2890,7 @@ async fn fills_tables_with_fake_rows() {
         let check = format!(
             "SELECT COUNT(*), MIN(p.id), MAX(p.id), COUNT(DISTINCT c.email) FROM {child} c JOIN {parent} p ON p.id = c.parent_id AND p.city = c.parent_city"
         );
-        let batches = collect(&b, &*conn, &check).await;
+        let batches = collect(b, &*conn, &check).await;
         let values: Vec<_> = (0..4).map(|c| cell(&batches[0], c, 0)).collect();
         // Every child has its parent, the keys follow the seed row, the emails differ.
         let expected = ["1200", "7", "27", "1200"].map(|v| Some(v.to_owned()));
@@ -2531,13 +2990,19 @@ async fn edits_table_designs() {
     use platypus_schema::{ColumnDesign, ConstraintType, IndexDesign};
     use platypus_sql::Dialect;
 
+    let _serial = SERIAL.lock().await;
     let tables = ["conf_design".to_owned(), "conf_design_child".to_owned()];
-    for b in backends().await {
+    // ClickHouse has no primary, unique or foreign keys to design.
+    let all = backends().await;
+    for b in all
+        .iter()
+        .filter(|b| b.config.driver != DriverKind::ClickHouse)
+    {
         let conn = b.connect().await;
         let d = Dialect::from(b.config.driver);
         drop_tables(&*conn, d, &b.schema, &tables).await;
         let comments = matches!(d, Dialect::Postgres | Dialect::MySql | Dialect::DuckDb);
-        let created = redesign(&b, &*conn, None, &design_parent(comments)).await;
+        let created = redesign(b, &*conn, None, &design_parent(comments)).await;
         assert_eq!(
             column_names(&created),
             ["id", "code", "total", "note"],
@@ -2567,7 +3032,11 @@ async fn edits_table_designs() {
         // and another index.
         let mut altered = created.clone();
         altered.columns[3].name = "remark".to_owned();
-        altered.columns[2].data_type = "DECIMAL(12,2)".to_owned();
+        // CockroachDB rewrites no column with a CHECK to a new type.
+        let retype = b.name != "cockroach";
+        if retype {
+            altered.columns[2].data_type = "DECIMAL(12,2)".to_owned();
+        }
         altered.columns[2].nullable = false;
         altered.columns.push(ColumnDesign {
             default: Some("'new'".to_owned()),
@@ -2578,7 +3047,7 @@ async fn edits_table_designs() {
             columns: vec!["status".to_owned()],
             ..IndexDesign::default()
         }];
-        let read = redesign(&b, &*conn, Some(&created), &altered).await;
+        let read = redesign(b, &*conn, Some(&created), &altered).await;
         assert_eq!(
             column_names(&read),
             ["id", "code", "total", "remark", "status"],
@@ -2587,16 +3056,16 @@ async fn edits_table_designs() {
         );
         assert!(!read.columns[2].nullable, "{}", b.name);
         assert!(
-            read.columns[2].data_type.contains("12"),
+            !retype || read.columns[2].data_type.contains("12"),
             "{}: {read:?}",
             b.name
         );
         assert_eq!(read.indexes.len(), 1, "{}: {read:?}", b.name);
         assert_eq!(read.indexes[0].name, "conf_design_status", "{}", b.name);
-        let rows = collect(&b, &*conn, &format!("SELECT remark FROM {table}")).await;
+        let rows = collect(b, &*conn, &format!("SELECT remark FROM {table}")).await;
         assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("x"), "{}", b.name);
 
-        edit_child_design(&b, &*conn).await;
+        edit_child_design(b, &*conn).await;
 
         // What SQLite and DuckDB rebuild: a dropped column and a dropped CHECK.
         let mut reduced = read.clone();
@@ -2604,7 +3073,7 @@ async fn edits_table_designs() {
         reduced
             .constraints
             .retain(|c| c.kind != ConstraintType::Check);
-        let read = redesign(&b, &*conn, Some(&read), &reduced).await;
+        let read = redesign(b, &*conn, Some(&read), &reduced).await;
         assert_eq!(
             column_names(&read),
             ["id", "code", "total", "status"],
@@ -2613,7 +3082,7 @@ async fn edits_table_designs() {
         );
         assert_eq!(read.constraints.len(), 1, "{}: {read:?}", b.name);
         assert!(read.columns[0].primary_key, "{}", b.name);
-        let rows = collect(&b, &*conn, &format!("SELECT code FROM {table}")).await;
+        let rows = collect(b, &*conn, &format!("SELECT code FROM {table}")).await;
         assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("a"), "{}", b.name);
         drop_tables(&*conn, d, &b.schema, &tables).await;
     }

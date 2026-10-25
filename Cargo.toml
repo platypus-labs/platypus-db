@@ -12,9 +12,12 @@ publish = false
 
 [workspace.dependencies]
 platypus-core = { path = "crates/platypus-core" }
+platypus-driver-clickhouse = { path = "crates/platypus-driver-clickhouse" }
 platypus-driver-duckdb = { path = "crates/platypus-driver-duckdb" }
+platypus-driver-libsql = { path = "crates/platypus-driver-libsql" }
 platypus-driver-pg = { path = "crates/platypus-driver-pg" }
 platypus-driver-mysql = { path = "crates/platypus-driver-mysql" }
+platypus-driver-mongo = { path = "crates/platypus-driver-mongo" }
 platypus-driver-mssql = { path = "crates/platypus-driver-mssql" }
 platypus-driver-sqlite = { path = "crates/platypus-driver-sqlite" }
 platypus-transfer = { path = "crates/platypus-transfer" }
@@ -23,6 +26,7 @@ platypus-net = { path = "crates/platypus-net" }
 platypus-sql = { path = "crates/platypus-sql" }
 platypus-schema = { path = "crates/platypus-schema" }
 platypus-store = { path = "crates/platypus-store" }
+platypus-tls = { path = "crates/platypus-tls" }
 
 argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
 arrow-array = "60"
@@ -40,6 +44,7 @@ duckdb = { version = "1.20000", features = ["bundled", "json", "parquet"] }
 fallible-iterator = "0.2"
 futures = "0.3"
 keyring = "4"
+mongodb = "3.9.1"
 parquet = { version = "60", default-features = false, features = ["arrow", "snap", "zstd", "simdutf8"] }
 mysql_async = { version = "0.37", default-features = false, features = ["default-rustls-ring"] }
 percent-encoding = "2"

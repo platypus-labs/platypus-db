@@ -65,10 +65,17 @@ fn config_of(
     let mut config = saved.config(password);
     config.ssh = saved.ssh.as_ref().map(|s| ssh_config(store, s, ssh));
     let script = &saved.init.statements;
-    config.init.statements = platypus_sql::split(script, Dialect::from(saved.driver))
-        .iter()
-        .map(|s| s.text(script).to_owned())
-        .collect();
+    config.init.statements = if saved.driver == DriverKind::Mongo {
+        platypus_driver_mongo::shell::split(script)
+            .into_iter()
+            .map(|r| script[r].to_owned())
+            .collect()
+    } else {
+        platypus_sql::split(script, Dialect::from(saved.driver))
+            .iter()
+            .map(|s| s.text(script).to_owned())
+            .collect()
+    };
     config
 }
 

@@ -26,6 +26,7 @@ import { setAnswer } from "./testAnswers";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { dbKey, provideWorkbench, workbench } from "./workbench";
 import { Icon, type IconName } from "./ui/Icon";
+import { scrollSideways } from "./ui/scroll";
 import { type PersistedTab, loadWorkspace, saveWorkspace } from "./workspace";
 import { connectionsOf, loadActiveProject, projectKey, saveActiveProject } from "./projects/state";
 import { ProjectRail } from "./projects/ProjectRail";
@@ -582,10 +583,7 @@ export function App() {
           <div
             className="tabs"
             ref={tabBar}
-            // The wheel scrolls the tabs sideways: the bar has nothing to scroll up or down.
-            onWheel={(e) => {
-              if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY;
-            }}
+            onWheel={scrollSideways}
           >
             {visibleTabs.map((t) => (
               <div

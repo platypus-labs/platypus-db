@@ -84,7 +84,8 @@ registerAction({
   shortcut: "Mod+Shift+F",
   group: "sql",
   order: 10,
-  when: writable,
+  // The formatter knows SQL only.
+  when: (t) => writable(t) && t.driver !== "mongo",
   run: async ({ view, driver }) => {
     const sel = view.state.selection.main;
     const [from, to] = sel.empty ? [0, view.state.doc.length] : [sel.from, sel.to];
@@ -155,7 +156,8 @@ command("select_all_matches", "Select all occurrences", "Mod+Shift+L", "cursors"
 command("fold_all", "Fold all", "Mod+Alt+[", "folding", 40, foldAll, false);
 command("unfold_all", "Unfold all", "Mod+Alt+]", "folding", 41, unfoldAll, false);
 
-/** DuckDB has none: its client cannot open a file the session holds. */
+/** DuckDB has none: its client cannot open a file the session holds. ClickHouse neither:
+ *  clickhouse-client speaks the native protocol, not HTTP. */
 const CLIENTS: Partial<Record<DriverKind, string>> = {
   postgres: "psql",
   mysql: "mysql",

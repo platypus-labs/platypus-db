@@ -121,10 +121,11 @@ impl<'a> Lexer<'a> {
     }
 
     fn block_comment(&mut self) {
-        // PostgreSQL, DuckDB and SQL Server nest block comments; MySQL and SQLite do not.
+        // PostgreSQL, DuckDB, SQL Server and ClickHouse nest block comments; MySQL and
+        // SQLite do not.
         let nested = matches!(
             self.dialect,
-            Dialect::Postgres | Dialect::DuckDb | Dialect::SqlServer
+            Dialect::Postgres | Dialect::DuckDb | Dialect::SqlServer | Dialect::ClickHouse
         );
         let mut depth = 1;
         while depth > 0 {
@@ -188,7 +189,12 @@ impl<'a> Lexer<'a> {
         {
             self.eat_while(|c| c != '\n');
             TokenKind::LineComment
-        } else if c == '#' && d == Dialect::MySql {
+        } else if c == '#'
+            && (d == Dialect::MySql
+                // ClickHouse reads `# ` and `#!` as comments.
+                || (d == Dialect::ClickHouse
+                    && self.peek_at(1).is_none_or(|n| n == '!' || n.is_whitespace())))
+        {
             self.eat_while(|c| c != '\n');
             TokenKind::LineComment
         } else if c == '/' && self.peek_at(1) == Some('*') {
@@ -197,7 +203,7 @@ impl<'a> Lexer<'a> {
             TokenKind::BlockComment
         } else if c == '\'' {
             self.bump();
-            self.quoted('\'', d == Dialect::MySql);
+            self.quoted('\'', matches!(d, Dialect::MySql | Dialect::ClickHouse));
             TokenKind::String
         } else if (c == 'e' || c == 'E')
             && self.peek_at(1) == Some('\'')
@@ -214,15 +220,20 @@ impl<'a> Lexer<'a> {
         } else if c == '"' {
             self.bump();
             // MySQL treats "..." as a string (ANSI_QUOTES off by default).
-            self.quoted('"', d == Dialect::MySql);
+            self.quoted('"', matches!(d, Dialect::MySql | Dialect::ClickHouse));
             if d == Dialect::MySql {
                 TokenKind::String
             } else {
                 TokenKind::QuotedIdent
             }
-        } else if c == '`' && matches!(d, Dialect::MySql | Dialect::Sqlite | Dialect::DuckDb) {
+        } else if c == '`'
+            && matches!(
+                d,
+                Dialect::MySql | Dialect::Sqlite | Dialect::DuckDb | Dialect::ClickHouse
+            )
+        {
             self.bump();
-            self.quoted('`', false);
+            self.quoted('`', d == Dialect::ClickHouse);
             TokenKind::QuotedIdent
         } else if c == '[' && d == Dialect::Sqlite {
             self.bump();
@@ -237,7 +248,8 @@ impl<'a> Lexer<'a> {
             self.eat_while(|c| is_ident_char(c, d));
             TokenKind::Word
         } else if c == '$'
-            && matches!(d, Dialect::Postgres | Dialect::DuckDb)
+            // ClickHouse calls dollar quotes heredocs.
+            && matches!(d, Dialect::Postgres | Dialect::DuckDb | Dialect::ClickHouse)
             && !self.after_word()
             && self.dollar_quote()
         {
@@ -319,6 +331,28 @@ mod tests {
         assert_eq!(
             kinds(src, Dialect::MySql)[0],
             (TokenKind::BlockComment, "/* a /* b */")
+        );
+    }
+
+    #[test]
+    fn clickhouse_quoting_and_comments() {
+        use TokenKind::*;
+        let src = "select 'a\\'b', \"c\\\"d\", `e\\`f`, $h$x;y$h$ # note\n#!x\n/* a /* b */ c */";
+        assert_eq!(
+            kinds(src, Dialect::ClickHouse),
+            [
+                (Word, "select"),
+                (String, "'a\\'b'"),
+                (Symbol, ","),
+                (QuotedIdent, "\"c\\\"d\""),
+                (Symbol, ","),
+                (QuotedIdent, "`e\\`f`"),
+                (Symbol, ","),
+                (String, "$h$x;y$h$"),
+                (LineComment, "# note"),
+                (LineComment, "#!x"),
+                (BlockComment, "/* a /* b */ c */"),
+            ]
         );
     }
 

@@ -115,6 +115,9 @@ pub fn generate_sql(
     target: GenerateTarget,
     request: GenerateRequest,
 ) -> Option<String> {
+    if driver == DriverKind::Mongo {
+        return mongo_statement(&target, request);
+    }
     let d = Dialect::from(driver);
     let name = ObjectName {
         schema: target.schema.as_deref(),
@@ -135,6 +138,29 @@ pub fn generate_sql(
     }
 }
 
+/// [`generate_sql`] in mongosh.
+fn mongo_statement(target: &GenerateTarget, request: GenerateRequest) -> Option<String> {
+    use platypus_driver_mongo::generate::{Statement, statement};
+    let columns: Vec<&str> = target.columns.iter().map(String::as_str).collect();
+    let request = match &request {
+        GenerateRequest::Select { limit } => Statement::Select { limit: *limit },
+        GenerateRequest::Insert => Statement::Insert,
+        GenerateRequest::Update => Statement::Update,
+        GenerateRequest::Delete => Statement::Delete,
+        GenerateRequest::Upsert => Statement::Upsert,
+        GenerateRequest::Drop { .. } => Statement::Drop,
+        GenerateRequest::Truncate => Statement::Truncate,
+        GenerateRequest::Rename { new_name } => Statement::Rename { new_name },
+    };
+    statement(
+        target.schema.as_deref(),
+        &target.name,
+        target.kind,
+        &columns,
+        &request,
+    )
+}
+
 /// What the object actions can do in a dialect, so the UI shows only those that apply.
 #[derive(Debug, Serialize)]
 pub struct DialectSupport {
@@ -143,7 +169,7 @@ pub struct DialectSupport {
     renamable: Vec<ObjectKind>,
 }
 
-const ALL_KINDS: [ObjectKind; 12] = [
+const ALL_KINDS: [ObjectKind; 13] = [
     ObjectKind::Table,
     ObjectKind::View,
     ObjectKind::MaterializedView,
@@ -156,10 +182,18 @@ const ALL_KINDS: [ObjectKind; 12] = [
     ObjectKind::Domain,
     ObjectKind::Extension,
     ObjectKind::Event,
+    ObjectKind::Dictionary,
 ];
 
 #[tauri::command]
 pub fn dialect_support(driver: DriverKind) -> DialectSupport {
+    if driver == DriverKind::Mongo {
+        return DialectSupport {
+            cascade: false,
+            droppable: vec![ObjectKind::Table, ObjectKind::View],
+            renamable: vec![ObjectKind::Table],
+        };
+    }
     let d = Dialect::from(driver);
     // A probe name with a parent and arguments, so every kind can be tried.
     let probe = ObjectName {
@@ -201,5 +235,9 @@ mod tests {
         assert!(mssql.droppable.contains(&ObjectKind::Type));
         assert!(mssql.renamable.contains(&ObjectKind::Procedure));
         assert!(!mssql.renamable.contains(&ObjectKind::Type));
+        let ch = dialect_support(DriverKind::ClickHouse);
+        assert!(ch.droppable.contains(&ObjectKind::Dictionary));
+        assert!(ch.renamable.contains(&ObjectKind::MaterializedView));
+        assert!(!ch.droppable.contains(&ObjectKind::Trigger));
     }
 }

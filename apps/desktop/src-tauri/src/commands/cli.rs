@@ -39,6 +39,21 @@ fn program(driver: DriverKind) -> CommandResult<&'static str> {
             "cli",
             "the duckdb client cannot open a database file that PlatypusDB has open",
         )),
+        // The connection is to the HTTP interface; clickhouse-client speaks the native
+        // protocol, on another port.
+        DriverKind::ClickHouse => Err(CommandError::new(
+            "cli",
+            "clickhouse-client uses the native protocol (port 9000), not the HTTP port of this connection",
+        )),
+        DriverKind::Libsql => Err(CommandError::new(
+            "cli",
+            "libSQL servers have no command-line client to run scripts with",
+        )),
+        // mongosh takes the password only on its command line, where other users see it.
+        DriverKind::Mongo => Err(CommandError::new(
+            "cli",
+            "terminal mode is not available for MongoDB",
+        )),
     }
 }
 
@@ -119,7 +134,7 @@ fn invocation(
             }
             env.extend(password.map(|p| ("MYSQL_PWD", p)));
         }
-        DriverKind::Sqlite | DriverKind::DuckDb => {
+        DriverKind::Sqlite | DriverKind::DuckDb | DriverKind::Libsql => {
             args.extend(
                 ["-bail", "-header", "-column", config.database.as_str()].map(str::to_owned),
             );
@@ -128,6 +143,8 @@ fn invocation(
             args = sqlcmd_args(config, host, port);
             env.extend(password.map(|p| ("SQLCMDPASSWORD", p)));
         }
+        // No client: `program` refuses them.
+        DriverKind::ClickHouse | DriverKind::Mongo => {}
     }
     (args, env)
 }
@@ -318,5 +335,8 @@ mod tests {
     fn has_no_client_for_duckdb() {
         assert_eq!(program(DriverKind::Sqlite).ok(), Some("sqlite3"));
         assert!(program(DriverKind::DuckDb).is_err());
+        assert!(program(DriverKind::ClickHouse).is_err());
+        assert!(program(DriverKind::Libsql).is_err());
+        assert!(program(DriverKind::Mongo).is_err());
     }
 }

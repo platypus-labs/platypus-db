@@ -39,6 +39,8 @@ pub enum ObjectKind {
     Extension,
     /// MySQL scheduled event.
     Event,
+    /// ClickHouse dictionary: an in-memory key-value source, queried like a table.
+    Dictionary,
 }
 
 impl ObjectKind {
@@ -47,7 +49,11 @@ impl ObjectKind {
     pub const fn is_relation(self) -> bool {
         matches!(
             self,
-            Self::Table | Self::View | Self::MaterializedView | Self::ForeignTable
+            Self::Table
+                | Self::View
+                | Self::MaterializedView
+                | Self::ForeignTable
+                | Self::Dictionary
         )
     }
 }
