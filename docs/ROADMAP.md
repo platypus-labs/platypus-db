@@ -476,7 +476,11 @@ inclusi, icone Lucide, navigator, tab, toolbar e dialog ridisegnati
 ([spec](superpowers/specs/2026-10-24-grafica-e-progetti-design.md), parte A). Fatti anche i
 **progetti come spazi di lavoro** (parte B): barra dei progetti a sinistra, connessioni in
 più progetti, tab, cronologia, palette e titolo della finestra per progetto, `Ctrl+1`…
-per cambiare progetto, `connections.toml` versione 2.
+per cambiare progetto, `connections.toml` versione 2. Poi la grafica **Cornice**: la cornice
+della finestra (barra superiore, barra dei progetti, navigator) prende la tinta del tipo della
+connessione della scheda attiva (DEV, TEST, PROD) attorno a un foglio arrotondato con il lavoro;
+barra superiore con progetto, connessione e tipo, ricerca che apre la palette, tema e
+impostazioni; schermata di benvenuto con apertura di un file di dati e import delle connessioni.
 
 **Area:** `App.tsx`, `apps/desktop/src/shell/` (tab bar, palette, impostazioni), `styles.css`, `theme.ts`
 **Dipende da:** 0.2, 0.3, 0.7
