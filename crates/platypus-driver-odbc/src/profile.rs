@@ -103,8 +103,14 @@ fn db2(out: &mut String, config: &ConnectionConfig) -> Result<()> {
         ));
     }
     push(out, "DATABASE", config.database.trim());
-    push(out, "HOSTNAME", host);
-    push(out, "PORT", &config.port.unwrap_or(50000).to_string());
+    // Through an SSH tunnel: its local end.
+    if let Some(addr) = config.connect_addr {
+        push(out, "HOSTNAME", &addr.ip().to_string());
+        push(out, "PORT", &addr.port().to_string());
+    } else {
+        push(out, "HOSTNAME", host);
+        push(out, "PORT", &config.port.unwrap_or(50000).to_string());
+    }
     push(out, "PROTOCOL", "TCPIP");
     if !matches!(config.ssl_mode, SslMode::Disable | SslMode::Prefer) {
         push(out, "Security", "SSL");
@@ -172,6 +178,9 @@ mod tests {
         c.port = Some(50001);
         let s = connection_string(&c, Some("IBM DB2 ODBC DRIVER")).unwrap();
         assert!(s.contains("PORT=50001;PROTOCOL=TCPIP;Security=SSL;"), "{s}");
+        c.connect_addr = Some("127.0.0.1:40002".parse().unwrap());
+        let s = connection_string(&c, Some("x")).unwrap();
+        assert!(s.contains("HOSTNAME=127.0.0.1;PORT=40002;"), "{s}");
         c.database.clear();
         assert!(connection_string(&c, Some("x")).is_err());
     }

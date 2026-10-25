@@ -72,9 +72,9 @@ pub(crate) fn oracle_error(e: &oracle::Error) -> Error {
     })
 }
 
-/// The connect string of `config`: Easy Connect (`host:port/service`, `tcps://` with TLS)
-/// when a host is given, else the database field as written (a net service name or a
-/// connect descriptor).
+/// The connect string of `config`: Easy Connect (`host:port/service`, `tcps://` with TLS,
+/// the local end of the SSH tunnel when there is one) when a host is given, else the
+/// database field as written (a net service name or a connect descriptor).
 pub fn connect_string(config: &ConnectionConfig) -> Result<String> {
     let host = config.host.trim();
     let database = config.database.trim();
@@ -92,12 +92,18 @@ pub fn connect_string(config: &ConnectionConfig) -> Result<String> {
     if tls {
         out.push_str("tcps://");
     }
-    if host.contains(':') {
-        let _ = write!(out, "[{host}]");
-    } else {
-        out.push_str(host);
+    // Through an SSH tunnel: its local end.
+    match config.connect_addr {
+        Some(addr) => {
+            let _ = write!(out, "{addr}");
+        }
+        None if host.contains(':') => {
+            let _ = write!(out, "[{host}]:{}", config.port.unwrap_or(1521));
+        }
+        None => {
+            let _ = write!(out, "{host}:{}", config.port.unwrap_or(1521));
+        }
     }
-    let _ = write!(out, ":{}", config.port.unwrap_or(1521));
     if !database.is_empty() {
         out.push('/');
         out.push_str(database);
@@ -395,6 +401,12 @@ mod tests {
         assert_eq!(connect_string(&c).unwrap(), "SALES_HIGH");
         c.database.clear();
         assert!(matches!(connect_string(&c), Err(Error::Config(_))));
+        // Through a tunnel.
+        c.host = "db.internal".to_owned();
+        c.database = "ORCL".to_owned();
+        c.ssl_mode = SslMode::Disable;
+        c.connect_addr = Some("127.0.0.1:40001".parse().unwrap());
+        assert_eq!(connect_string(&c).unwrap(), "127.0.0.1:40001/ORCL");
     }
 
     #[test]
