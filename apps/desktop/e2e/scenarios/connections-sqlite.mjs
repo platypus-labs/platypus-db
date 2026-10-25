@@ -135,7 +135,7 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`document.querySelector('.modal') === null`);
 
   const after = readFileSync(join(dir, "connections.toml"), "utf8");
-  assert.match(after, /^version = 5/m);
+  assert.match(after, /^version = 6/m);
   assert.match(after, /\[\[network_profiles\]\][^[]*name = "Office VPN"/);
   assert.match(after, /\[network_profiles\.ssh\]\s+host = "jump.example.com"/);
   assert.match(after, /password_command = "echo s3cret"/);
