@@ -86,7 +86,7 @@ export default async function (page, { dir, shots }) {
 
   // The palette runs actions and opens tables of the loaded catalogs.
   await palette(page, "settings");
-  assert.equal(await page.eval(`getComputedStyle(document.querySelector('.palette input')).height`), "28px");
+  assert.equal(await page.eval(`getComputedStyle(document.querySelector('.palette input')).height`), "44px");
   assert.match(await page.eval(`document.querySelector('.palette li.selected').textContent`), /Settings/);
   await page.key("Enter", "Enter", 13);
   await page.waitFor(`document.querySelector('.modal.settings') !== null`);

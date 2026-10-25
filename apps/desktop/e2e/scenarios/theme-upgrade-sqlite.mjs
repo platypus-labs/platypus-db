@@ -18,16 +18,19 @@ export default async function (page) {
   await page.waitFor(`${cssVar("--bg")} === '#1b1d21'`);
   assert.notEqual(await page.eval(cssVar("--bg-rail")), "");
 
-  // What 0.2.0 cached, the old variables only, and nothing newer: the first paint, before
-  // the settings load, must use the full default palette instead.
-  await page.eval(`localStorage.removeItem('platypus.appearance.v2')`);
+  // What older versions cached, without the newer variables, and nothing newer: the first
+  // paint, before the settings load, must use the full default palette instead.
+  await page.eval(`localStorage.removeItem('platypus.appearance.v3')`);
   await page.eval(`localStorage.setItem('platypus.appearance.v1', JSON.stringify({ dark: true, vars: { '--bg': '#1b1d21' } }))`);
+  await page.eval(`localStorage.setItem('platypus.appearance.v2', JSON.stringify({ dark: true, vars: { '--bg': '#1b1d21' } }))`);
   await page.eval(`location.reload()`);
   await page.waitFor(`document.querySelector('.shell') !== null`);
   assert.equal(await page.eval(`document.documentElement.dataset.firstPaint`), "default");
   await page.waitFor(`${cssVar("--bg")} === '#1b1d21'`);
   assert.equal(await page.eval(`localStorage.getItem('platypus.appearance.v1')`), null);
-  const cached = JSON.parse(await page.eval(`localStorage.getItem('platypus.appearance.v2')`));
+  assert.equal(await page.eval(`localStorage.getItem('platypus.appearance.v2')`), null);
+  const cached = JSON.parse(await page.eval(`localStorage.getItem('platypus.appearance.v3')`));
   assert.equal(cached.vars["--bg"], "#1b1d21");
   assert.notEqual(cached.vars["--bg-rail"] ?? "", "");
+  assert.notEqual(cached.vars["--frame-prod"] ?? "", "");
 }
