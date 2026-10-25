@@ -483,6 +483,17 @@ npm run e2e
 PLATYPUS_README_SHOTS=../../docs/screenshots npm run e2e -- readme
 ```
 
+In VS Code, **Run PlatypusDB** (Ctrl+Shift+B) installs the frontend dependencies if they are
+missing, builds the sample database and starts `tauri dev`. `.vscode/tasks.json` also has
+tasks to start and stop the dev databases.
+
+### Sample database
+
+`node scripts/sample-db.mjs` builds `samples/wildlife.db` from
+[samples/wildlife.sql](samples/wildlife.sql): a SQLite platypus field survey with regions,
+rivers, researchers, tagged animals, surveys, about 15,000 sightings and a `platypus_stats`
+view, with foreign keys between all of them. Open it with a new SQLite connection.
+
 ### Dev databases
 
 ```bash

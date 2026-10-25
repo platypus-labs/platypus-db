@@ -1,0 +1,46 @@
+{
+  // Terminal > Run Task. "Run PlatypusDB" is the default build task (Ctrl+Shift+B).
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run PlatypusDB",
+      "detail": "tauri dev: Vite with hot reload and the Rust app in debug mode",
+      "type": "shell",
+      "command": "npm --prefix apps/desktop run tauri dev",
+      "dependsOn": ["Install frontend dependencies", "Create sample SQLite database"],
+      "group": { "kind": "build", "isDefault": true },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "Install frontend dependencies",
+      "detail": "npm ci, only when node_modules is missing",
+      "type": "shell",
+      "command": "node -e \"require('fs').existsSync('apps/desktop/node_modules') || require('child_process').execSync('npm --prefix apps/desktop ci', { stdio: 'inherit' })\"",
+      "problemMatcher": [],
+      "presentation": { "reveal": "silent" }
+    },
+    {
+      "label": "Create sample SQLite database",
+      "detail": "samples/wildlife.db from samples/wildlife.sql",
+      "type": "shell",
+      "command": "node --no-warnings scripts/sample-db.mjs",
+      "problemMatcher": [],
+      "presentation": { "reveal": "silent" }
+    },
+    {
+      "label": "Start sample databases (Docker)",
+      "detail": "PostgreSQL, MySQL, MariaDB and ClickHouse with the demo schema; user and password: platypus",
+      "type": "shell",
+      "command": "docker compose -f docker/compose.yml up -d --wait",
+      "problemMatcher": []
+    },
+    {
+      "label": "Stop sample databases (Docker)",
+      "type": "shell",
+      "command": "docker compose -f docker/compose.yml down",
+      "problemMatcher": []
+    }
+  ]
+}
