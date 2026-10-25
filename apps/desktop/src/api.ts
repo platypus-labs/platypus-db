@@ -215,6 +215,38 @@ export interface CommandError {
   position: number | null;
 }
 
+/** A driver downloaded from the driver registry. */
+export interface InstalledDriver {
+  /** Its name in the registry, e.g. `snowflake`. */
+  name: string;
+  title: string;
+  version: string;
+  license: string;
+  library: string;
+}
+
+/** A driver package the registry offers for this platform. */
+export interface DriverPackage {
+  name: string;
+  title: string;
+  version: string;
+  license: string;
+  url: string;
+  sha256: string | null;
+}
+
+export interface DriverStatus {
+  installed: InstalledDriver | null;
+  /** `null` when the registry cannot be reached, with `error` saying why. */
+  package: DriverPackage | null;
+  error: string | null;
+}
+
+export type DriverInstallEvent = { kind: "progress"; done: number; total: number | null };
+
+/** The databases whose driver is downloaded when needed (ADBC). */
+export const DOWNLOADED_DRIVERS: readonly DriverKind[] = ["snowflake", "bigquery", "databricks", "trino"];
+
 export interface ColumnInfo {
   name: string;
   db_type: string;
@@ -1003,6 +1035,18 @@ export const api = {
   },
   /** Imports a data file into the session's database on its own connection; cancelled with
    *  `cancelExport`. */
+  /** What is installed for `driver` and what the registry offers. */
+  driverStatus: (driver: DriverKind) => invoke<DriverStatus>("driver_status", { driver }),
+  /** Downloads and installs the driver of `driver`; stopped by `cancelDriverInstall`. */
+  installDriver: (driver: DriverKind, onEvent: (e: DriverInstallEvent) => void) => {
+    const channel = new Channel<DriverInstallEvent>();
+    channel.onmessage = onEvent;
+    return invoke<InstalledDriver>("install_driver", { driver, onEvent: channel });
+  },
+  cancelDriverInstall: () => invoke<void>("cancel_driver_install"),
+  listDrivers: () => invoke<InstalledDriver[]>("list_drivers"),
+  /** Removes a downloaded driver; returns the ones left. */
+  removeDriver: (name: string) => invoke<InstalledDriver[]>("remove_driver", { name }),
   importFile: (sessionId: number, path: string, plan: ImportPlan, onEvent: (e: ExportEvent) => void) => {
     const channel = new Channel<ExportEvent>();
     channel.onmessage = onEvent;
