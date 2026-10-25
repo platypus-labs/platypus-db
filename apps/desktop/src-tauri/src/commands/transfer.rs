@@ -137,10 +137,15 @@ pub fn import_file(
             &session.label,
         );
         let dialect = Dialect::from(session.config.driver);
-        import(&*file, &*target, dialect, &plan, |rows| {
-            job.progress(rows);
-            !job.stopping()
-        })
+        import(
+            (&*file, Dialect::DuckDb),
+            (&*target, dialect),
+            &plan,
+            |rows| {
+                job.progress(rows);
+                !job.stopping()
+            },
+        )
         .await
         .map_err(|e| match e {
             ImportError::Database(e) => e.into(),
