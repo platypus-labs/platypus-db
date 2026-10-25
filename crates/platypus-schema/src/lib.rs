@@ -1,0 +1,485 @@
+//! The table editor's model: a table as the user edits it ([`TableDesign`]), read from the
+//! database with [`load`], and the DDL that turns one design into another ([`script`]),
+//! `CREATE TABLE` for a new table. [`apply`] runs that script.
+
+mod ddl;
+
+use std::fmt::Write;
+
+use platypus_core::{
+    Connection, ConstraintKind, Error, ExecOptions, ExecResult, Result, TableDetails, TextRowExt,
+    query_text,
+};
+use platypus_sql::Dialect;
+use serde::{Deserialize, Serialize};
+
+pub use ddl::script;
+
+/// A table as the editor shows it. Each part keeps its name in the database (`original`) so
+/// the script can tell a renamed or changed part from a new one.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TableDesign {
+    pub name: String,
+    pub columns: Vec<ColumnDesign>,
+    /// The name of the primary key constraint, needed to drop it; its columns are the
+    /// columns marked `primary_key`.
+    #[serde(default)]
+    pub primary_key_name: Option<String>,
+    pub indexes: Vec<IndexDesign>,
+    pub foreign_keys: Vec<ForeignKeyDesign>,
+    /// UNIQUE and CHECK constraints.
+    pub constraints: Vec<ConstraintDesign>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ColumnDesign {
+    /// The column's name in the database; `None` for a new column.
+    pub original: Option<String>,
+    pub name: String,
+    pub data_type: String,
+    pub nullable: bool,
+    /// An SQL expression, e.g. `'open'` or `CURRENT_TIMESTAMP`.
+    pub default: Option<String>,
+    pub primary_key: bool,
+    pub comment: Option<String>,
+    /// What the database keeps with the column beyond its type, written again whenever the
+    /// column is redefined: MySQL's `auto_increment` and `on update CURRENT_TIMESTAMP`,
+    /// SQLite's `AUTOINCREMENT`.
+    #[serde(default)]
+    pub extra: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IndexDesign {
+    pub original: Option<String>,
+    pub name: String,
+    pub columns: Vec<String>,
+    pub unique: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ForeignKeyDesign {
+    pub original: Option<String>,
+    pub name: String,
+    pub columns: Vec<String>,
+    pub ref_schema: String,
+    pub ref_table: String,
+    /// Empty when the key references the primary key implicitly (SQLite).
+    pub ref_columns: Vec<String>,
+    /// `CASCADE`, `SET NULL`, `SET DEFAULT` or `RESTRICT`; `None` for `NO ACTION`.
+    #[serde(default)]
+    pub on_delete: Option<String>,
+    #[serde(default)]
+    pub on_update: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConstraintType {
+    #[default]
+    Unique,
+    Check,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConstraintDesign {
+    pub original: Option<String>,
+    pub name: String,
+    pub kind: ConstraintType,
+    /// The columns of a UNIQUE constraint.
+    pub columns: Vec<String>,
+    /// The condition of a CHECK, without `CHECK` and its parentheses.
+    pub check: String,
+}
+
+/// The statements that change a table, as [`apply`] runs them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Script {
+    /// Run first, outside the transaction (SQLite's `PRAGMA foreign_keys`).
+    pub before: Vec<String>,
+    pub statements: Vec<String>,
+    /// Run last, outside the transaction, even after a failure.
+    pub after: Vec<String>,
+    /// Whether `statements` run in one transaction; MySQL commits each DDL statement.
+    pub transactional: bool,
+    /// What the script cannot do or what it costs, for the user to read before running it.
+    pub warnings: Vec<String>,
+}
+
+impl Script {
+    /// The whole script as it runs in an autocommit session, one statement per line.
+    #[must_use]
+    pub fn text(&self) -> String {
+        let tx = self.transactional && self.statements.len() > 1;
+        let mut lines: Vec<&str> = self.before.iter().map(String::as_str).collect();
+        if tx {
+            lines.push("BEGIN");
+        }
+        lines.extend(self.statements.iter().map(String::as_str));
+        if tx {
+            lines.push("COMMIT");
+        }
+        lines.extend(self.after.iter().map(String::as_str));
+        let mut text = String::new();
+        for s in lines {
+            let _ = writeln!(text, "{s};");
+        }
+        text
+    }
+}
+
+/// The design of an existing table, as [`load`] reads it, from its details alone.
+#[must_use]
+pub fn design_of(dialect: Dialect, table: &str, details: &TableDetails) -> TableDesign {
+    // MySQL indexes each foreign key under its name.
+    let constraint_named = |name: &str| {
+        details.constraints.iter().any(|c| c.name == name)
+            || details.foreign_keys.iter().any(|f| f.name == name)
+    };
+    // SQLite reports every unique index as a constraint; only its automatic indexes are
+    // constraints of the table.
+    let sqlite_index = |name: &str| dialect == Dialect::Sqlite && !name.starts_with("sqlite_");
+    TableDesign {
+        name: table.to_owned(),
+        columns: details
+            .columns
+            .iter()
+            .map(|c| ColumnDesign {
+                original: Some(c.name.clone()),
+                name: c.name.clone(),
+                data_type: c.data_type.clone(),
+                nullable: c.nullable,
+                default: c.default.clone(),
+                primary_key: c.primary_key,
+                comment: c.comment.clone(),
+                extra: None,
+            })
+            .collect(),
+        primary_key_name: details
+            .constraints
+            .iter()
+            .find(|c| c.kind == ConstraintKind::PrimaryKey)
+            .map(|c| c.name.clone()),
+        indexes: details
+            .indexes
+            .iter()
+            .filter(|i| !i.primary && (!constraint_named(&i.name) || sqlite_index(&i.name)))
+            .map(|i| IndexDesign {
+                original: Some(i.name.clone()),
+                name: i.name.clone(),
+                columns: i.columns.clone(),
+                unique: i.unique,
+            })
+            .collect(),
+        foreign_keys: details
+            .foreign_keys
+            .iter()
+            .map(|f| ForeignKeyDesign {
+                original: Some(f.name.clone()),
+                name: f.name.clone(),
+                columns: f.columns.clone(),
+                ref_schema: f.ref_schema.clone(),
+                ref_table: f.ref_table.clone(),
+                ref_columns: f
+                    .ref_columns
+                    .iter()
+                    .filter(|c| !c.is_empty())
+                    .cloned()
+                    .collect(),
+                on_delete: None,
+                on_update: None,
+            })
+            .collect(),
+        constraints: details
+            .constraints
+            .iter()
+            .filter_map(|c| {
+                let kind = match c.kind {
+                    ConstraintKind::Unique if !sqlite_index(&c.name) => ConstraintType::Unique,
+                    ConstraintKind::Check => ConstraintType::Check,
+                    _ => return None,
+                };
+                Some(ConstraintDesign {
+                    original: Some(c.name.clone()),
+                    // SQLite names its automatic indexes; the constraint itself has no name.
+                    name: if c.name.starts_with("sqlite_autoindex_") {
+                        String::new()
+                    } else {
+                        c.name.clone()
+                    },
+                    kind,
+                    columns: if kind == ConstraintType::Unique {
+                        c.columns.clone()
+                    } else {
+                        Vec::new()
+                    },
+                    check: if kind == ConstraintType::Check {
+                        check_condition(&c.definition)
+                    } else {
+                        String::new()
+                    },
+                })
+            })
+            .collect(),
+    }
+}
+
+/// The condition of a CHECK as the database prints it: `CHECK ((total >= 0))` gives
+/// `(total >= 0)`.
+fn check_condition(definition: &str) -> String {
+    let mut text = definition.trim();
+    if text.len() >= 5 && text[..5].eq_ignore_ascii_case("CHECK") {
+        text = text[5..].trim_start();
+    }
+    match text.strip_prefix('(').and_then(|t| t.strip_suffix(')')) {
+        Some(inner) if balanced(inner) => inner.trim().to_owned(),
+        _ => text.to_owned(),
+    }
+}
+
+/// Whether the parentheses of `text` pair up, ignoring quoted text.
+fn balanced(text: &str) -> bool {
+    let mut depth = 0i32;
+    let mut quote = None;
+    for c in text.chars() {
+        match (quote, c) {
+            (Some(q), c) if c == q => quote = None,
+            (None, '\'' | '"') => quote = Some(c),
+            (None, '(') => depth += 1,
+            (None, ')') => {
+                depth -= 1;
+                if depth < 0 {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    depth == 0
+}
+
+/// Reads the design of `schema.table`: its details, and what they leave out that the script
+/// must not lose (foreign key actions, MySQL's column extras and literal defaults, SQLite's
+/// `AUTOINCREMENT`).
+pub async fn load(
+    conn: &dyn Connection,
+    dialect: Dialect,
+    schema: &str,
+    table: &str,
+) -> Result<TableDesign> {
+    let details = conn.table_details(schema, table).await?;
+    let mut design = design_of(dialect, table, &details);
+    let (s, t) = (dialect.quote_literal(schema), dialect.quote_literal(table));
+    let actions = match dialect {
+        Dialect::Postgres => Some(format!(
+            "SELECT conname, confdeltype, confupdtype FROM pg_constraint
+             WHERE contype = 'f' AND conrelid = {}::regclass",
+            dialect.quote_literal(&dialect.qualified(Some(schema), table))
+        )),
+        Dialect::MySql => Some(format!(
+            // MariaDB reports no action as RESTRICT, which is the same there.
+            "SELECT CONSTRAINT_NAME, NULLIF(DELETE_RULE, 'RESTRICT'), NULLIF(UPDATE_RULE, 'RESTRICT')
+             FROM information_schema.REFERENTIAL_CONSTRAINTS
+             WHERE CONSTRAINT_SCHEMA = {s} AND TABLE_NAME = {t}"
+        )),
+        Dialect::SqlServer => Some(format!(
+            "SELECT name, delete_referential_action_desc, update_referential_action_desc
+             FROM sys.foreign_keys WHERE parent_object_id = OBJECT_ID({})",
+            dialect.quote_literal(&dialect.qualified(Some(schema), table))
+        )),
+        // The driver names the keys of a table `fk_<table>_<id>`.
+        Dialect::Sqlite => Some(format!(
+            "SELECT 'fk_' || {t} || '_' || id, on_delete, on_update
+             FROM pragma_foreign_key_list({t}, {s}) GROUP BY id"
+        )),
+        // DuckDB has no referential actions.
+        Dialect::DuckDb => None,
+    };
+    if let Some(sql) = actions {
+        for row in query_text(conn, &sql).await? {
+            if let Some(fk) = design
+                .foreign_keys
+                .iter_mut()
+                .find(|f| f.name == row.text(0))
+            {
+                fk.on_delete = action(&row.text(1));
+                fk.on_update = action(&row.text(2));
+            }
+        }
+    }
+    match dialect {
+        Dialect::MySql => mysql_columns(conn, &mut design, &s, &t).await?,
+        Dialect::Sqlite => {
+            let sql = format!(
+                "SELECT sql FROM {}.sqlite_master WHERE type = 'table' AND name = {t}",
+                dialect.quote_ident(schema)
+            );
+            let rows = query_text(conn, &sql).await?;
+            let autoincrement = rows
+                .first()
+                .is_some_and(|r| r.text(0).to_ascii_uppercase().contains("AUTOINCREMENT"));
+            let mut keys = design.columns.iter_mut().filter(|c| c.primary_key);
+            if let (true, Some(key), None) = (autoincrement, keys.next(), keys.next()) {
+                key.extra = Some("AUTOINCREMENT".to_owned());
+            }
+        }
+        _ => {}
+    }
+    Ok(design)
+}
+
+/// A referential action as the catalogs name it (`c`, `CASCADE`, `SET_NULL`), or `None` for
+/// no action.
+fn action(text: &str) -> Option<String> {
+    let action = match text.trim().to_ascii_uppercase().replace('_', " ").as_str() {
+        "C" | "CASCADE" => "CASCADE",
+        "N" | "SET NULL" => "SET NULL",
+        "D" | "SET DEFAULT" => "SET DEFAULT",
+        "R" | "RESTRICT" => "RESTRICT",
+        _ => return None,
+    };
+    Some(action.to_owned())
+}
+
+/// MySQL prints a literal default without its quotes and keeps `auto_increment` apart from
+/// the type; both must be written back when a column is redefined. MariaDB quotes literals.
+async fn mysql_columns(
+    conn: &dyn Connection,
+    design: &mut TableDesign,
+    schema: &str,
+    table: &str,
+) -> Result<()> {
+    let sql = format!(
+        "SELECT COLUMN_NAME, EXTRA, VERSION() LIKE '%MariaDB%'
+         FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = {schema} AND TABLE_NAME = {table}"
+    );
+    for row in query_text(conn, &sql).await? {
+        let Some(column) = design.columns.iter_mut().find(|c| c.name == row.text(0)) else {
+            continue;
+        };
+        let extra = row.text(1);
+        let generated = extra.contains("DEFAULT_GENERATED");
+        let kept: Vec<&str> = extra
+            .split_whitespace()
+            .filter(|w| !w.eq_ignore_ascii_case("DEFAULT_GENERATED"))
+            .collect();
+        column.extra = (!kept.is_empty()).then(|| kept.join(" "));
+        let mariadb = row.flag(2);
+        column.default = column.default.take().and_then(|d| {
+            if mariadb {
+                // MariaDB writes no default of a nullable column as `NULL`.
+                (d != "NULL").then_some(d)
+            } else if generated {
+                let upper = d.to_ascii_uppercase();
+                Some(
+                    if upper.starts_with("CURRENT_TIMESTAMP") || upper.starts_with("NOW(") {
+                        d
+                    } else {
+                        format!("({d})")
+                    },
+                )
+            } else if d.parse::<f64>().is_ok() {
+                Some(d)
+            } else {
+                Some(Dialect::MySql.quote_literal(&d))
+            }
+        });
+    }
+    Ok(())
+}
+
+/// Why [`apply`] stopped: the statement that failed and the database's error.
+#[derive(Debug)]
+pub struct ApplyError {
+    pub statement: String,
+    pub error: Error,
+}
+
+async fn exec(conn: &dyn Connection, sql: &str) -> Result<()> {
+    match conn.execute(sql, &ExecOptions::default()).await? {
+        // Dropping the stream ends the statement.
+        ExecResult::Affected { .. } | ExecResult::Rows(_) => Ok(()),
+    }
+}
+
+/// Runs `script`: its statements in one transaction where the database can roll DDL back
+/// and the session is in autocommit mode; in manual-commit mode they join the session's
+/// transaction and stay uncommitted.
+pub async fn apply(
+    conn: &dyn Connection,
+    script: &Script,
+) -> std::result::Result<(), Box<ApplyError>> {
+    let fail = |statement: &str| {
+        let statement = statement.to_owned();
+        move |error| Box::new(ApplyError { statement, error })
+    };
+    for s in &script.before {
+        exec(conn, s).await.map_err(fail(s))?;
+    }
+    let tx = script.transactional && script.statements.len() > 1 && conn.transaction().autocommit;
+    let mut result = if tx {
+        exec(conn, "BEGIN").await.map_err(fail("BEGIN"))
+    } else {
+        Ok(())
+    };
+    if result.is_ok() {
+        for s in &script.statements {
+            if let Err(e) = exec(conn, s).await {
+                if tx {
+                    let _ = exec(conn, "ROLLBACK").await;
+                }
+                result = Err(fail(s)(e));
+                break;
+            }
+        }
+    }
+    if tx && result.is_ok() {
+        result = exec(conn, "COMMIT").await.map_err(fail("COMMIT"));
+    }
+    for s in &script.after {
+        let done = exec(conn, s).await.map_err(fail(s));
+        if result.is_ok() {
+            result = done;
+        }
+    }
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn check_conditions_lose_their_keyword_and_outer_parentheses() {
+        assert_eq!(check_condition("CHECK ((total >= 0))"), "(total >= 0)");
+        assert_eq!(check_condition("check (a > 0)"), "a > 0");
+        assert_eq!(
+            check_condition("(a > 0) AND (b > 0)"),
+            "(a > 0) AND (b > 0)"
+        );
+        assert_eq!(check_condition("a IN ('(', 'b')"), "a IN ('(', 'b')");
+    }
+
+    #[test]
+    fn referential_actions_from_every_catalog() {
+        assert_eq!(action("c").as_deref(), Some("CASCADE"));
+        assert_eq!(action("SET_NULL").as_deref(), Some("SET NULL"));
+        assert_eq!(action("NO ACTION"), None);
+        assert_eq!(action("a"), None);
+    }
+
+    #[test]
+    fn scripts_wrap_several_statements_in_a_transaction() {
+        let script = Script {
+            before: vec!["PRAGMA foreign_keys = OFF".into()],
+            statements: vec!["A".into(), "B".into()],
+            after: vec!["PRAGMA foreign_keys = ON".into()],
+            transactional: true,
+            warnings: Vec::new(),
+        };
+        assert_eq!(
+            script.text(),
+            "PRAGMA foreign_keys = OFF;\nBEGIN;\nA;\nB;\nCOMMIT;\nPRAGMA foreign_keys = ON;\n"
+        );
+    }
+}
