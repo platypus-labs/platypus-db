@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     DriverError, Installed, Package, REMOVED_MARK, Registry, adbc_dir, drivers_dir, io_error,
-    network_error,
+    is_plain_name, network_error,
 };
 
 /// Names of the folders a download unpacks into before it is moved in place.
@@ -34,19 +34,25 @@ struct ManifestFiles {
 
 impl Registry {
     /// Downloads `package`, checks its SHA-256, unpacks it and records it. `progress` gets
-    /// the bytes received and the total when known.
+    /// the bytes received and the total when known. A package without a SHA-256 is refused:
+    /// nothing would vouch for the library loaded into the app.
     pub async fn install(
         &self,
         package: &Package,
         progress: impl Fn(u64, Option<u64>),
         cancel: &CancellationToken,
     ) -> Result<Installed, DriverError> {
-        let bytes = self.download(package, progress, cancel).await?;
-        if let Some(expected) = &package.sha256 {
-            let actual = hex(&Sha256::digest(&bytes));
-            if !actual.eq_ignore_ascii_case(expected) {
-                return Err(DriverError::Checksum);
+        let Some(expected) = &package.sha256 else {
+            return Err(DriverError::NoChecksum);
+        };
+        for name in [&package.name, &package.version] {
+            if !is_plain_name(name) {
+                return Err(DriverError::InvalidName(name.clone()));
             }
+        }
+        let bytes = self.download(package, progress, cancel).await?;
+        if !hex(&Sha256::digest(&bytes)).eq_ignore_ascii_case(expected) {
+            return Err(DriverError::Checksum);
         }
         let tmp = drivers_dir(&self.data_dir).join(format!("{TMP_PREFIX}{}", uuid::Uuid::new_v4()));
         let package = package.clone();

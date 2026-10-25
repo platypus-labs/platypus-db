@@ -2,7 +2,7 @@
 //! ADBC drivers from the `dbc` driver registry (Columnar), kept under
 //! `<data>/drivers/adbc/<name>/<version>/` with a `driver.toml` that names the library.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
@@ -39,6 +39,10 @@ pub enum DriverError {
     License(String),
     #[error("the downloaded driver is corrupted (its SHA-256 does not match)")]
     Checksum,
+    #[error("the registry gives no SHA-256 for this driver, so the download cannot be checked")]
+    NoChecksum,
+    #[error("`{0}` is not a valid driver name")]
+    InvalidName(String),
     #[error("the driver package holds a file larger than allowed")]
     TooLarge,
     #[error("cancelled")]
@@ -99,9 +103,22 @@ pub(crate) fn adbc_dir(data_dir: &Path) -> PathBuf {
 /// The file a removal could not delete yet: Windows keeps a loaded library locked.
 const REMOVED_MARK: &str = ".removed";
 
+/// Whether `name` is one plain folder name (no `..`, separators or drive), so joining it
+/// stays inside the drivers' folder.
+pub(crate) fn is_plain_name(name: &str) -> bool {
+    let mut components = Path::new(name).components();
+    matches!(
+        (components.next(), components.next()),
+        (Some(Component::Normal(n)), None) if n == name
+    )
+}
+
 /// The installed driver `name`, the newest if several versions are there.
 #[must_use]
 pub fn installed(data_dir: &Path, name: &str) -> Option<Installed> {
+    if !is_plain_name(name) {
+        return None;
+    }
     let dir = adbc_dir(data_dir).join(name);
     if dir.join(REMOVED_MARK).exists() {
         return None;
@@ -137,6 +154,9 @@ pub fn list(data_dir: &Path) -> Vec<Installed> {
 /// Deletes an installed driver. A library still loaded cannot be deleted on Windows: the
 /// driver is marked removed, and [`purge_removed`] deletes it at the next start.
 pub fn remove(data_dir: &Path, name: &str) -> Result<(), DriverError> {
+    if !is_plain_name(name) {
+        return Err(DriverError::InvalidName(name.to_owned()));
+    }
     let dir = adbc_dir(data_dir).join(name);
     if !dir.exists() {
         return Ok(());
