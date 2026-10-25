@@ -134,6 +134,11 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         dir(app, false).map(|d| d.join("scripts")),
     );
     app.manage(state);
+    // Downloaded drivers live with the data; removals that Windows refused are finished.
+    if let Ok(data) = dir(app, false) {
+        platypus_drivers::set_data_dir(&data);
+        platypus_drivers::purge_removed(&data);
+    }
     open_main_window(app, system_title_bar)?;
     Ok(())
 }
@@ -170,6 +175,11 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::projects::save_project,
         commands::projects::delete_project,
         commands::projects::set_project_membership,
+        commands::drivers::driver_status,
+        commands::drivers::install_driver,
+        commands::drivers::cancel_driver_install,
+        commands::drivers::list_drivers,
+        commands::drivers::remove_driver,
         commands::projects::create_connection_folder,
         commands::projects::rename_connection_folder,
         commands::projects::move_connection_folder,

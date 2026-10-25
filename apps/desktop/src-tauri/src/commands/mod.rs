@@ -8,6 +8,7 @@ pub mod agents;
 pub mod cli;
 pub mod connections;
 pub mod data;
+pub mod drivers;
 pub mod explain;
 pub mod export;
 pub mod files;
@@ -36,6 +37,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use platypus_core::{Connection, ConnectionConfig, Driver, DriverKind, Error};
+use platypus_driver_adbc::AdbcDriver;
 use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
 use platypus_driver_libsql::LibsqlDriver;
@@ -204,6 +206,11 @@ pub(crate) async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connect
             DriverKind::SqlServer => MssqlDriver.connect(&config).await,
             DriverKind::ClickHouse => ClickHouseDriver.connect(&config).await,
             DriverKind::Mongo => MongoDriver.connect(&config).await,
+            DriverKind::Snowflake
+            | DriverKind::BigQuery
+            | DriverKind::Databricks
+            | DriverKind::Trino
+            | DriverKind::Adbc => AdbcDriver::shared()?.connect(&config).await,
         }
     })
     .await

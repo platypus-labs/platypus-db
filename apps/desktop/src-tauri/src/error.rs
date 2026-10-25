@@ -56,6 +56,13 @@ impl From<&Error> for CommandError {
             Error::Connect(m) => Self::new("connect", m.clone()),
             Error::Config(m) => Self::new("config", m.clone()),
             Error::Closed => Self::new("closed", "Connection closed"),
+            // The UI offers to download the driver, named by `code`, then tries again.
+            Error::DriverMissing { driver } => Self {
+                code: serde_json::to_value(driver)
+                    .ok()
+                    .and_then(|v| v.as_str().map(str::to_owned)),
+                ..Self::new("driver_missing", e.to_string())
+            },
             other => Self::new("other", other.to_string()),
         }
     }

@@ -34,15 +34,19 @@ impl Profile {
         }
         let missing =
             || AgentError::Store("cannot find the user's configuration folder".to_owned());
+        let data_dir = dirs::data_dir().ok_or_else(missing)?.join(APP_IDENTIFIER);
+        // The drivers the app downloaded, for the databases reached through ADBC.
+        platypus_drivers::set_data_dir(&data_dir);
         Ok(Self {
             config_dir: dirs::config_dir().ok_or_else(missing)?.join(APP_IDENTIFIER),
-            data_dir: dirs::data_dir().ok_or_else(missing)?.join(APP_IDENTIFIER),
+            data_dir,
         })
     }
 
     /// Everything in `dir`, as with `PLATYPUS_DATA_DIR`.
     pub fn at(dir: impl Into<PathBuf>) -> Self {
         let dir = dir.into();
+        platypus_drivers::set_data_dir(&dir);
         Self {
             config_dir: dir.clone(),
             data_dir: dir,

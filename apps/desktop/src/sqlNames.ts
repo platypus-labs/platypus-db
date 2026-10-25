@@ -54,8 +54,17 @@ export function quoteIdent(name: string, driver: DriverKind): string {
     if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !reserved) return name;
     return `\`${name.replaceAll("`", "``").replaceAll("\\", "\\\\")}\``;
   }
-  // PostgreSQL folds bare names to lower case; SQLite and DuckDB ignore case.
-  const bare = driver === "postgres" ? /^[a-z_][a-z0-9_$]*$/ : /^[A-Za-z_][A-Za-z0-9_]*$/;
+  // BigQuery escapes with a backslash, Spark doubles the backtick.
+  if (driver === "bigquery" || driver === "databricks") {
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !reserved) return name;
+    const escaped =
+      driver === "bigquery" ? name.replaceAll("\\", "\\\\").replaceAll("`", "\\`") : name.replaceAll("`", "``");
+    return `\`${escaped}\``;
+  }
+  // PostgreSQL folds bare names to lower case, Snowflake to upper case and Trino to lower
+  // case (only names that read the same either way stay bare); SQLite and DuckDB ignore case.
+  const ansi = driver === "snowflake" || driver === "trino" || driver === "adbc";
+  const bare = driver === "postgres" ? /^[a-z_][a-z0-9_$]*$/ : ansi ? /^[A-Z_][A-Z0-9_]*$/ : /^[A-Za-z_][A-Za-z0-9_]*$/;
   return bare.test(name) && !reserved ? name : `"${name.replaceAll('"', '""')}"`;
 }
 

@@ -459,7 +459,8 @@ impl Ddl<'_> {
             return;
         }
         match self.d {
-            Dialect::Postgres | Dialect::DuckDb => {
+            // Snowflake and Trino take the standard statement.
+            Dialect::Postgres | Dialect::DuckDb | Dialect::Ansi | Dialect::Snowflake => {
                 for c in columns {
                     let comment = text(c.comment.as_ref())
                         .map_or_else(|| "NULL".to_owned(), |t| self.d.quote_literal(t));
@@ -480,7 +481,8 @@ impl Ddl<'_> {
                     ));
                 }
             }
-            Dialect::MySql => {}
+            // No table editor for BigQuery and Databricks.
+            Dialect::MySql | Dialect::BigQuery | Dialect::Databricks => {}
             // shortcut: SQL Server keeps comments as extended properties, not written here;
             // add sp_addextendedproperty when someone asks.
             Dialect::SqlServer => script

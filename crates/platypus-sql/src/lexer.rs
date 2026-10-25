@@ -55,6 +55,20 @@ fn is_ident_start(c: char) -> bool {
     c.is_alphabetic() || c == '_'
 }
 
+/// Whether a backslash escapes the next character inside quotes.
+fn backslashes(dialect: Dialect) -> bool {
+    matches!(
+        dialect,
+        Dialect::MySql | Dialect::ClickHouse | Dialect::BigQuery | Dialect::Databricks
+    )
+}
+
+/// Whether a backslash escapes the next character inside `'…'` strings: Snowflake reads
+/// `\'` there, but not in `"…"` names.
+fn string_backslashes(dialect: Dialect) -> bool {
+    backslashes(dialect) || dialect == Dialect::Snowflake
+}
+
 fn is_ident_char(c: char, dialect: Dialect) -> bool {
     c.is_alphanumeric()
         || c == '_'
@@ -190,11 +204,14 @@ impl<'a> Lexer<'a> {
             self.eat_while(|c| c != '\n');
             TokenKind::LineComment
         } else if c == '#'
-            && (d == Dialect::MySql
+            && (matches!(d, Dialect::MySql | Dialect::BigQuery)
                 // ClickHouse reads `# ` and `#!` as comments.
                 || (d == Dialect::ClickHouse
                     && self.peek_at(1).is_none_or(|n| n == '!' || n.is_whitespace())))
         {
+            self.eat_while(|c| c != '\n');
+            TokenKind::LineComment
+        } else if c == '/' && self.peek_at(1) == Some('/') && d == Dialect::Snowflake {
             self.eat_while(|c| c != '\n');
             TokenKind::LineComment
         } else if c == '/' && self.peek_at(1) == Some('*') {
@@ -203,7 +220,7 @@ impl<'a> Lexer<'a> {
             TokenKind::BlockComment
         } else if c == '\'' {
             self.bump();
-            self.quoted('\'', matches!(d, Dialect::MySql | Dialect::ClickHouse));
+            self.quoted('\'', string_backslashes(d));
             TokenKind::String
         } else if (c == 'e' || c == 'E')
             && self.peek_at(1) == Some('\'')
@@ -219,9 +236,10 @@ impl<'a> Lexer<'a> {
             TokenKind::String
         } else if c == '"' {
             self.bump();
-            // MySQL treats "..." as a string (ANSI_QUOTES off by default).
-            self.quoted('"', matches!(d, Dialect::MySql | Dialect::ClickHouse));
-            if d == Dialect::MySql {
+            // MySQL treats "..." as a string (ANSI_QUOTES off by default), and so do
+            // BigQuery and Spark.
+            self.quoted('"', backslashes(d));
+            if matches!(d, Dialect::MySql | Dialect::BigQuery | Dialect::Databricks) {
                 TokenKind::String
             } else {
                 TokenKind::QuotedIdent
@@ -229,11 +247,16 @@ impl<'a> Lexer<'a> {
         } else if c == '`'
             && matches!(
                 d,
-                Dialect::MySql | Dialect::Sqlite | Dialect::DuckDb | Dialect::ClickHouse
+                Dialect::MySql
+                    | Dialect::Sqlite
+                    | Dialect::DuckDb
+                    | Dialect::ClickHouse
+                    | Dialect::BigQuery
+                    | Dialect::Databricks
             )
         {
             self.bump();
-            self.quoted('`', d == Dialect::ClickHouse);
+            self.quoted('`', matches!(d, Dialect::ClickHouse | Dialect::BigQuery));
             TokenKind::QuotedIdent
         } else if c == '[' && d == Dialect::Sqlite {
             self.bump();
@@ -443,6 +466,66 @@ mod tests {
         assert_eq!(
             kinds("$q$ open", Dialect::Postgres)[0],
             (TokenKind::String, "$q$ open")
+        );
+    }
+
+    #[test]
+    fn bridge_dialects_quoting() {
+        // BigQuery and Spark: "…" is a string, `…` a name, backslashes escape.
+        assert_eq!(
+            kinds(r#"SELECT "a\"b", `c\`d` # note"#, Dialect::BigQuery),
+            [
+                (TokenKind::Word, "SELECT"),
+                (TokenKind::String, r#""a\"b""#),
+                (TokenKind::Symbol, ","),
+                (TokenKind::QuotedIdent, r"`c\`d`"),
+                (TokenKind::LineComment, "# note"),
+            ]
+        );
+        assert_eq!(
+            kinds(r#""x" `y``z`"#, Dialect::Databricks),
+            [
+                (TokenKind::String, r#""x""#),
+                (TokenKind::QuotedIdent, "`y``z`")
+            ]
+        );
+        assert_eq!(
+            kinds(r#""x" 'it''s'"#, Dialect::Ansi),
+            [
+                (TokenKind::QuotedIdent, r#""x""#),
+                (TokenKind::String, "'it''s'")
+            ]
+        );
+    }
+
+    #[test]
+    fn snowflake_strings_take_backslash_escapes() {
+        let src = r"SELECT 'a\'' ; DROP TABLE t; --'";
+        assert_eq!(
+            kinds(src, Dialect::Snowflake),
+            [
+                (TokenKind::Word, "SELECT"),
+                (TokenKind::String, r"'a\''"),
+                (TokenKind::Symbol, ";"),
+                (TokenKind::Word, "DROP"),
+                (TokenKind::Word, "TABLE"),
+                (TokenKind::Word, "t"),
+                (TokenKind::Symbol, ";"),
+                (TokenKind::LineComment, "--'"),
+            ]
+        );
+        // Trino reads the backslash literally and `''` as a quote: all one string.
+        assert_eq!(
+            kinds(src, Dialect::Ansi)[1..],
+            [(TokenKind::String, r"'a\'' ; DROP TABLE t; --'")]
+        );
+        // Names take no backslash escapes, and `//` starts a comment.
+        assert_eq!(
+            kinds(r#""a\" // x"#, Dialect::Snowflake),
+            [
+                (TokenKind::QuotedIdent, r#""a\""#),
+                (TokenKind::LineComment, "// x"),
+            ]
         );
     }
 }

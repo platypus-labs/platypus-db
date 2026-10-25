@@ -14,9 +14,10 @@ mod imports;
 
 pub use imports::{ImportInto, ImportRequest, ImportTarget};
 
-/// 2 added projects, 3 network profiles, 4 the agents' access, 5 folders: an older app would
-/// drop them on its first save, so it refuses the file.
-const FILE_VERSION: u32 = 5;
+/// 2 added projects, 3 network profiles, 4 the agents' access, 5 folders, 6 drivers loaded
+/// at run time and their `options`: an older app would drop them on its first save, so it
+/// refuses the file.
+const FILE_VERSION: u32 = 6;
 
 /// A connection as the user saved it. Never contains the password.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,6 +68,9 @@ pub struct SavedConnection {
     /// Default schema, time zone and bootstrap statements, run after every connect.
     #[serde(default, skip_serializing_if = "SavedInit::is_empty")]
     pub init: SavedInit,
+    /// What a driver needs beyond the common fields, e.g. Snowflake's `warehouse`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub options: BTreeMap<String, String>,
     /// Logical keys the user set for tables without a primary key, so the data editor can
     /// identify their rows. Last: TOML writes arrays of tables after plain values.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -336,6 +340,7 @@ impl SavedConnection {
             agent_access: AgentAccess::default(),
             ssh: None,
             init: SavedInit::default(),
+            options: BTreeMap::new(),
             virtual_keys: Vec::new(),
         }
     }
@@ -354,6 +359,7 @@ impl SavedConnection {
         config.ssl_client_key.clone_from(&self.ssl_client_key);
         config.init.schema.clone_from(&self.init.schema);
         config.init.time_zone.clone_from(&self.init.time_zone);
+        config.options.clone_from(&self.options);
         config
     }
 
@@ -893,7 +899,7 @@ mod tests {
         s.save_project(project("Interno", vec![shared.id])).unwrap();
 
         let text = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
-        assert!(text.contains("version = 5"), "{text}");
+        assert!(text.contains("version = 6"), "{text}");
         assert!(text.contains("[[projects]]"), "{text}");
         let reopened = ConnectionStore::open(dir.path().join("connections.toml"), secrets).unwrap();
         let projects = reopened.projects();
@@ -904,7 +910,32 @@ mod tests {
     }
 
     #[test]
-    fn reads_a_v1_file_and_writes_v5() {
+    fn options_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        let mut c = SavedConnection::new("Snow", DriverKind::Snowflake);
+        c.options
+            .insert("warehouse".to_owned(), "COMPUTE_WH".to_owned());
+        let id = c.id;
+        s.save(c, PasswordUpdate::Keep).unwrap();
+        let (again, _) = store(dir.path());
+        let saved = again.get(id).unwrap();
+        assert_eq!(
+            saved.options.get("warehouse").map(String::as_str),
+            Some("COMPUTE_WH")
+        );
+        assert_eq!(
+            saved
+                .config(None)
+                .options
+                .get("warehouse")
+                .map(String::as_str),
+            Some("COMPUTE_WH")
+        );
+    }
+
+    #[test]
+    fn reads_a_v1_file_and_writes_v6() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("connections.toml");
         let id = Uuid::new_v4();
@@ -920,7 +951,7 @@ mod tests {
         let old = s.get(id).unwrap().clone();
         s.save(old, PasswordUpdate::Keep).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("version = 5"), "{text}");
+        assert!(text.contains("version = 6"), "{text}");
         assert!(!text.contains("folder"), "{text}");
         // Older files leave agents to read only.
         assert!(text.contains("agent_access = \"read_only\""), "{text}");
@@ -1321,7 +1352,7 @@ SET b = 2;"
         std::fs::write(&path, "version = 99\n").unwrap();
         let err = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap_err();
         assert!(matches!(err, StoreError::Format { .. }));
-        std::fs::write(&path, "version = 6\n").unwrap();
+        std::fs::write(&path, "version = 7\n").unwrap();
         let err = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap_err();
         assert!(err.to_string().contains("newer PlatypusDB"), "{err}");
 

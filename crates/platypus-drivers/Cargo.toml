@@ -1,0 +1,31 @@
+[package]
+name = "platypus-drivers"
+description = "Drivers PlatypusDB downloads when needed: the ADBC driver registry, installs and removal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+flate2 = "1"
+futures.workspace = true
+platypus-core.workspace = true
+platypus-tls.workspace = true
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "stream"] }
+serde.workspace = true
+serde_yaml_ng = "0.10"
+sha2 = "0.11"
+tar = "0.4"
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs", "macros", "rt"] }
+tokio-util.workspace = true
+toml.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util"] }
+
+[lints]
+workspace = true
