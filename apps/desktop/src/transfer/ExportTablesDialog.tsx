@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { api, type ExportFormat, type ExportOptions, type SavedConnection } from "../api";
 import { CsvOptions, FORMATS, OutputOptions, sentOptions } from "../components/ExportDialog";
 import { workbench } from "../workbench";
+import { answerFor } from "../testAnswers";
 import { JobFooter, useJob } from "./job";
 
 type TableRef = { schema: string | null; name: string };
@@ -39,7 +40,7 @@ export function ExportTablesDialog({ connection, database, schema, currentSchema
   }, []);
 
   async function run() {
-    const dir = await open({ directory: true, title: "Export to the folder" });
+    const dir = await answerFor("folder", () => open({ directory: true, title: "Export to the folder" }));
     if (typeof dir !== "string" || !tables) return;
     const sid = await workbench().sideSession(connection, database);
     if (sid === null) return;
