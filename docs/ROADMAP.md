@@ -107,7 +107,7 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 | N — Accesso per agenti (MCP) | ✅ fatto (P1) |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
-| Q — Documentazione e catalogo dei dati | libero |
+| Q — Documentazione e catalogo dei dati | 🔒 Delfa · group-q-catalog · 2026-10-25 |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
 
 ### Gruppo A — Modifica dei dati
