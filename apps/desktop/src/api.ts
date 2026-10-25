@@ -817,6 +817,26 @@ export interface ConnectionFolder {
   parent?: string | null;
 }
 
+/** What a note or tag is on: `database` empty for the connection's own, `column` for the object. */
+export interface CatalogKey {
+  database: string;
+  schema: string;
+  object: string;
+  column: string;
+}
+
+/** A local note and tags, never written to the database. */
+export interface CatalogEntry {
+  key: CatalogKey;
+  note: string;
+  tags: string[];
+}
+
+export interface TagCount {
+  tag: string;
+  count: number;
+}
+
 /** A folder of projects in the rail; a project is in one at most. */
 export interface ProjectFolder {
   id: string;
@@ -1243,4 +1263,10 @@ export const api = {
   fetchAll: (jobId: number) => invoke<void>("fetch_all", { jobId }),
   cancelQuery: (jobId: number) => invoke<void>("cancel_query", { jobId }),
   closeQuery: (jobId: number) => invoke<void>("close_query", { jobId }),
+  catalogEntries: (connectionId: string) => invoke<CatalogEntry[]>("catalog_entries", { connectionId }),
+  saveCatalogEntry: (connectionId: string, key: CatalogKey, note: string, tags: string[]) =>
+    invoke<CatalogEntry>("save_catalog_entry", { connectionId, key, note, tags }),
+  catalogTags: (connectionId: string) => invoke<TagCount[]>("catalog_tags", { connectionId }),
+  renameCatalogKey: (connectionId: string, from: CatalogKey, to: CatalogKey) =>
+    invoke<void>("rename_catalog_key", { connectionId, from, to }),
 };
