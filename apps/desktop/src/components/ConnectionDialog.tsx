@@ -46,6 +46,8 @@ const DEFAULT_PORTS: Record<DriverKind, number | null> = {
   sqlite: null,
   duckdb: null,
   sqlserver: 1433,
+  // The HTTP interface; 8443 with TLS.
+  clickhouse: 8123,
 };
 
 /** The database files of the embedded drivers: file picker filter and example path. */
@@ -63,9 +65,10 @@ const SCHEMES: Record<string, DriverKind> = {
   "mariadb:": "mysql",
   "sqlserver:": "sqlserver",
   "mssql:": "sqlserver",
+  "clickhouse:": "clickhouse",
 };
 
-/** Turns a `postgres://`, `mysql://` or `sqlserver://` URL into form fields. */
+/** Turns a `postgres://`, `mysql://`, `sqlserver://` or `clickhouse://` URL into form fields. */
 function applyUrl(conn: SavedConnection, input: string): SavedConnection | null {
   let url: URL;
   try {
@@ -271,6 +274,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
                   <option value="sqlite">SQLite</option>
                   <option value="duckdb">DuckDB</option>
                   <option value="sqlserver">SQL Server</option>
+                  <option value="clickhouse">ClickHouse</option>
                 </select>
               </label>
               <label className="field">
@@ -340,7 +344,12 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, onSave
                 </div>
 
                 <label className="field">
-                  <span>Database{conn.driver === "mysql" || conn.driver === "sqlserver" ? " (optional)" : ""}</span>
+                  <span>
+                    Database
+                    {conn.driver === "mysql" || conn.driver === "sqlserver" || conn.driver === "clickhouse"
+                      ? " (optional)"
+                      : ""}
+                  </span>
                   <input value={conn.database} onChange={(e) => set("database", e.target.value)} />
                 </label>
 

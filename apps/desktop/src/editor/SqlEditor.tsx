@@ -145,8 +145,16 @@ const theme = EditorView.theme({
   ".cm-searchMatch": { backgroundColor: "rgba(250, 176, 5, 0.3)" },
 });
 
-// DuckDB has no CodeMirror dialect; its syntax follows PostgreSQL.
-const dialects = { postgres: PostgreSQL, mysql: MySQL, sqlite: SQLite, duckdb: PostgreSQL, sqlserver: MSSQL };
+// DuckDB and ClickHouse have no CodeMirror dialect: DuckDB's syntax follows PostgreSQL,
+// ClickHouse's backtick names and `#` comments MySQL's.
+const dialects = {
+  postgres: PostgreSQL,
+  mysql: MySQL,
+  sqlite: SQLite,
+  duckdb: PostgreSQL,
+  sqlserver: MSSQL,
+  clickhouse: MySQL,
+};
 
 function language(driver: DriverKind, catalog: CompletionCatalog | null | undefined) {
   const support = sql({

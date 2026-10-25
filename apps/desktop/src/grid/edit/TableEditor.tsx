@@ -156,7 +156,10 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
     ? "not a table"
     : target.connection.read_only
       ? "the connection is read-only"
-      : target.readOnly;
+      : // Saving checks each change's row count in a transaction: ClickHouse has neither.
+        target.connection.driver === "clickhouse"
+        ? "ClickHouse tables are not edited in place"
+        : target.readOnly;
   const virtualKeys = target?.connection.virtual_keys ?? [];
   const virtualSignature = JSON.stringify(virtualKeys);
   useEffect(() => {

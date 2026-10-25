@@ -267,6 +267,7 @@ async function members(page, dir, shots) {
     "MySQL",
     "MariaDB",
     "SQL Server",
+    "ClickHouse",
     "SQLite",
     "DuckDB",
     "CockroachDB",

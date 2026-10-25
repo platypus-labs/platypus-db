@@ -39,6 +39,12 @@ fn program(driver: DriverKind) -> CommandResult<&'static str> {
             "cli",
             "the duckdb client cannot open a database file that PlatypusDB has open",
         )),
+        // The connection is to the HTTP interface; clickhouse-client speaks the native
+        // protocol, on another port.
+        DriverKind::ClickHouse => Err(CommandError::new(
+            "cli",
+            "clickhouse-client uses the native protocol (port 9000), not the HTTP port of this connection",
+        )),
     }
 }
 
@@ -128,6 +134,8 @@ fn invocation(
             args = sqlcmd_args(config, host, port);
             env.extend(password.map(|p| ("SQLCMDPASSWORD", p)));
         }
+        // No client: `program` refuses it.
+        DriverKind::ClickHouse => {}
     }
     (args, env)
 }
@@ -318,5 +326,6 @@ mod tests {
     fn has_no_client_for_duckdb() {
         assert_eq!(program(DriverKind::Sqlite).ok(), Some("sqlite3"));
         assert!(program(DriverKind::DuckDb).is_err());
+        assert!(program(DriverKind::ClickHouse).is_err());
     }
 }

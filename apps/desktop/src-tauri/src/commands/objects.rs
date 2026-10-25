@@ -202,5 +202,9 @@ mod tests {
         assert!(mssql.droppable.contains(&ObjectKind::Type));
         assert!(mssql.renamable.contains(&ObjectKind::Procedure));
         assert!(!mssql.renamable.contains(&ObjectKind::Type));
+        let ch = dialect_support(DriverKind::ClickHouse);
+        assert!(ch.droppable.contains(&ObjectKind::Dictionary));
+        assert!(ch.renamable.contains(&ObjectKind::MaterializedView));
+        assert!(!ch.droppable.contains(&ObjectKind::Trigger));
     }
 }

@@ -1,4 +1,5 @@
 import {
+  siClickhouse,
   siCockroachlabs,
   siDuckdb,
   siGooglecloud,
@@ -39,6 +40,8 @@ const CHOICES: Choice[] = [
   { driver: "mysql", label: "MySQL", path: siMysql.path, bg: `#${siMysql.hex}`, fg: "#fff" },
   { driver: "mysql", label: "MariaDB", path: siMariadb.path, bg: `#${siMariadb.hex}`, fg: "#fff" },
   { driver: "sqlserver", label: "SQL Server", path: DATABASE_PATH, bg: "#cc2927", fg: "#fff" },
+  // ClickHouse's yellow needs a dark badge too.
+  { driver: "clickhouse", label: "ClickHouse", path: siClickhouse.path, bg: DARK, fg: `#${siClickhouse.hex}` },
   { driver: "sqlite", label: "SQLite", path: siSqlite.path, bg: `#${siSqlite.hex}`, fg: "#fff" },
   // DuckDB's yellow needs a dark badge.
   { driver: "duckdb", label: "DuckDB", path: siDuckdb.path, bg: DARK, fg: `#${siDuckdb.hex}` },

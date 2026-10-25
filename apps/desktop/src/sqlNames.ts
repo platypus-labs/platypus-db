@@ -46,6 +46,11 @@ export function quoteIdent(name: string, driver: DriverKind): string {
   if (driver === "mysql") {
     return /^[A-Za-z_][A-Za-z0-9_$]*$/.test(name) && !reserved ? name : `\`${name.replaceAll("`", "``")}\``;
   }
+  // A backslash escapes the next character inside ClickHouse quotes.
+  if (driver === "clickhouse") {
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !reserved) return name;
+    return `\`${name.replaceAll("`", "``").replaceAll("\\", "\\\\")}\``;
+  }
   // PostgreSQL folds bare names to lower case; SQLite and DuckDB ignore case.
   const bare = driver === "postgres" ? /^[a-z_][a-z0-9_$]*$/ : /^[A-Za-z_][A-Za-z0-9_]*$/;
   return bare.test(name) && !reserved ? name : `"${name.replaceAll('"', '""')}"`;
