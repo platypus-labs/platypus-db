@@ -1226,7 +1226,12 @@ async fn capabilities_match_optional_methods() {
         let conn = b.connect().await;
         let caps = conn.capabilities();
         // libSQL's HTTP protocol has no way to interrupt a statement.
-        assert_eq!(caps.cancel, b.config.driver != DriverKind::Libsql, "{}", b.name);
+        assert_eq!(
+            caps.cancel,
+            b.config.driver != DriverKind::Libsql,
+            "{}",
+            b.name
+        );
         // ClickHouse is the one database without transactions.
         assert_eq!(
             caps.transactions,
@@ -2031,9 +2036,10 @@ async fn reads_geometries() {
                 vec![point.clone(), line.clone()],
             ),
             // ClickHouse geometries are tuples of coordinates: shapes come as text.
-            DriverKind::Sqlite | DriverKind::Libsql | DriverKind::DuckDb | DriverKind::ClickHouse => {
-                ("SELECT 'POINT (1 2)'", vec![point.clone()])
-            }
+            DriverKind::Sqlite
+            | DriverKind::Libsql
+            | DriverKind::DuckDb
+            | DriverKind::ClickHouse => ("SELECT 'POINT (1 2)'", vec![point.clone()]),
             // SQL Server's own serialization is not WKB: the values are converted.
             DriverKind::SqlServer => (
                 "SELECT geometry::Point(1, 2, 0).STAsBinary(), \

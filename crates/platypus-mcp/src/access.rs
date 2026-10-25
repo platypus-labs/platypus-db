@@ -57,7 +57,9 @@ fn outside_effect(statement: &str, dialect: Dialect) -> Option<&str> {
     let (names, prefixes): (&[&str], &[&str]) = match dialect {
         Dialect::Postgres => (POSTGRES_OUTSIDE, POSTGRES_OUTSIDE_PREFIXES),
         Dialect::MySql => (MYSQL_OUTSIDE, &[]),
-        Dialect::Sqlite | Dialect::DuckDb | Dialect::SqlServer | Dialect::ClickHouse => return None,
+        Dialect::Sqlite | Dialect::DuckDb | Dialect::SqlServer | Dialect::ClickHouse => {
+            return None;
+        }
     };
     Lexer::new(statement, dialect)
         .filter_map(|t| match t.kind {
