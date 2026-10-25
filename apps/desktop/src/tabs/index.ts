@@ -4,3 +4,4 @@ import "./object";
 import "./search";
 import "./builder";
 import "./explain";
+import "./tableEditor";

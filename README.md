@@ -50,6 +50,12 @@ scrolls through millions of rows.
   database; or the text of every row of a schema's tables, opening the matching rows.
 - **Object details**: properties, columns, indexes, constraints, foreign keys, incoming
   references and the DDL of any object.
+- **Table editor** (right-click a table, *Edit table…*, or a schema, *Create table…*):
+  columns (type, NOT NULL, default, primary key, comment), indexes, foreign keys with their
+  `ON DELETE`/`ON UPDATE` actions, and UNIQUE and CHECK constraints. Saving shows the
+  `CREATE TABLE` or `ALTER TABLE` script first and runs it in one transaction where the
+  database can roll DDL back (MySQL commits each statement). SQLite and DuckDB, which alter
+  little in place, get the table created again with its rows copied.
 - **SQL editor** (CodeMirror): run the statement under the cursor (`Ctrl+Enter`) or the
   whole script (`Alt+X`), errors pointed out in the text, autocompletion of keywords,
   tables and columns (including `alias.column`), query history, `.sql` files.
@@ -303,6 +309,7 @@ crates/
   platypus-driver-libsql/  libSQL servers and Turso (Hrana over HTTP; SQLite's catalog code)
   platypus-driver-mongo/   MongoDB (official driver, rustls); mongosh parser, documents to Arrow
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
+  platypus-schema/         table designs for the table editor and the DDL between them
   platypus-net/            SSH tunnels (russh)
   platypus-store/          connections (TOML + OS keychain), imports, query history (SQLite)
   platypus-transfer/       streaming exports, imports, copies between databases, fake rows

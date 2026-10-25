@@ -1,0 +1,41 @@
+/* The table editor: the object tab's layout with editable cells. */
+.table-editor .table-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.table-editor .table-name input {
+  font-weight: 600;
+  min-width: 220px;
+}
+
+.table-editor .edit-table {
+  width: 100%;
+}
+
+.table-editor .edit-table td {
+  vertical-align: middle;
+}
+
+.table-editor .edit-table input:not([type="checkbox"]),
+.table-editor .edit-table select {
+  width: 100%;
+  min-width: 80px;
+}
+
+.table-editor .type-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.table-editor .add-row {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+.table-editor .notice + .sql-preview,
+.table-editor .notice + .notice {
+  margin-top: 6px;
+}

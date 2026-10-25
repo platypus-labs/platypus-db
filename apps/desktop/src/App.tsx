@@ -734,6 +734,7 @@ export function App() {
 function tabIcon(t: TabModel): IconName {
   if (t.kind === "object") return "object";
   if (t.kind === "builder") return "builder";
+  if (t.kind === "table-editor") return "edit";
   return "tableRef" in t && t.tableRef ? "table" : "sql";
 }
 

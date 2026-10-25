@@ -428,6 +428,69 @@ export interface DialectSupport {
   renamable: ObjectKind[];
 }
 
+/** A table as the table editor edits it. Each part keeps its name in the database in
+ *  `original` (`null` for a new part), so a rename is not taken for a new part. */
+export interface TableDesign {
+  name: string;
+  columns: ColumnDesign[];
+  /** The name of the primary key constraint; its columns are those marked `primary_key`. */
+  primary_key_name?: string | null;
+  indexes: IndexDesign[];
+  foreign_keys: ForeignKeyDesign[];
+  /** UNIQUE and CHECK constraints. */
+  constraints: ConstraintDesign[];
+}
+
+export interface ColumnDesign {
+  original: string | null;
+  name: string;
+  data_type: string;
+  nullable: boolean;
+  /** An SQL expression. */
+  default: string | null;
+  primary_key: boolean;
+  comment: string | null;
+  /** Kept from the database, e.g. MySQL's `auto_increment`. */
+  extra?: string | null;
+}
+
+export interface IndexDesign {
+  original: string | null;
+  name: string;
+  columns: string[];
+  unique: boolean;
+}
+
+export interface ForeignKeyDesign {
+  original: string | null;
+  name: string;
+  columns: string[];
+  ref_schema: string;
+  ref_table: string;
+  ref_columns: string[];
+  /** `null` for NO ACTION. */
+  on_delete: string | null;
+  on_update: string | null;
+}
+
+export interface ConstraintDesign {
+  original: string | null;
+  name: string;
+  kind: "unique" | "check";
+  columns: string[];
+  /** The condition of a CHECK, without `CHECK`. */
+  check: string;
+}
+
+/** The statements that change a table, sent back as is to run them. */
+export interface TableScript {
+  before: string[];
+  statements: string[];
+  after: string[];
+  transactional: boolean;
+  warnings: string[];
+}
+
 /** A foreign key of the catalog: `schema.table (columns)` references `ref_*`. */
 export interface CatalogForeignKey {
   schema: string;
@@ -933,6 +996,13 @@ export const api = {
   generateSql: (driver: DriverKind, target: GenerateTarget, request: GenerateRequest) =>
     invoke<string | null>("generate_sql", { driver, target, request }),
   dialectSupport: (driver: DriverKind) => invoke<DialectSupport>("dialect_support", { driver }),
+  tableDesign: (sessionId: number, schema: string, table: string) =>
+    invoke<TableDesign>("table_design", { sessionId, schema, table }),
+  /** The script from `original` to `design`, or creating `design` when `original` is null. */
+  tableScript: (driver: DriverKind, schema: string, original: TableDesign | null, design: TableDesign) =>
+    invoke<{ script: TableScript; sql: string }>("table_script", { driver, schema, original, design }),
+  applyTableScript: (sessionId: number, script: TableScript) =>
+    invoke<void>("apply_table_script", { sessionId, script }),
   /** The UPDATE, INSERT and DELETE statements that saving `changes` would run. */
   previewChanges: (jobId: number, changes: TableChanges) =>
     invoke<string[]>("preview_changes", { jobId, changes }),

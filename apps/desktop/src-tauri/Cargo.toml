@@ -37,6 +37,7 @@ platypus-driver-pg.workspace = true
 platypus-driver-sqlite.workspace = true
 platypus-transfer.workspace = true
 platypus-net.workspace = true
+platypus-schema.workspace = true
 platypus-sql.workspace = true
 platypus-store.workspace = true
 serde.workspace = true
