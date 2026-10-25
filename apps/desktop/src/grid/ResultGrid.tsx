@@ -95,7 +95,7 @@ interface Props {
 
 /** A result's grid with its features: editing, search, column layout, totals and panels. */
 export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onHeaderClick, source, edit, notes }: Props) {
-  useCatalogVersion();
+  const notesVersion = useCatalogVersion();
   const noteOf = (col: number) =>
     notes && columns[col]
       ? catalogEntry(notes.connectionId, catalogKey(notes.database, notes.schema, notes.table, columns[col].name))
@@ -174,6 +174,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
             ref={grid}
             columns={columns}
             headerTitle={notes ? (col) => annotation(noteOf(col)) : undefined}
+            headerVersion={notesVersion}
             headerMarked={notes ? (col) => { const e = noteOf(col); return !!(e?.note || e?.tags.length); } : undefined}
             rowCount={rowCount}
             topRows={editor.topRows}

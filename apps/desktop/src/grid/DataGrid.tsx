@@ -133,6 +133,8 @@ interface Props {
   headerTitle?: (col: number) => string | undefined;
   /** Draws a discreet mark in the header of annotated columns. */
   headerMarked?: (col: number) => boolean;
+  /** Bumped when the annotations change, to repaint the marks. */
+  headerVersion?: number;
   source?: GridSource | null;
   /** Called for every visible cell on each frame: keep it cheap. */
   decorate?: (row: number, col: number) => CellDecoration | undefined;
@@ -205,6 +207,7 @@ export function DataGrid({
   onHeaderClick,
   headerTitle,
   headerMarked,
+  headerVersion = 0,
   source = null,
   decorate,
   overlay,
@@ -651,7 +654,7 @@ export function DataGrid({
   useEffect(schedule, [schedule, decorate]);
 
   // Redraw on data, size, layout and theme changes.
-  useEffect(schedule, [schedule, version, rowCount, topRows, columns, sort, resolved]);
+  useEffect(schedule, [schedule, version, rowCount, topRows, columns, sort, resolved, headerVersion]);
   useEffect(() => {
     const outer = outerRef.current;
     if (!outer) return;

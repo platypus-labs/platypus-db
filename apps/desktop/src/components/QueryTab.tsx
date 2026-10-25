@@ -937,14 +937,6 @@ export function QueryTab({
    * Lets the grid edit the result's table: the data viewer's own query, or a query in the
    * editor that reads one table. Results of scripts stay read-only.
    */
-  /** The viewer's table, for the notes in the grid header; none for other results. */
-  function notesScope(result: Result): NotesScope | null {
-    const ref = tab.tableRef;
-    if (!(tab.table && ref) || isMongo(connection.driver)) return null;
-    if (result.sql !== viewerSql(connection.driver, tab.table, tab.filter ?? "", tab.sort ?? null)) return null;
-    return { connectionId: connection.id, database: tab.database, schema: ref.schema, table: ref.name };
-  }
-
   function editTarget(result: Result): TableEditTarget | null {
     // The data editor writes SQL: MongoDB results stay read-only.
     if (isMongo(connection.driver)) return null;
@@ -989,6 +981,14 @@ export function QueryTab({
       },
       onDirtyChange: setUnsaved,
     };
+  }
+
+  /** The viewer's table, for the notes in the grid header; none for other results. */
+  function notesScope(result: Result): NotesScope | null {
+    const ref = tab.tableRef;
+    if (!(tab.table && ref) || isMongo(connection.driver)) return null;
+    if (result.sql !== viewerSql(connection.driver, tab.table, tab.filter ?? "", tab.sort ?? null)) return null;
+    return { connectionId: connection.id, database: tab.database, schema: ref.schema, table: ref.name };
   }
 
   // The open transaction's clock, and one warning when it has been open too long.
