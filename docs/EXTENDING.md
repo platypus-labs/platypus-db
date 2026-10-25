@@ -188,6 +188,48 @@ downloads instead of building in:
 Conformance: `crates/platypus-conformance/tests/bridges.rs` runs Trino (`--profile trino`)
 through the bridge, downloading its driver to `target/conformance-drivers`.
 
+### Vendor client libraries: Oracle and ODBC
+
+Oracle, IBM Db2 and any ODBC driver need a client library that the vendor publishes and the
+app installs, or that the system has:
+- `DriverKind::vendor_package()` names it (`oracle`: Oracle Instant Client, `db2`: IBM's
+  Data Server Driver for ODBC and CLI). `platypus_drivers::vendor_package` describes it per
+  platform: archive URLs with the SHA-256 the vendor publishes (or computed once for IBM's
+  versioned archive), the library, and for an ODBC driver the program that registers it with
+  the system. `install_vendor` downloads, checks and unpacks to
+  `<data>/drivers/vendor/<name>/<version>/` (folders and symbolic links kept);
+  `register` runs the vendor's program as administrator through PowerShell `-Verb RunAs`
+  (Windows shows the UAC prompt; a declined prompt is `DriverError::ElevationDeclined`).
+  A new version means new URLs and hashes in `vendor.rs`.
+- `platypus-driver-oracle`: the `oracle` crate (ODPI-C) loads Instant Client from
+  `<data>/drivers/vendor/oracle/…` with `InitParams::oracle_client_lib_dir`, or the
+  system's client without one; with neither, `Error::DriverMissing`. A connection runs on a
+  thread of its own; the canceller shares it (`Arc<Connection>`) and calls
+  `break_execution`, so autocommit is done by the session (a commit after each change)
+  instead of the connection's own flag, which needs `&mut`. Metadata comes from the `ALL_*`
+  views (`meta.rs`), DDL from `DBMS_METADATA`. A `;` after plain SQL is dropped
+  (`statement_text`), PL/SQL keeps it; the splitter ends PL/SQL at a `/` line.
+- `platypus-driver-odbc` (Windows only: unixODBC would have to be linked into the app, which
+  would then not start without it; elsewhere the driver reports it): `odbc-api` and
+  `arrow-odbc`, one thread per connection, metadata from the ODBC catalog functions,
+  `profile::connection_string` per kind (Db2's vendor driver found by name among the
+  system's drivers; generic: a DSN, a driver and a connection string). `SQLCancel` needs
+  unsafe code, which the workspace forbids: a statement still waiting to start is given up
+  with its session, as with ADBC.
+- Both run a bare `BEGIN`, `COMMIT` or `ROLLBACK` through their client API
+  (`platypus_core::TxControl`): Oracle reads `BEGIN` as a PL/SQL block, and ODBC drivers take
+  it differently.
+- Desktop: `commands/vendor.rs` (`vendor_driver_status`, `install_vendor_driver` with
+  progress and a `registering` event, `cancel_vendor_install`, `remove_vendor_driver`,
+  `odbc_system`); `apps/desktop/src/drivers/VendorDrivers.tsx` holds the popup, which
+  `askDriver` opens for these kinds, the client's line in the connection dialog and the
+  Settings › Drivers section.
+
+Conformance: `tests/oracle.rs` (`--profile oracle`, `gvenzl/oracle-free`; skipped without
+Instant Client, which `PLATYPUS_TEST_ORACLE_CLIENT=download` fetches to
+`target/conformance-drivers`) and `tests/odbc.rs` (SQL Server through Windows' own `SQL Server`
+ODBC driver, `--profile sqlserver`).
+
 ### Connections file
 
 `platypus_store::ConnectionStore` keeps `connections.toml`, now `version = 6`: a list of
