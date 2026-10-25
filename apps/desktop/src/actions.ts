@@ -11,7 +11,8 @@
  *   }
  */
 import type { ObjectMeta, SavedConnection, SchemaMeta } from "./api";
-import { getStored, setStored } from "./settings";
+import { useSyncExternalStore } from "react";
+import { getStored, setStored, useSettingsVersion } from "./settings";
 import type { GridActionContext } from "./grid/DataGrid";
 
 export interface ActionScopes {
@@ -72,14 +73,18 @@ export interface Action<S extends ActionScope = ActionScope> {
 
 const registry = new Map<string, Action>();
 const listeners = new Set<() => void>();
+/** Bumped at every change of the registry, for `useActions`. */
+let registryVersion = 0;
 
 /** Adds or replaces (by id) an action; returns a function that removes it. */
 export function registerAction<S extends ActionScope>(action: Action<S>): () => void {
   registry.set(action.id, action as unknown as Action);
+  registryVersion++;
   listeners.forEach((l) => l());
   return () => {
     if (registry.get(action.id) === (action as unknown as Action)) {
       registry.delete(action.id);
+      registryVersion++;
       listeners.forEach((l) => l());
     }
   };
@@ -89,6 +94,14 @@ export function registerAction<S extends ActionScope>(action: Action<S>): () => 
 export function onActionsChanged(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+/** The actions of `scope`, kept current in a component: re-rendered when actions come and go
+ *  and when a shortcut changes in the settings. */
+export function useActions<S extends ActionScope>(scope: S, arg: ActionScopes[S]): Action<S>[] {
+  useSettingsVersion();
+  useSyncExternalStore(onActionsChanged, () => registryVersion);
+  return actionsFor(scope, arg);
 }
 
 /** Actions of a scope that apply to `arg`, in menu order: only the `multiple` ones for a

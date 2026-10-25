@@ -94,6 +94,12 @@ export default async function (page, { shots }) {
     await page.eval(`[...document.querySelectorAll('.project-square')].map(s => s.title)`),
     ["All connections", "Negozio", "Interno"],
   );
+  // No tab yet: the welcome screen, with its actions and the shell's shortcuts.
+  assert.deepEqual(
+    JSON.parse(await page.eval(`JSON.stringify([...document.querySelectorAll('.welcome-card strong')].map(s => s.textContent))`)),
+    ["Open a data file", "Import connections"],
+  );
+  assert.equal(await page.eval(`document.querySelector('.welcome-keys kbd')?.textContent`), "Ctrl+K");
   await page.key("2", "Digit2", 50, CTRL);
   await page.waitFor(`document.querySelector('.navigator-project')?.textContent === 'Negozio'`);
   await page.eval(`${treeRow(NAME)}.querySelector(".twisty").click()`);
@@ -102,6 +108,11 @@ export default async function (page, { shots }) {
   await page.clickSel("#e2e-table", { clickCount: 2 });
   await page.waitFor(`${status} === '3 rows'`, 15_000);
   assert.equal(await page.eval(`${visibleTab}.querySelector('.conn-chip.dev')?.textContent`), "Shop dev · main");
+  // The frame takes the DEV tint; the top bar names the project, the connection and its type.
+  assert.equal(await page.eval(`document.querySelector('.shell').dataset.env`), "dev");
+  assert.equal(await page.eval(`getComputedStyle(document.querySelector('.shell')).getPropertyValue('--frame').trim()`), "#0f1513");
+  assert.equal(await page.eval(`document.querySelector('.topbar-project').textContent`), "Negozio");
+  assert.equal(await page.eval(`document.querySelector('.topbar-connection').textContent`), "Shop devDevelopment");
   await screens(page, "dark", shots);
 
   // The sidebar button: Platypus Dark, then System, then Platypus Light.

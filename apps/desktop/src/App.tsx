@@ -682,6 +682,7 @@ export function App() {
             onNew={() => void newConnection()}
             onImport={() => setDialog({ kind: "import" })}
             onOpenFile={(path) => void openDroppedFile(path).catch((e: unknown) => setToast(toCommandError(e).message))}
+            onError={setToast}
           />
         )}
       </main>

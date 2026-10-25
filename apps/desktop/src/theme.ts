@@ -541,7 +541,12 @@ function variables(): { dark: boolean; vars: Record<string, string> } {
   if (bg || sidebar || text || accent) {
     const derived = derive(vars, readableOn(vars.bg) === "#ffffff");
     if (bg) vars["bg-tabbar"] = derived["bg-tabbar"];
-    if (sidebar) vars["bg-rail"] = derived["bg-rail"];
+    if (sidebar) {
+      vars["bg-rail"] = derived["bg-rail"];
+      vars["frame-dev"] = derived["frame-dev"];
+      vars["frame-test"] = derived["frame-test"];
+      vars["frame-prod"] = derived["frame-prod"];
+    }
     if (sidebar || accent) vars.active = derived.active;
     if (text) vars["fg-strong"] = derived["fg-strong"];
   }

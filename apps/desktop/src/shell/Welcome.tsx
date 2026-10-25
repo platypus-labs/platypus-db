@@ -1,6 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { actionsFor, shortcutLabel } from "../actions";
-import { DATA_FILE_EXTENSIONS } from "../api";
+import { shortcutLabel, useActions } from "../actions";
+import { DATA_FILE_EXTENSIONS, toCommandError } from "../api";
 import bannerOnDark from "../assets/brand/platypus-db-on-dark.png";
 import bannerOnLight from "../assets/brand/platypus-db-on-light.png";
 import { Icon } from "../ui/Icon";
@@ -13,18 +13,19 @@ interface Props {
   onImport: () => void;
   /** Opens a data file as a DuckDB database. */
   onOpenFile: (path: string) => void;
+  onError: (message: string) => void;
 }
 
 /** The shell's actions worth knowing first, with their shortcuts as the user set them. */
 const SHORTCUTS = ["app.palette", "tab.new", "tab.reopen", "app.settings"];
 
 /** What the workspace shows with no tab open. */
-export function Welcome({ empty, version, onNew, onImport, onOpenFile }: Props) {
+export function Welcome({ empty, version, onNew, onImport, onOpenFile, onError }: Props) {
   async function pickFile() {
     const path = await open({ multiple: false, filters: [{ name: "Data files", extensions: DATA_FILE_EXTENSIONS }] });
     if (typeof path === "string") onOpenFile(path);
   }
-  const global = actionsFor("global", undefined);
+  const global = useActions("global", undefined);
   const shortcuts = SHORTCUTS.flatMap((id) => {
     const action = global.find((a) => a.id === id);
     const keys = action && shortcutLabel(action);
@@ -39,7 +40,7 @@ export function Welcome({ empty, version, onNew, onImport, onOpenFile }: Props) 
         </h1>
         <p className="welcome-lead">
           {empty
-            ? "A SQL client for PostgreSQL, MySQL, SQL Server, SQLite, DuckDB, ClickHouse, libSQL and MongoDB. Add a connection to get started."
+            ? "A SQL client for your databases and data files. Add a connection to get started."
             : "Double-click a connection to open a SQL editor, or expand it to browse."}
         </p>
         <button type="button" className="primary welcome-cta" onClick={onNew}>
@@ -49,7 +50,7 @@ export function Welcome({ empty, version, onNew, onImport, onOpenFile }: Props) 
         <p className="muted small">v{version}</p>
       </div>
       <div className="welcome-actions">
-        <button type="button" className="welcome-card" onClick={() => void pickFile()}>
+        <button type="button" className="welcome-card" onClick={() => pickFile().catch((e: unknown) => onError(toCommandError(e).message))}>
           <Icon name="file" size={18} />
           <span>
             <strong>Open a data file</strong>

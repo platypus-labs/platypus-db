@@ -117,11 +117,6 @@
   color: var(--fg-strong);
 }
 
-.tree-row:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
 .tree-row.muted .tree-label {
   color: var(--fg-muted);
 }

@@ -1,4 +1,4 @@
-import { actionsFor, runAction, shortcutLabel } from "../actions";
+import { runAction, shortcutLabel, useActions } from "../actions";
 import type { Project, SavedConnection } from "../api";
 import mark from "../assets/brand/platypus-mark.png";
 import { CONNECTION_TYPES } from "../connections";
@@ -16,7 +16,7 @@ interface Props {
 /** The bar on the window frame: where the work is (project, connection and its type), the
  *  search that opens the palette, the theme and the settings. */
 export function TopBar({ project, connection }: Props) {
-  const palette = actionsFor("global", undefined).find((a) => a.id === "app.palette");
+  const palette = useActions("global", undefined).find((a) => a.id === "app.palette");
   const keys = palette && shortcutLabel(palette);
   const type = CONNECTION_TYPES.find((t) => t.value === connection?.connection_type);
   return (
