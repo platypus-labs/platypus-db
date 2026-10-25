@@ -315,6 +315,15 @@ cartella. Annullare un import ora lo ferma tra un blocco e l'altro, così il rol
 della tabella creata vengono eseguiti. Conformance: modalità su tutti i database e
 trasferimento tra tutte le 36 coppie.
 
+**P3 completate.** La migrazione (`platypus-export::migrate`) crea ogni tabella con colonne,
+NOT NULL e chiave primaria (i `varchar(n)` restano `VARCHAR(n)`, perché MySQL non indicizza
+TEXT), la riempie in una transazione sua e alla fine aggiunge le chiavi esterne tra le tabelle
+copiate; SQLite e DuckDB non le aggiungono a una tabella esistente e finiscono tra gli avvisi.
+Il generatore (`fake`) sceglie per nome e tipo della colonna, dà chiavi dopo la più grande e
+chiavi esterne prese dalla tabella referenziata. L'export si comprime in gzip o zstd e si
+carica con un `PUT` su un URL firmato S3 o GCS: niente credenziali cloud salvate nell'app.
+Conformance: migrazione tra le 30 coppie di database diversi, generatore su tutti.
+
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | Import CSV, TSV, JSON, NDJSON, Parquet e XLSX in una tabella, con mappatura e anteprima | P1 | D |
@@ -534,7 +543,7 @@ dell'ondata.
 |---|---|---|---|---|
 | **0** | Fase 0 (1 persona) e **P** in parallelo | Codice pronto al lavoro parallelo, prima release pubblica | v0.1.x | Fase 0 fatta; P in corso |
 | **1** | **A**, **B** (P1), **C** (P1), **F** (SSH, tipi, import), **K** (P1), **L** (P1) | Sostituire DBeaver nell'uso quotidiano | v0.2 | **Fatta** (P1 di A, B, C, F, K e L; P2 di A e B), release v0.2.0 del 24 ottobre 2026 |
-| **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte; E: completato; H: P1 e P2 fatte |
+| **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte; E: completato; H: completato |
 | **3** | **I**, **J**, **M**, **N**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 | Da fare |
 | **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | Da fare |
 
