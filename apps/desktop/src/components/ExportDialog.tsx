@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
-import type { ExportFormat, ExportOptions } from "../api";
+import type { DriverKind, ExportFormat, ExportOptions } from "../api";
 import { fmt } from "./ResultPanel";
 
 export type ExportSource = "query" | "loaded";
@@ -8,6 +8,8 @@ export type ExportSource = "query" | "loaded";
 interface Props {
   /** Suggested file name without extension. */
   name: string;
+  /** The connection's database, which SQL statements are written for. */
+  driver: DriverKind;
   loadedRows: number;
   /** Whether the result holds every row already. */
   complete: boolean;
@@ -22,6 +24,11 @@ const FORMATS: { value: ExportFormat; label: string; ext: string }[] = [
   { value: "json", label: "JSON (array)", ext: "json" },
   { value: "ndjson", label: "NDJSON (one object per line)", ext: "ndjson" },
   { value: "parquet", label: "Parquet (zstd)", ext: "parquet" },
+  { value: "xlsx", label: "Excel workbook", ext: "xlsx" },
+  { value: "sql", label: "SQL INSERT statements", ext: "sql" },
+  { value: "markdown", label: "Markdown table", ext: "md" },
+  { value: "html", label: "HTML table", ext: "html" },
+  { value: "xml", label: "XML", ext: "xml" },
 ];
 
 const DELIMITERS = [
@@ -31,8 +38,14 @@ const DELIMITERS = [
   { value: "|", label: "Pipe |" },
 ];
 
-export function ExportDialog({ name, loadedRows, complete, transactionOpen, onExport, onClose }: Props) {
-  const [options, setOptions] = useState<ExportOptions>({ format: "csv", delimiter: ",", header: true });
+export function ExportDialog({ name, driver, loadedRows, complete, transactionOpen, onExport, onClose }: Props) {
+  const [options, setOptions] = useState<ExportOptions>({
+    format: "csv",
+    delimiter: ",",
+    header: true,
+    table: name,
+    driver,
+  });
   const [source, setSource] = useState<ExportSource>(complete ? "loaded" : "query");
   const format = FORMATS.find((f) => f.value === options.format)!;
 
@@ -63,6 +76,12 @@ export function ExportDialog({ name, loadedRows, complete, transactionOpen, onEx
             ))}
           </select>
         </label>
+        {options.format === "sql" && (
+          <label className="field">
+            <span>Table name</span>
+            <input value={options.table} onChange={(e) => setOptions({ ...options, table: e.target.value })} />
+          </label>
+        )}
         {options.format === "csv" && (
           <div className="row">
             <label className="field">

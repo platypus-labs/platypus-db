@@ -546,12 +546,16 @@ export interface SearchResult {
   truncated: boolean;
 }
 
-export type ExportFormat = "csv" | "json" | "ndjson" | "parquet";
+export type ExportFormat = "csv" | "json" | "ndjson" | "parquet" | "xlsx" | "sql" | "markdown" | "html" | "xml";
 
 export interface ExportOptions {
   format: ExportFormat;
   delimiter: string;
   header: boolean;
+  /** SQL: the table the INSERT statements write to. */
+  table?: string;
+  /** SQL: the database the statements are written for. */
+  driver?: DriverKind;
 }
 
 export type ExportEvent =
