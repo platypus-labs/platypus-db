@@ -104,7 +104,7 @@ scrolls through millions of rows.
   (right-click them, *Export data…* or *Export all tables…*).
 - **Import** of CSV, TSV, JSON, NDJSON, Parquet and Excel files into a table (right-click it,
   *Import data…*), with a preview and each column fed from a file column, adding the rows,
-  replacing them or updating those with the same primary key; or into a new table
+  replacing them or updating those with the same key; or into a new table
   (right-click a schema) created with the types DuckDB infers. All rows or none, confirmed
   first on production connections. *Paste CSV as a new table…* imports the clipboard, as a
   spreadsheet copies it.
@@ -112,10 +112,14 @@ scrolls through millions of rows.
   MySQL, SQL Server to SQLite and every other pair, streamed, into a new table with the types
   mapped or into an existing one.
 - **Copy a schema** (or several tables) to another database: each table created with its
-  columns, NOT NULL and primary key, filled, then the foreign keys between them.
+  columns, NOT NULL, primary key and identity column, filled, then its defaults, indexes,
+  foreign keys and CHECK constraints; between databases of one kind the views, functions,
+  procedures and triggers too. What cannot follow is listed when the copy ends.
 - **Fake data** for a table (*Generate data…*): names, emails, numbers, dates, enum values,
-  keys after the largest and foreign keys that point at existing rows.
-- **Compressed exports** (gzip, zstd), and an optional upload to a signed S3 or GCS URL.
+  keys after the largest, foreign keys (composite ones too) that point at existing rows, and
+  distinct values for unique columns.
+- **Compressed exports** (gzip, zstd), and an optional upload to a signed URL or to an S3, GCS
+  (HMAC keys), R2 or MinIO bucket with its keys; the secret key is never saved.
 - **Data files as databases**: drop a CSV, JSON, Parquet or Excel file on the window (or pick
   it as a DuckDB database) to query it with SQL; each Excel sheet is a table.
 - **Transactions**: auto-commit or manual commit with Commit/Rollback; an open transaction
