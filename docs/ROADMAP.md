@@ -92,7 +92,7 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 | C — Navigator e oggetti | ✅ completato |
 | D — Editor SQL | ✅ completato |
 | E — Explain e performance | ✅ completato |
-| F — Connettività e credenziali | ✅ fatto (P1, P2) |
+| F — Connettività e credenziali | 🔒 Delfa · group-f-import-folders · 2026-10-25 |
 | G — Nuovi driver | ✅ fatto (P1; P2 e P3 in parte) |
 | H — Import, export e trasferimento | ✅ completato |
 | I — Strumenti di schema | ✅ fatto (P1) |
