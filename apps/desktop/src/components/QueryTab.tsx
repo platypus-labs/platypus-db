@@ -1005,6 +1005,8 @@ export function QueryTab({
 
   const health = useSessionHealth(currentSession, active && !running && !guard);
   const toolbar = useToolbar();
+  // ClickHouse has no transactions (`capabilities.transactions` is false): no commit mode.
+  const showTx = toolbar.visible.transactions && connection.driver !== "clickhouse";
   const current = results[activeResult];
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
   const rowsResult = current?.status.kind === "rows" && current.columns ? current : null;
@@ -1042,8 +1044,8 @@ export function QueryTab({
             </button>
           )}
           <ConnectionChip connection={connection} database={tab.database ?? null} schema={catalog?.default_schema ?? null} />
-          {toolbar.visible.transactions && <span className="divider" />}
-          {toolbar.visible.transactions && (
+          {showTx && <span className="divider" />}
+          {showTx && (
           <button
             className={manual ? "toggled" : ""}
             onClick={() => void toggleAutocommit()}
@@ -1060,7 +1062,7 @@ export function QueryTab({
             {toolbar.label(manual ? "manual-commit" : "autocommit", manual ? "Manual commit" : "Auto-commit")}
           </button>
           )}
-          {toolbar.visible.transactions && manual && (
+          {showTx && manual && (
             <>
               <button
                 onClick={() => void endTransaction(true)}
