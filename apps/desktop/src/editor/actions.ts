@@ -33,7 +33,7 @@ declare module "../actions" {
 export const formatKeywordCase = defineSetting<string>({
   key: "editor.format_keyword_case",
   section: "SQL editor",
-  label: "Keyword case when formatting",
+  label: "Keyword case when formatting and completing",
   default: "upper",
   control: {
     type: "select",

@@ -6,6 +6,7 @@ import type { Completion, CompletionContext, CompletionResult, CompletionSource 
 import type { CatalogForeignKey, CompletionCatalog, DriverKind } from "../api";
 import { quoteIdent } from "../sqlNames";
 import { t } from "../i18n";
+import { maskSql } from "./sqlScope";
 
 interface TableRef {
   schema: string | null;
@@ -83,12 +84,14 @@ function alias(table: string, used: Set<string>): string {
 /** Conditions between `joined` and each table before it. */
 function conditions(catalog: CompletionCatalog, driver: DriverKind, joined: TableRef, before: TableRef[]) {
   const options: Completion[] = [];
+  // Above the columns of the tables, which complete there too.
+  const add = (label: string) => options.push({ label, detail: t("foreign key"), boost: 10 });
   for (const fk of catalog.foreign_keys) {
     for (const other of before) {
       if (refers(joined, fk.schema, fk.table, catalog) && refers(other, fk.ref_schema, fk.ref_table, catalog)) {
-        options.push({ label: condition(fk, qualifier(joined), qualifier(other), driver) });
+        add(condition(fk, qualifier(joined), qualifier(other), driver));
       } else if (refers(other, fk.schema, fk.table, catalog) && refers(joined, fk.ref_schema, fk.ref_table, catalog)) {
-        options.push({ label: condition(fk, qualifier(other), qualifier(joined), driver) });
+        add(condition(fk, qualifier(other), qualifier(joined), driver));
       }
     }
   }
@@ -124,7 +127,8 @@ const AFTER_JOIN = /\bJOIN\s+([\w$."`]*)$/i;
 export function joinCompletion(catalog: CompletionCatalog | null | undefined, driver: DriverKind): CompletionSource {
   return (context: CompletionContext): CompletionResult | null => {
     if (!catalog?.foreign_keys?.length) return null;
-    const text = context.state.sliceDoc(Math.max(0, context.pos - 4000), context.pos);
+    // Strings and comments blanked, so that their words are not read as tables.
+    const text = maskSql(context.state.sliceDoc(Math.max(0, context.pos - 4000), context.pos));
     const statement = text.slice(text.lastIndexOf(";") + 1);
 
     const on = AFTER_ON.exec(statement);

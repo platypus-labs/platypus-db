@@ -1,9 +1,16 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
+import {
+  acceptCompletion,
+  autocompletion,
+  closeBrackets,
+  closeBracketsKeymap,
+  completionKeymap,
+} from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { MSSQL, MySQL, PLSQL, PostgreSQL, SQLite, StandardSQL, type SQLNamespace, sql } from "@codemirror/lang-sql";
+import { MSSQL, MySQL, PLSQL, PostgreSQL, SQLite, StandardSQL } from "@codemirror/lang-sql";
 import {
   HighlightStyle,
+  LanguageSupport,
   bracketMatching,
   foldGutter,
   foldKeymap,
@@ -37,6 +44,7 @@ import { useSetting } from "../settings";
 import { workbench } from "../workbench";
 import { SQL_DRAG, type SqlDrag } from "../sqlNames";
 import "./actions";
+import { type CatalogNote, closeOnTypedWord, codeOnly, keywordCompletion, nameCompletion } from "./completion";
 import { functionCompletion } from "./functions";
 import { joinCompletion } from "./joinCompletion";
 import { lintSql } from "./lint";
@@ -179,25 +187,10 @@ const dialects = {
   databricks: MySQL,
 };
 
-/** The catalog's schemas with the local notes as completion info. */
-function annotatedSchemas(catalog: CompletionCatalog, connectionId: string | undefined, database: string | null | undefined) {
-  if (!connectionId) return catalog.schemas;
-  const out: SQLNamespace = {};
-  for (const [schema, tables] of Object.entries(catalog.schemas)) {
-    const ns: Record<string, SQLNamespace> = {};
-    for (const [table, columns] of Object.entries(tables)) {
-      const info = annotation(catalogEntry(connectionId, catalogKey(database, schema, table)));
-      ns[table] = {
-        self: { label: table, type: "type", ...(info ? { info } : {}) },
-        children: columns.map((col) => {
-          const cinfo = annotation(catalogEntry(connectionId, catalogKey(database, schema, table, col)));
-          return { label: col, type: "property", ...(cinfo ? { info: cinfo } : {}) };
-        }),
-      };
-    }
-    out[schema] = ns;
-  }
-  return out;
+/** The local notes of the catalog's tables and columns, shown as completion info. */
+function catalogNotes(connectionId: string | undefined, database: string | null | undefined): CatalogNote | undefined {
+  if (!connectionId) return undefined;
+  return (schema, table, column) => annotation(catalogEntry(connectionId, catalogKey(database, schema, table, column)));
 }
 
 function language(
@@ -207,18 +200,15 @@ function language(
   database?: string | null,
 ) {
   if (isMongo(driver)) return mongoLanguage(catalog);
-  const support = sql({
-    dialect: dialects[driver],
-    upperCaseKeywords: true,
-    schema: catalog ? annotatedSchemas(catalog, connectionId, database) : undefined,
-    defaultSchema: catalog?.default_schema ?? undefined,
-  });
-  return [
-    support,
-    support.language.data.of({ autocomplete: joinCompletion(catalog, driver) }),
-    support.language.data.of({ autocomplete: functionCompletion(driver) }),
-    support.language.data.of({ autocomplete: snippetSource }),
-  ];
+  const dialect = dialects[driver];
+  const data = dialect.language.data;
+  return new LanguageSupport(dialect.language, [
+    catalog ? data.of({ autocomplete: nameCompletion(catalog, driver, catalogNotes(connectionId, database)) }) : [],
+    data.of({ autocomplete: keywordCompletion(dialect, driver) }),
+    data.of({ autocomplete: codeOnly(joinCompletion(catalog, driver)) }),
+    data.of({ autocomplete: codeOnly(functionCompletion(driver)) }),
+    data.of({ autocomplete: codeOnly(snippetSource) }),
+  ]);
 }
 
 const reportError = (e: unknown) => workbench().showError(toCommandError(e).message);
@@ -283,6 +273,8 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         indentOnInput(),
         bracketMatching(),
         closeBrackets(),
+        // Before the list's own Enter, which would otherwise take a newline.
+        Prec.highest(keymap.of([{ key: "Enter", run: closeOnTypedWord }])),
         autocompletion(),
         highlightActiveLine(),
         highlightSelectionMatches(),
@@ -376,6 +368,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
           ...completionKeymap,
           ...foldKeymap,
           { key: "Tab", run: (view) => !view.state.readOnly && expandSnippet(view) },
+          { key: "Tab", run: acceptCompletion },
           indentWithTab,
         ]),
         EditorView.updateListener.of((u) => {

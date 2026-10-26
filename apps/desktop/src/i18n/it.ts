@@ -56,7 +56,7 @@ const it: Record<string, string> = {
   "Run in a new result tab": "Esegui in una nuova scheda di risultati",
   "Run script with the command-line client": "Esegui lo script con il client a riga di comando",
   "Edit SQL snippets…": "Modifica gli snippet SQL…",
-  "Keyword case when formatting": "Maiuscole delle parole chiave nella formattazione",
+  "Keyword case when formatting and completing": "Maiuscole delle parole chiave nella formattazione e nel completamento",
   "UPPER": "MAIUSCOLO",
   "lower": "minuscolo",
   "As typed": "Come scritte",

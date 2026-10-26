@@ -61,6 +61,9 @@ export function expandSnippet(view: EditorView): boolean {
 export const snippetSource: CompletionSource = (context) => {
   const word = context.matchBefore(/\w+/);
   if (!word && !context.explicit) return null;
+  // Not after a dot, where a column is written.
+  const from = word?.from ?? context.pos;
+  if (context.state.sliceDoc(from - 1, from) === ".") return null;
   const options: Completion[] = snippets().map((s) =>
     snippetCompletion(s.template, {
       label: s.name,
@@ -70,5 +73,5 @@ export const snippetSource: CompletionSource = (context) => {
       boost: -2,
     }),
   );
-  return { from: word?.from ?? context.pos, options, validFor: /^\w*$/ };
+  return { from, options, validFor: /^\w*$/ };
 };

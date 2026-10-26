@@ -192,28 +192,41 @@ const LETTER: Record<DriverKind, string> = {
   odbc: "-",
 };
 
-function options(driver: DriverKind): Completion[] {
-  return FUNCTIONS.filter((f) => f.at(3)!.includes(LETTER[driver])).map(([name, args, doc]) =>
-    snippetCompletion(args ? `${name}(\${})` : `${name}()`, {
+const entries = (driver: DriverKind) => FUNCTIONS.filter((f) => f.at(3)!.includes(LETTER[driver]));
+
+/** The functions of the dialect, in upper case when `upper` (names in mixed case, which
+ *  ClickHouse tells apart, stay as they are). */
+function options(driver: DriverKind, upper: boolean): Completion[] {
+  return entries(driver).map(([listed, args, doc]) => {
+    const name = upper && listed === listed.toLowerCase() && driver !== "clickhouse" ? listed.toUpperCase() : listed;
+    return snippetCompletion(args ? `${name}(\${})` : `${name}()`, {
       label: name,
       type: "function",
       detail: `(${args})`,
       info: doc,
       boost: -1,
-    }),
-  );
+    });
+  });
 }
 
-const cache = new Map<DriverKind, Completion[]>();
+/** The names of the dialect's functions, in lower case. */
+export function functionNames(driver: DriverKind): Set<string> {
+  return new Set(entries(driver).map(([name]) => name.toLowerCase()));
+}
 
-/** Completes the dialect's built-in functions after two letters of a word. */
+const cache = new Map<string, Completion[]>();
+
+/** Completes the dialect's built-in functions after two letters of a word, in upper case
+ *  when the word is typed so. */
 export function functionCompletion(driver: DriverKind): CompletionSource {
   return (context: CompletionContext) => {
     const word = context.matchBefore(/\w+/);
     if (!word || (word.to - word.from < 2 && !context.explicit)) return null;
     // Not after a dot: `o.co` completes columns, not functions.
     if (context.state.sliceDoc(word.from - 1, word.from) === ".") return null;
-    if (!cache.has(driver)) cache.set(driver, options(driver));
-    return { from: word.from, options: cache.get(driver)!, validFor: /^\w*$/ };
+    const upper = word.text !== word.text.toLowerCase() && word.text === word.text.toUpperCase();
+    const key = `${driver}:${upper}`;
+    if (!cache.has(key)) cache.set(key, options(driver, upper));
+    return { from: word.from, options: cache.get(key)!, validFor: /^\w*$/ };
   };
 }
