@@ -235,7 +235,8 @@ export function QueryTab({
   const warnMinutes = useSetting(transactionWarning);
   const slowSeconds = useSetting(slowQuerySeconds);
   const warned = useRef(false);
-  const [count, setCount] = useState<string | null>(null);
+  /** Count rows: the text shown, and the statement (`queryKey`) it counted. */
+  const [count, setCount] = useState<{ key: string | null; text: string } | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState<ExportProgress | null>(null);
   const [results, setResults] = useState<Result[]>([]);
@@ -312,7 +313,7 @@ export function QueryTab({
   };
   // A count belongs to the statement it counted.
   const shownKey = shown ? queryKey(shown.sql) : null;
-  useEffect(() => setCount(null), [shownKey]);
+  const shownCount = count?.key === shownKey ? count.text : null;
   /** The run going on was started by auto-refresh. */
   const autoRun = useRef(false);
   /** The data viewer's own queries, to tell them from other queries typed in the tab. */
@@ -790,7 +791,13 @@ export function QueryTab({
     const { from, to } = ed.getSelection();
     const script = from !== to ? ed.getText().slice(from, to) : ed.getText();
     if (!script.trim()) return;
-    const planned = plannedOf(script, (await api.analyzeSql(script, connection.driver, 0)).statements, 0);
+    let planned: Planned[];
+    try {
+      planned = plannedOf(script, (await api.analyzeSql(script, connection.driver, 0)).statements, 0);
+    } catch (e) {
+      onError(toCommandError(e).message);
+      return;
+    }
     if (
       connection.read_only &&
       planned.some((p) => !p.readOnly) &&
@@ -1066,21 +1073,26 @@ export function QueryTab({
 
   async function countRows() {
     if (!tab.table) return;
+    // The count shows next to the statement it counted only: another one shown meanwhile, or
+    // a later count, hides it.
+    const key = shownKey;
     const sql = await countedSql();
     if (sql === null) return;
-    setCount(t("counting…"));
+    const mine = { key, text: t("counting…") };
+    setCount(mine);
+    const show = (text: string | null) => setCount((c) => (c !== mine ? c : text === null ? null : { key, text }));
     const sessionId = await sideSession();
-    if (sessionId === null) return setCount(null);
+    if (sessionId === null) return show(null);
     try {
       const query = await api.sqlCountQuery(sql, connection.driver);
       if (query === null) {
-        setCount(null);
+        show(null);
         return onError(t("This query cannot be counted."));
       }
       const value = await api.queryValue(sessionId, query);
-      setCount(value === null ? null : plural(Number(value), "{n} row", "{n} rows"));
+      show(value === null ? null : plural(Number(value), "{n} row", "{n} rows"));
     } catch (e) {
-      setCount(null);
+      show(null);
       onError(toCommandError(e).message);
     }
   }
@@ -1507,7 +1519,7 @@ export function QueryTab({
         {tab.table && (
           <div className="viewer-bar">
             <span className="spacer" />
-            {count && <span className="muted small">{count}</span>}
+            {shownCount && <span className="muted small">{shownCount}</span>}
             <button
               type="button"
               className="square"
