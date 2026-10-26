@@ -118,6 +118,14 @@ async function setField(page, index, text) {
 
 const summary = `(document.querySelector('.mass-edit-summary')?.textContent ?? '')`;
 
+/** Waits until the dialog's summary is the one worked out from `input` (its fields, as the
+ *  dialog lists them in `data-input`) and reads `text`. The summary of the fields before the
+ *  last ones were typed can read the same, so the text alone does not say the input arrived. */
+async function summaryOf(page, input, text) {
+  const current = `document.querySelector('.mass-edit-summary')?.dataset.input`;
+  await page.waitFor(`${current} === ${JSON.stringify(JSON.stringify(input))} && ${summary}.includes(${JSON.stringify(text)})`);
+}
+
 /** The preview's SQL once it holds every one of `parts`: fill down and loading a file apply
  *  after reading values, with nothing else on screen to wait for. */
 async function previewWith(page, parts) {
@@ -146,7 +154,7 @@ async function massEdits(page, dir) {
   await gridMenu(page, "Edit selection", "Set value…");
   await page.waitFor(`document.querySelector('.mass-edit') !== null`);
   await setField(page, 0, "same");
-  await page.waitFor(`${summary}.includes('3 cells will change.')`);
+  await summaryOf(page, ["value", "same"], "3 cells will change.");
   await applyMassEdit(page);
   await page.waitFor(`${editBar}.includes('3 rows changed')`);
 
@@ -161,7 +169,7 @@ async function massEdits(page, dir) {
   await page.waitFor(`document.querySelector('.mass-edit') !== null`);
   await setField(page, 0, "SAME");
   await setField(page, 1, "item");
-  await page.waitFor(`${summary}.includes('3 replacements in 3 cells.')`);
+  await summaryOf(page, ["SAME", "item", false, false], "3 replacements in 3 cells.");
   await applyMassEdit(page);
 
   // Numbers from 10 by 5 down `pos`.
@@ -170,7 +178,7 @@ async function massEdits(page, dir) {
   await page.waitFor(`document.querySelector('.mass-edit') !== null`);
   await setField(page, 0, "10");
   await setField(page, 1, "5");
-  await page.waitFor(`${summary}.includes('3 cells will change.')`);
+  await summaryOf(page, ["10", "5"], "3 cells will change.");
   await applyMassEdit(page);
 
   // Bytes into the BLOB of the first row, UTF-8 text into the note of the second.
