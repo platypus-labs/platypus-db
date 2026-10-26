@@ -2,12 +2,15 @@ import { useId, useRef, useState } from "react";
 import { addTags } from "./annotation";
 import { t } from "../i18n";
 
+/** A change of the tags, applied to the stored ones when it is saved. */
+export type TagsUpdate = (tags: string[]) => string[];
+
 interface Props {
   tags: string[];
   /** Tags already used on this connection, offered while typing. */
   suggestions: string[];
   /** Resolves `false` when the change was not saved: the typed text then stays in the field. */
-  onChange: (tags: string[]) => void | Promise<boolean>;
+  onChange: (update: TagsUpdate) => void | Promise<boolean>;
   label?: string;
 }
 
@@ -19,25 +22,26 @@ export function TagInput({ tags, suggestions, onChange, label = t("Tags") }: Pro
 
   async function commit(text: string) {
     if (adding.current === text) return;
-    const next = addTags(tags, text);
-    if (next.length === tags.length) {
+    if (addTags(tags, text).length === tags.length) {
       setDraft("");
       return;
     }
     // What is typed stays until it is saved, so a failed save leaves it to try again.
     setDraft(text);
     adding.current = text;
-    const saved = await Promise.resolve(onChange(next)).catch(() => false);
+    const saved = await Promise.resolve(onChange((stored) => addTags(stored, text))).catch(() => false);
     adding.current = null;
     if (saved !== false) setDraft((now) => (now === text ? "" : now));
   }
+
+  const remove = (tag: string) => void onChange((stored) => stored.filter((x) => x !== tag));
 
   return (
     <div className="tag-input" aria-label={label}>
       {tags.map((tag) => (
         <span key={tag} className="tag-chip">
           #{tag}
-          <button type="button" aria-label={t("Remove {tag}", { tag })} onClick={() => void onChange(tags.filter((x) => x !== tag))}>
+          <button type="button" aria-label={t("Remove {tag}", { tag })} onClick={() => remove(tag)}>
             ×
           </button>
         </span>
@@ -52,7 +56,7 @@ export function TagInput({ tags, suggestions, onChange, label = t("Tags") }: Pro
             e.preventDefault();
             void commit(draft);
           } else if (e.key === "Backspace" && !draft && tags.length) {
-            void onChange(tags.slice(0, -1));
+            remove(tags[tags.length - 1]!);
           }
         }}
         onBlur={() => void commit(draft)}

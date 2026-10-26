@@ -89,9 +89,21 @@ export function catalogEntry(connectionId: string, key: CatalogKey): CatalogEntr
   return entries.get(id(key));
 }
 
-export function saveCatalog(connectionId: string, key: CatalogKey, note: string, tags: string[]): Promise<void> {
+/**
+ * What a save changes: the note, the tags from the ones stored when the save runs, or both.
+ * What it leaves out keeps its stored value, so two saves in a row both count.
+ */
+export interface CatalogChange {
+  note?: string;
+  tags?: (stored: string[]) => string[];
+}
+
+export function saveCatalog(connectionId: string, key: CatalogKey, change: CatalogChange): Promise<void> {
   return writes.run(connectionId, async () => {
     await load(connectionId);
+    const stored = loaded.get(connectionId)?.get(id(key));
+    const note = change.note ?? stored?.note ?? "";
+    const tags = change.tags ? change.tags(stored?.tags ?? []) : (stored?.tags ?? []);
     const saved = await api.saveCatalogEntry(connectionId, key, note, tags);
     const entries = loaded.get(connectionId) ?? new Map<string, CatalogEntry>();
     if (saved.note || saved.tags.length) entries.set(id(key), saved);
@@ -174,13 +186,14 @@ export function setDisplayColumn(
 export const withPicked = (columns: string[], picked: string) =>
   picked && !columns.includes(picked) ? [...columns, picked] : columns;
 
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => void listeners.delete(listener);
+}
+
+const currentVersion = () => version;
+
 /** Re-renders the caller whenever notes are loaded or saved. */
 export function useCatalogVersion(): number {
-  return useSyncExternalStore(
-    (l) => {
-      listeners.add(l);
-      return () => listeners.delete(l);
-    },
-    () => version,
-  );
+  return useSyncExternalStore(subscribe, currentVersion);
 }

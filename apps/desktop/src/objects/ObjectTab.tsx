@@ -10,8 +10,8 @@ import {
   toCommandError,
 } from "../api";
 import { isRelation } from "../components/Navigator";
-import { catalogEntry, catalogKey, saveCatalog, succeeded, useCatalogVersion } from "../catalog/catalog";
-import { NotesPanel } from "../catalog/NotesPanel";
+import { catalogEntry, catalogKey, useCatalogVersion } from "../catalog/catalog";
+import { NotesPanel, saveNote, useNoteDraft } from "../catalog/NotesPanel";
 import { TagInput } from "../catalog/TagInput";
 import { Icon, objectIcon } from "../ui/Icon";
 import { SqlEditor } from "../editor/SqlEditor";
@@ -239,6 +239,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
                 autorun: true,
                 title: tab.name,
                 table: qualified,
+                tableRef: { schema: tab.schema, name: tab.name, kind: tab.objectKind },
                 database: tab.database,
               })
             }
@@ -315,8 +316,10 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
                   {c.comment ?? ""}
                 </span>
               ),
-              <ColumnNote key="note" connectionId={connection.id} catalogKey={ckey(c.name)} />,
-              <ColumnTags key="tags" connectionId={connection.id} catalogKey={ckey(c.name)} suggestions={tagSuggestions} />,
+              // Keyed by column: after a reload that moves the columns, a field being typed in
+              // does not pass to another one.
+              <ColumnNote key={`note ${c.name}`} connectionId={connection.id} catalogKey={ckey(c.name)} />,
+              <ColumnTags key={`tags ${c.name}`} connectionId={connection.id} catalogKey={ckey(c.name)} suggestions={tagSuggestions} />,
             ])}
           />
         )}
@@ -412,23 +415,9 @@ function MetaTable({ head, rows }: { head: string[]; rows: React.ReactNode[][] }
   );
 }
 
-const reportError = (e: unknown) => workbench().showError(toCommandError(e).message);
-
 function ColumnNote({ connectionId, catalogKey }: { connectionId: string; catalogKey: CatalogKey }) {
-  const entry = catalogEntry(connectionId, catalogKey);
-  const [note, setNote] = useState(entry?.note ?? "");
-  useEffect(() => setNote(entry?.note ?? ""), [entry?.note]);
-  return (
-    <input
-      className="cell-input"
-      aria-label={t("Note of {column}", { column: catalogKey.column })}
-      value={note}
-      onChange={(e) => setNote(e.target.value)}
-      onBlur={() =>
-        note !== (entry?.note ?? "") && void saveCatalog(connectionId, catalogKey, note, entry?.tags ?? []).catch(reportError)
-      }
-    />
-  );
+  const note = useNoteDraft(connectionId, catalogKey);
+  return <input className="cell-input" aria-label={t("Note of {column}", { column: catalogKey.column })} {...note} />;
 }
 
 function ColumnTags({
@@ -440,13 +429,12 @@ function ColumnTags({
   catalogKey: CatalogKey;
   suggestions: string[];
 }) {
-  const entry = catalogEntry(connectionId, catalogKey);
   return (
     <TagInput
       label={t("Tags of {column}", { column: catalogKey.column })}
-      tags={entry?.tags ?? []}
+      tags={catalogEntry(connectionId, catalogKey)?.tags ?? []}
       suggestions={suggestions}
-      onChange={(tags) => succeeded(saveCatalog(connectionId, catalogKey, entry?.note ?? "", tags), reportError)}
+      onChange={(update) => saveNote(connectionId, catalogKey, { tags: update })}
     />
   );
 }

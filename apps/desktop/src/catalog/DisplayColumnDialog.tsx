@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, toCommandError } from "../api";
-import { displayColumn, setDisplayColumn, withPicked } from "./catalog";
+import { displayColumn, setDisplayColumn, useCatalogVersion, withPicked } from "./catalog";
 import { t } from "../i18n";
 
 interface Props {
@@ -16,8 +16,10 @@ interface Props {
 /** Picks the column that describes the rows of a table beside the foreign keys to it. */
 export function DisplayColumnDialog({ connectionId, database, schema, table, sessionId, onClose }: Props) {
   const [columns, setColumns] = useState<string[] | null>(null);
-  // "" stands for Automatic.
-  const [picked, setPicked] = useState(() => displayColumn(connectionId, database, schema, table) ?? "");
+  useCatalogVersion();
+  // "" stands for Automatic; until the user picks, the stored choice, which may still be loading.
+  const [choice, setChoice] = useState<string | null>(null);
+  const picked = choice ?? displayColumn(connectionId, database, schema, table) ?? "";
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -54,7 +56,7 @@ export function DisplayColumnDialog({ connectionId, database, schema, table, ses
         <p className="muted small">{t("The column shown beside the foreign keys that point to this table.")}</p>
         <label className="field">
           <span>{t("Column")}</span>
-          <select autoFocus value={picked} disabled={columns === null} onChange={(e) => setPicked(e.target.value)}>
+          <select autoFocus value={picked} onChange={(e) => setChoice(e.target.value)}>
             <option value="">{t("Automatic")}</option>
             {withPicked(columns ?? [], picked).map((name) => (
               <option key={name} value={name}>
