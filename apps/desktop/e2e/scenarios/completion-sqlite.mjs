@@ -1,6 +1,7 @@
 // SQL completion on a throwaway SQLite database: the columns of the tables in the statement
 // under the cursor, aliases, CTEs and subqueries, quoting on insert, no list in strings and
-// comments, and the keys (Tab accepts, Enter after a whole word is a newline).
+// comments, and the keys (Tab accepts, also in a snippet's field and after a snippet's name;
+// Enter after a whole word is a newline).
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -17,7 +18,7 @@ export function setup({ dir }) {
   const db = new DatabaseSync(join(dir, "e2e.db"));
   db.exec(`
     CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT, "Full Name" TEXT);
-    CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customers (id), total REAL, placed_at TEXT);
+    CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customers (id), total REAL, placed_at TEXT, updated_at TEXT);
     CREATE TABLE "My Table" (id INTEGER, "Some Col" TEXT);
     CREATE TABLE products (sku TEXT, price REAL);
   `);
@@ -80,6 +81,30 @@ export default async function (page) {
   assert.match((await listWith(page, "total"))[0], /^totalorders$/);
   await page.key("Tab", "Tab", 9);
   await page.waitFor(`${editorText} === 'SELECT total FROM orders'`);
+
+  // Tab takes the selected entry, not the snippet that the word before the cursor names...
+  await typeAt(page, "SELECT * FROM orders WHERE |", "upd");
+  await listWith(page, "updated_at");
+  const selected = `document.querySelector('.cm-tooltip-autocomplete li[aria-selected]')?.textContent ?? ''`;
+  for (let i = 0; i < 10 && !(await page.eval(selected)).startsWith("updated_at"); i++) {
+    await page.key("ArrowDown", "ArrowDown", 40);
+    await page.sleep(50);
+  }
+  await page.key("Tab", "Tab", 9);
+  await page.waitFor(`${editorText} === 'SELECT * FROM orders WHERE updated_at'`);
+  // ...and in a snippet's field it accepts the list before moving on to the next field.
+  await typeAt(page, "SELECT 1;\n|", "sel");
+  await listWith(page, "sel");
+  await page.key("Tab", "Tab", 9);
+  await page.waitFor(`${editorText} === 'SELECT 1;\\nSELECT *\\nFROM table\\nWHERE condition;'`);
+  await page.key("Tab", "Tab", 9);
+  for (const ch of "ord") {
+    await page.type(ch);
+    await page.sleep(20);
+  }
+  await listWith(page, "orders");
+  await page.key("Tab", "Tab", 9);
+  await page.waitFor(`${editorText} === 'SELECT 1;\\nSELECT *\\nFROM orders\\nWHERE condition;'`);
 
   // The clauses offer the columns of the statement's tables only.
   await typeAt(page, "SELECT * FROM products;\nSELECT * FROM orders WHERE id = 1 AND |", "pl");

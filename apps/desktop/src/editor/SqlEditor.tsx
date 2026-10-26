@@ -279,8 +279,15 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         indentOnInput(),
         bracketMatching(),
         closeBrackets(),
-        // Before the list's own Enter, which would otherwise take a newline.
-        Prec.highest(keymap.of([{ key: "Enter", run: closeOnTypedWord }])),
+        // Before the list's own Enter, which would otherwise take a newline. Tab accepts the open
+        // list before an active snippet's Tab (to its next field, a keymap added later at this
+        // precedence) and before a snippet name's expansion; with no list it does neither.
+        Prec.highest(
+          keymap.of([
+            { key: "Enter", run: closeOnTypedWord },
+            { key: "Tab", run: acceptCompletion },
+          ]),
+        ),
         autocompletion(),
         highlightActiveLine(),
         highlightSelectionMatches(),
@@ -374,7 +381,6 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
           ...completionKeymap,
           ...foldKeymap,
           { key: "Tab", run: (view) => !view.state.readOnly && expandSnippet(view) },
-          { key: "Tab", run: acceptCompletion },
           indentWithTab,
         ]),
         EditorView.updateListener.of((u) => {
