@@ -121,7 +121,17 @@ class Fields {
   }
 
   private start(key: string, token: number, copy: Copy, sql: string, of: number, reloaded: boolean) {
-    const result: Result = { id: nextId--, sql, offset: 0, jobId: null, columns: null, rows: 0, fetching: false, status: { kind: "running" }, limit: null };
+    const result: Result = {
+      id: nextId--,
+      sql,
+      offset: 0,
+      jobId: null,
+      columns: null,
+      rows: 0,
+      fetching: false,
+      status: { kind: "running" },
+      limit: null,
+    };
     const before = this.get(key);
     closeJob(before.pending);
     // The session runs one statement at a time: the output shown keeps the rows it has read.
@@ -147,7 +157,9 @@ class Fields {
    *  query, which becomes the output once it has started. */
   private advance(key: string, id: number, change: (r: Result) => Result) {
     const state = this.get(key);
-    if (state.output?.result.id === id) return this.set(key, { output: { ...state.output, result: change(state.output.result) } });
+    if (state.output?.result.id === id) {
+      return this.set(key, { output: { ...state.output, result: change(state.output.result) } });
+    }
     if (state.pending?.result.id !== id) return;
     const pending = { ...state.pending, result: change(state.pending.result) };
     if (!settled(pending.result)) return this.set(key, { pending });

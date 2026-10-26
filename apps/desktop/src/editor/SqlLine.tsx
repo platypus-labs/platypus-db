@@ -1,7 +1,7 @@
 /** A one-line SQL field with the editor's colors and completion: Enter runs, Escape clears,
  *  Ctrl+Enter asks for a larger editor. */
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
+import { autocompletion, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { syntaxHighlighting } from "@codemirror/language";
 import { Annotation, Compartment, EditorState } from "@codemirror/state";
@@ -69,13 +69,12 @@ export const SqlLine = forwardRef<SqlLineHandle, Props>(function SqlLine(props, 
         languageConf.current.of(language(props.driver, props.catalog)),
         placeholder(props.placeholder),
         EditorView.contentAttributes.of({ "aria-label": props.label }),
-        // The completion list takes Enter and Escape first while it is open.
+        // The completion list (its keymap comes first) takes Enter and Escape while it is open.
         keymap.of([
           { key: "Enter", run: call("onRun"), preventDefault: true },
           { key: "Mod-Enter", run: call("onExpand"), preventDefault: true },
           { key: "Escape", run: call("onClear"), preventDefault: true },
           ...closeBracketsKeymap,
-          ...completionKeymap,
           ...historyKeymap,
           ...defaultKeymap,
         ]),
