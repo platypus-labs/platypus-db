@@ -44,6 +44,8 @@ import { Icon } from "../ui/Icon";
 import { scrollSideways } from "../ui/scroll";
 import { notifyRunEnded } from "../shell/notify";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
+import { ChartToggle } from "../analysis/ChartView";
+import { chartOf, type SavedChart, withChart } from "../analysis/chartConfig";
 import { runGate } from "./runGate";
 import {
   type ShownSort,
@@ -107,6 +109,8 @@ export interface QueryTabModel extends TabBase {
   variables?: Record<string, string>;
   /** Results as text, like a console, instead of the grid. */
   terminal?: boolean;
+  /** Charts of the statements, each shown in place of the grid when chosen. */
+  charts?: SavedChart[];
 }
 
 /** The side panel next to the editor. */
@@ -253,6 +257,11 @@ export function QueryTab({
     filters && filters.result.id === shown?.id && filters.result.columns === shown.columns ? filters.columns : undefined;
   /** The viewer's sort of the shown statement, for the header arrow and the next click. */
   const shownSort = tab.table && shown ? sortOf(tab.sorts, shown.sql) : null;
+  /** The shown statement's chart, if one was made; it stays with the statement across runs. */
+  const shownChart = shown ? chartOf(tab.charts, shown.sql) : null;
+  const setChart = (patch: Partial<Omit<SavedChart, "query">>) => {
+    if (shown) onChange({ charts: withChart(tab.charts, shown.sql, patch) });
+  };
   // A count belongs to the statement it counted.
   const shownKey = shown ? queryKey(shown.sql) : null;
   useEffect(() => setCount(null), [shownKey]);
@@ -1455,6 +1464,7 @@ export function QueryTab({
               }}
               edit={editTarget(shown)}
               notes={notesScope(shown)}
+              chart={shownChart?.shown ? { config: shownChart.config, onConfig: (config) => setChart({ config }) } : null}
             />
           )}
         </div>
@@ -1462,6 +1472,7 @@ export function QueryTab({
           {shown && (
             <>
               <span>{describe(shown)}</span>
+              {rowsResult && <ChartToggle chart={!!shownChart?.shown} onChange={(on) => setChart({ shown: on })} />}
               {(shown.status.kind === "rows" || shown.status.kind === "affected") && (
                 <span className="muted">
                   {t(shown.status.kind === "rows" && !shown.status.finished ? "first rows in {time}" : "took {time}", {
