@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { api, type ColumnInfo, toCommandError } from "../api";
 import { t, plural } from "../i18n";
+import { formatJson, isJsonDocument } from "../jsonText";
 
 /** The focused cell of a result. */
 export interface ValueTarget {
@@ -76,12 +77,10 @@ function prettyXml(text: string): string | null {
   return out.join("\n");
 }
 
+/** An object or array, indented; `null` for anything else. A plain number is valid JSON
+ *  too, but shows as text. Numbers keep their digits (no rounding above 2^53). */
 function prettyJson(text: string): string | null {
-  try {
-    return JSON.stringify(JSON.parse(text), null, 2);
-  } catch {
-    return null;
-  }
+  return isJsonDocument(text) ? formatJson(text) : null;
 }
 
 /** The focused cell's whole value: text, JSON or XML formatted, hex, or an image. */
