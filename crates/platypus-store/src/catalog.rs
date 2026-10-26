@@ -11,7 +11,8 @@ use uuid::Uuid;
 
 use crate::{Result, StoreError};
 
-const MIGRATIONS: &[&str] = &["CREATE TABLE notes (
+const MIGRATIONS: &[&str] = &[
+    "CREATE TABLE notes (
         connection_id TEXT    NOT NULL,
         database      TEXT    NOT NULL,
         schema        TEXT    NOT NULL,
@@ -30,7 +31,19 @@ const MIGRATIONS: &[&str] = &["CREATE TABLE notes (
         tag           TEXT NOT NULL,
         PRIMARY KEY (connection_id, database, schema, object, column_name, tag)
     );
-    CREATE INDEX tags_by_tag ON tags (connection_id, tag);"];
+    CREATE INDEX tags_by_tag ON tags (connection_id, tag);",
+    "CREATE TABLE display_columns (
+        connection_id TEXT NOT NULL,
+        database      TEXT NOT NULL,
+        schema        TEXT NOT NULL,
+        object        TEXT NOT NULL,
+        display       TEXT NOT NULL,
+        PRIMARY KEY (connection_id, database, schema, object)
+    );",
+];
+
+/// Every table of the catalog, for what applies to all of them.
+const TABLES: [&str; 3] = ["notes", "tags", "display_columns"];
 
 /// What a note or tag is on. `database` is empty for the connection's own database, `schema`
 /// where the database has none, `column` for the table or view itself.
@@ -54,6 +67,14 @@ pub struct CatalogEntry {
 pub struct TagCount {
     pub tag: String,
     pub count: u32,
+}
+
+/// The column the user picked to describe the rows of a table, shown beside the foreign keys
+/// that point to it. `key.column` is always empty.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DisplayColumn {
+    pub key: CatalogKey,
+    pub column: String,
 }
 
 #[derive(Debug)]
@@ -232,41 +253,92 @@ impl CatalogStore {
             .map_err(db_error)
     }
 
-    /// Moves notes and tags after the app renamed an object (`from.column` empty: its
-    /// columns' notes move with it) or a column.
-    pub fn rename(&mut self, connection: Uuid, from: &CatalogKey, to: &CatalogKey) -> Result<()> {
+    /// The display columns the user picked on the tables of `connection`.
+    pub fn display_columns(&self, connection: Uuid) -> Result<Vec<DisplayColumn>> {
+        let mut q = self
+            .db
+            .prepare("SELECT database, schema, object, display FROM display_columns WHERE connection_id = ?1")
+            .map_err(db_error)?;
+        let rows = q
+            .query_map(params![connection.to_string()], |r| {
+                Ok(DisplayColumn {
+                    key: CatalogKey {
+                        database: r.get(0)?,
+                        schema: r.get(1)?,
+                        object: r.get(2)?,
+                        column: String::new(),
+                    },
+                    column: r.get(3)?,
+                })
+            })
+            .map_err(db_error)?;
+        rows.collect::<std::result::Result<_, _>>()
+            .map_err(db_error)
+    }
+
+    /// Sets the column that describes the rows of the table `key`; `None` goes back to the
+    /// automatic choice.
+    pub fn set_display_column(
+        &mut self,
+        connection: Uuid,
+        key: &CatalogKey,
+        column: Option<&str>,
+    ) -> Result<()> {
         let id = connection.to_string();
         let tx = self.db.transaction().map_err(db_error)?;
-        for table in ["notes", "tags"] {
-            let sql = if from.column.is_empty() {
-                format!(
+        tx.execute(
+            "DELETE FROM display_columns WHERE connection_id = ?1 AND database = ?2 AND schema = ?3 AND object = ?4",
+            params![id, key.database, key.schema, key.object],
+        )
+        .map_err(db_error)?;
+        if let Some(column) = column {
+            tx.execute(
+                "INSERT INTO display_columns VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![id, key.database, key.schema, key.object, column],
+            )
+            .map_err(db_error)?;
+        }
+        tx.commit().map_err(db_error)
+    }
+
+    /// Moves notes, tags and display columns after the app renamed an object (`from.column`
+    /// empty: its columns' notes move with it) or a column.
+    pub fn rename(&mut self, connection: Uuid, from: &CatalogKey, to: &CatalogKey) -> Result<()> {
+        let id = connection.to_string();
+        let object = from.column.is_empty();
+        let p = if object {
+            params![
+                id,
+                from.database,
+                from.schema,
+                from.object,
+                to.schema,
+                to.object
+            ]
+        } else {
+            params![
+                id,
+                from.database,
+                from.schema,
+                from.object,
+                from.column,
+                to.column
+            ]
+        };
+        let tx = self.db.transaction().map_err(db_error)?;
+        for table in TABLES {
+            let sql = match (object, table) {
+                (true, _) => format!(
                     "UPDATE OR REPLACE {table} SET schema = ?5, object = ?6
                      WHERE connection_id = ?1 AND database = ?2 AND schema = ?3 AND object = ?4"
-                )
-            } else {
-                format!(
+                ),
+                (false, "display_columns") => "UPDATE display_columns SET display = ?6
+                     WHERE connection_id = ?1 AND database = ?2 AND schema = ?3 AND object = ?4 AND display = ?5"
+                    .to_owned(),
+                (false, _) => format!(
                     "UPDATE OR REPLACE {table} SET column_name = ?6
                      WHERE connection_id = ?1 AND database = ?2 AND schema = ?3 AND object = ?4 AND column_name = ?5"
-                )
-            };
-            let p = if from.column.is_empty() {
-                params![
-                    id,
-                    from.database,
-                    from.schema,
-                    from.object,
-                    to.schema,
-                    to.object
-                ]
-            } else {
-                params![
-                    id,
-                    from.database,
-                    from.schema,
-                    from.object,
-                    from.column,
-                    to.column
-                ]
+                ),
             };
             tx.execute(&sql, p).map_err(db_error)?;
         }
@@ -276,20 +348,22 @@ impl CatalogStore {
     /// Forgets everything about a deleted connection.
     pub fn remove_connection(&mut self, connection: Uuid) -> Result<()> {
         let id = connection.to_string();
-        self.db
-            .execute("DELETE FROM notes WHERE connection_id = ?1", params![id])
-            .map_err(db_error)?;
-        self.db
-            .execute("DELETE FROM tags WHERE connection_id = ?1", params![id])
-            .map_err(db_error)?;
+        for table in TABLES {
+            self.db
+                .execute(
+                    &format!("DELETE FROM {table} WHERE connection_id = ?1"),
+                    params![id],
+                )
+                .map_err(db_error)?;
+        }
         Ok(())
     }
 
-    /// Forgets the notes and tags of every connection not in `keep`, in one transaction.
+    /// Forgets the catalog of every connection not in `keep`, in one transaction.
     pub fn retain_connections(&mut self, keep: &[Uuid]) -> Result<()> {
         let keep: Vec<String> = keep.iter().map(Uuid::to_string).collect();
         let tx = self.db.transaction().map_err(db_error)?;
-        for table in ["notes", "tags"] {
+        for table in TABLES {
             let mut stale = Vec::new();
             {
                 let mut q = tx
@@ -468,5 +542,36 @@ mod tests {
         assert_eq!(s.tags(a).unwrap().len(), 1);
         assert!(s.entries(b).unwrap().is_empty());
         assert!(s.tags(b).unwrap().is_empty());
+    }
+
+    #[test]
+    fn saves_display_columns() {
+        let mut s = CatalogStore::open_in_memory().unwrap();
+        let c = Uuid::new_v4();
+        s.set_display_column(c, &key("customers", ""), Some("company"))
+            .unwrap();
+        let all = s.display_columns(c).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].key.object, "customers");
+        assert_eq!(all[0].column, "company");
+        s.set_display_column(c, &key("customers", ""), None)
+            .unwrap();
+        assert_eq!(s.display_columns(c).unwrap(), Vec::new());
+    }
+
+    #[test]
+    fn display_columns_follow_renames_and_removals() {
+        let mut s = CatalogStore::open_in_memory().unwrap();
+        let c = Uuid::new_v4();
+        s.set_display_column(c, &key("customers", ""), Some("company"))
+            .unwrap();
+        s.rename(c, &key("customers", "company"), &key("customers", "firm"))
+            .unwrap();
+        assert_eq!(s.display_columns(c).unwrap()[0].column, "firm");
+        s.rename(c, &key("customers", ""), &key("clients", ""))
+            .unwrap();
+        assert_eq!(s.display_columns(c).unwrap()[0].key.object, "clients");
+        s.retain_connections(&[]).unwrap();
+        assert_eq!(s.display_columns(c).unwrap(), Vec::new());
     }
 }

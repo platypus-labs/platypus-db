@@ -18,7 +18,9 @@ mod sqlite;
 mod vault;
 
 pub use auth::{command_password, external_password, pgpass_password, pgpass_path};
-pub use catalog::{CatalogEntry, CatalogKey, CatalogStore, TagCount, normalize_tags};
+pub use catalog::{
+    CatalogEntry, CatalogKey, CatalogStore, DisplayColumn, TagCount, normalize_tags,
+};
 pub use connections::{
     AgentAccess, ConnectionFolder, ConnectionStore, ConnectionType, ImportInto, ImportRequest,
     ImportTarget, NetworkProfile, PasswordUpdate, Project, ProjectFolder, SavedConnection,
