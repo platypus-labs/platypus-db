@@ -2,6 +2,8 @@
 // results of one table that can be edited.
 import { registerAction } from "../../actions";
 import type { GridActionContext } from "../DataGrid";
+import { msg } from "../../i18n";
+import { type ColumnRule, isNumberRule, loadsFromFile } from "./massEdit";
 
 const editable = ({ source }: GridActionContext) => source?.edit?.editable === true;
 const withSelection = (ctx: GridActionContext) => editable(ctx) && ctx.grid.selection() !== null;
@@ -48,6 +50,78 @@ registerAction({
   order: 23,
   when: (ctx) => editable(ctx) && ctx.grid.focused() !== null,
   run: ({ source }) => source!.edit!.paste(false),
+});
+
+registerAction({
+  id: "grid.load_file",
+  scope: "grid",
+  title: "Load from file…",
+  group: "edit",
+  order: 24,
+  when: (ctx) => {
+    const f = ctx.grid.focused();
+    return editable(ctx) && f !== null && loadsFromFile(ctx.source!.edit!.rule(f.col));
+  },
+  run: ({ grid, source }) => source!.edit!.loadFile(grid.focused()!),
+});
+
+// Mass edit of the selection, in a submenu. Ctrl+D duplicates rows, so filling down takes
+// Ctrl+Alt+D.
+const SELECTION = msg("Edit selection");
+
+/** Whether a selected column's rule passes `test`. */
+const someColumn = ({ grid, source }: GridActionContext, test: (rule: ColumnRule | undefined) => boolean) =>
+  (grid.selection()?.cols ?? []).some((c) => test(source!.edit!.rule(c)));
+
+registerAction({
+  id: "grid.set_value",
+  scope: "grid",
+  title: "Set value…",
+  submenu: SELECTION,
+  group: "edit",
+  order: 25,
+  when: withSelection,
+  run: ({ source }) => source!.edit!.massEdit("set"),
+});
+
+registerAction({
+  id: "grid.fill_down",
+  scope: "grid",
+  title: "Fill down",
+  shortcut: "Mod+Alt+D",
+  submenu: SELECTION,
+  group: "edit",
+  order: 26,
+  when: withSelection,
+  disabled: ({ grid }) => {
+    const sel = grid.selection();
+    return sel && sel.r1 > sel.r0 ? null : msg("Select two rows or more");
+  },
+  run: ({ source }) => source!.edit!.fillDown(),
+});
+
+registerAction({
+  id: "grid.replace_text",
+  scope: "grid",
+  title: "Replace text…",
+  submenu: SELECTION,
+  group: "edit",
+  order: 27,
+  when: withSelection,
+  disabled: (ctx) => (someColumn(ctx, (r) => r?.kind === "text") ? null : msg("The selection has no text columns")),
+  run: ({ source }) => source!.edit!.massEdit("replace"),
+});
+
+registerAction({
+  id: "grid.number_sequence",
+  scope: "grid",
+  title: "Number sequence…",
+  submenu: SELECTION,
+  group: "edit",
+  order: 28,
+  when: withSelection,
+  disabled: (ctx) => (someColumn(ctx, isNumberRule) ? null : msg("The selection has no number columns")),
+  run: ({ source }) => source!.edit!.massEdit("sequence"),
 });
 
 registerAction({

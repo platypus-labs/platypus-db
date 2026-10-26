@@ -1,5 +1,5 @@
 import { Icon } from "../../ui/Icon";
-import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type CellInput, type ColumnInfo, type SavedConnection, toCommandError } from "../../api";
 import type { Cell, CellDecoration, GridApi } from "../DataGrid";
 import type { RowCache } from "../RowCache";
@@ -15,6 +15,9 @@ import { needsProductionConfirm } from "../../guards/guards";
 import { PreviewDialog } from "./PreviewDialog";
 import * as edits from "./state";
 import { VirtualKeyDialog } from "./VirtualKeyDialog";
+import { type ColumnRule, columnRule, loadsFromFile } from "./massEdit";
+import type { MassEditKind } from "./MassEditDialog";
+import { useSelectionEdits } from "./useSelectionEdits";
 import "./actions";
 import { t, plural, msg } from "../../i18n";
 
@@ -48,6 +51,14 @@ export interface TableEdit {
   editCell(cell: Cell, typed?: string): Promise<void>;
   /** Sets every selected cell. */
   setSelection(value: CellInput): void;
+  /** What result column `col` takes; `undefined` when it is not one of the table's. */
+  rule(col: number): ColumnRule | undefined;
+  /** Opens the dialog of a mass edit of the selection. */
+  massEdit(kind: MassEditKind): Promise<void>;
+  /** Copies the first selected row's values into the selected cells below it. */
+  fillDown(): Promise<void>;
+  /** Loads a cell from a file the user picks. */
+  loadFile(cell: Cell): Promise<void>;
   addRow(): void;
   duplicateSelection(): Promise<void>;
   deleteSelection(): void;
@@ -242,6 +253,27 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
   /** Whether a result column is one of the table's, so it can be written. */
   const writable = (col: number) => keys?.columns[col] !== undefined;
 
+  /** What each result column takes, for mass edits and loading files. */
+  const rules = useMemo(
+    () =>
+      columns.map((c, i) => {
+        const columnMeta = keys?.columns[i];
+        return columnMeta ? columnRule(c, columnMeta) : undefined;
+      }),
+    [columns, keys],
+  );
+  const ruleOf = (col: number) => rules[col];
+  const selectionEdits = useSelectionEdits({
+    grid,
+    jobId,
+    current,
+    rules: ruleOf,
+    names: columns.map((c) => c.name),
+    apply,
+    setError,
+    fail,
+  });
+
   async function editCell(cell: Cell, typed?: string) {
     if (!editable || !keys) return;
     if (!writable(cell.col)) {
@@ -374,6 +406,16 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
         for (const c of sel.cols) if (writable(c)) cells.push({ gridRow: r, col: c, value });
       }
       apply((s) => edits.setCells(s, cells));
+    },
+    rule: ruleOf,
+    massEdit: async (kind) => {
+      if (editable) await selectionEdits.massEdit(kind);
+    },
+    fillDown: async () => {
+      if (editable) await selectionEdits.fillDown();
+    },
+    loadFile: async (cell) => {
+      if (editable) await selectionEdits.loadFile(cell);
     },
     addRow: () => {
       if (!editable) return;
@@ -535,6 +577,14 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
       json={isJson(column, columnMeta)}
       numeric={column.numeric}
       options={editing.options}
+      onLoadFile={
+        loadsFromFile(rules[editing.cell.col])
+          ? () => {
+              setEditing(null);
+              void edit.loadFile(editing.cell);
+            }
+          : undefined
+      }
       onCommit={commit}
       onCancel={cancelEdit}
     />
@@ -634,6 +684,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
             onClose={() => setKeyDialog(false)}
           />
         )}
+        {selectionEdits.dialog}
       </>
     ),
     topRows: state.inserts.length,

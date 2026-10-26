@@ -259,6 +259,22 @@
   outline: none;
 }
 
+/* "Load from file" at the right end of the inline editor, inside its border. */
+.cell-editor-file {
+  position: absolute;
+  z-index: 3;
+  box-sizing: border-box;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 2px solid var(--accent);
+  border-left-width: 1px;
+  border-radius: 0;
+  background: var(--hover);
+  color: var(--fg);
+  line-height: 1;
+}
+
 .cell-popup {
   position: absolute;
   z-index: 3;
