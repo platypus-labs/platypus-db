@@ -73,7 +73,7 @@ const wordAt = (word) => `(() => {
   return null;
 })()`;
 
-export default async function (page, { dir }) {
+export default async function (page, { dir, shots }) {
   const connectionRow = `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(NAME)})`;
   await page.waitFor(`${connectionRow} !== undefined`);
   await page.eval(`${connectionRow}.id = 'e2e-connection'`);
@@ -142,6 +142,21 @@ export default async function (page, { dir }) {
   await setEditor(page, "SELECT coal");
   await page.key(" ", "Space", 32, CTRL);
   await page.waitFor(`${options}.some(o => o.startsWith('coalesce'))`, 10_000);
+  // The function's description shows beside the list, not clipped by it.
+  const selected = `document.querySelector('.cm-tooltip-autocomplete li[aria-selected]')?.textContent ?? ''`;
+  await page.sleep(150);
+  for (let i = 0; i < 20 && !(await page.eval(selected)).startsWith("coalesce"); i++) {
+    await page.key("ArrowDown", "ArrowDown", 40);
+    await page.sleep(50);
+  }
+  assert.match(await page.eval(selected), /^coalesce/);
+  await page.waitFor(`(() => {
+    const info = document.querySelector('.cm-completionInfo');
+    if (!info || info.textContent.trim() === '') return false;
+    const r = info.getBoundingClientRect();
+    return r.width > 0 && info.contains(document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 10)));
+  })()`);
+  if (shots) await page.screenshot(join(shots, "completion-info.png"));
   await page.key("Escape", "Escape", 27);
 
   // The outline lists the statements, client commands too.

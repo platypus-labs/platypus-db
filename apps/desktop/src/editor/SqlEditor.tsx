@@ -144,9 +144,11 @@ const theme = EditorView.theme({
     border: "1px solid var(--border-strong)",
     borderRadius: "var(--radius-lg)",
     boxShadow: "var(--shadow)",
-    overflow: "hidden",
     color: "var(--fg)",
   },
+  // The list keeps the rounded corners; the tooltip itself must not clip, as the description
+  // of the selected entry (.cm-completionInfo) is placed inside it but beside its box.
+  ".cm-tooltip-autocomplete > ul": { borderRadius: "inherit" },
   ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
     backgroundColor: "var(--accent)",
     color: "var(--accent-fg)",
