@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { type CatalogKey, toCommandError } from "../api";
-import { catalogEntry, displayColumn, saveCatalog, setDisplayColumn, useCatalogVersion, withPicked } from "./catalog";
+import { catalogEntry, displayColumn, saveCatalog, setDisplayColumn, succeeded, useCatalogVersion, withPicked } from "./catalog";
 import { TagInput } from "./TagInput";
 import { workbench } from "../workbench";
 import { t } from "../i18n";
@@ -25,7 +25,7 @@ export function NotesPanel({ connectionId, catalogKey, suggestions, columns }: P
   const display = displayColumn(connectionId, database, schema, object) ?? "";
 
   const failed = (e: unknown) => workbench().showError(toCommandError(e).message);
-  const save = (n: string, tags: string[]) => saveCatalog(connectionId, catalogKey, n, tags).catch(failed);
+  const save = (n: string, tags: string[]) => succeeded(saveCatalog(connectionId, catalogKey, n, tags), failed);
 
   return (
     <div className={columns ? "notes-panel with-label" : "notes-panel"}>
@@ -37,7 +37,7 @@ export function NotesPanel({ connectionId, catalogKey, suggestions, columns }: P
         onChange={(e) => setNote(e.target.value)}
         onBlur={() => note !== (entry?.note ?? "") && void save(note, entry?.tags ?? [])}
       />
-      <TagInput tags={entry?.tags ?? []} suggestions={suggestions} onChange={(tags) => void save(note, tags)} />
+      <TagInput tags={entry?.tags ?? []} suggestions={suggestions} onChange={(tags) => save(note, tags)} />
       {columns && (
         <label className="row-label muted small" title={t("The column shown beside the foreign keys that point to this table.")}>
           {t("Row label")}

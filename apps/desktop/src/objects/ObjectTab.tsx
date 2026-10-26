@@ -10,7 +10,7 @@ import {
   toCommandError,
 } from "../api";
 import { isRelation } from "../components/Navigator";
-import { catalogEntry, catalogKey, saveCatalog, useCatalogVersion } from "../catalog/catalog";
+import { catalogEntry, catalogKey, saveCatalog, succeeded, useCatalogVersion } from "../catalog/catalog";
 import { NotesPanel } from "../catalog/NotesPanel";
 import { TagInput } from "../catalog/TagInput";
 import { Icon, objectIcon } from "../ui/Icon";
@@ -100,7 +100,8 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
-  useCatalogVersion();
+  // Also re-renders the note and tag cells of the columns, which read the catalog as they draw.
+  const catalogVersion = useCatalogVersion();
   const ckey = (column = "") => catalogKey(tab.database, tab.schema, tab.name, column);
   const sections = sectionsFor(tab.objectKind);
   const section = tab.section && sections.includes(tab.section) ? tab.section : sections[0]!;
@@ -152,9 +153,17 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
     };
   }, [version]);
 
+  // The tags in use, offered to the tag fields; again after a save, which may add one.
   useEffect(() => {
-    api.catalogTags(tab.connectionId).then((t) => setTagSuggestions(t.map((x) => x.tag)), () => setTagSuggestions([]));
-  }, [tab.connectionId]);
+    let stale = false;
+    const show = (tags: string[]) => {
+      if (!stale) setTagSuggestions(tags);
+    };
+    api.catalogTags(tab.connectionId).then((t) => show(t.map((x) => x.tag)), () => show([]));
+    return () => {
+      stale = true;
+    };
+  }, [tab.connectionId, catalogVersion]);
 
   // Reload when the object's schema changes, e.g. after an ALTER from the navigator.
   useEffect(
@@ -385,11 +394,9 @@ function MetaTable({ head, rows }: { head: string[]; rows: React.ReactNode[][] }
   );
 }
 
-
 const reportError = (e: unknown) => workbench().showError(toCommandError(e).message);
 
 function ColumnNote({ connectionId, catalogKey }: { connectionId: string; catalogKey: CatalogKey }) {
-  useCatalogVersion();
   const entry = catalogEntry(connectionId, catalogKey);
   const [note, setNote] = useState(entry?.note ?? "");
   useEffect(() => setNote(entry?.note ?? ""), [entry?.note]);
@@ -415,14 +422,13 @@ function ColumnTags({
   catalogKey: CatalogKey;
   suggestions: string[];
 }) {
-  useCatalogVersion();
   const entry = catalogEntry(connectionId, catalogKey);
   return (
     <TagInput
       label={`Tags of ${catalogKey.column}`}
       tags={entry?.tags ?? []}
       suggestions={suggestions}
-      onChange={(tags) => void saveCatalog(connectionId, catalogKey, entry?.note ?? "", tags).catch(reportError)}
+      onChange={(tags) => succeeded(saveCatalog(connectionId, catalogKey, entry?.note ?? "", tags), reportError)}
     />
   );
 }

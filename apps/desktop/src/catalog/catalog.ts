@@ -106,6 +106,16 @@ export function renameCatalog(connectionId: string, from: CatalogKey, to: Catalo
   });
 }
 
+/** Resolves `true` when `write` went through; otherwise reports the error and resolves `false`. */
+export const succeeded = (write: Promise<unknown>, report: (e: unknown) => void) =>
+  write.then(
+    () => true,
+    (e: unknown) => {
+      report(e);
+      return false;
+    },
+  );
+
 /** Drops what is cached for a deleted connection. */
 export function forgetCatalog(connectionId: string) {
   loaded.delete(connectionId);
