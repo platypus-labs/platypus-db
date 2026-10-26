@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from "react";
 import type { CellInput, FieldMeta } from "../../api";
-import { LIST_H, LIST_W, ListEditor } from "./ListEditor";
+import { LIST_MIN, LIST_SIZE, ListEditor } from "./ListEditor";
+import { popupBox } from "./popupBox";
 import { sameJson } from "./jsonChange";
 import type { EditorKind } from "./meta";
 import { t } from "../../i18n";
@@ -34,8 +35,8 @@ interface Props {
 }
 
 const NULL_OPTION = "\u0000null";
-const POPUP_W = 420;
-const POPUP_H = 240;
+const POPUP_SIZE = { width: 420, height: 240 };
+const POPUP_MIN = { width: 260, height: 140 };
 
 /** The inline editor placed over a cell. */
 export function CellEditor({
@@ -109,16 +110,10 @@ export function CellEditor({
     }
   }
 
-  /** A popup's corner: at the cell, moved back inside the grid. */
-  const corner = (width: number, height: number) => ({
-    left: Math.max(0, Math.min(rect.left, bounds.width - width - 4)),
-    top: Math.max(0, Math.min(rect.top, bounds.height - height - 4)),
-  });
-
   if (kind === "array" || kind === "composite") {
     return (
       <ListEditor
-        {...corner(LIST_W, LIST_H)}
+        box={popupBox(rect, bounds, LIST_SIZE, LIST_MIN)}
         composite={kind === "composite"}
         type={type}
         fields={fields}
@@ -132,11 +127,10 @@ export function CellEditor({
   }
 
   if (kind === "multiline") {
-    const { left, top } = corner(POPUP_W, POPUP_H);
     return (
       <div
         className="cell-popup"
-        style={{ left, top, width: POPUP_W, height: POPUP_H }}
+        style={popupBox(rect, bounds, POPUP_SIZE, POPUP_MIN)}
         onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && commit(null)}
       >
         <textarea
@@ -169,12 +163,14 @@ export function CellEditor({
           )}
           <span className="spacer" />
           <span className="muted small">{t("Ctrl+Enter to apply")}</span>
-          <button type="button" onClick={cancel}>
-            {t("Cancel")}
-          </button>
-          <button type="button" className="primary" onClick={() => commit(null)}>
-            {t("Apply")}
-          </button>
+          <span className="cell-popup-end">
+            <button type="button" onClick={cancel}>
+              {t("Cancel")}
+            </button>
+            <button type="button" className="primary" onClick={() => commit(null)}>
+              {t("Apply")}
+            </button>
+          </span>
         </div>
       </div>
     );

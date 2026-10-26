@@ -342,17 +342,34 @@ fn format_inet(raw: &[u8], always_mask: bool) -> DecodeResult<String> {
     })
 }
 
-/// Text that does not need quoting inside an array or composite literal.
-fn needs_quotes(s: &str, delimiter: char) -> bool {
-    s.is_empty()
-        || s.eq_ignore_ascii_case("null")
-        || s.chars().any(|c| {
-            c == delimiter || matches!(c, '"' | '\\' | '{' | '}' | '(' | ')') || c.is_whitespace()
-        })
+/// Where an element or field is written: PostgreSQL quotes different characters in each.
+#[derive(Clone, Copy)]
+enum Literal {
+    /// An array element, followed by the element type's delimiter.
+    Array(char),
+    Composite,
 }
 
-fn push_element(out: &mut String, value: &str, delimiter: char) {
-    if needs_quotes(value, delimiter) {
+/// Whether `s` is quoted inside a literal, as `array_out` and `record_out` decide.
+fn needs_quotes(s: &str, literal: Literal) -> bool {
+    match literal {
+        Literal::Array(delimiter) => {
+            s.is_empty()
+                || s.eq_ignore_ascii_case("null")
+                || s.chars().any(|c| {
+                    c == delimiter || matches!(c, '"' | '\\' | '{' | '}') || c.is_whitespace()
+                })
+        }
+        Literal::Composite => {
+            s.is_empty()
+                || s.chars()
+                    .any(|c| matches!(c, '"' | '\\' | '(' | ')' | ',') || c.is_whitespace())
+        }
+    }
+}
+
+fn push_element(out: &mut String, value: &str, literal: Literal) {
+    if needs_quotes(value, literal) {
         out.push('"');
         for c in value.chars() {
             if matches!(c, '"' | '\\') {
@@ -366,38 +383,62 @@ fn push_element(out: &mut String, value: &str, delimiter: char) {
     }
 }
 
+/// The character between array elements: `;` for boxes, whose text holds commas.
+fn array_delimiter(element: &Type) -> char {
+    match element.kind() {
+        Kind::Domain(base) => array_delimiter(base),
+        _ if *element == Type::BOX => ';',
+        _ => ',',
+    }
+}
+
+/// An array as `array_out` prints it: `{1,2}`, `{{1,2},{3,4}}`, and with the bounds first
+/// when one of them does not start at 1, e.g. `[0:1]={1,2}`, so that saving the text back
+/// keeps them.
 fn format_array(element: &Type, raw: &[u8]) -> DecodeResult<String> {
     let array = pg::array_from_sql(raw)?;
-    let dims: Vec<usize> = array
+    let bounds: Vec<(i32, usize)> = array
         .dimensions()
-        .map(|d| Ok(usize::try_from(d.len).unwrap_or(0)))
+        .map(|d| Ok((d.lower_bound, usize::try_from(d.len).unwrap_or(0))))
         .collect()?;
     let mut values = array.values();
-    if dims.is_empty() {
+    if bounds.is_empty() {
         return Ok("{}".to_owned());
     }
     let mut out = String::new();
-    write_array_level(&mut out, element, &dims, &mut values)?;
+    if bounds.iter().any(|&(lower, _)| lower != 1) {
+        for &(lower, len) in &bounds {
+            let upper = i64::from(lower) + i64::try_from(len)? - 1;
+            let _ = write!(out, "[{lower}:{upper}]");
+        }
+        out.push('=');
+    }
+    let dims: Vec<usize> = bounds.iter().map(|&(_, len)| len).collect();
+    let delimiter = array_delimiter(element);
+    write_array_level(&mut out, element, delimiter, &dims, &mut values)?;
     Ok(out)
 }
 
 fn write_array_level(
     out: &mut String,
     element: &Type,
+    delimiter: char,
     dims: &[usize],
     values: &mut pg::ArrayValues<'_>,
 ) -> DecodeResult<()> {
     out.push('{');
     for i in 0..dims[0] {
         if i > 0 {
-            out.push(',');
+            out.push(delimiter);
         }
         if dims.len() > 1 {
-            write_array_level(out, element, &dims[1..], values)?;
+            write_array_level(out, element, delimiter, &dims[1..], values)?;
         } else {
             match values.next()?.ok_or_else(|| invalid("array"))? {
                 None => out.push_str("NULL"),
-                Some(raw) => push_element(out, &format_value(element, raw)?, ','),
+                Some(raw) => {
+                    push_element(out, &format_value(element, raw)?, Literal::Array(delimiter));
+                }
             }
         }
     }
@@ -463,7 +504,7 @@ fn format_composite(
         let ty = fields
             .get(i)
             .map_or(&Type::TEXT, tokio_postgres::types::Field::type_);
-        push_element(&mut out, &format_value(ty, value)?, ',');
+        push_element(&mut out, &format_value(ty, value)?, Literal::Composite);
     }
     out.push(')');
     Ok(out)
@@ -724,9 +765,89 @@ mod tests {
     #[test]
     fn element_quoting() {
         let mut out = String::new();
-        push_element(&mut out, "a b", ',');
-        push_element(&mut out, "plain", ',');
-        push_element(&mut out, "q\"x", ',');
+        push_element(&mut out, "a b", Literal::Array(','));
+        push_element(&mut out, "plain", Literal::Array(','));
+        push_element(&mut out, "q\"x", Literal::Array(','));
         assert_eq!(out, "\"a b\"plain\"q\\\"x\"");
+        // As psql prints them: parentheses are plain in arrays, braces in composites.
+        let quoted = |s: &str, literal| needs_quotes(s, literal);
+        assert!(!quoted("a(b)", Literal::Array(',')));
+        assert!(quoted("a{b}", Literal::Array(',')));
+        assert!(quoted("NULL", Literal::Array(',')));
+        assert!(!quoted("(0,0)", Literal::Array(';')));
+        assert!(quoted("a;b", Literal::Array(';')));
+        assert!(quoted("a(b)", Literal::Composite));
+        assert!(!quoted("{a}", Literal::Composite));
+        assert!(!quoted("null", Literal::Composite));
+        assert!(quoted("", Literal::Composite));
+    }
+
+    /// An array on the wire: `bounds` are `(lower bound, length)` per dimension.
+    fn array_wire(element: &Type, bounds: &[(i32, i32)], values: &[Option<&[u8]>]) -> Vec<u8> {
+        let mut b = Vec::new();
+        b.extend(i32::try_from(bounds.len()).unwrap().to_be_bytes());
+        b.extend(i32::from(values.iter().any(Option::is_none)).to_be_bytes());
+        b.extend(element.oid().to_be_bytes());
+        for (lower, len) in bounds {
+            b.extend(len.to_be_bytes());
+            b.extend(lower.to_be_bytes());
+        }
+        for v in values {
+            match v {
+                Some(v) => {
+                    b.extend(i32::try_from(v.len()).unwrap().to_be_bytes());
+                    b.extend_from_slice(v);
+                }
+                None => b.extend((-1_i32).to_be_bytes()),
+            }
+        }
+        b
+    }
+
+    #[test]
+    fn arrays_as_postgresql_prints_them() {
+        let format = |array: &Type, bounds: &[(i32, i32)], values: &[Option<&[u8]>]| {
+            let Kind::Array(element) = array.kind() else {
+                panic!("{array} is not an array type");
+            };
+            format_value(array, &array_wire(element, bounds, values)).unwrap()
+        };
+        let int4s = &Type::INT4_ARRAY;
+        let one = 1_i32.to_be_bytes();
+        let two = 2_i32.to_be_bytes();
+        assert_eq!(format(int4s, &[], &[]), "{}");
+        assert_eq!(format(int4s, &[(1, 2)], &[Some(&one), None]), "{1,NULL}");
+        assert_eq!(
+            format(
+                int4s,
+                &[(1, 2), (1, 2)],
+                &[Some(&one), Some(&two), None, Some(&one)]
+            ),
+            "{{1,2},{NULL,1}}"
+        );
+        // Bounds other than 1 are kept, or saving the text back would move the elements.
+        assert_eq!(
+            format(int4s, &[(0, 2)], &[Some(&one), Some(&two)]),
+            "[0:1]={1,2}"
+        );
+        assert_eq!(
+            format(int4s, &[(1, 1), (-2, 2)], &[Some(&one), Some(&two)]),
+            "[1:1][-2:-1]={{1,2}}"
+        );
+        assert_eq!(
+            format(
+                &Type::TEXT_ARRAY,
+                &[(1, 4)],
+                &[Some(b"a(b)"), Some(b"b c"), Some(b"null"), Some(b"")]
+            ),
+            r#"{a(b),"b c","null",""}"#
+        );
+        // Boxes hold commas: their elements are separated by `;`, as PostgreSQL reads them.
+        let a_box = wire(&[1.0, 1.0, 0.0, 0.0]);
+        let b_box = wire(&[2.0, 2.0, 1.0, 1.0]);
+        assert_eq!(
+            format(&Type::BOX_ARRAY, &[(1, 2)], &[Some(&a_box), Some(&b_box)]),
+            "{(1,1),(0,0);(2,2),(1,1)}"
+        );
     }
 }
