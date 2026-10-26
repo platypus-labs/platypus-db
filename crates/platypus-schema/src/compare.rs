@@ -27,8 +27,18 @@ pub fn compare(
         .filter(|w| find(current, &w.name).is_none())
         .map(|w| matched(w, None, schema, wanted_schema))
         .collect();
-    for table in by_references(&new, false) {
+    let (ordered, cycle) = by_references(&new, false);
+    for table in ordered {
         add(&mut out, script(dialect, schema, None, table)?);
+    }
+    let bare: Vec<TableDesign> = cycle.iter().map(|t| without_keys(t)).collect();
+    for table in &bare {
+        add(&mut out, script(dialect, schema, None, table)?);
+    }
+    for (table, bare) in cycle.iter().zip(&bare) {
+        let mut keyed = bare.clone();
+        keyed.foreign_keys.clone_from(&table.foreign_keys);
+        add(&mut out, script(dialect, schema, Some(bare), &keyed)?);
     }
     for old in current {
         if let Some(w) = find(wanted, &old.name) {
@@ -48,7 +58,14 @@ pub fn compare(
         .filter(|c| find(wanted, &c.name).is_none())
         .cloned()
         .collect();
-    for table in by_references(&gone, true) {
+    let (ordered, cycle) = by_references(&gone, true);
+    for table in &cycle {
+        add(
+            &mut out,
+            script(dialect, schema, Some(table), &without_keys(table))?,
+        );
+    }
+    for table in ordered.into_iter().chain(cycle) {
         out.statements.push(format!(
             "DROP TABLE {}",
             dialect.qualified(Some(schema), &table.name)
@@ -115,8 +132,8 @@ fn matched(
 }
 
 /// `tables` with each one after the tables it references (`reverse`: before them), so they
-/// can be created (dropped) in that order. Tables in a cycle keep their order, at the end.
-fn by_references(tables: &[TableDesign], reverse: bool) -> Vec<&TableDesign> {
+/// can be created (dropped) in that order, and apart the tables of a cycle, which cannot.
+fn by_references(tables: &[TableDesign], reverse: bool) -> (Vec<&TableDesign>, Vec<&TableDesign>) {
     let mut left: Vec<&TableDesign> = tables.iter().collect();
     let mut sorted = Vec::with_capacity(left.len());
     loop {
@@ -131,8 +148,24 @@ fn by_references(tables: &[TableDesign], reverse: bool) -> Vec<&TableDesign> {
             None => break,
         }
     }
-    sorted.extend(left);
-    sorted
+    (sorted, left)
+}
+
+/// `table` without its foreign keys, as the database has it once created that way: the
+/// tables of a cycle are created without them, then get them by `ALTER TABLE`.
+fn without_keys(table: &TableDesign) -> TableDesign {
+    let mut t = table.clone();
+    t.foreign_keys.clear();
+    for c in &mut t.columns {
+        c.original.get_or_insert_with(|| c.name.clone());
+    }
+    for i in &mut t.indexes {
+        i.original.get_or_insert_with(|| i.name.clone());
+    }
+    for c in &mut t.constraints {
+        c.original.get_or_insert_with(|| c.name.clone());
+    }
+    t
 }
 
 /// Appends the statements of `part` to `out`, and the parts that each table's script repeats
@@ -191,6 +224,43 @@ mod tests {
         let t = [table("a", vec![column("id", "integer")], &[], "public")];
         let s = compare(Dialect::Postgres, "public", "public", &t, &t).unwrap();
         assert!(s.statements.is_empty(), "{:?}", s.statements);
+    }
+
+    #[test]
+    fn tables_in_a_cycle_get_their_keys_once_all_exist() {
+        let wanted = [
+            table(
+                "a",
+                vec![column("id", "integer"), column("b_id", "integer")],
+                &["b"],
+                "public",
+            ),
+            table(
+                "b",
+                vec![column("id", "integer"), column("a_id", "integer")],
+                &["a"],
+                "public",
+            ),
+        ];
+        let s = compare(Dialect::Postgres, "public", "public", &wanted, &[]).unwrap();
+        assert_eq!(s.statements.len(), 4, "{:?}", s.statements);
+        assert!(
+            s.statements[..2]
+                .iter()
+                .all(|st| st.starts_with("CREATE TABLE") && !st.contains("REFERENCES"))
+        );
+        assert!(
+            s.statements[2..]
+                .iter()
+                .all(|st| st.contains("ADD CONSTRAINT") && st.contains("REFERENCES"))
+        );
+        let back = compare(Dialect::Postgres, "public", "public", &[], &wanted).unwrap();
+        assert_eq!(back.statements.len(), 4, "{:?}", back.statements);
+        assert!(
+            back.statements[2..]
+                .iter()
+                .all(|st| st.starts_with("DROP TABLE"))
+        );
     }
 
     #[test]

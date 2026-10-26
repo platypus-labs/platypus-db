@@ -461,7 +461,9 @@ da aprire nell'editor. Il confronto (`compare`) abbina tabelle e parti per nome:
 si creano e quelle in più si eliminano nell'ordine delle FK, le altre passano per `script`;
 solo tra database dello stesso tipo, lo script si apre nell'editor della destinazione. Limiti:
 una colonna rinominata diventa eliminata e aggiunta; viste, routine e sequenze non si
-confrontano; i diagrammi vivono nel tab (chiuso il tab, il diagramma si perde).
+confrontano; le tabelle in più si eliminano dopo le modifiche alle altre (cambiare la PK di una
+tabella ancora referenziata da una che sparisce fallisce); il linter non vede il WHERE degli
+indici parziali né le colonne INCLUDE, e lo dice nel messaggio; i diagrammi vivono nel tab (chiuso il tab, il diagramma si perde).
 
 **Area:** `apps/desktop/src/erd/` (tab `erd`), `apps/desktop/src/schema/` (linter e confronto), `apps/desktop/src/table-editor/`, nuovo crate `platypus-schema` (modello di schema, diff, DDL)
 **Dipende da:** 0.3, 0.5; per il DDL completo serve il gruppo C

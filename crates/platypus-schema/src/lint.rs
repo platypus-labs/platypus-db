@@ -22,6 +22,8 @@ pub enum LintKind {
     RedundantIndex,
     /// A foreign key column whose type differs from the column it references.
     ForeignKeyTypeMismatch,
+    /// The table could not be read: nothing else is checked in it.
+    Unreadable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -48,6 +50,10 @@ pub fn lint(dialect: Dialect, schema: &str, tables: &[SchemaTable]) -> Vec<Findi
             message,
             fix,
         };
+        if let Some(error) = &table.error {
+            findings.push(finding(LintKind::Unreadable, None, error.clone(), None));
+            continue;
+        }
         if !d.columns.iter().any(|c| c.primary_key) {
             findings.push(finding(
                 LintKind::NoPrimaryKey,
@@ -64,7 +70,7 @@ pub fn lint(dialect: Dialect, schema: &str, tables: &[SchemaTable]) -> Vec<Findi
             {
                 let index = IndexDesign {
                     original: None,
-                    name: format!("{}_{}_idx", table.name, fk.columns.join("_")),
+                    name: free_name(d, &format!("{}_{}_idx", table.name, fk.columns.join("_"))),
                     columns: fk.columns.clone(),
                     unique: false,
                 };
@@ -106,12 +112,30 @@ pub fn lint(dialect: Dialect, schema: &str, tables: &[SchemaTable]) -> Vec<Findi
                 LintKind::DuplicateIndex => format!("Same columns as index {}.", other.name),
                 _ => format!("Index {} starts with the same columns.", other.name),
             };
+            // The catalog gives no WHERE of a partial index nor INCLUDE columns.
+            let message =
+                format!("{message} Check first that neither is partial or has included columns.");
             let fix =
                 droppable(d, index).then(|| drop_index(dialect, schema, &table.name, &index.name));
             findings.push(finding(kind, Some(&index.name), message, fix));
         }
     }
     findings
+}
+
+/// `name`, or `name` with a number after it, so that no index of the table has it.
+fn free_name(details: &TableDetails, name: &str) -> String {
+    let taken = |n: &str| details.indexes.iter().any(|i| i.name == n);
+    (1..)
+        .map(|i| {
+            if i == 1 {
+                name.to_owned()
+            } else {
+                format!("{name}{i}")
+            }
+        })
+        .find(|n| !taken(n))
+        .unwrap_or_default()
 }
 
 fn type_of<'a>(details: &'a TableDetails, column: &str) -> Option<&'a str> {
@@ -208,6 +232,7 @@ mod tests {
             name: name.to_owned(),
             comment: None,
             details,
+            error: None,
         }
     }
 
@@ -293,6 +318,28 @@ mod tests {
             findings[3].fix.as_deref(),
             Some("DROP INDEX public.orders_placed_again")
         );
+    }
+
+    #[test]
+    fn unreadable_tables_are_reported_and_not_checked() {
+        let mut tables = shop();
+        tables[2].error = Some("permission denied".to_owned());
+        let findings = lint(Dialect::Postgres, "public", &tables[2..]);
+        assert_eq!(kinds(&findings), [(LintKind::Unreadable, "log", None)]);
+        assert_eq!(findings[0].message, "permission denied");
+    }
+
+    #[test]
+    fn suggested_indexes_get_a_free_name() {
+        let details = TableDetails {
+            indexes: vec![
+                index("t_a_idx", &["x"], false, false),
+                index("t_a_idx2", &["y"], false, false),
+            ],
+            ..TableDetails::default()
+        };
+        assert_eq!(free_name(&details, "t_a_idx"), "t_a_idx3");
+        assert_eq!(free_name(&details, "t_b_idx"), "t_b_idx");
     }
 
     #[test]

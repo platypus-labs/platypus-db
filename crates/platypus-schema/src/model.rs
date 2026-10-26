@@ -17,6 +17,8 @@ pub struct SchemaTable {
     pub name: String,
     pub comment: Option<String>,
     pub details: TableDetails,
+    /// Why the details could not be read; they are empty then.
+    pub error: Option<String>,
 }
 
 /// The tables of a schema, without the partitions of a table listed with them.
@@ -47,25 +49,29 @@ async fn chosen(
         .collect())
 }
 
-/// The details of the tables of `schema`, all or those in `only`.
+/// The details of the tables of `schema`, all or those in `only`. A table whose details
+/// cannot be read is kept with the error, so one table does not hide the others.
 pub async fn read_tables(
     conn: &dyn Connection,
     schema: &str,
     only: Option<&[String]>,
 ) -> Result<Vec<SchemaTable>> {
     let tables = chosen(conn, schema, only).await?;
-    futures::stream::iter(tables)
+    let read = futures::stream::iter(tables)
         .map(|o| async move {
-            let details = conn.table_details(schema, &o.name).await?;
-            Ok(SchemaTable {
+            let read = conn.table_details(schema, &o.name).await;
+            let error = read.as_ref().err().map(ToString::to_string);
+            SchemaTable {
                 name: o.name,
                 comment: o.comment,
-                details,
-            })
+                details: read.unwrap_or_default(),
+                error,
+            }
         })
         .buffered(PARALLEL_READS)
-        .try_collect()
-        .await
+        .collect()
+        .await;
+    Ok(read)
 }
 
 /// The designs of every table of `schema`, as [`crate::load`] reads them.

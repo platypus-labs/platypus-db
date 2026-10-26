@@ -41,7 +41,15 @@ export function TablesDialog({ all, chosen, onSave, onClose }: Props) {
         }}
       >
         <h2>{t("Tables of the diagram")}</h2>
-        <input autoFocus placeholder={t("Filter")} aria-label={t("Filter")} value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input
+          autoFocus
+          placeholder={t("Filter")}
+          aria-label={t("Filter")}
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          // Enter narrows the list, it does not show the diagram.
+          onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
+        />
         <div className="row small">
           <button type="button" className="link" onClick={() => toggle(shown, true)}>
             {t("Select shown")}

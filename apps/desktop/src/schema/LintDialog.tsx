@@ -16,6 +16,7 @@ const KIND_LABELS: Record<LintKind, string> = {
   duplicate_index: msg("Duplicate index"),
   redundant_index: msg("Redundant index"),
   foreign_key_type_mismatch: msg("Foreign key type mismatch"),
+  unreadable: msg("Could not be read"),
 };
 
 /** The schema linter's findings: tables without a primary key, foreign keys without an index,
@@ -41,7 +42,7 @@ export function LintDialog({ connection, database, schema, onClose }: Props) {
     onClose();
   };
   const openTable = (f: LintFinding) => {
-    const section = f.kind === "no_primary_key" ? "columns" : f.kind.endsWith("_index") ? "indexes" : "foreign_keys";
+    const section = f.kind === "no_primary_key" || f.kind === "unreadable" ? "columns" : f.kind.endsWith("_index") ? "indexes" : "foreign_keys";
     workbench().openTab("table-editor", connection.id, { database, schema, table: f.table, title: f.table, section });
     onClose();
   };

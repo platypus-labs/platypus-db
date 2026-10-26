@@ -588,6 +588,8 @@ export interface SchemaTable {
   name: string;
   comment: string | null;
   details: TableDetails;
+  /** Why the details could not be read; they are empty then. */
+  error: string | null;
 }
 
 export type LintKind =
@@ -595,7 +597,8 @@ export type LintKind =
   | "unindexed_foreign_key"
   | "duplicate_index"
   | "redundant_index"
-  | "foreign_key_type_mismatch";
+  | "foreign_key_type_mismatch"
+  | "unreadable";
 
 /** What the schema linter found; `fix` is the statement that fixes it, to review first. */
 export interface LintFinding {

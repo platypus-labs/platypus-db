@@ -1385,6 +1385,8 @@ const it: Record<string, string> = {
   "The schemas have the same tables: there is nothing to change.": "Gli schemi hanno le stesse tabelle: non c'è niente da cambiare.",
   "Comparing…": "Confronto in corso…",
   "Compare": "Confronta",
+  "Could not be read": "Non leggibile",
+  "Could not read {tables}: {error}": "Impossibile leggere {tables}: {error}",
 };
 
 export default it;

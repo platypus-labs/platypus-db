@@ -123,7 +123,8 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
   const boxes = useMemo(() => (tables ?? []).map(box), [tables]);
   const placed = useMemo(() => ({ ...autoLayout(boxes), ...tab.positions, ...moved }), [boxes, tab.positions, moved]);
   const pos = (name: string): Point => placed[name] ?? { x: PAD, y: PAD };
-  const notes = tab.notes.map((n) => ({ ...n, ...movedNotes[n.id] }));
+  const notes = useMemo(() => tab.notes.map((n) => ({ ...n, ...movedNotes[n.id] })), [tab.notes, movedNotes]);
+  const unreadable = (tables ?? []).filter((t) => t.error !== null);
   const size = useMemo(() => {
     let w = 400;
     let h = 300;
@@ -238,6 +239,11 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
         </button>
       </header>
       {error && <div className="notice error small">{error}</div>}
+      {unreadable.length > 0 && (
+        <div className="notice error small">
+          {t("Could not read {tables}: {error}", { tables: unreadable.map((u) => u.name).join(", "), error: unreadable[0]!.error! })}
+        </div>
+      )}
       <div className="erd-canvas">
         {tables === null && !error && <p className="muted small erd-loading">{t("Reading the tables…")}</p>}
         <svg
@@ -307,7 +313,8 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
         <TablesDialog
           all={all}
           chosen={tab.tables}
-          onSave={(chosen) => onChange({ tables: chosen })}
+          // `null` would ask again for a schema too large to show whole without asking.
+          onSave={(chosen) => onChange({ tables: chosen ?? (all.length > ERD_LIMIT ? all : null) })}
           onClose={() => setChoosing(false)}
         />
       )}
