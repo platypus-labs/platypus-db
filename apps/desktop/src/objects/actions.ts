@@ -9,9 +9,11 @@ import {
   type GenerateRequest,
   type GenerateTarget,
   type ObjectKind,
+  toCommandError,
 } from "../api";
-import { isRelation } from "../components/Navigator";
 import { catalogKey, renameCatalog } from "../catalog/catalog";
+import { renamedObject } from "../catalog/renames";
+import { isRelation } from "../components/Navigator";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { getSetting } from "../settings";
 import { quoteIdent, selectLimit } from "../sqlNames";
@@ -184,7 +186,12 @@ registerAction({
       ({ newName }) => ({ statement: "rename", new_name: newName }),
       ({ newName }) => {
         const from = catalogKey(arg.database, arg.schema.name, arg.object.name);
-        if (newName && newName !== arg.object.name) void renameCatalog(arg.connection.id, from, { ...from, object: newName });
+        const object = renamedObject(arg.object.name, newName);
+        if (object) {
+          renameCatalog(arg.connection.id, from, { ...from, object }).catch((e: unknown) =>
+            workbench().showError(toCommandError(e).message),
+          );
+        }
       },
     ),
 });
