@@ -142,7 +142,9 @@ export function useSelectionEdits({ grid, jobId, current, rules, names, apply, s
         setError(t("The row changed while the file was read: the file was not loaded."));
         return "failed";
       }
-      grid.current?.focus();
+      // Back to the grid, unless something else took the focus while the file was read:
+      // a dialog opened meanwhile would no longer get its keys, Escape included.
+      if (document.activeElement === null || document.activeElement === document.body) grid.current?.focus();
       return "loaded";
     } catch (e) {
       fail(e);
