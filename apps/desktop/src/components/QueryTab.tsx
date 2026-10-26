@@ -55,6 +55,8 @@ import {
   viewerQueries,
   withSort,
 } from "./viewerSort";
+import { useCompare } from "../analysis/compare";
+import { editMeta } from "../grid/edit/meta";
 import { t, plural, msg } from "../i18n";
 
 /** Auto-refresh intervals in seconds, `0` for off. */
@@ -297,6 +299,8 @@ export function QueryTab({
   const [undoScript, setUndoScript] = useState<string | null>(null);
   /** Seconds between runs of the last statements again; `null` is off. */
   const [refreshEvery, setRefreshEvery] = useState<number | null>(null);
+  /** "Compare with previous run": the result a run of the same statement replaces is kept. */
+  const compare = useCompare(connection);
 
   const closeJobs = () => {
     for (const id of jobs.current) void api.closeQuery(id);
@@ -541,6 +545,7 @@ export function QueryTab({
     const sessionId = await ensureSession();
     if (sessionId === null) return;
     onNeedCatalog(false);
+    if (!append) await compare.keep(sessionId, planned, results);
 
     const token = ++runToken.current;
     if (!append) closeJobs();
@@ -822,6 +827,23 @@ export function QueryTab({
     }
     setResults((all) => all.filter((x) => x.id !== id));
     setActiveResult((a) => Math.max(0, a > i || a === results.length - 1 ? a - 1 : a));
+  }
+
+  /** Opens the differences between the shown result and the previous run of its statement,
+   *  rows matched by the table's key when the grid could edit them (the same rule). */
+  async function compareShown() {
+    const result = shown;
+    if (!result?.columns || result.jobId === null) return;
+    const sessionId = await ensureSession();
+    if (sessionId === null) return;
+    const source = await (editTarget(result)?.load() ?? Promise.resolve(null)).catch(() => null);
+    const meta = source ? editMeta(source, result.columns, connection.virtual_keys ?? []) : null;
+    const key = meta && "key" in meta ? meta.key : null;
+    try {
+      await compare.open(sessionId, result.jobId, key, tab.database ?? null);
+    } catch (e) {
+      onError(toCommandError(e).message);
+    }
   }
 
   async function refreshTx(sessionId: number) {
@@ -1464,6 +1486,16 @@ export function QueryTab({
               {rowsResult && !exportBusy && (
                 <button className="link" onClick={() => setExportOpen(true)}>
                   {t("Export…")}
+                </button>
+              )}
+              {compare.kept(shown) && (
+                <button
+                  className="link"
+                  disabled={!compare.comparable(shown)}
+                  title={compare.comparable(shown) ? undefined : t("The columns changed since the previous run.")}
+                  onClick={() => void compareShown()}
+                >
+                  {t("Compare with previous run")}
                 </button>
               )}
             </>
