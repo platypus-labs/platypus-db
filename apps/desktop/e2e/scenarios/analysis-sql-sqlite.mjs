@@ -4,11 +4,13 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { CTRL } from "../cdp.mjs";
 import { openTable, rerun, sqliteConnection, status, visibleTab } from "../query.mjs";
 
 const NAME = "E2E sql on results";
 const field = `${visibleTab}?.querySelector('.result-sql .cm-content')`;
-const fieldText = `(${visibleTab}?.querySelector('.result-sql .cm-line')?.textContent ?? '')`;
+// An empty field shows its placeholder in the line.
+const fieldText = `(() => { const l = ${visibleTab}?.querySelector('.result-sql .cm-line'); return !l || l.querySelector('.cm-placeholder') ? '' : l.textContent; })()`;
 const mark = `(${visibleTab}?.querySelector('.result-sql-mark')?.textContent ?? '')`;
 const completing = `${visibleTab}?.querySelector('.result-sql .cm-tooltip-autocomplete') != null`;
 const clearStatus = `(() => { const s = ${visibleTab}?.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`;
@@ -28,7 +30,7 @@ export function setup({ dir }) {
 async function typeInField(page, sql) {
   await page.waitFor(`${field} != null`);
   await page.eval(`${field}.focus()`);
-  await page.key("a", "KeyA", 65, 2);
+  await page.key("a", "KeyA", 65, CTRL);
   await page.type(sql);
   await page.waitFor(`${fieldText} === ${JSON.stringify(sql)}`);
   await page.waitFor(`!(${completing})`);
