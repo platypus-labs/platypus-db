@@ -78,6 +78,7 @@ export default async function (page) {
 
   // Settings › Drivers lists it and removes it.
   await page.eval(`document.querySelector('button[aria-label="Settings"]').click()`);
+  await page.settingsTab("Drivers");
   await page.waitFor(`document.querySelector('.modal.settings [data-driver="trino"]') !== null`);
   const listed = await page.eval(`document.querySelector('.modal.settings [data-driver="trino"]').textContent`);
   assert.ok(listed.includes("Trino"), listed);

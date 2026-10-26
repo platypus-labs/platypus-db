@@ -79,8 +79,8 @@ async function history(page) {
 
 async function agentsPage(page, shots) {
   await page.key(",", "Comma", 188, CTRL);
+  await page.settingsTab("Agents");
   await page.waitFor(`document.querySelector('.agents-panel [data-field="claude_command"]') !== null`);
-  await page.eval(`document.querySelector('[data-section="Agents"]').scrollIntoView()`);
   const claude = await page.eval(`document.querySelector('[data-field="claude_command"]').textContent`);
   // The app runs on a profile folder of its own, which the server is given too.
   assert.match(claude, /^claude mcp add platypus -e "PLATYPUS_DATA_DIR=.+" -- ".+platypus-mcp\.exe"$/);

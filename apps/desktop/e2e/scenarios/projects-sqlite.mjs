@@ -187,6 +187,7 @@ async function rail(page) {
 
   // The shortcuts are listed with the others, to change them.
   await page.key(",", "Comma", 188, CTRL);
+  await page.settingsTab("Keyboard shortcuts");
   await page.waitFor(`[...document.querySelectorAll('.shortcuts tr')].some(r => r.firstChild?.textContent === 'Next project')`);
   await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);
 }

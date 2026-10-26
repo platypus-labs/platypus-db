@@ -283,7 +283,7 @@ export default async function (page, { shots, dir }) {
 
   // Numbers grouped as set in the Settings; the grid fetches its rows again.
   await page.key(",", "Comma", 188, CTRL);
-  await page.waitFor(`document.querySelector('.modal.settings') !== null`);
+  await page.settingsTab("Results");
   await page.eval(`(() => {
     const select = [...document.querySelectorAll('.setting')].find(s => s.textContent.includes('Numbers')).querySelector('select');
     select.value = 'comma';

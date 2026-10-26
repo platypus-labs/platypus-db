@@ -106,6 +106,15 @@ export class Page {
     await this.click(r.x + r.w / 2, r.y + r.h / 2, options);
   }
 
+  /** Shows a tab of the open Settings dialog, named by its section in English (the language
+   *  of the interface does not matter), and waits for its panel. */
+  async settingsTab(section) {
+    const tab = `document.querySelector('.modal.settings [role="tab"][data-section=${JSON.stringify(section)}]')`;
+    await this.waitFor(`${tab} != null`);
+    await this.eval(`${tab}.click()`);
+    await this.waitFor(`${tab}.getAttribute('aria-selected') === 'true' && document.querySelector('.settings-body')?.getAttribute('aria-labelledby') === ${tab}.id`);
+  }
+
   async type(text) {
     await this.send("Input.insertText", { text });
   }

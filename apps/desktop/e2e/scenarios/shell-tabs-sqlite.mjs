@@ -194,10 +194,12 @@ export default async function (page, { dir, shots }) {
   assert.equal(await page.eval(named), "Settings");
 
   // Tabs grouped by connection: the connection's name before its tabs.
+  await page.settingsTab("Tabs");
   await page.eval(`[...document.querySelectorAll('.modal.settings .setting')].find(s => s.querySelector('span')?.firstChild?.textContent === 'Group tabs by connection').querySelector('input').click()`);
   await page.waitFor(`document.querySelector('.tab-group')?.textContent === ${JSON.stringify(NAME)}`);
 
   // Italian: the interface changes at once, and back.
+  await page.settingsTab("Appearance");
   await page.eval(pick("Language", "it"));
   await page.waitFor(`document.querySelector('.modal.settings h2')?.textContent === 'Impostazioni'`);
   assert.equal(await page.eval(`document.querySelector('.topbar-search span').textContent`), "Cerca tabelle, query, comandi");

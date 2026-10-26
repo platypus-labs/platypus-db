@@ -72,7 +72,7 @@ async function screens(page, theme, shots) {
   await page.waitFor(`document.querySelector('.palette') === null`);
 
   await page.key(",", "Comma", 188, CTRL);
-  await page.waitFor(`document.querySelector('.modal.settings') !== null`);
+  await page.settingsTab("Appearance");
   // Theme cards are buttons taller than the others: their color strip stays inside them.
   const strip = await page.eval(`(() => {
     const card = document.querySelector('.theme-card').getBoundingClientRect();

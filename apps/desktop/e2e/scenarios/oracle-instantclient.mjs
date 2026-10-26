@@ -82,6 +82,7 @@ export default async function (page) {
 
   // Settings › Drivers shows the client and removes it.
   await page.eval(`document.querySelector('button[aria-label="Settings"]').click()`);
+  await page.settingsTab("Drivers");
   await page.waitFor(`${settingsRow}?.querySelector('[data-driver-state="installed"]') != null`, 15_000);
   const listed = await page.eval(`${settingsRow}.textContent`);
   assert.ok(listed.includes("Oracle Instant Client 23.26.4 installed"), listed);
