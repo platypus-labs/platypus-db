@@ -113,6 +113,8 @@ export interface TableEditorHost {
   /** New rows, shown above the result's. */
   topRows: number;
   decorate?: (row: number, col: number) => CellDecoration | undefined;
+  /** A cell's change not saved yet, by grid row. */
+  pending: (row: number, col: number) => CellInput | undefined;
   overlay: ReactNode;
   onCellDoubleClick?: (cell: Cell) => void;
   onScroll: () => void;
@@ -724,6 +726,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
     ),
     topRows: state.inserts.length,
     decorate: decorated ? decorate : undefined,
+    pending: (row, col) => edits.cellEdit(state, row, col),
     overlay: overlay || null,
     onCellDoubleClick: editable ? (cell) => void editCell(cell) : undefined,
     onScroll,
