@@ -15,7 +15,7 @@ import { NotesPanel } from "../catalog/NotesPanel";
 import { TagInput } from "../catalog/TagInput";
 import { Icon, objectIcon } from "../ui/Icon";
 import { SqlEditor } from "../editor/SqlEditor";
-import { onNavigatorRefresh } from "../navigatorEvents";
+import { onNavigatorRefresh, requestNavigatorRefresh } from "../navigatorEvents";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
@@ -93,6 +93,23 @@ interface Loaded {
   details: TableDetails | null;
   /** `null` when the driver cannot print DDL. */
   ddl: string | null;
+  /** The comment of a table or view, from the object list as every driver fills it. */
+  comment: string | null;
+}
+
+async function loadObject(sid: number, tab: ObjectTabModel, commentable: boolean): Promise<Loaded> {
+  const target: ObjectTarget = { schema: tab.schema, name: tab.name, kind: tab.objectKind, parent: tab.parent };
+  const relation = isRelation(tab.objectKind);
+  const ddlSupported = workbench().capabilities(sid)?.object_ddl ?? true;
+  const [properties, details, ddl, comment] = await Promise.all([
+    api.objectProperties(sid, target),
+    relation ? api.tableDetails(sid, tab.schema, tab.name) : Promise.resolve(null),
+    ddlSupported ? api.objectDdl(sid, target) : Promise.resolve(null),
+    relation && commentable
+      ? api.listObjects(sid, tab.schema).then((list) => list.find((o) => o.name === tab.name && isRelation(o.kind))?.comment ?? null)
+      : Promise.resolve(null),
+  ]);
+  return { properties, details, ddl, comment };
 }
 
 export function ObjectTab({ tab, connection, active, sideSession, onChange }: TabProps<ObjectTabModel>) {
@@ -105,25 +122,29 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
   const ckey = (column = "") => catalogKey(tab.database, tab.schema, tab.name, column);
   const sections = sectionsFor(tab.objectKind);
   const section = tab.section && sections.includes(tab.section) ? tab.section : sections[0]!;
-  const target: ObjectTarget = { schema: tab.schema, name: tab.name, kind: tab.objectKind, parent: tab.parent };
   const qualified = qualifiedName(connection.driver, { name: tab.schema, current: tab.currentSchema }, tab.name);
 
-  const canComment = !NO_COMMENTS.includes(connection.driver);
+  // The database keeps comments; the app writes those of tables (the statements it generates
+  // are table ones), and shows the others.
+  const commentable = !NO_COMMENTS.includes(connection.driver);
+  const editable = commentable && tab.objectKind === "table";
 
   function editComment(column: string | null, current: string | null) {
     workbench().openDialog((close) =>
       createElement(SqlActionDialog, {
         connection,
         database: tab.database ?? null,
-        title: column ? t("Comment of {name}", { name: column }) : t("Comment of {name}", { name: tab.name }),
+        title: t("Comment of {name}", { name: column ?? tab.name }),
         description: t("Written to the database, visible to everyone who reads it."),
         confirm: t("Save comment"),
-        options: { rename: current ?? "", renameLabel: t("Comment"), allowEmpty: true },
+        danger: false,
+        options: { rename: current ?? "", renameLabel: t("Comment"), allowEmpty: true, multiline: true },
         generate: async ({ newName }) => {
           const sid = await sideSession();
           return sid === null ? null : api.commentSql(sid, tab.schema, tab.name, column, newName || null);
         },
-        onDone: () => setVersion((v) => v + 1),
+        // Reloads this tab too, and the navigator's tooltips.
+        onDone: () => requestNavigatorRefresh({ connectionId: connection.id, database: tab.database, schema: tab.schema }),
         onClose: close,
       }),
     );
@@ -136,14 +157,8 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
       const sid = await sideSession();
       if (sid === null || cancelled) return;
       try {
-        const relation = isRelation(tab.objectKind);
-        const ddlSupported = workbench().capabilities(sid)?.object_ddl ?? true;
-        const [properties, details, ddl] = await Promise.all([
-          api.objectProperties(sid, target),
-          relation ? api.tableDetails(sid, tab.schema, tab.name) : Promise.resolve(null),
-          ddlSupported ? api.objectDdl(sid, target) : Promise.resolve(null),
-        ]);
-        if (!cancelled) setData({ properties, details, ddl });
+        const loaded = await loadObject(sid, tab, commentable);
+        if (!cancelled) setData(loaded);
       } catch (e) {
         if (!cancelled) setError(toCommandError(e).message);
       }
@@ -189,13 +204,15 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
   }
 
   const d = data?.details;
-  const currentComment = data?.properties.find((p) => p.name === "Comment")?.value ?? "";
-  const tableComment = (
+  const showComment = commentable && isRelation(tab.objectKind);
+  const objectComment = (
     <>
-      {currentComment}{" "}
-      <button className="link" onClick={() => editComment(null, currentComment || null)}>
-        {t("Edit")}
-      </button>
+      {data?.comment}{" "}
+      {editable && (
+        <button className="link" onClick={() => editComment(null, data?.comment ?? null)}>
+          {t("Edit")}
+        </button>
+      )}
     </>
   );
 
@@ -273,8 +290,9 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               [t("Kind"), t(KIND_LABELS[tab.objectKind])],
               [t("Schema"), tab.schema],
               ...(tab.parent ? [[t(tab.objectKind === "trigger" ? "Table" : "Partition of"), tab.parent]] : []),
-              ...(canComment && isRelation(tab.objectKind) ? [[t("Comment"), tableComment]] : []),
-              ...data.properties.filter((p) => !(canComment && isRelation(tab.objectKind) && p.name === "Comment")).map((p) => [p.name, p.value]),
+              ...(showComment ? [[t("Comment"), objectComment]] : []),
+              // Some drivers list the comment among the properties: it is shown once, above.
+              ...data.properties.filter((p) => !(showComment && p.name === "Comment")).map((p) => [p.name, p.value]),
             ]}
           />
         )}
@@ -288,12 +306,12 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               t(c.nullable ? "yes" : "no"),
               c.default ?? "",
               c.primary_key ? "PK" : "",
-              canComment ? (
+              editable ? (
                 <button key="comment" className="link" onClick={() => editComment(c.name, c.comment)}>
                   {c.comment || t("Edit")}
                 </button>
               ) : (
-                <span key="comment" title={t("This database has no comments: use a note")}>
+                <span key="comment" title={commentable ? undefined : t("This database has no comments: use a note")}>
                   {c.comment ?? ""}
                 </span>
               ),
