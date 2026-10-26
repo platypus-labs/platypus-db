@@ -1,39 +1,31 @@
 /**
- * The sidebar column's width and whether it is shown. Both are stored with the other
- * preferences (`settings.toml`) without a Settings entry: the drag handle and the toggle
- * are their controls.
+ * Whether the navigator column is shown. Stored with the other preferences (`settings.toml`)
+ * without a Settings entry: the top bar's button and `Ctrl+B` are its controls. Its width is
+ * kept by the handle (`SidebarResizer.tsx`).
  */
 import { getStored, setStored, useSettingsVersion } from "../settings";
 import { registerAction } from "../actions";
 
-export const SIDEBAR_DEFAULT = 260;
-export const SIDEBAR_MIN = 180;
-const WIDTH_KEY = "ui.sidebar_width";
-const COLLAPSED_KEY = "ui.sidebar_collapsed";
+const KEY = "layout.sidebar_collapsed";
+/** Where earlier builds kept it: still read, removed on the next change. */
+const OLD_KEY = "ui.sidebar_collapsed";
 
-/** At most half the window, and never under the minimum. */
-export function clampSidebar(width: number): number {
-  return Math.round(Math.max(SIDEBAR_MIN, Math.min(width, window.innerWidth / 2)));
-}
+const isCollapsed = () => (getStored(KEY) ?? getStored(OLD_KEY)) === true;
 
-export function useSidebar(): { width: number; collapsed: boolean } {
+export function useSidebarCollapsed(): boolean {
   useSettingsVersion();
-  const width = getStored(WIDTH_KEY);
-  return {
-    width: typeof width === "number" ? clampSidebar(width) : SIDEBAR_DEFAULT,
-    collapsed: getStored(COLLAPSED_KEY) === true,
-  };
+  return isCollapsed();
 }
 
 const warn = (e: unknown) => console.warn("sidebar", e);
 
-/** Stores the width; `null` brings the default back. */
-export function setSidebarWidth(width: number | null) {
-  setStored(WIDTH_KEY, width === null ? null : clampSidebar(width)).catch(warn);
-}
-
 export function toggleSidebar() {
-  setStored(COLLAPSED_KEY, getStored(COLLAPSED_KEY) === true ? null : true).catch(warn);
+  const collapse = !isCollapsed();
+  // One write after the other: each saves the whole file.
+  void (async () => {
+    if (getStored(OLD_KEY) !== undefined) await setStored(OLD_KEY, null);
+    await setStored(KEY, collapse ? true : null);
+  })().catch(warn);
 }
 
 registerAction({

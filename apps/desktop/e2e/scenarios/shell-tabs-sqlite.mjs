@@ -103,7 +103,7 @@ export default async function (page, { dir, shots }) {
   // The sidebar: its handle resizes it, a double click restores the width, Ctrl+B hides it.
   const sidebarWidth = `Math.round(document.querySelector('.sidebar-column').getBoundingClientRect().width)`;
   assert.equal(await page.eval(sidebarWidth), 260);
-  const handle = await page.rect(".sidebar-handle");
+  const handle = await page.rect(".sidebar-resizer");
   const [hx, hy] = [handle.x + handle.w / 2, handle.y + handle.h / 2];
   await page.mouse("mousePressed", hx, hy);
   await page.mouse("mouseMoved", hx + 40, hy);
@@ -111,7 +111,7 @@ export default async function (page, { dir, shots }) {
   await page.mouse("mouseReleased", hx + 60, hy);
   await page.waitFor(`${sidebarWidth} === 320`);
   await settingsFile(dir, /sidebar_width = 320/);
-  await page.eval(`document.querySelector('.sidebar-handle').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+  await page.eval(`document.querySelector('.sidebar-resizer').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
   await page.waitFor(`${sidebarWidth} === 260`);
   await settingsLack(dir, /sidebar_width/);
   await page.key("b", "KeyB", 66, CTRL);

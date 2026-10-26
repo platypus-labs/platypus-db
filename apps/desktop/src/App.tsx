@@ -46,7 +46,7 @@ import { Welcome } from "./shell/Welcome";
 import { TabBar, barOrder, groupTabsSetting } from "./shell/TabBar";
 import { SidebarResizer, useSidebarWidth } from "./shell/SidebarResizer";
 import { useSetting } from "./settings";
-import { useSidebar } from "./shell/sidebar";
+import { useSidebarCollapsed } from "./shell/sidebar";
 import { language, languageSetting, t, plural } from "./i18n";
 import { stepZoom } from "./theme";
 import { logError, track } from "./shell/activity";
@@ -676,12 +676,12 @@ export function App() {
     return label ? `${label} — ${name}` : name;
   }
 
-  const sidebar = useSidebar();
+  const sidebarCollapsed = useSidebarCollapsed();
   const activeConnection = connectionById(visibleTabs.find((t) => t.key === activeTab)?.connectionId ?? "");
   return (
     // The frame takes the tint of the active tab's connection type.
     <div
-      className={`shell${sidebar.collapsed ? " sidebar-collapsed" : ""}`}
+      className={`shell${sidebarCollapsed ? " sidebar-collapsed" : ""}`}
       data-env={activeConnection?.connection_type ?? "local"}
       style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}
     >
@@ -696,7 +696,7 @@ export function App() {
         folders={projectFolders}
         onFolderMenu={(f, e) => setMenu({ x: e.clientX, y: e.clientY, target: { scope: "project.folder", arg: f } })}
       />
-      <div className="sidebar-column" hidden={sidebar.collapsed}>
+      <div className="sidebar-column" hidden={sidebarCollapsed}>
         <Navigator
           connections={projectConnections}
           project={project}
