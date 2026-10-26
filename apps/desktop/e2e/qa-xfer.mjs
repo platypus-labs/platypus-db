@@ -260,6 +260,21 @@ export async function copyTarget(page, name) {
   return page.eval(`${error}?.textContent ?? null`);
 }
 
+/** Opens "Generate data…" on `table` (after the tree rows `within`), keeps the suggested
+ *  generators, asks for `rows` rows and generates them. Returns the suggested generators and
+ *  the outcome, with the dialog closed. */
+export async function generate(page, table, within, rows) {
+  await menu(page, table, "Generate data", generateDialog, within);
+  await page.waitFor(`${generateDialog}.querySelectorAll('select').length > 0 || ${generateDialog}.querySelector('.notice.error') !== null`, 20_000);
+  const kinds = await page.eval(`[...${generateDialog}.querySelectorAll('select')].map(s => s.value)`);
+  const input = `${generateDialog}.querySelector('input[type=number]')`;
+  await page.eval(fill(input, String(rows)));
+  await page.waitFor(`${input}.value === ${JSON.stringify(String(rows))}`);
+  const out = await runJob(page, generateDialog, "Generate", 120_000);
+  await closeModal(page, generateDialog);
+  return { kinds, out };
+}
+
 /** Clicks `action` in `modal` and waits for the job's outcome: the text of the dialog's last
  *  notice. Confirms a production guard when one opens. */
 export async function runJob(page, modal, action, timeout = 60_000) {
