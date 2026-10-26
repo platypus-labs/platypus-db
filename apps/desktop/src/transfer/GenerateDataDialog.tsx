@@ -1,23 +1,12 @@
 import { useEffect, useState } from "react";
-import { api, type ColumnMeta, type ForeignKeyMeta, type SavedConnection, type TableDetails } from "../api";
+import { api, isMongo, type ColumnMeta, type ForeignKeyMeta, type SavedConnection, type TableDetails } from "../api";
 import { GuardDialog } from "../guards/GuardDialog";
 import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { workbench } from "../workbench";
 import { JobFooter, useJob } from "./job";
 import { t, plural, msg } from "../i18n";
-
-/** How a column is filled, as the backend's `fake::Generator`; `skip` leaves it to its default. */
-export type Generator =
-  | { kind: "skip" }
-  | { kind: "integer"; min: number; max: number }
-  | { kind: "decimal"; min: number; max: number; scale: number }
-  | { kind: "next_key" }
-  | { kind: "reference"; schema: string | null; table: string; column: string; key: string }
-  | { kind: "choice"; values: string[] }
-  | { kind: "bool" | "first_name" | "last_name" | "full_name" | "email" | "city" | "phone" | "text" | "date" | "timestamp" | "uuid" | "null" };
-
-type Kind = Generator["kind"];
+import { type Generator, type Kind, MONGO_ONLY, REPEATING, suggest } from "./generators";
 
 const LABELS: Record<Kind, string> = {
   skip: msg("Default (not filled)"),
@@ -33,6 +22,9 @@ const LABELS: Record<Kind, string> = {
   city: msg("City"),
   phone: msg("Phone number"),
   text: msg("Words"),
+  word_list: msg("List of words"),
+  document: msg("Document (name, city, phone)"),
+  object_id: msg("New ObjectId"),
   date: msg("Date"),
   timestamp: msg("Date and time"),
   uuid: "UUID",
@@ -73,9 +65,6 @@ function generator(kind: Kind, column: ColumnMeta, fk: ForeignKeyMeta | undefine
   }
 }
 
-/** Generators that repeat values, which a unique column refuses. */
-const REPEATING: Kind[] = ["integer", "decimal", "bool", "choice", "date", "timestamp"];
-
 /** Whether `column` takes no value twice: a unique index or constraint of its own. */
 function isUnique(details: TableDetails, column: string): boolean {
   const only = (columns: string[]) => columns.length === 1 && columns[0] === column;
@@ -85,33 +74,9 @@ function isUnique(details: TableDetails, column: string): boolean {
   );
 }
 
-/** The generator a column most likely wants, from its keys, name and type. */
-export function suggest(column: ColumnMeta, fk: ForeignKeyMeta | undefined, unique = false): Kind {
-  const name = column.name.toLowerCase();
-  const type = column.data_type.toLowerCase();
-  const integer = /int|serial|number/.test(type);
-  if (fk) return "reference";
-  if (column.default !== null) return "skip";
-  if (unique && /int|serial|number|numeric|decimal/.test(type)) return "next_key";
-  if (column.primary_key) return integer ? "next_key" : /uuid|uniqueidentifier/.test(type) ? "uuid" : "next_key";
-  if (column.enum_values.length > 0) return "choice";
-  if (name.includes("email")) return "email";
-  if (/first.?name/.test(name)) return "first_name";
-  if (/last.?name|surname/.test(name)) return "last_name";
-  if (name.includes("name")) return "full_name";
-  if (name.includes("city")) return "city";
-  if (/phone|tel/.test(name)) return "phone";
-  if (/bool|^bit/.test(type)) return "bool";
-  if (/timestamp|datetime/.test(type)) return "timestamp";
-  if (/date/.test(type)) return "date";
-  if (/uuid|uniqueidentifier/.test(type)) return "uuid";
-  if (/numeric|decimal|real|float|double|money/.test(type)) return "decimal";
-  if (integer) return "integer";
-  return "text";
-}
-
 /** Adds fake rows to a table, each column filled by a generator picked for it. */
 export function GenerateDataDialog({ connection, database, schema, currentSchema, table, onClose }: Props) {
+  const mongo = isMongo(connection.driver);
   const [sid, setSid] = useState<number | null>(null);
   const [columns, setColumns] = useState<{ column: ColumnMeta; fk?: ForeignKeyMeta; unique: boolean; generator: Generator }[]>([]);
   const [rows, setRows] = useState(100);
@@ -128,8 +93,9 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
         setColumns(
           details.columns.map((column) => {
             const fk = details.foreign_keys.find((k) => k.columns.includes(column.name));
-            const unique = isUnique(details, column.name);
-            const kind = suggest(column, fk, unique);
+            // A collection's `_id` takes no value twice.
+            const unique = isUnique(details, column.name) || (mongo && column.name === "_id");
+            const kind = suggest(column, fk, unique, mongo);
             // A unique column with no generator of distinct values to suggest is left to its default.
             const usable = unique && REPEATING.includes(kind) ? "skip" : kind;
             return { column, fk, unique, generator: generator(usable, column, fk) };
@@ -147,7 +113,9 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
   function request() {
     if (!needsProductionConfirm(connection)) return void run();
     const names = filled.map((c) => c.column.name).join(", ");
-    const production = [`INSERT INTO ${qualified} (${names}) VALUES ... -- ${plural(rows, "{n} fake row", "{n} fake rows")}`];
+    const count = plural(rows, "{n} fake row", "{n} fake rows");
+    const collection = `db.${currentSchema ? "" : `getSiblingDB(${JSON.stringify(schema)}).`}getCollection(${JSON.stringify(table)})`;
+    const production = [mongo ? `${collection}.insertMany([...]) // ${count}` : `INSERT INTO ${qualified} (${names}) VALUES ... -- ${count}`];
     setConfirm({ connection, unfiltered: [], production, blocked: false });
   }
 
@@ -183,7 +151,7 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
           <span className="muted small">{t("Column")}</span>
           <span className="muted small">{t("Filled with")}</span>
           {columns.map(({ column, fk, unique, generator: g }, i) => (
-            <GeneratorRow key={column.name} column={column} fk={fk} unique={unique} kind={g.kind} disabled={running} onChange={(k) => choose(i, k)} />
+            <GeneratorRow key={column.name} column={column} fk={fk} unique={unique} mongo={mongo} kind={g.kind} disabled={running} onChange={(k) => choose(i, k)} />
           ))}
         </div>
         <JobFooter status={status} messages={[msg("Adding… {n} rows"), msg("Added {n} rows.")]} failed={t("Nothing was added: ")} onClose={onClose}>
@@ -209,13 +177,18 @@ function GeneratorRow(props: {
   column: ColumnMeta;
   fk: ForeignKeyMeta | undefined;
   unique: boolean;
+  mongo: boolean;
   kind: Kind;
   disabled: boolean;
   onChange: (kind: Kind) => void;
 }) {
-  const { column, fk, unique, kind, disabled, onChange } = props;
+  const { column, fk, unique, mongo, kind, disabled, onChange } = props;
   const kinds = (Object.keys(LABELS) as Kind[]).filter(
-    (k) => (k !== "reference" || fk) && (k !== "choice" || column.enum_values.length > 0) && !(unique && REPEATING.includes(k)),
+    (k) =>
+      (k !== "reference" || fk) &&
+      (k !== "choice" || column.enum_values.length > 0) &&
+      !(unique && REPEATING.includes(k)) &&
+      (mongo || !MONGO_ONLY.includes(k)),
   );
   return (
     <>

@@ -1,6 +1,7 @@
 //! Fake rows for a table: each column filled by a generator (names, emails, numbers, dates,
 //! values of an enum), foreign keys with values the referenced table has, so that the rows
-//! fit their constraints. The rows are written by [`crate::import::import_rows`].
+//! fit their constraints. The rows are written by [`crate::import::import_rows`], or as
+//! mongosh `insertMany` statements into a MongoDB collection by [`fill_collection`].
 
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -9,10 +10,12 @@ use arrow_array::builder::{
     BooleanBuilder, Date32Builder, Float64Builder, Int64Builder, StringBuilder,
     TimestampMicrosecondBuilder,
 };
-use arrow_array::{ArrayRef, RecordBatch};
+use arrow_array::cast::AsArray;
+use arrow_array::types::{Date32Type, Float64Type, Int64Type, TimestampMicrosecondType};
+use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, DataType, Field, Schema, SchemaRef, TimeUnit};
 use futures::StreamExt;
-use platypus_core::{Connection, RecordBatchStream};
+use platypus_core::{Connection, ExecOptions, RecordBatchStream};
 use platypus_sql::Dialect;
 use serde::Deserialize;
 
@@ -59,6 +62,12 @@ pub enum Generator {
     /// Times within the last ten years.
     Timestamp,
     Uuid,
+    /// A new MongoDB `ObjectId`, as its 24 hex digits.
+    ObjectId,
+    /// A JSON array of a few words: for an array field.
+    WordList,
+    /// A JSON object with a name, a city and a phone number: for a document field.
+    Document,
     /// One of `values`: an enum's, or the keys a foreign key may point at.
     Choice {
         values: Vec<String>,
@@ -280,6 +289,21 @@ pub fn schema(columns: &[FakeColumn]) -> SchemaRef {
     ))
 }
 
+fn words(rng: &mut Rng, n: u64) -> Vec<&'static str> {
+    (0..n).map(|_| *rng.pick(WORDS)).collect()
+}
+
+/// An `ObjectId` as MongoDB makes one: the time in seconds, five random bytes and a counter,
+/// here the row number, which keeps the run's ids apart.
+fn object_id(rng: &mut Rng, row: u64) -> String {
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+        & 0xFFFF_FFFF;
+    let random = rng.next() & 0xFF_FFFF_FFFF;
+    format!("{seconds:08x}{random:010x}{:06x}", row & 0xFF_FFFF)
+}
+
 fn text(rng: &mut Rng, generator: &Generator, row: u64) -> Option<String> {
     Some(match generator {
         Generator::FirstName => (*rng.pick(FIRST)).to_owned(),
@@ -297,9 +321,19 @@ fn text(rng: &mut Rng, generator: &Generator, row: u64) -> Option<String> {
         Generator::Phone => format!("+39 3{:02} {:07}", rng.below(100), rng.below(10_000_000)),
         Generator::Text => {
             let n = 3 + rng.below(6);
-            let words: Vec<&str> = (0..n).map(|_| *rng.pick(WORDS)).collect();
-            words.join(" ")
+            words(rng, n).join(" ")
         }
+        Generator::WordList => {
+            let n = 1 + rng.below(4);
+            serde_json::Value::from(words(rng, n)).to_string()
+        }
+        Generator::Document => serde_json::json!({
+            "name": text(rng, &Generator::FullName, row)?,
+            "city": text(rng, &Generator::City, row)?,
+            "phone": text(rng, &Generator::Phone, row)?,
+        })
+        .to_string(),
+        Generator::ObjectId => object_id(rng, row),
         Generator::Uuid => {
             let (a, b) = (rng.next(), rng.next());
             // Version 4, variant 1.
@@ -482,6 +516,17 @@ async fn composite_keys(
     Ok(())
 }
 
+/// The first key after `max`, the largest one (whole or not); 1 without one.
+fn after(max: Option<&str>) -> i64 {
+    let max = max.and_then(|m| {
+        m.parse::<i64>().ok().or_else(|| {
+            #[expect(clippy::cast_possible_truncation, reason = "a key fits in i64")]
+            m.parse::<f64>().ok().map(|f| f.floor() as i64)
+        })
+    });
+    max.unwrap_or(0).saturating_add(1)
+}
+
 /// The generator `column` stands for, read from the table's database where it says so;
 /// `rows` and `token` (this run's) keep the values of a unique column apart.
 async fn resolve(
@@ -494,8 +539,7 @@ async fn resolve(
     let generator = match column.generator {
         Generator::NextKey => {
             let sql = format!("SELECT MAX({}) FROM {table}", dialect.quote_ident(name));
-            let max = query_value(conn, &sql).await?;
-            let start = max.and_then(|m| m.parse::<i64>().ok()).unwrap_or(0) + 1;
+            let start = after(query_value(conn, &sql).await?.as_deref());
             Generator::Sequence { start }
         }
         Generator::Reference {
@@ -533,15 +577,30 @@ async fn resolve(
     if !column.unique {
         return Ok(generator);
     }
+    // SQL Server's unique indexes take one NULL.
+    let null_once = (dialect == Dialect::SqlServer).then_some("SQL Server");
+    distinct(generator, (name, rows), token, null_once)
+}
+
+/// `generator` made to take no value twice in `rows` rows of the unique column `name`: text
+/// gets `token` (this run's) and the row number. `null_once` names the database whose unique
+/// indexes take NULL once.
+fn distinct(
+    generator: Generator,
+    (name, rows): (&str, u64),
+    token: &str,
+    null_once: Option<&str>,
+) -> Result<Generator, ImportError> {
     Ok(match generator {
-        // SQL Server's unique indexes take one NULL.
-        Generator::Null if dialect == Dialect::SqlServer && rows > 1 => {
+        Generator::Null if rows > 1 && null_once.is_some() => {
             return Err(ImportError::Plan(format!(
-                "{name} is unique, and SQL Server takes NULL in it only once"
+                "{name} is unique, and {} takes NULL in it only once",
+                null_once.unwrap_or_default()
             )));
         }
         g @ (Generator::Sequence { .. }
         | Generator::Uuid
+        | Generator::ObjectId
         | Generator::Null
         | Generator::Distinct { .. }) => g,
         g @ (Generator::FirstName
@@ -622,6 +681,169 @@ pub async fn fill(
     import_rows(stream, (target, dialect), &plan, progress).await
 }
 
+/// A string as mongosh reads it: JSON's.
+fn quote(s: &str) -> String {
+    serde_json::Value::from(s).to_string()
+}
+
+/// A collection in mongosh, of `db` or of the session's database.
+fn collection_ref(db: Option<&str>, collection: &str) -> String {
+    let base = db.map_or_else(
+        || "db".to_owned(),
+        |d| format!("db.getSiblingDB({})", quote(d)),
+    );
+    format!("{base}.getCollection({})", quote(collection))
+}
+
+/// The mongosh query of the largest number in `field` of `collection`: other values sort
+/// after numbers, and are left out.
+fn largest_number(collection: &str, field: &str) -> String {
+    let f = quote(field);
+    let projection = if field == "_id" {
+        format!("{{ {f}: 1 }}")
+    } else {
+        format!("{{ {f}: 1, \"_id\": 0 }}")
+    };
+    format!(
+        "{collection}.find({{ {f}: {{ \"$type\": [\"int\", \"long\", \"double\"] }} }}, \
+         {projection}).sort({{ {f}: -1 }}).limit(1)"
+    )
+}
+
+/// The generator `column` of `collection` stands for, as [`resolve`] for a table. `_id` is
+/// unique in every collection.
+async fn resolve_field(
+    conn: &dyn Connection,
+    (collection, rows): (&str, u64),
+    column: FakeColumn,
+    token: &str,
+) -> Result<Generator, ImportError> {
+    let name = column.name.as_str();
+    let generator = match column.generator {
+        Generator::NextKey => {
+            let max = query_value(conn, &largest_number(collection, name)).await?;
+            Generator::Sequence {
+                start: after(max.as_deref()),
+            }
+        }
+        Generator::Reference { table, .. } => {
+            return Err(ImportError::Plan(format!(
+                "MongoDB has no foreign keys: {name} cannot take the keys of {table}"
+            )));
+        }
+        other => other,
+    };
+    if !column.unique && name != "_id" {
+        return Ok(generator);
+    }
+    // A unique index takes one null, and a missing field counts as null.
+    distinct(generator, (name, rows), token, Some("MongoDB"))
+}
+
+/// Value `row` of `array`, filled by `generator`, as mongosh reads it: dates as `ISODate`,
+/// integers beyond 32 bits as `NumberLong`, arrays and documents as their JSON.
+fn shell_value(generator: &Generator, array: &dyn Array, row: usize) -> String {
+    if array.is_null(row) {
+        return "null".to_owned();
+    }
+    let date = |seconds: Option<i64>| {
+        seconds
+            .and_then(|s| chrono::DateTime::from_timestamp(s, 0))
+            .map_or_else(
+                || "null".to_owned(),
+                |d| format!("ISODate(\"{}\")", d.format("%Y-%m-%dT%H:%M:%SZ")),
+            )
+    };
+    match array.data_type() {
+        DataType::Int64 => {
+            let n = array.as_primitive::<Int64Type>().value(row);
+            if i32::try_from(n).is_ok() {
+                n.to_string()
+            } else {
+                format!("NumberLong({n})")
+            }
+        }
+        DataType::Float64 => format!("{:?}", array.as_primitive::<Float64Type>().value(row)),
+        DataType::Boolean => array.as_boolean().value(row).to_string(),
+        DataType::Date32 => {
+            let days = i64::from(array.as_primitive::<Date32Type>().value(row));
+            date(days.checked_mul(86_400))
+        }
+        DataType::Timestamp(..) => {
+            let micros = array.as_primitive::<TimestampMicrosecondType>().value(row);
+            date(Some(micros.div_euclid(1_000_000)))
+        }
+        _ => {
+            let text = array.as_string::<i32>().value(row);
+            match generator {
+                Generator::ObjectId => format!("ObjectId({})", quote(text)),
+                Generator::WordList | Generator::Document => text.to_owned(),
+                _ => quote(text),
+            }
+        }
+    }
+}
+
+/// `collection.insertMany([…])` with a document per row of `batch`, whose columns are
+/// `columns`.
+fn insert_many(collection: &str, columns: &[FakeColumn], batch: &RecordBatch) -> String {
+    let docs: Vec<String> = (0..batch.num_rows())
+        .map(|row| {
+            let fields: Vec<String> = columns
+                .iter()
+                .zip(batch.columns())
+                .map(|(c, a)| {
+                    let value = shell_value(&c.generator, a.as_ref(), row);
+                    format!("{}: {value}", quote(&c.name))
+                })
+                .collect();
+            format!("{{ {} }}", fields.join(", "))
+        })
+        .collect();
+    format!("{collection}.insertMany([{}])", docs.join(", "))
+}
+
+/// Adds `rows` fake documents to `collection` of the MongoDB database `db` (the session's
+/// without one) on `target`, a connection of its own, a statement per [`BATCH_ROWS`]
+/// documents. There are no transactions: the documents of the statements before a failure
+/// stay. `progress` gets the documents written so far and returns false to stop.
+pub async fn fill_collection(
+    target: &dyn Connection,
+    (db, collection): (Option<&str>, &str),
+    columns: Vec<FakeColumn>,
+    rows: u64,
+    mut progress: impl FnMut(u64) -> bool,
+) -> Result<u64, ImportError> {
+    if columns.is_empty() {
+        return Err(ImportError::Plan("no field to fill".to_owned()));
+    }
+    let at = collection_ref(db, collection);
+    let mut rng = Rng::from_clock();
+    let token = rng.token();
+    let mut resolved = Vec::with_capacity(columns.len());
+    for c in columns {
+        let name = c.name.clone();
+        let generator = resolve_field(target, (&at, rows), c, &token).await?;
+        resolved.push(FakeColumn {
+            name,
+            generator,
+            unique: false,
+        });
+    }
+    let mut written = 0;
+    while written < rows {
+        let n = usize::try_from(rows - written).map_or(BATCH_ROWS, |left| left.min(BATCH_ROWS));
+        let batch = batch(&mut rng, &resolved, written, n)?;
+        let sql = insert_many(&at, &resolved, &batch);
+        target.execute(&sql, &ExecOptions::default()).await?;
+        written += n as u64;
+        if !progress(written) {
+            return Err(ImportError::Cancelled);
+        }
+    }
+    Ok(written)
+}
+
 #[expect(clippy::cast_possible_wrap, reason = "days since 1970 fit in i64")]
 fn days_since_epoch() -> i64 {
     SystemTime::now()
@@ -631,8 +853,8 @@ fn days_since_epoch() -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use arrow_array::cast::AsArray;
-    use arrow_array::types::Int64Type;
+    use platypus_driver_mongo::literal::to_shell;
+    use platypus_driver_mongo::shell::{self, CollectionOp, Command};
 
     use super::*;
 
@@ -713,5 +935,135 @@ mod tests {
         assert_eq!(cities.len(), 200, "unique values");
         let email = text(3, 5);
         assert!(email.contains(".t0k3n05@example."), "{email}");
+    }
+
+    #[test]
+    fn mongo_documents_take_the_types_of_their_fields() {
+        let columns = [
+            column("_id", Generator::Sequence { start: 41 }),
+            column(
+                "big",
+                Generator::Sequence {
+                    start: 3_000_000_000,
+                },
+            ),
+            column("tags", Generator::WordList),
+            column("address", Generator::Document),
+            column("ref", Generator::ObjectId),
+            column("created", Generator::Date),
+            column("seen", Generator::Timestamp),
+            column(
+                "price",
+                Generator::Decimal {
+                    min: 1.0,
+                    max: 2.0,
+                    scale: 0,
+                },
+            ),
+            column("note", Generator::Null),
+            column("name", Generator::FullName),
+        ];
+        let mut rng = Rng::new(7);
+        let batch = batch(&mut rng, &columns, 0, 3).unwrap();
+        let src = insert_many(&collection_ref(Some("shop"), "my items"), &columns, &batch);
+        let Command::Collection {
+            db,
+            collection,
+            op: CollectionOp::InsertMany(docs),
+        } = shell::parse(&src).unwrap()
+        else {
+            panic!("{src}");
+        };
+        assert_eq!(
+            (db.as_deref(), collection.as_str()),
+            (Some("shop"), "my items")
+        );
+        assert_eq!(docs.len(), 3);
+        let field = |row: usize, name: &str| to_shell(docs[row].get(name).unwrap());
+        assert_eq!(
+            (field(0, "_id"), field(2, "_id")),
+            ("41".into(), "43".into())
+        );
+        assert_eq!(field(0, "big"), "NumberLong(3000000000)");
+        assert!(field(0, "tags").starts_with("[\""), "{}", field(0, "tags"));
+        let address = field(0, "address");
+        assert!(
+            address.starts_with("{ ") && address.contains("city: "),
+            "{address}"
+        );
+        assert!(field(0, "ref").starts_with("ObjectId(\""));
+        assert_ne!(field(0, "ref"), field(1, "ref"));
+        assert!(
+            field(0, "created").ends_with("T00:00:00Z\")"),
+            "{}",
+            field(0, "created")
+        );
+        assert!(field(0, "seen").starts_with("ISODate(\""));
+        assert!(
+            ["1.0", "2.0"].contains(&field(0, "price").as_str()),
+            "a double"
+        );
+        assert_eq!(field(0, "note"), "null");
+        assert!(field(0, "name").starts_with('"'));
+    }
+
+    #[test]
+    fn next_key_after_the_largest_number() {
+        assert_eq!(after(None), 1);
+        assert_eq!(after(Some("41")), 42);
+        assert_eq!(after(Some("41.5")), 42);
+        assert_eq!(after(Some("-3")), -2);
+        assert_eq!(after(Some("abc")), 1);
+        let src = largest_number(&collection_ref(None, "customers"), "_id");
+        let Command::Collection {
+            db: None,
+            op: CollectionOp::Find(find),
+            ..
+        } = shell::parse(&src).unwrap()
+        else {
+            panic!("{src}");
+        };
+        assert_eq!(find.limit, Some(1));
+        assert_eq!(to_shell(&find.sort.unwrap().into()), "{ _id: -1 }");
+        assert_eq!(
+            to_shell(&find.filter.into()),
+            r#"{ _id: { $type: ["int", "long", "double"] } }"#
+        );
+        let src = largest_number(&collection_ref(None, "customers"), "n");
+        let Command::Collection {
+            op: CollectionOp::Find(find),
+            ..
+        } = shell::parse(&src).unwrap()
+        else {
+            panic!("{src}");
+        };
+        assert_eq!(
+            to_shell(&find.projection.unwrap().into()),
+            "{ n: 1, _id: 0 }"
+        );
+    }
+
+    #[test]
+    fn unique_fields_take_distinct_values() {
+        let unique = |g, rows, null_once| distinct(g, ("f", rows), "t0k3n0", null_once);
+        assert!(matches!(
+            unique(Generator::Null, 2, Some("MongoDB")),
+            Err(ImportError::Plan(m)) if m.contains("MongoDB takes NULL")
+        ));
+        assert_eq!(
+            unique(Generator::Null, 1, Some("MongoDB")).unwrap(),
+            Generator::Null
+        );
+        assert_eq!(unique(Generator::Null, 2, None).unwrap(), Generator::Null);
+        assert_eq!(
+            unique(Generator::ObjectId, 2, None).unwrap(),
+            Generator::ObjectId
+        );
+        assert!(unique(Generator::WordList, 2, None).is_err());
+        assert!(unique(Generator::Document, 2, None).is_err());
+        assert!(matches!(
+            unique(Generator::City, 2, None).unwrap(),
+            Generator::Unique { .. }
+        ));
     }
 }

@@ -9,7 +9,7 @@ use futures::TryStreamExt;
 use platypus_core::{Connection, ConnectionConfig, DriverKind, ExecOptions, ExecResult};
 use platypus_driver_duckdb::files::is_data_file;
 use platypus_sql::Dialect;
-use platypus_transfer::fake::{FakeColumn, fill};
+use platypus_transfer::fake::{FakeColumn, fill, fill_collection};
 use platypus_transfer::import::{ImportError, ImportPlan, import, rows_text, target_type};
 use platypus_transfer::migrate::migrate;
 use serde::Serialize;
@@ -273,22 +273,23 @@ pub fn fake_rows(
     columns: Vec<FakeColumn>,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
+    // MongoDB takes mongosh: documents go in with `insertMany`, `schema` is the database.
+    let mongo = state.session(session_id)?.config.driver == DriverKind::Mongo;
     spawn_job(
         &state,
         session_id,
         on_event,
         move |job, target, dialect| async move {
-            fill(
-                (&*target, dialect),
-                (schema.as_deref(), &table),
-                columns,
-                rows,
-                |n| {
-                    job.progress(n);
-                    !job.stopping()
-                },
-            )
-            .await
+            let progress = |n| {
+                job.progress(n);
+                !job.stopping()
+            };
+            let at = (schema.as_deref(), table.as_str());
+            if mongo {
+                fill_collection(&*target, at, columns, rows, progress).await
+            } else {
+                fill((&*target, dialect), at, columns, rows, progress).await
+            }
             .map_err(import_error)
         },
     )

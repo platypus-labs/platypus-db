@@ -1,6 +1,7 @@
 // MongoDB from the `mongo` profile of docker/compose.yml: the navigator lists databases and
 // collections, the data viewer writes mongosh (filter document, sort), the document panel
-// shows the focused row's nested fields, and the editor runs mongosh statements.
+// shows the focused row's nested fields, the editor runs mongosh statements, and fake data
+// fills a collection with an array and a document field.
 // Skipped when MongoDB is not running.
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
@@ -96,16 +97,58 @@ export default async function (page) {
   assert.match(await page.eval(editorText), /\.sort\(\{ _id: 1 \}\)$/);
 
   // The editor runs a mongosh statement.
-  const statement = "db.orders.countDocuments({ status: 'paid' })";
+  assert.equal(await run(page, "db.orders.countDocuments({ status: 'paid' })", "s.includes('row')"), "1 row");
+  await countIs(page, 5000);
+
+  await generateData(page);
+}
+
+/** Runs `statement` in the editor; returns the status once it ends and passes `test`. */
+async function run(page, statement, test = "true") {
   await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
   await page.key("a", "KeyA", 65, CTRL);
   await page.type(statement);
   await page.waitFor(`${editorText} === ${JSON.stringify(statement)}`);
   await clearStatus(page);
   await page.key("Enter", "Enter", 13, CTRL);
-  assert.equal(await waitStatus(page, "s.includes('row')"), "1 row");
-  // The grid draws its cells: read the count in the document panel.
-  const counted = await page.eval(`(() => { const r = ${visibleTab}.querySelector('.grid-scroll').getBoundingClientRect(); return { x: r.x, y: r.y }; })()`);
-  await page.click(counted.x + 80, counted.y + 40);
-  await page.waitFor(`[...${visibleTab}.querySelectorAll('.document-panel .doc-number')].some(n => n.textContent === '5000')`, 10_000);
+  return waitStatus(page, test);
+}
+
+/** Waits for the count a `countDocuments` returned, read in the document panel (the grid draws its cells). */
+async function countIs(page, n) {
+  const grid = await page.eval(`(() => { const r = ${visibleTab}.querySelector('.grid-scroll').getBoundingClientRect(); return { x: r.x, y: r.y }; })()`);
+  await page.click(grid.x + 80, grid.y + 40);
+  await page.waitFor(`[...${visibleTab}.querySelectorAll('.document-panel .doc-number')].some(n => n.textContent === '${n}')`, 10_000);
+}
+
+/** Fake documents for a collection with an array and a document field: generators of their types, inserted with insertMany. */
+async function generateData(page) {
+  await run(page, "db.fake_e2e.drop()");
+  await run(page, `db.fake_e2e.insertOne({ _id: 1, name: "seed", tags: ["a"], address: { city: "Roma" } })`);
+  await page.eval(`${row("platypus")}.id = 'e2e-db'`);
+  await menu(page, "#e2e-db");
+  await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Refresh')).click()`);
+  await page.waitFor(`${row("fake_e2e")} !== undefined`, 15_000);
+  await page.eval(`${row("fake_e2e")}.id = 'e2e-fake'`);
+  await menu(page, "#e2e-fake");
+  await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Generate data')).click()`);
+
+  const gen = `document.querySelector('.modal.generate-data')`;
+  await page.waitFor(`${gen}?.querySelectorAll('select').length === 4`, 15_000);
+  assert.deepEqual(await page.eval(`[...${gen}.querySelectorAll('select')].map(s => s.value)`), ["next_key", "full_name", "word_list", "document"]);
+  await page.eval(`(() => {
+    const el = ${gen}.querySelector('input[type=number]');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '20');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  const button = (text) => `[...${gen}.querySelectorAll('button')].find(b => b.textContent.trim() === '${text}')`;
+  await page.eval(`${button("Generate")}.click()`);
+  await page.waitFor(`${gen}.textContent.includes('Added 20 rows') || ${gen}.textContent.includes('Nothing was added')`, 20_000);
+  assert.ok((await page.eval(`${gen}.textContent`)).includes("Added 20 rows"), await page.eval(`${gen}.textContent`));
+  await page.eval(`${button("Close")}.click()`);
+
+  // The new documents follow the largest _id, with an array and a document.
+  await run(page, "db.fake_e2e.countDocuments({ _id: { $gt: 1, $lte: 21 }, tags: { $type: 'array' }, address: { $type: 'object' } })", "s.includes('row')");
+  await countIs(page, 20);
+  await run(page, "db.fake_e2e.drop()");
 }
