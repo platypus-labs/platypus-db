@@ -20,11 +20,13 @@ export function extent(values: readonly number[]): [number, number] {
   return lo <= hi ? [lo, hi] : [0, 1];
 }
 
-/** A step of 1, 2 or 5 times a power of ten that cuts `min..max` in about `count` parts. */
-function step(min: number, max: number, count: number): number {
+/** A step of 1, 2 or 5 times a power of ten that cuts `min..max` in about `count` parts;
+ *  `null` when the range is too small or too large for one (it underflows or overflows). */
+function step(min: number, max: number, count: number): number | null {
   const raw = (max - min) / Math.max(1, count);
   const power = 10 ** Math.floor(Math.log10(raw));
-  return [1, 2, 5, 10].map((m) => m * power).find((s) => s >= raw) ?? 10 * power;
+  const s = [1, 2, 5, 10].map((m) => m * power).find((v) => v >= raw) ?? 10 * power;
+  return s > 0 && Number.isFinite(s) ? s : null;
 }
 
 /** Round values within `min..max`, about `count` of them. */
@@ -32,8 +34,15 @@ export function niceTicks(min: number, max: number, count: number): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max)) return [];
   if (max <= min) return [min];
   const s = step(min, max, count);
+  if (s === null) return [min, max];
+  const start = Math.ceil(min / s) * s;
   const ticks: number[] = [];
-  for (let v = Math.ceil(min / s) * s; v <= max + s * 1e-9; v += s) ticks.push(Number(v.toPrecision(12)));
+  // By index, with a bound: near huge values `v + s` can round back to `v`.
+  for (let i = 0; i <= 4 * count + 2; i++) {
+    const v = start + i * s;
+    if (v > max + s * 1e-9) break;
+    ticks.push(Number(v.toPrecision(12)));
+  }
   return ticks;
 }
 
@@ -43,7 +52,7 @@ export function niceDomain(min: number, max: number, count: number): [number, nu
   if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
   if (max <= min) return min === 0 ? [0, 1] : [Math.min(0, min), Math.max(0, max)];
   const s = step(min, max, count);
-  return [Math.floor(min / s) * s, Math.ceil(max / s) * s];
+  return s === null ? [min, max] : [Math.floor(min / s) * s, Math.ceil(max / s) * s];
 }
 
 /** Ticks of a time axis in milliseconds: whole days when it spans days, else round numbers. */

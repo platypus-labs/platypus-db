@@ -36,6 +36,10 @@ test("ticks are round numbers, the domain widened to them", () => {
   assert.deepEqual(niceDomain(3, 97, 5), [0, 100]);
   assert.deepEqual(niceDomain(5, 5, 5), [0, 5]);
   assert.deepEqual(niceTicks(4, 4, 5), [4]);
+  // Ranges whose step underflows or overflows, or where adding the step loses it, still end.
+  assert.deepEqual(niceTicks(0, 5e-324, 5), [0, 5e-324]);
+  assert.deepEqual(niceDomain(-Number.MAX_VALUE, Number.MAX_VALUE, 5), [-Number.MAX_VALUE, Number.MAX_VALUE]);
+  assert.ok(niceTicks(1e17, 1e17 + 64, 5).length <= 22);
 });
 
 test("time ticks fall on whole days over days, and format as dates", () => {
