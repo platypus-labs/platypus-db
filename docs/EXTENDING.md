@@ -268,8 +268,10 @@ read each file into `ImportedProject`s (a DBeaver `.dbp` gives one per project),
 ### Agents (MCP)
 
 `crates/platypus-mcp` lets external agents use the saved connections. Its library is the
-`Agent` (`agent.rs`), with one method per tool; the binary `platypus-mcp` serves them over
-stdio with `rmcp` (`server.rs`), and the `platypus` CLI calls the same methods for
+`Agent` (`agent.rs`), with one method per tool; `stdio::main` serves them over stdio with
+`rmcp` (`server.rs`). The app does so when started with `--mcp` (`main.rs` of the desktop
+crate, before Tauri starts: no window), and so does the `platypus-mcp` binary, kept for
+development and the stdio tests; and the `platypus` CLI calls the same methods for
 `--connection` (`crates/platypus-cli/src/agent.rs`). The pieces:
 - `Profile` finds the app's folders the way Tauri does (`dirs::config_dir()` and
   `dirs::data_dir()` with the bundle identifier), or `PLATYPUS_DATA_DIR`. It reopens
@@ -312,10 +314,9 @@ Every `run_query` is recorded in the query history with `origin`, the MCP client
 (`clientInfo.name`, trimmed to 64 characters, `agent` when empty) or `platypus-cli`; `HistoryQuery::origin` filters the app's entries
 (`NULL`) or the agents'. A new tool is a method on `Agent`, a `#[tool]` in `server.rs` and,
 for the CLI, a subcommand. `commands/agents.rs` gives the Settings' Agents page
-(`apps/desktop/src/agents/`) the server's path and the commands for Claude Code and Codex.
-The installers ship `platypus-mcp` as a Tauri external binary: `tauri build --config
-src-tauri/tauri.mcp.conf.json` runs `scripts/stage-mcp.mjs`, which builds it into
-`src-tauri/binaries/`; plain builds and `cargo` commands do not need it.
+(`apps/desktop/src/agents/`) the app's path (the AppImage's on Linux) and the commands
+for Claude Code and Codex, which start it with `--mcp`. The installers hold one executable:
+the server is in the app, with the drivers it already has.
 
 ### Settings storage
 

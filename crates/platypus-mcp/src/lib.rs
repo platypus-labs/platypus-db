@@ -18,6 +18,8 @@ pub mod output;
 pub mod profile;
 pub mod query;
 mod redact;
+mod server;
+pub mod stdio;
 
 pub use access::AgentAccess;
 pub use agent::{Agent, ConnectionInfo, QueryArgs, SEARCH_RESULTS, origin_name};

@@ -5630,6 +5630,7 @@ dependencies = [
  "platypus-driver-pg",
  "platypus-driver-sqlite",
  "platypus-drivers",
+ "platypus-mcp",
  "platypus-net",
  "platypus-schema",
  "platypus-sql",

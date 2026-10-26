@@ -357,7 +357,8 @@ methods and fields. `mongodb+srv://` and connection string options go in the Dat
 ## Agents (MCP) and the CLI
 
 Claude Code, Codex, Cursor and other MCP clients use your saved connections through
-`platypus-mcp`, an MCP server they start themselves (the app need not be open).
+PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start themselves
+(no window opens, and the app need not be open).
 
 - Each connection gives agents **no access**, **read only** (the default) or **read and
   write**; production and read-only connections are never more than read only.
@@ -367,20 +368,21 @@ Claude Code, Codex, Cursor and other MCP clients use your saved connections thro
 Settings → Agents shows the commands that register the server, with Copy buttons:
 
 ```bash
-claude mcp add platypus -- "C:\Program Files\PlatypusDB\platypus-mcp.exe"
+claude mcp add platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp
 ```
 
 and for Codex, in `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.platypus]
-command = 'C:\Program Files\PlatypusDB\platypus-mcp.exe'
+args = ["--mcp"]
+command = 'C:\Program Files\PlatypusDB\platypus-db.exe'
 ```
 
 <details>
 <summary>How the MCP server works</summary>
 
-`platypus-mcp` sits next to the app's executable. It reads the connections of the app's
+`platypus-db --mcp` talks MCP over stdin and stdout. It reads the connections of the app's
 profile, or of `PLATYPUS_DATA_DIR` when set. With a master password the saved passwords stay
 locked to agents: such connections answer with an error saying so, and work with a password
 command or `.pgpass` instead. A connection that asks for its password every time is not
@@ -557,8 +559,7 @@ cargo run -p platypus-cli -- query -u duckdb:///C:/data/app.duckdb "select * fro
 cargo run -p platypus-cli -- query -u clickhouse://platypus:platypus@localhost:58123/platypus "select * from system.tables"
 cargo run -p platypus-cli -- query -u "libsql://my-db-acme.turso.io?authToken=$TURSO_TOKEN" "select * from sqlite_master"
 
-# MCP server for agents; the installers ship it next to the app (tauri build with
-# --config src-tauri/tauri.mcp.conf.json, as scripts/build-windows.ps1 and the release do)
+# MCP server for agents on its own, for development (the app serves it with --mcp)
 cargo build --release -p platypus-mcp
 
 # end-to-end tests (Windows): drive the release build on a throwaway profile

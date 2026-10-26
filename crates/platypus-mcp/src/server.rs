@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use platypus_mcp::{Agent, AgentError, QueryArgs};
+use crate::{Agent, AgentError, QueryArgs};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};

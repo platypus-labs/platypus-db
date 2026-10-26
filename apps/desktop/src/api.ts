@@ -67,11 +67,9 @@ export type ConnectionType = "dev" | "test" | "prod";
 
 export type AgentAccess = "off" | "read_only" | "read_write";
 
-/** Where `platypus-mcp` is and the commands that register it with agents. */
+/** The app's executable, which agents start with `--mcp`, and the commands that register it. */
 export interface AgentSetup {
   mcp_path: string;
-  /** It is next to the app; a build from source may not have it. */
-  mcp_found: boolean;
   /** `claude mcp add …` for Claude Code. */
   claude_command: string;
   /** The `[mcp_servers.platypus]` table of Codex's `config.toml`. */

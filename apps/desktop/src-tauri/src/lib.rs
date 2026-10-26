@@ -19,6 +19,9 @@ use tauri::Manager;
 
 use crate::commands::AppState;
 
+/// The argument that makes the app an MCP server for agents instead of opening its window.
+pub const MCP_FLAG: &str = "--mcp";
+
 /// History entries kept across restarts.
 const HISTORY_LIMIT: usize = 50_000;
 
