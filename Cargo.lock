@@ -5877,6 +5877,7 @@ version = "0.2.0"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
+ "arrow-row",
  "arrow-schema 60.0.0",
  "duckdb",
  "platypus-core",

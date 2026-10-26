@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 arrow-array.workspace = true
 arrow-cast.workspace = true
+arrow-row.workspace = true
 arrow-schema.workspace = true
 duckdb = { workspace = true, features = ["vtab-arrow"] }
 platypus-core.workspace = true
