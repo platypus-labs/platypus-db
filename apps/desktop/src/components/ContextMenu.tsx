@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { type Action, type ActionScope, type ActionScopes, actionsFor, runAction, shortcutLabel } from "../actions";
 import { t } from "../i18n";
 
@@ -46,6 +46,7 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: menu.x, top: menu.y });
   const [open, setOpen] = useState<string | null>(null);
+  const id = useId();
   const { scope, arg } = menu.target as { scope: ActionScope; arg: never };
   const actions = actionsFor(scope, arg).filter((a) => !a.hidden);
   const lines = entries(actions);
@@ -117,9 +118,36 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
   }
 
   function choose(action: Action) {
+    if (action.disabled?.(arg)) return;
     giveBack.current = true;
     onClose();
     runAction(action, arg, onError);
+  }
+
+  /** An action's item: a disabled one stays focusable, its reason as the tooltip and as its
+   *  description for screen readers. */
+  function item(action: Action, props?: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+    const reason = action.disabled?.(arg) ?? null;
+    const hint = `${id}${action.id}`;
+    return (
+      <button
+        key={action.id}
+        role="menuitem"
+        aria-disabled={reason ? true : undefined}
+        aria-describedby={reason ? hint : undefined}
+        title={reason ? t(reason) : undefined}
+        onClick={() => choose(action)}
+        {...props}
+      >
+        <span>{t(action.title)}</span>
+        {shortcutLabel(action) && <kbd className="shortcut">{shortcutLabel(action)}</kbd>}
+        {reason && (
+          <span id={hint} hidden>
+            {t(reason)}
+          </span>
+        )}
+      </button>
+    );
   }
 
   if (actions.length === 0) return null;
@@ -137,10 +165,7 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
         <Fragment key={"action" in entry ? entry.action.id : `submenu:${entry.submenu}`}>
           {i > 0 && groupOf(entry) !== groupOf(lines[i - 1]!) && <hr />}
           {"action" in entry ? (
-            <button role="menuitem" onClick={() => choose(entry.action)} onMouseEnter={() => setOpen(null)}>
-              <span>{t(entry.action.title)}</span>
-              {shortcutLabel(entry.action) && <kbd className="shortcut">{shortcutLabel(entry.action)}</kbd>}
-            </button>
+            item(entry.action, { onMouseEnter: () => setOpen(null) })
           ) : (
             <div className="submenu-anchor" onMouseEnter={() => setOpen(entry.submenu)}>
               <button role="menuitem" aria-haspopup="menu" onClick={() => setOpen(entry.submenu)} aria-expanded={open === entry.submenu}>
@@ -149,12 +174,7 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
               </button>
               {open === entry.submenu && (
                 <div className="context-menu submenu" role="menu">
-                  {entry.actions.map((action) => (
-                    <button key={action.id} role="menuitem" onClick={() => choose(action)}>
-                      <span>{t(action.title)}</span>
-                      {shortcutLabel(action) && <kbd className="shortcut">{shortcutLabel(action)}</kbd>}
-                    </button>
-                  ))}
+                  {entry.actions.map((action) => item(action))}
                 </div>
               )}
             </div>

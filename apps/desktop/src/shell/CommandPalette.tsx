@@ -17,6 +17,8 @@ interface Item {
   label: string;
   detail?: string;
   shortcut?: string;
+  /** Listed but not run: a disabled action, its reason as the detail. */
+  disabled?: boolean;
   run: () => void | Promise<void>;
 }
 
@@ -85,13 +87,18 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
     const byId = new Map(connections.map((c) => [c.id, c]));
     const actions = actionsFor("global", undefined).filter((a) => !a.hidden && a.id !== "app.palette");
     return [
-      ...actions.map((a) => ({
-        key: `action:${a.id}`,
-        kind: t("Action"),
-        label: t(a.title),
-        shortcut: shortcutLabel(a),
-        run: () => runAction(a, undefined, (e) => workbench().showError(toCommandError(e).message)),
-      })),
+      ...actions.map((a) => {
+        const reason = a.disabled?.(undefined);
+        return {
+          key: `action:${a.id}`,
+          kind: t("Action"),
+          label: t(a.title),
+          detail: reason ? t(reason) : undefined,
+          shortcut: shortcutLabel(a),
+          disabled: !!reason,
+          run: () => runAction(a, undefined, (e) => workbench().showError(toCommandError(e).message)),
+        };
+      }),
       // Projects, to switch to; All connections first, as in the rail.
       ...[{ id: null, name: t("All connections") }, ...workbench().projects()].map((p) => ({
         key: `project:${projectKey(p.id)}`,
@@ -152,7 +159,7 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
 
   function choose(index: number) {
     const chosen = results[index];
-    if (!chosen) return;
+    if (!chosen || chosen.item.disabled) return;
     onClose();
     void Promise.resolve(chosen.item.run()).catch((e: unknown) => workbench().showError(toCommandError(e).message));
   }
@@ -187,6 +194,7 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
               key={item.key}
               role="option"
               aria-selected={i === selected}
+              aria-disabled={item.disabled || undefined}
               className={i === selected ? "selected" : undefined}
               onMouseMove={() => setSelected(i)}
               onMouseDown={(e) => {

@@ -42,6 +42,16 @@
   background: var(--hover);
 }
 
+/* An action listed but not offered here: its tooltip says why. */
+.context-menu button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.context-menu button[aria-disabled="true"]:hover {
+  background: none;
+}
+
 .submenu-anchor {
   position: relative;
   display: flex;
@@ -427,6 +437,11 @@ button.primary.danger:hover:not(:disabled) {
 .palette li.selected {
   background: var(--active);
   color: var(--fg-strong);
+}
+
+/* A disabled action: listed with its reason, not run. */
+.palette li[aria-disabled="true"] {
+  opacity: 0.5;
 }
 
 .palette-kind {

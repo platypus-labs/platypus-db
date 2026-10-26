@@ -1,6 +1,8 @@
 // The data viewer keeps the query of its editor: a WHERE typed there survives the header sort
-// (which only changes the top-level ORDER BY), and "Count rows" counts that query. Another
-// table's query typed there is never edited as the viewer's table, even once sorted.
+// (which only changes the top-level ORDER BY, and puts back the statement's own at the third
+// click), and "Count rows" counts that query. The quick filters name the column a result
+// column shows, and none for a computed one. Another table's query typed there is never
+// edited as the viewer's table, even once sorted.
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -38,6 +40,8 @@ save_password = false
 }
 
 const cancel = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')`;
+const menuButton = (label) =>
+  `[...document.querySelectorAll('.context-menu button')].find(b => b.querySelector('span')?.textContent === ${JSON.stringify(label)})`;
 
 /** Empties the status first: "3 rows" may be the old state. The run's end is a new text with
  *  Cancel disabled again; "Executing…" is only its start. */
@@ -48,6 +52,26 @@ async function afterRun(page, action) {
     `(() => { const s = ${status}; return ${cancel}?.disabled === true && s !== '' && !s.includes('Executing'); })()`,
     15_000,
   );
+}
+
+/** Types `sql` as the editor's whole text and runs it. */
+async function runQuery(page, sql) {
+  await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
+  await page.key("a", "KeyA", 65, CTRL);
+  await page.type(sql);
+  await page.waitFor(`${editorText} === ${JSON.stringify(sql)}`);
+  await afterRun(page, () => page.key("Enter", "Enter", 13, CTRL));
+}
+
+/** Opens the Filter submenu of the first row's first cell, once the grid knows what its
+ *  column names: the entries are disabled while it is being read. */
+async function openFilters(page) {
+  const r = await page.eval(`(() => { const r = ${visibleTab}.querySelector('.grid-scroll').getBoundingClientRect(); return { x: r.x, y: r.y }; })()`);
+  await page.click(r.x + 40, r.y + 52, { button: "right" });
+  await page.waitFor(`${menuButton("Filter")} !== undefined`);
+  await page.eval(`${menuButton("Filter")}.click()`);
+  const equal = menuButton("Equal to this value");
+  await page.waitFor(`${equal} !== undefined && ${equal}.title !== 'Reading the columns of the result…'`);
 }
 
 export default async function (page) {
@@ -84,6 +108,40 @@ export default async function (page) {
   // "Count rows" counts the filtered query, not the whole table.
   await page.eval(`${visibleTab}.querySelector('.viewer-bar button[aria-label="Count rows"]').click()`);
   await page.waitFor(`${visibleTab}.querySelector('.viewer-bar .muted')?.textContent === '3 rows'`, 15_000);
+
+  // The third click puts back the ORDER BY the statement had before the first one.
+  const ordered = "SELECT * FROM items ORDER BY name DESC";
+  await runQuery(page, ordered);
+  assert.equal(await page.eval(status), "5 rows");
+  await afterRun(page, header);
+  assert.equal(await page.eval(editorText), "SELECT * FROM items ORDER BY id ASC");
+  await afterRun(page, header);
+  assert.equal(await page.eval(editorText), "SELECT * FROM items ORDER BY id DESC");
+  await afterRun(page, header);
+  assert.equal(await page.eval(editorText), ordered);
+
+  // A quick filter on a computed column is offered but not run: a WHERE cannot name it.
+  const computed = "SELECT id * 2 AS twice FROM items WHERE grp = 1";
+  await runQuery(page, computed);
+  assert.equal(await page.eval(status), "3 rows");
+  await openFilters(page);
+  const equal = menuButton("Equal to this value");
+  assert.equal(await page.eval(`${equal}.getAttribute('aria-disabled')`), "true");
+  assert.equal(await page.eval(`${equal}.title`), "This column is computed: filter it in the SQL");
+  await page.eval(`${equal}.click()`);
+  await page.sleep(500);
+  assert.equal(await page.eval(editorText), computed);
+  await page.key("Escape", "Escape", 27);
+  await page.waitFor(`document.querySelector('.context-menu') === null`);
+
+  // One on a renamed column filters the column it shows.
+  await runQuery(page, "SELECT name AS label FROM items WHERE grp = 1");
+  assert.equal(await page.eval(status), "3 rows");
+  await openFilters(page);
+  assert.equal(await page.eval(`${equal}.getAttribute('aria-disabled')`), null);
+  await afterRun(page, () => page.eval(`${equal}.click()`));
+  assert.equal(await page.eval(editorText), "SELECT name AS label FROM items WHERE grp = 1 AND name = 'c'");
+  assert.equal(await page.eval(status), "1 row");
 
   // With a script, the sort rewrites the statement that ran, not the first one.
   const script = "SELECT * FROM items WHERE grp = 2;\nSELECT * FROM items WHERE grp = 1";

@@ -273,6 +273,8 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::sql::sql_count_query,
         commands::sql::sql_sortable,
         commands::sql::sql_add_condition,
+        commands::sql::sql_order_clause,
+        commands::sql::sql_filter_columns,
         commands::scripts::list_scripts,
         commands::scripts::create_script,
         commands::scripts::create_script_folder,

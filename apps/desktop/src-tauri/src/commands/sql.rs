@@ -2,7 +2,8 @@
 
 use platypus_core::DriverKind;
 use platypus_sql::{
-    Dialect, FormatOptions, KeywordCase, LintKind, ParameterKind, SelectItem, StatementKind,
+    Dialect, FilterColumn, FormatOptions, KeywordCase, LintKind, ParameterKind, SelectItem,
+    StatementKind,
 };
 use serde::{Deserialize, Serialize};
 
@@ -406,14 +407,16 @@ fn rewritable(sql: &str, driver: DriverKind) -> bool {
 }
 
 /// `sql` sorted by `column` (descending when `desc`) or, with no column, without the
-/// sort; the rest of the text stays as written. `None` when `sql` is not a read-only query
-/// the sort can be placed in. The data viewer's header sort.
+/// viewer's sort: back to `original`, the `ORDER BY` it had before (see `sql_order_clause`),
+/// or unsorted. The rest of the text stays as written. `None` when `sql` is not a read-only
+/// query the sort can be placed in. The data viewer's header sort.
 #[tauri::command]
 pub fn sql_order_by(
     sql: String,
     driver: DriverKind,
     column: Option<String>,
     desc: bool,
+    original: Option<String>,
 ) -> Option<String> {
     let order = column.as_deref().map(|c| (c, desc));
     if driver == DriverKind::Mongo {
@@ -422,13 +425,27 @@ pub fn sql_order_by(
     if !rewritable(&sql, driver) {
         return None;
     }
-    platypus_sql::set_order_by(&sql, Dialect::from(driver), order)
+    let dialect = Dialect::from(driver);
+    match (order, original) {
+        (None, Some(clause)) => platypus_sql::restore_order_by(&sql, dialect, &clause),
+        _ => platypus_sql::set_order_by(&sql, dialect, order),
+    }
+}
+
+/// The top-level `ORDER BY` of `sql` as written, which the header sort puts back after
+/// descending; `None` when it has none, or on MongoDB.
+#[tauri::command]
+pub fn sql_order_clause(sql: String, driver: DriverKind) -> Option<String> {
+    if driver == DriverKind::Mongo || !rewritable(&sql, driver) {
+        return None;
+    }
+    platypus_sql::order_by_clause(&sql, Dialect::from(driver))
 }
 
 /// Whether the header sort can rewrite `sql`.
 #[tauri::command]
 pub fn sql_sortable(sql: String, driver: DriverKind) -> bool {
-    sql_order_by(sql, driver, Some("x".to_owned()), false).is_some()
+    sql_order_by(sql, driver, Some("x".to_owned()), false, None).is_some()
 }
 
 /// The query that counts the rows of `sql` (`SELECT COUNT(*)…`, or `countDocuments`); `None`
@@ -452,4 +469,41 @@ pub fn sql_add_condition(sql: String, driver: DriverKind, condition: String) -> 
         return None;
     }
     platypus_sql::add_condition(&sql, Dialect::from(driver), &condition)
+}
+
+/// What a quick filter on a result column names in the `WHERE` (see
+/// `platypus_sql::FilterColumn`): `{ kind: "column", sql }`, `{ kind: "computed" }` or
+/// `{ kind: "ambiguous" }`.
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", content = "sql", rename_all = "snake_case")]
+pub enum FilterTarget {
+    Column(String),
+    Computed,
+    Ambiguous,
+}
+
+/// For each column of the result of `sql`, named `columns`, what a quick filter on it names
+/// in the `WHERE`: the column it shows (`name` for `name AS n`), or why there is none. `None`
+/// overall when no condition can be added to `sql`.
+#[tauri::command]
+pub fn sql_filter_columns(
+    sql: String,
+    driver: DriverKind,
+    columns: Vec<String>,
+) -> Option<Vec<FilterTarget>> {
+    if !rewritable(&sql, driver) || driver == DriverKind::Mongo {
+        return None;
+    }
+    let names: Vec<&str> = columns.iter().map(String::as_str).collect();
+    let targets = platypus_sql::filter_columns(&sql, Dialect::from(driver), &names)?;
+    Some(
+        targets
+            .into_iter()
+            .map(|target| match target {
+                FilterColumn::Column(sql) => FilterTarget::Column(sql),
+                FilterColumn::Computed => FilterTarget::Computed,
+                FilterColumn::Ambiguous => FilterTarget::Ambiguous,
+            })
+            .collect(),
+    )
 }

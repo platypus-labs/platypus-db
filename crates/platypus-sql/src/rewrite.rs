@@ -10,6 +10,9 @@
 
 use crate::{Dialect, Lexer, Token, TokenKind};
 
+mod filter;
+pub use filter::{FilterColumn, filter_columns};
+
 /// Aggregate functions: a select list with one needs its own row, not one per input row.
 /// A missing name makes "Count rows" count the input rows, while a scalar function taken for
 /// an aggregate only costs a derived table: the list leans wide.
@@ -508,11 +511,14 @@ fn clause_at(t: &Tokens, i: usize, dialect: Dialect) -> Result<Option<Clause>, (
 }
 
 /// Skips what follows `SELECT` before the select list; returns the index of its first token.
-fn skip_head(t: &Tokens, mut i: usize, body: &mut Body) -> usize {
+fn skip_head(t: &Tokens, mut i: usize, body: &mut Body, dialect: Dialect) -> usize {
     loop {
         match t.top(i).as_deref() {
             Some("ALL") => i += 1,
-            Some(w) if HEAD_MODIFIERS.contains(&w) => {
+            // Oracle's `UNIQUE` is its `DISTINCT`.
+            Some(w)
+                if HEAD_MODIFIERS.contains(&w) || (w == "UNIQUE" && dialect == Dialect::Oracle) =>
+            {
                 body.flags |= flag::DISTINCT;
                 if w == "DISTINCT" && t.is_word(i + 1, "ON") {
                     body.flags |= flag::DISTINCT_ON;
@@ -542,6 +548,11 @@ fn skip_head(t: &Tokens, mut i: usize, body: &mut Body) -> usize {
 /// Reads the top level of one statement; `None` when it is not a plain query that can be
 /// rewritten with certainty.
 fn scan(sql: &str, dialect: Dialect) -> Option<Body> {
+    scan_tokens(sql, dialect).map(|(_, body)| body)
+}
+
+/// `scan`, with the statement's tokens.
+fn scan_tokens(sql: &str, dialect: Dialect) -> Option<(Tokens<'_>, Body)> {
     let t = Tokens::new(sql, dialect)?;
     let main = t.main()?;
     let mut body = Body {
@@ -551,7 +562,7 @@ fn scan(sql: &str, dialect: Dialect) -> Option<Body> {
         columns: 1,
         ..Body::default()
     };
-    let start = skip_head(&t, main + 1, &mut body);
+    let start = skip_head(&t, main + 1, &mut body, dialect);
     body.list = t.list.get(start)?.start;
     body.before_clauses = body.end;
     body.before_tail = body.end;
@@ -582,7 +593,7 @@ fn scan(sql: &str, dialect: Dialect) -> Option<Body> {
             part = body.enter(&t, part, clause, i)?;
         }
     }
-    Some(body)
+    Some((t, body))
 }
 
 /// The start of the whitespace before `tokens[i]`, when only whitespace separates it from
@@ -599,14 +610,39 @@ fn gap_before(sql: &str, tokens: &[Token], i: usize) -> Option<usize> {
 /// `ORDER BY (SELECT NULL)` on Transact-SQL and gives up elsewhere; so does a `DISTINCT ON`.
 #[must_use]
 pub fn set_order_by(sql: &str, dialect: Dialect, order: Option<(&str, bool)>) -> Option<String> {
-    let body = scan(sql, dialect)?;
-    if body.has(flag::DISTINCT_ON) {
-        return None;
-    }
     let clause = order.map(|(column, desc)| {
         let direction = if desc { "DESC" } else { "ASC" };
         format!("ORDER BY {} {direction}", dialect.quote_ident(column))
     });
+    put_order_by(sql, dialect, clause)
+}
+
+/// The top-level `ORDER BY` of `sql` as written, from `ORDER` to its last token; `None` when
+/// it has none or cannot be read with certainty. What `restore_order_by` puts back.
+#[must_use]
+pub fn order_by_clause(sql: &str, dialect: Dialect) -> Option<String> {
+    let (start, end) = scan(sql, dialect)?.order?;
+    Some(sql[start..end].to_owned())
+}
+
+/// `sql` with `clause`, an `ORDER BY` read by `order_by_clause`, in place of its top-level
+/// one, placed as `set_order_by` places a sort: the statement gets back the sort it had before
+/// the viewer changed it. `None` when the result would not be one statement ordered by
+/// `clause`.
+#[must_use]
+pub fn restore_order_by(sql: &str, dialect: Dialect, clause: &str) -> Option<String> {
+    let clause = clause.trim();
+    let restored = put_order_by(sql, dialect, Some(clause.to_owned()))?;
+    (order_by_clause(&restored, dialect)? == clause).then_some(restored)
+}
+
+/// `sql` with its top-level `ORDER BY` replaced by `clause`, or removed with `None`; see
+/// `set_order_by`.
+fn put_order_by(sql: &str, dialect: Dialect, clause: Option<String>) -> Option<String> {
+    let body = scan(sql, dialect)?;
+    if body.has(flag::DISTINCT_ON) {
+        return None;
+    }
     let (from, to, text) = match (body.order, clause) {
         (Some((start, end)), Some(clause)) => (start, end, clause),
         (Some((start, end)), None) if body.needs_order(dialect) => {
@@ -624,7 +660,8 @@ pub fn set_order_by(sql: &str, dialect: Dialect, order: Option<(&str, bool)>) ->
 
 /// `sql` with `condition` added to its top-level `WHERE` with `AND` (the existing condition
 /// goes in parentheses when it has an `OR`), or a new `WHERE` before `GROUP BY`, `ORDER BY`
-/// and the other clauses that follow. Not for set operations or queries without `FROM`.
+/// and the other clauses that follow. Not for set operations or queries without `FROM`. A
+/// quick filter on a result column writes its condition on what `filter_columns` gives.
 #[must_use]
 pub fn add_condition(sql: &str, dialect: Dialect, condition: &str) -> Option<String> {
     let body = scan(sql, dialect)?;

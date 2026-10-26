@@ -8,7 +8,7 @@ const MERMAID: &str = include_str!("../assets/mermaid.min.js");
 const STYLE: &str = "body{font:14px/1.5 system-ui,sans-serif;margin:2rem auto;max-width:1100px;padding:0 1rem;color:#1f2328;background:#fff}\
 table{border-collapse:collapse;width:100%;margin:.5rem 0 1rem}th,td{border:1px solid #d0d7de;padding:4px 8px;text-align:left;vertical-align:top}\
 th{background:#f6f8fa}code,.tag{font-family:ui-monospace,monospace}.tag{color:#57606a}\
-@media (prefers-color-scheme:dark){body{color:#e6edf3;background:#0d1117}th,td{border-color:#30363d}th{background:#161b22}.tag{color:#8b949e}}";
+@media (prefers-color-scheme:dark){body{color:#e6edf3;background:#0d1117}th,td{border-color:#30363d}th{background:#161b22}.tag{color:#8b949e}a{color:#58a6ff}}";
 
 /// Text for an element or an attribute, line breaks as `<br>`.
 fn esc(s: &str) -> String {

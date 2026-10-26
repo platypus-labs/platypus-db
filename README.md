@@ -5,18 +5,22 @@
   </picture>
 </h1>
 
-A fast, lightweight desktop SQL client: a Rust core with a Tauri 2 + React interface. The
-installer is about 5 MB, the window is ready in under half a second, and the results grid
-scrolls through millions of rows.
+PlatypusDB is a desktop SQL client for developers, DBAs and analysts who work with several
+databases in a day. One small app runs queries, browses and edits data, designs tables,
+explains slow statements and documents schemas, and keeps production connections clearly apart
+from the others. It runs on Windows, macOS and Linux: a Rust core with a Tauri 2 + React
+interface, an installer of about 5 MB, a window ready in under half a second and a results grid
+that scrolls through millions of rows.
 
 It works with **PostgreSQL**, **MySQL**, **MariaDB**, **SQL Server** (and Azure SQL),
-**ClickHouse**, **SQLite**, **DuckDB**, **libSQL/Turso** and **MongoDB**, and with the servers
-that speak the PostgreSQL protocol: **CockroachDB**, **YugabyteDB**, **TimescaleDB**,
-**Supabase**, **Neon** and **AlloyDB**.
+**Oracle**, **ClickHouse**, **SQLite**, **DuckDB**, **libSQL/Turso** and **MongoDB**; with the
+servers that speak the PostgreSQL protocol: **CockroachDB**, **YugabyteDB**, **TimescaleDB**,
+**Supabase**, **Neon** and **AlloyDB**; with **Snowflake**, **BigQuery**, **Databricks** and
+**Trino** through ADBC; and on Windows with **IBM Db2** and any ODBC data source.
 
-![The data viewer with the value panel](docs/screenshots/data-viewer.png)
+![The data viewer sorted from its header, with the value panel](docs/screenshots/data-viewer.png)
 
-- [Highlights](#highlights)
+- [At a glance](#at-a-glance)
 - [Install](#install)
 - [Databases](#databases)
 - [Features](#features)
@@ -25,18 +29,27 @@ that speak the PostgreSQL protocol: **CockroachDB**, **YugabyteDB**, **Timescale
 - [Performance](#performance)
 - [Contributing](#contributing)
 
-## Highlights
+## At a glance
 
-- **Small and quick**: a 5 MB installer, about 130 MB of memory with a connection open, and a
-  canvas grid that reads rows a page at a time.
+- **Browse data**: a canvas grid that reads rows a page at a time. A click on a header sorts on
+  the server and writes the `ORDER BY` in the editor; quick filters, a value panel for JSON,
+  XML and images, foreign keys shown by the name of the row they point to.
 - **Edit data safely**: change cells in place, preview the SQL, save all or nothing, and get an
   undo script for every save.
-- **A real SQL editor**: completion of tables, columns and JOINs from foreign keys, a formatter,
-  parameters, snippets, a linter and query plans with a heatmap.
+- **Write SQL**: completion of the tables, columns and aliases in scope and of JOINs from the
+  foreign keys, a formatter, parameters, snippets, a linter, a split editor and saved scripts.
+- **Know the schema**: object details, local notes and tags on tables and columns (`#pii` in the
+  navigator's filter), the database's own comments, and documentation as Markdown or a single
+  HTML file with an ER diagram.
+- **Design and tune**: a table editor that shows its `ALTER TABLE` first, a visual query
+  builder, query plans with a heatmap and index suggestions, and a query manager with the time
+  of every statement.
 - **Move data around**: import and export CSV, JSON, Parquet, Excel and more, copy tables and
   whole schemas between any two databases, generate fake rows.
-- **Production-aware**: connection types, confirmations before risky statements, SSH tunnels,
-  keychain or encrypted passwords.
+- **Production-aware**: connection types with the color of the window frame, confirmations
+  before risky statements, SSH tunnels, keychain or encrypted passwords.
+- **Organized**: projects in a rail, tabs that pin and group, a command palette, Settings in
+  tabs with a search, dark and light themes, English and Italian.
 - **Agent-ready**: Claude Code, Codex, Cursor and other MCP clients can use your saved
   connections, with the access you give each one.
 
@@ -115,17 +128,29 @@ and shows the ODBC drivers and data sources of the system.
   the DDL of many tables at once.
 - **Object details**: properties, columns, indexes, constraints, foreign keys, incoming
   references and the DDL of any object.
-- **Notes and tags** on tables, views and columns, kept on your computer and never written to
-  the database. A mark and a tooltip in the navigator, `#pii` in the filter to find the tagged
-  objects, and the note and tags in the data viewer's column headers and in completion. They
-  follow the renames made in the app.
-- **Database comments** of tables, views and columns edit in the object tab: the statement
-  shows first. Not on SQLite, libSQL and MongoDB, which have none.
-- **Schema documentation**: right-click a schema, *Export documentation…*, for a Markdown file
-  or a single HTML file (it works offline) with the columns, keys, indexes, comments, notes
-  and an ER diagram.
 - **Search** object names, columns and the source of views, routines and triggers across a
   database; or the text of every row of a schema's tables, opening the matching rows.
+
+### Notes, comments and schema documentation
+
+![The comments, notes and tags of a table and its columns](docs/screenshots/catalog.png)
+
+- **Notes and tags** on tables, views and columns, kept on your computer and never written to
+  the database: in the object tab, for the object and for each of its columns. The navigator
+  marks the annotated objects and shows the note on hover, and `#pii` in its filter keeps the
+  objects tagged `pii`. The data viewer marks the annotated columns in its headers, and
+  completion shows the note and tags of what it offers. They follow the renames made in the
+  app.
+- **Database comments** show beside the notes. Those of tables and their columns edit in the
+  object tab, with the statement shown first; those of views are read-only. SQLite, libSQL and
+  MongoDB have none.
+- **Row label**: the column that names a table's rows where foreign keys point to it, picked in
+  the object tab or from a header's menu in the grid.
+- **Schema documentation**: right-click a schema, *Export documentation…*, for a Markdown file
+  or a single HTML file (it works offline) with the columns, keys, indexes, comments, notes,
+  tags and an ER diagram of each schema of up to 100 tables.
+
+![The exported HTML documentation with its ER diagram](docs/screenshots/schema-docs.png)
 
 ### SQL editor
 
@@ -135,11 +160,12 @@ and shows the ODBC drivers and data sources of the system.
   pointed out in the text.
 - **Completion** of keywords, tables, columns and built-in functions with their signature. The
   columns offered are those of the tables the statement under the cursor reads (even when FROM
-  comes later), and `alias.` completes the columns of a table, a CTE or a subquery. Names that
-  need quotes are quoted on insert. `JOIN ` offers the related tables with alias and condition
-  from the foreign keys; `JOIN t ON ` offers the condition. Tab or Enter accepts; Enter after a
-  word typed exactly as the entry starts a new line. While a snippet's fields are active, Tab
-  moves to the next field.
+  comes later), and `alias.` completes the columns of a table, a CTE or a subquery. A column
+  that several of those tables have goes in with its alias, and names that need quotes are
+  quoted on insert. `JOIN ` offers the related tables with alias and condition from the
+  foreign keys; `JOIN t ON ` offers the condition. Tab or Enter accepts; Enter after a word
+  typed exactly as the entry starts a new line. While a snippet's fields are active, Tab moves
+  to the next field.
 - **Formatter** (`Ctrl+Shift+F`) with configurable keyword case and indentation; the same
   setting gives the case of completed keywords.
 - Line commands, multiple cursors, folding, an outline of the statements, and `Ctrl+click` on a
@@ -159,13 +185,20 @@ and shows the ODBC drivers and data sources of the system.
 
 - The grid is drawn on a canvas and reads rows a page at a time (1,000 ahead of what is on
   screen); queries can be cancelled.
-- Open a table to browse it: sort by clicking a header, filter with a `WHERE`, count the rows.
+- Open a table to browse it: its `SELECT` goes in the editor, where a `WHERE` typed by hand
+  filters it.
+- **Sort from the header**: a click on a column header writes the `ORDER BY` of the statement
+  in the editor and runs it again; a second click reverses the order, a third puts back the
+  query's own `ORDER BY`, or removes the sort when it had none. It works on the results of a
+  query typed in the editor too, when it is one statement that only reads.
+- **Quick filters** on the focused value (equal, not equal, in the selected values, NULL or
+  not) go in the editor's `WHERE`; a renamed column is filtered on the column it shows, a
+  computed one is filtered in the SQL; *Count rows* counts the rows of the query in the editor.
 - **Copy** with headers or as CSV, JSON, Markdown, HTML, SQL `INSERT` or an `IN` list.
 - **Find** in the loaded rows (`Ctrl+F`).
 - **Value panel** (`F7`): long text, JSON and XML formatted, hex and images from binary
   columns, save to file.
-- Quick filters on the focused value; columns hidden, pinned, moved and resized, with the
-  layout kept per table.
+- Columns hidden, pinned, moved and resized, with the layout kept per table.
 - Totals of the selection (count, sum, average, minimum, maximum), a record view of one row
   at a time, counts by value, statistics of the selection, and two rows compared column by
   column.
@@ -187,8 +220,8 @@ and shows the ODBC drivers and data sources of the system.
   otherwise the grid says why it is read-only. Results of a query that reads one table edit
   the same way, with computed columns read-only.
 - Paste cells from a spreadsheet or CSV over the grid or as new rows.
-- Foreign keys show the name of the row they point to and edit with a list of those rows; pick
-  the column that names a table's rows from a header's menu or the object tab.
+- Foreign keys show the name of the row they point to and edit with a list of those rows; the
+  column that gives that name is the table's row label.
 - PostgreSQL arrays and composite values edit one element or field per line.
 
 ### Table editor
@@ -286,35 +319,40 @@ methods and fields. `mongodb+srv://` and connection string options go in the Dat
   bar, with its buttons (Settings › Appearance › Title bar puts the system's back).
 - **Command palette** (`Ctrl+K`): actions, connections, tables and recent queries, found by
   typing a few letters.
-- **Themes**: Platypus Dark and Light (what "System" follows), Classic Light and Dark, Nord,
-  Dracula, Solarized Light and high contrast; your own accent, background, sidebar and text
-  colors, interface size, row density, corner radius and editor font size. Inter and
-  JetBrains Mono are bundled, so the app looks the same everywhere and works offline.
-- **Settings** (`Ctrl+,`) show one section at a time, in tabs, and open again on the last one.
-  Their search shows the matching settings of every section, grouped by section, and finds the
-  keyboard shortcuts by their action's name.
 - **Resizable navigator**: drag the edge between the connections and the work (or focus it and
   use the arrows); a double-click brings back the default width. `Ctrl+B`, or the button at the
   left of the top bar, hides and shows it.
-- Every shortcut can be changed; the toolbars show icons (each says what it does on hover), and
-  the SQL editor's buttons can be hidden or given their words back; `Ctrl+Shift+T` reopens the
-  last closed tab.
 - **Tabs**: a right-click pins a tab (it stays first, as an icon), opens it beside the active
   one or closes the others or those to its right; Settings › Tabs groups them under their
-  connection's name, and a click on the name folds the group.
+  connection's name, and a click on the name folds the group. `Ctrl+Shift+T` reopens the last
+  closed tab.
 - **Split editor** (`Ctrl+Shift+D`): two tabs side by side; a click in one makes it the active
   one.
 - **Drag a table or a column** from the navigator into the SQL editor: its name, or a `SELECT`
   in an empty editor or with `Shift` held.
-- **Italian or English** (Settings › Appearance › Language; System follows Windows).
-  `Ctrl+=` / `Ctrl+-` / `Ctrl+0` change the interface size; the editor and the result grid
-  have their own font size.
 - **Activity log** (the pulse icon on top): the errors shown and the work done in the
   background, such as connections and catalog loads, with their time, to copy into a report.
   A query that runs longer than 10 seconds (Settings › SQL editor) ends with a system
   notification when the window is in the background.
 - From the keyboard: arrows, Enter and the menu key in the navigator, the tab bar and the
   context menus; dialogs keep the focus inside them and give it back when they close.
+
+### Settings and themes
+
+![Settings, one section per tab](docs/screenshots/settings.png)
+
+- **Settings** (`Ctrl+,`) show one section at a time, in tabs, and open again on the last one.
+  Their search shows the matching settings of every section, grouped by section, and finds the
+  keyboard shortcuts by their action's name.
+- **Themes**: Platypus Dark and Light (what "System" follows), Classic Light and Dark, Nord,
+  Dracula, Solarized Light and high contrast; your own accent, background, sidebar and text
+  colors, interface size, row density, corner radius and editor font size. Inter and
+  JetBrains Mono are bundled, so the app looks the same everywhere and works offline.
+- **Italian or English** (Settings › Appearance › Language; System follows Windows).
+  `Ctrl+=` / `Ctrl+-` / `Ctrl+0` change the interface size; the editor and the result grid
+  have their own font size.
+- Every shortcut can be changed; the toolbars show icons (each says what it does on hover),
+  and the SQL editor's buttons can be hidden or given their words back.
 
 ## Agents (MCP) and the CLI
 
@@ -399,6 +437,7 @@ shortcuts.
 |---|---|
 | `Ctrl+Enter` | Run the statement under the cursor (or the selection) |
 | `Alt+X`, `Ctrl+Shift+Enter` | Run the script |
+| `Ctrl+\` | Run into a new result tab |
 | `Ctrl+Space` | Autocomplete |
 | `Ctrl+/` | Comment / uncomment |
 | `Ctrl+Shift+F` | Format the script (or the selection) |
@@ -414,6 +453,7 @@ shortcuts.
 | `Ctrl+F` | Find and replace |
 | `Ctrl+S`, `Ctrl+O` | Save / open a `.sql` file |
 | `Ctrl+K`, `Ctrl+Shift+P` | Command palette |
+| `Ctrl+B` | Hide / show the navigator |
 | `Ctrl+T`, `Ctrl+W`, `Ctrl+Shift+T` | New tab / close tab / reopen the closed tab |
 | `Ctrl+Tab`, `Ctrl+Shift+Tab` | Next / previous tab |
 | `Ctrl+Shift+D` | Split the editor / close the split |
@@ -464,6 +504,10 @@ crates/
   platypus-driver-clickhouse/ ClickHouse over HTTP (reqwest; ArrowStream results decoded as they arrive)
   platypus-driver-libsql/  libSQL servers and Turso (Hrana over HTTP; SQLite's catalog code)
   platypus-driver-mongo/   MongoDB (official driver, rustls); mongosh parser, documents to Arrow
+  platypus-driver-oracle/  Oracle (oracle crate on Oracle Instant Client)
+  platypus-driver-adbc/    Snowflake, BigQuery, Databricks, Trino and any ADBC driver, loaded at run time
+  platypus-driver-odbc/    Db2 and any ODBC driver or DSN, through the system's driver manager (Windows)
+  platypus-drivers/        drivers downloaded on first use: the dbc registry, Instant Client, IBM's ODBC driver
   platypus-tls/            rustls client configuration with libpq `sslmode` semantics
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
   platypus-schema/         table designs for the table editor and the DDL between them
@@ -476,6 +520,7 @@ crates/
   platypus-mcp/            `platypus-mcp`, the MCP server for agents (stdio, rmcp)
 apps/desktop/              Tauri app: React UI in src/, Rust shell in src-tauri/
 docker/                    dev databases with seed data
+samples/                   the SQLite sample database (wildlife.sql)
 ```
 
 ### Requirements
@@ -521,7 +566,8 @@ cd apps/desktop
 npm run tauri build -- --no-bundle
 npm run e2e
 
-# the README's screenshots, from the release build (readme-postgres needs the dev PostgreSQL)
+# the README's screenshots, from the release build: readme-sqlite and readme-duckdb make their
+# own databases, readme-postgres needs the dev PostgreSQL
 PLATYPUS_README_SHOTS=../../docs/screenshots npm run e2e -- readme
 ```
 

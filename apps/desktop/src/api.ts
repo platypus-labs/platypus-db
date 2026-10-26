@@ -290,6 +290,10 @@ export interface OdbcSystem {
   data_sources: { name: string; driver: string }[];
 }
 
+/** What a quick filter on a result column names in the WHERE: the column it shows, as SQL; or
+ *  none, for a computed column or one of `*` whose table cannot be told. */
+export type FilterTarget = { kind: "column"; sql: string } | { kind: "computed" } | { kind: "ambiguous" };
+
 export interface ColumnInfo {
   name: string;
   db_type: string;
@@ -1159,10 +1163,13 @@ export const api = {
   /** The table a query reads, when its rows are that table's rows. */
   querySource: (sql: string, driver: DriverKind) => invoke<QuerySource | null>("query_source", { sql, driver }),
   lintSql: (sql: string, driver: DriverKind) => invoke<SqlLint>("lint_sql", { sql, driver }),
-  /** `sql` sorted by `column` (or, with `null`, unsorted): only its top-level ORDER BY changes.
+  /** `sql` sorted by `column` or, with `null`, back to `original` (the ORDER BY it had before
+   *  the viewer's sort, from `sqlOrderClause`) or unsorted: only its top-level ORDER BY changes.
    *  `null` when it is not a read-only query the sort can be placed in with certainty. */
-  sqlOrderBy: (sql: string, driver: DriverKind, column: string | null, desc: boolean) =>
-    invoke<string | null>("sql_order_by", { sql, driver, column, desc }),
+  sqlOrderBy: (sql: string, driver: DriverKind, column: string | null, desc: boolean, original: string | null = null) =>
+    invoke<string | null>("sql_order_by", { sql, driver, column, desc, original }),
+  /** The top-level ORDER BY of `sql` as written; `null` when it has none. */
+  sqlOrderClause: (sql: string, driver: DriverKind) => invoke<string | null>("sql_order_clause", { sql, driver }),
   /** Whether a header click may rewrite `sql` (see `sqlOrderBy`). */
   sqlSortable: (sql: string, driver: DriverKind) => invoke<boolean>("sql_sortable", { sql, driver }),
   /** The query counting the rows of `sql`; `null` when it cannot be counted. */
@@ -1170,6 +1177,10 @@ export const api = {
   /** `sql` with `condition` added to its top-level WHERE; `null` when it cannot be placed. */
   sqlAddCondition: (sql: string, driver: DriverKind, condition: string) =>
     invoke<string | null>("sql_add_condition", { sql, driver, condition }),
+  /** For each result column of `sql`, what a quick filter on it names in the WHERE (`name` for
+   *  `name AS n`), or why there is none; `null` when no condition can be added to `sql`. */
+  sqlFilterColumns: (sql: string, driver: DriverKind, columns: string[]) =>
+    invoke<FilterTarget[] | null>("sql_filter_columns", { sql, driver, columns }),
   /** Saved scripts of a project, `null` for All connections. */
   listScripts: (project: string | null) => invoke<ScriptList>("list_scripts", { project }),
   /** A new empty script; returns its relative path. */

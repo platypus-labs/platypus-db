@@ -302,7 +302,7 @@ stdio with `rmcp` (`server.rs`), and the `platypus` CLI calls the same methods f
   transaction are not undone. A new driver adds its case to those `Dialect` methods; the
   conformance test `agents_read_in_read_only_transactions` checks it.
 - `output.rs` renders a result as an aligned text table or the JSON documented in the README
-  ([Agents](../README.md#agents)); the whole rendering stays within the byte limit, rows
+  ([Agents](../README.md#agents-mcp-and-the-cli)); the whole rendering stays within the byte limit, rows
   dropped from the end until it fits. Change that JSON only by adding fields.
 - `redact.rs` masks the connection's password, SSH secrets, password command and the
   password of any URL in every error an agent reads. Tools never return the host, the user
@@ -331,7 +331,11 @@ as described under [Settings](#settings).
 - an id;
 - a scope: where it applies and what argument it receives;
 - a title;
-- optionally a shortcut, a menu group and order, and a `when` condition.
+- optionally a shortcut, a menu group and order, and a `when` condition;
+- optionally `disabled`, which returns a reason (a `msg` text) not to run: context menus and
+  the palette still list the action, greyed out with the reason (a menu item's tooltip, a
+  palette entry's detail); `runAction` does not run it, and its shortcut is swallowed, so no
+  other handler acts on the keys.
 
 Context menus, shortcuts and the command palette read from the registry: global actions
 appear in the palette by their title. The user can change any action's shortcut in the

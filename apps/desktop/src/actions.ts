@@ -64,6 +64,9 @@ export interface Action<S extends ActionScope = ActionScope> {
   order?: number;
   /** Hidden from menus and shortcuts when it returns `false`. */
   when?: (arg: ActionScopes[S]) => boolean;
+  /** Listed but not run when it returns a reason (a `msg` text): menus and the palette show it
+   *  greyed out with the reason, and its shortcut is swallowed. */
+  disabled?: (arg: ActionScopes[S]) => string | null;
   /** Shortcut only, never listed in menus. */
   hidden?: boolean;
   /** Also offered when several rows are selected; it gets them all in `arg.selection`. */
@@ -196,15 +199,18 @@ export function dispatchKey<S extends ActionScope>(
   if (!action) return false;
   e.preventDefault();
   e.stopPropagation();
+  // A disabled action keeps its keys: nothing else acts on them.
   runAction(action, arg, onError);
   return true;
 }
 
+/** Runs `action` on `arg`, unless it is disabled there. */
 export function runAction<S extends ActionScope>(
   action: Action<S>,
   arg: ActionScopes[S],
   onError: (e: unknown) => void,
 ) {
+  if (action.disabled?.(arg)) return;
   try {
     void Promise.resolve(action.run(arg)).catch(onError);
   } catch (e) {
