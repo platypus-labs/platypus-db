@@ -209,6 +209,7 @@ pub async fn table_details(
             columns: primary.clone(),
             unique: false,
             primary: true,
+            partial: false,
             size: None,
         });
         details.constraints.push(ConstraintMeta {
@@ -224,6 +225,7 @@ pub async fn table_details(
             columns: sorting,
             unique: false,
             primary: false,
+            partial: false,
             size: None,
         });
     }
@@ -232,6 +234,7 @@ pub async fn table_details(
         columns: vec![r.text(1)],
         unique: false,
         primary: false,
+        partial: false,
         size: r.number(2),
     }));
     if kind_of(&keys.text(2)) == ObjectKind::Table {

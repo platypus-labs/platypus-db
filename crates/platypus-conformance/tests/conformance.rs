@@ -361,6 +361,7 @@ const LIBSQL_SCRATCH: &[&str] = &[
     "conf_big",
     "conf_edit",
     "conf_many",
+    "conf_keys",
     "init_probe",
 ];
 
@@ -1873,6 +1874,271 @@ async fn edits_many_rows() {
             .await
             .unwrap_or_else(|e| panic!("{}: delete by id: {e}", b.name));
         assert_eq!(count().await, "0", "{}: all deleted", b.name);
+    }
+}
+
+/// Text with backslashes and quotes saves as typed on PostgreSQL whatever
+/// `standard_conforming_strings` says, and never ends its literal early.
+#[tokio::test]
+async fn edits_text_with_backslashes() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{self, Column, Value, ValueKind};
+
+    let _serial = SERIAL.lock().await;
+    let texts = [r"x\'); DROP TABLE conf_scs; --", r"a\b", "it's", r"\\"];
+    for b in backends().await {
+        if !matches!(b.name, "postgres" | "timescale" | "yugabyte") {
+            continue;
+        }
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let d = Dialect::Postgres;
+        let columns = [
+            Column {
+                name: "id",
+                kind: ValueKind::Integer,
+                default: None,
+            },
+            Column {
+                name: "name",
+                kind: ValueKind::Text,
+                default: None,
+            },
+        ];
+        affected(
+            &b,
+            conn,
+            "CREATE TEMPORARY TABLE conf_scs (id INT PRIMARY KEY, name TEXT)",
+        )
+        .await;
+        for setting in ["off", "on"] {
+            run(
+                conn,
+                &format!("SET standard_conforming_strings = {setting}"),
+            )
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+            let ids: Vec<String> = (1..=texts.len()).map(|i| i.to_string()).collect();
+            let rows: Vec<Vec<(usize, Value<'_>)>> = ids
+                .iter()
+                .zip(texts)
+                .map(|(id, text)| vec![(0, Value::Text(id)), (1, Value::Text(text))])
+                .collect();
+            let inserts = dml::inserts(d, "conf_scs", &columns, &rows).unwrap();
+            dml::apply(conn, d, &inserts)
+                .await
+                .unwrap_or_else(|e| panic!("{}: insert with {setting}: {e}", b.name));
+            let saved = collect(&b, conn, "SELECT name FROM conf_scs ORDER BY id").await;
+            let saved: Vec<_> = (0..texts.len())
+                .map(|i| cell(&saved[0], 0, i).unwrap())
+                .collect();
+            assert_eq!(saved, texts, "{}: {setting}", b.name);
+            // Keys with backslashes find their rows.
+            let keys: Vec<_> = texts.iter().map(|t| vec![(1, Some(*t))]).collect();
+            let deletes = dml::deletes(d, "conf_scs", &columns, &keys).unwrap();
+            dml::apply(conn, d, &deletes)
+                .await
+                .unwrap_or_else(|e| panic!("{}: delete with {setting}: {e}", b.name));
+            let left = collect(&b, conn, "SELECT count(*) FROM conf_scs").await;
+            assert_eq!(cell(&left[0], 0, 0).as_deref(), Some("0"), "{}", b.name);
+        }
+    }
+}
+
+/// Composite keys of timestamps with a time zone, decimals and UUIDs find their rows in a
+/// batched delete, on the dialects that list them as row values or with `OR`.
+#[tokio::test]
+async fn edits_composite_keys() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{self, Column, Value, ValueKind};
+
+    let _serial = SERIAL.lock().await;
+    let rows = [
+        [
+            "2024-03-01 10:00:00+00:00",
+            "12.50",
+            "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+        ],
+        [
+            "2024-03-01 10:00:00+00:00",
+            "1e3",
+            "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
+        ],
+        [
+            "2024-03-02 11:30:00+00:00",
+            "12.50",
+            "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+        ],
+    ];
+    for b in backends().await {
+        let ddl = match b.config.driver {
+            DriverKind::Postgres if b.name == "postgres" => {
+                "at TIMESTAMPTZ, amount NUMERIC(10, 2), u UUID, PRIMARY KEY (at, amount, u)"
+            }
+            DriverKind::DuckDb => {
+                "\"at\" TIMESTAMPTZ, amount DECIMAL(10, 2), u UUID, PRIMARY KEY (\"at\", amount, u)"
+            }
+            DriverKind::Sqlite | DriverKind::Libsql => {
+                "at TEXT, amount NUMERIC, u TEXT, PRIMARY KEY (at, amount, u)"
+            }
+            _ => continue,
+        };
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let d = Dialect::from(b.config.driver);
+        if b.config.driver == DriverKind::Libsql {
+            run(conn, "DROP TABLE IF EXISTS conf_keys").await.unwrap();
+        }
+        affected(&b, conn, &b.create_temp("conf_keys", ddl)).await;
+        let schema = match conn
+            .execute("SELECT * FROM conf_keys", &ExecOptions::default())
+            .await
+            .unwrap()
+        {
+            ExecResult::Rows(stream) => stream.schema(),
+            ExecResult::Affected { .. } => panic!("{}: expected rows", b.name),
+        };
+        let columns: Vec<Column<'_>> = schema
+            .fields()
+            .iter()
+            .map(|f| Column {
+                name: f.name(),
+                kind: ValueKind::of(f.data_type()),
+                default: None,
+            })
+            .collect();
+        let values: Vec<Vec<(usize, Value<'_>)>> = rows
+            .iter()
+            .map(|r| {
+                r.iter()
+                    .enumerate()
+                    .map(|(i, v)| (i, Value::Text(v)))
+                    .collect()
+            })
+            .collect();
+        dml::apply(
+            conn,
+            d,
+            &dml::inserts(d, "conf_keys", &columns, &values).unwrap(),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: insert: {e}", b.name));
+        // The decimal as the grid shows it once saved.
+        let keys: Vec<Vec<(usize, Option<&str>)>> = [rows[0], [rows[1][0], "1000.00", rows[1][2]]]
+            .iter()
+            .map(|r| r.iter().enumerate().map(|(i, v)| (i, Some(*v))).collect())
+            .collect();
+        let deletes = dml::deletes(d, "conf_keys", &columns, &keys).unwrap();
+        assert_eq!(deletes.len(), 1, "{}", b.name);
+        dml::apply(conn, d, &deletes)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {}: {e}", b.name, deletes[0].sql));
+        let left = collect(&b, conn, "SELECT count(*) FROM conf_keys").await;
+        assert_eq!(cell(&left[0], 0, 0).as_deref(), Some("1"), "{}", b.name);
+        if b.config.driver == DriverKind::Libsql {
+            run(conn, "DROP TABLE conf_keys").await.unwrap();
+        }
+    }
+}
+
+/// Without savepoints (DuckDB), a save whose first statement finds no row stops there and
+/// leaves the session's uncommitted work as it was.
+#[tokio::test]
+async fn edits_keep_uncommitted_work_without_savepoints() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{self, ApplyError, Column, Statement, ValueKind};
+
+    let _serial = SERIAL.lock().await;
+    let b = duckdb_backend().await;
+    let conn = b.connect().await;
+    let conn = &*conn;
+    let d = Dialect::DuckDb;
+    let columns = [Column {
+        name: "id",
+        kind: ValueKind::Integer,
+        default: None,
+    }];
+    affected(&b, conn, "CREATE TABLE conf_dk (id INTEGER PRIMARY KEY)").await;
+    affected(&b, conn, "INSERT INTO conf_dk VALUES (1), (2)").await;
+    conn.set_autocommit(false).await.unwrap();
+    affected(&b, conn, "INSERT INTO conf_dk VALUES (3)").await;
+    let delete =
+        |id| Statement::one(dml::delete(d, "conf_dk", &columns, &[(0, Some(id))]).unwrap());
+    let err = dml::apply(conn, d, &[delete("99"), delete("1")])
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ApplyError::RowCount {
+                index: 0,
+                rows: 0,
+                ..
+            }
+        ),
+        "{err}"
+    );
+    assert!(conn.transaction().open, "the session's transaction goes on");
+    let count = collect(&b, conn, "SELECT count(*) FROM conf_dk").await;
+    assert_eq!(
+        cell(&count[0], 0, 0).as_deref(),
+        Some("3"),
+        "row 3 kept, row 1 not deleted"
+    );
+    conn.rollback().await.unwrap();
+    conn.set_autocommit(true).await.unwrap();
+    let count = collect(&b, conn, "SELECT count(*) FROM conf_dk").await;
+    assert_eq!(cell(&count[0], 0, 0).as_deref(), Some("2"));
+}
+
+/// A partial unique index (`WHERE`) is reported as such: it tells no row apart, so the data
+/// editor neither keys rows by it nor deletes them in batches by it.
+#[tokio::test]
+async fn reports_partial_indexes() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let (schema, ddl) = match (b.config.driver, b.name) {
+            (DriverKind::Postgres, "postgres") | (DriverKind::SqlServer, _) => (
+                "demo",
+                [
+                    "CREATE TABLE demo.conf_partial (id INT NOT NULL, code INT NOT NULL, live INT)",
+                    "CREATE UNIQUE INDEX conf_partial_live ON demo.conf_partial (code) WHERE live = 1",
+                    "CREATE UNIQUE INDEX conf_partial_id ON demo.conf_partial (id)",
+                ],
+            ),
+            (DriverKind::Sqlite, _) => (
+                "main",
+                [
+                    "CREATE TABLE conf_partial (id INT NOT NULL, code INT NOT NULL, live INT)",
+                    "CREATE UNIQUE INDEX conf_partial_live ON conf_partial (code) WHERE live = 1",
+                    "CREATE UNIQUE INDEX conf_partial_id ON conf_partial (id)",
+                ],
+            ),
+            _ => continue,
+        };
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let table = format!("{schema}.conf_partial");
+        run(conn, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        for sql in ddl {
+            run(conn, sql)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name));
+        }
+        let details = conn.table_details(schema, "conf_partial").await.unwrap();
+        let partial = |name: &str| {
+            details
+                .indexes
+                .iter()
+                .find(|i| i.name == name)
+                .unwrap_or_else(|| panic!("{}: no {name} in {:?}", b.name, details.indexes))
+                .partial
+        };
+        assert!(partial("conf_partial_live"), "{}", b.name);
+        assert!(!partial("conf_partial_id"), "{}", b.name);
+        run(conn, &format!("DROP TABLE {table}")).await.unwrap();
     }
 }
 

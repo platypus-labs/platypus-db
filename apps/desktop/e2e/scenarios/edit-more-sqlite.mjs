@@ -242,17 +242,19 @@ export default async function (page, { dir, shots }) {
   await saveFromPreview(page);
   await page.waitFor(`${status} === '4 rows' && ${statusBar}.includes('Undo script')`, 15_000);
 
-  // The undo script deletes the new rows again.
+  // The undo script deletes the new rows again, in one statement.
   await page.eval(`${button(visibleTab, "Undo script")}.click()`);
   await page.waitFor(`${visibleTab}?.querySelector('.cm-content')?.textContent.includes('DELETE')`);
   assert.equal(
     await page.eval(`${visibleTab}.querySelector('.cm-content').textContent`),
-    "DELETE FROM main.orders WHERE id = 12;DELETE FROM main.orders WHERE id = 13;",
+    "DELETE FROM main.orders WHERE id IN (12, 13);",
   );
+  // Blank the status, so the wait below sees the script's and not the one before it.
+  await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
   await page.eval(`${button(visibleTab, "Script")}.click()`);
-  // Both result tabs appear when the script starts; Ctrl+Enter is ignored until it ends.
+  // Ctrl+Enter is ignored until the script ends.
   await page.waitFor(
-    `${visibleTab}.querySelectorAll('.result-tab').length === 2 && ` +
+    `${status} !== '' && !${status}.includes('Executing') && ` +
       `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')?.disabled`,
     15_000,
   );

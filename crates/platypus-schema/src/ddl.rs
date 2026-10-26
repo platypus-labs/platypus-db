@@ -1362,7 +1362,7 @@ mod tests {
     fn comments_with_quotes_and_backslashes_are_escaped() {
         let new = commented(Some(r"it's a\b"), Some(r"it's a\b"));
         let cases: &[(Dialect, &str)] = &[
-            (Dialect::Postgres, r"'it''s a\b'"),
+            (Dialect::Postgres, r"E'it''s a\\b'"),
             (Dialect::Oracle, r"'it''s a\b'"),
             (Dialect::Db2, r"'it''s a\b'"),
             (Dialect::MySql, r"'it''s a\\b'"),

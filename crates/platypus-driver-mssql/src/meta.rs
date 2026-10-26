@@ -462,6 +462,7 @@ pub async fn table_details(
                 columns: i.columns.into_iter().map(|(c, _)| c).collect(),
                 unique: i.unique,
                 primary: i.primary,
+                partial: i.filter.is_some(),
                 size: i.size,
             })
             .collect(),

@@ -180,6 +180,7 @@ pub fn table_details(
             columns: primary.iter().map(|k| k.column.clone()).collect(),
             unique: true,
             primary: true,
+            partial: false,
             size: None,
         })
         .into_iter()

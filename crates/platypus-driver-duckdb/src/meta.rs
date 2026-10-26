@@ -267,6 +267,7 @@ pub async fn table_details(
             columns: c.columns.clone(),
             unique: true,
             primary: c.kind == "PRIMARY KEY",
+            partial: false,
             size: None,
         })
         .collect();
@@ -282,6 +283,7 @@ pub async fn table_details(
         name: r.text(0),
         unique: r.flag(1),
         primary: r.flag(2),
+        partial: false,
         columns: index_expressions(&r.text(3)),
         size: None,
     }));

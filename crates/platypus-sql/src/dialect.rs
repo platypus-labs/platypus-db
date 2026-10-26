@@ -481,12 +481,17 @@ impl Dialect {
 
     /// A string literal. MySQL treats backslashes as escapes by default
     /// (`NO_BACKSLASH_ESCAPES` off), and ClickHouse always, so they are doubled there. Transact-SQL literals are
-    /// `N'...'`, so that text outside the database's code page survives.
+    /// `N'...'`, so that text outside the database's code page survives. PostgreSQL text with
+    /// a backslash is an `E'...'` string with the backslashes doubled: a plain literal would
+    /// take them as escapes when `standard_conforming_strings` is off, and `\'` would end it.
     #[must_use]
     pub fn quote_literal(self, value: &str) -> String {
         let mut out = String::with_capacity(value.len() + 3);
+        let escape_string = self == Self::Postgres && value.contains('\\');
         if self == Self::SqlServer {
             out.push('N');
+        } else if escape_string {
+            out.push('E');
         }
         out.push('\'');
         // BigQuery and Spark read `''` as two strings, not an escaped quote.
@@ -497,6 +502,7 @@ impl Dialect {
                 '\'' => out.push_str("''"),
                 // Snowflake reads `\'` as a quote too, so `''` stays correct there.
                 '\\' if backslashes
+                    || escape_string
                     || matches!(self, Self::MySql | Self::ClickHouse | Self::Snowflake) =>
                 {
                     out.push_str("\\\\");
@@ -1074,7 +1080,13 @@ mod tests {
     #[test]
     fn quotes_literals() {
         assert_eq!(Dialect::Postgres.quote_literal("it's"), "'it''s'");
-        assert_eq!(Dialect::Postgres.quote_literal("a\\b"), "'a\\b'");
+        // Read the same whatever `standard_conforming_strings` says.
+        assert_eq!(Dialect::Postgres.quote_literal("a\\b"), "E'a\\\\b'");
+        assert_eq!(
+            Dialect::Postgres.quote_literal("x\\'; DROP TABLE t; --"),
+            "E'x\\\\''; DROP TABLE t; --'"
+        );
+        assert_eq!(Dialect::DuckDb.quote_literal("a\\b"), "'a\\b'");
         assert_eq!(Dialect::MySql.quote_literal("a\\'b"), "'a\\\\''b'");
         assert_eq!(Dialect::Sqlite.quote_literal("🦆"), "'🦆'");
     }

@@ -456,6 +456,8 @@ export interface IndexMeta {
   columns: string[];
   unique: boolean;
   primary: boolean;
+  /** Covers only the rows of a condition (`WHERE`). */
+  partial: boolean;
   size: number | null;
 }
 

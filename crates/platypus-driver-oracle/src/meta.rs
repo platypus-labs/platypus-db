@@ -372,6 +372,7 @@ pub fn table_details(
             let name = r.text(0);
             let index = IndexMeta {
                 primary: primary_name.as_ref() == Some(&name),
+                partial: false,
                 name: name.clone(),
                 columns: vec![r.text(2)],
                 unique: r.text(1) == "UNIQUE",

@@ -276,6 +276,7 @@ pub fn table_details(catalogs: &[Catalog]) -> TableDetails {
             columns: p.columns.clone(),
             unique: true,
             primary: true,
+            partial: false,
             size: None,
         })
         .into_iter()

@@ -392,7 +392,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
     return edits.toChanges(current.current, {
       table: { schema: meta.table.schema, name: meta.table.name },
       key: meta.key,
-      unique_key: meta.virtualKey === null,
+      unique_key: meta.uniqueKey,
       table_columns: columnsOf(meta),
       defaults: meta.columns.map((c) => c?.default ?? null),
     });
