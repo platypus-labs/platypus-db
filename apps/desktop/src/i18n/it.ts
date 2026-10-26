@@ -1263,6 +1263,8 @@ const it: Record<string, string> = {
   "Tables of the results of another tab: {tables}": "Tabelle dai risultati di un'altra scheda: {tables}",
   "Partial: reading stopped at the memory limit.": "Parziale: la lettura si è fermata al limite di memoria.",
   "Partial: reading stopped before the end of the rows.": "Parziale: la lettura si è fermata prima della fine delle righe.",
+  "Compared the first {before} and {after} loaded rows: rows found in only one run are counted only when the other run was loaded in full. Load all the rows of both runs for a complete comparison.":
+    "Confrontate le prime {before} e {after} righe caricate: le righe presenti in una sola esecuzione contano solo se l'altra è stata caricata per intero. Caricare tutte le righe di entrambe le esecuzioni per un confronto completo.",
   "Reload from result": "Ricarica dal risultato",
 
   // Analysis (group M): compare with the previous run
@@ -1273,6 +1275,7 @@ const it: Record<string, string> = {
   "Rows matched by all their values: a changed row shows as removed and added.": "Righe abbinate per tutti i valori: una riga cambiata appare tolta e aggiunta.",
   "Only the first {n} differences are shown.": "Sono mostrate solo le prime {n} differenze.",
   "No differences.": "Nessuna differenza.",
+  "No differences in the rows compared.": "Nessuna differenza nelle righe confrontate.",
   "Before: {value}": "Prima: {value}",
 };
 

@@ -6,7 +6,7 @@ use arrow_schema::SchemaRef;
 use platypus_local::diff::{self, Diff, Table};
 use tauri::State;
 
-use super::loaded;
+use super::{Loaded, loaded};
 use crate::commands::summary::blocking;
 use crate::commands::{AppState, lock};
 use crate::display;
@@ -17,6 +17,8 @@ use crate::error::{CommandError, CommandResult};
 pub struct PreviousRun {
     schema: SchemaRef,
     batches: Vec<RecordBatch>,
+    /// They were all of its rows.
+    complete: bool,
 }
 
 /// Before the statement of result `job_id` runs again: keeps the rows it loaded, in place of
@@ -31,6 +33,7 @@ pub fn keep_previous_run(
     let run = PreviousRun {
         schema: rows.schema,
         batches: rows.batches,
+        complete: rows.complete,
     };
     lock(&state.previous_runs).insert(session_id, run);
     Ok(())
@@ -48,7 +51,8 @@ pub(in crate::commands) fn forget(state: &AppState, session_id: u64) {
 }
 
 /// What changed from the session's previous run to result `job_id`: rows matched by the `key`
-/// columns when given, else by all their values.
+/// columns when given, else by all their values. Over the rows each run loaded: see
+/// `platypus_local::diff` for what a run not loaded in full leaves out.
 #[tauri::command]
 pub async fn diff_previous(
     state: State<'_, AppState>,
@@ -58,7 +62,7 @@ pub async fn diff_previous(
 ) -> CommandResult<Diff> {
     let rows = loaded(&state, job_id)?;
     let previous = previous_of(&state, session_id)?;
-    blocking(move || compare(&previous, &rows.schema, &rows.batches, key.as_deref())).await
+    blocking(move || compare(&previous, &rows, key.as_deref())).await
 }
 
 fn previous_of(state: &AppState, session_id: u64) -> CommandResult<PreviousRun> {
@@ -73,17 +77,17 @@ fn previous_of(state: &AppState, session_id: u64) -> CommandResult<PreviousRun> 
         })
 }
 
-fn compare(
-    previous: &PreviousRun,
-    schema: &SchemaRef,
-    batches: &[RecordBatch],
-    key: Option<&[usize]>,
-) -> CommandResult<Diff> {
+fn compare(previous: &PreviousRun, rows: &Loaded, key: Option<&[usize]>) -> CommandResult<Diff> {
     let before = Table {
         schema: &previous.schema,
         batches: &previous.batches,
+        complete: previous.complete,
     };
-    let after = Table { schema, batches };
+    let after = Table {
+        schema: &rows.schema,
+        batches: &rows.batches,
+        complete: rows.complete,
+    };
     Ok(diff::diff(before, after, key, &display::format_options())?)
 }
 
@@ -118,8 +122,14 @@ mod tests {
         let previous = PreviousRun {
             schema: schema("a"),
             batches: Vec::new(),
+            complete: true,
         };
-        let Err(e) = compare(&previous, &schema("b"), &[], None) else {
+        let rows = Loaded {
+            schema: schema("b"),
+            batches: Vec::new(),
+            complete: true,
+        };
+        let Err(e) = compare(&previous, &rows, None) else {
             panic!("the columns differ")
         };
         assert_eq!(error_kind(&e), "columns_differ");
@@ -131,6 +141,7 @@ mod tests {
         let run = PreviousRun {
             schema: schema("a"),
             batches: Vec::new(),
+            complete: true,
         };
         lock(&state.previous_runs).insert(3, run);
         assert!(previous_of(&state, 3).is_ok());

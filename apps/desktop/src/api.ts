@@ -1045,6 +1045,12 @@ export interface Diff {
   /** At most 10,000; the counts go on. */
   rows: DiffRow[];
   truncated: boolean;
+  /** The rows each run had loaded. */
+  before_rows: number;
+  after_rows: number;
+  /** Both runs were loaded in full. Otherwise added rows are counted only when the previous
+   *  run was complete, removed rows only when the new one is. */
+  complete: boolean;
 }
 
 export const api = {

@@ -16,6 +16,9 @@
   font-family: var(--font-mono);
   font-weight: 600;
 }
+.diff-partial {
+  margin: 8px 12px 0;
+}
 .diff-truncated {
   color: var(--warn);
   font-weight: 500;

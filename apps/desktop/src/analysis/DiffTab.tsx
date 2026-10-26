@@ -35,8 +35,16 @@ export function DiffTab({ tab, active }: TabProps<DiffTabModel>) {
             </span>
             {diff.truncated && <strong className="diff-truncated">{t("Only the first {n} differences are shown.", { n: fmt.format(MAX_ROWS) })}</strong>}
           </div>
+          {!diff.complete && (
+            <div className="notice warn diff-partial">
+              {t(
+                "Compared the first {before} and {after} loaded rows: rows found in only one run are counted only when the other run was loaded in full. Load all the rows of both runs for a complete comparison.",
+                { before: fmt.format(diff.before_rows), after: fmt.format(diff.after_rows) },
+              )}
+            </div>
+          )}
           {diff.rows.length === 0 ? (
-            <div className="notice ok">{t("No differences.")}</div>
+            <div className="notice ok">{t(diff.complete ? "No differences." : "No differences in the rows compared.")}</div>
           ) : (
             <div className="diff-scroll">
               <table className="diff-table">
