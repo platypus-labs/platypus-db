@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   api,
@@ -31,9 +31,19 @@ import { defineSetting, getSetting, useSetting } from "../settings";
 import { viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
+import { ResultSourceBar } from "../analysis/QueryWithSql";
+import { provideResults, resultsWithRows, type ResultSource } from "../analysis/resultHosts";
 import { basename } from "../workspace";
-import { type CheckedStatement, type GuardRequest, check, elapsed, transactionWarning } from "../guards/guards";
+import {
+  type CheckedStatement,
+  type GuardRequest,
+  autoLimitSetting,
+  check,
+  elapsed,
+  transactionWarning,
+} from "../guards/guards";
 import { GuardDialog } from "../guards/GuardDialog";
+import { PendingDialog } from "../guards/PendingDialog";
 import { ExportDialog, type ExportSource } from "./ExportDialog";
 import { HealthBadge, useSessionHealth } from "./health";
 import { HistoryPanel } from "./HistoryPanel";
@@ -44,6 +54,8 @@ import { Icon } from "../ui/Icon";
 import { scrollSideways } from "../ui/scroll";
 import { notifyRunEnded } from "../shell/notify";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
+import { ChartToggle } from "../analysis/ChartView";
+import { chartOf, type SavedChart, withChart } from "../analysis/chartConfig";
 import { runGate } from "./runGate";
 import {
   type ShownSort,
@@ -55,6 +67,8 @@ import {
   viewerQueries,
   withSort,
 } from "./viewerSort";
+import { useCompare } from "../analysis/compare";
+import { editMeta } from "../grid/edit/meta";
 import { t, plural, msg } from "../i18n";
 
 /** Auto-refresh intervals in seconds, `0` for off. */
@@ -103,8 +117,15 @@ export interface QueryTabModel extends TabBase {
   viewerQuery?: string | null;
   /** Values of `${name}` and `:name`, kept with the tab. */
   variables?: Record<string, string>;
+  /** "Query with SQL": where the tables of this tab came from. Not persisted: the temporary
+   *  connection does not outlive the app. */
+  resultSource?: ResultSource;
   /** Results as text, like a console, instead of the grid. */
   terminal?: boolean;
+  /** Charts of the statements, each shown in place of the grid when chosen. */
+  charts?: SavedChart[];
+  /** Read-only for this tab only, as if the connection were; not persisted. */
+  readOnly?: boolean;
 }
 
 /** The side panel next to the editor. */
@@ -187,7 +208,7 @@ interface ExportProgress {
 
 export function QueryTab({
   tab,
-  connection,
+  connection: saved,
   active,
   ensureSession,
   currentSession,
@@ -197,12 +218,17 @@ export function QueryTab({
   onChange,
   onError,
 }: Props) {
+  // A tab made read-only gets every check of a read-only connection.
+  const connection = useMemo(() => (tab.readOnly ? { ...saved, read_only: true } : saved), [saved, tab.readOnly]);
   const editor = useRef<SqlEditorHandle>(null);
   const [tx, setTx] = useState<TransactionState | null>(null);
   /** A run waiting for the answer to its checks. */
   const [guard, setGuard] = useState<{ request: GuardRequest; resolve: (run: boolean) => void } | null>(null);
   /** When the open transaction began, as far as the tab saw it. */
   const [txSince, setTxSince] = useState<number | null>(null);
+  /** The statements run in the open transaction that change data or schema. */
+  const [uncommitted, setUncommitted] = useState<string[]>([]);
+  const [pendingOpen, setPendingOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const warnMinutes = useSetting(transactionWarning);
   const slowSeconds = useSetting(slowQuerySeconds);
@@ -214,6 +240,20 @@ export function QueryTab({
   const [activeResult, setActiveResult] = useState(0);
   const [running, setRunning] = useState(false);
   const shown = results[activeResult];
+  // "Query with SQL" reads this tab's results with rows and which one is shown.
+  const resultsNow = useRef({ results, shown, active });
+  resultsNow.current = { results, shown, active };
+  useEffect(
+    () =>
+      provideResults({
+        tabKey: tab.key,
+        connection,
+        shown: () => resultsNow.current.active,
+        results: () => resultsWithRows(resultsNow.current.results),
+        activeJob: () => resultsNow.current.shown?.jobId ?? null,
+      }),
+    [],
+  );
   /** Data viewer: the last statement found to be a read-only query the header sort can rewrite
    *  with certainty; asked once per statement, not at each keystroke. */
   const [rewritable, setRewritable] = useState<string | null>(null);
@@ -251,6 +291,11 @@ export function QueryTab({
     filters && filters.result.id === shown?.id && filters.result.columns === shown.columns ? filters.columns : undefined;
   /** The viewer's sort of the shown statement, for the header arrow and the next click. */
   const shownSort = tab.table && shown ? sortOf(tab.sorts, shown.sql) : null;
+  /** The shown statement's chart, if one was made; it stays with the statement across runs. */
+  const shownChart = shown ? chartOf(tab.charts, shown.sql) : null;
+  const setChart = (patch: Partial<Omit<SavedChart, "query">>) => {
+    if (shown) onChange({ charts: withChart(tab.charts, shown.sql, patch) });
+  };
   // A count belongs to the statement it counted.
   const shownKey = shown ? queryKey(shown.sql) : null;
   useEffect(() => setCount(null), [shownKey]);
@@ -297,6 +342,8 @@ export function QueryTab({
   const [undoScript, setUndoScript] = useState<string | null>(null);
   /** Seconds between runs of the last statements again; `null` is off. */
   const [refreshEvery, setRefreshEvery] = useState<number | null>(null);
+  /** "Compare with previous run": the result a run of the same statement replaces is kept. */
+  const compare = useCompare(connection);
 
   const closeJobs = () => {
     for (const id of jobs.current) void api.closeQuery(id);
@@ -541,6 +588,7 @@ export function QueryTab({
     const sessionId = await ensureSession();
     if (sessionId === null) return;
     onNeedCatalog(false);
+    if (!append) await compare.keep(sessionId, planned, results);
 
     const token = ++runToken.current;
     if (!append) closeJobs();
@@ -650,8 +698,11 @@ export function QueryTab({
             Object.assign(variables, values);
             keepVariables();
           }
-          const ran = { ...result, sql };
-          update(result.id, { sql });
+          const autoLimit = !tab.table && p.kind === "query" ? getSetting(autoLimitSetting) : 0;
+          const capped = autoLimit > 0 ? await api.sqlAddLimit(sql, connection.driver, autoLimit).catch(() => null) : null;
+          // The result keeps the statement as written: the header sort and the editor find it.
+          const ran = { ...result, sql: capped ?? sql };
+          update(result.id, { sql, autoLimit: capped ? autoLimit : null });
           const target = pending.export;
           pending.export = null;
           if (target) {
@@ -670,6 +721,9 @@ export function QueryTab({
       if (token !== runToken.current) return;
       // runOne reports the statuses of a job; commands, exports and cancelled ones are set here.
       if (seen.jobId === null) update(result.id, { status });
+      if (p.kind !== "query" && p.kind !== "command" && status.kind !== "error" && status.kind !== "skipped") {
+        await notePending(sessionId, p.kind, sql);
+      }
       if (tab.terminal) await logTerminal(result.id, sql, status, seen);
       if (status.kind === "rows") lastRows = i;
       if (status.kind === "error") {
@@ -822,6 +876,33 @@ export function QueryTab({
     }
     setResults((all) => all.filter((x) => x.id !== id));
     setActiveResult((a) => Math.max(0, a > i || a === results.length - 1 ? a - 1 : a));
+  }
+
+  /** After a statement that is not a query: a change made while a transaction stays open
+   *  waits for Commit and is listed; one that leaves none open (a COMMIT) empties the list. */
+  async function notePending(sessionId: number, kind: StatementSpan["kind"], sql: string) {
+    const state = await api.transactionState(sessionId).catch(() => null);
+    if (!state) return;
+    setTx(state);
+    const change = kind === "dml" || kind === "ddl";
+    setUncommitted((list) => (!state.open ? [] : change ? [...list, sql] : list));
+  }
+
+  /** Opens the differences between the shown result and the previous run of its statement,
+   *  rows matched by the table's key when the grid could edit them (the same rule). */
+  async function compareShown() {
+    const result = shown;
+    if (!result?.columns || result.jobId === null) return;
+    const sessionId = await ensureSession();
+    if (sessionId === null) return;
+    const source = await (editTarget(result)?.load() ?? Promise.resolve(null)).catch(() => null);
+    const meta = source ? editMeta(source, result.columns, connection.virtual_keys ?? []) : null;
+    const key = meta && "key" in meta ? meta.key : null;
+    try {
+      await compare.open(sessionId, result.jobId, key, tab.database ?? null);
+    } catch (e) {
+      onError(toCommandError(e).message);
+    }
   }
 
   async function refreshTx(sessionId: number) {
@@ -1118,11 +1199,12 @@ export function QueryTab({
       return forget(source, () => sources.current.delete(result.sql));
     };
     return {
-      connection,
+      // The saved connection: a tab made read-only says so instead of blaming the connection.
+      connection: saved,
       database: tab.database,
       key: viewer ? `table:${tab.table}` : `sql:${result.sql}`,
       quiet: !viewer,
-      readOnly: null,
+      readOnly: tab.readOnly ? msg("the tab is read-only") : null,
       load,
       session: sideSession,
       onSaved: (undo) => {
@@ -1146,6 +1228,8 @@ export function QueryTab({
   useEffect(() => {
     if (!tx?.open) {
       setTxSince(null);
+      setUncommitted([]);
+      setPendingOpen(false);
       warned.current = false;
       return;
     }
@@ -1233,6 +1317,22 @@ export function QueryTab({
             </button>
           )}
           <ConnectionChip connection={connection} database={tab.database ?? null} schema={catalog?.default_schema ?? null} />
+          <button
+            className={connection.read_only ? "toggled" : ""}
+            onClick={() => onChange({ readOnly: !tab.readOnly })}
+            disabled={saved.read_only}
+            aria-label={t("Read-only")}
+            aria-pressed={connection.read_only}
+            title={t(
+              saved.read_only
+                ? "The connection is read-only"
+                : tab.readOnly
+                  ? "Read-only in this tab: click to allow changes again"
+                  : "Make this tab read-only, without changing the connection",
+            )}
+          >
+            {toolbar.label("lock", t("Read-only"))}
+          </button>
           {showTx && <span className="divider" />}
           {showTx && (
           <button
@@ -1272,12 +1372,15 @@ export function QueryTab({
             </>
           )}
           {tx?.open && (
-            <span
+            <button
+              type="button"
               className={`tx-open${txLong ? " long" : ""}`}
+              onClick={() => setPendingOpen(true)}
               title={t("A transaction is open: changes are not visible to others yet, and locks are held")}
             >
               ● {t("Transaction open {time}", { time: elapsed(txAge) })}
-            </span>
+              {uncommitted.length > 0 && ` · ${plural(uncommitted.length, "{n} change", "{n} changes")}`}
+            </button>
           )}
           {toolbar.visible.files && (
             <>
@@ -1377,6 +1480,18 @@ export function QueryTab({
         />
         <div className="splitter" onMouseDown={startResize} />
         <div className="results">
+          {tab.resultSource && (
+            <ResultSourceBar
+              source={tab.resultSource}
+              connection={connection}
+              onReloaded={(source) => {
+                onChange({ resultSource: source });
+                onNeedCatalog(true);
+                // The query shown runs again on the new rows.
+                if (lastPlanned.current.length > 0) void run("statement", false, lastPlanned.current);
+              }}
+            />
+          )}
           {blocked !== null && (
             <div className="notice warn">
               {t("{name} is read-only and this may modify data.", { name: connection.name })}
@@ -1433,6 +1548,7 @@ export function QueryTab({
               }}
               edit={editTarget(shown)}
               notes={notesScope(shown)}
+              chart={shownChart?.shown ? { config: shownChart.config, onConfig: (config) => setChart({ config }) } : null}
             />
           )}
         </div>
@@ -1440,6 +1556,7 @@ export function QueryTab({
           {shown && (
             <>
               <span>{describe(shown)}</span>
+              {rowsResult && <ChartToggle chart={!!shownChart?.shown} onChange={(on) => setChart({ shown: on })} />}
               {(shown.status.kind === "rows" || shown.status.kind === "affected") && (
                 <span className="muted">
                   {t(shown.status.kind === "rows" && !shown.status.finished ? "first rows in {time}" : "took {time}", {
@@ -1464,6 +1581,16 @@ export function QueryTab({
               {rowsResult && !exportBusy && (
                 <button className="link" onClick={() => setExportOpen(true)}>
                   {t("Export…")}
+                </button>
+              )}
+              {compare.kept(shown) && (
+                <button
+                  className="link"
+                  disabled={!compare.comparable(shown)}
+                  title={compare.comparable(shown) ? undefined : t("The columns changed since the previous run.")}
+                  onClick={() => void compareShown()}
+                >
+                  {t("Compare with previous run")}
                 </button>
               )}
             </>
@@ -1536,6 +1663,16 @@ export function QueryTab({
           initial={asking.initial}
           onRun={asking.resolve}
           onCancel={() => asking.resolve(null)}
+        />
+      )}
+      {pendingOpen && (
+        <PendingDialog
+          statements={uncommitted}
+          running={running}
+          onEnd={(commit) => {
+            setPendingOpen(false);
+            if (commit !== null) void endTransaction(commit);
+          }}
         />
       )}
       {guard && (

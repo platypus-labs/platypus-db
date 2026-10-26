@@ -7,7 +7,7 @@ exclude = ["vendor/tiberius"]
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.99"
-license = "MIT OR Apache-2.0"
+license = "AGPL-3.0-or-later"
 publish = false
 
 [workspace.dependencies]
@@ -33,16 +33,20 @@ platypus-schema = { path = "crates/platypus-schema" }
 platypus-store = { path = "crates/platypus-store" }
 platypus-tls = { path = "crates/platypus-tls" }
 platypus-docs = { path = "crates/platypus-docs" }
+platypus-local = { path = "crates/platypus-local" }
 
+aes = "=0.9.3"
 argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
 arrow-array = "60"
 arrow-cast = "60"
 arrow-csv = "60"
 arrow-ipc = "60"
 arrow-json = "60"
+arrow-row = "60"
 arrow-schema = "60"
 async-trait = "0.1"
 bytes = "1"
+cbc = { version = "=0.2.1", features = ["alloc"] }
 calamine = { version = "0.37", default-features = false }
 clap = { version = "4", features = ["derive", "env"] }
 criterion = "0.8"
@@ -73,6 +77,7 @@ tokio-postgres = "0.7"
 tokio-postgres-rustls = "0.14"
 tokio-util = "0.7"
 toml = "1"
+unicode-normalization = "0.1"
 url = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
 

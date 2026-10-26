@@ -28,6 +28,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 futures.workspace = true
 platypus-core.workspace = true
 platypus-docs.workspace = true
+platypus-local.workspace = true
 platypus-driver-adbc.workspace = true
 platypus-driver-odbc.workspace = true
 platypus-driver-oracle.workspace = true
@@ -62,4 +63,5 @@ zip = { version = "9", default-features = false, features = ["deflate"] }
 workspace = true
 
 [dev-dependencies]
+platypus-driver-duckdb = { workspace = true, features = ["testing"] }
 tempfile.workspace = true

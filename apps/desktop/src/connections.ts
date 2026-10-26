@@ -1,6 +1,6 @@
 /** Connection types (development, test, production) and what they change in the UI. */
-import { type ConnectionType, isEmbedded, type SavedConnection } from "./api";
-import { msg } from "./i18n";
+import { type ConnectionType, isEmbedded, type ParseNote, type SavedConnection } from "./api";
+import { msg, t } from "./i18n";
 
 export const CONNECTION_TYPES: { value: ConnectionType; label: string; color: string }[] = [
   { value: "dev", label: msg("Development"), color: "#2f9e44" },
@@ -18,6 +18,20 @@ export function connectionColor(c: SavedConnection | undefined): string | null {
  *  printed by a command. */
 export const asksPassword = (c: SavedConnection) =>
   !isEmbedded(c.driver) && !c.save_password && !c.pgpass && !c.password_command;
+
+/** What an imported or pasted connection needs before it can connect, or left out. */
+export function noteText(note: ParseNote): string {
+  switch (note.kind) {
+    case "windows_auth":
+      return t("Windows authentication is not supported: enter a SQL Server login to connect.");
+    case "entra_auth":
+      return t("Microsoft Entra ID (Azure AD) sign-in is not supported: enter a SQL Server login to connect.");
+    case "named_instance":
+      return t("Named instance {instance}: set the port it listens on.", { instance: note.instance });
+    case "ignored":
+      return t("Not used here: {keys}.", { keys: note.keys.join(", ") });
+  }
+}
 
 export const isProduction = (c: SavedConnection | undefined) => c?.connection_type === "prod";
 

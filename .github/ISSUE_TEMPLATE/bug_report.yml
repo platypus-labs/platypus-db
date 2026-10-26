@@ -1,0 +1,54 @@
+name: Bug report
+description: Something does not work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Security problems go through private reporting instead (see SECURITY.md).
+        Please remove hosts, users, passwords and data you cannot share from logs and screenshots.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a PostgreSQL connection
+        2. Run `select ...`
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: PlatypusDB version
+      description: From the installer's name or the system's list of installed apps.
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: database
+    attributes:
+      label: Database and version
+      placeholder: "PostgreSQL 17, MySQL 8.4, SQLite, ..."
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error messages, logs or screenshots
+      description: The error shown by the app, the activity log, or a screenshot.

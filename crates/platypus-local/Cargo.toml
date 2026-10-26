@@ -1,0 +1,24 @@
+[package]
+name = "platypus-local"
+description = "Analysis of result rows for PlatypusDB: column profiles, charts, diffs, DuckDB"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+arrow-array.workspace = true
+arrow-cast.workspace = true
+arrow-row.workspace = true
+arrow-schema.workspace = true
+duckdb = { workspace = true, features = ["vtab-arrow"] }
+platypus-core.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+platypus-driver-duckdb = { workspace = true, features = ["testing"] }
+
+[lints]
+workspace = true

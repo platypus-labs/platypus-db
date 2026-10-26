@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type CellInput, type FieldMeta, toCommandError } from "../../api";
 import type { Move } from "./CellEditor";
+import type { Box } from "./popupBox";
 import { t, plural } from "../../i18n";
 
 interface Props {
-  /** Where the popup goes, inside the grid. */
-  left: number;
-  top: number;
+  /** Where the popup goes, inside the grid, and its size. */
+  box: Box;
   /** A composite value (one row per field) rather than an array (one row per element). */
   composite: boolean;
   /** The column's type, e.g. `integer[]`. */
@@ -22,18 +22,23 @@ interface Props {
   onCancel: () => void;
 }
 
-export const LIST_W = 440;
-export const LIST_H = 300;
+/** The popup's size when the grid has room for it, and the least it shrinks to. */
+export const LIST_SIZE = { width: 440, height: 300 };
+export const LIST_MIN = { width: 280, height: 160 };
 
 /** The editor of a PostgreSQL array or composite value: its elements or fields one per row,
- *  each with its own NULL, or the whole literal as text. */
-export function ListEditor({ left, top, composite, type, fields, initial, typed, nullable, onCommit, onCancel }: Props) {
+ *  each with its own NULL, or the whole literal as text. A header names the type, the rows
+ *  scroll, and the actions stay at the bottom. */
+export function ListEditor({ box, composite, type, fields, initial, typed, nullable, onCommit, onCancel }: Props) {
   /** `null` while the value is being split. */
   const [items, setItems] = useState<(string | null)[] | null>(null);
   const [asText, setAsText] = useState(typed !== undefined);
   const [text, setText] = useState(typed ?? initial ?? "");
   const [problem, setProblem] = useState<string | null>(null);
   const done = useRef(false);
+  const rows = useRef<HTMLDivElement>(null);
+  /** An element was just added: its field takes the focus. */
+  const added = useRef(false);
   const element = composite ? null : type.replace(/\[\]$/, "");
 
   useEffect(() => {
@@ -43,11 +48,11 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
       return;
     }
     let live = true;
-    api.splitLiteral(composite, initial).then(
+    api.splitLiteral(composite, type, initial).then(
       (split) => {
         if (!live) return;
         if (split) setItems(split);
-        else setAsText(true); // nested arrays and the like: as text
+        else setAsText(true); // nested arrays, explicit bounds and the like: as text
       },
       () => live && setAsText(true),
     );
@@ -56,12 +61,19 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
     };
   }, []);
 
+  useEffect(() => {
+    if (!added.current) return;
+    added.current = false;
+    const inputs = rows.current?.querySelectorAll<HTMLInputElement>("input:not([type=checkbox])");
+    inputs?.[inputs.length - 1]?.focus();
+  }, [items?.length]);
+
   async function commit(value?: CellInput) {
     if (done.current) return;
     try {
       const input: CellInput = value ?? {
         kind: "value",
-        text: asText || !items ? text : await api.joinLiteral(composite, items),
+        text: asText || !items ? text : await api.joinLiteral(composite, type, items),
       };
       done.current = true;
       onCommit(input, null);
@@ -79,11 +91,11 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
     setProblem(null);
     try {
       if (!asText) {
-        if (items) setText(await api.joinLiteral(composite, items));
+        if (items) setText(await api.joinLiteral(composite, type, items));
         setAsText(true);
         return;
       }
-      const split = await api.splitLiteral(composite, text);
+      const split = await api.splitLiteral(composite, type, text);
       if (!split) {
         setProblem(t(composite ? "Not a composite value: (a,b,…)" : "Not a one-dimensional array: {a,b,…}"));
         return;
@@ -108,19 +120,28 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
 
   const edit = (change: (all: (string | null)[]) => (string | null)[]) => setItems((all) => all && change(all));
   const set = (i: number, value: string | null) => edit((all) => all.map((v, j) => (j === i ? value : v)));
+  /** The focus moves to the rows before the element's row goes, so that the popup keeps it
+   *  and does not take the removal for a click elsewhere. */
+  const remove = (i: number) => {
+    rows.current?.focus();
+    edit((all) => all.filter((_, j) => j !== i));
+  };
 
   return (
     <div
       className="cell-popup list-editor"
       // Focusable, so a click on its header or padding keeps the focus inside it.
       tabIndex={-1}
-      style={{ left, top, width: LIST_W, height: LIST_H }}
+      style={box}
       onKeyDown={onKeyDown}
       onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && void commit()}
     >
-      <div className="list-editor-head muted small">
-        <span>{type}</span>
-        {!asText && items && !composite && <span>{plural(items.length, "{n} element", "{n} elements")}</span>}
+      <div className="cell-popup-head list-editor-head muted small">
+        <span className="list-editor-type" title={type}>
+          {type}
+          {!asText && items && !composite && ` · ${plural(items.length, "{n} element", "{n} elements")}`}
+        </span>
+        <span>{t("Ctrl+Enter to apply")}</span>
       </div>
       {asText ? (
         <textarea
@@ -134,10 +155,10 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
           }}
         />
       ) : (
-        <div className="list-editor-rows" tabIndex={-1}>
+        <div className="list-editor-rows" ref={rows} tabIndex={-1}>
           {items?.map((value, i) => (
             <div className="list-editor-row" key={i}>
-              <span className="list-editor-label" title={fields[i]?.data_type ?? element ?? undefined}>
+              <span className="list-editor-label" title={(composite ? fields[i]?.data_type : element) ?? undefined}>
                 {composite ? (fields[i]?.name ?? `#${i + 1}`) : `[${i + 1}]`}
               </span>
               <input
@@ -157,7 +178,7 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
                   className="icon"
                   title={t("Remove the element")}
                   aria-label={t("Remove the element")}
-                  onClick={() => edit((all) => all.filter((_, j) => j !== i))}
+                  onClick={() => remove(i)}
                 >
                   ×
                 </button>
@@ -165,7 +186,14 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
             </div>
           ))}
           {!composite && items && (
-            <button type="button" className="list-editor-add" onClick={() => edit((all) => [...all, ""])}>
+            <button
+              type="button"
+              className="list-editor-add"
+              onClick={() => {
+                added.current = true;
+                edit((all) => [...all, ""]);
+              }}
+            >
               {t("+ Element")}
             </button>
           )}
@@ -182,13 +210,14 @@ export function ListEditor({ left, top, composite, type, fields, initial, typed,
           </button>
         )}
         <span className="spacer" />
-        <span className="muted small">{t("Ctrl+Enter to apply")}</span>
-        <button type="button" onClick={cancel}>
-          {t("Cancel")}
-        </button>
-        <button type="button" className="primary" onClick={() => void commit()}>
-          {t("Apply")}
-        </button>
+        <span className="cell-popup-end">
+          <button type="button" onClick={cancel}>
+            {t("Cancel")}
+          </button>
+          <button type="button" className="primary" onClick={() => void commit()}>
+            {t("Apply")}
+          </button>
+        </span>
       </div>
     </div>
   );

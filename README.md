@@ -5,6 +5,12 @@
   </picture>
 </h1>
 
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue" alt="License: AGPL-3.0-or-later" /></a>
+  <a href="https://github.com/PaoloCisly/platypus-db/releases/latest"><img src="https://img.shields.io/badge/release-v0.2.0-green" alt="Latest release: v0.2.0" /></a>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platforms: Windows, macOS, Linux" />
+</p>
+
 PlatypusDB is a desktop SQL client for developers, DBAs and analysts who work with several
 databases in a day. One small app runs queries, browses and edits data, designs tables,
 explains slow statements and documents schemas, and keeps production connections clearly apart
@@ -27,7 +33,10 @@ servers that speak the PostgreSQL protocol: **CockroachDB**, **YugabyteDB**, **T
 - [Agents (MCP) and the CLI](#agents-mcp-and-the-cli)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Performance](#performance)
+- [Development](#development)
 - [Contributing](#contributing)
+- [Security](#security)
+- [License](#license)
 
 ## At a glance
 
@@ -92,13 +101,24 @@ and shows the ODBC drivers and data sources of the system.
 
 - A new connection starts from a grid of database logos, with a search on top (`Enter` takes
   the first match); the `+` of the navigator opens it, and so does a right-click on a connection
-  or below the list. Paste a `postgres://`, `mysql://`, `sqlserver://`, `clickhouse://`,
-  `libsql://` or `mongodb://` URL to fill the form.
+  or below the list. Or paste a connection under the logos: a URL (`postgres://`,
+  `mysql://`, `sqlserver://`, `clickhouse://`, `libsql://`, `mongodb://`), a JDBC URL or an
+  ADO.NET / ODBC string (`Server=tcp:db,1433;Database=shop;User Id=sa;…`), and the form opens
+  filled in for that database. The driver is set by the choice: *Back* returns to the logos, and a
+  URL pasted in the form for another database offers to go back. Windows logins and SQL Server
+  named instances without a port are pointed out. *Copy as URL* in a connection's menu copies
+  its URL without the password.
 - **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`, with their
   folders. A DBeaver project export (`.dbp`) brings its projects too, optionally gathered in a
-  folder of the project rail.
+  folder of the project rail. From DBeaver (a `.dbp` or a workspace) the saved user names and
+  passwords come along too, SSH tunnel ones included: the passwords go to the keychain (or the
+  master-password vault) like typed ones. Untick *Import saved users and passwords* to bring
+  only the user names. Passwords DBeaver protects with its own master password cannot be read;
+  those connections ask for theirs on first use, as do the ones of the other tools.
 - **Folders**: connections inside a project go in nested folders (drag them, or *Move to
   folder*); projects in the rail go in folders too, by dropping one project on another.
+  Connections and folders keep the order you give them: drag one above or below another, or
+  press Alt+Up / Alt+Down; a connection dropped onto another makes a new folder of the two.
 - **TLS** with libpq `sslmode` semantics, custom CAs, and client certificates for PostgreSQL and
   MySQL.
 - **SSH tunnels** with a password, a key or the SSH agent, optionally through a jump host;
@@ -208,6 +228,25 @@ and shows the ODBC drivers and data sources of the system.
 - Read-only results can refresh every few seconds. Dates, time zone, digit grouping and
   relative times follow the Settings.
 
+### Data analysis
+
+- **Charts**: a result switches between the grid and a chart (bars, lines, scatter, pie) from
+  the status bar. The columns and the aggregation are chosen beside the chart and kept with
+  the tab for each statement; the chart exports as PNG or SVG. It is drawn from the rows
+  loaded, with at most 2,000 points per series and 50 categories (the rest in *Other*).
+- **Column statistics**: resting the mouse on a column header shows its NULLs, distinct
+  values, minimum and maximum, and a small histogram (numbers and dates) or the most frequent
+  values (text), over the rows loaded.
+- **Query with SQL** (the result's menu and the command palette): the rows, loaded in full up
+  to the memory limit, become the table `result` of an in-memory DuckDB (and `r1`, `r2`, …
+  for each result of the tab), queried in a new SQL editor with completion, export and
+  charts. *Reload from result* copies them again.
+- **Compare with previous run**: when a statement runs again, its result can be compared with
+  the previous one: rows added, removed and changed (matched by the table's key when it has
+  one), with the old value of each changed cell.
+
+![A result as a bar chart](docs/screenshots/chart.png)
+
 ### Data editor
 
 ![Pending changes in the data editor](docs/screenshots/data-editor.png)
@@ -220,6 +259,16 @@ and shows the ODBC drivers and data sources of the system.
   otherwise the grid says why it is read-only. Results of a query that reads one table edit
   the same way, with computed columns read-only.
 - Paste cells from a spreadsheet or CSV over the grid or as new rows.
+- **Edit a whole selection** from the grid's menu (Edit selection): one value, NULL or DEFAULT
+  in every cell, checked against each column's type; fill down from the first row
+  (`Ctrl+Alt+D`, `Ctrl+Shift+D` on macOS); find and replace in the text cells, as typed or
+  with a regular expression, with the count shown before applying (an expression too slow is
+  stopped); a number sequence down each number column. Only the rows loaded in the grid
+  change. Cells that cannot take a value are listed and left as they are; the rest become
+  pending changes like typed ones, so you preview, save or undo them together.
+- **Load a cell from a file** (grid menu or the cell editor's `…` button): bytes into binary
+  columns, UTF-8 text into text columns; files over 50 MB ask first, files over 200 MB are
+  refused.
 - Foreign keys show the name of the row they point to and edit with a list of those rows; the
   column that gives that name is the table's row label.
 - PostgreSQL arrays and composite values edit one element or field per line.
@@ -299,10 +348,14 @@ methods and fields. `mongodb+srv://` and connection string options go in the Dat
 ### Transactions and safety
 
 - Auto-commit or manual commit with Commit/Rollback; an open transaction shows how long it has
-  been open and warns after a while (10 minutes by default).
+  been open and warns after a while (10 minutes by default). Clicking it lists the changes that
+  wait for Commit, with Commit and Rollback.
 - An `UPDATE` or `DELETE` without `WHERE`, or a `TRUNCATE`, asks first and says about how many
   rows it changes.
 - On production connections every change is listed and confirmed before it runs.
+- The lock button makes one editor tab read-only without changing the saved connection.
+- Settings › Safety can add a `LIMIT` (`TOP` on SQL Server) to queries run from the editor that
+  have no row cap of their own; off by default.
 
 ### Workspace
 
@@ -473,6 +526,7 @@ shortcuts.
 | `F2`, `Enter`, typing | Edit the cell (data viewer, one-table queries) |
 | `Insert`, `Ctrl+D`, `Delete` | Add, duplicate, delete rows |
 | `Shift+Delete` | Set the selected cells to NULL |
+| `Ctrl+Alt+D` (macOS: `⌃⇧D`) | Fill the selected cells down from the first row |
 | `Ctrl+V`, `Ctrl+Shift+V` | Paste over the cells / as new rows |
 | `Ctrl+S`, `Ctrl+Z` | Save / undo data changes (grid focused) |
 | `Ctrl+Shift+C` | Copy the selection with headers |
@@ -493,12 +547,14 @@ shortcuts.
 
 Windows 11, Ryzen 7 9700X; details and method in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
-## Contributing
+## Development
 
 What comes next is planned in [docs/ROADMAP.md](docs/ROADMAP.md), and the working rules are in
-[CLAUDE.md](CLAUDE.md). [docs/EXTENDING.md](docs/EXTENDING.md) explains how features plug in
-(actions, tab kinds, settings, driver capabilities); [docs/RELEASING.md](docs/RELEASING.md)
+[CONTRIBUTING.md](CONTRIBUTING.md). [docs/EXTENDING.md](docs/EXTENDING.md) explains how features
+plug in (actions, tab kinds, settings, driver capabilities); [docs/RELEASING.md](docs/RELEASING.md)
 how releases are made, and [docs/MVP_PLAN.md](docs/MVP_PLAN.md) the scope of the first release.
+All the documents are listed in [docs/README.md](docs/README.md), and the changes of each
+release in [CHANGELOG.md](CHANGELOG.md).
 
 ### Layout
 
@@ -525,12 +581,16 @@ crates/
   platypus-store/          connections (TOML + OS keychain), imports, query history and catalog notes (SQLite)
   platypus-transfer/       streaming exports, imports, copies between databases, fake rows
   platypus-docs/           schema documentation: Markdown, HTML and Mermaid ER diagrams
+  platypus-local/          analysis of results in DuckDB: column profiles, charts, run diffs
   platypus-conformance/    integration suite run on every driver
   platypus-cli/            `platypus` CLI for exercising the core, and for agents (`--connection`)
   platypus-mcp/            `platypus-mcp`, the MCP server for agents (stdio, rmcp)
 apps/desktop/              Tauri app: React UI in src/, Rust shell in src-tauri/
 docker/                    dev databases with seed data
 samples/                   the SQLite sample database (wildlife.sql)
+scripts/                   build-windows.ps1 (installers; build-windows.cmd runs it), sample-db.mjs
+vendor/                    tiberius, patched for the SQL Server driver
+site/                      static presentation page
 ```
 
 ### Requirements
@@ -614,3 +674,22 @@ docker compose -f docker/compose.yml --profile mongo up -d --wait
 Each database has `customers`, `orders`, a `customer_totals` view, a `type_zoo` table with one
 column per notable type, and a 1M-row `big_table` for streaming and scrolling benchmarks.
 These credentials are for local test containers only.
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome: open an
+[issue](https://github.com/PaoloCisly/platypus-db/issues) first for anything larger than a small
+fix. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build, test and submit a change. Everyone
+taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Security
+
+Please report vulnerabilities privately, not in a public issue: see [SECURITY.md](SECURITY.md).
+
+## License
+
+PlatypusDB is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE)
+(AGPL-3.0-or-later). You can use, study, change and share it freely; if you distribute it, or
+run a changed version as a service for others, you must release your source code under the
+same license. Third-party code and assets keep their own licenses:
+see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

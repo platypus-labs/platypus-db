@@ -13,11 +13,12 @@ export function projectKey(id: string | null | undefined): string {
   return id ?? "all";
 }
 
-/** The connections a project lists, in the store's order; all of them for `null`. */
+/** The connections a project lists, in its order; all of them for `null`, in the saved
+ *  list's order. */
 export function connectionsOf(project: Project | null, all: SavedConnection[]): SavedConnection[] {
   if (!project) return all;
-  const members = new Set(project.connections);
-  return all.filter((c) => members.has(c.id));
+  const byId = new Map(all.map((c) => [c.id, c]));
+  return project.connections.flatMap((id) => byId.get(id) ?? []);
 }
 
 /** The project active at the last start, if it still exists. */

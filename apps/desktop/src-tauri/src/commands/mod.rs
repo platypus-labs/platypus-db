@@ -5,6 +5,7 @@
 #![allow(clippy::needless_pass_by_value)]
 
 pub mod agents;
+pub mod analysis;
 pub mod catalog;
 pub mod cli;
 pub mod connections;
@@ -51,7 +52,9 @@ use platypus_driver_odbc::OdbcDriver;
 use platypus_driver_oracle::OracleDriver;
 use platypus_driver_pg::PgDriver;
 use platypus_driver_sqlite::SqliteDriver;
-use platypus_store::{CatalogStore, ConnectionStore, HistoryStore, SettingsStore, VaultSecrets};
+use platypus_store::{
+    CatalogStore, ConnectionStore, HistoryStore, ImportedSecrets, SettingsStore, VaultSecrets,
+};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -77,11 +80,18 @@ pub struct AppState {
     scripts: Result<PathBuf, String>,
     sessions: Mutex<HashMap<u64, Session>>,
     jobs: Mutex<HashMap<u64, Arc<Job>>>,
+    /// "Query with SQL": the in-memory databases of the temporary connections, by their id.
+    result_dbs: Mutex<HashMap<Uuid, analysis::sql::ResultDb>>,
     exports: Mutex<HashMap<u64, Arc<Export>>>,
     /// Scripts running in a command-line client, by the editor's run id: sending stops one.
     clis: Mutex<HashMap<u64, tokio::sync::oneshot::Sender<()>>>,
+    /// "Compare with previous run": the rows of each session's previous run.
+    previous_runs: Mutex<HashMap<u64, analysis::diff::PreviousRun>>,
     /// Documentation exports running, by id: cancelling one stops it before the file is written.
     docs: Mutex<HashMap<u64, tokio_util::sync::CancellationToken>>,
+    /// The passwords of the last file read for an import, by connection id: they stay here,
+    /// out of the page, until the import is saved.
+    import_secrets: Mutex<HashMap<Uuid, ImportedSecrets>>,
     /// What the query manager shows.
     query_log: Arc<QueryLog>,
     next_id: AtomicU64,
@@ -122,9 +132,12 @@ impl AppState {
             scripts,
             sessions: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
+            result_dbs: Mutex::new(HashMap::new()),
             exports: Mutex::new(HashMap::new()),
             clis: Mutex::new(HashMap::new()),
+            previous_runs: Mutex::new(HashMap::new()),
             docs: Mutex::new(HashMap::new()),
+            import_secrets: Mutex::new(HashMap::new()),
             query_log: Arc::default(),
             next_id: AtomicU64::new(1),
         }
@@ -279,5 +292,22 @@ pub fn app_info() -> AppInfo {
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
         devtools: std::env::var_os("PLATYPUS_DEVTOOLS_PORT").is_some(),
+    }
+}
+
+#[cfg(test)]
+impl AppState {
+    /// A state with nothing opened (no connections file, history, catalog, settings or scripts),
+    /// for commands that only use sessions and results.
+    pub(crate) fn for_tests() -> Self {
+        let none = "not opened in tests";
+        Self::new(
+            (Err(none.to_owned()), None),
+            Err(none.to_owned()),
+            Err(none.to_owned()),
+            Err(none.to_owned()),
+            Err(none.to_owned()),
+            Err(none.to_owned()),
+        )
     }
 }

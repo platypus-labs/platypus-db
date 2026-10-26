@@ -79,6 +79,30 @@ export function setCells(state: EditState, changes: CellChange[]): EditState {
   return { ...state, inserts: inserts ?? state.inserts, updates: updates ?? state.updates };
 }
 
+/**
+ * `changes` worked out against `base`, moved to the grid rows their rows are at in `state`:
+ * rows added or dropped above them meanwhile shift them. A result row is found by its index;
+ * a new row by its cells, so changes of a new row that was dropped or edited meanwhile are
+ * left out, as are those of result rows deleted meanwhile.
+ */
+export function rebase(base: EditState, state: EditState, changes: readonly CellChange[]): CellChange[] {
+  if (base === state) return [...changes];
+  const n = state.inserts.length;
+  const newRows = new Map(state.inserts.map((cells, i) => [cells, i]));
+  const out: CellChange[] = [];
+  for (const change of changes) {
+    const ref = rowRef(base, change.gridRow);
+    let gridRow: number | undefined;
+    if ("row" in ref) gridRow = state.deletes.has(ref.row) ? undefined : ref.row + n;
+    else {
+      const cells = base.inserts[ref.insert];
+      gridRow = cells && newRows.get(cells);
+    }
+    if (gridRow !== undefined) out.push(gridRow === change.gridRow ? change : { ...change, gridRow });
+  }
+  return out;
+}
+
 /** Adds new rows on top, in the order given. */
 export function addRows(state: EditState, rows: Cells[]): EditState {
   return { ...state, inserts: [...rows, ...state.inserts] };

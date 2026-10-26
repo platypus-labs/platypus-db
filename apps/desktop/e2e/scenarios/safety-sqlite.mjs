@@ -1,6 +1,7 @@
 // Safety: a DELETE without WHERE asks first with the number of rows; on a production
 // connection every change asks first, the data editor shows its SQL before saving, and an
-// open transaction shows its age and warns when it stays open too long.
+// open transaction shows its age, warns when it stays open too long and lists its changes.
+// A query without a row cap gets the automatic LIMIT, and a tab made read-only stops changes.
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -36,7 +37,7 @@ ${type ? `connection_type = "${type}"` : ""}
     `version = 1\n${connection(6, "Dev db", "dev.db", null)}${connection(7, "Prod db", "prod.db", "prod")}`,
   );
   // About a second, so the warning shows without waiting minutes.
-  writeFileSync(join(dir, "settings.toml"), "[safety]\ntransaction_warning_minutes = 0.02\n");
+  writeFileSync(join(dir, "settings.toml"), "[safety]\ntransaction_warning_minutes = 0.02\nauto_limit = 2\n");
 }
 
 async function openEditor(page, name) {
@@ -63,6 +64,22 @@ export default async function (page, { dir }) {
   await page.waitFor(`document.querySelector('.modal.guard') === null`);
   const dev = new DatabaseSync(join(dir, "dev.db"));
   assert.equal(dev.prepare("SELECT count(*) AS n FROM t").get().n, 3);
+
+  // A query without a row cap reads at most `safety.auto_limit` rows; one with a cap keeps it.
+  await runSql(page, "SELECT * FROM t");
+  await page.waitFor(`${status} === 'first 2 rows (automatic LIMIT)'`, 15_000);
+  await runSql(page, "SELECT * FROM t LIMIT 3");
+  await page.waitFor(`${status} === '3 rows'`, 15_000);
+
+  // Read-only for this tab: a change stops at the notice, and the toggle turns it off.
+  const readOnly = `${visibleTab}.querySelector('.toolbar button[aria-label="Read-only"]')`;
+  await page.eval(`${readOnly}.click()`);
+  await page.waitFor(`${readOnly}.getAttribute('aria-pressed') === 'true'`);
+  await runSql(page, "DELETE FROM t WHERE id = 1");
+  await page.waitFor(`/is read-only and this may modify data/.test(${visibleTab}.querySelector('.notice.warn')?.textContent ?? '')`);
+  assert.equal(dev.prepare("SELECT count(*) AS n FROM t").get().n, 3);
+  await page.eval(`${readOnly}.click()`);
+  await page.waitFor(`${readOnly}.getAttribute('aria-pressed') === 'false'`);
   dev.close();
 
   // Production: every change is listed first, then runs in the open transaction.
@@ -77,9 +94,17 @@ export default async function (page, { dir }) {
   await page.waitFor(`/Transaction open \\d+:\\d\\d/.test(${visibleTab}.querySelector('.tx-open')?.textContent ?? '')`);
   await page.waitFor(`${visibleTab}.querySelector('.tx-open.long') !== null`, 10_000);
 
+  // The open transaction lists the change waiting for Commit.
+  assert.match(await page.eval(`${visibleTab}.querySelector('.tx-open').textContent`), /· 1 change$/);
+  await page.eval(`${visibleTab}.querySelector('.tx-open').click()`);
+  await page.waitFor(`document.querySelector('.modal.guard h2')?.textContent === 'Pending transaction'`);
+  assert.match(await page.eval(`document.querySelector('.guard-statements').textContent`), /UPDATE t SET v = 'z' WHERE id = 1/);
+  await page.eval(`${modalButton("Close")}.click()`);
+  await page.waitFor(`document.querySelector('.modal.guard') === null`);
+
   // The data editor shows its SQL before saving on production.
   await runSql(page, "SELECT * FROM t");
-  await page.waitFor(`${status} === '3 rows'`, 15_000);
+  await page.waitFor(`${status} === 'first 2 rows (automatic LIMIT)'`, 15_000);
   // Keys before the grid knows it is editable are ignored: "+ Row" turns on when it is.
   await page.waitFor(`${visibleTab}?.querySelector('.edit-bar:not([hidden]) button')?.disabled === false`, 15_000);
   await page.eval(`${visibleTab}.querySelector('.grid-scroll').focus()`);

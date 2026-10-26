@@ -52,6 +52,35 @@ impl Driver for DuckDbDriver {
     }
 }
 
+/// An in-memory database of its own, kept while this handle or a connection to it lives.
+/// Sessions reach it at [`memory_path`]; `:memory:` alone is the one the app's sessions share.
+pub struct MemoryDatabase {
+    _database: Arc<database::Database>,
+}
+
+impl std::fmt::Debug for MemoryDatabase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MemoryDatabase").finish_non_exhaustive()
+    }
+}
+
+/// Where sessions connect to the in-memory database `name`.
+#[must_use]
+pub fn memory_path(name: &str) -> String {
+    format!(":memory:{name}")
+}
+
+/// Opens the in-memory database `name`, or finds it open, with a connection to fill it.
+pub fn memory_database(name: &str) -> Result<(MemoryDatabase, duckdb::Connection)> {
+    let (database, conn) = database::connect(&memory_path(name))?;
+    Ok((
+        MemoryDatabase {
+            _database: database,
+        },
+        conn,
+    ))
+}
+
 #[derive(Debug)]
 pub struct DuckDbConnection {
     commands: std_mpsc::Sender<Command>,

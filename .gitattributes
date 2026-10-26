@@ -2,4 +2,10 @@
 *.png binary
 *.ico binary
 *.icns binary
+*.woff2 binary
+*.dbp binary
 graphify-out/graph.json merge=graphify
+
+vendor/** linguist-vendored
+crates/platypus-docs/assets/** linguist-vendored
+graphify-out/** linguist-generated

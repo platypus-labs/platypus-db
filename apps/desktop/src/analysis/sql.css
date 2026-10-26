@@ -1,0 +1,14 @@
+/* "Query with SQL": the loading dialog and the bar of the tab it opens. */
+.load-rows .result-loading {
+  position: relative;
+  margin: 8px 0;
+}
+.result-source {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.result-source button {
+  margin-left: auto;
+}

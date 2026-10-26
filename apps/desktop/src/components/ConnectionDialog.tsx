@@ -12,20 +12,22 @@ import {
   type ConnectionType,
   type DriverKind,
   type NetworkProfile,
+  type ParseNote,
+  type ParsedConnection,
   type PasswordInput,
   type Project,
   type SavedConnection,
   type SavedInit,
   type ServerInfo,
-  type SslMode,
   VENDOR_DRIVERS,
 } from "../api";
 import { AgentAccessField, withEffectiveAgentAccess } from "../agents/access";
-import { CONNECTION_TYPES } from "../connections";
+import { CONNECTION_TYPES, noteText } from "../connections";
+import { looksLikeConnection, withParsed } from "../connectionUrl";
 import { toggled } from "../sets";
 import { basename } from "../workspace";
-import { DriverPicker } from "./DriverPicker";
-import { NetworkFields, SSL_MODES, sshSecretIds, sshSecretsOf } from "./NetworkFields";
+import { DriverIcon, DriverPicker, driverName } from "./DriverPicker";
+import { NetworkFields, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 import { NetworkProfileDialog, newNetworkProfile } from "./NetworkProfileDialog";
 import { t, msg } from "../i18n";
 
@@ -84,87 +86,6 @@ const FILES: Record<"sqlite" | "duckdb", { name: string; extensions: string[]; e
 
 const EMPTY_INIT: SavedInit = { schema: null, time_zone: null, statements: "" };
 
-const SCHEMES: Record<string, DriverKind> = {
-  "postgres:": "postgres",
-  "postgresql:": "postgres",
-  "mysql:": "mysql",
-  "mariadb:": "mysql",
-  "sqlserver:": "sqlserver",
-  "mssql:": "sqlserver",
-  "clickhouse:": "clickhouse",
-  "libsql:": "libsql",
-};
-
-/** The form fields of a pasted URL, and the password it carries. */
-type ParsedUrl = { conn: SavedConnection; password: string };
-
-/** Turns a `mongodb://` or `mongodb+srv://` connection string into form fields, as
- *  `ConnectionConfig::from_mongo_url` does: several hosts stay in the host field, and the
- *  options follow the database after a `?`. */
-function applyMongoUrl(conn: SavedConnection, input: string): ParsedUrl | null {
-  const match = /^mongodb(\+srv)?:\/\/([^/?]*)\/?([^?]*)\??(.*)$/.exec(input.trim());
-  if (!match) return null;
-  const [, srv, authority = "", path = "", query = ""] = match;
-  const at = authority.lastIndexOf("@");
-  const userinfo = at < 0 ? "" : authority.slice(0, at);
-  const hosts = authority.slice(at + 1);
-  if (!hosts) return null;
-  const colon = userinfo.indexOf(":");
-  const user = decodeURIComponent(colon < 0 ? userinfo : userinfo.slice(0, colon));
-  const password = colon < 0 ? "" : decodeURIComponent(userinfo.slice(colon + 1));
-  const single = /^(\[[^\]]+\]|[^:,]+):(\d+)$/.exec(hosts);
-  const options = srv ? ["srv=true"] : [];
-  let ssl_mode = conn.ssl_mode;
-  for (const pair of query.split("&").filter(Boolean)) {
-    if (pair === "tls=true" || pair === "ssl=true") ssl_mode = "verify-full";
-    else if (pair === "tls=false" || pair === "ssl=false") ssl_mode = "disable";
-    else options.push(pair);
-  }
-  const database = decodeURIComponent(path);
-  if (database && user && !query.includes("authSource=")) options.push(`authSource=${database}`);
-  return {
-    conn: {
-      ...conn,
-      driver: "mongo",
-      host: (single ? single[1]! : hosts).replace(/^\[|\]$/g, ""),
-      port: single ? Number(single[2]) : DEFAULT_PORTS.mongo,
-      database: options.length ? `${database}?${options.join("&")}` : database,
-      user,
-      ssl_mode,
-    },
-    password,
-  };
-}
-
-/** Turns a `postgres://`, `mysql://`, `sqlserver://`, `clickhouse://`, `libsql://` or `mongodb://` URL
- *  into form fields. */
-function applyUrl(conn: SavedConnection, input: string): ParsedUrl | null {
-  const mongo = applyMongoUrl(conn, input);
-  if (mongo) return mongo;
-  let url: URL;
-  try {
-    url = new URL(input.trim());
-  } catch {
-    return null;
-  }
-  const driver = SCHEMES[url.protocol];
-  if (!driver) return null;
-  const ssl = (url.searchParams.get("sslmode") ?? url.searchParams.get("ssl-mode")) as SslMode | null;
-  return {
-    conn: {
-      ...conn,
-      driver,
-      host: decodeURIComponent(url.hostname.replace(/^\[|\]$/g, "")) || conn.host,
-      port: url.port ? Number(url.port) : DEFAULT_PORTS[driver],
-      database: decodeURIComponent(url.pathname.replace(/^\//, "")),
-      user: decodeURIComponent(url.username),
-      ssl_mode: ssl && SSL_MODES.some((m) => m.value === ssl) ? ssl : conn.ssl_mode,
-    },
-    // Turso's URLs carry the token as a parameter.
-    password: decodeURIComponent(url.password) || (url.searchParams.get("authToken") ?? ""),
-  };
-}
-
 function passwordSource(c: SavedConnection): PasswordSource {
   if (c.password_command != null) return "command";
   if (c.pgpass) return "pgpass";
@@ -189,6 +110,14 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const [page, setPage] = useState<Page>("general");
   /** A new connection starts from the choice of the database. */
   const [picking, setPicking] = useState(!existing && !driverChosen);
+  /** The picker's tile (MariaDB rather than MySQL), for the header's logo. */
+  const [tile, setTile] = useState<string>();
+  /** The URL field of the picker, when going back to it with a URL for another database. */
+  const [pickerUrl, setPickerUrl] = useState("");
+  /** What a pasted URL could not carry over. */
+  const [notes, setNotes] = useState<ParseNote[]>([]);
+  /** A URL pasted in a new connection's form that is for another database. */
+  const [otherDriver, setOtherDriver] = useState<{ driver: DriverKind; text: string } | null>(null);
   const [savedSsh] = useState(() => sshSecretIds(existing ? initial.ssh : null));
   const [profiles, setProfiles] = useState<NetworkProfile[]>([]);
   /** The network profile being edited in its own dialog, and whether it is saved. */
@@ -284,14 +213,40 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     setConn((c) => ({ ...c, database: path, name: c.name || basename(path) }));
   }
 
+  /** The form of a URL read by the picker or pasted here. */
+  function fillFrom(parsed: ParsedConnection) {
+    setConn((c) => withParsed(c, parsed));
+    // A password typed for another server is not sent to this one.
+    setPassword(parsed.password ?? "");
+    setNotes(parsed.notes);
+    setOtherDriver(null);
+    setResult(null);
+  }
+
+  // A URL pasted in the name or host field fills the form. A new connection keeps the
+  // database it was opened for: a URL for another one offers to go back to the picker.
   function onPaste(e: React.ClipboardEvent<HTMLInputElement>) {
-    const parsed = applyUrl(conn, e.clipboardData.getData("text"));
-    if (parsed) {
-      e.preventDefault();
-      const next = parsed.conn;
-      setConn({ ...next, name: conn.name || next.database.split("?")[0] || next.host });
-      if (parsed.password) setPassword(parsed.password);
-    }
+    const text = e.clipboardData.getData("text").trim();
+    if (!looksLikeConnection(text)) return;
+    e.preventDefault();
+    api.parseConnectionUrl(text).then(
+      (parsed) => (!existing && parsed.driver !== conn.driver ? setOtherDriver({ driver: parsed.driver, text }) : fillFrom(parsed)),
+      (err) => setResult({ ok: false, message: toCommandError(err).message }),
+    );
+  }
+
+  /** Back to the choice of the database, with nothing of this form kept. */
+  function back(url = "") {
+    setConn(initial);
+    setPassword("");
+    setSshTyped({});
+    setResult(null);
+    setNotes([]);
+    setOtherDriver(null);
+    setPage("general");
+    setTile(undefined);
+    setPickerUrl(url);
+    setPicking(true);
   }
 
   const tab = (id: Page, label: string) => (
@@ -305,9 +260,15 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   if (picking) {
     return (
       <DriverPicker
-        onPick={(driver, preset) => {
+        initialUrl={pickerUrl}
+        onPick={(driver, preset, label) => {
           changeDriver(driver);
           setConn((c) => ({ ...c, ...preset }));
+          setTile(label);
+          setPicking(false);
+        }}
+        onParsed={(parsed) => {
+          fillFrom(parsed);
           setPicking(false);
         }}
         onClose={onClose}
@@ -328,7 +289,10 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
             if (tab === "general" || tab === "network" || tab === "init") setPage(tab);
           }}
         >
-          <h2>{t(existing ? "Edit connection" : "New connection")}</h2>
+          <div className="dialog-header">
+            <h2>{t(existing ? "Edit connection" : "New connection")}</h2>
+            <DriverIcon driver={conn.driver} label={tile} />
+          </div>
           <div className="dialog-tabs" role="tablist">
             {tab("general", t("General"))}
             {server && !adbcProfile && tab("network", `${t("Network")}${networkSet ? " ●" : ""}`)}
@@ -344,32 +308,35 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                 value={conn.name}
                 onChange={(e) => set("name", e.target.value)}
                 onPaste={onPaste}
-                placeholder={t("My database — or paste a postgres://, mysql:// or mongodb:// URL")}
+                placeholder={t("My database — or paste a connection URL")}
               />
             </label>
 
             <div className="row">
-              <label className="field">
-                <span>{t("Driver")}</span>
-                <select value={conn.driver} onChange={(e) => changeDriver(e.target.value as DriverKind)}>
-                  <option value="postgres">PostgreSQL</option>
-                  <option value="mysql">MySQL / MariaDB</option>
-                  <option value="sqlite">SQLite</option>
-                  <option value="duckdb">DuckDB</option>
-                  <option value="sqlserver">SQL Server</option>
-                  <option value="clickhouse">ClickHouse</option>
-                  <option value="libsql">libSQL / Turso</option>
-                  <option value="mongo">MongoDB</option>
-                  <option value="snowflake">Snowflake</option>
-                  <option value="bigquery">BigQuery</option>
-                  <option value="databricks">Databricks</option>
-                  <option value="trino">Trino</option>
-                  <option value="adbc">{t("Other ADBC driver")}</option>
-                  <option value="oracle">Oracle</option>
-                  <option value="db2">IBM Db2</option>
-                  <option value="odbc">{t("Other ODBC driver")}</option>
-                </select>
-              </label>
+              {/* A new connection's database is chosen in the picker: Back changes it. */}
+              {existing && (
+                <label className="field">
+                  <span>{t("Driver")}</span>
+                  <select value={conn.driver} onChange={(e) => changeDriver(e.target.value as DriverKind)}>
+                    <option value="postgres">PostgreSQL</option>
+                    <option value="mysql">MySQL / MariaDB</option>
+                    <option value="sqlite">SQLite</option>
+                    <option value="duckdb">DuckDB</option>
+                    <option value="sqlserver">SQL Server</option>
+                    <option value="clickhouse">ClickHouse</option>
+                    <option value="libsql">libSQL / Turso</option>
+                    <option value="mongo">MongoDB</option>
+                    <option value="snowflake">Snowflake</option>
+                    <option value="bigquery">BigQuery</option>
+                    <option value="databricks">Databricks</option>
+                    <option value="trino">Trino</option>
+                    <option value="adbc">{t("Other ADBC driver")}</option>
+                    <option value="oracle">Oracle</option>
+                    <option value="db2">IBM Db2</option>
+                    <option value="odbc">{t("Other ODBC driver")}</option>
+                  </select>
+                </label>
+              )}
               <label className="field">
                 <span>{t("Type")}</span>
                 <select
@@ -442,7 +409,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                 <div className="row">
                   <label className="field grow">
                     <span>{t("Host")}</span>
-                    <input required value={conn.host} onChange={(e) => set("host", e.target.value)} />
+                    <input required value={conn.host} onChange={(e) => set("host", e.target.value)} onPaste={onPaste} />
                   </label>
                   <label className="field port">
                     <span>{t("Port")}</span>
@@ -658,6 +625,22 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
             </label>
           </div>
 
+          {otherDriver && (
+            <div className="notice warn url-other" role="status">
+              <span>{t("This URL is for {driver}: go back to choose it.", { driver: driverName(otherDriver.driver) })}</span>
+              <button type="button" onClick={() => back(otherDriver.text)}>
+                {t("Back")}
+              </button>
+            </div>
+          )}
+          {notes.length > 0 && (
+            <div className="notice warn url-notes" role="status">
+              {notes.map((note) => (
+                <div key={note.kind}>{noteText(note)}</div>
+              ))}
+            </div>
+          )}
+
           {result && (
             <div className={result.ok ? "notice ok" : "notice error"}>
               {result.ok
@@ -669,6 +652,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           )}
 
           <div className="actions">
+            {!existing && (
+              <button type="button" onClick={() => back()} disabled={busy} title={t("Choose another database; this form is cleared")}>
+                {t("Back")}
+              </button>
+            )}
             <button type="button" onClick={test} disabled={busy}>
               {t("Test connection")}
             </button>

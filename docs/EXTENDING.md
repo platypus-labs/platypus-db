@@ -12,7 +12,9 @@ a small separate change rather than adding feature logic to a shared file.
 `apps/desktop/src-tauri/src/commands/` has one module per area: `connections`, `query`,
 `meta`, `data`, `grid`, `summary`, `transactions`, `export`, `sql`, `history`, `files` and
 `settings`. Shared state
-(`AppState`, sessions, `live`) is in `commands/mod.rs`.
+(`AppState`, sessions, `live`) is in `commands/mod.rs`. The analysis commands
+(`commands/analysis/`) read a result's rows with `analysis::loaded`; the computing is in the
+pure crate `platypus-local`.
 
 To add commands:
 1. Create `commands/<area>.rs`.
@@ -271,7 +273,10 @@ Version 5 added folders (`connections/folders.rs`): a project's `folders` (`id`,
 The projects' commands are in `commands/projects.rs`: `list_projects`, `save_project`,
 `delete_project`, `set_project_membership` and `project_initials`; for folders
 `create_connection_folder`, `rename_connection_folder`, `move_connection_folder`,
-`delete_connection_folder` and `place_connection`, and for the rail `list_project_folders`,
+`delete_connection_folder` and `place_connection`, for the order of a project's connections
+and folders (drag and drop, Alt+Up/Alt+Down: `projects/arrange.ts` computes the change)
+`arrange_connection`, `arrange_connection_folder` and `group_connections`, for the order of
+All connections `reorder_connection`, and for the rail `list_project_folders`,
 `group_projects`, `save_project_folder`, `set_project_folder`, `ungroup_projects` and
 `reorder_projects`, which return a `Workspace` (connections, projects and rail folders).
 `save_connection` takes the projects a connection joins. Imports (`platypus_store::import`)
@@ -417,6 +422,9 @@ editor (`kind: "query"`) is the reference implementation, in `components/QueryTa
 without props. It provides:
 - the connections, and `setConnections` for commands that return the changed list;
 - `openTab`;
+- `openTemporaryTab`, a tab on a connection that is not saved (the in-memory DuckDB of "Query
+  with SQL"): the connection lives while one of its tabs is open, then its `onClosed` runs; its
+  tabs are not kept for the next start;
 - `sideSession`, the navigator session of a connection and database;
 - `capabilities`, what an open session's driver supports;
 - `showError`;
@@ -559,6 +567,7 @@ never import `lucide-react` themselves.
 | `topRows` | Rows drawn above the result's, e.g. new rows; their cells come from `decorate`. |
 | `onScroll` | Called when the grid scrolls, e.g. to move an overlay. |
 | `onFocusChange` | Called when the focused cell changes, e.g. for the value panel. |
+| `onHeaderHover` | Called when the mouse comes onto a column header (its column and box) and with `null` when it leaves, e.g. for the column statistics (`analysis/ColumnProfile.tsx`). |
 | `onSelectionChange` | Called when the selection changes, e.g. for its totals. |
 | `layout`, `onLayoutChange` | The column layout (`grid/layout.ts`): order, hidden and pinned columns, widths. Without `onLayoutChange` the columns keep the result's order. |
 | `ref` | Gives the `GridApi`. |

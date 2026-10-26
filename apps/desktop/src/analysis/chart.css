@@ -1,0 +1,87 @@
+/* Charts of results: the switch in the status bar, the side panel, the SVG. */
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.view-toggle button {
+  /* As tall as the status bar's text, so the bar does not grow. */
+  min-height: 0;
+  height: 18px;
+  border: 0;
+  border-radius: 0;
+  padding: 0 8px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+.view-toggle button + button {
+  border-left: 1px solid var(--border);
+}
+.view-toggle button.toggled {
+  background: var(--active);
+  color: var(--fg-strong);
+}
+.chart-view {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.chart-side {
+  flex: none;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border-right: 1px solid var(--border);
+  overflow: auto;
+  font-size: 12px;
+}
+.chart-side label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chart-side fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.chart-side legend {
+  margin-bottom: 4px;
+  padding: 0;
+}
+.chart-side label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.chart-export {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: auto;
+}
+.chart-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chart-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.chart-canvas svg {
+  position: absolute;
+  inset: 0;
+}
+.chart-note {
+  padding: 4px 10px;
+}

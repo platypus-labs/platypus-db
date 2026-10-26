@@ -5,7 +5,7 @@ import { t, plural } from "../i18n";
 const SHOWN = 20;
 
 
-function preview(sql: string) {
+export function preview(sql: string) {
   const line = sql.replace(/\s+/g, " ").trim();
   return line.length > 160 ? `${line.slice(0, 160)}…` : line;
 }
