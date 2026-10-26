@@ -38,7 +38,7 @@ import {
 import { tags as t } from "@lezer/highlight";
 import { dispatchKey } from "../actions";
 import { type CompletionCatalog, type DriverKind, isMongo, toCommandError } from "../api";
-import { annotation, catalogEntry, catalogKey, useCatalogVersion } from "../catalog/catalog";
+import { annotation, catalogEntry, catalogKey } from "../catalog/catalog";
 import { ContextMenu, type MenuState } from "../components/ContextMenu";
 import { useSetting } from "../settings";
 import { workbench } from "../workbench";
@@ -194,7 +194,8 @@ const dialects = {
   databricks: MySQL,
 };
 
-/** The local notes of the catalog's tables and columns, shown as completion info. */
+/** The local notes of the catalog's tables and columns, shown as completion info. They are
+ *  read as each list is built, so a saved note needs no new language nor a new lint. */
 function catalogNotes(connectionId: string | undefined, database: string | null | undefined): CatalogNote | undefined {
   if (!connectionId) return undefined;
   return (schema, table, column) =>
@@ -242,7 +243,6 @@ const flashField = StateField.define<DecorationSet>({
 export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(props, ref) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  const catalogVersion = useCatalogVersion();
   const languageConf = useRef(new Compartment());
   const spellConf = useRef(new Compartment());
   const spellMode = useSetting(spellcheckSetting);
@@ -410,7 +410,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
     });
     // Columns are checked against the catalog, which may arrive after the text.
     if (view.current) forceLinting(view.current);
-  }, [props.driver, props.catalog, props.connectionId, props.database, catalogVersion]);
+  }, [props.driver, props.catalog, props.connectionId, props.database]);
 
   useEffect(() => {
     view.current?.dispatch({ effects: spellConf.current.reconfigure(spellcheck(spellMode)) });
