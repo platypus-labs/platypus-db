@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from "react";
 import type { CellInput, FieldMeta } from "../../api";
 import { LIST_H, LIST_W, ListEditor } from "./ListEditor";
+import { sameJson } from "./jsonChange";
 import type { EditorKind } from "./meta";
 import { t } from "../../i18n";
 
@@ -77,6 +78,11 @@ export function CellEditor({
       }
     }
     done.current = true;
+    // Formatting only changes how the JSON reads: keep the value as loaded if nothing else changed.
+    if (json && initial !== null && typed === undefined && value !== initial && sameJson(initial, value)) {
+      onCommit({ kind: "value", text: initial }, move);
+      return;
+    }
     const empty = value.trim() === "";
     onCommit(
       value === NULL_OPTION || ((numeric || kind === "lookup") && empty) ? { kind: "null" } : { kind: "value", text: value },
