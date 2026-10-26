@@ -19,6 +19,9 @@ export interface ColumnRule {
   enumValues: readonly string[];
   /** Floating-point columns also take NaN and the infinities. */
   float: boolean;
+  /** DEFAULT gives the column a value: it has a default, takes NULL, or is a key the
+   *  database numbers (identity, auto-increment, SQLite's rowid). */
+  takesDefault: boolean;
 }
 
 /** Why a cell was left as it was; the UI words it. */
@@ -30,6 +33,8 @@ export type Problem =
   | "json"
   | "enum"
   | "null"
+  /** DEFAULT in a NOT NULL column without a default. */
+  | "default"
   /** The result column is not one of the table's (an expression). */
   | "readonly"
   /** A number sequence in a column that does not hold numbers. */
@@ -70,7 +75,6 @@ const INTEGER = /^[+-]?\d+$/;
 const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 const FLOAT_WORDS = new Set(["nan", "infinity", "+infinity", "-infinity", "inf", "-inf"]);
 const BOOL_WORDS = new Set(["true", "t", "1", "yes", "y", "on", "false", "f", "0", "no", "n", "off"]);
-const HEX = /^(\\x|0x)?([0-9a-fA-F]{2})*$/;
 
 /** The rule of a result column, from its type and the table's catalog. */
 export function columnRule(column: ColumnInfo, meta: ColumnMeta | undefined): ColumnRule {
@@ -80,6 +84,8 @@ export function columnRule(column: ColumnInfo, meta: ColumnMeta | undefined): Co
     nullable: meta?.nullable ?? true,
     enumValues: meta?.enum_values ?? [],
     float: FLOAT_TYPE.test(type),
+    // The catalog does not say which columns the database numbers: those are keys.
+    takesDefault: !meta || meta.nullable || meta.default !== null || meta.primary_key,
   });
   if (meta?.enum_values.length) return rule("enum");
   // Arrays and composite values are literals of their own.
@@ -115,9 +121,20 @@ function validJson(text: string): boolean {
   }
 }
 
+const isHexDigit = (c: number) => (c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x46) || (c >= 0x61 && c <= 0x66);
+
+/** Whole bytes in hexadecimal, after an optional `\x` or `0x`. A loop: a regular expression
+ *  over the hex of a file of megabytes overflows the stack. */
+export function isHex(text: string): boolean {
+  const start = text.startsWith("\\x") || text.startsWith("0x") ? 2 : 0;
+  if ((text.length - start) % 2 !== 0) return false;
+  for (let i = start; i < text.length; i++) if (!isHexDigit(text.charCodeAt(i))) return false;
+  return true;
+}
+
 /** Why `input` does not fit a column with `rule`; `null` when it does. */
 export function checkValue(rule: ColumnRule, input: CellInput): Problem | null {
-  if (input.kind === "default") return null;
+  if (input.kind === "default") return rule.takesDefault ? null : "default";
   if (input.kind === "null") return rule.nullable ? null : "null";
   const text = input.text.trim();
   switch (rule.kind) {
@@ -128,7 +145,7 @@ export function checkValue(rule: ColumnRule, input: CellInput): Problem | null {
     case "bool":
       return BOOL_WORDS.has(text.toLowerCase()) ? null : "bool";
     case "binary":
-      return HEX.test(text) ? null : "binary";
+      return isHex(text) ? null : "binary";
     case "json":
       return validJson(input.text) ? null : "json";
     case "enum":
@@ -165,7 +182,8 @@ class Collector {
 
 /**
  * The selected cells of rows `r0..r1` and columns `cols`, deleted rows left out. `loaded` are
- * the full values of the result rows from `firstLoaded` on (`api.rowValues`).
+ * the full values of the result rows from `firstLoaded` on, of the columns `cols` only and in
+ * their order (`api.rowValues` with `cols`).
  */
 export function selectionCells(
   state: EditState,
@@ -186,11 +204,11 @@ export function selectionCells(
     if (state.deletes.has(row)) continue;
     const values = loaded[row - firstLoaded] ?? [];
     const pending = state.updates.get(row);
-    for (const col of selection.cols) {
-      const original = values[col] ?? null;
+    selection.cols.forEach((col, i) => {
+      const original = values[i] ?? null;
       const current: CellInput = pending?.get(col) ?? (original === null ? { kind: "null" } : { kind: "value", text: original });
       out.push({ gridRow: r, col, current, original });
-    }
+    });
   }
   return out;
 }
@@ -225,20 +243,27 @@ export interface ReplaceOptions {
   regex: boolean;
 }
 
-/** Replaces the matches in one text, with how many there were. */
-export type Replacer = (text: string) => { text: string; count: number };
+/** One text after a replacement, with how many matches were replaced in it. */
+export interface TextReplaced {
+  text: string;
+  count: number;
+}
+
+/** Replaces the matches in one text. */
+export type Replacer = (text: string) => TextReplaced;
 
 /**
  * The replacement of `find` by `replacement`: as typed, or a regular expression whose
  * replacement may refer to groups (`$1`). `null` when there is nothing to find; the error's
- * message for an invalid expression.
+ * message for an invalid expression. Expressions match whole characters (the `u` flag), so an
+ * emoji is never split in two.
  */
 export function replacer(find: string, replacement: string, options: ReplaceOptions): Replacer | { error: string } | null {
   if (find === "") return null;
   const source = options.regex ? find : find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   let re: RegExp;
   try {
-    re = new RegExp(source, options.caseSensitive ? "g" : "gi");
+    re = new RegExp(source, options.caseSensitive ? "gu" : "giu");
   } catch (e) {
     return { error: (e as Error).message };
   }
@@ -246,7 +271,9 @@ export function replacer(find: string, replacement: string, options: ReplaceOpti
     const count = text.match(re)?.length ?? 0;
     if (count === 0) return { text, count };
     // Typed text is put back as it is: `$` means nothing in it.
-    return { text: options.regex ? text.replace(re, replacement) : text.replace(re, () => replacement), count };
+    const out = options.regex ? text.replace(re, replacement) : text.replace(re, () => replacement);
+    // Matches that change nothing, e.g. empty ones replaced by nothing, are no replacements.
+    return out === text ? { text, count: 0 } : { text: out, count };
   };
 }
 
@@ -255,19 +282,81 @@ export interface Replaced extends Outcome {
   replacements: number;
 }
 
-/** `replace` in the text cells of the selection; other columns, NULL and DEFAULT are left. */
-export function replaceText(cells: readonly SelectedCell[], rules: Rules, replace: Replacer): Replaced {
+/** What a replacement searches: the text cells holding a value (by index in `cells`), and
+ *  their texts. NULL, DEFAULT and other columns are left. */
+export function replaceInputs(cells: readonly SelectedCell[], rules: Rules): { targets: number[]; texts: string[] } {
+  const targets: number[] = [];
+  const texts: string[] = [];
+  cells.forEach((cell, i) => {
+    if (rules(cell.col)?.kind !== "text" || cell.current.kind !== "value") return;
+    targets.push(i);
+    texts.push(cell.current.text);
+  });
+  return { targets, texts };
+}
+
+/** The outcome of a replacement from its `results`, one per target of `replaceInputs`
+ *  (`null` where nothing matched). */
+export function replacedOutcome(
+  cells: readonly SelectedCell[],
+  rules: Rules,
+  targets: readonly number[],
+  results: readonly (TextReplaced | null)[],
+): Replaced {
   const out = new Collector();
   let replacements = 0;
-  for (const cell of cells) {
-    const rule = rules(cell.col);
-    if (rule?.kind !== "text" || cell.current.kind !== "value") continue;
-    const { text, count } = replace(cell.current.text);
-    if (count === 0) continue;
-    replacements += count;
-    out.put(cell, rule, { kind: "value", text });
-  }
+  targets.forEach((index, k) => {
+    const result = results[k];
+    const cell = cells[index];
+    if (!result || !cell) return;
+    replacements += result.count;
+    out.put(cell, rules(cell.col), { kind: "value", text: result.text });
+  });
   return { ...out.outcome(), replacements };
+}
+
+const replaceOne = (replace: Replacer, text: string): TextReplaced | null => {
+  const result = replace(text);
+  return result.count > 0 ? result : null;
+};
+
+/** `replace` in the text cells of the selection; other columns, NULL and DEFAULT are left. */
+export function replaceText(cells: readonly SelectedCell[], rules: Rules, replace: Replacer): Replaced {
+  const { targets, texts } = replaceInputs(cells, rules);
+  return replacedOutcome(
+    cells,
+    rules,
+    targets,
+    texts.map((text) => replaceOne(replace, text)),
+  );
+}
+
+/** A replacement run away from the UI thread (`replaceWorker.ts`). */
+export interface ReplaceJob extends ReplaceOptions {
+  texts: string[];
+  find: string;
+  replacement: string;
+}
+
+/** What the run of a `ReplaceJob` posts: how many texts are done, then the results (`null`
+ *  where nothing matched), or why it could not run. */
+export type ReplaceReply = { done: number } | { results: (TextReplaced | null)[] } | { error: string };
+
+/** Runs `job`, posting progress at least every `every` ms while it works, so the UI can tell
+ *  a slow expression from a stuck one. */
+export function runReplaceJob(job: ReplaceJob, post: (reply: ReplaceReply) => void, now = () => performance.now(), every = 100) {
+  const replace = replacer(job.find, job.replacement, job);
+  if (typeof replace !== "function") return post({ error: replace?.error ?? "nothing to find" });
+  const results: (TextReplaced | null)[] = [];
+  let last = now();
+  job.texts.forEach((text, i) => {
+    results.push(replaceOne(replace, text));
+    if (now() - last >= every) {
+      last = now();
+      post({ done: i + 1 });
+    }
+  });
+  post({ results });
 }
 
 const decimals = (n: string) => {
@@ -275,23 +364,49 @@ const decimals = (n: string) => {
   return frac.length;
 };
 
+const PLAIN_NUMBER = /^([+-]?)(\d*)(?:\.(\d*))?$/;
+
+/** `text`, a number without exponent, times 10^`scale` (at least its decimals). */
+function scaled(text: string, scale: number): bigint {
+  const [, sign = "", whole = "", frac = ""] = PLAIN_NUMBER.exec(text) ?? [];
+  return BigInt(`${sign === "-" ? "-" : ""}${whole || "0"}${frac.padEnd(scale, "0")}`);
+}
+
+/** `value` divided by 10^`scale`, written with `scale` decimals. */
+function unscaled(value: bigint, scale: number): string {
+  if (scale === 0) return value.toString();
+  const negative = value < 0n;
+  const digits = (negative ? -value : value).toString().padStart(scale + 1, "0");
+  return `${negative ? "-" : ""}${digits.slice(0, -scale)}.${digits.slice(-scale)}`;
+}
+
 /**
- * The `i`-th number of the sequence from `start` by `step`: exact for whole numbers of any
- * size, else with as many decimals as the two numbers have. `null` when one is not a number.
+ * The `i`-th number of the sequence from `start` by `step`, exact with as many decimals as the
+ * two numbers have, whatever their size. With an exponent, a floating-point number. `null` when
+ * one is not a number, or the value is beyond the floating-point range.
  */
 export function sequenceValue(start: string, step: string, i: number): string | null {
   const a = start.trim();
   const b = step.trim();
-  if (INTEGER.test(a) && INTEGER.test(b)) return (BigInt(a) + BigInt(b) * BigInt(i)).toString();
   if (!NUMBER.test(a) || !NUMBER.test(b)) return null;
-  const value = Number(a) + Number(b) * i;
-  return /e/i.test(a + b) ? String(value) : value.toFixed(Math.max(decimals(a), decimals(b)));
+  if (/e/i.test(a + b)) {
+    const value = Number(a) + Number(b) * i;
+    return Number.isFinite(value) ? String(value) : null;
+  }
+  const scale = Math.max(decimals(a), decimals(b));
+  return unscaled(scaled(a, scale) + scaled(b, scale) * BigInt(i), scale);
 }
+
+const WHOLE = /^[+-]?\d+(\.0*)?$/;
 
 /** Numbers from `start` by `step` down each selected number column; `null` when `start` or
  *  `step` is not a number. Other columns are reported. */
 export function numberSequence(cells: readonly SelectedCell[], rules: Rules, start: string, step: string): Outcome | null {
   if (sequenceValue(start, step, 0) === null) return null;
+  // From `1.0` by `1` the numbers are whole: written as such in whole-number columns.
+  const whole = WHOLE.test(start.trim()) && WHOLE.test(step.trim());
+  const wholeIn = (rule: ColumnRule | undefined, text: string) =>
+    whole && rule?.kind === "integer" ? text.replace(/\.\d*$/, "") : text;
   const out = new Collector();
   const index = new Map<number, number>();
   // Down each column: by row, whatever order the cells come in.
@@ -304,7 +419,9 @@ export function numberSequence(cells: readonly SelectedCell[], rules: Rules, sta
     }
     const i = index.get(cell.col) ?? 0;
     index.set(cell.col, i + 1);
-    out.put(cell, rule, { kind: "value", text: sequenceValue(start, step, i)! });
+    const text = sequenceValue(start, step, i);
+    if (text === null) out.reject(cell.col, "number");
+    else out.put(cell, rule, { kind: "value", text: wholeIn(rule, text) });
   }
   return out.outcome();
 }

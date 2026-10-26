@@ -1267,6 +1267,14 @@ const it: Record<string, string> = {
   "The file is {size} MB: loading it takes memory, and saving sends all of it to the database. Load it?": "Il file è di {size} MB: caricarlo occupa memoria, e il salvataggio lo invia tutto al database. Caricarlo?",
   "Load": "Carica",
   "The file is not UTF-8 text: it cannot be loaded into a text column.": "Il file non è testo UTF-8: non si può caricare in una colonna di testo.",
+  "the column has no default and does not take NULL": "la colonna non ha un valore predefinito e non accetta NULL",
+  "Only the rows loaded in the grid change.": "Cambiano solo le righe già caricate nella griglia.",
+  "The search takes too long on these cells: try a simpler expression.": "La ricerca richiede troppo tempo su queste celle: prova un'espressione più semplice.",
+  "Counting the matches…": "Conteggio delle corrispondenze…",
+  "Counting the matches… {done} of {total} cells": "Conteggio delle corrispondenze… {done} di {total} celle",
+  "The file is {size} MB: a cell can load files up to {limit} MB.": "Il file è di {size} MB: una cella può caricare file fino a {limit} MB.",
+  "Some rows changed meanwhile: their cells were left as they are.": "Alcune righe sono cambiate nel frattempo: le loro celle restano come sono.",
+  "The row changed while the file was read: the file was not loaded.": "La riga è cambiata durante la lettura del file: il file non è stato caricato.",
 };
 
 export default it;

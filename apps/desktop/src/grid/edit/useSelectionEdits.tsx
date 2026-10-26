@@ -14,6 +14,21 @@ import * as edits from "./state";
 
 /** Files above this size are loaded only once the user confirms. */
 const LARGE_FILE = 50 * 1024 * 1024;
+/** Files above this size are not loaded (`MAX_CELL_FILE` in `commands/grid.rs`). */
+const MAX_FILE = 200 * 1024 * 1024;
+
+const megabytes = (size: number) => Math.round(size / (1024 * 1024)).toLocaleString();
+
+/** How loading a cell from a file ended: `cancelled` when the user gave up before anything
+ *  was read, `failed` when it was reported in the edit bar. */
+export type FileLoad = "loaded" | "cancelled" | "failed";
+
+/** Selected cells, with the pending changes they were read from: their grid rows are those
+ *  of `base`. */
+interface Selected {
+  cells: SelectedCell[];
+  base: edits.EditState;
+}
 
 interface Options {
   grid: RefObject<GridApi | null>;
@@ -29,28 +44,45 @@ interface Options {
 }
 
 export function useSelectionEdits({ grid, jobId, current, rules, names, apply, setError, fail }: Options) {
-  const [shown, setShown] = useState<{ kind: MassEditKind; cells: SelectedCell[] } | null>(null);
+  const [shown, setShown] = useState<(Selected & { kind: MassEditKind }) | null>(null);
 
-  /** The selected cells with what they hold now; the loaded values in one request. */
-  async function selected(): Promise<SelectedCell[]> {
+  /** The selected cells with what they hold now; the loaded values of the selected columns
+   *  in one request. */
+  async function selected(): Promise<Selected> {
+    const base = current.current;
     const sel = grid.current?.selection();
-    if (!sel) return [];
-    const n = current.current.inserts.length;
+    if (!sel) return { cells: [], base };
+    const n = base.inserts.length;
     const first = Math.max(sel.r0, n) - n;
     const count = sel.r1 - n - first + 1;
-    const loaded = count > 0 ? await api.rowValues(jobId, first, count) : [];
-    return selectionCells(current.current, sel, loaded, first);
+    const loaded = count > 0 && sel.cols.length > 0 ? await api.rowValues(jobId, first, count, sel.cols) : [];
+    return { cells: selectionCells(base, sel, loaded, first), base };
   }
 
-  function applyOutcome(outcome: Outcome) {
-    if (outcome.changes.length > 0) apply((s) => edits.setCells(s, outcome.changes));
-    const report = rejectedReport(outcome.rejected, names);
-    if (report) setError(report);
+  /** Applies changes worked out against `base` to the rows they are at now; `false` when
+   *  some of those rows went away meanwhile, and their changes with them. */
+  function applyChanges(base: edits.EditState, changes: edits.CellChange[]): boolean {
+    let kept = changes.length;
+    apply((latest) => {
+      const moved = edits.rebase(base, latest, changes);
+      kept = moved.length;
+      return edits.setCells(latest, moved);
+    });
+    return kept === changes.length;
+  }
+
+  function applyOutcome(outcome: Outcome, base: edits.EditState) {
+    const complete = outcome.changes.length === 0 || applyChanges(base, outcome.changes);
+    const report = [
+      rejectedReport(outcome.rejected, names),
+      complete ? null : t("Some rows changed meanwhile: their cells were left as they are."),
+    ].filter(Boolean);
+    if (report.length) setError(report.join(" "));
   }
 
   async function massEdit(kind: MassEditKind) {
     try {
-      setShown({ kind, cells: await selected() });
+      setShown({ kind, ...(await selected()) });
     } catch (e) {
       fail(e);
     }
@@ -58,49 +90,63 @@ export function useSelectionEdits({ grid, jobId, current, rules, names, apply, s
 
   async function fill() {
     try {
-      applyOutcome(fillDown(await selected(), rules));
+      const { cells, base } = await selected();
+      applyOutcome(fillDown(cells, rules), base);
     } catch (e) {
       fail(e);
     }
   }
 
-  /** The file's contents, or `null` when the user gave up or it cannot be read. */
-  async function readFile(col: number, binary: boolean): Promise<string | null> {
+  /** The file's contents; `cancelled` when the user gave up, `failed` when it cannot be
+   *  loaded (reported). */
+  async function readFile(col: number, binary: boolean): Promise<{ text: string } | Exclude<FileLoad, "loaded">> {
     const path = await answerFor("file", () => open({ multiple: false, directory: false, title: t("Load {column} from a file", { column: names[col] ?? "" }) }));
-    if (typeof path !== "string") return null;
+    if (typeof path !== "string") return "cancelled";
     const size = await api.fileSize(path);
+    if (size > MAX_FILE) {
+      setError(t("The file is {size} MB: a cell can load files up to {limit} MB.", { size: megabytes(size), limit: megabytes(MAX_FILE) }));
+      return "failed";
+    }
     if (size > LARGE_FILE) {
-      const mb = Math.round(size / (1024 * 1024)).toLocaleString();
-      const message = t("The file is {size} MB: loading it takes memory, and saving sends all of it to the database. Load it?", { size: mb });
-      if (!(await ask(message, { confirm: t("Load") }))) return null;
+      const message = t("The file is {size} MB: loading it takes memory, and saving sends all of it to the database. Load it?", { size: megabytes(size) });
+      if (!(await ask(message, { confirm: t("Load") }))) return "cancelled";
     }
     try {
-      return await api.readCellFile(path, binary);
+      return { text: await api.readCellFile(path, binary) };
     } catch (e) {
       if (toCommandError(e).kind !== "invalid_utf8") throw e;
       setError(t("The file is not UTF-8 text: it cannot be loaded into a text column."));
-      return null;
+      return "failed";
     }
   }
 
-  /** Loads a cell from a file: bytes into a binary column, UTF-8 text into a text one. */
-  async function loadFile(cell: Cell) {
+  /** Loads a cell from a file: bytes into a binary column, UTF-8 text into a text one. The
+   *  grid stays editable while the file is read, so the row is found again afterwards. */
+  async function loadFile(cell: Cell): Promise<FileLoad> {
     const rule = rules(cell.col);
-    if (!rule || !loadsFromFile(rule)) return;
+    if (!rule || !loadsFromFile(rule)) return "failed";
+    const base = current.current;
+    const ref = edits.rowRef(base, cell.row);
+    if ("row" in ref && base.deletes.has(ref.row)) return "failed";
     try {
-      const text = await readFile(cell.col, rule.kind === "binary");
-      if (text === null) return;
-      const value = { kind: "value", text } as const;
+      const read = await readFile(cell.col, rule.kind === "binary");
+      if (typeof read === "string") return read;
+      const value = { kind: "value", text: read.text } as const;
       const problem = checkValue(rule, value);
-      if (problem) return setError(rejectedReport([{ col: cell.col, problem, cells: 1 }], names));
-      const s = current.current;
-      const ref = edits.rowRef(s, cell.row);
-      if ("row" in ref && s.deletes.has(ref.row)) return;
-      const original = "row" in ref ? (await api.rowValues(jobId, ref.row, 1))[0]?.[cell.col] : undefined;
-      apply((latest) => edits.setCells(latest, [{ gridRow: cell.row, col: cell.col, value, original }]));
+      if (problem) {
+        setError(rejectedReport([{ col: cell.col, problem, cells: 1 }], names));
+        return "failed";
+      }
+      const original = "row" in ref ? (await api.rowValues(jobId, ref.row, 1, [cell.col]))[0]?.[0] : undefined;
+      if (!applyChanges(base, [{ gridRow: cell.row, col: cell.col, value, original }])) {
+        setError(t("The row changed while the file was read: the file was not loaded."));
+        return "failed";
+      }
       grid.current?.focus();
+      return "loaded";
     } catch (e) {
       fail(e);
+      return "failed";
     }
   }
 
@@ -112,7 +158,7 @@ export function useSelectionEdits({ grid, jobId, current, rules, names, apply, s
       names={names}
       onApply={(outcome) => {
         setShown(null);
-        applyOutcome(outcome);
+        applyOutcome(outcome, shown.base);
         grid.current?.focus();
       }}
       onClose={() => setShown(null)}

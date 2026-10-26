@@ -123,7 +123,7 @@ export function allActions(): Action[] {
   return [...registry.values()];
 }
 
-const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
+export const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 
 /** Where a shortcut the user set is stored, by action id. */
 const shortcutKey = (id: string) => `shortcuts.${id}`;

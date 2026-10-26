@@ -1,21 +1,25 @@
 // The dialogs of the selection's mass edits: one value for every cell, find and replace, a
 // number sequence. Each shows what applying would do before it is applied; the work is done
-// by the pure functions of `massEdit.ts`.
-import { type ReactNode, useMemo, useState } from "react";
+// by the pure functions of `massEdit.ts`, find and replace in a worker (`replaceRunner.ts`).
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { CellInput } from "../../api";
 import { msg, plural, t } from "../../i18n";
 import {
   type Outcome,
   type Problem,
   type Rejection,
+  type ReplaceJob,
+  type Replaced,
   type Rules,
   type SelectedCell,
   counts,
   numberSequence,
-  replaceText,
+  replaceInputs,
+  replacedOutcome,
   replacer,
   setValue,
 } from "./massEdit";
+import { type ReplaceRun, type RunResult, type WorkerLike, runReplace } from "./replaceRunner";
 
 export type MassEditKind = "set" | "replace" | "sequence";
 
@@ -27,6 +31,7 @@ const PROBLEMS: Record<Problem, string> = {
   json: msg("not valid JSON"),
   enum: msg("not one of the column's values"),
   null: msg("the column does not take NULL"),
+  default: msg("the column has no default and does not take NULL"),
   readonly: msg("not a column of the table"),
   not_number: msg("not a number column"),
 };
@@ -53,10 +58,15 @@ export function rejectedReport(rejected: Rejection[], names: readonly string[]):
 interface FrameProps {
   title: string;
   children: ReactNode;
-  /** What applying does; `null` while the input is incomplete. */
+  /** What applying does; `null` while the input is incomplete or being worked out. */
   outcome: Outcome | null;
+  /** The input `outcome` was worked out from, in the summary's `data-input`: a sign that it is
+   *  up to date. */
+  input: string;
   /** Shown in place of the summary, e.g. an invalid regular expression. */
   problem?: string | null;
+  /** Shown while there is no outcome yet, e.g. while matches are counted. */
+  status?: string | null;
   /** The summary's first line, when not the count of changed cells. */
   headline?: string;
   names: readonly string[];
@@ -64,8 +74,28 @@ interface FrameProps {
   onClose: () => void;
 }
 
+/** The summary of what applying changes, and of the cells left as they are. */
+function Summary({ outcome, input, headline, names }: { outcome: Outcome; input: string; headline?: string; names: readonly string[] }) {
+  const changed = counts(outcome).changed;
+  return (
+    <div className="notice small mass-edit-summary" role="status" data-input={input}>
+      <div>{headline ?? plural(changed, "{n} cell will change.", "{n} cells will change.")}</div>
+      {outcome.rejected.length > 0 && (
+        <>
+          <div>{t("Left as they are:")}</div>
+          <ul>
+            {rejectedLines(outcome.rejected, names).map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
 /** The dialog around a mass edit: its fields, what applying changes, Cancel and Apply. */
-function Frame({ title, children, outcome, problem, headline, names, onApply, onClose }: FrameProps) {
+function Frame({ title, children, outcome, input, problem, status, headline, names, onApply, onClose }: FrameProps) {
   const changed = outcome ? counts(outcome).changed : 0;
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -79,22 +109,15 @@ function Frame({ title, children, outcome, problem, headline, names, onApply, on
       >
         <h2>{title}</h2>
         {children}
+        <p className="muted small">{t("Only the rows loaded in the grid change.")}</p>
         {problem ? (
           <div className="notice error small">{problem}</div>
+        ) : outcome ? (
+          <Summary outcome={outcome} input={input} headline={headline} names={names} />
         ) : (
-          outcome && (
-            <div className="notice small mass-edit-summary" role="status">
-              <div>{headline ?? plural(changed, "{n} cell will change.", "{n} cells will change.")}</div>
-              {outcome.rejected.length > 0 && (
-                <>
-                  <div>{t("Left as they are:")}</div>
-                  <ul>
-                    {rejectedLines(outcome.rejected, names).map((line) => (
-                      <li key={line}>{line}</li>
-                    ))}
-                  </ul>
-                </>
-              )}
+          status && (
+            <div className="notice small" role="status">
+              {status}
             </div>
           )
         )}
@@ -141,7 +164,7 @@ export function SetValueDialog(props: Props) {
     </label>
   );
   return (
-    <Frame title={t("Set value of the selection")} outcome={outcome} {...framed(props)}>
+    <Frame title={t("Set value of the selection")} outcome={outcome} input={JSON.stringify([mode, text])} {...framed(props)}>
       <div className="row mass-edit-modes">
         {choice("value", t("Value"))}
         {choice("null", "NULL")}
@@ -160,6 +183,65 @@ export function SetValueDialog(props: Props) {
   );
 }
 
+/** How far the count of a find and replace got. */
+type Count =
+  | { state: "idle" }
+  | { state: "counting"; done: number; total: number }
+  | { state: "slow" }
+  | { state: "failed"; message: string }
+  | { state: "done"; input: string; result: Replaced };
+
+/** Typing waits this long before the matches are counted again. */
+const DEBOUNCE_MS = 200;
+
+const createWorker = () =>
+  new Worker(new URL("./replaceWorker.ts", import.meta.url), { type: "module" }) as unknown as WorkerLike;
+
+/**
+ * The outcome of replacing as `job` says in `cells`, worked out in a worker once typing pauses:
+ * the UI stays responsive whatever the expression, and one too slow is stopped. `null` job:
+ * nothing to count.
+ */
+function useReplaceCount(cells: SelectedCell[], rules: Rules, job: Omit<ReplaceJob, "texts"> | null, input: string): Count {
+  const inputs = useMemo(() => replaceInputs(cells, rules), [cells, rules]);
+  const [count, setCount] = useState<Count>({ state: "idle" });
+  useEffect(() => {
+    if (!job) {
+      setCount({ state: "idle" });
+      return;
+    }
+    setCount({ state: "counting", done: 0, total: inputs.texts.length });
+    let live = true;
+    let run: ReplaceRun | undefined;
+    const settled = (r: RunResult): Count =>
+      "results" in r
+        ? { state: "done", input, result: replacedOutcome(cells, rules, inputs.targets, r.results) }
+        : "slow" in r
+          ? { state: "slow" }
+          : { state: "failed", message: r.error };
+    const timer = setTimeout(() => {
+      run = runReplace({ ...job, texts: inputs.texts }, createWorker, (done) => live && setCount({ state: "counting", done, total: inputs.texts.length }));
+      void run.result.then((r) => live && setCount(settled(r)));
+    }, DEBOUNCE_MS);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+      run?.cancel();
+    };
+    // `input` stands for `job`, which is a new object on every render.
+  }, [cells, rules, inputs, input]);
+  return count;
+}
+
+/** The replace dialog's summary line: replacements and cells. */
+function replacedHeadline(result: Replaced | null): string {
+  if (!result || result.replacements === 0) return t("No matches.");
+  if (result.replacements === 1) return t("1 replacement in 1 cell.");
+  return plural(result.changes.length, "{replacements} replacements in {n} cell.", "{replacements} replacements in {n} cells.", {
+    replacements: result.replacements.toLocaleString(),
+  });
+}
+
 export function ReplaceDialog(props: Props) {
   const { cells, rules } = props;
   const [find, setFind] = useState("");
@@ -167,18 +249,34 @@ export function ReplaceDialog(props: Props) {
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [regex, setRegex] = useState(false);
   const replace = useMemo(() => replacer(find, replacement, { caseSensitive, regex }), [find, replacement, caseSensitive, regex]);
-  const result = useMemo(() => (typeof replace === "function" ? replaceText(cells, rules, replace) : null), [cells, rules, replace]);
-  const problem = replace && "error" in replace ? t("Invalid regular expression: {message}", { message: replace.error }) : null;
-  const headline =
-    !result || result.replacements === 0
-      ? t("No matches.")
-      : result.replacements === 1
-        ? t("1 replacement in 1 cell.")
-        : plural(result.changes.length, "{replacements} replacements in {n} cell.", "{replacements} replacements in {n} cells.", {
-            replacements: result.replacements.toLocaleString(),
-          });
+  const input = JSON.stringify([find, replacement, caseSensitive, regex]);
+  const valid = typeof replace === "function";
+  const count = useReplaceCount(cells, rules, valid ? { find, replacement, caseSensitive, regex } : null, input);
+  const result = count.state === "done" && count.input === input ? count.result : null;
+  const problem =
+    replace && "error" in replace
+      ? t("Invalid regular expression: {message}", { message: replace.error })
+      : count.state === "slow"
+        ? t("The search takes too long on these cells: try a simpler expression.")
+        : count.state === "failed"
+          ? count.message
+          : null;
+  const status =
+    valid && !result
+      ? count.state === "counting" && count.done > 0
+        ? t("Counting the matches… {done} of {total} cells", { done: count.done.toLocaleString(), total: count.total.toLocaleString() })
+        : t("Counting the matches…")
+      : null;
   return (
-    <Frame title={t("Replace text in the selection")} outcome={result} problem={problem} headline={headline} {...framed(props)}>
+    <Frame
+      title={t("Replace text in the selection")}
+      outcome={result}
+      input={input}
+      problem={problem}
+      status={status}
+      headline={replacedHeadline(result)}
+      {...framed(props)}
+    >
       <label className="field">
         <span>{t("Find")}</span>
         <input autoFocus value={find} spellCheck={false} onChange={(e) => setFind(e.target.value)} />
@@ -211,6 +309,7 @@ export function SequenceDialog(props: Props) {
     <Frame
       title={t("Number sequence")}
       outcome={outcome}
+      input={JSON.stringify([start, step])}
       problem={outcome ? null : t("Start and step must be numbers.")}
       {...framed(props)}
     >

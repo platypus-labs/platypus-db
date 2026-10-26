@@ -1,18 +1,25 @@
 // Unit tests of the data editor's mass edits (src/grid/edit/massEdit.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Worker } from "node:worker_threads";
 import {
   checkValue,
   columnRule,
   fillDown,
   loadsFromFile,
   numberSequence,
+  isHex,
+  replaceInputs,
   replaceText,
+  replacedOutcome,
+  runReplaceJob,
   replacer,
   selectionCells,
   sequenceValue,
   setValue,
 } from "../src/grid/edit/massEdit.ts";
+import { runReplace } from "../src/grid/edit/replaceRunner.ts";
+import { rebase } from "../src/grid/edit/state.ts";
 
 const info = (db_type, extra = {}) => ({ name: "c", db_type, numeric: false, binary: false, ...extra });
 const meta = (data_type, extra = {}) => ({
@@ -32,7 +39,7 @@ const DEFAULT = { kind: "default" };
 
 /** Columns 0: integer, 1: text, 2: real (float), 3: not the table's. */
 const RULES = [
-  columnRule(info("INTEGER", { numeric: true }), meta("INTEGER", { nullable: false })),
+  columnRule(info("INTEGER", { numeric: true }), meta("INTEGER", { nullable: false, primary_key: true })),
   columnRule(info("TEXT"), meta("TEXT")),
   columnRule(info("REAL", { numeric: true }), meta("REAL")),
   undefined,
@@ -65,7 +72,11 @@ test("values are checked as saving checks them", () => {
   assert.equal(checkValue(int, value(" 42 ")), null);
   assert.equal(checkValue(int, value("4.2")), "integer");
   assert.equal(checkValue(int, NULL), "null");
-  assert.equal(checkValue(int, DEFAULT), null);
+  // NOT NULL without a default: DEFAULT would be NULL, unless the database numbers the key.
+  assert.equal(checkValue(int, DEFAULT), "default");
+  assert.equal(checkValue(rule("integer", { numeric: true }, meta("integer", { nullable: false, default: "0" })), DEFAULT), null);
+  assert.equal(checkValue(rule("integer", { numeric: true }, meta("integer", { nullable: false, primary_key: true })), DEFAULT), null);
+  assert.equal(checkValue(rule("integer", { numeric: true }), DEFAULT), null);
   const num = rule("numeric", { numeric: true });
   assert.equal(checkValue(num, value("-1.5e3")), null);
   assert.equal(checkValue(num, value("NaN")), "number");
@@ -217,4 +228,124 @@ test("ten thousand cells are computed quickly", () => {
   replaceText(cells, rules, replacer("v", "w", { caseSensitive: true, regex: false }));
   numberSequence(cells, rules, "1", "1");
   assert.ok(performance.now() - started < 500, "mass edits of 10,000 cells took too long");
+});
+
+test("the hex of a file of tens of megabytes is checked without overflowing the stack", () => {
+  const bin = columnRule(info("bytea", { binary: true }), undefined);
+  const big = "ab".repeat(30_000_000);
+  assert.equal(checkValue(bin, value(`\\x${big}`)), null);
+  assert.equal(checkValue(bin, value(`${big}0`)), "binary");
+  assert.equal(checkValue(bin, value(`${big}zz`)), "binary");
+  assert.ok(isHex("0xDEADbeef") && isHex("") && isHex("\\x"));
+  // Control characters are not digits, whatever their bits.
+  assert.ok(!isHex("\u0010\u0011") && !isHex("gg") && !isHex("0x0"));
+});
+
+test("selected cells read only the selected columns' values, in the selection's order", () => {
+  const state = { inserts: [], updates: new Map(), deletes: new Set() };
+  const cells = selectionCells(state, { r0: 0, r1: 0, cols: [2, 0] }, [["x", "1"]], 0);
+  assert.deepEqual(cells, [cell(0, 2, value("x"), "x"), cell(0, 0, value("1"), "1")]);
+});
+
+test("regular expressions match whole characters, and changes that change nothing do not count", () => {
+  const empty = replacer("x*", "-", { caseSensitive: true, regex: true });
+  assert.equal(empty("😀").text, "-😀-");
+  const none = replacer("x*", "", { caseSensitive: true, regex: true });
+  assert.deepEqual(none("abc"), { text: "abc", count: 0 });
+  const cells = [cell(0, 1, value("abc"), "abc")];
+  assert.equal(replaceText(cells, rules, none).changes.length, 0);
+});
+
+test("a replacement run reports progress, and its results make the same outcome", () => {
+  const cells = [cell(0, 1, value("banana"), "banana"), cell(0, 0, value("1"), "1"), cell(1, 1, value("kiwi"), "kiwi")];
+  const { targets, texts } = replaceInputs(cells, rules);
+  assert.deepEqual(targets, [0, 2]);
+  const replies = [];
+  let clock = 0;
+  runReplaceJob({ texts, find: "a", replacement: "o", caseSensitive: true, regex: false }, (r) => replies.push(r), () => (clock += 200), 100);
+  assert.deepEqual(replies.slice(0, 2), [{ done: 1 }, { done: 2 }]);
+  const { results } = replies.at(-1);
+  assert.deepEqual(replacedOutcome(cells, rules, targets, results), replaceText(cells, rules, replacer("a", "o", { caseSensitive: true, regex: false })));
+  replies.length = 0;
+  runReplaceJob({ texts, find: "(", replacement: "", caseSensitive: true, regex: true }, (r) => replies.push(r));
+  assert.ok("error" in replies[0]);
+});
+
+/** A worker of `replaceWorker.ts`, run by Node: the same job runner, in a thread. */
+function nodeWorker() {
+  const runner = new URL("../src/grid/edit/massEdit.ts", import.meta.url).href;
+  const code = `import { parentPort } from "node:worker_threads";
+    import { runReplaceJob } from ${JSON.stringify(runner)};
+    parentPort.on("message", (job) => runReplaceJob(job, (reply) => parentPort.postMessage(reply)));`;
+  const worker = new Worker(new URL(`data:text/javascript,${encodeURIComponent(code)}`));
+  const like = { onmessage: null, onerror: null, postMessage: (job) => worker.postMessage(job), terminate: () => void worker.terminate() };
+  worker.on("message", (data) => like.onmessage?.({ data }));
+  worker.on("error", (e) => like.onerror?.(e));
+  return like;
+}
+
+test("an expression that backtracks without end is stopped, and the UI thread never runs it", async () => {
+  const job = (find, texts) => ({ texts, find, replacement: "x", caseSensitive: true, regex: true });
+  const ok = await runReplace(job("a+", ["aa", "b"]), nodeWorker, () => {}, 5000).result;
+  assert.deepEqual(ok, { results: [{ text: "x", count: 1 }, null] });
+  const started = performance.now();
+  const slow = await runReplace(job("(a+)+b", ["a".repeat(60)]), nodeWorker, () => {}, 1500).result;
+  assert.deepEqual(slow, { slow: true });
+  assert.ok(performance.now() - started < 5000);
+});
+
+test("a silent worker is given up; a cancelled one settles nothing", async () => {
+  const silent = () => ({ onmessage: null, onerror: null, postMessage() {}, terminate() {} });
+  assert.deepEqual(await runReplace({ texts: [], find: "a", replacement: "", caseSensitive: true, regex: false }, silent, () => {}, 20).result, { slow: true });
+  let terminated = false;
+  const run = runReplace({ texts: [], find: "a", replacement: "", caseSensitive: true, regex: false }, () => ({ ...silent(), terminate: () => (terminated = true) }), () => {}, 20);
+  run.cancel();
+  const settled = await Promise.race([run.result.then(() => true), new Promise((r) => setTimeout(() => r(false), 60))]);
+  assert.ok(terminated && !settled);
+});
+
+test("changes follow their rows when rows are added or dropped meanwhile", () => {
+  const newRow = new Map([[1, value("n")]]);
+  const base = { inserts: [newRow], updates: new Map(), deletes: new Set() };
+  const changes = [
+    { gridRow: 0, col: 1, value: value("a") },
+    { gridRow: 1, col: 1, value: value("b"), original: "x" },
+    { gridRow: 2, col: 1, value: value("c"), original: "y" },
+  ];
+  assert.deepEqual(rebase(base, base, changes), changes);
+  // Two rows added on top, result row 1 deleted.
+  const later = { inserts: [new Map(), new Map(), newRow], updates: new Map(), deletes: new Set([1]) };
+  assert.deepEqual(
+    rebase(base, later, changes).map((c) => c.gridRow),
+    [2, 3],
+  );
+  // The new row was dropped (or edited, which makes it another map).
+  const dropped = { inserts: [new Map(newRow)], updates: new Map(), deletes: new Set() };
+  assert.deepEqual(
+    rebase(base, dropped, changes).map((c) => [c.gridRow, c.value.text]),
+    [
+      [1, "b"],
+      [2, "c"],
+    ],
+  );
+});
+
+test("sequences stay exact with many decimals or digits, and refuse what they cannot write", () => {
+  assert.equal(sequenceValue("12345678901234567.1", "0.1", 1), "12345678901234567.2");
+  assert.equal(sequenceValue(`0.${"0".repeat(149)}1`, "1", 1), `1.${"0".repeat(149)}1`);
+  assert.equal(sequenceValue("-0.5", "0.25", 1), "-0.25");
+  assert.equal(sequenceValue(".5", "1", 1), "1.5");
+  assert.equal(sequenceValue("1e400", "1", 0), null);
+  assert.equal(numberSequence([cell(0, 0, value("1"), "1")], rules, "1e400", "1"), null);
+  // `1.0` is a whole number.
+  assert.deepEqual(
+    numberSequence([cell(0, 0, value("1"), "1"), cell(1, 0, value("2"), "2")], rules, "1.0", "1").changes.map((c) => c.value.text),
+    ["1", "2"],
+  );
+});
+
+test("DEFAULT is refused where it would be NULL in a NOT NULL column", () => {
+  const notNull = columnRule(info("TEXT"), meta("TEXT", { nullable: false }));
+  const out = setValue([cell(0, 0, value("a"), "a")], () => notNull, DEFAULT);
+  assert.deepEqual(out.rejected, [{ col: 0, problem: "default", cells: 1 }]);
 });

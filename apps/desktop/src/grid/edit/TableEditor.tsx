@@ -17,7 +17,7 @@ import * as edits from "./state";
 import { VirtualKeyDialog } from "./VirtualKeyDialog";
 import { type ColumnRule, columnRule, loadsFromFile } from "./massEdit";
 import type { MassEditKind } from "./MassEditDialog";
-import { useSelectionEdits } from "./useSelectionEdits";
+import { type FileLoad, useSelectionEdits } from "./useSelectionEdits";
 import "./actions";
 import { t, plural, msg } from "../../i18n";
 
@@ -58,7 +58,7 @@ export interface TableEdit {
   /** Copies the first selected row's values into the selected cells below it. */
   fillDown(): Promise<void>;
   /** Loads a cell from a file the user picks. */
-  loadFile(cell: Cell): Promise<void>;
+  loadFile(cell: Cell): Promise<FileLoad>;
   addRow(): void;
   duplicateSelection(): Promise<void>;
   deleteSelection(): void;
@@ -262,13 +262,15 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
       }),
     [columns, keys],
   );
-  const ruleOf = (col: number) => rules[col];
+  // Stable across renders: the mass edit dialogs work out their preview again when these change.
+  const ruleOf = useCallback((col: number) => rules[col], [rules]);
+  const names = useMemo(() => columns.map((c) => c.name), [columns]);
   const selectionEdits = useSelectionEdits({
     grid,
     jobId,
     current,
     rules: ruleOf,
-    names: columns.map((c) => c.name),
+    names,
     apply,
     setError,
     fail,
@@ -414,9 +416,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
     fillDown: async () => {
       if (editable) await selectionEdits.fillDown();
     },
-    loadFile: async (cell) => {
-      if (editable) await selectionEdits.loadFile(cell);
-    },
+    loadFile: async (cell) => (editable ? selectionEdits.loadFile(cell) : "failed"),
     addRow: () => {
       if (!editable) return;
       apply((s) => edits.addRows(s, [new Map()]));
@@ -579,9 +579,15 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
       options={editing.options}
       onLoadFile={
         loadsFromFile(rules[editing.cell.col])
-          ? () => {
+          ? (text) => {
+              const was = editing;
               setEditing(null);
-              void edit.loadFile(editing.cell);
+              void edit.loadFile(was.cell).then((load) => {
+                // No file picked: the editor comes back with what was typed in it.
+                if (load === "cancelled" && text !== (was.typed ?? was.initial ?? "")) {
+                  setEditing((e) => e ?? { ...was, typed: text });
+                }
+              });
             }
           : undefined
       }

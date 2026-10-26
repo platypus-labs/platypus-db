@@ -30,8 +30,9 @@ interface Props {
   numeric: boolean;
   /** Foreign keys: `[key, label]` rows of the table they point to, offered while typing. */
   options?: [string, string | null][];
-  /** Binary and text columns: closes the editor and loads the cell from a file instead. */
-  onLoadFile?: () => void;
+  /** Binary and text columns: closes the editor and loads the cell from a file instead;
+   *  `text` is what the editor held, to give back if no file is picked. */
+  onLoadFile?: (text: string) => void;
   onCommit: (value: CellInput, move: Move) => void;
   onCancel: () => void;
 }
@@ -101,10 +102,11 @@ export function CellEditor({
     onCancel();
   }
 
-  /** The file's contents replace the value: what was typed is dropped, not committed. */
+  /** The file's contents replace the value: what was typed is not committed, but handed
+   *  over in case no file is picked. */
   function loadFile() {
     done.current = true;
-    onLoadFile?.();
+    onLoadFile?.(text);
   }
 
   function onKeyDown(e: React.KeyboardEvent) {

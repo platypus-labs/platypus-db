@@ -1,6 +1,6 @@
 // The data editor's grid actions: in the grid's context menu and on its shortcuts, for
 // results of one table that can be edited.
-import { registerAction } from "../../actions";
+import { isMac, registerAction } from "../../actions";
 import type { GridActionContext } from "../DataGrid";
 import { msg } from "../../i18n";
 import { type ColumnRule, isNumberRule, loadsFromFile } from "./massEdit";
@@ -62,11 +62,14 @@ registerAction({
     const f = ctx.grid.focused();
     return editable(ctx) && f !== null && loadsFromFile(ctx.source!.edit!.rule(f.col));
   },
-  run: ({ grid, source }) => source!.edit!.loadFile(grid.focused()!),
+  run: async ({ grid, source }) => {
+    await source!.edit!.loadFile(grid.focused()!);
+  },
 });
 
 // Mass edit of the selection, in a submenu. Ctrl+D duplicates rows, so filling down takes
-// Ctrl+Alt+D.
+// Ctrl+Alt+D; on macOS Control+Shift+D, as Cmd+Option+D hides the Dock and Option changes
+// the key typed.
 const SELECTION = msg("Edit selection");
 
 /** Whether a selected column's rule passes `test`. */
@@ -88,7 +91,7 @@ registerAction({
   id: "grid.fill_down",
   scope: "grid",
   title: "Fill down",
-  shortcut: "Mod+Alt+D",
+  shortcut: isMac ? "Ctrl+Shift+D" : "Mod+Alt+D",
   submenu: SELECTION,
   group: "edit",
   order: 26,
