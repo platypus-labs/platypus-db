@@ -66,7 +66,7 @@ export function CompareRows({ jobId, columns, rows, onClose }: Props) {
         )}
         <div className="actions">
           <span className="spacer" />
-          <button type="button" autoFocus onClick={onClose}>
+          <button type="button" className="primary" autoFocus onClick={onClose}>
             {t("Close")}
           </button>
         </div>
