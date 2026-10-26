@@ -272,8 +272,27 @@ impl Project {
     fn ordered_as_shown(&mut self, list: &[SavedConnection]) {
         self.connections
             .sort_by_key(|id| list.iter().position(|c| c.id == *id));
-        self.folders.sort_by_cached_key(|f| f.name.to_lowercase());
+        self.folders
+            .sort_by_cached_key(|f| (shown_order(&f.name), f.name.clone()));
     }
+}
+
+/// A name's place in the old UI's sort (`localeCompare`), near enough: accents and case
+/// do not count, and punctuation and spaces come before digits, digits before letters.
+fn shown_order(name: &str) -> Vec<(u8, char)> {
+    use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
+    name.nfd()
+        .filter(|c| !is_combining_mark(*c))
+        .flat_map(char::to_lowercase)
+        .map(|c| {
+            let class = if c.is_alphabetic() {
+                2
+            } else {
+                u8::from(c.is_numeric())
+            };
+            (class, c)
+        })
+        .collect()
 }
 
 /// The initials of the first two words ("Cliente Rossi" → "CR"), or the first two letters
@@ -902,6 +921,13 @@ impl ConnectionStore {
 mod tests {
     use super::*;
     use crate::MemorySecrets;
+
+    #[test]
+    fn older_folders_keep_the_order_they_were_shown_in() {
+        let mut names = ["Zahn", "ärzte", "_tmp", "Bravo", "2024", "Arzt"];
+        names.sort_by_cached_key(|n| (shown_order(n), (*n).to_owned()));
+        assert_eq!(names, ["_tmp", "2024", "Arzt", "ärzte", "Bravo", "Zahn"]);
+    }
 
     fn store(dir: &Path) -> (ConnectionStore, Arc<MemorySecrets>) {
         let secrets = Arc::new(MemorySecrets::default());

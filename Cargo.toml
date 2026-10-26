@@ -72,6 +72,7 @@ tokio-postgres = "0.7"
 tokio-postgres-rustls = "0.14"
 tokio-util = "0.7"
 toml = "1"
+unicode-normalization = "0.1"
 url = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
 
