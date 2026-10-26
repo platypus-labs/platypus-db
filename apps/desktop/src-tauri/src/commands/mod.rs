@@ -136,6 +136,8 @@ impl AppState {
         }
     }
 
+    /// Runs `f` on the catalog; fails with `catalog` when `catalog.db` could not be opened, so
+    /// the notes are unavailable while the rest of the app keeps working.
     fn with_catalog<T>(
         &self,
         f: impl FnOnce(&mut CatalogStore) -> Result<T, platypus_store::StoreError>,
@@ -158,6 +160,8 @@ impl AppState {
         }
     }
 
+    /// Drops the notes of a connection that was just deleted; what this misses is pruned by
+    /// `prune_catalog` at the next start.
     fn forget_catalog(&self, id: Uuid) {
         catalog::forget_connection(&mut lock(&self.catalog), id);
     }
