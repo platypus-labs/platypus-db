@@ -77,8 +77,11 @@ export default async function (page) {
   await page.waitFor(`${rows("items")}.length === 0 && ${rows("orders")}.length > 0`);
 
   // A new load of the page: the note comes from catalog.db.
-  await page.eval(`location.reload()`);
-  await page.waitFor(`document.querySelector('.shell') !== null && ${row(NAME)} !== undefined`, 30_000);
+  // The marker only exists on the old document: its absence means the new one has loaded.
+  await page.eval(`window.__e2eBeforeReload = true; location.reload()`);
+  await page.waitFor(`window.__e2eBeforeReload === undefined && document.querySelector('.shell') !== null && ${row(NAME)} !== undefined`, 30_000);
+  // The filter is component state: it is empty again, so both tables are listed.
+  assert.equal(await page.eval(`document.querySelector('.tree-filter').value`), "");
   await expand(page);
   await page.waitFor(`${row("orders")}.querySelector('.catalog-mark') !== null`);
   await openDetails(page);
