@@ -1,33 +1,57 @@
-import { useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useState } from "react";
 import { AgentsPanel } from "../agents/AgentsPanel";
 import { toCommandError } from "../api";
-import { type SettingDef, getSetting, setSetting, settingDefs, useSettingsVersion } from "../settings";
+import { type SettingDef, getSetting, getStored, setSetting, setStored, settingDefs, useSettingsVersion } from "../settings";
 import { ShortcutsPanel } from "../shell/ShortcutsPanel";
 import { DriversPanel } from "../drivers/DriversPanel";
 import { MasterPasswordPanel } from "./MasterPassword";
 import { msg, t } from "../i18n";
 
-const SHORTCUTS = msg("Keyboard shortcuts");
-const SECURITY = msg("Master password");
-const AGENTS = msg("Agents");
-const DRIVERS = msg("Drivers");
+/** The pages after the declared settings' sections, each with its own panel. */
+const PANELS: [string, () => ReactNode][] = [
+  [msg("Master password"), () => <MasterPasswordPanel />],
+  [msg("Agents"), () => <AgentsPanel />],
+  [msg("Drivers"), () => <DriversPanel />],
+  [msg("Keyboard shortcuts"), () => <ShortcutsPanel />],
+];
+
+/** The section shown last, opened again next time; stored without a Settings entry. */
+const SECTION_KEY = "ui.settings_section";
 
 type Value = boolean | number | string;
 
-/** Every declared setting, by section, then the keyboard shortcuts; the list on the left
- *  jumps to a section. Changes apply and save at once. */
+/** Every declared setting, by section, then the other pages: one tab each, chosen in the list
+ *  on the left. Changes apply and save at once. */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   useSettingsVersion();
   const [error, setError] = useState<string | null>(null);
-  const body = useRef<HTMLDivElement>(null);
   const sections = new Map<string, SettingDef<Value>[]>();
   for (const def of settingDefs()) {
     sections.set(def.section, [...(sections.get(def.section) ?? []), def]);
   }
+  const names = [...sections.keys(), ...PANELS.map(([name]) => name)];
+  const [chosen, setChosen] = useState(() => getStored(SECTION_KEY));
+  const current = typeof chosen === "string" && names.includes(chosen) ? chosen : names[0]!;
+  const select = (name: string) => {
+    setChosen(name);
+    setStored(SECTION_KEY, name).catch((e: unknown) => console.warn("settings section", e));
+  };
+  const onTabKey = (e: KeyboardEvent<HTMLElement>) => {
+    const at = names.indexOf(current);
+    const moves: Record<string, number> = { ArrowDown: at + 1, ArrowUp: at - 1 + names.length, Home: 0, End: names.length - 1 };
+    const to = moves[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    const next = names[to % names.length]!;
+    select(next);
+    e.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-section="${CSS.escape(next)}"]`)?.focus();
+  };
   const save = (def: SettingDef<Value>, value: Value | null) => {
     setError(null);
     setSetting(def, value).catch((e: unknown) => setError(`${t(def.label)}: ${toCommandError(e).message}`));
   };
+  const defs = sections.get(current);
+  const panel = PANELS.find(([name]) => name === current)?.[1];
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -39,47 +63,36 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         <h2>{t("Settings")}</h2>
         {error && <div className="notice error small">{error}</div>}
         <div className="settings-layout">
-          <nav className="settings-nav">
-            {[...sections.keys(), SECURITY, AGENTS, DRIVERS, SHORTCUTS].map((section) => (
+          <div className="settings-nav" role="tablist" aria-orientation="vertical" aria-label={t("Settings")}>
+            {names.map((name) => (
               <button
-                key={section}
+                key={name}
                 type="button"
-                onClick={() =>
-                  body.current
-                    ?.querySelector(`[data-section="${CSS.escape(section)}"]`)
-                    ?.scrollIntoView({ block: "start", behavior: "smooth" })
-                }
+                role="tab"
+                id={`settings-tab-${names.indexOf(name)}`}
+                data-section={name}
+                aria-selected={name === current}
+                aria-controls="settings-panel"
+                tabIndex={name === current ? 0 : -1}
+                onClick={() => select(name)}
+                onKeyDown={onTabKey}
               >
-                {t(section)}
+                {t(name)}
               </button>
             ))}
-          </nav>
-          <div className="settings-body" ref={body}>
-            {[...sections].map(([section, defs]) => (
-              <section key={section} data-section={section}>
-                <h3>{t(section)}</h3>
-                {defs.map((def) => (
-                  <SettingRow key={def.key} def={def} onSave={(v) => save(def, v)} />
-                ))}
-              </section>
-            ))}
-            <section data-section={SECURITY}>
-              <h3>{t(SECURITY)}</h3>
-              <MasterPasswordPanel />
-            </section>
-            <section data-section={AGENTS}>
-              <h3>{t(AGENTS)}</h3>
-              <AgentsPanel />
-            </section>
-            <section data-section={DRIVERS}>
-              <h3>{t(DRIVERS)}</h3>
-              <DriversPanel />
-            </section>
-            <section data-section={SHORTCUTS}>
-              <h3>{t(SHORTCUTS)}</h3>
-              <ShortcutsPanel />
-            </section>
           </div>
+          <section
+            // A new panel for each tab, scrolled to its top.
+            key={current}
+            id="settings-panel"
+            className="settings-body"
+            role="tabpanel"
+            aria-labelledby={`settings-tab-${names.indexOf(current)}`}
+          >
+            <h3>{t(current)}</h3>
+            {defs?.map((def) => <SettingRow key={def.key} def={def} onSave={(v) => save(def, v)} />)}
+            {panel?.()}
+          </section>
         </div>
         <div className="actions">
           <span className="muted small">{t("Saved in settings.toml")}</span>

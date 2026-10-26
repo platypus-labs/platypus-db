@@ -199,15 +199,6 @@
   margin-top: 8px;
 }
 
-.modal.settings section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px 16px;
-  border-radius: var(--radius-xl);
-  background: var(--bg);
-}
-
 .modal.settings h3 {
   font-size: 14px;
   font-weight: 600;
@@ -472,27 +463,35 @@ button.primary.danger:hover:not(:disabled) {
   overflow: auto;
 }
 
-.settings-nav button {
+.settings-nav [role="tab"] {
+  flex: none;
   min-height: 30px;
   border: none;
   background: none;
   text-align: left;
   padding: 0 10px;
-  border-radius: var(--radius-xl);
-  color: var(--fg);
+  color: var(--fg-muted);
 }
 
-.settings-nav button:hover {
+.settings-nav [role="tab"]:hover {
   background: var(--hover);
   color: var(--fg);
 }
 
+.settings-nav [role="tab"][aria-selected="true"] {
+  background: var(--active);
+  color: var(--fg-strong);
+}
+
+/* One section at a time, in a dialog that keeps its height: the panel scrolls. */
 .settings-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  min-height: 0;
   overflow: auto;
-  padding-right: 4px;
+  padding: 0 4px 0 18px;
+  border-left: 1px solid var(--border);
 }
 
 .shortcuts table {
