@@ -58,3 +58,23 @@
   border: 0;
   background: transparent;
 }
+
+/* The schema documentation export (DocsDialog). */
+.docs-dialog .docs-format {
+  flex: 0 0 130px;
+}
+
+.docs-dialog .docs-schemas {
+  max-height: 160px;
+  overflow: auto;
+}
+
+.docs-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.docs-progress progress {
+  width: 100%;
+}

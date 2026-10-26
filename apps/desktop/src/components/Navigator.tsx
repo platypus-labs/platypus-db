@@ -18,6 +18,7 @@ import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorP
 import { onNavigatorRefresh } from "../navigatorEvents";
 import { toggleSidebar, toggleSidebarTitle } from "../shell/sidebar";
 import { annotation, catalogEntry, catalogKey, parseFilter, useCatalogVersion } from "../catalog/catalog";
+import { openDocs } from "../catalog/DocsDialog";
 import { toggled } from "../sets";
 import { SQL_DRAG, type SqlDrag, qualifiedName, quoteIdent, selectLimit, selectSql, viewerSql } from "../sqlNames";
 import type { TabInit, TabModel } from "../tabs/registry";
@@ -1199,6 +1200,14 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       run: ({ connection }) => workbench().openTab("search", connection.id, { mode: "metadata" }),
     }),
     registerAction({
+      id: "connection.export_docs",
+      scope: "navigator.connection",
+      title: "Export documentation…",
+      group: "open",
+      order: 30,
+      run: ({ connection }) => openDocs(connection, null, null),
+    }),
+    registerAction({
       id: "connection.filters",
       scope: "navigator.connection",
       title: "Navigator filters…",
@@ -1270,6 +1279,14 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       when: ({ connection }) => connection.driver !== "mongo",
       run: ({ connection, database, schema }) =>
         workbench().openTab("search", connection.id, { database, mode: "data", schema: schema.name }),
+    }),
+    registerAction({
+      id: "schema.export_docs",
+      scope: "navigator.schema",
+      title: "Export documentation…",
+      group: "open",
+      order: 34,
+      run: ({ connection, database, schema }) => openDocs(connection, database, schema.name),
     }),
     registerAction({
       id: "schema.refresh",

@@ -1174,6 +1174,16 @@ const it: Record<string, string> = {
   "No settings match.": "Nessuna impostazione corrisponde.",
   "Resize the connections": "Ridimensiona le connessioni",
   "Drag to resize, double-click to reset": "Trascina per ridimensionare, doppio clic per ripristinare",
+  // Schema documentation export
+  "Export documentation…": "Esporta la documentazione…",
+  "Export documentation": "Esporta la documentazione",
+  "Title": "Titolo",
+  "Schemas": "Schemi",
+  "Views": "Viste",
+  "ER diagram": "Diagramma ER",
+  "Notes and tags": "Note e tag",
+  "Export": "Esporta",
+  "Documentation written to {path}": "Documentazione scritta in {path}",
 };
 
 export default it;

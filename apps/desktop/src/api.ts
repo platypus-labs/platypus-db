@@ -837,6 +837,24 @@ export interface TagCount {
   count: number;
 }
 
+export type DocsFormat = "markdown" | "html";
+
+/** What the schema documentation covers and where it is written. */
+export interface DocsRequest {
+  title: string;
+  schemas: string[];
+  views: boolean;
+  diagrams: boolean;
+  notes: boolean;
+  format: DocsFormat;
+  path: string;
+}
+
+export type DocsEvent =
+  | { kind: "progress"; done: number; total: number }
+  | { kind: "finished"; path: string }
+  | { kind: "failed"; message: string };
+
 /** A folder of projects in the rail; a project is in one at most. */
 export interface ProjectFolder {
   id: string;
@@ -1287,4 +1305,17 @@ export const api = {
     column: string | null,
     comment: string | null,
 ) => invoke<string>("comment_sql", { sessionId, schema, table, column, comment }),
+  /** Writes the documentation of `request.schemas`; cancelled with `cancelDocs`. */
+  exportDocs: (
+    sessionId: number,
+    connectionId: string,
+    database: string | null,
+    request: DocsRequest,
+    onEvent: (e: DocsEvent) => void,
+  ) => {
+    const channel = new Channel<DocsEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("export_docs", { sessionId, connectionId, database, request, onEvent: channel });
+  },
+  cancelDocs: (exportId: number) => invoke<void>("cancel_docs", { exportId }),
 };

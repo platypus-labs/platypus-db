@@ -1,7 +1,7 @@
 // Data catalog: a note and a tag on a table, the mark in the navigator, the #tag filter, and the
 // note still there after the page is loaded again (it lives in catalog.db, not in the page).
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -50,7 +50,43 @@ async function openDetails(page) {
   await page.waitFor(`${noteField} != null`, 15_000);
 }
 
-export default async function (page) {
+/** Opens the menu of the tree row `label` and clicks `item`. */
+async function menu(page, label, item) {
+  await page.waitFor(`${row(label)} !== undefined`, 15_000);
+  await page.eval(`${row(label)}.querySelector('.tree-label').id = 'e2e-row'`);
+  await page.clickSel("#e2e-row", { button: "right" });
+  await page.eval(`document.getElementById('e2e-row')?.removeAttribute('id')`);
+  await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await page.eval(
+    `[...document.querySelectorAll('.context-menu button')].find(b => b.querySelector('span').textContent === ${JSON.stringify(item)}).click()`,
+  );
+}
+
+/** The schema documentation as Markdown, in the file the save picker answers: the note and
+ *  the diagram are in it. */
+async function exportDocs(page, dir) {
+  const docs = `document.querySelector('.modal.docs-dialog')`;
+  const button = (text) => `[...${docs}.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(text)})`;
+  const out = join(dir, "docs.md");
+  await page.eval(`window.__platypus.answer("file", ${JSON.stringify(out)})`);
+  await menu(page, "main", "Export documentation…");
+  await page.waitFor(`${docs} !== null`, 15_000);
+  await page.eval(
+    `(() => { const s = ${docs}.querySelector('.docs-format select'); s.value = 'markdown'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`,
+  );
+  await page.waitFor(`${docs}.querySelector('.docs-format select').value === 'markdown'`);
+  await page.eval(`${button("Choose file…")}.click()`);
+  await page.waitFor(`${docs}.querySelector('input[aria-label="File"]').value === ${JSON.stringify(out)}`);
+  await page.waitFor(`!${button("Export")}.disabled`);
+  await page.eval(`${button("Export")}.click()`);
+  await page.waitFor(`${docs}.textContent.includes('Documentation written')`, 30_000);
+  const text = readFileSync(out, "utf8");
+  assert.match(text, /One row per order/);
+  assert.match(text, /erDiagram/);
+  await page.eval(`${button("Close")}.click()`);
+}
+
+export default async function (page, { dir }) {
   await expand(page);
   // Nothing marked yet: the wait below is on a change.
   assert.equal(await page.eval(`${row("orders")}.querySelector('.catalog-mark') === null`), true);
@@ -87,4 +123,6 @@ export default async function (page) {
   await openDetails(page);
   await page.waitFor(`${noteField}.value === ${JSON.stringify(NOTE)}`);
   assert.equal(await page.eval(`[...${objectTab}.querySelectorAll('.tag-chip')].some(c => c.textContent.startsWith('#pii'))`), true);
+
+  await exportDocs(page, dir);
 }
