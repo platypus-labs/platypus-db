@@ -16,8 +16,8 @@ mod vendor;
 pub use registry::{Package, Registry};
 pub use tokio_util::sync::CancellationToken;
 pub use vendor::{
-    Archive, Program, VendorPackage, install_vendor, installed_vendor, register, remove_vendor,
-    unregister, vendor_package,
+    Archive, Program, VENDOR_PACKAGES, VendorPackage, install_vendor, installed_vendor, register,
+    remove_vendor, unregister, vendor_package,
 };
 
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();

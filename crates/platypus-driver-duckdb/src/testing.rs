@@ -51,11 +51,16 @@ fn install(dir: &Path) -> PathBuf {
         if stale(&lock) {
             let _ = std::fs::remove_file(&lock);
         }
-        if std::fs::File::create_new(&lock).is_ok() {
-            break;
+        match std::fs::File::create_new(&lock) {
+            Ok(_) => break,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                std::thread::sleep(Duration::from_millis(500));
+            }
+            Err(e) => panic!("cannot create {}: {e}", lock.display()),
         }
-        std::thread::sleep(Duration::from_millis(500));
     }
+    // Removed however the download ends, a panic included: the others then try in turn.
+    let _unlock = Unlock(lock);
     let package = platypus_drivers::vendor_package(PACKAGE).expect("no DuckDB for this platform");
     let owned = dir.to_owned();
     // A runtime of its own, on a thread of its own: the caller may be inside a test's runtime.
@@ -73,8 +78,16 @@ fn install(dir: &Path) -> PathBuf {
     })
     .join()
     .expect("the download panicked");
-    let _ = std::fs::remove_file(&lock);
     installed
         .expect("cannot download DuckDB for the tests")
         .library
+}
+
+/// Deletes the lock file when dropped.
+struct Unlock(PathBuf);
+
+impl Drop for Unlock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }

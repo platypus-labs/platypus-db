@@ -1,7 +1,8 @@
 //! The log and the diagnostic package: a zip the user saves and attaches to a bug report,
 //! with the app's version and system, its logs and last crash, the settings without anything
 //! that looks like a secret, the drivers installed and how many connections of each database
-//! there are. No connection's name, host, user or password goes in.
+//! there are. No saved connection's name, host, user or password goes in; error messages in
+//! the logs may name a server or a table, which the Diagnostics page says.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -122,8 +123,8 @@ fn downloaded_drivers() -> Vec<String> {
     let Some(dir) = platypus_drivers::data_dir() else {
         return Vec::new();
     };
-    let vendors = ["oracle", "db2", "duckdb"]
-        .into_iter()
+    let vendors = platypus_drivers::VENDOR_PACKAGES
+        .iter()
         .filter_map(|name| platypus_drivers::installed_vendor(dir, name));
     platypus_drivers::list(dir)
         .into_iter()
@@ -176,11 +177,25 @@ pub async fn save_diagnostics(state: State<'_, AppState>, path: PathBuf) -> Comm
         settings: toml::to_string(&settings).unwrap_or_default(),
         connections,
     };
-    let fail = |e: &dyn std::fmt::Display| {
-        CommandError::new("io", format!("cannot write {}: {e}", path.display()))
+    let shown = path.display().to_string();
+    let fail = move |e: &dyn std::fmt::Display| {
+        CommandError::new("io", format!("cannot write {shown}: {e}"))
     };
-    let file = std::fs::File::create(&path).map_err(|e| fail(&e))?;
-    write_zip(file, &contents, applog::dir()).map_err(|e| fail(&e))
+    // Off the async runtime, into a file of its own renamed once complete: a failure leaves
+    // no half-written zip behind.
+    tokio::task::spawn_blocking(move || {
+        let partial = path.with_extension("zip.partial");
+        let written = std::fs::File::create(&partial)
+            .map_err(zip::result::ZipError::Io)
+            .and_then(|file| write_zip(file, &contents, applog::dir()))
+            .and_then(|()| std::fs::rename(&partial, &path).map_err(zip::result::ZipError::Io));
+        if written.is_err() {
+            let _ = std::fs::remove_file(&partial);
+        }
+        written.map_err(|e| fail(&e))
+    })
+    .await
+    .map_err(|e| CommandError::new("io", e.to_string()))?
 }
 
 #[cfg(test)]

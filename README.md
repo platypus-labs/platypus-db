@@ -356,7 +356,8 @@ methods and fields. `mongodb+srv://` and connection string options go in the Dat
 - **Logs and bug reports**: the app logs its starts, errors and crashes to `logs/` in its data
   folder (three files of 1 MB at most); nothing is sent anywhere. After a crash it offers a
   diagnostic package, also in Settings › Diagnostics: a zip with the version, the system, the
-  logs and the settings, without passwords or connection details, to attach to a bug report.
+  settings without passwords, connection counts by database and the logs, to attach to a bug
+  report. Error messages in the logs may name a server or a table: look before sharing.
 
 ## Agents (MCP) and the CLI
 
@@ -369,7 +370,9 @@ PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start 
 - Passwords stay in the keychain and no answer shows a host, a user or a secret.
 - Agents' queries are in the history with the agent's name.
 
-Settings → Agents shows the commands that register the server, with Copy buttons:
+Settings → Agents shows the commands that register the server, with Copy buttons. Agents
+registered with `platypus-mcp.exe` by version 0.2 need registering again with these commands:
+the installers no longer ship that second executable.
 
 ```bash
 claude mcp add platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp

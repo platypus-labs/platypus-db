@@ -160,10 +160,11 @@ process.exit(failed ? 1 : 0);
 /** Scenarios read the English interface whatever the language of the machine, unless one
  *  sets the language itself. */
 /** DuckDB as the app would have downloaded it, from the copy the Rust tests download into
- *  target/test-drivers (`cargo test -p platypus-driver-duckdb`); hard links, as each profile
+ *  target/test-drivers (or $CARGO_TARGET_DIR/test-drivers) (`cargo test -p platypus-driver-duckdb`); hard links, as each profile
  *  gets one. A scenario that sets `export const duckdb = false` starts without it. */
 function installDuckDb(dir) {
-  const from = resolve(here, "../../../target/test-drivers/drivers/vendor/duckdb");
+  const target = process.env.CARGO_TARGET_DIR ? resolve(process.env.CARGO_TARGET_DIR) : resolve(here, "../../../target");
+  const from = join(target, "test-drivers", "drivers", "vendor", "duckdb");
   if (!existsSync(from)) {
     console.log("e2e: no DuckDB in target/test-drivers; run `cargo test -p platypus-driver-duckdb` first");
     return;

@@ -47,7 +47,7 @@ export function DiagnosticsPanel() {
     <div className="diagnostics-panel">
       <p className="muted small">
         {t(
-          "PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report: it holds the version, the system, the logs and the settings, without passwords or connection details.",
+          "PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report: it holds the version, the system, the settings without passwords, how many connections of each database you have, and the logs. Error messages in the logs may name a server or a table: look at them before sharing the package.",
         )}
       </p>
       {info?.log_dir && (

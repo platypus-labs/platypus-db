@@ -20,6 +20,11 @@ pub fn load() -> Result<()> {
     load_with(|| {
         platypus_drivers::data_dir()
             .and_then(|dir| platypus_drivers::installed_vendor(dir, PACKAGE))
+            // Another version than the bindings' would be refused: the current one is offered.
+            .filter(|installed| {
+                platypus_drivers::vendor_package(PACKAGE)
+                    .is_some_and(|package| package.version == installed.version)
+            })
             .map(|installed| installed.library)
             .ok_or(Error::DriverMissing {
                 driver: DriverKind::DuckDb,

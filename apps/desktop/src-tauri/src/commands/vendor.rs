@@ -60,7 +60,12 @@ pub fn vendor_driver_status(driver: DriverKind) -> CommandResult<VendorStatus> {
     let installed = platypus_drivers::installed_vendor(data_dir()?, name);
     let system_driver = system_driver(driver)?;
     let ready = match driver {
-        DriverKind::Oracle | DriverKind::DuckDb => installed.is_some(),
+        DriverKind::Oracle => installed.is_some(),
+        // Only the version of the bindings loads.
+        DriverKind::DuckDb => installed
+            .as_ref()
+            .zip(package.as_ref())
+            .is_some_and(|(i, p)| i.version == p.version),
         _ => system_driver.is_some(),
     };
     Ok(VendorStatus {

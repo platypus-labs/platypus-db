@@ -217,6 +217,9 @@ fn duckdb() -> Option<VendorPackage> {
     })
 }
 
+/// Every vendor package the app knows, by name.
+pub const VENDOR_PACKAGES: &[&str] = &["oracle", "db2", "duckdb"];
+
 /// The package `name` for this platform; `None` where the app does not install it.
 #[must_use]
 pub fn vendor_package(name: &str) -> Option<VendorPackage> {
@@ -577,9 +580,9 @@ mod tests {
         let duckdb = vendor_package("duckdb").unwrap();
         assert!(duckdb.archives[0].url.ends_with(".tar.gz"));
         assert!(duckdb.register.is_none());
-        for p in ["oracle", "db2", "duckdb"]
-            .into_iter()
-            .filter_map(vendor_package)
+        for p in VENDOR_PACKAGES
+            .iter()
+            .filter_map(|name| vendor_package(name))
         {
             assert!(
                 p.archives
