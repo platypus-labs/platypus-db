@@ -135,3 +135,16 @@ registerAction({
   when: dirty,
   run: ({ source }) => source!.edit!.discard(),
 });
+
+registerAction({
+  id: "grid.display_column",
+  scope: "grid",
+  title: "Show column of the referenced table…",
+  group: "edit",
+  order: 40,
+  when: ({ grid, source }) => {
+    const f = grid.focused();
+    return f !== null && source?.edit?.foreignKey(f.col) != null;
+  },
+  run: ({ grid, source }) => source!.edit!.chooseDisplayColumn(grid.focused()!.col),
+});

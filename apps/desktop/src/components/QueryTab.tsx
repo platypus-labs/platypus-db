@@ -1041,6 +1041,7 @@ export function QueryTab({
     };
     return {
       connection,
+      database: tab.database,
       key: viewer ? `table:${tab.table}` : `sql:${result.sql}`,
       quiet: !viewer,
       readOnly: null,

@@ -118,6 +118,10 @@ export async function setDisplayColumn(
   changed();
 }
 
+/** `columns`, plus the picked one when the table no longer has it, so the select shows it. */
+export const withPicked = (columns: string[], picked: string) =>
+  picked && !columns.includes(picked) ? [...columns, picked] : columns;
+
 /** Re-renders the caller whenever notes are loaded or saved. */
 export function useCatalogVersion(): number {
   return useSyncExternalStore(
