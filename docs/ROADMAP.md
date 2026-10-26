@@ -102,7 +102,7 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 | I — Strumenti di schema | ✅ fatto (P1) |
 | J — Amministrazione del server | libero |
 | K — Shell ed ergonomia | ✅ fatto (P1, P2) |
-| L — Sicurezza operativa | 🔒 Paolo · group-l-safety · 2026-10-26 |
+| L — Sicurezza operativa | ✅ fatto (P1, P2) |
 | M — Analisi dei dati | ✅ fatto (P2) |
 | N — Accesso per agenti (MCP) | ✅ fatto (P1) |
 | O — Collaborazione e sync | libero |
