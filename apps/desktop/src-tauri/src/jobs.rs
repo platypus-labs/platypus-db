@@ -349,6 +349,11 @@ impl Job {
         self.target.send_replace(usize::MAX);
     }
 
+    /// How many rows are buffered so far.
+    pub fn loaded_rows(&self) -> usize {
+        lock(&self.buffer).rows
+    }
+
     /// The buffered rows in `offset..offset + limit`, as slices of the stored batches.
     pub fn window(&self, offset: usize, limit: usize) -> Option<(SchemaRef, Vec<RecordBatch>)> {
         let buffer = lock(&self.buffer);
