@@ -112,11 +112,14 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 
 ### Gruppo A — Modifica dei dati
 
-**Stato: P1 completate, P2 e P3 in parte** (modifica, righe nuove/duplicate/eliminate, anteprima SQL,
+**Stato: completato** (modifica, righe nuove/duplicate/eliminate, anteprima SQL,
 chiave obbligatoria o virtuale, NULL/default ed editor per tipo, salvataggio tutto-o-niente,
 incolla da foglio di calcolo, risultati di query di una tabella, dictionary delle FK, script
-di undo; P3: array e tipi composti PostgreSQL modificati un elemento o campo per riga, gli
-array annidati come testo). Da fare: modifica di massa della selezione, BLOB caricati da file.
+di undo, modifica di massa della selezione (valore/NULL/DEFAULT controllato per tipo, riempi
+verso il basso con Ctrl+Alt+D (⌃⇧D su macOS), sostituisci testo anche con espressioni regolari, sequenza
+numerica); P3: array e tipi composti PostgreSQL modificati un elemento o campo per riga, gli
+array annidati come testo, celle caricate da file: byte nelle colonne binarie, testo UTF-8
+nelle colonne di testo, conferma sopra i 50 MB, rifiutati sopra i 200 MB).
 
 **Area:** `apps/desktop/src/grid/edit/`, `commands/data.rs`, `platypus-sql/src/dml.rs`
 **Dipende da:** 0.3, 0.4, 0.5
@@ -135,8 +138,8 @@ array annidati come testo). Da fare: modifica di massa della selezione, BLOB car
 | ✅ **Dictionary data**: le FK mostrano la colonna descrittiva della tabella collegata, con un menu a tendina in modifica | P2 | D |
 | ✅ Array PostgreSQL e tipi composti modificabili | P3 | D |
 | ✅ Script di undo generato per le modifiche salvate | P2 | N |
-| 🆕 **Modifica di massa**: un valore su tutte le celle selezionate, riempi verso il basso, sostituisci testo nella selezione, sequenza numerica | P2 | D |
-| 🆕 BLOB e testi lunghi caricati da file nella cella | P3 | D |
+| ✅ **Modifica di massa**: un valore su tutte le celle selezionate, riempi verso il basso, sostituisci testo nella selezione, sequenza numerica | P2 | D |
+| ✅ BLOB e testi lunghi caricati da file nella cella | P3 | D |
 
 **Done:** modifica, inserimento ed eliminazione su PG, MySQL, MariaDB e SQLite, con test di
 conformance per la DML generata (quoting, NULL, binari, timestamp con fuso).

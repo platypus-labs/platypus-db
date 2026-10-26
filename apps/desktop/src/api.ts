@@ -1411,9 +1411,10 @@ export const api = {
   /** Saves `changes` on the result's session, all or none; `undo` puts the rows back. */
   saveChanges: (jobId: number, changes: TableChanges) =>
     invoke<{ statements: number; undo: string }>("save_changes", { jobId, changes }),
-  /** Loaded rows' values in full, not cut to one line like the grid's. */
-  rowValues: (jobId: number, offset: number, limit: number) =>
-    invoke<(string | null)[][]>("row_values", { jobId, offset, limit }),
+  /** Loaded rows' values in full, not cut to one line like the grid's. With `columns`, only
+   *  those columns of each row, in that order. */
+  rowValues: (jobId: number, offset: number, limit: number, columns?: readonly number[]) =>
+    invoke<(string | null)[][]>("row_values", { jobId, offset, limit, columns: columns ?? null }),
   /** The elements of a PostgreSQL array (or the fields of a composite value); `null` when
    *  the text is not one, e.g. a nested array. */
   /** `typeName` is the array's type (`box[]` separates its elements with `;`). */
@@ -1447,6 +1448,11 @@ export const api = {
     new Uint8Array(await invoke<ArrayBuffer>("cell_bytes", { jobId, row, column })),
   saveCell: (jobId: number, row: number, column: number, path: string) =>
     invoke<void>("save_cell", { jobId, row, column, path }),
+  /** A file's size in bytes. */
+  fileSize: (path: string) => invoke<number>("file_size", { path }),
+  /** A file's contents for a data editor cell: hex for a binary column, else UTF-8 text
+   *  (an `invalid_utf8` error otherwise). */
+  readCellFile: (path: string, binary: boolean) => invoke<string>("read_cell_file", { path, binary }),
   /** Loaded cells containing `text`, ignoring case. */
   selectionStats: (jobId: number, offset: number, limit: number, columns: number[]) =>
     invoke<SelectionStats>("selection_stats", { jobId, offset, limit, columns }),

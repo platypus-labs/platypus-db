@@ -109,12 +109,22 @@ pub(super) fn rows_text(
     offset: usize,
     limit: usize,
 ) -> CommandResult<Vec<Vec<Option<String>>>> {
+    columns_text(job, offset, limit, None)
+}
+
+/// Like [`rows_text`], with only `columns` of each row (in that order) when given.
+fn columns_text(
+    job: &Job,
+    offset: usize,
+    limit: usize,
+    columns: Option<&[usize]>,
+) -> CommandResult<Vec<Vec<Option<String>>>> {
     let (_, batches) = job
         .window(offset, limit)
         .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;
     let mut rows = Vec::with_capacity(limit.min(batches.iter().map(RecordBatch::num_rows).sum()));
     for batch in &batches {
-        display::rows_text(batch, &mut rows)?;
+        display::columns_text(batch, columns, &mut rows)?;
     }
     Ok(rows)
 }
@@ -279,15 +289,17 @@ pub async fn save_changes(
 }
 
 /// The full values of loaded rows `offset..offset + limit`, as text (`None` for NULL): the
-/// grid shows them cut to one line, editing and copying need them whole.
+/// grid shows them cut to one line, editing and copying need them whole. With `columns`, only
+/// those columns of each row, in that order.
 #[tauri::command]
 pub fn row_values(
     state: State<'_, AppState>,
     job_id: u64,
     offset: usize,
     limit: usize,
+    columns: Option<Vec<usize>>,
 ) -> CommandResult<Vec<Vec<Option<String>>>> {
-    rows_text(&*state.job(job_id)?, offset, limit)
+    columns_text(&*state.job(job_id)?, offset, limit, columns.as_deref())
 }
 
 /// The elements of a PostgreSQL array of the type `type_name` (its delimiter is `;` for

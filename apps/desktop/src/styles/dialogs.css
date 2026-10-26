@@ -1090,3 +1090,16 @@ button.primary.danger:hover:not(:disabled) {
   max-height: 140px;
   overflow: auto;
 }
+
+/* The data editor's mass edits (grid/edit/MassEditDialog.tsx): what applying changes, and
+   the cells that stay as they are. */
+.mass-edit-modes {
+  gap: 16px;
+}
+
+.mass-edit-summary ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  max-height: 120px;
+  overflow: auto;
+}

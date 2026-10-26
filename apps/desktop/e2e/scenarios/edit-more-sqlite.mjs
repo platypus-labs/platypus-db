@@ -1,13 +1,13 @@
 // More of the data editor on a throwaway SQLite database: the list of a foreign key's rows,
 // rows pasted from a spreadsheet, the undo script of a save, a query's result edited like a
-// table, and a virtual key for a table without one. Pasting goes through the system
-// clipboard, which the scenario overwrites.
+// table, a virtual key for a table without one, mass edits of a selection and cells loaded
+// from files. Pasting goes through the system clipboard, which the scenario overwrites.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { CTRL, SHIFT } from "../cdp.mjs";
+import { ALT, CTRL, SHIFT } from "../cdp.mjs";
 
 const NAME = "E2E edit more";
 const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
@@ -30,8 +30,13 @@ export function setup({ dir }) {
            CREATE TABLE log (at TEXT, msg TEXT);
            INSERT INTO log VALUES ('t1', 'a'), ('t2', 'b');
            CREATE TABLE docs (id INTEGER PRIMARY KEY, doc JSON);
-           INSERT INTO docs VALUES (1, '{"a":1,"b":[1,2]}');`);
+           INSERT INTO docs VALUES (1, '{"a":1,"b":[1,2]}');
+           CREATE TABLE stock (id INTEGER PRIMARY KEY, name TEXT, qty INTEGER, pos INTEGER, data BLOB, note TEXT);
+           INSERT INTO stock VALUES (1, 'a', 5, 0, x'00', NULL), (2, 'b', 6, 0, NULL, NULL), (3, 'c', 7, 0, NULL, NULL);`);
   db.close();
+  // Files the file picker's test answer points to.
+  writeFileSync(join(dir, "bytes.bin"), Buffer.from([1, 2, 3]));
+  writeFileSync(join(dir, "note.txt"), "héllo", "utf8");
   writeFileSync(
     join(dir, "connections.toml"),
     `version = 1
@@ -78,6 +83,133 @@ async function previewSql(page) {
 async function saveFromPreview(page) {
   await page.eval(`${button("document.querySelector('.modal')", "Save")}.click()`);
   await page.waitFor(`document.querySelector('.sql-preview') === null`);
+}
+
+const menuButton = (label) =>
+  `[...document.querySelectorAll('.context-menu button')].find(b => b.querySelector('span')?.textContent === ${JSON.stringify(label)})`;
+
+/** Selects rows `from..to` of column `col`, from the keyboard. */
+async function selectDown(page, from, to, col) {
+  await focusCell(page, from, col);
+  for (let i = from; i < to; i++) await page.key("ArrowDown", "ArrowDown", 40, SHIFT);
+}
+
+/** Runs a grid menu item, through its submenus: the menu opens on the row numbers, which
+ *  keep the selection. */
+async function gridMenu(page, ...path) {
+  await page.eval(`${grid}.id = 'e2e-grid'`);
+  const r = await page.rect("#e2e-grid");
+  await page.eval(`document.getElementById('e2e-grid').removeAttribute('id')`);
+  await page.click(r.x + 4, r.y + 52, { button: "right" });
+  for (const label of path) {
+    await page.waitFor(`${menuButton(label)} !== undefined`);
+    await page.eval(`${menuButton(label)}.click()`);
+  }
+}
+
+/** Sets the `index`-th text field of the mass edit dialog, as typing would. */
+async function setField(page, index, text) {
+  await page.eval(`(() => {
+    const el = document.querySelectorAll('.mass-edit input:not([type])')[${index}];
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(text)});
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+}
+
+const summary = `(document.querySelector('.mass-edit-summary')?.textContent ?? '')`;
+
+/** Waits until the dialog's summary is the one worked out from `input` (its fields, as the
+ *  dialog lists them in `data-input`) and reads `text`. The summary of the fields before the
+ *  last ones were typed can read the same, so the text alone does not say the input arrived. */
+async function summaryOf(page, input, text) {
+  const current = `document.querySelector('.mass-edit-summary')?.dataset.input`;
+  await page.waitFor(`${current} === ${JSON.stringify(JSON.stringify(input))} && ${summary}.includes(${JSON.stringify(text)})`);
+}
+
+/** The preview's SQL once it holds every one of `parts`: fill down and loading a file apply
+ *  after reading values, with nothing else on screen to wait for. */
+async function previewWith(page, parts) {
+  for (let i = 0; ; i++) {
+    const sql = await previewSql(page);
+    await page.key("Escape", "Escape", 27);
+    await page.waitFor(`document.querySelector('.sql-preview') === null`);
+    if (parts.every((p) => sql.includes(p))) return sql;
+    assert.ok(i < 20, `${parts.join(" / ")} in ${sql}`);
+  }
+}
+
+async function applyMassEdit(page) {
+  await page.eval(`${button("document.querySelector('.mass-edit')", "Apply")}.click()`);
+  await page.waitFor(`document.querySelector('.mass-edit') === null`);
+}
+
+/** Set value, fill down, replace, a number sequence and two cells loaded from files, saved
+ *  together. */
+async function massEdits(page, dir) {
+  await openTable(page, "stock");
+  await page.waitFor(`${status} === '3 rows' && ${editBar}.includes('to edit a cell')`, 15_000);
+
+  // One value in the three cells of `name`.
+  await selectDown(page, 0, 2, 1);
+  await gridMenu(page, "Edit selection", "Set value…");
+  await page.waitFor(`document.querySelector('.mass-edit') !== null`);
+  await setField(page, 0, "same");
+  await summaryOf(page, ["value", "same"], "3 cells will change.");
+  await applyMassEdit(page);
+  await page.waitFor(`${editBar}.includes('3 rows changed')`);
+
+  // Fill down `qty` from the first row: Ctrl+Alt+D (Ctrl+D duplicates rows).
+  await selectDown(page, 0, 2, 2);
+  await page.key("d", "KeyD", 68, CTRL | ALT);
+  await previewWith(page, ["qty = 5 WHERE id = 3"]);
+
+  // Replace in `name`, counting the replacements first.
+  await selectDown(page, 0, 2, 1);
+  await gridMenu(page, "Edit selection", "Replace text…");
+  await page.waitFor(`document.querySelector('.mass-edit') !== null`);
+  await setField(page, 0, "SAME");
+  await setField(page, 1, "item");
+  await summaryOf(page, ["SAME", "item", false, false], "3 replacements in 3 cells.");
+  await applyMassEdit(page);
+
+  // Numbers from 10 by 5 down `pos`.
+  await selectDown(page, 0, 2, 3);
+  await gridMenu(page, "Edit selection", "Number sequence…");
+  await page.waitFor(`document.querySelector('.mass-edit') !== null`);
+  await setField(page, 0, "10");
+  await setField(page, 1, "5");
+  await summaryOf(page, ["10", "5"], "3 cells will change.");
+  await applyMassEdit(page);
+
+  // Bytes into the BLOB of the first row, UTF-8 text into the note of the second.
+  await page.eval(`window.__platypus.answer("file", ${JSON.stringify(join(dir, "bytes.bin"))})`);
+  await focusCell(page, 0, 4);
+  await gridMenu(page, "Load from file…");
+  await page.eval(`window.__platypus.answer("file", ${JSON.stringify(join(dir, "note.txt"))})`);
+  await focusCell(page, 1, 5);
+  await gridMenu(page, "Load from file…");
+
+  await previewWith(page, [
+    "UPDATE main.stock SET name = 'item', pos = 10, data = X'010203' WHERE id = 1;",
+    "UPDATE main.stock SET name = 'item', qty = 5, pos = 15, note = 'héllo' WHERE id = 2;",
+    "UPDATE main.stock SET name = 'item', qty = 5, pos = 20 WHERE id = 3;",
+  ]);
+  await previewSql(page);
+  await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
+  await saveFromPreview(page);
+  await page.waitFor(`${status} === '3 rows' && ${statusBar}.includes('Undo script')`, 15_000);
+
+  const db = new DatabaseSync(join(dir, "more.db"));
+  const rows = db.prepare("SELECT id, name, qty, pos, hex(data) AS data, note FROM stock ORDER BY id").all();
+  db.close();
+  assert.deepEqual(
+    rows.map((r) => ({ ...r })),
+    [
+      { id: 1, name: "item", qty: 5, pos: 10, data: "010203", note: null },
+      { id: 2, name: "item", qty: 5, pos: 15, data: "", note: "héllo" },
+      { id: 3, name: "item", qty: 5, pos: 20, data: "", note: null },
+    ],
+  );
 }
 
 export default async function (page, { dir, shots }) {
@@ -182,4 +314,6 @@ export default async function (page, { dir, shots }) {
   await page.eval(`${button("document.querySelector('.cell-popup')", "Apply")}.click()`);
   await page.waitFor(`document.querySelector('.cell-popup') === null`);
   assert.ok(!/changed/.test(await page.eval(editBar)), "formatting JSON marked the cell as changed");
+
+  await massEdits(page, dir);
 }
