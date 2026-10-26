@@ -714,6 +714,19 @@ button.primary.danger:hover:not(:disabled) {
   width: 160px;
 }
 
+.import-passwords {
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.import-passwords-hint {
+  display: block;
+}
+
+.import-project-note {
+  padding-bottom: 2px;
+}
+
 .align-end {
   align-self: flex-end;
 }

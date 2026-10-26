@@ -2,8 +2,9 @@
 // preview shows projects, folders and connections, an unticked connection stays out, and
 // the two new projects end up in a rail folder named after the file, with their folders in
 // the navigator. Then a SQL Server export whose connection has only a JDBC URL (host, port
-// and database empty), one with Windows login on a named instance, and an Oracle one that
-// is listed as not imported, with the reason.
+// and database empty) and a user name and password saved in DBeaver's encrypted
+// credentials-config.json, one with Windows login on a named instance, and an Oracle one
+// that is listed as not imported, with the reason.
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -86,7 +87,11 @@ async function importSqlServer(page) {
   await page.waitFor(`${dialog}.querySelectorAll('.import-row.connection').length === 2`, 15_000);
 
   assert.match(await page.eval(`${rowOf("Vericode Società")}.textContent`), /Vericode Società/);
-  assert.match(await page.eval(`${rowOf("sql-url")}.textContent`), /vc-sql01:1433\/Vericode/);
+  // The user name comes from DBeaver's encrypted credentials-config.json.
+  assert.match(await page.eval(`${rowOf("sql-url")}.textContent`), /vc_reader@vc-sql01:1433\/Vericode/);
+  // Its saved password comes along unless unticked.
+  assert.equal(await page.eval(`${dialog}.querySelector('.import-passwords input').checked`), true);
+  assert.equal(await page.eval(`${dialog}.querySelectorAll('.import-project-note').length`), 0);
   assert.match(await page.eval(`${rowOf("sql-windows")}.textContent`), /SRV:1433\/app/);
   const notes = await page.eval(`[...${dialog}.querySelectorAll('.import-note')].map(n => n.textContent)`);
   assert.equal(notes.length, 2, JSON.stringify(notes));

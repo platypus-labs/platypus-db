@@ -209,23 +209,44 @@ pub fn detect_imports() -> Vec<ImportFile> {
 }
 
 /// The projects and connections of another tool's file, for the user to pick from;
-/// nothing is saved.
+/// nothing is saved. The passwords found stay in the backend for `save_imported`.
 #[tauri::command]
-pub fn read_import(source: ImportSource, path: PathBuf) -> CommandResult<Vec<ImportedProject>> {
-    Ok(platypus_store::import_connections(source, &path)?)
+pub fn read_import(
+    state: State<'_, AppState>,
+    source: ImportSource,
+    path: PathBuf,
+) -> CommandResult<Vec<ImportedProject>> {
+    let projects = platypus_store::import_connections(source, &path)?;
+    *lock(&state.import_secrets) = projects
+        .iter()
+        .flat_map(|p| p.secrets.iter().map(|(id, s)| (*id, s.clone())))
+        .collect();
+    Ok(projects)
 }
 
-/// Saves what was picked from an import, all or nothing; the connections ask for their
-/// passwords on first use.
+/// Saves what was picked from an import, all or nothing. With `request.passwords`, the
+/// passwords read with the file are saved too; the other connections ask on first use.
 #[tauri::command]
 pub fn save_imported(
     state: State<'_, AppState>,
-    request: ImportRequest,
+    mut request: ImportRequest,
 ) -> CommandResult<super::projects::Workspace> {
-    state.with_store(|s| {
+    {
+        let read = lock(&state.import_secrets);
+        for project in request.targets.iter_mut().map(|t| &mut t.project) {
+            project.secrets = project
+                .connections
+                .iter()
+                .filter_map(|c| Some((c.id, read.get(&c.id)?.clone())))
+                .collect();
+        }
+    }
+    let workspace = state.with_store(|s| {
         s.apply_import(request)?;
         Ok(super::projects::Workspace::of(s))
-    })
+    })?;
+    lock(&state.import_secrets).clear();
+    Ok(workspace)
 }
 
 #[tauri::command]

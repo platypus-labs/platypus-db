@@ -78,7 +78,13 @@ function picked(project: ImportedProject, ticked: ReadonlySet<string>): Imported
     return inside.length === 0 || inside.some((c) => ticked.has(c.id));
   });
   const placement = Object.fromEntries(Object.entries(project.placement).filter(([id]) => ticked.has(id)));
-  return { ...project, connections, folders, placement, skipped: [], notes: {} };
+  const with_password = (project.with_password ?? []).filter((id) => ticked.has(id));
+  return { ...project, connections, folders, placement, skipped: [], notes: {}, project_notes: [], with_password };
+}
+
+/** How many connections of the file come with a saved password. */
+export function savedPasswords(projects: ImportedProject[]): number {
+  return projects.reduce((n, p) => n + (p.with_password?.length ?? 0), 0);
 }
 
 /** Whether the file held no connection at all, imported or left out. */
@@ -96,9 +102,10 @@ export function importRequest(
   ticked: ReadonlySet<string>,
   into: ImportInto[],
   railFolder: string | null,
+  passwords = false,
 ): ImportRequest {
   const targets = projects
     .map((p, i) => ({ project: picked(p, ticked), into: into[i] ?? { kind: "none" as const } }))
     .filter((t) => t.project.connections.length > 0);
-  return { targets, rail_folder: railFolder?.trim() || null };
+  return { targets, rail_folder: railFolder?.trim() || null, passwords };
 }
