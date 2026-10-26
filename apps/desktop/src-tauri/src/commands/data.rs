@@ -383,6 +383,7 @@ pub async fn save_changes(
                 CommandError::from(&error).context(format!("Statement {}", index + 1))
             }
             e @ ApplyError::RowCount { .. } => CommandError::new("row_count", e.to_string()),
+            e @ ApplyError::SessionRolledBack(_) => CommandError::new("rolled_back", e.to_string()),
         })?;
     Ok(Saved {
         statements: script.statements.len(),

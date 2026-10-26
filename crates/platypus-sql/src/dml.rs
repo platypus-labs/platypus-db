@@ -653,11 +653,19 @@ pub enum ApplyError {
         rows: u64,
         expected: u64,
     },
+    /// The save failed in manual-commit mode where the database has no savepoints: the
+    /// session's whole transaction was rolled back, its other uncommitted changes with it.
+    SessionRolledBack(Box<ApplyError>),
 }
 
 impl fmt::Display for ApplyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
+            Self::SessionRolledBack(ref cause) => write!(
+                f,
+                "{cause}. The database has no savepoints, so the whole transaction was rolled \
+                 back, with the other changes not committed yet"
+            ),
             Self::Failed { index, ref error } => write!(f, "statement {}: {error}", index + 1),
             Self::RowCount {
                 index,
@@ -711,14 +719,43 @@ async fn exec_one(conn: &dyn Connection, sql: &str) -> Result<u64, Error> {
 
 const SAVEPOINT: &str = "platypus_edit";
 
+/// The statements around a save: the one that opens it, those that keep it and those that
+/// undo it.
+fn bracket(dialect: Dialect, manual: bool) -> (Option<String>, Vec<String>, Vec<String>) {
+    if !manual {
+        return (
+            Some("BEGIN".to_owned()),
+            vec!["COMMIT".to_owned()],
+            vec!["ROLLBACK".to_owned()],
+        );
+    }
+    if !dialect.has_savepoints() {
+        return (None, Vec::new(), vec!["ROLLBACK".to_owned()]);
+    }
+    // Oracle's savepoints last until the transaction ends.
+    let release = dialect
+        .releases_savepoints()
+        .then(|| format!("RELEASE SAVEPOINT {SAVEPOINT}"));
+    let undo = std::iter::once(format!("ROLLBACK TO SAVEPOINT {SAVEPOINT}"))
+        .chain(release.clone())
+        .collect();
+    (
+        Some(format!("SAVEPOINT {SAVEPOINT}")),
+        release.into_iter().collect(),
+        undo,
+    )
+}
+
 /// Runs `statements`, each of which must change the rows it names, all or none. They go
 /// to the server together where the driver can send them so ([`Connection::execute_all`]);
 /// otherwise they stop at the first row count off. In autocommit mode they run in a
 /// transaction of their own and are committed; in manual-commit mode they join the
-/// session's transaction behind a savepoint, and stay uncommitted. Without savepoints
-/// (DuckDB) a failed statement in manual-commit mode rolls back the whole transaction,
-/// which DuckDB aborts on errors anyway; so does a row count off once rows changed, as
-/// nothing else can undo them. Statements that found no row leave the transaction as it was.
+/// session's transaction behind a savepoint, and stay uncommitted.
+///
+/// Without savepoints (DuckDB, Db2, Snowflake…) a failure in manual-commit mode rolls back
+/// the session's whole transaction, as nothing else can undo the statements before it, and
+/// says so ([`ApplyError::SessionRolledBack`]); a save that changed nothing yet leaves it
+/// as it was.
 pub async fn apply(
     conn: &dyn Connection,
     dialect: Dialect,
@@ -726,24 +763,7 @@ pub async fn apply(
 ) -> Result<(), ApplyError> {
     let manual = !conn.transaction().autocommit;
     let savepointless = manual && !dialect.has_savepoints();
-    let (begin, end, undo) = if savepointless {
-        (None, Vec::new(), vec!["ROLLBACK".to_owned()])
-    } else if manual {
-        (
-            Some(format!("SAVEPOINT {SAVEPOINT}")),
-            vec![format!("RELEASE SAVEPOINT {SAVEPOINT}")],
-            vec![
-                format!("ROLLBACK TO SAVEPOINT {SAVEPOINT}"),
-                format!("RELEASE SAVEPOINT {SAVEPOINT}"),
-            ],
-        )
-    } else {
-        (
-            Some("BEGIN".to_owned()),
-            vec!["COMMIT".to_owned()],
-            vec!["ROLLBACK".to_owned()],
-        )
-    };
+    let (begin, end, undo) = bracket(dialect, manual);
     if let Some(begin) = begin {
         exec_one(conn, &begin)
             .await
@@ -785,7 +805,10 @@ pub async fn apply(
             }));
         }
     }
-    outcome
+    match outcome {
+        Err(e) if savepointless && !untouched => Err(ApplyError::SessionRolledBack(Box::new(e))),
+        outcome => outcome,
+    }
 }
 
 #[cfg(test)]
@@ -1021,7 +1044,10 @@ mod tests {
         let names = [vec![(1, Some("it's"))], vec![(1, Some("a\\b"))]];
         assert_eq!(
             sql(&deletes(Dialect::MySql, "t", &cols, &names).unwrap()),
-            [("DELETE FROM t WHERE name IN ('it''s', 'a\\\\b')", 2)]
+            [(
+                "DELETE FROM t WHERE name IN ('it''s', _utf8mb4 X'615c62')",
+                2
+            )]
         );
         assert_eq!(
             sql(&deletes(Dialect::SqlServer, "t", &cols, &names).unwrap()),
@@ -1160,6 +1186,50 @@ mod tests {
         );
         assert!(statements[0].sql.ends_with("(499), (500)"));
         assert_eq!(statements[1].sql, "INSERT INTO t (id) VALUES (501), (502)");
+    }
+
+    #[test]
+    fn saves_behind_a_savepoint_where_there_is_one() {
+        let s = |v: &[&str]| v.iter().map(|&x| x.to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            bracket(Dialect::Oracle, false),
+            (Some("BEGIN".to_owned()), s(&["COMMIT"]), s(&["ROLLBACK"]))
+        );
+        assert_eq!(
+            bracket(Dialect::Postgres, true),
+            (
+                Some("SAVEPOINT platypus_edit".to_owned()),
+                s(&["RELEASE SAVEPOINT platypus_edit"]),
+                s(&[
+                    "ROLLBACK TO SAVEPOINT platypus_edit",
+                    "RELEASE SAVEPOINT platypus_edit"
+                ])
+            )
+        );
+        // Oracle has no RELEASE: the savepoint lasts until the transaction ends.
+        assert_eq!(
+            bracket(Dialect::Oracle, true),
+            (
+                Some("SAVEPOINT platypus_edit".to_owned()),
+                Vec::new(),
+                s(&["ROLLBACK TO SAVEPOINT platypus_edit"])
+            )
+        );
+        assert_eq!(
+            bracket(Dialect::DuckDb, true),
+            (None, Vec::new(), s(&["ROLLBACK"]))
+        );
+        let rolled_back = ApplyError::SessionRolledBack(Box::new(ApplyError::RowCount {
+            index: 0,
+            rows: 0,
+            expected: 1,
+        }));
+        assert!(
+            rolled_back
+                .to_string()
+                .contains("the whole transaction was rolled back"),
+            "{rolled_back}"
+        );
     }
 
     #[test]

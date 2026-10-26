@@ -1877,8 +1877,34 @@ async fn edits_many_rows() {
     }
 }
 
-/// Text with backslashes and quotes saves as typed on PostgreSQL whatever
-/// `standard_conforming_strings` says, and never ends its literal early.
+/// The statements that switch backslash escapes in string literals off and back on:
+/// `standard_conforming_strings` on PostgreSQL, `NO_BACKSLASH_ESCAPES` on MySQL.
+async fn backslash_modes(b: &Backend, conn: &dyn Connection) -> Option<[String; 2]> {
+    match (b.config.driver, b.name) {
+        (DriverKind::Postgres, "postgres" | "timescale" | "yugabyte") => Some([
+            "SET standard_conforming_strings = on".to_owned(),
+            "SET standard_conforming_strings = off".to_owned(),
+        ]),
+        (DriverKind::MySql, _) => {
+            let mode = collect(b, conn, "SELECT @@SESSION.sql_mode").await;
+            let mode = cell(&mode[0], 0, 0).unwrap_or_default();
+            let with = if mode.is_empty() {
+                "NO_BACKSLASH_ESCAPES".to_owned()
+            } else {
+                format!("{mode},NO_BACKSLASH_ESCAPES")
+            };
+            Some([
+                format!("SET SESSION sql_mode = '{with}'"),
+                format!("SET SESSION sql_mode = '{mode}'"),
+            ])
+        }
+        _ => None,
+    }
+}
+
+/// Text with backslashes and quotes saves as typed, is found again by key and by the data
+/// search, and never ends its literal early, whatever the session says of backslashes:
+/// `standard_conforming_strings` on PostgreSQL, `NO_BACKSLASH_ESCAPES` on MySQL.
 #[tokio::test]
 async fn edits_text_with_backslashes() {
     use platypus_sql::Dialect;
@@ -1887,12 +1913,12 @@ async fn edits_text_with_backslashes() {
     let _serial = SERIAL.lock().await;
     let texts = [r"x\'); DROP TABLE conf_scs; --", r"a\b", "it's", r"\\"];
     for b in backends().await {
-        if !matches!(b.name, "postgres" | "timescale" | "yugabyte") {
-            continue;
-        }
         let conn = b.connect().await;
         let conn = &*conn;
-        let d = Dialect::Postgres;
+        let Some(modes) = backslash_modes(&b, conn).await else {
+            continue;
+        };
+        let d = Dialect::from(b.config.driver);
         let columns = [
             Column {
                 name: "id",
@@ -1911,13 +1937,10 @@ async fn edits_text_with_backslashes() {
             "CREATE TEMPORARY TABLE conf_scs (id INT PRIMARY KEY, name TEXT)",
         )
         .await;
-        for setting in ["off", "on"] {
-            run(
-                conn,
-                &format!("SET standard_conforming_strings = {setting}"),
-            )
-            .await
-            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        for setting in &modes {
+            run(conn, setting)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", b.name));
             let ids: Vec<String> = (1..=texts.len()).map(|i| i.to_string()).collect();
             let rows: Vec<Vec<(usize, Value<'_>)>> = ids
                 .iter()
@@ -1927,25 +1950,36 @@ async fn edits_text_with_backslashes() {
             let inserts = dml::inserts(d, "conf_scs", &columns, &rows).unwrap();
             dml::apply(conn, d, &inserts)
                 .await
-                .unwrap_or_else(|e| panic!("{}: insert with {setting}: {e}", b.name));
+                .unwrap_or_else(|e| panic!("{}: insert after {setting}: {e}", b.name));
             let saved = collect(&b, conn, "SELECT name FROM conf_scs ORDER BY id").await;
             let saved: Vec<_> = (0..texts.len())
                 .map(|i| cell(&saved[0], 0, i).unwrap())
                 .collect();
             assert_eq!(saved, texts, "{}: {setting}", b.name);
+            let search = format!(
+                "SELECT count(*) FROM conf_scs WHERE {}",
+                d.contains("name", r"a\b")
+            );
+            let found = collect(&b, conn, &search).await;
+            assert_eq!(
+                cell(&found[0], 0, 0).as_deref(),
+                Some("1"),
+                "{}: {search}",
+                b.name
+            );
             // Keys with backslashes find their rows.
             let keys: Vec<_> = texts.iter().map(|t| vec![(1, Some(*t))]).collect();
             let deletes = dml::deletes(d, "conf_scs", &columns, &keys).unwrap();
             dml::apply(conn, d, &deletes)
                 .await
-                .unwrap_or_else(|e| panic!("{}: delete with {setting}: {e}", b.name));
+                .unwrap_or_else(|e| panic!("{}: delete after {setting}: {e}", b.name));
             let left = collect(&b, conn, "SELECT count(*) FROM conf_scs").await;
             assert_eq!(cell(&left[0], 0, 0).as_deref(), Some("0"), "{}", b.name);
         }
     }
 }
 
-/// Composite keys of timestamps with a time zone, decimals and UUIDs find their rows in a
+// Composite keys of timestamps with a time zone, decimals and UUIDs find their rows in a
 /// batched delete, on the dialects that list them as row values or with `OR`.
 #[tokio::test]
 async fn edits_composite_keys() {
@@ -2085,10 +2119,25 @@ async fn edits_keep_uncommitted_work_without_savepoints() {
         Some("3"),
         "row 3 kept, row 1 not deleted"
     );
-    conn.rollback().await.unwrap();
+    // Once a statement changed rows, only a rollback of everything undoes them, and the
+    // error says so.
+    let err = dml::apply(conn, d, &[delete("1"), delete("99")])
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, ApplyError::SessionRolledBack(cause)
+            if matches!(**cause, ApplyError::RowCount { index: 1, rows: 0, .. })),
+        "{err}"
+    );
+    assert!(err.to_string().contains("rolled back"), "{err}");
+    assert!(!conn.transaction().open);
     conn.set_autocommit(true).await.unwrap();
     let count = collect(&b, conn, "SELECT count(*) FROM conf_dk").await;
-    assert_eq!(cell(&count[0], 0, 0).as_deref(), Some("2"));
+    assert_eq!(
+        cell(&count[0], 0, 0).as_deref(),
+        Some("2"),
+        "rows 1 and 2, without row 3"
+    );
 }
 
 /// A partial unique index (`WHERE`) is reported as such: it tells no row apart, so the data

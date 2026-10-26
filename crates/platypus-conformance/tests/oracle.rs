@@ -467,6 +467,87 @@ async fn oracle_saves_many_edited_rows() {
     run(conn, "DROP TABLE ORA_MANY").await;
 }
 
+/// In manual-commit mode a failed save rolls back to its savepoint only: the session's other
+/// uncommitted changes stay, and so does the transaction.
+#[tokio::test]
+async fn oracle_keeps_uncommitted_work_when_a_save_fails() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{self, ApplyError, Column, Statement, Value, ValueKind};
+
+    let Some(conn) = oracle().await else { return };
+    let conn = &*conn;
+    let d = Dialect::Oracle;
+    run(conn, "DROP TABLE IF EXISTS ORA_SP").await;
+    run(
+        conn,
+        "CREATE TABLE ORA_SP (ID NUMBER PRIMARY KEY, NAME VARCHAR2(20))",
+    )
+    .await;
+    run(conn, "INSERT INTO ORA_SP VALUES (1, 'a')").await;
+    let columns = [
+        Column {
+            name: "ID",
+            kind: ValueKind::Decimal,
+            default: None,
+        },
+        Column {
+            name: "NAME",
+            kind: ValueKind::Text,
+            default: None,
+        },
+    ];
+    let update = |id: &str, name: &str| {
+        Statement::one(
+            dml::update(
+                d,
+                "ORA_SP",
+                &columns,
+                &[(1, Value::Text(name))],
+                &[(0, Some(id))],
+            )
+            .unwrap(),
+        )
+    };
+
+    conn.set_autocommit(false).await.unwrap();
+    run(conn, "INSERT INTO ORA_SP VALUES (2, 'b')").await;
+    let err = dml::apply(conn, d, &[update("1", "x"), update("99", "y")])
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ApplyError::RowCount {
+                index: 1,
+                rows: 0,
+                ..
+            }
+        ),
+        "{err}"
+    );
+    assert!(conn.transaction().open, "the session's transaction goes on");
+    assert_eq!(
+        scalar(conn, "SELECT COUNT(*) FROM ORA_SP").await,
+        "2",
+        "row 2 kept"
+    );
+    assert_eq!(
+        scalar(conn, "SELECT NAME FROM ORA_SP WHERE ID = 1").await,
+        "a",
+        "the save undone"
+    );
+    // A save that works stays uncommitted with the rest.
+    dml::apply(conn, d, &[update("2", "z")]).await.unwrap();
+    assert_eq!(
+        scalar(conn, "SELECT NAME FROM ORA_SP WHERE ID = 2").await,
+        "z"
+    );
+    conn.rollback().await.unwrap();
+    conn.set_autocommit(true).await.unwrap();
+    assert_eq!(scalar(conn, "SELECT COUNT(*) FROM ORA_SP").await, "1");
+    run(conn, "DROP TABLE ORA_SP").await;
+}
+
 #[tokio::test]
 async fn oracle_cancels_a_running_statement() {
     let Some(conn) = oracle().await else { return };

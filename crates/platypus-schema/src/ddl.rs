@@ -354,7 +354,7 @@ impl Ddl<'_> {
             }
             if let Some(comment) = text(c.comment.as_ref()) {
                 def.push_str(" COMMENT ");
-                def.push_str(&self.d.quote_literal(comment));
+                def.push_str(&self.d.quote_string(comment));
             }
         }
         def
@@ -468,7 +468,7 @@ impl Ddl<'_> {
     /// Db2 and Snowflake want an empty string, the others NULL).
     fn comment_value(&self, comment: Option<&str>) -> String {
         match comment {
-            Some(t) => self.d.quote_literal(t),
+            Some(t) => self.d.quote_string(t),
             None if matches!(self.d, Dialect::Oracle | Dialect::Db2 | Dialect::Snowflake) => {
                 "''".to_owned()
             }
@@ -489,7 +489,7 @@ impl Ddl<'_> {
     /// The statement that sets (or with `None` removes) the comment of `table`; `None` where
     /// tables have no comments. `existed`: whether it had one, for SQL Server.
     fn table_comment(&self, table: &str, comment: Option<&str>, existed: bool) -> Option<String> {
-        let lit = |t: &str| self.d.quote_literal(t);
+        let lit = |t: &str| self.d.quote_string(t);
         let t = self.table(table);
         match self.d {
             Dialect::Postgres
@@ -527,7 +527,7 @@ impl Ddl<'_> {
         comment: Option<&str>,
         existed: bool,
     ) -> String {
-        let lit = |t: &str| self.d.quote_literal(t);
+        let lit = |t: &str| self.d.quote_string(t);
         let mut target = format!("'SCHEMA', {}, 'TABLE', {}", lit(self.schema), lit(table));
         if let Some(c) = column {
             let _ = write!(target, ", 'COLUMN', {}", lit(c));
@@ -576,7 +576,7 @@ impl Ddl<'_> {
             }
             Dialect::ClickHouse => {
                 for c in columns {
-                    let comment = self.d.quote_literal(text(c.comment.as_ref()).unwrap_or(""));
+                    let comment = self.d.quote_string(text(c.comment.as_ref()).unwrap_or(""));
                     script.statements.push(format!(
                         "ALTER TABLE {} COMMENT COLUMN {} {comment}",
                         self.table(table),
@@ -588,7 +588,7 @@ impl Ddl<'_> {
             Dialect::BigQuery => {
                 for c in columns {
                     let d = text(c.comment.as_ref())
-                        .map_or_else(|| "NULL".to_owned(), |t| self.d.quote_literal(t));
+                        .map_or_else(|| "NULL".to_owned(), |t| self.d.quote_string(t));
                     script.statements.push(format!(
                         "ALTER TABLE {} ALTER COLUMN {} SET OPTIONS (description = {d})",
                         self.table(table),
@@ -598,7 +598,7 @@ impl Ddl<'_> {
             }
             Dialect::Databricks => {
                 for c in columns {
-                    let d = self.d.quote_literal(text(c.comment.as_ref()).unwrap_or(""));
+                    let d = self.d.quote_string(text(c.comment.as_ref()).unwrap_or(""));
                     script.statements.push(format!(
                         "ALTER TABLE {} ALTER COLUMN {} COMMENT {d}",
                         self.table(table),
@@ -634,8 +634,8 @@ impl Ddl<'_> {
     /// such in the editor too.
     fn drop_mssql_default(&self, table: &str, column: &str) -> String {
         let d = self.d;
-        let object = d.quote_literal(&self.table(table));
-        let drop = d.quote_literal(&format!(
+        let object = d.quote_string(&self.table(table));
+        let drop = d.quote_string(&format!(
             "ALTER TABLE {} DROP CONSTRAINT ",
             self.table(table)
         ));
@@ -644,9 +644,9 @@ impl Ddl<'_> {
              WHERE parent_object_id = OBJECT_ID({object}) \
              AND parent_column_id = COLUMNPROPERTY(OBJECT_ID({object}), {}, 'ColumnId')); \
              DECLARE @s nvarchar(max) = {drop} + QUOTENAME(@n); IF @n IS NOT NULL EXEC(@s)",
-            d.quote_literal(column)
+            d.quote_string(column)
         );
-        format!("EXEC({})", d.quote_literal(&inner))
+        format!("EXEC({})", d.quote_string(&inner))
     }
 
     fn alter(&self, old: &TableDesign, new: &TableDesign, diff: &Diff<'_>, script: &mut Script) {
@@ -759,8 +759,8 @@ impl Ddl<'_> {
             out.push(if self.d == Dialect::SqlServer {
                 format!(
                     "EXEC sp_rename {}, {}, 'COLUMN'",
-                    self.d.quote_literal(&format!("{t}.{}", self.q(&o.name))),
-                    self.d.quote_literal(&n.name)
+                    self.d.quote_string(&format!("{t}.{}", self.q(&o.name))),
+                    self.d.quote_string(&n.name)
                 )
             } else {
                 format!(

@@ -6,6 +6,7 @@
 //! in sync.
 
 use std::borrow::Cow;
+use std::fmt::Write as _;
 
 use platypus_core::DriverKind;
 use platypus_core::arrow_schema::DataType;
@@ -380,6 +381,18 @@ pub(crate) fn is_reserved(name: &str, dialect: Dialect) -> bool {
         }
 }
 
+/// MySQL text as its UTF-8 bytes in hex, `_utf8mb4 X'…'`: a string of the connection's
+/// collation whatever `NO_BACKSLASH_ESCAPES` says.
+fn mysql_hex_text(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() * 2 + 12);
+    out.push_str("_utf8mb4 X'");
+    for b in value.bytes() {
+        let _ = write!(out, "{b:02x}");
+    }
+    out.push('\'');
+    out
+}
+
 /// The `LIKE` pattern, with `!` as the escape character, of the texts containing `needle`.
 /// `[` starts a character class in Transact-SQL patterns, so it is escaped too.
 #[must_use]
@@ -479,15 +492,23 @@ impl Dialect {
         }
     }
 
-    /// A string literal. MySQL treats backslashes as escapes by default
-    /// (`NO_BACKSLASH_ESCAPES` off), and ClickHouse always, so they are doubled there. Transact-SQL literals are
-    /// `N'...'`, so that text outside the database's code page survives. PostgreSQL text with
-    /// a backslash is an `E'...'` string with the backslashes doubled: a plain literal would
-    /// take them as escapes when `standard_conforming_strings` is off, and `\'` would end it.
+    /// A string literal, read the same whatever the session's settings. ClickHouse always
+    /// takes backslashes as escapes, so they are doubled there. Transact-SQL literals are
+    /// `N'...'`, so that text outside the database's code page survives.
+    ///
+    /// Text with a backslash depends on a setting elsewhere, so it is written in a form that
+    /// does not: on PostgreSQL an `E'...'` string with the backslashes doubled (a plain
+    /// literal takes them as escapes when `standard_conforming_strings` is off, and `\'`
+    /// would end it), on MySQL the text's UTF-8 bytes in hex (`NO_BACKSLASH_ESCAPES` decides
+    /// whether a backslash escapes).
     #[must_use]
     pub fn quote_literal(self, value: &str) -> String {
+        let has_backslash = value.contains('\\');
+        if self == Self::MySql && has_backslash {
+            return mysql_hex_text(value);
+        }
         let mut out = String::with_capacity(value.len() + 3);
-        let escape_string = self == Self::Postgres && value.contains('\\');
+        let escape_string = self == Self::Postgres && has_backslash;
         if self == Self::SqlServer {
             out.push('N');
         } else if escape_string {
@@ -503,7 +524,7 @@ impl Dialect {
                 // Snowflake reads `\'` as a quote too, so `''` stays correct there.
                 '\\' if backslashes
                     || escape_string
-                    || matches!(self, Self::MySql | Self::ClickHouse | Self::Snowflake) =>
+                    || matches!(self, Self::ClickHouse | Self::Snowflake) =>
                 {
                     out.push_str("\\\\");
                 }
@@ -512,6 +533,18 @@ impl Dialect {
         }
         out.push('\'');
         out
+    }
+
+    /// A plain string literal, for where the grammar takes no expression (MySQL's
+    /// `COMMENT '…'` and `ENUM('…')`): [`Dialect::quote_literal`], except MySQL text with a
+    /// backslash, which is written as when backslashes escape (`NO_BACKSLASH_ESCAPES` off,
+    /// the default).
+    #[must_use]
+    pub fn quote_string(self, value: &str) -> String {
+        if self == Self::MySql && value.contains('\\') {
+            return format!("'{}'", value.replace('\\', "\\\\").replace('\'', "''"));
+        }
+        self.quote_literal(value)
     }
 
     /// A boolean literal; SQLite has no boolean type and stores 1 and 0, SQL Server's `bit`
@@ -550,8 +583,8 @@ impl Dialect {
         !matches!(self, Self::Sqlite)
     }
 
-    /// Whether `SAVEPOINT`, `ROLLBACK TO SAVEPOINT` and `RELEASE SAVEPOINT` work inside a
-    /// transaction; DuckDB and ClickHouse have none, Oracle no `RELEASE`, Db2 another syntax.
+    /// Whether `SAVEPOINT` and `ROLLBACK TO SAVEPOINT` work inside a transaction; DuckDB and
+    /// ClickHouse have none, Db2 another syntax.
     #[must_use]
     pub const fn has_savepoints(self) -> bool {
         !matches!(
@@ -562,9 +595,15 @@ impl Dialect {
                 | Self::Snowflake
                 | Self::BigQuery
                 | Self::Databricks
-                | Self::Oracle
                 | Self::Db2
         )
+    }
+
+    /// Whether a savepoint is ended with `RELEASE SAVEPOINT`: Oracle's last until the
+    /// transaction ends.
+    #[must_use]
+    pub const fn releases_savepoints(self) -> bool {
+        self.has_savepoints() && !matches!(self, Self::Oracle)
     }
 
     /// The statements that open a transaction in which the database refuses to write, where
@@ -1087,7 +1126,15 @@ mod tests {
             "E'x\\\\''; DROP TABLE t; --'"
         );
         assert_eq!(Dialect::DuckDb.quote_literal("a\\b"), "'a\\b'");
-        assert_eq!(Dialect::MySql.quote_literal("a\\'b"), "'a\\\\''b'");
+        // Bytes, which `NO_BACKSLASH_ESCAPES` does not change; a plain string where the
+        // grammar takes nothing else, as backslashes escape by default.
+        assert_eq!(
+            Dialect::MySql.quote_literal("a\\'b"),
+            "_utf8mb4 X'615c2762'"
+        );
+        assert_eq!(Dialect::MySql.quote_literal("é's"), "'é''s'");
+        assert_eq!(Dialect::MySql.quote_string("a\\'b"), "'a\\\\''b'");
+        assert_eq!(Dialect::Postgres.quote_string("a\\b"), "E'a\\\\b'");
         assert_eq!(Dialect::Sqlite.quote_literal("🦆"), "'🦆'");
     }
 
@@ -1313,6 +1360,7 @@ mod tests {
         assert_eq!(Dialect::from(DriverKind::Oracle), ora);
         assert_eq!(Dialect::from(DriverKind::Db2), db2);
         assert_eq!(Dialect::from(DriverKind::Odbc), Dialect::Ansi);
+        assert!(ora.has_savepoints() && !db2.has_savepoints());
         for d in [ora, db2] {
             assert_eq!(d.quote_ident("ORDERS"), "ORDERS");
             assert_eq!(d.quote_ident("Orders"), "\"Orders\"");
@@ -1321,7 +1369,7 @@ mod tests {
             assert_eq!(d.quote_literal("it's \\"), "'it''s \\'");
             assert_eq!(d.limit_clause(5), "FETCH FIRST 5 ROWS ONLY");
             assert_eq!(d.limited("SELECT 1", 5), "SELECT 1 FETCH FIRST 5 ROWS ONLY");
-            assert!(!d.has_savepoints() && d.has_default_keyword());
+            assert!(!d.releases_savepoints() && d.has_default_keyword());
             assert_eq!(d.read_only_begin(), [] as [&str; 0]);
             assert_eq!(
                 d.insert_defaults("T", "ID"),
