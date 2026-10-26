@@ -328,6 +328,10 @@ pub async fn open_session(
     password: Option<String>,
     database: Option<String>,
 ) -> CommandResult<SessionInfo> {
+    // "Query with SQL" reaches its in-memory database through a connection that is not saved.
+    if let Some((config, label)) = state.result_db_config(connection_id) {
+        return start_session(&state, connection_id, config, label, false).await;
+    }
     let saved = state.with_store(|s| {
         s.get(connection_id)
             .cloned()
@@ -350,9 +354,20 @@ pub async fn open_session(
     if let Some(database) = database {
         config.database = database;
     }
+    start_session(&state, connection_id, config, label, production).await
+}
+
+/// Connects with `config` and keeps the session. Production starts in manual commit, so that
+/// nothing changes until Commit.
+async fn start_session(
+    state: &AppState,
+    connection_id: Uuid,
+    config: ConnectionConfig,
+    label: String,
+    production: bool,
+) -> CommandResult<SessionInfo> {
     let raw: Arc<dyn Connection> = Arc::from(connect(&config).await?);
     let conn = Logged::wrap(Arc::clone(&raw), &state.query_log, &label);
-    // Production starts in manual commit, so nothing changes until Commit.
     if production && conn.capabilities().transactions {
         conn.set_autocommit(false).await?;
     }

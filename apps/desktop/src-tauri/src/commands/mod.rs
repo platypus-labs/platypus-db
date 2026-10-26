@@ -79,6 +79,8 @@ pub struct AppState {
     scripts: Result<PathBuf, String>,
     sessions: Mutex<HashMap<u64, Session>>,
     jobs: Mutex<HashMap<u64, Arc<Job>>>,
+    /// "Query with SQL": the in-memory databases of the temporary connections, by their id.
+    result_dbs: Mutex<HashMap<Uuid, analysis::sql::ResultDb>>,
     exports: Mutex<HashMap<u64, Arc<Export>>>,
     /// Scripts running in a command-line client, by the editor's run id: sending stops one.
     clis: Mutex<HashMap<u64, tokio::sync::oneshot::Sender<()>>>,
@@ -129,6 +131,7 @@ impl AppState {
             scripts,
             sessions: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
+            result_dbs: Mutex::new(HashMap::new()),
             exports: Mutex::new(HashMap::new()),
             clis: Mutex::new(HashMap::new()),
             previous_runs: Mutex::new(HashMap::new()),

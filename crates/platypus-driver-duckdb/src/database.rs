@@ -71,7 +71,8 @@ pub fn connect(path: &str) -> Result<(Arc<Database>, duckdb::Connection)> {
         .iter()
         .find(|(k, _)| *k == key)
         .and_then(|(_, db)| db.upgrade());
-    let data_file = files::is_data_file(path);
+    // `:memory:<name>` is never a data file, whatever its name ends with.
+    let data_file = !path.starts_with(MEMORY) && files::is_data_file(path);
     let database = if let Some(database) = existing {
         database
     } else {

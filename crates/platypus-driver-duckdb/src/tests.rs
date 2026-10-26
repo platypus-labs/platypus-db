@@ -371,3 +371,14 @@ async fn named_memory_databases_are_their_own() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn a_memory_database_named_like_a_file_is_not_read() {
+    let (_database, conn) = crate::memory_database("tests-named.csv").unwrap();
+    conn.execute_batch("CREATE TABLE kept AS SELECT 7 AS n")
+        .unwrap();
+    let mut config = ConnectionConfig::new(DriverKind::DuckDb);
+    config.database = crate::memory_path("tests-named.csv");
+    let session = DuckDbConnection::connect(&config).await.unwrap();
+    assert_eq!(value(&session, "SELECT n FROM kept").await, "7");
+}
