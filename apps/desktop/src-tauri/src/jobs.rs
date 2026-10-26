@@ -147,6 +147,9 @@ pub struct Job {
     started: Instant,
     /// Set once the background task has sent its last event.
     done: AtomicBool,
+    /// Set with the last event when fetching reached the end of the rows (not the memory cap,
+    /// a row limit, an error or `stop`).
+    complete: AtomicBool,
     target: watch::Sender<usize>,
     cancel: CancelHandle,
     task: Mutex<Option<JoinHandle<()>>>,
@@ -207,6 +210,7 @@ impl Job {
             events: events.clone(),
             started: Instant::now(),
             done: AtomicBool::new(false),
+            complete: AtomicBool::new(false),
             target: watch::Sender::new(limit.unwrap_or(PREFETCH_ROWS)),
             cancel: conn.cancel_handle(),
             task: Mutex::new(None),
@@ -320,6 +324,7 @@ impl Job {
         // Dropping an unfinished stream cancels the rest of the query server-side.
         drop(stream);
         let rows = lock(&self.buffer).rows;
+        self.complete.store(complete, Ordering::Release);
         send(QueryEvent::Finished {
             rows,
             elapsed_ms: millis(started),
@@ -358,6 +363,11 @@ impl Job {
     /// The background task has sent its last event: the session is free again.
     pub fn is_done(&self) -> bool {
         self.done.load(Ordering::Acquire)
+    }
+
+    /// Every row of the result is loaded: fetching ended at the end of the rows.
+    pub fn is_complete(&self) -> bool {
+        self.is_done() && self.complete.load(Ordering::Acquire)
     }
 
     /// Stops fetching but keeps the rows already buffered: the result stays browsable while
