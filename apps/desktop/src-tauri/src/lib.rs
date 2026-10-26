@@ -271,6 +271,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::sql::lint_sql,
         commands::sql::sql_order_by,
         commands::sql::sql_count_query,
+        commands::sql::sql_add_limit,
         commands::sql::sql_sortable,
         commands::sql::sql_add_condition,
         commands::sql::sql_order_clause,

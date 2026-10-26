@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   api,
@@ -32,8 +32,16 @@ import { viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { basename } from "../workspace";
-import { type CheckedStatement, type GuardRequest, check, elapsed, transactionWarning } from "../guards/guards";
+import {
+  type CheckedStatement,
+  type GuardRequest,
+  autoLimitSetting,
+  check,
+  elapsed,
+  transactionWarning,
+} from "../guards/guards";
 import { GuardDialog } from "../guards/GuardDialog";
+import { PendingDialog } from "../guards/PendingDialog";
 import { ExportDialog, type ExportSource } from "./ExportDialog";
 import { HealthBadge, useSessionHealth } from "./health";
 import { HistoryPanel } from "./HistoryPanel";
@@ -105,6 +113,8 @@ export interface QueryTabModel extends TabBase {
   variables?: Record<string, string>;
   /** Results as text, like a console, instead of the grid. */
   terminal?: boolean;
+  /** Read-only for this tab only, as if the connection were; not persisted. */
+  readOnly?: boolean;
 }
 
 /** The side panel next to the editor. */
@@ -187,7 +197,7 @@ interface ExportProgress {
 
 export function QueryTab({
   tab,
-  connection,
+  connection: saved,
   active,
   ensureSession,
   currentSession,
@@ -197,12 +207,17 @@ export function QueryTab({
   onChange,
   onError,
 }: Props) {
+  // A tab made read-only gets every check of a read-only connection.
+  const connection = useMemo(() => (tab.readOnly ? { ...saved, read_only: true } : saved), [saved, tab.readOnly]);
   const editor = useRef<SqlEditorHandle>(null);
   const [tx, setTx] = useState<TransactionState | null>(null);
   /** A run waiting for the answer to its checks. */
   const [guard, setGuard] = useState<{ request: GuardRequest; resolve: (run: boolean) => void } | null>(null);
   /** When the open transaction began, as far as the tab saw it. */
   const [txSince, setTxSince] = useState<number | null>(null);
+  /** The statements run in the open transaction that change data or schema. */
+  const [pending, setPending] = useState<string[]>([]);
+  const [pendingOpen, setPendingOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const warnMinutes = useSetting(transactionWarning);
   const slowSeconds = useSetting(slowQuerySeconds);
@@ -650,8 +665,11 @@ export function QueryTab({
             Object.assign(variables, values);
             keepVariables();
           }
-          const ran = { ...result, sql };
-          update(result.id, { sql });
+          const autoLimit = !tab.table && p.kind === "query" ? getSetting(autoLimitSetting) : 0;
+          const capped = autoLimit > 0 ? await api.sqlAddLimit(sql, connection.driver, autoLimit).catch(() => null) : null;
+          // The result keeps the statement as written: the header sort and the editor find it.
+          const ran = { ...result, sql: capped ?? sql };
+          update(result.id, { sql, autoLimit: capped ? autoLimit : null });
           const target = pending.export;
           pending.export = null;
           if (target) {
@@ -670,6 +688,9 @@ export function QueryTab({
       if (token !== runToken.current) return;
       // runOne reports the statuses of a job; commands, exports and cancelled ones are set here.
       if (seen.jobId === null) update(result.id, { status });
+      if (p.kind !== "query" && p.kind !== "command" && status.kind !== "error" && status.kind !== "skipped") {
+        await notePending(sessionId, p.kind, sql);
+      }
       if (tab.terminal) await logTerminal(result.id, sql, status, seen);
       if (status.kind === "rows") lastRows = i;
       if (status.kind === "error") {
@@ -822,6 +843,16 @@ export function QueryTab({
     }
     setResults((all) => all.filter((x) => x.id !== id));
     setActiveResult((a) => Math.max(0, a > i || a === results.length - 1 ? a - 1 : a));
+  }
+
+  /** After a statement that is not a query: a change made while a transaction stays open
+   *  waits for Commit and is listed; one that leaves none open (a COMMIT) empties the list. */
+  async function notePending(sessionId: number, kind: StatementSpan["kind"], sql: string) {
+    const state = await api.transactionState(sessionId).catch(() => null);
+    if (!state) return;
+    setTx(state);
+    const change = kind === "dml" || kind === "ddl";
+    setPending((list) => (!state.open ? [] : change ? [...list, sql] : list));
   }
 
   async function refreshTx(sessionId: number) {
@@ -1146,6 +1177,8 @@ export function QueryTab({
   useEffect(() => {
     if (!tx?.open) {
       setTxSince(null);
+      setPending([]);
+      setPendingOpen(false);
       warned.current = false;
       return;
     }
@@ -1233,6 +1266,22 @@ export function QueryTab({
             </button>
           )}
           <ConnectionChip connection={connection} database={tab.database ?? null} schema={catalog?.default_schema ?? null} />
+          <button
+            className={connection.read_only ? "toggled" : ""}
+            onClick={() => onChange({ readOnly: !tab.readOnly })}
+            disabled={saved.read_only}
+            aria-label={t("Read-only")}
+            aria-pressed={connection.read_only}
+            title={t(
+              saved.read_only
+                ? "The connection is read-only"
+                : tab.readOnly
+                  ? "Read-only in this tab: click to allow changes again"
+                  : "Make this tab read-only, without changing the connection",
+            )}
+          >
+            {toolbar.label("lock", t("Read-only"))}
+          </button>
           {showTx && <span className="divider" />}
           {showTx && (
           <button
@@ -1272,12 +1321,15 @@ export function QueryTab({
             </>
           )}
           {tx?.open && (
-            <span
+            <button
+              type="button"
               className={`tx-open${txLong ? " long" : ""}`}
+              onClick={() => setPendingOpen(true)}
               title={t("A transaction is open: changes are not visible to others yet, and locks are held")}
             >
               ● {t("Transaction open {time}", { time: elapsed(txAge) })}
-            </span>
+              {pending.length > 0 && ` · ${plural(pending.length, "{n} change", "{n} changes")}`}
+            </button>
           )}
           {toolbar.visible.files && (
             <>
@@ -1536,6 +1588,15 @@ export function QueryTab({
           initial={asking.initial}
           onRun={asking.resolve}
           onCancel={() => asking.resolve(null)}
+        />
+      )}
+      {pendingOpen && (
+        <PendingDialog
+          statements={pending}
+          onEnd={(commit) => {
+            setPendingOpen(false);
+            if (commit !== null) void endTransaction(commit);
+          }}
         />
       )}
       {guard && (

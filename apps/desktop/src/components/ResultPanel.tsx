@@ -31,6 +31,8 @@ export interface Result {
   status: ResultStatus;
   /** Row cap in script mode. */
   limit: number | null;
+  /** The `LIMIT` the editor added to the query (`safety.auto_limit`). */
+  autoLimit?: number | null;
 }
 
 export const fmt = new Intl.NumberFormat();
@@ -55,6 +57,7 @@ export function describe(result: Result): string {
         return t("first {rows} (script limit)", { rows });
       }
       if (!s.complete) return t("{rows} · stopped at the memory limit", { rows });
+      if (result.autoLimit && result.rows >= result.autoLimit) return t("first {rows} (automatic LIMIT)", { rows });
       return rows;
     }
     case "affected":

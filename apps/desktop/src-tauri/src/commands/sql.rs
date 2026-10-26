@@ -461,6 +461,16 @@ pub fn sql_count_query(sql: String, driver: DriverKind) -> Option<String> {
     platypus_sql::count_query(&sql, Dialect::from(driver))
 }
 
+/// `sql` capped at `limit` rows (`LIMIT`, `TOP`, `FETCH FIRST`); `None` when it is not a
+/// read-only query on a table without a row cap of its own. The editor's automatic limit.
+#[tauri::command]
+pub fn sql_add_limit(sql: String, driver: DriverKind, limit: u64) -> Option<String> {
+    if driver == DriverKind::Mongo || !rewritable(&sql, driver) {
+        return None;
+    }
+    platypus_sql::add_limit(&sql, Dialect::from(driver), limit)
+}
+
 /// `sql` with `condition` added with AND to its top-level `WHERE`; `None` when it is not a read-only
 /// query the condition can be placed in. The grid's quick filters.
 #[tauri::command]

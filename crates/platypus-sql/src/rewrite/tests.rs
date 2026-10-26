@@ -960,3 +960,45 @@ fn never_panics_on_odd_input() {
         }
     }
 }
+
+#[test]
+fn adds_a_row_cap_to_queries_without_one() {
+    let limited = |sql, dialect| add_limit(sql, dialect, 100);
+    assert_eq!(
+        limited("SELECT * FROM t ORDER BY a;", PG).as_deref(),
+        Some("SELECT * FROM t ORDER BY a LIMIT 100;")
+    );
+    assert_eq!(
+        limited("WITH x AS (SELECT 1 LIMIT 5) SELECT * FROM x", PG).as_deref(),
+        Some("WITH x AS (SELECT 1 LIMIT 5) SELECT * FROM x LIMIT 100")
+    );
+    assert_eq!(
+        limited("SELECT a FROM t UNION SELECT b FROM u", MY).as_deref(),
+        Some("SELECT a FROM t UNION SELECT b FROM u LIMIT 100")
+    );
+    assert_eq!(
+        limited("SELECT DISTINCT a FROM t ORDER BY a OPTION (RECOMPILE)", MS).as_deref(),
+        Some("SELECT DISTINCT TOP (100) a FROM t ORDER BY a OPTION (RECOMPILE)")
+    );
+    assert_eq!(
+        limited("select * from t", Dialect::Oracle).as_deref(),
+        Some("select * from t FETCH FIRST 100 ROWS ONLY")
+    );
+}
+
+#[test]
+fn leaves_capped_and_other_statements_alone() {
+    for (sql, dialect) in [
+        ("SELECT * FROM t LIMIT 5", PG),
+        ("SELECT * FROM t OFFSET 10", PG),
+        ("SELECT TOP 5 * FROM t", MS),
+        ("SELECT a FROM t UNION SELECT b FROM u", MS),
+        ("SELECT * FROM t FOR UPDATE", MY),
+        ("SELECT 1", PG),
+        ("SELECT * INTO t2 FROM t", PG),
+        ("UPDATE t SET a = 1", PG),
+        ("SELECT 1 FROM t; SELECT 2 FROM t", PG),
+    ] {
+        assert_eq!(add_limit(sql, dialect, 100), None, "{sql}");
+    }
+}
