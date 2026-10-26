@@ -239,6 +239,8 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
     case "text":
       input = (
         <input
+          // A new field when the value changes elsewhere (Reset): blur would save the old one.
+          key={value as string}
           defaultValue={value as string}
           placeholder={c.placeholder}
           onBlur={(e) => e.target.value !== value && onSave(e.target.value)}
@@ -334,6 +336,8 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
 /** Saves on blur or Enter, and only valid numbers within bounds. */
 function NumberInput(props: { value: number; min?: number; max?: number; step?: number; onCommit: (n: number) => void }) {
   const [text, setText] = useState(String(props.value));
+  // Follows the value when it changes elsewhere (Reset): blur would save the old one.
+  useEffect(() => setText(String(props.value)), [props.value]);
   const commit = () => {
     const n = Number(text);
     const valid =
