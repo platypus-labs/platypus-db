@@ -19,7 +19,7 @@
 .tag-chip {
   padding: 0 6px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   font-size: 0.85em;
   line-height: 18px;
 }

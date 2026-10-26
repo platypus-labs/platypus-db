@@ -55,14 +55,11 @@ export function AgentsPanel() {
       {error && <div className="notice error small">{error}</div>}
       {setup && !setup.mcp_found && (
         <div className="notice warn small">
-          {/* One text run: the notice lays its children out side by side. */}
-          <span>
-            {tNodes("{mcp} is not next to the app. Build it with {build} and copy it to {path}.", {
-              mcp: <code>platypus-mcp</code>,
-              build: <code>cargo build --release -p platypus-mcp</code>,
-              path: setup.mcp_path,
-            })}
-          </span>
+          {tNodes("{mcp} is not next to the app. Build it with {build} and copy it to {path}.", {
+            mcp: <code>platypus-mcp</code>,
+            build: <code>cargo build --release -p platypus-mcp</code>,
+            path: setup.mcp_path,
+          })}
         </div>
       )}
       {setup && (

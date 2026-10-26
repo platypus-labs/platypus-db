@@ -141,7 +141,10 @@ const theme = EditorView.theme({
   ".cm-executing": { backgroundColor: "var(--grid-selection)", transition: "background-color 0.4s" },
   ".cm-tooltip": {
     backgroundColor: "var(--bg-sidebar)",
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-strong)",
+    borderRadius: "var(--radius-lg)",
+    boxShadow: "var(--shadow)",
+    overflow: "hidden",
     color: "var(--fg)",
   },
   ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
