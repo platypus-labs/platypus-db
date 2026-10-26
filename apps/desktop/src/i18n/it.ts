@@ -1204,6 +1204,13 @@ const it: Record<string, string> = {
   "Documentation written to {path}": "Documentazione scritta in {path}",
   // Data viewer: header sort of a statement the editor no longer holds as it ran
   "This query cannot be sorted from the header: the editor does not hold it as it ran (it was edited since, its variables were filled in, or it comes from @include).": "Questa query non si ordina dall'intestazione: l'editor non la contiene così come è stata eseguita (è stata modificata, ha variabili sostituite o viene da un @include).",
+  // Diagnostics: the log, crashes and the diagnostic package
+  "Diagnostics": "Diagnostica",
+  "PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report: it holds the version, the system, the logs and the settings, without passwords or connection details.": "PlatypusDB tiene su questo computer un log di avvii, errori e crash; non invia niente. Per segnalare un problema, salva il pacchetto diagnostico e allegalo alla segnalazione: contiene versione, sistema, log e impostazioni, senza password né dati delle connessioni.",
+  "Logs": "Log",
+  "Save diagnostic package…": "Salva pacchetto diagnostico…",
+  "Saved to {path}": "Salvato in {path}",
+  "PlatypusDB closed unexpectedly last time. A diagnostic package helps report the problem.": "L'ultima volta PlatypusDB si è chiuso inaspettatamente. Un pacchetto diagnostico aiuta a segnalare il problema.",
 };
 
 export default it;

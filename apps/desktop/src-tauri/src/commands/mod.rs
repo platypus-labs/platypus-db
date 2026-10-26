@@ -9,6 +9,7 @@ pub mod catalog;
 pub mod cli;
 pub mod connections;
 pub mod data;
+pub mod diagnostics;
 pub mod drivers;
 pub mod explain;
 pub mod export;

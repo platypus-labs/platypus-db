@@ -353,6 +353,10 @@ methods and fields. `mongodb+srv://` and connection string options go in the Dat
   have their own font size.
 - Every shortcut can be changed; the toolbars show icons (each says what it does on hover),
   and the SQL editor's buttons can be hidden or given their words back.
+- **Logs and bug reports**: the app logs its starts, errors and crashes to `logs/` in its data
+  folder (three files of 1 MB at most); nothing is sent anywhere. After a crash it offers a
+  diagnostic package, also in Settings › Diagnostics: a zip with the version, the system, the
+  logs and the settings, without passwords or connection details, to attach to a bug report.
 
 ## Agents (MCP) and the CLI
 

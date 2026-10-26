@@ -757,6 +757,7 @@ button.primary.danger:hover:not(:disabled) {
 
 /* The Agents page of the Settings. */
 .agents-panel,
+.diagnostics-panel,
 .agent-command {
   display: flex;
   flex-direction: column;

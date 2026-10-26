@@ -5,9 +5,11 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { loadSettings } from "./settings";
 import { startModalA11y } from "./ui/modalA11y";
+import { startErrorLog } from "./diagnostics/Diagnostics";
 import "./styles/index.css";
 
 paintCached();
+startErrorLog();
 startModalA11y();
 
 // Settings are a local file read: waiting for them avoids rendering defaults first.

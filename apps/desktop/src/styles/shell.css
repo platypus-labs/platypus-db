@@ -588,3 +588,7 @@
   background: var(--ok-bg);
   border-bottom: 1px solid var(--border);
 }
+
+.crash-banner {
+  background: var(--warn-bg);
+}
