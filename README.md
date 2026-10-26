@@ -231,6 +231,14 @@ and shows the ODBC drivers and data sources of the system.
   otherwise the grid says why it is read-only. Results of a query that reads one table edit
   the same way, with computed columns read-only.
 - Paste cells from a spreadsheet or CSV over the grid or as new rows.
+- **Edit a whole selection** from the grid's menu (Edit selection): one value, NULL or DEFAULT
+  in every cell, checked against each column's type; fill down from the first row
+  (`Ctrl+Alt+D`); find and replace in the text cells, as typed or with a regular expression,
+  with the count shown before applying; a number sequence down each number column. Cells
+  that cannot take a value are listed and left as they are; the rest become pending changes
+  like typed ones, so you preview, save or undo them together.
+- **Load a cell from a file** (grid menu or the cell editor's `…` button): bytes into binary
+  columns, UTF-8 text into text columns; files over 50 MB ask first.
 - Foreign keys show the name of the row they point to and edit with a list of those rows; the
   column that gives that name is the table's row label.
 - PostgreSQL arrays and composite values edit one element or field per line.
@@ -475,6 +483,7 @@ shortcuts.
 | `F2`, `Enter`, typing | Edit the cell (data viewer, one-table queries) |
 | `Insert`, `Ctrl+D`, `Delete` | Add, duplicate, delete rows |
 | `Shift+Delete` | Set the selected cells to NULL |
+| `Ctrl+Alt+D` | Fill the selected cells down from the first row |
 | `Ctrl+V`, `Ctrl+Shift+V` | Paste over the cells / as new rows |
 | `Ctrl+S`, `Ctrl+Z` | Save / undo data changes (grid focused) |
 | `Ctrl+Shift+C` | Copy the selection with headers |
