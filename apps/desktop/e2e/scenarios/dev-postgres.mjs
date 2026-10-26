@@ -89,8 +89,10 @@ export default async function (page) {
   const grid = await page.eval(`(() => { const r = ${visibleTab}.querySelector('.grid-scroll').getBoundingClientRect(); return { x: r.x, y: r.y }; })()`);
   await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); s.textContent = ''; })()`);
   await page.click(grid.x + 80, grid.y + 14); // first column header
+  // The status can be refilled by the load that was still going on: the sorted statement in
+  // the editor is the signal that the sort took effect, then the run it starts must end.
+  await page.waitFor(`/ORDER BY \\S+ ASC/.test(${visibleTab}.querySelector('.cm-content').textContent)`, 15_000);
   await waitStatus(page, "true");
-  assert.match(await page.eval(`${visibleTab}.querySelector('.cm-content').textContent`), /ORDER BY \S+ ASC/);
 
   assert.equal(await page.eval(`${visibleTab}.querySelector('.viewer-bar input')`), null, "no WHERE bar");
 
