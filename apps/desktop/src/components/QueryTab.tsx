@@ -58,6 +58,7 @@ import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, f
 import { ChartToggle } from "../analysis/ChartView";
 import { chartOf, type SavedChart, withChart } from "../analysis/chartConfig";
 import { runGate } from "./runGate";
+import { RunMemory, rerunsUnasked } from "./rerun";
 import {
   type ShownSort,
   type ViewerSort,
@@ -345,8 +346,8 @@ export function QueryTab({
   const details = useRef<Promise<TableDetails> | null>(null);
   /** The table each query reads, for editing its results; cleared after DDL. */
   const sources = useRef(new Map<string, Promise<EditSource | null>>());
-  /** What the last run ran, run again after saving edited rows. */
-  const lastPlanned = useRef<Planned[]>([]);
+  /** What the runs ran, to run again unasked: only statements that passed their checks. */
+  const memory = useRef(new RunMemory<Planned>());
   /** Parameter values answered in the last run, reused when it runs again. */
   const lastAnswers = useRef<Record<string, string>>({});
   /** The script running in the command-line client, which Cancel stops. */
@@ -573,10 +574,11 @@ export function QueryTab({
     return !request || new Promise<boolean>((resolve) => setGuard({ request, resolve }));
   }
 
-  /** Runs what `mode` selects in the editor, or `again` (the statements of the last run).
+  /** Runs what `mode` selects in the editor, or `again` (statements that ran before). With
+   *  `replace`, the result of that id gives way to the new one and the others stay.
    *  An `auto` refresh stays out of the query history, keeps the result tab shown and the
    *  editor as it is, and stops refreshing when a statement fails. */
-  async function run(mode: RunMode, force = false, again?: Planned[], auto = false) {
+  async function run(mode: RunMode, force = false, again?: Planned[], auto = false, replace?: number) {
     const history = !auto;
     if (running && !force) return;
     if (unsaved.current && !(await ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }))) return;
@@ -589,22 +591,32 @@ export function QueryTab({
       return;
     }
     if (planned.length === 0) return;
-    if (!again) setUndoScript(null);
-    lastPlanned.current = planned;
     if (connection.read_only && !force && planned.some((p) => !p.readOnly)) {
       setBlocked(mode);
       return;
     }
     setBlocked(null);
-    // Statements of a run asked about already go again without asking.
-    if (!again && !(await confirmed(planned))) return;
+    // Statements that only read go again without asking; anything else is asked again.
+    if (!(again && rerunsUnasked(again)) && !(await confirmed(planned))) return;
     const sessionId = await ensureSession();
     if (sessionId === null) return;
+    if (!again) setUndoScript(null);
+    const replaced = replace === undefined ? undefined : results.find((r) => r.id === replace);
+    // Remembered only now that it passed its checks: a declined run never runs again unasked.
+    if (replaced) memory.current.forget(replaced.id);
+    else memory.current.started(planned, !append);
     onNeedCatalog(false);
-    if (!append) await compare.keep(sessionId, planned, results);
+    if (!append) await compare.keep(sessionId, planned, replaced ? [replaced] : results);
 
     const token = ++runToken.current;
-    if (!append) closeJobs();
+    if (replaced) {
+      if (replaced.jobId !== null) {
+        void api.closeQuery(replaced.jobId);
+        jobs.current = jobs.current.filter((j) => j !== replaced.jobId);
+      }
+    } else if (!append) {
+      closeJobs();
+    }
     const script = mode === "script" && planned.length > 1;
     const limit = tab.terminal ? TERMINAL_ROWS : script ? getSetting(scriptRowLimit) : null;
     const resultOf = (p: Planned, first: boolean) =>
@@ -612,8 +624,13 @@ export function QueryTab({
     // `queue` grows when an `@include` adds a file's statements after itself.
     const queue = [...planned];
     const own = queue.map((p, i) => resultOf(p, i === 0));
-    const base = append ? results.length : 0;
-    setResults((all) => (append ? [...all, ...own] : own));
+    const base = append ? results.length : replaced ? Math.max(0, results.indexOf(replaced)) : 0;
+    setResults((all) => {
+      if (append) return [...all, ...own];
+      if (!replaced) return own;
+      const at = all.findIndex((r) => r.id === replaced.id);
+      return at < 0 ? [...all, ...own] : [...all.slice(0, at), ...own, ...all.slice(at + 1)];
+    });
     if (!auto) setActiveResult(base);
     autoRun.current = auto;
     cancelAsked.current = false;
@@ -711,6 +728,7 @@ export function QueryTab({
             Object.assign(variables, values);
             keepVariables();
           }
+          memory.current.ran(result.id, p);
           const autoLimit = !tab.table && p.kind === "query" ? getSetting(autoLimitSetting) : 0;
           const capped = autoLimit > 0 ? await api.sqlAddLimit(sql, connection.driver, autoLimit).catch(() => null) : null;
           // The result keeps the statement as written: the header sort and the editor find it.
@@ -887,6 +905,7 @@ export function QueryTab({
       void api.closeQuery(r.jobId);
       jobs.current = jobs.current.filter((j) => j !== r.jobId);
     }
+    memory.current.forget(id);
     setResults((all) => all.filter((x) => x.id !== id));
     setActiveResult((a) => Math.max(0, a > i || a === results.length - 1 ? a - 1 : a));
   }
@@ -1227,7 +1246,10 @@ export function QueryTab({
       onSaved: (undo) => {
         setUnsaved(false);
         setUndoScript(undo);
-        void run("statement", false, lastPlanned.current);
+        // The statement of the edited result runs again in its place, the other results stay;
+        // only a statement that reads runs unasked.
+        const again = memory.current.readOf(result.id);
+        if (again) void run("statement", false, [again], false, result.id);
       },
       onDirtyChange: setUnsaved,
     };
@@ -1266,9 +1288,10 @@ export function QueryTab({
   // nothing runs, asks or waits to be saved. The timer calls the latest render's `refresh`.
   const refresh = useRef(() => {});
   refresh.current = () => {
-    const again = lastPlanned.current;
-    if (running || guard || unsaved.current || again.length === 0) return;
-    if (again.some((p) => !p.readOnly)) {
+    const last = memory.current.last();
+    if (running || guard || unsaved.current || last.length === 0) return;
+    const again = memory.current.lastReads();
+    if (!again) {
       setRefreshEvery(null);
       onError(t("Auto-refresh stopped: the last statements change data."));
       return;
@@ -1504,8 +1527,9 @@ export function QueryTab({
               onReloaded={(source) => {
                 onChange({ resultSource: source });
                 onNeedCatalog(true);
-                // The query shown runs again on the new rows.
-                if (lastPlanned.current.length > 0) void run("statement", false, lastPlanned.current);
+                // The last statements run again on the new rows, if they only read.
+                const again = memory.current.lastReads();
+                if (again) void run("statement", false, again);
               }}
             />
           )}
