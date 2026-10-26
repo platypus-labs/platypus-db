@@ -176,6 +176,7 @@ mod tests {
             folders: vec![path(&["Prod"]), path(&["Prod", "Replica"])],
             placement: BTreeMap::from([(a.id, path(&["Prod", "Replica"]))]),
             connections: vec![a, b],
+            ..ImportedProject::default()
         }
     }
 

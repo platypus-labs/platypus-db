@@ -30,8 +30,8 @@ pub use history::{
     HistoryEntry, HistoryOrigin, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry,
 };
 pub use import::{
-    ImportFile, ImportSource, ImportedProject, detect as detect_imports,
-    import as import_connections,
+    ImportFile, ImportNote, ImportSource, ImportedProject, SkippedConnection,
+    detect as detect_imports, import as import_connections,
 };
 pub use secrets::{KeyringSecrets, MemorySecrets, SecretStore};
 pub use settings::SettingsStore;

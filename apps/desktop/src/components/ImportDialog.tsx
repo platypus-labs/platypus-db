@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
@@ -6,6 +6,7 @@ import {
   type ImportedProject,
   type ImportFile,
   type ImportInto,
+  type ImportNote,
   type ImportSource,
   isEmbedded,
   type Project,
@@ -16,7 +17,17 @@ import {
 import { connectionColor, typeBadge } from "../connections";
 import { answerFor } from "../testAnswers";
 import { Icon } from "../ui/Icon";
-import { checkState, connectionsUnder, defaultInto, type FolderView, importRequest, projectTree, toggleAll } from "./importTree";
+import {
+  checkState,
+  connectionsUnder,
+  defaultInto,
+  type FolderView,
+  importRequest,
+  isEmptyImport,
+  projectTree,
+  skippedIds,
+  toggleAll,
+} from "./importTree";
 import { t, msg } from "../i18n";
 
 interface Props {
@@ -46,6 +57,18 @@ const label = (source: ImportSource) => SOURCES.find((s) => s.value === source)!
 const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 /** The rail folder's default name: the file's, without its extension. */
 const railName = (path: string) => fileName(path).replace(/\.[^.]+$/, "") || t("Imported");
+
+/** What an imported connection needs before it can connect. */
+function noteText(note: ImportNote): string {
+  switch (note.kind) {
+    case "windows_auth":
+      return t("Windows authentication is not supported: enter a SQL Server login to connect.");
+    case "entra_auth":
+      return t("Microsoft Entra ID (Azure AD) sign-in is not supported: enter a SQL Server login to connect.");
+    case "named_instance":
+      return t("Named instance {instance}: set the port it listens on.", { instance: note.instance });
+  }
+}
 
 /** Whether `c` looks like a connection that is already saved. */
 function duplicate(c: SavedConnection, existing: SavedConnection[]) {
@@ -162,8 +185,8 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
           <span className="muted small import-hint">{t(HINTS[source])}</span>
         </div>
         {error && <div className="notice error small">{error}</div>}
-        {read && read.length === 0 && <p className="muted small">{t("No connections found in this file.")}</p>}
-        {read && read.length > 0 && (
+        {read && isEmptyImport(read) && <p className="muted small">{t("No connections found in this file.")}</p>}
+        {read && !isEmptyImport(read) && (
           <>
             <div className="import-tree" role="tree">
               {read.map((p, i) => (
@@ -256,7 +279,14 @@ function ProjectRows({ project, ticked, existing, projects, into, onTicked, onIn
           <option value="none">{t("No project")}</option>
         </select>
       </div>
-      <FolderRows folder={root} depth={1} ticked={ticked} existing={existing} onTicked={onTicked} />
+      <FolderRows folder={root} depth={1} ticked={ticked} existing={existing} notes={project.notes} onTicked={onTicked} />
+      {project.skipped.map((s, i) => (
+        <div key={i} className="import-row skipped" role="treeitem" style={{ paddingLeft: 18 }}>
+          <input type="checkbox" disabled checked={false} />
+          <span className="import-name">{s.name}</span>
+          <span className="muted small import-target">{t("Not imported: unsupported database ({ids})", { ids: skippedIds(s) })}</span>
+        </div>
+      ))}
     </>
   );
 }
@@ -266,12 +296,14 @@ function FolderRows({
   depth,
   ticked,
   existing,
+  notes,
   onTicked,
 }: {
   folder: FolderView;
   depth: number;
   ticked: ReadonlySet<string>;
   existing: SavedConnection[];
+  notes: Record<string, ImportNote[]>;
   onTicked: (next: Set<string>) => void;
 }) {
   return (
@@ -283,14 +315,15 @@ function FolderRows({
             <Icon name="open" />
             <span>{f.path[f.path.length - 1]}</span>
           </div>
-          <FolderRows folder={f} depth={depth + 1} ticked={ticked} existing={existing} onTicked={onTicked} />
+          <FolderRows folder={f} depth={depth + 1} ticked={ticked} existing={existing} notes={notes} onTicked={onTicked} />
         </div>
       ))}
       {folder.connections.map((c) => {
         const badge = typeBadge(c);
         const saved = duplicate(c, existing);
         return (
-          <label key={c.id} className="import-row connection" role="treeitem" style={{ paddingLeft: depth * 18 }}>
+          <Fragment key={c.id}>
+          <label className="import-row connection" role="treeitem" style={{ paddingLeft: depth * 18 }}>
             <Tick ids={[c.id]} ticked={ticked} onTicked={onTicked} />
             <span className="dot" style={{ background: connectionColor(c) ?? "var(--border)" }} />
             <span className="import-name">{c.name}</span>
@@ -301,6 +334,12 @@ function FolderRows({
               {saved ? ` · ${t("already saved")}` : ""}
             </span>
           </label>
+          {(notes[c.id] ?? []).map((note) => (
+            <div key={note.kind} className="import-note small" style={{ paddingLeft: depth * 18 + 24 }}>
+              {noteText(note)}
+            </div>
+          ))}
+          </Fragment>
         );
       })}
     </>
