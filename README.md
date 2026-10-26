@@ -126,7 +126,9 @@ and shows the ODBC drivers and data sources of the system.
   columns offered are those of the tables the statement under the cursor reads (even when FROM
   comes later), and `alias.` completes the columns of a table, a CTE or a subquery. Names that
   need quotes are quoted on insert. `JOIN ` offers the related tables with alias and condition
-  from the foreign keys; `JOIN t ON ` offers the condition. Tab or Enter accepts.
+  from the foreign keys; `JOIN t ON ` offers the condition. Tab or Enter accepts; Enter after a
+  word typed exactly as the entry starts a new line. While a snippet's fields are active, Tab
+  moves to the next field.
 - **Formatter** (`Ctrl+Shift+F`) with configurable keyword case and indentation; the same
   setting gives the case of completed keywords.
 - Line commands, multiple cursors, folding, an outline of the statements, and `Ctrl+click` on a

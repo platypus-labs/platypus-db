@@ -18,7 +18,8 @@ import { getSetting } from "../settings";
 import { quoteIdent } from "../sqlNames";
 import { formatKeywordCase } from "./actions";
 import { functionNames } from "./functions";
-import { type NameItem, type NameOptions, closingQuote, nameOptions, statementAt } from "./sqlScope";
+import { type NameItem, type NameOptions, closingQuote, nameOptions, scopeOptions, statementAt } from "./sqlScope";
+import { typedInFull, wordBefore } from "./typedWord";
 
 /** The note of a table, or of its column, shown beside the entry. */
 export type CatalogNote = (schema: string, table: string, column?: string) => string | undefined;
@@ -59,11 +60,11 @@ function completion(item: NameItem, result: NameOptions, driver: DriverKind, not
 
 /** Tables, schemas and the columns in the scope of the statement under the cursor. */
 export function nameCompletion(catalog: CompletionCatalog, driver: DriverKind, note?: CatalogNote): CompletionSource {
-  const options = { brackets: driver === "sqlserver" };
+  const options = scopeOptions(driver);
   return codeOnly((context: CompletionContext): CompletionResult | null => {
     const base = Math.max(0, context.pos - WINDOW);
     const text = context.state.sliceDoc(base, context.pos + WINDOW);
-    const statement = statementAt(text, context.pos - base);
+    const statement = statementAt(text, context.pos - base, options);
     const sql = text.slice(statement.from, statement.to);
     const result = nameOptions(sql, context.pos - base - statement.from, catalog, context.explicit, options);
     if (!result) return null;
@@ -109,13 +110,12 @@ export function keywordCompletion(dialect: SQLDialect, driver: DriverKind): Comp
   };
 }
 
-/** Enter on a word typed in full closes the list and goes to a new line instead of accepting
- *  the entry the word already is. Returns false so that Enter goes on to the next binding. */
+/** Enter on a word typed in full closes the list and goes to a new line, when accepting the
+ *  entry would insert nothing more. Returns false so that Enter goes on to the next binding. */
 export function closeOnTypedWord(view: EditorView): boolean {
   if (completionStatus(view.state) !== "active") return false;
-  const selected = selectedCompletion(view.state);
   const head = view.state.selection.main.head;
-  const word = /[\w$#]+$/.exec(view.state.sliceDoc(Math.max(0, head - 200), head))?.[0];
-  if (selected && word && word.toLowerCase() === selected.label.toLowerCase()) closeCompletion(view);
+  const word = wordBefore(view.state.sliceDoc(Math.max(0, head - 200), head));
+  if (typedInFull(word, selectedCompletion(view.state))) closeCompletion(view);
   return false;
 }

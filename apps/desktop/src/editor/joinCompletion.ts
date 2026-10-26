@@ -6,7 +6,7 @@ import type { Completion, CompletionContext, CompletionResult, CompletionSource 
 import type { CatalogForeignKey, CompletionCatalog, DriverKind } from "../api";
 import { quoteIdent } from "../sqlNames";
 import { t } from "../i18n";
-import { maskSql, unquote } from "./sqlScope";
+import { maskSql, scopeOptions, unquote } from "./sqlScope";
 
 interface TableRef {
   schema: string | null;
@@ -119,10 +119,11 @@ const AFTER_ON = new RegExp(`\\bJOIN\\s+(${NAME})${ALIAS}\\s+ON\\s+([\\w$.]*)$`,
 const AFTER_JOIN = /\bJOIN\s+([\w$."`]*)$/i;
 
 export function joinCompletion(catalog: CompletionCatalog | null | undefined, driver: DriverKind): CompletionSource {
+  const quoting = scopeOptions(driver);
   return (context: CompletionContext): CompletionResult | null => {
     if (!catalog?.foreign_keys?.length) return null;
     // Strings and comments blanked, so that their words are not read as tables.
-    const text = maskSql(context.state.sliceDoc(Math.max(0, context.pos - 4000), context.pos));
+    const text = maskSql(context.state.sliceDoc(Math.max(0, context.pos - 4000), context.pos), quoting);
     const statement = text.slice(text.lastIndexOf(";") + 1);
 
     const on = AFTER_ON.exec(statement);

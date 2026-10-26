@@ -2,7 +2,7 @@
 // (before or after the cursor), the tables of a schema, the columns of `alias.`, of a CTE or
 // of a subquery in FROM. Plain logic on the statement's text, without CodeMirror, so that it
 // can be tested on its own (tests/sqlScope.test.mjs).
-import type { CompletionCatalog } from "../api";
+import type { CompletionCatalog, DriverKind } from "../api";
 
 type Catalog = Pick<CompletionCatalog, "default_schema" | "schemas">;
 
@@ -49,7 +49,50 @@ export interface NameOptions {
 export interface ScopeOptions {
   /** `[name]` quotes names (Transact-SQL). */
   brackets?: boolean;
+  /** A backslash escapes the next character in strings and quoted names. */
+  backslashes?: boolean;
+  /** A backslash escapes the next character in `'…'` strings only. */
+  stringBackslashes?: boolean;
+  /** `"…"` is a string, not a name. */
+  doubleQuotedStrings?: boolean;
 }
+
+/** How the driver's SQL quotes, as `lexer.rs` and `dialect.rs` in platypus-sql read it. */
+export function scopeOptions(driver: DriverKind): ScopeOptions {
+  const backslashes = ["mysql", "clickhouse", "bigquery", "databricks"].includes(driver);
+  return {
+    brackets: driver === "sqlserver",
+    backslashes,
+    stringBackslashes: backslashes || driver === "snowflake",
+    doubleQuotedStrings: ["mysql", "bigquery", "databricks"].includes(driver),
+  };
+}
+
+/** Where the quoted text opened at `i` ends (after `close`), or -1 when it does not. `close`
+ *  doubled, or after a backslash with `backslash`, is part of the text. */
+function quotedEnd(sql: string, i: number, close: string, backslash: boolean): number {
+  for (let end = i + 1; end < sql.length; end++) {
+    if (backslash && sql[end] === "\\") end++;
+    else if (sql[end] === close) {
+      if (sql[end + 1] !== close) return end + 1;
+      end++;
+    }
+  }
+  return -1;
+}
+
+/** The quote that closes a name or string at `c`, and whether it is a name (kept by
+ *  masking); null when `c` opens neither. */
+function quoteAt(c: string, options: ScopeOptions): { close: string; name: boolean } | null {
+  if (c === "'") return { close: "'", name: false };
+  if (c === '"') return { close: '"', name: !options.doubleQuotedStrings };
+  if (c === "`") return { close: "`", name: true };
+  if (c === "[" && options.brackets) return { close: "]", name: true };
+  return null;
+}
+
+const backslashIn = (q: { name: boolean; close: string }, options: ScopeOptions) =>
+  !!options.backslashes || (!q.name && !!options.stringBackslashes);
 
 const WORD = /[A-Za-z_\u0080-￿][\w$#\u0080-￿]*/y;
 /** Words after which a table is named. */
@@ -59,7 +102,9 @@ const NOT_ALIAS = new Set(
   (
     "ON USING WHERE JOIN LEFT RIGHT INNER OUTER FULL CROSS NATURAL GROUP ORDER LIMIT OFFSET " +
     "HAVING UNION INTERSECT EXCEPT MINUS SET WINDOW LATERAL AS VALUES SELECT FOR RETURNING DEFAULT " +
-    "WITH FETCH QUALIFY TABLESAMPLE STRAIGHT_JOIN USE FORCE IGNORE INDEXED NOT WHEN OR AND"
+    "WITH FETCH QUALIFY TABLESAMPLE STRAIGHT_JOIN USE FORCE IGNORE INDEXED NOT WHEN OR AND " +
+    // ClickHouse, DuckDB, Oracle and MySQL words that may follow a table.
+    "FINAL PREWHERE SAMPLE GLOBAL ARRAY ANY SEMI ANTI ASOF POSITIONAL START CONNECT PIVOT UNPIVOT PARTITION"
   ).split(" "),
 );
 /** Words that end the select list. */
@@ -68,7 +113,7 @@ const END_SELECT = new Set(
 );
 
 /** The SQL with strings and comments blanked out, the same length. */
-export function maskSql(sql: string): string {
+export function maskSql(sql: string, options: ScopeOptions = {}): string {
   let out = "";
   let i = 0;
   const blank = (s: string) => s.replace(/[^\n]/g, " ");
@@ -76,10 +121,12 @@ export function maskSql(sql: string): string {
     const c = sql[i]!;
     let end = -1;
     let keep = false;
-    if (c === "'") {
-      end = i + 1;
-      while (end < sql.length && !(sql[end] === "'" && sql[end + 1] !== "'")) end += sql[end] === "'" ? 2 : 1;
-      end++;
+    const quote = quoteAt(c, options);
+    if (quote) {
+      // A quoted name stays, but a quote inside it starts no string.
+      const close = quotedEnd(sql, i, quote.close, backslashIn(quote, options));
+      end = close < 0 ? sql.length : close;
+      keep = quote.name;
     } else if (c === "-" && sql[i + 1] === "-") {
       end = sql.indexOf("\n", i);
       if (end < 0) end = sql.length;
@@ -92,12 +139,6 @@ export function maskSql(sql: string): string {
         end = sql.indexOf(tag, i + tag.length);
         end = end < 0 ? sql.length : end + tag.length;
       }
-    } else if (c === '"' || c === "`") {
-      // A quoted name stays, but a quote inside it starts no string.
-      end = i + 1;
-      while (end < sql.length && !(sql[end] === c && sql[end + 1] !== c)) end += sql[end] === c ? 2 : 1;
-      end++;
-      keep = true;
     }
     if (end < 0) {
       out += c;
@@ -112,14 +153,14 @@ export function maskSql(sql: string): string {
 }
 
 /** The statement around `pos`: from after the `;` before it to the `;` after it. */
-export function statementAt(doc: string, pos: number): { from: number; to: number } {
-  const text = maskSql(doc);
+export function statementAt(doc: string, pos: number, options: ScopeOptions = {}): { from: number; to: number } {
+  const text = maskSql(doc, options);
   const end = text.indexOf(";", pos);
   return { from: text.lastIndexOf(";", pos - 1) + 1, to: end < 0 ? text.length : end };
 }
 
 function tokenize(sql: string, options: ScopeOptions): Token[] {
-  const text = maskSql(sql);
+  const text = maskSql(sql, options);
   const tokens: Token[] = [];
   const stack: number[] = [];
   let i = 0;
@@ -130,11 +171,11 @@ function tokenize(sql: string, options: ScopeOptions): Token[] {
       continue;
     }
     const parent = stack.at(-1) ?? -1;
-    const close = c === '"' || c === "`" ? c : c === "[" && options.brackets ? "]" : null;
-    if (close) {
-      let end = i + 1;
-      while (end < text.length && !(text[end] === close && text[end + 1] !== close)) end += text[end] === close ? 2 : 1;
-      end = Math.min(end + 1, text.length);
+    // Strings are blanked by now: a quote left opens a name.
+    const quote = quoteAt(c, options);
+    if (quote) {
+      const close = quotedEnd(text, i, quote.close, backslashIn(quote, options));
+      const end = close < 0 ? text.length : close;
       tokens.push({ kind: "quoted", text: text.slice(i, end), from: i, to: end, parent });
       i = end;
       continue;
@@ -231,6 +272,8 @@ class Statement {
   readonly refs: Ref[] = [];
   /** `(` of the CTE bodies and the subqueries in FROM, whose names do not leak out. */
   readonly closed = new Set<number>();
+  /** `(` around joined tables, `FROM (a JOIN b ON ...)`: their tables belong to the query. */
+  private readonly groups = new Set<number>();
 
   private readonly catalog: Catalog;
 
@@ -296,18 +339,24 @@ class Statement {
   /** One item of FROM, JOIN, UPDATE or INTO at `i`; the index after it. */
   private item(i: number): number {
     const t = this.tokens;
-    while (isWord(t[i], "ONLY", "LATERAL")) i++;
+    let lateral = false;
+    for (; isWord(t[i], "ONLY", "LATERAL"); i++) lateral ||= isWord(t[i], "LATERAL");
     // UPDATE OR REPLACE t, in SQLite.
     if (isWord(t[i], "OR") && isName(t[i + 1])) i += 2;
     if (t[i]?.text === "(" && isWord(t[i + 1], "SELECT", "WITH", "VALUES")) {
       const close = closing(t, i);
       const { alias, next } = this.alias(close + 1);
-      this.closed.add(i);
+      // A LATERAL subquery sees the tables before it.
+      if (!lateral) this.closed.add(i);
       if (alias) {
         const source = { name: alias, schema: null, table: null, columns: [] };
-        this.refs.push({ source, parent: t[i]!.parent, nameEnd: close, body: [i, close] });
+        this.refs.push({ source, parent: this.parentOf(i), nameEnd: close, body: [i, close] });
       }
       return next;
+    }
+    if (t[i]?.text === "(") {
+      this.groups.add(i);
+      return this.item(i + 1);
     }
     const name = this.name(i);
     if (!name) return i;
@@ -324,15 +373,24 @@ class Statement {
       table: found?.table ?? null,
       columns: cte?.columns ?? found?.columns ?? [],
     };
-    const ref: Ref = { source, parent: t[i]!.parent, nameEnd: name.next - 1 };
+    const ref: Ref = { source, parent: this.parentOf(i), nameEnd: name.next - 1 };
     if (cte) ref.body = [cte.open, cte.close];
     this.refs.push(ref);
     return next;
   }
 
+  /** The `(` of the query the token at `i` is in: around joined tables, the one outside. */
+  private parentOf(i: number): number {
+    let parent = this.tokens[i]!.parent;
+    while (this.groups.has(parent)) parent = this.tokens[parent]!.parent;
+    return parent;
+  }
+
   private parseRefs() {
     const t = this.tokens;
     for (let i = 0; i < t.length; i++) {
+      // `MERGE ... USING s` and `DELETE ... USING s`; not `JOIN ... USING (column)`.
+      if (isWord(t[i], "USING") && isName(t[i + 1])) this.item(i + 1);
       if (!isWord(t[i], "FROM", "JOIN", "UPDATE", "INTO")) continue;
       const from = isWord(t[i], "FROM");
       let k = this.item(i + 1);
@@ -387,6 +445,10 @@ class Statement {
     const inner = () => this.sourcesAt(t[open]!.to, depth);
     const columns: string[] = [];
     for (const item of items) {
+      // `x::type` is named after x, as PostgreSQL does.
+      while (item.length > 3 && item.at(-2)?.text === ":" && item.at(-3)?.text === ":" && item.at(-1)?.kind === "word") {
+        item.splice(-3);
+      }
       const last = item.at(-1);
       const before = item.at(-2);
       if (!last) continue;
@@ -396,7 +458,8 @@ class Statement {
       } else if (
         isName(last) &&
         !isWord(last, "END", "NULL", "TRUE", "FALSE") &&
-        (item.length === 1 || before?.text === "." || isName(before) || before?.text === ")")
+        // A name alone or qualified, or an alias after an expression (`count(*) n`, `1 n`).
+        (item.length === 1 || before?.text === "." || isName(before) || before?.text === ")" || /^\d$/.test(before?.text ?? ""))
       ) {
         columns.push(unquote(last.text));
       }
@@ -408,7 +471,15 @@ class Statement {
   sourceNamed(pos: number, name: string): Source | undefined {
     // A name the catalog does not know, e.g. the schema of `FROM sales.|`, is no source.
     const sources = this.sourcesAt(pos).filter((s) => s.table || s.columns.length);
-    return sources.find((s) => s.name === name) ?? sources.find((s) => same(s.name, name));
+    return sources.find((s) => s.name === name) ?? sources.find((s) => same(s.name, name)) ?? this.cteNamed(name);
+  }
+
+  /** The CTE named `name` as a source, for `x.` before `FROM x` is written. */
+  private cteNamed(name: string): Source | undefined {
+    const cte = this.ctes.find((c) => c.name === name) ?? this.ctes.find((c) => same(c.name, name));
+    if (!cte) return undefined;
+    const columns = cte.columns ?? this.selectList(cte.open, cte.close, 1);
+    return { name: cte.name, schema: null, table: null, columns };
   }
 
   /** Index of the last token ending at or before `pos`. */
@@ -447,12 +518,9 @@ const QUALIFIER = new RegExp(String.raw`(${NAME_PART})\s*\.\s*$`);
  *  written before it (`a.b.` gives `["a", "b"]`). */
 function typedName(sql: string, pos: number, options: ScopeOptions) {
   // Strings and comments blanked: a quote in them opens no name.
-  const before = maskSql(sql.slice(0, pos));
-  const quoted = options.brackets ? /(?:"[^"]*|\x60[^\x60]*|\[[^\]]*)$/ : /(?:"[^"]*|\x60[^\x60]*)$/;
-  const open = quoted.exec(before);
-  // An opening quote only when the text before has an even number of them.
-  const isOpen = !!open && (before.slice(0, open.index).split(open[0][0]!).length - 1) % 2 === 0;
-  const prefix = isOpen ? open![0] : (/[\w$#\u0080-￿]*$/.exec(before)?.[0] ?? "");
+  const before = maskSql(sql.slice(0, pos), options);
+  const open = openName(before, options);
+  const prefix = open >= 0 ? before.slice(open) : (/[\w$#\u0080-￿]*$/.exec(before)?.[0] ?? "");
   const from = pos - prefix.length;
   const path: string[] = [];
   for (let rest = before.slice(0, from); path.length < 3; ) {
@@ -461,7 +529,19 @@ function typedName(sql: string, pos: number, options: ScopeOptions) {
     path.unshift(unquote(m[1]!));
     rest = rest.slice(0, m.index);
   }
-  return { from, prefix, quote: isOpen ? prefix[0]! : null, path };
+  return { from, prefix, quote: open >= 0 ? prefix[0]! : null, path };
+}
+
+/** Where a quoted name still open at the end of `text` (masked) starts, or -1. */
+function openName(text: string, options: ScopeOptions): number {
+  for (let i = 0; i < text.length; i++) {
+    const quote = quoteAt(text[i]!, options);
+    if (!quote?.name) continue;
+    const end = quotedEnd(text, i, quote.close, backslashIn(quote, options));
+    if (end < 0) return i;
+    i = end - 1;
+  }
+  return -1;
 }
 
 function tablesOf(catalog: Catalog, schema: string): NameItem[] {
@@ -487,8 +567,10 @@ export function nameOptions(
   options: ScopeOptions = {},
 ): NameOptions | null {
   const typed = typedName(sql, pos, options);
-  // The partly typed name would be read as part of the statement.
-  const statement = new Statement(sql.slice(0, typed.from) + " ".repeat(pos - typed.from) + sql.slice(pos), catalog, options);
+  // The partly typed name would be read as part of the statement, and so would the quote the
+  // editor closed after it, which would open a name taking the rest of the statement.
+  const end = typed.quote && sql[pos] === closingQuote(typed.quote) ? pos + 1 : pos;
+  const statement = new Statement(sql.slice(0, typed.from) + " ".repeat(end - typed.from) + sql.slice(end), catalog, options);
   const result = (items: NameItem[], unqualified = false): NameOptions | null =>
     items.length ? { from: typed.from, quote: typed.quote, unqualified, items } : null;
 
@@ -520,7 +602,8 @@ export function nameOptions(
   const cteItems: NameItem[] = statement.ctes.map((c) => ({ label: c.name, kind: "source" }));
   if (statement.tablePosition(prev)) return result([...cteItems, ...tables, ...schemaItems]);
 
-  const sources = statement.sourcesAt(pos);
+  // A name left blank by the typed text is no source.
+  const sources = statement.sourcesAt(pos).filter((s) => s.name.trim() !== "");
   const columns = sources.flatMap((s) => columnsOf(s, false));
   const named = sources
     .filter((s) => !s.table || !tables.some((t) => t.label === s.name))

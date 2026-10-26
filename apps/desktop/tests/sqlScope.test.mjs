@@ -2,7 +2,7 @@
 // own test runner; Node strips the TypeScript types when importing the module.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { maskSql, nameOptions, statementAt } from "../src/editor/sqlScope.ts";
+import { maskSql, nameOptions, scopeOptions, statementAt } from "../src/editor/sqlScope.ts";
 
 const catalog = {
   default_schema: "main",
@@ -151,4 +151,73 @@ test("the statement under the cursor, not its neighbours", () => {
 test("a table not in the statement still completes after its name", () => {
   assert.deepEqual(at("SELECT customers.|"), ["column:id", "column:name", "column:Full Name"]);
   assert.equal(at("SELECT nothing.|"), null);
+});
+
+// Fix round 1: the repros of the review.
+
+const mysql = scopeOptions("mysql");
+const tsql = scopeOptions("sqlserver");
+const optionsAt = (sql, options) => {
+  const pos = sql.indexOf("|");
+  return nameOptions(sql.replace("|", ""), pos, catalog, false, options);
+};
+const labels = (r) => r && r.items.map((i) => `${i.kind}:${i.label}`);
+
+test("a backslash-escaped quote in a MySQL string does not mask the rest of the script", () => {
+  const doc = "INSERT INTO customers VALUES (1, 'O\\'Brien');\nSELECT to| FROM orders";
+  const pos = doc.indexOf("|");
+  const text = doc.replace("|", "");
+  const { from, to } = statementAt(text, pos, mysql);
+  assert.equal(text.slice(from, to), "\nSELECT to FROM orders");
+  const r = nameOptions(text.slice(from, to), pos - from, catalog, false, mysql);
+  assert.ok(labels(r).includes("column:total"));
+  // Elsewhere a backslash is just a character: `'a\'` is a whole string.
+  assert.equal(maskSql("'a\\' x"), "     x");
+  assert.equal(maskSql("'a\\' x'", mysql), "       ");
+  // In MySQL "…" is a string: its `;` splits nothing.
+  assert.equal(statementAt('SELECT "a;b" FROM t', 3, mysql).to, 19);
+});
+
+test("the quote the editor closed after the cursor does not swallow FROM", () => {
+  assert.ok(labels(optionsAt('SELECT "Fu|" FROM customers')).includes("column:Full Name"));
+  assert.deepEqual(labels(optionsAt('SELECT c."Fu|" FROM customers c')), ["column:id", "column:name", "column:Full Name"]);
+  assert.deepEqual(labels(optionsAt('SELECT "c"."Fu|" FROM customers c')), ["column:id", "column:name", "column:Full Name"]);
+  assert.ok(labels(optionsAt("SELECT `Fu|` FROM customers", mysql)).includes("column:Full Name"));
+  const r = optionsAt('SELECT c."Fu|" FROM customers c');
+  assert.equal(r.quote, '"');
+  assert.equal(r.from, 'SELECT c.'.length);
+});
+
+test("SQL Server brackets after other bracketed names", () => {
+  const r = optionsAt("SELECT [a], [Fu| FROM customers", tsql);
+  assert.equal(r.quote, "[");
+  assert.ok(labels(r).includes("column:Full Name"));
+  const q = optionsAt("SELECT [c].[Fu|] FROM customers c", tsql);
+  assert.equal(q.quote, "[");
+  assert.equal(q.from, "SELECT [c].".length);
+  assert.deepEqual(labels(q), ["column:id", "column:name", "column:Full Name"]);
+  assert.deepEqual(labels(optionsAt("SELECT * FROM [sales].[in|]", tsql)), ["table:invoices"]);
+  // A quote inside a bracketed name opens no string.
+  assert.ok(labels(optionsAt("SELECT * FROM customers WHERE [Customer's] = 1 AND na|", tsql)).includes("column:name"));
+});
+
+test("a CTE completes after its name before FROM is written", () => {
+  assert.deepEqual(at("WITH x AS (SELECT id, total AS amount FROM orders) SELECT x.|"), ["column:id", "column:amount"]);
+});
+
+test("cheap scope cases: joins in parentheses, LATERAL, USING, words after a table, output names", () => {
+  assert.deepEqual(at("SELECT * FROM (orders o JOIN customers c ON o.customer_id = c.id) WHERE c.|"), [
+    "column:id",
+    "column:name",
+    "column:Full Name",
+  ]);
+  // A LATERAL subquery sees the tables before it.
+  assert.ok(columns("SELECT * FROM orders o, LATERAL (SELECT * FROM products WHERE pr| = o.total) p").includes("column:total@o"));
+  assert.ok(columns("DELETE FROM orders USING customers WHERE na|").includes("column:name@customers"));
+  assert.deepEqual(columns("SELECT to| FROM orders PREWHERE id = 1").at(0), "column:id@orders");
+  assert.deepEqual(at("WITH x AS (SELECT 1 n, total::text, a.b::int FROM orders a) SELECT x.| FROM x"), [
+    "column:n",
+    "column:total",
+    "column:b",
+  ]);
 });

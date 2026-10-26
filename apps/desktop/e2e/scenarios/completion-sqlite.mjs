@@ -109,6 +109,15 @@ export default async function (page) {
   await listWith(page, "Full Name");
   await page.key("Enter", "Enter", 13);
   await page.waitFor(`${editorText} === 'SELECT "Full Name" FROM customers'`);
+  // After a typed quote, which the editor may close, with FROM after the cursor.
+  await typeAt(page, "SELECT c.| FROM customers c", "");
+  for (const ch of '"Fu') {
+    await page.type(ch);
+    await page.sleep(20);
+  }
+  await listWith(page, '"Full Name"');
+  await page.key("Enter", "Enter", 13);
+  await page.waitFor(`${editorText} === 'SELECT c."Full Name" FROM customers c'`);
 
   // A function is listed once, not again as a keyword.
   await typeAt(page, "SELECT |", "cou");
