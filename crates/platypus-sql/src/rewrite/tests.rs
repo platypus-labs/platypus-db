@@ -145,6 +145,16 @@ fn restores_the_order_by_the_statement_had() {
 }
 
 #[test]
+fn counts_the_distinct_rows_of_oracle_unique() {
+    assert_eq!(
+        count("SELECT UNIQUE a FROM t", Dialect::Oracle),
+        "SELECT COUNT(*) FROM (
+SELECT UNIQUE a FROM t
+) t"
+    );
+}
+
+#[test]
 fn restores_only_one_order_by() {
     let sql = "SELECT * FROM t ORDER BY id ASC";
     for clause in [

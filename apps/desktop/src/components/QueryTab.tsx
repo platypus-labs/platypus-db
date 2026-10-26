@@ -7,6 +7,7 @@ import {
   type CommandError,
   type ExportFormat,
   type ExportOptions,
+  type FilterTarget,
   type ParameterSpan,
   type StatementSpan,
   type QueryEvent,
@@ -232,17 +233,15 @@ export function QueryTab({
    *  the quick filters can rewrite it. Typing in it turns them off until it runs again. */
   const sortable =
     shown?.status.kind === "rows" && rewritable === shown.sql && statementRange(shown, tab.sql) !== null;
-  /** Data viewer: what the quick filters test for each column of a result (see
-   *  `api.sqlFilterColumns`), asked once per result. */
-  const [filters, setFilters] = useState<{ result: Result; columns: (string | null)[] | null } | null>(null);
+  /** Data viewer: what the quick filters name for each column of a result (see
+   *  `api.sqlFilterColumns`), asked once per result; `null` when it cannot be asked. */
+  const [filters, setFilters] = useState<{ result: Result; columns: FilterTarget[] | null } | null>(null);
   useEffect(() => {
     if (!tab.table || !shown?.columns) return;
     let live = true;
     const result = shown;
-    api.sqlFilterColumns(result.sql, connection.driver, shown.columns.map((c) => c.name)).then(
-      (columns) => live && setFilters({ result, columns }),
-      () => undefined,
-    );
+    const done = (columns: FilterTarget[] | null) => live && setFilters({ result, columns });
+    api.sqlFilterColumns(result.sql, connection.driver, shown.columns.map((c) => c.name)).then(done, () => done(null));
     return () => {
       live = false;
     };
@@ -1431,7 +1430,7 @@ export function QueryTab({
                 sql: shown.sql,
                 jobId: shown.jobId,
                 table: tab.table ?? null,
-                viewer: tab.table && sortable && shownFilters !== undefined ? { addCondition, columns: shownFilters } : undefined,
+                viewer: tab.table && sortable ? { addCondition, columns: shownFilters } : undefined,
               }}
               edit={editTarget(shown)}
               notes={notesScope(shown)}

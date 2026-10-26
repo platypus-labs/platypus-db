@@ -104,6 +104,8 @@ const it: Record<string, string> = {
   "Not equal to this value": "Diverso da questo valore",
   "In selected values": "Tra i valori selezionati",
   "This column is computed: filter it in the SQL": "Questa colonna è calcolata: filtrala nell'SQL",
+  "This column's table cannot be told: filter it in the SQL": "Non si capisce da quale tabella venga questa colonna: filtrala nell'SQL",
+  "Reading the columns of the result…": "Lettura delle colonne del risultato…",
   "This query cannot be filtered from the grid: add the condition in the SQL": "Questa query non si filtra dalla griglia: aggiungi la condizione nell'SQL",
   "This query cannot be changed from the grid: edit it in the editor.": "Questa query non si può modificare dalla griglia: modificala nell'editor.",
   "This query cannot be counted.": "Questa query non si può contare.",

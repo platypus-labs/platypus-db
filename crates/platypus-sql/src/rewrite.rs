@@ -11,7 +11,7 @@
 use crate::{Dialect, Lexer, Token, TokenKind};
 
 mod filter;
-pub use filter::filter_columns;
+pub use filter::{FilterColumn, filter_columns};
 
 /// Aggregate functions: a select list with one needs its own row, not one per input row.
 /// A missing name makes "Count rows" count the input rows, while a scalar function taken for
@@ -511,11 +511,14 @@ fn clause_at(t: &Tokens, i: usize, dialect: Dialect) -> Result<Option<Clause>, (
 }
 
 /// Skips what follows `SELECT` before the select list; returns the index of its first token.
-fn skip_head(t: &Tokens, mut i: usize, body: &mut Body) -> usize {
+fn skip_head(t: &Tokens, mut i: usize, body: &mut Body, dialect: Dialect) -> usize {
     loop {
         match t.top(i).as_deref() {
             Some("ALL") => i += 1,
-            Some(w) if HEAD_MODIFIERS.contains(&w) => {
+            // Oracle's `UNIQUE` is its `DISTINCT`.
+            Some(w)
+                if HEAD_MODIFIERS.contains(&w) || (w == "UNIQUE" && dialect == Dialect::Oracle) =>
+            {
                 body.flags |= flag::DISTINCT;
                 if w == "DISTINCT" && t.is_word(i + 1, "ON") {
                     body.flags |= flag::DISTINCT_ON;
@@ -559,7 +562,7 @@ fn scan_tokens(sql: &str, dialect: Dialect) -> Option<(Tokens<'_>, Body)> {
         columns: 1,
         ..Body::default()
     };
-    let start = skip_head(&t, main + 1, &mut body);
+    let start = skip_head(&t, main + 1, &mut body, dialect);
     body.list = t.list.get(start)?.start;
     body.before_clauses = body.end;
     body.before_tail = body.end;

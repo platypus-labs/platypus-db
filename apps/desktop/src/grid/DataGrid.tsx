@@ -974,7 +974,8 @@ export function DataGrid({
         <div ref={spacerRef} style={{ height: spacerHeight }} />
       </div>
       {overlay}
-      {menu && <ContextMenu menu={menu} onClose={closeMenu} onError={showError} />}
+      {/* Its actions read the grid as it is now: what the source learns while it is open shows. */}
+      {menu && <ContextMenu menu={{ ...menu, target: { scope: "grid", arg: context() } }} onClose={closeMenu} onError={showError} />}
     </div>
   );
 }

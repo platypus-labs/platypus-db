@@ -2,7 +2,8 @@
 
 use platypus_core::DriverKind;
 use platypus_sql::{
-    Dialect, FormatOptions, KeywordCase, LintKind, ParameterKind, SelectItem, StatementKind,
+    Dialect, FilterColumn, FormatOptions, KeywordCase, LintKind, ParameterKind, SelectItem,
+    StatementKind,
 };
 use serde::{Deserialize, Serialize};
 
@@ -470,18 +471,39 @@ pub fn sql_add_condition(sql: String, driver: DriverKind, condition: String) -> 
     platypus_sql::add_condition(&sql, Dialect::from(driver), &condition)
 }
 
-/// For each column of the result of `sql`, named `columns`, what a quick filter on it tests
-/// in the `WHERE`: the column it shows (`name` for `name AS n`), or `None` for a computed one.
-/// `None` overall when no condition can be added to `sql`.
+/// What a quick filter on a result column names in the `WHERE` (see
+/// `platypus_sql::FilterColumn`): `{ kind: "column", sql }`, `{ kind: "computed" }` or
+/// `{ kind: "ambiguous" }`.
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", content = "sql", rename_all = "snake_case")]
+pub enum FilterTarget {
+    Column(String),
+    Computed,
+    Ambiguous,
+}
+
+/// For each column of the result of `sql`, named `columns`, what a quick filter on it names
+/// in the `WHERE`: the column it shows (`name` for `name AS n`), or why there is none. `None`
+/// overall when no condition can be added to `sql`.
 #[tauri::command]
 pub fn sql_filter_columns(
     sql: String,
     driver: DriverKind,
     columns: Vec<String>,
-) -> Option<Vec<Option<String>>> {
+) -> Option<Vec<FilterTarget>> {
     if !rewritable(&sql, driver) || driver == DriverKind::Mongo {
         return None;
     }
     let names: Vec<&str> = columns.iter().map(String::as_str).collect();
-    platypus_sql::filter_columns(&sql, Dialect::from(driver), &names)
+    let targets = platypus_sql::filter_columns(&sql, Dialect::from(driver), &names)?;
+    Some(
+        targets
+            .into_iter()
+            .map(|target| match target {
+                FilterColumn::Column(sql) => FilterTarget::Column(sql),
+                FilterColumn::Computed => FilterTarget::Computed,
+                FilterColumn::Ambiguous => FilterTarget::Ambiguous,
+            })
+            .collect(),
+    )
 }

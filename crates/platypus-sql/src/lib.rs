@@ -25,7 +25,8 @@ pub use lexer::{Lexer, Token, TokenKind};
 pub use lint::{ColumnRef, Lint, LintIssue, LintKind, TableAlias, lint};
 pub use params::{Parameter, ParameterKind, parameters};
 pub use rewrite::{
-    add_condition, count_query, filter_columns, order_by_clause, restore_order_by, set_order_by,
+    FilterColumn, add_condition, count_query, filter_columns, order_by_clause, restore_order_by,
+    set_order_by,
 };
 pub use source::{SelectItem, SourceTable, source_table};
 

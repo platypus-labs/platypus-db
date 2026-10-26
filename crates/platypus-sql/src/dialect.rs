@@ -368,7 +368,7 @@ const ORACLE_RESERVED: &[&str] = &[
     "WHENEVER",
 ];
 
-fn is_reserved(name: &str, dialect: Dialect) -> bool {
+pub(crate) fn is_reserved(name: &str, dialect: Dialect) -> bool {
     // The lists are sorted; the `sorted_reserved_words` test keeps them so.
     let upper = name.to_ascii_uppercase();
     let found = |list: &[&str]| list.binary_search(&upper.as_str()).is_ok();

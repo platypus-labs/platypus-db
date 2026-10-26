@@ -1,7 +1,7 @@
 // Quick filters of the data viewer: conditions on the focused cell's column, added to the
 // viewer's query from the grid's menu: the editor's statement gets them in its top-level WHERE.
 import { registerAction } from "../../actions";
-import { api, isMongo } from "../../api";
+import { type FilterTarget, api, isMongo } from "../../api";
 import { msg } from "../../i18n";
 import type { GridActionContext } from "../DataGrid";
 
@@ -9,10 +9,9 @@ import type { GridActionContext } from "../DataGrid";
 export interface ViewerFilter {
   /** Adds the condition to the shown statement's WHERE, in the editor, and runs it. */
   addCondition(condition: string): void;
-  /** What a condition on each result column names: the column the select list shows there
-   *  (`name` for `name AS n`), `null` for a computed one. `null` when the statement cannot
-   *  take a condition. */
-  columns: (string | null)[] | null;
+  /** What a condition on each result column names (see `api.sqlFilterColumns`): `undefined`
+   *  while it is asked, `null` when the statement cannot take a condition. */
+  columns: FilterTarget[] | null | undefined;
 }
 
 declare module "../DataGrid" {
@@ -25,25 +24,38 @@ declare module "../DataGrid" {
 const IN_LIMIT = 1000;
 
 /** Why a quick filter is not offered for the focused cell's column. */
-const COMPUTED = msg("This column is computed: filter it in the SQL");
-const NO_WHERE = msg("This query cannot be filtered from the grid: add the condition in the SQL");
+const REASONS = {
+  pending: msg("Reading the columns of the result…"),
+  computed: msg("This column is computed: filter it in the SQL"),
+  ambiguous: msg("This column's table cannot be told: filter it in the SQL"),
+  query: msg("This query cannot be filtered from the grid: add the condition in the SQL"),
+};
 
-/** The focused cell's result row and column, when it is a loaded row of a data viewer; `name`
- *  is what a condition on the column names, `null` when there is none. */
+/** The focused cell's result row and column, when it is a loaded row of a data viewer. */
 function focusedCell({ grid, source }: GridActionContext) {
   const focused = grid.focused();
   const row = focused ? grid.dataRow(focused.row) : null;
   if (!source?.viewer || source.jobId === null || row === null || !focused) return null;
   // The conditions are SQL; a MongoDB filter is a query document typed by hand.
   if (isMongo(source.connection.driver)) return null;
-  const { viewer } = source;
-  return { viewer, jobId: source.jobId, row, col: focused.col, name: viewer.columns?.[focused.col] ?? null };
+  return { viewer: source.viewer, jobId: source.jobId, row, col: focused.col };
+}
+
+/** What a condition on the cell's column names, or why none can be written. */
+function columnOf(cell: NonNullable<ReturnType<typeof focusedCell>>): { name: string } | { reason: string } {
+  const { columns } = cell.viewer;
+  if (columns === undefined) return { reason: REASONS.pending };
+  if (columns === null) return { reason: REASONS.query };
+  const column = columns[cell.col];
+  if (column?.kind === "column") return { name: column.sql };
+  return { reason: column?.kind === "ambiguous" ? REASONS.ambiguous : REASONS.computed };
 }
 
 /** The focused cell, when a condition on its column can be written. */
 function target(ctx: GridActionContext) {
   const cell = focusedCell(ctx);
-  return cell?.name ? { ...cell, name: cell.name } : null;
+  const column = cell && columnOf(cell);
+  return cell && column && "name" in column ? { ...cell, name: column.name } : null;
 }
 
 async function byValue(ctx: GridActionContext, equal: boolean) {
@@ -57,11 +69,11 @@ async function byValue(ctx: GridActionContext, equal: boolean) {
 
 const available = (ctx: GridActionContext) => focusedCell(ctx) !== null;
 
-/** Offered but not run on a computed column, or a statement no condition can go into. */
+/** Offered but not run where no condition can be written; see `REASONS`. */
 function disabled(ctx: GridActionContext): string | null {
   const cell = focusedCell(ctx);
-  if (!cell || cell.name) return null;
-  return cell.viewer.columns === null ? NO_WHERE : COMPUTED;
+  const column = cell && columnOf(cell);
+  return column && "reason" in column ? column.reason : null;
 }
 
 registerAction({

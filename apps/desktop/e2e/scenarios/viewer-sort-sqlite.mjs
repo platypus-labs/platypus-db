@@ -63,13 +63,15 @@ async function runQuery(page, sql) {
   await afterRun(page, () => page.key("Enter", "Enter", 13, CTRL));
 }
 
-/** Opens the Filter submenu of the first row's first cell. */
+/** Opens the Filter submenu of the first row's first cell, once the grid knows what its
+ *  column names: the entries are disabled while it is being read. */
 async function openFilters(page) {
   const r = await page.eval(`(() => { const r = ${visibleTab}.querySelector('.grid-scroll').getBoundingClientRect(); return { x: r.x, y: r.y }; })()`);
   await page.click(r.x + 40, r.y + 52, { button: "right" });
   await page.waitFor(`${menuButton("Filter")} !== undefined`);
   await page.eval(`${menuButton("Filter")}.click()`);
-  await page.waitFor(`${menuButton("Equal to this value")} !== undefined`);
+  const equal = menuButton("Equal to this value");
+  await page.waitFor(`${equal} !== undefined && ${equal}.title !== 'Reading the columns of the result…'`);
 }
 
 export default async function (page) {
