@@ -72,6 +72,8 @@ export interface SqlEditorHandle {
   /** Selection in UTF-16 offsets; `from === to` when nothing is selected. */
   getSelection(): { from: number; to: number };
   setText(text: string): void;
+  /** Replaces `from..to` with `text`; the rest of the text keeps its folds. */
+  replace(from: number, to: number, text: string): void;
   /** Inserts `text` on its own line(s) at the cursor and selects it. */
   insert(text: string): void;
   focus(): void;
@@ -424,6 +426,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
       const v = view.current;
       v?.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: text } });
     },
+    replace: (from, to, text) => view.current?.dispatch({ changes: { from, to, insert: text } }),
     insert: (text) => {
       const v = view.current;
       if (!v) return;

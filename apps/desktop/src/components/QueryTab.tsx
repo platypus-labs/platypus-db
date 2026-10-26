@@ -840,21 +840,21 @@ export function QueryTab({
    */
   async function rewriteStatement(result: Result, rewrite: (sql: string) => Promise<string | null>): Promise<string | null> {
     const ed = editor.current!;
-    const text = ed.getText();
-    const range = statementRange(result, text);
     let next: string | null = null;
     try {
-      next = range ? await rewrite(result.sql) : null;
+      next = statementRange(result, ed.getText()) ? await rewrite(result.sql) : null;
     } catch (e) {
       onError(toCommandError(e).message);
       return null;
     }
+    // Looked up again: the user may have typed while the rewrite was on its way.
+    const range = statementRange(result, ed.getText());
     if (!range || next === null) {
       onError(t("This query cannot be changed from the grid: edit it in the editor."));
       return null;
     }
     if (viewerOwn.rewritten(result.sql, next)) onChange({ viewerQuery: next });
-    ed.setText(text.slice(0, range.from) + next + text.slice(range.to));
+    ed.replace(range.from, range.to, next);
     // The cursor inside the statement, so that it is the one that runs.
     const inside = range.from + Math.floor(next.length / 2);
     ed.select(inside, inside);
