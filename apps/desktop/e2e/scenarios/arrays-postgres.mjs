@@ -106,11 +106,18 @@ export default async function (page, { shots }) {
   // What the server stored, read back.
   await run(page, "SELECT tags::text || ' ' || pair::text AS v FROM demo.e2e_arrays");
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
-  await page.eval(`${visibleTab}.querySelector('.grid-scroll').focus()`);
-  await page.key("a", "KeyA", 65, CTRL);
-  await page.key("c", "KeyC", 67, CTRL);
-  await page.waitFor(`window.__copied !== undefined`);
-  assert.equal(await page.eval(`window.__copied`), `{z,"b c",NULL,"new, one"} (x,2)`);
+  // The status ends before the canvas grid has the row's values, and a copy of an empty grid
+  // gives "": copy again until the values are there.
+  let copied = "";
+  for (let attempt = 0; attempt < 50 && copied === ""; attempt++) {
+    await page.eval(`window.__copied = undefined; ${visibleTab}.querySelector('.grid-scroll').focus()`);
+    await page.key("a", "KeyA", 65, CTRL);
+    await page.key("c", "KeyC", 67, CTRL);
+    await page.waitFor(`window.__copied !== undefined`);
+    copied = await page.eval(`window.__copied`);
+    if (copied === "") await new Promise((r) => setTimeout(r, 100));
+  }
+  assert.equal(copied, `{z,"b c",NULL,"new, one"} (x,2)`);
 
   await run(page, "DROP TABLE demo.e2e_arrays; DROP TYPE demo.e2e_pair;", true);
 }
