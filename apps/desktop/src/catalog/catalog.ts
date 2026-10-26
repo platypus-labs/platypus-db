@@ -5,6 +5,7 @@
 import { useSyncExternalStore } from "react";
 import { api, type CatalogEntry, type CatalogKey, type DisplayColumn, toCommandError } from "../api";
 import { workbench } from "../workbench";
+import { keyedQueue } from "./queue";
 
 export { annotation, parseFilter } from "./annotation";
 
@@ -12,6 +13,11 @@ const loaded = new Map<string, Map<string, CatalogEntry>>();
 /** Per connection: `database \0 schema \0 table` → the column that describes its rows. */
 const displays = new Map<string, Map<string, string>>();
 const loading = new Map<string, Promise<void>>();
+/**
+ * The writes to the catalog of a connection, one after the other. A refetch (after a rename)
+ * replaces the cache with what it read, so a save that finished meanwhile would be lost from it.
+ */
+const writes = keyedQueue();
 const listeners = new Set<() => void>();
 let version = 0;
 let warned = false;
@@ -71,21 +77,41 @@ export function catalogEntry(connectionId: string, key: CatalogKey): CatalogEntr
   return entries.get(id(key));
 }
 
-export async function saveCatalog(connectionId: string, key: CatalogKey, note: string, tags: string[]) {
-  await load(connectionId);
-  const saved = await api.saveCatalogEntry(connectionId, key, note, tags);
-  const entries = loaded.get(connectionId) ?? new Map<string, CatalogEntry>();
-  if (saved.note || saved.tags.length) entries.set(id(key), saved);
-  else entries.delete(id(key));
-  loaded.set(connectionId, entries);
-  changed();
+export function saveCatalog(connectionId: string, key: CatalogKey, note: string, tags: string[]): Promise<void> {
+  return writes.run(connectionId, async () => {
+    await load(connectionId);
+    const saved = await api.saveCatalogEntry(connectionId, key, note, tags);
+    const entries = loaded.get(connectionId) ?? new Map<string, CatalogEntry>();
+    if (saved.note || saved.tags.length) entries.set(id(key), saved);
+    else entries.delete(id(key));
+    loaded.set(connectionId, entries);
+    changed();
+  });
 }
 
-export async function renameCatalog(connectionId: string, from: CatalogKey, to: CatalogKey) {
-  await api.renameCatalogKey(connectionId, from, to);
-  await loading.get(connectionId);
-  await fetchCatalog(connectionId);
-  changed();
+export function renameCatalog(connectionId: string, from: CatalogKey, to: CatalogKey): Promise<void> {
+  return writes.run(connectionId, async () => {
+    await api.renameCatalogKey(connectionId, from, to);
+    await loading.get(connectionId);
+    try {
+      await fetchCatalog(connectionId);
+    } catch (e) {
+      // Not the names from before the rename: the next read loads them again.
+      loaded.delete(connectionId);
+      displays.delete(connectionId);
+      throw e;
+    } finally {
+      changed();
+    }
+  });
+}
+
+/** Drops what is cached for a deleted connection. */
+export function forgetCatalog(connectionId: string) {
+  loaded.delete(connectionId);
+  displays.delete(connectionId);
+  loading.delete(connectionId);
+  writes.forget(connectionId);
 }
 
 /** The column picked to describe the rows of a table; `undefined` for the automatic choice. */
@@ -104,20 +130,22 @@ export function displayColumn(
 }
 
 /** Picks the column that describes the rows of a table; `null` goes back to the automatic one. */
-export async function setDisplayColumn(
+export function setDisplayColumn(
   connectionId: string,
   database: string | null | undefined,
   schema: string,
   table: string,
   column: string | null,
-) {
-  await load(connectionId);
-  await api.setCatalogDisplayColumn(connectionId, catalogKey(database, schema, table), column);
-  const columns = displays.get(connectionId) ?? new Map<string, string>();
-  if (column === null) columns.delete(tableId(database, schema, table));
-  else columns.set(tableId(database, schema, table), column);
-  displays.set(connectionId, columns);
-  changed();
+): Promise<void> {
+  return writes.run(connectionId, async () => {
+    await load(connectionId);
+    await api.setCatalogDisplayColumn(connectionId, catalogKey(database, schema, table), column);
+    const columns = displays.get(connectionId) ?? new Map<string, string>();
+    if (column === null) columns.delete(tableId(database, schema, table));
+    else columns.set(tableId(database, schema, table), column);
+    displays.set(connectionId, columns);
+    changed();
+  });
 }
 
 /** `columns`, plus the picked one when the table no longer has it, so the select shows it. */

@@ -31,6 +31,7 @@ import type { IconName } from "./ui/Icon";
 import { ask, isAsking } from "./ui/ask";
 import { type PersistedTab, loadWorkspace, saveWorkspace } from "./workspace";
 import { connectionsOf, loadActiveProject, projectKey, saveActiveProject } from "./projects/state";
+import { forgetCatalog } from "./catalog/catalog";
 import { ProjectRail } from "./projects/ProjectRail";
 import { ProjectDialog } from "./projects/ProjectDialog";
 import { AddConnectionsDialog } from "./projects/AddConnectionsDialog";
@@ -363,6 +364,7 @@ export function App() {
     }
     for (const t of tabs.filter((t) => t.connectionId === c.id)) closeTab(t, true);
     disconnectNavigator(c);
+    forgetCatalog(c.id);
     try {
       // The store took the connection out of every project.
       setProjects(await api.listProjects());
