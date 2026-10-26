@@ -96,6 +96,15 @@ for (const file of scenarios) {
       .catch((err) => `unavailable: ${err}`);
     if (state) console.log(`     page: ${state}`);
     if (page && ctx.shots) await page.screenshot(join(ctx.shots, `${file}.failure.png`)).catch(() => {});
+    // The Activity log says which connection or task failed; it opens last, over the page.
+    const activity = await page
+      ?.eval(`(async () => {
+        document.querySelector('.activity-button')?.click();
+        await new Promise((r) => setTimeout(r, 300));
+        return JSON.stringify([...document.querySelectorAll('.activity-list > *')].map((e) => e.textContent.slice(0, 200)));
+      })()`)
+      .catch((err) => `unavailable: ${err}`);
+    if (activity) console.log(`     activity: ${activity}`);
   } finally {
     page?.close();
     // The WebView2 processes are children of the app: end the whole tree.
