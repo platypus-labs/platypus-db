@@ -24,7 +24,8 @@ pub fn script(
 ) -> Result<Script, String> {
     validate(design)?;
     let mut script = Script {
-        transactional: dialect != Dialect::MySql,
+        // MySQL commits each DDL statement, ClickHouse has no DDL transactions.
+        transactional: !matches!(dialect, Dialect::MySql | Dialect::ClickHouse),
         ..Script::default()
     };
     let ddl = Ddl { d: dialect, schema };
@@ -988,6 +989,11 @@ mod tests {
             "ALTER TABLE shop.orders CHANGE COLUMN total amount numeric(12,2) NOT NULL DEFAULT 0"
         );
         assert!(!mysql.transactional);
+        assert!(
+            !script(Dialect::ClickHouse, "shop", Some(&old), &new)
+                .unwrap()
+                .transactional
+        );
         assert_eq!(mysql.warnings.len(), 1);
         let server = script(Dialect::SqlServer, "dbo", Some(&old), &new).unwrap();
         assert_eq!(
