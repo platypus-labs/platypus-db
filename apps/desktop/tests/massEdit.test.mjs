@@ -169,6 +169,13 @@ test("replace with a regular expression uses its groups", () => {
   assert.ok("error" in replacer("(", "", { caseSensitive: true, regex: true }));
 });
 
+test("expressions the u flag refuses but the usual syntax takes still work", () => {
+  const dash = replacer("\\-", "_", { caseSensitive: true, regex: true });
+  assert.deepEqual(dash("a-b"), { text: "a_b", count: 1 });
+  const word = replacer("[\\w-.]+", "x", { caseSensitive: true, regex: true });
+  assert.deepEqual(word("a-b.c d"), { text: "x x", count: 2 });
+});
+
 test("replace changes only text cells, and counts the replacements", () => {
   const cells = [
     cell(0, 0, value("10"), "10"),

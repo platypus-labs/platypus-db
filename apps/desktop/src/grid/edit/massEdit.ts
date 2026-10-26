@@ -256,16 +256,22 @@ export type Replacer = (text: string) => TextReplaced;
  * The replacement of `find` by `replacement`: as typed, or a regular expression whose
  * replacement may refer to groups (`$1`). `null` when there is nothing to find; the error's
  * message for an invalid expression. Expressions match whole characters (the `u` flag), so an
- * emoji is never split in two.
+ * emoji is never split in two; one the `u` flag refuses but the usual syntax takes (`\-`,
+ * `[\w-.]`) is used without it.
  */
 export function replacer(find: string, replacement: string, options: ReplaceOptions): Replacer | { error: string } | null {
   if (find === "") return null;
   const source = options.regex ? find : find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const flags = options.caseSensitive ? "g" : "gi";
   let re: RegExp;
   try {
-    re = new RegExp(source, options.caseSensitive ? "gu" : "giu");
-  } catch (e) {
-    return { error: (e as Error).message };
+    re = new RegExp(source, `${flags}u`);
+  } catch {
+    try {
+      re = new RegExp(source, flags);
+    } catch (e) {
+      return { error: (e as Error).message };
+    }
   }
   return (text) => {
     const count = text.match(re)?.length ?? 0;
