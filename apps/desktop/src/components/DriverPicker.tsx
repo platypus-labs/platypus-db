@@ -21,6 +21,7 @@ import {
 import { useState } from "react";
 import type { DriverKind, SavedConnection } from "../api";
 import { Icon } from "../ui/Icon";
+import { fold } from "../ui/textSearch";
 import { t, msg } from "../i18n";
 
 /** What a profile fills in beyond the driver's defaults. */
@@ -144,9 +145,6 @@ interface Props {
   onPick: (driver: DriverKind, preset: Preset) => void;
   onClose: () => void;
 }
-
-/** Lower case without accents, to compare what the user types with the labels. */
-const fold = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
 /** The choices whose (translated) name, or driver, contains `needle`, folded. */
 function matching(choices: Choice[], needle: string): Choice[] {

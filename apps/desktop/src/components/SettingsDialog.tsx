@@ -5,6 +5,7 @@ import { toCommandError } from "../api";
 import { type SettingDef, getSetting, getStored, setSetting, setStored, settingDefs, useSettingsVersion } from "../settings";
 import { ShortcutsPanel, actionMatches } from "../shell/ShortcutsPanel";
 import { Icon } from "../ui/Icon";
+import { fold, startsWord } from "../ui/textSearch";
 import { DriversPanel } from "../drivers/DriversPanel";
 import { MasterPasswordPanel } from "./MasterPassword";
 import { msg, t } from "../i18n";
@@ -34,9 +35,9 @@ const PANELS: {
 /** The section shown last, opened again next time; stored without a Settings entry. */
 const SECTION_KEY = "ui.settings_section";
 
-/** Whether any of `texts`, in English or translated, contains `needle` (lowercase). */
+/** Whether `needle` (folded) starts a word of any of `texts`, in English or translated. */
 function found(needle: string, ...texts: (string | undefined)[]): boolean {
-  return texts.some((s) => !!s && (s.toLowerCase().includes(needle) || t(s).toLowerCase().includes(needle)));
+  return texts.some((s) => !!s && (startsWord(s, needle) || startsWord(t(s), needle)));
 }
 
 function settingFound(needle: string, def: SettingDef<Value>): boolean {
@@ -52,7 +53,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   useSettingsVersion();
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const needle = search.trim().toLowerCase();
+  const needle = fold(search.trim());
   const results = useRef<HTMLDivElement>(null);
   const sections = new Map<string, SettingDef<Value>[]>();
   for (const def of settingDefs()) {
@@ -91,7 +92,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 
   // The search's groups: a section found by its name shows whole, otherwise its matching
   // settings. A panel found by its title shows whole, one found by its content filtered; the
-  // others are hidden, not unmounted, so they keep what was typed in them and don't load again.
+  // others are hidden, not unmounted, so they keep what was typed in them and don't load again
+  // while the query changes. Going from the tabs to the search and back does mount them anew:
+  // the tab's panel and the search's are separate views.
   const groups = [...sections]
     .map(([section, defs]) => [section, found(needle, section) ? defs : defs.filter((d) => settingFound(needle, d))] as const)
     .filter(([, defs]) => defs.length > 0);
