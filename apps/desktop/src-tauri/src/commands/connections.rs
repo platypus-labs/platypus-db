@@ -344,4 +344,5 @@ pub fn delete_network_profile(
 #[tauri::command]
 pub fn close_session(state: State<'_, AppState>, session_id: u64) {
     lock(&state.sessions).remove(&session_id);
+    super::analysis::diff::forget(&state, session_id);
 }
