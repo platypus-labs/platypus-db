@@ -80,6 +80,38 @@ ${extra}`,
     exec: (sql) =>
       docker(["exec", "-i", "platypus-db-mariadb-1", "mariadb", "-uroot", "-pplatypus", "--default-character-set=utf8mb4", "-N", "-B"], sql),
   },
+  mongo: {
+    port: 57017,
+    password: "platypus",
+    connection: (name, id, extra = "") => `[[connections]]
+id = "${id}"
+name = "${name}"
+driver = "mongo"
+host = "localhost"
+port = 57017
+database = "platypus?authSource=admin"
+user = "platypus"
+ssl_mode = "disable"
+save_password = false
+${extra}`,
+  },
+  clickhouse: {
+    port: 58123,
+    password: "platypus",
+    connection: (name, id, extra = "") => `[[connections]]
+id = "${id}"
+name = "${name}"
+driver = "clickhouse"
+host = "localhost"
+port = 58123
+database = "platypus"
+user = "platypus"
+ssl_mode = "disable"
+save_password = false
+${extra}`,
+    exec: (sql) =>
+      docker(["exec", "-i", "platypus-db-clickhouse-1", "clickhouse-client", "--user", "platypus", "--password", "platypus", "--multiquery"], sql),
+  },
   sqlserver: {
     port: 51433,
     password: "Platypus-2026",
