@@ -463,6 +463,18 @@ impl Ddl<'_> {
         }
     }
 
+    /// The value of `COMMENT ON .. IS`: a string literal, or what clears the comment (Oracle,
+    /// Db2 and Snowflake want an empty string, the others NULL).
+    fn comment_value(&self, comment: Option<&str>) -> String {
+        match comment {
+            Some(t) => self.d.quote_literal(t),
+            None if matches!(self.d, Dialect::Oracle | Dialect::Db2 | Dialect::Snowflake) => {
+                "''".to_owned()
+            }
+            None => "NULL".to_owned(),
+        }
+    }
+
     /// Adds the statement for the comment of `design`, if the database has table comments.
     fn push_table_comment(&self, design: &TableDesign, existed: bool, script: &mut Script) {
         match self.table_comment(&design.name, text(design.comment.as_ref()), existed) {
@@ -487,7 +499,7 @@ impl Ddl<'_> {
             | Dialect::Db2
             | Dialect::Databricks => Some(format!(
                 "COMMENT ON TABLE {t} IS {}",
-                comment.map_or_else(|| "NULL".to_owned(), lit)
+                self.comment_value(comment)
             )),
             Dialect::MySql => Some(format!(
                 "ALTER TABLE {t} COMMENT = {}",
@@ -553,8 +565,7 @@ impl Ddl<'_> {
             | Dialect::Oracle
             | Dialect::Db2 => {
                 for c in columns {
-                    let comment = text(c.comment.as_ref())
-                        .map_or_else(|| "NULL".to_owned(), |t| self.d.quote_literal(t));
+                    let comment = self.comment_value(text(c.comment.as_ref()));
                     script.statements.push(format!(
                         "COMMENT ON COLUMN {}.{} IS {comment}",
                         self.table(table),
@@ -1207,62 +1218,70 @@ mod tests {
         d
     }
 
+    /// The statements for going from `old` to `new` (`None`: creating the table).
+    fn statements(d: Dialect, old: Option<&TableDesign>, new: &TableDesign) -> Vec<String> {
+        script(d, "public", old, new).unwrap().statements
+    }
+
+    fn assert_has(d: Dialect, got: &[String], expected: &str) {
+        assert!(
+            got.iter().any(|s| s == expected),
+            "{d:?}: {expected}\nin {got:#?}"
+        );
+    }
+
     #[test]
     fn table_and_column_comments_per_dialect() {
-        let std_table = "COMMENT ON TABLE public.orders IS 'All orders'";
-        let std_column = "COMMENT ON COLUMN public.orders.note IS 'free text'";
-        let mssql = |column: &str| {
-            format!(
-                "EXEC sp_addextendedproperty 'MS_Description', N'{}', 'SCHEMA', N'public', 'TABLE', N'orders'{column}",
-                if column.is_empty() {
-                    "All orders"
-                } else {
-                    "free text"
-                }
-            )
-        };
-        let cases: Vec<(Dialect, String, String)> = vec![
-            (Dialect::Postgres, std_table.into(), std_column.into()),
+        let cases: &[(Dialect, &str, &str)] = &[
+            (
+                Dialect::Postgres,
+                "COMMENT ON TABLE public.orders IS 'All orders'",
+                "COMMENT ON COLUMN public.orders.note IS 'free text'",
+            ),
             (
                 Dialect::Oracle,
-                "COMMENT ON TABLE \"public\".\"orders\" IS 'All orders'".into(),
-                "COMMENT ON COLUMN \"public\".\"orders\".\"note\" IS 'free text'".into(),
+                "COMMENT ON TABLE \"public\".\"orders\" IS 'All orders'",
+                "COMMENT ON COLUMN \"public\".\"orders\".\"note\" IS 'free text'",
             ),
             (
                 Dialect::Db2,
-                "COMMENT ON TABLE \"public\".\"orders\" IS 'All orders'".into(),
-                "COMMENT ON COLUMN \"public\".\"orders\".\"note\" IS 'free text'".into(),
+                "COMMENT ON TABLE \"public\".\"orders\" IS 'All orders'",
+                "COMMENT ON COLUMN \"public\".\"orders\".\"note\" IS 'free text'",
             ),
             (
                 Dialect::MySql,
-                "ALTER TABLE public.orders COMMENT = 'All orders'".into(),
-                "note text COMMENT 'free text'".into(),
+                "ALTER TABLE public.orders COMMENT = 'All orders'",
+                "ALTER TABLE public.orders CHANGE COLUMN note note text COMMENT 'free text'",
             ),
             (
                 Dialect::ClickHouse,
-                "ALTER TABLE public.orders MODIFY COMMENT 'All orders'".into(),
-                "COMMENT COLUMN note 'free text'".into(),
+                "ALTER TABLE public.orders MODIFY COMMENT 'All orders'",
+                "ALTER TABLE public.orders COMMENT COLUMN note 'free text'",
             ),
-            (Dialect::SqlServer, mssql(""), mssql(", 'COLUMN', N'note'")),
+            (
+                Dialect::SqlServer,
+                "EXEC sp_addextendedproperty 'MS_Description', N'All orders', 'SCHEMA', N'public', 'TABLE', N'orders'",
+                "EXEC sp_addextendedproperty 'MS_Description', N'free text', 'SCHEMA', N'public', 'TABLE', N'orders', 'COLUMN', N'note'",
+            ),
             (
                 Dialect::BigQuery,
-                "ALTER TABLE public.orders SET OPTIONS (description = 'All orders')".into(),
-                "ALTER TABLE public.orders ALTER COLUMN note SET OPTIONS (description = 'free text')".into(),
+                "ALTER TABLE public.orders SET OPTIONS (description = 'All orders')",
+                "ALTER TABLE public.orders ALTER COLUMN note SET OPTIONS (description = 'free text')",
             ),
             (
                 Dialect::Databricks,
-                "COMMENT ON TABLE public.orders IS 'All orders'".into(),
-                "ALTER TABLE public.orders ALTER COLUMN note COMMENT 'free text'".into(),
+                "COMMENT ON TABLE public.orders IS 'All orders'",
+                "ALTER TABLE public.orders ALTER COLUMN note COMMENT 'free text'",
             ),
         ];
-        for (d, table, column) in &cases {
-            let old = commented(None, None);
-            let new = commented(Some("All orders"), Some("free text"));
-            let text = script(*d, "public", Some(&old), &new).unwrap().text();
-            assert!(text.contains(table.as_str()), "{d:?}: {text}");
-            assert!(text.contains(column.as_str()), "{d:?}: {text}");
-            let created = script(*d, "public", None, &new).unwrap().text();
-            assert!(created.contains(table.as_str()), "created {d:?}: {created}");
+        let old = commented(None, None);
+        let new = commented(Some("All orders"), Some("free text"));
+        for (d, table, column) in cases {
+            let altered = statements(*d, Some(&old), &new);
+            assert_has(*d, &altered, table);
+            assert_has(*d, &altered, column);
+            // Creating the table: MySQL has the column comment in its definition.
+            assert_has(*d, &statements(*d, None, &new), table);
         }
     }
 
@@ -1270,31 +1289,96 @@ mod tests {
     fn removing_a_comment() {
         let old = commented(Some("All orders"), Some("free text"));
         let new = commented(None, None);
-        let pg = script(Dialect::Postgres, "public", Some(&old), &new)
-            .unwrap()
-            .text();
-        assert!(
-            pg.contains("COMMENT ON TABLE public.orders IS NULL"),
-            "{pg}"
-        );
-        let ms = script(Dialect::SqlServer, "public", Some(&old), &new)
-            .unwrap()
-            .text();
-        assert!(
-            ms.contains("sp_dropextendedproperty 'MS_Description'"),
-            "{ms}"
-        );
+        let cases: &[(Dialect, &str, &str)] = &[
+            (
+                Dialect::Postgres,
+                "COMMENT ON TABLE public.orders IS NULL",
+                "COMMENT ON COLUMN public.orders.note IS NULL",
+            ),
+            (
+                Dialect::Databricks,
+                "COMMENT ON TABLE public.orders IS NULL",
+                "ALTER TABLE public.orders ALTER COLUMN note COMMENT ''",
+            ),
+            (
+                Dialect::Oracle,
+                "COMMENT ON TABLE \"public\".\"orders\" IS ''",
+                "COMMENT ON COLUMN \"public\".\"orders\".\"note\" IS ''",
+            ),
+            (
+                Dialect::Db2,
+                "COMMENT ON TABLE \"public\".\"orders\" IS ''",
+                "COMMENT ON COLUMN \"public\".\"orders\".\"note\" IS ''",
+            ),
+            (
+                Dialect::MySql,
+                "ALTER TABLE public.orders COMMENT = ''",
+                "ALTER TABLE public.orders CHANGE COLUMN note note text",
+            ),
+            (
+                Dialect::ClickHouse,
+                "ALTER TABLE public.orders MODIFY COMMENT ''",
+                "ALTER TABLE public.orders COMMENT COLUMN note ''",
+            ),
+            (
+                Dialect::BigQuery,
+                "ALTER TABLE public.orders SET OPTIONS (description = NULL)",
+                "ALTER TABLE public.orders ALTER COLUMN note SET OPTIONS (description = NULL)",
+            ),
+            (
+                Dialect::SqlServer,
+                "EXEC sp_dropextendedproperty 'MS_Description', 'SCHEMA', N'public', 'TABLE', N'orders'",
+                "EXEC sp_dropextendedproperty 'MS_Description', 'SCHEMA', N'public', 'TABLE', N'orders', 'COLUMN', N'note'",
+            ),
+        ];
+        for (d, table, column) in cases {
+            let got = statements(*d, Some(&old), &new);
+            assert_has(*d, &got, table);
+            assert_has(*d, &got, column);
+        }
         let changed = commented(Some("Other"), Some("changed"));
-        let ms = script(Dialect::SqlServer, "public", Some(&old), &changed)
-            .unwrap()
-            .text();
-        assert!(
-            ms.contains("sp_updateextendedproperty 'MS_Description', N'Other'"),
-            "{ms}"
+        let got = statements(Dialect::SqlServer, Some(&old), &changed);
+        let target = "'SCHEMA', N'public', 'TABLE', N'orders'";
+        let update = "EXEC sp_updateextendedproperty 'MS_Description', N";
+        assert_has(
+            Dialect::SqlServer,
+            &got,
+            &format!("{update}'Other', {target}"),
         );
-        assert!(
-            ms.contains("sp_updateextendedproperty 'MS_Description', N'changed'"),
-            "{ms}"
+        assert_has(
+            Dialect::SqlServer,
+            &got,
+            &format!("{update}'changed', {target}, 'COLUMN', N'note'"),
         );
+    }
+
+    #[test]
+    fn comments_with_quotes_and_backslashes_are_escaped() {
+        let new = commented(Some(r"it's a\b"), Some(r"it's a\b"));
+        let cases: &[(Dialect, &str)] = &[
+            (Dialect::Postgres, r"'it''s a\b'"),
+            (Dialect::Oracle, r"'it''s a\b'"),
+            (Dialect::Db2, r"'it''s a\b'"),
+            (Dialect::MySql, r"'it''s a\\b'"),
+            (Dialect::ClickHouse, r"'it''s a\\b'"),
+            (Dialect::BigQuery, r"'it\'s a\\b'"),
+            (Dialect::Databricks, r"'it\'s a\\b'"),
+            (Dialect::SqlServer, r"N'it''s a\b'"),
+        ];
+        for (d, literal) in cases {
+            let text = script(*d, "public", None, &new).unwrap().text();
+            assert!(text.matches(literal).count() >= 2, "{d:?}: {text}");
+        }
+    }
+
+    #[test]
+    fn sqlite_warns_that_table_comments_are_not_saved() {
+        let table = commented(Some("All orders"), None);
+        let s = script(Dialect::Sqlite, "main", None, &table).unwrap();
+        assert!(
+            s.warnings.iter().any(|w| w.contains("table comments")),
+            "{s:?}"
+        );
+        assert!(!s.text().contains("All orders"), "{s:?}");
     }
 }
