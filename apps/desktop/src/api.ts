@@ -945,6 +945,26 @@ export interface ColumnProfile {
 // Analysis (group M): SQL on results
 
 // Analysis (group M): compare with the previous run
+/** A row of a diff: as it is now (a removed row as it was); a changed row has the columns that
+ *  differ with their previous value. */
+export interface DiffRow {
+  change: "added" | "removed" | "changed";
+  values: (string | null)[];
+  before: [number, string | null][];
+}
+
+/** What changed since the previous run of a statement. */
+export interface Diff {
+  columns: string[];
+  added: number;
+  removed: number;
+  changed: number;
+  /** Rows matched by the table's key; otherwise by all their values. */
+  keyed: boolean;
+  /** At most 10,000; the counts go on. */
+  rows: DiffRow[];
+  truncated: boolean;
+}
 
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
@@ -1374,4 +1394,10 @@ export const api = {
   // Analysis (group M): SQL on results
 
   // Analysis (group M): compare with the previous run
+  /** Keeps the loaded rows of the result a run of the same statement replaces. */
+  keepPreviousRun: (sessionId: number, jobId: number) => invoke<void>("keep_previous_run", { sessionId, jobId }),
+  forgetPreviousRun: (sessionId: number) => invoke<void>("forget_previous_run", { sessionId }),
+  /** The differences from the kept run to result `jobId`, by the `key` columns when given. */
+  diffPrevious: (sessionId: number, jobId: number, key: number[] | null) =>
+    invoke<Diff>("diff_previous", { sessionId, jobId, key }),
 };
