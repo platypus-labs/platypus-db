@@ -65,6 +65,7 @@ export default async function (page, { dir }) {
     "New SQL script",
     "New saved script",
     "Search objects…",
+    "Export documentation…",
     "Refresh",
     "Disconnect",
     "Navigator filters…",
