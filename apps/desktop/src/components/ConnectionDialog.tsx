@@ -497,19 +497,19 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                 {conn.driver === "oracle" || conn.driver === "db2" ? <VendorDriverState driver={conn.driver} /> : null}
 
                 <div className="field-grid">
-                    <label className="field">
-                      <span>{t("{secret} from", { secret })}</span>
-                      <select
-                        value={source}
-                        onChange={(e) => setConn((c) => withPasswordSource(c, e.target.value as PasswordSource))}
-                        data-field="password_source"
-                      >
-                        <option value="keychain">{t("Saved in the keychain")}</option>
-                        <option value="ask">{t("Ask every time")}</option>
-                        {conn.driver === "postgres" && <option value="pgpass">{t(".pgpass file")}</option>}
-                        <option value="command">{t("Shell command")}</option>
-                      </select>
-                    </label>
+                  <label className="field">
+                    <span>{t("{secret} from", { secret })}</span>
+                    <select
+                      value={source}
+                      onChange={(e) => setConn((c) => withPasswordSource(c, e.target.value as PasswordSource))}
+                      data-field="password_source"
+                    >
+                      <option value="keychain">{t("Saved in the keychain")}</option>
+                      <option value="ask">{t("Ask every time")}</option>
+                      {conn.driver === "postgres" && <option value="pgpass">{t(".pgpass file")}</option>}
+                      <option value="command">{t("Shell command")}</option>
+                    </select>
+                  </label>
                   {source === "command" ? (
                     <label className="field">
                       <span>{t("Command that prints the {secret}", { secret: secret.toLowerCase() })}</span>
