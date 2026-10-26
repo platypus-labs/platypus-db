@@ -45,18 +45,15 @@ pub(super) fn projects(bytes: &[u8]) -> Result<Vec<ImportedProject>, String> {
     for (folder, entry, text) in sources {
         let credentials = logins.get(&folder).unwrap_or(&Credentials::Missing);
         let imported = dbeaver(&text, credentials).map_err(|e| format!("{entry}: {e}"))?;
-        match found.iter_mut().find(|(f, _)| *f == folder) {
-            Some((_, existing)) => existing.merge(imported),
-            None => {
-                let name = folder.rsplit('/').next().unwrap_or_default().to_owned();
-                found.push((
-                    folder,
-                    ImportedProject {
-                        name: Some(name),
-                        ..imported
-                    },
-                ));
-            }
+        if let Some((_, existing)) = found.iter_mut().find(|(f, _)| *f == folder) {
+            existing.merge(imported);
+        } else {
+            let name = folder.rsplit('/').next().unwrap_or_default().to_owned();
+            let project = ImportedProject {
+                name: Some(name),
+                ..imported
+            };
+            found.push((folder, project));
         }
     }
     let mut found: Vec<ImportedProject> = found.into_iter().map(|(_, p)| p).collect();
