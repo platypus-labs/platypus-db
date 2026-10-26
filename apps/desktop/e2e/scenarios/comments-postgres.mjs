@@ -1,6 +1,5 @@
-// Editing a column comment from the object tab, against the dev PostgreSQL from
-// docker/compose.yml. Skipped when it is not running.
-import assert from "node:assert/strict";
+// Editing the comments of a table and of a column from the object tab, against the dev
+// PostgreSQL from docker/compose.yml. Skipped when it is not running.
 import { ALT, CTRL } from "../cdp.mjs";
 
 export { setup, skip } from "./dev-postgres.mjs";
@@ -11,7 +10,45 @@ const objectTab = `[...document.querySelectorAll('.object-tab')].find(t => t.sty
 const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ?? '')`;
 const row = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
-const noteCell = `[...${objectTab}.querySelectorAll('.meta-table tbody tr')].find(r => r.children[1].textContent === 'note').children[6]`;
+const tableRow = (first) => `[...${objectTab}.querySelectorAll('.meta-table tbody tr')].find(r => r.children[0].textContent === ${JSON.stringify(first)})`;
+const columnRow = (name) => `[...${objectTab}.querySelectorAll('.meta-table tbody tr')].find(r => r.children[1].textContent === ${JSON.stringify(name)})`;
+const commentCell = `${columnRow("note")}.children[6]`;
+const tableComment = `${tableRow("Comment")}.children[1]`;
+/** `expression`, or false while what it reads is not there yet. */
+const present = (expression) => `(() => { try { return ${expression}; } catch { return false; } })()`;
+const field = `document.querySelector('.sql-action textarea')`;
+const ready = (text) =>
+  `document.querySelector('.sql-preview').textContent.includes(${JSON.stringify(`IS '${text}'`)}) && !document.querySelector('.sql-action button[type=submit]').disabled`;
+
+async function rightClick(page, label) {
+  await page.eval(`${row(label)}.id = 'e2e-target'`);
+  const r = await page.rect("#e2e-target");
+  await page.eval(`document.getElementById('e2e-target').removeAttribute('id')`);
+  await page.click(r.x + 20, r.y + r.h / 2, { button: "right" });
+  await page.waitFor(`document.querySelector('.context-menu') !== null`);
+}
+
+async function choose(page, item) {
+  await page.eval(
+    `[...document.querySelectorAll('.context-menu button')].find(b => b.querySelector('span').textContent === ${JSON.stringify(item)}).click()`,
+  );
+}
+
+async function section(page, name) {
+  await page.eval(`[...${objectTab}.querySelectorAll('.object-sections button')].find(b => b.textContent.startsWith(${JSON.stringify(name)})).click()`);
+}
+
+/** Types `text` in the open comment dialog, waits for its statement, saves it with `submit`. */
+async function comment(page, text, submit) {
+  await page.waitFor(`${field} !== null`);
+  await page.eval(`${field}.focus()`);
+  await page.type(text);
+  await page.waitFor(`${field}.value === ${JSON.stringify(text)}`);
+  // The statement of the whole text: the one of an earlier keystroke is not run.
+  await page.waitFor(ready(text), 15_000);
+  await submit();
+  await page.waitFor(`document.querySelector('.sql-action') === null`, 15_000);
+}
 
 /** Replaces the editor's text and runs it as a script. */
 async function run(page, sql) {
@@ -39,30 +76,32 @@ export default async function (page) {
   await page.waitFor(`${visibleTab}?.querySelector('.cm-content') != null`);
   await run(page, "DROP TABLE IF EXISTS demo.e2e_comments;\nCREATE TABLE demo.e2e_comments (id int, note text);");
 
-  // The new table appears in the navigator after a refresh of the schema.
-  await page.eval(`${row("demo")}.querySelector(".twisty").click()`);
-  await page.eval(`${row("demo")}.querySelector(".twisty").click()`);
+  // The new table appears once the schema is read: opened now (it was not), or reloaded.
+  if (await page.eval(`${row("demo")}.getAttribute('aria-expanded') === 'true'`)) {
+    await rightClick(page, "demo");
+    await choose(page, "Refresh");
+  } else {
+    await page.eval(`${row("demo")}.querySelector(".twisty").click()`);
+  }
   await page.waitFor(`${row("e2e_comments")} !== undefined`, 15_000);
-  await page.eval(`${row("e2e_comments")}.id = 'e2e-target'`);
-  const r = await page.rect("#e2e-target");
-  await page.click(r.x + 20, r.y + r.h / 2, { button: "right" });
-  await page.waitFor(`document.querySelector('.context-menu') !== null`);
-  await page.eval(
-    `[...document.querySelectorAll('.context-menu button')].find(b => b.querySelector('span').textContent === 'Open details').click()`,
-  );
+  await rightClick(page, "e2e_comments");
+  await choose(page, "Open details");
   await page.waitFor(`${objectTab} != null`, 15_000);
-  await page.eval(`[...${objectTab}.querySelectorAll('.object-sections button')].find(b => b.textContent.startsWith('Columns')).click()`);
-  await page.waitFor(`(() => { try { return ${noteCell}.textContent === 'Edit'; } catch { return false; } })()`, 15_000);
 
-  await page.eval(`${noteCell}.querySelector('button').click()`);
-  await page.waitFor(`document.querySelector('.sql-action input') !== null`);
-  await page.eval(`document.querySelector('.sql-action input').focus()`);
-  await page.type("free text");
-  await page.waitFor(`document.querySelector('.sql-action input').value === 'free text'`);
-  await page.waitFor(`document.querySelector('.sql-preview').textContent.includes('COMMENT ON COLUMN')`);
-  await page.eval(`[...document.querySelectorAll('.sql-action button')].find(b => b.textContent === 'Save comment').click()`);
-  await page.waitFor(`document.querySelector('.sql-action') === null`);
-  await page.waitFor(`(() => { try { return ${noteCell}.textContent.includes('free text'); } catch { return false; } })()`, 15_000);
+  // The table's comment, on two lines; Ctrl+Enter saves it, then it shows.
+  await page.waitFor(present(`${tableComment}.querySelector('button') !== null`), 15_000);
+  await page.eval(`${tableComment}.querySelector('button').click()`);
+  await comment(page, "Owned by sales\nand finance", () => page.key("Enter", "Enter", 13, CTRL));
+  await page.waitFor(present(`${tableComment}.textContent.includes('Owned by sales\\nand finance')`), 15_000);
+
+  // A column's comment, saved with the button.
+  await section(page, "Columns");
+  await page.waitFor(present(`${commentCell}.textContent === 'Edit'`), 15_000);
+  await page.eval(`${commentCell}.querySelector('button').click()`);
+  await comment(page, "free text", () =>
+    page.eval(`[...document.querySelectorAll('.sql-action button')].find(b => b.textContent === 'Save comment').click()`),
+  );
+  await page.waitFor(present(`${commentCell}.textContent.includes('free text')`), 15_000);
 
   // A new query tab for the clean-up.
   await page.eval(`${row(NAME)}.id = 'e2e-conn'`);
