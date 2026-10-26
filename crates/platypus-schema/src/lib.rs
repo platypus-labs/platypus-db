@@ -1,8 +1,12 @@
 //! The table editor's model: a table as the user edits it ([`TableDesign`]), read from the
 //! database with [`load`], and the DDL that turns one design into another ([`script`]),
-//! `CREATE TABLE` for a new table. [`apply`] runs that script.
+//! `CREATE TABLE` for a new table. [`apply`] runs that script. A whole schema is read with
+//! [`read_tables`] for the ER diagram and [`lint`].
 
+mod compare;
 mod ddl;
+mod lint;
+mod model;
 
 use std::fmt::Write;
 
@@ -12,7 +16,10 @@ use platypus_core::{
 use platypus_sql::Dialect;
 use serde::{Deserialize, Serialize};
 
+pub use compare::compare;
 pub use ddl::script;
+pub use lint::{Finding, LintKind, lint};
+pub use model::{SchemaTable, load_designs, read_tables, tables_of};
 
 /// A table as the editor shows it. Each part keeps its name in the database (`original`) so
 /// the script can tell a renamed or changed part from a new one.
