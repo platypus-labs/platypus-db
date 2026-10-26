@@ -122,7 +122,8 @@ function nameAt(state: EditorState, pos: number): [string | null, string] | null
   return [i > 0 ? unquote(parts[i - 1]!) : null, unquote(node)];
 }
 
-const highlight = HighlightStyle.define([
+/** The colors of SQL, shared with the one-line field of SQL on a result. */
+export const highlight = HighlightStyle.define([
   { tag: [t.keyword, t.operatorKeyword, t.modifier], color: "var(--syn-keyword)", fontWeight: "600" },
   { tag: [t.string, t.special(t.string)], color: "var(--syn-string)" },
   { tag: [t.number, t.bool, t.null], color: "var(--syn-number)" },
@@ -132,7 +133,7 @@ const highlight = HighlightStyle.define([
   { tag: [t.operator, t.punctuation, t.bracket], color: "var(--fg-muted)" },
 ]);
 
-const theme = EditorView.theme({
+export const theme = EditorView.theme({
   "&": { height: "100%", fontSize: "var(--editor-font-size)", backgroundColor: "var(--bg)", color: "var(--fg)" },
   // Ligatures would render `<=` as `≤`, which misleads in SQL.
   ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.55", fontVariantLigatures: "none" },
@@ -202,7 +203,8 @@ function catalogNotes(connectionId: string | undefined, database: string | null 
     annotation(catalogEntry(connectionId, catalogKey(database, schema, table, column)), undefined, { full: true });
 }
 
-function language(
+/** The dialect of `driver` with completion of `catalog`'s names, keywords and functions. */
+export function language(
   driver: DriverKind,
   catalog: CompletionCatalog | null | undefined,
   connectionId?: string,

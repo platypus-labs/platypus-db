@@ -64,6 +64,24 @@
   top: -5px;
 }
 
+/* A panel under a field, like a menu: the larger editor of a result's SQL field. */
+.result-sql-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  white-space: normal;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow);
+}
+
 .modal.connection-dialog {
   width: min(680px, calc(100vw - 32px));
 }

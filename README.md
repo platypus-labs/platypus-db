@@ -237,10 +237,14 @@ and shows the ODBC drivers and data sources of the system.
 - **Column statistics**: resting the mouse on a column header shows its NULLs, distinct
   values, minimum and maximum, and a small histogram (numbers and dates) or the most frequent
   values (text), over the rows loaded.
-- **Query with SQL** (the result's menu and the command palette): the rows, loaded in full up
-  to the memory limit, become the table `result` of an in-memory DuckDB (and `r1`, `r2`, …
-  for each result of the tab), queried in a new SQL editor with completion, export and
-  charts. *Reload from result* copies them again.
+- **SQL on the result**: the field in the bar above a result's grid runs SQL on the rows
+  loaded, not on the database. A clause or a condition applies to the result
+  (`WHERE code LIKE 'B%'`, `ORDER BY name DESC`, `GROUP BY code`, `code = 'X'`), or a whole
+  query reads the table `result` (and `r1`, `r2`, … for each result of the tab, to join
+  them). Enter loads the rows in full, up to the memory limit, into an in-memory DuckDB and
+  the grid shows the output read-only, with copy, export, charts and statistics; × or Escape
+  returns to the result. Ctrl+Enter opens a larger editor, which can also open the query in a
+  new tab. When the statement runs again, the next query loads the new rows.
 - **Compare with previous run**: when a statement runs again, its result can be compared with
   the previous one: rows added, removed and changed (matched by the table's key when it has
   one), with the old value of each changed cell.

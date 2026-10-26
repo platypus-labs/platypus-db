@@ -1,4 +1,58 @@
-/* "Query with SQL": the loading dialog and the bar of the tab it opens. */
+/* "Query with SQL": the field in the bar above a result's grid, its larger editor, the loading
+   dialog and the bar of a tab opened on the results. */
+.result-sql {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 220px;
+}
+.result-sql-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 2px 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  color: var(--fg-muted);
+}
+.result-sql-field:focus-within {
+  border-color: var(--accent);
+}
+.sql-line {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg);
+}
+.edit-bar .result-sql-clear {
+  padding: 0 4px;
+  font-size: 14px;
+  line-height: 1;
+}
+.result-sql-mark {
+  color: var(--accent);
+}
+.result-sql-partial {
+  color: var(--warn, #e8590c);
+}
+.result-sql-editor {
+  height: 160px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.result-sql-editor .editor {
+  height: 100%;
+}
+.result-sql-popover .actions {
+  margin-top: 0;
+}
 .load-rows .result-loading {
   position: relative;
   margin: 8px 0;
