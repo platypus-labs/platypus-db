@@ -972,6 +972,37 @@ mod tests {
     }
 
     #[test]
+    fn dbp_keeps_same_named_projects_apart() {
+        use std::io::Write as _;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("two.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        for (workspace, conn) in [("a", "one"), ("b", "two")] {
+            zip.start_file(
+                format!("{workspace}/General/.dbeaver/data-sources.json"),
+                options,
+            )
+            .unwrap();
+            zip.write_all(
+                format!(
+                    r#"{{"connections": {{"{conn}": {{"provider": "postgresql", "name": "{conn}",
+                    "configuration": {{"host": "h", "database": "d"}}}}}}}}"#
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        }
+        zip.finish().unwrap();
+        let projects = import(ImportSource::Dbeaver, &path).unwrap();
+        let read: Vec<_> = projects
+            .iter()
+            .map(|p| (p.name.as_deref(), p.connections.len()))
+            .collect();
+        assert_eq!(read, [(Some("General"), 1), (Some("General"), 1)]);
+    }
+
+    #[test]
     fn dbeaver_source_accepts_json() {
         let dir = tempfile::tempdir().unwrap();
         let json = dir.path().join("data-sources.json");

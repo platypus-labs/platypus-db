@@ -16,7 +16,8 @@ const MAX_ENTRY: u64 = 16 << 20;
 pub(super) fn projects(bytes: &[u8]) -> Result<Vec<ImportedProject>, String> {
     let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| e.to_string())?;
     let mut order = Vec::new();
-    // Project, entry name, text.
+    // Project folder, entry name, text. Projects are told apart by their folder: two
+    // workspaces may each have a `General`.
     let mut sources: Vec<(String, String, String)> = Vec::new();
     let mut logins: HashMap<String, Credentials> = HashMap::new();
     for i in 0..zip.len() {
@@ -25,8 +26,8 @@ pub(super) fn projects(bytes: &[u8]) -> Result<Vec<ImportedProject>, String> {
         let name = file.name().map_err(|e| e.to_string())?.replace('\\', "/");
         if name.trim_start_matches("./") == "meta.xml" {
             order = project_names(&read(&mut file)?);
-        } else if let Some((project, file_name)) = dbeaver_file(&name) {
-            let project = project.to_owned();
+        } else if let Some((folder, file_name)) = dbeaver_file(&name) {
+            let project = folder.to_owned();
             if file_name == "credentials-config.json" {
                 logins.insert(project, Credentials::of(Some(&read_bytes(&mut file)?)));
             } else if is_data_sources(file_name) {
@@ -40,21 +41,25 @@ pub(super) fn projects(bytes: &[u8]) -> Result<Vec<ImportedProject>, String> {
                 .to_owned(),
         );
     }
-    let mut found: Vec<ImportedProject> = Vec::new();
-    for (project, entry, text) in sources {
-        let credentials = logins.get(&project).unwrap_or(&Credentials::Missing);
+    let mut found: Vec<(String, ImportedProject)> = Vec::new();
+    for (folder, entry, text) in sources {
+        let credentials = logins.get(&folder).unwrap_or(&Credentials::Missing);
         let imported = dbeaver(&text, credentials).map_err(|e| format!("{entry}: {e}"))?;
-        match found
-            .iter_mut()
-            .find(|p| p.name.as_deref() == Some(project.as_str()))
-        {
-            Some(existing) => existing.merge(imported),
-            None => found.push(ImportedProject {
-                name: Some(project),
-                ..imported
-            }),
+        match found.iter_mut().find(|(f, _)| *f == folder) {
+            Some((_, existing)) => existing.merge(imported),
+            None => {
+                let name = folder.rsplit('/').next().unwrap_or_default().to_owned();
+                found.push((
+                    folder,
+                    ImportedProject {
+                        name: Some(name),
+                        ..imported
+                    },
+                ));
+            }
         }
     }
+    let mut found: Vec<ImportedProject> = found.into_iter().map(|(_, p)| p).collect();
     // A project whose connections are all left out stays, to tell why.
     found.retain(|p| !p.connections.is_empty() || !p.skipped.is_empty());
     found.sort_by_key(|p| {
@@ -67,13 +72,13 @@ pub(super) fn projects(bytes: &[u8]) -> Result<Vec<ImportedProject>, String> {
     Ok(found)
 }
 
-/// The project and the file name of a `projects/<name>/.dbeaver/<file>` entry: the
-/// project is the folder that holds `.dbeaver`, at any depth.
+/// The project folder and the file name of a `projects/<name>/.dbeaver/<file>` entry: the
+/// project is the folder that holds `.dbeaver`, at any depth, named by its last part.
 fn dbeaver_file(entry: &str) -> Option<(&str, &str)> {
     let (dir, file) = entry.rsplit_once('/')?;
     let (parent, dot) = dir.rsplit_once('/')?;
     let project = parent.rsplit('/').next()?;
-    (dot == ".dbeaver" && !project.is_empty() && project != ".").then_some((project, file))
+    (dot == ".dbeaver" && !project.is_empty() && project != ".").then_some((parent, file))
 }
 
 /// `data-sources.json`, or one more such file (`data-sources-2.json`).
