@@ -138,6 +138,76 @@ pub fn place_connection(
     })
 }
 
+/// Moves a connection into a folder of the project (`None`: its root), just before
+/// `before` or after the last connection there.
+#[tauri::command]
+pub fn arrange_connection(
+    state: State<'_, AppState>,
+    project_id: Uuid,
+    connection_id: Uuid,
+    folder_id: Option<Uuid>,
+    before: Option<Uuid>,
+) -> CommandResult<Vec<Project>> {
+    state.with_store(|s| {
+        s.arrange_connection(project_id, connection_id, folder_id, before)?;
+        Ok(s.projects().to_vec())
+    })
+}
+
+/// Moves a folder into `parent` (`None`: the root), just before the folder `before` or after
+/// the last one there.
+#[tauri::command]
+pub fn arrange_connection_folder(
+    state: State<'_, AppState>,
+    project_id: Uuid,
+    folder_id: Uuid,
+    parent: Option<Uuid>,
+    before: Option<Uuid>,
+) -> CommandResult<Vec<Project>> {
+    state.with_store(|s| {
+        s.arrange_folder(project_id, folder_id, parent, before)?;
+        Ok(s.projects().to_vec())
+    })
+}
+
+/// The projects after a drop of a connection onto another, and the folder it made.
+#[derive(Serialize)]
+pub struct Grouped {
+    folder: Uuid,
+    projects: Vec<Project>,
+}
+
+/// Drops the connection `dragged` onto `target`: a new folder named `name` holds both.
+#[tauri::command]
+pub fn group_connections(
+    state: State<'_, AppState>,
+    project_id: Uuid,
+    target: Uuid,
+    dragged: Uuid,
+    name: String,
+) -> CommandResult<Grouped> {
+    state.with_store(|s| {
+        let folder = s.group_connections(project_id, target, dragged, &name)?;
+        Ok(Grouped {
+            folder,
+            projects: s.projects().to_vec(),
+        })
+    })
+}
+
+/// Moves a connection in the list All connections shows: just before `before`, or to the end.
+#[tauri::command]
+pub fn reorder_connection(
+    state: State<'_, AppState>,
+    connection_id: Uuid,
+    before: Option<Uuid>,
+) -> CommandResult<Workspace> {
+    state.with_store(|s| {
+        s.reorder_connection(connection_id, before)?;
+        Ok(Workspace::of(s))
+    })
+}
+
 #[tauri::command]
 pub fn list_project_folders(state: State<'_, AppState>) -> CommandResult<Vec<ProjectFolder>> {
     state.with_store(|s| Ok(s.project_folders().to_vec()))

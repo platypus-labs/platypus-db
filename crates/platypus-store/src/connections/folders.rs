@@ -3,7 +3,9 @@
 
 use uuid::Uuid;
 
-use super::{ConnectionFolder, ConnectionStore, Project, ProjectFolder, is_color, trim};
+use super::{
+    ConnectionFolder, ConnectionStore, Project, ProjectFolder, is_color, reposition, trim,
+};
 use crate::{Result, StoreError};
 
 impl Project {
@@ -50,6 +52,43 @@ impl Project {
             )));
         }
         Ok(())
+    }
+
+    /// `name`, or `name (2)`, `name (3)` and so on when another folder in `parent` has it.
+    fn free_folder_name(&self, name: &str, parent: Option<Uuid>, except: Option<Uuid>) -> String {
+        let mut free = name.to_owned();
+        let mut n = 2;
+        while self.check_folder_name(&free, parent, except).is_err() {
+            free = format!("{name} ({n})");
+            n += 1;
+        }
+        free
+    }
+
+    /// Refuses a move of `folder` into `parent` (`None`: the root) that would put it inside
+    /// itself, or next to a folder of the same name.
+    fn check_folder_move(&self, folder: Uuid, parent: Option<Uuid>) -> Result<()> {
+        if let Some(parent) = parent {
+            self.require_folder(parent)?;
+            if self.is_within(parent, folder) {
+                return Err(StoreError::Invalid(
+                    "a folder cannot go inside itself".to_owned(),
+                ));
+            }
+        }
+        let name = &self
+            .folder(folder)
+            .ok_or(StoreError::NotFound(folder))?
+            .name;
+        self.check_folder_name(name, parent, Some(folder))
+    }
+
+    /// Puts a connection of the project into a folder, or (`None`) at the root.
+    fn set_placement(&mut self, connection: Uuid, folder: Option<Uuid>) {
+        match folder {
+            Some(f) => self.placement.insert(connection, f),
+            None => self.placement.remove(&connection),
+        };
     }
 
     /// The folder at `path` (names from the root, matched ignoring case), created where
@@ -143,16 +182,32 @@ impl ConnectionStore {
     /// Moves a folder, with what it holds, to the root or into `parent`; not into itself.
     pub fn move_folder(&mut self, project: Uuid, folder: Uuid, parent: Option<Uuid>) -> Result<()> {
         let (p, index) = self.folder_of(project, folder)?;
-        if let Some(parent) = parent {
-            p.require_folder(parent)?;
-            if p.is_within(parent, folder) {
+        p.check_folder_move(folder, parent)?;
+        p.folders[index].parent = parent;
+        self.write()
+    }
+
+    /// Moves a folder, with what it holds, into `parent` (`None`: the root) just before
+    /// `before`, a folder there, or after the last one there.
+    pub fn arrange_folder(
+        &mut self,
+        project: Uuid,
+        folder: Uuid,
+        parent: Option<Uuid>,
+        before: Option<Uuid>,
+    ) -> Result<()> {
+        let (p, index) = self.folder_of(project, folder)?;
+        p.check_folder_move(folder, parent)?;
+        if let Some(before) = before {
+            let next = p.folder(before).ok_or(StoreError::NotFound(before))?;
+            if before == folder || next.parent != parent {
                 return Err(StoreError::Invalid(
-                    "a folder cannot go inside itself".to_owned(),
+                    "a folder goes before another folder of the same parent".to_owned(),
                 ));
             }
         }
-        p.check_folder_name(&p.folders[index].name, parent, Some(folder))?;
         p.folders[index].parent = parent;
+        reposition(&mut p.folders, index, |f| Some(f.id) == before);
         self.write()
     }
 
@@ -166,15 +221,8 @@ impl ConnectionStore {
                 continue;
             }
             p.folders[i].parent = parent;
-            let (id, name) = (p.folders[i].id, p.folders[i].name.clone());
-            let mut n = 2;
-            while p
-                .check_folder_name(&p.folders[i].name, parent, Some(id))
-                .is_err()
-            {
-                p.folders[i].name = format!("{name} ({n})");
-                n += 1;
-            }
+            p.folders[i].name =
+                p.free_folder_name(&p.folders[i].name, parent, Some(p.folders[i].id));
         }
         match parent {
             Some(parent) => p
@@ -198,16 +246,87 @@ impl ConnectionStore {
         if !p.connections.contains(&connection) {
             return Err(StoreError::NotFound(connection));
         }
-        match folder {
-            Some(f) => {
-                p.require_folder(f)?;
-                p.placement.insert(connection, f);
+        if let Some(f) = folder {
+            p.require_folder(f)?;
+        }
+        p.set_placement(connection, folder);
+        self.write()
+    }
+
+    /// Moves a connection of the project into `folder` (`None`: the root) just before
+    /// `before`, a connection there, or after the last one there.
+    pub fn arrange_connection(
+        &mut self,
+        project: Uuid,
+        connection: Uuid,
+        folder: Option<Uuid>,
+        before: Option<Uuid>,
+    ) -> Result<()> {
+        let p = self.project_mut(project)?;
+        let index = p
+            .connections
+            .iter()
+            .position(|c| *c == connection)
+            .ok_or(StoreError::NotFound(connection))?;
+        if let Some(f) = folder {
+            p.require_folder(f)?;
+        }
+        if let Some(before) = before {
+            if !p.connections.contains(&before) {
+                return Err(StoreError::NotFound(before));
             }
-            None => {
-                p.placement.remove(&connection);
+            if before == connection || p.placement.get(&before).copied() != folder {
+                return Err(StoreError::Invalid(
+                    "a connection goes before another connection of the same folder".to_owned(),
+                ));
             }
         }
+        p.set_placement(connection, folder);
+        reposition(&mut p.connections, index, |c| Some(*c) == before);
         self.write()
+    }
+
+    /// Drops the connection `dragged` onto `target`: a new folder named `name` (numbered when
+    /// taken) holds both, in the folder `target` was in, with `dragged` after it. Returns the
+    /// new folder.
+    pub fn group_connections(
+        &mut self,
+        project: Uuid,
+        target: Uuid,
+        dragged: Uuid,
+        name: &str,
+    ) -> Result<Uuid> {
+        let p = self.project_mut(project)?;
+        if let Some(missing) = [target, dragged]
+            .into_iter()
+            .find(|c| !p.connections.contains(c))
+        {
+            return Err(StoreError::NotFound(missing));
+        }
+        if target == dragged {
+            return Err(StoreError::Invalid(
+                "a connection cannot be grouped with itself".to_owned(),
+            ));
+        }
+        let parent = p.placement.get(&target).copied();
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(StoreError::Invalid("folder name is required".to_owned()));
+        }
+        let name = p.free_folder_name(name, parent, None);
+        let id = Uuid::new_v4();
+        p.folders.push(ConnectionFolder { id, name, parent });
+        p.set_placement(target, Some(id));
+        p.set_placement(dragged, Some(id));
+        p.connections.retain(|c| *c != dragged);
+        let at = p
+            .connections
+            .iter()
+            .position(|c| *c == target)
+            .map_or(0, |i| i + 1);
+        p.connections.insert(at, dragged);
+        self.write()?;
+        Ok(id)
     }
 }
 
@@ -502,6 +621,134 @@ mod tests {
         assert_eq!(pr.placement.get(&a), Some(&f));
     }
 
+    /// The project's connections in the folder `folder`, in order.
+    fn in_folder(s: &ConnectionStore, p: Uuid, folder: Option<Uuid>) -> Vec<Uuid> {
+        let pr = project(s, p);
+        pr.connections
+            .iter()
+            .copied()
+            .filter(|c| pr.placement.get(c).copied() == folder)
+            .collect()
+    }
+
+    /// The folders of `parent`, in order.
+    fn subfolders(s: &ConnectionStore, p: Uuid, parent: Option<Uuid>) -> Vec<Uuid> {
+        project(s, p)
+            .folders
+            .iter()
+            .filter(|f| f.parent == parent)
+            .map(|f| f.id)
+            .collect()
+    }
+
+    #[test]
+    fn arrange_connection_moves_before_or_to_the_end() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, p, a, b) = setup(dir.path());
+        let c = SavedConnection::new("c", DriverKind::Sqlite);
+        let c_id = c.id;
+        s.save(c, PasswordUpdate::Keep).unwrap();
+        s.add_to_project(p, &[c_id]).unwrap();
+        s.arrange_connection(p, c_id, None, Some(a)).unwrap();
+        assert_eq!(in_folder(&s, p, None), [c_id, a, b]);
+        s.arrange_connection(p, c_id, None, None).unwrap();
+        assert_eq!(in_folder(&s, p, None), [a, b, c_id]);
+
+        // Into a folder: before one of its connections, or after the last.
+        let f = s.create_folder(p, "F", None).unwrap();
+        s.arrange_connection(p, b, Some(f), None).unwrap();
+        s.arrange_connection(p, a, Some(f), Some(b)).unwrap();
+        assert_eq!(in_folder(&s, p, Some(f)), [a, b]);
+        assert_eq!(in_folder(&s, p, None), [c_id]);
+
+        // `before` must be another connection of that folder.
+        assert!(invalid(&s.arrange_connection(p, c_id, None, Some(a))));
+        assert!(invalid(&s.arrange_connection(p, a, Some(f), Some(a))));
+        assert!(matches!(
+            s.arrange_connection(p, a, Some(Uuid::new_v4()), None),
+            Err(StoreError::NotFound(_))
+        ));
+        let again = store(dir.path());
+        assert_eq!(project(&again, p), project(&s, p));
+    }
+
+    #[test]
+    fn arrange_folder_orders_siblings_and_nests() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, p, _, _) = setup(dir.path());
+        let x = s.create_folder(p, "X", None).unwrap();
+        let y = s.create_folder(p, "Y", None).unwrap();
+        let z = s.create_folder(p, "Z", None).unwrap();
+        s.arrange_folder(p, z, None, Some(x)).unwrap();
+        assert_eq!(subfolders(&s, p, None), [z, x, y]);
+        s.arrange_folder(p, z, None, None).unwrap();
+        assert_eq!(subfolders(&s, p, None), [x, y, z]);
+        // Into another folder, then not into itself or next to a folder of another parent.
+        s.arrange_folder(p, y, Some(x), None).unwrap();
+        assert_eq!(subfolders(&s, p, Some(x)), [y]);
+        assert!(invalid(&s.arrange_folder(p, x, Some(y), None)));
+        assert!(invalid(&s.arrange_folder(p, z, None, Some(y))));
+        assert!(invalid(&s.arrange_folder(p, z, None, Some(z))));
+    }
+
+    #[test]
+    fn group_connections_makes_a_folder_where_the_target_was() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, p, a, b) = setup(dir.path());
+        let outer = s.create_folder(p, "New folder", None).unwrap();
+        s.place_connection(p, a, Some(outer)).unwrap();
+        // b dropped on a: both in a new folder inside a's, a first.
+        let f = s.group_connections(p, a, b, " New folder ").unwrap();
+        let made = project(&s, p).folders.iter().find(|x| x.id == f).unwrap();
+        assert_eq!(made.parent, Some(outer));
+        assert_eq!(made.name, "New folder");
+        assert_eq!(in_folder(&s, p, Some(f)), [a, b]);
+        // The name is numbered when taken where the folder goes.
+        s.arrange_connection(p, a, None, None).unwrap();
+        s.arrange_connection(p, b, None, Some(a)).unwrap();
+        let g = s.group_connections(p, a, b, "New folder").unwrap();
+        let made = project(&s, p).folders.iter().find(|x| x.id == g).unwrap();
+        assert_eq!((made.name.as_str(), made.parent), ("New folder (2)", None));
+        assert_eq!(in_folder(&s, p, Some(g)), [a, b]);
+        assert!(invalid(&s.group_connections(p, a, a, "F")));
+        assert!(invalid(&s.group_connections(p, a, b, "  ")));
+    }
+
+    #[test]
+    fn older_file_keeps_the_order_it_was_shown_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("connections.toml");
+        let (p, a, b, z, y) = (
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+        );
+        let connection = |id: Uuid, name: &str| {
+            format!("[[connections]]\nid = \"{id}\"\nname = \"{name}\"\ndriver = \"sqlite\"\n\n")
+        };
+        std::fs::write(
+            &path,
+            format!(
+                "version = 6\n\n[[projects]]\nid = \"{p}\"\nname = \"P\"\ncolor = \"#d08f20\"\n\
+                 connections = [\"{b}\", \"{a}\"]\n\n[[projects.folders]]\nid = \"{z}\"\n\
+                 name = \"zeta\"\n\n[[projects.folders]]\nid = \"{y}\"\nname = \"Alfa\"\n\n{}{}",
+                connection(a, "a"),
+                connection(b, "b")
+            ),
+        )
+        .unwrap();
+        let mut s = store(dir.path());
+        // Connections in the list's order, folders by name, as the navigator showed them.
+        assert_eq!(in_folder(&s, p, None), [a, b]);
+        assert_eq!(subfolders(&s, p, None), [y, z]);
+        // Once written, the order is the user's.
+        s.arrange_connection(p, a, None, None).unwrap();
+        let again = store(dir.path());
+        assert_eq!(in_folder(&again, p, None), [b, a]);
+    }
+
     #[test]
     fn folder_path_creates_missing() {
         let mut p = Project::new("P", "#d08f20");
@@ -517,7 +764,7 @@ mod tests {
     }
 
     #[test]
-    fn v4_file_reads_and_writes_v6() {
+    fn v4_file_reads_and_writes_v7() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("connections.toml");
         let (p, c) = (Uuid::new_v4(), Uuid::new_v4());
@@ -534,7 +781,7 @@ mod tests {
         assert_eq!(project(&s, p).folders, []);
         s.create_folder(p, "F", None).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("version = 6"), "{text}");
+        assert!(text.contains("version = 7"), "{text}");
     }
 
     #[test]

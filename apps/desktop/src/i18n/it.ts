@@ -163,6 +163,8 @@ const it: Record<string, string> = {
   "New connection here": "Nuova connessione qui",
   "New subfolder…": "Nuova sottocartella…",
   "Move to top level": "Sposta al livello principale",
+  "Move up": "Sposta su",
+  "Move down": "Sposta giù",
   "Query manager": "Gestione delle query",
   "Performance": "Prestazioni",
   "Mark queries slower than (seconds)": "Segna le query più lente di (secondi)",
