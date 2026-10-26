@@ -215,7 +215,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   /** The form of a URL read by the picker or pasted here. */
   function fillFrom(parsed: ParsedConnection) {
     setConn((c) => withParsed(c, parsed));
-    if (parsed.password) setPassword(parsed.password);
+    // A password typed for another server is not sent to this one.
+    setPassword(parsed.password ?? "");
     setNotes(parsed.notes);
     setOtherDriver(null);
     setResult(null);

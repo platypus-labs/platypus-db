@@ -3,12 +3,18 @@
  *  answer to the form. */
 import type { DriverKind, ParsedConnection, SavedConnection } from "./api";
 
-/** `scheme://…`, `jdbc:…`, or `key=value;key=value`: worth reading as a connection rather
- *  than pasting as text. */
+/** `scheme://…`, `jdbc:…`, `key=value;key=value` (ADO.NET, ODBC) or `key=value key=value`
+ *  (libpq): worth reading as a connection rather than pasting as text. A single `a=b;` is
+ *  text: it may be a name. */
 export function looksLikeConnection(text: string): boolean {
   const s = text.trim();
   if (!s || s.includes("\n")) return false;
-  return /^[a-z][a-z0-9+.-]*:\/\//i.test(s) || /^jdbc:/i.test(s) || /^[^=;]+=[^;]*;/.test(s);
+  return (
+    /^[a-z][a-z0-9+.-]*:\/\//i.test(s) ||
+    /^jdbc:/i.test(s) ||
+    /^[^=;]+=[^;]*;\s*[^=;\s][^=;]*=/.test(s) ||
+    /^[a-z_]+\s*=\s*(?:'(?:[^'\\]|\\.)*'|\S+)\s+[a-z_]+\s*=/.test(s)
+  );
 }
 
 /** The drivers whose connections have a URL (`connection_url` answers for them). */

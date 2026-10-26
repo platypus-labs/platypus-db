@@ -43,10 +43,12 @@ test("URLs, JDBC URLs and key=value strings are read as connections", () => {
     "jdbc:sqlserver://h;databaseName=x",
     "Server=tcp:h,1433;Database=x;User Id=sa",
     "Host=h;Username=app;",
+    "host=h port=5432 dbname=d user=u password=x sslmode=require",
+    "password='a b' host=h",
   ]) {
     assert.equal(looksLikeConnection(text), true, text);
   }
-  for (const text of ["", "My database", "db.example.com", "a=b", "line one\nServer=h;Database=x"]) {
+  for (const text of ["", "My database", "db.example.com", "a=b", "Sales=EU;", "x = y", "line one\nServer=h;Database=x"]) {
     assert.equal(looksLikeConnection(text), false, text);
   }
 });
