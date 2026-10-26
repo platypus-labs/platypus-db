@@ -1,10 +1,13 @@
 //! Saved connections and the sessions opened from them.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use platypus_core::{Capabilities, Connection, ConnectionConfig, DriverKind, Secret, ServerInfo};
+use platypus_core::{
+    Capabilities, Connection, ConnectionConfig, DriverKind, ParseNote, ParsedConnection, Secret,
+    ServerInfo, SslMode,
+};
 use platypus_sql::Dialect;
 use platypus_store::{
     ConnectionStore, ConnectionType, ImportFile, ImportRequest, ImportSource, ImportedProject,
@@ -35,6 +38,52 @@ pub fn list_connections(state: State<'_, AppState>) -> CommandResult<Vec<SavedCo
 #[tauri::command]
 pub fn default_connection(driver: DriverKind) -> SavedConnection {
     SavedConnection::new("", driver)
+}
+
+/// The form's fields from a pasted URL or connection string. No `Debug`: it holds the
+/// password, which goes to the form's password field only.
+#[derive(Serialize)]
+pub struct ParsedForm {
+    driver: DriverKind,
+    host: String,
+    port: Option<u16>,
+    database: String,
+    user: String,
+    password: Option<String>,
+    ssl_mode: SslMode,
+    ssl_root_cert: Option<PathBuf>,
+    ssl_client_cert: Option<PathBuf>,
+    ssl_client_key: Option<PathBuf>,
+    options: BTreeMap<String, String>,
+    /// What the user should know: logins the app does not do, parameters left out.
+    notes: Vec<ParseNote>,
+}
+
+/// Reads a URL (`postgres://…`), a JDBC URL or an ADO.NET / ODBC connection string into
+/// the fields of the connection form. Nothing is logged: the input may hold a password.
+#[tauri::command]
+pub fn parse_connection_url(input: &str) -> CommandResult<ParsedForm> {
+    let ParsedConnection { config, notes } = ConnectionConfig::parse_any(input)?;
+    Ok(ParsedForm {
+        driver: config.driver,
+        host: config.host,
+        port: config.port,
+        database: config.database,
+        user: config.user,
+        password: config.password.map(|p| p.expose().to_owned()),
+        ssl_mode: config.ssl_mode,
+        ssl_root_cert: config.ssl_root_cert,
+        ssl_client_cert: config.ssl_client_cert,
+        ssl_client_key: config.ssl_client_key,
+        options: config.options,
+        notes,
+    })
+}
+
+/// The URL of a saved connection, without its password.
+#[tauri::command]
+pub fn connection_url(state: State<'_, AppState>, connection_id: Uuid) -> CommandResult<String> {
+    state.with_store(|s| s.url_of(connection_id))
 }
 
 /// SSH passwords and passphrases typed in the form, by the `secret_id` of their server.

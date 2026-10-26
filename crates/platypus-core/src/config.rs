@@ -10,8 +10,12 @@ use url::Url;
 
 use crate::{Error, Result, SessionInit};
 
+mod any;
 mod jdbc;
+mod keyvalue;
+mod to_url;
 
+pub use any::{ParseNote, ParsedConnection};
 pub use jdbc::JdbcUrl;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -173,17 +177,38 @@ pub enum SslMode {
     VerifyFull,
 }
 
+impl SslMode {
+    /// The libpq name, as `sslmode=` takes it.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Disable => "disable",
+            Self::Prefer => "prefer",
+            Self::Require => "require",
+            Self::VerifyCa => "verify-ca",
+            Self::VerifyFull => "verify-full",
+        }
+    }
+}
+
+/// The libpq names, in any case, and the names MySQL (`REQUIRED`, `VERIFY_IDENTITY`) and
+/// Npgsql (`VerifyFull`) give the same modes.
 impl FromStr for SslMode {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        match s {
-            "disable" => Ok(Self::Disable),
-            "prefer" | "allow" => Ok(Self::Prefer),
-            "require" => Ok(Self::Require),
-            "verify-ca" => Ok(Self::VerifyCa),
-            "verify-full" => Ok(Self::VerifyFull),
-            other => Err(Error::Config(format!("unknown sslmode `{other}`"))),
+        let name: String = s
+            .chars()
+            .filter(|c| !matches!(c, '-' | '_'))
+            .map(|c| c.to_ascii_lowercase())
+            .collect();
+        match name.as_str() {
+            "disable" | "disabled" | "none" => Ok(Self::Disable),
+            "prefer" | "preferred" | "allow" => Ok(Self::Prefer),
+            "require" | "required" => Ok(Self::Require),
+            "verifyca" => Ok(Self::VerifyCa),
+            "verifyfull" | "verifyidentity" => Ok(Self::VerifyFull),
+            _ => Err(Error::Config(format!("unknown sslmode `{s}`"))),
         }
     }
 }
@@ -293,13 +318,23 @@ impl ConnectionConfig {
     /// Parses a connection URL such as `postgres://user:pass@host:5432/db?sslmode=require`,
     /// `mysql://user@host/db`, `sqlserver://sa@host/master`, `sqlite:///path/to/file.db`,
     /// `duckdb:///path/to/file.duckdb` or `libsql://db-org.turso.io?authToken=...`, or a
-    /// MongoDB connection string (`mongodb://`, `mongodb+srv://`).
+    /// MongoDB connection string (`mongodb://`, `mongodb+srv://`). An unknown parameter is
+    /// an error; [`ConnectionConfig::parse_any`] leaves it out with a note instead.
     pub fn from_url(input: &str) -> Result<Self> {
+        let (config, unknown) = Self::read_url(input)?;
+        match unknown.first() {
+            Some(key) => Err(Error::Config(format!("unknown URL parameter `{key}`"))),
+            None => Ok(config),
+        }
+    }
+
+    /// A URL as [`ConnectionConfig::from_url`] reads it, and the parameters it does not know.
+    fn read_url(input: &str) -> Result<(Self, Vec<String>)> {
         if let Some(rest) = input.strip_prefix("mongodb+srv://") {
-            return Self::from_mongo_url(rest, true);
+            return Ok((Self::from_mongo_url(rest, true)?, Vec::new()));
         }
         if let Some(rest) = input.strip_prefix("mongodb://") {
-            return Self::from_mongo_url(rest, false);
+            return Ok((Self::from_mongo_url(rest, false)?, Vec::new()));
         }
         let url = Url::parse(input).map_err(|e| Error::Config(format!("invalid URL: {e}")))?;
         let driver = match url.scheme() {
@@ -326,7 +361,7 @@ impl ConnectionConfig {
             } else {
                 path
             };
-            return Ok(config);
+            return Ok((config, Vec::new()));
         }
 
         if let Some(host) = url.host_str() {
@@ -339,6 +374,7 @@ impl ConnectionConfig {
         config.user = decode(url.username())?;
         config.password = url.password().map(decode).transpose()?.map(Secret::new);
 
+        let mut unknown = Vec::new();
         for (key, value) in url.query_pairs() {
             match &*key {
                 "sslmode" | "ssl-mode" => config.ssl_mode = value.parse()?,
@@ -354,7 +390,7 @@ impl ConnectionConfig {
                         .map_err(|_| Error::Config(format!("invalid connect_timeout `{value}`")))?;
                     config.connect_timeout = Some(Duration::from_secs(secs));
                 }
-                other => return Err(Error::Config(format!("unknown URL parameter `{other}`"))),
+                other => unknown.push(other.to_owned()),
             }
         }
         // ClickHouse serves HTTPS on another port than HTTP.
@@ -364,7 +400,7 @@ impl ConnectionConfig {
         {
             config.port = Some(8443);
         }
-        Ok(config)
+        Ok((config, unknown))
     }
 
     /// A MongoDB connection string after its scheme. It can list several hosts, which

@@ -900,6 +900,47 @@ button.primary.danger:hover:not(:disabled) {
   color: var(--fg-muted);
 }
 
+/* The picker's "or paste a connection URL", with its error under it. */
+.driver-url {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* A dialog's title with the database's logo at its right. */
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dialog-header h2 {
+  margin: 0;
+}
+
+.driver-icon .driver-logo {
+  width: 30px;
+  height: 30px;
+}
+
+.driver-icon .driver-logo svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* A pasted URL for another database, with the button back to the picker. */
+.modal .notice.url-other {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.url-notes > div + div {
+  margin-top: 4px;
+}
+
 /* Drivers downloaded when a database needs one. */
 
 .driver-popup {

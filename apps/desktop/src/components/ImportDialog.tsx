@@ -14,7 +14,7 @@ import {
   toCommandError,
   type Workspace,
 } from "../api";
-import { connectionColor, typeBadge } from "../connections";
+import { connectionColor, noteText, typeBadge } from "../connections";
 import { answerFor } from "../testAnswers";
 import { Icon } from "../ui/Icon";
 import {
@@ -57,18 +57,6 @@ const label = (source: ImportSource) => SOURCES.find((s) => s.value === source)!
 const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 /** The rail folder's default name: the file's, without its extension. */
 const railName = (path: string) => fileName(path).replace(/\.[^.]+$/, "") || t("Imported");
-
-/** What an imported connection needs before it can connect. */
-function noteText(note: ImportNote): string {
-  switch (note.kind) {
-    case "windows_auth":
-      return t("Windows authentication is not supported: enter a SQL Server login to connect.");
-    case "entra_auth":
-      return t("Microsoft Entra ID (Azure AD) sign-in is not supported: enter a SQL Server login to connect.");
-    case "named_instance":
-      return t("Named instance {instance}: set the port it listens on.", { instance: note.instance });
-  }
-}
 
 /** Whether `c` looks like a connection that is already saved. */
 function duplicate(c: SavedConnection, existing: SavedConnection[]) {
