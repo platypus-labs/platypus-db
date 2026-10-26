@@ -248,7 +248,7 @@ export function QueryTab({
     results,
     shown,
     enabled: !isMongo(connection.driver) && !tab.terminal,
-    canLeave: async () => !unsaved.current || ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }),
+    canLeave: () => discardEdits(),
   });
   /** The rows on screen: the shown result, or the output of its SQL field. */
   const view = resultSql.output ?? shown;
@@ -581,7 +581,7 @@ export function QueryTab({
   async function run(mode: RunMode, force = false, again?: Planned[], auto = false, replace?: number) {
     const history = !auto;
     if (running && !force) return;
-    if (unsaved.current && !(await ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }))) return;
+    if (!(await discardEdits())) return;
     const append = mode === "append";
     let planned: Planned[];
     try {
@@ -895,18 +895,23 @@ export function QueryTab({
     explain: isMongo(connection.driver) ? undefined : (analyze) => void explain(analyze),
   };
 
-  /** Closes a result tab and frees its rows. */
+  /** Closes a result tab and frees its rows; the shown one asks first if it has edits. */
   function closeResult(id: number) {
     const i = results.findIndex((r) => r.id === id);
     const r = results[i];
     // The run in progress places its results by position.
     if (!r || running) return;
+    if (i === activeResult && unsaved.current) return leavingEdits(() => dropResult(r, i));
+    dropResult(r, i);
+  }
+
+  function dropResult(r: Result, i: number) {
     if (r.jobId !== null) {
       void api.closeQuery(r.jobId);
       jobs.current = jobs.current.filter((j) => j !== r.jobId);
     }
-    memory.current.forget(id);
-    setResults((all) => all.filter((x) => x.id !== id));
+    memory.current.forget(r.id);
+    setResults((all) => all.filter((x) => x.id !== r.id));
     setActiveResult((a) => Math.max(0, a > i || a === results.length - 1 ? a - 1 : a));
   }
 
@@ -1010,12 +1015,22 @@ export function QueryTab({
       void rewriteStatement(result, rewrite).then((next) => {
         if (next !== null) onChange({ sorts: withSort(tab.sorts, next, sort) });
       });
-    if (!unsaved.current) return go();
-    void ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }).then((yes) => {
-      if (!yes) return;
+    leavingEdits(() => {
+      // Asked already: the run that follows does not ask again.
       unsaved.current = false;
       go();
     });
+  }
+
+  /** Whether the edits of the shown result may go, asking first when there are some: running,
+   *  showing another result, the chart or the terminal drops them, as closing the tab does. */
+  async function discardEdits(): Promise<boolean> {
+    return !unsaved.current || ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true });
+  }
+
+  /** Does `then` once the edits of the shown result may go. */
+  function leavingEdits(then: () => void) {
+    void discardEdits().then((yes) => yes && then());
   }
 
   /** Header clicks cycle a column of the shown statement through ascending, descending and
@@ -1459,7 +1474,7 @@ export function QueryTab({
             <>
               <button
                 className={tab.terminal ? "toggled" : ""}
-                onClick={() => onChange({ terminal: !tab.terminal })}
+                onClick={() => (tab.terminal ? onChange({ terminal: false }) : leavingEdits(() => onChange({ terminal: true })))}
                 title={t("Terminal mode: results as text, kept across runs")}
                 aria-label={t("Terminal")}
               >
@@ -1546,7 +1561,7 @@ export function QueryTab({
                 <button
                   key={r.id}
                   className={`result-tab ${r.status.kind}${i === activeResult ? " active" : ""}`}
-                  onClick={() => setActiveResult(i)}
+                  onClick={() => i !== activeResult && leavingEdits(() => setActiveResult(i))}
                   onAuxClick={(e) => e.button === 1 && closeResult(r.id)}
                   title={r.sql}
                 >
@@ -1607,7 +1622,12 @@ export function QueryTab({
           {view && (
             <>
               <span>{describe(view)}</span>
-              {rowsResult && <ChartToggle chart={!!shownChart?.shown} onChange={(on) => setChart({ shown: on })} />}
+              {rowsResult && (
+                <ChartToggle
+                  chart={!!shownChart?.shown}
+                  onChange={(on) => (on ? leavingEdits(() => setChart({ shown: true })) : setChart({ shown: false }))}
+                />
+              )}
               {(view.status.kind === "rows" || view.status.kind === "affected") && (
                 <span className="muted">
                   {t(view.status.kind === "rows" && !view.status.finished ? "first rows in {time}" : "took {time}", {
