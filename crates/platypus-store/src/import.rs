@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use platypus_core::{DriverKind, SslMode};
+use platypus_core::{DriverKind, JdbcUrl, SslMode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -14,10 +14,7 @@ use uuid::Uuid;
 use crate::connections::{ConnectionType, SavedConnection, SavedSsh, SshAuthKind};
 use crate::{Result, StoreError};
 
-use jdbc::Jdbc;
-
 mod dbp;
-mod jdbc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -206,6 +203,27 @@ fn connection(name: &str, driver: DriverKind) -> SavedConnection {
     c
 }
 
+/// A JDBC URL of a database the import reads; others are left out like unknown drivers.
+fn read_jdbc(url: &str) -> Option<JdbcUrl> {
+    JdbcUrl::parse(url).ok().filter(|u| {
+        matches!(
+            u.config.driver,
+            DriverKind::Postgres | DriverKind::MySql | DriverKind::Sqlite | DriverKind::SqlServer
+        )
+    })
+}
+
+/// Takes driver, host, port, database, user and TLS mode from a JDBC URL; not the password.
+fn apply_jdbc(c: &mut SavedConnection, url: &JdbcUrl) {
+    let config = &url.config;
+    c.driver = config.driver;
+    config.host.clone_into(&mut c.host);
+    c.port = config.port;
+    config.database.clone_into(&mut c.database);
+    config.user.clone_into(&mut c.user);
+    c.ssl_mode = config.ssl_mode;
+}
+
 fn text(v: &Value, key: &str) -> Option<String> {
     match v.get(key)? {
         Value::String(s) if !s.is_empty() => Some(s.clone()),
@@ -258,10 +276,10 @@ fn dbeaver_connection(
     let provider = text(entry, "provider").unwrap_or_default();
     let driver_id = text(entry, "driver").unwrap_or_default();
     // A connection set by URL keeps only the URL, without host, port and database.
-    let url = text(config, "url").and_then(|u| jdbc::parse(&u));
+    let url = text(config, "url").and_then(|u| read_jdbc(&u));
     let Some(driver) = url
         .as_ref()
-        .map(|u| u.driver)
+        .map(|u| u.config.driver)
         .or_else(|| dbeaver_driver(&provider, &driver_id))
     else {
         return Err(SkippedConnection {
@@ -273,7 +291,7 @@ fn dbeaver_connection(
     let mut c = connection(&name, driver);
     c.port = driver.default_port();
     if let Some(url) = &url {
-        url.apply(&mut c);
+        apply_jdbc(&mut c, url);
     }
     if let Some(host) = text(config, "host") {
         c.host = host;
@@ -360,20 +378,20 @@ fn dbeaver_ssh(config: &Value) -> Option<SavedSsh> {
 fn sqlserver_details(
     c: &mut SavedConnection,
     config: &Value,
-    url: Option<&Jdbc>,
+    url: Option<&JdbcUrl>,
 ) -> Vec<ImportNote> {
     let mut notes = Vec::new();
-    let (host, instance) = jdbc::split_instance(&c.host);
+    let (host, instance) = JdbcUrl::split_instance(&c.host);
     c.host = host;
     let instance = instance.or_else(|| url.and_then(|u| u.instance.clone()));
     // With a port, the instance is not looked up, as for the JDBC driver.
-    let port = text(config, "port").is_some() || url.is_some_and(|u| u.port.is_some());
+    let port = text(config, "port").is_some() || url.is_some_and(|u| u.port_given);
     if let Some(instance) = instance
         && !port
     {
         notes.push(ImportNote::NamedInstance { instance });
     }
-    let mut props = url.map(|u| u.props.clone()).unwrap_or_default();
+    let mut props = url.map(|u| u.properties.clone()).unwrap_or_default();
     // The driver properties set in DBeaver's connection dialog.
     if let Some(own) = config.get("properties").and_then(Value::as_object) {
         props.extend(
@@ -579,9 +597,10 @@ fn datagrip(xml: &str, local: &str) -> Vec<SavedConnection> {
         let head = format!(" {block}");
         let name = attribute(&head, "name").unwrap_or_else(|| "DataGrip connection".to_owned());
         let mut c = connection(&name, DriverKind::Postgres);
-        if !element(block, "jdbc-url").is_some_and(|url| jdbc::apply(&mut c, &url)) {
+        let Some(url) = element(block, "jdbc-url").and_then(|url| read_jdbc(&url)) else {
             continue;
-        }
+        };
+        apply_jdbc(&mut c, &url);
         if let Some(uuid) = attribute(&head, "uuid")
             && let Some((_, user)) = users.iter().find(|(u, _)| *u == uuid)
         {
