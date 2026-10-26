@@ -902,6 +902,26 @@ export interface SkippedConnection {
  *  instance without a port. */
 export type ImportNote = { kind: "windows_auth" } | { kind: "entra_auth" } | { kind: "named_instance"; instance: string };
 
+/** About a pasted URL or connection string: the notes of an import, and the parameters it
+ *  left out (by name). */
+export type ParseNote = ImportNote | { kind: "ignored"; keys: string[] };
+
+/** The connection form's fields read from a pasted URL or connection string. */
+export interface ParsedConnection {
+  driver: DriverKind;
+  host: string;
+  port: number | null;
+  database: string;
+  user: string;
+  password: string | null;
+  ssl_mode: SslMode;
+  ssl_root_cert: string | null;
+  ssl_client_cert: string | null;
+  ssl_client_key: string | null;
+  options: Record<string, string>;
+  notes: ParseNote[];
+}
+
 export type ImportInto =
   | { kind: "new_project"; name: string }
   | { kind: "existing"; id: string }
@@ -943,6 +963,10 @@ export const api = {
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
   defaultConnection: (driver: DriverKind) =>
     invoke<SavedConnection>("default_connection", { driver }),
+  /** Reads a URL (`postgres://…`), a JDBC URL or a `Server=…;Database=…` string. */
+  parseConnectionUrl: (input: string) => invoke<ParsedConnection>("parse_connection_url", { input }),
+  /** The URL of a saved connection, without its password. */
+  connectionUrl: (connectionId: string) => invoke<string>("connection_url", { connectionId }),
   /** `projects` replaces the projects the connection is in; `null` leaves them. */
   saveConnection: (
     connection: SavedConnection,

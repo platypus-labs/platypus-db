@@ -178,6 +178,8 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::agents::agent_setup,
         commands::connections::list_connections,
         commands::connections::default_connection,
+        commands::connections::parse_connection_url,
+        commands::connections::connection_url,
         commands::connections::save_connection,
         commands::connections::delete_connection,
         commands::connections::set_virtual_key,

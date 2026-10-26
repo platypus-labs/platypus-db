@@ -145,4 +145,80 @@ export default async function (page, { dir, shots }) {
   assert.match(after, /\[connections\.init\]\s+schema = "app"/);
   // The profile's tunnel replaced the connection's own.
   assert.doesNotMatch(after, /host = "bastion"/);
+
+  await connectionUrls(page, shots);
+}
+
+/** Pastes `text` into the field `selector`, as Ctrl+V would. */
+const paste = (selector, text) => `(() => {
+  const data = new DataTransfer();
+  data.setData('text/plain', ${JSON.stringify(text)});
+  document.querySelector(${JSON.stringify(selector)}).dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+})()`;
+
+/** The input or select of the connection form's field labelled `label`. */
+const formField = (label) =>
+  `[...document.querySelectorAll('.connection-dialog label.field')].find(l => l.querySelector('span')?.textContent === ${JSON.stringify(label)})?.querySelector('input, select')`;
+
+const picker = `document.querySelector('.modal.driver-picker')`;
+const urlField = '.driver-picker [data-field="connection_url"]';
+const headerIcon = `document.querySelector('.connection-dialog .dialog-header .driver-icon')`;
+
+// A URL pasted in the picker opens the form filled in; the form of a new connection has no
+// driver to change, only the database's logo, and Back returns to the picker. A URL for
+// another database pasted in the form offers to go back; a connection's menu copies its URL
+// without the password.
+async function connectionUrls(page, shots) {
+  await page.eval(`document.querySelector('button[title="New connection"]').click()`);
+  await page.waitFor(`document.querySelector(${JSON.stringify(urlField)}) !== null`);
+  await page.eval(paste(urlField, "postgres://u:p@db.example:6543/shop?sslmode=require"));
+  await page.waitFor(`${picker} === null && document.querySelector('.connection-dialog') !== null`);
+  const value = (label) => page.eval(`${formField(label)}?.value`);
+  assert.equal(await value("Name"), "shop");
+  assert.equal(await value("Host"), "db.example");
+  assert.equal(await value("Port"), "6543");
+  assert.equal(await value("Database"), "shop");
+  assert.equal(await value("User"), "u");
+  assert.equal(await value("Password"), "p");
+  assert.equal(await value("SSL mode"), "require");
+  assert.equal(await page.eval(`${formField("Driver")} === undefined`), true);
+  assert.equal(await page.eval(`${headerIcon}?.getAttribute('aria-label')`), "PostgreSQL");
+  if (shots) await page.screenshot(join(shots, "connection-from-url.png"));
+
+  // Back: the picker again, with nothing of the form kept.
+  await page.eval(`${button("document.querySelector('.connection-dialog .actions')", "Back")}.click()`);
+  await page.waitFor(`${picker} !== null && document.querySelector('.connection-dialog') === null`);
+  assert.equal(await page.eval(`document.querySelector(${JSON.stringify(urlField)}).value`), "");
+
+  // What is not a connection URL says so under the field.
+  await page.eval(setField(urlField, "not a url"));
+  await page.eval(`document.querySelector(${JSON.stringify(urlField)}).focus()`);
+  await page.key("Enter", "Enter", 13);
+  await page.waitFor(`document.querySelector('.driver-url [role="alert"]') !== null`);
+  assert.equal(await page.eval(`${picker} !== null`), true);
+
+  // MySQL's form, with a PostgreSQL URL pasted in the host field: it stays MySQL's.
+  await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === 'MySQL').click()`);
+  await page.waitFor(`${headerIcon}?.getAttribute('aria-label') === 'MySQL'`);
+  await page.eval(`${formField("Host")}.id = 'e2e-host'`);
+  await page.eval(paste("#e2e-host", "postgres://u@db.example/shop"));
+  await page.waitFor(`document.querySelector('.connection-dialog .url-other') !== null`);
+  assert.equal(await value("Host"), "localhost");
+  assert.equal(await page.eval(`${headerIcon}.getAttribute('aria-label')`), "MySQL");
+  // Its Back takes the URL to the picker's field.
+  await page.eval(`${button("document.querySelector('.url-other')", "Back")}.click()`);
+  await page.waitFor(`${picker} !== null`);
+  assert.equal(await page.eval(`document.querySelector(${JSON.stringify(urlField)}).value`), "postgres://u@db.example/shop");
+  await page.eval(`${button(picker, "Cancel")}.click()`);
+  await page.waitFor(`document.querySelector('.modal') === null`);
+
+  // Copy as URL: no password, which the connection does not keep in its file either.
+  await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
+  await page.eval(`${treeRow("Remote PG")}.id = 'e2e-remote'`);
+  await page.clickSel("#e2e-remote", { button: "right" });
+  const copyItem = `[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.trim().startsWith('Copy as URL'))`;
+  await page.waitFor(`${copyItem} !== undefined`);
+  await page.eval(`${copyItem}.click()`);
+  await page.waitFor(`window.__copied !== undefined`);
+  assert.match(await page.eval(`window.__copied`), /^postgres:\/\/me@db\.example\.com:5432\/app(\?sslmode=[a-z-]+)?$/);
 }

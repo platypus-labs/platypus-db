@@ -25,6 +25,7 @@ import type { TabInit, TabModel } from "../tabs/registry";
 import { dispatchKey, registerAction } from "../actions";
 import { workbench } from "../workbench";
 import { connectionColor, typeBadge } from "../connections";
+import { hasUrl } from "../connectionUrl";
 import { Icon, type IconName, objectIcon } from "../ui/Icon";
 import { ContextMenu, type MenuState, type MenuTarget } from "./ContextMenu";
 import { applyArrange, type FolderNode, folderTree, newFolder } from "../projects/folders";
@@ -1277,6 +1278,16 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       order: 80,
       run: ({ connection }) =>
         workbench().openDialog((close) => <FilterDialog connection={connection} onClose={close} />),
+    }),
+    registerAction({
+      id: "connection.copy_url",
+      scope: "navigator.connection",
+      title: "Copy as URL",
+      group: "manage",
+      order: 89,
+      // Without the password; the ADBC and ODBC drivers and Oracle have no URL.
+      when: ({ connection }) => hasUrl(connection.driver),
+      run: async ({ connection }) => copy(await api.connectionUrl(connection.id)),
     }),
     registerAction({
       id: "connection.edit",
