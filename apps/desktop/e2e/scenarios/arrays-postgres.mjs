@@ -107,14 +107,19 @@ export default async function (page, { shots }) {
   await run(page, "SELECT tags::text || ' ' || pair::text AS v FROM demo.e2e_arrays");
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
   // The status ends before the canvas grid has the row's values, and a copy of an empty grid
-  // gives "": copy again until the values are there.
+  // gives "" or writes nothing: copy again, each attempt bounded, until the values are there.
   let copied = "";
-  for (let attempt = 0; attempt < 50 && copied === ""; attempt++) {
+  const deadline = Date.now() + 15_000;
+  while (copied === "" && Date.now() < deadline) {
     await page.eval(`window.__copied = undefined; ${visibleTab}.querySelector('.grid-scroll').focus()`);
     await page.key("a", "KeyA", 65, CTRL);
     await page.key("c", "KeyC", 67, CTRL);
-    await page.waitFor(`window.__copied !== undefined`);
-    copied = await page.eval(`window.__copied`);
+    try {
+      await page.waitFor(`window.__copied !== undefined`, 500);
+    } catch {
+      // Nothing was copied: try again.
+    }
+    copied = (await page.eval(`window.__copied`)) ?? "";
     if (copied === "") await new Promise((r) => setTimeout(r, 100));
   }
   assert.equal(copied, `{z,"b c",NULL,"new, one"} (x,2)`);
