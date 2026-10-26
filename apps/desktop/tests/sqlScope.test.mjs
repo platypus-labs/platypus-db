@@ -136,7 +136,7 @@ test("strings, comments and quoted names do not confuse the scope", () => {
     "column:placed_at@orders",
   ]);
   assert.equal(maskSql("a 'b;c' -- d\ne /* f */ \"g'h\""), "a       " + "    \ne " + "        " + "\"g'h\"");
-  assert.equal(maskSql("$$x;y$$ z"), "        z");
+  assert.equal(maskSql("$$x;y$$ z", scopeOptions("postgres")), "        z");
 });
 
 test("the statement under the cursor, not its neighbours", () => {
@@ -300,4 +300,30 @@ test("an INSERT's target is out of scope in the query giving its rows", () => {
   assert.ok(inserted("INSERT INTO customers VALUES (1, 'a', 'b') ON DUPLICATE KEY UPDATE name = na|").includes("name@customers"));
   // A MERGE target stays in scope.
   assert.ok(inserted("MERGE INTO orders o USING customers s ON s.id = o.customer_id WHEN MATCHED THEN UPDATE SET total = to|").includes("total@o"));
+});
+
+test("each dialect's comments and strings are masked as lexer.rs reads them", () => {
+  const my = scopeOptions("mysql");
+  const pg = scopeOptions("postgres");
+  const blank = (n) => " ".repeat(n);
+  // `#` comments in MySQL and BigQuery; in ClickHouse before a space or `!`; a name elsewhere.
+  assert.equal(maskSql("a # don't\nb", my), `a${blank(8)}\nb`);
+  assert.equal(maskSql("a # don't\nb", scopeOptions("bigquery")), `a${blank(8)}\nb`);
+  assert.equal(maskSql("a #! x\nb #c", scopeOptions("clickhouse")), `a${blank(5)}\nb #c`);
+  assert.equal(maskSql("#tmp 'x'", scopeOptions("sqlserver")), `#tmp${blank(4)}`);
+  // MySQL needs a space after `--`.
+  assert.equal(maskSql("1--2 -- c", my), `1--2${blank(5)}`);
+  // `$tag$` strings in PostgreSQL, not right after a name, and not in MySQL (`DELIMITER $$`).
+  assert.equal(maskSql("$f$ a;b $f$ c", pg), `${blank(12)}c`);
+  assert.equal(maskSql("a$b$ c", pg), "a$b$ c");
+  assert.equal(maskSql("DELIMITER $$\nSELECT 1$$", my), "DELIMITER $$\nSELECT 1$$");
+  // Oracle `q'[…]'` strings, with a quote inside; after a name, `q` is part of it.
+  const ora = scopeOptions("oracle");
+  assert.equal(maskSql("q'[it's]' x", ora), `${blank(10)}x`);
+  assert.equal(maskSql("nq'{a}' x", ora), `${blank(8)}x`);
+  assert.equal(maskSql("aq'x' y", ora), `aq${blank(4)}y`);
+  // The names after such text complete again.
+  assert.ok(labels(optionsAt("SELECT 1 # don't\nFROM orders WHERE to|", my)).includes("column:total"));
+  const delimiter = "DELIMITER $$\nCREATE PROCEDURE p() BEGIN SELECT to| FROM orders; END$$";
+  assert.ok(labels(optionsAt(delimiter, my)).includes("column:total"));
 });

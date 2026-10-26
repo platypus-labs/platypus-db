@@ -62,9 +62,18 @@ export interface ScopeOptions {
   doubleQuotedStrings?: boolean;
   /** `E'…'` is a string where a backslash escapes the next character (PostgreSQL, DuckDB). */
   escapeStrings?: boolean;
+  /** `$tag$…$tag$` is a string (PostgreSQL, DuckDB, ClickHouse's heredocs). */
+  dollarQuotes?: boolean;
+  /** `#` opens a line comment: anywhere (MySQL, BigQuery), or before a space or `!` (ClickHouse). */
+  hashComments?: "always" | "spaced";
+  /** `--` opens a comment only before a space or the end (MySQL). */
+  spacedDashes?: boolean;
+  /** `q'[…]'` is a string closed by its own delimiter (Oracle). */
+  qQuotes?: boolean;
 }
 
-/** How the driver's SQL quotes, as `lexer.rs` and `dialect.rs` in platypus-sql read it. */
+/** How the driver's SQL quotes and comments, as `lexer.rs` and `dialect.rs` in platypus-sql
+ *  read it. */
 export function scopeOptions(driver: DriverKind): ScopeOptions {
   const backslashes = ["mysql", "clickhouse", "bigquery", "databricks"].includes(driver);
   return {
@@ -73,6 +82,10 @@ export function scopeOptions(driver: DriverKind): ScopeOptions {
     stringBackslashes: backslashes || driver === "snowflake",
     doubleQuotedStrings: ["mysql", "bigquery", "databricks"].includes(driver),
     escapeStrings: driver === "postgres" || driver === "duckdb",
+    dollarQuotes: ["postgres", "duckdb", "clickhouse"].includes(driver),
+    hashComments: driver === "mysql" || driver === "bigquery" ? "always" : driver === "clickhouse" ? "spaced" : undefined,
+    spacedDashes: driver === "mysql",
+    qQuotes: driver === "oracle",
   };
 }
 
@@ -108,6 +121,35 @@ const NAME_CHAR = /[\w$#\u0080-￿]/;
 /** Whether an `E'…'` string starts at `i`: an `E` of its own, not the end of a name. */
 const escapeStringAt = (sql: string, i: number, options: ScopeOptions) =>
   !!options.escapeStrings && (sql[i] === "E" || sql[i] === "e") && sql[i + 1] === "'" && !NAME_CHAR.test(sql[i - 1] ?? "");
+
+/** Where the comment that starts at `i` ends (its newline), or -1 when none starts there. */
+function lineCommentEnd(sql: string, i: number, options: ScopeOptions): number {
+  const next = sql[i + 1];
+  const spaced = next === undefined || /\s/.test(next);
+  const dashes = sql[i] === "-" && next === "-" && (!options.spacedDashes || sql[i + 2] === undefined || /\s/.test(sql[i + 2]!));
+  const hash =
+    sql[i] === "#" && (options.hashComments === "always" || (options.hashComments === "spaced" && (spaced || next === "!")));
+  if (!dashes && !hash) return -1;
+  const end = sql.indexOf("\n", i);
+  return end < 0 ? sql.length : end;
+}
+
+/** Where the string that a `$tag$` or an Oracle `q'[` opens at `i` ends, or -1 when none starts
+ *  there: a `$` or `q` of its own, not part of a name. */
+function taggedStringEnd(sql: string, i: number, options: ScopeOptions): number {
+  if (NAME_CHAR.test(sql[i - 1] ?? "")) return -1;
+  if (options.dollarQuotes && sql[i] === "$") {
+    const tag = /^\$(?:[A-Za-z_]\w*)?\$/.exec(sql.slice(i, i + 64))?.[0];
+    if (!tag) return -1;
+    const end = sql.indexOf(tag, i + tag.length);
+    return end < 0 ? sql.length : end + tag.length;
+  }
+  const q = options.qQuotes ? /^[nN]?[qQ]'(.)/su.exec(sql.slice(i, i + 5)) : null;
+  if (!q) return -1;
+  const close = ({ "[": "]", "{": "}", "<": ">", "(": ")" } as Record<string, string>)[q[1]!] ?? q[1]!;
+  const end = sql.indexOf(`${close}'`, i + q[0].length);
+  return end < 0 ? sql.length : end + close.length + 1;
+}
 
 const WORD = /[A-Za-z_\u0080-￿][\w$#\u0080-￿]*/y;
 /** Words after which a table is named. */
@@ -152,18 +194,13 @@ export function maskSql(sql: string, options: ScopeOptions = {}): string {
     } else if (escapeStringAt(sql, i, options)) {
       const close = quotedEnd(sql, i + 1, "'", true);
       end = close < 0 ? sql.length : close;
-    } else if (c === "-" && sql[i + 1] === "-") {
-      end = sql.indexOf("\n", i);
-      if (end < 0) end = sql.length;
     } else if (c === "/" && sql[i + 1] === "*") {
       end = sql.indexOf("*/", i + 2);
       end = end < 0 ? sql.length : end + 2;
-    } else if (c === "$") {
-      const tag = /^\$[A-Za-z_]*\$/.exec(sql.slice(i, i + 64))?.[0];
-      if (tag) {
-        end = sql.indexOf(tag, i + tag.length);
-        end = end < 0 ? sql.length : end + tag.length;
-      }
+    } else if (c === "-" || c === "#") {
+      end = lineCommentEnd(sql, i, options);
+    } else if ((c === "$" && options.dollarQuotes) || (options.qQuotes && "qQnN".includes(c))) {
+      end = taggedStringEnd(sql, i, options);
     }
     if (end < 0) {
       out += c;
