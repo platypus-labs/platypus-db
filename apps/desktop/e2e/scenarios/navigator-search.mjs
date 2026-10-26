@@ -72,7 +72,10 @@ export default async function (page, { shots }) {
   // Tables show their estimated rows at the end of the row, and in the tooltip with the size.
   assert.match(await page.eval(`${row("orders")}.title`), /\d+(\.\d)? (B|KB|MB)$/);
   assert.equal(await page.eval(`${row("orders")}.querySelector('.tree-detail')`), null);
-  assert.match(await page.eval(`${row("orders")}.querySelector('.tree-count')?.textContent ?? '0'`), /^\d/);
+  // PostgreSQL has no estimate before it has statistics of the table: then neither shows one.
+  const count = await page.eval(`${row("orders")}.querySelector('.tree-count')?.textContent ?? null`);
+  if (count === null) assert.doesNotMatch(await page.eval(`${row("orders")}.title`), /~\S+ rows?\b/);
+  else assert.match(count, /^\d/);
 
   // Metadata search: names and columns; a hit opens the object.
   await rightClick(page, NAME);

@@ -88,8 +88,10 @@ export default async function (page, { dir, shots }) {
   // With several matches, Enter takes the first: "sql" opens the PostgreSQL form.
   await page.eval(`document.querySelector('button[title="New connection"]').click()`);
   await page.waitFor(`document.activeElement === document.querySelector('.driver-picker .modal-search input')`);
+  // PostgreSQL is the first tile of the whole list too: the search must have left fewer.
+  const all = await page.eval(`${tiles}.length`);
   await page.eval(setInput(".driver-picker .modal-search input", "sql"));
-  await page.waitFor(`${tiles}[0] === 'PostgreSQL' && ${tiles}.length > 1`);
+  await page.waitFor(`${tiles}.length < ${all} && ${tiles}.length > 1 && ${tiles}[0] === 'PostgreSQL'`);
   await page.key("Enter", "Enter", 13);
   const driver = `[...document.querySelectorAll('.modal .field')].find(f => f.textContent.startsWith('Driver'))?.querySelector('select')?.value`;
   await page.waitFor(`document.querySelector('.modal.driver-picker') === null && ${driver} === 'postgres'`);
