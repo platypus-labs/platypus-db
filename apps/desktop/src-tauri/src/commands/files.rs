@@ -18,6 +18,13 @@ pub fn write_text_file(path: PathBuf, contents: String) -> CommandResult<()> {
         .map_err(|e| CommandError::new("io", format!("cannot write {}: {e}", path.display())))
 }
 
+/// Writes bytes to a path picked by the user in the save dialog, e.g. a chart as PNG.
+#[tauri::command]
+pub fn write_binary_file(path: PathBuf, bytes: Vec<u8>) -> CommandResult<()> {
+    std::fs::write(&path, bytes)
+        .map_err(|e| CommandError::new("io", format!("cannot write {}: {e}", path.display())))
+}
+
 /// The clipboard's text, for pasting rows. Read here: the web view would ask the user for
 /// permission first.
 #[tauri::command]
@@ -91,5 +98,13 @@ mod tests {
         ] {
             assert_eq!(pasted_dir(Path::new(other), temp), None, "{other}");
         }
+    }
+
+    #[test]
+    fn writes_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chart.png");
+        super::write_binary_file(path.clone(), vec![0x89, b'P', b'N', b'G']).unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), [0x89, b'P', b'N', b'G']);
     }
 }
