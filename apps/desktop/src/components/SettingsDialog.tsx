@@ -195,6 +195,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               className="settings-body"
               role="tabpanel"
               aria-labelledby={`settings-tab-${names.indexOf(current)}`}
+              // Its first content, the heading, takes no focus: the panel does, after the tabs.
+              tabIndex={0}
             >
               <h3>{t(current)}</h3>
               {sections.get(current)?.map(row)}
