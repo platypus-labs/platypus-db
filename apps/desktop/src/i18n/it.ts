@@ -387,6 +387,7 @@ const it: Record<string, string> = {
   "A transaction is open: changes are not visible to others yet, and locks are held": "Una transazione è aperta: gli altri non vedono ancora le modifiche, e i lock restano",
   "Transaction open {time}": "Transazione aperta {time}",
   "Read-only": "Sola lettura",
+  "the tab is read-only": "la scheda è in sola lettura",
   "The connection is read-only": "La connessione è in sola lettura",
   "Read-only in this tab: click to allow changes again": "Sola lettura in questa scheda: clic per consentire di nuovo le modifiche",
   "Make this tab read-only, without changing the connection": "Rende questa scheda di sola lettura, senza cambiare la connessione",

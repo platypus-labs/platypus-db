@@ -2,8 +2,17 @@ import { preview } from "./GuardDialog";
 import { t, plural } from "../i18n";
 
 /** The statements of the open transaction that are not committed yet, with Commit and
- *  Rollback. `onEnd` gets `true` to commit, `false` to roll back, `null` to close. */
-export function PendingDialog({ statements, onEnd }: { statements: string[]; onEnd: (commit: boolean | null) => void }) {
+ *  Rollback, which wait while statements run, as the toolbar's do. `onEnd` gets `true` to
+ *  commit, `false` to roll back, `null` to close. */
+export function PendingDialog({
+  statements,
+  running,
+  onEnd,
+}: {
+  statements: string[];
+  running: boolean;
+  onEnd: (commit: boolean | null) => void;
+}) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onEnd(null)}>
       <div className="modal wide guard" onKeyDown={(e) => e.key === "Escape" && onEnd(null)}>
@@ -29,10 +38,10 @@ export function PendingDialog({ statements, onEnd }: { statements: string[]; onE
           <button type="button" onClick={() => onEnd(null)} autoFocus>
             {t("Close")}
           </button>
-          <button type="button" className="danger" onClick={() => onEnd(false)}>
+          <button type="button" className="danger" onClick={() => onEnd(false)} disabled={running}>
             {t("Rollback")}
           </button>
-          <button type="button" className="primary" onClick={() => onEnd(true)}>
+          <button type="button" className="primary" onClick={() => onEnd(true)} disabled={running}>
             {t("Commit")}
           </button>
         </div>

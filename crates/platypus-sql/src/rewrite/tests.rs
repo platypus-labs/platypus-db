@@ -993,6 +993,10 @@ fn leaves_capped_and_other_statements_alone() {
         ("SELECT * FROM t OFFSET 10", PG),
         ("SELECT TOP 5 * FROM t", MS),
         ("SELECT a FROM t UNION SELECT b FROM u", MS),
+        (
+            "SELECT a FROM t UNION ALL SELECT b FROM u",
+            Dialect::ClickHouse,
+        ),
         ("SELECT * FROM t FOR UPDATE", MY),
         ("SELECT 1", PG),
         ("SELECT * INTO t2 FROM t", PG),

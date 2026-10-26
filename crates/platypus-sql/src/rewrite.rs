@@ -764,13 +764,15 @@ pub fn count_query(sql: &str, dialect: Dialect) -> Option<String> {
 
 /// `sql` returning at most `limit` rows, for a query that reads a table and has no row cap
 /// of its own (`LIMIT`, `TOP`, `OFFSET`, `FETCH`): the editor's automatic limit. The cap goes
-/// at the end of the statement, or after `SELECT` as `TOP (n)` on Transact-SQL, which gives
-/// up on set operations there. A lock clause also makes it give up: MySQL wants the `LIMIT`
-/// before it, Oracle has no place for it.
+/// at the end of the statement, or after `SELECT` as `TOP (n)` on Transact-SQL. It gives up
+/// on set operations where the cap would bind to one branch only: Transact-SQL's `TOP`, and
+/// ClickHouse, whose last `LIMIT` belongs to the last `SELECT`. A lock clause also makes it
+/// give up: MySQL wants the `LIMIT` before it, Oracle has no place for it.
 #[must_use]
 pub fn add_limit(sql: &str, dialect: Dialect, limit: u64) -> Option<String> {
     let body = scan(sql, dialect)?;
-    let set_operation = dialect == Dialect::SqlServer && body.has(flag::SET_OPERATION);
+    let set_operation = matches!(dialect, Dialect::SqlServer | Dialect::ClickHouse)
+        && body.has(flag::SET_OPERATION);
     if body.from.is_none() || body.has(flag::PAGED) || body.lock.is_some() || set_operation {
         return None;
     }

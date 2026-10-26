@@ -1149,11 +1149,12 @@ export function QueryTab({
       return forget(source, () => sources.current.delete(result.sql));
     };
     return {
-      connection,
+      // The saved connection: a tab made read-only says so instead of blaming the connection.
+      connection: saved,
       database: tab.database,
       key: viewer ? `table:${tab.table}` : `sql:${result.sql}`,
       quiet: !viewer,
-      readOnly: null,
+      readOnly: tab.readOnly ? msg("the tab is read-only") : null,
       load,
       session: sideSession,
       onSaved: (undo) => {
@@ -1593,6 +1594,7 @@ export function QueryTab({
       {pendingOpen && (
         <PendingDialog
           statements={uncommitted}
+          running={running}
           onEnd={(commit) => {
             setPendingOpen(false);
             if (commit !== null) void endTransaction(commit);
