@@ -143,14 +143,19 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`document.querySelector('.modal.settings') === null`);
   await page.key(",", "Comma", 188, CTRL);
   await page.waitFor(`${selectedTab}?.dataset.section === 'Toolbar'`);
-  // Tab stays in the dialog: back from the selected tab (the first stop, the other tabs are
-  // reached with the arrows) to Done, and on from Done to the selected tab.
+  // Tab stays in the dialog: from the search (the first stop, focused on opening) on to the
+  // selected tab (the other tabs are reached with the arrows), back from the search to Done,
+  // and on from Done to the search.
   const done = `[...document.querySelectorAll('.modal.settings .actions button')].find(b => b.textContent === 'Done')`;
-  await page.eval(`${selectedTab}.focus()`);
+  const search = `document.querySelector('.modal.settings .modal-search input')`;
+  await page.waitFor(`document.activeElement === ${search}`);
+  await page.key("Tab", "Tab", 9);
+  await page.waitFor(`document.activeElement === ${selectedTab}`);
+  await page.eval(`${search}.focus()`);
   await page.key("Tab", "Tab", 9, SHIFT);
   await page.waitFor(`document.activeElement === ${done}`);
   await page.key("Tab", "Tab", 9);
-  await page.waitFor(`document.activeElement === ${selectedTab}`);
+  await page.waitFor(`document.activeElement === ${search}`);
   await page.eval(`(() => {
     const el = ${settingRow("Buttons")}.querySelector('select');
     Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, 'icons');

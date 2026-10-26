@@ -123,6 +123,9 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`${shownSettings}.length === 1`);
   assert.deepEqual(await page.eval(shownSettings), ["Language"]);
   assert.equal(await page.eval(`document.querySelectorAll('.settings-nav button').length`), 1);
+  // The matches show grouped under their section, in place of the tabs.
+  assert.deepEqual(await page.eval(`[...document.querySelectorAll('.settings-results > section:not([hidden]) > h3')].map(h => h.textContent)`), ["Appearance"]);
+  assert.equal(await page.eval(`document.querySelector('.modal.settings [role="tablist"]')`), null);
   // An action's name finds the shortcuts, filtered to it.
   // Panels the search leaves out are hidden.
   const shortcutsShown = `document.querySelector('.modal.settings .shortcuts')?.closest('section').hidden === false`;
@@ -137,6 +140,8 @@ export default async function (page, { dir, shots }) {
   // Escape clears the search first, then closes.
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.settings-none') === null && ${shownSettings}.length > 1`);
+  // With the search empty, the tabs are back, on the section shown before.
+  assert.equal(await page.eval(`document.querySelector('.modal.settings [role="tab"][aria-selected="true"]')?.dataset.section`), "Appearance");
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.modal.settings') === null`);
 }
