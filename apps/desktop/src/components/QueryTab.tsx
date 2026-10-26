@@ -323,16 +323,21 @@ export function QueryTab({
     return at === null || !all[at] ? [] : [all[at]];
   }
 
-  /** Runs one statement and resolves with its first terminal status; `seen` gets its job,
+  /** Runs one statement and resolves with its first terminal status, once its job is known
+   *  too (a fast statement finishes before `runQuery` returns the job); `seen` gets its job,
    *  columns and rows as they arrive. */
   function runOne(sessionId: number, result: Result, token: number, history: boolean, seen?: Seen): Promise<ResultStatus> {
     const limited = result.limit !== null;
     return new Promise((resolve) => {
-      let settled = false;
+      let final: ResultStatus | null = null;
+      let jobKnown = false;
+      const finish = () => {
+        if (final && jobKnown) resolve(final);
+      };
       const settle = (status: ResultStatus) => {
-        if (!settled && isTerminal(status, limited)) {
-          settled = true;
-          resolve(status);
+        if (!final && isTerminal(status, limited)) {
+          final = status;
+          finish();
         }
       };
       const onEvent = (event: QueryEvent) => {
@@ -376,10 +381,13 @@ export function QueryTab({
           currentJob.current = jobId;
           if (seen) seen.jobId = jobId;
           update(result.id, { jobId });
+          jobKnown = true;
+          finish();
         },
         (e: unknown) => {
           const status: ResultStatus = { kind: "error", error: toCommandError(e) };
           update(result.id, { status });
+          jobKnown = true;
           settle(status);
         },
       );
