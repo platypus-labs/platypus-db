@@ -1401,7 +1401,9 @@ export function QueryTab({
               onHeaderClick={tab.table && sortable && !running ? sortBy : undefined}
               headerHint={
                 tab.table && !sortable && current.status.kind === "rows"
-                  ? t("This query cannot be sorted from the header: it is not one read-only query that an ORDER BY can be added to.")
+                  ? rewritable === current.sql
+                    ? t("This query cannot be sorted from the header: the editor does not hold it as it ran (it was edited since, its variables were filled in, or it comes from @include).")
+                    : t("This query cannot be sorted from the header: it is not one read-only query that an ORDER BY can be added to.")
                   : undefined
               }
               source={{
