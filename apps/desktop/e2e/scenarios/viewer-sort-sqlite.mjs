@@ -120,8 +120,7 @@ export default async function (page) {
   await afterRun(page, () => page.key("Enter", "Enter", 13, CTRL));
   assert.equal(await page.eval(status), "2 rows");
   await afterRun(page, header);
-  assert.match(await page.eval(editorText), /
-ORDER BY code ASC$/);
+  assert.match(await page.eval(editorText), /\nORDER BY code ASC$/);
   assert.equal(await page.eval(status), "2 rows");
   // The viewer's edit bar would show at once; give the grid's edit target time to load.
   await page.sleep(500);
