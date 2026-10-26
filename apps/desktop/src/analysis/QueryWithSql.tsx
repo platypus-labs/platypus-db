@@ -10,7 +10,7 @@ import { workbench } from "../workbench";
 import { type ResultHost, type ResultSource, hostOfJob, hostOfTab, initialSql, resultTables, shownHost } from "./resultHosts";
 
 /** Loads every row of the results, showing how many with Cancel; false when cancelled or
- *  failed. */
+ *  failed (a result closed meanwhile fails). Cancel closes the dialog at once. */
 function loadAll(jobIds: number[]): Promise<boolean> {
   return new Promise((resolve) =>
     workbench().openDialog((close) => (
@@ -27,7 +27,12 @@ function loadAll(jobIds: number[]): Promise<boolean> {
 
 function LoadDialog({ jobIds, onDone }: { jobIds: number[]; onDone: (ok: boolean) => void }) {
   const [rows, setRows] = useState(0);
-  const cancelled = useRef(false);
+  const finished = useRef(false);
+  const finish = (ok: boolean) => {
+    if (finished.current) return;
+    finished.current = true;
+    onDone(ok);
+  };
   useEffect(() => {
     const counts = new Map<number, number>();
     const progress = (id: number) => (n: number) => {
@@ -35,15 +40,16 @@ function LoadDialog({ jobIds, onDone }: { jobIds: number[]; onDone: (ok: boolean
       setRows([...counts.values()].reduce((sum, v) => sum + v, 0));
     };
     Promise.all(jobIds.map((id) => api.fetchWhole(id, progress(id)))).then(
-      () => onDone(!cancelled.current),
+      () => finish(true),
       (e: unknown) => {
-        workbench().showError(toCommandError(e).message);
-        onDone(false);
+        if (!finished.current) workbench().showError(toCommandError(e).message);
+        finish(false);
       },
     );
   }, []);
   const cancel = () => {
-    cancelled.current = true;
+    finish(false);
+    // The fetches end with the jobs; a result closed meanwhile has nothing to stop.
     for (const id of jobIds) void api.stopFetch(id).catch(() => undefined);
   };
   return (
@@ -124,7 +130,13 @@ export function ResultSourceBar({
   return (
     <div className={`notice ${source.partial ? "warn" : "muted"} result-source`}>
       <span>{t("Tables of the results of another tab: {tables}", { tables: source.tables.join(", ") })}</span>
-      {source.partial && <strong>{t("Partial: reading stopped at the memory limit.")}</strong>}
+      {source.partial && (
+        <strong>
+          {source.partial === "memory_limit"
+            ? t("Partial: reading stopped at the memory limit.")
+            : t("Partial: reading stopped before the end of the rows.")}
+        </strong>
+      )}
       <button type="button" disabled={busy} onClick={() => void go()}>
         {t("Reload from result")}
       </button>

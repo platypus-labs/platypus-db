@@ -1262,6 +1262,7 @@ const it: Record<string, string> = {
   "The tab the results came from is closed.": "La scheda da cui vengono i risultati è chiusa.",
   "Tables of the results of another tab: {tables}": "Tabelle dai risultati di un'altra scheda: {tables}",
   "Partial: reading stopped at the memory limit.": "Parziale: la lettura si è fermata al limite di memoria.",
+  "Partial: reading stopped before the end of the rows.": "Parziale: la lettura si è fermata prima della fine delle righe.",
   "Reload from result": "Ricarica dal risultato",
 
   // Analysis (group M): compare with the previous run

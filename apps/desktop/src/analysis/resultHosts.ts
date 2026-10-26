@@ -2,7 +2,7 @@
  * The SQL editor tabs whose results "Query with SQL" reads, and the tables it makes of them.
  * Pure apart from the registry: the unit tests import it.
  */
-import type { ResultTable, SavedConnection } from "../api";
+import type { ResultPartial, ResultTable, SavedConnection } from "../api";
 
 /** Where the tables of a "Query with SQL" tab came from. */
 export interface ResultSource {
@@ -10,8 +10,8 @@ export interface ResultSource {
   tabKey: number;
   /** The tables, `result` first. */
   tables: string[];
-  /** A result stopped at the memory limit: its table lacks rows. */
-  partial: boolean;
+  /** Set when a table lacks rows of its result, with why. */
+  partial: ResultPartial | null;
 }
 
 /** A result with rows: its job and its place among the tab's results (1 for the first). */

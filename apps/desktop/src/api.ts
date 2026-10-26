@@ -1015,10 +1015,14 @@ export interface ResultTable {
   table: string;
 }
 
+/** Why a table of "Query with SQL" lacks rows of its result: reading stopped at the memory
+ *  limit, or for another reason (an error, a cancel, a script's row limit). */
+export type ResultPartial = "memory_limit" | "stopped";
+
 /** The temporary DuckDB connection of "Query with SQL"; `partial` when a table lacks rows. */
 export interface OpenedResultDb {
   connection: SavedConnection;
-  partial: boolean;
+  partial: ResultPartial | null;
 }
 
 // Analysis (group M): compare with the previous run
@@ -1496,19 +1500,19 @@ export const api = {
 
   // Analysis (group M): SQL on results
   /** Loads every row of a result up to the memory limit; `onProgress` gets the rows loaded.
-   *  True when they are all of its rows. */
+   *  True when they are all of its rows. Fails when the result is closed or reading fails. */
   fetchWhole: (jobId: number, onProgress: (rows: number) => void) => {
     const channel = new Channel<number>();
     channel.onmessage = onProgress;
     return invoke<boolean>("fetch_whole", { jobId, onProgress: channel });
   },
-  /** Stops loading a result, keeping its rows. */
+  /** Stops loading a result, keeping its rows; nothing for a closed result. */
   stopFetch: (jobId: number) => invoke<void>("stop_fetch", { jobId }),
   /** Copies the results into a new in-memory DuckDB; returns its temporary connection. */
   openResultDb: (name: string, tables: ResultTable[]) => invoke<OpenedResultDb>("open_result_db", { name, tables }),
-  /** Copies the results again into the temporary connection's tables; true when partial. */
+  /** Copies the results again into the temporary connection's tables; why one lacks rows. */
   reloadResultDb: (connectionId: string, tables: ResultTable[]) =>
-    invoke<boolean>("reload_result_db", { connectionId, tables }),
+    invoke<ResultPartial | null>("reload_result_db", { connectionId, tables }),
   closeResultDb: (connectionId: string) => invoke<void>("close_result_db", { connectionId }),
 
   // Analysis (group M): compare with the previous run

@@ -19,6 +19,7 @@ use super::gone;
 use crate::commands::summary::blocking;
 use crate::commands::{AppState, lock};
 use crate::error::{CommandError, CommandResult};
+use crate::jobs::Ending;
 
 /// How often `fetch_whole` reports the rows loaded.
 const PROGRESS: Duration = Duration::from_millis(100);
@@ -45,8 +46,18 @@ pub struct ResultTable {
 #[derive(Debug, Serialize)]
 pub struct OpenedResultDb {
     connection: SavedConnection,
-    /// A result stopped at the memory limit (or was stopped): its table lacks rows.
-    partial: bool,
+    /// Set when a table lacks rows of its result.
+    partial: Option<Partial>,
+}
+
+/// Why a table lacks rows of its result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Partial {
+    /// Reading stopped at the memory limit.
+    MemoryLimit,
+    /// Reading stopped for another reason: an error, a cancel or a script's row limit.
+    Stopped,
 }
 
 /// The rows a table copies, taken from its result's job.
@@ -54,11 +65,23 @@ struct Source {
     table: String,
     schema: SchemaRef,
     batches: Vec<RecordBatch>,
-    complete: bool,
+    ending: Ending,
+}
+
+/// Whether, and why, one of `sources` lacks rows; the memory limit is told first.
+fn partial(sources: &[Source]) -> Option<Partial> {
+    if sources.iter().any(|s| s.ending == Ending::MemoryLimit) {
+        Some(Partial::MemoryLimit)
+    } else if sources.iter().any(|s| s.ending != Ending::Complete) {
+        Some(Partial::Stopped)
+    } else {
+        None
+    }
 }
 
 /// Loads every row of result `job_id`, up to the memory limit, reporting the rows loaded on
-/// `on_progress`; `true` when they are all of the result's rows. `stop_fetch` ends it early.
+/// `on_progress`; `true` when they are all of the result's rows. It ends with the job: at the
+/// end of the rows, the memory limit, `stop_fetch`, an error, or when the result is closed.
 #[tauri::command]
 pub async fn fetch_whole(
     state: State<'_, AppState>,
@@ -66,23 +89,34 @@ pub async fn fetch_whole(
     on_progress: Channel<usize>,
 ) -> CommandResult<bool> {
     let job = state.job(job_id).map_err(|_| gone())?;
-    job.fetch_all();
-    loop {
-        // A closed channel only means the dialog went away.
-        let _ = on_progress.send(job.loaded_rows());
-        if job.is_done() {
-            break;
-        }
-        tokio::time::sleep(PROGRESS).await;
-    }
-    Ok(job.is_complete())
+    // A closed channel only means the dialog went away.
+    let ending = job
+        .fetch_whole(PROGRESS, |rows| {
+            let _ = on_progress.send(rows);
+        })
+        .await;
+    whole_fetched(ending)
 }
 
-/// Stops loading result `job_id`, keeping the rows it has: Cancel of `fetch_whole`.
+/// What `fetch_whole` answers when the job ended with `ending`.
+fn whole_fetched(ending: Ending) -> CommandResult<bool> {
+    match ending {
+        Ending::Closed => Err(gone()),
+        Ending::Failed => Err(CommandError::new(
+            "fetch_failed",
+            "Reading the rows stopped with an error: the result shows it.",
+        )),
+        ending => Ok(ending == Ending::Complete),
+    }
+}
+
+/// Stops loading result `job_id`, keeping the rows it has: Cancel of `fetch_whole`. A result
+/// already closed has nothing to stop.
 #[tauri::command]
-pub fn stop_fetch(state: State<'_, AppState>, job_id: u64) -> CommandResult<()> {
-    state.job(job_id).map_err(|_| gone())?.stop();
-    Ok(())
+pub fn stop_fetch(state: State<'_, AppState>, job_id: u64) {
+    if let Ok(job) = state.job(job_id) {
+        job.stop();
+    }
 }
 
 /// Copies the rows of the results into a new in-memory DuckDB, as the tables named, and returns
@@ -94,7 +128,7 @@ pub async fn open_result_db(
     tables: Vec<ResultTable>,
 ) -> CommandResult<OpenedResultDb> {
     let sources = sources(&state, &tables)?;
-    let partial = sources.iter().any(|s| !s.complete);
+    let partial = partial(&sources);
     let names: Vec<String> = sources.iter().map(|s| s.table.clone()).collect();
     let memory = format!("platypus-result-{}", Uuid::new_v4());
     let filled = memory.clone();
@@ -117,19 +151,19 @@ pub async fn open_result_db(
 }
 
 /// Copies the results again into the database of temporary connection `connection_id`;
-/// `true` when one of them is partial.
+/// whether, and why, one of them is partial.
 #[tauri::command]
 pub async fn reload_result_db(
     state: State<'_, AppState>,
     connection_id: Uuid,
     tables: Vec<ResultTable>,
-) -> CommandResult<bool> {
+) -> CommandResult<Option<Partial>> {
     let (memory, before) = lock(&state.result_dbs)
         .get(&connection_id)
         .map(|db| (db.name.clone(), db.tables.clone()))
         .ok_or_else(|| CommandError::not_found("result database", connection_id))?;
     let sources = sources(&state, &tables)?;
-    let partial = sources.iter().any(|s| !s.complete);
+    let partial = partial(&sources);
     let names: Vec<String> = sources.iter().map(|s| s.table.clone()).collect();
     blocking(move || fill(&memory, &before, &sources).map(drop)).await?;
     if let Some(db) = lock(&state.result_dbs).get_mut(&connection_id) {
@@ -181,7 +215,11 @@ fn sources(state: &AppState, tables: &[ResultTable]) -> CommandResult<Vec<Source
                 table: t.table.clone(),
                 schema,
                 batches,
-                complete: job.is_complete(),
+                ending: if job.is_done() {
+                    job.ending()
+                } else {
+                    Ending::Running
+                },
             })
         })
         .collect()
@@ -221,7 +259,7 @@ mod tests {
             table: table.to_owned(),
             schema,
             batches: vec![batch],
-            complete: true,
+            ending: Ending::Complete,
         }
     }
 
@@ -245,6 +283,31 @@ mod tests {
             panic!("no tables")
         };
         assert_eq!(error_kind(&e), "no_rows");
+    }
+
+    #[test]
+    fn a_partial_table_tells_why() {
+        let mut sources = vec![source("a", &[1]), source("b", &[2])];
+        assert_eq!(partial(&sources), None);
+        sources[0].ending = Ending::RowLimit;
+        assert_eq!(partial(&sources), Some(Partial::Stopped));
+        sources[1].ending = Ending::MemoryLimit;
+        assert_eq!(partial(&sources), Some(Partial::MemoryLimit));
+    }
+
+    #[test]
+    fn a_whole_fetch_ends_with_its_job() {
+        assert!(whole_fetched(Ending::Complete).unwrap());
+        assert!(!whole_fetched(Ending::MemoryLimit).unwrap());
+        assert!(!whole_fetched(Ending::Stopped).unwrap());
+        let Err(e) = whole_fetched(Ending::Closed) else {
+            panic!("a closed result is gone")
+        };
+        assert_eq!(error_kind(&e), "result_gone");
+        let Err(e) = whole_fetched(Ending::Failed) else {
+            panic!("a failed fetch is an error")
+        };
+        assert_eq!(error_kind(&e), "fetch_failed");
     }
 
     #[test]
