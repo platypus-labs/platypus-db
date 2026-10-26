@@ -91,7 +91,7 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 
 | Gruppo | Lock |
 |---|---|
-| A — Modifica dei dati | ✅ fatto (P1; P2 e P3 in parte) |
+| A — Modifica dei dati | 🔒 Delfa · group-a-mass-edit · 2026-10-26 |
 | B — Griglia avanzata | ✅ fatto (P1; P2 e P3 in parte) |
 | C — Navigator e oggetti | ✅ completato |
 | D — Editor SQL | ✅ fatto (P1, P3; P2 in parte) |
