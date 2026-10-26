@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
-use std::net::SocketAddr;
+use std::net::{Ipv6Addr, SocketAddr};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
@@ -13,6 +13,7 @@ use crate::{Error, Result, SessionInit};
 mod any;
 mod jdbc;
 mod keyvalue;
+mod libpq;
 mod to_url;
 
 pub use any::{ParseNote, ParsedConnection};
@@ -330,11 +331,16 @@ impl ConnectionConfig {
 
     /// A URL as [`ConnectionConfig::from_url`] reads it, and the parameters it does not know.
     fn read_url(input: &str) -> Result<(Self, Vec<String>)> {
-        if let Some(rest) = input.strip_prefix("mongodb+srv://") {
-            return Ok((Self::from_mongo_url(rest, true)?, Vec::new()));
-        }
-        if let Some(rest) = input.strip_prefix("mongodb://") {
-            return Ok((Self::from_mongo_url(rest, false)?, Vec::new()));
+        let mongo = match input.strip_prefix("mongodb+srv://") {
+            Some(rest) => Some(Self::from_mongo_url(rest, true)?),
+            None => input
+                .strip_prefix("mongodb://")
+                .map(|rest| Self::from_mongo_url(rest, false))
+                .transpose()?,
+        };
+        if let Some(config) = mongo {
+            config.check_host()?;
+            return Ok((config, Vec::new()));
         }
         let url = Url::parse(input).map_err(|e| Error::Config(format!("invalid URL: {e}")))?;
         let driver = match url.scheme() {
@@ -400,6 +406,7 @@ impl ConnectionConfig {
         {
             config.port = Some(8443);
         }
+        config.check_host()?;
         Ok((config, unknown))
     }
 
@@ -433,6 +440,8 @@ impl ConnectionConfig {
                 host.trim_matches(['[', ']']).clone_into(&mut config.host);
                 config.port = Some(port);
             }
+            // A seed list keeps the brackets of its IPv6 hosts.
+            None if hosts.contains(',') => hosts.clone_into(&mut config.host),
             None => hosts.trim_matches(['[', ']']).clone_into(&mut config.host),
         }
         let database = decode(path)?;
@@ -474,6 +483,116 @@ impl ConnectionConfig {
         };
         Ok(config)
     }
+}
+
+impl ConnectionConfig {
+    /// Refuses a host that cannot be one, as a URL or connection string gives when it puts
+    /// a login or other keys where the host goes: one with `@`, `=`, `;`, spaces, or a `:`
+    /// outside an IPv6 address. A MongoDB seed list (`a:27017,b:27018`) is checked host by
+    /// host. The error does not repeat the host, which may hold a password.
+    fn check_host(&self) -> Result<()> {
+        let valid = if self.driver == DriverKind::Mongo {
+            self.host.split(',').all(seed_host)
+        } else {
+            plain_host(&self.host)
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(Error::Config(
+                "the host is not valid: it holds `@`, `=`, `;`, spaces or a `:` that is not \
+                 part of an IPv6 address"
+                    .to_owned(),
+            ))
+        }
+    }
+
+    /// Takes the options that carry a secret out of a MongoDB connection's `database`,
+    /// where [`ConnectionConfig::from_url`] keeps the options, and returns their names.
+    fn drop_secret_options(&mut self) -> Vec<String> {
+        let Some((database, query)) = self.database.split_once('?') else {
+            return Vec::new();
+        };
+        let (secret, kept): (Vec<&str>, Vec<&str>) = query
+            .split('&')
+            .filter(|p| !p.is_empty())
+            .partition(|p| secret_mongo_option(p));
+        let names = secret
+            .iter()
+            .map(|p| p.split('=').next().unwrap_or_default().to_owned())
+            .collect();
+        let rest = if kept.is_empty() {
+            database.to_owned()
+        } else {
+            format!("{database}?{}", kept.join("&"))
+        };
+        self.database = rest;
+        names
+    }
+}
+
+/// A host name, an IPv4 address or an IPv6 one (with its zone, if any), without a port.
+fn plain_host(host: &str) -> bool {
+    if host
+        .chars()
+        .any(|c| matches!(c, '@' | '=' | ';' | '[' | ']') || c.is_whitespace() || c.is_control())
+    {
+        return false;
+    }
+    let address = host.split_once('%').map_or(host, |(a, _)| a);
+    !host.contains(':') || address.parse::<Ipv6Addr>().is_ok()
+}
+
+/// One host of a MongoDB seed list: `host`, `host:port`, `[v6]` or `[v6]:port`.
+fn seed_host(entry: &str) -> bool {
+    let (host, port) = if let Some(inner) = entry.strip_prefix('[') {
+        let Some((host, rest)) = inner.split_once(']') else {
+            return false;
+        };
+        if !rest.is_empty() && !rest.starts_with(':') {
+            return false;
+        }
+        (host, rest.strip_prefix(':'))
+    } else {
+        match entry.rsplit_once(':') {
+            Some((h, p)) if !h.contains(':') => (h, Some(p)),
+            _ => (entry, None),
+        }
+    };
+    !host.is_empty() && plain_host(host) && port.is_none_or(|p| p.parse::<u16>().is_ok())
+}
+
+/// Whether an option's name says it holds a secret: `password`, `PrivateKeyPwd`,
+/// `tlsCertificateKeyFilePassword`, `token`, `client_secret`, …
+fn secret_key(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    [
+        "password",
+        "passwd",
+        "pwd",
+        "passcode",
+        "passphrase",
+        "secret",
+        "token",
+        "apikey",
+        "api_key",
+    ]
+    .iter()
+    .any(|word| key.contains(word))
+}
+
+/// Whether a MongoDB option (`key=value`) carries a secret: by its name, or as
+/// `authMechanismProperties` holding one (`AWS_SESSION_TOKEN:…`).
+fn secret_mongo_option(pair: &str) -> bool {
+    let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+    if secret_key(key) {
+        return true;
+    }
+    let value = decode(value).unwrap_or_else(|_| value.to_owned());
+    key.eq_ignore_ascii_case("authMechanismProperties")
+        && value
+            .split(',')
+            .any(|p| secret_key(p.split(':').next().unwrap_or_default()))
 }
 
 fn decode(s: &str) -> Result<String> {
@@ -646,6 +765,67 @@ mod tests {
         assert!(ConnectionConfig::from_url("oracle://x/y").is_err());
         assert!(ConnectionConfig::from_url("postgres://x/y?foo=1").is_err());
         assert!(ConnectionConfig::from_url("postgres://x/y?sslmode=nope").is_err());
+    }
+
+    #[test]
+    fn refuses_hosts_that_hold_a_login_or_keys() {
+        let host = |driver, host: &str| {
+            let mut c = ConnectionConfig::new(driver);
+            host.clone_into(&mut c.host);
+            c.check_host()
+        };
+        for ok in [
+            "db.example.com",
+            "10.0.0.5",
+            "::1",
+            "fe80::1%eth0",
+            "/tmp",
+            "",
+        ] {
+            assert!(host(DriverKind::Postgres, ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "sandy:hunter2@myhost",
+            "h port=5433 password=hunter2",
+            "a;b",
+            "h:hunter2",
+            "[::1]",
+        ] {
+            let err = host(DriverKind::Postgres, bad).unwrap_err().to_string();
+            assert!(!err.contains("hunter2"), "{err}");
+        }
+        for ok in [
+            "a:1,b:2",
+            "[::1]:27017,[::2]",
+            "cluster0.example.net",
+            "::1",
+        ] {
+            assert!(host(DriverKind::Mongo, ok).is_ok(), "{ok}");
+        }
+        for bad in ["a:x,b", "a,,b", "u:p@h:1,b"] {
+            assert!(host(DriverKind::Mongo, bad).is_err(), "{bad}");
+        }
+        let c = ConnectionConfig::from_url("mongodb://[::1]:1,[::2]:2/db").unwrap();
+        assert_eq!(c.host, "[::1]:1,[::2]:2");
+    }
+
+    #[test]
+    fn drops_secret_mongo_options() {
+        let mut c = ConnectionConfig::from_url(
+            "mongodb://u@h/db?replicaSet=rs0&tlsCertificateKeyFilePassword=hunter2\
+             &authMechanismProperties=AWS_SESSION_TOKEN%3Ahunter2&w=majority",
+        )
+        .unwrap();
+        assert_eq!(
+            c.drop_secret_options(),
+            ["tlsCertificateKeyFilePassword", "authMechanismProperties"]
+        );
+        assert_eq!(c.database, "db?replicaSet=rs0&w=majority");
+        let mut c = ConnectionConfig::from_url(
+            "mongodb://u@h/db?authMechanismProperties=SERVICE_NAME:mongodb",
+        )
+        .unwrap();
+        assert_eq!(c.drop_secret_options(), Vec::<String>::new());
     }
 
     #[test]

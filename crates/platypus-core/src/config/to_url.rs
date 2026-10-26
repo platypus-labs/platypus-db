@@ -6,7 +6,7 @@ use std::path::Path;
 
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 
-use super::{ConnectionConfig, DriverKind, SslMode};
+use super::{ConnectionConfig, DriverKind, SslMode, secret_mongo_option};
 
 /// What a user name, database or parameter value keeps as it is: RFC 3986's unreserved
 /// characters.
@@ -88,7 +88,8 @@ impl ConnectionConfig {
     }
 
     /// A MongoDB connection string: the options kept after the database go back to the
-    /// query, `srv=true` to the scheme, and the TLS mode to `tls=`.
+    /// query, but for those that hold a secret, `srv=true` to the scheme, and the TLS mode
+    /// to `tls=`.
     fn mongo_url(&self) -> String {
         let (database, query) = self
             .database
@@ -96,7 +97,7 @@ impl ConnectionConfig {
             .unwrap_or((self.database.as_str(), ""));
         let mut params: Vec<String> = query
             .split('&')
-            .filter(|p| !p.is_empty())
+            .filter(|p| !p.is_empty() && !secret_mongo_option(p))
             .map(str::to_owned)
             .collect();
         let srv = params.iter().any(|p| p == "srv=true");
@@ -191,6 +192,18 @@ mod tests {
             round_trip("mongodb://a:1,b:2/?authSource=admin"),
             "mongodb://a:1,b:2/?authSource=admin"
         );
+    }
+
+    #[test]
+    fn mongo_urls_leave_out_secret_options() {
+        let config = ConnectionConfig::from_url(
+            "mongodb://u:p@h:27017/db?tls=true&tlsCertificateKeyFilePassword=hunter2\
+             &authMechanismProperties=AWS_SESSION_TOKEN:hunter2&appSecret=hunter2&w=1",
+        )
+        .unwrap();
+        let url = config.to_url().unwrap();
+        assert!(!url.contains("hunter2"), "{url}");
+        assert_eq!(url, "mongodb://u@h:27017/db?w=1&authSource=db&tls=true");
     }
 
     #[test]

@@ -1,11 +1,12 @@
 //! One entry point for whatever the user pastes: a URL (`postgres://…`), a JDBC URL
-//! (`jdbc:sqlserver://…`) or an ADO.NET / ODBC connection string (`Server=…;Database=…`).
+//! (`jdbc:sqlserver://…`), an ADO.NET / ODBC connection string (`Server=…;Database=…`) or
+//! a libpq one (`host=… dbname=…`).
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::{ConnectionConfig, JdbcUrl, keyvalue};
+use super::{ConnectionConfig, DriverKind, JdbcUrl, keyvalue};
 use crate::{Error, Result};
 
 /// A connection read from a URL or a connection string, with what it could not carry over.
@@ -33,8 +34,11 @@ pub enum ParseNote {
 
 impl ConnectionConfig {
     /// Reads a scheme URL (as [`ConnectionConfig::from_url`], but leaving out the parameters
-    /// it does not know), a JDBC URL ([`JdbcUrl`]) or a key=value connection string
-    /// ([`ConnectionConfig::from_connection_string`]). Errors never repeat the password.
+    /// it does not know, and MongoDB's options that hold a secret), a JDBC URL
+    /// ([`JdbcUrl`]) or a key=value connection string
+    /// ([`ConnectionConfig::from_connection_string`]). Errors never repeat the password, and
+    /// a host that holds a login or other keys is an error: nothing but the password field
+    /// gets a secret.
     pub fn parse_any(input: &str) -> Result<ParsedConnection> {
         let input = input.trim();
         if input
@@ -49,7 +53,10 @@ impl ConnectionConfig {
             });
         }
         if has_scheme(input) {
-            let (config, unknown) = Self::read_url(input)?;
+            let (mut config, mut unknown) = Self::read_url(input)?;
+            if config.driver == DriverKind::Mongo {
+                unknown.extend(config.drop_secret_options());
+            }
             let notes = if unknown.is_empty() {
                 Vec::new()
             } else {
@@ -149,6 +156,45 @@ mod tests {
                 .driver,
             DriverKind::Mongo
         );
+        let mongo = parse("mongodb://u:p@h/db?tls=true&tlsCertificateKeyFilePassword=hunter2");
+        assert!(!mongo.config.database.contains("hunter2"));
+        assert_eq!(
+            mongo.notes,
+            [ParseNote::Ignored {
+                keys: vec!["tlsCertificateKeyFilePassword".to_owned()]
+            }]
+        );
+    }
+
+    #[test]
+    fn no_secret_ends_up_in_the_host() {
+        let my = parse("jdbc:mysql://sandy:hunter2@myhost:3307/db").config;
+        assert_eq!(
+            (my.host.as_str(), my.port, my.user.as_str()),
+            ("myhost", Some(3307), "sandy")
+        );
+        assert_eq!(my.password, Some(Secret::new("hunter2")));
+        let pg = parse("host=h port=5432 dbname=d user=u password='hunter 2' sslmode=require");
+        assert_eq!(pg.config.driver, DriverKind::Postgres);
+        assert_eq!(
+            (
+                pg.config.host.as_str(),
+                pg.config.port,
+                pg.config.user.as_str()
+            ),
+            ("h", Some(5432), "u")
+        );
+        assert_eq!(pg.config.password, Some(Secret::new("hunter 2")));
+        assert_eq!(pg.config.ssl_mode, SslMode::Require);
+        for bad in [
+            "jdbc:mysql://sandy:hunter2/db",
+            "Host=h port=5432 password=hunter2",
+            "host=h password=hunter2;x",
+            "Server=sa:hunter2@h;Database=x",
+        ] {
+            let err = ConnectionConfig::parse_any(bad).unwrap_err().to_string();
+            assert!(!err.contains("hunter2"), "{err}");
+        }
     }
 
     #[test]

@@ -3,12 +3,14 @@
 //! OCI, ClickHouse, SQLite and DuckDB.
 
 use std::collections::BTreeMap;
+use std::fmt;
 
-use super::{ConnectionConfig, DriverKind, Secret, SslMode, decode};
+use super::{ConnectionConfig, DriverKind, Secret, SslMode, decode, secret_key};
 use crate::{Error, Result};
 
 /// A JDBC URL read into a [`ConnectionConfig`], with what the config has no field for.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// `Debug` hides the values of the properties that hold a secret.
+#[derive(Clone, PartialEq, Eq)]
 pub struct JdbcUrl {
     pub config: ConnectionConfig,
     /// Whether the URL names the port; `config.port` is the driver's default otherwise.
@@ -18,6 +20,22 @@ pub struct JdbcUrl {
     pub instance: Option<String>,
     /// The URL's properties (`;key=value` or `?key=value&…`), keys in lower case.
     pub properties: BTreeMap<String, String>,
+}
+
+impl fmt::Debug for JdbcUrl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let properties: BTreeMap<&str, &str> = self
+            .properties
+            .iter()
+            .map(|(k, v)| (k.as_str(), if secret_key(k) { "***" } else { v.as_str() }))
+            .collect();
+        f.debug_struct("JdbcUrl")
+            .field("config", &self.config)
+            .field("port_given", &self.port_given)
+            .field("instance", &self.instance)
+            .field("properties", &properties)
+            .finish()
+    }
 }
 
 impl ConnectionConfig {
@@ -31,9 +49,15 @@ impl ConnectionConfig {
 
 impl JdbcUrl {
     /// Reads a JDBC URL of one of the databases above; an error names only the
-    /// subprotocol of another one, since the URL may hold a password.
+    /// subprotocol of another one, since the URL may hold a password. A host that holds
+    /// a login or other keys is an error, never a host.
     pub fn parse(input: &str) -> Result<Self> {
-        let input = input.trim();
+        let jdbc = Self::read(input.trim())?;
+        jdbc.config.check_host()?;
+        Ok(jdbc)
+    }
+
+    fn read(input: &str) -> Result<Self> {
         let Some(rest) = input.strip_prefix("jdbc:") else {
             return Err(Error::Config("a JDBC URL starts with `jdbc:`".to_owned()));
         };
@@ -78,7 +102,10 @@ impl JdbcUrl {
             }
         }
         // The subprotocol only: the rest may hold a password.
-        let kind = rest.split([':', '/']).next().unwrap_or_default();
+        let kind = rest
+            .split([':', '/', ';', '?', '@'])
+            .next()
+            .unwrap_or_default();
         Err(Error::Config(format!(
             "unsupported JDBC URL `jdbc:{kind}:`"
         )))
@@ -120,7 +147,9 @@ impl JdbcUrl {
         keys.iter().find_map(|k| self.properties.get(*k).cloned())
     }
 
-    /// `//host[:port][/database][?key=value&…]`, or PostgreSQL's `database` alone.
+    /// `//[user[:password]@]host[:port][,host2…][/database][?key=value&…]`, or
+    /// PostgreSQL's `database` alone. Of several hosts, the first one is kept: the drivers
+    /// try them in order.
     fn hierarchical(driver: DriverKind, rest: &str) -> Result<Self> {
         let mut jdbc = Self::new(driver);
         let (rest, query) = rest.split_once('?').unwrap_or((rest, ""));
@@ -131,8 +160,15 @@ impl JdbcUrl {
         }
         match rest.strip_prefix("//") {
             Some(rest) => {
+                let rest = match rest.rsplit_once('@') {
+                    Some((userinfo, rest)) => {
+                        jdbc.set_login(userinfo)?;
+                        rest
+                    }
+                    None => rest,
+                };
                 let (address, database) = rest.split_once('/').unwrap_or((rest, ""));
-                jdbc.set_address(address);
+                jdbc.set_address(address.split(',').next().unwrap_or_default());
                 jdbc.config.database = decode(database)?;
             }
             None => jdbc.config.database = decode(rest)?,
@@ -143,14 +179,35 @@ impl JdbcUrl {
             _ => jdbc
                 .property(&["sslmode"])
                 .and_then(|m| m.parse().ok())
+                // pgjdbc's `ssl=true` verifies the certificate and the host name.
                 .or_else(|| {
-                    (jdbc.property(&["ssl"]).as_deref() == Some("true")).then_some(SslMode::Require)
+                    (jdbc.property(&["ssl"]).as_deref() == Some("true"))
+                        .then_some(SslMode::VerifyFull)
                 }),
         };
         if let Some(mode) = ssl {
             jdbc.config.ssl_mode = mode;
         }
         Ok(jdbc)
+    }
+
+    /// `user[:password]` before the host. A `/` in it means the URL is not percent-encoded,
+    /// so where the login ends is unclear: an error, which does not repeat it.
+    fn set_login(&mut self, userinfo: &str) -> Result<()> {
+        if userinfo.contains('/') {
+            return Err(Error::Config(
+                "the user and password of the JDBC URL must be percent-encoded".to_owned(),
+            ));
+        }
+        let (user, password) = match userinfo.split_once(':') {
+            Some((user, password)) => (user, Some(password)),
+            None => (userinfo, None),
+        };
+        self.config.user = decode(user)?;
+        if let Some(password) = password {
+            self.config.password = Some(Secret::new(decode(password)?));
+        }
+        Ok(())
     }
 
     /// Connector/J's `sslMode` (`REQUIRED`, `VERIFY_IDENTITY`, …) or `useSSL`.
@@ -189,6 +246,10 @@ impl JdbcUrl {
     fn sqlserver(rest: &str, jtds: bool) -> Self {
         let mut jdbc = Self::new(DriverKind::SqlServer);
         let (address, props) = rest.split_once(';').unwrap_or((rest, ""));
+        let address = match address.get(..4) {
+            Some(p) if p.eq_ignore_ascii_case("tcp:") => &address[4..],
+            _ => address,
+        };
         jdbc.properties = sqlserver_properties(props);
         let (address, database) = match address.split_once('/') {
             Some((a, d)) if jtds => (a, d),
@@ -239,7 +300,8 @@ impl JdbcUrl {
     /// A SID is kept as the database, where the service name goes: they are often the same.
     fn oracle(rest: &str) -> Self {
         let mut jdbc = Self::new(DriverKind::Oracle);
-        let rest = match rest.split_once('@') {
+        // The last `@`: a password may hold one.
+        let rest = match rest.rsplit_once('@') {
             Some((credentials, rest)) if !credentials.starts_with('(') => {
                 let (user, password) = credentials.split_once('/').unwrap_or((credentials, ""));
                 user.clone_into(&mut jdbc.config.user);
@@ -273,7 +335,8 @@ impl JdbcUrl {
     }
 }
 
-/// `[::1]:5432`, `host:5432` or just a host.
+/// `[::1]:5432`, `host:5432` or just a host. A `:` not followed by a port stays in the
+/// host, where [`ConnectionConfig::check_host`] refuses it.
 pub(super) fn host_port(address: &str) -> (String, Option<u16>) {
     let (host, port) = match address.strip_prefix('[') {
         Some(inner) => match inner.split_once(']') {
@@ -281,27 +344,61 @@ pub(super) fn host_port(address: &str) -> (String, Option<u16>) {
             None => (inner, None),
         },
         None => match address.rsplit_once(':') {
-            Some((h, p)) if !h.contains(':') => (h, p.parse().ok()),
+            Some((h, p)) if !h.contains(':') => match p.parse() {
+                Ok(port) => (h, Some(port)),
+                Err(_) => (address, None),
+            },
             _ => (address, None),
         },
     };
     (host.trim().to_owned(), port)
 }
 
-/// `key=value;key={value}` with the keys in lower case.
+/// `key=value;key={value}` with the keys in lower case. A value in braces may hold `;`,
+/// and `}}` inside it is one brace.
 fn sqlserver_properties(text: &str) -> BTreeMap<String, String> {
-    text.split(';')
-        .filter_map(|pair| pair.split_once('='))
-        .map(|(k, v)| {
-            let v = v.trim();
-            let v = v
-                .strip_prefix('{')
-                .and_then(|v| v.strip_suffix('}'))
-                .unwrap_or(v);
-            (k.trim().to_ascii_lowercase(), v.to_owned())
-        })
-        .filter(|(k, _)| !k.is_empty())
-        .collect()
+    let mut out = BTreeMap::new();
+    let mut rest = text;
+    while !rest.is_empty() {
+        let end = rest.find([';', '=']).unwrap_or(rest.len());
+        if rest[end..].starts_with('=') {
+            let key = rest[..end].trim().to_ascii_lowercase();
+            let (value, after) = sqlserver_value(&rest[end + 1..]);
+            if !key.is_empty() {
+                out.insert(key, value);
+            }
+            rest = after;
+        } else {
+            // A part without `=`: skipped.
+            rest = &rest[end..];
+        }
+        rest = rest.strip_prefix(';').unwrap_or(rest);
+    }
+    out
+}
+
+/// The value at the start of `text` and what follows it (from its `;`).
+fn sqlserver_value(text: &str) -> (String, &str) {
+    let trimmed = text.trim_start();
+    if let Some(inner) = trimmed.strip_prefix('{') {
+        let mut value = String::new();
+        let mut chars = inner.char_indices().peekable();
+        while let Some((i, c)) = chars.next() {
+            if c != '}' {
+                value.push(c);
+            } else if chars.peek().is_some_and(|&(_, next)| next == '}') {
+                value.push('}');
+                chars.next();
+            } else {
+                let after = &inner[i + 1..];
+                let end = after.find(';').unwrap_or(after.len());
+                return (value, &after[end..]);
+            }
+        }
+        return (value, "");
+    }
+    let end = text.find(';').unwrap_or(text.len());
+    (text[..end].trim().to_owned(), &text[end..])
 }
 
 #[cfg(test)]
@@ -357,6 +454,17 @@ mod tests {
             (Ms, "::1", Some(1433), "")
         );
 
+        let in_braces = parse("jdbc:sqlserver://h;user=sa;password={a;b}}c};databaseName=d");
+        assert_eq!(
+            in_braces.config.password.as_ref().map(Secret::expose),
+            Some("a;b}c")
+        );
+        assert_eq!(in_braces.config.database, "d");
+        assert_eq!(
+            at(&parse("jdbc:sqlserver://tcp:h:1433")),
+            (Ms, "h", Some(1433), "")
+        );
+
         let tls = |url| parse(url).config.ssl_mode;
         assert_eq!(
             tls("jdbc:sqlserver://h;encrypt=true;trustServerCertificate=true"),
@@ -391,6 +499,51 @@ mod tests {
         assert_eq!(maria.config.ssl_mode, SslMode::VerifyFull);
         let ch = parse("jdbc:clickhouse://ch:8123/logs");
         assert_eq!(at(&ch), (DriverKind::ClickHouse, "ch", Some(8123), "logs"));
+        assert_eq!(
+            parse("jdbc:postgresql://h/db?ssl=true").config.ssl_mode,
+            SslMode::VerifyFull
+        );
+        let many = parse("jdbc:postgresql://h1:5433,h2:5434/db");
+        assert_eq!(at(&many), (DriverKind::Postgres, "h1", Some(5433), "db"));
+    }
+
+    #[test]
+    fn logins_before_the_host_go_to_their_fields() {
+        let my = parse("jdbc:mysql://sandy:hunter2@myhost:3307/db");
+        assert_eq!(at(&my), (DriverKind::MySql, "myhost", Some(3307), "db"));
+        assert_eq!(my.config.user, "sandy");
+        assert_eq!(
+            my.config.password.as_ref().map(Secret::expose),
+            Some("hunter2")
+        );
+        let no_port = parse("jdbc:mariadb://sandy:p%40ss@myhost/db");
+        assert_eq!(
+            at(&no_port),
+            (DriverKind::MySql, "myhost", Some(3306), "db")
+        );
+        assert_eq!(
+            no_port.config.password.as_ref().map(Secret::expose),
+            Some("p@ss")
+        );
+        let user_only = parse("jdbc:postgresql://me@h/db?sslmode=require");
+        assert_eq!(
+            (user_only.config.user.as_str(), user_only.config.password),
+            ("me", None)
+        );
+        // Not percent-encoded, or not a host at all: an error that does not repeat it.
+        for bad in [
+            "jdbc:mysql://sandy:hun/ter2@myhost/db",
+            "jdbc:mysql://sandy:hunter2/db",
+            "jdbc:postgresql://h port=5432 password=hunter2/db",
+        ] {
+            let err = JdbcUrl::parse(bad).unwrap_err().to_string();
+            assert!(!err.contains("hunter2"), "{err}");
+        }
+        let debug = format!("{:?}", parse("jdbc:sqlserver://h;password=hunter2;app=x"));
+        assert!(
+            !debug.contains("hunter2") && debug.contains("app"),
+            "{debug}"
+        );
     }
 
     #[test]
@@ -408,11 +561,12 @@ mod tests {
             at(&parse("jdbc:oracle:thin:@db:1521:XE")),
             (Ora, "db", Some(1521), "XE")
         );
-        let creds = parse("jdbc:oracle:thin:scott/tiger@db:1521/svc");
+        let creds = parse("jdbc:oracle:thin:scott/ti@ger@db:1521/svc");
+        assert_eq!(at(&creds), (Ora, "db", Some(1521), "svc"));
         assert_eq!(creds.config.user, "scott");
         assert_eq!(
             creds.config.password.as_ref().map(Secret::expose),
-            Some("tiger")
+            Some("ti@ger")
         );
         assert_eq!(
             at(&parse("jdbc:oracle:thin:@PROD_TNS")),
@@ -437,6 +591,8 @@ mod tests {
             err.to_string().contains("jdbc:db2:") && !err.to_string().contains("secret"),
             "{err}"
         );
+        let err = JdbcUrl::parse("jdbc:foo;password=secret").unwrap_err();
+        assert!(!err.to_string().contains("secret"), "{err}");
         assert!(JdbcUrl::parse("jdbc:jtds:sybase://s:5000/db").is_err());
         assert!(ConnectionConfig::from_jdbc_url("postgres://h/db").is_err());
         let config = ConnectionConfig::from_jdbc_url("jdbc:sqlserver://h;databaseName=d").unwrap();

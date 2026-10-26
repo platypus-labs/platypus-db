@@ -10,12 +10,15 @@
 //! is. Without either, `Host=` (Npgsql's key) means PostgreSQL and anything else SQL Server
 //! (`SqlClient`'s `Server=` / `Data Source=`): MySQL Connector/NET strings, which use the
 //! same keys as ``SqlClient``, need a `Driver=` to be told apart.
+//!
+//! libpq's own strings (`host=db port=5432 dbname=shop`, separated by spaces) are read
+//! as PostgreSQL ones (see `libpq`).
 
 use std::time::Duration;
 
 use super::any::{ParseNote, ParsedConnection, login_note};
 use super::jdbc::host_port;
-use super::{ConnectionConfig, DriverKind, JdbcUrl, Secret, SslMode};
+use super::{ConnectionConfig, DriverKind, JdbcUrl, Secret, SslMode, libpq, secret_key};
 use crate::{Error, Result};
 
 /// The ODBC driver option keys of the generic driver (see `platypus-driver-odbc`).
@@ -26,7 +29,8 @@ impl ConnectionConfig {
     /// Parses an ADO.NET or ODBC connection string such as
     /// `Server=tcp:db.example.com,1433;Initial Catalog=shop;User Id=sa;Password=…;Encrypt=True`
     /// or `Host=db;Port=5433;Database=shop;Username=app;Password=…` (Npgsql). See the module
-    /// documentation for how the driver is chosen. Errors name keys, never values.
+    /// documentation for how the driver is chosen. Errors name keys, never values, and a
+    /// host that holds a login or other keys is an error.
     pub fn from_connection_string(input: &str) -> Result<Self> {
         parse(input).map(|parsed| parsed.config)
     }
@@ -41,6 +45,15 @@ struct Pair {
 }
 
 pub(super) fn parse(input: &str) -> Result<ParsedConnection> {
+    let parsed = match libpq::parse(input) {
+        Some(parsed) => parsed?,
+        None => read(input)?,
+    };
+    parsed.config.check_host()?;
+    Ok(parsed)
+}
+
+fn read(input: &str) -> Result<ParsedConnection> {
     let pairs = pairs(input)?;
     if pairs.is_empty() {
         return Err(Error::Config(
@@ -206,8 +219,8 @@ impl Native {
             )
         };
         match pair.norm.as_str() {
-            "server" | "datasource" | "address" | "addr" | "networkaddress" | "host"
-            | "hostname" => self.address(config, value),
+            "server" | "servername" | "datasource" | "address" | "addr" | "networkaddress"
+            | "host" | "hostname" => self.address(config, value)?,
             "port" => {
                 config.port = Some(number(&pair.key, value)?);
                 self.port_given = true;
@@ -230,9 +243,17 @@ impl Native {
         Ok(())
     }
 
-    /// `tcp:host\instance,port`, `host,port`, `host:port`, `(local)` or `.`.
-    fn address(&mut self, config: &mut ConnectionConfig, value: &str) {
+    /// `tcp:host\instance,port`, `host,port`, `host:port`, `[::1],port`, `(local)` or `.`.
+    /// Named pipes (`np:`) and shared memory (`lpc:`) are not network addresses.
+    fn address(&mut self, config: &mut ConnectionConfig, value: &str) -> Result<()> {
         let value = value.trim();
+        let protocol = value.split_once(':').map(|(p, _)| p.to_ascii_lowercase());
+        if matches!(protocol.as_deref(), Some("np" | "lpc")) {
+            return Err(Error::Config(
+                "named pipes and shared memory are not supported: the server needs a TCP address"
+                    .to_owned(),
+            ));
+        }
         let value = match value.get(..4) {
             Some(p) if p.eq_ignore_ascii_case("tcp:") => &value[4..],
             _ => value,
@@ -243,7 +264,7 @@ impl Native {
         };
         let (host, instance) = JdbcUrl::split_instance(address);
         let (host, port) = match port {
-            Some(port) => (host, Some(port)),
+            Some(port) => (host.trim_matches(['[', ']']).to_owned(), Some(port)),
             None => host_port(&host),
         };
         config.host = match host.as_str() {
@@ -255,10 +276,11 @@ impl Native {
             self.port_given = true;
         }
         self.instance = instance;
+        Ok(())
     }
 }
 
-fn number<T: std::str::FromStr>(key: &str, value: &str) -> Result<T> {
+pub(super) fn number<T: std::str::FromStr>(key: &str, value: &str) -> Result<T> {
     value
         .trim()
         .parse()
@@ -267,11 +289,14 @@ fn number<T: std::str::FromStr>(key: &str, value: &str) -> Result<T> {
 
 /// Another ODBC driver, or a data source name: the generic ODBC connection, with the
 /// string as it is but for the driver, user and password, which have their own fields.
+/// Other keys that hold a secret (`token=`, `PrivateKeyPwd=`) are left out, with a note:
+/// the string is saved as it is, not in the keychain.
 fn odbc(pairs: &[Pair]) -> ParsedConnection {
     let mut config = ConnectionConfig::new(DriverKind::Odbc);
     config.host.clear();
     config.port = None;
     let mut written = Vec::new();
+    let mut secret = Vec::new();
     for pair in pairs {
         match pair.norm.as_str() {
             "driver" => {
@@ -280,6 +305,7 @@ fn odbc(pairs: &[Pair]) -> ParsedConnection {
             }
             "uid" | "userid" | "user" => pair.value.clone_into(&mut config.user),
             "pwd" | "password" => config.password = Some(Secret::new(pair.value.as_str())),
+            key if secret_key(key) => secret.push(pair.key.clone()),
             _ => written.push(format!("{}={}", pair.key, braced(&pair.value))),
         }
     }
@@ -288,10 +314,12 @@ fn odbc(pairs: &[Pair]) -> ParsedConnection {
             .options
             .insert(ODBC_CONNECTION_STRING.to_owned(), written.join(";"));
     }
-    ParsedConnection {
-        config,
-        notes: Vec::new(),
-    }
+    let notes = if secret.is_empty() {
+        Vec::new()
+    } else {
+        vec![ParseNote::Ignored { keys: secret }]
+    };
+    ParsedConnection { config, notes }
 }
 
 /// An ODBC value, in braces when it holds what would end or split it.
@@ -351,6 +379,19 @@ mod tests {
         assert_eq!(c.port, Some(1433));
         let c = parse_ok("Server=(local);Database=x").config;
         assert_eq!(c.host, "localhost");
+        let c = parse_ok("Server=tcp:[::1],1433;Database=x").config;
+        assert_eq!((c.host.as_str(), c.port), ("::1", Some(1433)));
+        assert!(parse(r"Server=np:\\srv\pipe\sql\query;Database=x").is_err());
+        assert!(parse("Server=lpc:srv;Database=x").is_err());
+        // A host that holds other keys, or a login: an error, never a host.
+        for bad in [
+            "Server=h port=5433 password=hunter2",
+            "Server=sa:hunter2@h;Database=x",
+            "Server=h:hunter2;Database=x",
+        ] {
+            let err = parse(bad).unwrap_err().to_string();
+            assert!(!err.contains("hunter2"), "{err}");
+        }
     }
 
     #[test]
@@ -394,6 +435,12 @@ mod tests {
         assert_eq!(c.ssl_mode, SslMode::Require);
         let c = parse_ok("Driver={ODBC Driver 18 for SQL Server};Server=s;Database=d").config;
         assert_eq!(c.driver, DriverKind::SqlServer);
+        let c = parse_ok("Driver={PostgreSQL Unicode};Servername=pg.example;Port=5433;Database=d")
+            .config;
+        assert_eq!(
+            at(&c),
+            (DriverKind::Postgres, "pg.example", Some(5433), "d", "")
+        );
         let c = parse_ok("Provider=MSOLEDBSQL;Data Source=s;Initial Catalog=d").config;
         assert_eq!(at(&c), (DriverKind::SqlServer, "s", Some(1433), "d", ""));
         assert!(parse("Provider=Microsoft.ACE.OLEDB.12.0;Data Source=x.accdb").is_err());
@@ -417,6 +464,20 @@ mod tests {
         assert_eq!(
             c.options.get("connection_string").map(String::as_str),
             Some("Server=acme.snowflakecomputing.com;Warehouse=WH")
+        );
+        let p = parse_ok("Driver={Snowflake};Server=s;token=hunter2;PrivateKeyPwd=hunter2;Role=R");
+        assert_eq!(
+            p.config
+                .options
+                .get("connection_string")
+                .map(String::as_str),
+            Some("Server=s;Role=R")
+        );
+        assert_eq!(
+            p.notes,
+            [ParseNote::Ignored {
+                keys: vec!["token".to_owned(), "PrivateKeyPwd".to_owned()]
+            }]
         );
         let c = parse_ok("DSN=Sales;UID=me").config;
         assert_eq!(c.driver, DriverKind::Odbc);
