@@ -1229,6 +1229,26 @@ const it: Record<string, string> = {
   "of {n} loaded rows": "su {n} righe caricate",
 
   // Analysis (group M): charts
+  "Result view": "Vista del risultato",
+  "Grid": "Griglia",
+  "Chart": "Grafico",
+  "Chart type": "Tipo di grafico",
+  "X axis": "Asse X",
+  "Y axis": "Asse Y",
+  "Aggregate": "Aggregazione",
+  "Bars": "Barre",
+  "Lines": "Linee",
+  "Scatter": "Dispersione",
+  "Pie": "Torta",
+  "PNG image…": "Immagine PNG…",
+  "SVG image…": "Immagine SVG…",
+  "Other": "Altro",
+  "Draw": "Disegna",
+  "The chart's columns are no longer in the result: choose them again.": "Le colonne del grafico non sono più nel risultato: sceglile di nuovo.",
+  "Drawn from the {n} row loaded": "Disegnato dalla {n} riga caricata",
+  "Drawn from the {n} rows loaded": "Disegnato dalle {n} righe caricate",
+  "Some points or categories are grouped to fit.": "Alcuni punti o categorie sono raggruppati per stare nel grafico.",
+  "The chart could not be drawn as PNG.": "Il grafico non si può disegnare come PNG.",
 
   // Analysis (group M): SQL on results
 
