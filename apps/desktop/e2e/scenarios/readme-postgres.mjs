@@ -6,7 +6,7 @@ import { writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CTRL, SHIFT } from "../cdp.mjs";
 import { skip as noPostgres } from "./dev-postgres.mjs";
-import { wide } from "./readme-sqlite.mjs";
+import { prepare, treeRow } from "./readme-sqlite.mjs";
 
 export async function skip() {
   return process.env.PLATYPUS_README_SHOTS ? noPostgres() : "PLATYPUS_README_SHOTS not set";
@@ -15,7 +15,7 @@ export async function skip() {
 const NAME = "Local PG";
 const queryTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
 const explainTab = `[...document.querySelectorAll('.explain-tab')].find(t => t.style.display !== 'none')`;
-const row = `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(NAME)})`;
+const row = treeRow(NAME);
 
 export function setup({ dir }) {
   writeFileSync(
@@ -48,7 +48,7 @@ async function setEditor(page, sql) {
 
 export default async function (page) {
   const out = resolve(process.env.PLATYPUS_README_SHOTS);
-  await wide(page);
+  await prepare(page);
   await page.waitFor(`${row} !== undefined`);
   await page.eval(`${row}.querySelector(".twisty").click()`);
   await page.waitFor(`document.querySelector('.modal input[type=password]') !== null`);
@@ -56,6 +56,13 @@ export default async function (page) {
   await page.type("platypus");
   await page.eval(`document.querySelector('.modal button[type=submit]').click()`);
   await page.waitFor(`document.querySelector('.modal') === null`, 15_000);
+  // The navigator shows the demo tables the queries read, not the empty public schema.
+  await page.waitFor(`${treeRow("demo")} !== undefined && ${treeRow("public")} !== undefined`, 15_000);
+  if (await page.eval(`${treeRow("public")}.getAttribute('aria-expanded') === 'true'`)) {
+    await page.eval(`${treeRow("public")}.querySelector(".twisty").click()`);
+  }
+  await page.eval(`${treeRow("demo")}.querySelector(".twisty").click()`);
+  await page.waitFor(`${treeRow("customers")} !== undefined`, 15_000);
   await page.eval(`${row}.id = 'e2e-connection'`);
   await page.clickSel("#e2e-connection", { clickCount: 2 });
   await page.waitFor(`${queryTab} !== undefined`, 15_000);

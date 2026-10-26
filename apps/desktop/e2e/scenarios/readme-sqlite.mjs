@@ -1,7 +1,9 @@
-// The README's screenshots on a throwaway SQLite shop: the data viewer with the value panel,
-// JOIN completion, the data editor's pending changes, the table editor, the visual query builder,
-// the connection dialog, the command palette and the light theme. Runs only with
-// PLATYPUS_README_SHOTS set to the folder the pictures go to (docs/screenshots):
+// The README's screenshots on a throwaway SQLite shop: the data viewer sorted from its header
+// with the value panel, JOIN completion, the data editor's pending changes, the table editor,
+// the visual query builder, the connection dialog, the command palette, Settings and the light
+// theme. Runs only with PLATYPUS_README_SHOTS set to the folder the pictures go to
+// (docs/screenshots); the filter below also runs readme-duckdb and readme-postgres, which use
+// the helpers exported here:
 //
 //   PLATYPUS_README_SHOTS=../../docs/screenshots npm run e2e -- readme
 import { writeFileSync } from "node:fs";
@@ -14,7 +16,8 @@ const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.sty
 const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ?? '')`;
 const editorText = `[...${visibleTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n')`;
 const grid = `${visibleTab}.querySelector('.grid-scroll')`;
-const treeRow = (label) =>
+const cancel = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')`;
+export const treeRow = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
 const menuButton = (title) =>
   `[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith(${JSON.stringify(title)}))`;
@@ -96,12 +99,20 @@ connection_type = "dev"
 }
 
 /** Right-clicks the navigator row `label` and runs its entry starting with `title`. */
-async function navigatorMenu(page, label, title) {
+export async function navigatorMenu(page, label, title) {
   await page.eval(`${treeRow(label)}.querySelector('.tree-label').id = 'e2e-row'`);
   await page.clickSel("#e2e-row", { button: "right" });
   await page.eval(`document.getElementById('e2e-row')?.removeAttribute('id')`);
-  await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await page.waitFor(`${menuButton(title)} !== undefined`);
   await page.eval(`${menuButton(title)}.click()`);
+}
+
+/** Runs `action` and waits for the end of the run it starts: Cancel disabled again and a new
+ *  status, emptied first as the old one may read the same. */
+async function afterRun(page, action) {
+  await page.eval(`(() => { const s = ${visibleTab}?.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
+  await action();
+  await page.waitFor(`${cancel}?.disabled === true && ${status} !== '' && !${status}.includes('Executing')`, 15_000);
 }
 
 async function openTable(page, name) {
@@ -131,9 +142,55 @@ async function setEditor(page, sql) {
 }
 
 /** Lays the page out at 1600×960, where the toolbar fits on one line. */
-export async function wide(page) {
+async function wide(page) {
   await page.send("Emulation.setDeviceMetricsOverride", { width: 1600, height: 960, deviceScaleFactor: 1, mobile: false });
   await page.sleep(300);
+}
+
+/** Numbers and times in British English (a 24-hour clock that fits the query manager): the page
+ *  formats them in the locale of Windows, which would change the pictures from one machine to
+ *  the next. Runs before the app's scripts. */
+const ENGLISH_FORMATS = `(() => {
+  for (const name of ["NumberFormat", "DateTimeFormat", "RelativeTimeFormat", "PluralRules", "ListFormat"]) {
+    Intl[name] = new Proxy(Intl[name], {
+      construct: (target, [locales, ...rest]) => new target(locales ?? "en-GB", ...rest),
+      apply: (target, self, [locales, ...rest]) => target(locales ?? "en-GB", ...rest),
+    });
+  }
+  for (const [proto, names] of [[Number.prototype, ["toLocaleString"]], [Date.prototype, ["toLocaleString", "toLocaleDateString", "toLocaleTimeString"]]]) {
+    for (const name of names) {
+      const format = proto[name];
+      proto[name] = function (locales, options) { return format.call(this, locales ?? "en-GB", options); };
+    }
+  }
+})()`;
+
+/** Text cursors that do not blink, so a picture never catches one half drawn. */
+const STEADY_CURSORS = `(() => {
+  const style = document.createElement("style");
+  style.textContent = "input, textarea { caret-color: transparent !important } .cm-cursorLayer { animation: none !important }";
+  document.head.append(style);
+})()`;
+
+/** The window as every README picture shows it: 1600×960, English formats, steady cursors and
+ *  the bundled fonts loaded. Loads the page again, so it comes first. */
+export async function prepare(page) {
+  // WebView2 runs the added script only with the Page domain enabled.
+  await page.send("Page.enable");
+  await page.send("Page.addScriptToEvaluateOnNewDocument", { source: ENGLISH_FORMATS });
+  // The marker only exists on the old document: its absence means the new one has loaded.
+  await page.eval(`window.__e2eBeforeReload = true; location.reload()`);
+  await page.waitFor(`window.__e2eBeforeReload === undefined && document.querySelector('.tree-row') !== null`, 30_000);
+  await page.eval(STEADY_CURSORS);
+  await wide(page);
+  await page.waitFor(`document.fonts.status === 'loaded'`);
+}
+
+/** Shows the project `name`, the `n`th of the rail (Ctrl+n). */
+export async function openProject(page, n, name) {
+  await page.waitFor(`document.querySelectorAll('.project-square').length > 1`);
+  await page.key(String(n), `Digit${n}`, 48 + n, CTRL);
+  await page.waitFor(`document.querySelector('.navigator-project')?.textContent === ${JSON.stringify(name)}`);
 }
 
 async function closeTab(page) {
@@ -144,17 +201,19 @@ async function closeTab(page) {
 export default async function (page) {
   const out = resolve(process.env.PLATYPUS_README_SHOTS);
   const shot = (name) => page.screenshot(join(out, `${name}.png`));
-  await wide(page);
-  await page.waitFor(`document.fonts.status === 'loaded'`);
-  await page.waitFor(`document.querySelectorAll('.project-square').length === 3`);
-  await page.key("2", "Digit2", 50, CTRL);
-  await page.waitFor(`document.querySelector('.navigator-project')?.textContent === 'Shop'`);
+  await prepare(page);
+  await openProject(page, 2, "Shop");
   await page.eval(`${treeRow(NAME)}.querySelector(".twisty").click()`);
   await page.waitFor(`${treeRow("orders")} !== undefined`, 15_000);
 
-  // Data viewer: orders with the customer names from the foreign key and the JSON details
-  // of the focused row in the value panel.
+  // Data viewer: orders, newest first from two clicks on the id header (which write the
+  // ORDER BY in the editor), the customer names from the foreign key and the JSON details of
+  // the focused row in the value panel.
   await openTable(page, "orders");
+  const header = await page.eval(`(() => { const r = ${grid}.getBoundingClientRect(); return { x: r.x + 50, y: r.y + 14 }; })()`);
+  await afterRun(page, () => page.click(header.x, header.y));
+  await afterRun(page, () => page.click(header.x, header.y));
+  await page.waitFor(`${editorText}.endsWith('ORDER BY id DESC')`);
   await page.eval(`${grid}.focus()`);
   await page.key("ArrowDown", "ArrowDown", 40);
   for (let i = 0; i < 5; i++) await page.key("ArrowRight", "ArrowRight", 39);
@@ -254,6 +313,15 @@ export default async function (page) {
   await shot("palette");
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.palette') === null`);
+
+  // Settings, one section per tab: the themes.
+  await page.key(",", "Comma", 188, CTRL);
+  await page.settingsTab("Appearance");
+  await page.eval(`document.activeElement?.blur()`);
+  await page.sleep(300);
+  await shot("settings");
+  await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);
+  await page.waitFor(`document.querySelector('.modal.settings') === null`);
 
   // New connection: the grid of databases.
   await page.eval(`document.querySelector('button[title="New connection"]').click()`);
