@@ -69,6 +69,7 @@ export default async function (page, { dir }) {
     "Refresh",
     "Disconnect",
     "Navigator filters…",
+    "Copy as URL",
     "Edit…",
     "Delete…",
   ]);
@@ -101,6 +102,7 @@ export default async function (page, { dir }) {
     "Column metadata",
     "Calculate",
     "Show on map",
+    "Query with SQL",
     "Columns",
   ]);
   // The page may not read the clipboard back: record what is written instead.

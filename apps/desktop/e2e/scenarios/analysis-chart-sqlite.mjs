@@ -52,7 +52,7 @@ export default async function (page, { dir }) {
   await page.waitFor(`${chart}?.querySelectorAll('path.chart-slice').length === 3`);
 
   // Running the statement again keeps its chart.
-  await page.eval(`${chart}.dataset.old = '1'`);
+  await page.eval(`(${chart}).dataset.old = '1'`);
   await rerun(page);
   await page.waitFor(
     `${chart} != null && ${chart}.dataset.old === undefined && ${chart}.querySelectorAll('path.chart-slice').length === 3`,

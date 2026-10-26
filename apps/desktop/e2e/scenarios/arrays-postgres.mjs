@@ -150,7 +150,7 @@ export default async function (page, { shots }) {
   assert.equal(await copyGrid(page, shown), shown);
 
   // An array with bounds is edited as text, bounds included, so that saving keeps them.
-  await run(page, "UPDATE demo.e2e_arrays SET tags = '[0:1]={x,y}'");
+  await run(page, "UPDATE demo.e2e_arrays SET tags = '[0:1]={x,y}' WHERE id = 1");
   await run(page, "SELECT * FROM demo.e2e_arrays");
   await page.waitFor(`${visibleTab}?.querySelector('.edit-bar:not([hidden]) button')?.disabled === false`, 15_000);
   await page.eval(`${visibleTab}.querySelector('.grid-scroll').focus()`);

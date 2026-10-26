@@ -200,7 +200,7 @@ async function connectionUrls(page, shots) {
   // MySQL's form, with a PostgreSQL URL pasted in the host field: it stays MySQL's.
   await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === 'MySQL').click()`);
   await page.waitFor(`${headerIcon}?.getAttribute('aria-label') === 'MySQL'`);
-  await page.eval(`${formField("Host")}.id = 'e2e-host'`);
+  await page.eval(`(${formField("Host")}).id = 'e2e-host'`);
   await page.eval(paste("#e2e-host", "postgres://u@db.example/shop"));
   await page.waitFor(`document.querySelector('.connection-dialog .url-other') !== null`);
   assert.equal(await value("Host"), "localhost");
