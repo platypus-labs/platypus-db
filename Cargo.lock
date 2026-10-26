@@ -5941,7 +5941,9 @@ dependencies = [
 name = "platypus-store"
 version = "0.2.0"
 dependencies = [
+ "aes",
  "argon2",
+ "cbc",
  "keyring",
  "platypus-core",
  "ring",

@@ -1,6 +1,7 @@
 //! Saving what the import dialog picked: connections, the projects they go into (new or
 //! existing) with their folders, and optionally a rail folder for the new projects.
 
+use platypus_core::Secret;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -39,11 +40,15 @@ pub struct ImportRequest {
     pub targets: Vec<ImportTarget>,
     /// A rail folder with this name holds the new projects.
     pub rail_folder: Option<String>,
+    /// Saves the passwords that came with the connections (each project's `secrets`), as
+    /// if typed in the connection dialog; otherwise each connection asks on first use.
+    #[serde(default)]
+    pub passwords: bool,
 }
 
 impl ConnectionStore {
     /// Saves an import in one write of the file: nothing is saved if any part is refused.
-    pub fn apply_import(&mut self, request: ImportRequest) -> Result<()> {
+    pub fn apply_import(&mut self, mut request: ImportRequest) -> Result<()> {
         for target in &request.targets {
             if let ImportInto::Existing { id } = target.into {
                 self.require_project(id)?;
@@ -63,6 +68,12 @@ impl ConnectionStore {
                 "these connections are saved already".to_owned(),
             ));
         }
+        let secrets = if request.passwords {
+            take_secrets(&mut request.targets)
+        } else {
+            Vec::new()
+        };
+        self.store_secrets(&secrets)?;
         let before = (
             self.projects.clone(),
             self.project_folders.clone(),
@@ -71,10 +82,10 @@ impl ConnectionStore {
         let mut made = Vec::new();
         for target in request.targets {
             let ids: Vec<Uuid> = target.project.connections.iter().map(|c| c.id).collect();
-            // No password comes along: each connection asks for it on first use.
+            // A connection without a saved password asks for it on first use.
             self.connections
                 .extend(target.project.connections.into_iter().map(|mut c| {
-                    c.save_password = false;
+                    c.save_password = secrets.iter().any(|(id, _)| *id == c.id);
                     c
                 }));
             let index = match target.into {
@@ -110,8 +121,26 @@ impl ConnectionStore {
         let written = self.write();
         if written.is_err() {
             (self.projects, self.project_folders, self.connections) = before;
+            self.forget_secrets(&secrets);
         }
         written
+    }
+
+    /// Saves the secrets, or none of them.
+    fn store_secrets(&self, secrets: &[(Uuid, Secret)]) -> Result<()> {
+        for (done, (id, secret)) in secrets.iter().enumerate() {
+            if let Err(e) = self.secrets.set(*id, secret) {
+                self.forget_secrets(&secrets[..done]);
+                return Err(e);
+            }
+        }
+        Ok(())
+    }
+
+    fn forget_secrets(&self, secrets: &[(Uuid, Secret)]) {
+        for (id, _) in secrets {
+            let _ = self.secrets.delete(*id);
+        }
     }
 
     /// `name`, or `name (2)`, `name (3)`… when a project has it already (ignoring case).
@@ -142,6 +171,28 @@ impl ConnectionStore {
     }
 }
 
+/// The secrets to save for the connections of `targets`, under the ids the store keeps
+/// them by: the connection's own for its password, the SSH server's `secret_id` for the
+/// tunnel's. The connection's password comes first.
+fn take_secrets(targets: &mut [ImportTarget]) -> Vec<(Uuid, Secret)> {
+    let mut out = Vec::new();
+    for target in targets {
+        let mut secrets = std::mem::take(&mut target.project.secrets);
+        for c in &target.project.connections {
+            let Some(s) = secrets.remove(&c.id) else {
+                continue;
+            };
+            if let Some(password) = s.password {
+                out.push((c.id, password));
+            }
+            if let (Some(ssh), Some(secret)) = (&c.ssh, s.ssh) {
+                out.push((ssh.secret_id, secret));
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -152,8 +203,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::connections::{ConnectionStore, Project, SavedConnection};
-    use crate::{ImportedProject, MemorySecrets, StoreError};
+    use crate::connections::{ConnectionStore, Project, SavedConnection, SavedSsh, SshAuthKind};
+    use crate::{ImportedProject, MemorySecrets, SecretStore as _, StoreError};
 
     fn store(dir: &Path) -> ConnectionStore {
         ConnectionStore::open(
@@ -213,6 +264,7 @@ mod tests {
         s.apply_import(ImportRequest {
             targets: vec![new_project(first), new_project(imported("Interno"))],
             rail_folder: Some("lavoro".to_owned()),
+            passwords: false,
         })
         .unwrap();
         assert_eq!(s.list().len(), 4);
@@ -230,6 +282,74 @@ mod tests {
         assert!(again.list().iter().all(|c| !c.save_password));
     }
 
+    /// `imported` where `a` comes with a password and an SSH tunnel with its own.
+    fn with_secrets() -> ImportedProject {
+        let mut project = imported("Rossi");
+        let a = &mut project.connections[0];
+        a.ssh = Some(SavedSsh {
+            host: "bastion".to_owned(),
+            port: 22,
+            user: "ops".to_owned(),
+            auth: SshAuthKind::Password,
+            key_path: None,
+            secret_id: Uuid::new_v4(),
+            jump: None,
+        });
+        project.secrets.insert(
+            a.id,
+            crate::ImportedSecrets {
+                password: Some(Secret::new("db-pass")),
+                ssh: Some(Secret::new("ssh-pass")),
+            },
+        );
+        project
+    }
+
+    #[test]
+    fn import_saves_passwords_when_asked() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = Arc::new(MemorySecrets::default());
+        let mut s =
+            ConnectionStore::open(dir.path().join("connections.toml"), secrets.clone()).unwrap();
+        let project = with_secrets();
+        let (a, b) = (project.connections[0].id, project.connections[1].id);
+        let tunnel = project.connections[0].ssh.as_ref().unwrap().secret_id;
+        s.apply_import(ImportRequest {
+            targets: vec![new_project(project)],
+            rail_folder: None,
+            passwords: true,
+        })
+        .unwrap();
+        assert!(s.get(a).unwrap().save_password);
+        assert_eq!(s.password(a).unwrap(), Some(Secret::new("db-pass")));
+        assert_eq!(s.ssh_secret(tunnel).unwrap(), Some(Secret::new("ssh-pass")));
+        // Without a saved password it asks on first use.
+        assert!(!s.get(b).unwrap().save_password);
+        // The file holds no password.
+        let text = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
+        assert!(!text.contains("db-pass") && !text.contains("ssh-pass"));
+    }
+
+    #[test]
+    fn import_without_passwords_saves_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = Arc::new(MemorySecrets::default());
+        let mut s =
+            ConnectionStore::open(dir.path().join("connections.toml"), secrets.clone()).unwrap();
+        let project = with_secrets();
+        let a = project.connections[0].id;
+        let tunnel = project.connections[0].ssh.as_ref().unwrap().secret_id;
+        s.apply_import(ImportRequest {
+            targets: vec![new_project(project)],
+            rail_folder: None,
+            passwords: false,
+        })
+        .unwrap();
+        assert!(s.list().iter().all(|c| !c.save_password));
+        assert_eq!(secrets.get(a).unwrap(), None);
+        assert_eq!(secrets.get(tunnel).unwrap(), None);
+    }
+
     #[test]
     fn import_name_taken_gets_suffix() {
         let dir = tempfile::tempdir().unwrap();
@@ -241,6 +361,7 @@ mod tests {
                 new_project(imported("Interno")),
             ],
             rail_folder: None,
+            passwords: false,
         })
         .unwrap();
         let names: Vec<_> = s.projects().iter().map(|p| p.name.as_str()).collect();
@@ -264,6 +385,7 @@ mod tests {
                 into: ImportInto::Existing { id },
             }],
             rail_folder: Some("unused".to_owned()),
+            passwords: false,
         })
         .unwrap();
         let rossi = named(&s, "Rossi");
@@ -284,6 +406,7 @@ mod tests {
                 into: ImportInto::None,
             }],
             rail_folder: None,
+            passwords: false,
         })
         .unwrap();
         assert_eq!(s.list().len(), 2);
@@ -297,6 +420,7 @@ mod tests {
         let request = ImportRequest {
             targets: vec![new_project(imported("Rossi"))],
             rail_folder: None,
+            passwords: false,
         };
         s.apply_import(request.clone()).unwrap();
         // A second submit of the same pick: the connections are saved already.
@@ -321,6 +445,7 @@ mod tests {
                 },
             ],
             rail_folder: None,
+            passwords: false,
         });
         assert!(matches!(result, Err(StoreError::NotFound(_))));
         assert_eq!(s.list(), []);

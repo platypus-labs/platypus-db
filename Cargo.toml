@@ -33,6 +33,7 @@ platypus-store = { path = "crates/platypus-store" }
 platypus-tls = { path = "crates/platypus-tls" }
 platypus-docs = { path = "crates/platypus-docs" }
 
+aes = "=0.9.3"
 argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
 arrow-array = "60"
 arrow-cast = "60"
@@ -42,6 +43,7 @@ arrow-json = "60"
 arrow-schema = "60"
 async-trait = "0.1"
 bytes = "1"
+cbc = { version = "=0.2.1", features = ["alloc"] }
 calamine = { version = "0.37", default-features = false }
 clap = { version = "4", features = ["derive", "env"] }
 criterion = "0.8"
