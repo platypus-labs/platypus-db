@@ -16,8 +16,12 @@ pub use imports::{ImportInto, ImportRequest, ImportTarget};
 
 /// 2 added projects, 3 network profiles, 4 the agents' access, 5 folders, 6 drivers loaded
 /// at run time and their `options`: an older app would drop them on its first save, so it
-/// refuses the file.
-const FILE_VERSION: u32 = 6;
+/// refuses the file. 7: the order of a project's connections and folders is the user's;
+/// older files are put in the order they were shown (see `ordered_as_shown`).
+const FILE_VERSION: u32 = 7;
+
+/// The first version whose projects keep their connections and folders in the user's order.
+const ARRANGED_VERSION: u32 = 7;
 
 /// A connection as the user saved it. Never contains the password.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -198,10 +202,11 @@ pub struct Project {
     /// One or two characters on the square; computed from the name when empty.
     #[serde(default)]
     pub initials: String,
-    /// In the order they were added.
+    /// In the order the navigator shows them, which the user arranges; new ones at the end.
     #[serde(default)]
     pub connections: Vec<Uuid>,
-    /// Folders of the project's connections, nested through `parent`.
+    /// Folders of the project's connections, nested through `parent`; the folders of one
+    /// parent are shown in this order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub folders: Vec<ConnectionFolder>,
     /// The folder of each connection in one; connections not here are at the root.
@@ -261,6 +266,14 @@ impl Project {
         }
         true
     }
+
+    /// The order a file older than `ARRANGED_VERSION` was shown in: connections in the order
+    /// of the saved list, folders by name.
+    fn ordered_as_shown(&mut self, list: &[SavedConnection]) {
+        self.connections
+            .sort_by_key(|id| list.iter().position(|c| c.id == *id));
+        self.folders.sort_by_cached_key(|f| f.name.to_lowercase());
+    }
 }
 
 /// The initials of the first two words ("Cliente Rossi" → "CR"), or the first two letters
@@ -291,6 +304,14 @@ fn trim(s: &mut String) {
 fn keep_known(ids: &mut Vec<Uuid>, known: &HashSet<Uuid>) {
     let mut seen = HashSet::with_capacity(ids.len());
     ids.retain(|id| known.contains(id) && seen.insert(*id));
+}
+
+/// Takes the item at `from` out of `list` and puts it back just before the first item
+/// `is_before` picks, or at the end when none does.
+fn reposition<T>(list: &mut Vec<T>, from: usize, is_before: impl Fn(&T) -> bool) {
+    let item = list.remove(from);
+    let at = list.iter().position(is_before).unwrap_or(list.len());
+    list.insert(at, item);
 }
 
 fn check_client_cert(cert: Option<&PathBuf>, key: Option<&PathBuf>) -> Result<()> {
@@ -432,7 +453,7 @@ impl ConnectionStore {
     /// Loads `path`, or starts empty if it does not exist yet.
     pub fn open(path: impl Into<PathBuf>, secrets: Arc<dyn SecretStore>) -> Result<Self> {
         let path = path.into();
-        let (mut projects, mut project_folders, network_profiles, connections) =
+        let (version, mut projects, mut project_folders, network_profiles, connections) =
             match std::fs::read_to_string(&path) {
                 Ok(text) => {
                     let file: ConnectionsFile =
@@ -450,6 +471,7 @@ impl ConnectionStore {
                         });
                     }
                     (
+                        file.version,
                         file.projects,
                         file.project_folders,
                         file.network_profiles,
@@ -457,7 +479,7 @@ impl ConnectionStore {
                     )
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    (Vec::new(), Vec::new(), Vec::new(), Vec::new())
+                    (FILE_VERSION, Vec::new(), Vec::new(), Vec::new(), Vec::new())
                 }
                 Err(source) => return Err(StoreError::Io { path, source }),
             };
@@ -469,6 +491,9 @@ impl ConnectionStore {
                 p.initials = initials_of(&p.name);
             }
             p.drop_dangling();
+            if version < ARRANGED_VERSION {
+                p.ordered_as_shown(&connections);
+            }
         }
         let mut seen = HashSet::new();
         for f in &mut project_folders {
@@ -597,6 +622,26 @@ impl ConnectionStore {
     #[must_use]
     pub fn list(&self) -> &[SavedConnection] {
         &self.connections
+    }
+
+    /// Moves a connection in the saved list, which All connections shows: just before
+    /// `before`, or to the end for `None`.
+    pub fn reorder_connection(&mut self, connection: Uuid, before: Option<Uuid>) -> Result<()> {
+        let from = self
+            .connections
+            .iter()
+            .position(|c| c.id == connection)
+            .ok_or(StoreError::NotFound(connection))?;
+        if let Some(before) = before {
+            if before == connection {
+                return Err(StoreError::Invalid(
+                    "a connection cannot go before itself".to_owned(),
+                ));
+            }
+            self.get(before).ok_or(StoreError::NotFound(before))?;
+        }
+        reposition(&mut self.connections, from, |c| Some(c.id) == before);
+        self.write()
     }
 
     #[must_use]
@@ -899,7 +944,7 @@ mod tests {
         s.save_project(project("Interno", vec![shared.id])).unwrap();
 
         let text = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
-        assert!(text.contains("version = 6"), "{text}");
+        assert!(text.contains("version = 7"), "{text}");
         assert!(text.contains("[[projects]]"), "{text}");
         let reopened = ConnectionStore::open(dir.path().join("connections.toml"), secrets).unwrap();
         let projects = reopened.projects();
@@ -935,7 +980,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_a_v1_file_and_writes_v6() {
+    fn reads_a_v1_file_and_writes_v7() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("connections.toml");
         let id = Uuid::new_v4();
@@ -951,7 +996,7 @@ mod tests {
         let old = s.get(id).unwrap().clone();
         s.save(old, PasswordUpdate::Keep).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("version = 6"), "{text}");
+        assert!(text.contains("version = 7"), "{text}");
         assert!(!text.contains("folder"), "{text}");
         // Older files leave agents to read only.
         assert!(text.contains("agent_access = \"read_only\""), "{text}");
@@ -1147,6 +1192,36 @@ SET b = 2;"
         let mut same = s.projects()[0].clone();
         same.name = "interno".to_owned();
         s.save_project(same).unwrap();
+    }
+
+    #[test]
+    fn reorder_connection_moves_in_the_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        let ids: Vec<Uuid> = ["a", "b", "c"]
+            .into_iter()
+            .map(|name| {
+                let c = SavedConnection::new(name, DriverKind::Sqlite);
+                let id = c.id;
+                s.save(c, PasswordUpdate::Keep).unwrap();
+                id
+            })
+            .collect();
+        let order = |s: &ConnectionStore| s.list().iter().map(|c| c.id).collect::<Vec<_>>();
+        s.reorder_connection(ids[2], Some(ids[0])).unwrap();
+        assert_eq!(order(&s), [ids[2], ids[0], ids[1]]);
+        s.reorder_connection(ids[2], None).unwrap();
+        assert_eq!(order(&s), ids);
+        assert!(matches!(
+            s.reorder_connection(ids[0], Some(ids[0])),
+            Err(StoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            s.reorder_connection(ids[0], Some(Uuid::new_v4())),
+            Err(StoreError::NotFound(_))
+        ));
+        let (again, _) = store(dir.path());
+        assert_eq!(order(&again), ids);
     }
 
     #[test]
@@ -1352,7 +1427,7 @@ SET b = 2;"
         std::fs::write(&path, "version = 99\n").unwrap();
         let err = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap_err();
         assert!(matches!(err, StoreError::Format { .. }));
-        std::fs::write(&path, "version = 7\n").unwrap();
+        std::fs::write(&path, format!("version = {}\n", FILE_VERSION + 1)).unwrap();
         let err = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap_err();
         assert!(err.to_string().contains("newer PlatypusDB"), "{err}");
 

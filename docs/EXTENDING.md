@@ -257,7 +257,10 @@ Version 5 added folders (`connections/folders.rs`): a project's `folders` (`id`,
 The projects' commands are in `commands/projects.rs`: `list_projects`, `save_project`,
 `delete_project`, `set_project_membership` and `project_initials`; for folders
 `create_connection_folder`, `rename_connection_folder`, `move_connection_folder`,
-`delete_connection_folder` and `place_connection`, and for the rail `list_project_folders`,
+`delete_connection_folder` and `place_connection`, for the order of a project's connections
+and folders (drag and drop, Alt+Up/Alt+Down: `projects/arrange.ts` computes the change)
+`arrange_connection`, `arrange_connection_folder` and `group_connections`, for the order of
+All connections `reorder_connection`, and for the rail `list_project_folders`,
 `group_projects`, `save_project_folder`, `set_project_folder`, `ungroup_projects` and
 `reorder_projects`, which return a `Workspace` (connections, projects and rail folders).
 `save_connection` takes the projects a connection joins. Imports (`platypus_store::import`)

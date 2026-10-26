@@ -959,6 +959,20 @@ export const api = {
   /** Puts a connection into a folder of the project, or at its root with `null`. */
   placeConnection: (projectId: string, connectionId: string, folderId: string | null) =>
     invoke<Project[]>("place_connection", { projectId, connectionId, folderId }),
+  /** Moves a connection into a folder of the project (`null`: its root), just before
+   *  `before` or after the last connection there. */
+  arrangeConnection: (projectId: string, connectionId: string, folderId: string | null, before: string | null) =>
+    invoke<Project[]>("arrange_connection", { projectId, connectionId, folderId, before }),
+  /** Moves a folder into `parent` (`null`: the root), just before the folder `before` or
+   *  after the last one there. */
+  arrangeConnectionFolder: (projectId: string, folderId: string, parent: string | null, before: string | null) =>
+    invoke<Project[]>("arrange_connection_folder", { projectId, folderId, parent, before }),
+  /** Drops the connection `dragged` onto `target`: a new folder named `name` holds both. */
+  groupConnections: (projectId: string, target: string, dragged: string, name: string) =>
+    invoke<{ folder: string; projects: Project[] }>("group_connections", { projectId, target, dragged, name }),
+  /** Moves a connection in the list All connections shows: before `before`, or to the end. */
+  reorderConnection: (connectionId: string, before: string | null) =>
+    invoke<Workspace>("reorder_connection", { connectionId, before }),
   listProjectFolders: () => invoke<ProjectFolder[]>("list_project_folders"),
   /** Drops `dragged` onto `target` in the rail: both end up in one folder. */
   groupProjects: (target: string, dragged: string) => invoke<Workspace>("group_projects", { target, dragged }),

@@ -99,6 +99,8 @@ and shows the ODBC drivers and data sources of the system.
   folder of the project rail.
 - **Folders**: connections inside a project go in nested folders (drag them, or *Move to
   folder*); projects in the rail go in folders too, by dropping one project on another.
+  Connections and folders keep the order you give them: drag one above or below another, or
+  press Alt+Up / Alt+Down; a connection dropped onto another makes a new folder of the two.
 - **TLS** with libpq `sslmode` semantics, custom CAs, and client certificates for PostgreSQL and
   MySQL.
 - **SSH tunnels** with a password, a key or the SSH agent, optionally through a jump host;
