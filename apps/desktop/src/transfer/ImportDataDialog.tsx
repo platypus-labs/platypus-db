@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   api,
@@ -90,6 +90,8 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
   const fail = (e: unknown) => setError(failure(e));
   /** The confirmation a production connection asks before the import. */
   const [confirm, setConfirm] = useState<GuardRequest | null>(null);
+  /** Bumped by each preview request: only the latest one is shown. */
+  const previewToken = useRef(0);
 
   /** The existing table the rows go to; `null` creates `newTable`. */
   const existing = transfer ? (tables.find((t) => same(t, newTable.trim())) ?? null) : target.table;
@@ -102,32 +104,52 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
     }
   }, []);
 
+  // Each answer is dropped once the target changed again: a slower answer for an earlier
+  // connection, schema or table must not replace the one now chosen.
   useEffect(() => {
     setSid(null);
+    setSchemas([]);
+    setTables([]);
+    let live = true;
     workbench()
       .sideSession(target.connection, target.database)
       .then(async (id) => {
+        if (!live) return;
         setSid(id);
-        if (id !== null && transfer) setSchemas(await api.listSchemas(id));
+        if (id === null || !transfer) return;
+        const found = await api.listSchemas(id);
+        if (live) setSchemas(found);
       })
-      .catch(fail);
+      .catch((e: unknown) => live && fail(e));
+    return () => {
+      live = false;
+    };
   }, [target.connection.id, target.database]);
 
   useEffect(() => {
+    setTables([]);
     if (sid === null || !transfer || !target.schema) return;
+    let live = true;
     api.listObjects(sid, target.schema).then(
-      (objects) => setTables(objects.filter((o) => o.kind === "table").map((o) => o.name)),
-      fail,
+      (objects) => live && setTables(objects.filter((o) => o.kind === "table").map((o) => o.name)),
+      (e: unknown) => live && fail(e),
     );
+    return () => {
+      live = false;
+    };
   }, [sid, target.schema]);
 
   useEffect(() => {
     setTargets([]);
     if (sid === null || existing === null || !target.schema) return;
+    let live = true;
     api.tableDetails(sid, target.schema, existing).then(
-      (d) => setTargets(d.columns),
-      fail,
+      (d) => live && setTargets(d.columns),
+      (e: unknown) => live && fail(e),
     );
+    return () => {
+      live = false;
+    };
   }, [sid, target.schema, existing]);
 
   // The preview: a file once chosen, a source table as soon as both sessions are open (its
@@ -151,10 +173,13 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
   }
 
   async function loadTable(from: number, to: number) {
+    const token = ++previewToken.current;
     setError(null);
     try {
-      show(await api.previewTransfer(from, source!.currentSchema ? null : source!.schema, source!.table, to));
+      const p = await api.previewTransfer(from, source!.currentSchema ? null : source!.schema, source!.table, to);
+      if (token === previewToken.current) show(p);
     } catch (e) {
+      if (token !== previewToken.current) return;
       setPreview(null);
       setError(failure(e));
     }
@@ -162,14 +187,17 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
 
   async function loadFile(file: string, sheet: string | null) {
     if (sid === null) return;
+    const token = ++previewToken.current;
     setError(null);
     setStatus({ state: "idle" });
     try {
       const p = await api.previewImport(sid, file, sheet);
+      if (token !== previewToken.current) return;
       show(p);
       setLoaded(file);
       setNewTable(p.table);
     } catch (e) {
+      if (token !== previewToken.current) return;
       setPreview(null);
       setLoaded(null);
       setError(failure(e));
