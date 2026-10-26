@@ -94,6 +94,71 @@ fn removing_the_sort_keeps_what_offset_needs_on_transact_sql() {
 }
 
 #[test]
+fn reads_the_order_by_as_written() {
+    assert_eq!(
+        order_by_clause(
+            "SELECT * FROM t WHERE a = 1\n  ORDER BY name /* why */ DESC, id LIMIT 3;",
+            PG
+        )
+        .as_deref(),
+        Some("ORDER BY name /* why */ DESC, id")
+    );
+    assert_eq!(
+        order_by_clause("SELECT * FROM (SELECT * FROM t ORDER BY a) s", PG),
+        None
+    );
+    assert_eq!(order_by_clause("SELECT * FROM t; SELECT 1", PG), None);
+}
+
+#[test]
+fn restores_the_order_by_the_statement_had() {
+    for (sql, dialect) in [
+        ("SELECT * FROM t\n  ORDER BY name DESC", PG),
+        (
+            "SELECT * FROM t ORDER BY name /* why */ DESC, id LIMIT 3",
+            MY,
+        ),
+        (
+            "SELECT * FROM t ORDER BY name DESC OFFSET 1 ROWS FETCH NEXT 2 ROWS ONLY",
+            MS,
+        ),
+        ("SELECT TOP (3) WITH TIES * FROM t ORDER BY name DESC", MS),
+    ] {
+        let clause = order_by_clause(sql, dialect).unwrap();
+        let sorted = sort(sql, dialect, "id", true).unwrap();
+        assert_eq!(
+            restore_order_by(&sorted, dialect, &clause).as_deref(),
+            Some(sql),
+            "{sql}"
+        );
+    }
+    // A condition added since stays; a statement without a sort gets the clause back too.
+    let filtered = filtered("SELECT * FROM t\nORDER BY id ASC", PG, "a = 1");
+    assert_eq!(
+        restore_order_by(&filtered, PG, " ORDER BY name DESC ").as_deref(),
+        Some("SELECT * FROM t\nWHERE a = 1\nORDER BY name DESC")
+    );
+    assert_eq!(
+        restore_order_by("SELECT * FROM t LIMIT 3", PG, "ORDER BY name DESC").as_deref(),
+        Some("SELECT * FROM t\nORDER BY name DESC LIMIT 3")
+    );
+}
+
+#[test]
+fn restores_only_one_order_by() {
+    let sql = "SELECT * FROM t ORDER BY id ASC";
+    for clause in [
+        "ORDER BY a; DELETE FROM t",
+        "LIMIT 3",
+        "ORDER BY a)",
+        "",
+        "ORDER BY a UNION SELECT * FROM u",
+    ] {
+        assert_eq!(restore_order_by(sql, PG, clause), None, "{clause}");
+    }
+}
+
+#[test]
 fn goes_before_limit_offset_and_fetch() {
     assert_eq!(
         sorted("SELECT * FROM t LIMIT 10 OFFSET 5", PG),
@@ -880,6 +945,7 @@ fn never_panics_on_odd_input() {
             let _ = set_order_by(&sql, dialect, None);
             let _ = count_query(&sql, dialect);
             let _ = add_condition(&sql, dialect, "a = 1");
+            let _ = restore_order_by(&sql, dialect, "ORDER BY a");
         }
     }
 }

@@ -24,7 +24,7 @@ pub use generate::ObjectName;
 pub use lexer::{Lexer, Token, TokenKind};
 pub use lint::{ColumnRef, Lint, LintIssue, LintKind, TableAlias, lint};
 pub use params::{Parameter, ParameterKind, parameters};
-pub use rewrite::{add_condition, count_query, set_order_by};
+pub use rewrite::{add_condition, count_query, order_by_clause, restore_order_by, set_order_by};
 pub use source::{SelectItem, SourceTable, source_table};
 
 /// A statement's byte range: from its first token to its last, excluding surrounding

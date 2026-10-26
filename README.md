@@ -159,7 +159,8 @@ and shows the ODBC drivers and data sources of the system.
 
 - The grid is drawn on a canvas and reads rows a page at a time (1,000 ahead of what is on
   screen); queries can be cancelled.
-- Open a table to browse it: sort by clicking a header, filter with a `WHERE`, count the rows.
+- Open a table to browse it: sort by clicking a header (the third click puts back the query's
+  own `ORDER BY`), filter with a `WHERE`, count the rows.
 - **Copy** with headers or as CSV, JSON, Markdown, HTML, SQL `INSERT` or an `IN` list.
 - **Find** in the loaded rows (`Ctrl+F`).
 - **Value panel** (`F7`): long text, JSON and XML formatted, hex and images from binary

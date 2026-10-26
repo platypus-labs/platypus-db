@@ -406,14 +406,16 @@ fn rewritable(sql: &str, driver: DriverKind) -> bool {
 }
 
 /// `sql` sorted by `column` (descending when `desc`) or, with no column, without the
-/// sort; the rest of the text stays as written. `None` when `sql` is not a read-only query
-/// the sort can be placed in. The data viewer's header sort.
+/// viewer's sort: back to `original`, the `ORDER BY` it had before (see `sql_order_clause`),
+/// or unsorted. The rest of the text stays as written. `None` when `sql` is not a read-only
+/// query the sort can be placed in. The data viewer's header sort.
 #[tauri::command]
 pub fn sql_order_by(
     sql: String,
     driver: DriverKind,
     column: Option<String>,
     desc: bool,
+    original: Option<String>,
 ) -> Option<String> {
     let order = column.as_deref().map(|c| (c, desc));
     if driver == DriverKind::Mongo {
@@ -422,13 +424,27 @@ pub fn sql_order_by(
     if !rewritable(&sql, driver) {
         return None;
     }
-    platypus_sql::set_order_by(&sql, Dialect::from(driver), order)
+    let dialect = Dialect::from(driver);
+    match (order, original) {
+        (None, Some(clause)) => platypus_sql::restore_order_by(&sql, dialect, &clause),
+        _ => platypus_sql::set_order_by(&sql, dialect, order),
+    }
+}
+
+/// The top-level `ORDER BY` of `sql` as written, which the header sort puts back after
+/// descending; `None` when it has none, or on MongoDB.
+#[tauri::command]
+pub fn sql_order_clause(sql: String, driver: DriverKind) -> Option<String> {
+    if driver == DriverKind::Mongo || !rewritable(&sql, driver) {
+        return None;
+    }
+    platypus_sql::order_by_clause(&sql, Dialect::from(driver))
 }
 
 /// Whether the header sort can rewrite `sql`.
 #[tauri::command]
 pub fn sql_sortable(sql: String, driver: DriverKind) -> bool {
-    sql_order_by(sql, driver, Some("x".to_owned()), false).is_some()
+    sql_order_by(sql, driver, Some("x".to_owned()), false, None).is_some()
 }
 
 /// The query that counts the rows of `sql` (`SELECT COUNT(*)…`, or `countDocuments`); `None`

@@ -599,14 +599,39 @@ fn gap_before(sql: &str, tokens: &[Token], i: usize) -> Option<usize> {
 /// `ORDER BY (SELECT NULL)` on Transact-SQL and gives up elsewhere; so does a `DISTINCT ON`.
 #[must_use]
 pub fn set_order_by(sql: &str, dialect: Dialect, order: Option<(&str, bool)>) -> Option<String> {
-    let body = scan(sql, dialect)?;
-    if body.has(flag::DISTINCT_ON) {
-        return None;
-    }
     let clause = order.map(|(column, desc)| {
         let direction = if desc { "DESC" } else { "ASC" };
         format!("ORDER BY {} {direction}", dialect.quote_ident(column))
     });
+    put_order_by(sql, dialect, clause)
+}
+
+/// The top-level `ORDER BY` of `sql` as written, from `ORDER` to its last token; `None` when
+/// it has none or cannot be read with certainty. What `restore_order_by` puts back.
+#[must_use]
+pub fn order_by_clause(sql: &str, dialect: Dialect) -> Option<String> {
+    let (start, end) = scan(sql, dialect)?.order?;
+    Some(sql[start..end].to_owned())
+}
+
+/// `sql` with `clause`, an `ORDER BY` read by `order_by_clause`, in place of its top-level
+/// one, placed as `set_order_by` places a sort: the statement gets back the sort it had before
+/// the viewer changed it. `None` when the result would not be one statement ordered by
+/// `clause`.
+#[must_use]
+pub fn restore_order_by(sql: &str, dialect: Dialect, clause: &str) -> Option<String> {
+    let clause = clause.trim();
+    let restored = put_order_by(sql, dialect, Some(clause.to_owned()))?;
+    (order_by_clause(&restored, dialect)? == clause).then_some(restored)
+}
+
+/// `sql` with its top-level `ORDER BY` replaced by `clause`, or removed with `None`; see
+/// `set_order_by`.
+fn put_order_by(sql: &str, dialect: Dialect, clause: Option<String>) -> Option<String> {
+    let body = scan(sql, dialect)?;
+    if body.has(flag::DISTINCT_ON) {
+        return None;
+    }
     let (from, to, text) = match (body.order, clause) {
         (Some((start, end)), Some(clause)) => (start, end, clause),
         (Some((start, end)), None) if body.needs_order(dialect) => {

@@ -1,6 +1,7 @@
 // The data viewer keeps the query of its editor: a WHERE typed there survives the header sort
-// (which only changes the top-level ORDER BY), and "Count rows" counts that query. Another
-// table's query typed there is never edited as the viewer's table, even once sorted.
+// (which only changes the top-level ORDER BY, and puts back the statement's own at the third
+// click), and "Count rows" counts that query. Another table's query typed there is never
+// edited as the viewer's table, even once sorted.
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -50,6 +51,15 @@ async function afterRun(page, action) {
   );
 }
 
+/** Types `sql` as the editor's whole text and runs it. */
+async function runQuery(page, sql) {
+  await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
+  await page.key("a", "KeyA", 65, CTRL);
+  await page.type(sql);
+  await page.waitFor(`${editorText} === ${JSON.stringify(sql)}`);
+  await afterRun(page, () => page.key("Enter", "Enter", 13, CTRL));
+}
+
 export default async function (page) {
   await page.waitFor(`${treeRow(NAME)} !== undefined`);
   await page.eval(`${treeRow(NAME)}.querySelector(".twisty").click()`);
@@ -84,6 +94,17 @@ export default async function (page) {
   // "Count rows" counts the filtered query, not the whole table.
   await page.eval(`${visibleTab}.querySelector('.viewer-bar button[aria-label="Count rows"]').click()`);
   await page.waitFor(`${visibleTab}.querySelector('.viewer-bar .muted')?.textContent === '3 rows'`, 15_000);
+
+  // The third click puts back the ORDER BY the statement had before the first one.
+  const ordered = "SELECT * FROM items ORDER BY name DESC";
+  await runQuery(page, ordered);
+  assert.equal(await page.eval(status), "5 rows");
+  await afterRun(page, header);
+  assert.equal(await page.eval(editorText), "SELECT * FROM items ORDER BY id ASC");
+  await afterRun(page, header);
+  assert.equal(await page.eval(editorText), "SELECT * FROM items ORDER BY id DESC");
+  await afterRun(page, header);
+  assert.equal(await page.eval(editorText), ordered);
 
   // With a script, the sort rewrites the statement that ran, not the first one.
   const script = "SELECT * FROM items WHERE grp = 2;\nSELECT * FROM items WHERE grp = 1";

@@ -27,7 +27,7 @@ import { type EditorHost, type RunMode, SqlEditor, type SqlEditorHandle } from "
 import { TERMINAL_ROWS, type TerminalBlock, TerminalView, blockText } from "../editor/terminal";
 import { VariablesPanel } from "../editor/VariablesPanel";
 import { defineSetting, getSetting, useSetting } from "../settings";
-import { type Sort, viewerSql } from "../sqlNames";
+import { viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { basename } from "../workspace";
@@ -44,7 +44,16 @@ import { scrollSideways } from "../ui/scroll";
 import { notifyRunEnded } from "../shell/notify";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
 import { runGate } from "./runGate";
-import { type ViewerSort, nextSort, queryKey, sortIn, sortOf, statementRange, viewerQueries } from "./viewerSort";
+import {
+  type ShownSort,
+  type ViewerSort,
+  clickSort,
+  queryKey,
+  sortIn,
+  sortOf,
+  statementRange,
+  viewerQueries,
+} from "./viewerSort";
 import { t, plural, msg } from "../i18n";
 
 /** Auto-refresh intervals in seconds, `0` for off. */
@@ -865,7 +874,7 @@ export function QueryTab({
   /** Data viewer: once edited rows are saved or discarded, rewrites the shown result's statement
    *  and runs it. `sort` is the viewer's sort of the new statement: `null` drops it, `undefined`
    *  leaves the stored one. */
-  function rewriteShown(rewrite: (sql: string) => Promise<string | null>, sort?: Sort | null) {
+  function rewriteShown(rewrite: (sql: string) => Promise<string | null>, sort?: ShownSort | null) {
     const result = shown;
     if (!tab.table || !result) return;
     const go = () =>
@@ -881,10 +890,14 @@ export function QueryTab({
   }
 
   /** Header clicks cycle a column of the shown statement through ascending, descending and
-   *  unsorted. */
-  function sortBy(column: string) {
-    const sort = nextSort(shownSort, column);
-    rewriteShown((sql) => api.sqlOrderBy(sql, connection.driver, sort?.column ?? null, sort?.desc ?? false), sort);
+   *  back to the ORDER BY the statement had before the first click, or unsorted. */
+  async function sortBy(column: string) {
+    if (!shown) return;
+    const statement = shown.sql;
+    const { sort, original } = await clickSort(shownSort, column, () =>
+      api.sqlOrderClause(statement, connection.driver).catch(() => null),
+    );
+    rewriteShown((sql) => api.sqlOrderBy(sql, connection.driver, sort?.column ?? null, sort?.desc ?? false, original), sort);
   }
 
   /** Quick filter of the grid: adds `condition` to the WHERE of the shown result's statement,
