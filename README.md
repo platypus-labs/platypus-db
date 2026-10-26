@@ -339,10 +339,14 @@ methods and fields. `mongodb+srv://` and connection string options go in the Dat
 ### Transactions and safety
 
 - Auto-commit or manual commit with Commit/Rollback; an open transaction shows how long it has
-  been open and warns after a while (10 minutes by default).
+  been open and warns after a while (10 minutes by default). Clicking it lists the changes that
+  wait for Commit, with Commit and Rollback.
 - An `UPDATE` or `DELETE` without `WHERE`, or a `TRUNCATE`, asks first and says about how many
   rows it changes.
 - On production connections every change is listed and confirmed before it runs.
+- The lock button makes one editor tab read-only without changing the saved connection.
+- Settings › Safety can add a `LIMIT` (`TOP` on SQL Server) to queries run from the editor that
+  have no row cap of their own; off by default.
 
 ### Workspace
 

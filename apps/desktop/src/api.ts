@@ -1326,6 +1326,8 @@ export const api = {
   sqlSortable: (sql: string, driver: DriverKind) => invoke<boolean>("sql_sortable", { sql, driver }),
   /** The query counting the rows of `sql`; `null` when it cannot be counted. */
   sqlCountQuery: (sql: string, driver: DriverKind) => invoke<string | null>("sql_count_query", { sql, driver }),
+  sqlAddLimit: (sql: string, driver: DriverKind, limit: number) =>
+    invoke<string | null>("sql_add_limit", { sql, driver, limit }),
   /** `sql` with `condition` added to its top-level WHERE; `null` when it cannot be placed. */
   sqlAddCondition: (sql: string, driver: DriverKind, condition: string) =>
     invoke<string | null>("sql_add_condition", { sql, driver, condition }),

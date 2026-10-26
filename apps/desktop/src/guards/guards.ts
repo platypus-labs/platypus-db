@@ -41,6 +41,15 @@ export const transactionWarning = defineSetting<number>({
   control: { type: "number", min: 0, max: 1440, step: 1 },
 });
 
+export const autoLimitSetting = defineSetting<number>({
+  key: "safety.auto_limit",
+  section: "Safety",
+  label: "Add a LIMIT to queries without one (rows)",
+  description: "0 never adds one. Only SELECTs on a table run from the SQL editor; the data viewer and exports read every row.",
+  default: 0,
+  control: { type: "number", min: 0, step: 100 },
+});
+
 /** A statement about to run, with what it does. */
 export interface CheckedStatement {
   sql: string;

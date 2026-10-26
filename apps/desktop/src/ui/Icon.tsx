@@ -33,6 +33,7 @@ import {
   ListOrdered,
   ListTree,
   ListVideo,
+  Lock,
   Minus,
   type LucideIcon,
   PanelLeft,
@@ -124,6 +125,7 @@ const ICONS = {
   activity: Activity,
   sidebar: PanelLeft,
   "sidebar-close": PanelLeftClose,
+  lock: Lock,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;
