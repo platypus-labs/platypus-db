@@ -73,7 +73,17 @@ mod flag {
     /// `OFFSET` or `FETCH`, which Transact-SQL accepts only after an `ORDER BY`.
     pub const OFFSET: u16 = 1 << 7;
     pub const WHERE_OR: u16 = 1 << 8;
+    /// `WITH TIES` (`TOP`, `FETCH`), which needs an `ORDER BY` everywhere.
+    pub const TIES: u16 = 1 << 9;
+    /// `DISTINCT ON (…)`, whose `ORDER BY` must start with the same expressions.
+    pub const DISTINCT_ON: u16 = 1 << 10;
 }
+
+/// Words after which an operand comes: a clause word there is a name (`WHERE limit > 1`).
+const OPERAND_AFTER: &[&str] = &[
+    "SELECT", "DISTINCT", "WHERE", "AND", "OR", "NOT", "ON", "BY", "AS", "CASE", "WHEN", "THEN",
+    "ELSE", "HAVING", "QUALIFY", "SET", "LIKE", "BETWEEN",
+];
 
 /// Where the parts of a statement's top level are, as byte offsets, and what it holds.
 #[derive(Debug, Default)]
@@ -103,6 +113,11 @@ struct Body {
 impl Body {
     fn has(&self, f: u16) -> bool {
         self.flags & f != 0
+    }
+
+    /// Whether the query is invalid without its `ORDER BY`.
+    fn needs_order(&self, dialect: Dialect) -> bool {
+        self.has(flag::TIES) || (dialect == Dialect::SqlServer && self.has(flag::OFFSET))
     }
 }
 
@@ -172,6 +187,20 @@ impl<'a> Tokens<'a> {
             .is_some_and(|t| t.kind == TokenKind::Symbol && t.text(self.sql) == symbol)
     }
 
+    /// Whether the token at `i` stands where an operand goes: after an operator, a comma, a
+    /// dot or a word such as `SELECT` or `WHERE`. A word there is a name, never a clause.
+    fn after_operator(&self, i: usize) -> bool {
+        let Some(prev) = i.checked_sub(1).and_then(|p| self.list.get(p)) else {
+            return false;
+        };
+        let text = prev.text(self.sql);
+        match prev.kind {
+            TokenKind::Symbol => ",(=<>+-*/%|&^!~.:".contains(text),
+            TokenKind::Word => OPERAND_AFTER.contains(&text.to_ascii_uppercase().as_str()),
+            _ => false,
+        }
+    }
+
     /// The index after the parenthesised group that opens at `i`.
     fn after_group(&self, i: usize) -> usize {
         let mut j = i + 1;
@@ -216,7 +245,7 @@ fn clause_at(t: &Tokens, i: usize, dialect: Dialect) -> Result<Option<Clause>, (
         return Ok(None);
     };
     let next = |w: &str| t.is_word(i + 1, w);
-    Ok(match word.as_str() {
+    let clause = match word.as_str() {
         "SETTINGS" | "FORMAT" if !t.is_symbol(i + 1, "(") => return Err(()),
         "GROUP" if next("BY") => Some(Clause::Group),
         "HAVING" | "QUALIFY" => Some(Clause::Having),
@@ -232,7 +261,9 @@ fn clause_at(t: &Tokens, i: usize, dialect: Dialect) -> Result<Option<Clause>, (
         "START" if next("WITH") => Some(Clause::Other),
         "CONNECT" if next("BY") => Some(Clause::Other),
         _ => None,
-    })
+    };
+    // `SELECT offset FROM t`, `WHERE limit > 1`: a column named like a clause.
+    Ok(clause.filter(|_| !t.after_operator(i)))
 }
 
 /// Skips what follows `SELECT` before the select list; returns the index of its first token.
@@ -242,6 +273,9 @@ fn skip_head(t: &Tokens, mut i: usize, body: &mut Body) -> usize {
             Some("ALL") => i += 1,
             Some(w) if HEAD_MODIFIERS.contains(&w) => {
                 body.flags |= flag::DISTINCT;
+                if w == "DISTINCT" && t.is_word(i + 1, "ON") {
+                    body.flags |= flag::DISTINCT_ON;
+                }
                 i += 1;
             }
             Some("TOP") => {
@@ -255,6 +289,7 @@ fn skip_head(t: &Tokens, mut i: usize, body: &mut Body) -> usize {
                     i += 1;
                 }
                 if t.is_word(i, "WITH") && t.is_word(i + 1, "TIES") {
+                    body.flags |= flag::TIES;
                     i += 2;
                 }
             }
@@ -308,6 +343,10 @@ fn scan(sql: &str, dialect: Dialect) -> Option<Body> {
         if in_where && t.top(i).as_deref() == Some("OR") {
             body.flags |= flag::WHERE_OR;
         }
+        // `FETCH FIRST n ROWS WITH TIES`.
+        if tail && t.top(i).as_deref() == Some("TIES") {
+            body.flags |= flag::TIES;
+        }
         let Ok(clause) = clause_at(&t, i, dialect) else {
             return None;
         };
@@ -360,18 +399,25 @@ fn gap_before(sql: &str, tokens: &[Token], i: usize) -> Option<usize> {
 
 /// `sql` with its top-level `ORDER BY` replaced by one on `column` (`true`: descending), or
 /// removed with `None`. Without one, a new clause goes before a trailing `LIMIT`, `OFFSET`,
-/// `FETCH` or lock clause, otherwise at the end of the statement. On Transact-SQL, which
-/// needs an `ORDER BY` for `OFFSET`, removing it leaves `ORDER BY (SELECT NULL)`.
+/// `FETCH` or lock clause, otherwise at the end of the statement. Where the query needs an
+/// `ORDER BY` (`OFFSET` on Transact-SQL, `WITH TIES`), removing it leaves
+/// `ORDER BY (SELECT NULL)` on Transact-SQL and gives up elsewhere; so does a `DISTINCT ON`.
 #[must_use]
 pub fn set_order_by(sql: &str, dialect: Dialect, order: Option<(&str, bool)>) -> Option<String> {
     let body = scan(sql, dialect)?;
+    if body.has(flag::DISTINCT_ON) {
+        return None;
+    }
     let clause = order.map(|(column, desc)| {
         let direction = if desc { "DESC" } else { "ASC" };
         format!("ORDER BY {} {direction}", dialect.quote_ident(column))
     });
     let (from, to, text) = match (body.order, clause) {
         (Some((start, end)), Some(clause)) => (start, end, clause),
-        (Some((start, end)), None) if dialect == Dialect::SqlServer && body.has(flag::OFFSET) => {
+        (Some((start, end)), None) if body.needs_order(dialect) => {
+            if dialect != Dialect::SqlServer {
+                return None;
+            }
             (start, end, "ORDER BY (SELECT NULL)".to_owned())
         }
         (Some((start, end)), None) => (body.order_gap.unwrap_or(start), end, String::new()),
@@ -436,11 +482,12 @@ fn without_order(sql: &str, body: &Body, start: usize, keep_order: bool) -> Stri
 /// selects `COUNT(*)`: no derived table, so duplicate column names and CTEs cannot get in
 /// the way. Anything else is wrapped as `SELECT COUNT(*) FROM (…) t`, selecting `1` where
 /// that is safe; a leading `WITH` stays outside. The alias has no `AS`, which Oracle
-/// rejects. The `ORDER BY` is dropped, except for `OFFSET … FETCH` on Transact-SQL.
+/// rejects. The `ORDER BY` is dropped, except where the query needs it (`OFFSET … FETCH` on
+/// Transact-SQL, `WITH TIES`).
 #[must_use]
 pub fn count_query(sql: &str, dialect: Dialect) -> Option<String> {
     let body = scan(sql, dialect)?;
-    let keep_order = dialect == Dialect::SqlServer && body.has(flag::OFFSET);
+    let keep_order = body.needs_order(dialect);
     let prefix = &sql[body.first..body.main];
     let plain = !body.has(
         flag::DISTINCT
