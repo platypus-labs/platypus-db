@@ -1389,6 +1389,7 @@ const it: Record<string, string> = {
   "Dictionaries": "Dizionari",
   "Export to the folder": "Esporta nella cartella",
   "Not connected.": "Non connesso.",
+  "Rows could not be read: {message}": "Impossibile leggere le righe: {message}",
 };
 
 export default it;
