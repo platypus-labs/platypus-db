@@ -302,13 +302,18 @@ async function members(page, dir, shots) {
   await page.key("Enter", "Enter", 13);
   await page.waitFor(`document.querySelector('.project-chips') !== null`);
   assert.equal(await page.eval(`${chip("Interno")}.getAttribute('aria-pressed')`), "true");
+  // A new connection's form has no Driver select: Back returns to the picker for another one.
+  const fieldNamed = (label) => `[...document.querySelectorAll('.modal .field')].some(f => f.textContent.startsWith(${JSON.stringify(label)}))`;
+  const backTo = async (label) => {
+    assert.equal(await page.eval(fieldNamed("Driver")), false);
+    await page.eval(`[...document.querySelectorAll('.modal button')].find(b => b.textContent === 'Back').click()`);
+    await page.waitFor(`${tiles}.length === 23`);
+    await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === ${JSON.stringify(label)}).click()`);
+    await page.waitFor(`document.querySelector('.project-chips') !== null`);
+  };
   // The PostgreSQL form is laid out in rows of two and fits a 1366x768 window without scrolling.
-  await page.eval(`(() => {
-    const select = [...document.querySelectorAll('.modal .field')].find(f => f.textContent.startsWith('Driver')).querySelector('select');
-    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'postgres');
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  })()`);
-  await page.waitFor(`[...document.querySelectorAll('.modal .field')].some(f => f.textContent.startsWith('Host'))`);
+  await backTo("PostgreSQL");
+  await page.waitFor(fieldNamed("Host"));
   const layout = await page.eval(`(() => {
     const top = (label) => [...document.querySelectorAll('.modal .field')].find(f => f.querySelector('span')?.textContent === label).getBoundingClientRect().top;
     const modal = document.querySelector('.modal');
@@ -317,17 +322,15 @@ async function members(page, dir, shots) {
   })()`);
   assert.deepEqual([layout.host, layout.database, layout.password, layout.scrolls], [true, true, true, false]);
   assert.ok(layout.height <= 680, `dialog height ${layout.height}`);
+  // Back to SQLite: the form is cleared, the project stays chosen.
+  await backTo("SQLite");
+  await page.waitFor(fieldNamed("Database file"));
+  assert.equal(await page.eval(`${chip("Interno")}.getAttribute('aria-pressed')`), "true");
   await page.eval(`(() => {
-    const set = (el, value) => {
-      const proto = el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
-      Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, value);
-      el.dispatchEvent(new Event(el instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true }));
-    };
-    const fields = [...document.querySelectorAll('.modal .field')];
-    set(fields.find(f => f.textContent.startsWith('Name')).querySelector('input'), 'C new');
-    set(fields.find(f => f.textContent.startsWith('Driver')).querySelector('select'), 'sqlite');
+    const input = [...document.querySelectorAll('.modal .field')].find(f => f.textContent.startsWith('Name')).querySelector('input');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'C new');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
-  await page.waitFor(`[...document.querySelectorAll('.modal .field')].some(f => f.textContent.startsWith('Database file'))`);
   await page.eval(`(() => {
     const input = [...document.querySelectorAll('.modal .field')].find(f => f.textContent.startsWith('Database file')).querySelector('input');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(join(dir, "3.db"))});
