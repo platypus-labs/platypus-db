@@ -1,6 +1,6 @@
 import { QueryTab, type QueryTabModel } from "../components/QueryTab";
 import type { TableRef } from "../grid/edit/meta";
-import type { Sort } from "../sqlNames";
+import { savedSorts } from "../components/viewerSort";
 import { basename } from "../workspace";
 import { registerTabKind } from "./registry";
 
@@ -34,7 +34,7 @@ registerTabKind({
     if (!tab.filePath) return tab.title ?? "";
     return `${basename(tab.filePath)}${tab.sql !== tab.savedSql ? " •" : ""}`;
   },
-  persist: ({ sql, filePath, savedSql, title, table, tableRef, sort, viewerQuery, database, variables, terminal }) => ({
+  persist: ({ sql, filePath, savedSql, title, table, tableRef, sorts, viewerQuery, database, variables, terminal }) => ({
     database,
     sql,
     filePath,
@@ -42,7 +42,7 @@ registerTabKind({
     title,
     table,
     tableRef,
-    sort,
+    sorts,
     viewerQuery,
     variables,
     terminal,
@@ -54,7 +54,8 @@ registerTabKind({
     title: text(saved.title),
     table: text(saved.table),
     tableRef: tableRef(saved.tableRef),
-    sort: (saved.sort as Sort | null | undefined) ?? null,
+    // `sort`: the one sort saved before each statement kept its own.
+    sorts: savedSorts(saved.sorts, saved.sort),
     viewerQuery: text(saved.viewerQuery),
     database: text(saved.database),
     variables: strings(saved.variables),

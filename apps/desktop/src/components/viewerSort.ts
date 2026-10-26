@@ -12,10 +12,13 @@ export interface ShownSort extends Sort {
 /** A sort the viewer wrote into a statement. */
 export interface ViewerSort extends Sort {
   /** `queryKey` of the statement it was written into: it holds for that statement only. */
-  query?: string;
+  query: string;
   /** See `ShownSort`; missing in a sort saved before it was kept. */
   original?: string | null;
 }
+
+/** How many statements' sorts a tab keeps, the latest ones. */
+const KEPT_SORTS = 20;
 
 /** `sql` as the viewer compares queries: trimmed, without a final `;`. */
 export const queryKey = (sql: string) => sql.trim().replace(/;$/, "");
@@ -27,12 +30,13 @@ export function statementRange(result: { sql: string; offset: number }, text: st
   return text.slice(result.offset, to) === result.sql ? { from: result.offset, to } : null;
 }
 
-/** The sort of the result of `sql`: the viewer's, when it was written into that statement.
+/** The sort of the result of `sql`: among a tab's `sorts`, the one written into that statement.
  *  Another statement, or the same one edited by hand, starts unsorted, with its own ORDER BY
  *  as the one to put back. */
-export function sortOf(sort: ViewerSort | null | undefined, sql: string): ShownSort | null {
-  if (sort?.query === undefined || sort.query !== queryKey(sql)) return null;
-  return { column: sort.column, desc: sort.desc, original: sort.original ?? null };
+export function sortOf(sorts: readonly ViewerSort[] | undefined, sql: string): ShownSort | null {
+  const key = queryKey(sql);
+  const sort = sorts?.find((s) => s.query === key);
+  return sort ? { column: sort.column, desc: sort.desc, original: sort.original ?? null } : null;
 }
 
 /** The sort after a click on `column`'s header: ascending, then descending, then none (the
@@ -55,9 +59,30 @@ export async function clickSort(
   return { sort: next && { ...next, original }, original };
 }
 
-/** `sort` as written into the statement `sql`. */
-export const sortIn = (sort: ShownSort | null, sql: string): ViewerSort | null =>
-  sort && { column: sort.column, desc: sort.desc, query: queryKey(sql), original: sort.original };
+/** A tab's `sorts` once the statement `sql` has `sort`, or none: it replaces the one `sql` had.
+ *  The others stay, so that each statement of a script keeps its own. */
+export function withSort(sorts: readonly ViewerSort[] | undefined, sql: string, sort: ShownSort | null): ViewerSort[] {
+  const query = queryKey(sql);
+  const others = (sorts ?? []).filter((s) => s.query !== query);
+  const all = sort ? [...others, { column: sort.column, desc: sort.desc, query, original: sort.original }] : others;
+  return all.slice(-KEPT_SORTS);
+}
+
+/** The sorts a tab saved: its list, or the single sort saved before there was one; anything
+ *  malformed is dropped. */
+export function savedSorts(sorts: unknown, single: unknown): ViewerSort[] {
+  const list: unknown[] = Array.isArray(sorts) ? sorts : single ? [single] : [];
+  return list.filter((s): s is ViewerSort => {
+    if (!s || typeof s !== "object") return false;
+    const { column, desc, query, original } = s as Record<string, unknown>;
+    return (
+      typeof column === "string" &&
+      typeof desc === "boolean" &&
+      typeof query === "string" &&
+      (original === undefined || original === null || typeof original === "string")
+    );
+  });
+}
 
 /** The data viewer's own queries: `own` (the one it opened with, its table's plain query) and
  *  the rewrites of them by the header sort and the quick filters. Only these read exactly the

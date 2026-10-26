@@ -50,10 +50,10 @@ import {
   type ViewerSort,
   clickSort,
   queryKey,
-  sortIn,
   sortOf,
   statementRange,
   viewerQueries,
+  withSort,
 } from "./viewerSort";
 import { t, plural, msg } from "../i18n";
 
@@ -95,8 +95,8 @@ export interface QueryTabModel extends TabBase {
   table?: string | null;
   /** Data viewer: the same table by schema and name, for the data editor. */
   tableRef?: TableRef | null;
-  /** Data viewer: the header sort, with the statement it was written into. */
-  sort?: ViewerSort | null;
+  /** Data viewer: the header sorts, each with the statement it was written into. */
+  sorts?: ViewerSort[];
   /** Data viewer: its own query, the one it opened with or the last rewrite of it by the header
    *  sort or a quick filter. Its rows are the table's rows; another query typed in the tab is
    *  not the viewer's. */
@@ -250,7 +250,7 @@ export function QueryTab({
   const shownFilters =
     filters && filters.result.id === shown?.id && filters.result.columns === shown.columns ? filters.columns : undefined;
   /** The viewer's sort of the shown statement, for the header arrow and the next click. */
-  const shownSort = tab.table && shown ? sortOf(tab.sort, shown.sql) : null;
+  const shownSort = tab.table && shown ? sortOf(tab.sorts, shown.sql) : null;
   // A count belongs to the statement it counted.
   const shownKey = shown ? queryKey(shown.sql) : null;
   useEffect(() => setCount(null), [shownKey]);
@@ -889,14 +889,13 @@ export function QueryTab({
   }
 
   /** Data viewer: once edited rows are saved or discarded, rewrites the shown result's statement
-   *  and runs it. `sort` is the viewer's sort of the new statement: `null` drops it, `undefined`
-   *  leaves the stored one. */
-  function rewriteShown(rewrite: (sql: string) => Promise<string | null>, sort?: ShownSort | null) {
+   *  and runs it. `sort` is the viewer's sort of the new statement, `null` for none. */
+  function rewriteShown(rewrite: (sql: string) => Promise<string | null>, sort: ShownSort | null) {
     const result = shown;
     if (!tab.table || !result) return;
     const go = () =>
       void rewriteStatement(result, rewrite).then((next) => {
-        if (next !== null && sort !== undefined) onChange({ sort: sortIn(sort, next) });
+        if (next !== null) onChange({ sorts: withSort(tab.sorts, next, sort) });
       });
     if (!unsaved.current) return go();
     void ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }).then((yes) => {
@@ -920,7 +919,7 @@ export function QueryTab({
   /** Quick filter of the grid: adds `condition` to the WHERE of the shown result's statement,
    *  which keeps its ORDER BY, and so its sort. */
   function addCondition(condition: string) {
-    rewriteShown((sql) => api.sqlAddCondition(sql, connection.driver, condition), shownSort ?? undefined);
+    rewriteShown((sql) => api.sqlAddCondition(sql, connection.driver, condition), shownSort);
   }
 
   /** What Count rows counts: the query of the shown rows as it ran, its variables filled in;

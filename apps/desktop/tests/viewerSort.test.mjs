@@ -1,7 +1,16 @@
 // Unit tests of the data viewer's header sort (src/components/viewerSort.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { clickSort, nextSort, queryKey, sortIn, sortOf, statementRange, viewerQueries } from "../src/components/viewerSort.ts";
+import {
+  clickSort,
+  nextSort,
+  queryKey,
+  savedSorts,
+  sortOf,
+  statementRange,
+  viewerQueries,
+  withSort,
+} from "../src/components/viewerSort.ts";
 
 const sorted = "SELECT * FROM items WHERE grp = 1\nORDER BY id ASC";
 
@@ -13,16 +22,41 @@ test("a click cycles ascending, descending, none; another column starts ascendin
 });
 
 test("the sort holds for the statement it was written into only", () => {
-  const sort = sortIn({ column: "id", desc: false, original: null }, `${sorted};`);
-  assert.equal(sort.query, sorted);
-  assert.deepEqual(sortOf(sort, ` ${sorted}`), { column: "id", desc: false, original: null });
+  const sorts = withSort([], `${sorted};`, { column: "id", desc: false, original: null });
+  assert.equal(sorts[0].query, sorted);
+  assert.deepEqual(sortOf(sorts, ` ${sorted}`), { column: "id", desc: false, original: null });
   // Another statement of the script, or this one edited by hand, starts unsorted.
-  assert.equal(sortOf(sort, "SELECT * FROM items WHERE grp = 2"), null);
-  assert.equal(sortOf(sort, sorted.replace("ASC", "DESC")), null);
+  assert.equal(sortOf(sorts, "SELECT * FROM items WHERE grp = 2"), null);
+  assert.equal(sortOf(sorts, sorted.replace("ASC", "DESC")), null);
+  assert.equal(sortOf(undefined, sorted), null);
+  // No sort for the statement: it has none of the viewer's.
+  assert.deepEqual(withSort(sorts, sorted, null), []);
+});
+
+test("each statement of a script keeps its own sort", () => {
+  const s1 = "SELECT * FROM items WHERE grp = 1\nORDER BY id DESC";
+  const s2 = "SELECT * FROM items WHERE grp = 2\nORDER BY name ASC";
+  let sorts = withSort([], s1, { column: "id", desc: true, original: "ORDER BY name" });
+  sorts = withSort(sorts, s2, { column: "name", desc: false, original: null });
+  assert.deepEqual(sortOf(sorts, s1), { column: "id", desc: true, original: "ORDER BY name" });
+  assert.deepEqual(sortOf(sorts, s2), { column: "name", desc: false, original: null });
+  // A new sort of a statement replaces its old one; the oldest go past twenty.
+  assert.equal(withSort(sorts, s1, { column: "grp", desc: false, original: null }).length, 2);
+  for (let i = 0; i < 25; i++) sorts = withSort(sorts, `SELECT ${i}`, { column: "a", desc: false, original: null });
+  assert.equal(sorts.length, 20);
+  assert.equal(sortOf(sorts, s1), null);
+  assert.ok(sortOf(sorts, "SELECT 24"));
+});
+
+test("a restored tab reads its sorts, or the one sort saved before", () => {
+  const sort = { column: "id", desc: true, query: sorted, original: "ORDER BY name" };
+  assert.deepEqual(savedSorts([sort, { column: 1 }, null], undefined), [sort]);
+  assert.deepEqual(savedSorts(undefined, { column: "id", desc: false, query: sorted }), [
+    { column: "id", desc: false, query: sorted },
+  ]);
   // A sort saved before it knew its statement, or none.
-  assert.equal(sortOf({ column: "id", desc: false }, sorted), null);
-  assert.equal(sortOf(null, sorted), null);
-  assert.equal(sortIn(null, sorted), null);
+  assert.deepEqual(savedSorts(undefined, { column: "id", desc: false }), []);
+  assert.deepEqual(savedSorts(undefined, null), []);
 });
 
 test("the third click puts back the ORDER BY the statement had before the first", async () => {
@@ -31,7 +65,7 @@ test("the third click puts back the ORDER BY the statement had before the first"
   assert.deepEqual(first.sort, { column: "id", desc: false, original: "ORDER BY name DESC" });
   // Written into the statement, the sort keeps it: a quick filter, or another column, too.
   const asc = "SELECT * FROM items ORDER BY id ASC";
-  const shown = sortOf(sortIn(first.sort, asc), asc);
+  const shown = sortOf(withSort([], asc, first.sort), asc);
   const unread = async () => assert.fail("read once, at the first click");
   const second = await clickSort(shown, "id", unread);
   assert.deepEqual(second.sort, { column: "id", desc: true, original: "ORDER BY name DESC" });
@@ -44,9 +78,9 @@ test("the third click puts back the ORDER BY the statement had before the first"
   const none = await clickSort(null, "id", async () => null);
   assert.deepEqual(await clickSort({ ...none.sort, desc: true }, "id", unread), { sort: null, original: null });
   // Edited by hand, the statement starts over: its ORDER BY then is the one to put back.
-  assert.equal(sortOf(sortIn(first.sort, asc), asc.replace("id ASC", "grp ASC")), null);
+  assert.equal(sortOf(withSort([], asc, first.sort), asc.replace("id ASC", "grp ASC")), null);
   // A sort saved before the original was kept puts none back.
-  assert.equal(sortOf({ column: "id", desc: false, query: asc }, asc).original, null);
+  assert.equal(sortOf([{ column: "id", desc: false, query: asc }], asc).original, null);
 });
 
 test("the statement's range in the editor, while the editor holds it", () => {
