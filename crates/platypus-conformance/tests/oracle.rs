@@ -388,6 +388,85 @@ async fn oracle_commits_and_rolls_back() {
     run(conn, "DROP TABLE ORA_TX").await;
 }
 
+/// The data editor's batches in Oracle's dialect: one row per `INSERT` (no multi-row
+/// `VALUES` before 23ai), `OR` of composite keys and `IN` lists of single ones, and a batch
+/// that finds a row fewer than it names rolls back.
+#[tokio::test]
+async fn oracle_saves_many_edited_rows() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{self, ApplyError, Column, Value, ValueKind};
+
+    const ROWS: usize = 1200;
+    let Some(conn) = oracle().await else { return };
+    let conn = &*conn;
+    let d = Dialect::Oracle;
+    run(conn, "DROP TABLE IF EXISTS ORA_MANY").await;
+    run(
+        conn,
+        "CREATE TABLE ORA_MANY (ID NUMBER NOT NULL, TAG VARCHAR2(40) NOT NULL, \
+         LABEL VARCHAR2(40), PRIMARY KEY (ID, TAG))",
+    )
+    .await;
+    let column = |name, kind| Column {
+        name,
+        kind,
+        default: None,
+    };
+    let columns = [
+        column("ID", ValueKind::Decimal),
+        column("TAG", ValueKind::Text),
+        column("LABEL", ValueKind::Text),
+    ];
+    let ids: Vec<String> = (1..=ROWS).map(|i| i.to_string()).collect();
+    let tags: Vec<String> = (1..=ROWS).map(|i| format!("it's {}", i % 3)).collect();
+    let count = "SELECT COUNT(*) FROM ORA_MANY";
+
+    let rows: Vec<Vec<(usize, Value<'_>)>> = (0..ROWS)
+        .map(|i| {
+            vec![
+                (0, Value::Text(&ids[i])),
+                (1, Value::Text(&tags[i])),
+                (2, Value::Null),
+            ]
+        })
+        .collect();
+    let inserts = dml::inserts(d, "ORA_MANY", &columns, &rows).unwrap();
+    assert_eq!(inserts.len(), ROWS);
+    dml::apply(conn, d, &inserts).await.unwrap();
+    assert_eq!(scalar(conn, count).await, ROWS.to_string());
+
+    let key = |i: usize| vec![(0, Some(ids[i].as_str())), (1, Some(tags[i].as_str()))];
+    let keys: Vec<_> = (0..1100).map(key).collect();
+    let deletes = dml::deletes(d, "ORA_MANY", &columns, &keys).unwrap();
+    assert_eq!(deletes.len(), 3);
+    dml::apply(conn, d, &deletes).await.unwrap();
+    assert_eq!(scalar(conn, count).await, "100");
+
+    let gone: Vec<_> = (1100..ROWS).chain([4]).map(key).collect();
+    let deletes = dml::deletes(d, "ORA_MANY", &columns, &gone).unwrap();
+    let err = dml::apply(conn, d, &deletes).await.unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ApplyError::RowCount {
+                index: 0,
+                rows: 100,
+                expected: 101
+            }
+        ),
+        "{err}"
+    );
+    assert_eq!(scalar(conn, count).await, "100", "rolled back");
+
+    let by_id: Vec<_> = (1100..ROWS)
+        .map(|i| vec![(0, Some(ids[i].as_str()))])
+        .collect();
+    let deletes = dml::deletes(d, "ORA_MANY", &columns, &by_id).unwrap();
+    dml::apply(conn, d, &deletes).await.unwrap();
+    assert_eq!(scalar(conn, count).await, "0");
+    run(conn, "DROP TABLE ORA_MANY").await;
+}
+
 #[tokio::test]
 async fn oracle_cancels_a_running_statement() {
     let Some(conn) = oracle().await else { return };

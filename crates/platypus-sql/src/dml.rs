@@ -3,11 +3,13 @@
 //! Values arrive as text, the way the grid shows them, and are written as literals of the
 //! column's type: numbers bare, booleans and binary values in the dialect's syntax, the rest
 //! as string literals that the server converts to the column type. Rows are identified by a
-//! key (primary key or non-null unique key); every statement must hit exactly one row, which
-//! [`apply`] checks while running them all or none.
+//! key (primary key or non-null unique key). Deleted and new rows go in batches of up to
+//! [`BATCH_ROWS`] per statement ([`deletes`], [`inserts`]); every statement must change as
+//! many rows as it names, which [`apply`] checks while running them all or none.
 
 use std::borrow::Cow;
 use std::fmt;
+use std::fmt::Write as _;
 
 use platypus_core::arrow_schema::DataType;
 use platypus_core::{Connection, Error, ExecOptions, ExecResult};
@@ -202,19 +204,21 @@ fn column<'c, 'a>(columns: &'c [Column<'a>], index: usize) -> Result<&'c Column<
     })
 }
 
-/// `WHERE k1 = … AND k2 IS NULL`; `key` pairs column indexes with the row's current values.
-fn where_clause(
+/// The empty key's error: nothing tells the row apart.
+fn no_key() -> InvalidValue {
+    InvalidValue {
+        column: String::new(),
+        message: "the row has no key to identify it".to_owned(),
+    }
+}
+
+/// `k1 = … AND k2 IS NULL` into `out`; `key` pairs column indexes with the row's values.
+fn key_match(
     dialect: Dialect,
     columns: &[Column<'_>],
     key: &[(usize, Option<&str>)],
-) -> Result<String> {
-    if key.is_empty() {
-        return Err(InvalidValue {
-            column: String::new(),
-            message: "the row has no key to identify it".to_owned(),
-        });
-    }
-    let mut out = String::from(" WHERE ");
+    out: &mut String,
+) -> Result<()> {
     for (i, &(index, value)) in key.iter().enumerate() {
         let c = column(columns, index)?;
         if i > 0 {
@@ -228,6 +232,20 @@ fn where_clause(
             out.push_str(&c.literal(dialect, value)?);
         }
     }
+    Ok(())
+}
+
+/// `WHERE k1 = … AND k2 IS NULL`; `key` pairs column indexes with the row's current values.
+fn where_clause(
+    dialect: Dialect,
+    columns: &[Column<'_>],
+    key: &[(usize, Option<&str>)],
+) -> Result<String> {
+    if key.is_empty() {
+        return Err(no_key());
+    }
+    let mut out = String::from(" WHERE ");
+    key_match(dialect, columns, key, &mut out)?;
     Ok(out)
 }
 
@@ -253,13 +271,13 @@ pub fn update(
     Ok(sql)
 }
 
-/// `INSERT INTO table (…) VALUES (…)`. Columns left at their default are omitted.
-pub fn insert(
+/// The quoted names and the literals of the columns a new row sets: those left at their
+/// default are left out.
+fn insert_row<'c>(
     dialect: Dialect,
-    table: &str,
-    columns: &[Column<'_>],
+    columns: &'c [Column<'_>],
     values: &[(usize, Value<'_>)],
-) -> Result<String> {
+) -> Result<(Vec<Cow<'c, str>>, Vec<String>)> {
     let mut names = Vec::with_capacity(values.len());
     let mut literals = Vec::with_capacity(values.len());
     for &(index, value) in values {
@@ -272,11 +290,27 @@ pub fn insert(
         names.push(dialect.quote_ident(c.name));
         literals.push(c.literal(dialect, text)?);
     }
+    Ok((names, literals))
+}
+
+/// `INSERT INTO table DEFAULT VALUES`, or the dialect's form of it.
+fn insert_defaults(dialect: Dialect, table: &str, columns: &[Column<'_>]) -> String {
+    let any = columns
+        .first()
+        .map_or(Cow::Borrowed(""), |c| dialect.quote_ident(c.name));
+    dialect.insert_defaults(table, &any)
+}
+
+/// `INSERT INTO table (…) VALUES (…)`. Columns left at their default are omitted.
+pub fn insert(
+    dialect: Dialect,
+    table: &str,
+    columns: &[Column<'_>],
+    values: &[(usize, Value<'_>)],
+) -> Result<String> {
+    let (names, literals) = insert_row(dialect, columns, values)?;
     if names.is_empty() {
-        let any = columns
-            .first()
-            .map_or(Cow::Borrowed(""), |c| dialect.quote_ident(c.name));
-        return Ok(dialect.insert_defaults(table, &any));
+        return Ok(insert_defaults(dialect, table, columns));
     }
     Ok(format!(
         "INSERT INTO {table} ({}) VALUES ({})",
@@ -298,28 +332,233 @@ pub fn delete(
     ))
 }
 
+/// Most rows a batched statement names: lists stay well inside every database's limits
+/// (Oracle takes 1,000 expressions in a list, SQL Server 1,000 rows in `VALUES`).
+pub const BATCH_ROWS: usize = 500;
+
+/// A statement that saving runs, and the rows it must change.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Statement {
+    pub sql: String,
+    /// The rows it names. Any other count means some of them changed or disappeared since
+    /// they were loaded, or the key does not tell rows apart.
+    pub rows: u64,
+}
+
+impl Statement {
+    /// A statement of one row.
+    #[must_use]
+    pub const fn one(sql: String) -> Self {
+        Self { sql, rows: 1 }
+    }
+
+    fn of(sql: String, rows: usize) -> Self {
+        Self {
+            sql,
+            rows: u64::try_from(rows).unwrap_or(u64::MAX),
+        }
+    }
+}
+
+/// Whether `(k1, k2) IN ((…), (…))` works and uses the key's index. MySQL takes row values
+/// too, but older servers scan the table for them; `OR` of the rows works everywhere.
+const fn has_row_values(dialect: Dialect) -> bool {
+    matches!(
+        dialect,
+        Dialect::Postgres | Dialect::DuckDb | Dialect::Sqlite
+    )
+}
+
+/// Whether `INSERT … VALUES` takes several rows: Oracle's before 23ai does not.
+const fn has_multi_row_values(dialect: Dialect) -> bool {
+    !matches!(dialect, Dialect::Oracle)
+}
+
+/// The literals of a key's values, `, `-separated, into `out`.
+fn key_literals(
+    dialect: Dialect,
+    columns: &[Column<'_>],
+    key: &[(usize, Option<&str>)],
+    out: &mut String,
+) -> Result<()> {
+    for (i, &(index, value)) in key.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(&column(columns, index)?.literal(dialect, value)?);
+    }
+    Ok(())
+}
+
+/// ` WHERE …` matching any of `keys`, which pair the same columns with values that are not
+/// NULL: `k IN (…)`, `(k1, k2) IN ((…), …)` where the dialect has row values, else
+/// `(k1 = … AND k2 = …) OR …`. A single key gets the plain `WHERE` of [`delete`].
+fn where_any(
+    dialect: Dialect,
+    columns: &[Column<'_>],
+    keys: &[&[(usize, Option<&str>)]],
+) -> Result<String> {
+    let [first, ..] = keys else {
+        return Err(no_key());
+    };
+    if keys.len() == 1 || first.is_empty() {
+        return where_clause(dialect, columns, first);
+    }
+    let mut out = String::from(" WHERE ");
+    let composite = first.len() > 1;
+    if composite && !has_row_values(dialect) {
+        for (i, key) in keys.iter().enumerate() {
+            out.push_str(if i > 0 { " OR (" } else { "(" });
+            key_match(dialect, columns, key, &mut out)?;
+            out.push(')');
+        }
+        return Ok(out);
+    }
+    let names = first
+        .iter()
+        .map(|&(index, _)| Ok(dialect.quote_ident(column(columns, index)?.name)))
+        .collect::<Result<Vec<_>>>()?;
+    let (open, close) = if composite { ("(", ")") } else { ("", "") };
+    let _ = write!(out, "{open}{}{close} IN (", names.join(", "));
+    for (i, key) in keys.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(open);
+        key_literals(dialect, columns, key, &mut out)?;
+        out.push_str(close);
+    }
+    out.push(')');
+    Ok(out)
+}
+
+/// The `DELETE` statements of the rows with `keys`, each pairing the key columns with a
+/// row's values: up to [`BATCH_ROWS`] rows per statement. A key with a NULL value, which no
+/// list matches, gets a statement of its own with `IS NULL`.
+///
+/// [`apply`] checks a statement's total of rows only, so the key must be unique (a primary
+/// or unique key): with duplicates, a missing row and an extra one could make up the count.
+pub fn deletes(
+    dialect: Dialect,
+    table: &str,
+    columns: &[Column<'_>],
+    keys: &[Vec<(usize, Option<&str>)>],
+) -> Result<Vec<Statement>> {
+    let same_columns = |a: &[(usize, Option<&str>)], b: &[(usize, Option<&str>)]| {
+        a.iter().map(|&(c, _)| c).eq(b.iter().map(|&(c, _)| c))
+    };
+    let first = keys.first().map_or(&[][..], Vec::as_slice);
+    let (listed, single): (Vec<&[_]>, Vec<&[_]>) = keys
+        .iter()
+        .map(Vec::as_slice)
+        .partition(|key| key.iter().all(|(_, v)| v.is_some()) && same_columns(first, key));
+    let mut statements = Vec::with_capacity(listed.len().div_ceil(BATCH_ROWS) + single.len());
+    for chunk in listed.chunks(BATCH_ROWS) {
+        let sql = format!("DELETE FROM {table}{}", where_any(dialect, columns, chunk)?);
+        statements.push(Statement::of(sql, chunk.len()));
+    }
+    for key in single {
+        statements.push(Statement::one(delete(dialect, table, columns, key)?));
+    }
+    Ok(statements)
+}
+
+/// The `INSERT` statements of new `rows`, in their order: consecutive rows that set the
+/// same columns share a `VALUES` list of up to [`BATCH_ROWS`] rows, where the dialect takes
+/// several.
+pub fn inserts(
+    dialect: Dialect,
+    table: &str,
+    columns: &[Column<'_>],
+    rows: &[Vec<(usize, Value<'_>)>],
+) -> Result<Vec<Statement>> {
+    let limit = if has_multi_row_values(dialect) {
+        BATCH_ROWS
+    } else {
+        1
+    };
+    let mut statements = Vec::new();
+    // The statement being filled: its column names, its `VALUES` rows and how many.
+    let mut open: Option<(Vec<Cow<'_, str>>, String, usize)> = None;
+    let close = |(names, values, n): (Vec<Cow<'_, str>>, String, usize)| {
+        let sql = format!("INSERT INTO {table} ({}) VALUES {values}", names.join(", "));
+        Statement::of(sql, n)
+    };
+    for values in rows {
+        let (names, literals) = insert_row(dialect, columns, values)?;
+        if open
+            .as_ref()
+            .is_some_and(|(set, _, n)| *set != names || *n == limit)
+        {
+            statements.extend(open.take().map(close));
+        }
+        if names.is_empty() {
+            statements.push(Statement::one(insert_defaults(dialect, table, columns)));
+            continue;
+        }
+        let (_, text, n) = open.get_or_insert_with(|| (names, String::new(), 0));
+        if *n > 0 {
+            text.push_str(", ");
+        }
+        let _ = write!(text, "({})", literals.join(", "));
+        *n += 1;
+    }
+    statements.extend(open.map(close));
+    Ok(statements)
+}
+
 /// Why [`apply`] rolled back.
 #[derive(Debug)]
 pub enum ApplyError {
     /// A statement failed; `index` is its position in the list.
     Failed { index: usize, error: Error },
-    /// A statement hit `rows` rows instead of one: the row changed or disappeared since it
-    /// was loaded, or the key is not unique after all.
-    RowCount { index: usize, rows: u64 },
+    /// A statement hit `rows` rows instead of the `expected` ones it names: they changed or
+    /// disappeared since they were loaded, or the key is not unique after all.
+    RowCount {
+        index: usize,
+        rows: u64,
+        expected: u64,
+    },
 }
 
 impl fmt::Display for ApplyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Failed { index, error } => write!(f, "statement {}: {error}", index + 1),
-            Self::RowCount { index, rows: 0 } => write!(
+        match *self {
+            Self::Failed { index, ref error } => write!(f, "statement {}: {error}", index + 1),
+            Self::RowCount {
+                index,
+                rows: 0,
+                expected: 1,
+            } => write!(
                 f,
                 "statement {}: the row was not found; it may have been changed or deleted since it was loaded",
                 index + 1
             ),
-            Self::RowCount { index, rows } => write!(
+            Self::RowCount {
+                index,
+                rows,
+                expected: 1,
+            } => write!(
                 f,
                 "statement {} would change {rows} rows instead of one",
+                index + 1
+            ),
+            Self::RowCount {
+                index,
+                rows,
+                expected,
+            } if rows < expected => write!(
+                f,
+                "statement {}: only {rows} of its {expected} rows were found; the others may have been changed or deleted since they were loaded",
+                index + 1
+            ),
+            Self::RowCount {
+                index,
+                rows,
+                expected,
+            } => write!(
+                f,
+                "statement {} would change {rows} rows instead of {expected}",
                 index + 1
             ),
         }
@@ -338,17 +577,18 @@ async fn exec_one(conn: &dyn Connection, sql: &str) -> Result<u64, Error> {
 
 const SAVEPOINT: &str = "platypus_edit";
 
-/// Runs `statements`, each of which must hit exactly one row, all or none. In autocommit
-/// mode they run in a transaction of their own and are committed; in manual-commit mode
-/// they join the session's transaction behind a savepoint, and stay uncommitted. Without
-/// savepoints (DuckDB) a failed statement in manual-commit mode rolls back the whole
-/// transaction, which DuckDB aborts on errors anyway; so does a row count off once rows
-/// changed, as nothing else can undo them. A first statement that finds no row leaves the
-/// transaction as it was.
+/// Runs `statements`, each of which must change the rows it names, all or none. They go
+/// to the server together where the driver can send them so ([`Connection::execute_all`]),
+/// and the row counts are checked once they ran. In autocommit mode they run in a
+/// transaction of their own and are committed; in manual-commit mode they join the
+/// session's transaction behind a savepoint, and stay uncommitted. Without savepoints
+/// (DuckDB) a failed statement in manual-commit mode rolls back the whole transaction,
+/// which DuckDB aborts on errors anyway; so does a row count off once rows changed, as
+/// nothing else can undo them. Statements that found no row leave the transaction as it was.
 pub async fn apply(
     conn: &dyn Connection,
     dialect: Dialect,
-    statements: &[String],
+    statements: &[Statement],
 ) -> Result<(), ApplyError> {
     let manual = !conn.transaction().autocommit;
     let savepointless = manual && !dialect.has_savepoints();
@@ -375,18 +615,27 @@ pub async fn apply(
             .await
             .map_err(|error| ApplyError::Failed { index: 0, error })?;
     }
-    let mut outcome = Ok(());
-    for (index, sql) in statements.iter().enumerate() {
-        match exec_one(conn, sql).await {
-            Ok(1) => {}
-            Ok(rows) => outcome = Err(ApplyError::RowCount { index, rows }),
-            Err(error) => outcome = Err(ApplyError::Failed { index, error }),
-        }
-        if outcome.is_err() {
-            break;
-        }
-    }
-    let untouched = matches!(outcome, Err(ApplyError::RowCount { index: 0, rows: 0 }));
+    let sql: Vec<&str> = statements.iter().map(|s| s.sql.as_str()).collect();
+    let ran = conn.execute_all(&sql).await;
+    let mismatch = ran
+        .rows
+        .iter()
+        .zip(statements)
+        .enumerate()
+        .find(|(_, (rows, s))| **rows != s.rows);
+    let untouched = ran.error.is_none() && ran.rows.iter().all(|&rows| rows == 0);
+    let outcome = match (mismatch, ran.error) {
+        (Some((index, (&rows, s))), _) => Err(ApplyError::RowCount {
+            index,
+            rows,
+            expected: s.rows,
+        }),
+        (None, Some(error)) => Err(ApplyError::Failed {
+            index: ran.rows.len(),
+            error,
+        }),
+        (None, None) => Ok(()),
+    };
     let finish = match outcome {
         Ok(()) => end,
         Err(_) if savepointless && untouched => Vec::new(),
@@ -606,5 +855,182 @@ mod tests {
             .unwrap(),
             "DELETE FROM demo.Items WHERE id = 3 AND name = 'a`b'"
         );
+    }
+
+    fn sql(statements: &[Statement]) -> Vec<(&str, u64)> {
+        statements
+            .iter()
+            .map(|s| (s.sql.as_str(), s.rows))
+            .collect()
+    }
+
+    #[test]
+    fn deletes_rows_by_lists_of_keys() {
+        let cols = columns();
+        let pg = Dialect::Postgres;
+        let keys: Vec<Vec<(usize, Option<&str>)>> = ["1", "2", "3"]
+            .iter()
+            .map(|id| vec![(0, Some(*id))])
+            .collect();
+        assert_eq!(
+            sql(&deletes(pg, &table(pg), &cols, &keys).unwrap()),
+            [("DELETE FROM demo.\"Items\" WHERE id IN (1, 2, 3)", 3)]
+        );
+        // A lone row keeps the plain form.
+        assert_eq!(
+            sql(&deletes(pg, &table(pg), &cols, &keys[..1]).unwrap()),
+            [("DELETE FROM demo.\"Items\" WHERE id = 1", 1)]
+        );
+        assert_eq!(deletes(pg, "t", &cols, &[]).unwrap(), Vec::new());
+        // Text keys are quoted per dialect, and checked against the column type.
+        let names = [vec![(1, Some("it's"))], vec![(1, Some("a\\b"))]];
+        assert_eq!(
+            sql(&deletes(Dialect::MySql, "t", &cols, &names).unwrap()),
+            [("DELETE FROM t WHERE name IN ('it''s', 'a\\\\b')", 2)]
+        );
+        assert_eq!(
+            sql(&deletes(Dialect::SqlServer, "t", &cols, &names).unwrap()),
+            [("DELETE FROM t WHERE name IN (N'it''s', N'a\\b')", 2)]
+        );
+        let bad = [vec![(0, Some("1"))], vec![(0, Some("x"))]];
+        assert!(deletes(pg, "t", &cols, &bad).is_err());
+    }
+
+    #[test]
+    fn deletes_rows_by_composite_keys_per_dialect() {
+        let cols = columns();
+        let keys = [
+            vec![(0, Some("1")), (1, Some("a"))],
+            vec![(0, Some("2")), (1, Some("b"))],
+        ];
+        for d in [Dialect::Postgres, Dialect::DuckDb, Dialect::Sqlite] {
+            assert_eq!(
+                sql(&deletes(d, "t", &cols, &keys).unwrap()),
+                [("DELETE FROM t WHERE (id, name) IN ((1, 'a'), (2, 'b'))", 2)],
+                "{d:?}"
+            );
+        }
+        for d in [Dialect::MySql, Dialect::ClickHouse, Dialect::BigQuery] {
+            assert_eq!(
+                sql(&deletes(d, "t", &cols, &keys).unwrap()),
+                [(
+                    "DELETE FROM t WHERE (id = 1 AND name = 'a') OR (id = 2 AND name = 'b')",
+                    2
+                )],
+                "{d:?}"
+            );
+        }
+        assert_eq!(
+            deletes(Dialect::SqlServer, "t", &cols, &keys).unwrap()[0].sql,
+            "DELETE FROM t WHERE (id = 1 AND name = N'a') OR (id = 2 AND name = N'b')"
+        );
+        assert_eq!(
+            deletes(Dialect::Oracle, "t", &cols, &keys).unwrap()[0].sql,
+            r#"DELETE FROM t WHERE ("id" = 1 AND "name" = 'a') OR ("id" = 2 AND "name" = 'b')"#
+        );
+    }
+
+    #[test]
+    fn deletes_keys_with_null_one_by_one() {
+        let cols = columns();
+        let keys = [
+            vec![(0, Some("1")), (1, Some("a"))],
+            vec![(0, Some("2")), (1, None)],
+            vec![(0, Some("3")), (1, Some("c"))],
+        ];
+        assert_eq!(
+            sql(&deletes(Dialect::Postgres, "t", &cols, &keys).unwrap()),
+            [
+                ("DELETE FROM t WHERE (id, name) IN ((1, 'a'), (3, 'c'))", 2),
+                ("DELETE FROM t WHERE id = 2 AND name IS NULL", 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn deletes_in_batches() {
+        let cols = columns();
+        let ids: Vec<String> = (1..=BATCH_ROWS * 2 + 1).map(|i| i.to_string()).collect();
+        let keys: Vec<_> = ids.iter().map(|id| vec![(0, Some(id.as_str()))]).collect();
+        let statements = deletes(Dialect::Oracle, "t", &cols, &keys).unwrap();
+        assert_eq!(
+            statements.iter().map(|s| s.rows).collect::<Vec<_>>(),
+            [500, 500, 1]
+        );
+        assert!(
+            statements[0]
+                .sql
+                .starts_with(r#"DELETE FROM t WHERE "id" IN (1, 2, "#)
+        );
+        assert!(statements[0].sql.ends_with(", 499, 500)"));
+        assert!(
+            statements[1]
+                .sql
+                .starts_with(r#"DELETE FROM t WHERE "id" IN (501, "#)
+        );
+        assert_eq!(statements[2].sql, r#"DELETE FROM t WHERE "id" = 1001"#);
+    }
+
+    #[test]
+    fn inserts_rows_in_batches_of_the_same_columns() {
+        let cols = columns();
+        let pg = Dialect::Postgres;
+        let row = |id: &'static str, name: Value<'static>| vec![(0, Value::Text(id)), (1, name)];
+        let rows = [
+            row("1", Value::Text("a")),
+            row("2", Value::Null),
+            // Left at its default: another column list.
+            row("3", Value::Default),
+            vec![(1, Value::Default)],
+            row("4", Value::Text("it's")),
+        ];
+        assert_eq!(
+            sql(&inserts(pg, "t", &cols, &rows).unwrap()),
+            [
+                ("INSERT INTO t (id, name) VALUES (1, 'a'), (2, NULL)", 2),
+                ("INSERT INTO t (id) VALUES (3)", 1),
+                ("INSERT INTO t DEFAULT VALUES", 1),
+                ("INSERT INTO t (id, name) VALUES (4, 'it''s')", 1),
+            ]
+        );
+        // One row per statement where `VALUES` takes one row.
+        assert_eq!(
+            sql(&inserts(Dialect::Oracle, "t", &cols, &rows[..2]).unwrap()),
+            [
+                (r#"INSERT INTO t ("id", "name") VALUES (1, 'a')"#, 1),
+                (r#"INSERT INTO t ("id", "name") VALUES (2, NULL)"#, 1),
+            ]
+        );
+        assert!(inserts(pg, "t", &cols, &[vec![(0, Value::Text("x"))]]).is_err());
+    }
+
+    #[test]
+    fn inserts_many_rows_in_chunks() {
+        let cols = columns();
+        let ids: Vec<String> = (1..=BATCH_ROWS + 2).map(|i| i.to_string()).collect();
+        let rows: Vec<_> = ids.iter().map(|id| vec![(0, Value::Text(id))]).collect();
+        let statements = inserts(Dialect::SqlServer, "t", &cols, &rows).unwrap();
+        assert_eq!(
+            statements.iter().map(|s| s.rows).collect::<Vec<_>>(),
+            [500, 2]
+        );
+        assert!(statements[0].sql.ends_with("(499), (500)"));
+        assert_eq!(statements[1].sql, "INSERT INTO t (id) VALUES (501), (502)");
+    }
+
+    #[test]
+    fn explains_row_counts() {
+        let count = |rows, expected| {
+            ApplyError::RowCount {
+                index: 1,
+                rows,
+                expected,
+            }
+            .to_string()
+        };
+        assert!(count(0, 1).contains("the row was not found"));
+        assert!(count(2, 1).contains("2 rows instead of one"));
+        assert!(count(498, 500).contains("only 498 of its 500 rows"));
+        assert!(count(501, 500).contains("501 rows instead of 500"));
     }
 }

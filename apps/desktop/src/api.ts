@@ -625,6 +625,9 @@ export interface TableChanges {
   table: { schema: string; name: string };
   /** Result columns that identify a row. */
   key: number[];
+  /** The key is the table's primary or unique key, not a virtual key: deleted rows are
+   *  removed in batches. */
+  unique_key: boolean;
   /** Result columns that are the table's own, not expressions. */
   table_columns: number[];
   /** Default expressions by result column. */

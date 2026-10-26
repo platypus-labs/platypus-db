@@ -230,15 +230,14 @@ export default async function (page, { dir, shots }) {
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.cell-editor') === null`);
 
-  // Spreadsheet rows paste as new rows, in their order.
+  // Spreadsheet rows paste as new rows, in their order, saved by one statement.
   setClipboard("12\t2\t9.5\r\n13\t1\t1\r\n");
   await focusCell(page, 0, 0);
   await page.key("V", "KeyV", 86, CTRL | SHIFT);
   await page.waitFor(`${editBar}.includes('2 rows changed')`);
   assert.equal(
     await previewSql(page),
-    "INSERT INTO main.orders (id, customer_id, total) VALUES (12, 2, 9.5);\n" +
-      "INSERT INTO main.orders (id, customer_id, total) VALUES (13, 1, 1);",
+    "INSERT INTO main.orders (id, customer_id, total) VALUES (12, 2, 9.5), (13, 1, 1);",
   );
   await saveFromPreview(page);
   await page.waitFor(`${status} === '4 rows' && ${statusBar}.includes('Undo script')`, 15_000);
