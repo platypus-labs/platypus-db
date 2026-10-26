@@ -9,6 +9,15 @@ test("a word typed exactly as the entry, which inserts nothing more, is a newlin
   assert.equal(typedInFull("FROM", { label: "FROM", type: "keyword" }), true);
 });
 
+test("a word with letters beyond ASCII is a word too", () => {
+  assert.equal(wordBefore("SELECT * FROM città"), "città");
+  assert.equal(typedInFull(wordBefore("WHERE straße"), { label: "straße" }), true);
+  assert.equal(wordBefore("SELECT 東京_2"), "東京_2");
+  // A combining accent (decomposed text) stays in the word.
+  assert.equal(wordBefore("SELECT città"), "città");
+  assert.equal(wordBefore("SELECT a + "), undefined);
+});
+
 test("Enter accepts when the entry would change what was typed", () => {
   // Postgres column `Email`, which must be quoted.
   assert.equal(typedInFull("email", { label: "Email", apply: '"Email"' }), false);

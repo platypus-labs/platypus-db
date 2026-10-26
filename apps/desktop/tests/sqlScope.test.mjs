@@ -178,6 +178,22 @@ test("a backslash-escaped quote in a MySQL string does not mask the rest of the 
   assert.equal(statementAt('SELECT "a;b" FROM t', 3, mysql).to, 19);
 });
 
+test("a PostgreSQL E'…' string ends after its backslash-escaped quotes", () => {
+  const pg = scopeOptions("postgres");
+  const doc = "SELECT E'it\\'s' AS s;\nSELECT to| FROM orders";
+  const pos = doc.indexOf("|");
+  const text = doc.replace("|", "");
+  const { from, to } = statementAt(text, pos, pg);
+  assert.equal(text.slice(from, to), "\nSELECT to FROM orders");
+  assert.ok(labels(nameOptions(text.slice(from, to), pos - from, catalog, false, pg)).includes("column:total"));
+  assert.equal(maskSql("e'a\\'b' x", pg), "        x");
+  // Only as a prefix of its own: `name'…'` and a plain '…' keep `\` as a character.
+  assert.equal(maskSql("xe'a\\' y", pg), "xe     y");
+  assert.equal(maskSql("'a\\' y", pg), "     y");
+  // Elsewhere E'…' is a name followed by a string.
+  assert.equal(maskSql("E'a\\' y"), "E     y");
+});
+
 test("the quote the editor closed after the cursor does not swallow FROM", () => {
   assert.ok(labels(optionsAt('SELECT "Fu|" FROM customers')).includes("column:Full Name"));
   assert.deepEqual(labels(optionsAt('SELECT c."Fu|" FROM customers c')), ["column:id", "column:name", "column:Full Name"]);
@@ -199,6 +215,51 @@ test("SQL Server brackets after other bracketed names", () => {
   assert.deepEqual(labels(optionsAt("SELECT * FROM [sales].[in|]", tsql)), ["table:invoices"]);
   // A quote inside a bracketed name opens no string.
   assert.ok(labels(optionsAt("SELECT * FROM customers WHERE [Customer's] = 1 AND na|", tsql)).includes("column:name"));
+});
+
+test("USING names tables in DELETE and MERGE only", () => {
+  const sources = (sql) => (at(sql, { explicit: true }) ?? []).filter((o) => o.startsWith("source:"));
+  // DDL: an access method, a conversion expression.
+  assert.deepEqual(sources("CREATE TABLE t (a int, |) USING heap"), []);
+  assert.deepEqual(sources("ALTER TABLE orders ALTER COLUMN | TYPE bigint USING total::bigint"), []);
+  assert.deepEqual(sources("CREATE INDEX i ON orders USING gin (|)"), []);
+  // JOIN … USING (column) names a column, never a table.
+  assert.ok(!columns("SELECT * FROM orders o JOIN customers c USING (id) WHERE |", { explicit: true }).some((c) => c.endsWith("@id")));
+  // DELETE and MERGE: every table of the list, a subquery too.
+  const del = columns("DELETE FROM orders USING customers c, products WHERE |", { explicit: true });
+  assert.ok(del.includes("column:name@c") && del.includes("column:sku@products"));
+  assert.ok(columns("MERGE INTO orders o USING customers s ON s.id = o.customer_id WHEN MATCHED THEN UPDATE SET total = na|").includes("column:name@s"));
+  assert.deepEqual(at("MERGE INTO orders o USING (SELECT id, name FROM customers) s ON s.|"), ["column:id", "column:name"]);
+  assert.ok(columns("WITH x AS (SELECT 1 n) DELETE FROM orders USING x WHERE |", { explicit: true }).includes("column:n@x"));
+});
+
+test("a column name several tables have gets their qualifier, as written", () => {
+  const itemsAt = (sql, explicit = false) =>
+    nameOptions(sql.replace("|", ""), sql.indexOf("|"), catalog, explicit)?.items ?? [];
+  /** The columns as accepting them inserts: `qualifier.label`, else the label. */
+  const inserted = (sql) =>
+    itemsAt(sql)
+      .filter((i) => i.kind === "column")
+      .map((i) => (i.qualifier ? `${i.qualifier}.${i.label}` : i.label));
+  const join = inserted("SELECT i| FROM orders o JOIN customers c ON c.id = o.customer_id");
+  assert.deepEqual(join, ["o.id", "customer_id", "total", "placed_at", "c.id", "name", "Full Name"]);
+  assert.ok(inserted("SELECT i| FROM orders JOIN customers ON customers.id = orders.customer_id").includes("customers.id"));
+  assert.deepEqual(inserted('SELECT i| FROM orders O, customers "C"').filter((c) => c.endsWith(".id")), ["O.id", '"C".id']);
+  // One table: nothing changes.
+  assert.deepEqual(inserted("SELECT i| FROM orders"), ["id", "customer_id", "total", "placed_at"]);
+  // Lists of target columns take bare names.
+  const bare = (sql) => {
+    const items = itemsAt(sql, true);
+    assert.ok(items.some((i) => i.label === "id"), sql);
+    return !items.some((i) => i.qualifier);
+  };
+  assert.ok(bare("INSERT INTO orders (|) SELECT id FROM customers"));
+  assert.ok(bare("INSERT INTO main.orders (total, |) SELECT id FROM customers"));
+  assert.ok(bare("UPDATE orders SET | FROM customers WHERE customers.id = orders.customer_id"));
+  assert.ok(bare("UPDATE orders SET total = 1, | FROM customers"));
+  assert.ok(bare("SELECT * FROM orders JOIN customers USING (|)"));
+  // ...but their values do not.
+  assert.ok(!bare("UPDATE orders SET total = i| FROM customers"));
 });
 
 test("a CTE completes after its name before FROM is written", () => {

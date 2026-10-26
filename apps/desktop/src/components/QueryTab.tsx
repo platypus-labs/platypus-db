@@ -44,6 +44,7 @@ import { scrollSideways } from "../ui/scroll";
 import { notifyRunEnded } from "../shell/notify";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
 import { runGate } from "./runGate";
+import { type ViewerSort, nextSort, queryKey, sortIn, sortOf, statementRange } from "./viewerSort";
 import { t, plural, msg } from "../i18n";
 
 /** Auto-refresh intervals in seconds, `0` for off. */
@@ -72,16 +73,6 @@ const scriptRowLimit = defineSetting({
   control: { type: "number", min: 1, step: 100 },
 });
 
-/** `sql` as the viewer compares queries: trimmed, without a final `;`. */
-const queryKey = (sql: string) => sql.trim().replace(/;$/, "");
-
-/** The range of the statement that produced `result` in the editor's `text`, when it still holds it. */
-function statementRange(result: Result, text: string) {
-  if (result.offset < 0) return null;
-  const to = result.offset + result.sql.length;
-  return text.slice(result.offset, to) === result.sql ? { from: result.offset, to } : null;
-}
-
 /** A SQL editor, or with `table` set, the data viewer of a table. */
 export interface QueryTabModel extends TabBase {
   kind: "query";
@@ -94,8 +85,8 @@ export interface QueryTabModel extends TabBase {
   table?: string | null;
   /** Data viewer: the same table by schema and name, for the data editor. */
   tableRef?: TableRef | null;
-  /** Data viewer: server-side sort. */
-  sort?: Sort | null;
+  /** Data viewer: the header sort, with the statement it was written into. */
+  sort?: ViewerSort | null;
   /** Values of `${name}` and `:name`, kept with the tab. */
   variables?: Record<string, string>;
   /** Results as text, like a console, instead of the grid. */
@@ -208,27 +199,35 @@ export function QueryTab({
   const [results, setResults] = useState<Result[]>([]);
   const [activeResult, setActiveResult] = useState(0);
   const [running, setRunning] = useState(false);
-  // Whether the shown result's statement is in the editor and a read-only query the header
-  // sort can rewrite with certainty.
   const shown = results[activeResult];
+  /** Data viewer: the last statement found to be a read-only query the header sort can rewrite
+   *  with certainty; asked once per statement, not at each keystroke. */
+  const [rewritable, setRewritable] = useState<string | null>(null);
   useEffect(() => {
+    if (!tab.table || shown === undefined) return;
     let live = true;
-    setSortable(false);
-    if (!tab.table || shown?.status.kind !== "rows" || !statementRange(shown, tab.sql)) return;
-    api.sqlSortable(shown.sql, connection.driver).then(
-      (ok) => live && setSortable(ok),
+    const sql = shown.sql;
+    api.sqlSortable(sql, connection.driver).then(
+      (ok) => live && setRewritable(ok ? sql : null),
       () => undefined,
     );
     return () => {
       live = false;
     };
-  }, [tab.table, shown?.id, shown?.sql, shown?.offset, shown?.status.kind, tab.sql, connection.driver]);
+  }, [tab.table, shown?.sql, connection.driver]);
+  /** The shown rows come from such a query, still as it ran in the editor: the header sort and
+   *  the quick filters can rewrite it. Typing in it turns them off until it runs again. */
+  const sortable =
+    shown?.status.kind === "rows" && rewritable === shown.sql && statementRange(shown, tab.sql) !== null;
+  /** The viewer's sort of the shown statement, for the header arrow and the next click. */
+  const shownSort = tab.table && shown ? sortOf(tab.sort, shown.sql) : null;
+  // A count belongs to the statement it counted.
+  const shownKey = shown ? queryKey(shown.sql) : null;
+  useEffect(() => setCount(null), [shownKey]);
   /** The run going on was started by auto-refresh. */
   const autoRun = useRef(false);
   /** Texts of the data viewer's own queries: its first one and each sort's, to tell them from other queries. */
   const viewerQueries = useRef(new Set([queryKey(tab.sql)]));
-  /** The data viewer's shown result is a query the header sort and quick filters can rewrite. */
-  const [sortable, setSortable] = useState(false);
   const [blocked, setBlocked] = useState<RunMode | null>(null);
   const [panel, setPanel] = useState<SidePanel | null>(null);
   const togglePanel = (p: SidePanel) => setPanel((open) => (open === p ? null : p));
@@ -425,6 +424,14 @@ export function QueryTab({
     Object.assign(lastAnswers.current, answer);
     for (const k of ask) if (!k.startsWith("?")) defined.add(k);
     return { ...variables, ...answer };
+  }
+
+  /** `p`'s SQL with its parameters filled in, outside a run (Explain, Count rows): the tab's
+   *  variables and the last answers, asking for the rest; null when the user cancels. */
+  async function filledIn(p: Planned): Promise<string | null> {
+    if (!p.params.length) return p.sql;
+    const values = await fillParams(p, { ...(tab.variables ?? {}), ...lastAnswers.current }, new Set());
+    return values && substitute(p.sql, p.params, values, connection.driver);
   }
 
   /** Exports the rows of `sql` to `path` instead of showing them (`@export`). */
@@ -738,12 +745,8 @@ export function QueryTab({
       return;
     }
     if (!p || p.kind === "command") return;
-    let sql = p.sql;
-    if (p.params.length) {
-      const values = await fillParams(p, { ...(tab.variables ?? {}), ...lastAnswers.current }, new Set());
-      if (!values) return;
-      sql = substitute(p.sql, p.params, values, connection.driver);
-    }
+    const sql = await filledIn(p);
+    if (sql === null) return;
     // Analyze runs the statement: the checks of a run apply.
     if (analyze) {
       if (connection.read_only && !p.readOnly) {
@@ -812,10 +815,11 @@ export function QueryTab({
 
   /**
    * Data viewer: rewrites the statement that produced `result` in the editor (only that
-   * statement, the rest of the text stays) and runs it. `false` when the editor no longer holds
-   * the statement or the rewrite cannot place the change with certainty.
+   * statement, the rest of the text stays) and runs it. Returns the new statement; null when
+   * the editor no longer holds the statement or the rewrite cannot place the change with
+   * certainty.
    */
-  async function rewriteStatement(result: Result, rewrite: (sql: string) => Promise<string | null>): Promise<boolean> {
+  async function rewriteStatement(result: Result, rewrite: (sql: string) => Promise<string | null>): Promise<string | null> {
     const ed = editor.current!;
     const text = ed.getText();
     const range = statementRange(result, text);
@@ -824,11 +828,11 @@ export function QueryTab({
       next = range ? await rewrite(result.sql) : null;
     } catch (e) {
       onError(toCommandError(e).message);
-      return false;
+      return null;
     }
     if (!range || next === null) {
       onError(t("This query cannot be changed from the grid: edit it in the editor."));
-      return false;
+      return null;
     }
     viewerQueries.current.add(queryKey(next));
     ed.setText(text.slice(0, range.from) + next + text.slice(range.to));
@@ -836,7 +840,7 @@ export function QueryTab({
     const inside = range.from + Math.floor(next.length / 2);
     ed.select(inside, inside);
     void run("statement");
-    return true;
+    return next;
   }
 
   /** Goes on once edited rows are saved or discarded. */
@@ -851,25 +855,25 @@ export function QueryTab({
 
   /** Data viewer: sorts the shown result's statement and runs it. */
   function applyViewer(sort: Sort | null) {
-    const result = results[activeResult];
+    const result = shown;
     if (!tab.table || !result) return;
     afterDiscard(() => {
       const column = sort?.column ?? null;
-      void rewriteStatement(result, (sql) => api.sqlOrderBy(sql, connection.driver, column, sort?.desc ?? false)).then((done) => {
-        if (!done) return;
-        onChange({ sort });
-        setCount(null);
-      });
+      void rewriteStatement(result, (sql) => api.sqlOrderBy(sql, connection.driver, column, sort?.desc ?? false)).then(
+        (next) => next !== null && onChange({ sort: sortIn(sort, next) }),
+      );
     });
   }
 
   /** Quick filter of the grid: adds `condition` to the WHERE of the shown result's statement. */
   function addCondition(condition: string) {
-    const result = results[activeResult];
+    const result = shown;
     if (!result) return;
+    // The statement keeps its ORDER BY, and so its sort.
+    const sort = sortOf(tab.sort, result.sql);
     afterDiscard(() => {
       void rewriteStatement(result, (sql) => api.sqlAddCondition(sql, connection.driver, condition)).then(
-        (done) => done && setCount(null),
+        (next) => next !== null && sort && onChange({ sort: sortIn(sort, next) }),
       );
     });
   }
@@ -879,22 +883,35 @@ export function QueryTab({
     return viewerQueries.current.has(queryKey(sql)) || sql === viewerSql(connection.driver, tab.table ?? "");
   }
 
-  /** Header clicks cycle a column through ascending, descending and unsorted. */
+  /** Header clicks cycle a column of the shown statement through ascending, descending and
+   *  unsorted. */
   function sortBy(column: string) {
-    const sort = tab.sort ?? null;
-    if (sort?.column !== column) applyViewer({ column, desc: false });
-    else if (!sort.desc) applyViewer({ column, desc: true });
-    else applyViewer(null);
+    applyViewer(nextSort(shownSort, column));
+  }
+
+  /** What Count rows counts: the query of the shown rows as it ran, its variables filled in;
+   *  else the statement under the cursor, filled in as a run would. Null when there is none or
+   *  the user cancels. */
+  async function countedSql(): Promise<string | null> {
+    if (shown?.status.kind === "rows") return shown.sql;
+    try {
+      const [p] = await plan("statement");
+      return p ? await filledIn(p) : null;
+    } catch (e) {
+      onError(toCommandError(e).message);
+      return null;
+    }
   }
 
   async function countRows() {
     if (!tab.table) return;
+    const sql = await countedSql();
+    if (sql === null) return;
     setCount(t("counting…"));
     const sessionId = await sideSession();
     if (sessionId === null) return setCount(null);
     try {
-      // The statement of the shown result, else the editor's text.
-      const query = await api.sqlCountQuery(results[activeResult]?.sql ?? editor.current!.getText(), connection.driver);
+      const query = await api.sqlCountQuery(sql, connection.driver);
       if (query === null) {
         setCount(null);
         return onError(t("This query cannot be counted."));
@@ -1367,7 +1384,7 @@ export function QueryTab({
             <ResultPanel
               key={current.id}
               result={current}
-              sort={tab.table ? (tab.sort ?? null) : null}
+              sort={shownSort}
               onHeaderClick={tab.table && sortable && !running ? sortBy : undefined}
               headerHint={
                 tab.table && !sortable && current.status.kind === "rows"

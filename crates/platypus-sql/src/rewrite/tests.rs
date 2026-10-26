@@ -447,6 +447,129 @@ fn ands_into_an_existing_where() {
 }
 
 #[test]
+fn sorts_and_counts_every_set_operation() {
+    for op in ["INTERSECT", "EXCEPT", "UNION ALL"] {
+        let sql = format!("SELECT a FROM x {op} SELECT a FROM y");
+        assert_eq!(sorted(&sql, PG), format!("{sql}\nORDER BY a ASC"));
+        assert_eq!(
+            count(&format!("{sql} ORDER BY a"), PG),
+            format!("SELECT COUNT(*) FROM (\n{sql}\n) t")
+        );
+    }
+    // An operand in parentheses keeps its own ORDER BY and LIMIT.
+    let sql = "SELECT a FROM x UNION (SELECT a FROM y ORDER BY a LIMIT 1)";
+    assert_eq!(
+        sort(sql, PG, "b", true).unwrap(),
+        format!("{sql}\nORDER BY b DESC")
+    );
+    assert_eq!(
+        sort(&format!("{sql} ORDER BY 1"), PG, "b", true).unwrap(),
+        format!("{sql} ORDER BY b DESC")
+    );
+    assert_eq!(unsorted(&format!("{sql} ORDER BY 1"), PG), sql);
+}
+
+#[test]
+fn removing_the_sort_keeps_it_for_offset_alone_on_transact_sql() {
+    assert_eq!(
+        unsorted("SELECT * FROM t ORDER BY a OFFSET 1 ROWS", MS),
+        "SELECT * FROM t ORDER BY (SELECT NULL) OFFSET 1 ROWS"
+    );
+    // TOP … WITH TIES needs one too.
+    assert_eq!(
+        unsorted("SELECT TOP (2) WITH TIES * FROM t ORDER BY a", MS),
+        "SELECT TOP (2) WITH TIES * FROM t ORDER BY (SELECT NULL)"
+    );
+    assert_eq!(
+        count("SELECT TOP (2) WITH TIES * FROM t ORDER BY a", MS),
+        "SELECT COUNT(*) FROM (\nSELECT TOP (2) WITH TIES * FROM t ORDER BY a\n) t"
+    );
+    // Elsewhere FETCH … WITH TIES keeps its ORDER BY: it can change, not go.
+    let ties = "SELECT * FROM t ORDER BY a FETCH FIRST 2 ROWS WITH TIES";
+    assert_eq!(set_order_by(ties, PG, None), None);
+    assert_eq!(
+        sort(ties, PG, "b", true).unwrap(),
+        "SELECT * FROM t ORDER BY b DESC FETCH FIRST 2 ROWS WITH TIES"
+    );
+    assert_eq!(
+        count(ties, Dialect::Oracle),
+        format!("SELECT COUNT(*) FROM (\n{ties}\n) t")
+    );
+}
+
+#[test]
+fn gives_up_on_an_empty_statement_around_the_query() {
+    for sql in [
+        ";SELECT 1",
+        "; SELECT * FROM t",
+        "SELECT * FROM t;;",
+        "  ;  ",
+    ] {
+        assert_eq!(sort(sql, PG, "a", false), None, "{sql}");
+        assert_eq!(count_query(sql, PG), None, "{sql}");
+        assert_eq!(add_condition(sql, PG, "a = 1"), None, "{sql}");
+    }
+}
+
+#[test]
+fn a_clause_word_used_as_a_column_name_is_a_column() {
+    // MySQL and SQLite accept `offset` and `limit`-like words as bare column names.
+    assert_eq!(
+        sorted("SELECT offset FROM t", MY),
+        "SELECT offset FROM t\nORDER BY a ASC"
+    );
+    assert_eq!(
+        sorted("SELECT id, offset FROM t LIMIT 3", MY),
+        "SELECT id, offset FROM t\nORDER BY a ASC LIMIT 3"
+    );
+    assert_eq!(count("SELECT offset FROM t", MY), "SELECT COUNT(*) FROM t");
+    assert_eq!(
+        sorted(
+            "SELECT * FROM t WHERE offset > 1 AND t.limit < 2 LIMIT 3",
+            MY
+        ),
+        "SELECT * FROM t WHERE offset > 1 AND t.limit < 2\nORDER BY a ASC LIMIT 3"
+    );
+    assert_eq!(
+        filtered("SELECT a AS offset FROM t ORDER BY offset", MY, "a > 1"),
+        "SELECT a AS offset FROM t\nWHERE a > 1 ORDER BY offset"
+    );
+    // A query without FROM still has its clauses, and so do parameters and LIMIT ALL.
+    assert_eq!(
+        sorted("SELECT 1 LIMIT 1", PG),
+        "SELECT 1\nORDER BY a ASC LIMIT 1"
+    );
+    assert_eq!(
+        sorted("SELECT * FROM t LIMIT ? OFFSET ?", MY),
+        "SELECT * FROM t\nORDER BY a ASC LIMIT ? OFFSET ?"
+    );
+    assert_eq!(
+        sorted("SELECT * FROM t LIMIT :n OFFSET :m", PG),
+        "SELECT * FROM t\nORDER BY a ASC LIMIT :n OFFSET :m"
+    );
+    assert_eq!(
+        sorted("SELECT * FROM t LIMIT ALL OFFSET 5", PG),
+        "SELECT * FROM t\nORDER BY a ASC LIMIT ALL OFFSET 5"
+    );
+}
+
+#[test]
+fn does_not_sort_a_distinct_on_by_another_column() {
+    // PostgreSQL wants the ORDER BY to start with the DISTINCT ON expressions.
+    let sql = "SELECT DISTINCT ON (a) * FROM t ORDER BY a, b";
+    assert_eq!(sort(sql, PG, "c", false), None);
+    assert_eq!(set_order_by(sql, PG, None), None);
+    assert_eq!(
+        count(sql, PG),
+        "SELECT COUNT(*) FROM (\nSELECT DISTINCT ON (a) * FROM t\n) t"
+    );
+    assert_eq!(
+        filtered(sql, PG, "c = 1"),
+        "SELECT DISTINCT ON (a) * FROM t\nWHERE c = 1 ORDER BY a, b"
+    );
+}
+
+#[test]
 fn adds_no_condition_where_it_cannot_tell() {
     assert_eq!(
         add_condition("SELECT a FROM x UNION SELECT a FROM y", PG, "a = 1"),

@@ -46,7 +46,9 @@ function completion(item: NameItem, result: NameOptions, driver: DriverKind, not
   const close = result.quote && closingQuote(result.quote);
   // After a typed quote the name goes on inside it; otherwise it is quoted when it must be.
   const label = close ? `${result.quote}${item.label.replaceAll(close, close + close)}${close}` : item.label;
-  const apply = close ? label : quoteIdent(item.label, driver);
+  const name = close ? label : quoteIdent(item.label, driver);
+  // A column name several tables have goes in qualified; the detail shows by which one.
+  const apply = item.qualifier ? `${item.qualifier}.${name}` : name;
   return {
     label,
     type: TYPE[item.kind],
