@@ -426,6 +426,14 @@ export function QueryTab({
     return { ...variables, ...answer };
   }
 
+  /** `p`'s SQL with its parameters filled in, outside a run (Explain, Count rows): the tab's
+   *  variables and the last answers, asking for the rest; null when the user cancels. */
+  async function filledIn(p: Planned): Promise<string | null> {
+    if (!p.params.length) return p.sql;
+    const values = await fillParams(p, { ...(tab.variables ?? {}), ...lastAnswers.current }, new Set());
+    return values && substitute(p.sql, p.params, values, connection.driver);
+  }
+
   /** Exports the rows of `sql` to `path` instead of showing them (`@export`). */
   function exportTo(sessionId: number, sql: string, path: string, format: ExportFormat): Promise<ResultStatus> {
     return new Promise((resolve) => {
@@ -737,12 +745,8 @@ export function QueryTab({
       return;
     }
     if (!p || p.kind === "command") return;
-    let sql = p.sql;
-    if (p.params.length) {
-      const values = await fillParams(p, { ...(tab.variables ?? {}), ...lastAnswers.current }, new Set());
-      if (!values) return;
-      sql = substitute(p.sql, p.params, values, connection.driver);
-    }
+    const sql = await filledIn(p);
+    if (sql === null) return;
     // Analyze runs the statement: the checks of a run apply.
     if (analyze) {
       if (connection.read_only && !p.readOnly) {
@@ -885,14 +889,29 @@ export function QueryTab({
     applyViewer(nextSort(shownSort, column));
   }
 
+  /** What Count rows counts: the query of the shown rows as it ran, its variables filled in;
+   *  else the statement under the cursor, filled in as a run would. Null when there is none or
+   *  the user cancels. */
+  async function countedSql(): Promise<string | null> {
+    if (shown?.status.kind === "rows") return shown.sql;
+    try {
+      const [p] = await plan("statement");
+      return p ? await filledIn(p) : null;
+    } catch (e) {
+      onError(toCommandError(e).message);
+      return null;
+    }
+  }
+
   async function countRows() {
     if (!tab.table) return;
+    const sql = await countedSql();
+    if (sql === null) return;
     setCount(t("counting…"));
     const sessionId = await sideSession();
     if (sessionId === null) return setCount(null);
     try {
-      // The statement of the shown result, else the editor's text.
-      const query = await api.sqlCountQuery(results[activeResult]?.sql ?? editor.current!.getText(), connection.driver);
+      const query = await api.sqlCountQuery(sql, connection.driver);
       if (query === null) {
         setCount(null);
         return onError(t("This query cannot be counted."));
