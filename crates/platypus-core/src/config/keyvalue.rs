@@ -17,7 +17,7 @@
 use std::time::Duration;
 
 use super::any::{ParseNote, ParsedConnection, login_note};
-use super::jdbc::host_port;
+use super::jdbc::{host_port, sqlserver_ssl, strip_tcp};
 use super::{ConnectionConfig, DriverKind, JdbcUrl, Secret, SslMode, libpq, secret_key};
 use crate::{Error, Result};
 
@@ -188,25 +188,18 @@ impl Native {
             props.insert(pair.norm.clone(), pair.value.clone());
             state.apply(&mut config, pair)?;
         }
-        if let Some(mode) = state.ssl {
+        if let Some(mode) = state
+            .ssl
+            .or_else(|| sqlserver_ssl(state.encrypt, state.trust))
+        {
             config.ssl_mode = mode;
-        } else if state.encrypt {
-            config.ssl_mode = if state.trust {
-                SslMode::Require
-            } else {
-                SslMode::VerifyFull
-            };
         }
         let mut notes = Vec::new();
         if let Some(instance) = state.instance.filter(|_| !state.port_given) {
             notes.push(ParseNote::NamedInstance { instance });
         }
         notes.extend(login_note(&props));
-        if !state.ignored.is_empty() {
-            notes.push(ParseNote::Ignored {
-                keys: state.ignored,
-            });
-        }
+        notes.extend(ParseNote::ignored(state.ignored));
         Ok(ParsedConnection { config, notes })
     }
 
@@ -254,10 +247,7 @@ impl Native {
                     .to_owned(),
             ));
         }
-        let value = match value.get(..4) {
-            Some(p) if p.eq_ignore_ascii_case("tcp:") => &value[4..],
-            _ => value,
-        };
+        let value = strip_tcp(value);
         let (address, port) = match value.rsplit_once(',') {
             Some((a, p)) if p.trim().parse::<u16>().is_ok() => (a, p.trim().parse().ok()),
             _ => (value, None),
@@ -314,12 +304,10 @@ fn odbc(pairs: &[Pair]) -> ParsedConnection {
             .options
             .insert(ODBC_CONNECTION_STRING.to_owned(), written.join(";"));
     }
-    let notes = if secret.is_empty() {
-        Vec::new()
-    } else {
-        vec![ParseNote::Ignored { keys: secret }]
-    };
-    ParsedConnection { config, notes }
+    ParsedConnection {
+        config,
+        notes: ParseNote::ignored(secret).into_iter().collect(),
+    }
 }
 
 /// An ODBC value, in braces when it holds what would end or split it.

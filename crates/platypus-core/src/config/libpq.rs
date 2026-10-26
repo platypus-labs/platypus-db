@@ -134,12 +134,10 @@ fn read(pairs: &[(String, String)]) -> Result<ParsedConnection> {
     if let Some(host) = host.filter(|h| !h.is_empty()).or(hostaddr) {
         host.clone_into(&mut config.host);
     }
-    let notes = if ignored.is_empty() {
-        Vec::new()
-    } else {
-        vec![ParseNote::Ignored { keys: ignored }]
-    };
-    Ok(ParsedConnection { config, notes })
+    Ok(ParsedConnection {
+        config,
+        notes: ParseNote::ignored(ignored).into_iter().collect(),
+    })
 }
 
 #[cfg(test)]

@@ -246,10 +246,7 @@ impl JdbcUrl {
     fn sqlserver(rest: &str, jtds: bool) -> Self {
         let mut jdbc = Self::new(DriverKind::SqlServer);
         let (address, props) = rest.split_once(';').unwrap_or((rest, ""));
-        let address = match address.get(..4) {
-            Some(p) if p.eq_ignore_ascii_case("tcp:") => &address[4..],
-            _ => address,
-        };
+        let address = strip_tcp(address);
         jdbc.properties = sqlserver_properties(props);
         let (address, database) = match address.split_once('/') {
             Some((a, d)) if jtds => (a, d),
@@ -284,13 +281,8 @@ impl JdbcUrl {
                 )
             })
         };
-        let (encrypt, trust) = (on("encrypt"), on("trustservercertificate"));
-        if encrypt {
-            jdbc.config.ssl_mode = if trust {
-                SslMode::Require
-            } else {
-                SslMode::VerifyFull
-            };
+        if let Some(mode) = sqlserver_ssl(on("encrypt"), on("trustservercertificate")) {
+            jdbc.config.ssl_mode = mode;
         }
         jdbc
     }
@@ -352,6 +344,24 @@ pub(super) fn host_port(address: &str) -> (String, Option<u16>) {
         },
     };
     (host.trim().to_owned(), port)
+}
+
+/// A SQL Server address without its `tcp:` protocol prefix, written in any case.
+pub(super) fn strip_tcp(address: &str) -> &str {
+    match address.get(..4) {
+        Some(p) if p.eq_ignore_ascii_case("tcp:") => &address[4..],
+        _ => address,
+    }
+}
+
+/// The TLS mode of SQL Server's `encrypt` and `trustServerCertificate`: `None` when the
+/// connection is not encrypted, so the driver's default stays.
+pub(super) fn sqlserver_ssl(encrypt: bool, trust: bool) -> Option<SslMode> {
+    match (encrypt, trust) {
+        (false, _) => None,
+        (true, true) => Some(SslMode::Require),
+        (true, false) => Some(SslMode::VerifyFull),
+    }
 }
 
 /// `key=value;key={value}` with the keys in lower case. A value in braces may hold `;`,

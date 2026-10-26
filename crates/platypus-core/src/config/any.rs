@@ -32,6 +32,13 @@ pub enum ParseNote {
     Ignored { keys: Vec<String> },
 }
 
+impl ParseNote {
+    /// The note for the keys left out, or `None` when there are none.
+    pub(super) fn ignored(keys: Vec<String>) -> Option<Self> {
+        (!keys.is_empty()).then_some(Self::Ignored { keys })
+    }
+}
+
 impl ConnectionConfig {
     /// Reads a scheme URL (as [`ConnectionConfig::from_url`], but leaving out the parameters
     /// it does not know, and MongoDB's options that hold a secret), a JDBC URL
@@ -57,12 +64,10 @@ impl ConnectionConfig {
             if config.driver == DriverKind::Mongo {
                 unknown.extend(config.drop_secret_options());
             }
-            let notes = if unknown.is_empty() {
-                Vec::new()
-            } else {
-                vec![ParseNote::Ignored { keys: unknown }]
-            };
-            return Ok(ParsedConnection { config, notes });
+            return Ok(ParsedConnection {
+                config,
+                notes: ParseNote::ignored(unknown).into_iter().collect(),
+            });
         }
         if input.contains('=') {
             return keyvalue::parse(input);
