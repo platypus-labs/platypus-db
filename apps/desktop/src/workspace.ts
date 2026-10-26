@@ -39,19 +39,31 @@ export function loadWorkspace(): Workspace | null {
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined;
+/** The workspace waiting for the debounce to write it. */
+let pending: Workspace | null = null;
+
+function write(workspace: Workspace) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(workspace));
+    // Only once the new format is written, so a crash in between loses nothing.
+    localStorage.removeItem(KEY_V1);
+  } catch {
+    // Storage can be unavailable or full; the workspace is a convenience.
+  }
+}
 
 /** Debounced: typing in the editor calls this on every keystroke. */
 export function saveWorkspace(workspace: Workspace) {
   clearTimeout(timer);
-  timer = setTimeout(() => {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(workspace));
-      // Only once the new format is written, so a crash in between loses nothing.
-      localStorage.removeItem(KEY_V1);
-    } catch {
-      // Storage can be unavailable or full; the workspace is a convenience.
-    }
-  }, 400);
+  pending = workspace;
+  timer = setTimeout(flushWorkspace, 400);
+}
+
+/** Writes a save still waiting for the debounce, e.g. as the window closes. */
+export function flushWorkspace() {
+  clearTimeout(timer);
+  if (pending) write(pending);
+  pending = null;
 }
 
 export function basename(path: string) {

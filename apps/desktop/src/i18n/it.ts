@@ -1390,6 +1390,8 @@ const it: Record<string, string> = {
   "Export to the folder": "Esporta nella cartella",
   "Not connected.": "Non connesso.",
   "Rows could not be read: {message}": "Impossibile leggere le righe: {message}",
+  "One tab has changes not saved or committed. Close the window and discard them?": "Una scheda ha modifiche non salvate o non confermate. Chiudere la finestra e scartarle?",
+  "{n} tabs have changes not saved or committed. Close the window and discard them?": "{n} schede hanno modifiche non salvate o non confermate. Chiudere la finestra e scartarle?",
 };
 
 export default it;
