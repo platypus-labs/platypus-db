@@ -99,7 +99,7 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 | F — Connettività e credenziali | ✅ fatto (P1, P2) |
 | G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
 | H — Import, export e trasferimento | ✅ fatto (P1; P2 e P3 in parte) |
-| I — Strumenti di schema | 🔒 Paolo · group-i-schema · 2026-10-26 |
+| I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
 | J — Amministrazione del server | 🔒 Delfa · group-j-admin · 2026-10-26 |
 | K — Shell ed ergonomia | ✅ fatto (P1, P2) |
 | L — Sicurezza operativa | ✅ fatto (P1, P2) |
