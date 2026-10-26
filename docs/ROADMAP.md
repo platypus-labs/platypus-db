@@ -666,6 +666,14 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 **Area:** `.github/`, `docs/`, `apps/desktop/e2e/`, benchmark
 **Dipende da:** nulla; parte subito
 
+**Stato: P1 in parte, P2 in parte, P3 in parte.** Fatti: un solo eseguibile anche per gli agenti
+(`platypus-db --mcp`, il server MCP è nella libreria `platypus-mcp`; il binario `platypus-mcp`
+resta per sviluppo e test), DuckDB scaricato al primo uso (crate `duckdb` in modalità
+`loadable-extension`, libreria caricata da `platypus-duckdb-loader`, l'unico crate con codice
+`unsafe`), log su file con rotazione, segnalazione dei crash su scelta dell'utente e pacchetto
+di diagnostica (Impostazioni › Diagnostics). Restano la verifica su macOS e Linux, il test
+reale dell'auto-update, la firma, i benchmark, i test di scala e la distribuzione.
+
 | Attività | Prio |
 |---|---|
 | Verifica su macOS e Linux: build, avvio, memoria, scroll; correzioni di piattaforma | P1 |
@@ -674,14 +682,14 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | Firma del codice: Windows (certificato o Azure Trusted Signing), macOS con notarizzazione | P2 |
 | Benchmark affiancato con DBeaver, aggiornando `BENCHMARKS.md` | P2 |
 | Benchmark in CI con soglie (avvio, memoria, decode) per bloccare le regressioni | P2 |
-| Crash report opt-in e log su file con rotazione | P2 |
-| **Un solo eseguibile anche per gli agenti**: l'app fa da server MCP con un'opzione (`platypus-db --mcp`) invece di un secondo binario `platypus-mcp` che ricontiene tutti i driver (circa 50-60 MB in meno nell'installer) | P2 |
-| **DuckDB scaricato al primo uso** invece che incluso nell'installer (circa 35 MB): chi non apre file CSV, Parquet o DuckDB non lo scarica mai | P2 |
+| ✅ Crash report opt-in e log su file con rotazione | P2 |
+| ✅ **Un solo eseguibile anche per gli agenti**: l'app fa da server MCP con un'opzione (`platypus-db --mcp`) invece di un secondo binario `platypus-mcp` che ricontiene tutti i driver (circa 50-60 MB in meno nell'installer) | P2 |
+| ✅ **DuckDB scaricato al primo uso** invece che incluso nell'installer (circa 35 MB): chi non apre file CSV, Parquet o DuckDB non lo scarica mai | P2 |
 | Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
 | Distribuzione: winget, Homebrew cask, Flatpak, AUR | P3 |
 | Sito e documentazione utente | P3 |
 | 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
-| 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
+| ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
 
 ---
 
