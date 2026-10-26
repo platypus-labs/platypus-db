@@ -41,6 +41,8 @@ database = '${path}'
 save_password = false
 `,
   );
+  // Where earlier builds kept the navigator's width and collapse: still read.
+  writeFileSync(join(dir, "settings.toml"), "[ui]\nsidebar_width = 300\nsidebar_collapsed = true\n");
 }
 
 async function settingsFile(dir, pattern) {
@@ -57,8 +59,33 @@ async function settingsFile(dir, pattern) {
   assert.match(text, pattern);
 }
 
+/** Waits until settings.toml has been read and no longer matches `pattern`: a key that is
+ *  removed. A file that cannot be read yet never counts as "without the key". */
+async function settingsLack(dir, pattern) {
+  const deadline = Date.now() + 5000;
+  let text = null;
+  while ((text === null || pattern.test(text)) && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 100));
+    try {
+      text = readFileSync(join(dir, "settings.toml"), "utf8");
+    } catch {
+      // Not written yet.
+    }
+  }
+  assert.notEqual(text, null, "settings.toml was never written");
+  assert.doesNotMatch(text, pattern);
+}
+
 export default async function (page, { dir, shots }) {
   await page.waitFor(`${row(NAME)} !== undefined`);
+
+  // The keys of earlier builds: the navigator starts hidden, at their width. Shown again, the
+  // old key goes and no new one is written (shown is the default).
+  await page.waitFor(`document.querySelector('.sidebar-column').hidden`);
+  await page.key("b", "KeyB", 66, CTRL);
+  await page.waitFor(`!document.querySelector('.sidebar-column').hidden`);
+  await settingsLack(dir, /sidebar_collapsed/);
+  assert.equal(await page.eval(sidebarWidth), 300);
 
   // Below the rows, the list's own menu: a new connection, or the import.
   await page.eval(`document.querySelector('.tree').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 150, clientY: 400 }))`);
@@ -88,6 +115,16 @@ export default async function (page, { dir, shots }) {
   assert.equal(await page.eval(`document.querySelector('.modal.driver-picker') !== null`), true);
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.modal.driver-picker') === null`);
+  // With several matches, Enter takes the first: "sql" opens the PostgreSQL form.
+  await page.eval(`document.querySelector('button[title="New connection"]').click()`);
+  await page.waitFor(`document.activeElement === document.querySelector('.driver-picker .modal-search input')`);
+  await page.eval(setInput(".driver-picker .modal-search input", "sql"));
+  await page.waitFor(`${tiles}[0] === 'PostgreSQL' && ${tiles}.length > 1`);
+  await page.key("Enter", "Enter", 13);
+  const driver = `[...document.querySelectorAll('.modal .field')].find(f => f.textContent.startsWith('Driver'))?.querySelector('select')?.value`;
+  await page.waitFor(`document.querySelector('.modal.driver-picker') === null && ${driver} === 'postgres'`);
+  await page.eval(`[...document.querySelectorAll('.modal button')].find(b => b.textContent === 'Cancel').click()`);
+  await page.waitFor(`document.querySelector('.modal') === null`);
 
   // A connection's menu starts with a new connection.
   await page.eval(`${row(NAME)}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 120 }))`);
@@ -96,8 +133,10 @@ export default async function (page, { dir, shots }) {
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.context-menu') === null`);
 
-  // The handle between the navigator and the work: dragged wider, saved, and reset.
+  // The handle between the navigator and the work: dragged wider, saved under the new key
+  // (the old one goes), and reset.
   const before = await page.eval(sidebarWidth);
+  assert.equal(before, 300);
   const handle = await page.rect(".sidebar-resizer");
   const x = handle.x + handle.w / 2;
   const y = handle.y + 200;
@@ -106,19 +145,45 @@ export default async function (page, { dir, shots }) {
   await page.mouse("mouseMoved", x + 100, y);
   await page.mouse("mouseReleased", x + 100, y);
   await page.waitFor(`${sidebarWidth} === ${before + 100}`);
-  await settingsFile(dir, new RegExp(`sidebar_width = ${before + 100}`));
+  await settingsFile(dir, new RegExp(`\\[layout\\][^[]*sidebar_width = ${before + 100}`));
+  await settingsLack(dir, /\[ui\][^[]*sidebar_width/);
   if (shots) await page.screenshot(join(shots, "polish-resized.png"));
   await page.eval(`document.querySelector('.sidebar-resizer').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
-  await page.waitFor(`${sidebarWidth} === ${before}`);
-  // A click without moving saves nothing.
-  await page.click(x, y);
-  await settingsFile(dir, /^(?![\s\S]*sidebar_width)/);
+  await page.waitFor(`${sidebarWidth} === 260`);
+  // Back to the default, the width is no longer stored.
+  await settingsLack(dir, /sidebar_width/);
+  // A click without moving saves nothing: the writes of the width are counted, and the arrow
+  // key after the click, which saves, is the only one. Tauri's invoke cannot be replaced; the
+  // commands reach the app through fetch.
+  await page.eval(`(() => {
+    const fetch = window.fetch.bind(window);
+    window.__widthWrites = 0;
+    window.fetch = (url, options) => {
+      if (String(url).endsWith('/set_setting') && String(options?.body ?? '').includes('sidebar_width')) window.__widthWrites++;
+      return fetch(url, options);
+    };
+  })()`);
+  const reset = await page.rect(".sidebar-resizer");
+  const [cx, cy] = [reset.x + reset.w / 2, reset.y + 200];
+  assert.equal(await page.eval(`document.elementFromPoint(${cx}, ${cy})?.classList.contains('sidebar-resizer')`), true);
+  await page.click(cx, cy);
+  await page.eval(`document.querySelector('.sidebar-resizer').focus()`);
+  await page.key("ArrowRight", "ArrowRight", 39);
+  await page.waitFor(`window.__widthWrites === 1 && ${sidebarWidth} === 276`);
+  await page.sleep(300);
+  assert.equal(await page.eval(`window.__widthWrites`), 1);
 
   // The Settings' search keeps the matching settings, and their sections only.
   await page.key(",", "Comma", 188, CTRL);
   await page.waitFor(`document.querySelector('.modal.settings') !== null`);
   await page.waitFor(`document.activeElement === document.querySelector('.modal.settings .modal-search input')`);
   assert.match(await page.eval(`getComputedStyle(document.querySelector('.modal.settings')).backdropFilter`), /blur/);
+  // A tab other than the first, to find it again after the search.
+  await page.settingsTab("Toolbar");
+  // The search matches at the start of a word: "tab" finds the tabs, not "databases".
+  await page.eval(setInput(".modal.settings .modal-search input", "tab"));
+  await page.waitFor(`${shownSettings}.includes('Group tabs by connection')`);
+  assert.equal(await page.eval(`${shownSettings}.includes('Language')`), false);
   await page.eval(setInput(".modal.settings .modal-search input", "language"));
   await page.waitFor(`${shownSettings}.length === 1`);
   assert.deepEqual(await page.eval(shownSettings), ["Language"]);
@@ -138,10 +203,11 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`document.querySelector('.settings-none') !== null`);
   if (shots) await page.screenshot(join(shots, "polish-settings.png"));
   // Escape clears the search first, then closes.
+  await page.eval(`document.querySelector('.modal.settings .modal-search input').focus()`);
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.settings-none') === null && ${shownSettings}.length > 1`);
   // With the search empty, the tabs are back, on the section shown before.
-  assert.equal(await page.eval(`document.querySelector('.modal.settings [role="tab"][aria-selected="true"]')?.dataset.section`), "Appearance");
+  assert.equal(await page.eval(`document.querySelector('.modal.settings [role="tab"][aria-selected="true"]')?.dataset.section`), "Toolbar");
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.modal.settings') === null`);
 }

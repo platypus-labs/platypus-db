@@ -110,14 +110,14 @@ export default async function (page, { dir, shots }) {
   await page.mouse("mouseMoved", hx + 60, hy);
   await page.mouse("mouseReleased", hx + 60, hy);
   await page.waitFor(`${sidebarWidth} === 320`);
-  await settingsFile(dir, /sidebar_width = 320/);
+  await settingsFile(dir, /\[layout\][^[]*sidebar_width = 320/);
   await page.eval(`document.querySelector('.sidebar-resizer').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
   await page.waitFor(`${sidebarWidth} === 260`);
   await settingsLack(dir, /sidebar_width/);
   await page.key("b", "KeyB", 66, CTRL);
   await page.waitFor(`document.querySelector('.sidebar-column').hidden`);
-  await settingsFile(dir, /sidebar_collapsed = true/);
-  await page.eval(`document.querySelector('.topbar button[aria-label="Toggle sidebar"]').click()`);
+  await settingsFile(dir, /\[layout\][^[]*sidebar_collapsed = true/);
+  await page.eval(`document.querySelector('.topbar button[aria-label="Show or hide the navigator"]').click()`);
   await page.waitFor(`!document.querySelector('.sidebar-column').hidden`);
   await settingsLack(dir, /sidebar_collapsed/);
 
