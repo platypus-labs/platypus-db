@@ -1,0 +1,1 @@
+`mermaid.min.js`: `mermaid@11.4.1`, file `dist/mermaid.min.js` from https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js, license MIT. SHA-256: `a43bc1afd446f9c4cc66ac5dd45d02e8d65e26fc5344ec0ef787f88d6ddb6f9e`. Kept as downloaded; update the hash when replacing the file.
