@@ -15,8 +15,9 @@ use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use platypus_core::{
     CancelHandle, Capabilities, CatalogColumn, CatalogForeignKey, Connection, ExecOptions,
-    ExecResult, Explain, MetadataMatch, ObjectMeta, ObjectRef, Property, RecordBatchStream,
-    ReferencingKey, Result, SchemaMeta, ServerInfo, TableDetails, TransactionState,
+    ExecResult, Executed, Explain, MetadataMatch, ObjectMeta, ObjectRef, Property,
+    RecordBatchStream, ReferencingKey, Result, SchemaMeta, ServerInfo, TableDetails,
+    TransactionState,
 };
 use serde::Serialize;
 
@@ -249,6 +250,20 @@ impl Connection for Logged {
                 Err(e)
             }
         }
+    }
+
+    /// One entry for all of them, as they reach the server together.
+    async fn execute_all(&self, statements: &[&str]) -> Executed {
+        let id = self
+            .log
+            .start(&self.connection, LogKind::Query, statements.join(";\n"));
+        let started = Instant::now();
+        let executed = self.inner.execute_all(statements).await;
+        let rows = executed.rows.iter().sum();
+        self.log.update(id, |e| e.rows = Some(rows));
+        let error = executed.error.as_ref().map(ToString::to_string);
+        self.log.finish(id, started, error);
+        executed
     }
 
     fn cancel_handle(&self) -> CancelHandle {

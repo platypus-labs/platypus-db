@@ -3,7 +3,7 @@
 //! none on the session of the result being edited.
 
 use arrow_array::RecordBatch;
-use platypus_sql::dml::{self, ApplyError, Column, Value, ValueKind};
+use platypus_sql::dml::{self, ApplyError, Column, Statement, Value, ValueKind};
 use platypus_sql::{Dialect, pg_literal};
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -59,6 +59,10 @@ pub struct Changes {
     /// Result columns that identify a row: the primary key, a non-null unique key or a
     /// virtual key the user set.
     key: Vec<usize>,
+    /// The key is the table's primary key or a unique key, not a virtual key the user set:
+    /// deleted rows can go in batches, checked by their total row count.
+    #[serde(default)]
+    unique_key: bool,
     /// Result columns that are the table's own (not expressions), by which the undo script
     /// inserts deleted rows back.
     table_columns: Vec<usize>,
@@ -137,7 +141,7 @@ fn row_text(job: &Job, row: usize) -> CommandResult<Vec<Option<String>>> {
 
 /// What saving runs, and the script that puts the loaded rows back afterwards.
 struct Script {
-    statements: Vec<String>,
+    statements: Vec<Statement>,
     /// Statements, and `--` comments for what no statement can undo.
     undo: Vec<String>,
 }
@@ -153,60 +157,89 @@ impl Script {
     }
 }
 
-/// The statements for `changes`: deletes first, which frees unique values for the updates
-/// and inserts that follow. The undo script does the opposite, in the opposite order.
-fn script(state: &AppState, job: &Job, changes: &Changes) -> CommandResult<Script> {
-    let dialect = Dialect::from(state.session(job.session_id)?.config.driver);
-    let (schema, _) = job
-        .window(0, 0)
-        .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;
-    let columns: Vec<Column<'_>> = schema
-        .fields()
-        .iter()
-        .enumerate()
-        .map(|(i, f)| Column {
-            name: f.name(),
-            kind: ValueKind::of(f.data_type()),
-            default: changes.defaults.get(i).and_then(Option::as_deref),
-        })
-        .collect();
-    let table = dialect.qualified(Some(&changes.table.schema), &changes.table.name);
-    let invalid = |e: dml::InvalidValue| CommandError::new("invalid_value", e.to_string());
-    let key_of = |text: &[Option<String>]| -> CommandResult<Vec<(usize, Option<String>)>> {
-        changes
-            .key
-            .iter()
-            .map(|&c| {
-                let value = text
-                    .get(c)
-                    .ok_or_else(|| CommandError::not_found("column", c + 1))?;
-                Ok((c, value.clone()))
-            })
-            .collect()
-    };
+/// The table the statements of a save write to.
+struct Target<'a> {
+    dialect: Dialect,
+    /// Quoted and qualified.
+    table: String,
+    columns: Vec<Column<'a>>,
+}
 
-    let count = changes.deletes.len() + changes.updates.len() + changes.inserts.len();
-    let mut statements = Vec::with_capacity(count);
-    let mut undo_inserts = Vec::with_capacity(changes.deletes.len());
-    let mut undo_updates = Vec::with_capacity(changes.updates.len());
-    let mut undo = Vec::with_capacity(count);
+fn invalid(e: dml::InvalidValue) -> CommandError {
+    CommandError::new("invalid_value", e.to_string())
+}
+
+/// The key of a loaded row, from its full text.
+fn key_of(
+    changes: &Changes,
+    text: &[Option<String>],
+) -> CommandResult<Vec<(usize, Option<String>)>> {
+    changes
+        .key
+        .iter()
+        .map(|&c| {
+            let value = text
+                .get(c)
+                .ok_or_else(|| CommandError::not_found("column", c + 1))?;
+            Ok((c, value.clone()))
+        })
+        .collect()
+}
+
+/// The deletes, in batches when the key is unique (see [`dml::deletes`]), and the inserts
+/// that put the rows back.
+fn delete_statements(
+    target: &Target<'_>,
+    job: &Job,
+    changes: &Changes,
+) -> CommandResult<(Vec<Statement>, Vec<String>)> {
+    let Target {
+        dialect,
+        ref table,
+        ref columns,
+    } = *target;
+    let mut keys = Vec::with_capacity(changes.deletes.len());
+    let mut undo = Vec::with_capacity(changes.deletes.len());
     for &row in &changes.deletes {
         let text = row_text(job, row)?;
-        let key = key_of(&text)?;
-        statements.push(dml::delete(dialect, &table, &columns, &borrowed(&key)).map_err(invalid)?);
+        keys.push(key_of(changes, &text)?);
         let values: Vec<_> = changes
             .table_columns
             .iter()
             .map(|&c| (c, loaded(&text, c)))
             .collect();
-        undo_inserts.push(dml::insert(dialect, &table, &columns, &values).map_err(invalid)?);
+        undo.push(dml::insert(dialect, table, columns, &values).map_err(invalid)?);
     }
+    let keys: Vec<_> = keys.iter().map(|k| borrowed(k)).collect();
+    let statements = if changes.unique_key {
+        dml::deletes(dialect, table, columns, &keys)
+    } else {
+        keys.iter()
+            .map(|k| dml::delete(dialect, table, columns, k).map(Statement::one))
+            .collect()
+    };
+    Ok((statements.map_err(invalid)?, undo))
+}
+
+/// The updates, one per row, and the updates that put the loaded values back.
+fn update_statements(
+    target: &Target<'_>,
+    job: &Job,
+    changes: &Changes,
+) -> CommandResult<(Vec<Statement>, Vec<String>)> {
+    let Target {
+        dialect,
+        ref table,
+        ref columns,
+    } = *target;
+    let mut statements = Vec::with_capacity(changes.updates.len());
+    let mut undo = Vec::with_capacity(changes.updates.len());
     for update in &changes.updates {
         let text = row_text(job, update.row)?;
-        let key = key_of(&text)?;
+        let key = key_of(changes, &text)?;
         let set = pairs(&update.values);
-        statements
-            .push(dml::update(dialect, &table, &columns, &set, &borrowed(&key)).map_err(invalid)?);
+        let sql = dml::update(dialect, table, columns, &set, &borrowed(&key)).map_err(invalid)?;
+        statements.push(Statement::one(sql));
         // The row is found again by its key as saved.
         let saved_key: Option<Vec<(usize, Option<&str>)>> = key
             .iter()
@@ -218,27 +251,71 @@ fn script(state: &AppState, job: &Job, changes: &Changes) -> CommandResult<Scrip
             })
             .collect();
         let back: Vec<_> = set.iter().map(|&(c, _)| (c, loaded(&text, c))).collect();
-        undo_updates.push(match saved_key {
-            Some(k) => dml::update(dialect, &table, &columns, &back, &k).map_err(invalid)?,
+        undo.push(match saved_key {
+            Some(k) => dml::update(dialect, table, columns, &back, &k).map_err(invalid)?,
             None => format!(
                 "-- Row {}: its key was set to its default, restore the row by hand",
                 update.row + 1
             ),
         });
     }
-    for (n, values) in changes.inserts.iter().enumerate() {
-        let set = pairs(values);
-        statements.push(dml::insert(dialect, &table, &columns, &set).map_err(invalid)?);
-        undo.push(match key_in(&changes.key, &set) {
-            Some(k) => dml::delete(dialect, &table, &columns, &k).map_err(invalid)?,
-            None => format!(
+    Ok((statements, undo))
+}
+
+/// The inserts, in batches (see [`dml::inserts`]), and the deletes that remove the rows.
+fn insert_statements(
+    target: &Target<'_>,
+    changes: &Changes,
+) -> CommandResult<(Vec<Statement>, Vec<String>)> {
+    let Target {
+        dialect,
+        ref table,
+        ref columns,
+    } = *target;
+    let rows: Vec<_> = changes.inserts.iter().map(|v| pairs(v)).collect();
+    let statements = dml::inserts(dialect, table, columns, &rows).map_err(invalid)?;
+    let undo = rows
+        .iter()
+        .enumerate()
+        .map(|(n, set)| match key_in(&changes.key, set) {
+            Some(k) => dml::delete(dialect, table, columns, &k).map_err(invalid),
+            None => Ok(format!(
                 "-- New row {}: its key was generated by the database, delete it by hand",
                 n + 1
-            ),
-        });
-    }
-    undo.append(&mut undo_updates);
-    undo.append(&mut undo_inserts);
+            )),
+        })
+        .collect::<CommandResult<_>>()?;
+    Ok((statements, undo))
+}
+
+/// The statements for `changes`: deletes first, which frees unique values for the updates
+/// and inserts that follow. The undo script does the opposite, in the opposite order.
+fn script(state: &AppState, job: &Job, changes: &Changes) -> CommandResult<Script> {
+    let dialect = Dialect::from(state.session(job.session_id)?.config.driver);
+    let (schema, _) = job
+        .window(0, 0)
+        .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;
+    let target = Target {
+        dialect,
+        table: dialect.qualified(Some(&changes.table.schema), &changes.table.name),
+        columns: schema
+            .fields()
+            .iter()
+            .enumerate()
+            .map(|(i, f)| Column {
+                name: f.name(),
+                kind: ValueKind::of(f.data_type()),
+                default: changes.defaults.get(i).and_then(Option::as_deref),
+            })
+            .collect(),
+    };
+    let (mut statements, undo_deletes) = delete_statements(&target, job, changes)?;
+    let (updates, undo_updates) = update_statements(&target, job, changes)?;
+    let (inserts, mut undo) = insert_statements(&target, changes)?;
+    statements.extend(updates);
+    statements.extend(inserts);
+    undo.extend(undo_updates);
+    undo.extend(undo_deletes);
     Ok(Script { statements, undo })
 }
 
@@ -250,7 +327,8 @@ pub fn preview_changes(
     changes: Changes,
 ) -> CommandResult<Vec<String>> {
     let job = state.job(job_id)?;
-    Ok(script(&state, &job, &changes)?.statements)
+    let script = script(&state, &job, &changes)?;
+    Ok(script.statements.into_iter().map(|s| s.sql).collect())
 }
 
 #[derive(Debug, Serialize)]

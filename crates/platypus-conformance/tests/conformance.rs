@@ -360,6 +360,7 @@ const LIBSQL_SCRATCH: &[&str] = &[
     "conf_plan",
     "conf_big",
     "conf_edit",
+    "conf_many",
     "init_probe",
 ];
 
@@ -1595,7 +1596,7 @@ async fn edit_fixture(
 #[tokio::test]
 async fn edits_table_data() {
     use platypus_sql::Dialect;
-    use platypus_sql::dml::{self, Column, Value, ValueKind};
+    use platypus_sql::dml::{self, Column, Statement, Value, ValueKind};
 
     let _serial = SERIAL.lock().await;
 
@@ -1622,12 +1623,12 @@ async fn edits_table_data() {
         let at = "2024-03-01 10:00:00+00:00";
         let name = r#"it's \ "q""#;
 
-        let inserts = [
-            dml::insert(
-                d,
-                t,
-                &columns,
-                &[
+        let inserts = dml::inserts(
+            d,
+            t,
+            &columns,
+            &[
+                vec![
                     (0, Value::Text("1")),
                     (1, Value::Text(name)),
                     (2, Value::Text("12.50")),
@@ -1635,10 +1636,10 @@ async fn edits_table_data() {
                     (4, Value::Text(at)),
                     (5, Value::Default),
                 ],
-            )
-            .unwrap(),
-            dml::insert(d, t, &columns, &[(0, Value::Text("2"))]).unwrap(),
-        ];
+                vec![(0, Value::Text("2"))],
+            ],
+        )
+        .unwrap();
         dml::apply(conn, d, &inserts)
             .await
             .unwrap_or_else(|e| panic!("{}: insert: {e}", b.name));
@@ -1681,7 +1682,7 @@ async fn edits_table_data() {
             &[(0, Some("1")), (4, Some(at))],
         )
         .unwrap();
-        dml::apply(conn, d, &[update])
+        dml::apply(conn, d, &[Statement::one(update)])
             .await
             .unwrap_or_else(|e| panic!("{}: update: {e}", b.name));
 
@@ -1696,18 +1697,26 @@ async fn edit_rollbacks(
     columns: &[platypus_sql::dml::Column<'_>],
 ) {
     use platypus_sql::Dialect;
-    use platypus_sql::dml::{self, ApplyError, Value};
+    use platypus_sql::dml::{self, ApplyError, Statement, Value};
 
     let (d, t) = (Dialect::from(b.config.driver), &b.temp("conf_edit"));
 
     // A statement that misses its row rolls back the ones before it.
     let ok = dml::update(d, t, columns, &[(1, Value::Text("x"))], &[(0, Some("2"))]).unwrap();
     let missing = dml::update(d, t, columns, &[(1, Value::Text("y"))], &[(0, Some("99"))]).unwrap();
-    let err = dml::apply(conn, d, &[ok, missing.clone()])
+    let missing = Statement::one(missing);
+    let err = dml::apply(conn, d, &[Statement::one(ok), missing.clone()])
         .await
         .unwrap_err();
     assert!(
-        matches!(err, ApplyError::RowCount { index: 1, rows: 0 }),
+        matches!(
+            err,
+            ApplyError::RowCount {
+                index: 1,
+                rows: 0,
+                ..
+            }
+        ),
         "{}: {err}",
         b.name
     );
@@ -1724,14 +1733,21 @@ async fn edit_rollbacks(
     // In manual-commit mode the changes join the session's transaction.
     conn.set_autocommit(false).await.unwrap();
     let delete = dml::delete(d, t, columns, &[(0, Some("2"))]).unwrap();
-    dml::apply(conn, d, &[delete])
+    dml::apply(conn, d, &[Statement::one(delete)])
         .await
         .unwrap_or_else(|e| panic!("{}: delete: {e}", b.name));
     assert!(conn.transaction().open, "{}: left uncommitted", b.name);
     // A missing row that changed nothing keeps the session's work, savepoints or not.
     let err = dml::apply(conn, d, &[missing]).await.unwrap_err();
     assert!(
-        matches!(err, ApplyError::RowCount { index: 0, rows: 0 }),
+        matches!(
+            err,
+            ApplyError::RowCount {
+                index: 0,
+                rows: 0,
+                ..
+            }
+        ),
         "{}: {err}",
         b.name
     );
@@ -1747,6 +1763,117 @@ async fn edit_rollbacks(
     conn.set_autocommit(true).await.unwrap();
     let rows = collect(b, conn, &format!("SELECT count(*) FROM {t}")).await;
     assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("2"), "{}", b.name);
+}
+
+/// Many new and deleted rows go in batched statements on every driver: multi-row `VALUES`,
+/// key lists by composite and simple keys, quoted text in the keys; a batch that finds
+/// fewer rows than it names rolls back.
+#[tokio::test]
+async fn edits_many_rows() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{self, ApplyError, Column, Value, ValueKind};
+
+    const ROWS: usize = 1200;
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        if !conn.capabilities().transactions {
+            continue;
+        }
+        let d = Dialect::from(b.config.driver);
+        let t = &b.temp("conf_many");
+        let text = if b.config.driver == DriverKind::SqlServer {
+            "NVARCHAR(40)"
+        } else {
+            "VARCHAR(40)"
+        };
+        let ddl =
+            format!("id INT NOT NULL, tag {text} NOT NULL, label {text}, PRIMARY KEY (id, tag)");
+        affected(&b, conn, &b.create_temp("conf_many", &ddl)).await;
+        let columns = [
+            Column {
+                name: "id",
+                kind: ValueKind::Integer,
+                default: None,
+            },
+            Column {
+                name: "tag",
+                kind: ValueKind::Text,
+                default: None,
+            },
+            Column {
+                name: "label",
+                kind: ValueKind::Text,
+                default: None,
+            },
+        ];
+        let ids: Vec<String> = (1..=ROWS).map(|i| i.to_string()).collect();
+        let tags: Vec<String> = (1..=ROWS).map(|i| format!("it's \\ {}", i % 3)).collect();
+        let count = || async {
+            let rows = collect(&b, conn, &format!("SELECT count(*) FROM {t}")).await;
+            cell(&rows[0], 0, 0).unwrap()
+        };
+
+        let rows: Vec<Vec<(usize, Value<'_>)>> = (0..ROWS)
+            .map(|i| {
+                let label = if i % 7 == 0 {
+                    Value::Null
+                } else {
+                    Value::Text(&ids[i])
+                };
+                vec![
+                    (0, Value::Text(&ids[i])),
+                    (1, Value::Text(&tags[i])),
+                    (2, label),
+                ]
+            })
+            .collect();
+        let inserts = dml::inserts(d, t, &columns, &rows).unwrap();
+        assert_eq!(inserts.len(), 3, "{}", b.name);
+        dml::apply(conn, d, &inserts)
+            .await
+            .unwrap_or_else(|e| panic!("{}: insert: {e}", b.name));
+        assert_eq!(count().await, ROWS.to_string(), "{}: inserted", b.name);
+
+        let key = |i: usize| vec![(0, Some(ids[i].as_str())), (1, Some(tags[i].as_str()))];
+        let deletes =
+            dml::deletes(d, t, &columns, &(0..1100).map(key).collect::<Vec<_>>()).unwrap();
+        assert_eq!(deletes.len(), 3, "{}", b.name);
+        dml::apply(conn, d, &deletes)
+            .await
+            .unwrap_or_else(|e| panic!("{}: delete: {e}", b.name));
+        assert_eq!(count().await, "100", "{}: deleted", b.name);
+
+        // A row deleted meanwhile: the batch finds one row fewer than it names.
+        let gone: Vec<_> = (1100..ROWS).chain([4]).map(key).collect();
+        let err = dml::apply(conn, d, &dml::deletes(d, t, &columns, &gone).unwrap())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                ApplyError::RowCount {
+                    index: 0,
+                    rows: 100,
+                    expected: 101
+                }
+            ),
+            "{}: {err}",
+            b.name
+        );
+        assert_eq!(count().await, "100", "{}: rolled back", b.name);
+        assert!(!conn.transaction().open, "{}", b.name);
+
+        // By a key of one column.
+        let by_id: Vec<_> = (1100..ROWS)
+            .map(|i| vec![(0, Some(ids[i].as_str()))])
+            .collect();
+        dml::apply(conn, d, &dml::deletes(d, t, &columns, &by_id).unwrap())
+            .await
+            .unwrap_or_else(|e| panic!("{}: delete by id: {e}", b.name));
+        assert_eq!(count().await, "0", "{}: all deleted", b.name);
+    }
 }
 
 #[tokio::test]
@@ -1899,9 +2026,13 @@ async fn edits_arrays_and_composites() {
             &[(0, Some("1"))],
         )
         .unwrap();
-        dml::apply(conn, Dialect::from(b.config.driver), &[update])
-            .await
-            .unwrap_or_else(|e| panic!("{}: update: {e}", b.name));
+        dml::apply(
+            conn,
+            Dialect::from(b.config.driver),
+            &[dml::Statement::one(update)],
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: update: {e}", b.name));
 
         let rows = collect(
             &b,

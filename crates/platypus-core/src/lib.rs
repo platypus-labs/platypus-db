@@ -20,8 +20,8 @@ pub use config::{
     SshConfig, SslMode,
 };
 pub use connection::{
-    CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, RecordBatchStream,
-    ServerInfo,
+    CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, Executed,
+    RecordBatchStream, ServerInfo, execute_each,
 };
 pub use error::{DbError, Error, Result};
 pub use explain::{Explain, ExplainFormat, FullScan, LARGE_SCAN_ROWS, PlanNode, explain_document};

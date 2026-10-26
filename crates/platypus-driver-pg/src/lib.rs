@@ -27,8 +27,9 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use platypus_core::{
     CancelHandle, Canceller, CatalogColumn, Connection, ConnectionConfig, DbError, Driver,
-    DriverKind, Error, ExecOptions, ExecResult, ObjectMeta, RecordBatchStream, ReferencingKey,
-    Result, SchemaMeta, ServerInfo, TableDetails, TransactionState, TxTracker, classify,
+    DriverKind, Error, ExecOptions, ExecResult, Executed, ObjectMeta, RecordBatchStream,
+    ReferencingKey, Result, SchemaMeta, ServerInfo, TableDetails, TransactionState, TxEffect,
+    TxTracker, classify, execute_each,
 };
 use tokio::sync::{Mutex, OwnedMutexGuard};
 use tokio_postgres::error::{ErrorPosition, SqlState};
@@ -204,6 +205,39 @@ impl Connection for PgConnection {
         result
     }
 
+    /// All the statements in one simple query: one round trip for all of them, where
+    /// [`execute`](Self::execute) takes two per statement (prepare, then run).
+    async fn execute_all(&self, statements: &[&str]) -> Executed {
+        // An empty query would still open a transaction in manual-commit mode.
+        if statements.is_empty() || statements.iter().any(|s| classify(s) != TxEffect::None) {
+            return execute_each(self, statements).await;
+        }
+        let _guard = self.busy.lock().await;
+        if self.tx.needs_begin(TxEffect::None) {
+            if let Err(e) = self.client.batch_execute("BEGIN").await {
+                return Executed {
+                    rows: Vec::new(),
+                    error: Some(map_error(e)),
+                };
+            }
+            self.tx.set_open(true);
+        }
+        let mut rows = Vec::with_capacity(statements.len());
+        let result = self.simple_counts(&statements.join(";\n"), &mut rows).await;
+        self.tx.after(TxEffect::None, false);
+        let error = match result {
+            Err(e) => Some(map_error(e)),
+            // A statement the server split differently would shift every count after it.
+            Ok(()) if rows.len() != statements.len() => Some(Error::Unsupported(format!(
+                "the server ran {} statements instead of {}",
+                rows.len(),
+                statements.len()
+            ))),
+            Ok(()) => None,
+        };
+        Executed { rows, error }
+    }
+
     fn cancel_handle(&self) -> CancelHandle {
         CancelHandle::new(self.canceller.clone())
     }
@@ -298,6 +332,23 @@ impl Connection for PgConnection {
 }
 
 impl PgConnection {
+    /// Runs `sql` as a simple query, adding the rows each of its statements changed to
+    /// `rows`; on an error, `rows` holds the counts of the statements before it.
+    async fn simple_counts(
+        &self,
+        sql: &str,
+        rows: &mut Vec<u64>,
+    ) -> std::result::Result<(), tokio_postgres::Error> {
+        let stream = self.client.simple_query_raw(sql).await?;
+        futures::pin_mut!(stream);
+        while let Some(message) = stream.next().await.transpose()? {
+            if let SimpleQueryMessage::CommandComplete(n) = message {
+                rows.push(n);
+            }
+        }
+        Ok(())
+    }
+
     async fn end_transaction(&self, sql: &str) -> Result<()> {
         let _guard = self.busy.lock().await;
         if !self.tx.state().open {
