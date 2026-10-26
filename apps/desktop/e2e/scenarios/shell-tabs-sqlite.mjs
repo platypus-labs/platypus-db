@@ -2,10 +2,11 @@
 // the split editor, a table dragged from the navigator into the editor, the zoom keys, the
 // Activity log, the dialogs' and the tree's keyboard support, and the Italian interface.
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL, SHIFT } from "../cdp.mjs";
+import { settingsFile, settingsLack } from "../settings.mjs";
 
 const NAME = "E2E tabs";
 const tabs = `[...document.querySelectorAll('.tab')]`;
@@ -33,37 +34,6 @@ database = '${path}'
 save_password = false
 `,
   );
-}
-
-async function settingsFile(dir, pattern) {
-  const deadline = Date.now() + 5000;
-  let text = "";
-  while (!pattern.test(text) && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 100));
-    try {
-      text = readFileSync(join(dir, "settings.toml"), "utf8");
-    } catch {
-      // Not written yet.
-    }
-  }
-  assert.match(text, pattern);
-}
-
-/** Waits until settings.toml has been read and no longer matches `pattern`: a key that is
- *  removed. A file that cannot be read yet never counts as "without the key". */
-async function settingsLack(dir, pattern) {
-  const deadline = Date.now() + 5000;
-  let text = null;
-  while ((text === null || pattern.test(text)) && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 100));
-    try {
-      text = readFileSync(join(dir, "settings.toml"), "utf8");
-    } catch {
-      // Not written yet.
-    }
-  }
-  assert.notEqual(text, null, "settings.toml was never written");
-  assert.doesNotMatch(text, pattern);
 }
 
 /** Opens the context menu of the tab at `index`. */

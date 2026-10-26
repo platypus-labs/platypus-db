@@ -52,3 +52,52 @@ test("a skipped statement is not the end", () => {
   g.settle({ kind: "skipped" });
   assert.deepEqual(g.resolved, []);
 });
+
+const cancelled = { kind: "error", error: { kind: "cancelled", message: "Cancelled" } };
+
+test("a run waits for its job until the job is known", () => {
+  const g = gate(true);
+  assert.equal(g.awaitsJob(), true);
+  g.settle(started);
+  assert.equal(g.awaitsJob(), true, "events do not give the job");
+  g.jobKnown();
+  assert.equal(g.awaitsJob(), false);
+});
+
+test("a backend that never answers is ended by abandon, once", () => {
+  const g = gate(true);
+  g.abandon(cancelled);
+  assert.deepEqual(g.resolved, [cancelled]);
+  assert.equal(g.awaitsJob(), false);
+  assert.equal(g.abandoned(), true);
+  // A late answer changes nothing.
+  g.settle(finished);
+  g.jobKnown();
+  g.abandon(affected);
+  assert.deepEqual(g.resolved, [cancelled]);
+});
+
+test("a terminal status waiting for the job is replaced by abandon", () => {
+  const g = gate(true);
+  g.settle(affected);
+  g.abandon(cancelled);
+  g.jobKnown();
+  assert.deepEqual(g.resolved, [cancelled]);
+});
+
+test("abandon after the run is over does not end it twice", () => {
+  const g = gate(true);
+  g.jobKnown();
+  g.settle(finished);
+  g.abandon(cancelled);
+  assert.deepEqual(g.resolved, [finished]);
+  assert.equal(g.abandoned(), false, "the run ended on its own");
+});
+
+test("a run whose job is known is ended by abandon without a terminal status", () => {
+  const g = gate(true);
+  g.jobKnown();
+  g.settle(started);
+  g.abandon(cancelled);
+  assert.deepEqual(g.resolved, [cancelled]);
+});

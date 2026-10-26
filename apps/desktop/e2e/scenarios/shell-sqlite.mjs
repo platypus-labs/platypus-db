@@ -2,10 +2,11 @@
 // the command palette runs actions and opens tables, shortcuts can be changed in the
 // Settings, and toolbar buttons hidden.
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL, SHIFT } from "../cdp.mjs";
+import { settingsFile } from "../settings.mjs";
 
 const NAME = "E2E shell";
 const tabCount = `document.querySelectorAll('.tab').length`;
@@ -32,20 +33,6 @@ database = '${path}'
 save_password = false
 `,
   );
-}
-
-async function settingsFile(dir, pattern) {
-  const deadline = Date.now() + 5000;
-  let text = "";
-  while (!pattern.test(text) && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 100));
-    try {
-      text = readFileSync(join(dir, "settings.toml"), "utf8");
-    } catch {
-      // Not written yet.
-    }
-  }
-  assert.match(text, pattern);
 }
 
 async function palette(page, query) {

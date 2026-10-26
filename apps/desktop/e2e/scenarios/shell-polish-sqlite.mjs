@@ -2,10 +2,11 @@
 // database picker and of the Settings, the handle that resizes the navigator, and the glass
 // of menus and dialogs.
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
+import { settingsFile, settingsLack } from "../settings.mjs";
 
 const NAME = "E2E polish";
 const row = (label) =>
@@ -43,37 +44,6 @@ save_password = false
   );
   // Where earlier builds kept the navigator's width and collapse: still read.
   writeFileSync(join(dir, "settings.toml"), "[ui]\nsidebar_width = 300\nsidebar_collapsed = true\n");
-}
-
-async function settingsFile(dir, pattern) {
-  const deadline = Date.now() + 5000;
-  let text = "";
-  while (!pattern.test(text) && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 100));
-    try {
-      text = readFileSync(join(dir, "settings.toml"), "utf8");
-    } catch {
-      // Not written yet.
-    }
-  }
-  assert.match(text, pattern);
-}
-
-/** Waits until settings.toml has been read and no longer matches `pattern`: a key that is
- *  removed. A file that cannot be read yet never counts as "without the key". */
-async function settingsLack(dir, pattern) {
-  const deadline = Date.now() + 5000;
-  let text = null;
-  while ((text === null || pattern.test(text)) && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 100));
-    try {
-      text = readFileSync(join(dir, "settings.toml"), "utf8");
-    } catch {
-      // Not written yet.
-    }
-  }
-  assert.notEqual(text, null, "settings.toml was never written");
-  assert.doesNotMatch(text, pattern);
 }
 
 export default async function (page, { dir, shots }) {

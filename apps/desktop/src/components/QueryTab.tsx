@@ -117,6 +117,9 @@ const clientError = (message: string, kind = "other"): CommandError => ({
   position: null,
 });
 
+/** The status of a statement the user stopped before it had a result. */
+const cancelled = (): ResultStatus => ({ kind: "error", error: clientError(t("Cancelled"), "cancelled") });
+
 declare module "../tabs/registry" {
   interface TabKinds {
     query: QueryTabModel;
@@ -243,6 +246,8 @@ export function QueryTab({
   const runToken = useRef(0);
   const jobs = useRef<number[]>([]);
   const currentJob = useRef<number | null>(null);
+  /** The gate of the statement `runOne` last ran, which Cancel and closing the tab end. */
+  const statement = useRef<ReturnType<typeof runGate> | null>(null);
   /** The data editor has changes that running again would lose. */
   const unsaved = useRef(false);
   /** Data viewer: the table's keys, loaded once and again after DDL. */
@@ -264,8 +269,16 @@ export function QueryTab({
     for (const id of jobs.current) void api.closeQuery(id);
     jobs.current = [];
   };
-  // Release results when the tab closes.
-  useEffect(() => closeJobs, []);
+  // Release results when the tab closes; a statement still waiting for the backend ends too,
+  // and the run behind it stops there.
+  useEffect(
+    () => () => {
+      runToken.current++;
+      statement.current?.abandon(cancelled());
+      closeJobs();
+    },
+    [],
+  );
 
   // Without a password prompt the catalog can load right away; otherwise on first run.
   useEffect(() => {
@@ -312,12 +325,16 @@ export function QueryTab({
   }
 
   /** Runs one statement and resolves with its first terminal status, once its job is known
-   *  too (a fast statement finishes before `runQuery` returns the job); `seen` gets its job,
-   *  columns and rows as they arrive. */
+   *  too (a fast statement finishes before `runQuery` returns the job), or when Cancel or
+   *  closing the tab ends it before that; `seen` gets its job, columns and rows as they
+   *  arrive. */
   function runOne(sessionId: number, result: Result, token: number, history: boolean, seen?: Seen): Promise<ResultStatus> {
     return new Promise((resolve) => {
-      const { settle, jobKnown } = runGate(result.limit !== null, resolve);
+      const gate = runGate(result.limit !== null, resolve);
+      const { settle, jobKnown } = gate;
+      statement.current = gate;
       const onEvent = (event: QueryEvent) => {
+        if (gate.abandoned()) return;
         if (token !== runToken.current) return settle({ kind: "skipped" });
         let status: ResultStatus | null = null;
         switch (event.type) {
@@ -354,6 +371,11 @@ export function QueryTab({
       };
       api.runQuery(sessionId, result.sql, result.limit, onEvent, history).then(
         (jobId) => {
+          // The run was cancelled before the backend answered: the job it started has no owner.
+          if (gate.abandoned()) {
+            void api.closeQuery(jobId);
+            return;
+          }
           jobs.current.push(jobId);
           currentJob.current = jobId;
           if (seen) seen.jobId = jobId;
@@ -361,6 +383,7 @@ export function QueryTab({
           jobKnown();
         },
         (e: unknown) => {
+          if (gate.abandoned()) return;
           const status: ResultStatus = { kind: "error", error: toCommandError(e) };
           update(result.id, { status });
           jobKnown();
@@ -529,7 +552,7 @@ export function QueryTab({
             if (connection.read_only && added.some((a) => !a.readOnly)) {
               return { kind: "error", error: clientError(t("{name} is read-only and {path} may modify data.", { name: connection.name, path })) };
             }
-            if (!(await confirmed(added))) return { kind: "error", error: clientError(t("Cancelled"), "cancelled") };
+            if (!(await confirmed(added))) return cancelled();
             const addedResults = added.map((a) => resultOf(a, false));
             queue.splice(i + 1, 0, ...added);
             own.splice(i + 1, 0, ...addedResults);
@@ -571,7 +594,7 @@ export function QueryTab({
       } else {
         const values = p.params.length ? await fillParams(p, variables, defined) : variables;
         if (!values) {
-          status = { kind: "error", error: clientError(t("Cancelled"), "cancelled") };
+          status = cancelled();
         } else {
           if (p.params.length) {
             sql = substitute(p.sql, p.params, values, connection.driver);
@@ -930,6 +953,12 @@ export function QueryTab({
   async function cancel() {
     const job = currentJob.current;
     const cli = cliRun.current;
+    // `run_query` has not answered: there is no job to cancel, so the statement ends here.
+    const waiting = statement.current;
+    if (cli === null && waiting?.awaitsJob()) {
+      waiting.abandon(cancelled());
+      return;
+    }
     try {
       if (cli !== null) await api.cancelCli(cli);
       else if (job !== null) await api.cancelQuery(job);
