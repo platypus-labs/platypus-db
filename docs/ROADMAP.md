@@ -547,11 +547,19 @@ gap della colonna, avvisi, azioni a destra con la principale per ultima) e i tok
 
 ---
 
-### Gruppo L — Sicurezza operativa — ✅ P1 fatti
+### Gruppo L — Sicurezza operativa — ✅ P1 e P2 fatti
 
-**Stato: P1 completati** (conferma o blocco di UPDATE/DELETE senza WHERE e TRUNCATE con le
+**Stato: P1 e P2 completati** (conferma o blocco di UPDATE/DELETE senza WHERE e TRUNCATE con le
 righe stimate, conferma delle modifiche sulle connessioni Prod anche dal data editor, timer
-della transazione aperta con avviso). Restano i P2/P3.
+della transazione aperta con avviso). P2: l'indicatore della transazione aperta conta le
+modifiche e, cliccato, le elenca con Commit e Rollback (`guards/PendingDialog.tsx`; dopo ogni
+statement che non è una query il tab legge lo stato della transazione, e la lista si svuota
+quando si chiude). Il lucchetto della barra rende il tab di sola lettura (`readOnly` del
+modello, non salvato): il tab vede la connessione come `read_only` e ne applica tutti i
+controlli. `safety.auto_limit` (0, spento, di default) aggiunge un limite alle query
+dell'editor senza `LIMIT`/`TOP`/`OFFSET`/`FETCH` propri (`platypus_sql::add_limit`: `TOP (n)`
+in SQL Server, che rinuncia alle UNION; niente con le clausole di lock); il risultato tiene lo
+statement com'è scritto e la barra di stato dice "LIMIT automatico". Restano i P3.
 
 **Area:** `platypus-sql/src/analysis.rs` (analisi dello statement prima dell'esecuzione), `apps/desktop/src/guards/`
 **Dipende da:** 0.5; il gruppo F per i tipi di connessione
@@ -561,12 +569,12 @@ della transazione aperta con avviso). Restano i P2/P3.
 | ✅ Blocco o conferma per UPDATE/DELETE senza WHERE, con il numero di righe stimato | P1 | N |
 | ✅ Conferma per DDL e DML sulle connessioni Prod, con il riepilogo degli statement | P1 | D |
 | ✅ Timer della transazione aperta: avviso dopo N minuti, indicatore sempre visibile | P1 | N |
-| **Pending transactions**: elenco degli statement non ancora committati, per tab | P2 | D |
+| ✅ **Pending transactions**: elenco degli statement non ancora committati, per tab | P2 | D |
 | **Transaction log** della sessione | P3 | D |
-| `LIMIT` automatico sulle SELECT senza limite, configurabile | P2 | N |
+| ✅ `LIMIT` automatico sulle SELECT senza limite, configurabile | P2 | N |
 | Mascheramento dei dati sensibili per screen share (regole su nome e tipo di colonna) | P3 | N |
 | Restrizioni di sicurezza per connessione: niente export, niente modifica | P3 | D+ |
-| 🆕 Sola lettura temporanea per un tab o una sessione, senza cambiare la connessione salvata | P2 | N |
+| ✅ 🆕 Sola lettura temporanea per un tab o una sessione, senza cambiare la connessione salvata | P2 | N |
 | 🆕 **Snapshot prima di UPDATE/DELETE manuali**: le righe toccate salvate in locale prima dello statement, con ripristino in un clic | P3 | N |
 | 🆕 Blocco dell'app dopo N minuti di inattività (con la master password), disconnessione delle sessioni Prod | P3 | N |
 
