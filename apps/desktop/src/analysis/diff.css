@@ -1,1 +1,69 @@
 /* "Compare with previous run": the diff tab. */
+.diff-tab {
+  flex: 1;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.diff-summary {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.diff-counts {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.diff-truncated {
+  color: var(--warn);
+  font-weight: 500;
+}
+.diff-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.diff-table {
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.diff-table th,
+.diff-table td {
+  max-width: 320px;
+  padding: 2px 8px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.diff-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--grid-header);
+}
+.diff-row.added {
+  background: var(--ok-bg);
+}
+.diff-row.removed {
+  background: var(--error-bg);
+}
+.diff-row.changed {
+  background: var(--warn-bg);
+}
+.diff-sign {
+  width: 1.5em;
+  text-align: center;
+  font-weight: 600;
+}
+.diff-table td.diff-cell-changed {
+  box-shadow: inset 0 0 0 1px var(--warn);
+  font-weight: 600;
+}
+.diff-table td.null {
+  color: var(--fg-muted);
+  font-style: italic;
+}

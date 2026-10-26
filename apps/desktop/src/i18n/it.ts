@@ -1216,6 +1216,14 @@ const it: Record<string, string> = {
   // Analysis (group M): SQL on results
 
   // Analysis (group M): compare with the previous run
+  "Compare with previous run": "Confronta con l'esecuzione precedente",
+  "The columns changed since the previous run.": "Le colonne sono cambiate dall'esecuzione precedente.",
+  "Changes since the previous run": "Modifiche dall'esecuzione precedente",
+  "Rows matched by the table's key": "Righe abbinate per chiave della tabella",
+  "Rows matched by all their values: a changed row shows as removed and added.": "Righe abbinate per tutti i valori: una riga cambiata appare tolta e aggiunta.",
+  "Only the first {n} differences are shown.": "Sono mostrate solo le prime {n} differenze.",
+  "No differences.": "Nessuna differenza.",
+  "Before: {value}": "Prima: {value}",
 };
 
 export default it;
