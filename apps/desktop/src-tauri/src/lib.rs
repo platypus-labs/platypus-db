@@ -288,6 +288,8 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::catalog::comment_sql,
         commands::catalog::catalog_display_columns,
         commands::catalog::set_catalog_display_column,
+        commands::catalog::export_docs,
+        commands::catalog::cancel_docs,
         commands::history::search_history,
         commands::history::delete_history,
         commands::files::read_text_file,

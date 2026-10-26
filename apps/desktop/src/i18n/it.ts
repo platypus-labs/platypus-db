@@ -1179,6 +1179,16 @@ const it: Record<string, string> = {
   "The column shown beside the foreign keys that point to this table.": "La colonna mostrata accanto alle chiavi esterne che puntano a questa tabella.",
   "Automatic": "Automatica",
   "Row label": "Etichetta delle righe",
+  // Schema documentation export
+  "Export documentation…": "Esporta la documentazione…",
+  "Export documentation": "Esporta la documentazione",
+  "Title": "Titolo",
+  "Schemas": "Schemi",
+  "Views": "Viste",
+  "ER diagram": "Diagramma ER",
+  "Notes and tags": "Note e tag",
+  "Export": "Esporta",
+  "Documentation written to {path}": "Documentazione scritta in {path}",
 };
 
 export default it;

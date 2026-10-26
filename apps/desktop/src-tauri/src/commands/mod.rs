@@ -79,6 +79,8 @@ pub struct AppState {
     exports: Mutex<HashMap<u64, Arc<Export>>>,
     /// Scripts running in a command-line client, by the editor's run id: sending stops one.
     clis: Mutex<HashMap<u64, tokio::sync::oneshot::Sender<()>>>,
+    /// Documentation exports running, by id: cancelling one stops it before the file is written.
+    docs: Mutex<HashMap<u64, tokio_util::sync::CancellationToken>>,
     /// What the query manager shows.
     query_log: Arc<QueryLog>,
     next_id: AtomicU64,
@@ -121,6 +123,7 @@ impl AppState {
             jobs: Mutex::new(HashMap::new()),
             exports: Mutex::new(HashMap::new()),
             clis: Mutex::new(HashMap::new()),
+            docs: Mutex::new(HashMap::new()),
             query_log: Arc::default(),
             next_id: AtomicU64::new(1),
         }

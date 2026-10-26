@@ -27,6 +27,7 @@ async-trait.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 futures.workspace = true
 platypus-core.workspace = true
+platypus-docs.workspace = true
 platypus-driver-adbc.workspace = true
 platypus-driver-odbc.workspace = true
 platypus-driver-oracle.workspace = true
@@ -51,7 +52,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
-tokio = { workspace = true, features = ["io-util", "process", "sync", "time"] }
+tokio = { workspace = true, features = ["fs", "io-util", "process", "sync", "time"] }
+tokio-util.workspace = true
 uuid.workspace = true
 
 [lints]
