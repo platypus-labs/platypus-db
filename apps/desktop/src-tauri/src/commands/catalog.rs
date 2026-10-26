@@ -5,7 +5,7 @@ use tauri::State;
 use uuid::Uuid;
 
 use super::AppState;
-use crate::error::CommandResult;
+use crate::error::{CommandError, CommandResult};
 
 #[tauri::command]
 pub fn catalog_entries(
@@ -43,6 +43,38 @@ pub fn rename_catalog_key(
     to: CatalogKey,
 ) -> CommandResult<()> {
     state.with_catalog(|c| c.rename(connection_id, &from, &to))
+}
+
+/// The statements that set the comment of `table`, or of its `column`, as the database
+/// writes them; `None` removes it.
+#[tauri::command]
+pub async fn comment_sql(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: String,
+    table: String,
+    column: Option<String>,
+    comment: Option<String>,
+) -> CommandResult<String> {
+    let dialect = platypus_sql::Dialect::from(state.session(session_id)?.config.driver);
+    let conn = state.live(session_id).await?;
+    let old = platypus_schema::load(conn.as_ref(), dialect, &schema, &table).await?;
+    let mut new = old.clone();
+    let comment = comment.filter(|c| !c.trim().is_empty());
+    match &column {
+        None => new.comment = comment,
+        Some(name) => {
+            let c = new
+                .columns
+                .iter_mut()
+                .find(|c| &c.name == name)
+                .ok_or_else(|| CommandError::new("not_found", format!("no column {name}")))?;
+            c.comment = comment;
+        }
+    }
+    let script = platypus_schema::script(dialect, &schema, Some(&old), &new)
+        .map_err(|e| CommandError::new("invalid_design", e))?;
+    Ok(script.text())
 }
 
 /// Drops the notes of a deleted connection; a catalog that cannot be opened has none.

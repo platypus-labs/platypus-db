@@ -3178,3 +3178,53 @@ async fn edit_child_design(b: &Backend, conn: &dyn Connection) {
     assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("1"), "{}", b.name);
     run(conn, &format!("DROP TABLE {table}")).await.unwrap();
 }
+
+/// A comment written by the table editor's script reads back, on the table and on a column.
+/// SQLite, libSQL and MongoDB have none: the editor keeps the field read-only there.
+#[tokio::test]
+async fn writes_comments() {
+    use platypus_sql::Dialect;
+
+    let _serial = SERIAL.lock().await;
+
+    let tables = ["conf_comments".to_owned()];
+    let all = backends().await;
+    for b in all
+        .iter()
+        .filter(|b| !b.speaks_sqlite() && b.config.driver != DriverKind::Mongo)
+    {
+        let conn = b.connect().await;
+        let d = Dialect::from(b.config.driver);
+        drop_tables(&*conn, d, &b.schema, &tables).await;
+        let table = d.qualified(Some(&b.schema), "conf_comments");
+        let create = format!(
+            "CREATE TABLE {table} (id INTEGER, note VARCHAR(20)){}",
+            b.table_options("id")
+        );
+        run(&*conn, &create)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let old = platypus_schema::load(&*conn, d, &b.schema, "conf_comments")
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let mut new = old.clone();
+        new.comment = Some("All orders".to_owned());
+        new.columns[1].comment = Some("free text".to_owned());
+        let read = redesign(b, &*conn, Some(&old), &new).await;
+        assert_eq!(read.comment.as_deref(), Some("All orders"), "{}", b.name);
+        assert_eq!(
+            read.columns[1].comment.as_deref(),
+            Some("free text"),
+            "{}",
+            b.name
+        );
+        // Removing them clears them.
+        let mut cleared = read.clone();
+        cleared.comment = None;
+        cleared.columns[1].comment = None;
+        let read = redesign(b, &*conn, Some(&read), &cleared).await;
+        assert_eq!(read.comment, None, "{}", b.name);
+        assert_eq!(read.columns[1].comment, None, "{}", b.name);
+        drop_tables(&*conn, d, &b.schema, &tables).await;
+    }
+}

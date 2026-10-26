@@ -285,6 +285,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::catalog::save_catalog_entry,
         commands::catalog::catalog_tags,
         commands::catalog::rename_catalog_key,
+        commands::catalog::comment_sql,
         commands::history::search_history,
         commands::history::delete_history,
         commands::files::read_text_file,

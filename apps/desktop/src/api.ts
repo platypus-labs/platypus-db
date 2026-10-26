@@ -1280,4 +1280,11 @@ export const api = {
   catalogTags: (connectionId: string) => invoke<TagCount[]>("catalog_tags", { connectionId }),
   renameCatalogKey: (connectionId: string, from: CatalogKey, to: CatalogKey) =>
     invoke<void>("rename_catalog_key", { connectionId, from, to }),
+  commentSql: (
+    sessionId: number,
+    schema: string,
+    table: string,
+    column: string | null,
+    comment: string | null,
+) => invoke<string>("comment_sql", { sessionId, schema, table, column, comment }),
 };

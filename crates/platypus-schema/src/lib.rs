@@ -272,6 +272,7 @@ pub async fn load(
 ) -> Result<TableDesign> {
     let details = conn.table_details(schema, table).await?;
     let mut design = design_of(dialect, table, &details);
+    design.comment = conn.object_comment(schema, table).await?;
     let (s, t) = (dialect.quote_literal(schema), dialect.quote_literal(table));
     let actions = match dialect {
         Dialect::Postgres => Some(format!(
