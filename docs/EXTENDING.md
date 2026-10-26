@@ -332,8 +332,10 @@ as described under [Settings](#settings).
 - a scope: where it applies and what argument it receives;
 - a title;
 - optionally a shortcut, a menu group and order, and a `when` condition;
-- optionally `disabled`, which returns a reason (a `msg` text) not to run: the menus still list
-  the action, greyed out with the reason as its tooltip, and its shortcut does nothing.
+- optionally `disabled`, which returns a reason (a `msg` text) not to run: context menus and
+  the palette still list the action, greyed out with the reason (a menu item's tooltip, a
+  palette entry's detail); `runAction` does not run it, and its shortcut is swallowed, so no
+  other handler acts on the keys.
 
 Context menus, shortcuts and the command palette read from the registry: global actions
 appear in the palette by their title. The user can change any action's shortcut in the

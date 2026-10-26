@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { type Action, type ActionScope, type ActionScopes, actionsFor, runAction, shortcutLabel } from "../actions";
 import { t } from "../i18n";
 
@@ -46,6 +46,7 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: menu.x, top: menu.y });
   const [open, setOpen] = useState<string | null>(null);
+  const id = useId();
   const { scope, arg } = menu.target as { scope: ActionScope; arg: never };
   const actions = actionsFor(scope, arg).filter((a) => !a.hidden);
   const lines = entries(actions);
@@ -123,20 +124,28 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
     runAction(action, arg, onError);
   }
 
-  /** An action's item: a disabled one stays focusable, its reason as the tooltip. */
+  /** An action's item: a disabled one stays focusable, its reason as the tooltip and as its
+   *  description for screen readers. */
   function item(action: Action, props?: React.ButtonHTMLAttributes<HTMLButtonElement>) {
     const reason = action.disabled?.(arg) ?? null;
+    const hint = `${id}${action.id}`;
     return (
       <button
         key={action.id}
         role="menuitem"
         aria-disabled={reason ? true : undefined}
+        aria-describedby={reason ? hint : undefined}
         title={reason ? t(reason) : undefined}
         onClick={() => choose(action)}
         {...props}
       >
         <span>{t(action.title)}</span>
         {shortcutLabel(action) && <kbd className="shortcut">{shortcutLabel(action)}</kbd>}
+        {reason && (
+          <span id={hint} hidden>
+            {t(reason)}
+          </span>
+        )}
       </button>
     );
   }

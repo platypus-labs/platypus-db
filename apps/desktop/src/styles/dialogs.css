@@ -439,6 +439,11 @@ button.primary.danger:hover:not(:disabled) {
   color: var(--fg-strong);
 }
 
+/* A disabled action: listed with its reason, not run. */
+.palette li[aria-disabled="true"] {
+  opacity: 0.5;
+}
+
 .palette-kind {
   flex: none;
   width: 92px;
