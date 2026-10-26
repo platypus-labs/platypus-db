@@ -16,7 +16,7 @@ import { dropCached, loadCached, pruneCached, saveCached } from "../navigator/di
 import { FilterDialog } from "../navigator/FilterDialog";
 import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
 import { onNavigatorRefresh } from "../navigatorEvents";
-import { toggleSidebar } from "../shell/sidebar";
+import { toggleSidebar, toggleSidebarTitle } from "../shell/sidebar";
 import { annotation, catalogEntry, catalogKey, parseFilter, useCatalogVersion } from "../catalog/catalog";
 import { toggled } from "../sets";
 import { SQL_DRAG, type SqlDrag, qualifiedName, quoteIdent, selectLimit, selectSql, viewerSql } from "../sqlNames";
@@ -941,7 +941,7 @@ export function Navigator(props: Props) {
         <button className="icon" title={t("New connection")} aria-label={t("New connection")} onClick={onNew}>
           <Icon name="plus" />
         </button>
-        <button type="button" className="icon" title={t("Toggle sidebar (Ctrl+B)")} aria-label={t("Toggle sidebar")} onClick={toggleSidebar}>
+        <button type="button" className="icon" title={toggleSidebarTitle()} aria-label={t("Show or hide the navigator")} onClick={toggleSidebar}>
           <Icon name="sidebar-close" />
         </button>
       </div>

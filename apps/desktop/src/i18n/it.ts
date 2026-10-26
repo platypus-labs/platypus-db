@@ -2,8 +2,7 @@
 const it: Record<string, string> = {
   // Declared: action titles and settings
   "Command palette": "Palette dei comandi",
-  "Toggle sidebar": "Mostra o nascondi la barra laterale",
-  "Toggle sidebar (Ctrl+B)": "Mostra o nascondi la barra laterale (Ctrl+B)",
+  "Show or hide the navigator": "Mostra o nascondi il navigator",
   "Activity and errors": "Attività ed errori",
   "Settings": "Impostazioni",
   "Open beside the active tab": "Apri accanto alla scheda attiva",

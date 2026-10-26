@@ -33,12 +33,12 @@ export function useSidebarWidth(): [number, (width: number) => void] {
   return [width, (w) => setWidth(clamp(w))];
 }
 
-/** One write after the other: each saves the whole file. */
-const save = (width: number) =>
-  void (async () => {
-    if (getStored(OLD_KEY) !== undefined) await setStored(OLD_KEY, null);
-    await setStored(KEY, width === DEFAULT ? null : width);
-  })().catch(() => {});
+/** Both changes are made in memory at once (the next save already sees them); each write
+ *  sets its own key, so their order does not matter. */
+function save(width: number) {
+  if (getStored(OLD_KEY) !== undefined) setStored(OLD_KEY, null).catch(() => {});
+  setStored(KEY, width === DEFAULT ? null : width).catch(() => {});
+}
 
 /** The handle between the connections and the work: dragged, or the arrows once focused,
  *  set the width; a double-click goes back to the default. Saved when the drag ends. */

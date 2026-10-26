@@ -1,10 +1,11 @@
 /**
  * Whether the navigator column is shown. Stored with the other preferences (`settings.toml`)
- * without a Settings entry: the top bar's button and `Ctrl+B` are its controls. Its width is
- * kept by the handle (`SidebarResizer.tsx`).
+ * without a Settings entry: the buttons of the top bar and of the navigator, and `Ctrl+B`, are
+ * its controls. Its width is kept by the handle (`SidebarResizer.tsx`).
  */
 import { getStored, setStored, useSettingsVersion } from "../settings";
-import { registerAction } from "../actions";
+import { registerAction, shortcutLabel } from "../actions";
+import { t } from "../i18n";
 
 const KEY = "layout.sidebar_collapsed";
 /** Where earlier builds kept it: still read, removed on the next change. */
@@ -21,17 +22,23 @@ const warn = (e: unknown) => console.warn("sidebar", e);
 
 export function toggleSidebar() {
   const collapse = !isCollapsed();
-  // One write after the other: each saves the whole file.
-  void (async () => {
-    if (getStored(OLD_KEY) !== undefined) await setStored(OLD_KEY, null);
-    await setStored(KEY, collapse ? true : null);
-  })().catch(warn);
+  // Both changes are made in memory at once (a second toggle already sees them); each write
+  // sets its own key, so their order does not matter.
+  if (getStored(OLD_KEY) !== undefined) setStored(OLD_KEY, null).catch(warn);
+  setStored(KEY, collapse ? true : null).catch(warn);
 }
 
+const action = { id: "app.toggleSidebar", shortcut: "Mod+B" };
+
 registerAction({
-  id: "app.toggleSidebar",
+  ...action,
   scope: "global",
-  title: "Toggle sidebar",
-  shortcut: "Mod+B",
+  title: "Show or hide the navigator",
   run: toggleSidebar,
 });
+
+/** The name of the buttons that show and hide the navigator, with its current shortcut. */
+export function toggleSidebarTitle(): string {
+  const keys = shortcutLabel(action);
+  return keys ? `${t("Show or hide the navigator")} (${keys})` : t("Show or hide the navigator");
+}
