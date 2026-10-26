@@ -942,7 +942,15 @@ export function Navigator(props: Props) {
         <button className="icon" title={t("New connection")} aria-label={t("New connection")} onClick={onNew}>
           <Icon name="plus" />
         </button>
-        <button type="button" className="icon" title={toggleSidebarTitle()} aria-label={t("Show or hide the navigator")} onClick={toggleSidebar}>
+        <button
+          type="button"
+          className="icon"
+          title={toggleSidebarTitle()}
+          aria-label={t("Show or hide the navigator")}
+          // Shown with the navigator only.
+          aria-expanded
+          onClick={toggleSidebar}
+        >
           <Icon name="sidebar-close" />
         </button>
       </div>

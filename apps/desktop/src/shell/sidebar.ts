@@ -20,8 +20,14 @@ export function useSidebarCollapsed(): boolean {
 
 const warn = (e: unknown) => console.warn("sidebar", e);
 
+/** The top bar's button that shows and hides the navigator. */
+export const SIDEBAR_TOGGLE_ID = "sidebar-toggle";
+
 export function toggleSidebar() {
   const collapse = !isCollapsed();
+  // Hidden under the focus, the navigator column (App.tsx) would drop it to the page: the top
+  // bar's button, which shows the navigator again, takes it.
+  if (collapse && document.activeElement?.closest(".sidebar-column")) document.getElementById(SIDEBAR_TOGGLE_ID)?.focus();
   // Both changes are made in memory at once (a second toggle already sees them); each write
   // sets its own key, so their order does not matter.
   if (getStored(OLD_KEY) !== undefined) setStored(OLD_KEY, null).catch(warn);
