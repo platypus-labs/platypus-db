@@ -282,3 +282,22 @@ test("cheap scope cases: joins in parentheses, LATERAL, USING, words after a tab
     "column:b",
   ]);
 });
+
+test("an INSERT's target is out of scope in the query giving its rows", () => {
+  const inserted = (sql, explicit = false) =>
+    (nameOptions(sql.replace("|", ""), sql.indexOf("|"), catalog, explicit)?.items ?? [])
+      .filter((i) => i.kind === "column")
+      .map((i) => `${i.qualifier ? `${i.qualifier}.` : ""}${i.label}@${i.source}`);
+  const orders = ["id@orders", "customer_id@orders", "total@orders", "placed_at@orders"];
+  assert.deepEqual(inserted("INSERT INTO customers SELECT * FROM orders WHERE pl|"), orders);
+  assert.deepEqual(inserted("INSERT INTO customers (id, name) SELECT | FROM orders", true), orders);
+  assert.deepEqual(inserted("INSERT OR REPLACE INTO customers SELECT * FROM orders WHERE i|"), orders);
+  assert.deepEqual(inserted("INSERT INTO customers VALUES (|", true), []);
+  // Its column list, ON CONFLICT and RETURNING name its columns.
+  assert.ok(inserted("INSERT INTO customers (|) SELECT * FROM orders", true).includes("name@customers"));
+  assert.ok(inserted("INSERT INTO customers SELECT * FROM orders ON CONFLICT (|", true).includes("name@customers"));
+  assert.ok(inserted("INSERT INTO customers SELECT * FROM orders RETURNING na|").includes("name@customers"));
+  assert.ok(inserted("INSERT INTO customers VALUES (1, 'a', 'b') ON DUPLICATE KEY UPDATE name = na|").includes("name@customers"));
+  // A MERGE target stays in scope.
+  assert.ok(inserted("MERGE INTO orders o USING customers s ON s.id = o.customer_id WHEN MATCHED THEN UPDATE SET total = to|").includes("total@o"));
+});

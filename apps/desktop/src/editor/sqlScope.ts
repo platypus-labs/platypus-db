@@ -130,6 +130,9 @@ const END_SELECT = new Set(
 const CLAUSES = new Set([...END_SELECT, "SELECT", "SET", "ON", "JOIN"]);
 /** Words a `USING` may belong to: only DELETE and MERGE take tables there. */
 const USING_OWNERS = new Set(["DELETE", "MERGE", "JOIN", "SELECT", "CREATE", "ALTER"]);
+/** Words an `INTO` may belong to; the target of the first two is out of its rows' query. */
+const INSERTS = new Set(["INSERT", "REPLACE"]);
+const INTO_OWNERS = new Set([...INSERTS, "MERGE", "SELECT"]);
 
 /** The SQL with strings and comments blanked out, the same length. */
 export function maskSql(sql: string, options: ScopeOptions = {}): string {
@@ -286,6 +289,9 @@ interface Ref {
   nameEnd: number;
   /** For a subquery: its parentheses. */
   body?: [number, number];
+  /** For an INSERT target: the characters of the query giving it its rows, where it is not in
+   *  scope. */
+  hidden?: [number, number];
 }
 
 class Statement {
@@ -415,9 +421,31 @@ class Statement {
       // FROM and USING take a list of tables, the others one.
       const list = isWord(t[i], "FROM") || (isWord(t[i], "USING") && this.usingTables(i));
       if (!list && !isWord(t[i], "JOIN", "UPDATE", "INTO")) continue;
+      const first = this.refs.length;
       let k = this.item(i + 1);
       while (list && t[k]?.text === "," && t[k]!.parent === t[i]!.parent) k = this.item(k + 1);
+      const target = this.refs[first];
+      if (target && isWord(t[i], "INTO") && INSERTS.has(this.nearest(i, INTO_OWNERS) ?? "")) {
+        target.hidden = this.insertRows(k, t[i]!.parent);
+      }
     }
+  }
+
+  /** The characters of the query that gives an INSERT its rows: from token `k` (after the
+   *  target) past the column list, up to ON CONFLICT, ON DUPLICATE KEY or RETURNING at `level`.
+   *  Undefined when the rows are no query (`DEFAULT VALUES`, MySQL's `SET`). */
+  private insertRows(k: number, level: number): [number, number] | undefined {
+    const t = this.tokens;
+    const query = (i: number) => isWord(t[i], "SELECT", "WITH", "VALUES");
+    if (t[k]?.text === "(" && !query(k + 1)) k = closing(t, k) + 1;
+    if (isWord(t[k], "OVERRIDING")) k += 3;
+    if (!query(k) && t[k]?.text !== "(") return undefined;
+    const limit = level < 0 ? t.length : closing(t, level);
+    const ends = (i: number) =>
+      t[i]!.parent === level && (isWord(t[i], "RETURNING") || (isWord(t[i], "ON") && isWord(t[i + 1], "CONFLICT", "DUPLICATE")));
+    let end = k;
+    while (end < limit && !ends(end)) end++;
+    return [t[k]!.from, end < t.length ? t[end]!.from : Infinity];
   }
 
   /** Whether the `USING` at `i` names tables: in `DELETE … USING` and `MERGE … USING`, not in
@@ -456,7 +484,8 @@ class Statement {
     const limit = chain.findIndex((p) => this.closed.has(p));
     const visible = new Set(limit < 0 ? chain : chain.slice(0, limit + 1));
     if (limit < 0) visible.add(-1);
-    return this.refs.filter((r) => visible.has(r.parent)).map((r) => this.withColumns(r, depth));
+    const inScope = (r: Ref) => visible.has(r.parent) && !(r.hidden && pos >= r.hidden[0] && pos < r.hidden[1]);
+    return this.refs.filter(inScope).map((r) => this.withColumns(r, depth));
   }
 
   private withColumns(ref: Ref, depth: number): Source {
