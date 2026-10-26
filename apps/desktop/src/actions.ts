@@ -64,6 +64,8 @@ export interface Action<S extends ActionScope = ActionScope> {
   order?: number;
   /** Hidden from menus and shortcuts when it returns `false`. */
   when?: (arg: ActionScopes[S]) => boolean;
+  /** Listed but not run when it returns a reason, shown as the item's tooltip (a `msg` text). */
+  disabled?: (arg: ActionScopes[S]) => string | null;
   /** Shortcut only, never listed in menus. */
   hidden?: boolean;
   /** Also offered when several rows are selected; it gets them all in `arg.selection`. */
@@ -178,7 +180,7 @@ export function actionForKey<S extends ActionScope>(
   arg: ActionScopes[S],
   e: KeyboardEvent,
 ): Action<S> | undefined {
-  return actionsFor(scope, arg).find((a) => shortcutsOf(a).some((s) => matches(s, e)));
+  return actionsFor(scope, arg).find((a) => !a.disabled?.(arg) && shortcutsOf(a).some((s) => matches(s, e)));
 }
 
 /** While the Settings record a new shortcut, the keys go to them and run nothing. */

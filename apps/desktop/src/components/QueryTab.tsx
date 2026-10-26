@@ -232,6 +232,24 @@ export function QueryTab({
    *  the quick filters can rewrite it. Typing in it turns them off until it runs again. */
   const sortable =
     shown?.status.kind === "rows" && rewritable === shown.sql && statementRange(shown, tab.sql) !== null;
+  /** Data viewer: what the quick filters test for each column of a result (see
+   *  `api.sqlFilterColumns`), asked once per result. */
+  const [filters, setFilters] = useState<{ result: Result; columns: (string | null)[] | null } | null>(null);
+  useEffect(() => {
+    if (!tab.table || !shown?.columns) return;
+    let live = true;
+    const result = shown;
+    api.sqlFilterColumns(result.sql, connection.driver, shown.columns.map((c) => c.name)).then(
+      (columns) => live && setFilters({ result, columns }),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [tab.table, shown?.id, shown?.columns, connection.driver]);
+  /** Those of the shown result; `undefined` until they are known. */
+  const shownFilters =
+    filters && filters.result.id === shown?.id && filters.result.columns === shown.columns ? filters.columns : undefined;
   /** The viewer's sort of the shown statement, for the header arrow and the next click. */
   const shownSort = tab.table && shown ? sortOf(tab.sort, shown.sql) : null;
   // A count belongs to the statement it counted.
@@ -1413,7 +1431,7 @@ export function QueryTab({
                 sql: shown.sql,
                 jobId: shown.jobId,
                 table: tab.table ?? null,
-                viewer: tab.table && sortable ? { addCondition } : undefined,
+                viewer: tab.table && sortable && shownFilters !== undefined ? { addCondition, columns: shownFilters } : undefined,
               }}
               edit={editTarget(shown)}
               notes={notesScope(shown)}

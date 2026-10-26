@@ -2,13 +2,17 @@
 // viewer's query from the grid's menu: the editor's statement gets them in its top-level WHERE.
 import { registerAction } from "../../actions";
 import { api, isMongo } from "../../api";
-import { quoteIdent } from "../../sqlNames";
+import { msg } from "../../i18n";
 import type { GridActionContext } from "../DataGrid";
 
 /** The data viewer's filter, for the actions; set by the query tab for a query it can rewrite. */
 export interface ViewerFilter {
   /** Adds the condition to the shown statement's WHERE, in the editor, and runs it. */
   addCondition(condition: string): void;
+  /** What a condition on each result column names: the column the select list shows there
+   *  (`name` for `name AS n`), `null` for a computed one. `null` when the statement cannot
+   *  take a condition. */
+  columns: (string | null)[] | null;
 }
 
 declare module "../DataGrid" {
@@ -20,21 +24,26 @@ declare module "../DataGrid" {
 /** Rows read at most for "In selected values". */
 const IN_LIMIT = 1000;
 
-/** The focused cell's result row and column, when it is a loaded row of a data viewer. */
-function target({ grid, source }: GridActionContext) {
+/** Why a quick filter is not offered for the focused cell's column. */
+const COMPUTED = msg("This column is computed: filter it in the SQL");
+const NO_WHERE = msg("This query cannot be filtered from the grid: add the condition in the SQL");
+
+/** The focused cell's result row and column, when it is a loaded row of a data viewer; `name`
+ *  is what a condition on the column names, `null` when there is none. */
+function focusedCell({ grid, source }: GridActionContext) {
   const focused = grid.focused();
   const row = focused ? grid.dataRow(focused.row) : null;
-  const column = focused ? grid.columns()[focused.col] : undefined;
-  if (!source?.viewer || source.jobId === null || row === null || !column || !focused) return null;
+  if (!source?.viewer || source.jobId === null || row === null || !focused) return null;
   // The conditions are SQL; a MongoDB filter is a query document typed by hand.
   if (isMongo(source.connection.driver)) return null;
-  return {
-    viewer: source.viewer,
-    jobId: source.jobId,
-    row,
-    col: focused.col,
-    name: quoteIdent(column.name, source.connection.driver),
-  };
+  const { viewer } = source;
+  return { viewer, jobId: source.jobId, row, col: focused.col, name: viewer.columns?.[focused.col] ?? null };
+}
+
+/** The focused cell, when a condition on its column can be written. */
+function target(ctx: GridActionContext) {
+  const cell = focusedCell(ctx);
+  return cell?.name ? { ...cell, name: cell.name } : null;
 }
 
 async function byValue(ctx: GridActionContext, equal: boolean) {
@@ -46,7 +55,14 @@ async function byValue(ctx: GridActionContext, equal: boolean) {
   else t.viewer.addCondition(`${t.name} ${equal ? "=" : "<>"} ${literal}`);
 }
 
-const available = (ctx: GridActionContext) => target(ctx) !== null;
+const available = (ctx: GridActionContext) => focusedCell(ctx) !== null;
+
+/** Offered but not run on a computed column, or a statement no condition can go into. */
+function disabled(ctx: GridActionContext): string | null {
+  const cell = focusedCell(ctx);
+  if (!cell || cell.name) return null;
+  return cell.viewer.columns === null ? NO_WHERE : COMPUTED;
+}
 
 registerAction({
   id: "grid.filter_equal",
@@ -56,6 +72,7 @@ registerAction({
   group: "filter",
   order: 70,
   when: available,
+  disabled,
   run: (ctx) => byValue(ctx, true),
 });
 
@@ -67,6 +84,7 @@ registerAction({
   group: "filter",
   order: 71,
   when: available,
+  disabled,
   run: (ctx) => byValue(ctx, false),
 });
 
@@ -78,6 +96,7 @@ registerAction({
   group: "filter",
   order: 72,
   when: available,
+  disabled,
   run: async (ctx) => {
     const t = target(ctx);
     const sel = ctx.grid.selection();
@@ -101,6 +120,7 @@ registerAction({
   group: "filter",
   order: 73,
   when: available,
+  disabled,
   run: (ctx) => {
     const t = target(ctx);
     if (t) t.viewer.addCondition(`${t.name} IS NULL`);
@@ -115,6 +135,7 @@ registerAction({
   group: "filter",
   order: 74,
   when: available,
+  disabled,
   run: (ctx) => {
     const t = target(ctx);
     if (t) t.viewer.addCondition(`${t.name} IS NOT NULL`);

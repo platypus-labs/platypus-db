@@ -103,6 +103,8 @@ const it: Record<string, string> = {
   "Filter": "Filtro",
   "Not equal to this value": "Diverso da questo valore",
   "In selected values": "Tra i valori selezionati",
+  "This column is computed: filter it in the SQL": "Questa colonna è calcolata: filtrala nell'SQL",
+  "This query cannot be filtered from the grid: add the condition in the SQL": "Questa query non si filtra dalla griglia: aggiungi la condizione nell'SQL",
   "This query cannot be changed from the grid: edit it in the editor.": "Questa query non si può modificare dalla griglia: modificala nell'editor.",
   "This query cannot be counted.": "Questa query non si può contare.",
   "This query cannot be sorted from the header: it is not one read-only query that an ORDER BY can be added to.": "Questa query non si ordina dall'intestazione: non è una sola query di lettura a cui aggiungere un ORDER BY.",

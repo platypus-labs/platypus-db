@@ -945,6 +945,7 @@ fn never_panics_on_odd_input() {
             let _ = set_order_by(&sql, dialect, None);
             let _ = count_query(&sql, dialect);
             let _ = add_condition(&sql, dialect, "a = 1");
+            let _ = filter_columns(&sql, dialect, &["a", "b"]);
             let _ = restore_order_by(&sql, dialect, "ORDER BY a");
         }
     }

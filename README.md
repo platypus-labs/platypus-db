@@ -165,8 +165,9 @@ and shows the ODBC drivers and data sources of the system.
 - **Find** in the loaded rows (`Ctrl+F`).
 - **Value panel** (`F7`): long text, JSON and XML formatted, hex and images from binary
   columns, save to file.
-- Quick filters on the focused value; columns hidden, pinned, moved and resized, with the
-  layout kept per table.
+- Quick filters on the focused value (a renamed column is filtered on the column it shows, a
+  computed one in the SQL); columns hidden, pinned, moved and resized, with the layout kept
+  per table.
 - Totals of the selection (count, sum, average, minimum, maximum), a record view of one row
   at a time, counts by value, statistics of the selection, and two rows compared column by
   column.

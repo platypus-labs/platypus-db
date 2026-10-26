@@ -10,6 +10,9 @@
 
 use crate::{Dialect, Lexer, Token, TokenKind};
 
+mod filter;
+pub use filter::filter_columns;
+
 /// Aggregate functions: a select list with one needs its own row, not one per input row.
 /// A missing name makes "Count rows" count the input rows, while a scalar function taken for
 /// an aggregate only costs a derived table: the list leans wide.
@@ -542,6 +545,11 @@ fn skip_head(t: &Tokens, mut i: usize, body: &mut Body) -> usize {
 /// Reads the top level of one statement; `None` when it is not a plain query that can be
 /// rewritten with certainty.
 fn scan(sql: &str, dialect: Dialect) -> Option<Body> {
+    scan_tokens(sql, dialect).map(|(_, body)| body)
+}
+
+/// `scan`, with the statement's tokens.
+fn scan_tokens(sql: &str, dialect: Dialect) -> Option<(Tokens<'_>, Body)> {
     let t = Tokens::new(sql, dialect)?;
     let main = t.main()?;
     let mut body = Body {
@@ -582,7 +590,7 @@ fn scan(sql: &str, dialect: Dialect) -> Option<Body> {
             part = body.enter(&t, part, clause, i)?;
         }
     }
-    Some(body)
+    Some((t, body))
 }
 
 /// The start of the whitespace before `tokens[i]`, when only whitespace separates it from
@@ -649,7 +657,8 @@ fn put_order_by(sql: &str, dialect: Dialect, clause: Option<String>) -> Option<S
 
 /// `sql` with `condition` added to its top-level `WHERE` with `AND` (the existing condition
 /// goes in parentheses when it has an `OR`), or a new `WHERE` before `GROUP BY`, `ORDER BY`
-/// and the other clauses that follow. Not for set operations or queries without `FROM`.
+/// and the other clauses that follow. Not for set operations or queries without `FROM`. A
+/// quick filter on a result column writes its condition on what `filter_columns` gives.
 #[must_use]
 pub fn add_condition(sql: &str, dialect: Dialect, condition: &str) -> Option<String> {
     let body = scan(sql, dialect)?;

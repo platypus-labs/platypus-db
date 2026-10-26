@@ -469,3 +469,19 @@ pub fn sql_add_condition(sql: String, driver: DriverKind, condition: String) -> 
     }
     platypus_sql::add_condition(&sql, Dialect::from(driver), &condition)
 }
+
+/// For each column of the result of `sql`, named `columns`, what a quick filter on it tests
+/// in the `WHERE`: the column it shows (`name` for `name AS n`), or `None` for a computed one.
+/// `None` overall when no condition can be added to `sql`.
+#[tauri::command]
+pub fn sql_filter_columns(
+    sql: String,
+    driver: DriverKind,
+    columns: Vec<String>,
+) -> Option<Vec<Option<String>>> {
+    if !rewritable(&sql, driver) || driver == DriverKind::Mongo {
+        return None;
+    }
+    let names: Vec<&str> = columns.iter().map(String::as_str).collect();
+    platypus_sql::filter_columns(&sql, Dialect::from(driver), &names)
+}

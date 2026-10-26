@@ -1173,6 +1173,10 @@ export const api = {
   /** `sql` with `condition` added to its top-level WHERE; `null` when it cannot be placed. */
   sqlAddCondition: (sql: string, driver: DriverKind, condition: string) =>
     invoke<string | null>("sql_add_condition", { sql, driver, condition }),
+  /** For each result column of `sql`, what a quick filter on it tests in the WHERE (`name` for
+   *  `name AS n`), `null` for a computed one; `null` when no condition can be added to `sql`. */
+  sqlFilterColumns: (sql: string, driver: DriverKind, columns: string[]) =>
+    invoke<(string | null)[] | null>("sql_filter_columns", { sql, driver, columns }),
   /** Saved scripts of a project, `null` for All connections. */
   listScripts: (project: string | null) => invoke<ScriptList>("list_scripts", { project }),
   /** A new empty script; returns its relative path. */
