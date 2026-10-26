@@ -238,7 +238,12 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
         </button>
       </header>
       {isRelation(tab.objectKind) && (
-        <NotesPanel connectionId={connection.id} catalogKey={ckey()} suggestions={tagSuggestions} />
+        <NotesPanel
+          connectionId={connection.id}
+          catalogKey={ckey()}
+          suggestions={tagSuggestions}
+          columns={tab.objectKind === "table" ? d?.columns.map((c) => c.name) : undefined}
+        />
       )}
       <nav className="object-sections">
         {sections.map((s) => (

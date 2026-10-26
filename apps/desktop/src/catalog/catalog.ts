@@ -1,18 +1,35 @@
 /**
- * The local notes and tags of each connection (`catalog.db`), loaded once per connection and
- * shared by the navigator, the object tab, the grid and the editor's completion.
+ * The local notes, tags and display columns of each connection (`catalog.db`), loaded once per
+ * connection and shared by the navigator, the object tab, the grid and the editor's completion.
  */
 import { useSyncExternalStore } from "react";
-import { api, type CatalogEntry, type CatalogKey, toCommandError } from "../api";
+import { api, type CatalogEntry, type CatalogKey, type DisplayColumn, toCommandError } from "../api";
 import { workbench } from "../workbench";
 
 const loaded = new Map<string, Map<string, CatalogEntry>>();
+/** Per connection: `database \0 schema \0 table` → the column that describes its rows. */
+const displays = new Map<string, Map<string, string>>();
 const loading = new Map<string, Promise<void>>();
 const listeners = new Set<() => void>();
 let version = 0;
 let warned = false;
 
 const id = (k: CatalogKey) => [k.database, k.schema, k.object, k.column].join("\u0000");
+const tableId = (database: string | null | undefined, schema: string, table: string) =>
+  [database ?? "", schema, table].join("\u0000");
+
+async function fetchCatalog(connectionId: string) {
+  const [entries, columns] = await Promise.all([
+    api.catalogEntries(connectionId),
+    api.catalogDisplayColumns(connectionId),
+  ]);
+  store(connectionId, entries, columns);
+}
+
+function store(connectionId: string, entries: CatalogEntry[], columns: DisplayColumn[]) {
+  loaded.set(connectionId, new Map(entries.map((e) => [id(e.key), e])));
+  displays.set(connectionId, new Map(columns.map((d) => [tableId(d.key.database, d.key.schema, d.key.object), d.column])));
+}
 
 function changed() {
   version++;
@@ -27,19 +44,14 @@ function load(connectionId: string): Promise<void> {
   const running = loading.get(connectionId);
   if (running) return running;
   if (loaded.has(connectionId)) return Promise.resolve();
-  const p = api.catalogEntries(connectionId).then(
-    (entries) => {
-      loaded.set(connectionId, new Map(entries.map((e) => [id(e.key), e])));
-    },
-    (e: unknown) => {
-      // The app works without notes; say so once.
-      loaded.set(connectionId, new Map());
-      if (!warned) {
-        warned = true;
-        workbench().showError(`Notes are unavailable: ${toCommandError(e).message}`);
-      }
-    },
-  ).then(() => {
+  const p = fetchCatalog(connectionId).catch((e: unknown) => {
+    // The app works without notes; say so once.
+    store(connectionId, [], []);
+    if (!warned) {
+      warned = true;
+      workbench().showError(`Notes are unavailable: ${toCommandError(e).message}`);
+    }
+  }).then(() => {
     loading.delete(connectionId);
     changed();
   });
@@ -70,10 +82,45 @@ export async function saveCatalog(connectionId: string, key: CatalogKey, note: s
 export async function renameCatalog(connectionId: string, from: CatalogKey, to: CatalogKey) {
   await api.renameCatalogKey(connectionId, from, to);
   await loading.get(connectionId);
-  const entries = await api.catalogEntries(connectionId);
-  loaded.set(connectionId, new Map(entries.map((e) => [id(e.key), e])));
+  await fetchCatalog(connectionId);
   changed();
 }
+
+/** The column picked to describe the rows of a table; `undefined` for the automatic choice. */
+export function displayColumn(
+  connectionId: string,
+  database: string | null | undefined,
+  schema: string,
+  table: string,
+): string | undefined {
+  const columns = displays.get(connectionId);
+  if (!columns) {
+    load(connectionId);
+    return undefined;
+  }
+  return columns.get(tableId(database, schema, table));
+}
+
+/** Picks the column that describes the rows of a table; `null` goes back to the automatic one. */
+export async function setDisplayColumn(
+  connectionId: string,
+  database: string | null | undefined,
+  schema: string,
+  table: string,
+  column: string | null,
+) {
+  await load(connectionId);
+  await api.setCatalogDisplayColumn(connectionId, catalogKey(database, schema, table), column);
+  const columns = displays.get(connectionId) ?? new Map<string, string>();
+  if (column === null) columns.delete(tableId(database, schema, table));
+  else columns.set(tableId(database, schema, table), column);
+  displays.set(connectionId, columns);
+  changed();
+}
+
+/** `columns`, plus the picked one when the table no longer has it, so the select shows it. */
+export const withPicked = (columns: string[], picked: string) =>
+  picked && !columns.includes(picked) ? [...columns, picked] : columns;
 
 /** Re-renders the caller whenever notes are loaded or saved. */
 export function useCatalogVersion(): number {

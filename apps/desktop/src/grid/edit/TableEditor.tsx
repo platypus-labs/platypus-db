@@ -4,7 +4,10 @@ import { api, type CellInput, type ColumnInfo, type SavedConnection, toCommandEr
 import type { Cell, CellDecoration, GridApi } from "../DataGrid";
 import type { RowCache } from "../RowCache";
 import { CellEditor, type Move } from "./CellEditor";
-import { Dictionary } from "./dictionary";
+import { Dictionary, foreignKeyColumns } from "./dictionary";
+import { displayColumn, useCatalogVersion } from "../../catalog/catalog";
+import { DisplayColumnDialog } from "../../catalog/DisplayColumnDialog";
+import { workbench } from "../../workbench";
 import { type EditMeta, type EditSource, type EditorKind, editMeta, editorKind, isJson, type ReadOnly } from "./meta";
 import { plainNumber } from "../formats";
 import { mapFields, parseClipboard } from "./paste";
@@ -18,6 +21,8 @@ import { t, plural, msg } from "../../i18n";
 /** A result the editor may change: the data viewer's, or a query's of one table. */
 export interface TableEditTarget {
   connection: SavedConnection;
+  /** The database of the table, when not the connection's own. */
+  database?: string | null;
   /** Identifies the source, e.g. the query; the editor loads the table again when it changes. */
   key: string;
   /** Hides the edit bar until the result turns out to be editable: results in the SQL
@@ -55,6 +60,10 @@ export interface TableEdit {
   save(confirmed?: boolean): Promise<void>;
   preview(): Promise<void>;
   discard(): void;
+  /** The table a single-column foreign key in result column `col` points to; `null` otherwise. */
+  foreignKey(col: number): { schema: string; table: string } | null;
+  /** Lets the user pick the column that describes the rows of `col`'s referenced table. */
+  chooseDisplayColumn(col: number): void;
 }
 
 declare module "../DataGrid" {
@@ -188,18 +197,27 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
   useEffect(() => latest.current?.onDirtyChange(dirty), [dirty]);
   useEffect(() => () => latest.current?.onDirtyChange(false), []);
 
-  // Foreign keys show the rows they point to.
+  // Foreign keys show the rows they point to, by the column the user picked for each table.
+  useCatalogVersion();
+  const connectionId = target?.connection.id;
+  const database = target?.database;
+  const preferred = useCallback(
+    (schema: string, table: string) => (connectionId ? displayColumn(connectionId, database, schema, table) : undefined),
+    [connectionId, database],
+  );
+  // Changes when a pick changes, not with every note saved in the catalog.
+  const picks = keys ? foreignKeyColumns(keys).map(({ fk }) => preferred(fk.ref_schema, fk.ref_table) ?? "").join("\u0000") : "";
   useEffect(() => {
     const t = latest.current;
     if (!keys || !t) return;
-    const dict = new Dictionary(t.session, () => setLabels((n) => n + 1));
+    const dict = new Dictionary(t.session, () => setLabels((n) => n + 1), preferred);
     dictionary.current = dict;
     void dict.init(keys);
     return () => {
       dict.dispose();
       dictionary.current = null;
     };
-  }, [keys]);
+  }, [keys, preferred, picks]);
 
   function apply(change: (s: edits.EditState) => edits.EditState) {
     const prev = current.current;
@@ -423,6 +441,28 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
       }
     },
     discard: () => apply(() => edits.EMPTY),
+    foreignKey: (col) => {
+      const fk = keys && foreignKeyColumns(keys).find((f) => f.col === col)?.fk;
+      return fk ? { schema: fk.ref_schema, table: fk.ref_table } : null;
+    },
+    chooseDisplayColumn: (col) => {
+      const ref = edit.foreignKey(col);
+      const editTarget = latest.current;
+      if (!ref || !editTarget) return;
+      editTarget.session().then((sessionId) => {
+        if (sessionId === null) return;
+        workbench().openDialog((close) => (
+          <DisplayColumnDialog
+            connectionId={editTarget.connection.id}
+            database={editTarget.database}
+            schema={ref.schema}
+            table={ref.table}
+            sessionId={sessionId}
+            onClose={close}
+          />
+        ));
+      }, fail);
+    },
   };
 
   const decorate = useCallback(

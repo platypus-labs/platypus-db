@@ -1174,6 +1174,11 @@ const it: Record<string, string> = {
   "No settings match.": "Nessuna impostazione corrisponde.",
   "Resize the connections": "Ridimensiona le connessioni",
   "Drag to resize, double-click to reset": "Trascina per ridimensionare, doppio clic per ripristinare",
+  "Show column of the referenced table…": "Mostra una colonna della tabella collegata…",
+  "Row label of {table}": "Etichetta delle righe di {table}",
+  "The column shown beside the foreign keys that point to this table.": "La colonna mostrata accanto alle chiavi esterne che puntano a questa tabella.",
+  "Automatic": "Automatica",
+  "Row label": "Etichetta delle righe",
 };
 
 export default it;

@@ -837,6 +837,12 @@ export interface TagCount {
   count: number;
 }
 
+/** The column picked to describe a table's rows beside the foreign keys to it; `key.column` is empty. */
+export interface DisplayColumn {
+  key: CatalogKey;
+  column: string;
+}
+
 /** A folder of projects in the rail; a project is in one at most. */
 export interface ProjectFolder {
   id: string;
@@ -1287,4 +1293,8 @@ export const api = {
     column: string | null,
     comment: string | null,
 ) => invoke<string>("comment_sql", { sessionId, schema, table, column, comment }),
+  catalogDisplayColumns: (connectionId: string) =>
+    invoke<DisplayColumn[]>("catalog_display_columns", { connectionId }),
+  setCatalogDisplayColumn: (connectionId: string, key: CatalogKey, column: string | null) =>
+    invoke<void>("set_catalog_display_column", { connectionId, key, column }),
 };

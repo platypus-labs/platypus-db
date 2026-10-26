@@ -1,29 +1,34 @@
-// Data catalog: a note and a tag on a table, the mark in the navigator, the #tag filter, and the
-// note still there after the page is loaded again (it lives in catalog.db, not in the page).
+// Data catalog: a note and a tag on a table, the mark in the navigator, the #tag filter, the
+// column that describes a referenced table's rows, and both still there after the page is loaded
+// again (they live in catalog.db, not in the page).
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 const NAME = "Catalog db";
+const ID = "00000000-0000-4000-8000-000000000018";
 const NOTE = "One row per order";
 const rows = (label) =>
   `[...document.querySelectorAll('.tree-row')].filter(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
 const row = (label) => `${rows(label)}[0]`;
 const objectTab = `[...document.querySelectorAll('.object-tab')].find(t => t.style.display !== 'none')`;
 const noteField = `${objectTab}?.querySelector('textarea[aria-label="Note"]')`;
+const rowLabel = `${objectTab}?.querySelector('.row-label select')`;
 
 export function setup({ dir }) {
   const db = new DatabaseSync(join(dir, "catalog.sqlite"));
   db.exec(`CREATE TABLE orders (id INTEGER PRIMARY KEY, email TEXT);
-           CREATE TABLE items (id INTEGER PRIMARY KEY);`);
+           CREATE TABLE items (id INTEGER PRIMARY KEY);
+           CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT, company TEXT);
+           CREATE TABLE invoices (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customers(id));`);
   db.close();
   writeFileSync(
     join(dir, "connections.toml"),
     `version = 1
 
 [[connections]]
-id = "00000000-0000-4000-8000-000000000018"
+id = "${ID}"
 name = "${NAME}"
 driver = "sqlite"
 database = '${join(dir, "catalog.sqlite")}'
@@ -38,8 +43,9 @@ async function expand(page) {
   await page.waitFor(`${row("orders")} !== undefined && ${row("items")} !== undefined`, 15_000);
 }
 
-async function openDetails(page) {
-  await page.eval(`${row("orders")}.id = 'e2e-target'`);
+async function openDetails(page, table = "orders") {
+  await page.waitFor(`${row(table)} !== undefined`, 15_000);
+  await page.eval(`${row(table)}.id = 'e2e-target'`);
   const r = await page.rect("#e2e-target");
   await page.eval(`document.getElementById('e2e-target').removeAttribute('id')`);
   await page.click(r.x + 20, r.y + r.h / 2, { button: "right" });
@@ -47,7 +53,8 @@ async function openDetails(page) {
   await page.eval(
     `[...document.querySelectorAll('.context-menu button')].find(b => b.querySelector('span').textContent === 'Open details').click()`,
   );
-  await page.waitFor(`${noteField} != null`, 15_000);
+  // Another object tab may be showing: wait for this table's.
+  await page.waitFor(`${objectTab}?.querySelector('.object-title strong')?.textContent === ${JSON.stringify(table)} && ${noteField} != null`, 15_000);
 }
 
 export default async function (page) {
@@ -75,16 +82,34 @@ export default async function (page) {
   await page.type("#pii");
   await page.waitFor(`document.querySelector('.tree-filter').value === '#pii'`);
   await page.waitFor(`${rows("items")}.length === 0 && ${rows("orders")}.length > 0`);
+  // Escape empties the filter, so customers is listed again.
+  await page.key("Escape", "Escape", 27);
+  await page.waitFor(`document.querySelector('.tree-filter').value === '' && ${rows("customers")}.length > 0`);
 
-  // A new load of the page: the note comes from catalog.db.
+  // The row label of customers, for the foreign key invoices.customer_id: Automatic until picked.
+  await openDetails(page, "customers");
+  // The columns come with the table's details.
+  await page.waitFor(`[...(${rowLabel}?.options ?? [])].some(o => o.value === 'company')`, 15_000);
+  assert.equal(await page.eval(`${rowLabel}.value`), "");
+  await page.eval(`(() => { const s = ${rowLabel}; s.value = 'company'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  // Wait on catalog.db, not on the select the line above has just set.
+  await page.waitFor(
+    `window.__TAURI_INTERNALS__.invoke('catalog_display_columns', { connectionId: '${ID}' }).then(all => all.some(d => d.key.object === 'customers' && d.column === 'company'))`,
+  );
+  await page.waitFor(`${rowLabel}.value === 'company'`);
+
+  // A new load of the page: the note and the row label come from catalog.db.
   // The marker only exists on the old document: its absence means the new one has loaded.
   await page.eval(`window.__e2eBeforeReload = true; location.reload()`);
   await page.waitFor(`window.__e2eBeforeReload === undefined && document.querySelector('.shell') !== null && ${row(NAME)} !== undefined`, 30_000);
-  // The filter is component state: it is empty again, so both tables are listed.
+  // The filter is component state: it starts empty, so every table is listed.
   assert.equal(await page.eval(`document.querySelector('.tree-filter').value`), "");
   await expand(page);
   await page.waitFor(`${row("orders")}.querySelector('.catalog-mark') !== null`);
   await openDetails(page);
   await page.waitFor(`${noteField}.value === ${JSON.stringify(NOTE)}`);
   assert.equal(await page.eval(`[...${objectTab}.querySelectorAll('.tag-chip')].some(c => c.textContent.startsWith('#pii'))`), true);
+  // The new select starts on Automatic and shows the pick once the catalog has loaded.
+  await openDetails(page, "customers");
+  await page.waitFor(`${rowLabel}?.value === 'company'`, 15_000);
 }
