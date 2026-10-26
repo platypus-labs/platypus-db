@@ -99,7 +99,9 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
         const sid = await sideSession();
         if (sid === null || !live) return;
         const objects = await api.listObjects(sid, tab.schema);
-        const names = objects.filter((o) => o.kind === "table" && !objects.some((p) => p.kind === "table" && p.name === o.parent)).map((o) => o.name);
+        // The tables without their partitions, as `platypus_schema::tables_of` lists them.
+        const tableNames = new Set(objects.flatMap((o) => (o.kind === "table" ? [o.name] : [])));
+        const names = objects.filter((o) => o.kind === "table" && !(o.parent !== null && tableNames.has(o.parent))).map((o) => o.name);
         if (!live) return;
         setAll(names);
         if (tab.tables === null && names.length > ERD_LIMIT) {
@@ -258,14 +260,17 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
             </marker>
           </defs>
           <rect width={size.w} height={size.h} fill={colors.background} />
-          {(tables ?? []).map((table) =>
+          {(tables ?? []).map((table, i) =>
             table.details.foreign_keys.map((fk) => {
-              const target = tables!.find((o) => o.name === fk.ref_table);
-              if (!target) return null;
+              const j = tables!.findIndex((o) => o.name === fk.ref_table);
+              if (j < 0) return null;
+              const target = tables![j]!;
+              const a = { ...pos(table.name), width: boxes[i]!.width };
+              const b = { ...pos(target.name), width: boxes[j]!.width };
               return (
                 <path
                   key={`${table.name}/${fk.name}`}
-                  d={edgePath(table, pos(table.name), target, pos(target.name), fk.columns[0], fk.ref_columns[0])}
+                  d={edgePath(table, a, target, b, fk.columns[0], fk.ref_columns[0])}
                   stroke={colors.muted}
                   fill="none"
                   markerStart={`url(#${id("many")})`}
@@ -276,8 +281,8 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
               );
             }),
           )}
-          {(tables ?? []).map((table) => (
-            <TableBox key={table.name} table={table} at={pos(table.name)} colors={colors} onPointerDown={(e) => startTable(e, table.name)} onOpen={() => openTable(table.name)} />
+          {(tables ?? []).map((table, i) => (
+            <TableBox key={table.name} table={table} box={boxes[i]!} at={pos(table.name)} colors={colors} onPointerDown={(e) => startTable(e, table.name)} onOpen={() => openTable(table.name)} />
           ))}
           {notes.map((n) => (
             <g key={n.id} transform={`translate(${n.x},${n.y})`} className="erd-note" onPointerDown={(e) => startNote(e, n)} onDoubleClick={() => setEditing(n.id)}>
@@ -310,8 +315,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
   );
 }
 
-function TableBox({ table, at, colors, onPointerDown, onOpen }: { table: SchemaTable; at: Point; colors: ChartColors; onPointerDown: (e: PointerEvent) => void; onOpen: () => void }) {
-  const b = box(table);
+function TableBox({ table, box: b, at, colors, onPointerDown, onOpen }: { table: SchemaTable; box: Box; at: Point; colors: ChartColors; onPointerDown: (e: PointerEvent) => void; onOpen: () => void }) {
   const keys = new Set(table.details.foreign_keys.flatMap((f) => f.columns));
   return (
     <g transform={`translate(${at.x},${at.y})`} className="erd-table" onPointerDown={onPointerDown} onDoubleClick={onOpen}>
@@ -335,16 +339,17 @@ function TableBox({ table, at, colors, onPointerDown, onOpen }: { table: SchemaT
   );
 }
 
-/** The line of a foreign key, from the row of its column in `from` to the row of the
- *  referenced column in `to`, leaving and entering the boxes on the sides facing each other. */
-function edgePath(from: SchemaTable, a: Point, to: SchemaTable, b: Point, column?: string, refColumn?: string): string {
+/** The line of a foreign key, from the row of its column in `from` (its box at `a`) to the row
+ *  of the referenced column in `to` (at `b`), leaving and entering the boxes on the sides facing
+ *  each other. */
+function edgePath(from: SchemaTable, a: Point & { width: number }, to: SchemaTable, b: Point & { width: number }, column?: string, refColumn?: string): string {
   const row = (t: SchemaTable, name?: string) => {
     let i = t.details.columns.findIndex((c) => c.name === name);
     if (i < 0) i = Math.max(0, t.details.columns.findIndex((c) => c.primary_key));
     return HEAD + i * ROW + ROW / 2;
   };
-  const wa = boxWidth(from);
-  const wb = boxWidth(to);
+  const wa = a.width;
+  const wb = b.width;
   const ya = a.y + row(from, column);
   const yb = b.y + row(to, refColumn);
   if (from === to) {

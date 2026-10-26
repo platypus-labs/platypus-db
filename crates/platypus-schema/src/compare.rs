@@ -15,8 +15,9 @@ pub fn compare(
     wanted: &[TableDesign],
     current: &[TableDesign],
 ) -> Result<Script, String> {
-    let find =
-        |tables: &'_ [TableDesign], name: &str| tables.iter().find(|t| t.name == name).cloned();
+    fn find<'a>(tables: &'a [TableDesign], name: &str) -> Option<&'a TableDesign> {
+        tables.iter().find(|t| t.name == name)
+    }
     let mut out = Script {
         transactional: true,
         ..Script::default()
@@ -37,7 +38,7 @@ pub fn compare(
                     dialect,
                     schema,
                     Some(old),
-                    &matched(&w, Some(old), schema, wanted_schema),
+                    &matched(w, Some(old), schema, wanted_schema),
                 )?,
             );
         }
@@ -134,23 +135,20 @@ fn by_references(tables: &[TableDesign], reverse: bool) -> Vec<&TableDesign> {
     sorted
 }
 
+/// Appends the statements of `part` to `out`, and the parts that each table's script repeats
+/// (before, after, warnings) only once.
 fn add(out: &mut Script, part: Script) {
-    for s in part.before {
-        if !out.before.contains(&s) {
-            out.before.push(s);
+    fn once(to: &mut Vec<String>, items: Vec<String>) {
+        for s in items {
+            if !to.contains(&s) {
+                to.push(s);
+            }
         }
     }
-    for s in part.after {
-        if !out.after.contains(&s) {
-            out.after.push(s);
-        }
-    }
+    once(&mut out.before, part.before);
+    once(&mut out.after, part.after);
     out.statements.extend(part.statements);
-    for w in part.warnings {
-        if !out.warnings.contains(&w) {
-            out.warnings.push(w);
-        }
-    }
+    once(&mut out.warnings, part.warnings);
 }
 
 #[cfg(test)]
