@@ -16,12 +16,15 @@ struct Find {
 }
 
 /// The text of `src` up to `i`, skipping strings and comments, tracks the nesting of the
-/// brackets: `step` is called with each byte offset outside them and its depth.
+/// brackets: `step` is called with the offset of each character outside them and its depth.
+/// The offsets are character boundaries, so `src[i..]` is safe; the inner bytes of a
+/// multi-byte character (`città`, a no-break space) are skipped.
 fn scan(src: &str, mut step: impl FnMut(usize, usize) -> bool) {
     let bytes = src.as_bytes();
     let (mut i, mut depth) = (0, 0usize);
     while i < bytes.len() {
         match bytes[i] {
+            _ if !src.is_char_boundary(i) => {}
             q @ (b'"' | b'\'' | b'`') => {
                 i += 1;
                 while i < bytes.len() && bytes[i] != q {
@@ -239,6 +242,83 @@ mod tests {
         );
         assert_eq!(count("db.c.find()").unwrap(), "db.c.countDocuments({})");
         assert_eq!(count("db.c.find({})").unwrap(), "db.c.countDocuments({})");
+    }
+
+    #[test]
+    fn handles_text_outside_ascii() {
+        assert_eq!(
+            set_sort("db.città.find({})", Some(("è", true))).unwrap(),
+            "db.città.find({}).sort({ \"è\": -1 })"
+        );
+        assert_eq!(
+            count("db.città.find({ n: 'à' })").unwrap(),
+            "db.città.countDocuments({ n: 'à' })"
+        );
+        assert_eq!(
+            set_sort("db.c.find({})\u{a0}", Some(("a", false))).unwrap(),
+            "db.c.find({}).sort({ a: 1 })\u{a0}"
+        );
+        assert_eq!(
+            set_sort("db.c.find({})\u{a0}.sort({ b: 1 })", None).unwrap(),
+            "db.c.find({})\u{a0}"
+        );
+    }
+
+    #[test]
+    fn never_panics_on_odd_input() {
+        let targets = [
+            "db.c",
+            "db.città",
+            "db.getCollection('è')",
+            "db['ü']",
+            "\u{a0}db.c",
+        ];
+        let filters = [
+            "",
+            "{}",
+            "{ a: 'à' }",
+            "{ 'é': 1 }, { b: 1 }",
+            "{ a: /é+/ }",
+        ];
+        let chain = [
+            ".sort({ a: 1 })",
+            ".sort ({ é: -1 })",
+            ".limit(5)",
+            ".skip(1)",
+            "\u{a0}",
+            " ",
+            "\n",
+            "é",
+            "🦆",
+            "// é",
+            "/* é */",
+            ".sort(",
+            ")",
+            "(",
+            "'",
+            "\"",
+            "\\",
+            ".",
+            ";",
+        ];
+        // A fixed linear congruential sequence: the same inputs on every run.
+        let mut seed = 0x2545_f491_u32;
+        let mut next = |n: usize| {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+            (seed >> 16) as usize % n
+        };
+        for _ in 0..3000 {
+            let target = targets[next(targets.len())];
+            let filter = filters[next(filters.len())];
+            let mut src = format!("{target}.find({filter})");
+            for _ in 0..next(5) {
+                src.push_str(chain[next(chain.len())]);
+            }
+            let _ = sortable(&src);
+            let _ = set_sort(&src, Some(("a", false)));
+            let _ = set_sort(&src, None);
+            let _ = count(&src);
+        }
     }
 
     #[test]
