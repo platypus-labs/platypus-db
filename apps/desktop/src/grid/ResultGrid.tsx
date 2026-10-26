@@ -21,6 +21,7 @@ import "./features/filters";
 import { useReferences } from "./features/references";
 import { useGridSearch } from "./features/search";
 import { useSelectionStats } from "./features/stats";
+import { useColumnProfile } from "../analysis/ColumnProfile";
 import { type ColumnLayout, EMPTY_LAYOUT, loadLayout, saveLayout } from "./layout";
 import type { RowCache } from "./RowCache";
 
@@ -107,6 +108,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   const editor = useTableEditor({ target: edit ?? null, jobId, columns, cache, version, grid, box });
   const search = useGridSearch(jobId, columns.length, editor.topRows, grid);
   const stats = useSelectionStats(jobId, grid);
+  const profile = useColumnProfile(jobId, columns, rowCount);
   const valuePanelOpen = useSetting(valuePanelSetting);
   // MongoDB results show the focused row's document in place of the value panel, open
   // from the start: nested fields are only readable there.
@@ -182,6 +184,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
             }
             headerVersion={notesVersion}
             headerMarked={notes ? (col) => { const e = noteOf(col); return !!(e?.note || e?.tags.length); } : undefined}
+            onHeaderHover={profile.onHeaderHover}
             rowCount={rowCount}
             topRows={editor.topRows}
             cache={cache}
@@ -190,7 +193,12 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
             onHeaderClick={onHeaderClick}
             source={source ? { ...source, edit: editor.edit, features, references: refs.references } : null}
             decorate={decorate}
-            overlay={editor.overlay}
+            overlay={
+              <>
+                {editor.overlay}
+                {profile.popover}
+              </>
+            }
             onCellDoubleClick={editor.onCellDoubleClick}
             onScroll={editor.onScroll}
             onFocusChange={setFocused}

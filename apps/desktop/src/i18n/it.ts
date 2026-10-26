@@ -1204,6 +1204,12 @@ const it: Record<string, string> = {
   "This query cannot be sorted from the header: the editor does not hold it as it ran (it was edited since, its variables were filled in, or it comes from @include).": "Questa query non si ordina dall'intestazione: l'editor non la contiene così come è stata eseguita (è stata modificata, ha variabili sostituite o viene da un @include).",
 
   // Analysis (group M): column statistics
+  "NULL values": "Valori NULL",
+  "Most frequent": "I più frequenti",
+  "of all {n} row": "su {n} riga, tutte",
+  "of all {n} rows": "su tutte le {n} righe",
+  "of {n} loaded row": "su {n} riga caricata",
+  "of {n} loaded rows": "su {n} righe caricate",
 
   // Analysis (group M): charts
 
