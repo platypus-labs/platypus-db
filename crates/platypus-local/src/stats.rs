@@ -197,20 +197,24 @@ pub fn histogram(numbers: impl Iterator<Item = f64>, lo: f64, hi: f64) -> Vec<(f
         return vec![(lo, hi, numbers.count())];
     }
     let bins = usize::from(BINS);
-    let width = (hi - lo) / f64::from(BINS);
+    // Divided first: `hi - lo` overflows to infinity for extremes of opposite sign.
+    let width = hi / f64::from(BINS) - lo / f64::from(BINS);
     let mut counts = vec![0; bins];
     for v in numbers {
         counts[values::slot(v, lo, width, bins)] += 1;
     }
+    // The start of range `i`; weighted between the ends where `lo + width * i` overflows.
+    let bound = |i: u8| {
+        let at = lo + width * f64::from(i);
+        if at.is_finite() {
+            return at;
+        }
+        let t = f64::from(i) / f64::from(BINS);
+        lo * (1.0 - t) + hi * t
+    };
     (0..BINS)
         .zip(counts)
-        .map(|(i, count)| {
-            (
-                lo + width * f64::from(i),
-                lo + width * f64::from(i + 1),
-                count,
-            )
-        })
+        .map(|(i, count)| (bound(i), bound(i + 1), count))
         .collect()
 }
 
@@ -323,6 +327,18 @@ mod tests {
             count: 2,
         };
         assert_eq!(p.histogram, [one]);
+    }
+
+    #[test]
+    fn extreme_ranges_have_finite_bounds() {
+        let bins = histogram([-f64::MAX, 0.0, f64::MAX].into_iter(), -f64::MAX, f64::MAX);
+        assert_eq!(bins.len(), usize::from(BINS));
+        assert!(
+            bins.iter()
+                .all(|(from, to, _)| from.is_finite() && to.is_finite())
+        );
+        assert_eq!(bins.iter().map(|b| b.2).sum::<usize>(), 3);
+        assert_eq!(bins.last().map(|b| b.2), Some(1));
     }
 
     #[test]
