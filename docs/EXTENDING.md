@@ -195,16 +195,17 @@ downloads instead of building in:
 Conformance: `crates/platypus-conformance/tests/bridges.rs` runs Trino (`--profile trino`)
 through the bridge, downloading its driver to `target/conformance-drivers`.
 
-### Vendor client libraries: Oracle and ODBC
+### Vendor client libraries: Oracle, ODBC and DuckDB
 
-Oracle, IBM Db2 and any ODBC driver need a client library that the vendor publishes and the
+Oracle, IBM Db2, DuckDB and any ODBC driver need a library that the vendor publishes and the
 app installs, or that the system has:
 - `DriverKind::vendor_package()` names it (`oracle`: Oracle Instant Client, `db2`: IBM's
-  Data Server Driver for ODBC and CLI). `platypus_drivers::vendor_package` describes it per
-  platform: archive URLs with the SHA-256 the vendor publishes (or computed once for IBM's
-  versioned archive), the library, and for an ODBC driver the program that registers it with
-  the system. `install_vendor` downloads, checks and unpacks to
-  `<data>/drivers/vendor/<name>/<version>/` (folders and symbolic links kept);
+  Data Server Driver for ODBC and CLI, `duckdb`: DuckDB's shared library).
+  `platypus_drivers::vendor_package` describes it per platform: archive URLs with the
+  SHA-256 the vendor publishes (or computed once for versioned archives), the library, and
+  for an ODBC driver the program that registers it with the system. `install_vendor`
+  downloads, checks and unpacks to `<data>/drivers/vendor/<name>/<version>/` (zip archives
+  with their folders and symbolic links; `.tar.gz` ones flat);
   `register` runs the vendor's program as administrator through PowerShell `-Verb RunAs`
   (Windows shows the UAC prompt; a declined prompt is `DriverError::ElevationDeclined`).
   A new version means new URLs and hashes in `vendor.rs`.
@@ -223,7 +224,20 @@ app installs, or that the system has:
   system's drivers; generic: a DSN, a driver and a connection string). `SQLCancel` needs
   unsafe code, which the workspace forbids: a statement still waiting to start is given up
   with its session, as with ADBC.
-- Both run a bare `BEGIN`, `COMMIT` or `ROLLBACK` through their client API
+- DuckDB: the `duckdb` crate is built with `loadable-extension`, as for a DuckDB extension:
+  it calls DuckDB through a table of function pointers instead of linking it, so the app
+  carries no DuckDB. `platypus-duckdb-loader`, the only crate where `unsafe` is allowed
+  (`deny`, each block with its SAFETY note), loads `libduckdb` and fills that table by
+  name (`api_functions.rs`, generated from libduckdb-sys's loadable bindings; a missing or
+  unknown name fails the build). `platypus_driver_duckdb::library::load` finds the library
+  under `<data>/drivers/vendor/duckdb/…` before a database or data file opens, else
+  `Error::DriverMissing`. The library must be the DuckDB version of the bindings: updating
+  the `duckdb` crate (pinned with `=`) means regenerating `api_functions.rs` and new URLs and
+  hashes in `vendor.rs`. Tests call `platypus_driver_duckdb::testing::load()` (feature
+  `testing`), which downloads the library once into `target/test-drivers` for the whole
+  workspace, or loads `PLATYPUS_DUCKDB_LIBRARY` offline; the E2E runner links that copy into
+  each profile unless a scenario sets `duckdb = false`.
+- Oracle and ODBC run a bare `BEGIN`, `COMMIT` or `ROLLBACK` through their client API
   (`platypus_core::TxControl`): Oracle reads `BEGIN` as a PL/SQL block, and ODBC drivers take
   it differently.
 - Desktop: `commands/vendor.rs` (`vendor_driver_status`, `install_vendor_driver` with

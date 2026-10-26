@@ -14,10 +14,16 @@ arrow-schema.workspace = true
 async-trait.workspace = true
 calamine.workspace = true
 duckdb.workspace = true
+platypus-duckdb-loader.workspace = true
 futures.workspace = true
 platypus-core.workspace = true
+platypus-drivers.workspace = true
 platypus-sql.workspace = true
 tokio = { workspace = true, features = ["sync"] }
+
+[features]
+# `testing`: DuckDB downloaded once for the tests of the workspace.
+testing = ["tokio/rt"]
 
 [dev-dependencies]
 tempfile.workspace = true

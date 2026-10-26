@@ -13,7 +13,7 @@
 // through the WebView2 DevTools protocol.
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -47,6 +47,7 @@ for (const file of scenarios) {
   if (ctx.shots) mkdirSync(ctx.shots, { recursive: true });
   await scenario.setup?.(ctx);
   englishInterface(dir);
+  if (scenario.duckdb !== false) installDuckDb(dir);
   const app = spawn(exe, [], {
     env: {
       ...process.env,
@@ -158,6 +159,31 @@ process.exit(failed ? 1 : 0);
 
 /** Scenarios read the English interface whatever the language of the machine, unless one
  *  sets the language itself. */
+/** DuckDB as the app would have downloaded it, from the copy the Rust tests download into
+ *  target/test-drivers (`cargo test -p platypus-driver-duckdb`); hard links, as each profile
+ *  gets one. A scenario that sets `export const duckdb = false` starts without it. */
+function installDuckDb(dir) {
+  const from = resolve(here, "../../../target/test-drivers/drivers/vendor/duckdb");
+  if (!existsSync(from)) {
+    console.log("e2e: no DuckDB in target/test-drivers; run `cargo test -p platypus-driver-duckdb` first");
+    return;
+  }
+  const copy = (src, dst) => {
+    mkdirSync(dst, { recursive: true });
+    for (const entry of readdirSync(src, { withFileTypes: true })) {
+      const [a, b] = [join(src, entry.name), join(dst, entry.name)];
+      if (entry.isDirectory()) copy(a, b);
+      else
+        try {
+          linkSync(a, b);
+        } catch {
+          copyFileSync(a, b);
+        }
+    }
+  };
+  copy(from, join(dir, "drivers", "vendor", "duckdb"));
+}
+
 function englishInterface(dir) {
   const file = join(dir, "settings.toml");
   const text = existsSync(file) ? readFileSync(file, "utf8") : "";

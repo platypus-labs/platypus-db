@@ -17,6 +17,7 @@ import { GuardDialog } from "../guards/GuardDialog";
 import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { workbench } from "../workbench";
+import { withDriver } from "../drivers/DriverPopup";
 import { t, plural, msg } from "../i18n";
 
 /** A table of a connection: where rows come from or go to. */
@@ -165,7 +166,8 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
     setError(null);
     setStatus({ state: "idle" });
     try {
-      const p = await api.previewImport(sid, file, sheet);
+      // DuckDB reads the file: downloaded first if it is not yet.
+      const p = await withDriver(() => api.previewImport(sid, file, sheet));
       show(p);
       setLoaded(file);
       setNewTable(p.table);

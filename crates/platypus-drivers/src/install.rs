@@ -126,8 +126,9 @@ pub(crate) fn hex(bytes: &[u8]) -> String {
     })
 }
 
-/// Unpacks the `.tar.gz` into `dir`; returns the library's file name from `MANIFEST`.
-fn unpack(bytes: &[u8], dir: &Path) -> Result<String, DriverError> {
+/// Unpacks the files at the top of a `.tar.gz` into `dir`; folders and links are skipped,
+/// files larger than [`MAX_FILE`] fail the archive.
+pub(crate) fn untar(bytes: &[u8], dir: &Path) -> Result<(), DriverError> {
     std::fs::create_dir_all(dir).map_err(io_error(dir))?;
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
     let format = |e: std::io::Error| DriverError::Format(e.to_string());
@@ -156,6 +157,12 @@ fn unpack(bytes: &[u8], dir: &Path) -> Result<String, DriverError> {
         let out = dir.join(name);
         std::fs::write(&out, data).map_err(io_error(&out))?;
     }
+    Ok(())
+}
+
+/// Unpacks the `.tar.gz` into `dir`; returns the library's file name from `MANIFEST`.
+fn unpack(bytes: &[u8], dir: &Path) -> Result<String, DriverError> {
+    untar(bytes, dir)?;
     let manifest = dir.join("MANIFEST");
     let text = std::fs::read_to_string(&manifest)
         .map_err(|_| DriverError::Format("the package has no MANIFEST".to_owned()))?;

@@ -62,6 +62,7 @@ pub fn connect(path: &str) -> Result<(Arc<Database>, duckdb::Connection)> {
     if path.is_empty() {
         return Err(Error::Config("no database file given".to_owned()));
     }
+    crate::library::load()?;
     let key = key(path)?;
     let mut open = lock(&OPEN);
     open.retain(|(_, db)| db.strong_count() > 0);

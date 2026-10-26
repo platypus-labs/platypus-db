@@ -1143,6 +1143,9 @@ const it: Record<string, string> = {
   "Data source (DSN)": "Origine dati (DSN)",
   "or driver": "o driver",
   "Connection string (with the driver: the rest of it)": "Stringa di connessione (con il driver: il resto)",
+  "DuckDB's library, downloaded once for DuckDB databases and for reading CSV, Parquet, JSON and Excel files.": "La libreria di DuckDB, scaricata una volta per i database DuckDB e per leggere file CSV, Parquet, JSON ed Excel.",
+  "PlatypusDB downloads DuckDB on Windows, macOS and Linux, on x64 and ARM processors; not on this system.": "PlatypusDB scarica DuckDB su Windows, macOS e Linux, con processori x64 e ARM; non su questo sistema.",
+  "Download DuckDB?": "Scaricare DuckDB?",
   "Oracle's client library, downloaded once for all Oracle connections.": "La libreria client di Oracle, scaricata una volta per tutte le connessioni Oracle.",
   "IBM's ODBC driver, downloaded once and registered with the Windows ODBC driver manager.": "Il driver ODBC di IBM, scaricato una volta e registrato nel gestore dei driver ODBC di Windows.",
   "PlatypusDB downloads Oracle Instant Client on Windows and Linux. Here, install Instant Client from Oracle and add its folder to the library path, then try again.": "PlatypusDB scarica Oracle Instant Client su Windows e Linux. Qui installa Instant Client da Oracle e aggiungi la sua cartella al percorso delle librerie, poi riprova.",
@@ -1164,7 +1167,7 @@ const it: Record<string, string> = {
   "Client: {name} (installed in the system)": "Client: {name} (installato nel sistema)",
   "Client: not installed": "Client: non installato",
   "Install": "Installa",
-  "Oracle connects through Oracle Instant Client, and IBM Db2 through IBM's ODBC driver: both installed from their vendors the first time a connection needs them.": "Oracle si connette con Oracle Instant Client, e IBM Db2 con il driver ODBC di IBM: entrambi installati dai produttori la prima volta che una connessione ne ha bisogno.",
+  "Oracle connects through Oracle Instant Client, IBM Db2 through IBM's ODBC driver, and DuckDB databases and data files through DuckDB's library: each installed from its vendor the first time it is needed.": "Oracle si collega con Oracle Instant Client, IBM Db2 con il driver ODBC di IBM, e i database e i file di dati DuckDB con la libreria di DuckDB: ognuno installato dal suo produttore la prima volta che serve.",
   "ODBC drivers of the system ({drivers}) and data sources ({sources})": "Driver ODBC del sistema ({drivers}) e origini dati ({sources})",
   // Connection list menu, database search, settings search, navigator width
   "New connection…": "Nuova connessione…",

@@ -16,7 +16,7 @@ platypus-core.workspace = true
 platypus-driver-adbc.workspace = true
 platypus-driver-clickhouse.workspace = true
 platypus-drivers.workspace = true
-platypus-driver-duckdb.workspace = true
+platypus-driver-duckdb = { workspace = true, features = ["testing"] }
 platypus-driver-libsql.workspace = true
 platypus-driver-mongo.workspace = true
 platypus-driver-mssql.workspace = true

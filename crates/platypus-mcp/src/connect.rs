@@ -253,6 +253,7 @@ mod tests {
 
     #[tokio::test]
     async fn duckdb_sessions_of_agents_reach_no_files() {
+        platypus_driver_duckdb::testing::load();
         let dir = tempfile::tempdir().unwrap();
         let secret = dir.path().join("secret.txt");
         std::fs::write(&secret, "s3cret").unwrap();

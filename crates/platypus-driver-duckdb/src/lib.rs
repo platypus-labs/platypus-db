@@ -1,4 +1,5 @@
-//! DuckDB driver built on the `duckdb` crate (bundled build).
+//! DuckDB driver built on the `duckdb` crate, with DuckDB's library downloaded at first use
+//! ([`library`]).
 //!
 //! DuckDB runs in-process, like SQLite: each connection owns a worker thread that holds the
 //! `duckdb::Connection` and runs statements one at a time. DuckDB produces Arrow natively,
@@ -10,7 +11,10 @@
 mod database;
 mod error;
 pub mod files;
+pub mod library;
 mod meta;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 mod types;
 
 use std::sync::atomic::{AtomicU64, Ordering};

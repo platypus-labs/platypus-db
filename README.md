@@ -68,7 +68,7 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | SQL Server, Azure SQL | TDS | `TOP (n)`, `[names]`, several result sets |
 | ClickHouse | HTTP interface (8123, or 8443 with TLS), Arrow results | Browsed, queried and designed; no data editing in the grid |
 | SQLite | embedded | |
-| DuckDB | embedded, Arrow results | Also opens CSV, JSON, Parquet and Excel files as databases |
+| DuckDB | embedded, Arrow results; DuckDB's library downloaded on first use | Also opens CSV, JSON, Parquet and Excel files as databases |
 | libSQL / Turso | Hrana over HTTP | Token in the password or in `authToken` |
 | MongoDB | official driver | mongosh syntax; no transactions, explain or data editing |
 | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | PostgreSQL driver | Profiles with their default port, user, database and SSL |
@@ -502,14 +502,15 @@ crates/
   platypus-driver-mysql/   MySQL / MariaDB (mysql_async)
   platypus-driver-mssql/   SQL Server / Azure SQL (tiberius, vendored with patches in vendor/)
   platypus-driver-sqlite/  SQLite (rusqlite)
-  platypus-driver-duckdb/  DuckDB (duckdb, bundled; Arrow results as they come)
+  platypus-driver-duckdb/  DuckDB (duckdb, library downloaded on first use; Arrow results as they come)
+  platypus-duckdb-loader/  loads DuckDB's library for the duckdb crate (the only unsafe code)
   platypus-driver-clickhouse/ ClickHouse over HTTP (reqwest; ArrowStream results decoded as they arrive)
   platypus-driver-libsql/  libSQL servers and Turso (Hrana over HTTP; SQLite's catalog code)
   platypus-driver-mongo/   MongoDB (official driver, rustls); mongosh parser, documents to Arrow
   platypus-driver-oracle/  Oracle (oracle crate on Oracle Instant Client)
   platypus-driver-adbc/    Snowflake, BigQuery, Databricks, Trino and any ADBC driver, loaded at run time
   platypus-driver-odbc/    Db2 and any ODBC driver or DSN, through the system's driver manager (Windows)
-  platypus-drivers/        drivers downloaded on first use: the dbc registry, Instant Client, IBM's ODBC driver
+  platypus-drivers/        drivers downloaded on first use: the dbc registry, Instant Client, IBM's ODBC driver, DuckDB
   platypus-tls/            rustls client configuration with libpq `sslmode` semantics
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
   platypus-schema/         table designs for the table editor and the DDL between them

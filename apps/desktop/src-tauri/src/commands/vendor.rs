@@ -1,5 +1,5 @@
 //! The vendors' client libraries the app installs (Oracle Instant Client, IBM's ODBC driver
-//! for Db2), and the ODBC drivers and data sources the system has.
+//! for Db2, DuckDB), and the ODBC drivers and data sources the system has.
 
 use platypus_core::DriverKind;
 use platypus_driver_odbc::system::{self, SystemOdbc};
@@ -46,7 +46,7 @@ pub struct VendorStatus {
 
 /// The ODBC driver the system has for `driver`, if it is reached through ODBC.
 fn system_driver(driver: DriverKind) -> CommandResult<Option<String>> {
-    if driver == DriverKind::Oracle {
+    if matches!(driver, DriverKind::Oracle | DriverKind::DuckDb) {
         return Ok(None);
     }
     platypus_driver_odbc::vendor_driver_installed(driver)
@@ -60,7 +60,7 @@ pub fn vendor_driver_status(driver: DriverKind) -> CommandResult<VendorStatus> {
     let installed = platypus_drivers::installed_vendor(data_dir()?, name);
     let system_driver = system_driver(driver)?;
     let ready = match driver {
-        DriverKind::Oracle => installed.is_some(),
+        DriverKind::Oracle | DriverKind::DuckDb => installed.is_some(),
         _ => system_driver.is_some(),
     };
     Ok(VendorStatus {

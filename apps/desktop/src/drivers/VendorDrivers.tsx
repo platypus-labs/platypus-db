@@ -19,6 +19,12 @@ function Address({ url }: { url: string }) {
 const PURPOSE: Partial<Record<DriverKind, string>> = {
   oracle: msg("Oracle's client library, downloaded once for all Oracle connections."),
   db2: msg("IBM's ODBC driver, downloaded once and registered with the Windows ODBC driver manager."),
+  duckdb: msg("DuckDB's library, downloaded once for DuckDB databases and for reading CSV, Parquet, JSON and Excel files."),
+};
+
+/** The popup's question where "{name} needs {client}" would repeat the name. */
+const QUESTION: Partial<Record<DriverKind, string>> = {
+  duckdb: msg("Download DuckDB?"),
 };
 
 /** Where the app installs nothing: what to do instead. */
@@ -27,6 +33,7 @@ const ELSEWHERE: Partial<Record<DriverKind, string>> = {
     "PlatypusDB downloads Oracle Instant Client on Windows and Linux. Here, install Instant Client from Oracle and add its folder to the library path, then try again.",
   ),
   db2: msg("IBM Db2 is reached through ODBC, on Windows only for now."),
+  duckdb: msg("PlatypusDB downloads DuckDB on Windows, macOS and Linux, on x64 and ARM processors; not on this system."),
 };
 
 interface Props {
@@ -99,7 +106,13 @@ export function VendorPopup({ driver, onDone }: Props) {
         )}
         {phase === "ask" && (
           <>
-            <h2>{pkg?.title ? t("{name} needs {client}", { name, client: pkg.title }) : t("{name} needs a client library", { name })}</h2>
+            <h2>
+              {QUESTION[driver]
+                ? t(QUESTION[driver])
+                : pkg?.title
+                  ? t("{name} needs {client}", { name, client: pkg.title })
+                  : t("{name} needs a client library", { name })}
+            </h2>
             <p className="muted small">{PURPOSE[driver] && t(PURPOSE[driver])}</p>
             {pkg && (
               <div className="driver-package">
@@ -205,9 +218,9 @@ export function VendorDriversSection() {
   return (
     <div className="vendor-drivers">
       <p className="muted small">
-        {t("Oracle connects through Oracle Instant Client, and IBM Db2 through IBM's ODBC driver: both installed from their vendors the first time a connection needs them.")}
+        {t("Oracle connects through Oracle Instant Client, IBM Db2 through IBM's ODBC driver, and DuckDB databases and data files through DuckDB's library: each installed from its vendor the first time it is needed.")}
       </p>
-      {(["oracle", "db2"] as const).map((d) => (
+      {(["oracle", "db2", "duckdb"] as const).map((d) => (
         <div key={d} className="driver-row" data-vendor-driver={d}>
           <strong>{DRIVER_NAMES[d]}</strong>
           <span className="spacer" />

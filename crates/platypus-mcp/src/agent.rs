@@ -596,6 +596,7 @@ mod tests {
 
     #[tokio::test]
     async fn duckdb_files_are_free_between_calls() {
+        platypus_driver_duckdb::testing::load();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("data.duckdb");
         duckdb::Connection::open(&path)
