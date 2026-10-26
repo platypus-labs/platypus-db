@@ -1205,6 +1205,8 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       title: "Export documentation…",
       group: "open",
       order: 30,
+      // The documentation covers tables and views, which a Mongo database has none of.
+      when: ({ connection }) => connection.driver !== "mongo",
       run: ({ connection }) => openDocs(connection, null, null),
     }),
     registerAction({
@@ -1286,6 +1288,7 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       title: "Export documentation…",
       group: "open",
       order: 34,
+      when: ({ connection }) => connection.driver !== "mongo",
       run: ({ connection, database, schema }) => openDocs(connection, database, schema.name),
     }),
     registerAction({
