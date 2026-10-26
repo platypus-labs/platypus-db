@@ -1,6 +1,6 @@
 //! Notes and tags on tables and columns (`platypus_store::CatalogStore`).
 
-use platypus_store::{CatalogEntry, CatalogKey, CatalogStore, TagCount};
+use platypus_store::{CatalogEntry, CatalogKey, CatalogStore, DisplayColumn, TagCount};
 use tauri::State;
 use uuid::Uuid;
 
@@ -43,6 +43,25 @@ pub fn rename_catalog_key(
     to: CatalogKey,
 ) -> CommandResult<()> {
     state.with_catalog(|c| c.rename(connection_id, &from, &to))
+}
+
+#[tauri::command]
+pub fn catalog_display_columns(
+    state: State<'_, AppState>,
+    connection_id: Uuid,
+) -> CommandResult<Vec<DisplayColumn>> {
+    state.with_catalog(|c| c.display_columns(connection_id))
+}
+
+/// The column that describes the rows of the table `key`; `None` for the automatic choice.
+#[tauri::command]
+pub fn set_catalog_display_column(
+    state: State<'_, AppState>,
+    connection_id: Uuid,
+    key: CatalogKey,
+    column: Option<String>,
+) -> CommandResult<()> {
+    state.with_catalog(|c| c.set_display_column(connection_id, &key, column.as_deref()))
 }
 
 /// Drops the notes of a deleted connection; a catalog that cannot be opened has none.
