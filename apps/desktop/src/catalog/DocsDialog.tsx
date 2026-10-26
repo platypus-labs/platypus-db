@@ -1,4 +1,4 @@
-import { createElement, useState } from "react";
+import { createElement, useRef, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { api, type DocsFormat, type DocsRequest, type SavedConnection, toCommandError } from "../api";
 import { answerFor } from "../testAnswers";
@@ -17,7 +17,7 @@ interface Props {
 
 type Status =
   | { state: "idle" }
-  | { state: "running"; id: number | null; done: number; total: number }
+  | { state: "running"; done: number; total: number }
   | { state: "finished"; path: string }
   | { state: "failed"; message: string };
 
@@ -43,6 +43,10 @@ function DocsDialog({ connection, database, schemas, initial, onClose }: Props) 
     path: "",
   });
   const [status, setStatus] = useState<Status>({ state: "idle" });
+  // Runs are numbered: Cancel or a new run makes the one in flight stale, so its events are
+  // dropped and its export is cancelled as soon as its id arrives.
+  const runNo = useRef(0);
+  const exportId = useRef<number | null>(null);
   const set = (patch: Partial<DocsRequest>) => setRequest((r) => ({ ...r, ...patch }));
   const running = status.state === "running";
   const close = () => !running && onClose();
@@ -60,23 +64,31 @@ function DocsDialog({ connection, database, schemas, initial, onClose }: Props) 
   }
 
   async function run() {
-    setStatus({ state: "running", id: null, done: 0, total: 0 });
+    const no = ++runNo.current;
+    const current = () => runNo.current === no;
+    exportId.current = null;
+    setStatus({ state: "running", done: 0, total: 0 });
     try {
       const sid = await workbench().sideSession(connection, database);
+      if (!current()) return;
       if (sid === null) return setStatus({ state: "idle" });
       const id = await api.exportDocs(sid, connection.id, database, { ...request, path: request.path.trim() }, (e) => {
+        if (!current()) return;
         if (e.kind === "progress") setStatus((s) => (s.state === "running" ? { ...s, done: e.done, total: e.total } : s));
         else if (e.kind === "finished") setStatus({ state: "finished", path: e.path });
         else setStatus({ state: "failed", message: e.message });
       });
-      setStatus((s) => (s.state === "running" ? { ...s, id } : s));
+      if (current()) exportId.current = id;
+      else void api.cancelDocs(id);
     } catch (e) {
-      setStatus({ state: "failed", message: toCommandError(e).message });
+      if (current()) setStatus({ state: "failed", message: toCommandError(e).message });
     }
   }
 
   function cancel() {
-    if (status.state === "running" && status.id !== null) void api.cancelDocs(status.id);
+    runNo.current++;
+    if (exportId.current !== null) void api.cancelDocs(exportId.current);
+    exportId.current = null;
     setStatus({ state: "idle" });
   }
 
