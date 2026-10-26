@@ -161,12 +161,12 @@ fn compare(old: &Run<'_>, new: &Run<'_>, out: &mut Diff) -> Result<(), ArrowErro
                     before: Vec::new(),
                 }))
             })?,
-            None => {}
             // Without a key the pair has the same values; with one, the other values may differ.
             Some(i) if old.whole.row(i) != new.whole.row(j) => {
                 out.record(Change::Changed, || changed(old, i, new, j))?;
             }
-            Some(_) => {}
+            // The same row, or one the partial previous run may just not have loaded.
+            _ => {}
         }
     }
     if new.complete {
