@@ -43,6 +43,7 @@ import { Icon } from "../ui/Icon";
 import { scrollSideways } from "../ui/scroll";
 import { notifyRunEnded } from "../shell/notify";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
+import { runGate } from "./runGate";
 import { t, plural, msg } from "../i18n";
 
 /** Auto-refresh intervals in seconds, `0` for off. */
@@ -166,19 +167,6 @@ let nextResultId = 1;
 /** A new result tab for `sql`, before it has a job. */
 function newResult(sql: string, offset: number, status: ResultStatus, limit: number | null): Result {
   return { id: nextResultId++, sql, offset, jobId: null, columns: null, rows: 0, fetching: false, status, limit };
-}
-
-function isTerminal(status: ResultStatus, limited: boolean) {
-  switch (status.kind) {
-    case "affected":
-    case "error":
-      return true;
-    case "rows":
-      // Without a limit the job pauses on demand, so the first rows are the end of "running".
-      return limited ? status.finished : true;
-    default:
-      return false;
-  }
 }
 
 interface ExportProgress {
@@ -327,19 +315,8 @@ export function QueryTab({
    *  too (a fast statement finishes before `runQuery` returns the job); `seen` gets its job,
    *  columns and rows as they arrive. */
   function runOne(sessionId: number, result: Result, token: number, history: boolean, seen?: Seen): Promise<ResultStatus> {
-    const limited = result.limit !== null;
     return new Promise((resolve) => {
-      let final: ResultStatus | null = null;
-      let jobKnown = false;
-      const finish = () => {
-        if (final && jobKnown) resolve(final);
-      };
-      const settle = (status: ResultStatus) => {
-        if (!final && isTerminal(status, limited)) {
-          final = status;
-          finish();
-        }
-      };
+      const { settle, jobKnown } = runGate(result.limit !== null, resolve);
       const onEvent = (event: QueryEvent) => {
         if (token !== runToken.current) return settle({ kind: "skipped" });
         let status: ResultStatus | null = null;
@@ -381,13 +358,12 @@ export function QueryTab({
           currentJob.current = jobId;
           if (seen) seen.jobId = jobId;
           update(result.id, { jobId });
-          jobKnown = true;
-          finish();
+          jobKnown();
         },
         (e: unknown) => {
           const status: ResultStatus = { kind: "error", error: toCommandError(e) };
           update(result.id, { status });
-          jobKnown = true;
+          jobKnown();
           settle(status);
         },
       );
