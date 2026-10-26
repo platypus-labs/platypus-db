@@ -147,8 +147,11 @@ const theme = EditorView.theme({
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground":
     { backgroundColor: "var(--grid-selection)" },
   ".cm-executing": { backgroundColor: "var(--grid-selection)", transition: "background-color 0.4s" },
+  // The glass of the menus (styles/dialogs.css), solid where it is not supported.
   ".cm-tooltip": {
-    backgroundColor: "var(--bg-sidebar)",
+    backgroundColor: "var(--glass-menu, var(--bg-sidebar))",
+    backdropFilter: "var(--glass-blur, none)",
+    WebkitBackdropFilter: "var(--glass-blur, none)",
     border: "1px solid var(--border-strong)",
     borderRadius: "var(--radius-lg)",
     boxShadow: "var(--shadow)",
@@ -157,6 +160,8 @@ const theme = EditorView.theme({
   // The list keeps the rounded corners; the tooltip itself must not clip, as the description
   // of the selected entry (.cm-completionInfo) is placed inside it but beside its box.
   ".cm-tooltip-autocomplete > ul": { borderRadius: "inherit" },
+  // Beside the list it would blur nothing (its backdrop is the list's own box): solid.
+  ".cm-tooltip.cm-completionInfo": { backgroundColor: "var(--bg-sidebar)", backdropFilter: "none", WebkitBackdropFilter: "none" },
   ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
     backgroundColor: "var(--accent)",
     color: "var(--accent-fg)",

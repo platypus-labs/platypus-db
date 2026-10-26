@@ -85,21 +85,28 @@
   box-shadow: var(--shadow);
 }
 
-/* Menus and dialogs are a faint glass: a little of what is behind shows through, blurred
-   enough that the text on them reads as on a solid one. */
+/* Menus, dialogs and the editor's tooltips are a faint glass: a little of what is behind
+   shows through, blurred enough that the text on them reads as on a solid one. The tokens
+   are also read by the SQL editor's theme (editor/SqlEditor.tsx), with a solid fallback. */
 @supports (background: color-mix(in srgb, red 50%, transparent)) and ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass-blur: blur(20px) saturate(140%);
+    --glass-menu: color-mix(in srgb, var(--bg-sidebar) 88%, transparent);
+    --glass-dialog: color-mix(in srgb, var(--bg-sidebar) 92%, transparent);
+  }
+
   .context-menu,
   .modal {
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
   }
 
   .context-menu {
-    background: color-mix(in srgb, var(--bg-sidebar) 88%, transparent);
+    background: var(--glass-menu);
   }
 
   .modal {
-    background: color-mix(in srgb, var(--bg-sidebar) 92%, transparent);
+    background: var(--glass-dialog);
   }
 }
 
@@ -471,7 +478,6 @@ button.primary.danger:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: 12px;
 }
 
 .settings-header h2 {
@@ -481,7 +487,7 @@ button.primary.danger:hover:not(:disabled) {
 .settings-header .modal-search {
   flex: 1;
   max-width: 320px;
-  margin: 0 0 0 auto;
+  margin-left: auto;
 }
 
 /* A panel the search left out stays mounted, hidden. */
@@ -509,7 +515,7 @@ button.primary.danger:hover:not(:disabled) {
   overflow: auto;
 }
 
-.settings-nav [role="tab"] {
+.settings-nav button {
   flex: none;
   min-height: 30px;
   border: none;
@@ -519,7 +525,7 @@ button.primary.danger:hover:not(:disabled) {
   color: var(--fg-muted);
 }
 
-.settings-nav [role="tab"]:hover {
+.settings-nav button:hover {
   background: var(--hover);
   color: var(--fg);
 }
@@ -538,6 +544,19 @@ button.primary.danger:hover:not(:disabled) {
   overflow: auto;
   padding: 0 4px 0 18px;
   border-left: 1px solid var(--border);
+}
+
+/* While searching, the matches of every section, grouped under their section's name. */
+.settings-results > section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-results > section:not([hidden]) ~ section:not([hidden]) {
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
 }
 
 .shortcuts table {
@@ -787,12 +806,12 @@ button.primary.danger:hover:not(:disabled) {
   width: min(640px, calc(100vw - 32px));
 }
 
-/* A search field at the top of a dialog: the database picker, the settings. */
+/* A search field at the top of a dialog: the database picker, the settings. Spaced, like
+   the dialog's other parts, by its column's gap. */
 .modal-search {
   position: relative;
   display: flex;
   align-items: center;
-  margin: 8px 0 10px;
 }
 
 .modal-search-icon {
