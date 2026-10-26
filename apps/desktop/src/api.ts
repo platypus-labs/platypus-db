@@ -943,6 +943,17 @@ export interface ColumnProfile {
 // Analysis (group M): charts
 
 // Analysis (group M): SQL on results
+/** A table of the in-memory database of "Query with SQL" and the result it copies. */
+export interface ResultTable {
+  job_id: number;
+  table: string;
+}
+
+/** The temporary DuckDB connection of "Query with SQL"; `partial` when a table lacks rows. */
+export interface OpenedResultDb {
+  connection: SavedConnection;
+  partial: boolean;
+}
 
 // Analysis (group M): compare with the previous run
 
@@ -1372,6 +1383,21 @@ export const api = {
   // Analysis (group M): charts
 
   // Analysis (group M): SQL on results
+  /** Loads every row of a result up to the memory limit; `onProgress` gets the rows loaded.
+   *  True when they are all of its rows. */
+  fetchWhole: (jobId: number, onProgress: (rows: number) => void) => {
+    const channel = new Channel<number>();
+    channel.onmessage = onProgress;
+    return invoke<boolean>("fetch_whole", { jobId, onProgress: channel });
+  },
+  /** Stops loading a result, keeping its rows. */
+  stopFetch: (jobId: number) => invoke<void>("stop_fetch", { jobId }),
+  /** Copies the results into a new in-memory DuckDB; returns its temporary connection. */
+  openResultDb: (name: string, tables: ResultTable[]) => invoke<OpenedResultDb>("open_result_db", { name, tables }),
+  /** Copies the results again into the temporary connection's tables; true when partial. */
+  reloadResultDb: (connectionId: string, tables: ResultTable[]) =>
+    invoke<boolean>("reload_result_db", { connectionId, tables }),
+  closeResultDb: (connectionId: string) => invoke<void>("close_result_db", { connectionId }),
 
   // Analysis (group M): compare with the previous run
 };

@@ -252,6 +252,10 @@ pub async fn open_session(
     password: Option<String>,
     database: Option<String>,
 ) -> CommandResult<SessionInfo> {
+    // "Query with SQL" reaches its in-memory database through a connection that is not saved.
+    if let Some((config, label)) = state.result_db_config(connection_id) {
+        return start_session(&state, connection_id, config, label, false).await;
+    }
     let saved = state.with_store(|s| {
         s.get(connection_id)
             .cloned()
