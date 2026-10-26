@@ -421,7 +421,7 @@ function ColumnNote({ connectionId, catalogKey }: { connectionId: string; catalo
   return (
     <input
       className="cell-input"
-      aria-label={`Note of ${catalogKey.column}`}
+      aria-label={t("Note of {column}", { column: catalogKey.column })}
       value={note}
       onChange={(e) => setNote(e.target.value)}
       onBlur={() =>
@@ -443,7 +443,7 @@ function ColumnTags({
   const entry = catalogEntry(connectionId, catalogKey);
   return (
     <TagInput
-      label={`Tags of ${catalogKey.column}`}
+      label={t("Tags of {column}", { column: catalogKey.column })}
       tags={entry?.tags ?? []}
       suggestions={suggestions}
       onChange={(tags) => succeeded(saveCatalog(connectionId, catalogKey, entry?.note ?? "", tags), reportError)}

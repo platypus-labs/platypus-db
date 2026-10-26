@@ -1,5 +1,6 @@
 import { useId, useRef, useState } from "react";
 import { addTags } from "./annotation";
+import { t } from "../i18n";
 
 interface Props {
   tags: string[];
@@ -11,7 +12,7 @@ interface Props {
 }
 
 /** Tags as chips; Enter, comma or leaving the field adds what is typed, a comma-separated list too. */
-export function TagInput({ tags, suggestions, onChange, label = "Tags" }: Props) {
+export function TagInput({ tags, suggestions, onChange, label = t("Tags") }: Props) {
   const [draft, setDraft] = useState("");
   const adding = useRef<string | null>(null);
   const list = useId();
@@ -33,10 +34,10 @@ export function TagInput({ tags, suggestions, onChange, label = "Tags" }: Props)
 
   return (
     <div className="tag-input" aria-label={label}>
-      {tags.map((t) => (
-        <span key={t} className="tag-chip">
-          #{t}
-          <button type="button" aria-label={`Remove ${t}`} onClick={() => void onChange(tags.filter((x) => x !== t))}>
+      {tags.map((tag) => (
+        <span key={tag} className="tag-chip">
+          #{tag}
+          <button type="button" aria-label={t("Remove {tag}", { tag })} onClick={() => void onChange(tags.filter((x) => x !== tag))}>
             ×
           </button>
         </span>
@@ -44,7 +45,7 @@ export function TagInput({ tags, suggestions, onChange, label = "Tags" }: Props)
       <input
         value={draft}
         list={list}
-        placeholder={tags.length ? "" : "Add a tag"}
+        placeholder={tags.length ? "" : t("Add a tag")}
         onChange={(e) => (e.target.value.includes(",") ? void commit(e.target.value) : setDraft(e.target.value))}
         onKeyDown={(e) => {
           if (e.key === "Enter") {

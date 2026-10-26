@@ -79,3 +79,11 @@ test("nothing new leaves the tags as they are", () => {
   assert.deepEqual(addTags(["a", "b"], "#, ,"), ["a", "b"]);
   assert.deepEqual(addTags(["a", "b"], "B,a,a"), ["a", "b"]);
 });
+
+test("the labels come in the interface language", () => {
+  const labels = { comment: "Commento (database)", note: "Nota (solo su questo computer)" };
+  assert.equal(
+    annotation(entry("Mia", ["pii"]), "Ordini", { labels }),
+    "Commento (database): Ordini\nNota (solo su questo computer): Mia\n#pii",
+  );
+});

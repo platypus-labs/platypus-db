@@ -5,9 +5,21 @@
 import { useSyncExternalStore } from "react";
 import { api, type CatalogEntry, type CatalogKey, type DisplayColumn, toCommandError } from "../api";
 import { workbench } from "../workbench";
+import { t } from "../i18n";
+import { annotation as describe, type AnnotationOptions } from "./annotation";
 import { keyedQueue } from "./queue";
 
-export { annotation, parseFilter } from "./annotation";
+export { parseFilter } from "./annotation";
+
+/** The tooltip of an annotated object or column (`annotation.ts`), in the interface language. */
+export function annotation(
+  entry: CatalogEntry | undefined,
+  comment?: string | null,
+  options: Omit<AnnotationOptions, "labels"> = {},
+): string | undefined {
+  const labels = { comment: t("Comment (database)"), note: t("Note (only on this computer)") };
+  return describe(entry, comment, { ...options, labels });
+}
 
 const loaded = new Map<string, Map<string, CatalogEntry>>();
 /** Per connection: `database \0 schema \0 table` → the column that describes its rows. */
@@ -57,7 +69,7 @@ function load(connectionId: string): Promise<void> {
     store(connectionId, [], []);
     if (!warned) {
       warned = true;
-      workbench().showError(`Notes are unavailable: ${toCommandError(e).message}`);
+      workbench().showError(t("Notes are unavailable: {error}", { error: toCommandError(e).message }));
     }
   }).then(() => {
     loading.delete(connectionId);

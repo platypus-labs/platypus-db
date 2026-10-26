@@ -27,18 +27,32 @@ function firstLine(note: string): string {
   return more.some((line) => line.trim()) ? `${first.trimEnd()}…` : first.trimEnd();
 }
 
+/** What precedes the comment and the note in a tooltip, in the interface language. */
+export interface AnnotationLabels {
+  comment: string;
+  note: string;
+}
+
+const ENGLISH: AnnotationLabels = { comment: "Comment (database)", note: "Note (only on this computer)" };
+
+export interface AnnotationOptions {
+  /** All of a long note, for a panel that has the room. */
+  full?: boolean;
+  labels?: AnnotationLabels;
+}
+
 /**
  * The tooltip of an annotated object or column: database comment, note, tags. A tooltip shows
- * the first line of a long note; `full` keeps all of it, for a panel that has the room.
+ * the first line of a long note, unless `full`.
  */
 export function annotation(
   entry: CatalogEntry | undefined,
   comment?: string | null,
-  { full = false }: { full?: boolean } = {},
+  { full = false, labels = ENGLISH }: AnnotationOptions = {},
 ): string | undefined {
   const parts = [
-    comment && `Comment (database): ${comment}`,
-    entry?.note && `Note (only on this computer): ${full ? entry.note : firstLine(entry.note)}`,
+    comment && `${labels.comment}: ${comment}`,
+    entry?.note && `${labels.note}: ${full ? entry.note : firstLine(entry.note)}`,
     entry?.tags.length && entry.tags.map((t) => `#${t}`).join(" "),
   ].filter(Boolean);
   return parts.length ? parts.join("\n") : undefined;

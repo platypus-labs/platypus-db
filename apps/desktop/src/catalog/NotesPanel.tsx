@@ -30,8 +30,8 @@ export function NotesPanel({ connectionId, catalogKey, suggestions, columns }: P
   return (
     <div className={columns ? "notes-panel with-label" : "notes-panel"}>
       <textarea
-        aria-label="Note"
-        placeholder="Note (only on this computer)"
+        aria-label={t("Note")}
+        placeholder={t("Note (only on this computer)")}
         value={note}
         rows={1}
         onChange={(e) => setNote(e.target.value)}

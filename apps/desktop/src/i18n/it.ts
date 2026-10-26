@@ -1179,6 +1179,12 @@ const it: Record<string, string> = {
   "The column shown beside the foreign keys that point to this table.": "La colonna mostrata accanto alle chiavi esterne che puntano a questa tabella.",
   "Automatic": "Automatica",
   "Row label": "Etichetta delle righe",
+  "Note (only on this computer)": "Nota (solo su questo computer)",
+  "Note of {column}": "Nota di {column}",
+  "Tags of {column}": "Tag di {column}",
+  "Add a tag": "Aggiungi un tag",
+  "Remove {tag}": "Togli {tag}",
+  "Notes are unavailable: {error}": "Le note non sono disponibili: {error}",
   // Schema documentation export
   "Export documentation…": "Esporta la documentazione…",
   "Export documentation": "Esporta la documentazione",
