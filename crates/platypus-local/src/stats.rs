@@ -1,0 +1,334 @@
+//! The profile of one result column, for the box under its header: NULLs, distinct values,
+//! extremes, and a small histogram (numbers and times) or the most frequent values (text).
+
+use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
+use std::hash::{BuildHasher, RandomState};
+
+use arrow_array::{Array, RecordBatch};
+use arrow_cast::display::{ArrayFormatter, FormatOptions};
+use arrow_schema::{ArrowError, DataType, Schema};
+use serde::Serialize;
+
+use crate::LocalError;
+use crate::values::{self, Kind};
+
+/// Ranges of the histogram of numbers and times.
+pub const BINS: u8 = 20;
+/// Most frequent text values reported.
+pub const TOP: usize = 5;
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct ColumnProfile {
+    /// Rows looked at.
+    pub rows: usize,
+    pub nulls: usize,
+    /// Distinct non-NULL values, as shown.
+    pub distinct: usize,
+    /// Smallest and largest value as shown: by value for numbers and times, by text otherwise;
+    /// `None` for binary, JSON and composite columns and when every value is NULL.
+    pub min: Option<String>,
+    pub max: Option<String>,
+    /// Numbers and times: `BINS` equal ranges, or one when every value is the same.
+    pub histogram: Vec<Bin>,
+    /// Text: the `TOP` most frequent values, most frequent first.
+    pub top: Vec<TopValue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Bin {
+    pub from: String,
+    pub to: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TopValue {
+    pub value: String,
+    pub count: usize,
+}
+
+/// The profile of `column` over `batches`, values shown with `options`.
+pub fn profile(
+    schema: &Schema,
+    batches: &[RecordBatch],
+    column: usize,
+    options: &FormatOptions<'_>,
+) -> Result<ColumnProfile, LocalError> {
+    let field = values::field(schema, column)?;
+    let mut p = ColumnProfile::default();
+    for batch in batches {
+        let array = batch.column(column);
+        p.rows += array.len();
+        p.nulls += array.null_count();
+    }
+    match values::kind(field) {
+        Kind::Text => text_profile(&mut p, batches, column, options)?,
+        kind @ (Kind::Number | Kind::Time) => {
+            p.distinct = distinct(batches, column, options)?;
+            let time = kind == Kind::Time;
+            ranges(&mut p, batches, column, field.data_type(), time, options)?;
+        }
+        Kind::Opaque => p.distinct = distinct(batches, column, options)?,
+    }
+    Ok(p)
+}
+
+/// Distinct values, counted by the hash of their text: a collision is too rare to matter.
+fn distinct(
+    batches: &[RecordBatch],
+    column: usize,
+    options: &FormatOptions<'_>,
+) -> Result<usize, ArrowError> {
+    let hasher = RandomState::new();
+    let mut seen = HashSet::new();
+    let mut text = String::new();
+    for batch in batches {
+        let array = batch.column(column);
+        let formatter = ArrayFormatter::try_new(array.as_ref(), options)?;
+        for row in (0..array.len()).filter(|&r| array.is_valid(r)) {
+            text.clear();
+            let _ = write!(text, "{}", formatter.value(row));
+            seen.insert(hasher.hash_one(&text));
+        }
+    }
+    Ok(seen.len())
+}
+
+/// Text: distinct values, the first and the last in text order, the most frequent ones.
+fn text_profile(
+    p: &mut ColumnProfile,
+    batches: &[RecordBatch],
+    column: usize,
+    options: &FormatOptions<'_>,
+) -> Result<(), ArrowError> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for batch in batches {
+        for value in values::texts(batch.column(column).as_ref(), options)?
+            .into_iter()
+            .flatten()
+        {
+            *counts.entry(value).or_default() += 1;
+        }
+    }
+    p.distinct = counts.len();
+    p.min = counts.keys().min().cloned();
+    p.max = counts.keys().max().cloned();
+    let mut top: Vec<TopValue> = counts
+        .into_iter()
+        .map(|(value, count)| TopValue { value, count })
+        .collect();
+    let order =
+        |a: &TopValue, b: &TopValue| b.count.cmp(&a.count).then_with(|| a.value.cmp(&b.value));
+    if top.len() > TOP {
+        top.select_nth_unstable_by(TOP, order);
+        top.truncate(TOP);
+    }
+    top.sort_unstable_by(order);
+    p.top = top;
+    Ok(())
+}
+
+/// Numbers and times: the extremes as the grid shows them, and the histogram.
+fn ranges(
+    p: &mut ColumnProfile,
+    batches: &[RecordBatch],
+    column: usize,
+    data_type: &DataType,
+    time: bool,
+    options: &FormatOptions<'_>,
+) -> Result<(), ArrowError> {
+    // Each finite value with its batch and row, to show the extremes as they are.
+    let mut found: Vec<(f64, usize, usize)> = Vec::new();
+    for (b, batch) in batches.iter().enumerate() {
+        let numbers = values::numbers(batch.column(column))?;
+        found.extend(
+            numbers
+                .iter()
+                .enumerate()
+                .filter_map(|(row, v)| v.filter(|v| v.is_finite()).map(|v| (v, b, row))),
+        );
+    }
+    let lowest = found.iter().min_by(|a, b| a.0.total_cmp(&b.0)).copied();
+    let highest = found.iter().max_by(|a, b| a.0.total_cmp(&b.0)).copied();
+    let (Some(lo), Some(hi)) = (lowest, highest) else {
+        return Ok(());
+    };
+    p.min = Some(shown(batches, column, lo.1, lo.2, options)?);
+    p.max = Some(shown(batches, column, hi.1, hi.2, options)?);
+    let label = |v: f64| {
+        if time {
+            values::time_text(data_type, values::whole(v), options)
+        } else {
+            Ok(values::format_number(v))
+        }
+    };
+    p.histogram = histogram(found.iter().map(|f| f.0), lo.0, hi.0)
+        .into_iter()
+        .map(|(from, to, count)| {
+            Ok(Bin {
+                from: label(from)?,
+                to: label(to)?,
+                count,
+            })
+        })
+        .collect::<Result<_, ArrowError>>()?;
+    Ok(())
+}
+
+/// The value at `row` of batch `batch`, as the grid shows it.
+fn shown(
+    batches: &[RecordBatch],
+    column: usize,
+    batch: usize,
+    row: usize,
+    options: &FormatOptions<'_>,
+) -> Result<String, ArrowError> {
+    let array = batches[batch].column(column);
+    Ok(ArrayFormatter::try_new(array.as_ref(), options)?
+        .value(row)
+        .to_string())
+}
+
+/// `BINS` equal ranges from `lo` to `hi` (the last one closed) and how many of `numbers` fall
+/// in each; a single range when they are all `lo`.
+pub fn histogram(numbers: impl Iterator<Item = f64>, lo: f64, hi: f64) -> Vec<(f64, f64, usize)> {
+    if hi <= lo {
+        return vec![(lo, hi, numbers.count())];
+    }
+    let bins = usize::from(BINS);
+    let width = (hi - lo) / f64::from(BINS);
+    let mut counts = vec![0; bins];
+    for v in numbers {
+        counts[values::slot(v, lo, width, bins)] += 1;
+    }
+    (0..BINS)
+        .zip(counts)
+        .map(|(i, count)| {
+            (
+                lo + width * f64::from(i),
+                lo + width * f64::from(i + 1),
+                count,
+            )
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, BinaryArray, Date32Array, Int32Array, StringArray};
+    use arrow_schema::Field;
+    use platypus_core::META_DB_TYPE;
+
+    use super::*;
+
+    fn of(field: Field, array: ArrayRef) -> ColumnProfile {
+        let schema = Schema::new(vec![field]);
+        let batch = RecordBatch::try_new(Arc::new(schema.clone()), vec![array]).unwrap();
+        profile(&schema, &[batch], 0, &FormatOptions::default()).unwrap()
+    }
+
+    #[test]
+    fn numbers() {
+        let values = Int32Array::from(vec![Some(1), None, Some(10), Some(10), Some(4)]);
+        let p = of(Field::new("n", DataType::Int32, true), Arc::new(values));
+        assert_eq!((p.rows, p.nulls, p.distinct), (5, 1, 3));
+        assert_eq!(
+            (p.min.as_deref(), p.max.as_deref()),
+            (Some("1"), Some("10"))
+        );
+        assert_eq!(p.histogram.len(), 20);
+        assert_eq!(p.histogram.iter().map(|b| b.count).sum::<usize>(), 4);
+        assert_eq!(p.histogram[0].from, "1");
+        assert_eq!(
+            (p.histogram[19].to.as_str(), p.histogram[19].count),
+            ("10", 2)
+        );
+        assert_eq!(p.top, Vec::<TopValue>::new());
+    }
+
+    #[test]
+    fn dates() {
+        // 2024-01-01 and twice 2024-01-31.
+        let days = Date32Array::from(vec![19_723, 19_753, 19_753]);
+        let p = of(Field::new("d", DataType::Date32, true), Arc::new(days));
+        assert_eq!(
+            (p.min.as_deref(), p.max.as_deref()),
+            (Some("2024-01-01"), Some("2024-01-31"))
+        );
+        assert_eq!(p.distinct, 2);
+        assert_eq!(
+            p.histogram.first().map(|b| b.from.as_str()),
+            Some("2024-01-01")
+        );
+        assert_eq!(
+            p.histogram.last().map(|b| (b.to.as_str(), b.count)),
+            Some(("2024-01-31", 2))
+        );
+    }
+
+    #[test]
+    fn text() {
+        let values = StringArray::from(vec![Some("b"), Some("a"), None, Some("b"), Some("c")]);
+        let p = of(Field::new("s", DataType::Utf8, true), Arc::new(values));
+        assert_eq!((p.nulls, p.distinct), (1, 3));
+        assert_eq!((p.min.as_deref(), p.max.as_deref()), (Some("a"), Some("c")));
+        assert_eq!(
+            p.top[0],
+            TopValue {
+                value: "b".to_owned(),
+                count: 2
+            }
+        );
+        let order: Vec<&str> = p.top.iter().map(|t| t.value.as_str()).collect();
+        assert_eq!(order, ["b", "a", "c"]);
+        assert_eq!(p.histogram, Vec::<Bin>::new());
+    }
+
+    #[test]
+    fn only_nulls_and_no_rows() {
+        let nulls = StringArray::from(vec![None::<&str>, None]);
+        let p = of(Field::new("s", DataType::Utf8, true), Arc::new(nulls));
+        assert_eq!((p.rows, p.nulls, p.distinct, p.min), (2, 2, 0, None));
+        let schema = Schema::new(vec![Field::new("n", DataType::Int32, true)]);
+        let empty = profile(&schema, &[], 0, &FormatOptions::default()).unwrap();
+        assert_eq!(empty, ColumnProfile::default());
+    }
+
+    #[test]
+    fn binary_and_json_are_only_counted() {
+        let bytes = BinaryArray::from(vec![Some(b"x".as_ref()), Some(b"x".as_ref()), None]);
+        let p = of(Field::new("b", DataType::Binary, true), Arc::new(bytes));
+        assert_eq!((p.distinct, p.nulls, p.min, p.top.len()), (1, 1, None, 0));
+        let json = Field::new("j", DataType::Utf8, true).with_metadata(HashMap::from([(
+            META_DB_TYPE.to_owned(),
+            "jsonb".to_owned(),
+        )]));
+        let p = of(json, Arc::new(StringArray::from(vec!["{}", "[]"])));
+        assert_eq!((p.distinct, p.min, p.top.len()), (2, None, 0));
+    }
+
+    #[test]
+    fn equal_numbers_make_one_range() {
+        let p = of(
+            Field::new("n", DataType::Int32, false),
+            Arc::new(Int32Array::from(vec![7, 7])),
+        );
+        let one = Bin {
+            from: "7".to_owned(),
+            to: "7".to_owned(),
+            count: 2,
+        };
+        assert_eq!(p.histogram, [one]);
+    }
+
+    #[test]
+    fn a_missing_column_is_an_error() {
+        let schema = Schema::new(vec![Field::new("n", DataType::Int32, true)]);
+        let result = profile(&schema, &[], 3, &FormatOptions::default());
+        assert!(matches!(result, Err(LocalError::NoColumn(3))));
+    }
+}
