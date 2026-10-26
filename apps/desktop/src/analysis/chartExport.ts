@@ -32,10 +32,12 @@ export async function pngBytes(svg: SVGSVGElement, scale = 2): Promise<Uint8Arra
 
 /** Asks where to save the chart and writes it there; the path, or `null` when cancelled. */
 export async function exportChart(svg: SVGSVGElement, format: "png" | "svg"): Promise<string | null> {
-  const path = await answerFor<string | null>("file", () =>
+  const picked = await answerFor<string | null>("file", () =>
     save({ defaultPath: `chart.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] }),
   );
-  if (!path) return null;
+  if (!picked) return null;
+  // The backend writes bytes only to image files: a name typed without extension gets one.
+  const path = picked.toLowerCase().endsWith(`.${format}`) ? picked : `${picked}.${format}`;
   if (format === "svg") await api.writeTextFile(path, svgText(svg));
   else await api.writeBinaryFile(path, await pngBytes(svg));
   return path;

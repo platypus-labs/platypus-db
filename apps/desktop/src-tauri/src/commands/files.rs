@@ -18,9 +18,23 @@ pub fn write_text_file(path: PathBuf, contents: String) -> CommandResult<()> {
         .map_err(|e| CommandError::new("io", format!("cannot write {}: {e}", path.display())))
 }
 
-/// Writes bytes to a path picked by the user in the save dialog, e.g. a chart as PNG.
+/// The files `write_binary_file` writes: images, by their extension.
+const BINARY_EXTENSIONS: [&str; 1] = ["png"];
+
+/// Writes an image to a path picked by the user in the save dialog, e.g. a chart as PNG. Only
+/// image files: the web view cannot write bytes over a program or a configuration file.
 #[tauri::command]
 pub fn write_binary_file(path: PathBuf, bytes: Vec<u8>) -> CommandResult<()> {
+    let image = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| BINARY_EXTENSIONS.iter().any(|x| e.eq_ignore_ascii_case(x)));
+    if !image {
+        return Err(CommandError::new(
+            "io",
+            format!("cannot write {}: not a PNG file", path.display()),
+        ));
+    }
     std::fs::write(&path, bytes)
         .map_err(|e| CommandError::new("io", format!("cannot write {}: {e}", path.display())))
 }
@@ -106,5 +120,20 @@ mod tests {
         let path = dir.path().join("chart.png");
         super::write_binary_file(path.clone(), vec![0x89, b'P', b'N', b'G']).unwrap();
         assert_eq!(std::fs::read(path).unwrap(), [0x89, b'P', b'N', b'G']);
+        let upper = dir.path().join("CHART.PNG");
+        assert!(super::write_binary_file(upper, vec![1]).is_ok());
+    }
+
+    #[test]
+    fn writes_bytes_only_to_images() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["run.exe", "config.toml", "chart", "chart.png.bat"] {
+            let path = dir.path().join(name);
+            assert!(
+                super::write_binary_file(path.clone(), vec![1]).is_err(),
+                "{name}"
+            );
+            assert!(!path.exists(), "{name}");
+        }
     }
 }
