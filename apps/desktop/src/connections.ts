@@ -33,7 +33,7 @@ export function noteText(note: ParseNote): string {
   }
 }
 
-export const isProduction =(c: SavedConnection | undefined) => c?.connection_type === "prod";
+export const isProduction = (c: SavedConnection | undefined) => c?.connection_type === "prod";
 
 /** A short label for badges: DEV, TEST, PROD. */
 export function typeBadge(c: SavedConnection): string | null {

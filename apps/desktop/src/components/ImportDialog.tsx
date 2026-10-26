@@ -94,6 +94,8 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
 
   useEffect(() => {
     api.detectImports().then(setFound, () => setFound([]));
+    // The passwords read with a file are not kept once the dialog closes, imported or not.
+    return () => void api.forgetImport().catch(() => {});
   }, []);
 
   async function load(next: ImportFile) {

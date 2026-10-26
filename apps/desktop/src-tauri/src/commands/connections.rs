@@ -249,6 +249,12 @@ pub fn save_imported(
     Ok(workspace)
 }
 
+/// Drops the passwords `read_import` keeps, when the import dialog closes without saving.
+#[tauri::command]
+pub fn forget_import(state: State<'_, AppState>) {
+    lock(&state.import_secrets).clear();
+}
+
 #[tauri::command]
 pub fn delete_connection(
     state: State<'_, AppState>,

@@ -988,6 +988,8 @@ export const api = {
   readImport: (source: ImportSource, path: string) => invoke<ImportedProject[]>("read_import", { source, path }),
   /** Saves what was picked from an import, all or nothing. */
   saveImported: (request: ImportRequest) => invoke<Workspace>("save_imported", { request }),
+  /** Drops the passwords `readImport` keeps for `saveImported`. */
+  forgetImport: () => invoke<void>("forget_import"),
   listProjects: () => invoke<Project[]>("list_projects"),
   saveProject: (project: Project) => invoke<Project[]>("save_project", { project }),
   /** Deletes a project; its connections stay. */
