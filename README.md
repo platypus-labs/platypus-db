@@ -5,6 +5,12 @@
   </picture>
 </h1>
 
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue" alt="License: AGPL-3.0-or-later" /></a>
+  <a href="https://github.com/PaoloCisly/platypus-db/releases/latest"><img src="https://img.shields.io/badge/release-v0.2.0-green" alt="Latest release: v0.2.0" /></a>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platforms: Windows, macOS, Linux" />
+</p>
+
 PlatypusDB is a desktop SQL client for developers, DBAs and analysts who work with several
 databases in a day. One small app runs queries, browses and edits data, designs tables,
 explains slow statements and documents schemas, and keeps production connections clearly apart
@@ -27,7 +33,10 @@ servers that speak the PostgreSQL protocol: **CockroachDB**, **YugabyteDB**, **T
 - [Agents (MCP) and the CLI](#agents-mcp-and-the-cli)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Performance](#performance)
+- [Development](#development)
 - [Contributing](#contributing)
+- [Security](#security)
+- [License](#license)
 
 ## At a glance
 
@@ -529,12 +538,14 @@ shortcuts.
 
 Windows 11, Ryzen 7 9700X; details and method in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
-## Contributing
+## Development
 
 What comes next is planned in [docs/ROADMAP.md](docs/ROADMAP.md), and the working rules are in
-[CLAUDE.md](CLAUDE.md). [docs/EXTENDING.md](docs/EXTENDING.md) explains how features plug in
-(actions, tab kinds, settings, driver capabilities); [docs/RELEASING.md](docs/RELEASING.md)
+[CONTRIBUTING.md](CONTRIBUTING.md). [docs/EXTENDING.md](docs/EXTENDING.md) explains how features
+plug in (actions, tab kinds, settings, driver capabilities); [docs/RELEASING.md](docs/RELEASING.md)
 how releases are made, and [docs/MVP_PLAN.md](docs/MVP_PLAN.md) the scope of the first release.
+All the documents are listed in [docs/README.md](docs/README.md), and the changes of each
+release in [CHANGELOG.md](CHANGELOG.md).
 
 ### Layout
 
@@ -560,12 +571,16 @@ crates/
   platypus-store/          connections (TOML + OS keychain), imports, query history and catalog notes (SQLite)
   platypus-transfer/       streaming exports, imports, copies between databases, fake rows
   platypus-docs/           schema documentation: Markdown, HTML and Mermaid ER diagrams
+  platypus-local/          analysis of results in DuckDB: column profiles, charts, run diffs
   platypus-conformance/    integration suite run on every driver
   platypus-cli/            `platypus` CLI for exercising the core, and for agents (`--connection`)
   platypus-mcp/            `platypus-mcp`, the MCP server for agents (stdio, rmcp)
 apps/desktop/              Tauri app: React UI in src/, Rust shell in src-tauri/
 docker/                    dev databases with seed data
 samples/                   the SQLite sample database (wildlife.sql)
+scripts/                   build-windows.ps1 (installers; build-windows.cmd runs it), sample-db.mjs
+vendor/                    tiberius, patched for the SQL Server driver
+site/                      static presentation page
 ```
 
 ### Requirements
@@ -650,3 +665,22 @@ docker compose -f docker/compose.yml --profile mongo up -d --wait
 Each database has `customers`, `orders`, a `customer_totals` view, a `type_zoo` table with one
 column per notable type, and a 1M-row `big_table` for streaming and scrolling benchmarks.
 These credentials are for local test containers only.
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome: open an
+[issue](https://github.com/PaoloCisly/platypus-db/issues) first for anything larger than a small
+fix. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build, test and submit a change. Everyone
+taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Security
+
+Please report vulnerabilities privately, not in a public issue: see [SECURITY.md](SECURITY.md).
+
+## License
+
+PlatypusDB is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE)
+(AGPL-3.0-or-later). You can use, study, change and share it freely; if you distribute it, or
+run a changed version as a service for others, you must release your source code under the
+same license. Third-party code and assets keep their own licenses:
+see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

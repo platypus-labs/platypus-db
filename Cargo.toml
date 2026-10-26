@@ -7,7 +7,7 @@ exclude = ["vendor/tiberius"]
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.99"
-license = "MIT OR Apache-2.0"
+license = "AGPL-3.0-or-later"
 publish = false
 
 [workspace.dependencies]
