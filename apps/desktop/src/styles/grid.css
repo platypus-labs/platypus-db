@@ -159,10 +159,10 @@
   align-items: center;
   gap: 4px;
   padding: 4px 6px;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow);
 }
 
 .grid-search input {
@@ -270,7 +270,7 @@
   background: var(--bg);
   border: 1px solid var(--accent);
   border-radius: var(--radius-lg);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow);
 }
 
 .cell-popup-text {
@@ -549,14 +549,14 @@
 }
 
 .compare-rows {
-  width: min(760px, calc(100vw - 48px));
+  width: min(760px, calc(100vw - 32px));
 }
 
 .compare-list {
   max-height: 60vh;
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 
 .compare-list table {

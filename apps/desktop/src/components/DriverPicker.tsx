@@ -178,9 +178,9 @@ export function DriverPicker({ onPick, onClose }: Props) {
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal driver-picker" role="dialog" onKeyDown={(e) => e.key === "Escape" && onClose()}>
+      <div className="modal driver-picker" onKeyDown={(e) => e.key === "Escape" && onClose()}>
         <h2>{t("New connection")}</h2>
-        <p className="muted">{t("Choose the database.")}</p>
+        <p className="muted small">{t("Choose the database.")}</p>
         <input
           className="driver-search"
           type="search"

@@ -30,7 +30,7 @@ export function UnlockDialog({ onDone }: { onDone: (unlocked: boolean) => void }
           <span>{t("Master password")}</span>
           <input autoFocus type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </label>
-        {error && <div className="notice error">{error}</div>}
+        {error && <div className="notice error small">{error}</div>}
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={() => onDone(false)} disabled={busy}>
@@ -171,7 +171,7 @@ export function MasterPasswordPanel() {
           </div>
         </form>
       )}
-      {message && <div className={message.ok ? "notice ok" : "notice error"}>{message.text}</div>}
+      {message && <div className={`notice small ${message.ok ? "ok" : "error"}`}>{message.text}</div>}
     </div>
   );
 }

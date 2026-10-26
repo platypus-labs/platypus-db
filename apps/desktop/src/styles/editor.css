@@ -451,7 +451,7 @@ button.toggled {
 /* Snippets dialog */
 
 .snippets-dialog {
-  width: min(720px, 90vw);
+  width: min(720px, calc(100vw - 32px));
 }
 
 .snippet-list {

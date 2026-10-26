@@ -86,7 +86,7 @@ export function NetworkProfileDialog({ initial, existing, driver, onSaved, onClo
           onTyped={(id, v) => setTyped((t) => ({ ...t, [id]: v }))}
           saved={saved}
         />
-        {error && <div className="notice error">{error}</div>}
+        {error && <div className="notice error small">{error}</div>}
         <div className="actions">
           {existing && (
             <button type="button" onClick={() => void remove()} disabled={busy}>

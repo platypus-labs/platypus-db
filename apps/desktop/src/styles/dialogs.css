@@ -62,20 +62,6 @@
   width: min(820px, calc(100vw - 32px));
 }
 
-.sql-preview {
-  margin: 0;
-  padding: 8px 10px;
-  max-height: 50vh;
-  overflow: auto;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -109,7 +95,6 @@
 }
 
 .modal.confirm p {
-  margin: 0;
   font-size: 14px;
   line-height: 1.5;
   color: var(--fg-strong);
@@ -121,6 +106,21 @@
   letter-spacing: -0.01em;
   color: var(--fg-strong);
   margin: 0 0 4px;
+}
+
+/* The dialog's column spaces its parts: paragraphs add no margins of their own. */
+.modal p {
+  margin: 0;
+}
+
+/* Errors, warnings and notes in a dialog: one box style, aligned with its fields. */
+.modal .notice {
+  display: block;
+  margin: 0;
+}
+
+.modal .notice:not(.error, .ok, .warn) {
+  background: var(--hover);
 }
 
 .field {
@@ -250,6 +250,7 @@ button.primary.danger:hover:not(:disabled) {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .record-fields {
@@ -301,7 +302,7 @@ button.primary.danger:hover:not(:disabled) {
   width: 104px;
   padding: 5px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   background: var(--bg-input);
   cursor: pointer;
   font-size: 11px;
@@ -349,7 +350,7 @@ button.primary.danger:hover:not(:disabled) {
   justify-content: center;
   align-items: flex-start;
   padding-top: 12vh;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.5);
 }
 
 .palette {
@@ -550,7 +551,7 @@ button.primary.danger:hover:not(:disabled) {
   align-items: flex-start;
   gap: 2px;
   padding: 8px 10px;
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   text-align: left;
 }
 
@@ -566,7 +567,7 @@ button.primary.danger:hover:not(:disabled) {
   padding: 12px;
   margin-bottom: 12px;
   border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   color: var(--fg-muted);
 }
 
@@ -585,7 +586,7 @@ button.primary.danger:hover:not(:disabled) {
   overflow: auto;
   padding: 6px 8px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   background: var(--bg-input);
 }
 
@@ -735,12 +736,6 @@ button.primary.danger:hover:not(:disabled) {
   word-break: break-word;
 }
 
-button.danger {
-  background: var(--error);
-  border-color: var(--error);
-  color: #fff;
-}
-
 .driver-search {
   width: 100%;
   margin: 4px 0 8px;
@@ -793,7 +788,7 @@ button.danger {
 /* Drivers downloaded when a database needs one. */
 
 .driver-popup {
-  width: min(460px, 92vw);
+  width: min(460px, calc(100vw - 32px));
 }
 
 .driver-popup progress {
@@ -904,10 +899,6 @@ button.danger {
 .activity-detail {
   display: block;
   color: var(--error);
-}
-
-.activity-empty {
-  margin: 12px 0;
 }
 
 /* A vendor's address, shown to copy: the app opens no browser. */

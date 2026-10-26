@@ -16,7 +16,7 @@ export function PreviewDialog({ statements, busy, production = false, onSave, on
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal wide" onKeyDown={(e) => e.key === "Escape" && onClose()}>
         <h2>{t("Changes to save")}</h2>
-        {production && <div className="notice warn">{t("This is a production connection: check the SQL before saving.")}</div>}
+        {production && <div className="notice warn small">{t("This is a production connection: check the SQL before saving.")}</div>}
         <p className="muted small">
           {plural(
             statements.length,

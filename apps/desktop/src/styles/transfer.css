@@ -1,14 +1,14 @@
 /* Import of data files. */
 
 .modal.import-data {
-  width: min(900px, 92vw);
+  width: min(900px, calc(100vw - 32px));
 }
 
 .import-preview {
   max-height: 30vh;
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 
 .import-preview table {

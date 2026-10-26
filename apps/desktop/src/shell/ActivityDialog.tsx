@@ -28,7 +28,7 @@ function ActivityDialog({ onClose }: { onClose: () => void }) {
         <h2>{t("Activity")}</h2>
         <p className="muted small">{t("Errors shown and work done in the background since the app started.")}</p>
         {newest.length === 0 ? (
-          <p className="muted activity-empty">{t("Nothing yet.")}</p>
+          <p className="muted">{t("Nothing yet.")}</p>
         ) : (
           <ol className="activity-list" aria-live="polite">
             {newest.map((e) => (

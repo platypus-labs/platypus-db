@@ -18,7 +18,7 @@ export function GuardDialog({ request, onAnswer }: { request: GuardRequest; onAn
       <div className="modal wide guard" onKeyDown={(e) => e.key === "Escape" && onAnswer(false)}>
         <h2>{production.length ? t("Changes on {name} (production)", { name: connection.name }) : t("Change every row?")}</h2>
         {unfiltered.length > 0 && (
-          <div className="notice warn">
+          <div className="notice warn small">
             {unfiltered.map((u, i) => (
               <div key={i}>
                 <strong>{preview(u.sql).split(" ")[0]?.toUpperCase()}</strong> {t("without WHERE changes every row of")}{" "}
@@ -28,7 +28,7 @@ export function GuardDialog({ request, onAnswer }: { request: GuardRequest; onAn
             ))}
           </div>
         )}
-        {blocked && <p className="error-text small">{t("The Safety settings do not allow running it. Add a WHERE, or change the setting.")}</p>}
+        {blocked && <div className="notice error small">{t("The Safety settings do not allow running it. Add a WHERE, or change the setting.")}</div>}
         {production.length > 0 && (
           <>
             <p className="muted small">{plural(production.length, "{n} statement changes data or schema:", "{n} statements change data or schema:")}</p>
