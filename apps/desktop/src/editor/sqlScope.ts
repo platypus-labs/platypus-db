@@ -274,16 +274,25 @@ const isAliasable = (t: Token | undefined) => isName(t) && !(t!.kind === "word" 
 const isWord = (t: Token | undefined, ...words: string[]) => t?.kind === "word" && words.includes(t.text.toUpperCase());
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
+/** The item of `items` named `name`: exactly, else in another case. */
+function byName<T>(items: T[], name: string, nameOf: (item: T) => string): T | undefined {
+  return items.find((x) => nameOf(x) === name) ?? items.find((x) => same(nameOf(x), name));
+}
+
+/** The key of `record` named `name`: exactly, else in another case. */
+const keyNamed = (record: object, name: string) =>
+  name in record ? name : Object.keys(record).find((k) => same(k, name));
+
 /** Index of the `)` closing the `(` at `open`, or `tokens.length`. */
 function closing(tokens: Token[], open: number) {
   for (let i = open + 1; i < tokens.length; i++) {
-    if (tokens[i]!.text === ")" && tokens[i]!.kind === "punct" && tokens[i]!.parent === tokens[open]!.parent) return i;
+    if (tokens[i]!.text === ")" && tokens[i]!.parent === tokens[open]!.parent) return i;
   }
   return tokens.length;
 }
 
 function schemaNamed(catalog: Catalog, name: string): string | undefined {
-  return name in catalog.schemas ? name : Object.keys(catalog.schemas).find((s) => same(s, name));
+  return keyNamed(catalog.schemas, name);
 }
 
 /** Looks up a table: in `schema`, or in the default schema and then in any other. */
@@ -291,18 +300,15 @@ function catalogTable(catalog: Catalog, schema: string | null, table: string): {
   const find = (s: string) => {
     const tables = catalog.schemas[s];
     if (!tables) return null;
-    const name = table in tables ? table : Object.keys(tables).find((t) => same(t, table));
+    const name = keyNamed(tables, table);
     return name === undefined ? null : { schema: s, table: name, columns: tables[name]! };
   };
   if (schema !== null) {
     const s = schemaNamed(catalog, schema);
     return s === undefined ? null : find(s);
   }
-  if (catalog.default_schema) {
-    const found = find(catalog.default_schema);
-    if (found) return found;
-  }
-  for (const s of Object.keys(catalog.schemas)) {
+  const schemas = Object.keys(catalog.schemas);
+  for (const s of catalog.default_schema ? [catalog.default_schema, ...schemas] : schemas) {
     const found = find(s);
     if (found) return found;
   }
@@ -508,8 +514,8 @@ class Statement {
     const t = this.tokens;
     const stack: number[] = [];
     for (let i = 0; i < t.length && t[i]!.from < pos; i++) {
-      if (t[i]!.text === "(" && t[i]!.kind === "punct") stack.push(i);
-      else if (t[i]!.text === ")" && t[i]!.kind === "punct" && t[i]!.to <= pos) stack.pop();
+      if (t[i]!.text === "(") stack.push(i);
+      else if (t[i]!.text === ")" && t[i]!.to <= pos) stack.pop();
     }
     return stack.reverse();
   }
@@ -577,12 +583,12 @@ class Statement {
   sourceNamed(pos: number, name: string): Source | undefined {
     // A name the catalog does not know, e.g. the schema of `FROM sales.|`, is no source.
     const sources = this.sourcesAt(pos).filter((s) => s.table || s.columns.length);
-    return sources.find((s) => s.name === name) ?? sources.find((s) => same(s.name, name)) ?? this.cteNamed(name);
+    return byName(sources, name, (s) => s.name) ?? this.cteNamed(name);
   }
 
   /** The CTE named `name` as a source, for `x.` before `FROM x` is written. */
   private cteNamed(name: string): Source | undefined {
-    const cte = this.ctes.find((c) => c.name === name) ?? this.ctes.find((c) => same(c.name, name));
+    const cte = byName(this.ctes, name, (c) => c.name);
     if (!cte) return undefined;
     const columns = cte.columns ?? this.selectList(cte.open, cte.close, 1);
     return { name: cte.name, schema: null, table: null, columns };

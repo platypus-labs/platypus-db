@@ -862,8 +862,16 @@ export function QueryTab({
     return next;
   }
 
-  /** Goes on once edited rows are saved or discarded. */
-  function afterDiscard(go: () => void) {
+  /** Data viewer: once edited rows are saved or discarded, rewrites the shown result's statement
+   *  and runs it. `sort` is the viewer's sort of the new statement: `null` drops it, `undefined`
+   *  leaves the stored one. */
+  function rewriteShown(rewrite: (sql: string) => Promise<string | null>, sort?: Sort | null) {
+    const result = shown;
+    if (!tab.table || !result) return;
+    const go = () =>
+      void rewriteStatement(result, rewrite).then((next) => {
+        if (next !== null && sort !== undefined) onChange({ sort: sortIn(sort, next) });
+      });
     if (!unsaved.current) return go();
     void ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }).then((yes) => {
       if (!yes) return;
@@ -872,35 +880,17 @@ export function QueryTab({
     });
   }
 
-  /** Data viewer: sorts the shown result's statement and runs it. */
-  function applyViewer(sort: Sort | null) {
-    const result = shown;
-    if (!tab.table || !result) return;
-    afterDiscard(() => {
-      const column = sort?.column ?? null;
-      void rewriteStatement(result, (sql) => api.sqlOrderBy(sql, connection.driver, column, sort?.desc ?? false)).then(
-        (next) => next !== null && onChange({ sort: sortIn(sort, next) }),
-      );
-    });
-  }
-
-  /** Quick filter of the grid: adds `condition` to the WHERE of the shown result's statement. */
-  function addCondition(condition: string) {
-    const result = shown;
-    if (!result) return;
-    // The statement keeps its ORDER BY, and so its sort.
-    const sort = sortOf(tab.sort, result.sql);
-    afterDiscard(() => {
-      void rewriteStatement(result, (sql) => api.sqlAddCondition(sql, connection.driver, condition)).then(
-        (next) => next !== null && sort && onChange({ sort: sortIn(sort, next) }),
-      );
-    });
-  }
-
   /** Header clicks cycle a column of the shown statement through ascending, descending and
    *  unsorted. */
   function sortBy(column: string) {
-    applyViewer(nextSort(shownSort, column));
+    const sort = nextSort(shownSort, column);
+    rewriteShown((sql) => api.sqlOrderBy(sql, connection.driver, sort?.column ?? null, sort?.desc ?? false), sort);
+  }
+
+  /** Quick filter of the grid: adds `condition` to the WHERE of the shown result's statement,
+   *  which keeps its ORDER BY, and so its sort. */
+  function addCondition(condition: string) {
+    rewriteShown((sql) => api.sqlAddCondition(sql, connection.driver, condition), shownSort ?? undefined);
   }
 
   /** What Count rows counts: the query of the shown rows as it ran, its variables filled in;
@@ -1177,9 +1167,8 @@ export function QueryTab({
   // ClickHouse and MongoDB have no transactions (`capabilities.transactions` is false): no
   // commit mode.
   const showTx = toolbar.visible.transactions && connection.driver !== "clickhouse" && !isMongo(connection.driver);
-  const current = results[activeResult];
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
-  const rowsResult = current?.status.kind === "rows" && current.columns ? current : null;
+  const rowsResult = shown?.status.kind === "rows" && shown.columns ? shown : null;
   const manual = tx !== null && !tx.autocommit;
   const exportBusy = exporting !== null && exporting.done === null;
 
@@ -1393,44 +1382,44 @@ export function QueryTab({
               ))}
             </div>
           )}
-          {!tab.terminal && current && (
+          {!tab.terminal && shown && (
             <ResultPanel
-              key={current.id}
-              result={current}
+              key={shown.id}
+              result={shown}
               sort={shownSort}
               onHeaderClick={tab.table && sortable && !running ? sortBy : undefined}
               headerHint={
-                tab.table && !sortable && current.status.kind === "rows"
-                  ? rewritable === current.sql
+                tab.table && !sortable && shown.status.kind === "rows"
+                  ? rewritable === shown.sql
                     ? t("This query cannot be sorted from the header: the editor does not hold it as it ran (it was edited since, its variables were filled in, or it comes from @include).")
                     : t("This query cannot be sorted from the header: it is not one read-only query that an ORDER BY can be added to.")
                   : undefined
               }
               source={{
                 connection,
-                sql: current.sql,
-                jobId: current.jobId,
+                sql: shown.sql,
+                jobId: shown.jobId,
                 table: tab.table ?? null,
                 viewer: tab.table && sortable ? { addCondition } : undefined,
               }}
-              edit={editTarget(current)}
-              notes={notesScope(current)}
+              edit={editTarget(shown)}
+              notes={notesScope(shown)}
             />
           )}
         </div>
         <div className="statusbar" role="status">
-          {current && (
+          {shown && (
             <>
-              <span>{describe(current)}</span>
-              {(current.status.kind === "rows" || current.status.kind === "affected") && (
+              <span>{describe(shown)}</span>
+              {(shown.status.kind === "rows" || shown.status.kind === "affected") && (
                 <span className="muted">
-                  {t(current.status.kind === "rows" && !current.status.finished ? "first rows in {time}" : "took {time}", {
-                    time: formatMs(current.status.elapsedMs),
+                  {t(shown.status.kind === "rows" && !shown.status.finished ? "first rows in {time}" : "took {time}", {
+                    time: formatMs(shown.status.elapsedMs),
                   })}
                 </span>
               )}
-              {(current.status.kind === "rows" || current.status.kind === "affected") &&
-                isSlow(current.status.elapsedMs, slowSeconds) && (
+              {(shown.status.kind === "rows" || shown.status.kind === "affected") &&
+                isSlow(shown.status.elapsedMs, slowSeconds) && (
                   <span
                     className="slow-query"
                     title={t("Slower than {n} s (Settings). Explain (Ctrl+Shift+E) shows where the time goes.", { n: slowSeconds })}
@@ -1438,8 +1427,8 @@ export function QueryTab({
                     {t("slow")}
                   </span>
                 )}
-              {current.status.kind === "rows" && !current.status.finished && (
-                <button className="link" onClick={() => fetchAll(current)}>
+              {shown.status.kind === "rows" && !shown.status.finished && (
+                <button className="link" onClick={() => fetchAll(shown)}>
                   {t("Fetch all")}
                 </button>
               )}

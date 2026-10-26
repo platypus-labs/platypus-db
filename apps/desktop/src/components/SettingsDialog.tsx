@@ -171,12 +171,12 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         ) : (
           <div className="settings-layout">
             <div className="settings-nav" role="tablist" aria-orientation="vertical" aria-label={t("Settings")}>
-              {names.map((name) => (
+              {names.map((name, i) => (
                 <button
                   key={name}
                   type="button"
                   role="tab"
-                  id={`settings-tab-${names.indexOf(name)}`}
+                  id={`settings-tab-${i}`}
                   data-section={name}
                   aria-selected={name === current}
                   aria-controls="settings-panel"
