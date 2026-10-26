@@ -4,9 +4,11 @@
 //! same file fails even within one process. The app opens several sessions per saved
 //! connection (navigator, editor tabs), so every connection to a file shares one instance,
 //! kept open while any of them is. `:memory:` is shared the same way: the sessions of the
-//! app see the same in-memory tables. A data file (CSV, Parquet, XLSX...) gets an in-memory
-//! instance of its own, shared the same way, that reads it ([`crate::files`]); a new connection
-//! loads it again once the file changed, which matters for the copied sheets of a workbook.
+//! app see the same in-memory tables. `:memory:<name>` is an in-memory database of its own,
+//! shared the same way (see `crate::memory_database`). A data file (CSV, Parquet, XLSX...)
+//! gets an in-memory instance of its own, shared the same way, that reads it
+//! ([`crate::files`]); a new connection loads it again once the file changed, which matters
+//! for the copied sheets of a workbook.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
@@ -29,8 +31,8 @@ const MEMORY: &str = ":memory:";
 
 /// Where `path` lives, the same for every spelling of it; the file may not exist yet.
 fn key(path: &str) -> Result<PathBuf> {
-    if path == MEMORY {
-        return Ok(PathBuf::from(MEMORY));
+    if path.starts_with(MEMORY) {
+        return Ok(PathBuf::from(path));
     }
     let path = Path::new(path);
     let dir = match path.parent() {
@@ -73,7 +75,7 @@ pub fn connect(path: &str) -> Result<(Arc<Database>, duckdb::Connection)> {
     let database = if let Some(database) = existing {
         database
     } else {
-        let root = if path == MEMORY || data_file {
+        let root = if path.starts_with(MEMORY) || data_file {
             duckdb::Connection::open_in_memory_with_flags(settings()?)
         } else {
             duckdb::Connection::open_with_flags(&key, settings()?)
