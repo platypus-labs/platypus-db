@@ -273,17 +273,50 @@
   box-shadow: var(--shadow);
 }
 
+/* A popup is a small dialog: a header, a body that takes the room left and scrolls, and the
+   actions at the bottom, right-aligned with the primary one last. When they do not fit in
+   one line they wrap, Cancel and Apply together, and stay inside the popup. */
 .cell-popup-text {
   flex: 1;
+  min-height: 0;
   resize: none;
   font-family: var(--font-mono);
   font-size: 12px;
 }
 
-.cell-popup-actions {
+.cell-popup-head {
+  flex: none;
   display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cell-popup-head > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-popup-actions {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 6px;
+}
+
+.cell-popup-end {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.cell-popup > .error-text {
+  flex: none;
+  max-height: 4.5em;
+  overflow-y: auto;
 }
 
 .list-editor:focus {
@@ -291,9 +324,15 @@
 }
 
 .list-editor-head {
-  display: flex;
-  justify-content: space-between;
   font-family: var(--font-mono);
+}
+
+.list-editor-type {
+  min-width: 0;
+}
+
+.list-editor-type + span {
+  flex: none;
 }
 
 .list-editor-rows {
