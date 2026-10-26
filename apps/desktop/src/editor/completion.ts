@@ -18,7 +18,7 @@ import { getSetting } from "../settings";
 import { quoteIdent } from "../sqlNames";
 import { formatKeywordCase } from "./actions";
 import { functionNames } from "./functions";
-import { type NameItem, type NameOptions, nameOptions, statementAt } from "./sqlScope";
+import { type NameItem, type NameOptions, closingQuote, nameOptions, statementAt } from "./sqlScope";
 
 /** The note of a table, or of its column, shown beside the entry. */
 export type CatalogNote = (schema: string, table: string, column?: string) => string | undefined;
@@ -42,7 +42,7 @@ const WINDOW = 100_000;
 
 function completion(item: NameItem, result: NameOptions, driver: DriverKind, note: CatalogNote | undefined): Completion {
   const info = item.table && note?.(item.schema!, item.table, item.kind === "column" ? item.label : undefined);
-  const close = result.quote === "[" ? "]" : result.quote;
+  const close = result.quote && closingQuote(result.quote);
   // After a typed quote the name goes on inside it; otherwise it is quoted when it must be.
   const label = close ? `${result.quote}${item.label.replaceAll(close, close + close)}${close}` : item.label;
   const apply = close ? label : quoteIdent(item.label, driver);
@@ -67,7 +67,7 @@ export function nameCompletion(catalog: CompletionCatalog, driver: DriverKind, n
     const sql = text.slice(statement.from, statement.to);
     const result = nameOptions(sql, context.pos - base - statement.from, catalog, context.explicit, options);
     if (!result) return null;
-    const close = result.quote === "[" ? "]" : result.quote;
+    const close = result.quote && closingQuote(result.quote);
     const quoteAfter = close !== null && context.state.sliceDoc(context.pos, context.pos + 1) === close;
     return {
       from: base + statement.from + result.from,

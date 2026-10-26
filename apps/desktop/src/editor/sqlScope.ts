@@ -154,17 +154,20 @@ function tokenize(sql: string, options: ScopeOptions): Token[] {
   return tokens;
 }
 
+/** The quote that closes a name opened by `open`. */
+export const closingQuote = (open: string) => (open === "[" ? "]" : open);
+
 /** A quoted name without its quotes. */
 export function unquote(ident: string): string {
   const q = ident[0];
-  const close = q === "[" ? "]" : q;
-  if ((q === '"' || q === "`" || q === "[") && ident.length >= 2 && ident.endsWith(close!)) {
-    return ident.slice(1, -1).replaceAll(close! + close!, close!);
-  }
-  return ident;
+  if (q !== '"' && q !== "`" && q !== "[") return ident;
+  const close = closingQuote(q);
+  return ident.length >= 2 && ident.endsWith(close) ? ident.slice(1, -1).replaceAll(close + close, close) : ident;
 }
 
 const isName = (t: Token | undefined) => !!t && (t.kind === "quoted" || t.kind === "word");
+/** A name that is not a keyword ending a table reference. */
+const isAliasable = (t: Token | undefined) => isName(t) && !(t!.kind === "word" && NOT_ALIAS.has(t!.text.toUpperCase()));
 const isWord = (t: Token | undefined, ...words: string[]) => t?.kind === "word" && words.includes(t.text.toUpperCase());
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
@@ -176,6 +179,10 @@ function closing(tokens: Token[], open: number) {
   return tokens.length;
 }
 
+function schemaNamed(catalog: Catalog, name: string): string | undefined {
+  return name in catalog.schemas ? name : Object.keys(catalog.schemas).find((s) => same(s, name));
+}
+
 /** Looks up a table: in `schema`, or in the default schema and then in any other. */
 function catalogTable(catalog: Catalog, schema: string | null, table: string): { schema: string; table: string; columns: string[] } | null {
   const find = (s: string) => {
@@ -184,16 +191,15 @@ function catalogTable(catalog: Catalog, schema: string | null, table: string): {
     const name = table in tables ? table : Object.keys(tables).find((t) => same(t, table));
     return name === undefined ? null : { schema: s, table: name, columns: tables[name]! };
   };
-  const schemas = Object.keys(catalog.schemas);
   if (schema !== null) {
-    const s = schema in catalog.schemas ? schema : schemas.find((n) => same(n, schema));
+    const s = schemaNamed(catalog, schema);
     return s === undefined ? null : find(s);
   }
   if (catalog.default_schema) {
     const found = find(catalog.default_schema);
     if (found) return found;
   }
-  for (const s of schemas) {
+  for (const s of Object.keys(catalog.schemas)) {
     const found = find(s);
     if (found) return found;
   }
@@ -269,7 +275,7 @@ class Statement {
   /** The name at `i` (`a`, `a.b` or `a.b.c`): its parts and the index after it. */
   private name(i: number): { parts: string[]; next: number } | null {
     const t = this.tokens;
-    if (!isName(t[i]) || (t[i]!.kind === "word" && NOT_ALIAS.has(t[i]!.text.toUpperCase()))) return null;
+    if (!isAliasable(t[i])) return null;
     const parts = [unquote(t[i]!.text)];
     let k = i + 1;
     while (t[k]?.text === "." && isName(t[k + 1]) && parts.length < 3) {
@@ -284,11 +290,7 @@ class Statement {
     const t = this.tokens;
     const as = isWord(t[i], "AS");
     const k = as ? i + 1 : i;
-    const tok = t[k];
-    if (isName(tok) && !(tok!.kind === "word" && NOT_ALIAS.has(tok!.text.toUpperCase()))) {
-      return { alias: unquote(tok!.text), next: k + 1 };
-    }
-    return { alias: null, next: i };
+    return isAliasable(t[k]) ? { alias: unquote(t[k]!.text), next: k + 1 } : { alias: null, next: i };
   }
 
   /** One item of FROM, JOIN, UPDATE or INTO at `i`; the index after it. */
@@ -320,11 +322,10 @@ class Statement {
       name: alias ?? table,
       schema: found?.schema ?? null,
       table: found?.table ?? null,
-      columns: found?.columns ?? [],
+      columns: cte?.columns ?? found?.columns ?? [],
     };
     const ref: Ref = { source, parent: t[i]!.parent, nameEnd: name.next - 1 };
     if (cte) ref.body = [cte.open, cte.close];
-    if (cte?.columns) source.columns = cte.columns;
     this.refs.push(ref);
     return next;
   }
@@ -342,14 +343,12 @@ class Statement {
   /** The `(` around token position `pos` (a character offset), innermost first. */
   parentsAt(pos: number): number[] {
     const t = this.tokens;
-    const chain: number[] = [];
     const stack: number[] = [];
     for (let i = 0; i < t.length && t[i]!.from < pos; i++) {
       if (t[i]!.text === "(" && t[i]!.kind === "punct") stack.push(i);
       else if (t[i]!.text === ")" && t[i]!.kind === "punct" && t[i]!.to <= pos) stack.pop();
     }
-    for (let i = stack.length - 1; i >= 0; i--) chain.push(stack[i]!);
-    return chain;
+    return stack.reverse();
   }
 
   /** The sources visible at `pos`: those of its query and of the queries around it, up to
@@ -383,7 +382,7 @@ class Statement {
       const tok = t[i]!;
       if (tok.parent === open && tok.kind === "word" && END_SELECT.has(tok.text.toUpperCase())) break;
       if (tok.parent === open && tok.text === ",") items.push([]);
-      else if (tok.parent === open || tok.parent > open) items.at(-1)!.push(tok);
+      else if (tok.parent >= open) items.at(-1)!.push(tok);
     }
     const inner = () => this.sourcesAt(t[open]!.to, depth);
     const columns: string[] = [];
@@ -467,11 +466,6 @@ function typedName(sql: string, pos: number, options: ScopeOptions) {
 
 function tablesOf(catalog: Catalog, schema: string): NameItem[] {
   return Object.keys(catalog.schemas[schema] ?? {}).map((table) => ({ label: table, kind: "table", schema, table }));
-}
-
-function schemaNamed(catalog: Catalog, name: string): string | undefined {
-  const schemas = Object.keys(catalog.schemas);
-  return name in catalog.schemas ? name : schemas.find((s) => same(s, name));
 }
 
 function columnsOf(source: Source, qualified: boolean): NameItem[] {

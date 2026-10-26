@@ -6,7 +6,7 @@ import type { Completion, CompletionContext, CompletionResult, CompletionSource 
 import type { CatalogForeignKey, CompletionCatalog, DriverKind } from "../api";
 import { quoteIdent } from "../sqlNames";
 import { t } from "../i18n";
-import { maskSql } from "./sqlScope";
+import { maskSql, unquote } from "./sqlScope";
 
 interface TableRef {
   schema: string | null;
@@ -29,12 +29,6 @@ const NOT_ALIAS = new Set(
 const ALIAS = `(?:\\s+(?:AS\\s+)?(?!(?:${[...NOT_ALIAS].join("|")})\\b)(${IDENT}))?`;
 /** Aliases that would read as keywords. */
 const NOT_GENERATED = new Set(["as", "at", "by", "do", "if", "in", "is", "no", "of", "on", "or", "to"]);
-
-function unquote(ident: string): string {
-  const q = ident[0];
-  if (q === '"' || q === "`") return ident.slice(1, -1).replaceAll(q + q, q);
-  return ident;
-}
 
 function parseRef(name: string, alias: string | undefined): TableRef {
   const parts = name.match(new RegExp(IDENT, "g")) ?? [name];
