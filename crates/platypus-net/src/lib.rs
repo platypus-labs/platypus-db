@@ -339,6 +339,10 @@ impl Connection for Tunneled {
         self.inner.execute(sql, options).await
     }
 
+    async fn execute_all(&self, statements: &[&str]) -> platypus_core::Executed {
+        self.inner.execute_all(statements).await
+    }
+
     fn cancel_handle(&self) -> CancelHandle {
         self.inner.cancel_handle()
     }

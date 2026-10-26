@@ -31,6 +31,13 @@ pub trait Connection: Send + Sync + fmt::Debug {
     /// Executes a single SQL statement.
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult>;
 
+    /// Runs `statements`, which return no rows and control no transaction, in order, up to
+    /// the first that fails. Drivers that can send them together, saving a round trip per
+    /// statement, do; the default runs them one at a time with [`execute`](Self::execute).
+    async fn execute_all(&self, statements: &[&str]) -> Executed {
+        execute_each(self, statements).await
+    }
+
     /// A handle that cancels the statement currently running on this connection.
     /// It is independent of the connection, so it can be used from another task.
     fn cancel_handle(&self) -> CancelHandle;
@@ -119,6 +126,35 @@ pub trait Connection: Send + Sync + fmt::Debug {
         let _ = needle;
         Err(unsupported("metadata search"))
     }
+}
+
+/// What [`Connection::execute_all`] ran.
+#[derive(Debug, Default)]
+pub struct Executed {
+    /// The rows each statement that ran changed, in order.
+    pub rows: Vec<u64>,
+    /// Why the statement after those stopped the run.
+    pub error: Option<crate::Error>,
+}
+
+/// [`Connection::execute_all`] one statement at a time, for drivers that cannot send
+/// several together.
+pub async fn execute_each<C: Connection + ?Sized>(conn: &C, statements: &[&str]) -> Executed {
+    let mut rows = Vec::with_capacity(statements.len());
+    for sql in statements {
+        match conn.execute(sql, &ExecOptions::default()).await {
+            Ok(ExecResult::Affected { rows: n }) => rows.push(n),
+            // Dropping the stream ends the statement.
+            Ok(ExecResult::Rows(_)) => rows.push(0),
+            Err(error) => {
+                return Executed {
+                    rows,
+                    error: Some(error),
+                };
+            }
+        }
+    }
+    Executed { rows, error: None }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
