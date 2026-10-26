@@ -1322,9 +1322,10 @@ export const api = {
   /** Saves `changes` on the result's session, all or none; `undo` puts the rows back. */
   saveChanges: (jobId: number, changes: TableChanges) =>
     invoke<{ statements: number; undo: string }>("save_changes", { jobId, changes }),
-  /** Loaded rows' values in full, not cut to one line like the grid's. */
-  rowValues: (jobId: number, offset: number, limit: number) =>
-    invoke<(string | null)[][]>("row_values", { jobId, offset, limit }),
+  /** Loaded rows' values in full, not cut to one line like the grid's. With `columns`, only
+   *  those columns of each row, in that order. */
+  rowValues: (jobId: number, offset: number, limit: number, columns?: readonly number[]) =>
+    invoke<(string | null)[][]>("row_values", { jobId, offset, limit, columns: columns ?? null }),
   /** The elements of a PostgreSQL array (or the fields of a composite value); `null` when
    *  the text is not one, e.g. a nested array. */
   splitLiteral: (composite: boolean, text: string) =>

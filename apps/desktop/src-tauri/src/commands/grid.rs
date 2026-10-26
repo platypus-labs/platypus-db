@@ -194,7 +194,7 @@ fn file_cell_text(bytes: Vec<u8>, binary: bool) -> CommandResult<String> {
         }
         return Ok(hex);
     }
-    String::from_utf8(bytes).map_err(|e| {
+    let mut text = String::from_utf8(bytes).map_err(|e| {
         CommandError::new(
             "invalid_utf8",
             format!(
@@ -202,7 +202,52 @@ fn file_cell_text(bytes: Vec<u8>, binary: bool) -> CommandResult<String> {
                 e.utf8_error().valid_up_to()
             ),
         )
-    })
+    })?;
+    // A byte order mark says how the file is encoded; it is not part of the text.
+    if text.starts_with('\u{feff}') {
+        text.drain(..'\u{feff}'.len_utf8());
+    }
+    Ok(text)
+}
+
+/// Files larger than this are not loaded into a cell: as hex, a larger binary file would not
+/// fit in one string of the webview, and every copy on the way takes as much memory again.
+/// Matches `MAX_CELL_FILE` of the frontend.
+const MAX_CELL_FILE: u64 = 200 * 1024 * 1024;
+
+/// The bytes of the regular file at `path`, refused above `cap` bytes before reading, and
+/// read no further than `cap` in case the file grows meanwhile.
+fn read_capped(path: &str, cap: u64) -> CommandResult<Vec<u8>> {
+    use std::io::Read as _;
+    let io = |e: std::io::Error| CommandError::new("io", format!("{path}: {e}"));
+    let too_large = |size: u64| {
+        CommandError::new(
+            "too_large",
+            format!(
+                "{path}: the file is {} MB, more than the {} MB a cell can load",
+                size.div_ceil(1024 * 1024),
+                cap / (1024 * 1024)
+            ),
+        )
+    };
+    let file = std::fs::File::open(path).map_err(io)?;
+    let meta = file.metadata().map_err(io)?;
+    if !meta.is_file() {
+        return Err(CommandError::new(
+            "io",
+            format!("{path}: not a regular file"),
+        ));
+    }
+    if meta.len() > cap {
+        return Err(too_large(meta.len()));
+    }
+    let mut bytes = Vec::with_capacity(usize::try_from(meta.len()).unwrap_or(0));
+    file.take(cap + 1).read_to_end(&mut bytes).map_err(io)?;
+    let read = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+    if read > cap {
+        return Err(too_large(read));
+    }
+    Ok(bytes)
 }
 
 /// The size of a file in bytes, so the UI can warn before loading a large one.
@@ -215,15 +260,15 @@ pub async fn file_size(path: String) -> CommandResult<u64> {
 }
 
 /// A file's contents for a cell of the data editor: hex for `binary` columns, else UTF-8
-/// text. The value becomes a pending change like a typed one.
+/// text. The value becomes a pending change like a typed one. Files above `MAX_CELL_FILE`
+/// are refused.
 #[tauri::command]
 pub async fn read_cell_file(path: String, binary: bool) -> CommandResult<String> {
-    let bytes = tokio::fs::read(&path)
-        .await
-        .map_err(|e| CommandError::new("io", format!("{path}: {e}")))?;
-    tauri::async_runtime::spawn_blocking(move || file_cell_text(bytes, binary))
-        .await
-        .map_err(|e| CommandError::new("other", e.to_string()))?
+    tauri::async_runtime::spawn_blocking(move || {
+        file_cell_text(read_capped(&path, MAX_CELL_FILE)?, binary)
+    })
+    .await
+    .map_err(|e| CommandError::new("other", e.to_string()))?
 }
 
 #[derive(Debug, Serialize)]
@@ -299,7 +344,9 @@ pub async fn search_rows(
 
 #[cfg(test)]
 mod tests {
-    use super::{contains_ignore_case, file_cell_text};
+    use std::io::Write as _;
+
+    use super::{contains_ignore_case, file_cell_text, read_capped};
 
     #[test]
     fn searches_ignoring_case() {
@@ -327,5 +374,25 @@ mod tests {
         assert_eq!(error["kind"], "invalid_utf8");
         let message = error["message"].as_str().unwrap_or_default();
         assert!(message.contains("offset 2"), "{message}");
+    }
+
+    #[test]
+    fn text_files_lose_their_byte_order_mark() {
+        let text = file_cell_text(vec![0xef, 0xbb, 0xbf, b'a', b'b', b'c'], false).expect("text");
+        assert_eq!(text, "abc");
+    }
+
+    #[test]
+    fn files_above_the_cap_are_refused_before_reading() {
+        let mut file = tempfile::NamedTempFile::new().expect("file");
+        file.write_all(b"0123456789").expect("write");
+        let path = file.path().to_string_lossy().into_owned();
+        assert_eq!(read_capped(&path, 10).expect("at the cap"), b"0123456789");
+        let error = read_capped(&path, 9).expect_err("above the cap");
+        let error = serde_json::to_value(&error).expect("json");
+        assert_eq!(error["kind"], "too_large");
+        let dir = tempfile::tempdir().expect("dir");
+        let dir = dir.path().to_string_lossy().into_owned();
+        assert!(read_capped(&dir, 10).is_err(), "a directory is not a file");
     }
 }
