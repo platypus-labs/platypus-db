@@ -28,6 +28,9 @@ pub struct TableDesign {
     pub foreign_keys: Vec<ForeignKeyDesign>,
     /// UNIQUE and CHECK constraints.
     pub constraints: Vec<ConstraintDesign>,
+    /// The table's comment; `None` for none.
+    #[serde(default)]
+    pub comment: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,6 +223,7 @@ pub fn design_of(dialect: Dialect, table: &str, details: &TableDetails) -> Table
                 })
             })
             .collect(),
+        comment: None,
     }
 }
 

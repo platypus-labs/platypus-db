@@ -41,6 +41,13 @@ pub fn script(
                 ddl.rebuild(old, design, &diff, &mut script);
             } else {
                 ddl.alter(old, design, &diff, &mut script);
+                if text(old.comment.as_ref()) != text(design.comment.as_ref()) {
+                    ddl.push_table_comment(
+                        design,
+                        text(old.comment.as_ref()).is_some(),
+                        &mut script,
+                    );
+                }
             }
         }
     }
@@ -450,16 +457,95 @@ impl Ddl<'_> {
             .iter()
             .filter(|c| text(c.comment.as_ref()).is_some())
             .collect();
-        self.comments(table, &commented, script);
+        self.comments(table, &commented, None, script);
+        if text(design.comment.as_ref()).is_some() {
+            self.push_table_comment(design, false, script);
+        }
+    }
+
+    /// Adds the statement for the comment of `design`, if the database has table comments.
+    fn push_table_comment(&self, design: &TableDesign, existed: bool, script: &mut Script) {
+        match self.table_comment(&design.name, text(design.comment.as_ref()), existed) {
+            Some(statement) => script.statements.push(statement),
+            None => script
+                .warnings
+                .push("SQLite has no table comments: it is not saved.".to_owned()),
+        }
+    }
+
+    /// The statement that sets (or with `None` removes) the comment of `table`; `None` where
+    /// tables have no comments. `existed`: whether it had one, for SQL Server.
+    fn table_comment(&self, table: &str, comment: Option<&str>, existed: bool) -> Option<String> {
+        let lit = |t: &str| self.d.quote_literal(t);
+        let t = self.table(table);
+        match self.d {
+            Dialect::Postgres
+            | Dialect::DuckDb
+            | Dialect::Ansi
+            | Dialect::Snowflake
+            | Dialect::Oracle
+            | Dialect::Db2
+            | Dialect::Databricks => Some(format!(
+                "COMMENT ON TABLE {t} IS {}",
+                comment.map_or_else(|| "NULL".to_owned(), lit)
+            )),
+            Dialect::MySql => Some(format!(
+                "ALTER TABLE {t} COMMENT = {}",
+                lit(comment.unwrap_or(""))
+            )),
+            Dialect::ClickHouse => Some(format!(
+                "ALTER TABLE {t} MODIFY COMMENT {}",
+                lit(comment.unwrap_or(""))
+            )),
+            Dialect::BigQuery => Some(format!(
+                "ALTER TABLE {t} SET OPTIONS (description = {})",
+                comment.map_or_else(|| "NULL".to_owned(), lit)
+            )),
+            Dialect::SqlServer => Some(self.mssql_description(table, None, comment, existed)),
+            Dialect::Sqlite => None,
+        }
+    }
+
+    /// `MS_Description` of `table` (or its `column`): added, updated or dropped.
+    fn mssql_description(
+        &self,
+        table: &str,
+        column: Option<&str>,
+        comment: Option<&str>,
+        existed: bool,
+    ) -> String {
+        let lit = |t: &str| self.d.quote_literal(t);
+        let mut target = format!("'SCHEMA', {}, 'TABLE', {}", lit(self.schema), lit(table));
+        if let Some(c) = column {
+            let _ = write!(target, ", 'COLUMN', {}", lit(c));
+        }
+        match (comment, existed) {
+            (None, _) => format!("EXEC sp_dropextendedproperty 'MS_Description', {target}"),
+            (Some(c), false) => format!(
+                "EXEC sp_addextendedproperty 'MS_Description', {}, {target}",
+                lit(c)
+            ),
+            (Some(c), true) => format!(
+                "EXEC sp_updateextendedproperty 'MS_Description', {}, {target}",
+                lit(c)
+            ),
+        }
     }
 
     /// Sets the comments of `columns`; MySQL has them in the column definitions already.
-    fn comments(&self, table: &str, columns: &[&ColumnDesign], script: &mut Script) {
+    /// `original` is the table as it was, to know whether a column had a comment.
+    fn comments(
+        &self,
+        table: &str,
+        columns: &[&ColumnDesign],
+        original: Option<&TableDesign>,
+        script: &mut Script,
+    ) {
         if columns.is_empty() {
             return;
         }
         match self.d {
-            // Snowflake, Trino, Oracle and Db2 take the standard statement.
+            // Snowflake, Oracle and Db2 take the standard statement.
             Dialect::Postgres
             | Dialect::DuckDb
             | Dialect::Ansi
@@ -486,13 +572,45 @@ impl Ddl<'_> {
                     ));
                 }
             }
-            // No table editor for BigQuery and Databricks.
-            Dialect::MySql | Dialect::BigQuery | Dialect::Databricks => {}
-            // shortcut: SQL Server keeps comments as extended properties, not written here;
-            // add sp_addextendedproperty when someone asks.
-            Dialect::SqlServer => script
-                .warnings
-                .push("Column comments are not changed on SQL Server.".to_owned()),
+            Dialect::MySql => {}
+            Dialect::BigQuery => {
+                for c in columns {
+                    let d = text(c.comment.as_ref())
+                        .map_or_else(|| "NULL".to_owned(), |t| self.d.quote_literal(t));
+                    script.statements.push(format!(
+                        "ALTER TABLE {} ALTER COLUMN {} SET OPTIONS (description = {d})",
+                        self.table(table),
+                        self.q(&c.name)
+                    ));
+                }
+            }
+            Dialect::Databricks => {
+                for c in columns {
+                    let d = self.d.quote_literal(text(c.comment.as_ref()).unwrap_or(""));
+                    script.statements.push(format!(
+                        "ALTER TABLE {} ALTER COLUMN {} COMMENT {d}",
+                        self.table(table),
+                        self.q(&c.name)
+                    ));
+                }
+            }
+            Dialect::SqlServer => {
+                for c in columns {
+                    let existed = original.is_some_and(|o| {
+                        o.columns.iter().any(|oc| {
+                            c.original.is_some()
+                                && oc.original == c.original
+                                && text(oc.comment.as_ref()).is_some()
+                        })
+                    });
+                    script.statements.push(self.mssql_description(
+                        table,
+                        Some(&c.name),
+                        text(c.comment.as_ref()),
+                        existed,
+                    ));
+                }
+            }
             Dialect::Sqlite => script
                 .warnings
                 .push("SQLite has no column comments: they are not saved.".to_owned()),
@@ -609,7 +727,7 @@ impl Ddl<'_> {
                     .filter(|c| text(c.comment.as_ref()).is_some()),
             )
             .collect();
-        self.comments(name, &commented, script);
+        self.comments(name, &commented, Some(old), script);
     }
 
     /// Renames and redefines a kept column, on `table` (its new name).
@@ -1080,5 +1198,103 @@ mod tests {
         design.columns[1].data_type = " ".to_owned();
         assert!(script(Dialect::Postgres, "s", None, &design).is_err());
         assert!(script(Dialect::Postgres, "s", None, &TableDesign::default()).is_err());
+    }
+
+    fn commented(table: Option<&str>, column: Option<&str>) -> TableDesign {
+        let mut d = orders();
+        d.comment = table.map(str::to_owned);
+        d.columns[2].comment = column.map(str::to_owned);
+        d
+    }
+
+    #[test]
+    fn table_and_column_comments_per_dialect() {
+        let std_table = "COMMENT ON TABLE public.orders IS 'All orders'";
+        let std_column = "COMMENT ON COLUMN public.orders.note IS 'free text'";
+        let mssql = |column: &str| {
+            format!(
+                "EXEC sp_addextendedproperty 'MS_Description', N'{}', 'SCHEMA', N'public', 'TABLE', N'orders'{column}",
+                if column.is_empty() {
+                    "All orders"
+                } else {
+                    "free text"
+                }
+            )
+        };
+        let cases: Vec<(Dialect, String, String)> = vec![
+            (Dialect::Postgres, std_table.into(), std_column.into()),
+            (
+                Dialect::Oracle,
+                "COMMENT ON TABLE \"public\".\"orders\" IS 'All orders'".into(),
+                "COMMENT ON COLUMN \"public\".\"orders\".\"note\" IS 'free text'".into(),
+            ),
+            (
+                Dialect::Db2,
+                "COMMENT ON TABLE \"public\".\"orders\" IS 'All orders'".into(),
+                "COMMENT ON COLUMN \"public\".\"orders\".\"note\" IS 'free text'".into(),
+            ),
+            (
+                Dialect::MySql,
+                "ALTER TABLE public.orders COMMENT = 'All orders'".into(),
+                "note text COMMENT 'free text'".into(),
+            ),
+            (
+                Dialect::ClickHouse,
+                "ALTER TABLE public.orders MODIFY COMMENT 'All orders'".into(),
+                "COMMENT COLUMN note 'free text'".into(),
+            ),
+            (Dialect::SqlServer, mssql(""), mssql(", 'COLUMN', N'note'")),
+            (
+                Dialect::BigQuery,
+                "ALTER TABLE public.orders SET OPTIONS (description = 'All orders')".into(),
+                "ALTER TABLE public.orders ALTER COLUMN note SET OPTIONS (description = 'free text')".into(),
+            ),
+            (
+                Dialect::Databricks,
+                "COMMENT ON TABLE public.orders IS 'All orders'".into(),
+                "ALTER TABLE public.orders ALTER COLUMN note COMMENT 'free text'".into(),
+            ),
+        ];
+        for (d, table, column) in &cases {
+            let old = commented(None, None);
+            let new = commented(Some("All orders"), Some("free text"));
+            let text = script(*d, "public", Some(&old), &new).unwrap().text();
+            assert!(text.contains(table.as_str()), "{d:?}: {text}");
+            assert!(text.contains(column.as_str()), "{d:?}: {text}");
+            let created = script(*d, "public", None, &new).unwrap().text();
+            assert!(created.contains(table.as_str()), "created {d:?}: {created}");
+        }
+    }
+
+    #[test]
+    fn removing_a_comment() {
+        let old = commented(Some("All orders"), Some("free text"));
+        let new = commented(None, None);
+        let pg = script(Dialect::Postgres, "public", Some(&old), &new)
+            .unwrap()
+            .text();
+        assert!(
+            pg.contains("COMMENT ON TABLE public.orders IS NULL"),
+            "{pg}"
+        );
+        let ms = script(Dialect::SqlServer, "public", Some(&old), &new)
+            .unwrap()
+            .text();
+        assert!(
+            ms.contains("sp_dropextendedproperty 'MS_Description'"),
+            "{ms}"
+        );
+        let changed = commented(Some("Other"), Some("changed"));
+        let ms = script(Dialect::SqlServer, "public", Some(&old), &changed)
+            .unwrap()
+            .text();
+        assert!(
+            ms.contains("sp_updateextendedproperty 'MS_Description', N'Other'"),
+            "{ms}"
+        );
+        assert!(
+            ms.contains("sp_updateextendedproperty 'MS_Description', N'changed'"),
+            "{ms}"
+        );
     }
 }
