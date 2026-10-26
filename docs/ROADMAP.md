@@ -611,8 +611,8 @@ TRUNCATE se l'impostazione Safety chiede conferma. Errori ripuliti dai segreti; 
 nella cronologia con l'agente come origine (colonna `origin`) e un filtro nel pannello. Pagina
 Impostazioni "Agents" con i comandi per Claude Code e Codex e l'accesso di ogni connessione;
 selettore "Agent access" nel dialog di connessione. CLI `platypus --connection <nome>` con
-output JSON documentato nel README. Gli installer includono `platypus-mcp` come external
-binary di Tauri (`--config src-tauri/tauri.mcp.conf.json`). Restano P2 e P3.
+output JSON documentato nel README. Gli agenti avviano l'app stessa con `--mcp` (gruppo P):
+gli installer non hanno un secondo eseguibile. Restano P2 e P3.
 
 PlatypusDB non integra un proprio assistente AI. Diventa invece uno strumento che gli agenti già
 in uso (Claude Code, Codex, Cursor, altri client MCP) possono collegare: usano le connessioni
