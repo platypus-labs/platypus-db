@@ -115,6 +115,15 @@ and shows the ODBC drivers and data sources of the system.
   the DDL of many tables at once.
 - **Object details**: properties, columns, indexes, constraints, foreign keys, incoming
   references and the DDL of any object.
+- **Notes and tags** on tables, views and columns, kept on your computer and never written to
+  the database. A mark and a tooltip in the navigator, `#pii` in the filter to find the tagged
+  objects, and the note and tags in the data viewer's column headers and in completion. They
+  follow the renames made in the app.
+- **Database comments** of tables, views and columns edit in the object tab: the statement
+  shows first. Not on SQLite, libSQL and MongoDB, which have none.
+- **Schema documentation**: right-click a schema, *Export documentation…*, for a Markdown file
+  or a single HTML file (it works offline) with the columns, keys, indexes, comments, notes
+  and an ER diagram.
 - **Search** object names, columns and the source of views, routines and triggers across a
   database; or the text of every row of a schema's tables, opening the matching rows.
 
@@ -178,7 +187,8 @@ and shows the ODBC drivers and data sources of the system.
   otherwise the grid says why it is read-only. Results of a query that reads one table edit
   the same way, with computed columns read-only.
 - Paste cells from a spreadsheet or CSV over the grid or as new rows.
-- Foreign keys show the name of the row they point to and edit with a list of those rows.
+- Foreign keys show the name of the row they point to and edit with a list of those rows; pick
+  the column that names a table's rows from a header's menu or the object tab.
 - PostgreSQL arrays and composite values edit one element or field per line.
 
 ### Table editor
@@ -458,8 +468,9 @@ crates/
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
   platypus-schema/         table designs for the table editor and the DDL between them
   platypus-net/            SSH tunnels (russh)
-  platypus-store/          connections (TOML + OS keychain), imports, query history (SQLite)
+  platypus-store/          connections (TOML + OS keychain), imports, query history and catalog notes (SQLite)
   platypus-transfer/       streaming exports, imports, copies between databases, fake rows
+  platypus-docs/           schema documentation: Markdown, HTML and Mermaid ER diagrams
   platypus-conformance/    integration suite run on every driver
   platypus-cli/            `platypus` CLI for exercising the core, and for agents (`--connection`)
   platypus-mcp/            `platypus-mcp`, the MCP server for agents (stdio, rmcp)

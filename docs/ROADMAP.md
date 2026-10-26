@@ -441,8 +441,8 @@ in SQL Server). SQLite e DuckDB, che oltre a rinominare e aggiungere colonne non
 quasi nulla, ricreano la tabella copiando le righe (SQLite con `foreign_keys` spento; i suoi
 trigger vanno ricreati a mano). `apply` esegue tutto in una transazione dove il DDL si annulla
 (non MySQL). Il tab `table-editor` mostra l'anteprima dello script prima di salvare. Limiti: i
-commenti di colonna non si scrivono in SQL Server (proprietà estese) né in SQLite; le colonne
-generate e gli indici su espressioni restano come sono solo se non si toccano.
+commenti di colonna non si scrivono in SQLite; le colonne generate e gli indici su espressioni
+restano come sono solo se non si toccano.
 
 **Area:** `apps/desktop/src/erd/` (tab `erd`), `apps/desktop/src/table-editor/`, nuovo crate `platypus-schema` (modello di schema, diff, DDL)
 **Dipende da:** 0.3, 0.5; per il DDL completo serve il gruppo C
@@ -687,6 +687,25 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 
 ### Gruppo Q — Documentazione e catalogo dei dati
 
+**Stato: P2 completate** (restano le P3). **Note e tag** in `catalog.db`, un SQLite a parte nella
+cartella dati (`CatalogStore` in `platypus-store`, migrazioni con `PRAGMA user_version`), per
+connessione salvata, database e `schema.oggetto.colonna`: riquadro Notes e colonne Note e Tags nel
+tab oggetto, segno e tooltip nel navigator con il filtro `#tag`, segno sulle intestazioni di
+colonna del data viewer, note e tag nel riquadro informativo dell'autocomplete; seguono le
+rinomine fatte dall'app e si cancellano con la connessione. **Commenti del database** modificabili
+dal tab oggetto, con l'anteprima dello SQL in `SqlActionDialog`: lo SQL lo scrive
+`platypus-schema` (un ramo per dialetto in `Ddl::table_comment` e `Ddl::comments`) e
+`Connection::object_comment` legge quello della tabella; SQLite, libSQL e MongoDB non hanno
+commenti e il campo resta in sola lettura. **Documentazione dello schema** dal menu del navigator
+(*Export documentation…*, `DocsDialog`) in Markdown o HTML, con il crate puro `platypus-docs`:
+indice, colonne, chiavi, indici, commenti, note e tag, e un diagramma ER Mermaid per schema;
+l'HTML è un file solo con Mermaid 11.4.1 incorporato e funziona offline. Fatta anche la **colonna
+di descrizione delle foreign key**, scelta per tabella puntata (dal menu dell'intestazione della
+griglia o da Row label nel tab oggetto) e salvata in `catalog.db`; *Automatic* è la regola di
+prima. Limiti: le note si perdono se un oggetto si rinomina fuori dall'app (ricompaiono se torna
+con lo stesso nome); il diagramma di uno schema con più di 100 tabelle si omette, con un avviso
+nel documento.
+
 Sapere cosa contiene un database senza chiederlo a chi l'ha scritto: note e tag sugli oggetti,
 commenti del database, documentazione esportabile, colonne sensibili segnate una volta e
 rispettate da tutta l'app.
@@ -697,9 +716,9 @@ rispettate da tutta l'app.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| 🆕 **Note e tag locali** su tabelle e colonne (non scritti nel database), mostrati nel navigator, nell'intestazione della griglia e nell'autocomplete | P2 | N |
-| 🆕 Modifica dei commenti del database (`COMMENT ON`, `COMMENT` di MySQL, proprietà estese di SQL Server) dal tab oggetto | P2 | D |
-| 🆕 **Documentazione dello schema** esportata in HTML o Markdown: tabelle, colonne, chiavi, commenti, note e diagramma ER | P2 | N |
+| ✅ **Note e tag locali** su tabelle e colonne (non scritti nel database), mostrati nel navigator, nell'intestazione della griglia e nell'autocomplete | P2 | N |
+| ✅ Modifica dei commenti del database (`COMMENT ON`, `COMMENT` di MySQL, proprietà estese di SQL Server) dal tab oggetto | P2 | D |
+| ✅ **Documentazione dello schema** esportata in HTML o Markdown: tabelle, colonne, chiavi, commenti, note e diagramma ER | P2 | N |
 | 🆕 **Colonne sensibili** (PII, segreti): regole su nome e tipo più scelte a mano, usate dal mascheramento del gruppo L, dagli agenti del gruppo N e dagli export | P3 | N |
 | 🆕 Dove si usa una colonna: viste, funzioni, trigger e script salvati che la nominano | P3 | N |
 
