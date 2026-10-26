@@ -16,7 +16,8 @@ export interface SqlActionOptions {
   multiline?: boolean;
 }
 
-interface Choices {
+/** What the user chose in the dialog, as the statement is generated from it. */
+export interface SqlActionChoices {
   cascade: boolean;
   newName: string;
 }
@@ -33,9 +34,9 @@ interface Props {
   danger?: boolean;
   options: SqlActionOptions;
   /** The statement for the current choices; `null` when they produce none. */
-  generate: (choices: Choices) => Promise<string | null>;
+  generate: (choices: SqlActionChoices) => Promise<string | null>;
   /** Called after the statement ran. */
-  onDone: (choices: Choices) => void;
+  onDone: (choices: SqlActionChoices) => void;
   onClose: () => void;
 }
 
@@ -49,18 +50,19 @@ export function SqlActionDialog(props: Props) {
   const [cascade, setCascade] = useState(false);
   const [newName, setNewName] = useState(options.rename ?? "");
   /** The last statement generated, with the choices it was generated for. */
-  const [preview, setPreview] = useState<(Choices & { sql: string | null }) | null>(null);
+  const [preview, setPreview] = useState<(SqlActionChoices & { sql: string | null }) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   // The first statement comes at once; while typing, after a pause.
   const opened = useRef(true);
   const renaming = options.rename !== undefined;
   const unchanged = renaming && ((newName.trim() === "" && !options.allowEmpty) || newName === options.rename);
-  const choices: Choices = { cascade, newName: newName.trim() };
+  const choices: SqlActionChoices = { cascade, newName: newName.trim() };
   // Only the statement of what the dialog shows now runs: one still being generated for an
   // earlier keystroke does not.
   const fresh = !unchanged && preview?.cascade === choices.cascade && preview.newName === choices.newName;
   const sql = fresh ? preview.sql : null;
+  const runnable = !!sql && !running && !connection.read_only;
 
   useEffect(() => {
     if (unchanged) {
@@ -88,7 +90,7 @@ export function SqlActionDialog(props: Props) {
   }, [cascade, newName]);
 
   async function run() {
-    if (!sql || running || connection.read_only) return;
+    if (!runnable) return;
     setRunning(true);
     setError(null);
     try {
@@ -174,7 +176,7 @@ export function SqlActionDialog(props: Props) {
             type="submit"
             className={props.danger === false ? "primary" : "primary danger"}
             autoFocus={!renaming}
-            disabled={!sql || running || connection.read_only}
+            disabled={!runnable}
           >
             {running ? t("Running…") : props.confirm}
           </button>

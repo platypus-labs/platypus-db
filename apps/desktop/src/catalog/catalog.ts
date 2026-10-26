@@ -121,8 +121,7 @@ export function renameCatalog(connectionId: string, from: CatalogKey, to: Catalo
       await fetchCatalog(connectionId);
     } catch (e) {
       // Not the names from before the rename: the next read loads them again.
-      loaded.delete(connectionId);
-      displays.delete(connectionId);
+      dropCached(connectionId);
       throw e;
     } finally {
       changed();
@@ -130,20 +129,17 @@ export function renameCatalog(connectionId: string, from: CatalogKey, to: Catalo
   });
 }
 
-/** Resolves `true` when `write` went through; otherwise reports the error and resolves `false`. */
-export const succeeded = (write: Promise<unknown>, report: (e: unknown) => void) =>
-  write.then(
-    () => true,
-    (e: unknown) => {
-      report(e);
-      return false;
-    },
-  );
+/** Shows a write to the catalog that failed. */
+export const reportCatalogError = (e: unknown) => workbench().showError(toCommandError(e).message);
+
+function dropCached(connectionId: string) {
+  loaded.delete(connectionId);
+  displays.delete(connectionId);
+}
 
 /** Drops what is cached for a deleted connection. */
 export function forgetCatalog(connectionId: string) {
-  loaded.delete(connectionId);
-  displays.delete(connectionId);
+  dropCached(connectionId);
   loading.delete(connectionId);
   writes.forget(connectionId);
 }

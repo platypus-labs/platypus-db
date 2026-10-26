@@ -10,9 +10,8 @@ import {
   toCommandError,
 } from "../api";
 import { isRelation } from "../components/Navigator";
-import { catalogEntry, catalogKey, useCatalogVersion } from "../catalog/catalog";
-import { NotesPanel, saveNote, useNoteDraft } from "../catalog/NotesPanel";
-import { TagInput } from "../catalog/TagInput";
+import { catalogKey, useCatalogVersion } from "../catalog/catalog";
+import { CatalogTags, NotesPanel, useNoteDraft } from "../catalog/NotesPanel";
 import { Icon, objectIcon } from "../ui/Icon";
 import { SqlEditor } from "../editor/SqlEditor";
 import { onNavigatorRefresh, requestNavigatorRefresh } from "../navigatorEvents";
@@ -204,7 +203,8 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
   }
 
   const d = data?.details;
-  const showComment = commentable && isRelation(tab.objectKind);
+  const relation = isRelation(tab.objectKind);
+  const showComment = commentable && relation;
   const objectComment = (
     <>
       {data?.comment}{" "}
@@ -231,7 +231,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
           </span>
         </div>
         <span className="spacer" />
-        {isRelation(tab.objectKind) && (
+        {relation && (
           <button
             onClick={() =>
               workbench().openTab("query", connection.id, {
@@ -264,7 +264,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
           <Icon name="refresh" />
         </button>
       </header>
-      {isRelation(tab.objectKind) && (
+      {relation && (
         <NotesPanel
           connectionId={connection.id}
           catalogKey={ckey()}
@@ -319,7 +319,13 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               // Keyed by column: after a reload that moves the columns, a field being typed in
               // does not pass to another one.
               <ColumnNote key={`note ${c.name}`} connectionId={connection.id} catalogKey={ckey(c.name)} />,
-              <ColumnTags key={`tags ${c.name}`} connectionId={connection.id} catalogKey={ckey(c.name)} suggestions={tagSuggestions} />,
+              <CatalogTags
+                key={`tags ${c.name}`}
+                label={t("Tags of {column}", { column: c.name })}
+                connectionId={connection.id}
+                catalogKey={ckey(c.name)}
+                suggestions={tagSuggestions}
+              />,
             ])}
           />
         )}
@@ -418,23 +424,4 @@ function MetaTable({ head, rows }: { head: string[]; rows: React.ReactNode[][] }
 function ColumnNote({ connectionId, catalogKey }: { connectionId: string; catalogKey: CatalogKey }) {
   const note = useNoteDraft(connectionId, catalogKey);
   return <input className="cell-input" aria-label={t("Note of {column}", { column: catalogKey.column })} {...note} />;
-}
-
-function ColumnTags({
-  connectionId,
-  catalogKey,
-  suggestions,
-}: {
-  connectionId: string;
-  catalogKey: CatalogKey;
-  suggestions: string[];
-}) {
-  return (
-    <TagInput
-      label={t("Tags of {column}", { column: catalogKey.column })}
-      tags={catalogEntry(connectionId, catalogKey)?.tags ?? []}
-      suggestions={suggestions}
-      onChange={(update) => saveNote(connectionId, catalogKey, { tags: update })}
-    />
-  );
 }
