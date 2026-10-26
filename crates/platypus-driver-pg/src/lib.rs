@@ -208,7 +208,8 @@ impl Connection for PgConnection {
     /// All the statements in one simple query: one round trip for all of them, where
     /// [`execute`](Self::execute) takes two per statement (prepare, then run).
     async fn execute_all(&self, statements: &[&str]) -> Executed {
-        if statements.iter().any(|s| classify(s) != TxEffect::None) {
+        // An empty query would still open a transaction in manual-commit mode.
+        if statements.is_empty() || statements.iter().any(|s| classify(s) != TxEffect::None) {
             return execute_each(self, statements).await;
         }
         let _guard = self.busy.lock().await;
