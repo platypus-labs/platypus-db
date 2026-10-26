@@ -6,6 +6,8 @@ import { useSyncExternalStore } from "react";
 import { api, type CatalogEntry, type CatalogKey, type DisplayColumn, toCommandError } from "../api";
 import { workbench } from "../workbench";
 
+export { annotation, parseFilter } from "./annotation";
+
 const loaded = new Map<string, Map<string, CatalogEntry>>();
 /** Per connection: `database \0 schema \0 table` → the column that describes its rows. */
 const displays = new Map<string, Map<string, string>>();
@@ -131,23 +133,4 @@ export function useCatalogVersion(): number {
     },
     () => version,
   );
-}
-
-/** `#pii orders` → tags `["pii"]`, text `orders`. */
-export function parseFilter(text: string): { text: string; tags: string[] } {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  return {
-    tags: words.filter((w) => w.startsWith("#") && w.length > 1).map((w) => w.slice(1).toLowerCase()),
-    text: words.filter((w) => !w.startsWith("#")).join(" "),
-  };
-}
-
-/** The tooltip of an annotated object or column: database comment, note, tags. */
-export function annotation(entry: CatalogEntry | undefined, comment?: string | null): string | undefined {
-  const parts = [
-    comment && `Comment (database): ${comment}`,
-    entry?.note && `Note (only on this computer): ${entry.note}`,
-    entry?.tags.length && entry.tags.map((t) => `#${t}`).join(" "),
-  ].filter(Boolean);
-  return parts.length ? parts.join("\n") : undefined;
 }

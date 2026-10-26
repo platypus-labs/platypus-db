@@ -195,7 +195,8 @@ const dialects = {
 /** The local notes of the catalog's tables and columns, shown as completion info. */
 function catalogNotes(connectionId: string | undefined, database: string | null | undefined): CatalogNote | undefined {
   if (!connectionId) return undefined;
-  return (schema, table, column) => annotation(catalogEntry(connectionId, catalogKey(database, schema, table, column)));
+  return (schema, table, column) =>
+    annotation(catalogEntry(connectionId, catalogKey(database, schema, table, column)), undefined, { full: true });
 }
 
 function language(

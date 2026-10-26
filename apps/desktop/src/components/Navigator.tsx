@@ -745,7 +745,7 @@ export function Navigator(props: Props) {
         icon,
         count: rowCount(object),
         title: [title, sizeDetail(object)].filter(Boolean).join("\n") || undefined,
-          marked,
+        marked,
         expanded: open,
         onToggle: () => toggle(okey, () => void loadDetails(c, db, schema.name, object.name)),
         onOpen: () => openData(c, db, schema, object, target),
