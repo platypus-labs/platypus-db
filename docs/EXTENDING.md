@@ -302,7 +302,7 @@ stdio with `rmcp` (`server.rs`), and the `platypus` CLI calls the same methods f
   transaction are not undone. A new driver adds its case to those `Dialect` methods; the
   conformance test `agents_read_in_read_only_transactions` checks it.
 - `output.rs` renders a result as an aligned text table or the JSON documented in the README
-  ([Agents](../README.md#agents)); the whole rendering stays within the byte limit, rows
+  ([Agents](../README.md#agents-mcp-and-the-cli)); the whole rendering stays within the byte limit, rows
   dropped from the end until it fits. Change that JSON only by adding fields.
 - `redact.rs` masks the connection's password, SSH secrets, password command and the
   password of any URL in every error an agent reads. Tools never return the host, the user
