@@ -219,6 +219,25 @@ and shows the ODBC drivers and data sources of the system.
 - Read-only results can refresh every few seconds. Dates, time zone, digit grouping and
   relative times follow the Settings.
 
+### Data analysis
+
+- **Charts**: a result switches between the grid and a chart (bars, lines, scatter, pie) from
+  the status bar. The columns and the aggregation are chosen beside the chart and kept with
+  the tab for each statement; the chart exports as PNG or SVG. It is drawn from the rows
+  loaded, with at most 2,000 points per series and 50 categories (the rest in *Other*).
+- **Column statistics**: resting the mouse on a column header shows its NULLs, distinct
+  values, minimum and maximum, and a small histogram (numbers and dates) or the most frequent
+  values (text), over the rows loaded.
+- **Query with SQL** (the result's menu and the command palette): the rows, loaded in full up
+  to the memory limit, become the table `result` of an in-memory DuckDB (and `r1`, `r2`, …
+  for each result of the tab), queried in a new SQL editor with completion, export and
+  charts. *Reload from result* copies them again.
+- **Compare with previous run**: when a statement runs again, its result can be compared with
+  the previous one: rows added, removed and changed (matched by the table's key when it has
+  one), with the old value of each changed cell.
+
+![A result as a bar chart](docs/screenshots/chart.png)
+
 ### Data editor
 
 ![Pending changes in the data editor](docs/screenshots/data-editor.png)

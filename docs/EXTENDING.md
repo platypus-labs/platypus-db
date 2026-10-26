@@ -12,7 +12,9 @@ a small separate change rather than adding feature logic to a shared file.
 `apps/desktop/src-tauri/src/commands/` has one module per area: `connections`, `query`,
 `meta`, `data`, `grid`, `summary`, `transactions`, `export`, `sql`, `history`, `files` and
 `settings`. Shared state
-(`AppState`, sessions, `live`) is in `commands/mod.rs`.
+(`AppState`, sessions, `live`) is in `commands/mod.rs`. The analysis commands
+(`commands/analysis/`) read a result's rows with `analysis::loaded`; the computing is in the
+pure crate `platypus-local`.
 
 To add commands:
 1. Create `commands/<area>.rs`.
@@ -405,6 +407,9 @@ editor (`kind: "query"`) is the reference implementation, in `components/QueryTa
 without props. It provides:
 - the connections, and `setConnections` for commands that return the changed list;
 - `openTab`;
+- `openTemporaryTab`, a tab on a connection that is not saved (the in-memory DuckDB of "Query
+  with SQL"): the connection lives while one of its tabs is open, then its `onClosed` runs; its
+  tabs are not kept for the next start;
 - `sideSession`, the navigator session of a connection and database;
 - `capabilities`, what an open session's driver supports;
 - `showError`;
@@ -547,6 +552,7 @@ never import `lucide-react` themselves.
 | `topRows` | Rows drawn above the result's, e.g. new rows; their cells come from `decorate`. |
 | `onScroll` | Called when the grid scrolls, e.g. to move an overlay. |
 | `onFocusChange` | Called when the focused cell changes, e.g. for the value panel. |
+| `onHeaderHover` | Called when the mouse comes onto a column header (its column and box) and with `null` when it leaves, e.g. for the column statistics (`analysis/ColumnProfile.tsx`). |
 | `onSelectionChange` | Called when the selection changes, e.g. for its totals. |
 | `layout`, `onLayoutChange` | The column layout (`grid/layout.ts`): order, hidden and pinned columns, widths. Without `onLayoutChange` the columns keep the result's order. |
 | `ref` | Gives the `GridApi`. |

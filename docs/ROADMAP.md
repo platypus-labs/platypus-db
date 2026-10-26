@@ -576,16 +576,29 @@ della transazione aperta con avviso). Restano i P2/P3.
 
 ### Gruppo M — Analisi dei dati
 
+**Stato: P2 completate** (grafici dai risultati con export PNG e SVG e configurazione salvata
+nel tab, statistiche della colonna al passaggio del mouse, SQL sui risultati con un DuckDB in
+memoria, diff con l'esecuzione precedente). Il calcolo è nel crate `platypus-local`, sulle
+righe Arrow del lavoro della query (`jobs.rs`); il grafico è un modulo SVG proprio
+(`analysis/Chart.tsx`, `analysis/chartScale.ts`), con i colori del tema. Limiti: grafici e
+statistiche sulle righe caricate; al massimo 2.000 punti per serie (fasce di X con minimo e
+massimo) e 50 categorie (le altre in "Altro"); SQL sui risultati fino al limite di memoria di
+512 MB (oltre, tabella parziale con avviso), su un database DuckDB in memoria con nome del
+driver (`memory_database`), raggiunto da una connessione temporanea mai salvata; con più
+risultati la tabella `result` copia di nuovo il risultato scelto oltre a `rN`; diff con una
+copia per tab, abbinata per chiave solo quando la griglia può modificare il risultato, al
+massimo 10.000 righe mostrate; MongoDB senza SQL sui risultati né diff. Le P3 restano da fare.
+
 **Area:** `apps/desktop/src/analysis/`, crate `platypus-local` (DuckDB in-process)
 **Dipende da:** 0.4; DuckDB del gruppo G
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Grafici dai risultati (barre, linee, dispersione, torta), salvabili | P2 | D |
-| Statistiche della colonna al passaggio del mouse: % NULL, distinti, min/max, mini istogramma | P2 | N |
-| **SQL sui risultati**: interrogare il result set corrente con DuckDB | P2 | N |
+| ✅ Grafici dai risultati (barre, linee, dispersione, torta), salvabili | P2 | D |
+| ✅ Statistiche della colonna al passaggio del mouse: % NULL, distinti, min/max, mini istogramma | P2 | N |
+| ✅ **SQL sui risultati**: interrogare il result set corrente con DuckDB | P2 | N |
 | Join tra database diversi tramite DuckDB (tabella PG con tabella MySQL) | P3 | D+ |
-| Diff tra due result set (stessa query prima e dopo) | P2 | N |
+| ✅ Diff tra due result set (stessa query prima e dopo) | P2 | N |
 | Snapshot dei risultati salvati e consultabili offline | P3 | N |
 | Pivot dei risultati | P3 | N |
 | Notebook: celle SQL, markdown e grafici, esportabili | P3 | N |
