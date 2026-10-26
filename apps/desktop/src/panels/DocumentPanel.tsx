@@ -4,8 +4,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type ColumnInfo, toCommandError } from "../api";
 import { t } from "../i18n";
+import { JsonNumber, type JsonValue as Json, jsonNumber, parseJson, stringifyJson } from "../jsonText";
 
-type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
+/** An object of the document: not a leaf, not an array. */
+const isObject = (value: Json): value is { [key: string]: Json } =>
+  value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof JsonNumber);
 
 interface Props {
   jobId: number;
@@ -19,7 +22,8 @@ interface Props {
   onClose: () => void;
 }
 
-/** A cell as the value it holds: JSON columns parsed, numbers and booleans typed. */
+/** A cell as the value it holds: JSON columns parsed, numbers and booleans typed. Numbers keep
+ *  their digits: a `long` above 2^53 is not rounded. */
 function cellValue(column: ColumnInfo, text: string | null): Json {
   if (text === null) return null;
   switch (column.db_type) {
@@ -27,7 +31,7 @@ function cellValue(column: ColumnInfo, text: string | null): Json {
     case "array":
     case "mixed":
       try {
-        return JSON.parse(text) as Json;
+        return parseJson(text);
       } catch {
         return text;
       }
@@ -36,7 +40,7 @@ function cellValue(column: ColumnInfo, text: string | null): Json {
     case "int":
     case "long":
     case "double":
-      return Number.isNaN(Number(text)) ? text : Number(text);
+      return jsonNumber(text) ?? text;
     default:
       return text;
   }
@@ -46,13 +50,13 @@ function cellValue(column: ColumnInfo, text: string | null): Json {
 function wrapped(value: { [key: string]: Json }): string | null {
   const keys = Object.keys(value);
   if (keys.length !== 1) return null;
-  const inner = value[keys[0]!];
-  const text = JSON.stringify(inner);
+  const inner = value[keys[0]!]!;
+  const text = stringifyJson(inner);
   switch (keys[0]) {
     case "$oid":
       return `ObjectId(${text})`;
     case "$date":
-      return `ISODate(${typeof inner === "object" && inner && "$numberLong" in inner ? JSON.stringify(inner.$numberLong) : text})`;
+      return `ISODate(${isObject(inner) && inner.$numberLong !== undefined ? stringifyJson(inner.$numberLong) : text})`;
     case "$numberDecimal":
       return `NumberDecimal(${text})`;
     case "$numberLong":
@@ -65,13 +69,13 @@ function wrapped(value: { [key: string]: Json }): string | null {
 function Leaf({ value }: { value: Json }) {
   if (value === null) return <span className="doc-null">null</span>;
   if (typeof value === "string") return <span className="doc-string">{JSON.stringify(value)}</span>;
-  if (typeof value === "number" || typeof value === "boolean") return <span className="doc-number">{String(value)}</span>;
+  if (value instanceof JsonNumber || typeof value === "boolean") return <span className="doc-number">{String(value)}</span>;
   return null;
 }
 
 function Node({ name, value, open, highlight }: { name: string; value: Json; open: boolean; highlight: boolean }) {
   const label = <span className={`doc-key${highlight ? " doc-focused" : ""}`}>{name}</span>;
-  if (value === null || typeof value !== "object") {
+  if (value === null || typeof value !== "object" || value instanceof JsonNumber) {
     return (
       <div className="doc-line">
         {label}: <Leaf value={value} />
@@ -137,7 +141,7 @@ export function DocumentPanel({ jobId, columns, row, field, version, onClose }: 
         <strong className="small value-name">{t("Document")}</strong>
         <span className="spacer" />
         {doc && (
-          <button className="icon" title={t("Copy as JSON")} aria-label={t("Copy as JSON")} onClick={() => void navigator.clipboard.writeText(JSON.stringify(doc, null, 2))}>
+          <button className="icon" title={t("Copy as JSON")} aria-label={t("Copy as JSON")} onClick={() => void navigator.clipboard.writeText(stringifyJson(doc))}>
             ⧉
           </button>
         )}
