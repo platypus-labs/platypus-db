@@ -126,7 +126,8 @@ pub fn lint(dialect: Dialect, schema: &str, tables: &[SchemaTable]) -> Vec<Findi
 /// `name`, or `name` with a number after it, so that no index of the table has it.
 fn free_name(details: &TableDetails, name: &str) -> String {
     let taken = |n: &str| details.indexes.iter().any(|i| i.name == n);
-    (1..)
+    // One more try than there are indexes always finds a free name.
+    (1..=details.indexes.len() + 1)
         .map(|i| {
             if i == 1 {
                 name.to_owned()
