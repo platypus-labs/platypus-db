@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type ReactNode, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { AgentsPanel } from "../agents/AgentsPanel";
 import { toCommandError } from "../api";
 import { type SettingDef, getSetting, getStored, setSetting, setStored, settingDefs, useSettingsVersion } from "../settings";
@@ -32,18 +32,26 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const names = [...sections.keys(), ...PANELS.map(([name]) => name)];
   const [chosen, setChosen] = useState(() => getStored(SECTION_KEY));
   const current = typeof chosen === "string" && names.includes(chosen) ? chosen : names[0]!;
-  const select = (name: string) => {
-    setChosen(name);
-    setStored(SECTION_KEY, name).catch((e: unknown) => console.warn("settings section", e));
-  };
+  // Stored once the dialog closes: a write on each tab change would save the file and
+  // refresh the whole app at every arrow key.
+  const shown = useRef(current);
+  shown.current = current;
+  useEffect(
+    () => () => {
+      if (shown.current === getStored(SECTION_KEY)) return;
+      setStored(SECTION_KEY, shown.current).catch((e: unknown) => console.warn("settings section", e));
+    },
+    [],
+  );
   const onTabKey = (e: KeyboardEvent<HTMLElement>) => {
-    const at = names.indexOf(current);
+    // From the focused tab, which a click elsewhere may have left apart from the selected one.
+    const at = names.indexOf(e.currentTarget.dataset.section ?? current);
     const moves: Record<string, number> = { ArrowDown: at + 1, ArrowUp: at - 1 + names.length, Home: 0, End: names.length - 1 };
     const to = moves[e.key];
     if (to === undefined) return;
     e.preventDefault();
     const next = names[to % names.length]!;
-    select(next);
+    setChosen(next);
     e.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-section="${CSS.escape(next)}"]`)?.focus();
   };
   const save = (def: SettingDef<Value>, value: Value | null) => {
@@ -74,7 +82,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 aria-selected={name === current}
                 aria-controls="settings-panel"
                 tabIndex={name === current ? 0 : -1}
-                onClick={() => select(name)}
+                onClick={() => setChosen(name)}
                 onKeyDown={onTabKey}
               >
                 {t(name)}
