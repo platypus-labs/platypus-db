@@ -1,35 +1,64 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { allActions } from "../actions";
 import { AgentsPanel } from "../agents/AgentsPanel";
 import { toCommandError } from "../api";
 import { type SettingDef, getSetting, getStored, setSetting, setStored, settingDefs, useSettingsVersion } from "../settings";
-import { ShortcutsPanel } from "../shell/ShortcutsPanel";
+import { ShortcutsPanel, actionMatches } from "../shell/ShortcutsPanel";
+import { Icon } from "../ui/Icon";
 import { DriversPanel } from "../drivers/DriversPanel";
 import { MasterPasswordPanel } from "./MasterPassword";
 import { msg, t } from "../i18n";
 
-/** The pages after the declared settings' sections, each with its own panel. */
-const PANELS: [string, () => ReactNode][] = [
-  [msg("Master password"), () => <MasterPasswordPanel />],
-  [msg("Agents"), () => <AgentsPanel />],
-  [msg("Drivers"), () => <DriversPanel />],
-  [msg("Keyboard shortcuts"), () => <ShortcutsPanel />],
+type Value = boolean | number | string;
+
+/** The pages after the declared settings' sections, each with its own panel; `keywords`
+ *  (English) are found by the search too, and a panel with `contains` is also found by its
+ *  content, which it then filters. */
+const PANELS: {
+  title: string;
+  keywords: string;
+  contains?: (needle: string) => boolean;
+  render: (search: string) => ReactNode;
+}[] = [
+  { title: msg("Master password"), keywords: "password encryption credentials keyring", render: () => <MasterPasswordPanel /> },
+  { title: msg("Agents"), keywords: "MCP AI assistant", render: () => <AgentsPanel /> },
+  { title: msg("Drivers"), keywords: "ODBC ADBC Oracle Instant Client download", render: () => <DriversPanel /> },
+  {
+    title: msg("Keyboard shortcuts"),
+    keywords: "keys keyboard",
+    contains: (needle) => allActions().some((a) => actionMatches(a, needle)),
+    render: (search) => <ShortcutsPanel search={search} />,
+  },
 ];
 
 /** The section shown last, opened again next time; stored without a Settings entry. */
 const SECTION_KEY = "ui.settings_section";
 
-type Value = boolean | number | string;
+/** Whether any of `texts`, in English or translated, contains `needle` (lowercase). */
+function found(needle: string, ...texts: (string | undefined)[]): boolean {
+  return texts.some((s) => !!s && (s.toLowerCase().includes(needle) || t(s).toLowerCase().includes(needle)));
+}
+
+function settingFound(needle: string, def: SettingDef<Value>): boolean {
+  const c = def.control;
+  const options = c.type === "select" || c.type === "swatches" ? c.options.map((o) => o.label) : [];
+  return found(needle, def.label, def.description, def.key, ...options);
+}
 
 /** Every declared setting, by section, then the other pages: one tab each, chosen in the list
- *  on the left. Changes apply and save at once. */
+ *  on the left. While the search has text, the matching settings of every section show
+ *  instead, grouped by section, and the list jumps to a group. Changes apply and save at once. */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   useSettingsVersion();
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const needle = search.trim().toLowerCase();
+  const results = useRef<HTMLDivElement>(null);
   const sections = new Map<string, SettingDef<Value>[]>();
   for (const def of settingDefs()) {
     sections.set(def.section, [...(sections.get(def.section) ?? []), def]);
   }
-  const names = [...sections.keys(), ...PANELS.map(([name]) => name)];
+  const names = [...sections.keys(), ...PANELS.map((p) => p.title)];
   const [chosen, setChosen] = useState(() => getStored(SECTION_KEY));
   const current = typeof chosen === "string" && names.includes(chosen) ? chosen : names[0]!;
   // Stored once the dialog closes: a write on each tab change would save the file and
@@ -58,8 +87,20 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     setError(null);
     setSetting(def, value).catch((e: unknown) => setError(`${t(def.label)}: ${toCommandError(e).message}`));
   };
-  const defs = sections.get(current);
-  const panel = PANELS.find(([name]) => name === current)?.[1];
+  const row = (def: SettingDef<Value>) => <SettingRow key={def.key} def={def} onSave={(v) => save(def, v)} />;
+
+  // The search's groups: a section found by its name shows whole, otherwise its matching
+  // settings. A panel found by its title shows whole, one found by its content filtered; the
+  // others are hidden, not unmounted, so they keep what was typed in them and don't load again.
+  const groups = [...sections]
+    .map(([section, defs]) => [section, found(needle, section) ? defs : defs.filter((d) => settingFound(needle, d))] as const)
+    .filter(([, defs]) => defs.length > 0);
+  const panels = PANELS.map((p) => {
+    if (found(needle, p.title, p.keywords)) return { ...p, shown: true, search: "" };
+    return { ...p, shown: !!p.contains?.(needle), search: needle };
+  });
+  const titles = [...groups.map(([section]) => section), ...panels.filter((p) => p.shown).map((p) => p.title)];
+  const panel = PANELS.find((p) => p.title === current);
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -68,44 +109,100 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.key === "Escape" && onClose()}
       >
-        <h2>{t("Settings")}</h2>
-        {error && <div className="notice error small">{error}</div>}
-        <div className="settings-layout">
-          <div className="settings-nav" role="tablist" aria-orientation="vertical" aria-label={t("Settings")}>
-            {names.map((name) => (
-              <button
-                key={name}
-                type="button"
-                role="tab"
-                id={`settings-tab-${names.indexOf(name)}`}
-                data-section={name}
-                aria-selected={name === current}
-                aria-controls="settings-panel"
-                tabIndex={name === current ? 0 : -1}
-                onClick={() => setChosen(name)}
-                onKeyDown={onTabKey}
-              >
-                {t(name)}
-              </button>
-            ))}
+        <div className="settings-header">
+          <h2>{t("Settings")}</h2>
+          <div className="modal-search">
+            <Icon name="search" className="modal-search-icon" />
+            <input
+              autoFocus
+              placeholder={t("Search settings…")}
+              aria-label={t("Search settings")}
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                results.current?.scrollTo({ top: 0 });
+              }}
+              onKeyDown={(e) => {
+                // Escape clears the search first, then closes.
+                if (e.key !== "Escape" || !search) return;
+                e.stopPropagation();
+                setSearch("");
+              }}
+            />
           </div>
-          <section
-            // A new panel for each tab, scrolled to its top.
-            key={current}
-            id="settings-panel"
-            className="settings-body"
-            role="tabpanel"
-            aria-labelledby={`settings-tab-${names.indexOf(current)}`}
-          >
-            <h3>{t(current)}</h3>
-            {defs?.map((def) => <SettingRow key={def.key} def={def} onSave={(v) => save(def, v)} />)}
-            {panel?.()}
-          </section>
         </div>
+        {error && <div className="notice error small">{error}</div>}
+        {needle ? (
+          <div className="settings-layout">
+            <nav className="settings-nav" aria-label={t("Settings")}>
+              {titles.map((section) => (
+                <button
+                  key={section}
+                  type="button"
+                  onClick={() =>
+                    results.current
+                      ?.querySelector(`[data-section="${CSS.escape(section)}"]`)
+                      ?.scrollIntoView({ block: "start", behavior: "smooth" })
+                  }
+                >
+                  {t(section)}
+                </button>
+              ))}
+            </nav>
+            <div className="settings-body settings-results" ref={results}>
+              {groups.map(([section, defs]) => (
+                <section key={section} data-section={section}>
+                  <h3>{t(section)}</h3>
+                  {defs.map(row)}
+                </section>
+              ))}
+              {panels.map((p) => (
+                <section key={p.title} data-section={p.title} hidden={!p.shown}>
+                  <h3>{t(p.title)}</h3>
+                  {p.render(p.search)}
+                </section>
+              ))}
+              {titles.length === 0 && <p className="muted settings-none">{t("No settings match.")}</p>}
+            </div>
+          </div>
+        ) : (
+          <div className="settings-layout">
+            <div className="settings-nav" role="tablist" aria-orientation="vertical" aria-label={t("Settings")}>
+              {names.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  role="tab"
+                  id={`settings-tab-${names.indexOf(name)}`}
+                  data-section={name}
+                  aria-selected={name === current}
+                  aria-controls="settings-panel"
+                  tabIndex={name === current ? 0 : -1}
+                  onClick={() => setChosen(name)}
+                  onKeyDown={onTabKey}
+                >
+                  {t(name)}
+                </button>
+              ))}
+            </div>
+            <section
+              // A new panel for each tab, scrolled to its top.
+              key={current}
+              id="settings-panel"
+              className="settings-body"
+              role="tabpanel"
+              aria-labelledby={`settings-tab-${names.indexOf(current)}`}
+            >
+              <h3>{t(current)}</h3>
+              {sections.get(current)?.map(row)}
+              {panel?.render("")}
+            </section>
+          </div>
+        )}
         <div className="actions">
           <span className="muted small">{t("Saved in settings.toml")}</span>
           <span className="spacer" />
-          <button className="primary" autoFocus onClick={onClose}>
+          <button className="primary" onClick={onClose}>
             {t("Done")}
           </button>
         </div>

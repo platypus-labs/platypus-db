@@ -20,6 +20,7 @@ import {
 } from "simple-icons";
 import { useState } from "react";
 import type { DriverKind, SavedConnection } from "../api";
+import { Icon } from "../ui/Icon";
 import { t, msg } from "../i18n";
 
 /** What a profile fills in beyond the driver's defaults. */
@@ -126,25 +127,11 @@ function DriverLogo({ choice }: { choice: Choice }) {
   );
 }
 
-/** Lower case without accents, to compare what the user types with the labels. */
-const fold = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
-
-/** The choices whose (translated) label contains `query`. */
-const matching = (choices: Choice[], query: string) => {
-  const needle = fold(query.trim());
-  return choices.filter((c) => fold(t(c.label)).includes(needle));
-};
-
-function Tiles({ choices, onPick }: { choices: Choice[]; onPick: Props["onPick"] }) {
+function Tiles({ choices, onPick }: { choices: Choice[]; onPick: (choice: Choice) => void }) {
   return (
     <div className="driver-grid">
       {choices.map((c) => (
-        <button
-          key={c.label}
-          type="button"
-          className="driver-tile"
-          onClick={() => onPick(c.driver, c.preset ?? {})}
-        >
+        <button key={c.label} type="button" className="driver-tile" onClick={() => onPick(c)}>
           <DriverLogo choice={c} />
           <span>{t(c.label)}</span>
         </button>
@@ -158,47 +145,54 @@ interface Props {
   onClose: () => void;
 }
 
-/** First step of a new connection: the database, as a grid of logos. */
+/** Lower case without accents, to compare what the user types with the labels. */
+const fold = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
+/** The choices whose (translated) name, or driver, contains `needle`, folded. */
+function matching(choices: Choice[], needle: string): Choice[] {
+  return choices.filter((c) => fold(t(c.label)).includes(needle) || c.driver.includes(needle));
+}
+
+/** First step of a new connection: the database, as a grid of logos, with a search. */
 export function DriverPicker({ onPick, onClose }: Props) {
-  const [query, setQuery] = useState("");
-  const main = matching(CHOICES, query);
-  const compatible = matching(PG_WIRE, query);
-  const [only, ...others] = [...main, ...compatible];
-
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && only && others.length === 0) {
-      e.preventDefault();
-      onPick(only.driver, only.preset ?? {});
-    } else if (e.key === "Escape" && query) {
-      // The first Esc clears the field; the dialog closes on the next.
-      e.stopPropagation();
-      setQuery("");
-    }
-  }
-
+  const [filter, setFilter] = useState("");
+  const needle = fold(filter.trim());
+  const main = matching(CHOICES, needle);
+  const pgWire = matching(PG_WIRE, needle);
+  const first = main[0] ?? pgWire[0];
+  const pick = (c: Choice) => onPick(c.driver, c.preset ?? {});
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal driver-picker" onKeyDown={(e) => e.key === "Escape" && onClose()}>
         <h2>{t("New connection")}</h2>
         <p className="muted small">{t("Choose the database.")}</p>
-        <input
-          className="driver-search"
-          type="search"
-          autoFocus
-          value={query}
-          placeholder={t("Search databases…")}
-          aria-label={t("Search databases…")}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={onKeyDown}
-        />
-        {main.length > 0 && <Tiles choices={main} onPick={onPick} />}
-        {compatible.length > 0 && (
+        <div className="modal-search">
+          <Icon name="search" className="modal-search-icon" />
+          <input
+            autoFocus
+            placeholder={t("Search databases…")}
+            aria-label={t("Search databases")}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter takes the first match (PostgreSQL with no search), as the first tile
+              // did when it had the focus; Escape clears the search first, then closes.
+              if (e.key === "Enter" && first) pick(first);
+              else if (e.key === "Escape" && filter) {
+                e.stopPropagation();
+                setFilter("");
+              }
+            }}
+          />
+        </div>
+        {main.length > 0 && <Tiles choices={main} onPick={pick} />}
+        {pgWire.length > 0 && (
           <>
             <h3 className="driver-section">{t("PostgreSQL-compatible")}</h3>
-            <Tiles choices={compatible} onPick={onPick} />
+            <Tiles choices={pgWire} onPick={pick} />
           </>
         )}
-        {!only && <p className="muted">{t("No database matches.")}</p>}
+        {!first && <p className="muted driver-none">{t("No database matches.")}</p>}
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={onClose}>

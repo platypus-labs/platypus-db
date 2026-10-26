@@ -10,7 +10,7 @@
  *     interface ActionScopes { "erd.table": { table: string } }
  *   }
  */
-import type { ObjectMeta, SavedConnection, SchemaMeta } from "./api";
+import type { ObjectMeta, Project, SavedConnection, SchemaMeta } from "./api";
 import { useSyncExternalStore } from "react";
 import { getStored, setStored, useSettingsVersion } from "./settings";
 import type { GridActionContext } from "./grid/DataGrid";
@@ -18,6 +18,8 @@ import type { GridActionContext } from "./grid/DataGrid";
 export interface ActionScopes {
   /** Anywhere in the window; shortcuts are captured before the editor sees them. */
   global: undefined;
+  /** The navigator's list of connections, away from any row; `project` is the active one. */
+  "navigator.list": { project: Project | null };
   "navigator.connection": { connection: SavedConnection };
   /** A database of the server; `database` is `null` for the saved one, `name` is its name. */
   "navigator.database": { connection: SavedConnection; database: string | null; name: string };

@@ -44,8 +44,8 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { TopBar } from "./shell/TopBar";
 import { Welcome } from "./shell/Welcome";
 import { TabBar, barOrder, groupTabsSetting } from "./shell/TabBar";
+import { SidebarResizer, useSidebarWidth } from "./shell/SidebarResizer";
 import { useSetting } from "./settings";
-import { SidebarHandle } from "./shell/SidebarHandle";
 import { useSidebar } from "./shell/sidebar";
 import { language, languageSetting, t, plural } from "./i18n";
 import { stepZoom } from "./theme";
@@ -105,6 +105,7 @@ export function App() {
   // A new language shows at once: everything below renders again.
   useSetting(languageSetting);
   const [toast, showToast] = useState<string | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   /** Shows an error, and keeps it in the Activity log. */
   const setToast = (message: string | null) => {
     showToast(message);
@@ -682,7 +683,7 @@ export function App() {
     <div
       className={`shell${sidebar.collapsed ? " sidebar-collapsed" : ""}`}
       data-env={activeConnection?.connection_type ?? "local"}
-      style={{ "--sidebar-w": `${sidebar.width}px` } as CSSProperties}
+      style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}
     >
       <TopBar project={project} connection={activeConnection} />
       <ProjectRail
@@ -696,7 +697,6 @@ export function App() {
         onFolderMenu={(f, e) => setMenu({ x: e.clientX, y: e.clientY, target: { scope: "project.folder", arg: f } })}
       />
       <div className="sidebar-column" hidden={sidebar.collapsed}>
-        <SidebarHandle width={sidebar.width} />
         <Navigator
           connections={projectConnections}
           project={project}
@@ -722,6 +722,7 @@ export function App() {
           onError={setToast}
         />
         <ScriptsPanel project={project} connections={projectConnections} onError={setToast} />
+        <SidebarResizer width={sidebarWidth} onResize={setSidebarWidth} />
       </div>
       <main className="workspace">
         <UpdateBanner />

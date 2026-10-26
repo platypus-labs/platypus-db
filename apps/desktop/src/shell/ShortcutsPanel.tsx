@@ -19,6 +19,7 @@ const SCOPES: Record<string, string> = {
   grid: msg("Results grid"),
   editor: msg("SQL editor"),
   tab: msg("Tab"),
+  "navigator.list": msg("Navigator: connection list"),
   "navigator.connection": msg("Navigator: connection"),
   "navigator.schema": msg("Navigator: schema"),
   "navigator.object": msg("Navigator: table or routine"),
@@ -32,8 +33,14 @@ const SCOPES: Record<string, string> = {
 
 const scopeLabel = (scope: ActionScope) => t(SCOPES[scope] ?? scope);
 
-/** Every action with its shortcut: click one, press the new keys; Backspace removes it. */
-export function ShortcutsPanel() {
+/** Whether an action's title (in English or translated) or id contains `needle`, lowercase. */
+export function actionMatches(a: Action, needle: string): boolean {
+  return !needle || t(a.title).toLowerCase().includes(needle) || a.title.toLowerCase().includes(needle) || a.id.includes(needle);
+}
+
+/** Every action with its shortcut: click one, press the new keys; Backspace removes it.
+ *  `search`, lowercase, is the Settings' own search, applied with the panel's filter. */
+export function ShortcutsPanel({ search = "" }: { search?: string }) {
   useSettingsVersion();
   const [recording, setRecording] = useState<string | null>(null);
   useEffect(() => {
@@ -46,7 +53,7 @@ export function ShortcutsPanel() {
   const [error, setError] = useState<string | null>(null);
   const needle = filter.trim().toLowerCase();
   const actions = allActions()
-    .filter((a) => !needle || t(a.title).toLowerCase().includes(needle) || a.title.toLowerCase().includes(needle) || a.id.includes(needle))
+    .filter((a) => actionMatches(a, needle) && actionMatches(a, search))
     .sort((a, b) => a.scope.localeCompare(b.scope) || t(a.title).localeCompare(t(b.title)));
 
   /** Other actions of the same scope that answer to `shortcut`. */

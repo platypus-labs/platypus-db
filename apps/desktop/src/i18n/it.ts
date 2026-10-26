@@ -5,7 +5,6 @@ const it: Record<string, string> = {
   "Toggle sidebar": "Mostra o nascondi la barra laterale",
   "Toggle sidebar (Ctrl+B)": "Mostra o nascondi la barra laterale (Ctrl+B)",
   "Resize the sidebar": "Ridimensiona la barra laterale",
-  "Drag to resize, double-click to reset": "Trascina per ridimensionare, doppio clic per ripristinare",
   "Activity and errors": "Attività ed errori",
   "Settings": "Impostazioni",
   "Open beside the active tab": "Apri accanto alla scheda attiva",
@@ -563,8 +562,6 @@ const it: Record<string, string> = {
   "not encrypted": "non cifrata",
   "Test connection": "Prova la connessione",
   "Choose the database.": "Scegli il database.",
-  "Search databases…": "Cerca un database…",
-  "No database matches.": "Nessun database corrisponde.",
   "PostgreSQL-compatible": "Compatibili con PostgreSQL",
   "JSON (array)": "JSON (array)",
   "NDJSON (one object per line)": "NDJSON (un oggetto per riga)",
@@ -1161,6 +1158,18 @@ const it: Record<string, string> = {
   "Install": "Installa",
   "Oracle connects through Oracle Instant Client, and IBM Db2 through IBM's ODBC driver: both installed from their vendors the first time a connection needs them.": "Oracle si connette con Oracle Instant Client, e IBM Db2 con il driver ODBC di IBM: entrambi installati dai produttori la prima volta che una connessione ne ha bisogno.",
   "ODBC drivers of the system ({drivers}) and data sources ({sources})": "Driver ODBC del sistema ({drivers}) e origini dati ({sources})",
+  // Connection list menu, database search, settings search, navigator width
+  "New connection…": "Nuova connessione…",
+  "Import connections…": "Importa le connessioni…",
+  "Navigator: connection list": "Navigator: elenco delle connessioni",
+  "Search databases…": "Cerca un database…",
+  "Search databases": "Cerca un database",
+  "No database matches.": "Nessun database corrisponde.",
+  "Search settings…": "Cerca nelle impostazioni…",
+  "Search settings": "Cerca nelle impostazioni",
+  "No settings match.": "Nessuna impostazione corrisponde.",
+  "Resize the connections": "Ridimensiona le connessioni",
+  "Drag to resize, double-click to reset": "Trascina per ridimensionare, doppio clic per ripristinare",
 };
 
 export default it;

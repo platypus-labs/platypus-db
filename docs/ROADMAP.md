@@ -511,7 +511,11 @@ testo inglese come chiave, controllo `scripts/i18n-check.mjs` nella build; la do
 delle funzioni SQL nel completamento resta in inglese), accessibilità (ruoli, nome e focus dei
 dialog in `ui/modalA11y.ts`, navigator, schede e menu da tastiera, contrasto dei commenti SQL),
 log delle attività e degli errori, notifica di sistema a fine query lunga
-(`tauri-plugin-notification`), `Ctrl+=` / `Ctrl+-` / `Ctrl+0` e font della griglia. Restano i P3.
+(`tauri-plugin-notification`), `Ctrl+=` / `Ctrl+-` / `Ctrl+0` e font della griglia. Poi le **rifiniture**: icone dell'app col logo tondo per le misure piccole,
+"New connection…" nel menu di una connessione e in quello della lista (scope `navigator.list`),
+ricerca e quattro colonne nella scelta del database, ricerca nelle Impostazioni (anche le
+scorciatoie, per nome dell'azione), navigator ridimensionabile (`shell/SidebarResizer.tsx`,
+larghezza in `layout.sidebar_width`), menu e dialog con un leggero effetto vetro. Restano i P3.
 
 **Area:** `App.tsx`, `apps/desktop/src/shell/` (tab bar, palette, impostazioni), `styles.css`, `theme.ts`
 **Dipende da:** 0.2, 0.3, 0.7

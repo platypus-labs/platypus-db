@@ -983,6 +983,12 @@ export function Navigator(props: Props) {
         aria-label={t("Connections")}
         aria-multiselectable="true"
         onKeyDown={onTreeKey}
+        // Below the rows: the list's menu.
+        onContextMenu={(e) => {
+          if (e.defaultPrevented || (e.target as HTMLElement).closest("li")) return;
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY, target: { scope: "navigator.list", arg: { project } } });
+        }}
         // Dropped below the rows: to the project's root.
         {...dropTarget(project ? (item) => dropInto(project, null, item) : undefined)}
       >
@@ -1112,6 +1118,51 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
   const n = () => nav.current;
   const copy = (text: string) => void navigator.clipboard.writeText(text);
   const unregister = [
+    registerAction({
+      id: "list.new_connection",
+      scope: "navigator.list",
+      title: "New connection…",
+      group: "new",
+      order: 10,
+      run: () => workbench().newConnection(),
+    }),
+    registerAction({
+      id: "list.new_folder",
+      scope: "navigator.list",
+      title: "New folder…",
+      group: "new",
+      order: 11,
+      when: ({ project }) => project !== null,
+      run: ({ project }) => {
+        if (project) newFolder(project, null);
+      },
+    }),
+    registerAction({
+      id: "list.add_existing",
+      scope: "navigator.list",
+      title: "Add existing…",
+      group: "import",
+      order: 20,
+      when: ({ project }) => project !== null,
+      run: () => n().props.onAddExisting(),
+    }),
+    registerAction({
+      id: "list.import",
+      scope: "navigator.list",
+      title: "Import connections…",
+      group: "import",
+      order: 21,
+      run: () => n().props.onImport(),
+    }),
+    registerAction({
+      id: "connection.new_connection",
+      scope: "navigator.connection",
+      title: "New connection…",
+      group: "new",
+      order: 5,
+      // Next to the clicked one: in its folder of the active project.
+      run: ({ connection }) => workbench().newConnection(workbench().activeProject()?.placement?.[connection.id] ?? null),
+    }),
     registerAction({
       id: "connection.new_script",
       scope: "navigator.connection",
