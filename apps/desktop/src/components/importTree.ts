@@ -2,7 +2,7 @@
  * The import dialog's preview: each imported project as a tree of folders and connections,
  * what is ticked in it, and the request that saves the ticked part.
  */
-import type { ImportedProject, ImportInto, ImportRequest, SavedConnection } from "../api";
+import type { ImportedProject, ImportInto, ImportRequest, SavedConnection, SkippedConnection } from "../api";
 
 export interface FolderView {
   /** Names from the project's root; empty for the root itself. */
@@ -78,7 +78,17 @@ function picked(project: ImportedProject, ticked: ReadonlySet<string>): Imported
     return inside.length === 0 || inside.some((c) => ticked.has(c.id));
   });
   const placement = Object.fromEntries(Object.entries(project.placement).filter(([id]) => ticked.has(id)));
-  return { ...project, connections, folders, placement };
+  return { ...project, connections, folders, placement, skipped: [], notes: {} };
+}
+
+/** Whether the file held no connection at all, imported or left out. */
+export function isEmptyImport(projects: ImportedProject[]): boolean {
+  return projects.every((p) => p.connections.length === 0 && p.skipped.length === 0);
+}
+
+/** The tool's ids of a left-out connection's database and driver, e.g. `oracle · oracle_thin`. */
+export function skippedIds(s: SkippedConnection): string {
+  return [s.provider, s.driver].filter(Boolean).join(" · ") || "?";
 }
 
 export function importRequest(

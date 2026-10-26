@@ -884,7 +884,23 @@ export interface ImportedProject {
   connections: SavedConnection[];
   /** The folder of each connection not at the root, by connection id. */
   placement: Record<string, string[]>;
+  /** The connections of the file that are not imported. */
+  skipped: SkippedConnection[];
+  /** What a connection needs before it can connect, by connection id. */
+  notes: Record<string, ImportNote[]>;
 }
+
+/** A connection of the file to a database the import does not read, with the tool's own
+ *  ids of the database and its driver. */
+export interface SkippedConnection {
+  name: string;
+  provider: string;
+  driver: string;
+}
+
+/** Windows or Entra ID logins, which the SQL Server driver does not do, and a named
+ *  instance without a port. */
+export type ImportNote = { kind: "windows_auth" } | { kind: "entra_auth" } | { kind: "named_instance"; instance: string };
 
 export type ImportInto =
   | { kind: "new_project"; name: string }

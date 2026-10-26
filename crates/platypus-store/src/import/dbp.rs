@@ -1,6 +1,7 @@
 //! A DBeaver project export (File › Export › DBeaver project): a zip with `meta.xml`,
 //! which lists the projects, and each project's folder under `projects/<name>/`. Only the
-//! connections are read (`.dbeaver/data-sources*.json`), not the scripts.
+//! connections are read (`.dbeaver/data-sources*.json`), not the scripts. A zip of
+//! workspace folders (`<project>/.dbeaver/…`) is read the same way.
 
 use std::io::Cursor;
 
@@ -14,13 +15,16 @@ pub(super) fn projects(bytes: &[u8]) -> Result<Vec<ImportedProject>, String> {
     let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| e.to_string())?;
     let mut order = Vec::new();
     let mut found = Vec::new();
+    let mut sources = 0;
     for i in 0..zip.len() {
         let mut file = zip.by_index(i).map_err(|e| e.to_string())?;
-        let name = file.name().map_err(|e| e.to_string())?.into_owned();
-        if name == "meta.xml" {
+        // Java writes `/`; a zip made on Windows may hold `\`.
+        let name = file.name().map_err(|e| e.to_string())?.replace('\\', "/");
+        if name.trim_start_matches("./") == "meta.xml" {
             order = project_names(&read(&mut file)?);
         } else if let Some(project) = sources_of(&name) {
-            let imported = dbeaver(&read(&mut file)?)?;
+            sources += 1;
+            let imported = dbeaver(&read(&mut file)?).map_err(|e| format!("{name}: {e}"))?;
             match found
                 .iter_mut()
                 .find(|p: &&mut ImportedProject| p.name.as_deref() == Some(project))
@@ -33,7 +37,14 @@ pub(super) fn projects(bytes: &[u8]) -> Result<Vec<ImportedProject>, String> {
             }
         }
     }
-    found.retain(|p| !p.connections.is_empty());
+    if sources == 0 {
+        return Err(
+            "no DBeaver connections in this archive: it holds no .dbeaver/data-sources*.json"
+                .to_owned(),
+        );
+    }
+    // A project whose connections are all left out stays, to tell why.
+    found.retain(|p| !p.connections.is_empty() || !p.skipped.is_empty());
     found.sort_by_key(|p| {
         let name = p.name.clone().unwrap_or_default();
         (
@@ -44,14 +55,17 @@ pub(super) fn projects(bytes: &[u8]) -> Result<Vec<ImportedProject>, String> {
     Ok(found)
 }
 
-/// The project of a `projects/<name>/.dbeaver/data-sources*.json` entry.
+/// The project of a `projects/<name>/.dbeaver/data-sources*.json` entry: the folder that
+/// holds `.dbeaver`, at any depth.
 fn sources_of(entry: &str) -> Option<&str> {
-    let (project, file) = entry.strip_prefix("projects/")?.split_once("/.dbeaver/")?;
+    let (dir, file) = entry.rsplit_once('/')?;
+    let (parent, dot) = dir.rsplit_once('/')?;
+    let project = parent.rsplit('/').next()?;
     let named = file.starts_with("data-sources")
         && std::path::Path::new(file)
             .extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("json"));
-    (named && !project.contains('/') && !file.contains('/')).then_some(project)
+    (named && dot == ".dbeaver" && !project.is_empty() && project != ".").then_some(project)
 }
 
 fn read(file: &mut impl std::io::Read) -> Result<String, String> {

@@ -697,6 +697,15 @@ button.primary.danger:hover:not(:disabled) {
   text-overflow: ellipsis;
 }
 
+.import-row.skipped .import-name {
+  color: var(--fg-muted);
+}
+
+.import-note {
+  color: var(--warn);
+  padding-bottom: 2px;
+}
+
 .import-rail {
   gap: 6px;
 }
