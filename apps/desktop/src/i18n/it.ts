@@ -1202,6 +1202,14 @@ const it: Record<string, string> = {
   "Documentation written to {path}": "Documentazione scritta in {path}",
   // Data viewer: header sort of a statement the editor no longer holds as it ran
   "This query cannot be sorted from the header: the editor does not hold it as it ran (it was edited since, its variables were filled in, or it comes from @include).": "Questa query non si ordina dall'intestazione: l'editor non la contiene così come è stata eseguita (è stata modificata, ha variabili sostituite o viene da un @include).",
+
+  // Analysis (group M): column statistics
+
+  // Analysis (group M): charts
+
+  // Analysis (group M): SQL on results
+
+  // Analysis (group M): compare with the previous run
 };
 
 export default it;

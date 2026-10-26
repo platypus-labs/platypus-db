@@ -921,6 +921,31 @@ export function toCommandError(e: unknown): CommandError {
   return { kind: "other", message: String(e), code: null, detail: null, hint: null, position: null };
 }
 
+// Analysis (group M): column statistics
+
+/** A result column at a glance, over the rows loaded (`column_profile`). */
+export interface ColumnProfile {
+  rows: number;
+  nulls: number;
+  distinct: number;
+  /** As shown; by value for numbers and dates, by text otherwise; `null` for binary, JSON
+   *  and composite columns. */
+  min: string | null;
+  max: string | null;
+  /** Numbers and dates: 20 equal ranges. */
+  histogram: { from: string; to: string; count: number }[];
+  /** Text: the 5 most frequent values. */
+  top: { value: string; count: number }[];
+  /** Over every row of the result, not only the loaded ones. */
+  complete: boolean;
+}
+
+// Analysis (group M): charts
+
+// Analysis (group M): SQL on results
+
+// Analysis (group M): compare with the previous run
+
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
   agentSetup: () => invoke<AgentSetup>("agent_setup"),
@@ -1339,4 +1364,14 @@ export const api = {
     return invoke<number>("export_docs", { sessionId, connectionId, database, request, onEvent: channel });
   },
   cancelDocs: (exportId: number) => invoke<void>("cancel_docs", { exportId }),
+
+  // Analysis (group M): column statistics
+  /** The profile of `column` over the rows the result has loaded. */
+  columnProfile: (jobId: number, column: number) => invoke<ColumnProfile>("column_profile", { jobId, column }),
+
+  // Analysis (group M): charts
+
+  // Analysis (group M): SQL on results
+
+  // Analysis (group M): compare with the previous run
 };

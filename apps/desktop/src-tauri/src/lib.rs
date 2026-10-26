@@ -250,6 +250,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::grid::search_rows,
         commands::summary::selection_stats,
         commands::summary::column_stats,
+        commands::analysis::stats::column_profile,
         commands::summary::group_counts,
         commands::geometry::geometries,
         commands::export::export_query,

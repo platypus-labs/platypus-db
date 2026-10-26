@@ -5,6 +5,7 @@
 #![allow(clippy::needless_pass_by_value)]
 
 pub mod agents;
+pub mod analysis;
 pub mod catalog;
 pub mod cli;
 pub mod connections;
@@ -278,5 +279,22 @@ pub fn app_info() -> AppInfo {
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
         devtools: std::env::var_os("PLATYPUS_DEVTOOLS_PORT").is_some(),
+    }
+}
+
+#[cfg(test)]
+impl AppState {
+    /// A state with nothing opened (no connections file, history, catalog, settings or scripts),
+    /// for commands that only use sessions and results.
+    pub(crate) fn for_tests() -> Self {
+        let none = "not opened in tests";
+        Self::new(
+            (Err(none.to_owned()), None),
+            Err(none.to_owned()),
+            Err(none.to_owned()),
+            Err(none.to_owned()),
+            Err(none.to_owned()),
+            Err(none.to_owned()),
+        )
     }
 }
