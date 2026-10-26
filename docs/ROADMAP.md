@@ -704,7 +704,8 @@ di descrizione delle foreign key**, scelta per tabella puntata (dal menu dell'in
 griglia o da Row label nel tab oggetto) e salvata in `catalog.db`; *Automatic* è la regola di
 prima. Limiti: le note si perdono se un oggetto si rinomina fuori dall'app (ricompaiono se torna
 con lo stesso nome); il diagramma di uno schema con più di 100 tabelle si omette, con un avviso
-nel documento.
+nel documento; il commento si modifica sulle tabelle, mentre quello di viste e viste materializzate
+si vede in sola lettura (ogni database lo scrive in modo diverso, MySQL non lo ha).
 
 Sapere cosa contiene un database senza chiederlo a chi l'ha scritto: note e tag sugli oggetti,
 commenti del database, documentazione esportabile, colonne sensibili segnate una volta e
