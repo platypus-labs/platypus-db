@@ -583,6 +583,30 @@ export interface TableScript {
   warnings: string[];
 }
 
+/** A table of a schema with its details (ER diagram, linter). */
+export interface SchemaTable {
+  name: string;
+  comment: string | null;
+  details: TableDetails;
+}
+
+export type LintKind =
+  | "no_primary_key"
+  | "unindexed_foreign_key"
+  | "duplicate_index"
+  | "redundant_index"
+  | "foreign_key_type_mismatch";
+
+/** What the schema linter found; `fix` is the statement that fixes it, to review first. */
+export interface LintFinding {
+  kind: LintKind;
+  table: string;
+  /** The index or foreign key concerned; `null` for the table itself. */
+  object: string | null;
+  message: string;
+  fix: string | null;
+}
+
 /** A foreign key of the catalog: `schema.table (columns)` references `ref_*`. */
 export interface CatalogForeignKey {
   schema: string;
@@ -1407,6 +1431,13 @@ export const api = {
     invoke<{ script: TableScript; sql: string }>("table_script", { driver, schema, original, design }),
   applyTableScript: (sessionId: number, script: TableScript) =>
     invoke<void>("apply_table_script", { sessionId, script }),
+  /** The tables of `schema` with their details: those in `tables`, or all when null. */
+  schemaTables: (sessionId: number, schema: string, tables: string[] | null) =>
+    invoke<SchemaTable[]>("schema_tables", { sessionId, schema, tables }),
+  lintSchema: (sessionId: number, schema: string) => invoke<LintFinding[]>("lint_schema", { sessionId, schema }),
+  /** The script that makes the target schema like the source one. */
+  compareSchemas: (sourceSession: number, sourceSchema: string, targetSession: number, targetSchema: string) =>
+    invoke<{ script: TableScript; sql: string }>("compare_schemas", { sourceSession, sourceSchema, targetSession, targetSchema }),
   /** The UPDATE, INSERT and DELETE statements that saving `changes` would run. */
   previewChanges: (jobId: number, changes: TableChanges) =>
     invoke<string[]>("preview_changes", { jobId, changes }),
