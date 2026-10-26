@@ -33,3 +33,41 @@ pub(crate) fn migrate(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MIGRATIONS: &[&str] = &["CREATE TABLE a (x INTEGER);", "CREATE TABLE b (y INTEGER);"];
+
+    fn version(db: &Connection) -> i64 {
+        db.pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn applies_the_pending_migrations_once() {
+        let db = Connection::open_in_memory().unwrap();
+        migrate(&db, &MIGRATIONS[..1], "test", StoreError::Catalog).unwrap();
+        assert_eq!(version(&db), 1);
+        // Reopening with one more migration only runs the new one: `a` would fail twice.
+        migrate(&db, MIGRATIONS, "test", StoreError::Catalog).unwrap();
+        migrate(&db, MIGRATIONS, "test", StoreError::Catalog).unwrap();
+        assert_eq!(version(&db), 2);
+        db.execute("INSERT INTO b VALUES (1)", []).unwrap();
+    }
+
+    #[test]
+    fn refuses_a_database_from_a_newer_app() {
+        let db = Connection::open_in_memory().unwrap();
+        db.pragma_update(None, "user_version", 3).unwrap();
+        let err = migrate(&db, MIGRATIONS, "test", StoreError::Catalog).unwrap_err();
+        assert!(
+            matches!(&err, StoreError::Catalog(m) if m.contains("newer PlatypusDB") && m.contains("test")),
+            "{err:?}"
+        );
+        // Nothing was applied or downgraded.
+        assert_eq!(version(&db), 3);
+        assert!(db.execute("INSERT INTO a VALUES (1)", []).is_err());
+    }
+}

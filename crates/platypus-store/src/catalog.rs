@@ -77,6 +77,13 @@ pub struct DisplayColumn {
     pub column: String,
 }
 
+/// The catalog database.
+///
+/// # Errors
+/// Every method that returns a `Result` fails with [`StoreError::Catalog`] when SQLite does
+/// (a file that cannot be written, a corrupt database); `open` also fails with
+/// [`StoreError::Io`] when the folder cannot be created, and with a catalog error for a
+/// database written by a newer app.
 #[derive(Debug)]
 pub struct CatalogStore {
     db: Connection,
@@ -301,8 +308,13 @@ impl CatalogStore {
         tx.commit().map_err(db_error)
     }
 
-    /// Moves notes, tags and display columns after the app renamed an object (`from.column`
-    /// empty: its columns' notes move with it) or a column.
+    /// Moves notes, tags and display columns after the app renamed an object or a column.
+    ///
+    /// With `from.column` empty the object `from.object` becomes `to.schema.to.object` and the
+    /// entries of its columns move with it; otherwise the column of `from.object` becomes
+    /// `to.column`. The rest of `to` is ignored: a rename never changes the database, and a
+    /// column stays in its table. An entry already at the target is overwritten by the renamed
+    /// one: a note and a display column are replaced, tags are merged.
     pub fn rename(&mut self, connection: Uuid, from: &CatalogKey, to: &CatalogKey) -> Result<()> {
         let id = connection.to_string();
         let object = from.column.is_empty();
@@ -362,30 +374,14 @@ impl CatalogStore {
     /// Forgets the catalog of every connection not in `keep`, in one transaction.
     pub fn retain_connections(&mut self, keep: &[Uuid]) -> Result<()> {
         let keep: Vec<String> = keep.iter().map(Uuid::to_string).collect();
+        let marks = vec!["?"; keep.len()].join(", ");
         let tx = self.db.transaction().map_err(db_error)?;
         for table in TABLES {
-            let mut stale = Vec::new();
-            {
-                let mut q = tx
-                    .prepare(&format!("SELECT DISTINCT connection_id FROM {table}"))
-                    .map_err(db_error)?;
-                let rows = q
-                    .query_map([], |r| r.get::<_, String>(0))
-                    .map_err(db_error)?;
-                for id in rows {
-                    let id = id.map_err(db_error)?;
-                    if !keep.contains(&id) {
-                        stale.push(id);
-                    }
-                }
-            }
-            for id in stale {
-                tx.execute(
-                    &format!("DELETE FROM {table} WHERE connection_id = ?1"),
-                    params![id],
-                )
-                .map_err(db_error)?;
-            }
+            tx.execute(
+                &format!("DELETE FROM {table} WHERE connection_id NOT IN ({marks})"),
+                rusqlite::params_from_iter(&keep),
+            )
+            .map_err(db_error)?;
         }
         tx.commit().map_err(db_error)
     }
@@ -494,6 +490,125 @@ mod tests {
         let all = s.entries(c).unwrap();
         assert_eq!(all[0].key.column, "mail");
         assert_eq!(all[0].tags, ["pii"]);
+    }
+
+    #[test]
+    fn a_rename_onto_an_existing_key_overwrites_its_note_and_merges_tags() {
+        let mut s = CatalogStore::open_in_memory().unwrap();
+        let c = Uuid::new_v4();
+        s.save(c, &key("orders", "email"), "old", &tags(&["pii"]))
+            .unwrap();
+        s.save(c, &key("orders", "mail"), "target", &tags(&["core"]))
+            .unwrap();
+        s.rename(c, &key("orders", "email"), &key("orders", "mail"))
+            .unwrap();
+        let all = s.entries(c).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].key, key("orders", "mail"));
+        assert_eq!(all[0].note, "old");
+        assert_eq!(all[0].tags, ["core", "pii"]);
+
+        s.set_display_column(c, &key("customers", ""), Some("company"))
+            .unwrap();
+        s.set_display_column(c, &key("clients", ""), Some("name"))
+            .unwrap();
+        s.rename(c, &key("customers", ""), &key("clients", ""))
+            .unwrap();
+        let shown = s.display_columns(c).unwrap();
+        assert_eq!(shown.len(), 1);
+        assert_eq!(shown[0].key.object, "clients");
+        assert_eq!(shown[0].column, "company");
+    }
+
+    #[test]
+    fn a_rename_leaves_other_connections_and_objects_alone() {
+        let mut s = CatalogStore::open_in_memory().unwrap();
+        let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
+        for c in [a, b] {
+            s.save(c, &key("orders", "email"), "mine", &tags(&["pii"]))
+                .unwrap();
+            s.save(c, &key("customers", "email"), "theirs", &[])
+                .unwrap();
+            s.set_display_column(c, &key("orders", ""), Some("email"))
+                .unwrap();
+        }
+        s.rename(a, &key("orders", "email"), &key("orders", "mail"))
+            .unwrap();
+        s.rename(a, &key("orders", ""), &key("sales_orders", ""))
+            .unwrap();
+
+        let mut mine: Vec<_> = s
+            .entries(a)
+            .unwrap()
+            .into_iter()
+            .map(|e| (e.key.object, e.key.column))
+            .collect();
+        mine.sort();
+        assert_eq!(
+            mine,
+            [
+                ("customers".to_owned(), "email".to_owned()),
+                ("sales_orders".to_owned(), "mail".to_owned())
+            ]
+        );
+        let shown = s.display_columns(a).unwrap();
+        assert_eq!(
+            (shown[0].key.object.as_str(), shown[0].column.as_str()),
+            ("sales_orders", "mail")
+        );
+
+        let untouched: Vec<_> = s
+            .entries(b)
+            .unwrap()
+            .into_iter()
+            .map(|e| (e.key.object, e.key.column))
+            .collect();
+        assert_eq!(
+            untouched,
+            [
+                ("customers".to_owned(), "email".to_owned()),
+                ("orders".to_owned(), "email".to_owned())
+            ]
+        );
+        let shown = s.display_columns(b).unwrap();
+        assert_eq!(
+            (shown[0].key.object.as_str(), shown[0].column.as_str()),
+            ("orders", "email")
+        );
+    }
+
+    #[test]
+    fn the_database_is_part_of_the_key() {
+        let mut s = CatalogStore::open_in_memory().unwrap();
+        let c = Uuid::new_v4();
+        let main = key("orders", "");
+        let other = CatalogKey {
+            database: "analytics".to_owned(),
+            ..main.clone()
+        };
+        s.save(c, &main, "main", &[]).unwrap();
+        s.save(c, &other, "analytics", &[]).unwrap();
+        assert_eq!(s.entries(c).unwrap().len(), 2);
+
+        // A rename stays in the database of `from`, whatever `to` says.
+        let moved = CatalogKey {
+            object: "sales_orders".to_owned(),
+            database: "elsewhere".to_owned(),
+            ..other.clone()
+        };
+        s.rename(c, &other, &moved).unwrap();
+        let all = s.entries(c).unwrap();
+        assert_eq!(all.len(), 2);
+        assert!(all.iter().any(|e| e.key == main && e.note == "main"));
+        assert!(all.iter().any(|e| e.key.database == "analytics"
+            && e.key.object == "sales_orders"
+            && e.note == "analytics"));
+
+        // Emptying one leaves the other.
+        s.save(c, &main, "", &[]).unwrap();
+        let all = s.entries(c).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].key.database, "analytics");
     }
 
     #[test]
