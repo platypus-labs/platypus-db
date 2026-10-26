@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
@@ -6,17 +6,30 @@ import {
   type ImportedProject,
   type ImportFile,
   type ImportInto,
+  type ImportNote,
   type ImportSource,
   isEmbedded,
   type Project,
+  type ProjectNote,
   type SavedConnection,
   toCommandError,
   type Workspace,
 } from "../api";
-import { connectionColor, typeBadge } from "../connections";
+import { connectionColor, noteText, typeBadge } from "../connections";
 import { answerFor } from "../testAnswers";
 import { Icon } from "../ui/Icon";
-import { checkState, connectionsUnder, defaultInto, type FolderView, importRequest, projectTree, toggleAll } from "./importTree";
+import {
+  checkState,
+  connectionsUnder,
+  defaultInto,
+  type FolderView,
+  importRequest,
+  isEmptyImport,
+  projectTree,
+  savedPasswords,
+  skippedIds,
+  toggleAll,
+} from "./importTree";
 import { t, msg } from "../i18n";
 
 interface Props {
@@ -47,6 +60,16 @@ const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 /** The rail folder's default name: the file's, without its extension. */
 const railName = (path: string) => fileName(path).replace(/\.[^.]+$/, "") || t("Imported");
 
+/** What to know about a whole project of the file. */
+function projectNoteText(note: ProjectNote): string {
+  switch (note.kind) {
+    case "no_saved_logins":
+      return t("No saved users or passwords in this project: each connection asks for its password the first time.");
+    case "saved_logins_unreadable":
+      return t("Saved passwords could not be read: DBeaver may protect them with a master password.");
+  }
+}
+
 /** Whether `c` looks like a connection that is already saved. */
 function duplicate(c: SavedConnection, existing: SavedConnection[]) {
   return existing.some(
@@ -55,7 +78,8 @@ function duplicate(c: SavedConnection, existing: SavedConnection[]) {
 }
 
 /** Reads the projects, folders and connections of DBeaver, DataGrip, pgAdmin or
- *  `pg_service.conf`, and saves the ticked ones. Passwords are asked for on first use. */
+ *  `pg_service.conf`, and saves the ticked ones. DBeaver's saved passwords come along unless
+ *  the user opts out; other connections ask for theirs on first use. */
 export function ImportDialog({ existing, projects, project, onImported, onClose }: Props) {
   const [found, setFound] = useState<ImportFile[]>([]);
   const [source, setSource] = useState<ImportSource>("dbeaver");
@@ -64,11 +88,14 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
   const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
   const [into, setInto] = useState<ImportInto[]>([]);
   const [railFolder, setRailFolder] = useState<string | null>(null);
+  const [passwords, setPasswords] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.detectImports().then(setFound, () => setFound([]));
+    // The passwords read with a file are not kept once the dialog closes, imported or not.
+    return () => void api.forgetImport().catch(() => {});
   }, []);
 
   async function load(next: ImportFile) {
@@ -109,7 +136,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
     setSaving(true);
     try {
       // The rail folder is offered for two new projects or more.
-      onImported(await api.saveImported(importRequest(read, ticked, into, newProjects.length > 1 ? railFolder : null)));
+      onImported(await api.saveImported(importRequest(read, ticked, into, newProjects.length > 1 ? railFolder : null, passwords)));
     } catch (e) {
       setError(toCommandError(e).message);
       setSaving(false);
@@ -162,8 +189,8 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
           <span className="muted small import-hint">{t(HINTS[source])}</span>
         </div>
         {error && <div className="notice error small">{error}</div>}
-        {read && read.length === 0 && <p className="muted small">{t("No connections found in this file.")}</p>}
-        {read && read.length > 0 && (
+        {read && isEmptyImport(read) && <p className="muted small">{t("No connections found in this file.")}</p>}
+        {read && !isEmptyImport(read) && (
           <>
             <div className="import-tree" role="tree">
               {read.map((p, i) => (
@@ -179,7 +206,21 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
                 />
               ))}
             </div>
-            <p className="muted small">{t("Passwords are not imported: each connection asks for its own the first time.")}</p>
+            {savedPasswords(read) > 0 ? (
+              <label className="check import-passwords">
+                <input type="checkbox" checked={passwords} onChange={(e) => setPasswords(e.target.checked)} />
+                <span>
+                  {t("Import saved users and passwords")}
+                  <span className="muted small import-passwords-hint">
+                    {passwords
+                      ? t("Passwords go to the app's secret store, as if typed in the connection dialog.")
+                      : t("Only the user names: each connection asks for its password the first time.")}
+                  </span>
+                </span>
+              </label>
+            ) : (
+              <p className="muted small">{t("Passwords are not imported: each connection asks for its own the first time.")}</p>
+            )}
           </>
         )}
         <div className="actions">
@@ -256,7 +297,19 @@ function ProjectRows({ project, ticked, existing, projects, into, onTicked, onIn
           <option value="none">{t("No project")}</option>
         </select>
       </div>
-      <FolderRows folder={root} depth={1} ticked={ticked} existing={existing} onTicked={onTicked} />
+      {(project.project_notes ?? []).map((note) => (
+        <div key={note.kind} className={`small import-project-note ${note.kind === "saved_logins_unreadable" ? "import-note" : "muted"}`} style={{ paddingLeft: 18 }}>
+          {projectNoteText(note)}
+        </div>
+      ))}
+      <FolderRows folder={root} depth={1} ticked={ticked} existing={existing} notes={project.notes} onTicked={onTicked} />
+      {project.skipped.map((s, i) => (
+        <div key={i} className="import-row skipped" role="treeitem" style={{ paddingLeft: 18 }}>
+          <input type="checkbox" disabled checked={false} />
+          <span className="import-name">{s.name}</span>
+          <span className="muted small import-target">{t("Not imported: unsupported database ({ids})", { ids: skippedIds(s) })}</span>
+        </div>
+      ))}
     </>
   );
 }
@@ -266,12 +319,14 @@ function FolderRows({
   depth,
   ticked,
   existing,
+  notes,
   onTicked,
 }: {
   folder: FolderView;
   depth: number;
   ticked: ReadonlySet<string>;
   existing: SavedConnection[];
+  notes: Record<string, ImportNote[]>;
   onTicked: (next: Set<string>) => void;
 }) {
   return (
@@ -283,14 +338,15 @@ function FolderRows({
             <Icon name="open" />
             <span>{f.path[f.path.length - 1]}</span>
           </div>
-          <FolderRows folder={f} depth={depth + 1} ticked={ticked} existing={existing} onTicked={onTicked} />
+          <FolderRows folder={f} depth={depth + 1} ticked={ticked} existing={existing} notes={notes} onTicked={onTicked} />
         </div>
       ))}
       {folder.connections.map((c) => {
         const badge = typeBadge(c);
         const saved = duplicate(c, existing);
         return (
-          <label key={c.id} className="import-row connection" role="treeitem" style={{ paddingLeft: depth * 18 }}>
+          <Fragment key={c.id}>
+          <label className="import-row connection" role="treeitem" style={{ paddingLeft: depth * 18 }}>
             <Tick ids={[c.id]} ticked={ticked} onTicked={onTicked} />
             <span className="dot" style={{ background: connectionColor(c) ?? "var(--border)" }} />
             <span className="import-name">{c.name}</span>
@@ -301,6 +357,12 @@ function FolderRows({
               {saved ? ` · ${t("already saved")}` : ""}
             </span>
           </label>
+          {(notes[c.id] ?? []).map((note) => (
+            <div key={note.kind} className="import-note small" style={{ paddingLeft: depth * 18 + 24 }}>
+              {noteText(note)}
+            </div>
+          ))}
+          </Fragment>
         );
       })}
     </>

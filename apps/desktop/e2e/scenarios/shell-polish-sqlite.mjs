@@ -93,8 +93,9 @@ export default async function (page, { dir, shots }) {
   await page.eval(setInput(".driver-picker .modal-search input", "sql"));
   await page.waitFor(`${tiles}.length < ${all} && ${tiles}.length > 1 && ${tiles}[0] === 'PostgreSQL'`);
   await page.key("Enter", "Enter", 13);
-  const driver = `[...document.querySelectorAll('.modal .field')].find(f => f.textContent.startsWith('Driver'))?.querySelector('select')?.value`;
-  await page.waitFor(`document.querySelector('.modal.driver-picker') === null && ${driver} === 'postgres'`);
+  // The form names its database by the logo in its header.
+  const driver = `document.querySelector('.connection-dialog .dialog-header .driver-icon')?.getAttribute('aria-label')`;
+  await page.waitFor(`document.querySelector('.modal.driver-picker') === null && ${driver} === 'PostgreSQL'`);
   await page.eval(`[...document.querySelectorAll('.modal button')].find(b => b.textContent === 'Cancel').click()`);
   await page.waitFor(`document.querySelector('.modal') === null`);
 

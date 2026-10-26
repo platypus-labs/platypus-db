@@ -92,4 +92,17 @@ impl From<arrow_schema::ArrowError> for CommandError {
     }
 }
 
+impl From<platypus_local::LocalError> for CommandError {
+    fn from(e: platypus_local::LocalError) -> Self {
+        use platypus_local::LocalError;
+        let kind = match &e {
+            LocalError::NoColumn(_) => "not_found",
+            LocalError::ColumnsDiffer => "columns_differ",
+            LocalError::Arrow(_) => "other",
+            LocalError::Duck(_) => "duckdb",
+        };
+        Self::new(kind, e.to_string())
+    }
+}
+
 pub type CommandResult<T> = Result<T, CommandError>;

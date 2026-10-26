@@ -125,6 +125,9 @@ export function App() {
   const [version, setVersion] = useState("");
   /** Open sessions by tab key; opened on a tab's first run. */
   const sessions = useRef(new Map<number, Promise<number | null>>());
+  /** Connections that are not saved (the DuckDB of "Query with SQL"), by id, with what to do
+   *  once their last tab is closed. */
+  const temporary = useRef(new Map<string, { connection: SavedConnection; onClosed: () => void }>());
   /** Navigator sessions by `dbKey`, separate from the editors' so browsing never waits
    *  behind a running query. */
   const navSessions = useRef(new Map<string, Promise<number | null>>());
@@ -205,7 +208,8 @@ export function App() {
     if (!workspaceReady) return;
     rememberActiveTab();
     const kept = tabs.flatMap((tab) => {
-      const saved = persistTab(tab);
+      // A temporary connection is gone at the next start: its tabs are not kept.
+      const saved = temporary.current.has(tab.connectionId) ? null : persistTab(tab);
       return saved ? [{ key: tab.key, saved }] : [];
     });
     const active: Record<string, number> = {};
@@ -215,6 +219,16 @@ export function App() {
     }
     saveWorkspace({ tabs: kept.map((k) => k.saved), active });
   }, [workspaceReady, tabs, activeTab, activeProject]);
+
+  // A temporary connection goes with its last tab: its navigator sessions close, then it.
+  useEffect(() => {
+    for (const [id, temp] of temporary.current) {
+      if (tabs.some((t) => t.connectionId === id)) continue;
+      temporary.current.delete(id);
+      disconnectNavigator(temp.connection);
+      temp.onClosed();
+    }
+  }, [tabs]);
 
   const project = projects?.find((p) => p.id === activeProject) ?? null;
   const projectConnections = useMemo(() => connectionsOf(project, connections ?? []), [project, connections]);
@@ -301,7 +315,7 @@ export function App() {
     showProject(id);
   }
 
-  const connectionById = (id: string) => connections?.find((c) => c.id === id);
+  const connectionById = (id: string) => connections?.find((c) => c.id === id) ?? temporary.current.get(id)?.connection;
   const connectionName = (id: string) => connectionById(id)?.name ?? "?";
 
   /** A new connection goes into the active project. */
@@ -515,7 +529,8 @@ export function App() {
       void ask(question, { confirm: t("Close"), danger: true }).then((yes) => yes && closeTab(tab, true));
       return;
     }
-    const saved = persistTab(tab);
+    // A temporary connection's tab cannot be reopened: its connection goes with its last tab.
+    const saved = temporary.current.has(tab.connectionId) ? null : persistTab(tab);
     if (saved) {
       closedTabs.current.push(saved);
       if (closedTabs.current.length > CLOSED_TABS) closedTabs.current.shift();
@@ -618,6 +633,10 @@ export function App() {
     newConnection: (folder) => void shell.current.newConnection(folder ?? null),
     deleteProject: (project) => shell.current.deleteProject(project),
     openTab: (kind, connectionId, init) => shell.current.addTab(createTab(kind, connectionId, init)),
+    openTemporaryTab: (kind, connection, init, onClosed) => {
+      temporary.current.set(connection.id, { connection, onClosed });
+      shell.current.addTab(createTab(kind, connection.id, init));
+    },
     focusTab: (match) => {
       const tab = shell.current.tabs.find(match);
       if (tab) shell.current.setActiveTab(tab.key);

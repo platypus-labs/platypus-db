@@ -1,6 +1,8 @@
 import { useId, useRef, useState } from "react";
 import type { CellInput, FieldMeta } from "../../api";
-import { LIST_H, LIST_W, ListEditor } from "./ListEditor";
+import { LIST_MIN, LIST_SIZE, ListEditor } from "./ListEditor";
+import { popupBox } from "./popupBox";
+import { sameJson } from "./jsonChange";
 import type { EditorKind } from "./meta";
 import { t } from "../../i18n";
 
@@ -28,13 +30,18 @@ interface Props {
   numeric: boolean;
   /** Foreign keys: `[key, label]` rows of the table they point to, offered while typing. */
   options?: [string, string | null][];
+  /** Binary and text columns: closes the editor and loads the cell from a file instead;
+   *  `text` is what the editor held, to give back if no file is picked. */
+  onLoadFile?: (text: string) => void;
   onCommit: (value: CellInput, move: Move) => void;
   onCancel: () => void;
 }
 
 const NULL_OPTION = "\u0000null";
-const POPUP_W = 420;
-const POPUP_H = 240;
+const POPUP_SIZE = { width: 420, height: 240 };
+const POPUP_MIN = { width: 260, height: 140 };
+/** Width of the inline editor's "Load from file" button, at its right end. */
+const FILE_BUTTON = 24;
 
 /** The inline editor placed over a cell. */
 export function CellEditor({
@@ -50,6 +57,7 @@ export function CellEditor({
   json,
   numeric,
   options,
+  onLoadFile,
   onCommit,
   onCancel,
 }: Props) {
@@ -77,6 +85,11 @@ export function CellEditor({
       }
     }
     done.current = true;
+    // Formatting only changes how the JSON reads: keep the value as loaded if nothing else changed.
+    if (json && initial !== null && typed === undefined && value !== initial && sameJson(initial, value)) {
+      onCommit({ kind: "value", text: initial }, move);
+      return;
+    }
     const empty = value.trim() === "";
     onCommit(
       value === NULL_OPTION || ((numeric || kind === "lookup") && empty) ? { kind: "null" } : { kind: "value", text: value },
@@ -87,6 +100,13 @@ export function CellEditor({
   function cancel() {
     done.current = true;
     onCancel();
+  }
+
+  /** The file's contents replace the value: what was typed is not committed, but handed
+   *  over in case no file is picked. */
+  function loadFile() {
+    done.current = true;
+    onLoadFile?.(text);
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -103,16 +123,10 @@ export function CellEditor({
     }
   }
 
-  /** A popup's corner: at the cell, moved back inside the grid. */
-  const corner = (width: number, height: number) => ({
-    left: Math.max(0, Math.min(rect.left, bounds.width - width - 4)),
-    top: Math.max(0, Math.min(rect.top, bounds.height - height - 4)),
-  });
-
   if (kind === "array" || kind === "composite") {
     return (
       <ListEditor
-        {...corner(LIST_W, LIST_H)}
+        box={popupBox(rect, bounds, LIST_SIZE, LIST_MIN)}
         composite={kind === "composite"}
         type={type}
         fields={fields}
@@ -126,11 +140,10 @@ export function CellEditor({
   }
 
   if (kind === "multiline") {
-    const { left, top } = corner(POPUP_W, POPUP_H);
     return (
       <div
         className="cell-popup"
-        style={{ left, top, width: POPUP_W, height: POPUP_H }}
+        style={popupBox(rect, bounds, POPUP_SIZE, POPUP_MIN)}
         onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && commit(null)}
       >
         <textarea
@@ -161,14 +174,21 @@ export function CellEditor({
               {t("Format JSON")}
             </button>
           )}
+          {onLoadFile && (
+            <button type="button" onClick={loadFile}>
+              {t("Load from file…")}
+            </button>
+          )}
           <span className="spacer" />
           <span className="muted small">{t("Ctrl+Enter to apply")}</span>
-          <button type="button" onClick={cancel}>
-            {t("Cancel")}
-          </button>
-          <button type="button" className="primary" onClick={() => commit(null)}>
-            {t("Apply")}
-          </button>
+          <span className="cell-popup-end">
+            <button type="button" onClick={cancel}>
+              {t("Cancel")}
+            </button>
+            <button type="button" className="primary" onClick={() => commit(null)}>
+              {t("Apply")}
+            </button>
+          </span>
         </div>
       </div>
     );
@@ -205,7 +225,7 @@ export function CellEditor({
         autoFocus
         onFocus={onFocus}
         className="cell-editor"
-        style={style}
+        style={onLoadFile ? { ...style, paddingRight: FILE_BUTTON + 4 } : style}
         type={kind === "date" ? "date" : "text"}
         value={text}
         spellCheck={false}
@@ -218,6 +238,20 @@ export function CellEditor({
         onKeyDown={onKeyDown}
         onBlur={onBlur}
       />
+      {onLoadFile && (
+        <button
+          type="button"
+          className="cell-editor-file"
+          style={{ left: style.left + style.width - FILE_BUTTON, top: style.top, width: FILE_BUTTON, height: style.height }}
+          title={t("Load from file…")}
+          aria-label={t("Load from file…")}
+          // Keeps the focus in the input, whose blur would commit it.
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={loadFile}
+        >
+          …
+        </button>
+      )}
       {kind === "lookup" && (
         <datalist id={listId}>
           {options?.map(([key, label]) => (

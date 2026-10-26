@@ -4,7 +4,7 @@
 //! then pauses (the driver applies backpressure, so the server waits too); scrolling the
 //! grid raises the target. A memory cap stops runaway results.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -88,6 +88,45 @@ pub enum QueryEvent {
     },
 }
 
+/// Why a job stopped fetching rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Ending {
+    /// Still fetching, or paused until more rows are asked for.
+    Running,
+    /// Every row of the result is loaded.
+    Complete,
+    /// The buffered rows reached `MEMORY_LIMIT_BYTES`.
+    MemoryLimit,
+    /// A script's row limit was reached with more rows on the server.
+    RowLimit,
+    /// Reading failed (or the query was cancelled).
+    Failed,
+    /// `stop` freed the session.
+    Stopped,
+    /// `close` released the result.
+    Closed,
+}
+
+impl Ending {
+    const ALL: [Self; 7] = [
+        Self::Running,
+        Self::Complete,
+        Self::MemoryLimit,
+        Self::RowLimit,
+        Self::Failed,
+        Self::Stopped,
+        Self::Closed,
+    ];
+
+    fn from_u8(value: u8) -> Self {
+        Self::ALL
+            .get(usize::from(value))
+            .copied()
+            .unwrap_or(Self::Running)
+    }
+}
+
 #[derive(Debug, Default)]
 struct Buffer {
     schema: Option<SchemaRef>,
@@ -145,8 +184,10 @@ pub struct Job {
     buffer: Mutex<Buffer>,
     events: Channel<QueryEvent>,
     started: Instant,
-    /// Set once the background task has sent its last event.
+    /// Set once the background task has sent its last event, or the job was stopped or closed.
     done: AtomicBool,
+    /// An `Ending`: why fetching ended, set before `done`.
+    ending: AtomicU8,
     target: watch::Sender<usize>,
     cancel: CancelHandle,
     task: Mutex<Option<JoinHandle<()>>>,
@@ -207,6 +248,7 @@ impl Job {
             events: events.clone(),
             started: Instant::now(),
             done: AtomicBool::new(false),
+            ending: AtomicU8::new(Ending::Running as u8),
             target: watch::Sender::new(limit.unwrap_or(PREFETCH_ROWS)),
             cancel: conn.cancel_handle(),
             task: Mutex::new(None),
@@ -276,13 +318,14 @@ impl Job {
 
         let mut demand = self.target.subscribe();
         let mut last_report = Instant::now();
-        let mut complete = true;
-        loop {
+        let ending = loop {
             let rows = lock(&self.buffer).rows;
             if rows >= cap {
                 // Complete only if the server had nothing beyond the limit.
-                complete = stream.next().await.is_none();
-                break;
+                break match stream.next().await {
+                    None => Ending::Complete,
+                    Some(_) => Ending::RowLimit,
+                };
             }
             if (*demand.borrow()).min(cap) <= rows {
                 progress(rows, false);
@@ -291,13 +334,14 @@ impl Job {
                     .await
                     .is_err()
                 {
-                    break;
+                    break Ending::Stopped;
                 }
                 progress(rows, true);
             }
             match stream.next().await {
-                None => break,
+                None => break Ending::Complete,
                 Some(Err(e)) => {
+                    self.end(Ending::Failed);
                     return send(QueryEvent::Failed {
                         error: CommandError::from(&e),
                     });
@@ -307,8 +351,7 @@ impl Job {
                     buffer.push(batch);
                     buffer.truncate(cap);
                     if buffer.bytes > MEMORY_LIMIT_BYTES {
-                        complete = false;
-                        break;
+                        break Ending::MemoryLimit;
                     }
                 }
             }
@@ -316,16 +359,32 @@ impl Job {
                 progress(lock(&self.buffer).rows, true);
                 last_report = Instant::now();
             }
-        }
+        };
         // Dropping an unfinished stream cancels the rest of the query server-side.
         drop(stream);
         let rows = lock(&self.buffer).rows;
+        self.end(ending);
         send(QueryEvent::Finished {
             rows,
             elapsed_ms: millis(started),
-            complete,
+            complete: ending == Ending::Complete,
             stopped: false,
         });
+    }
+
+    /// Records why fetching ended, unless a reason already was: the first one stays.
+    fn end(&self, ending: Ending) {
+        let _ = self.ending.compare_exchange(
+            Ending::Running as u8,
+            ending as u8,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        );
+    }
+
+    /// Why fetching ended; `Running` while it goes on.
+    pub fn ending(&self) -> Ending {
+        Ending::from_u8(self.ending.load(Ordering::Acquire))
     }
 
     /// Asks the job to hold at least `rows` rows (plus prefetch).
@@ -344,6 +403,11 @@ impl Job {
         self.target.send_replace(usize::MAX);
     }
 
+    /// How many rows are buffered so far.
+    pub fn loaded_rows(&self) -> usize {
+        lock(&self.buffer).rows
+    }
+
     /// The buffered rows in `offset..offset + limit`, as slices of the stored batches.
     pub fn window(&self, offset: usize, limit: usize) -> Option<(SchemaRef, Vec<RecordBatch>)> {
         let buffer = lock(&self.buffer);
@@ -360,12 +424,32 @@ impl Job {
         self.done.load(Ordering::Acquire)
     }
 
+    /// Every row of the result is loaded: fetching ended at the end of the rows.
+    pub fn is_complete(&self) -> bool {
+        self.is_done() && self.ending() == Ending::Complete
+    }
+
+    /// Fetches every row (up to the memory limit), calling `on_progress` with the rows loaded
+    /// every `every`, until the job ends for any reason: the end of the rows, the memory limit,
+    /// an error or a cancel, `stop` or `close`. Returns why it ended.
+    pub async fn fetch_whole(&self, every: Duration, on_progress: impl Fn(usize)) -> Ending {
+        self.fetch_all();
+        loop {
+            on_progress(self.loaded_rows());
+            if self.is_done() {
+                return self.ending();
+            }
+            tokio::time::sleep(every).await;
+        }
+    }
+
     /// Stops fetching but keeps the rows already buffered: the result stays browsable while
     /// the session is freed (for COMMIT, ROLLBACK or an export).
     pub fn stop(&self) {
         if self.done.swap(true, Ordering::AcqRel) {
             return;
         }
+        self.end(Ending::Stopped);
         if let Some(task) = lock(&self.task).take() {
             task.abort();
         }
@@ -383,11 +467,15 @@ impl Job {
         Some((Arc::clone(buffer.schema.as_ref()?), buffer.batches.clone()))
     }
 
-    /// Stops the background task; its stream is dropped, which cancels the query.
+    /// Stops the background task, whose stream is dropped (which cancels the query), and
+    /// releases the buffered rows. Whoever still holds the job sees it `Closed`.
     pub fn close(&self) {
+        self.ending.store(Ending::Closed as u8, Ordering::Release);
+        self.done.store(true, Ordering::Release);
         if let Some(task) = lock(&self.task).take() {
             task.abort();
         }
+        *lock(&self.buffer) = Buffer::default();
     }
 }
 
@@ -442,6 +530,67 @@ mod tests {
         assert_eq!(values(&b.window(0, 100)), [0, 1, 2, 3, 4]);
         b.truncate(10);
         assert_eq!(b.rows, 5, "a larger cap changes nothing");
+    }
+
+    struct NoCancel;
+
+    impl platypus_core::Canceller for NoCancel {
+        fn cancel<'life0, 'async_trait>(
+            &'life0 self,
+        ) -> std::pin::Pin<Box<dyn Future<Output = platypus_core::Result<()>> + Send + 'async_trait>>
+        where
+            'life0: 'async_trait,
+            Self: 'async_trait,
+        {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    /// A job with rows whose task never ends, like one waiting on a slow server.
+    fn waiting_job() -> Arc<Job> {
+        let job = Arc::new(Job {
+            session_id: 1,
+            buffer: Mutex::new(buffer(&[3, 4])),
+            events: Channel::new(|_| Ok(())),
+            started: Instant::now(),
+            done: AtomicBool::new(false),
+            ending: AtomicU8::new(Ending::Running as u8),
+            target: watch::Sender::new(PREFETCH_ROWS),
+            cancel: CancelHandle::new(NoCancel),
+            task: Mutex::new(None),
+        });
+        *lock(&job.task) = Some(tauri::async_runtime::spawn(futures::future::pending()));
+        job
+    }
+
+    #[test]
+    fn closing_a_job_ends_a_whole_fetch_and_frees_its_rows() {
+        let job = waiting_job();
+        let fetching = Arc::clone(&job);
+        let wait = tauri::async_runtime::spawn(async move {
+            fetching.fetch_whole(Duration::from_millis(5), |_| ()).await
+        });
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(!wait.inner().is_finished(), "still fetching");
+        job.close();
+        let ending = tauri::async_runtime::block_on(async {
+            tokio::time::timeout(Duration::from_secs(5), wait).await
+        });
+        assert_eq!(ending.expect("the fetch ends").unwrap(), Ending::Closed);
+        assert_eq!(job.loaded_rows(), 0, "the rows are released");
+        assert!(job.snapshot().is_none());
+    }
+
+    #[test]
+    fn stopping_a_job_ends_a_whole_fetch_keeping_its_rows() {
+        let job = waiting_job();
+        job.stop();
+        let ending = tauri::async_runtime::block_on(job.fetch_whole(Duration::ZERO, |_| ()));
+        assert_eq!(ending, Ending::Stopped);
+        assert_eq!(job.loaded_rows(), 7);
+        assert!(!job.is_complete());
+        job.close();
+        assert_eq!(job.ending(), Ending::Closed);
     }
 
     #[test]

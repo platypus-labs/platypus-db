@@ -74,17 +74,37 @@ pub fn rows_text(
     batch: &RecordBatch,
     out: &mut Vec<Vec<Option<String>>>,
 ) -> Result<(), ArrowError> {
+    columns_text(batch, None, out)
+}
+
+/// Like [`rows_text`], with only `columns` of each row (in that order) when given: a mass edit
+/// of one small column must not format the large ones next to it.
+pub fn columns_text(
+    batch: &RecordBatch,
+    columns: Option<&[usize]>,
+    out: &mut Vec<Vec<Option<String>>>,
+) -> Result<(), ArrowError> {
+    let arrays: Vec<&ArrayRef> = match columns {
+        None => batch.columns().iter().collect(),
+        Some(columns) => columns
+            .iter()
+            .map(|&c| {
+                batch
+                    .columns()
+                    .get(c)
+                    .ok_or_else(|| ArrowError::InvalidArgumentError(format!("no column {c}")))
+            })
+            .collect::<Result<_, _>>()?,
+    };
     let options = format_options();
     // One formatter per column, not per value.
-    let formatters = batch
-        .columns()
+    let formatters = arrays
         .iter()
         .map(|array| ArrayFormatter::try_new(array.as_ref(), &options))
         .collect::<Result<Vec<_>, _>>()?;
     for row in 0..batch.num_rows() {
         out.push(
-            batch
-                .columns()
+            arrays
                 .iter()
                 .zip(&formatters)
                 .map(|(array, f)| (!array.is_null(row)).then(|| f.value(row).to_string()))
@@ -118,4 +138,34 @@ pub fn to_ipc(
         writer.write(&RecordBatch::try_new(Arc::clone(&text_schema), columns)?)?;
     }
     writer.into_inner()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Int64Array, RecordBatch, StringArray};
+
+    use super::{columns_text, rows_text};
+
+    fn batch() -> RecordBatch {
+        let ids: ArrayRef = Arc::new(Int64Array::from(vec![Some(1), None]));
+        let names: ArrayRef = Arc::new(StringArray::from(vec![Some("a"), Some("b")]));
+        let notes: ArrayRef = Arc::new(StringArray::from(vec![None, Some("x")]));
+        RecordBatch::try_from_iter([("id", ids), ("name", names), ("note", notes)]).expect("batch")
+    }
+
+    #[test]
+    fn formats_only_the_columns_asked_for() {
+        let mut all = Vec::new();
+        rows_text(&batch(), &mut all).expect("rows");
+        assert_eq!(all[1], [None, Some("b".into()), Some("x".into())]);
+        let mut some = Vec::new();
+        columns_text(&batch(), Some(&[2, 0]), &mut some).expect("rows");
+        assert_eq!(
+            some,
+            [vec![None, Some("1".into())], vec![Some("x".into()), None]]
+        );
+        assert!(columns_text(&batch(), Some(&[3]), &mut Vec::new()).is_err());
+    }
 }

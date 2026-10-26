@@ -92,13 +92,24 @@ and shows the ODBC drivers and data sources of the system.
 
 - A new connection starts from a grid of database logos, with a search on top (`Enter` takes
   the first match); the `+` of the navigator opens it, and so does a right-click on a connection
-  or below the list. Paste a `postgres://`, `mysql://`, `sqlserver://`, `clickhouse://`,
-  `libsql://` or `mongodb://` URL to fill the form.
+  or below the list. Or paste a connection under the logos: a URL (`postgres://`,
+  `mysql://`, `sqlserver://`, `clickhouse://`, `libsql://`, `mongodb://`), a JDBC URL or an
+  ADO.NET / ODBC string (`Server=tcp:db,1433;Database=shop;User Id=sa;…`), and the form opens
+  filled in for that database. The driver is set by the choice: *Back* returns to the logos, and a
+  URL pasted in the form for another database offers to go back. Windows logins and SQL Server
+  named instances without a port are pointed out. *Copy as URL* in a connection's menu copies
+  its URL without the password.
 - **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`, with their
   folders. A DBeaver project export (`.dbp`) brings its projects too, optionally gathered in a
-  folder of the project rail.
+  folder of the project rail. From DBeaver (a `.dbp` or a workspace) the saved user names and
+  passwords come along too, SSH tunnel ones included: the passwords go to the keychain (or the
+  master-password vault) like typed ones. Untick *Import saved users and passwords* to bring
+  only the user names. Passwords DBeaver protects with its own master password cannot be read;
+  those connections ask for theirs on first use, as do the ones of the other tools.
 - **Folders**: connections inside a project go in nested folders (drag them, or *Move to
   folder*); projects in the rail go in folders too, by dropping one project on another.
+  Connections and folders keep the order you give them: drag one above or below another, or
+  press Alt+Up / Alt+Down; a connection dropped onto another makes a new folder of the two.
 - **TLS** with libpq `sslmode` semantics, custom CAs, and client certificates for PostgreSQL and
   MySQL.
 - **SSH tunnels** with a password, a key or the SSH agent, optionally through a jump host;
@@ -208,6 +219,25 @@ and shows the ODBC drivers and data sources of the system.
 - Read-only results can refresh every few seconds. Dates, time zone, digit grouping and
   relative times follow the Settings.
 
+### Data analysis
+
+- **Charts**: a result switches between the grid and a chart (bars, lines, scatter, pie) from
+  the status bar. The columns and the aggregation are chosen beside the chart and kept with
+  the tab for each statement; the chart exports as PNG or SVG. It is drawn from the rows
+  loaded, with at most 2,000 points per series and 50 categories (the rest in *Other*).
+- **Column statistics**: resting the mouse on a column header shows its NULLs, distinct
+  values, minimum and maximum, and a small histogram (numbers and dates) or the most frequent
+  values (text), over the rows loaded.
+- **Query with SQL** (the result's menu and the command palette): the rows, loaded in full up
+  to the memory limit, become the table `result` of an in-memory DuckDB (and `r1`, `r2`, …
+  for each result of the tab), queried in a new SQL editor with completion, export and
+  charts. *Reload from result* copies them again.
+- **Compare with previous run**: when a statement runs again, its result can be compared with
+  the previous one: rows added, removed and changed (matched by the table's key when it has
+  one), with the old value of each changed cell.
+
+![A result as a bar chart](docs/screenshots/chart.png)
+
 ### Data editor
 
 ![Pending changes in the data editor](docs/screenshots/data-editor.png)
@@ -220,6 +250,16 @@ and shows the ODBC drivers and data sources of the system.
   otherwise the grid says why it is read-only. Results of a query that reads one table edit
   the same way, with computed columns read-only.
 - Paste cells from a spreadsheet or CSV over the grid or as new rows.
+- **Edit a whole selection** from the grid's menu (Edit selection): one value, NULL or DEFAULT
+  in every cell, checked against each column's type; fill down from the first row
+  (`Ctrl+Alt+D`, `Ctrl+Shift+D` on macOS); find and replace in the text cells, as typed or
+  with a regular expression, with the count shown before applying (an expression too slow is
+  stopped); a number sequence down each number column. Only the rows loaded in the grid
+  change. Cells that cannot take a value are listed and left as they are; the rest become
+  pending changes like typed ones, so you preview, save or undo them together.
+- **Load a cell from a file** (grid menu or the cell editor's `…` button): bytes into binary
+  columns, UTF-8 text into text columns; files over 50 MB ask first, files over 200 MB are
+  refused.
 - Foreign keys show the name of the row they point to and edit with a list of those rows; the
   column that gives that name is the table's row label.
 - PostgreSQL arrays and composite values edit one element or field per line.
@@ -468,6 +508,7 @@ shortcuts.
 | `F2`, `Enter`, typing | Edit the cell (data viewer, one-table queries) |
 | `Insert`, `Ctrl+D`, `Delete` | Add, duplicate, delete rows |
 | `Shift+Delete` | Set the selected cells to NULL |
+| `Ctrl+Alt+D` (macOS: `⌃⇧D`) | Fill the selected cells down from the first row |
 | `Ctrl+V`, `Ctrl+Shift+V` | Paste over the cells / as new rows |
 | `Ctrl+S`, `Ctrl+Z` | Save / undo data changes (grid focused) |
 | `Ctrl+Shift+C` | Copy the selection with headers |

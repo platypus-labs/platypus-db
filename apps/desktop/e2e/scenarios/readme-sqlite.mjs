@@ -304,6 +304,19 @@ export default async function (page) {
   await page.eval(`${toggle}.click()`);
   await page.waitFor(`getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() === '#16191b'`);
 
+  // Data analysis: the same results as bars of the revenue by city.
+  const viewToggle = (label) => `[...${visibleTab}.querySelectorAll('.view-toggle button')].find(b => b.textContent === '${label}')`;
+  await page.eval(`${viewToggle("Chart")}.click()`);
+  await page.waitFor(`${visibleTab}.querySelectorAll('.chart-svg rect.chart-bar').length > 0`, 10_000);
+  await page.eval(
+    `[...${visibleTab}.querySelectorAll('.chart-side fieldset label')].find(l => l.textContent === 'orders').querySelector('input').click()`,
+  );
+  await page.waitFor(`${visibleTab}.querySelector('.chart-svg .chart-legend text') === null`);
+  await page.sleep(300);
+  await shot("chart");
+  await page.eval(`${viewToggle("Grid")}.click()`);
+  await page.waitFor(`${visibleTab}.querySelector('.chart-svg') === null`);
+
   // Command palette.
   await page.key("k", "KeyK", 75, CTRL);
   await page.waitFor(`document.querySelector('.palette input') !== null`);

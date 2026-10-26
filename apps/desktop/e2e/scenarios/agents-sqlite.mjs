@@ -119,7 +119,7 @@ async function connectionDialog(page, dir, shots) {
   await page.eval(`[...document.querySelectorAll('.modal button')].find(b => b.textContent.trim() === 'Save').click()`);
   await page.waitFor(`document.querySelector('.modal') === null`);
   const saved = readFileSync(join(dir, "connections.toml"), "utf8");
-  assert.match(saved, /^version = 6/m);
+  assert.match(saved, /^version = 7/m);
   const dev = saved.split("[[connections]]").find((c) => c.includes('name = "Dev db"'));
   assert.match(dev, /connection_type = "prod"/);
   assert.match(dev, /agent_access = "read_only"/);

@@ -109,12 +109,22 @@ pub(super) fn rows_text(
     offset: usize,
     limit: usize,
 ) -> CommandResult<Vec<Vec<Option<String>>>> {
+    columns_text(job, offset, limit, None)
+}
+
+/// Like [`rows_text`], with only `columns` of each row (in that order) when given.
+fn columns_text(
+    job: &Job,
+    offset: usize,
+    limit: usize,
+    columns: Option<&[usize]>,
+) -> CommandResult<Vec<Vec<Option<String>>>> {
     let (_, batches) = job
         .window(offset, limit)
         .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;
     let mut rows = Vec::with_capacity(limit.min(batches.iter().map(RecordBatch::num_rows).sum()));
     for batch in &batches {
-        display::rows_text(batch, &mut rows)?;
+        display::columns_text(batch, columns, &mut rows)?;
     }
     Ok(rows)
 }
@@ -279,34 +289,37 @@ pub async fn save_changes(
 }
 
 /// The full values of loaded rows `offset..offset + limit`, as text (`None` for NULL): the
-/// grid shows them cut to one line, editing and copying need them whole.
+/// grid shows them cut to one line, editing and copying need them whole. With `columns`, only
+/// those columns of each row, in that order.
 #[tauri::command]
 pub fn row_values(
     state: State<'_, AppState>,
     job_id: u64,
     offset: usize,
     limit: usize,
+    columns: Option<Vec<usize>>,
 ) -> CommandResult<Vec<Vec<Option<String>>>> {
-    rows_text(&*state.job(job_id)?, offset, limit)
+    columns_text(&*state.job(job_id)?, offset, limit, columns.as_deref())
 }
 
-/// The elements of a PostgreSQL array (or, `composite`, the fields of a composite value)
-/// for the data editor's list; `None` when the text is not one, to edit it as text.
+/// The elements of a PostgreSQL array of the type `type_name` (its delimiter is `;` for
+/// boxes), or, `composite`, the fields of a composite value, for the data editor's list;
+/// `None` when the text is not one, to edit it as text.
 #[tauri::command]
-pub fn split_literal(composite: bool, text: String) -> Option<Vec<Option<String>>> {
+pub fn split_literal(composite: bool, type_name: &str, text: &str) -> Option<Vec<Option<String>>> {
     if composite {
-        pg_literal::split_composite(&text)
+        pg_literal::split_composite(text)
     } else {
-        pg_literal::split_array(&text)
+        pg_literal::split_array(text, pg_literal::array_delimiter(type_name))
     }
 }
 
 /// The array (or composite) literal of the data editor's list.
 #[tauri::command]
-pub fn join_literal(composite: bool, items: Vec<Option<String>>) -> String {
+pub fn join_literal(composite: bool, type_name: &str, items: Vec<Option<String>>) -> String {
     if composite {
         pg_literal::join_composite(&items)
     } else {
-        pg_literal::join_array(&items)
+        pg_literal::join_array(&items, pg_literal::array_delimiter(type_name))
     }
 }

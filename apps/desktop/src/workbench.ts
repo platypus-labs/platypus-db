@@ -30,6 +30,10 @@ export interface Workbench {
   deleteProject(project: Project): Promise<void>;
   /** Opens a new tab of `kind` and makes it active. */
   openTab<K extends TabKindName>(kind: K, connectionId: string, init?: TabInit<K>): void;
+  /** Opens a tab on a connection that is not saved, e.g. the in-memory DuckDB of "Query with
+   *  SQL": it lives while one of its tabs is open, and `onClosed` runs once the last one closes.
+   *  Its tabs are not kept for the next start. */
+  openTemporaryTab<K extends TabKindName>(kind: K, connection: SavedConnection, init: TabInit<K>, onClosed: () => void): void;
   /** Makes active the first tab of the active project that `match` accepts; `false` if none. */
   focusTab(match: (tab: TabModel) => boolean): boolean;
   /** The navigator session of the connection (and database, `null` for the saved one),

@@ -1,12 +1,14 @@
 /**
- * Folders of connections inside a project: the tree the navigator shows, and the actions
- * of a folder's menu and of a connection's "Move to folder".
+ * Folders of connections inside a project: the tree the navigator shows, the actions of a
+ * folder's menu and of a connection's "Move to folder", and the moves of drag and drop and
+ * Alt+Up/Alt+Down.
  */
 import { registerAction } from "../actions";
 import { api, type ConnectionFolder, type Project, type SavedConnection } from "../api";
 import { askName } from "../ui/NameDialog";
 import { workbench } from "../workbench";
-import { t } from "../i18n";
+import { type Arrange, type DragItem, listLayout, stepChange } from "./arrange";
+import { t, msg } from "../i18n";
 
 declare module "../actions" {
   interface ActionScopes {
@@ -21,10 +23,8 @@ export interface FolderNode {
   connections: SavedConnection[];
 }
 
-const byName = (a: FolderNode, b: FolderNode) => a.folder.name.localeCompare(b.folder.name);
-
-/** The project's folders as a tree, by name, each with its connections in the project's
- *  order; `loose` are the connections at the root. */
+/** The project's folders as a tree in the project's order, each with its connections in
+ *  the order of `connections`; `loose` are the connections at the root. */
 export function folderTree(project: Project, connections: SavedConnection[]): { folders: FolderNode[]; loose: SavedConnection[] } {
   const nodes = new Map<string, FolderNode>((project.folders ?? []).map((f) => [f.id, { folder: f, children: [], connections: [] }]));
   const folders: FolderNode[] = [];
@@ -39,8 +39,7 @@ export function folderTree(project: Project, connections: SavedConnection[]): { 
     if (node) node.connections.push(c);
     else loose.push(c);
   }
-  for (const node of nodes.values()) node.children.sort(byName);
-  return { folders: folders.sort(byName), loose };
+  return { folders, loose };
 }
 
 /** Every folder of the project with its path, for menus: `Prod › Replica`. */
@@ -58,6 +57,71 @@ export function folderPaths(project: Project): { id: string; label: string }[] {
 }
 
 const save = async (change: Promise<Project[]>) => workbench().setProjects(await change);
+
+/** Asks for a new name of a folder of the project. */
+function renameFolder(project: Project, folder: ConnectionFolder) {
+  askName(t("Rename folder"), folder.name, (name) => save(api.renameConnectionFolder(project.id, folder.id, name)));
+}
+
+/** Makes a change of `arrange.ts` in the store: in `project`, or (`null`) in the list All
+ *  connections shows. A new folder of two connections is offered for renaming at once. */
+export async function applyArrange(project: Project | null, change: Arrange) {
+  if (!project) {
+    if (change.kind === "connection") workbench().setWorkspace(await api.reorderConnection(change.id, change.before));
+    return;
+  }
+  if (change.kind === "connection") {
+    await save(api.arrangeConnection(project.id, change.id, change.folder, change.before));
+  } else if (change.kind === "folder") {
+    await save(api.arrangeConnectionFolder(project.id, change.id, change.parent, change.before));
+  } else {
+    const grouped = await api.groupConnections(project.id, change.target, change.dragged, t("New folder"));
+    workbench().setProjects(grouped.projects);
+    const updated = grouped.projects.find((p) => p.id === project.id);
+    const made = updated?.folders?.find((f) => f.id === grouped.folder);
+    if (updated && made) renameFolder(updated, made);
+  }
+}
+
+/** The move of `item` one place up (`-1`) or down among its siblings, in the active project
+ *  or in All connections; `null` at the edge. */
+function stepOf(item: DragItem, delta: -1 | 1) {
+  const project = workbench().activeProject();
+  return stepChange(project ?? listLayout(workbench().connections()), item, delta);
+}
+
+function step(item: DragItem, delta: -1 | 1) {
+  const change = stepOf(item, delta);
+  return change ? applyArrange(workbench().activeProject(), change) : undefined;
+}
+
+const STEPS = [
+  { delta: -1, name: "up", title: msg("Move up"), shortcut: "Alt+ArrowUp" },
+  { delta: 1, name: "down", title: msg("Move down"), shortcut: "Alt+ArrowDown" },
+] as const;
+
+for (const { delta, name, title, shortcut } of STEPS) {
+  registerAction({
+    id: `connection.move_${name}`,
+    scope: "navigator.connection",
+    title,
+    shortcut,
+    group: "arrange",
+    order: 86,
+    when: ({ connection }) => stepOf({ kind: "connection", id: connection.id }, delta) !== null,
+    run: ({ connection }) => step({ kind: "connection", id: connection.id }, delta),
+  });
+  registerAction({
+    id: `folder.move_${name}`,
+    scope: "navigator.folder",
+    title,
+    shortcut,
+    group: "arrange",
+    order: 22,
+    when: ({ folder }) => stepOf({ kind: "folder", id: folder.id }, delta) !== null,
+    run: ({ folder }) => step({ kind: "folder", id: folder.id }, delta),
+  });
+}
 
 /** Asks for a name and makes a folder in the project, inside `parent` or at the root. */
 export function newFolder(project: Project, parent: string | null) {
@@ -90,8 +154,7 @@ registerAction({
   title: "Rename…",
   group: "manage",
   order: 20,
-  run: ({ project, folder }) =>
-    askName(t("Rename folder"), folder.name, (name) => save(api.renameConnectionFolder(project.id, folder.id, name))),
+  run: ({ project, folder }) => renameFolder(project, folder),
 });
 
 registerAction({
