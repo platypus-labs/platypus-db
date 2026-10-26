@@ -233,6 +233,35 @@ test("USING names tables in DELETE and MERGE only", () => {
   assert.ok(columns("WITH x AS (SELECT 1 n) DELETE FROM orders USING x WHERE |", { explicit: true }).includes("column:n@x"));
 });
 
+test("a column name several tables have gets their qualifier, as written", () => {
+  const itemsAt = (sql, explicit = false) =>
+    nameOptions(sql.replace("|", ""), sql.indexOf("|"), catalog, explicit)?.items ?? [];
+  /** The columns as accepting them inserts: `qualifier.label`, else the label. */
+  const inserted = (sql) =>
+    itemsAt(sql)
+      .filter((i) => i.kind === "column")
+      .map((i) => (i.qualifier ? `${i.qualifier}.${i.label}` : i.label));
+  const join = inserted("SELECT i| FROM orders o JOIN customers c ON c.id = o.customer_id");
+  assert.deepEqual(join, ["o.id", "customer_id", "total", "placed_at", "c.id", "name", "Full Name"]);
+  assert.ok(inserted("SELECT i| FROM orders JOIN customers ON customers.id = orders.customer_id").includes("customers.id"));
+  assert.deepEqual(inserted('SELECT i| FROM orders O, customers "C"').filter((c) => c.endsWith(".id")), ["O.id", '"C".id']);
+  // One table: nothing changes.
+  assert.deepEqual(inserted("SELECT i| FROM orders"), ["id", "customer_id", "total", "placed_at"]);
+  // Lists of target columns take bare names.
+  const bare = (sql) => {
+    const items = itemsAt(sql, true);
+    assert.ok(items.some((i) => i.label === "id"), sql);
+    return !items.some((i) => i.qualifier);
+  };
+  assert.ok(bare("INSERT INTO orders (|) SELECT id FROM customers"));
+  assert.ok(bare("INSERT INTO main.orders (total, |) SELECT id FROM customers"));
+  assert.ok(bare("UPDATE orders SET | FROM customers WHERE customers.id = orders.customer_id"));
+  assert.ok(bare("UPDATE orders SET total = 1, | FROM customers"));
+  assert.ok(bare("SELECT * FROM orders JOIN customers USING (|)"));
+  // ...but their values do not.
+  assert.ok(!bare("UPDATE orders SET total = i| FROM customers"));
+});
+
 test("a CTE completes after its name before FROM is written", () => {
   assert.deepEqual(at("WITH x AS (SELECT id, total AS amount FROM orders) SELECT x.|"), ["column:id", "column:amount"]);
 });

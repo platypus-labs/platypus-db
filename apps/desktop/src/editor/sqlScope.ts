@@ -20,6 +20,8 @@ interface Token {
 export interface Source {
   /** The alias, or the table's name as written. */
   name: string;
+  /** The same name with its quotes as written, to qualify a column with. */
+  written?: string;
   /** The catalog table, or null for a CTE or a subquery. */
   schema: string | null;
   table: string | null;
@@ -34,6 +36,9 @@ export interface NameItem {
   table?: string;
   /** For a column without qualifier: the source it belongs to. */
   source?: string;
+  /** For such a column whose name other sources in scope have too: the source as written,
+   *  to insert before it (`o.id`). */
+  qualifier?: string;
 }
 
 export interface NameOptions {
@@ -121,6 +126,8 @@ const NOT_ALIAS = new Set(
 const END_SELECT = new Set(
   "FROM INTO WHERE GROUP HAVING ORDER LIMIT OFFSET FETCH UNION INTERSECT EXCEPT MINUS WINDOW QUALIFY".split(" "),
 );
+/** Words that start a clause, to tell which one a list is in. */
+const CLAUSES = new Set([...END_SELECT, "SELECT", "SET", "ON", "JOIN"]);
 
 /** The SQL with strings and comments blanked out, the same length. */
 export function maskSql(sql: string, options: ScopeOptions = {}): string {
@@ -341,12 +348,12 @@ class Statement {
     return { parts, next: k };
   }
 
-  /** `[AS] alias` at `i`: the alias and the index after it. */
-  private alias(i: number): { alias: string | null; next: number } {
+  /** `[AS] alias` at `i`: the alias, its token, and the index after it. */
+  private alias(i: number): { alias: string | null; written?: string; next: number } {
     const t = this.tokens;
     const as = isWord(t[i], "AS");
     const k = as ? i + 1 : i;
-    return isAliasable(t[k]) ? { alias: unquote(t[k]!.text), next: k + 1 } : { alias: null, next: i };
+    return isAliasable(t[k]) ? { alias: unquote(t[k]!.text), written: t[k]!.text, next: k + 1 } : { alias: null, next: i };
   }
 
   /** One item of FROM, JOIN, UPDATE or INTO at `i`; the index after it. */
@@ -358,11 +365,11 @@ class Statement {
     if (isWord(t[i], "OR") && isName(t[i + 1])) i += 2;
     if (t[i]?.text === "(" && isWord(t[i + 1], "SELECT", "WITH", "VALUES")) {
       const close = closing(t, i);
-      const { alias, next } = this.alias(close + 1);
+      const { alias, written, next } = this.alias(close + 1);
       // A LATERAL subquery sees the tables before it.
       if (!lateral) this.closed.add(i);
       if (alias) {
-        const source = { name: alias, schema: null, table: null, columns: [] };
+        const source = { name: alias, written, schema: null, table: null, columns: [] };
         this.refs.push({ source, parent: this.parentOf(i), nameEnd: close, body: [i, close] });
       }
       return next;
@@ -377,11 +384,12 @@ class Statement {
     if (t[name.next]?.text === "(" && !isWord(t[i - 1], "INTO")) return closing(t, name.next) + 1;
     const table = name.parts.at(-1)!;
     const schema = name.parts.length > 1 ? name.parts.at(-2)! : null;
-    const { alias, next } = this.alias(name.next);
+    const { alias, written, next } = this.alias(name.next);
     const cte = schema === null ? this.ctes.find((c) => same(c.name, table)) : undefined;
     const found = cte ? null : catalogTable(this.catalog, schema, table);
     const source: Source = {
       name: alias ?? table,
+      written: written ?? t[name.next - 1]!.text,
       schema: found?.schema ?? null,
       table: found?.table ?? null,
       columns: cte?.columns ?? found?.columns ?? [],
@@ -514,20 +522,39 @@ class Statement {
     return i;
   }
 
+  /** The clause token `i` is in, at its own level: the nearest of FROM, SET, SELECT… at or
+   *  before it, upper-cased; null when there is none. */
+  private clauseOf(i: number): string | null {
+    const t = this.tokens;
+    for (let k = i; k >= 0; k--) {
+      if (t[k]!.parent !== t[i]!.parent || t[k]!.kind !== "word") continue;
+      const w = t[k]!.text.toUpperCase();
+      if (CLAUSES.has(w)) return w;
+    }
+    return null;
+  }
+
   /** Whether the cursor after token `i` names a table: after FROM, JOIN... or a comma of FROM. */
   tablePosition(i: number): boolean {
-    const t = this.tokens;
-    const prev = t[i];
+    const prev = this.tokens[i];
     if (!prev) return false;
     if (prev.kind === "word" && TABLE_KEYWORDS.has(prev.text.toUpperCase())) return true;
-    if (prev.text !== ",") return false;
-    for (let k = i - 1; k >= 0; k--) {
-      if (t[k]!.parent !== prev.parent || t[k]!.kind !== "word") continue;
-      const w = t[k]!.text.toUpperCase();
-      if (w === "FROM") return true;
-      if (END_SELECT.has(w) || w === "SELECT" || w === "SET" || w === "ON" || w === "JOIN") return false;
-    }
-    return false;
+    return prev.text === "," && this.clauseOf(i) === "FROM";
+  }
+
+  /** Whether the cursor after token `i` names a target column, which is written without its
+   *  table: `SET |`, `SET a = 1, |`, `INSERT INTO t (|`, `USING (|`, `ON CONFLICT (|`. */
+  targetPosition(i: number): boolean {
+    const t = this.tokens;
+    const prev = t[i];
+    if (!prev || !(isWord(prev, "SET") || prev.text === "," || prev.text === "(")) return false;
+    if (prev.text !== "(" && this.clauseOf(i) === "SET") return true;
+    let k = (prev.text === "(" ? i : prev.parent) - 1;
+    if (t[k + 1]?.text !== "(") return false;
+    if (isWord(t[k], "INSERT", "USING", "CONFLICT")) return true;
+    // The column list of `INTO schema.table (`.
+    while (isName(t[k]) && t[k - 1]?.text === ".") k -= 2;
+    return isName(t[k]) && isWord(t[k - 1], "INTO");
   }
 
   /** Whether the cursor after token `i` names an alias: after `AS`, or after a table. */
@@ -573,13 +600,26 @@ function tablesOf(catalog: Catalog, schema: string): NameItem[] {
   return Object.keys(catalog.schemas[schema] ?? {}).map((table) => ({ label: table, kind: "table", schema, table }));
 }
 
-function columnsOf(source: Source, qualified: boolean): NameItem[] {
+/** The columns of `source`; `shared` holds the names (lower case) to insert qualified. */
+function columnsOf(source: Source, qualified: boolean, shared?: Set<string>): NameItem[] {
   return source.columns.map((column) => ({
     label: column,
     kind: "column",
     ...(source.table ? { schema: source.schema!, table: source.table } : {}),
     ...(qualified ? {} : { source: source.name }),
+    ...(shared?.has(column.toLowerCase()) ? { qualifier: source.written ?? source.name } : {}),
   }));
+}
+
+/** The column names (lower case) that more than one of `sources` has: ambiguous unqualified. */
+function sharedColumns(sources: Source[]): Set<string> {
+  const seen = new Set<string>();
+  const shared = new Set<string>();
+  for (const source of sources) {
+    const names = new Set(source.columns.map((c) => c.toLowerCase()));
+    for (const name of names) (seen.has(name) ? shared : seen).add(name);
+  }
+  return shared;
 }
 
 /** The names to offer at `pos` in `sql`, one statement; null where no name is written,
@@ -629,7 +669,9 @@ export function nameOptions(
 
   // A name left blank by the typed text is no source.
   const sources = statement.sourcesAt(pos).filter((s) => s.name.trim() !== "");
-  const columns = sources.flatMap((s) => columnsOf(s, false));
+  // A name several sources have is ambiguous alone, except where the column is a target.
+  const shared = statement.targetPosition(prev) ? undefined : sharedColumns(sources);
+  const columns = sources.flatMap((s) => columnsOf(s, false, shared));
   const named = sources
     .filter((s) => !s.table || !tables.some((t) => t.label === s.name))
     .map((s): NameItem => ({ label: s.name, kind: "source" }));
