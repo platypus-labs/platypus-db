@@ -525,7 +525,6 @@ button.primary.danger:hover:not(:disabled) {
 
 .shortcuts-filter {
   width: 100%;
-  margin-bottom: 4px;
 }
 
 .ssh-section {
@@ -662,9 +661,12 @@ button.primary.danger:hover:not(:disabled) {
   display: none;
 }
 
-/* The master password in the Settings. */
+/* Pages of the Settings: their parts spaced by the column's gap. */
 .master-password,
-.master-password-form {
+.master-password-form,
+.drivers-panel,
+.vendor-drivers,
+.shortcuts {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -908,7 +910,7 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .vendor-drivers {
-  margin-top: 14px;
+  margin-top: 6px;
 }
 
 .vendor-drivers .driver-state {
