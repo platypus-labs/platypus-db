@@ -342,7 +342,9 @@ Statements in mongosh syntax: `db.orders.find({ status: 'paid' }).sort({ placed_
 `NumberLong(...)`, `/regex/i`) and Extended JSON. Results are a grid of the top-level fields
 with the focused document as a tree beside it (`F7`). The navigator lists databases,
 collections, fields sampled from the documents and indexes; the editor completes collections,
-methods and fields. `mongodb+srv://` and connection string options go in the Database field
+methods and fields. Generate data fills a collection with fake documents: new ObjectIds or
+numbers after the largest `_id`, lists of words for arrays, small documents for nested fields.
+`mongodb+srv://` and connection string options go in the Database field
 (`shop?authSource=admin&replicaSet=rs0`).
 
 ### Transactions and safety

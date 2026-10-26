@@ -182,3 +182,71 @@ async fn maps_errors_with_their_position() {
     };
     assert!(e.code.is_some() && !e.message.is_empty(), "{e:?}");
 }
+
+#[tokio::test]
+async fn fills_a_collection_with_fake_documents() {
+    use platypus_transfer::fake::{FakeColumn, Generator, fill_collection};
+    use platypus_transfer::import::ImportError;
+
+    let Some(conn) = connect().await else { return };
+    let conn = &*conn;
+    let run = |src: &'static str| async move {
+        conn.execute(src, &ExecOptions::default()).await.unwrap();
+    };
+    run("db.fake_rows.drop()").await;
+    run(r#"db.fake_rows.insertOne({ _id: 7, email: "seed@example.com", tags: ["seed"] })"#).await;
+    run("db.fake_rows.createIndex({ email: 1 }, { unique: true })").await;
+    let column = |name: &str, generator, unique| FakeColumn {
+        name: name.to_owned(),
+        generator,
+        unique,
+    };
+    let columns = vec![
+        column("_id", Generator::NextKey, false),
+        column("email", Generator::Email, true),
+        column("tags", Generator::WordList, false),
+        column("address", Generator::Document, false),
+        column("created_at", Generator::Date, false),
+        column("owner", Generator::ObjectId, false),
+    ];
+    let mut seen = Vec::new();
+    let at = (Some("platypus"), "fake_rows");
+    let written = fill_collection(conn, at, columns.clone(), 600, |n| {
+        seen.push(n);
+        true
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        (written, seen),
+        (600, vec![500, 600]),
+        "a statement per batch"
+    );
+    assert_eq!(rows(conn, "db.fake_rows.find()").await, 601);
+    let typed = "db.fake_rows.find({ _id: { $gt: 7, $lte: 607 }, tags: { $type: 'array' }, \
+                 address: { $type: 'object' }, created_at: { $type: 'date' }, \
+                 owner: { $type: 'objectId' } })";
+    assert_eq!(rows(conn, typed).await, 600);
+
+    // Another run goes on after the largest key, with unique values of its own.
+    fill_collection(conn, (None, "fake_rows"), columns, 10, |_| true)
+        .await
+        .unwrap();
+    assert_eq!(
+        rows(conn, "db.fake_rows.find({ _id: { $gt: 607 } })").await,
+        10
+    );
+
+    // A unique index takes one null; the server's errors arrive as they are.
+    let null = vec![column("email", Generator::Null, true)];
+    let refused = fill_collection(conn, at, null, 2, |_| true).await;
+    assert!(matches!(refused, Err(ImportError::Plan(_))), "{refused:?}");
+    let taken = vec![column("_id", Generator::Sequence { start: 7 }, false)];
+    let failed = fill_collection(conn, at, taken, 1, |_| true).await;
+    assert!(
+        matches!(failed, Err(ImportError::Database(_))),
+        "{failed:?}"
+    );
+    assert_eq!(rows(conn, "db.fake_rows.find()").await, 611);
+    run("db.fake_rows.drop()").await;
+}

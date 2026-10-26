@@ -52,6 +52,8 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ### Fixed
 
+- Generate data on a MongoDB collection ran SQL and failed: it now inserts documents with
+  `insertMany`, with generators for ObjectIds, arrays and nested documents.
 - Many fixes to completion, the data viewer's sorting and quick filters, the catalog cache,
   array display, imports from DBeaver and the HTML documentation export.
 
