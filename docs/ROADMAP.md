@@ -91,7 +91,7 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 
 | Gruppo | Lock |
 |---|---|
-| A — Modifica dei dati | 🔒 Delfa · group-a-mass-edit · 2026-10-26 |
+| A — Modifica dei dati | ✅ completato |
 | B — Griglia avanzata | ✅ fatto (P1; P2 e P3 in parte) |
 | C — Navigator e oggetti | ✅ completato |
 | D — Editor SQL | ✅ fatto (P1, P3; P2 in parte) |
@@ -103,7 +103,7 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 | J — Amministrazione del server | libero |
 | K — Shell ed ergonomia | ✅ fatto (P1, P2) |
 | L — Sicurezza operativa | 🔒 Paolo · group-l-safety · 2026-10-26 |
-| M — Analisi dei dati | 🔒 Delfa · group-m-analysis · 2026-10-26 |
+| M — Analisi dei dati | ✅ fatto (P2) |
 | N — Accesso per agenti (MCP) | ✅ fatto (P1) |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | 🔒 Mattia · group-p-platform · 2026-10-26 |
