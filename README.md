@@ -280,10 +280,12 @@ methods and fields. `mongodb+srv://` and connection string options go in the Dat
   Dracula, Solarized Light and high contrast; your own accent, background, sidebar and text
   colors, interface size, row density, corner radius and editor font size. Inter and
   JetBrains Mono are bundled, so the app looks the same everywhere and works offline.
-- **Settings** (`Ctrl+,`) have a search: it keeps the matching settings, and finds the
+- **Settings** (`Ctrl+,`) show one section at a time, in tabs, and open again on the last one.
+  Their search shows the matching settings of every section, grouped by section, and finds the
   keyboard shortcuts by their action's name.
 - **Resizable navigator**: drag the edge between the connections and the work (or focus it and
-  use the arrows); a double-click brings back the default width.
+  use the arrows); a double-click brings back the default width. `Ctrl+B`, or the button at the
+  left of the top bar, hides and shows it.
 - Every shortcut can be changed; the toolbars show icons (each says what it does on hover), and
   the SQL editor's buttons can be hidden or given their words back; `Ctrl+Shift+T` reopens the
   last closed tab.

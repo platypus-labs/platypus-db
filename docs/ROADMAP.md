@@ -515,7 +515,12 @@ log delle attività e degli errori, notifica di sistema a fine query lunga
 "New connection…" nel menu di una connessione e in quello della lista (scope `navigator.list`),
 ricerca e quattro colonne nella scelta del database, ricerca nelle Impostazioni (anche le
 scorciatoie, per nome dell'azione), navigator ridimensionabile (`shell/SidebarResizer.tsx`,
-larghezza in `layout.sidebar_width`), menu e dialog con un leggero effetto vetro. Restano i P3.
+larghezza in `layout.sidebar_width`), menu e dialog con un leggero effetto vetro. Dal ramo del
+gruppo Q: navigator nascondibile (`Ctrl+B` e pulsante della barra superiore, `shell/sidebar.ts`,
+`layout.sidebar_collapsed`), Impostazioni con una scheda per sezione (la ricerca mostra le
+corrispondenze di tutte le sezioni, raggruppate), un solo stile per i dialog (parti spaziate dal
+gap della colonna, avvisi, azioni a destra con la principale per ultima) e i token del vetro
+(`--glass-*`) usati anche dai tooltip dell'editor. Restano i P3.
 
 **Area:** `App.tsx`, `apps/desktop/src/shell/` (tab bar, palette, impostazioni), `styles.css`, `theme.ts`
 **Dipende da:** 0.2, 0.3, 0.7
