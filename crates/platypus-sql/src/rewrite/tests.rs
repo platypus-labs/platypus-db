@@ -299,7 +299,7 @@ fn counts_a_plain_query_without_a_derived_table() {
     );
     assert_eq!(
         count("SELECT * FROM t OPTION (RECOMPILE)", MS),
-        "SELECT COUNT(*) FROM t"
+        "SELECT COUNT(*) FROM t\nOPTION (RECOMPILE)"
     );
     assert_eq!(
         count("SELECT * FROM t LOCK IN SHARE MODE", MY),
@@ -316,14 +316,14 @@ fn counts_after_a_cte_without_wrapping_it() {
     // A query that needs the wrapper keeps the CTE outside, as Transact-SQL requires.
     assert_eq!(
         count("WITH c AS (SELECT 1 AS id) SELECT DISTINCT id FROM c", MS),
-        "WITH c AS (SELECT 1 AS id) SELECT COUNT(*) FROM (\nSELECT DISTINCT id FROM c\n) t"
+        "WITH c AS (SELECT 1 AS id) SELECT COUNT(*) FROM (\nSELECT DISTINCT id FROM c\n) t (c1)"
     );
     assert_eq!(
         count(
             "WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < 3) SELECT n FROM c LIMIT 2",
             PG
         ),
-        "WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < 3) SELECT COUNT(*) FROM (\nSELECT 1 FROM c LIMIT 2\n) t"
+        "WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < 3) SELECT COUNT(*) FROM (\nSELECT 1 AS x FROM c LIMIT 2\n) t"
     );
 }
 
@@ -331,19 +331,20 @@ fn counts_after_a_cte_without_wrapping_it() {
 fn wraps_what_a_plain_count_would_change() {
     assert_eq!(
         count("SELECT * FROM t ORDER BY a LIMIT 5", MY),
-        "SELECT COUNT(*) FROM (\nSELECT 1 FROM t LIMIT 5\n) t"
+        "SELECT COUNT(*) FROM (\nSELECT 1 AS x FROM t LIMIT 5\n) t"
     );
     assert_eq!(
         count("SELECT TOP (5) * FROM t ORDER BY a", MS),
-        "SELECT COUNT(*) FROM (\nSELECT TOP (5) 1 FROM t\n) t"
+        "SELECT COUNT(*) FROM (\nSELECT TOP (5) 1 AS x FROM t\n) t"
     );
     assert_eq!(
         count("SELECT DISTINCT a FROM t ORDER BY a", PG),
         "SELECT COUNT(*) FROM (\nSELECT DISTINCT a FROM t\n) t"
     );
+    // A GROUP BY may name a column of the select list (`GROUP BY 1`): the list stays.
     assert_eq!(
-        count("SELECT a, count(*) FROM t GROUP BY a ORDER BY a", PG),
-        "SELECT COUNT(*) FROM (\nSELECT 1 FROM t GROUP BY a\n) t"
+        count("SELECT a, count(*) FROM t GROUP BY 1 ORDER BY a", PG),
+        "SELECT COUNT(*) FROM (\nSELECT a, count(*) FROM t GROUP BY 1\n) t"
     );
     assert_eq!(
         count("SELECT a, count(*) c FROM t GROUP BY a HAVING c > 1", MY),
@@ -355,7 +356,7 @@ fn wraps_what_a_plain_count_would_change() {
     );
     assert_eq!(
         count("SELECT row_number() OVER (ORDER BY a) FROM t", PG),
-        "SELECT COUNT(*) FROM (\nSELECT 1 FROM t\n) t"
+        "SELECT COUNT(*) FROM (\nSELECT 1 AS x FROM t\n) t"
     );
     assert_eq!(
         count("SELECT a FROM x UNION SELECT a FROM y ORDER BY a", PG),
@@ -376,7 +377,7 @@ fn counts_with_the_alias_each_dialect_accepts() {
     );
     assert_eq!(
         oracle,
-        "SELECT COUNT(*) FROM (\nSELECT 1 FROM t FETCH FIRST 5 ROWS ONLY\n) t"
+        "SELECT COUNT(*) FROM (\nSELECT 1 AS x FROM t FETCH FIRST 5 ROWS ONLY\n) t"
     );
     assert!(!oracle.contains(" AS t"));
     // Transact-SQL needs the ORDER BY that OFFSET … FETCH belongs to.
@@ -389,7 +390,7 @@ fn counts_with_the_alias_each_dialect_accepts() {
     );
     assert_eq!(
         count("SELECT * FROM t ORDER BY a OFFSET 1 ROWS", PG),
-        "SELECT COUNT(*) FROM (\nSELECT 1 FROM t OFFSET 1 ROWS\n) t"
+        "SELECT COUNT(*) FROM (\nSELECT 1 AS x FROM t OFFSET 1 ROWS\n) t"
     );
 }
 
@@ -577,4 +578,308 @@ fn adds_no_condition_where_it_cannot_tell() {
     );
     assert_eq!(add_condition("SELECT 1", PG, "a = 1"), None);
     assert_eq!(add_condition("SELECT * FROM t", PG, "  "), None);
+}
+
+#[test]
+fn names_every_column_of_a_count_on_transact_sql() {
+    // Transact-SQL refuses a derived table with an unnamed column (Msg 8155) or a name twice.
+    assert_eq!(
+        count("SELECT TOP (5) a + 1 FROM t ORDER BY a", MS),
+        "SELECT COUNT(*) FROM (\nSELECT TOP (5) 1 AS x FROM t\n) t"
+    );
+    // The lexer reads `10` as two symbols: the select list starts after both.
+    assert_eq!(
+        count("SELECT TOP 10 a FROM t", MS),
+        "SELECT COUNT(*) FROM (\nSELECT TOP 10 1 AS x FROM t\n) t"
+    );
+    assert_eq!(
+        count("SELECT a, count(*) FROM t GROUP BY a", MS),
+        "SELECT COUNT(*) FROM (\nSELECT a, count(*) FROM t GROUP BY a\n) t (c1, c2)"
+    );
+    assert_eq!(
+        count(
+            "SELECT DISTINCT a.id, b.id FROM a JOIN b ON a.id = b.id",
+            MS
+        ),
+        "SELECT COUNT(*) FROM (\nSELECT DISTINCT a.id, b.id FROM a JOIN b ON a.id = b.id\n) t (c1, c2)"
+    );
+    assert_eq!(
+        count(
+            "SELECT a, b * 2 FROM t ORDER BY a OFFSET 1 ROWS FETCH NEXT 2 ROWS ONLY",
+            MS
+        ),
+        "SELECT COUNT(*) FROM (\nSELECT a, b * 2 FROM t ORDER BY a OFFSET 1 ROWS FETCH NEXT 2 ROWS ONLY\n) t (c1, c2)"
+    );
+    assert_eq!(
+        count("SELECT a, count(*) OVER () FROM t", MS),
+        "SELECT COUNT(*) FROM (\nSELECT a, count(*) OVER () FROM t\n) t (c1, c2)"
+    );
+    assert_eq!(
+        count("SELECT count(*) FROM t", MS),
+        "SELECT COUNT(*) FROM (\nSELECT count(*) FROM t\n) t (c1)"
+    );
+    assert_eq!(
+        count("SELECT 1, 2", MS),
+        "SELECT COUNT(*) FROM (\nSELECT 1, 2\n) t (c1, c2)"
+    );
+    // `*` hides how many columns there are: the query's own names have to do.
+    assert_eq!(
+        count("SELECT DISTINCT * FROM t", MS),
+        "SELECT COUNT(*) FROM (\nSELECT DISTINCT * FROM t\n) t"
+    );
+    assert_eq!(
+        count("SELECT DISTINCT a, b FROM t", PG),
+        "SELECT COUNT(*) FROM (\nSELECT DISTINCT a, b FROM t\n) t"
+    );
+}
+
+#[test]
+fn keeps_option_at_the_end_of_a_count() {
+    // `OPTION (MAXRECURSION 0)` lets a recursive CTE go deeper than 100 levels.
+    let cte = "WITH c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < 200)";
+    assert_eq!(
+        count(
+            &format!("{cte} SELECT n FROM c ORDER BY n OPTION (MAXRECURSION 0)"),
+            MS
+        ),
+        format!("{cte} SELECT COUNT(*) FROM c\nOPTION (MAXRECURSION 0)")
+    );
+    assert_eq!(
+        count("SELECT DISTINCT a FROM t OPTION (MAXDOP 1)", MS),
+        "SELECT COUNT(*) FROM (\nSELECT DISTINCT a FROM t\n) t (c1)\nOPTION (MAXDOP 1)"
+    );
+}
+
+#[test]
+fn a_table_or_column_named_like_a_clause_is_a_name() {
+    for dialect in [PG, MY, MS] {
+        let sql = "SELECT * FROM settings";
+        assert_eq!(sorted(sql, dialect), format!("{sql}\nORDER BY a ASC"));
+        assert_eq!(count(sql, dialect), "SELECT COUNT(*) FROM settings");
+        assert_eq!(
+            filtered(sql, dialect, "a = 1"),
+            format!("{sql}\nWHERE a = 1")
+        );
+        let sql = "SELECT id, format FROM files";
+        assert_eq!(sorted(sql, dialect), format!("{sql}\nORDER BY a ASC"));
+        assert_eq!(count(sql, dialect), "SELECT COUNT(*) FROM files");
+        assert_eq!(
+            filtered("SELECT * FROM files WHERE format = 'pdf'", dialect, "a = 1"),
+            "SELECT * FROM files WHERE format = 'pdf' AND a = 1"
+        );
+        assert_eq!(
+            count("SELECT procedure FROM t", dialect),
+            "SELECT COUNT(*) FROM t"
+        );
+    }
+    assert_eq!(
+        sorted("SELECT * FROM offset LIMIT 2", MY),
+        "SELECT * FROM offset\nORDER BY a ASC LIMIT 2"
+    );
+    assert_eq!(
+        count("SELECT format FROM t", Dialect::ClickHouse),
+        "SELECT COUNT(*) FROM t"
+    );
+    // The clauses themselves still stop the rewrite.
+    assert_eq!(count_query("SELECT * FROM t PROCEDURE ANALYSE()", MY), None);
+}
+
+#[test]
+fn gives_up_on_a_clause_out_of_place() {
+    // Invalid SQL, but "Count rows" may get it before it ever ran.
+    let cases = [
+        ("SELECT * FROM t FOR UPDATE ORDER BY a", PG),
+        ("SELECT * FROM t LIMIT 1 ORDER BY a", PG),
+        ("SELECT * FROM t ORDER BY a ORDER BY b", PG),
+        ("SELECT * FROM t ORDER BY a GROUP BY b", PG),
+        ("SELECT * FROM t LIMIT 1 UNION SELECT * FROM u", MY),
+        ("SELECT * FROM t LOCK IN SHARE MODE ORDER BY a", MY),
+        ("SELECT * FROM t OPTION (RECOMPILE) ORDER BY a", MS),
+        ("SELECT * FROM t OPTION (RECOMPILE) OPTION (MAXDOP 1)", MS),
+    ];
+    for (sql, dialect) in cases {
+        assert_eq!(sort(sql, dialect, "a", false), None, "{sql}");
+        assert_eq!(set_order_by(sql, dialect, None), None, "{sql}");
+        assert_eq!(count_query(sql, dialect), None, "{sql}");
+        assert_eq!(add_condition(sql, dialect, "a = 1"), None, "{sql}");
+    }
+    // PostgreSQL takes a lock clause before LIMIT: the count drops only the lock.
+    let sql = "SELECT * FROM t FOR UPDATE LIMIT 1";
+    assert_eq!(
+        count(sql, PG),
+        "SELECT COUNT(*) FROM (\nSELECT 1 AS x FROM t LIMIT 1\n) t"
+    );
+    assert_eq!(
+        sorted(sql, PG),
+        "SELECT * FROM t\nORDER BY a ASC FOR UPDATE LIMIT 1"
+    );
+}
+
+#[test]
+fn parenthesises_a_condition_with_an_operator_looser_than_and() {
+    assert_eq!(
+        filtered("SELECT * FROM t WHERE a = 1 || b = 2", MY, "c = 3"),
+        "SELECT * FROM t WHERE (a = 1 || b = 2) AND c = 3"
+    );
+    assert_eq!(
+        filtered("SELECT * FROM t WHERE a = 1 XOR b = 2", MY, "c = 3"),
+        "SELECT * FROM t WHERE (a = 1 XOR b = 2) AND c = 3"
+    );
+    // Elsewhere `||` joins strings.
+    assert_eq!(
+        filtered("SELECT * FROM t WHERE a || b = 'xy'", PG, "c = 3"),
+        "SELECT * FROM t WHERE a || b = 'xy' AND c = 3"
+    );
+}
+
+#[test]
+fn is_distinct_from_is_not_the_from_clause() {
+    assert_eq!(
+        count("SELECT a IS DISTINCT FROM b AS x FROM t", PG),
+        "SELECT COUNT(*) FROM t"
+    );
+    assert_eq!(
+        filtered("SELECT a IS NOT DISTINCT FROM b FROM t", PG, "c = 1"),
+        "SELECT a IS NOT DISTINCT FROM b FROM t\nWHERE c = 1"
+    );
+}
+
+#[test]
+fn counts_one_row_for_an_aggregate_of_any_dialect() {
+    for (sql, dialect, columns) in [
+        ("SELECT jsonb_object_agg(k, v) FROM t", PG, ""),
+        (
+            "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY a) FROM t",
+            PG,
+            "",
+        ),
+        ("SELECT stdev(a) FROM t", MS, " (c1)"),
+        ("SELECT countIf(a > 1) FROM t", Dialect::ClickHouse, ""),
+        (
+            "SELECT approx_count_distinct(a) FROM t",
+            Dialect::Snowflake,
+            "",
+        ),
+    ] {
+        assert_eq!(
+            count(sql, dialect),
+            format!("SELECT COUNT(*) FROM (\n{sql}\n) t{columns}"),
+            "{sql}"
+        );
+    }
+}
+
+/// Every dialect, for the tests that run on all of them.
+const DIALECTS: [Dialect; 12] = [
+    Dialect::Postgres,
+    Dialect::MySql,
+    Dialect::Sqlite,
+    Dialect::DuckDb,
+    Dialect::SqlServer,
+    Dialect::ClickHouse,
+    Dialect::Ansi,
+    Dialect::Snowflake,
+    Dialect::BigQuery,
+    Dialect::Databricks,
+    Dialect::Oracle,
+    Dialect::Db2,
+];
+
+/// Pieces of SQL, valid or not, that `never_panics_on_odd_input` strings together.
+const FRAGMENTS: &[&str] = &[
+    "SELECT",
+    "*",
+    "a",
+    "t.*",
+    "FROM",
+    "t",
+    ",",
+    "(",
+    ")",
+    ";",
+    "WHERE",
+    "a = 1",
+    "OR",
+    "||",
+    "|",
+    "XOR",
+    "GROUP BY",
+    "HAVING",
+    "ORDER BY",
+    "ORDER",
+    "BY",
+    "LIMIT",
+    "1",
+    "10",
+    "OFFSET",
+    "FETCH FIRST 1 ROWS",
+    "WITH TIES",
+    "TOP",
+    "TOP (2)",
+    "DISTINCT",
+    "DISTINCT ON (a)",
+    "FOR UPDATE",
+    "FOR",
+    "LOCK IN SHARE MODE",
+    "OPTION (RECOMPILE)",
+    "OPTION",
+    "UNION",
+    "WITH c AS (SELECT 1)",
+    "WITH",
+    "INTO",
+    "SETTINGS",
+    "FORMAT",
+    "PROCEDURE",
+    "count(*)",
+    "OVER ()",
+    "IS DISTINCT FROM",
+    "'città'",
+    "città",
+    "\u{a0}",
+    "--",
+    "/*",
+    "*/",
+    "'",
+    "\"",
+    "`",
+    "[",
+    "]",
+    "$$",
+    "$1",
+    "?",
+    ":n",
+    "\n",
+    "🦆",
+    "settings",
+    "offset",
+    "#",
+    "@",
+    "N'é'",
+    "q'[x]'",
+    "e'\\'",
+];
+
+#[test]
+fn never_panics_on_odd_input() {
+    // A fixed linear congruential sequence: the same inputs on every run.
+    let mut seed = 0x9e37_79b9_u32;
+    let mut next = |n: usize| {
+        seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+        (seed >> 16) as usize % n
+    };
+    for _ in 0..3000 {
+        let mut sql = String::from(if next(4) == 0 { "" } else { "SELECT " });
+        for _ in 0..=next(10) {
+            sql.push_str(FRAGMENTS[next(FRAGMENTS.len())]);
+            if next(4) != 0 {
+                sql.push(' ');
+            }
+        }
+        for dialect in DIALECTS {
+            let _ = set_order_by(&sql, dialect, Some(("a", true)));
+            let _ = set_order_by(&sql, dialect, None);
+            let _ = count_query(&sql, dialect);
+            let _ = add_condition(&sql, dialect, "a = 1");
+        }
+    }
 }
