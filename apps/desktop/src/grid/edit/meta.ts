@@ -128,8 +128,8 @@ export function editorKind(
   if (lookup) return "lookup";
   if (meta?.enum_values.length) return "enum";
   // PostgreSQL prints array types as `integer[]`, `character varying(20)[]`. Arrays of
-  // boxes separate their elements with `;`: those stay text.
-  if (type.endsWith("[]") && type !== "box[]") return "array";
+  // boxes separate their elements with `;`, which the list editor splits on.
+  if (type.endsWith("[]")) return "array";
   if (meta?.fields.length) return "composite";
   // Booleans stored as numbers (SQLite, MySQL TINYINT) are typed as 1 and 0.
   if (BOOL_TYPE.test(type) && !column.numeric) return "bool";

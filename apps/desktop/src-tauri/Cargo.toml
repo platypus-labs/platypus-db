@@ -28,6 +28,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 futures.workspace = true
 platypus-core.workspace = true
 platypus-docs.workspace = true
+platypus-local.workspace = true
 platypus-driver-adbc.workspace = true
 platypus-driver-odbc.workspace = true
 platypus-driver-oracle.workspace = true

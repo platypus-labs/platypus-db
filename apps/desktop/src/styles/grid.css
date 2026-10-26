@@ -259,6 +259,22 @@
   outline: none;
 }
 
+/* "Load from file" at the right end of the inline editor, inside its border. */
+.cell-editor-file {
+  position: absolute;
+  z-index: 3;
+  box-sizing: border-box;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 2px solid var(--accent);
+  border-left-width: 1px;
+  border-radius: 0;
+  background: var(--hover);
+  color: var(--fg);
+  line-height: 1;
+}
+
 .cell-popup {
   position: absolute;
   z-index: 3;
@@ -273,17 +289,50 @@
   box-shadow: var(--shadow);
 }
 
+/* A popup is a small dialog: a header, a body that takes the room left and scrolls, and the
+   actions at the bottom, right-aligned with the primary one last. When they do not fit in
+   one line they wrap, Cancel and Apply together, and stay inside the popup. */
 .cell-popup-text {
   flex: 1;
+  min-height: 0;
   resize: none;
   font-family: var(--font-mono);
   font-size: 12px;
 }
 
-.cell-popup-actions {
+.cell-popup-head {
+  flex: none;
   display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cell-popup-head > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-popup-actions {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 6px;
+}
+
+.cell-popup-end {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.cell-popup > .error-text {
+  flex: none;
+  max-height: 4.5em;
+  overflow-y: auto;
 }
 
 .list-editor:focus {
@@ -291,9 +340,15 @@
 }
 
 .list-editor-head {
-  display: flex;
-  justify-content: space-between;
   font-family: var(--font-mono);
+}
+
+.list-editor-type {
+  min-width: 0;
+}
+
+.list-editor-type + span {
+  flex: none;
 }
 
 .list-editor-rows {

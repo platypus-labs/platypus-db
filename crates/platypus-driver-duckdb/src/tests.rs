@@ -345,3 +345,40 @@ async fn opens_workbook_sheets_as_tables() {
         "1"
     );
 }
+
+#[tokio::test]
+async fn named_memory_databases_are_their_own() {
+    let (_database, conn) = crate::memory_database("tests-named").unwrap();
+    conn.execute_batch("CREATE TABLE kept AS SELECT 42 AS n")
+        .unwrap();
+    let mut config = ConnectionConfig::new(DriverKind::DuckDb);
+    config.database = crate::memory_path("tests-named");
+    let session = DuckDbConnection::connect(&config).await.unwrap();
+    let batches = rows(&session, "SELECT n FROM kept").await;
+    assert_eq!(
+        batches[0]
+            .column(0)
+            .as_primitive::<arrow_array::types::Int32Type>()
+            .value(0),
+        42
+    );
+    // The in-memory database the app's sessions share does not have it.
+    let shared = memory().await;
+    assert!(
+        shared
+            .execute("SELECT n FROM kept", &ExecOptions::default())
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn a_memory_database_named_like_a_file_is_not_read() {
+    let (_database, conn) = crate::memory_database("tests-named.csv").unwrap();
+    conn.execute_batch("CREATE TABLE kept AS SELECT 7 AS n")
+        .unwrap();
+    let mut config = ConnectionConfig::new(DriverKind::DuckDb);
+    config.database = crate::memory_path("tests-named.csv");
+    let session = DuckDbConnection::connect(&config).await.unwrap();
+    assert_eq!(value(&session, "SELECT n FROM kept").await, "7");
+}

@@ -2244,6 +2244,7 @@ dependencies = [
  "fallible-streaming-iterator",
  "hashlink 0.10.0",
  "libduckdb-sys",
+ "num",
  "num-integer",
  "strum",
 ]
@@ -5630,6 +5631,7 @@ dependencies = [
  "platypus-driver-pg",
  "platypus-driver-sqlite",
  "platypus-drivers",
+ "platypus-local",
  "platypus-net",
  "platypus-schema",
  "platypus-sql",
@@ -5870,6 +5872,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "platypus-local"
+version = "0.2.0"
+dependencies = [
+ "arrow-array 60.0.0",
+ "arrow-cast",
+ "arrow-row",
+ "arrow-schema 60.0.0",
+ "duckdb",
+ "platypus-core",
+ "serde",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "platypus-mcp"
 version = "0.2.0"
 dependencies = [
@@ -5941,7 +5957,9 @@ dependencies = [
 name = "platypus-store"
 version = "0.2.0"
 dependencies = [
+ "aes",
  "argon2",
+ "cbc",
  "keyring",
  "platypus-core",
  "ring",
@@ -5951,6 +5969,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "toml 1.1.8+spec-1.1.0",
+ "unicode-normalization",
  "uuid",
  "zip 9.1.0",
 ]

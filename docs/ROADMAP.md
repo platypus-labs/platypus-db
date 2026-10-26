@@ -112,11 +112,14 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 
 ### Gruppo A — Modifica dei dati
 
-**Stato: P1 completate, P2 e P3 in parte** (modifica, righe nuove/duplicate/eliminate, anteprima SQL,
+**Stato: completato** (modifica, righe nuove/duplicate/eliminate, anteprima SQL,
 chiave obbligatoria o virtuale, NULL/default ed editor per tipo, salvataggio tutto-o-niente,
 incolla da foglio di calcolo, risultati di query di una tabella, dictionary delle FK, script
-di undo; P3: array e tipi composti PostgreSQL modificati un elemento o campo per riga, gli
-array annidati come testo). Da fare: modifica di massa della selezione, BLOB caricati da file.
+di undo, modifica di massa della selezione (valore/NULL/DEFAULT controllato per tipo, riempi
+verso il basso con Ctrl+Alt+D (⌃⇧D su macOS), sostituisci testo anche con espressioni regolari, sequenza
+numerica); P3: array e tipi composti PostgreSQL modificati un elemento o campo per riga, gli
+array annidati come testo, celle caricate da file: byte nelle colonne binarie, testo UTF-8
+nelle colonne di testo, conferma sopra i 50 MB, rifiutati sopra i 200 MB).
 
 **Area:** `apps/desktop/src/grid/edit/`, `commands/data.rs`, `platypus-sql/src/dml.rs`
 **Dipende da:** 0.3, 0.4, 0.5
@@ -135,8 +138,8 @@ array annidati come testo). Da fare: modifica di massa della selezione, BLOB car
 | ✅ **Dictionary data**: le FK mostrano la colonna descrittiva della tabella collegata, con un menu a tendina in modifica | P2 | D |
 | ✅ Array PostgreSQL e tipi composti modificabili | P3 | D |
 | ✅ Script di undo generato per le modifiche salvate | P2 | N |
-| 🆕 **Modifica di massa**: un valore su tutte le celle selezionate, riempi verso il basso, sostituisci testo nella selezione, sequenza numerica | P2 | D |
-| 🆕 BLOB e testi lunghi caricati da file nella cella | P3 | D |
+| ✅ **Modifica di massa**: un valore su tutte le celle selezionate, riempi verso il basso, sostituisci testo nella selezione, sequenza numerica | P2 | D |
+| ✅ BLOB e testi lunghi caricati da file nella cella | P3 | D |
 
 **Done:** modifica, inserimento ed eliminazione su PG, MySQL, MariaDB e SQLite, con test di
 conformance per la DML generata (quoting, NULL, binari, timestamp con fuso).
@@ -253,13 +256,15 @@ colonne virtuali calcolate.
 
 ### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 fatti, P2 in parte
 
-**Stato: P1 completati, P2 in parte** (da fare: connessione da URL incollato, variabili
-d'ambiente nei campi) (tunnel SSH con password, chiave, agent e jump host; tipi
+**Stato: P1 completati, P2 in parte** (da fare: variabili d'ambiente nei campi) (tunnel SSH con password, chiave, agent e jump host; tipi
 Dev/Test/Prod con colore e commit manuale in Prod; import da DBeaver, DataGrip, pgAdmin e
 `pg_service.conf`, con cartelle e progetti da un export `.dbp` di DBeaver; cartelle di
 connessioni nei progetti e cartelle di progetti nella barra; profili di rete; schema, fuso orario e query di bootstrap dopo ogni
 connessione; password da `.pgpass`, da comando shell o chiesta ogni volta; master password
-con file cifrato; certificati client; latenza, keep-alive e riconnessione). La conferma
+con file cifrato; certificati client; latenza, keep-alive e riconnessione; connessione da URL,
+URL JDBC o stringa ADO.NET/ODBC incollata, con `ConnectionConfig::parse_any` in
+`platypus-core`, e *Copia come URL* senza password). Il driver di una connessione nuova si
+sceglie solo nel picker: il form non lo cambia. La conferma
 prima di scrivere in Prod è nel gruppo L. Restano i P2 nuovi e i P3.
 
 **Area:** nuovo crate `platypus-net`, `platypus-store`, `apps/desktop/src/connections/` (`ConnectionDialog.tsx`)
@@ -281,7 +286,7 @@ prima di scrivere in Prod è nel gruppo L. Restano i P2 nuovi e i P3.
 | ✅ Indicatore di salute della connessione (latenza, keep-alive, riconnessione) | P2 | N |
 | ✅ Import di progetti DBeaver (`.dbp`) con cartelle; cartelle di connessioni nei progetti e cartelle di progetti nella barra | P2 | D |
 | Kubernetes port-forward, AWS SSM | P3 | D+ |
-| 🆕 Connessione da URL incollato (`postgres://…`, `mysql://…`, `Server=…;Database=…`): i campi si compilano da soli | P2 | D |
+| ✅ Connessione da URL incollato (`postgres://…`, `mysql://…`, `Server=…;Database=…`): i campi si compilano da soli | P2 | D |
 | 🆕 Variabili d'ambiente e file `.env` nei campi della connessione (`${env:DB_PASSWORD}`) | P2 | D |
 | 🆕 Credenziali da gestori esterni: 1Password CLI, Bitwarden, HashiCorp Vault, AWS Secrets Manager | P3 | D+ |
 | 🆕 Test di tutte le connessioni di un progetto in una volta, con l'esito per ognuna | P3 | N |
@@ -574,16 +579,29 @@ della transazione aperta con avviso). Restano i P2/P3.
 
 ### Gruppo M — Analisi dei dati
 
+**Stato: P2 completate** (grafici dai risultati con export PNG e SVG e configurazione salvata
+nel tab, statistiche della colonna al passaggio del mouse, SQL sui risultati con un DuckDB in
+memoria, diff con l'esecuzione precedente). Il calcolo è nel crate `platypus-local`, sulle
+righe Arrow del lavoro della query (`jobs.rs`); il grafico è un modulo SVG proprio
+(`analysis/Chart.tsx`, `analysis/chartScale.ts`), con i colori del tema. Limiti: grafici e
+statistiche sulle righe caricate; al massimo 2.000 punti per serie (fasce di X con minimo e
+massimo) e 50 categorie (le altre in "Altro"); SQL sui risultati fino al limite di memoria di
+512 MB (oltre, tabella parziale con avviso), su un database DuckDB in memoria con nome del
+driver (`memory_database`), raggiunto da una connessione temporanea mai salvata; con più
+risultati la tabella `result` copia di nuovo il risultato scelto oltre a `rN`; diff con una
+copia per tab, abbinata per chiave solo quando la griglia può modificare il risultato, al
+massimo 10.000 righe mostrate; MongoDB senza SQL sui risultati né diff. Le P3 restano da fare.
+
 **Area:** `apps/desktop/src/analysis/`, crate `platypus-local` (DuckDB in-process)
 **Dipende da:** 0.4; DuckDB del gruppo G
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Grafici dai risultati (barre, linee, dispersione, torta), salvabili | P2 | D |
-| Statistiche della colonna al passaggio del mouse: % NULL, distinti, min/max, mini istogramma | P2 | N |
-| **SQL sui risultati**: interrogare il result set corrente con DuckDB | P2 | N |
+| ✅ Grafici dai risultati (barre, linee, dispersione, torta), salvabili | P2 | D |
+| ✅ Statistiche della colonna al passaggio del mouse: % NULL, distinti, min/max, mini istogramma | P2 | N |
+| ✅ **SQL sui risultati**: interrogare il result set corrente con DuckDB | P2 | N |
 | Join tra database diversi tramite DuckDB (tabella PG con tabella MySQL) | P3 | D+ |
-| Diff tra due result set (stessa query prima e dopo) | P2 | N |
+| ✅ Diff tra due result set (stessa query prima e dopo) | P2 | N |
 | Snapshot dei risultati salvati e consultabili offline | P3 | N |
 | Pivot dei risultati | P3 | N |
 | Notebook: celle SQL, markdown e grafici, esportabili | P3 | N |

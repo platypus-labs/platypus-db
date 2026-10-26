@@ -31,6 +31,8 @@ import { defineSetting, getSetting, useSetting } from "../settings";
 import { viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
+import { ResultSourceBar } from "../analysis/QueryWithSql";
+import { provideResults, resultsWithRows, type ResultSource } from "../analysis/resultHosts";
 import { basename } from "../workspace";
 import { type CheckedStatement, type GuardRequest, check, elapsed, transactionWarning } from "../guards/guards";
 import { GuardDialog } from "../guards/GuardDialog";
@@ -44,6 +46,8 @@ import { Icon } from "../ui/Icon";
 import { scrollSideways } from "../ui/scroll";
 import { notifyRunEnded } from "../shell/notify";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
+import { ChartToggle } from "../analysis/ChartView";
+import { chartOf, type SavedChart, withChart } from "../analysis/chartConfig";
 import { runGate } from "./runGate";
 import {
   type ShownSort,
@@ -55,6 +59,8 @@ import {
   viewerQueries,
   withSort,
 } from "./viewerSort";
+import { useCompare } from "../analysis/compare";
+import { editMeta } from "../grid/edit/meta";
 import { t, plural, msg } from "../i18n";
 
 /** Auto-refresh intervals in seconds, `0` for off. */
@@ -103,8 +109,13 @@ export interface QueryTabModel extends TabBase {
   viewerQuery?: string | null;
   /** Values of `${name}` and `:name`, kept with the tab. */
   variables?: Record<string, string>;
+  /** "Query with SQL": where the tables of this tab came from. Not persisted: the temporary
+   *  connection does not outlive the app. */
+  resultSource?: ResultSource;
   /** Results as text, like a console, instead of the grid. */
   terminal?: boolean;
+  /** Charts of the statements, each shown in place of the grid when chosen. */
+  charts?: SavedChart[];
 }
 
 /** The side panel next to the editor. */
@@ -214,6 +225,20 @@ export function QueryTab({
   const [activeResult, setActiveResult] = useState(0);
   const [running, setRunning] = useState(false);
   const shown = results[activeResult];
+  // "Query with SQL" reads this tab's results with rows and which one is shown.
+  const resultsNow = useRef({ results, shown, active });
+  resultsNow.current = { results, shown, active };
+  useEffect(
+    () =>
+      provideResults({
+        tabKey: tab.key,
+        connection,
+        shown: () => resultsNow.current.active,
+        results: () => resultsWithRows(resultsNow.current.results),
+        activeJob: () => resultsNow.current.shown?.jobId ?? null,
+      }),
+    [],
+  );
   /** Data viewer: the last statement found to be a read-only query the header sort can rewrite
    *  with certainty; asked once per statement, not at each keystroke. */
   const [rewritable, setRewritable] = useState<string | null>(null);
@@ -251,6 +276,11 @@ export function QueryTab({
     filters && filters.result.id === shown?.id && filters.result.columns === shown.columns ? filters.columns : undefined;
   /** The viewer's sort of the shown statement, for the header arrow and the next click. */
   const shownSort = tab.table && shown ? sortOf(tab.sorts, shown.sql) : null;
+  /** The shown statement's chart, if one was made; it stays with the statement across runs. */
+  const shownChart = shown ? chartOf(tab.charts, shown.sql) : null;
+  const setChart = (patch: Partial<Omit<SavedChart, "query">>) => {
+    if (shown) onChange({ charts: withChart(tab.charts, shown.sql, patch) });
+  };
   // A count belongs to the statement it counted.
   const shownKey = shown ? queryKey(shown.sql) : null;
   useEffect(() => setCount(null), [shownKey]);
@@ -297,6 +327,8 @@ export function QueryTab({
   const [undoScript, setUndoScript] = useState<string | null>(null);
   /** Seconds between runs of the last statements again; `null` is off. */
   const [refreshEvery, setRefreshEvery] = useState<number | null>(null);
+  /** "Compare with previous run": the result a run of the same statement replaces is kept. */
+  const compare = useCompare(connection);
 
   const closeJobs = () => {
     for (const id of jobs.current) void api.closeQuery(id);
@@ -541,6 +573,7 @@ export function QueryTab({
     const sessionId = await ensureSession();
     if (sessionId === null) return;
     onNeedCatalog(false);
+    if (!append) await compare.keep(sessionId, planned, results);
 
     const token = ++runToken.current;
     if (!append) closeJobs();
@@ -822,6 +855,23 @@ export function QueryTab({
     }
     setResults((all) => all.filter((x) => x.id !== id));
     setActiveResult((a) => Math.max(0, a > i || a === results.length - 1 ? a - 1 : a));
+  }
+
+  /** Opens the differences between the shown result and the previous run of its statement,
+   *  rows matched by the table's key when the grid could edit them (the same rule). */
+  async function compareShown() {
+    const result = shown;
+    if (!result?.columns || result.jobId === null) return;
+    const sessionId = await ensureSession();
+    if (sessionId === null) return;
+    const source = await (editTarget(result)?.load() ?? Promise.resolve(null)).catch(() => null);
+    const meta = source ? editMeta(source, result.columns, connection.virtual_keys ?? []) : null;
+    const key = meta && "key" in meta ? meta.key : null;
+    try {
+      await compare.open(sessionId, result.jobId, key, tab.database ?? null);
+    } catch (e) {
+      onError(toCommandError(e).message);
+    }
   }
 
   async function refreshTx(sessionId: number) {
@@ -1377,6 +1427,18 @@ export function QueryTab({
         />
         <div className="splitter" onMouseDown={startResize} />
         <div className="results">
+          {tab.resultSource && (
+            <ResultSourceBar
+              source={tab.resultSource}
+              connection={connection}
+              onReloaded={(source) => {
+                onChange({ resultSource: source });
+                onNeedCatalog(true);
+                // The query shown runs again on the new rows.
+                if (lastPlanned.current.length > 0) void run("statement", false, lastPlanned.current);
+              }}
+            />
+          )}
           {blocked !== null && (
             <div className="notice warn">
               {t("{name} is read-only and this may modify data.", { name: connection.name })}
@@ -1433,6 +1495,7 @@ export function QueryTab({
               }}
               edit={editTarget(shown)}
               notes={notesScope(shown)}
+              chart={shownChart?.shown ? { config: shownChart.config, onConfig: (config) => setChart({ config }) } : null}
             />
           )}
         </div>
@@ -1440,6 +1503,7 @@ export function QueryTab({
           {shown && (
             <>
               <span>{describe(shown)}</span>
+              {rowsResult && <ChartToggle chart={!!shownChart?.shown} onChange={(on) => setChart({ shown: on })} />}
               {(shown.status.kind === "rows" || shown.status.kind === "affected") && (
                 <span className="muted">
                   {t(shown.status.kind === "rows" && !shown.status.finished ? "first rows in {time}" : "took {time}", {
@@ -1464,6 +1528,16 @@ export function QueryTab({
               {rowsResult && !exportBusy && (
                 <button className="link" onClick={() => setExportOpen(true)}>
                   {t("Export…")}
+                </button>
+              )}
+              {compare.kept(shown) && (
+                <button
+                  className="link"
+                  disabled={!compare.comparable(shown)}
+                  title={compare.comparable(shown) ? undefined : t("The columns changed since the previous run.")}
+                  onClick={() => void compareShown()}
+                >
+                  {t("Compare with previous run")}
                 </button>
               )}
             </>

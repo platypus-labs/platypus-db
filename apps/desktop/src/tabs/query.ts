@@ -1,6 +1,7 @@
 import { QueryTab, type QueryTabModel } from "../components/QueryTab";
 import type { TableRef } from "../grid/edit/meta";
 import { savedSorts } from "../components/viewerSort";
+import { savedCharts } from "../analysis/chartConfig";
 import { basename } from "../workspace";
 import { registerTabKind } from "./registry";
 
@@ -34,7 +35,7 @@ registerTabKind({
     if (!tab.filePath) return tab.title ?? "";
     return `${basename(tab.filePath)}${tab.sql !== tab.savedSql ? " •" : ""}`;
   },
-  persist: ({ sql, filePath, savedSql, title, table, tableRef, sorts, viewerQuery, database, variables, terminal }) => ({
+  persist: ({ sql, filePath, savedSql, title, table, tableRef, sorts, viewerQuery, database, variables, terminal, charts }) => ({
     database,
     sql,
     filePath,
@@ -46,6 +47,7 @@ registerTabKind({
     viewerQuery,
     variables,
     terminal,
+    charts,
   }),
   restore: (saved) => ({
     sql: text(saved.sql) ?? "",
@@ -60,5 +62,6 @@ registerTabKind({
     database: text(saved.database),
     variables: strings(saved.variables),
     terminal: saved.terminal === true,
+    charts: savedCharts(saved.charts),
   }),
 });

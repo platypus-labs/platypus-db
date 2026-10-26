@@ -697,12 +697,34 @@ button.primary.danger:hover:not(:disabled) {
   text-overflow: ellipsis;
 }
 
+.import-row.skipped .import-name {
+  color: var(--fg-muted);
+}
+
+.import-note {
+  color: var(--warn);
+  padding-bottom: 2px;
+}
+
 .import-rail {
   gap: 6px;
 }
 
 .import-rail-name {
   width: 160px;
+}
+
+.import-passwords {
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.import-passwords-hint {
+  display: block;
+}
+
+.import-project-note {
+  padding-bottom: 2px;
 }
 
 .align-end {
@@ -891,6 +913,47 @@ button.primary.danger:hover:not(:disabled) {
   color: var(--fg-muted);
 }
 
+/* The picker's "or paste a connection URL", with its error under it. */
+.driver-url {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* A dialog's title with the database's logo at its right. */
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dialog-header h2 {
+  margin: 0;
+}
+
+.driver-icon .driver-logo {
+  width: 30px;
+  height: 30px;
+}
+
+.driver-icon .driver-logo svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* A pasted URL for another database, with the button back to the picker. */
+.modal .notice.url-other {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.url-notes > div + div {
+  margin-top: 4px;
+}
+
 /* Drivers downloaded when a database needs one. */
 
 .driver-popup {
@@ -1025,5 +1088,18 @@ button.primary.danger:hover:not(:disabled) {
   margin: 4px 0 8px;
   padding-left: 18px;
   max-height: 140px;
+  overflow: auto;
+}
+
+/* The data editor's mass edits (grid/edit/MassEditDialog.tsx): what applying changes, and
+   the cells that stay as they are. */
+.mass-edit-modes {
+  gap: 16px;
+}
+
+.mass-edit-summary ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  max-height: 120px;
   overflow: auto;
 }

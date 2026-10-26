@@ -5,3 +5,4 @@ import "./search";
 import "./builder";
 import "./explain";
 import "./tableEditor";
+import "./diff";

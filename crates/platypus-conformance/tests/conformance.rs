@@ -1806,6 +1806,35 @@ async fn arrays_fixture(conn: &dyn Connection) {
     assert_eq!(fields("tags"), []);
 }
 
+/// Arrays shown as PostgreSQL prints them (bounds other than 1 first, `;` between boxes),
+/// and read back by the server as the same values: saving the text keeps them. CockroachDB
+/// has neither boxes nor bounds.
+async fn arrays_as_postgresql_prints_them(b: &Backend, conn: &dyn Connection) {
+    let shown = [
+        ("INT4[]", "[0:1]={1,2}"),
+        ("INT4[]", "[1:1][-1:0]={{1,NULL}}"),
+        ("BOX[]", "{(1,1),(0,0);(2,2),(1,1)}"),
+        ("TEXT[]", r#"{a(b),"null",NULL,"",'q'}"#),
+    ];
+    for (ty, text) in shown {
+        let quoted = text.replace('\'', "''");
+        let sql = format!("SELECT '{quoted}'::{ty}, ('{quoted}'::{ty})::TEXT");
+        let rows = collect(b, conn, &sql).await;
+        assert_eq!(
+            cell(&rows[0], 0, 0).as_deref(),
+            Some(text),
+            "{}: {sql}",
+            b.name
+        );
+        assert_eq!(
+            cell(&rows[0], 1, 0).as_deref(),
+            Some(text),
+            "{}: {sql}",
+            b.name
+        );
+    }
+}
+
 /// PostgreSQL arrays and composite values: the fields of composite columns, and literals the
 /// data editor joins that come back as the same elements.
 #[tokio::test]
@@ -1840,10 +1869,10 @@ async fn edits_arrays_and_composites() {
         let pair = text(&[Some(r#"a (b), "c" \"#), None]);
         let pairs = vec![Some(join_composite(&pair)), None];
         let values = [
-            join_array(&tags),
-            join_array(&nums),
+            join_array(&tags, ','),
+            join_array(&nums, ','),
             join_composite(&pair),
-            join_array(&pairs),
+            join_array(&pairs, ','),
         ];
         let columns: Vec<Column<'_>> = ["id", "tags", "nums", "pair", "pairs"]
             .iter()
@@ -1881,12 +1910,15 @@ async fn edits_arrays_and_composites() {
         )
         .await;
         let shown = |column| cell(&rows[0], column, 0).unwrap();
-        assert_eq!(split_array(&shown(0)), Some(tags));
-        assert_eq!(split_array(&shown(1)), Some(nums));
+        assert_eq!(split_array(&shown(0), ','), Some(tags));
+        assert_eq!(split_array(&shown(1), ','), Some(nums));
         assert_eq!(split_composite(&shown(2)), Some(pair.clone()));
-        let read = split_array(&shown(3)).unwrap();
+        let read = split_array(&shown(3), ',').unwrap();
         assert_eq!(read[1], None);
         assert_eq!(split_composite(read[0].as_deref().unwrap()), Some(pair));
+        if b.name != "cockroach" {
+            arrays_as_postgresql_prints_them(&b, conn).await;
+        }
 
         run(conn, "DROP TABLE demo.conf_arrays").await.unwrap();
         run(conn, "DROP TYPE demo.conf_pair").await.unwrap();

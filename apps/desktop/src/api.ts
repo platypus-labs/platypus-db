@@ -884,7 +884,50 @@ export interface ImportedProject {
   connections: SavedConnection[];
   /** The folder of each connection not at the root, by connection id. */
   placement: Record<string, string[]>;
+  /** The connections of the file that are not imported. */
+  skipped: SkippedConnection[];
+  /** What a connection needs before it can connect, by connection id. */
+  notes: Record<string, ImportNote[]>;
+  /** What to know about the project as a whole. */
+  project_notes: ProjectNote[];
+  /** The connections that come with a saved password; the passwords stay in the backend. */
+  with_password: string[];
 }
+
+/** A connection of the file to a database the import does not read, with the tool's own
+ *  ids of the database and its driver. */
+export interface SkippedConnection {
+  name: string;
+  provider: string;
+  driver: string;
+}
+
+/** Windows or Entra ID logins, which the SQL Server driver does not do, and a named
+ *  instance without a port. */
+export type ImportNote = { kind: "windows_auth" } | { kind: "entra_auth" } | { kind: "named_instance"; instance: string };
+
+/** About a pasted URL or connection string: the notes of an import, and the parameters it
+ *  left out (by name). */
+export type ParseNote = ImportNote | { kind: "ignored"; keys: string[] };
+
+/** The connection form's fields read from a pasted URL or connection string. */
+export interface ParsedConnection {
+  driver: DriverKind;
+  host: string;
+  port: number | null;
+  database: string;
+  user: string;
+  password: string | null;
+  ssl_mode: SslMode;
+  ssl_root_cert: string | null;
+  ssl_client_cert: string | null;
+  ssl_client_key: string | null;
+  options: Record<string, string>;
+  notes: ParseNote[];
+}
+
+/** DBeaver keeps no saved logins for the project, or they could not be read. */
+export type ProjectNote = { kind: "no_saved_logins" } | { kind: "saved_logins_unreadable" };
 
 export type ImportInto =
   | { kind: "new_project"; name: string }
@@ -895,6 +938,8 @@ export interface ImportRequest {
   targets: { project: ImportedProject; into: ImportInto }[];
   /** A rail folder with this name holds the new projects. */
   rail_folder: string | null;
+  /** Saves the passwords read with the file; otherwise each connection asks on first use. */
+  passwords: boolean;
 }
 
 /** Connections, projects and rail folders, after a change that touches more than one. */
@@ -921,12 +966,103 @@ export function toCommandError(e: unknown): CommandError {
   return { kind: "other", message: String(e), code: null, detail: null, hint: null, position: null };
 }
 
+// Analysis (group M): column statistics
+
+/** A result column at a glance, over the rows loaded (`column_profile`). */
+export interface ColumnProfile {
+  rows: number;
+  nulls: number;
+  distinct: number;
+  /** As shown; by value for numbers and dates, by text otherwise; `null` for binary, JSON
+   *  and composite columns. */
+  min: string | null;
+  max: string | null;
+  /** Numbers and dates: 20 equal ranges. */
+  histogram: { from: string; to: string; count: number }[];
+  /** Text: the 5 most frequent values. */
+  top: { value: string; count: number }[];
+  /** Over every row of the result, not only the loaded ones. */
+  complete: boolean;
+}
+
+// Analysis (group M): charts
+/** What a chart draws, columns by position (`analysis/chartConfig.ts` makes it). */
+export interface ChartRequest {
+  kind: "bar" | "line" | "scatter" | "pie";
+  x: number;
+  y: number[];
+  aggregate: "sum" | "count" | "avg" | "min" | "max";
+}
+
+/** A chart's data over the loaded rows. */
+export interface ChartData {
+  /** Bars and pie use `categories` and `values`; lines and scatter `points`, X as a number,
+   *  milliseconds since the epoch or a category's position. */
+  x_axis: "category" | "number" | "time";
+  categories: string[];
+  /** The last category gathers the ones left out. */
+  other: boolean;
+  series: { name: string; values: number[]; points: [number, number][] }[];
+  rows: number;
+  /** Points were reduced or categories gathered to keep the chart light. */
+  reduced: boolean;
+}
+
+// Analysis (group M): SQL on results
+/** A table of the in-memory database of "Query with SQL" and the result it copies. */
+export interface ResultTable {
+  job_id: number;
+  table: string;
+}
+
+/** Why a table of "Query with SQL" lacks rows of its result: reading stopped at the memory
+ *  limit, or for another reason (an error, a cancel, a script's row limit). */
+export type ResultPartial = "memory_limit" | "stopped";
+
+/** The temporary DuckDB connection of "Query with SQL"; `partial` when a table lacks rows. */
+export interface OpenedResultDb {
+  connection: SavedConnection;
+  partial: ResultPartial | null;
+}
+
+// Analysis (group M): compare with the previous run
+/** A row of a diff: as it is now (a removed row as it was); a changed row has the columns that
+ *  differ with their previous value. */
+export interface DiffRow {
+  change: "added" | "removed" | "changed";
+  values: (string | null)[];
+  before: [number, string | null][];
+}
+
+/** What changed since the previous run of a statement. */
+export interface Diff {
+  columns: string[];
+  added: number;
+  removed: number;
+  changed: number;
+  /** Rows matched by the table's key; otherwise by all their values. */
+  keyed: boolean;
+  /** At most 10,000; the counts go on. */
+  rows: DiffRow[];
+  truncated: boolean;
+  /** The rows each run had loaded. */
+  before_rows: number;
+  after_rows: number;
+  /** Both runs were loaded in full. Otherwise added rows are counted only when the previous
+   *  run was complete, removed rows only when the new one is. */
+  complete: boolean;
+}
+
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
   agentSetup: () => invoke<AgentSetup>("agent_setup"),
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
   defaultConnection: (driver: DriverKind) =>
     invoke<SavedConnection>("default_connection", { driver }),
+  /** Reads a URL (`postgres://…`), a JDBC URL or a `Server=…;Database=…` string. */
+  parseConnectionUrl: (input: string) => invoke<ParsedConnection>("parse_connection_url", { input }),
+  /** The URL of a saved connection, without its password. */
+  connectionUrl: (connectionId: string) => invoke<string>("connection_url", { connectionId }),
   /** `projects` replaces the projects the connection is in; `null` leaves them. */
   saveConnection: (
     connection: SavedConnection,
@@ -939,6 +1075,8 @@ export const api = {
   readImport: (source: ImportSource, path: string) => invoke<ImportedProject[]>("read_import", { source, path }),
   /** Saves what was picked from an import, all or nothing. */
   saveImported: (request: ImportRequest) => invoke<Workspace>("save_imported", { request }),
+  /** Drops the passwords `readImport` keeps for `saveImported`. */
+  forgetImport: () => invoke<void>("forget_import"),
   listProjects: () => invoke<Project[]>("list_projects"),
   saveProject: (project: Project) => invoke<Project[]>("save_project", { project }),
   /** Deletes a project; its connections stay. */
@@ -959,6 +1097,20 @@ export const api = {
   /** Puts a connection into a folder of the project, or at its root with `null`. */
   placeConnection: (projectId: string, connectionId: string, folderId: string | null) =>
     invoke<Project[]>("place_connection", { projectId, connectionId, folderId }),
+  /** Moves a connection into a folder of the project (`null`: its root), just before
+   *  `before` or after the last connection there. */
+  arrangeConnection: (projectId: string, connectionId: string, folderId: string | null, before: string | null) =>
+    invoke<Project[]>("arrange_connection", { projectId, connectionId, folderId, before }),
+  /** Moves a folder into `parent` (`null`: the root), just before the folder `before` or
+   *  after the last one there. */
+  arrangeConnectionFolder: (projectId: string, folderId: string, parent: string | null, before: string | null) =>
+    invoke<Project[]>("arrange_connection_folder", { projectId, folderId, parent, before }),
+  /** Drops the connection `dragged` onto `target`: a new folder named `name` holds both. */
+  groupConnections: (projectId: string, target: string, dragged: string, name: string) =>
+    invoke<{ folder: string; projects: Project[] }>("group_connections", { projectId, target, dragged, name }),
+  /** Moves a connection in the list All connections shows: before `before`, or to the end. */
+  reorderConnection: (connectionId: string, before: string | null) =>
+    invoke<Workspace>("reorder_connection", { connectionId, before }),
   listProjectFolders: () => invoke<ProjectFolder[]>("list_project_folders"),
   /** Drops `dragged` onto `target` in the rail: both end up in one folder. */
   groupProjects: (target: string, dragged: string) => invoke<Workspace>("group_projects", { target, dragged }),
@@ -1259,15 +1411,17 @@ export const api = {
   /** Saves `changes` on the result's session, all or none; `undo` puts the rows back. */
   saveChanges: (jobId: number, changes: TableChanges) =>
     invoke<{ statements: number; undo: string }>("save_changes", { jobId, changes }),
-  /** Loaded rows' values in full, not cut to one line like the grid's. */
-  rowValues: (jobId: number, offset: number, limit: number) =>
-    invoke<(string | null)[][]>("row_values", { jobId, offset, limit }),
+  /** Loaded rows' values in full, not cut to one line like the grid's. With `columns`, only
+   *  those columns of each row, in that order. */
+  rowValues: (jobId: number, offset: number, limit: number, columns?: readonly number[]) =>
+    invoke<(string | null)[][]>("row_values", { jobId, offset, limit, columns: columns ?? null }),
   /** The elements of a PostgreSQL array (or the fields of a composite value); `null` when
    *  the text is not one, e.g. a nested array. */
-  splitLiteral: (composite: boolean, text: string) =>
-    invoke<(string | null)[] | null>("split_literal", { composite, text }),
-  joinLiteral: (composite: boolean, items: (string | null)[]) =>
-    invoke<string>("join_literal", { composite, items }),
+  /** `typeName` is the array's type (`box[]` separates its elements with `;`). */
+  splitLiteral: (composite: boolean, typeName: string, text: string) =>
+    invoke<(string | null)[] | null>("split_literal", { composite, typeName, text }),
+  joinLiteral: (composite: boolean, typeName: string, items: (string | null)[]) =>
+    invoke<string>("join_literal", { composite, typeName, items }),
   /** Loaded rows of a result in a clipboard format; `table` names the table in INSERTs. */
   copyRows: (
     jobId: number,
@@ -1294,6 +1448,11 @@ export const api = {
     new Uint8Array(await invoke<ArrayBuffer>("cell_bytes", { jobId, row, column })),
   saveCell: (jobId: number, row: number, column: number, path: string) =>
     invoke<void>("save_cell", { jobId, row, column, path }),
+  /** A file's size in bytes. */
+  fileSize: (path: string) => invoke<number>("file_size", { path }),
+  /** A file's contents for a data editor cell: hex for a binary column, else UTF-8 text
+   *  (an `invalid_utf8` error otherwise). */
+  readCellFile: (path: string, binary: boolean) => invoke<string>("read_cell_file", { path, binary }),
   /** Loaded cells containing `text`, ignoring case. */
   selectionStats: (jobId: number, offset: number, limit: number, columns: number[]) =>
     invoke<SelectionStats>("selection_stats", { jobId, offset, limit, columns }),
@@ -1339,4 +1498,40 @@ export const api = {
     return invoke<number>("export_docs", { sessionId, connectionId, database, request, onEvent: channel });
   },
   cancelDocs: (exportId: number) => invoke<void>("cancel_docs", { exportId }),
+
+  // Analysis (group M): column statistics
+  /** The profile of `column` over the rows the result has loaded. */
+  columnProfile: (jobId: number, column: number) => invoke<ColumnProfile>("column_profile", { jobId, column }),
+
+  // Analysis (group M): charts
+  /** What `request` draws from the rows the result has loaded. */
+  chartData: (jobId: number, request: ChartRequest) => invoke<ChartData>("chart_data", { jobId, request }),
+  /** Writes bytes to a path picked in the save dialog, e.g. a chart as PNG. */
+  writeBinaryFile: (path: string, bytes: Uint8Array) =>
+    invoke<void>("write_binary_file", { path, bytes: Array.from(bytes) }),
+
+  // Analysis (group M): SQL on results
+  /** Loads every row of a result up to the memory limit; `onProgress` gets the rows loaded.
+   *  True when they are all of its rows. Fails when the result is closed or reading fails. */
+  fetchWhole: (jobId: number, onProgress: (rows: number) => void) => {
+    const channel = new Channel<number>();
+    channel.onmessage = onProgress;
+    return invoke<boolean>("fetch_whole", { jobId, onProgress: channel });
+  },
+  /** Stops loading a result, keeping its rows; nothing for a closed result. */
+  stopFetch: (jobId: number) => invoke<void>("stop_fetch", { jobId }),
+  /** Copies the results into a new in-memory DuckDB; returns its temporary connection. */
+  openResultDb: (name: string, tables: ResultTable[]) => invoke<OpenedResultDb>("open_result_db", { name, tables }),
+  /** Copies the results again into the temporary connection's tables; why one lacks rows. */
+  reloadResultDb: (connectionId: string, tables: ResultTable[]) =>
+    invoke<ResultPartial | null>("reload_result_db", { connectionId, tables }),
+  closeResultDb: (connectionId: string) => invoke<void>("close_result_db", { connectionId }),
+
+  // Analysis (group M): compare with the previous run
+  /** Keeps the loaded rows of the result a run of the same statement replaces. */
+  keepPreviousRun: (sessionId: number, jobId: number) => invoke<void>("keep_previous_run", { sessionId, jobId }),
+  forgetPreviousRun: (sessionId: number) => invoke<void>("forget_previous_run", { sessionId }),
+  /** The differences from the kept run to result `jobId`, by the `key` columns when given. */
+  diffPrevious: (sessionId: number, jobId: number, key: number[] | null) =>
+    invoke<Diff>("diff_previous", { sessionId, jobId, key }),
 };

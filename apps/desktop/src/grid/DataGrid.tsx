@@ -64,6 +64,16 @@ export interface CellDecoration {
   hint?: string;
 }
 
+/** A header under the mouse: its result column, its box relative to the grid element, and
+ *  the grid's width (to keep a box placed under it inside). */
+export interface HeaderHover {
+  col: number;
+  left: number;
+  width: number;
+  top: number;
+  gridWidth: number;
+}
+
 /**
  * What features can do with a grid: read values and the selection, move the selection,
  * place overlays (inline editors) over cells. Given to "grid" actions and through `ref`.
@@ -135,6 +145,9 @@ interface Props {
   headerMarked?: (col: number) => boolean;
   /** Bumped when the annotations change, to repaint the marks. */
   headerVersion?: number;
+  /** Called when the mouse comes onto a column header and, with `null`, when it leaves it,
+   *  presses or the grid scrolls; e.g. for the column's statistics. */
+  onHeaderHover?: (hover: HeaderHover | null) => void;
   source?: GridSource | null;
   /** Called for every visible cell on each frame: keep it cheap. */
   decorate?: (row: number, col: number) => CellDecoration | undefined;
@@ -209,6 +222,7 @@ export function DataGrid({
   headerTitle,
   headerMarked,
   headerVersion = 0,
+  onHeaderHover,
   source = null,
   decorate,
   overlay,
@@ -231,6 +245,8 @@ export function DataGrid({
   const focus = useRef<Cell | null>(null);
   const resizing = useRef<{ col: number; startX: number; startW: number } | null>(null);
   const dragging = useRef<Drag | null>(null);
+  /** The result column whose header the mouse is on; -1 for none. */
+  const hovered = useRef(-1);
   const selecting = useRef(false);
   const theme = useRef<Theme | null>(null);
   const frame = useRef(0);
@@ -246,6 +262,7 @@ export function DataGrid({
     onHeaderClick,
     headerTitle,
     headerMarked,
+    onHeaderHover,
     decorate,
     onFocusChange,
     onSelectionChange,
@@ -799,6 +816,7 @@ export function DataGrid({
   }
 
   function onMouseDown(e: React.MouseEvent) {
+    hoverHeader(-1, -1);
     if (e.button !== 0) return;
     const h = hit(e);
     if (h.onScrollbar) return;
@@ -822,6 +840,16 @@ export function DataGrid({
     if (h.col < 0) return;
     selecting.current = true;
     setFocus({ row: h.row, col: h.col }, e.shiftKey);
+  }
+
+  /** Tells `onHeaderHover` when the header under the mouse changes; `col` -1 for none. */
+  function hoverHeader(col: number, d: number) {
+    if (col === hovered.current) return;
+    hovered.current = col;
+    const notify = props.current.onHeaderHover;
+    if (!notify) return;
+    if (col < 0) return notify(null);
+    notify({ col, left: Math.max(0, placeX(d).x), width: width(col), top: HEADER_H, gridWidth: scrollRef.current!.clientWidth });
   }
 
   function onMouseMove(e: React.MouseEvent) {
@@ -862,6 +890,7 @@ export function DataGrid({
         : h.inHeader && h.col >= 0 && props.current.onHeaderClick
           ? "pointer"
           : "default";
+    hoverHeader(h.inHeader && h.border < 0 ? h.col : -1, h.d);
     if (selecting.current && e.buttons === 1 && h.col >= 0 && !h.inHeader) {
       setFocus({ row: h.row, col: h.col }, true);
     }
@@ -887,6 +916,7 @@ export function DataGrid({
   }
 
   function onMouseLeave() {
+    hoverHeader(-1, -1);
     const r = resizing.current;
     if (r) saveWidth(r.col);
     resizing.current = null;
@@ -961,6 +991,7 @@ export function DataGrid({
         tabIndex={0}
         onScroll={() => {
           schedule();
+          hoverHeader(-1, -1);
           onScroll?.();
         }}
         onMouseDown={onMouseDown}

@@ -19,7 +19,8 @@ import {
   siTurso,
 } from "simple-icons";
 import { useState } from "react";
-import type { DriverKind, SavedConnection } from "../api";
+import { api, toCommandError, type DriverKind, type ParsedConnection, type SavedConnection } from "../api";
+import { looksLikeConnection } from "../connectionUrl";
 import { Icon } from "../ui/Icon";
 import { fold } from "../ui/textSearch";
 import { t, msg } from "../i18n";
@@ -128,6 +129,27 @@ function DriverLogo({ choice }: { choice: Choice }) {
   );
 }
 
+/** The tile of `driver`: the one named `label` (MariaDB rather than MySQL), else the first. */
+function choiceOf(driver: DriverKind, label?: string): Choice | undefined {
+  const all = [...CHOICES, ...PG_WIRE];
+  return all.find((c) => c.driver === driver && c.label === label) ?? all.find((c) => c.driver === driver);
+}
+
+/** The name of the database the driver is for, translated. */
+export const driverName = (driver: DriverKind) => t(choiceOf(driver)?.label ?? driver);
+
+/** The logo of a driver's tile, named for screen readers and in its tooltip. */
+export function DriverIcon({ driver, label }: { driver: DriverKind; label?: string }) {
+  const choice = choiceOf(driver, label);
+  if (!choice) return null;
+  const name = t(choice.label);
+  return (
+    <span className="driver-icon" role="img" title={name} aria-label={name}>
+      <DriverLogo choice={choice} />
+    </span>
+  );
+}
+
 function Tiles({ choices, onPick }: { choices: Choice[]; onPick: (choice: Choice) => void }) {
   return (
     <div className="driver-grid">
@@ -142,8 +164,66 @@ function Tiles({ choices, onPick }: { choices: Choice[]; onPick: (choice: Choice
 }
 
 interface Props {
-  onPick: (driver: DriverKind, preset: Preset) => void;
+  /** A tile chosen: its driver, preset and name (MariaDB, Supabase…). */
+  onPick: (driver: DriverKind, preset: Preset, label: string) => void;
+  /** A URL or connection string read: the form opens filled in. */
+  onParsed: (parsed: ParsedConnection) => void;
+  /** The URL field's text to start from, e.g. one pasted in the form for another driver. */
+  initialUrl?: string;
   onClose: () => void;
+}
+
+/** "Or paste a connection URL": pasting one, or Enter, reads it; an error shows under it. */
+function UrlField({ initial, onParsed }: { initial: string; onParsed: (parsed: ParsedConnection) => void }) {
+  const [url, setUrl] = useState(initial);
+  const [error, setError] = useState<string | null>(null);
+  async function read(text: string) {
+    if (!text.trim()) return;
+    setError(null);
+    try {
+      onParsed(await api.parseConnectionUrl(text));
+    } catch (e) {
+      setError(toCommandError(e).message);
+    }
+  }
+  return (
+    <div className="driver-url">
+      <label className="field">
+        <span>{t("Or paste a connection URL")}</span>
+        <input
+          autoFocus={initial !== ""}
+          value={url}
+          placeholder="postgres://user:password@host:5432/database"
+          spellCheck={false}
+          autoComplete="off"
+          aria-invalid={error !== null}
+          aria-describedby={error ? "driver-url-error" : undefined}
+          data-field="connection_url"
+          onChange={(e) => {
+            setUrl(e.target.value);
+            setError(null);
+          }}
+          onPaste={(e) => {
+            const text = e.clipboardData.getData("text");
+            if (!looksLikeConnection(text)) return;
+            e.preventDefault();
+            setUrl(text.trim());
+            void read(text);
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            void read(url);
+          }}
+        />
+      </label>
+      {error && (
+        <div id="driver-url-error" className="error-text small" role="alert">
+          {error}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** The choices whose (translated) name, or driver, contains `needle`, folded. */
@@ -152,13 +232,13 @@ function matching(choices: Choice[], needle: string): Choice[] {
 }
 
 /** First step of a new connection: the database, as a grid of logos, with a search. */
-export function DriverPicker({ onPick, onClose }: Props) {
+export function DriverPicker({ onPick, onParsed, initialUrl = "", onClose }: Props) {
   const [filter, setFilter] = useState("");
   const needle = fold(filter.trim());
   const main = matching(CHOICES, needle);
   const pgWire = matching(PG_WIRE, needle);
   const first = main[0] ?? pgWire[0];
-  const pick = (c: Choice) => onPick(c.driver, c.preset ?? {});
+  const pick = (c: Choice) => onPick(c.driver, c.preset ?? {}, c.label);
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal driver-picker" onKeyDown={(e) => e.key === "Escape" && onClose()}>
@@ -167,7 +247,7 @@ export function DriverPicker({ onPick, onClose }: Props) {
         <div className="modal-search">
           <Icon name="search" className="modal-search-icon" />
           <input
-            autoFocus
+            autoFocus={initialUrl === ""}
             placeholder={t("Search databases…")}
             aria-label={t("Search databases")}
             value={filter}
@@ -191,6 +271,7 @@ export function DriverPicker({ onPick, onClose }: Props) {
           </>
         )}
         {!first && <p className="muted driver-none">{t("No database matches.")}</p>}
+        <UrlField initial={initialUrl} onParsed={onParsed} />
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={onClose}>

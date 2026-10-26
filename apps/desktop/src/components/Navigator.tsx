@@ -22,12 +22,14 @@ import { openDocs } from "../catalog/DocsDialog";
 import { toggled } from "../sets";
 import { SQL_DRAG, type SqlDrag, qualifiedName, quoteIdent, selectLimit, selectSql, viewerSql } from "../sqlNames";
 import type { TabInit, TabModel } from "../tabs/registry";
-import { registerAction } from "../actions";
+import { dispatchKey, registerAction } from "../actions";
 import { workbench } from "../workbench";
 import { connectionColor, typeBadge } from "../connections";
+import { hasUrl } from "../connectionUrl";
 import { Icon, type IconName, objectIcon } from "../ui/Icon";
 import { ContextMenu, type MenuState, type MenuTarget } from "./ContextMenu";
-import { type FolderNode, folderTree, newFolder } from "../projects/folders";
+import { applyArrange, type FolderNode, folderTree, newFolder } from "../projects/folders";
+import { type Arrange, type DragItem, type DropZone, dropChange, dropZone, listLayout } from "../projects/arrange";
 import { t, msg, plural } from "../i18n";
 
 /** `cached`: read from the disk cache, not yet reloaded from the server. */
@@ -168,38 +170,16 @@ interface Row {
   menu?: MenuTarget;
   actions?: React.ReactNode;
   status?: "loading" | "error";
-  /** A connection or folder that can be dragged into a folder of the project. */
-  drag?: DragItem;
-  /** Takes a dragged connection or folder. */
-  onDrop?: (item: DragItem) => void;
+  /** A connection or folder of the list: dragged to arrange it, and taking drops. */
+  item?: DragItem;
   /** A table or column dragged into an editor. */
   sql?: SqlDrag | (() => SqlDrag);
 }
 
-interface DragItem {
-  kind: "connection" | "folder";
-  id: string;
-}
-
 const DRAG_TYPE = "application/x-platypus-navigator";
 
-/** Lets a dragged connection or folder be dropped here, when `onDrop` is given. */
-/** Takes a dragged connection or folder; without `onDrop` it refuses one, so a drop on a
- *  row that takes nothing does not reach the list below it. */
-const dropTarget = (onDrop: ((item: DragItem) => void) | undefined) => ({
-  onDragOver: (e: React.DragEvent) => {
-    if (!e.dataTransfer.types.includes(DRAG_TYPE)) return;
-    e.stopPropagation();
-    if (onDrop) e.preventDefault();
-  },
-  onDrop: (e: React.DragEvent) => {
-    const data = e.dataTransfer.getData(DRAG_TYPE);
-    if (!data) return;
-    e.preventDefault();
-    e.stopPropagation();
-    onDrop?.(JSON.parse(data) as DragItem);
-  },
-});
+/** Whether a connection or folder of the list is being dragged. */
+const isArranging = (e: React.DragEvent) => e.dataTransfer.types.includes(DRAG_TYPE);
 
 export function Navigator(props: Props) {
   const { connections, project, onAddExisting, error, onNew, onImport, onEdit, onOpenTab, session, disconnect, active, onError } = props;
@@ -230,6 +210,9 @@ export function Navigator(props: Props) {
   const anchor = useRef<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const signatures = useRef(new Map<string, string>());
+  /** The connection or folder being dragged, and the row and zone it would land in. */
+  const dragging = useRef<DragItem | null>(null);
+  const [dropAt, setDropAt] = useState<{ key: string; zone: DropZone } | null>(null);
 
   // Forget what was loaded through a connection whose target changed.
   useEffect(() => {
@@ -481,7 +464,7 @@ export function Navigator(props: Props) {
       onOpen: () => onOpenTab(c),
       ...status(ckey),
       menu: { scope: "navigator.connection", arg: { connection: c } },
-      drag: project ? { kind: "connection", id: c.id } : undefined,
+      item: { kind: "connection", id: c.id },
       actions: (
         <>
           <button className="icon" title={t("Open SQL editor")} aria-label={t("Open SQL editor")} onClick={() => onOpenTab(c)}>
@@ -532,23 +515,10 @@ export function Navigator(props: Props) {
   }
 
   /** A connection's rows, `level` deeper for the folders it is in. */
-  function addConnection(c: SavedConnection, level: number, folder: string | null = null) {
+  function addConnection(c: SavedConnection, level: number) {
     const start = rows.length;
     connectionRows(c);
     for (let i = start; i < rows.length; i++) rows[i] = { ...rows[i]!, depth: rows[i]!.depth + level };
-    // A drop on a connection goes where it is.
-    const p = project;
-    if (p && rows[start]) rows[start] = { ...rows[start], onDrop: (item) => dropInto(p, folder, item) };
-  }
-
-  /** Drops a dragged connection or folder into `folder`, or at the root for `null`. */
-  function dropInto(p: Project, folder: string | null, item: DragItem) {
-    if (item.id === folder) return;
-    const change =
-      item.kind === "connection"
-        ? api.placeConnection(p.id, item.id, folder)
-        : api.moveConnectionFolder(p.id, item.id, folder);
-    change.then(workbench().setProjects, (e: unknown) => onError(toCommandError(e).message));
   }
 
   function addFolder(p: Project, node: FolderNode, level: number) {
@@ -563,13 +533,58 @@ export function Navigator(props: Props) {
       expanded: fOpen,
       onToggle: () => setExpanded((s) => toggled(s, `${fkey}!`)),
       menu: { scope: "navigator.folder", arg: { project: p, folder: node.folder } },
-      drag: { kind: "folder", id: node.folder.id },
-      onDrop: (item) => dropInto(p, node.folder.id, item),
+      item: { kind: "folder", id: node.folder.id },
     });
     if (!fOpen) return;
     for (const child of node.children) addFolder(p, child, level + 1);
-    for (const c of node.connections) addConnection(c, level + 1, node.folder.id);
+    for (const c of node.connections) addConnection(c, level + 1);
   }
+
+  /** What the list arranges: the project, or the saved list for All connections. */
+  const layout = project ?? listLayout(connections);
+
+  /** Where the dragged connection or folder lands on `row` at the pointer, and the change it
+   *  makes there; `null` where it cannot go or would not move. */
+  function rowDrop(row: Row, e: React.DragEvent): { zone: DropZone; change: Arrange } | null {
+    const item = dragging.current;
+    if (!item || !row.item) return null;
+    const r = e.currentTarget.getBoundingClientRect();
+    const zone = dropZone(e.clientY - r.top, r.height, item.kind, row.item.kind, project !== null);
+    const change = dropChange(layout, item, row.item, zone);
+    return change && { zone, change };
+  }
+
+  /** Shows where a drop would land: on `key` in `zone`, or nowhere. */
+  function showDrop(key: string | null, zone: DropZone = "into") {
+    setDropAt((at) => (key === null ? null : at?.key === key && at.zone === zone ? at : { key, zone }));
+  }
+
+  function arrange(change: Arrange | null) {
+    showDrop(null);
+    dragging.current = null;
+    if (change) applyArrange(project, change).catch((e: unknown) => onError(toCommandError(e).message));
+  }
+
+  /** A row taking a dragged connection or folder; one that takes nothing refuses it, so
+   *  the drop does not reach the list below it. */
+  const rowDropHandlers = (row: Row) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!isArranging(e)) return;
+      e.stopPropagation();
+      const drop = rowDrop(row, e);
+      showDrop(drop && row.key, drop?.zone);
+      if (drop) e.preventDefault();
+    },
+    onDrop: (e: React.DragEvent) => {
+      if (!isArranging(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      arrange(rowDrop(row, e)?.change ?? null);
+    },
+  });
+
+  /** Below the rows: last at the root. */
+  const listDrop = () => (dragging.current ? dropChange(layout, dragging.current, null, "into") : null);
 
   if (project) {
     const tree = folderTree(project, connections);
@@ -864,12 +879,29 @@ export function Navigator(props: Props) {
   /** The row the keys move from: the one clicked or reached last, if still shown. */
   const current = anchor.current !== null && rows.some((r) => r.key === anchor.current) ? anchor.current : null;
 
+  // A row moved by a shortcut loses the focus when React moves its element: give it back,
+  // shortly after the key only, so a later click elsewhere keeps its own.
+  const moved = useRef<{ key: string; at: number } | null>(null);
+  const treeRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    if (!moved.current || document.activeElement !== document.body) return;
+    const { key, at } = moved.current;
+    moved.current = null;
+    if (Date.now() - at > 2000) return;
+    treeRef.current?.querySelector<HTMLElement>(`[data-row="${rows.findIndex((r) => r.key === key)}"]`)?.focus();
+  });
+
   /** The tree from the keyboard: arrows move and open or close, Enter opens, the menu key
    *  shows the row's menu, as in a file explorer. */
   function onTreeKey(e: React.KeyboardEvent<HTMLUListElement>) {
     if (!(e.target instanceof HTMLLIElement) || rows.length === 0) return;
     const at = Math.max(0, rows.findIndex((r) => r.key === current));
     const row = rows[at]!;
+    // The row's own shortcuts first, e.g. Alt+Up to move a connection.
+    if (row.menu && dispatchKey(row.menu.scope, row.menu.arg, e.nativeEvent, (err) => onError(toCommandError(err).message))) {
+      moved.current = { key: row.key, at: Date.now() };
+      return;
+    }
     const go = (i: number) => {
       const index = Math.max(0, Math.min(rows.length - 1, i));
       anchor.current = rows[index]!.key;
@@ -987,6 +1019,7 @@ export function Navigator(props: Props) {
         </>
       )}
       <ul
+        ref={treeRef}
         className="tree"
         role="tree"
         aria-label={t("Connections")}
@@ -998,8 +1031,20 @@ export function Navigator(props: Props) {
           e.preventDefault();
           setMenu({ x: e.clientX, y: e.clientY, target: { scope: "navigator.list", arg: { project } } });
         }}
-        // Dropped below the rows: to the project's root.
-        {...dropTarget(project ? (item) => dropInto(project, null, item) : undefined)}
+        // Dropped below the rows: last at the root.
+        onDragOver={(e) => {
+          if (!isArranging(e)) return;
+          showDrop(null);
+          if (listDrop()) e.preventDefault();
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) showDrop(null);
+        }}
+        onDrop={(e) => {
+          if (!isArranging(e)) return;
+          e.preventDefault();
+          arrange(listDrop());
+        }}
       >
         {rows.map((row, i) => (
           <li
@@ -1011,11 +1056,15 @@ export function Navigator(props: Props) {
             aria-selected={selected.has(row.key)}
             // One row takes the Tab stop: the current one, else the first.
             tabIndex={row.key === (current ?? rows[0]?.key) ? 0 : -1}
-            className={`tree-row${row.muted ? " muted" : ""}${row.status === "error" ? " failed" : ""}${selected.has(row.key) ? " selected" : ""}`}
+            className={`tree-row${row.muted ? " muted" : ""}${row.status === "error" ? " failed" : ""}${selected.has(row.key) ? " selected" : ""}${dropAt?.key === row.key ? ` drop-${dropAt.zone}` : ""}`}
             style={{ paddingLeft: 6 + row.depth * 16 }}
-            draggable={!!row.drag || !!row.sql}
+            draggable={!!row.item || !!row.sql}
             onDragStart={(e) => {
-              if (row.drag) e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(row.drag));
+              dragging.current = row.item ?? null;
+              if (row.item) {
+                e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(row.item));
+                e.dataTransfer.effectAllowed = "move";
+              }
               const sql = typeof row.sql === "function" ? row.sql() : row.sql;
               if (sql) {
                 e.dataTransfer.setData(SQL_DRAG, JSON.stringify(sql));
@@ -1024,7 +1073,11 @@ export function Navigator(props: Props) {
                 e.dataTransfer.effectAllowed = "copy";
               }
             }}
-            {...dropTarget(row.onDrop)}
+            onDragEnd={() => {
+              dragging.current = null;
+              showDrop(null);
+            }}
+            {...rowDropHandlers(row)}
             title={
               row.status === "error"
                 ? row.detail
@@ -1225,6 +1278,16 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       order: 80,
       run: ({ connection }) =>
         workbench().openDialog((close) => <FilterDialog connection={connection} onClose={close} />),
+    }),
+    registerAction({
+      id: "connection.copy_url",
+      scope: "navigator.connection",
+      title: "Copy as URL",
+      group: "manage",
+      order: 89,
+      // Without the password; the ADBC and ODBC drivers and Oracle have no URL.
+      when: ({ connection }) => hasUrl(connection.driver),
+      run: async ({ connection }) => copy(await api.connectionUrl(connection.id)),
     }),
     registerAction({
       id: "connection.edit",

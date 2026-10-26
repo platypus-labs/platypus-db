@@ -4,6 +4,8 @@ import type { GridSource } from "../grid/DataGrid";
 import { useFormatSignature } from "../grid/formats";
 import { type NotesScope, ResultGrid } from "../grid/ResultGrid";
 import { RowCache } from "../grid/RowCache";
+import { ChartView } from "../analysis/ChartView";
+import type { ChartConfig } from "../analysis/chartConfig";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
 import { t, plural } from "../i18n";
 
@@ -81,9 +83,11 @@ interface PanelProps {
   /** The table whose rows the result shows, to edit them. */
   edit?: TableEditTarget | null;
   notes?: NotesScope | null;
+  /** Shown as a chart instead of the grid: what it draws, and where a change of it goes. */
+  chart?: { config: ChartConfig | null; onConfig: (config: ChartConfig) => void } | null;
 }
 
-export function ResultPanel({ result, sort, onHeaderClick, headerHint, source, edit, notes }: PanelProps) {
+export function ResultPanel({ result, sort, onHeaderClick, headerHint, source, edit, notes, chart }: PanelProps) {
   const [cache, setCache] = useState<RowCache | null>(null);
   const [version, setVersion] = useState(0);
   const { jobId, columns, status } = result;
@@ -142,19 +146,30 @@ export function ResultPanel({ result, sort, onHeaderClick, headerHint, source, e
   return (
     <>
       {bar}
-      <ResultGrid
-        jobId={jobId}
-        columns={columns}
-        rowCount={result.rows}
-        cache={cache}
-        version={version}
-        sort={sort}
-        onHeaderClick={onHeaderClick && ((i) => onHeaderClick(columns[i]!.name))}
-        headerHint={headerHint}
-        source={source}
-        edit={edit}
-        notes={notes}
-      />
+      {chart ? (
+        <ChartView
+          jobId={jobId}
+          columns={columns}
+          rows={result.rows}
+          complete={status.kind === "rows" && status.finished && status.complete}
+          config={chart.config}
+          onConfig={chart.onConfig}
+        />
+      ) : (
+        <ResultGrid
+          jobId={jobId}
+          columns={columns}
+          rowCount={result.rows}
+          cache={cache}
+          version={version}
+          sort={sort}
+          onHeaderClick={onHeaderClick && ((i) => onHeaderClick(columns[i]!.name))}
+          headerHint={headerHint}
+          source={source}
+          edit={edit}
+          notes={notes}
+        />
+      )}
     </>
   );
 }
