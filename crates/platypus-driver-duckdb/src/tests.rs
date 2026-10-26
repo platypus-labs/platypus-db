@@ -355,6 +355,7 @@ async fn opens_workbook_sheets_as_tables() {
 
 #[tokio::test]
 async fn named_memory_databases_are_their_own() {
+    crate::testing::load();
     let (_database, conn) = crate::memory_database("tests-named").unwrap();
     conn.execute_batch("CREATE TABLE kept AS SELECT 42 AS n")
         .unwrap();
@@ -381,6 +382,7 @@ async fn named_memory_databases_are_their_own() {
 
 #[tokio::test]
 async fn a_memory_database_named_like_a_file_is_not_read() {
+    crate::testing::load();
     let (_database, conn) = crate::memory_database("tests-named.csv").unwrap();
     conn.execute_batch("CREATE TABLE kept AS SELECT 7 AS n")
         .unwrap();
