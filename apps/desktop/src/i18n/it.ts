@@ -1374,6 +1374,21 @@ const it: Record<string, string> = {
   "The file is {size} MB: a cell can load files up to {limit} MB.": "Il file è di {size} MB: una cella può caricare file fino a {limit} MB.",
   "Some rows changed meanwhile: their cells were left as they are.": "Alcune righe sono cambiate nel frattempo: le loro celle restano come sono.",
   "The row changed while the file was read: the file was not loaded.": "La riga è cambiata durante la lettura del file: il file non è stato caricato.",
+  // Navigator folders
+  "Tables": "Tabelle",
+  "Materialized views": "Viste materializzate",
+  "Foreign tables": "Tabelle esterne",
+  "Sequences": "Sequenze",
+  "Functions": "Funzioni",
+  "Procedures": "Procedure",
+  "Triggers": "Trigger",
+  "Types": "Tipi",
+  "Domains": "Domini",
+  "Extensions": "Estensioni",
+  "Events": "Eventi",
+  "Dictionaries": "Dizionari",
+  "Export to the folder": "Esporta nella cartella",
+  "Not connected.": "Non connesso.",
 };
 
 export default it;

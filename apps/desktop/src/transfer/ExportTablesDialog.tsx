@@ -41,7 +41,7 @@ export function ExportTablesDialog({ connection, database, schema, currentSchema
   }, []);
 
   async function run() {
-    const dir = await answerFor("folder", () => open({ directory: true, title: "Export to the folder" }));
+    const dir = await answerFor("folder", () => open({ directory: true, title: t("Export to the folder") }));
     if (typeof dir !== "string" || !tables) return;
     const sid = await workbench().sideSession(connection, database);
     if (sid === null) return;

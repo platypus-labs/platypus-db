@@ -114,20 +114,21 @@ interface Props {
   onError: (message: string) => void;
 }
 
+/** The folders of a schema; labels are translated where they are shown. */
 const FOLDERS: { kind: ObjectKind; label: string }[] = [
-  { kind: "table", label: "Tables" },
-  { kind: "view", label: "Views" },
-  { kind: "materialized_view", label: "Materialized views" },
-  { kind: "foreign_table", label: "Foreign tables" },
-  { kind: "sequence", label: "Sequences" },
-  { kind: "function", label: "Functions" },
-  { kind: "procedure", label: "Procedures" },
-  { kind: "trigger", label: "Triggers" },
-  { kind: "type", label: "Types" },
-  { kind: "domain", label: "Domains" },
-  { kind: "extension", label: "Extensions" },
-  { kind: "event", label: "Events" },
-  { kind: "dictionary", label: "Dictionaries" },
+  { kind: "table", label: msg("Tables") },
+  { kind: "view", label: msg("Views") },
+  { kind: "materialized_view", label: msg("Materialized views") },
+  { kind: "foreign_table", label: msg("Foreign tables") },
+  { kind: "sequence", label: msg("Sequences") },
+  { kind: "function", label: msg("Functions") },
+  { kind: "procedure", label: msg("Procedures") },
+  { kind: "trigger", label: msg("Triggers") },
+  { kind: "type", label: msg("Types") },
+  { kind: "domain", label: msg("Domains") },
+  { kind: "extension", label: msg("Extensions") },
+  { kind: "event", label: msg("Events") },
+  { kind: "dictionary", label: msg("Dictionaries") },
 ];
 
 
@@ -658,7 +659,7 @@ export function Navigator(props: Props) {
         out.push({
           key: fkey,
           depth: depth + 1,
-          label: folder.label,
+          label: t(folder.label),
           detail: String(items.length),
           expanded: fOpen,
           // Tables start open; `!` remembers that the user closed them.
