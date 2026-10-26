@@ -57,8 +57,8 @@ fn setup(path: &str, data_dir: Option<&str>) -> AgentSetup {
     }
 }
 
-/// The executable agents start. An AppImage runs from a folder mounted anew at each start:
-/// the AppImage file itself stays put.
+/// The executable agents start. An `AppImage` runs from a folder mounted anew at each start:
+/// the `AppImage` file itself stays put.
 fn app_path() -> CommandResult<PathBuf> {
     if let Some(image) = std::env::var_os("APPIMAGE") {
         return Ok(image.into());
