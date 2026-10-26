@@ -253,6 +253,8 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::grid::sql_literals,
         commands::grid::cell_bytes,
         commands::grid::save_cell,
+        commands::grid::file_size,
+        commands::grid::read_cell_file,
         commands::grid::search_rows,
         commands::summary::selection_stats,
         commands::summary::column_stats,

@@ -182,6 +182,50 @@ pub async fn save_cell(
     .map_err(|e| CommandError::new("other", e.to_string()))?
 }
 
+/// A file's bytes as the data editor writes a cell: hex for a binary column (the text the
+/// grid shows and saving turns back into bytes), else the text, which must be UTF-8.
+fn file_cell_text(bytes: Vec<u8>, binary: bool) -> CommandResult<String> {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    if binary {
+        let mut hex = String::with_capacity(bytes.len() * 2);
+        for b in bytes {
+            hex.push(char::from(HEX[usize::from(b >> 4)]));
+            hex.push(char::from(HEX[usize::from(b & 0x0f)]));
+        }
+        return Ok(hex);
+    }
+    String::from_utf8(bytes).map_err(|e| {
+        CommandError::new(
+            "invalid_utf8",
+            format!(
+                "the file is not UTF-8 text (invalid byte at offset {})",
+                e.utf8_error().valid_up_to()
+            ),
+        )
+    })
+}
+
+/// The size of a file in bytes, so the UI can warn before loading a large one.
+#[tauri::command]
+pub async fn file_size(path: String) -> CommandResult<u64> {
+    tokio::fs::metadata(&path)
+        .await
+        .map(|m| m.len())
+        .map_err(|e| CommandError::new("io", format!("{path}: {e}")))
+}
+
+/// A file's contents for a cell of the data editor: hex for `binary` columns, else UTF-8
+/// text. The value becomes a pending change like a typed one.
+#[tauri::command]
+pub async fn read_cell_file(path: String, binary: bool) -> CommandResult<String> {
+    let bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|e| CommandError::new("io", format!("{path}: {e}")))?;
+    tauri::async_runtime::spawn_blocking(move || file_cell_text(bytes, binary))
+        .await
+        .map_err(|e| CommandError::new("other", e.to_string()))?
+}
+
 #[derive(Debug, Serialize)]
 pub struct SearchResult {
     /// `[row, column]` of each matching cell, row by row.
@@ -255,7 +299,7 @@ pub async fn search_rows(
 
 #[cfg(test)]
 mod tests {
-    use super::contains_ignore_case;
+    use super::{contains_ignore_case, file_cell_text};
 
     #[test]
     fn searches_ignoring_case() {
@@ -263,5 +307,25 @@ mod tests {
         assert!(!contains_ignore_case("Hello", "xyz", "xyz"));
         assert!(contains_ignore_case("ÀBC", "àb", "àb"));
         assert!(contains_ignore_case("abc", "", ""));
+    }
+
+    #[test]
+    fn binary_files_load_as_hex() {
+        let hex = file_cell_text(vec![0x00, 0x0f, 0xa5, 0xff], true).expect("hex");
+        assert_eq!(hex, "000fa5ff");
+        assert_eq!(file_cell_text(Vec::new(), true).expect("empty"), "");
+        // Bytes that are not UTF-8 are fine in a binary column.
+        assert_eq!(file_cell_text(vec![0xc3, 0x28], true).expect("hex"), "c328");
+    }
+
+    #[test]
+    fn text_files_must_be_utf8() {
+        let text = file_cell_text("héllo\nworld".as_bytes().to_vec(), false).expect("text");
+        assert_eq!(text, "héllo\nworld");
+        let error = file_cell_text(vec![b'a', b'b', 0xc3, 0x28], false).expect_err("not UTF-8");
+        let error = serde_json::to_value(&error).expect("json");
+        assert_eq!(error["kind"], "invalid_utf8");
+        let message = error["message"].as_str().unwrap_or_default();
+        assert!(message.contains("offset 2"), "{message}");
     }
 }

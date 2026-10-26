@@ -1357,6 +1357,11 @@ export const api = {
     new Uint8Array(await invoke<ArrayBuffer>("cell_bytes", { jobId, row, column })),
   saveCell: (jobId: number, row: number, column: number, path: string) =>
     invoke<void>("save_cell", { jobId, row, column, path }),
+  /** A file's size in bytes. */
+  fileSize: (path: string) => invoke<number>("file_size", { path }),
+  /** A file's contents for a data editor cell: hex for a binary column, else UTF-8 text
+   *  (an `invalid_utf8` error otherwise). */
+  readCellFile: (path: string, binary: boolean) => invoke<string>("read_cell_file", { path, binary }),
   /** Loaded cells containing `text`, ignoring case. */
   selectionStats: (jobId: number, offset: number, limit: number, columns: number[]) =>
     invoke<SelectionStats>("selection_stats", { jobId, offset, limit, columns }),
