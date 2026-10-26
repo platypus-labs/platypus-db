@@ -174,7 +174,18 @@ mod tests {
         assert!(md.contains("| customer_id | integer | yes |"), "{md}");
         assert!(md.contains("[public.customers](#publiccustomers)"), "{md}");
         assert!(md.contains("```mermaid\nerDiagram"), "{md}");
-        assert!(md.contains("orders }o--|| customers"), "{md}");
+        assert!(md.contains("\"orders\" }o--|| \"customers\""), "{md}");
+    }
+
+    /// The text of the first Mermaid diagram of an HTML page.
+    fn diagram_source(page: &str) -> &str {
+        let open = "<pre class=\"mermaid\">";
+        let start = page.find(open).expect("a diagram") + open.len();
+        let end = start
+            + page[start..]
+                .find("</pre>")
+                .expect("the end of the diagram");
+        &page[start..end]
     }
 
     #[test]
@@ -184,6 +195,43 @@ mod tests {
         assert!(!page.contains("<b>pii</b>"));
         assert!(page.contains("<pre class=\"mermaid\">"));
         assert!(page.contains("mermaid.initialize"));
+    }
+
+    #[test]
+    fn html_keeps_the_lines_of_the_diagram() {
+        let m = model();
+        let page = html(&m);
+        let source = diagram_source(&page);
+        assert!(!source.contains("<br"), "{source}");
+        assert_eq!(source, mermaid::diagram(&m.schemas[0]));
+        assert!(
+            source.starts_with("erDiagram\n    \"customers\" {\n"),
+            "{source}"
+        );
+    }
+
+    #[test]
+    fn html_escapes_names_comments_and_notes() {
+        let mut m = model();
+        m.title = "<script>alert(1)</script>".to_owned();
+        let orders = &mut m.schemas[0].objects[1];
+        orders.name = "a<b>&c".to_owned();
+        orders.comment = Some("x < y & \"z\"".to_owned());
+        let page = html(&m);
+        assert!(!page.contains("<script>alert"), "{page}");
+        assert!(page.contains("<title>&lt;script&gt;alert(1)&lt;/script&gt;</title>"));
+        assert!(page.contains(">public.a&lt;b&gt;&amp;c</h2>"), "{page}");
+        assert!(
+            page.contains("<p>x &lt; y &amp; &quot;z&quot;</p>"),
+            "{page}"
+        );
+        assert!(page.contains("<strong>Note:</strong> One row<br>per order"));
+        let source = diagram_source(&page);
+        assert!(
+            source.contains("\n    \"a&lt;b&gt;&amp;c\" {\n"),
+            "{source}"
+        );
+        assert!(!source.contains("<br"), "{source}");
     }
 
     #[test]
@@ -206,14 +254,6 @@ mod tests {
         let md = markdown(&m);
         assert!(!md.contains("erDiagram"));
         assert!(md.contains("more than 100 tables"), "{md}");
-    }
-
-    #[test]
-    fn mermaid_names_are_safe() {
-        assert_eq!(mermaid::entity("order items"), "\"order items\"");
-        assert_eq!(mermaid::entity("orders"), "orders");
-        assert_eq!(mermaid::attribute("weird name!"), "weird_name_");
-        assert_eq!(mermaid::type_name("numeric(12,2)"), "numeric_12_2_");
     }
 
     #[test]

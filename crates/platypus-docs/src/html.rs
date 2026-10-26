@@ -10,6 +10,7 @@ table{border-collapse:collapse;width:100%;margin:.5rem 0 1rem}th,td{border:1px s
 th{background:#f6f8fa}code,.tag{font-family:ui-monospace,monospace}.tag{color:#57606a}\
 @media (prefers-color-scheme:dark){body{color:#e6edf3;background:#0d1117}th,td{border-color:#30363d}th{background:#161b22}.tag{color:#8b949e}}";
 
+/// Text for an element or an attribute, line breaks as `<br>`.
 fn esc(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -24,6 +25,13 @@ fn esc(s: &str) -> String {
         }
     }
     out
+}
+
+/// Text for a `<pre>` with its line breaks kept: Mermaid reads the diagram line by line.
+fn esc_pre(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn tags(t: &[String]) -> String {
@@ -57,7 +65,7 @@ pub fn html(model: &DocModel) -> String {
                     body,
                     "<h2>Diagram of {}</h2>\n<pre class=\"mermaid\">{}</pre>",
                     esc(&s.name),
-                    esc(&mermaid::diagram(s))
+                    esc_pre(&mermaid::diagram(s))
                 );
             } else {
                 let _ = writeln!(
