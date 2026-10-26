@@ -2244,6 +2244,7 @@ dependencies = [
  "fallible-streaming-iterator",
  "hashlink 0.10.0",
  "libduckdb-sys",
+ "num",
  "num-integer",
  "strum",
 ]
@@ -5877,6 +5878,7 @@ dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
  "arrow-schema 60.0.0",
+ "duckdb",
  "platypus-core",
  "serde",
  "thiserror 2.0.21",
