@@ -45,7 +45,7 @@ export default async function (page, { dir }) {
   }
 
   // An error nothing catches reaches the log.
-  await page.eval(`setTimeout(() => { throw new Error("e2e unhandled") }, 0)`);
+  await page.eval(`void setTimeout(() => { throw new Error("e2e unhandled") }, 0)`);
   const logged = Date.now() + 10_000;
   while (!readFileSync(log, "utf8").includes("ERROR web view: Uncaught Error: e2e unhandled")) {
     assert.ok(Date.now() < logged, readFileSync(log, "utf8"));
@@ -57,5 +57,5 @@ export default async function (page, { dir }) {
   const field = `document.querySelector('.diagnostics-panel [data-field="log_dir"]')`;
   await page.waitFor(`${field} !== null`);
   assert.equal(await page.eval(`${field}.textContent`), join(dir, "logs"));
-  assert.notEqual(await page.eval(`document.querySelector('[data-action="save-diagnostics"]')`), null);
+  assert.equal(await page.eval(`document.querySelector('[data-action="save-diagnostics"]') !== null`), true);
 }
