@@ -122,10 +122,13 @@ and shows the ODBC drivers and data sources of the system.
 
 - Run the statement under the cursor (`Ctrl+Enter`) or the whole script (`Alt+X`); errors are
   pointed out in the text.
-- **Completion** of keywords, tables, columns (`alias.column` too) and built-in functions with
-  their signature. `JOIN ` offers the related tables with alias and condition from the foreign
-  keys; `JOIN t ON ` offers the condition.
-- **Formatter** (`Ctrl+Shift+F`) with configurable keyword case and indentation.
+- **Completion** of keywords, tables, columns and built-in functions with their signature. The
+  columns offered are those of the tables the statement under the cursor reads (even when FROM
+  comes later), and `alias.` completes the columns of a table, a CTE or a subquery. Names that
+  need quotes are quoted on insert. `JOIN ` offers the related tables with alias and condition
+  from the foreign keys; `JOIN t ON ` offers the condition. Tab or Enter accepts.
+- **Formatter** (`Ctrl+Shift+F`) with configurable keyword case and indentation; the same
+  setting gives the case of completed keywords.
 - Line commands, multiple cursors, folding, an outline of the statements, and `Ctrl+click` on a
   name to open its object.
 - **Parameters** (`:id`, `?`) and **variables** (`${name}`) asked in a dialog and kept in a
