@@ -22,7 +22,7 @@ interface Props {
   /** The statement for the current choices; `null` when they produce none. */
   generate: (choices: { cascade: boolean; newName: string }) => Promise<string | null>;
   /** Called after the statement ran. */
-  onDone: () => void;
+  onDone: (choices: { cascade: boolean; newName: string }) => void;
   onClose: () => void;
 }
 
@@ -61,7 +61,7 @@ export function SqlActionDialog(props: Props) {
       const sid = await workbench().sideSession(connection, database);
       if (sid === null) return;
       await api.executeStatement(sid, sql);
-      props.onDone();
+      props.onDone({ cascade, newName: newName.trim() });
       props.onClose();
     } catch (e) {
       setError(toCommandError(e).message);

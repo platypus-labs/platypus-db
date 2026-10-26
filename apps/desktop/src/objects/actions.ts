@@ -11,6 +11,7 @@ import {
   type ObjectKind,
 } from "../api";
 import { isRelation } from "../components/Navigator";
+import { catalogKey, renameCatalog } from "../catalog/catalog";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { getSetting } from "../settings";
 import { quoteIdent, selectLimit } from "../sqlNames";
@@ -143,6 +144,7 @@ function confirmStatement(
   arg: ObjectArg,
   dialog: { title: string; description: string; confirm: string; options: SqlActionOptions },
   request: (choices: { cascade: boolean; newName: string }) => GenerateRequest,
+  after?: (choices: { cascade: boolean; newName: string }) => void,
 ) {
   workbench().openDialog((close) =>
     createElement(SqlActionDialog, {
@@ -150,12 +152,14 @@ function confirmStatement(
       database: arg.database,
       ...dialog,
       generate: (choices) => api.generateSql(arg.connection.driver, target(arg), request(choices)),
-      onDone: () =>
+      onDone: (choices) => {
+        after?.(choices);
         requestNavigatorRefresh({
           connectionId: arg.connection.id,
           database: arg.database,
           schema: arg.schema.name,
-        }),
+        });
+      },
       onClose: close,
     }),
   );
@@ -178,6 +182,10 @@ registerAction({
         options: { rename: arg.object.name.replace(/\(.*$/, "") },
       },
       ({ newName }) => ({ statement: "rename", new_name: newName }),
+      ({ newName }) => {
+        const from = catalogKey(arg.database, arg.schema.name, arg.object.name);
+        if (newName && newName !== arg.object.name) void renameCatalog(arg.connection.id, from, { ...from, object: newName });
+      },
     ),
 });
 
