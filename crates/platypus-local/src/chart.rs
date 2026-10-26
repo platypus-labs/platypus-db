@@ -288,7 +288,7 @@ fn by_point(
     }
     let line = request.kind == ChartKind::Line;
     let mut reduced = false;
-    let series = names
+    let mut series: Vec<Series> = names
         .into_iter()
         .zip(points)
         .map(|(name, mut points)| {
@@ -306,6 +306,9 @@ fn by_point(
             }
         })
         .collect();
+    if x_axis == XAxis::Category {
+        categories = compact(&mut series, categories);
+    }
     Ok(ChartData {
         x_axis,
         categories,
@@ -339,6 +342,32 @@ fn x_values(
             Some(values::float(at))
         })
         .collect())
+}
+
+/// The categories some point is at, in their order, the points' X renumbered to match: a
+/// reduced series sends the labels of the points it kept, not every text of the column.
+fn compact(series: &mut [Series], categories: Vec<String>) -> Vec<String> {
+    let position = |x: f64| usize::try_from(values::whole(x)).unwrap_or(0);
+    let mut used = vec![false; categories.len()];
+    for p in series.iter().flat_map(|s| &s.points) {
+        if let Some(u) = used.get_mut(position(p[0])) {
+            *u = true;
+        }
+    }
+    let mut renumbered = vec![0; categories.len()];
+    let mut kept = Vec::new();
+    for (i, (label, used)) in categories.into_iter().zip(used).enumerate() {
+        if used {
+            renumbered[i] = kept.len();
+            kept.push(label);
+        }
+    }
+    for p in series.iter_mut().flat_map(|s| s.points.iter_mut()) {
+        if let Some(&at) = renumbered.get(position(p[0])) {
+            p[0] = values::float(at);
+        }
+    }
+    kept
 }
 
 /// At most `MAX_POINTS`: the X range cut in `MAX_POINTS / 2` bands, of which the lowest and
@@ -525,6 +554,33 @@ mod tests {
         assert_eq!(data.x_axis, XAxis::Category);
         assert_eq!(data.categories, ["b", "a"]);
         assert_eq!(data.series[0].points, [[0.0, 1.0], [0.0, 3.0], [1.0, 2.0]]);
+    }
+
+    #[test]
+    fn text_on_x_sends_only_the_labels_of_the_points_kept() {
+        let names: Vec<String> = (0..10_000).map(|i| format!("t{i}")).collect();
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        let amounts: Vec<f64> = (0..10_000).map(|i| f64::from(i % 13)).collect();
+        let (schema, batches) = sales(&refs, &amounts);
+        let data = draw(&schema, &batches, ChartKind::Line, 0, &[1], Aggregate::Sum);
+        let points = &data.series[0].points;
+        assert!(data.reduced);
+        assert_eq!(data.categories.len(), points.len());
+        for (i, p) in points.iter().enumerate() {
+            assert_eq!(p[0], values::float(i), "renumbered in order");
+        }
+        assert_eq!(data.categories[0], "t0");
+        // A category without a point (its Y is NULL) gets no label.
+        let (schema, batches) = sales(&["a", "b"], &[1.0, f64::NAN]);
+        let data = draw(
+            &schema,
+            &batches,
+            ChartKind::Scatter,
+            0,
+            &[1],
+            Aggregate::Sum,
+        );
+        assert_eq!(data.categories, ["a"]);
     }
 
     #[test]
