@@ -941,6 +941,27 @@ export interface ColumnProfile {
 }
 
 // Analysis (group M): charts
+/** What a chart draws, columns by position (`analysis/chartConfig.ts` makes it). */
+export interface ChartRequest {
+  kind: "bar" | "line" | "scatter" | "pie";
+  x: number;
+  y: number[];
+  aggregate: "sum" | "count" | "avg" | "min" | "max";
+}
+
+/** A chart's data over the loaded rows. */
+export interface ChartData {
+  /** Bars and pie use `categories` and `values`; lines and scatter `points`, X as a number,
+   *  milliseconds since the epoch or a category's position. */
+  x_axis: "category" | "number" | "time";
+  categories: string[];
+  /** The last category gathers the ones left out. */
+  other: boolean;
+  series: { name: string; values: number[]; points: [number, number][] }[];
+  rows: number;
+  /** Points were reduced or categories gathered to keep the chart light. */
+  reduced: boolean;
+}
 
 // Analysis (group M): SQL on results
 
@@ -1370,6 +1391,11 @@ export const api = {
   columnProfile: (jobId: number, column: number) => invoke<ColumnProfile>("column_profile", { jobId, column }),
 
   // Analysis (group M): charts
+  /** What `request` draws from the rows the result has loaded. */
+  chartData: (jobId: number, request: ChartRequest) => invoke<ChartData>("chart_data", { jobId, request }),
+  /** Writes bytes to a path picked in the save dialog, e.g. a chart as PNG. */
+  writeBinaryFile: (path: string, bytes: Uint8Array) =>
+    invoke<void>("write_binary_file", { path, bytes: Array.from(bytes) }),
 
   // Analysis (group M): SQL on results
 
