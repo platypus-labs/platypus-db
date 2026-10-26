@@ -1686,7 +1686,7 @@ export function QueryTab({
               {t("Changes saved.")}
               <button
                 className="link"
-                onClick={() => workbench().openTab("query", connection.id, { sql: undoScript })}
+                onClick={() => workbench().openTab("query", connection.id, { sql: undoScript, database: tab.database })}
                 title={t("Opens the SQL that puts the rows back as they were")}
               >
                 {t("Undo script")}
