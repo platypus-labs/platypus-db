@@ -356,24 +356,33 @@ fn needs_quotes(s: &str, literal: Literal) -> bool {
         Literal::Array(delimiter) => {
             s.is_empty()
                 || s.eq_ignore_ascii_case("null")
-                || s.chars().any(|c| {
-                    c == delimiter || matches!(c, '"' | '\\' | '{' | '}') || c.is_whitespace()
-                })
+                || s.chars()
+                    .any(|c| c == delimiter || matches!(c, '"' | '\\' | '{' | '}') || pg_space(c))
         }
         Literal::Composite => {
             s.is_empty()
                 || s.chars()
-                    .any(|c| matches!(c, '"' | '\\' | '(' | ')' | ',') || c.is_whitespace())
+                    .any(|c| matches!(c, '"' | '\\' | '(' | ')' | ',') || pg_space(c))
         }
     }
 }
 
+/// The white space PostgreSQL quotes (`array_isspace`, `isspace` in `record_out`): ASCII.
+fn pg_space(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\n' | '\r' | '\x0B' | '\x0C')
+}
+
+/// `value` as an element or field, quoted when needed. Inside quotes, `array_out` escapes
+/// `"` and `\` with a backslash, `record_out` doubles them.
 fn push_element(out: &mut String, value: &str, literal: Literal) {
     if needs_quotes(value, literal) {
         out.push('"');
         for c in value.chars() {
             if matches!(c, '"' | '\\') {
-                out.push('\\');
+                out.push(match literal {
+                    Literal::Array(_) => '\\',
+                    Literal::Composite => c,
+                });
             }
             out.push(c);
         }
@@ -780,6 +789,13 @@ mod tests {
         assert!(!quoted("{a}", Literal::Composite));
         assert!(!quoted("null", Literal::Composite));
         assert!(quoted("", Literal::Composite));
+        // Only ASCII white space is quoted, as PostgreSQL does.
+        assert!(!quoted("a\u{a0}b", Literal::Array(',')));
+        assert!(!quoted("a\u{3000}b", Literal::Composite));
+        assert!(quoted("a\tb", Literal::Composite));
+        let mut out = String::new();
+        push_element(&mut out, "say \"hi\" \\", Literal::Composite);
+        assert_eq!(out, r#""say ""hi"" \\""#);
     }
 
     /// An array on the wire: `bounds` are `(lower bound, length)` per dimension.
