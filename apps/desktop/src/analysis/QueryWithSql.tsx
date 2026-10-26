@@ -54,7 +54,7 @@ function LoadDialog({ jobIds, onDone }: { jobIds: number[]; onDone: (ok: boolean
   };
   return (
     <div className="modal-backdrop">
-      <div className="modal small load-rows" aria-modal="true">
+      <div className="modal small load-rows" role="dialog" aria-modal="true" aria-label={t("Query with SQL")}>
         <h2>{t("Query with SQL")}</h2>
         <p>{t("Loading all the rows of the result: {rows}", { rows: fmt.format(rows) })}</p>
         <div className="result-loading" role="progressbar" aria-label={t("Loading rows")} />

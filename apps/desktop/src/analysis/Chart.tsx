@@ -80,10 +80,12 @@ interface ChartProps {
   colors: ChartColors;
   /** The word for the category that gathers the others. */
   otherLabel: string;
+  /** The chart's accessible name. */
+  label: string;
   ref?: Ref<SVGSVGElement>;
 }
 
-export function Chart({ data, kind, width, height, colors, otherLabel, ref }: ChartProps) {
+export function Chart({ data, kind, width, height, colors, otherLabel, label, ref }: ChartProps) {
   const categories = data.other ? [...data.categories.slice(0, -1), otherLabel] : data.categories;
   const plot: Plot = {
     left: MARGIN.left,
@@ -105,6 +107,7 @@ export function Chart({ data, kind, width, height, colors, otherLabel, ref }: Ch
       fontFamily={colors.font}
       fontSize={11}
       role="img"
+      aria-label={label}
     >
       <rect width={width} height={height} fill={colors.background} />
       <Legend labels={legend} color={color} colors={colors} width={width} />

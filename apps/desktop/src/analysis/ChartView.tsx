@@ -59,26 +59,38 @@ export function ChartView({ jobId, columns, rows, complete, config, onConfig }: 
   const [data, setData] = useState<ChartData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const drawn = useRef(false);
+  // A throttle: new rows do not drop the request in flight, and one goes out at most every
+  // REFRESH_MS. An answer counts while the chart still asks the same of the same result, and
+  // only if no later answer came first.
+  const target = `${jobId}|${requestKey}`;
+  const current = useRef(target);
+  current.current = target;
+  const sentAt = useRef(0);
+  const sent = useRef(0);
+  const applied = useRef(0);
   useEffect(() => {
     if (!request) return setData(null);
-    let live = true;
-    const timer = setTimeout(
-      () =>
-        api.chartData(jobId, request).then(
-          (d) => {
-            if (!live) return;
-            drawn.current = true;
-            setData(d);
-            setError(null);
-          },
-          (e: unknown) => live && setError(toCommandError(e).message),
-        ),
-      drawn.current ? REFRESH_MS : 0,
-    );
-    return () => {
-      live = false;
-      clearTimeout(timer);
-    };
+    const wait = drawn.current ? Math.max(0, REFRESH_MS - (Date.now() - sentAt.current)) : 0;
+    const timer = setTimeout(() => {
+      sentAt.current = Date.now();
+      const n = ++sent.current;
+      const fresh = () => current.current === target && n > applied.current;
+      api.chartData(jobId, request).then(
+        (d) => {
+          if (!fresh()) return;
+          applied.current = n;
+          drawn.current = true;
+          setData(d);
+          setError(null);
+        },
+        (e: unknown) => {
+          if (!fresh()) return;
+          applied.current = n;
+          setError(toCommandError(e).message);
+        },
+      );
+    }, wait);
+    return () => clearTimeout(timer);
   }, [jobId, requestKey, rows]);
 
   const canvas = useRef<HTMLDivElement>(null);
@@ -166,7 +178,10 @@ export function ChartView({ jobId, columns, rows, complete, config, onConfig }: 
         {error && <div className="notice error">{error}</div>}
         <div className="chart-canvas" ref={canvas}>
           {data && request && size && (
-            <Chart ref={svg} data={data} kind={shown.kind} width={size.width} height={size.height} colors={colors} otherLabel={t("Other")} />
+            <Chart ref={svg} data={data} kind={shown.kind} width={size.width} height={size.height} colors={colors}
+              otherLabel={t("Other")}
+              label={t("Chart of {series}", { series: data.series.map((s) => s.name).join(", ") })}
+            />
           )}
         </div>
         {data && (!complete || data.reduced) && (

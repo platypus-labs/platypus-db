@@ -1223,7 +1223,7 @@ const it: Record<string, string> = {
   // Analysis (group M): column statistics
   "NULL values": "Valori NULL",
   "Most frequent": "I più frequenti",
-  "of all {n} row": "su {n} riga, tutte",
+  "of all {n} row": "su {n} riga in tutto",
   "of all {n} rows": "su tutte le {n} righe",
   "of {n} loaded row": "su {n} riga caricata",
   "of {n} loaded rows": "su {n} righe caricate",
@@ -1276,6 +1276,7 @@ const it: Record<string, string> = {
   "Only the first {n} differences are shown.": "Sono mostrate solo le prime {n} differenze.",
   "No differences.": "Nessuna differenza.",
   "No differences in the rows compared.": "Nessuna differenza nelle righe confrontate.",
+  "Chart of {series}": "Grafico di {series}",
   "Before: {value}": "Prima: {value}",
 };
 
