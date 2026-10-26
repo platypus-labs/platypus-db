@@ -253,6 +253,8 @@ export function QueryTab({
   const currentJob = useRef<number | null>(null);
   /** The gate of the statement `runOne` last ran, which Cancel and closing the tab end. */
   const statement = useRef<ReturnType<typeof runGate> | null>(null);
+  /** Cancel was pressed during the run: no statement after the one it reached runs. */
+  const cancelAsked = useRef(false);
   /** The data editor has changes that running again would lose. */
   const unsaved = useRef(false);
   /** Data viewer: the table's keys, loaded once and again after DDL. */
@@ -376,9 +378,13 @@ export function QueryTab({
       };
       api.runQuery(sessionId, result.sql, result.limit, onEvent, history).then(
         (jobId) => {
-          // The run was cancelled before the backend answered: the job it started has no owner.
+          // The tab closed before the backend answered: the job it started has no owner, and
+          // its statement may be running.
           if (gate.abandoned()) {
-            void api.closeQuery(jobId);
+            void api
+              .cancelQuery(jobId)
+              .catch(() => undefined)
+              .then(() => api.closeQuery(jobId));
             return;
           }
           jobs.current.push(jobId);
@@ -386,6 +392,9 @@ export function QueryTab({
           if (seen) seen.jobId = jobId;
           update(result.id, { jobId });
           jobKnown();
+          // Cancel came while the backend was starting the job (e.g. reconnecting): it stops the
+          // statement now, unless that has ended already.
+          if (gate.cancelDue()) void api.cancelQuery(jobId).catch((e: unknown) => onError(toCommandError(e).message));
         },
         (e: unknown) => {
           if (gate.abandoned()) return;
@@ -520,6 +529,7 @@ export function QueryTab({
     setResults((all) => (append ? [...all, ...own] : own));
     if (!auto) setActiveResult(base);
     autoRun.current = auto;
+    cancelAsked.current = false;
     setRunning(true);
     editor.current!.setError(null);
 
@@ -624,7 +634,7 @@ export function QueryTab({
             status = await runOne(sessionId, ran, token, history, seen);
             // A dropped connection fails before the statement reaches the server; the
             // second attempt runs on a reopened connection.
-            if (status.kind === "error" && status.error.kind === "closed" && token === runToken.current) {
+            if (status.kind === "error" && status.error.kind === "closed" && token === runToken.current && !cancelAsked.current) {
               update(result.id, { status: { kind: "running" } });
               status = await runOne(sessionId, ran, token, history, seen);
             }
@@ -641,6 +651,9 @@ export function QueryTab({
         // The editor may have changed since the statements were planned: no marker there.
         if (!auto) showError(p, status);
         else onError(t("Auto-refresh stopped: {message}", { message: status.error.message }));
+      }
+      // After an error, or a Cancel that came too late to stop this statement, nothing else runs.
+      if (status.kind === "error" || cancelAsked.current) {
         const skipped = new Set(own.slice(i + 1).map((r) => r.id));
         setResults((all) => all.map((r) => (skipped.has(r.id) ? { ...r, status: { kind: "skipped" } } : r)));
         break;
@@ -971,10 +984,12 @@ export function QueryTab({
   async function cancel() {
     const job = currentJob.current;
     const cli = cliRun.current;
-    // `run_query` has not answered: there is no job to cancel, so the statement ends here.
+    cancelAsked.current = true;
+    // `run_query` has not answered (it may be reconnecting): there is no job to cancel yet, and
+    // the statement may still start. Its job is cancelled once known (see `runOne`).
     const waiting = statement.current;
     if (cli === null && waiting?.awaitsJob()) {
-      waiting.abandon(cancelled());
+      waiting.requestCancel();
       return;
     }
     try {

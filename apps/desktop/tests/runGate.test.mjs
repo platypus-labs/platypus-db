@@ -101,3 +101,47 @@ test("a run whose job is known is ended by abandon without a terminal status", (
   g.abandon(cancelled);
   assert.deepEqual(g.resolved, [cancelled]);
 });
+
+const stopped = { kind: "error", error: { kind: "cancelled", message: "canceling statement due to user request" } };
+
+test("Cancel before the job is known cancels the job once it is; its own status ends the run", () => {
+  const g = gate(true);
+  g.requestCancel();
+  assert.equal(g.awaitsJob(), true, "the statement may still start");
+  assert.equal(g.cancelDue(), false, "no job to cancel yet");
+  assert.deepEqual(g.resolved, [], "not reported as cancelled before it is");
+  g.jobKnown();
+  assert.equal(g.cancelDue(), true);
+  g.settle(stopped);
+  assert.deepEqual(g.resolved, [stopped]);
+  assert.equal(g.cancelDue(), false);
+  assert.equal(g.abandoned(), false);
+});
+
+test("a statement that ended before Cancel reached it keeps its result", () => {
+  const g = gate(true);
+  g.settle(affected);
+  g.requestCancel();
+  g.jobKnown();
+  assert.equal(g.cancelDue(), false, "nothing left to cancel");
+  assert.deepEqual(g.resolved, [affected]);
+});
+
+test("a run that fails to start after Cancel reports its own failure", () => {
+  const g = gate(true);
+  const refused = { kind: "error", error: { kind: "other", message: "connection refused" } };
+  g.requestCancel();
+  g.jobKnown();
+  g.settle(refused);
+  assert.deepEqual(g.resolved, [refused]);
+  assert.equal(g.cancelDue(), false);
+});
+
+test("Cancel after the run is over has nothing to cancel", () => {
+  const g = gate(true);
+  g.jobKnown();
+  g.settle(finished);
+  g.requestCancel();
+  assert.equal(g.cancelDue(), false);
+  assert.deepEqual(g.resolved, [finished]);
+});
