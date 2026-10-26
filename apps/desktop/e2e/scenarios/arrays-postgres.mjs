@@ -141,11 +141,13 @@ export default async function (page, { shots }) {
   // What the server stored, read back.
   await run(page, "SELECT tags::text || ' ' || pair::text AS v FROM demo.e2e_arrays");
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
-  assert.equal(await copyGrid(page), `{z,"b c",NULL,"new, one"} (x,2)`);
+  const stored = `{z,"b c",NULL,"new, one"} (x,2)`;
+  assert.equal(await copyGrid(page, stored), stored);
 
   // Arrays shown as PostgreSQL prints them: bounds other than 1 first, `;` between boxes.
   await run(page, "SELECT '[0:1]={1,2}'::int[] AS lb, ARRAY['(1,1),(0,0)'::box, '(2,2),(1,1)'::box] AS bx");
-  assert.equal(await copyGrid(page), "[0:1]={1,2}\t{(1,1),(0,0);(2,2),(1,1)}");
+  const shown = "[0:1]={1,2}\t{(1,1),(0,0);(2,2),(1,1)}";
+  assert.equal(await copyGrid(page, shown), shown);
 
   // An array with bounds is edited as text, bounds included, so that saving keeps them.
   await run(page, "UPDATE demo.e2e_arrays SET tags = '[0:1]={x,y}'");
@@ -163,12 +165,13 @@ export default async function (page, { shots }) {
 }
 
 /** Copies the whole grid of the visible tab. The status ends before the canvas grid has the
- *  rows' values, and a copy of an empty grid gives "" or writes nothing: copy again, each
- *  attempt bounded, until the values are there. */
-async function copyGrid(page) {
+ *  rows' values: a copy of an empty grid gives "" or writes nothing, and the grid may still
+ *  hold the previous result. Copy again, each attempt bounded, until the copy is `expected`
+ *  or time is up, and return the last copy. */
+async function copyGrid(page, expected) {
   let copied = "";
   const deadline = Date.now() + 15_000;
-  while (copied === "" && Date.now() < deadline) {
+  while (copied !== expected && Date.now() < deadline) {
     await page.eval(`window.__copied = undefined; ${visibleTab}.querySelector('.grid-scroll').focus()`);
     await page.key("a", "KeyA", 65, CTRL);
     await page.key("c", "KeyC", 67, CTRL);
@@ -178,7 +181,7 @@ async function copyGrid(page) {
       // Nothing was copied: try again.
     }
     copied = (await page.eval(`window.__copied`)) ?? "";
-    if (copied === "") await new Promise((r) => setTimeout(r, 100));
+    if (copied !== expected) await new Promise((r) => setTimeout(r, 100));
   }
   return copied;
 }
