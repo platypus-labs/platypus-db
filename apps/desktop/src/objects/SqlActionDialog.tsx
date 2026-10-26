@@ -8,6 +8,10 @@ export interface SqlActionOptions {
   cascade?: boolean;
   /** Asks for a new name, starting from this one. */
   rename?: string;
+  /** Label of the text field when it is not a name. */
+  renameLabel?: string;
+  /** The text may be emptied (clearing a comment). */
+  allowEmpty?: boolean;
 }
 
 interface Props {
@@ -36,7 +40,7 @@ export function SqlActionDialog(props: Props) {
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const renaming = options.rename !== undefined;
-  const unchanged = renaming && (newName.trim() === "" || newName === options.rename);
+  const unchanged = renaming && ((newName.trim() === "" && !options.allowEmpty) || newName === options.rename);
 
   useEffect(() => {
     let current = true;
@@ -85,7 +89,7 @@ export function SqlActionDialog(props: Props) {
         <p className="muted small">{props.description}</p>
         {renaming && (
           <label className="field">
-            <span>{t("New name")}</span>
+            <span>{options.renameLabel ?? t("New name")}</span>
             <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} />
           </label>
         )}
@@ -95,7 +99,7 @@ export function SqlActionDialog(props: Props) {
             <span>{t("CASCADE: also drop the objects that depend on it")}</span>
           </label>
         )}
-        <pre className="sql-preview">{sql ?? (unchanged ? t("Type a new name.") : "…")}</pre>
+        <pre className="sql-preview">{sql ?? (unchanged ? (options.renameLabel ? t("Change the text.") : t("Type a new name.")) : "…")}</pre>
         {connection.read_only && (
           <div className="notice warn small">{t("{name} is read-only: this statement cannot be run.", { name: connection.name })}</div>
         )}

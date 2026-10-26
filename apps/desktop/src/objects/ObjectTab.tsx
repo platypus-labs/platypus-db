@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { createElement, useEffect, useState } from "react";
 import {
   api,
   type CatalogKey,
+  type DriverKind,
   type ObjectKind,
   type ObjectTarget,
   type Property,
@@ -18,6 +19,7 @@ import { onNavigatorRefresh } from "../navigatorEvents";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
+import { SqlActionDialog } from "./SqlActionDialog";
 import { t, msg } from "../i18n";
 
 export type ObjectSection =
@@ -28,6 +30,8 @@ export type ObjectSection =
   | "foreign_keys"
   | "references"
   | "ddl";
+
+const NO_COMMENTS: DriverKind[] = ["sqlite", "libsql", "mongo"];
 
 /** Details of one database object: properties, structure and DDL. */
 export interface ObjectTabModel extends TabBase {
@@ -103,6 +107,27 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
   const target: ObjectTarget = { schema: tab.schema, name: tab.name, kind: tab.objectKind, parent: tab.parent };
   const qualified = qualifiedName(connection.driver, { name: tab.schema, current: tab.currentSchema }, tab.name);
 
+  const canComment = !NO_COMMENTS.includes(connection.driver);
+
+  function editComment(column: string | null, current: string | null) {
+    workbench().openDialog((close) =>
+      createElement(SqlActionDialog, {
+        connection,
+        database: tab.database ?? null,
+        title: column ? t("Comment of {name}", { name: column }) : t("Comment of {name}", { name: tab.name }),
+        description: t("Written to the database, visible to everyone who reads it."),
+        confirm: t("Save comment"),
+        options: { rename: current ?? "", renameLabel: t("Comment"), allowEmpty: true },
+        generate: async ({ newName }) => {
+          const sid = await sideSession();
+          return sid === null ? null : api.commentSql(sid, tab.schema, tab.name, column, newName || null);
+        },
+        onDone: () => setVersion((v) => v + 1),
+        onClose: close,
+      }),
+    );
+  }
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -155,6 +180,15 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
   }
 
   const d = data?.details;
+  const currentComment = data?.properties.find((p) => p.name === "Comment")?.value ?? "";
+  const tableComment = (
+    <>
+      {currentComment}{" "}
+      <button className="link" onClick={() => editComment(null, currentComment || null)}>
+        {t("Edit")}
+      </button>
+    </>
+  );
 
   return (
     <div className="object-tab" style={{ display: active ? "flex" : "none" }}>
@@ -225,13 +259,14 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               [t("Kind"), t(KIND_LABELS[tab.objectKind])],
               [t("Schema"), tab.schema],
               ...(tab.parent ? [[t(tab.objectKind === "trigger" ? "Table" : "Partition of"), tab.parent]] : []),
-              ...data.properties.map((p) => [p.name, p.value]),
+              ...(canComment && isRelation(tab.objectKind) ? [[t("Comment"), tableComment]] : []),
+              ...data.properties.filter((p) => !(canComment && isRelation(tab.objectKind) && p.name === "Comment")).map((p) => [p.name, p.value]),
             ]}
           />
         )}
         {d && section === "columns" && (
           <MetaTable
-            head={["#", t("Name"), t("Type"), t("Nullable"), t("Default"), t("Key"), t("Comment"), t("Note"), t("Tags")]}
+            head={["#", t("Name"), t("Type"), t("Nullable"), t("Default"), t("Key"), t("Comment (database)"), t("Note"), t("Tags")]}
             rows={d.columns.map((c, i) => [
               String(i + 1),
               c.name,
@@ -239,7 +274,15 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               t(c.nullable ? "yes" : "no"),
               c.default ?? "",
               c.primary_key ? "PK" : "",
-              c.comment ?? "",
+              canComment ? (
+                <button key="comment" className="link" onClick={() => editComment(c.name, c.comment)}>
+                  {c.comment || t("Edit")}
+                </button>
+              ) : (
+                <span key="comment" title={t("This database has no comments: use a note")}>
+                  {c.comment ?? ""}
+                </span>
+              ),
               <ColumnNote key="note" connectionId={connection.id} catalogKey={ckey(c.name)} />,
               <ColumnTags key="tags" connectionId={connection.id} catalogKey={ckey(c.name)} suggestions={tagSuggestions} />,
             ])}
