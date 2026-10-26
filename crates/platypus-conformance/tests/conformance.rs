@@ -1869,10 +1869,10 @@ async fn edits_arrays_and_composites() {
         let pair = text(&[Some(r#"a (b), "c" \"#), None]);
         let pairs = vec![Some(join_composite(&pair)), None];
         let values = [
-            join_array(&tags),
-            join_array(&nums),
+            join_array(&tags, ','),
+            join_array(&nums, ','),
             join_composite(&pair),
-            join_array(&pairs),
+            join_array(&pairs, ','),
         ];
         let columns: Vec<Column<'_>> = ["id", "tags", "nums", "pair", "pairs"]
             .iter()
@@ -1910,10 +1910,10 @@ async fn edits_arrays_and_composites() {
         )
         .await;
         let shown = |column| cell(&rows[0], column, 0).unwrap();
-        assert_eq!(split_array(&shown(0)), Some(tags));
-        assert_eq!(split_array(&shown(1)), Some(nums));
+        assert_eq!(split_array(&shown(0), ','), Some(tags));
+        assert_eq!(split_array(&shown(1), ','), Some(nums));
         assert_eq!(split_composite(&shown(2)), Some(pair.clone()));
-        let read = split_array(&shown(3)).unwrap();
+        let read = split_array(&shown(3), ',').unwrap();
         assert_eq!(read[1], None);
         assert_eq!(split_composite(read[0].as_deref().unwrap()), Some(pair));
         if b.name != "cockroach" {

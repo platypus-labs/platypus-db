@@ -48,7 +48,7 @@ export function ListEditor({ box, composite, type, fields, initial, typed, nulla
       return;
     }
     let live = true;
-    api.splitLiteral(composite, initial).then(
+    api.splitLiteral(composite, type, initial).then(
       (split) => {
         if (!live) return;
         if (split) setItems(split);
@@ -73,7 +73,7 @@ export function ListEditor({ box, composite, type, fields, initial, typed, nulla
     try {
       const input: CellInput = value ?? {
         kind: "value",
-        text: asText || !items ? text : await api.joinLiteral(composite, items),
+        text: asText || !items ? text : await api.joinLiteral(composite, type, items),
       };
       done.current = true;
       onCommit(input, null);
@@ -91,11 +91,11 @@ export function ListEditor({ box, composite, type, fields, initial, typed, nulla
     setProblem(null);
     try {
       if (!asText) {
-        if (items) setText(await api.joinLiteral(composite, items));
+        if (items) setText(await api.joinLiteral(composite, type, items));
         setAsText(true);
         return;
       }
-      const split = await api.splitLiteral(composite, text);
+      const split = await api.splitLiteral(composite, type, text);
       if (!split) {
         setProblem(t(composite ? "Not a composite value: (a,b,…)" : "Not a one-dimensional array: {a,b,…}"));
         return;

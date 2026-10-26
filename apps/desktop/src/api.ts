@@ -1327,10 +1327,11 @@ export const api = {
     invoke<(string | null)[][]>("row_values", { jobId, offset, limit }),
   /** The elements of a PostgreSQL array (or the fields of a composite value); `null` when
    *  the text is not one, e.g. a nested array. */
-  splitLiteral: (composite: boolean, text: string) =>
-    invoke<(string | null)[] | null>("split_literal", { composite, text }),
-  joinLiteral: (composite: boolean, items: (string | null)[]) =>
-    invoke<string>("join_literal", { composite, items }),
+  /** `typeName` is the array's type (`box[]` separates its elements with `;`). */
+  splitLiteral: (composite: boolean, typeName: string, text: string) =>
+    invoke<(string | null)[] | null>("split_literal", { composite, typeName, text }),
+  joinLiteral: (composite: boolean, typeName: string, items: (string | null)[]) =>
+    invoke<string>("join_literal", { composite, typeName, items }),
   /** Loaded rows of a result in a clipboard format; `table` names the table in INSERTs. */
   copyRows: (
     jobId: number,
