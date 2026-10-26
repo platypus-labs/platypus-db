@@ -178,6 +178,22 @@ test("a backslash-escaped quote in a MySQL string does not mask the rest of the 
   assert.equal(statementAt('SELECT "a;b" FROM t', 3, mysql).to, 19);
 });
 
+test("a PostgreSQL E'…' string ends after its backslash-escaped quotes", () => {
+  const pg = scopeOptions("postgres");
+  const doc = "SELECT E'it\\'s' AS s;\nSELECT to| FROM orders";
+  const pos = doc.indexOf("|");
+  const text = doc.replace("|", "");
+  const { from, to } = statementAt(text, pos, pg);
+  assert.equal(text.slice(from, to), "\nSELECT to FROM orders");
+  assert.ok(labels(nameOptions(text.slice(from, to), pos - from, catalog, false, pg)).includes("column:total"));
+  assert.equal(maskSql("e'a\\'b' x", pg), "        x");
+  // Only as a prefix of its own: `name'…'` and a plain '…' keep `\` as a character.
+  assert.equal(maskSql("xe'a\\' y", pg), "xe     y");
+  assert.equal(maskSql("'a\\' y", pg), "     y");
+  // Elsewhere E'…' is a name followed by a string.
+  assert.equal(maskSql("E'a\\' y"), "E     y");
+});
+
 test("the quote the editor closed after the cursor does not swallow FROM", () => {
   assert.ok(labels(optionsAt('SELECT "Fu|" FROM customers')).includes("column:Full Name"));
   assert.deepEqual(labels(optionsAt('SELECT c."Fu|" FROM customers c')), ["column:id", "column:name", "column:Full Name"]);

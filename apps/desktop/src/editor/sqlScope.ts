@@ -55,6 +55,8 @@ export interface ScopeOptions {
   stringBackslashes?: boolean;
   /** `"…"` is a string, not a name. */
   doubleQuotedStrings?: boolean;
+  /** `E'…'` is a string where a backslash escapes the next character (PostgreSQL, DuckDB). */
+  escapeStrings?: boolean;
 }
 
 /** How the driver's SQL quotes, as `lexer.rs` and `dialect.rs` in platypus-sql read it. */
@@ -65,6 +67,7 @@ export function scopeOptions(driver: DriverKind): ScopeOptions {
     backslashes,
     stringBackslashes: backslashes || driver === "snowflake",
     doubleQuotedStrings: ["mysql", "bigquery", "databricks"].includes(driver),
+    escapeStrings: driver === "postgres" || driver === "duckdb",
   };
 }
 
@@ -93,6 +96,13 @@ function quoteAt(c: string, options: ScopeOptions): { close: string; name: boole
 
 const backslashIn = (q: { name: boolean; close: string }, options: ScopeOptions) =>
   !!options.backslashes || (!q.name && !!options.stringBackslashes);
+
+/** A character of a bare name. */
+const NAME_CHAR = /[\w$#\u0080-￿]/;
+
+/** Whether an `E'…'` string starts at `i`: an `E` of its own, not the end of a name. */
+const escapeStringAt = (sql: string, i: number, options: ScopeOptions) =>
+  !!options.escapeStrings && (sql[i] === "E" || sql[i] === "e") && sql[i + 1] === "'" && !NAME_CHAR.test(sql[i - 1] ?? "");
 
 const WORD = /[A-Za-z_\u0080-￿][\w$#\u0080-￿]*/y;
 /** Words after which a table is named. */
@@ -127,6 +137,9 @@ export function maskSql(sql: string, options: ScopeOptions = {}): string {
       const close = quotedEnd(sql, i, quote.close, backslashIn(quote, options));
       end = close < 0 ? sql.length : close;
       keep = quote.name;
+    } else if (escapeStringAt(sql, i, options)) {
+      const close = quotedEnd(sql, i + 1, "'", true);
+      end = close < 0 ? sql.length : close;
     } else if (c === "-" && sql[i + 1] === "-") {
       end = sql.indexOf("\n", i);
       if (end < 0) end = sql.length;
