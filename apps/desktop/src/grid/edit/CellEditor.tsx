@@ -158,7 +158,7 @@ export function CellEditor({
                 }
               }}
             >
-              {t("Format")}
+              {t("Format JSON")}
             </button>
           )}
           <span className="spacer" />

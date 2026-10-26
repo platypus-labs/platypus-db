@@ -184,8 +184,15 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
           </>
         )}
         <div className="actions">
-          {current && <button onClick={() => void navigator.clipboard.writeText(current.text)}>{t("Copy statement")}</button>}
-          <button onClick={onClose}>{t("Close")}</button>
+          {current && (
+            <button type="button" onClick={() => void navigator.clipboard.writeText(current.text)}>
+              {t("Copy statement")}
+            </button>
+          )}
+          <span className="spacer" />
+          <button type="button" className="primary" onClick={onClose}>
+            {t("Close")}
+          </button>
         </div>
       </div>
     </div>

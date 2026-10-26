@@ -109,12 +109,11 @@ export function SearchTab({ tab, connection, active, ensureSession, sideSession,
   function openRows(hit: TableHit) {
     const target = qualifiedName(connection.driver, hit.schema, hit.table);
     workbench().openTab("query", connection.id, {
-      sql: viewerSql(connection.driver, target, hit.condition, null),
+      sql: viewerSql(connection.driver, target, hit.condition),
       autorun: true,
       title: hit.table,
       table: target,
       tableRef: { schema: hit.schema.name, name: hit.table, kind: hit.kind },
-      filter: hit.condition,
       database: tab.database,
     });
   }

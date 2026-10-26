@@ -53,7 +53,7 @@ export function VirtualKeyDialog({ connection, table, columns, current, onClose 
             </label>
           ))}
         </div>
-        {error && <p className="error-text small">{error}</p>}
+        {error && <div className="notice error small">{error}</div>}
         <div className="actions">
           {current && (
             <button type="button" onClick={() => void save([])}>

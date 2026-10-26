@@ -45,10 +45,12 @@ export function UpdateBanner() {
         <span className="muted">{progress}</span>
       ) : (
         <>
-          <button className="primary" onClick={() => void install(update)}>
+          <button type="button" onClick={() => setUpdate(null)}>
+            {t("Later")}
+          </button>
+          <button type="button" className="primary" onClick={() => void install(update)}>
             {t("Install and restart")}
           </button>
-          <button onClick={() => setUpdate(null)}>{t("Later")}</button>
         </>
       )}
     </div>

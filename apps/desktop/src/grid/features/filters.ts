@@ -1,16 +1,14 @@
 // Quick filters of the data viewer: conditions on the focused cell's column, added to the
-// viewer's WHERE from the grid's menu.
+// viewer's query from the grid's menu: the editor's statement gets them in its top-level WHERE.
 import { registerAction } from "../../actions";
 import { api, isMongo } from "../../api";
 import { quoteIdent } from "../../sqlNames";
 import type { GridActionContext } from "../DataGrid";
 
-/** The data viewer's filter, for the actions; set by the query tab. */
+/** The data viewer's filter, for the actions; set by the query tab for a query it can rewrite. */
 export interface ViewerFilter {
-  /** The current `WHERE` condition, empty when none. */
-  filter: string;
-  /** Applies a new condition and reloads the data. */
-  setFilter(filter: string): void;
+  /** Adds the condition to the shown statement's WHERE, in the editor, and runs it. */
+  addCondition(condition: string): void;
 }
 
 declare module "../DataGrid" {
@@ -39,20 +37,13 @@ function target({ grid, source }: GridActionContext) {
   };
 }
 
-function add(viewer: ViewerFilter, condition: string) {
-  const current = viewer.filter.trim();
-  // An OR at the top would bind looser than the new AND.
-  const base = /\bor\b/i.test(current) ? `(${current})` : current;
-  viewer.setFilter(base ? `${base} AND ${condition}` : condition);
-}
-
 async function byValue(ctx: GridActionContext, equal: boolean) {
   const t = target(ctx);
   if (!t) return;
   const [literal] = await api.sqlLiterals(t.jobId, t.row, 1, t.col);
   if (literal === undefined) return;
-  if (literal === "NULL") add(t.viewer, `${t.name} IS ${equal ? "" : "NOT "}NULL`);
-  else add(t.viewer, `${t.name} ${equal ? "=" : "<>"} ${literal}`);
+  if (literal === "NULL") t.viewer.addCondition(`${t.name} IS ${equal ? "" : "NOT "}NULL`);
+  else t.viewer.addCondition(`${t.name} ${equal ? "=" : "<>"} ${literal}`);
 }
 
 const available = (ctx: GridActionContext) => target(ctx) !== null;
@@ -98,7 +89,7 @@ registerAction({
     const hasNull = literals.includes("NULL");
     const list = values.length ? `${t.name} IN (${values.join(", ")})` : "";
     const nullTest = `${t.name} IS NULL`;
-    add(t.viewer, list && hasNull ? `(${list} OR ${nullTest})` : list || nullTest);
+    t.viewer.addCondition(list && hasNull ? `(${list} OR ${nullTest})` : list || nullTest);
   },
 });
 
@@ -112,7 +103,7 @@ registerAction({
   when: available,
   run: (ctx) => {
     const t = target(ctx);
-    if (t) add(t.viewer, `${t.name} IS NULL`);
+    if (t) t.viewer.addCondition(`${t.name} IS NULL`);
   },
 });
 
@@ -126,17 +117,6 @@ registerAction({
   when: available,
   run: (ctx) => {
     const t = target(ctx);
-    if (t) add(t.viewer, `${t.name} IS NOT NULL`);
+    if (t) t.viewer.addCondition(`${t.name} IS NOT NULL`);
   },
-});
-
-registerAction({
-  id: "grid.filter_clear",
-  scope: "grid",
-  title: "Clear filter",
-  submenu: "Filter",
-  group: "filter",
-  order: 75,
-  when: ({ source }) => !!source?.viewer?.filter.trim(),
-  run: ({ source }) => source!.viewer!.setFilter(""),
 });

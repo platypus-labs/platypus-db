@@ -129,6 +129,12 @@ interface Props {
   sort?: { column: string; desc: boolean } | null;
   /** Makes headers clickable, e.g. to sort. */
   onHeaderClick?: (column: number) => void;
+  /** The tooltip of column `col`'s header, e.g. its comment and note. */
+  headerTitle?: (col: number) => string | undefined;
+  /** Draws a discreet mark in the header of annotated columns. */
+  headerMarked?: (col: number) => boolean;
+  /** Bumped when the annotations change, to repaint the marks. */
+  headerVersion?: number;
   source?: GridSource | null;
   /** Called for every visible cell on each frame: keep it cheap. */
   decorate?: (row: number, col: number) => CellDecoration | undefined;
@@ -200,6 +206,9 @@ export function DataGrid({
   version,
   sort = null,
   onHeaderClick,
+  headerTitle,
+  headerMarked,
+  headerVersion = 0,
   source = null,
   decorate,
   overlay,
@@ -235,6 +244,8 @@ export function DataGrid({
     cache,
     sort,
     onHeaderClick,
+    headerTitle,
+    headerMarked,
     decorate,
     onFocusChange,
     onSelectionChange,
@@ -522,6 +533,11 @@ export function DataGrid({
       ctx.font = FONT_SMALL;
       ctx.fillStyle = t.muted;
       ctx.fillText(column.db_type, x + PAD, 29);
+      if (props.current.headerMarked?.(c)) {
+        ctx.beginPath();
+        ctx.arc(x + cw - PAD, 28, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
       if (x + cw - 1 > edge) {
         ctx.fillStyle = t.border;
@@ -639,7 +655,7 @@ export function DataGrid({
   useEffect(schedule, [schedule, decorate]);
 
   // Redraw on data, size, layout and theme changes.
-  useEffect(schedule, [schedule, version, rowCount, topRows, columns, sort, resolved]);
+  useEffect(schedule, [schedule, version, rowCount, topRows, columns, sort, resolved, headerVersion]);
   useEffect(() => {
     const outer = outerRef.current;
     if (!outer) return;
@@ -838,6 +854,8 @@ export function DataGrid({
       return;
     }
     const h = hit(e);
+    const title = h.inHeader && h.col >= 0 ? props.current.headerTitle?.(h.col) : undefined;
+    if (scroller.title !== (title ?? "")) scroller.title = title ?? "";
     scroller.style.cursor =
       h.inHeader && h.border >= 0
         ? "col-resize"

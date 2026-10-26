@@ -187,6 +187,7 @@ async function rail(page) {
 
   // The shortcuts are listed with the others, to change them.
   await page.key(",", "Comma", 188, CTRL);
+  await page.settingsTab("Keyboard shortcuts");
   await page.waitFor(`[...document.querySelectorAll('.shortcuts tr')].some(r => r.firstChild?.textContent === 'Next project')`);
   await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);
 }
@@ -287,9 +288,35 @@ async function members(page, dir, shots) {
     "Neon",
     "AlloyDB",
   ]);
-  await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === 'SQLite').click()`);
+  // The search field has the focus, filters the tiles by name or driver (MariaDB speaks
+  // MySQL's), Esc clears it and Enter picks the first match.
+  const tiles = `[...document.querySelectorAll('.driver-tile')].map(b => b.textContent)`;
+  const search = `document.querySelector('.driver-picker .modal-search input')`;
+  assert.equal(await page.eval(`document.activeElement === ${search}`), true);
+  await page.type("SQL");
+  await page.waitFor(`${tiles}.join() === 'PostgreSQL,MySQL,MariaDB,SQL Server,SQLite,Turso / libSQL'`);
+  await page.key("Escape", "Escape", 27);
+  await page.waitFor(`${search}.value === '' && ${tiles}.length === 23`);
+  await page.type("sqlite");
+  await page.waitFor(`${tiles}.join() === 'SQLite'`);
+  await page.key("Enter", "Enter", 13);
   await page.waitFor(`document.querySelector('.project-chips') !== null`);
   assert.equal(await page.eval(`${chip("Interno")}.getAttribute('aria-pressed')`), "true");
+  // The PostgreSQL form is laid out in rows of two and fits a 1366x768 window without scrolling.
+  await page.eval(`(() => {
+    const select = [...document.querySelectorAll('.modal .field')].find(f => f.textContent.startsWith('Driver')).querySelector('select');
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'postgres');
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await page.waitFor(`[...document.querySelectorAll('.modal .field')].some(f => f.textContent.startsWith('Host'))`);
+  const layout = await page.eval(`(() => {
+    const top = (label) => [...document.querySelectorAll('.modal .field')].find(f => f.querySelector('span')?.textContent === label).getBoundingClientRect().top;
+    const modal = document.querySelector('.modal');
+    return { host: top('Host') === top('Port'), database: top('Database') === top('User'), password: top('Password from') === top('Password'),
+      height: modal.offsetHeight, scrolls: modal.scrollHeight > modal.clientHeight };
+  })()`);
+  assert.deepEqual([layout.host, layout.database, layout.password, layout.scrolls], [true, true, true, false]);
+  assert.ok(layout.height <= 680, `dialog height ${layout.height}`);
   await page.eval(`(() => {
     const set = (el, value) => {
       const proto = el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;

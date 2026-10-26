@@ -1,9 +1,16 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
+import {
+  acceptCompletion,
+  autocompletion,
+  closeBrackets,
+  closeBracketsKeymap,
+  completionKeymap,
+} from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { MSSQL, MySQL, PLSQL, PostgreSQL, SQLite, StandardSQL, sql } from "@codemirror/lang-sql";
+import { MSSQL, MySQL, PLSQL, PostgreSQL, SQLite, StandardSQL } from "@codemirror/lang-sql";
 import {
   HighlightStyle,
+  LanguageSupport,
   bracketMatching,
   foldGutter,
   foldKeymap,
@@ -31,11 +38,13 @@ import {
 import { tags as t } from "@lezer/highlight";
 import { dispatchKey } from "../actions";
 import { type CompletionCatalog, type DriverKind, isMongo, toCommandError } from "../api";
+import { annotation, catalogEntry, catalogKey } from "../catalog/catalog";
 import { ContextMenu, type MenuState } from "../components/ContextMenu";
 import { useSetting } from "../settings";
 import { workbench } from "../workbench";
 import { SQL_DRAG, type SqlDrag } from "../sqlNames";
 import "./actions";
+import { type CatalogNote, closeOnTypedWord, codeOnly, keywordCompletion, nameCompletion } from "./completion";
 import { functionCompletion } from "./functions";
 import { joinCompletion } from "./joinCompletion";
 import { lintSql } from "./lint";
@@ -63,6 +72,8 @@ export interface SqlEditorHandle {
   /** Selection in UTF-16 offsets; `from === to` when nothing is selected. */
   getSelection(): { from: number; to: number };
   setText(text: string): void;
+  /** Replaces `from..to` with `text`; the rest of the text keeps its folds. */
+  replace(from: number, to: number, text: string): void;
   /** Inserts `text` on its own line(s) at the cursor and selects it. */
   insert(text: string): void;
   focus(): void;
@@ -85,6 +96,9 @@ interface Props {
   readOnly?: boolean;
   /** Tables and columns to complete; keywords complete without it. */
   catalog?: CompletionCatalog | null;
+  /** With `database`, finds the notes shown in the completion info. */
+  connectionId?: string;
+  database?: string | null;
   /** The connection is a production one: the linter warns about `SELECT *`. */
   production?: boolean;
   host?: EditorHost;
@@ -135,11 +149,21 @@ const theme = EditorView.theme({
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground":
     { backgroundColor: "var(--grid-selection)" },
   ".cm-executing": { backgroundColor: "var(--grid-selection)", transition: "background-color 0.4s" },
+  // The glass of the menus (styles/dialogs.css), solid where it is not supported.
   ".cm-tooltip": {
-    backgroundColor: "var(--bg-sidebar)",
-    border: "1px solid var(--border)",
+    backgroundColor: "var(--glass-menu, var(--bg-sidebar))",
+    backdropFilter: "var(--glass-blur, none)",
+    WebkitBackdropFilter: "var(--glass-blur, none)",
+    border: "1px solid var(--border-strong)",
+    borderRadius: "var(--radius-lg)",
+    boxShadow: "var(--shadow)",
     color: "var(--fg)",
   },
+  // The list keeps the rounded corners; the tooltip itself must not clip, as the description
+  // of the selected entry (.cm-completionInfo) is placed inside it but beside its box.
+  ".cm-tooltip-autocomplete > ul": { borderRadius: "inherit" },
+  // Beside the list it would blur nothing (its backdrop is the list's own box): solid.
+  ".cm-tooltip.cm-completionInfo": { backgroundColor: "var(--bg-sidebar)", backdropFilter: "none", WebkitBackdropFilter: "none" },
   ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
     backgroundColor: "var(--accent)",
     color: "var(--accent-fg)",
@@ -170,20 +194,30 @@ const dialects = {
   databricks: MySQL,
 };
 
-function language(driver: DriverKind, catalog: CompletionCatalog | null | undefined) {
+/** The local notes of the catalog's tables and columns, shown as completion info. They are
+ *  read as each list is built, so a saved note needs no new language nor a new lint. */
+function catalogNotes(connectionId: string | undefined, database: string | null | undefined): CatalogNote | undefined {
+  if (!connectionId) return undefined;
+  return (schema, table, column) =>
+    annotation(catalogEntry(connectionId, catalogKey(database, schema, table, column)), undefined, { full: true });
+}
+
+function language(
+  driver: DriverKind,
+  catalog: CompletionCatalog | null | undefined,
+  connectionId?: string,
+  database?: string | null,
+) {
   if (isMongo(driver)) return mongoLanguage(catalog);
-  const support = sql({
-    dialect: dialects[driver],
-    upperCaseKeywords: true,
-    schema: catalog?.schemas,
-    defaultSchema: catalog?.default_schema ?? undefined,
-  });
-  return [
-    support,
-    support.language.data.of({ autocomplete: joinCompletion(catalog, driver) }),
-    support.language.data.of({ autocomplete: functionCompletion(driver) }),
-    support.language.data.of({ autocomplete: snippetSource }),
-  ];
+  const dialect = dialects[driver];
+  const data = dialect.language.data;
+  return new LanguageSupport(dialect.language, [
+    catalog ? data.of({ autocomplete: nameCompletion(catalog, driver, catalogNotes(connectionId, database)) }) : [],
+    data.of({ autocomplete: keywordCompletion(dialect, driver) }),
+    data.of({ autocomplete: codeOnly(joinCompletion(catalog, driver)) }),
+    data.of({ autocomplete: codeOnly(functionCompletion(driver)) }),
+    data.of({ autocomplete: codeOnly(snippetSource) }),
+  ]);
 }
 
 const reportError = (e: unknown) => workbench().showError(toCommandError(e).message);
@@ -247,6 +281,15 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         indentOnInput(),
         bracketMatching(),
         closeBrackets(),
+        // Before the list's own Enter, which would otherwise take a newline. Tab accepts the open
+        // list before an active snippet's Tab (to its next field, a keymap added later at this
+        // precedence) and before a snippet name's expansion; with no list it does neither.
+        Prec.highest(
+          keymap.of([
+            { key: "Enter", run: closeOnTypedWord },
+            { key: "Tab", run: acceptCompletion },
+          ]),
+        ),
         autocompletion(),
         highlightActiveLine(),
         highlightSelectionMatches(),
@@ -268,7 +311,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         flashField,
         EditorState.readOnly.of(!!props.readOnly),
         syntaxHighlighting(highlight),
-        languageConf.current.of(language(props.driver, props.catalog)),
+        languageConf.current.of(language(props.driver, props.catalog, props.connectionId, props.database)),
         // Registered editor actions take their shortcuts before the keymaps below.
         Prec.highest(
           EditorView.domEventHandlers({
@@ -363,11 +406,11 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
 
   useEffect(() => {
     view.current?.dispatch({
-      effects: languageConf.current.reconfigure(language(props.driver, props.catalog)),
+      effects: languageConf.current.reconfigure(language(props.driver, props.catalog, props.connectionId, props.database)),
     });
     // Columns are checked against the catalog, which may arrive after the text.
     if (view.current) forceLinting(view.current);
-  }, [props.driver, props.catalog]);
+  }, [props.driver, props.catalog, props.connectionId, props.database]);
 
   useEffect(() => {
     view.current?.dispatch({ effects: spellConf.current.reconfigure(spellcheck(spellMode)) });
@@ -383,6 +426,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
       const v = view.current;
       v?.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: text } });
     },
+    replace: (from, to, text) => view.current?.dispatch({ changes: { from, to, insert: text } }),
     insert: (text) => {
       const v = view.current;
       if (!v) return;

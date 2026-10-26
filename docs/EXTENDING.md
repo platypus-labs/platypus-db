@@ -31,7 +31,8 @@ the UI can hide what a connection cannot do.
 
 Existing optional methods are `explain`, `object_ddl` and `databases`. `object_properties`
 and `catalog_foreign_keys` are optional too, but need no flag: their default is an empty
-list. To add one:
+list. `object_comment` has a default too: it takes the comment from the object list, and a
+driver whose list is expensive overrides it with a direct query. To add one:
 1. Add the method, with a default that calls `unsupported("…")`.
 2. Add a flag in `Capabilities`, defaulting to `false`, and the same field in
    `Capabilities` in `api.ts`.
@@ -136,6 +137,12 @@ names a composite type's fields.
 
 Add dialect rules there, with tests. `apps/desktop/src/sqlNames.ts` mirrors `quote_ident`
 for the UI.
+
+`platypus-schema` writes the DDL of the table editor, and the object tab's comment changes
+through it. A new dialect adds its branch to `Ddl::table_comment` and `Ddl::comments`
+(`crates/platypus-schema/src/ddl.rs`); a database without comments returns `None` from
+`table_comment` and goes in `NO_COMMENTS` in `apps/desktop/src/objects/ObjectTab.tsx`, which
+keeps its comment fields read-only.
 
 ### Drivers without SQL (MongoDB)
 

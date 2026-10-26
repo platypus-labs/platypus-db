@@ -2,10 +2,11 @@
 // the command palette runs actions and opens tables, shortcuts can be changed in the
 // Settings, and toolbar buttons hidden.
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL, SHIFT } from "../cdp.mjs";
+import { settingsFile } from "../settings.mjs";
 
 const NAME = "E2E shell";
 const tabCount = `document.querySelectorAll('.tab').length`;
@@ -32,20 +33,6 @@ database = '${path}'
 save_password = false
 `,
   );
-}
-
-async function settingsFile(dir, pattern) {
-  const deadline = Date.now() + 5000;
-  let text = "";
-  while (!pattern.test(text) && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 100));
-    try {
-      text = readFileSync(join(dir, "settings.toml"), "utf8");
-    } catch {
-      // Not written yet.
-    }
-  }
-  assert.match(text, pattern);
 }
 
 async function palette(page, query) {
@@ -99,6 +86,7 @@ export default async function (page, { dir, shots }) {
 
   // A new shortcut for the palette, recorded in the Settings.
   await page.key(",", "Comma", 188, CTRL);
+  await page.settingsTab("Keyboard shortcuts");
   await page.waitFor(`document.querySelector('.shortcuts') !== null`);
   const paletteKey = `[...document.querySelectorAll('.shortcuts tr')].find(r => r.firstChild?.textContent === 'Command palette').querySelector('.shortcut-key')`;
   await page.eval(`${paletteKey}.scrollIntoView(); ${paletteKey}.click(); ${paletteKey}.focus()`);
@@ -109,6 +97,24 @@ export default async function (page, { dir, shots }) {
   if (shots) await page.screenshot(join(shots, "shell-shortcuts.png"));
 
   // Toolbar buttons can be hidden, and shown as icons only.
+  await page.settingsTab("Toolbar");
+  // A tab shows its section alone: the shortcuts went with theirs.
+  assert.equal(await page.eval(`document.querySelectorAll('.modal.settings [role="tabpanel"]').length`), 1);
+  assert.equal(await page.eval(`document.querySelector('.shortcuts') === null && ${settingRow("Language")} === undefined`), true);
+  assert.equal(await page.eval(`document.querySelector('.settings-body h3').textContent`), "Toolbar");
+  // The arrows move through the tabs, Home and End go to the ends.
+  const selectedTab = `document.querySelector('.modal.settings [role="tab"][aria-selected="true"]')`;
+  const nextSection = await page.eval(`${selectedTab}.nextElementSibling.dataset.section`);
+  await page.eval(`${selectedTab}.focus()`);
+  await page.key("ArrowDown", "ArrowDown", 40);
+  await page.waitFor(`${selectedTab}?.dataset.section === ${JSON.stringify(nextSection)} && document.activeElement === ${selectedTab}`);
+  await page.key("End", "End", 35);
+  await page.waitFor(`${selectedTab}?.dataset.section === 'Keyboard shortcuts' && document.querySelector('.shortcuts') !== null`);
+  await page.key("Home", "Home", 36);
+  await page.waitFor(`${selectedTab}?.dataset.section === 'Appearance'`);
+  await page.key("ArrowUp", "ArrowUp", 38);
+  await page.waitFor(`${selectedTab}?.dataset.section === 'Keyboard shortcuts'`);
+  await page.settingsTab("Toolbar");
   await page.eval(`${settingRow("History")}.querySelector('input').click()`);
   await page.eval(`(() => {
     const el = ${settingRow("Buttons")}.querySelector('select');
@@ -120,8 +126,23 @@ export default async function (page, { dir, shots }) {
   // With words, then icons alone (the default) once the setting is reset.
   const scriptText = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Script')?.textContent`;
   await page.waitFor(`${scriptText} === 'Script'`);
+  // The dialog opens again on the tab shown last.
+  await page.waitFor(`document.querySelector('.modal.settings') === null`);
   await page.key(",", "Comma", 188, CTRL);
-  await page.waitFor(`document.querySelector('.modal.settings') !== null`);
+  await page.waitFor(`${selectedTab}?.dataset.section === 'Toolbar'`);
+  // Tab stays in the dialog: from the search (the first stop, focused on opening) on to the
+  // selected tab (the other tabs are reached with the arrows), back from the search to Done,
+  // and on from Done to the search.
+  const done = `[...document.querySelectorAll('.modal.settings .actions button')].find(b => b.textContent === 'Done')`;
+  const search = `document.querySelector('.modal.settings .modal-search input')`;
+  await page.waitFor(`document.activeElement === ${search}`);
+  await page.key("Tab", "Tab", 9);
+  await page.waitFor(`document.activeElement === ${selectedTab}`);
+  await page.eval(`${search}.focus()`);
+  await page.key("Tab", "Tab", 9, SHIFT);
+  await page.waitFor(`document.activeElement === ${done}`);
+  await page.key("Tab", "Tab", 9);
+  await page.waitFor(`document.activeElement === ${search}`);
   await page.eval(`(() => {
     const el = ${settingRow("Buttons")}.querySelector('select');
     Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, 'icons');

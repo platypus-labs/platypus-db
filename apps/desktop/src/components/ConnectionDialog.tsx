@@ -318,7 +318,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     <>
       <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
         <form
-          className="modal"
+          className="modal connection-dialog"
           onSubmit={save}
           onKeyDown={(e) => e.key === "Escape" && onClose()}
           // A required field left empty on another tab: show that tab.
@@ -455,47 +455,49 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   </label>
                 </div>
 
-                {!libsql && (
-                  <label className="field">
-                    <span>
-                      {t(
-                        conn.driver === "mysql" || conn.driver === "sqlserver" || conn.driver === "clickhouse" || conn.driver === "mongo"
-                          ? "Database (optional)"
-                          : conn.driver === "oracle"
-                            ? "Service name"
-                            : "Database",
-                      )}
-                    </span>
-                    <input
-                      value={conn.database}
-                      onChange={(e) => set("database", e.target.value)}
-                      placeholder={
-                        conn.driver === "mongo"
-                          ? "test?authSource=admin&replicaSet=rs0"
-                          : conn.driver === "oracle"
-                            ? "FREEPDB1"
-                            : undefined
-                      }
-                      title={
-                        conn.driver === "mongo"
-                          ? t("The default database, then connection string options after ?; srv=true for mongodb+srv. Users authenticate against admin unless authSource says otherwise.")
-                          : conn.driver === "oracle"
-                            ? t("The service name; with an empty host, a net service name (tnsnames.ora) or a whole connect descriptor.")
-                            : undefined
-                      }
-                    />
-                  </label>
-                )}
-                {conn.driver === "oracle" || conn.driver === "db2" ? <VendorDriverState driver={conn.driver} /> : null}
-
-                <div className="row">
+                <div className="field-grid">
                   {!libsql && (
-                    <label className="field grow">
+                    <label className="field">
+                      <span>
+                        {t(
+                          conn.driver === "mysql" || conn.driver === "sqlserver" || conn.driver === "clickhouse" || conn.driver === "mongo"
+                            ? "Database (optional)"
+                            : conn.driver === "oracle"
+                              ? "Service name"
+                              : "Database",
+                        )}
+                      </span>
+                      <input
+                        value={conn.database}
+                        onChange={(e) => set("database", e.target.value)}
+                        placeholder={
+                          conn.driver === "mongo"
+                            ? "test?authSource=admin&replicaSet=rs0"
+                            : conn.driver === "oracle"
+                              ? "FREEPDB1"
+                              : undefined
+                        }
+                        title={
+                          conn.driver === "mongo"
+                            ? t("The default database, then connection string options after ?; srv=true for mongodb+srv. Users authenticate against admin unless authSource says otherwise.")
+                            : conn.driver === "oracle"
+                              ? t("The service name; with an empty host, a net service name (tnsnames.ora) or a whole connect descriptor.")
+                              : undefined
+                        }
+                      />
+                    </label>
+                  )}
+                  {!libsql && (
+                    <label className="field">
                       <span>{t("User")}</span>
                       <input value={conn.user} onChange={(e) => set("user", e.target.value)} />
                     </label>
                   )}
-                  <label className="field grow">
+                </div>
+                {conn.driver === "oracle" || conn.driver === "db2" ? <VendorDriverState driver={conn.driver} /> : null}
+
+                <div className="field-grid">
+                  <label className="field">
                     <span>{t("{secret} from", { secret })}</span>
                     <select
                       value={source}
@@ -508,33 +510,32 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       <option value="command">{t("Shell command")}</option>
                     </select>
                   </label>
-                </div>
-
-                {source === "command" ? (
-                  <label className="field">
-                    <span>{t("Command that prints the {secret}", { secret: secret.toLowerCase() })}</span>
-                    <input
-                      required
-                      value={conn.password_command ?? ""}
-                      onChange={(e) => set("password_command", e.target.value)}
-                      placeholder="op read op://Work/prod-db/password"
-                      data-field="password_command"
-                    />
-                  </label>
-                ) : (
-                  source !== "pgpass" && (
+                  {source === "command" ? (
                     <label className="field">
-                      <span>{source === "ask" ? t("{secret} (only to test the connection)", { secret }) : secret}</span>
+                      <span>{t("Command that prints the {secret}", { secret: secret.toLowerCase() })}</span>
                       <input
-                        type="password"
-                        value={password}
-                        placeholder={existing && conn.save_password ? t("•••••• (saved)") : ""}
-                        onChange={(e) => setPassword(e.target.value)}
-                        autoComplete="off"
+                        required
+                        value={conn.password_command ?? ""}
+                        onChange={(e) => set("password_command", e.target.value)}
+                        placeholder="op read op://Work/prod-db/password"
+                        data-field="password_command"
                       />
                     </label>
-                  )
-                )}
+                  ) : (
+                    source !== "pgpass" && (
+                      <label className="field">
+                        <span>{source === "ask" ? t("{secret} (only to test the connection)", { secret }) : secret}</span>
+                        <input
+                          type="password"
+                          value={password}
+                          placeholder={existing && conn.save_password ? t("•••••• (saved)") : ""}
+                          onChange={(e) => setPassword(e.target.value)}
+                          autoComplete="off"
+                        />
+                      </label>
+                    )
+                  )}
+                </div>
               </>
             )}
 

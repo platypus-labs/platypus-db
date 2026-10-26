@@ -115,6 +115,15 @@ and shows the ODBC drivers and data sources of the system.
   the DDL of many tables at once.
 - **Object details**: properties, columns, indexes, constraints, foreign keys, incoming
   references and the DDL of any object.
+- **Notes and tags** on tables, views and columns, kept on your computer and never written to
+  the database. A mark and a tooltip in the navigator, `#pii` in the filter to find the tagged
+  objects, and the note and tags in the data viewer's column headers and in completion. They
+  follow the renames made in the app.
+- **Database comments** of tables, views and columns edit in the object tab: the statement
+  shows first. Not on SQLite, libSQL and MongoDB, which have none.
+- **Schema documentation**: right-click a schema, *Export documentation…*, for a Markdown file
+  or a single HTML file (it works offline) with the columns, keys, indexes, comments, notes
+  and an ER diagram.
 - **Search** object names, columns and the source of views, routines and triggers across a
   database; or the text of every row of a schema's tables, opening the matching rows.
 
@@ -124,10 +133,15 @@ and shows the ODBC drivers and data sources of the system.
 
 - Run the statement under the cursor (`Ctrl+Enter`) or the whole script (`Alt+X`); errors are
   pointed out in the text.
-- **Completion** of keywords, tables, columns (`alias.column` too) and built-in functions with
-  their signature. `JOIN ` offers the related tables with alias and condition from the foreign
-  keys; `JOIN t ON ` offers the condition.
-- **Formatter** (`Ctrl+Shift+F`) with configurable keyword case and indentation.
+- **Completion** of keywords, tables, columns and built-in functions with their signature. The
+  columns offered are those of the tables the statement under the cursor reads (even when FROM
+  comes later), and `alias.` completes the columns of a table, a CTE or a subquery. Names that
+  need quotes are quoted on insert. `JOIN ` offers the related tables with alias and condition
+  from the foreign keys; `JOIN t ON ` offers the condition. Tab or Enter accepts; Enter after a
+  word typed exactly as the entry starts a new line. While a snippet's fields are active, Tab
+  moves to the next field.
+- **Formatter** (`Ctrl+Shift+F`) with configurable keyword case and indentation; the same
+  setting gives the case of completed keywords.
 - Line commands, multiple cursors, folding, an outline of the statements, and `Ctrl+click` on a
   name to open its object.
 - **Parameters** (`:id`, `?`) and **variables** (`${name}`) asked in a dialog and kept in a
@@ -173,7 +187,8 @@ and shows the ODBC drivers and data sources of the system.
   otherwise the grid says why it is read-only. Results of a query that reads one table edit
   the same way, with computed columns read-only.
 - Paste cells from a spreadsheet or CSV over the grid or as new rows.
-- Foreign keys show the name of the row they point to and edit with a list of those rows.
+- Foreign keys show the name of the row they point to and edit with a list of those rows; pick
+  the column that names a table's rows from a header's menu or the object tab.
 - PostgreSQL arrays and composite values edit one element or field per line.
 
 ### Table editor
@@ -275,10 +290,12 @@ methods and fields. `mongodb+srv://` and connection string options go in the Dat
   Dracula, Solarized Light and high contrast; your own accent, background, sidebar and text
   colors, interface size, row density, corner radius and editor font size. Inter and
   JetBrains Mono are bundled, so the app looks the same everywhere and works offline.
-- **Settings** (`Ctrl+,`) have a search: it keeps the matching settings, and finds the
+- **Settings** (`Ctrl+,`) show one section at a time, in tabs, and open again on the last one.
+  Their search shows the matching settings of every section, grouped by section, and finds the
   keyboard shortcuts by their action's name.
 - **Resizable navigator**: drag the edge between the connections and the work (or focus it and
-  use the arrows); a double-click brings back the default width.
+  use the arrows); a double-click brings back the default width. `Ctrl+B`, or the button at the
+  left of the top bar, hides and shows it.
 - Every shortcut can be changed; the toolbars show icons (each says what it does on hover), and
   the SQL editor's buttons can be hidden or given their words back; `Ctrl+Shift+T` reopens the
   last closed tab.
@@ -451,8 +468,9 @@ crates/
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
   platypus-schema/         table designs for the table editor and the DDL between them
   platypus-net/            SSH tunnels (russh)
-  platypus-store/          connections (TOML + OS keychain), imports, query history (SQLite)
+  platypus-store/          connections (TOML + OS keychain), imports, query history and catalog notes (SQLite)
   platypus-transfer/       streaming exports, imports, copies between databases, fake rows
+  platypus-docs/           schema documentation: Markdown, HTML and Mermaid ER diagrams
   platypus-conformance/    integration suite run on every driver
   platypus-cli/            `platypus` CLI for exercising the core, and for agents (`--connection`)
   platypus-mcp/            `platypus-mcp`, the MCP server for agents (stdio, rmcp)

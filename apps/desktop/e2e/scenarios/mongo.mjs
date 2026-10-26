@@ -85,21 +85,15 @@ export default async function (page) {
   await page.waitFor(`${visibleTab}?.querySelector('.viewer-bar') != null`);
   assert.match(await waitStatus(page, "s.includes('row')"), /rows/);
   assert.equal(await page.eval(editorText), "db.customers.find({})");
-  assert.equal(await page.eval(`${visibleTab}.querySelector('.viewer-bar .muted').textContent`), "Filter");
   const grid = await page.eval(`(() => { const r = ${visibleTab}.querySelector('.grid-scroll').getBoundingClientRect(); return { x: r.x, y: r.y }; })()`);
   await page.click(grid.x + 80, grid.y + 40); // a cell of the first row
   await page.waitFor(`[...${visibleTab}.querySelectorAll('.document-panel .doc-key')].some(k => k.textContent === 'address')`, 10_000);
 
-  // A header click sorts with .sort(), the filter is a query document.
+  // A header click sorts with .sort().
   await clearStatus(page);
   await page.click(grid.x + 80, grid.y + 14);
   await waitStatus(page, "true");
   assert.match(await page.eval(editorText), /\.sort\(\{ _id: 1 \}\)$/);
-  await page.eval(`${visibleTab}.querySelector('.viewer-bar input').focus()`);
-  await page.type("{ country: 'XX' }");
-  await clearStatus(page);
-  await page.eval(`${visibleTab}.querySelector('.viewer-bar button[type=submit]').click()`);
-  assert.equal(await waitStatus(page, "true"), "0 rows");
 
   // The editor runs a mongosh statement.
   const statement = "db.orders.countDocuments({ status: 'paid' })";

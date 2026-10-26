@@ -21,6 +21,7 @@ import {
 import { useState } from "react";
 import type { DriverKind, SavedConnection } from "../api";
 import { Icon } from "../ui/Icon";
+import { fold } from "../ui/textSearch";
 import { t, msg } from "../i18n";
 
 /** What a profile fills in beyond the driver's defaults. */
@@ -145,24 +146,24 @@ interface Props {
   onClose: () => void;
 }
 
-/** The choices whose name, or driver, contains `needle`. */
+/** The choices whose (translated) name, or driver, contains `needle`, folded. */
 function matching(choices: Choice[], needle: string): Choice[] {
-  return choices.filter((c) => t(c.label).toLowerCase().includes(needle) || c.driver.includes(needle));
+  return choices.filter((c) => fold(t(c.label)).includes(needle) || c.driver.includes(needle));
 }
 
 /** First step of a new connection: the database, as a grid of logos, with a search. */
 export function DriverPicker({ onPick, onClose }: Props) {
   const [filter, setFilter] = useState("");
-  const needle = filter.trim().toLowerCase();
+  const needle = fold(filter.trim());
   const main = matching(CHOICES, needle);
   const pgWire = matching(PG_WIRE, needle);
   const first = main[0] ?? pgWire[0];
   const pick = (c: Choice) => onPick(c.driver, c.preset ?? {});
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal driver-picker" role="dialog" onKeyDown={(e) => e.key === "Escape" && onClose()}>
+      <div className="modal driver-picker" onKeyDown={(e) => e.key === "Escape" && onClose()}>
         <h2>{t("New connection")}</h2>
-        <p className="muted">{t("Choose the database.")}</p>
+        <p className="muted small">{t("Choose the database.")}</p>
         <div className="modal-search">
           <Icon name="search" className="modal-search-icon" />
           <input

@@ -1,0 +1,91 @@
+/* A discreet mark on annotated objects and columns. */
+.catalog-mark {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: var(--fg-muted);
+  vertical-align: middle;
+}
+
+.tag-input {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.tag-chip {
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.85em;
+  line-height: 18px;
+}
+
+.tag-chip button {
+  margin-left: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-muted);
+}
+
+.tag-input input {
+  flex: 1;
+  min-width: 80px;
+  border: 0;
+  background: transparent;
+}
+
+.notes-panel {
+  display: grid;
+  grid-template-columns: 1fr minmax(160px, 30%);
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.notes-panel.with-label {
+  grid-template-columns: 1fr minmax(160px, 30%) auto;
+}
+
+.notes-panel .row-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.notes-panel textarea {
+  resize: vertical;
+  min-height: 28px;
+}
+
+.cell-input {
+  width: 100%;
+  min-width: 120px;
+  border: 0;
+  background: transparent;
+}
+
+/* The schema documentation export (DocsDialog). */
+.docs-dialog .docs-format {
+  flex: 0 0 130px;
+}
+
+.docs-dialog .docs-schemas {
+  max-height: 160px;
+  overflow: auto;
+}
+
+.docs-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.docs-progress progress {
+  width: 100%;
+}

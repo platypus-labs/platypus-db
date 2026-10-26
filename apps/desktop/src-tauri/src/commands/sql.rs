@@ -397,3 +397,59 @@ mod tests {
         assert!(query_source(src, DriverKind::Mongo).is_none());
     }
 }
+
+/// Whether the data viewer may rewrite `sql`: a single read-only query whose top level it can
+/// place changes in with certainty. The rewrites below return `None` for anything else.
+fn rewritable(sql: &str, driver: DriverKind) -> bool {
+    driver == DriverKind::Mongo
+        || platypus_sql::analyze(sql, Dialect::from(driver)).kind == StatementKind::Query
+}
+
+/// `sql` sorted by `column` (descending when `desc`) or, with no column, without the
+/// sort; the rest of the text stays as written. `None` when `sql` is not a read-only query
+/// the sort can be placed in. The data viewer's header sort.
+#[tauri::command]
+pub fn sql_order_by(
+    sql: String,
+    driver: DriverKind,
+    column: Option<String>,
+    desc: bool,
+) -> Option<String> {
+    let order = column.as_deref().map(|c| (c, desc));
+    if driver == DriverKind::Mongo {
+        return platypus_driver_mongo::viewer::set_sort(&sql, order);
+    }
+    if !rewritable(&sql, driver) {
+        return None;
+    }
+    platypus_sql::set_order_by(&sql, Dialect::from(driver), order)
+}
+
+/// Whether the header sort can rewrite `sql`.
+#[tauri::command]
+pub fn sql_sortable(sql: String, driver: DriverKind) -> bool {
+    sql_order_by(sql, driver, Some("x".to_owned()), false).is_some()
+}
+
+/// The query that counts the rows of `sql` (`SELECT COUNT(*)…`, or `countDocuments`); `None`
+/// when it is not a read-only query that can be counted.
+#[tauri::command]
+pub fn sql_count_query(sql: String, driver: DriverKind) -> Option<String> {
+    if driver == DriverKind::Mongo {
+        return platypus_driver_mongo::viewer::count(&sql);
+    }
+    if !rewritable(&sql, driver) {
+        return None;
+    }
+    platypus_sql::count_query(&sql, Dialect::from(driver))
+}
+
+/// `sql` with `condition` added with AND to its top-level `WHERE`; `None` when it is not a read-only
+/// query the condition can be placed in. The grid's quick filters.
+#[tauri::command]
+pub fn sql_add_condition(sql: String, driver: DriverKind, condition: String) -> Option<String> {
+    if !rewritable(&sql, driver) || driver == DriverKind::Mongo {
+        return None;
+    }
+    platypus_sql::add_condition(&sql, Dialect::from(driver), &condition)
+}

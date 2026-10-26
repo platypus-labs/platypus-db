@@ -34,6 +34,8 @@ const defs = new Map<string, AnyDef>();
 let values = new Map<string, unknown>();
 const listeners = new Set<() => void>();
 let version = 0;
+/** Counts the display settings the backend has stored: see `useFormatsStored`. */
+let formatsStored = 0;
 
 function changed() {
   version++;
@@ -111,6 +113,10 @@ export async function setSetting<T extends boolean | number | string>(def: Setti
     changed();
     throw e;
   }
+  if (def.key.startsWith("results.")) {
+    formatsStored++;
+    changed();
+  }
 }
 
 function subscribe(listener: () => void) {
@@ -124,6 +130,16 @@ export const onSettingsChanged = subscribe;
 /** Re-renders when any setting changes. */
 export function useSettingsVersion(): number {
   return useSyncExternalStore(subscribe, () => version);
+}
+
+/**
+ * Changes after the backend has stored a display setting. The backend renders the grid's
+ * text with them: rows fetched on the optimistic change, before the store has it, would
+ * come back in the old format.
+ */
+export function useFormatsStored(): number {
+  useSettingsVersion();
+  return formatsStored;
 }
 
 export function useSetting<T extends boolean | number | string>(def: SettingDef<T>): T {

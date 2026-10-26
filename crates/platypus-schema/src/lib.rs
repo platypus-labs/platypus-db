@@ -28,6 +28,9 @@ pub struct TableDesign {
     pub foreign_keys: Vec<ForeignKeyDesign>,
     /// UNIQUE and CHECK constraints.
     pub constraints: Vec<ConstraintDesign>,
+    /// The table's comment; `None` for none.
+    #[serde(default)]
+    pub comment: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,6 +223,7 @@ pub fn design_of(dialect: Dialect, table: &str, details: &TableDetails) -> Table
                 })
             })
             .collect(),
+        comment: None,
     }
 }
 
@@ -268,6 +272,7 @@ pub async fn load(
 ) -> Result<TableDesign> {
     let details = conn.table_details(schema, table).await?;
     let mut design = design_of(dialect, table, &details);
+    design.comment = conn.object_comment(schema, table).await?;
     let (s, t) = (dialect.quote_literal(schema), dialect.quote_literal(table));
     let actions = match dialect {
         Dialect::Postgres => Some(format!(

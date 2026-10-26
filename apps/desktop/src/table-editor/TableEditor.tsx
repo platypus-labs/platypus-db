@@ -8,6 +8,8 @@ import {
   type TableScript,
   toCommandError,
 } from "../api";
+import { catalogKey, renameCatalog } from "../catalog/catalog";
+import { tableCatalogMoves } from "../catalog/renames";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { Icon, objectIcon } from "../ui/Icon";
@@ -206,6 +208,19 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
       const sid = await sideSession();
       if (sid === null) return;
       await api.applyTableScript(sid, ready.script);
+      if (original) {
+        try {
+          for (const m of tableCatalogMoves(original, design)) {
+            await renameCatalog(
+              connection.id,
+              catalogKey(tab.database, tab.schema, m.from.object, m.from.column),
+              catalogKey(tab.database, tab.schema, m.to.object, m.to.column),
+            );
+          }
+        } catch (e) {
+          workbench().showError(toCommandError(e).message);
+        }
+      }
       setConfirming(false);
       requestNavigatorRefresh({ connectionId: connection.id, database: tab.database, schema: tab.schema });
       onNeedCatalog(true);

@@ -65,6 +65,7 @@ export default async function (page, { dir }) {
     "New SQL script",
     "New saved script",
     "Search objects…",
+    "Export documentation…",
     "Refresh",
     "Disconnect",
     "Navigator filters…",
@@ -112,7 +113,7 @@ export default async function (page, { dir }) {
 
   // Settings: Ctrl+, opens the dialog; a change lands in settings.toml.
   await page.key(",", "Comma", 188, CTRL);
-  await page.waitFor(`document.querySelector('.modal.settings') !== null`);
+  await page.settingsTab("Navigator");
   const limitInput = `[...document.querySelectorAll('.setting')].find(s => s.textContent.includes('LIMIT of Generate SELECT')).querySelector('input')`;
   await page.eval(`(${limitInput}).focus(); (${limitInput}).select()`);
   await page.type("50");

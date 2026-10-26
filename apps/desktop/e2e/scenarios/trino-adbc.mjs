@@ -54,19 +54,21 @@ schema = "default"
 export default async function (page) {
   await page.waitFor(`window.__platypus !== undefined && ${treeRow(NAME)} !== undefined`);
 
-  // The editor connects on its first run: the driver is missing, the popup offers it.
+  // Opening the tab connects the navigator, which finds no driver: the popup offers it. The
+  // popup is a modal, so the run is started only once it is open (a key pressed before it
+  // appears may or may not reach the editor).
   await page.eval(`${treeRow(NAME)}.id = 'e2e-conn'`);
   await page.clickSel("#e2e-conn", { clickCount: 2 });
   await page.waitFor(`${visibleTab} !== undefined`, 15_000);
   await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
   await page.type("SELECT 42 AS answer");
   await page.waitFor(`${visibleTab}.querySelector('.cm-line')?.textContent === 'SELECT 42 AS answer'`);
-  await page.eval(`${visibleTab}.querySelectorAll('.statusbar span').forEach(s => (s.textContent = ''))`);
-  await page.key("Enter", "Enter", 13, 2);
   await page.waitFor(`${popup}?.textContent.includes('Trino needs a driver')`, 15_000);
+  // The editor's session asks for the same driver while the popup is open: it joins it.
+  await page.eval(`${visibleTab}.querySelectorAll('.statusbar span').forEach(s => (s.textContent = ''))`);
+  await page.eval(`${button(visibleTab, "Run")}.click()`);
   // The registry answers with the package.
   await page.waitFor(`${popup}.textContent.includes('Apache-2.0')`, 30_000);
-  // The editor's session and the navigator's ask for the same driver: one popup.
   assert.equal(await page.eval(`document.querySelectorAll('.driver-popup').length`), 1);
   await page.eval(`${button(popup, "Download and connect")}.click()`);
   await page.waitFor(`${popup} === null`, 120_000);
@@ -76,6 +78,7 @@ export default async function (page) {
 
   // Settings › Drivers lists it and removes it.
   await page.eval(`document.querySelector('button[aria-label="Settings"]').click()`);
+  await page.settingsTab("Drivers");
   await page.waitFor(`document.querySelector('.modal.settings [data-driver="trino"]') !== null`);
   const listed = await page.eval(`document.querySelector('.modal.settings [data-driver="trino"]').textContent`);
   assert.ok(listed.includes("Trino"), listed);

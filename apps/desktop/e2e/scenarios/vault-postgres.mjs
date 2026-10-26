@@ -44,6 +44,7 @@ save_password = true
 /** Opens the Settings at the master password. */
 async function openSettings(page) {
   await page.key(",", "Comma", 188, CTRL);
+  await page.settingsTab("Master password");
   await page.waitFor(`document.querySelector('.master-password button') !== null`);
 }
 

@@ -18,6 +18,10 @@
   transition: background-color 0.35s ease-out;
 }
 
+.shell.sidebar-collapsed {
+  grid-template-columns: 52px 0 minmax(0, 1fr);
+}
+
 .shell[data-env="dev"] {
   --frame: var(--frame-dev);
   --env-ink: var(--type-dev);

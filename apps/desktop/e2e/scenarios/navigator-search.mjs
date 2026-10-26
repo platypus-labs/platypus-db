@@ -69,8 +69,13 @@ export default async function (page, { shots }) {
   await page.eval(`${row("demo")}.querySelector(".twisty").click()`);
   await page.waitFor(`${row("orders")} !== undefined`, 15_000);
 
-  // Tables show their estimated rows and size.
-  assert.match(await page.eval(`${row("orders")}.querySelector('.tree-detail')?.textContent ?? ''`), /\d+(\.\d)? (B|KB|MB)$/);
+  // Tables show their estimated rows at the end of the row, and in the tooltip with the size.
+  assert.match(await page.eval(`${row("orders")}.title`), /\d+(\.\d)? (B|KB|MB)$/);
+  assert.equal(await page.eval(`${row("orders")}.querySelector('.tree-detail')`), null);
+  // PostgreSQL has no estimate before it has statistics of the table: then neither shows one.
+  const count = await page.eval(`${row("orders")}.querySelector('.tree-count')?.textContent ?? null`);
+  if (count === null) assert.doesNotMatch(await page.eval(`${row("orders")}.title`), /~\S+ rows?\b/);
+  else assert.match(count, /^\d/);
 
   // Metadata search: names and columns; a hit opens the object.
   await rightClick(page, NAME);

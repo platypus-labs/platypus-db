@@ -16,6 +16,9 @@ import { dropCached, loadCached, pruneCached, saveCached } from "../navigator/di
 import { FilterDialog } from "../navigator/FilterDialog";
 import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
 import { onNavigatorRefresh } from "../navigatorEvents";
+import { toggleSidebar, toggleSidebarTitle } from "../shell/sidebar";
+import { annotation, catalogEntry, catalogKey, parseFilter, useCatalogVersion } from "../catalog/catalog";
+import { openDocs } from "../catalog/DocsDialog";
 import { toggled } from "../sets";
 import { SQL_DRAG, type SqlDrag, qualifiedName, quoteIdent, selectLimit, selectSql, viewerSql } from "../sqlNames";
 import type { TabInit, TabModel } from "../tabs/registry";
@@ -25,7 +28,7 @@ import { connectionColor, typeBadge } from "../connections";
 import { Icon, type IconName, objectIcon } from "../ui/Icon";
 import { ContextMenu, type MenuState, type MenuTarget } from "./ContextMenu";
 import { type FolderNode, folderTree, newFolder } from "../projects/folders";
-import { t, msg } from "../i18n";
+import { t, msg, plural } from "../i18n";
 
 /** `cached`: read from the disk cache, not yet reloaded from the server. */
 type Load<T> =
@@ -71,9 +74,14 @@ function formatBytes(bytes: number): string {
   return `${unit === 0 ? value : value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
 }
 
-/** `~1.2K rows · 3.4 MB`, from what the statistics say. */
+/** `~1.2K`: the row count the statistics say, compact, for the end of the row. */
+function rowCount(object: ObjectMeta): string | undefined {
+  return object.rows == null ? undefined : compact.format(object.rows);
+}
+
+/** `~1,234 rows · 3.4 MB`, for the row's tooltip. */
 function sizeDetail(object: ObjectMeta): string | undefined {
-  const parts = [object.rows != null && `~${compact.format(object.rows)} rows`, object.size != null && formatBytes(object.size)];
+  const parts = [object.rows != null && `~${plural(object.rows, "{n} row", "{n} rows")}`, object.size != null && formatBytes(object.size)];
   return parts.filter(Boolean).join(" · ") || undefined;
 }
 
@@ -144,7 +152,11 @@ interface Row {
   /** A short tag after the label, e.g. PROD. */
   badge?: string | null;
   detail?: string;
+  /** A compact number at the end of the row, muted; it gives way before the label does. */
+  count?: string;
   title?: string;
+  /** Has a local note or tags: a discreet mark after the label. */
+  marked?: boolean;
   muted?: boolean;
   /** `undefined`: leaf. */
   expanded?: boolean;
@@ -193,6 +205,7 @@ export function Navigator(props: Props) {
   const { connections, project, onAddExisting, error, onNew, onImport, onEdit, onOpenTab, session, disconnect, active, onError } = props;
   // The ref is the source of truth, so a load sees what was merged just before it.
   const cacheRef = useRef<Cache>(new Map());
+  useCatalogVersion();
   const [cache, setCache] = useState<Cache>(cacheRef.current);
   const updateCache = (change: (m: Cache) => Cache) => {
     cacheRef.current = change(cacheRef.current);
@@ -370,7 +383,7 @@ export function Navigator(props: Props) {
       t.kind === "query" && t.connectionId === c.id && (t.database ?? null) === db && t.table === target;
     if (workbench().focusTab(showing)) return;
     onOpenTab(c, {
-      sql: viewerSql(c.driver, target, "", null),
+      sql: viewerSql(c.driver, target),
       autorun: true,
       title: object.name,
       table: target,
@@ -434,7 +447,9 @@ export function Navigator(props: Props) {
     [],
   );
 
-  const needle = filter.trim().toLowerCase();
+  const parsed = parseFilter(filter);
+  const needle = parsed.text.toLowerCase();
+  const needTags = parsed.tags;
   const rows: Row[] = [];
   const status = (key: string): Pick<Row, "status" | "detail"> => {
     const entry = cache.get(key);
@@ -586,11 +601,13 @@ export function Navigator(props: Props) {
       const matches = objects?.filter(
         (o) =>
           (!needle || o.name.toLowerCase().includes(needle)) &&
+          (needTags.length === 0 ||
+            needTags.every((t) => catalogEntry(c.id, catalogKey(db, schema.name, o.name))?.tags.includes(t))) &&
           (!simple || SIMPLE_KINDS.has(o.kind)) &&
           !hiddenObject(o.name),
       );
-      if (needle && objects && matches?.length === 0) continue;
-      const sOpen = expanded.has(skey) || (!!needle && !!matches?.length);
+      if ((needle || needTags.length > 0) && objects && matches?.length === 0) continue;
+      const sOpen = expanded.has(skey) || ((!!needle || needTags.length > 0) && !!matches?.length);
       out.push({
         key: skey,
         depth,
@@ -622,7 +639,7 @@ export function Navigator(props: Props) {
         if (items.length === 0) continue;
         const fkey = `${skey}#${folder.kind}`;
         const fOpen =
-          expanded.has(fkey) || !!needle || (folder.kind === "table" && !expanded.has(`${fkey}!`));
+          expanded.has(fkey) || !!needle || needTags.length > 0 || (folder.kind === "table" && !expanded.has(`${fkey}!`));
         out.push({
           key: fkey,
           depth: depth + 1,
@@ -697,6 +714,9 @@ export function Navigator(props: Props) {
     depth: number,
   ): Row[] {
     const icon = objectIcon(object.kind);
+    const entry = catalogEntry(c.id, catalogKey(db, schema.name, object.name));
+    const marked = !!(entry?.note || entry?.tags.length);
+    const title = annotation(entry, object.comment);
     // Triggers are named per table in PostgreSQL: the key includes the table.
     const okey = `${baseKey(c, db)}/${schema.name}/${object.kind === "trigger" && object.parent ? `${object.parent}.` : ""}${object.name}`;
     const target = qualifiedName(c.driver, schema, object.name);
@@ -709,7 +729,8 @@ export function Navigator(props: Props) {
           label: object.name,
           icon,
           detail: object.parent ? t("on {table}", { table: object.parent }) : undefined,
-          title: object.comment ?? undefined,
+          title,
+          marked,
           onOpen: () => openObject(c, db, schema, object),
           menu,
           sql: { name: target },
@@ -723,8 +744,9 @@ export function Navigator(props: Props) {
         depth,
         label: object.name,
         icon,
-        detail: sizeDetail(object),
-        title: object.comment ?? undefined,
+        count: rowCount(object),
+        title: [title, sizeDetail(object)].filter(Boolean).join("\n") || undefined,
+        marked,
         expanded: open,
         onToggle: () => toggle(okey, () => void loadDetails(c, db, schema.name, object.name)),
         onOpen: () => openData(c, db, schema, object, target),
@@ -761,19 +783,26 @@ export function Navigator(props: Props) {
     section(
       msg("Columns"),
       details.columns.length,
-      details.columns.map((col) => ({
-        key: `${okey}.${col.name}`,
-        depth: depth + 2,
-        label: col.name,
-        icon: col.primary_key ? "key" : "column",
-        detail: `${col.data_type}${col.nullable ? "" : ` · ${t("not null")}`}`,
-        title: [col.default && t("default {value}", { value: col.default }), col.comment].filter(Boolean).join("\n") || undefined,
-        menu: {
-          scope: "navigator.column",
-          arg: { connection: c, database: db, schema, object, column: col.name },
-        },
-        sql: { name: quoteIdent(col.name, c.driver) },
-      })),
+      details.columns.map((col) => {
+        const centry = catalogEntry(c.id, catalogKey(db, schema.name, object.name, col.name));
+        return {
+          key: `${okey}.${col.name}`,
+          depth: depth + 2,
+          label: col.name,
+          icon: col.primary_key ? "key" : "column",
+          detail: `${col.data_type}${col.nullable ? "" : ` · ${t("not null")}`}`,
+          title:
+            [col.default && t("default {value}", { value: col.default }), annotation(centry, col.comment)]
+              .filter(Boolean)
+              .join("\n") || undefined,
+          marked: !!(centry?.note || centry?.tags.length),
+          menu: {
+            scope: "navigator.column",
+            arg: { connection: c, database: db, schema, object, column: col.name },
+          },
+          sql: { name: quoteIdent(col.name, c.driver) },
+        };
+      }),
     );
     section(
       msg("Indexes"),
@@ -913,6 +942,17 @@ export function Navigator(props: Props) {
         <button className="icon" title={t("New connection")} aria-label={t("New connection")} onClick={onNew}>
           <Icon name="plus" />
         </button>
+        <button
+          type="button"
+          className="icon"
+          title={toggleSidebarTitle()}
+          aria-label={t("Show or hide the navigator")}
+          // Shown with the navigator only.
+          aria-expanded
+          onClick={toggleSidebar}
+        >
+          <Icon name="sidebar-close" />
+        </button>
       </div>
       {connections.length > 0 && (
         <div className="tree-search">
@@ -1025,9 +1065,11 @@ export function Navigator(props: Props) {
               )
             )}
             <span className="tree-label">{row.label}</span>
+            {row.marked && <span className="catalog-mark" aria-label={t("Has notes")} />}
             {row.connected && <span className="connected-mark" role="img" aria-label={t("Connected")} />}
             {row.badge && <span className={`type-badge ${row.badge.toLowerCase()}`}>{row.badge}</span>}
             {row.detail && <span className="tree-detail">{row.detail}</span>}
+            {row.count && <span className="tree-count">{row.count}</span>}
             {row.actions && (
               <span className="tree-actions" onClick={(e) => e.stopPropagation()}>
                 {row.actions}
@@ -1166,6 +1208,16 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       run: ({ connection }) => workbench().openTab("search", connection.id, { mode: "metadata" }),
     }),
     registerAction({
+      id: "connection.export_docs",
+      scope: "navigator.connection",
+      title: "Export documentation…",
+      group: "open",
+      order: 30,
+      // The documentation covers tables and views, which a Mongo database has none of.
+      when: ({ connection }) => connection.driver !== "mongo",
+      run: ({ connection }) => openDocs(connection, null, null),
+    }),
+    registerAction({
       id: "connection.filters",
       scope: "navigator.connection",
       title: "Navigator filters…",
@@ -1237,6 +1289,15 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       when: ({ connection }) => connection.driver !== "mongo",
       run: ({ connection, database, schema }) =>
         workbench().openTab("search", connection.id, { database, mode: "data", schema: schema.name }),
+    }),
+    registerAction({
+      id: "schema.export_docs",
+      scope: "navigator.schema",
+      title: "Export documentation…",
+      group: "open",
+      order: 34,
+      when: ({ connection }) => connection.driver !== "mongo",
+      run: ({ connection, database, schema }) => openDocs(connection, database, schema.name),
     }),
     registerAction({
       id: "schema.refresh",

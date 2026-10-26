@@ -95,6 +95,17 @@ pub trait Connection: Send + Sync + fmt::Debug {
         Ok(Vec::new())
     }
 
+    /// The comment of table or view `name`, from the object list unless the driver has a
+    /// cheaper query.
+    async fn object_comment(&self, schema: &str, name: &str) -> Result<Option<String>> {
+        Ok(self
+            .objects(schema)
+            .await?
+            .into_iter()
+            .find(|o| o.name == name)
+            .and_then(|o| o.comment))
+    }
+
     /// The databases of the server this session could switch to, sorted by name.
     /// Optional: see [`Capabilities::multiple_databases`].
     async fn databases(&self) -> Result<Vec<String>> {

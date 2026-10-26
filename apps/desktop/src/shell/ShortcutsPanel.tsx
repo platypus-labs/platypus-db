@@ -13,6 +13,7 @@ import {
 import { toCommandError } from "../api";
 import { useSettingsVersion } from "../settings";
 import { msg, t } from "../i18n";
+import { fold } from "../ui/textSearch";
 
 const SCOPES: Record<string, string> = {
   global: msg("Everywhere"),
@@ -33,9 +34,11 @@ const SCOPES: Record<string, string> = {
 
 const scopeLabel = (scope: ActionScope) => t(SCOPES[scope] ?? scope);
 
-/** Whether an action's title (in English or translated) or id contains `needle`, lowercase. */
+/** Whether an action's title (in English or translated) or id contains `needle`, case and
+ *  accents ignored. */
 export function actionMatches(a: Action, needle: string): boolean {
-  return !needle || t(a.title).toLowerCase().includes(needle) || a.title.toLowerCase().includes(needle) || a.id.includes(needle);
+  const n = fold(needle);
+  return !n || fold(t(a.title)).includes(n) || fold(a.title).includes(n) || a.id.includes(n);
 }
 
 /** Every action with its shortcut: click one, press the new keys; Backspace removes it.
@@ -51,7 +54,7 @@ export function ShortcutsPanel({ search = "" }: { search?: string }) {
   }, [recording]);
   const [filter, setFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const needle = filter.trim().toLowerCase();
+  const needle = filter.trim();
   const actions = allActions()
     .filter((a) => actionMatches(a, needle) && actionMatches(a, search))
     .sort((a, b) => a.scope.localeCompare(b.scope) || t(a.title).localeCompare(t(b.title)));

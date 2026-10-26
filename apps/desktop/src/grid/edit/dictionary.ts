@@ -3,7 +3,8 @@
  * to (e.g. a customer's name next to `customer_id`), and edits with a list of those rows.
  * Labels load in batches for the values the grid draws, on the navigator session.
  */
-import { api, type ColumnMeta, type Lookup, type TableDetails, toCommandError } from "../../api";
+import { api, type ForeignKeyMeta, type Lookup, toCommandError } from "../../api";
+import { labelColumn } from "./labelColumn";
 import type { EditMeta } from "./meta";
 
 /** Values looked up per request. */
@@ -11,18 +12,14 @@ const BATCH = 500;
 /** Rows offered by the editor's list. */
 export const OPTION_LIMIT = 1000;
 
-/** Names that usually describe a row, best first. */
-const LABEL_NAMES = ["name", "title", "label", "description", "descr", "code", "username", "email"];
-const TEXT_TYPE = /char|text|string|enum|citext/i;
-
-/** The column that best describes the rows of `details`, other than its key `key`. */
-export function labelColumn(details: TableDetails, key: string): string | null {
-  const candidates = details.columns.filter((c) => c.name !== key && !c.primary_key);
-  const named = (c: ColumnMeta) => LABEL_NAMES.indexOf(c.name.toLowerCase());
-  const byName = candidates
-    .filter((c) => named(c) >= 0)
-    .sort((a, b) => named(a) - named(b))[0];
-  return (byName ?? candidates.find((c) => TEXT_TYPE.test(c.data_type)))?.name ?? null;
+/** The single-column foreign keys of `meta`: the result column, the key and its referenced column. */
+export function foreignKeyColumns(meta: EditMeta): { col: number; fk: ForeignKeyMeta; key: string }[] {
+  const byColumn = new Map(meta.columns.flatMap((c, i) => (c ? [[c.name, i] as const] : [])));
+  return meta.details.foreign_keys.flatMap((fk) => {
+    const col = fk.columns.length === 1 ? byColumn.get(fk.columns[0]!) : undefined;
+    const key = fk.ref_columns[0];
+    return col === undefined || key === undefined ? [] : [{ col, fk, key }];
+  });
 }
 
 interface Column {
@@ -41,21 +38,19 @@ export class Dictionary {
     private readonly session: () => Promise<number | null>,
     /** Called when labels arrive, to redraw. */
     private readonly onLoad: () => void,
+    /** The column the user picked to describe a referenced table's rows, if any. */
+    private readonly preferred: (schema: string, table: string) => string | undefined,
   ) {}
 
   /** Finds the dictionaries of `meta`'s single-column foreign keys. */
   async init(meta: EditMeta) {
     const sessionId = await this.session();
     if (sessionId === null) return;
-    const byColumn = new Map(meta.columns.flatMap((c, i) => (c ? [[c.name, i] as const] : [])));
     await Promise.all(
-      meta.details.foreign_keys.map(async (fk) => {
-        const col = fk.columns.length === 1 ? byColumn.get(fk.columns[0]!) : undefined;
-        const key = fk.ref_columns[0];
-        if (col === undefined || key === undefined) return;
+      foreignKeyColumns(meta).map(async ({ col, fk, key }) => {
         try {
           const details = await api.tableDetails(sessionId, fk.ref_schema, fk.ref_table);
-          const label = labelColumn(details, key);
+          const label = labelColumn(details, key, this.preferred(fk.ref_schema, fk.ref_table));
           if (label === null || this.disposed) return;
           this.columns.set(col, {
             lookup: { schema: fk.ref_schema, table: fk.ref_table, key, label },

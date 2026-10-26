@@ -81,22 +81,22 @@ export default async function (page) {
   }
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent === 'Open data').click()`);
 
-  // Data viewer: autorun, header sort and filter.
+  // Data viewer: autorun, header sort.
   await page.waitFor(`${visibleTab}?.querySelector('.viewer-bar') != null`);
-  const first = await waitStatus(page, "s.includes('row')");
+  // The load goes on after its first rows, up to the prefetch, and each batch rewrites the
+  // status: only when the loading bar is gone has the old query nothing left to say.
+  const first = await waitStatus(page, `s.includes('row') && ${visibleTab}.querySelector('.result-loading') === null`);
   assert.match(first, /rows/);
 
   const grid = await page.eval(`(() => { const r = ${visibleTab}.querySelector('.grid-scroll').getBoundingClientRect(); return { x: r.x, y: r.y }; })()`);
   await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); s.textContent = ''; })()`);
   await page.click(grid.x + 80, grid.y + 14); // first column header
+  // The sorted statement in the editor is the signal that the sort took effect, then the run
+  // it starts must end; nothing but that run can fill the cleared status.
+  await page.waitFor(`/ORDER BY \\S+ ASC/.test(${visibleTab}.querySelector('.cm-content').textContent)`, 15_000);
   await waitStatus(page, "true");
-  assert.match(await page.eval(`${visibleTab}.querySelector('.cm-content').textContent`), /ORDER BY \S+ ASC/);
 
-  await page.eval(`${visibleTab}.querySelector('.viewer-bar input').focus()`);
-  await page.type("1 = 0");
-  await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); s.textContent = ''; })()`);
-  await page.eval(`${visibleTab}.querySelector('.viewer-bar button[type=submit]').click()`);
-  assert.equal(await waitStatus(page, "true"), "0 rows");
+  assert.equal(await page.eval(`${visibleTab}.querySelector('.viewer-bar input')`), null, "no WHERE bar");
 
   // Generate SELECT uses the navigator.select_limit setting (default 200).
   await menu(page, "#e2e-orders");

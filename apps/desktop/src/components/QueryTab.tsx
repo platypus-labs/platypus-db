@@ -16,6 +16,7 @@ import {
   isMongo,
 } from "../api";
 import { asksPassword, isProduction } from "../connections";
+import type { NotesScope } from "../grid/ResultGrid";
 import type { EditSource, TableRef } from "../grid/edit/meta";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
 import { cliName } from "../editor/actions";
@@ -42,6 +43,8 @@ import { Icon } from "../ui/Icon";
 import { scrollSideways } from "../ui/scroll";
 import { notifyRunEnded } from "../shell/notify";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
+import { runGate } from "./runGate";
+import { type ViewerSort, nextSort, queryKey, sortIn, sortOf, statementRange, viewerQueries } from "./viewerSort";
 import { t, plural, msg } from "../i18n";
 
 /** Auto-refresh intervals in seconds, `0` for off. */
@@ -82,10 +85,12 @@ export interface QueryTabModel extends TabBase {
   table?: string | null;
   /** Data viewer: the same table by schema and name, for the data editor. */
   tableRef?: TableRef | null;
-  /** Data viewer: `WHERE` clause typed by the user. */
-  filter?: string;
-  /** Data viewer: server-side sort. */
-  sort?: Sort | null;
+  /** Data viewer: the header sort, with the statement it was written into. */
+  sort?: ViewerSort | null;
+  /** Data viewer: its own query, the one it opened with or the last rewrite of it by the header
+   *  sort or a quick filter. Its rows are the table's rows; another query typed in the tab is
+   *  not the viewer's. */
+  viewerQuery?: string | null;
   /** Values of `${name}` and `:name`, kept with the tab. */
   variables?: Record<string, string>;
   /** Results as text, like a console, instead of the grid. */
@@ -106,6 +111,9 @@ const clientError = (message: string, kind = "other"): CommandError => ({
   hint: null,
   position: null,
 });
+
+/** The status of a statement the user stopped before it had a result. */
+const cancelled = (): ResultStatus => ({ kind: "error", error: clientError(t("Cancelled"), "cancelled") });
 
 declare module "../tabs/registry" {
   interface TabKinds {
@@ -159,19 +167,6 @@ function newResult(sql: string, offset: number, status: ResultStatus, limit: num
   return { id: nextResultId++, sql, offset, jobId: null, columns: null, rows: 0, fetching: false, status, limit };
 }
 
-function isTerminal(status: ResultStatus, limited: boolean) {
-  switch (status.kind) {
-    case "affected":
-    case "error":
-      return true;
-    case "rows":
-      // Without a limit the job pauses on demand, so the first rows are the end of "running".
-      return limited ? status.finished : true;
-    default:
-      return false;
-  }
-}
-
 interface ExportProgress {
   exportId: number | null;
   rows: number;
@@ -202,15 +197,43 @@ export function QueryTab({
   const warnMinutes = useSetting(transactionWarning);
   const slowSeconds = useSetting(slowQuerySeconds);
   const warned = useRef(false);
-  const [filter, setFilter] = useState(tab.filter ?? "");
   const [count, setCount] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState<ExportProgress | null>(null);
   const [results, setResults] = useState<Result[]>([]);
   const [activeResult, setActiveResult] = useState(0);
   const [running, setRunning] = useState(false);
+  const shown = results[activeResult];
+  /** Data viewer: the last statement found to be a read-only query the header sort can rewrite
+   *  with certainty; asked once per statement, not at each keystroke. */
+  const [rewritable, setRewritable] = useState<string | null>(null);
+  useEffect(() => {
+    if (!tab.table || shown === undefined) return;
+    let live = true;
+    const sql = shown.sql;
+    api.sqlSortable(sql, connection.driver).then(
+      (ok) => live && setRewritable(ok ? sql : null),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [tab.table, shown?.sql, connection.driver]);
+  /** The shown rows come from such a query, still as it ran in the editor: the header sort and
+   *  the quick filters can rewrite it. Typing in it turns them off until it runs again. */
+  const sortable =
+    shown?.status.kind === "rows" && rewritable === shown.sql && statementRange(shown, tab.sql) !== null;
+  /** The viewer's sort of the shown statement, for the header arrow and the next click. */
+  const shownSort = tab.table && shown ? sortOf(tab.sort, shown.sql) : null;
+  // A count belongs to the statement it counted.
+  const shownKey = shown ? queryKey(shown.sql) : null;
+  useEffect(() => setCount(null), [shownKey]);
   /** The run going on was started by auto-refresh. */
   const autoRun = useRef(false);
+  /** The data viewer's own queries, to tell them from other queries typed in the tab. */
+  const [viewerOwn] = useState(() =>
+    viewerQueries(tab.viewerQuery, tab.table ? viewerSql(connection.driver, tab.table) : null),
+  );
   const [blocked, setBlocked] = useState<RunMode | null>(null);
   const [panel, setPanel] = useState<SidePanel | null>(null);
   const togglePanel = (p: SidePanel) => setPanel((open) => (open === p ? null : p));
@@ -228,6 +251,10 @@ export function QueryTab({
   const runToken = useRef(0);
   const jobs = useRef<number[]>([]);
   const currentJob = useRef<number | null>(null);
+  /** The gate of the statement `runOne` last ran, which Cancel and closing the tab end. */
+  const statement = useRef<ReturnType<typeof runGate> | null>(null);
+  /** Cancel was pressed during the run: no statement after the one it reached runs. */
+  const cancelAsked = useRef(false);
   /** The data editor has changes that running again would lose. */
   const unsaved = useRef(false);
   /** Data viewer: the table's keys, loaded once and again after DDL. */
@@ -249,8 +276,16 @@ export function QueryTab({
     for (const id of jobs.current) void api.closeQuery(id);
     jobs.current = [];
   };
-  // Release results when the tab closes.
-  useEffect(() => closeJobs, []);
+  // Release results when the tab closes; a statement still waiting for the backend ends too,
+  // and the run behind it stops there.
+  useEffect(
+    () => () => {
+      runToken.current++;
+      statement.current?.abandon(cancelled());
+      closeJobs();
+    },
+    [],
+  );
 
   // Without a password prompt the catalog can load right away; otherwise on first run.
   useEffect(() => {
@@ -296,19 +331,17 @@ export function QueryTab({
     return at === null || !all[at] ? [] : [all[at]];
   }
 
-  /** Runs one statement and resolves with its first terminal status; `seen` gets its job,
-   *  columns and rows as they arrive. */
+  /** Runs one statement and resolves with its first terminal status, once its job is known
+   *  too (a fast statement finishes before `runQuery` returns the job), or when Cancel or
+   *  closing the tab ends it before that; `seen` gets its job, columns and rows as they
+   *  arrive. */
   function runOne(sessionId: number, result: Result, token: number, history: boolean, seen?: Seen): Promise<ResultStatus> {
-    const limited = result.limit !== null;
     return new Promise((resolve) => {
-      let settled = false;
-      const settle = (status: ResultStatus) => {
-        if (!settled && isTerminal(status, limited)) {
-          settled = true;
-          resolve(status);
-        }
-      };
+      const gate = runGate(result.limit !== null, resolve);
+      const { settle, jobKnown } = gate;
+      statement.current = gate;
       const onEvent = (event: QueryEvent) => {
+        if (gate.abandoned()) return;
         if (token !== runToken.current) return settle({ kind: "skipped" });
         let status: ResultStatus | null = null;
         switch (event.type) {
@@ -345,14 +378,29 @@ export function QueryTab({
       };
       api.runQuery(sessionId, result.sql, result.limit, onEvent, history).then(
         (jobId) => {
+          // The tab closed before the backend answered: the job it started has no owner, and
+          // its statement may be running.
+          if (gate.abandoned()) {
+            void api
+              .cancelQuery(jobId)
+              .catch(() => undefined)
+              .then(() => api.closeQuery(jobId));
+            return;
+          }
           jobs.current.push(jobId);
           currentJob.current = jobId;
           if (seen) seen.jobId = jobId;
           update(result.id, { jobId });
+          jobKnown();
+          // Cancel came while the backend was starting the job (e.g. reconnecting): it stops the
+          // statement now, unless that has ended already.
+          if (gate.cancelDue()) void api.cancelQuery(jobId).catch((e: unknown) => onError(toCommandError(e).message));
         },
         (e: unknown) => {
+          if (gate.abandoned()) return;
           const status: ResultStatus = { kind: "error", error: toCommandError(e) };
           update(result.id, { status });
+          jobKnown();
           settle(status);
         },
       );
@@ -391,6 +439,14 @@ export function QueryTab({
     Object.assign(lastAnswers.current, answer);
     for (const k of ask) if (!k.startsWith("?")) defined.add(k);
     return { ...variables, ...answer };
+  }
+
+  /** `p`'s SQL with its parameters filled in, outside a run (Explain, Count rows): the tab's
+   *  variables and the last answers, asking for the rest; null when the user cancels. */
+  async function filledIn(p: Planned): Promise<string | null> {
+    if (!p.params.length) return p.sql;
+    const values = await fillParams(p, { ...(tab.variables ?? {}), ...lastAnswers.current }, new Set());
+    return values && substitute(p.sql, p.params, values, connection.driver);
   }
 
   /** Exports the rows of `sql` to `path` instead of showing them (`@export`). */
@@ -473,6 +529,7 @@ export function QueryTab({
     setResults((all) => (append ? [...all, ...own] : own));
     if (!auto) setActiveResult(base);
     autoRun.current = auto;
+    cancelAsked.current = false;
     setRunning(true);
     editor.current!.setError(null);
 
@@ -518,7 +575,7 @@ export function QueryTab({
             if (connection.read_only && added.some((a) => !a.readOnly)) {
               return { kind: "error", error: clientError(t("{name} is read-only and {path} may modify data.", { name: connection.name, path })) };
             }
-            if (!(await confirmed(added))) return { kind: "error", error: clientError(t("Cancelled"), "cancelled") };
+            if (!(await confirmed(added))) return cancelled();
             const addedResults = added.map((a) => resultOf(a, false));
             queue.splice(i + 1, 0, ...added);
             own.splice(i + 1, 0, ...addedResults);
@@ -560,7 +617,7 @@ export function QueryTab({
       } else {
         const values = p.params.length ? await fillParams(p, variables, defined) : variables;
         if (!values) {
-          status = { kind: "error", error: clientError(t("Cancelled"), "cancelled") };
+          status = cancelled();
         } else {
           if (p.params.length) {
             sql = substitute(p.sql, p.params, values, connection.driver);
@@ -577,7 +634,7 @@ export function QueryTab({
             status = await runOne(sessionId, ran, token, history, seen);
             // A dropped connection fails before the statement reaches the server; the
             // second attempt runs on a reopened connection.
-            if (status.kind === "error" && status.error.kind === "closed" && token === runToken.current) {
+            if (status.kind === "error" && status.error.kind === "closed" && token === runToken.current && !cancelAsked.current) {
               update(result.id, { status: { kind: "running" } });
               status = await runOne(sessionId, ran, token, history, seen);
             }
@@ -594,6 +651,9 @@ export function QueryTab({
         // The editor may have changed since the statements were planned: no marker there.
         if (!auto) showError(p, status);
         else onError(t("Auto-refresh stopped: {message}", { message: status.error.message }));
+      }
+      // After an error, or a Cancel that came too late to stop this statement, nothing else runs.
+      if (status.kind === "error" || cancelAsked.current) {
         const skipped = new Set(own.slice(i + 1).map((r) => r.id));
         setResults((all) => all.map((r) => (skipped.has(r.id) ? { ...r, status: { kind: "skipped" } } : r)));
         break;
@@ -704,12 +764,8 @@ export function QueryTab({
       return;
     }
     if (!p || p.kind === "command") return;
-    let sql = p.sql;
-    if (p.params.length) {
-      const values = await fillParams(p, { ...(tab.variables ?? {}), ...lastAnswers.current }, new Set());
-      if (!values) return;
-      sql = substitute(p.sql, p.params, values, connection.driver);
-    }
+    const sql = await filledIn(p);
+    if (sql === null) return;
     // Analyze runs the statement: the checks of a run apply.
     if (analyze) {
       if (connection.read_only && !p.readOnly) {
@@ -776,42 +832,94 @@ export function QueryTab({
     }
   }
 
-  /** Data viewer: rebuilds the query from filter and sort, then runs it. */
-  function applyViewer(patch: { filter?: string; sort?: Sort | null }) {
-    if (!tab.table) return;
-    if (unsaved.current) {
-      void ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }).then((yes) => {
-        if (!yes) return;
-        unsaved.current = false;
-        applyViewer(patch);
-      });
-      return;
+  /**
+   * Data viewer: rewrites the statement that produced `result` in the editor (only that
+   * statement, the rest of the text stays) and runs it. Returns the new statement; null when
+   * the editor no longer holds the statement or the rewrite cannot place the change with
+   * certainty.
+   */
+  async function rewriteStatement(result: Result, rewrite: (sql: string) => Promise<string | null>): Promise<string | null> {
+    const ed = editor.current!;
+    let next: string | null = null;
+    try {
+      next = statementRange(result, ed.getText()) ? await rewrite(result.sql) : null;
+    } catch (e) {
+      onError(toCommandError(e).message);
+      return null;
     }
-    const next = { filter: patch.filter ?? tab.filter ?? "", sort: patch.sort !== undefined ? patch.sort : (tab.sort ?? null) };
-    onChange(next);
-    setCount(null);
-    editor.current!.setText(viewerSql(connection.driver, tab.table, next.filter, next.sort));
+    // Looked up again: the user may have typed while the rewrite was on its way.
+    const range = statementRange(result, ed.getText());
+    if (!range || next === null) {
+      onError(t("This query cannot be changed from the grid: edit it in the editor."));
+      return null;
+    }
+    if (viewerOwn.rewritten(result.sql, next)) onChange({ viewerQuery: next });
+    ed.replace(range.from, range.to, next);
+    // The cursor inside the statement, so that it is the one that runs.
+    const inside = range.from + Math.floor(next.length / 2);
+    ed.select(inside, inside);
     void run("statement");
+    return next;
   }
 
-  /** Header clicks cycle a column through ascending, descending and unsorted. */
+  /** Data viewer: once edited rows are saved or discarded, rewrites the shown result's statement
+   *  and runs it. `sort` is the viewer's sort of the new statement: `null` drops it, `undefined`
+   *  leaves the stored one. */
+  function rewriteShown(rewrite: (sql: string) => Promise<string | null>, sort?: Sort | null) {
+    const result = shown;
+    if (!tab.table || !result) return;
+    const go = () =>
+      void rewriteStatement(result, rewrite).then((next) => {
+        if (next !== null && sort !== undefined) onChange({ sort: sortIn(sort, next) });
+      });
+    if (!unsaved.current) return go();
+    void ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }).then((yes) => {
+      if (!yes) return;
+      unsaved.current = false;
+      go();
+    });
+  }
+
+  /** Header clicks cycle a column of the shown statement through ascending, descending and
+   *  unsorted. */
   function sortBy(column: string) {
-    const sort = tab.sort ?? null;
-    if (sort?.column !== column) applyViewer({ sort: { column, desc: false } });
-    else if (!sort.desc) applyViewer({ sort: { column, desc: true } });
-    else applyViewer({ sort: null });
+    const sort = nextSort(shownSort, column);
+    rewriteShown((sql) => api.sqlOrderBy(sql, connection.driver, sort?.column ?? null, sort?.desc ?? false), sort);
+  }
+
+  /** Quick filter of the grid: adds `condition` to the WHERE of the shown result's statement,
+   *  which keeps its ORDER BY, and so its sort. */
+  function addCondition(condition: string) {
+    rewriteShown((sql) => api.sqlAddCondition(sql, connection.driver, condition), shownSort ?? undefined);
+  }
+
+  /** What Count rows counts: the query of the shown rows as it ran, its variables filled in;
+   *  else the statement under the cursor, filled in as a run would. Null when there is none or
+   *  the user cancels. */
+  async function countedSql(): Promise<string | null> {
+    if (shown?.status.kind === "rows") return shown.sql;
+    try {
+      const [p] = await plan("statement");
+      return p ? await filledIn(p) : null;
+    } catch (e) {
+      onError(toCommandError(e).message);
+      return null;
+    }
   }
 
   async function countRows() {
     if (!tab.table) return;
+    const sql = await countedSql();
+    if (sql === null) return;
     setCount(t("counting…"));
     const sessionId = await sideSession();
     if (sessionId === null) return setCount(null);
-    const where = tab.filter?.trim() ? ` WHERE ${tab.filter.trim()}` : "";
-    const query = isMongo(connection.driver)
-      ? `${tab.table}.countDocuments(${tab.filter?.trim() || "{}"})`
-      : `SELECT COUNT(*) FROM ${tab.table}${where}`;
     try {
+      const query = await api.sqlCountQuery(sql, connection.driver);
+      if (query === null) {
+        setCount(null);
+        return onError(t("This query cannot be counted."));
+      }
       const value = await api.queryValue(sessionId, query);
       setCount(value === null ? null : plural(Number(value), "{n} row", "{n} rows"));
     } catch (e) {
@@ -866,6 +974,14 @@ export function QueryTab({
   async function cancel() {
     const job = currentJob.current;
     const cli = cliRun.current;
+    cancelAsked.current = true;
+    // `run_query` has not answered (it may be reconnecting): there is no job to cancel yet, and
+    // the statement may still start. Its job is cancelled once known (see `runOne`).
+    const waiting = statement.current;
+    if (cli === null && waiting?.awaitsJob()) {
+      waiting.requestCancel();
+      return;
+    }
     try {
       if (cli !== null) await api.cancelCli(cli);
       else if (job !== null) await api.cancelQuery(job);
@@ -949,10 +1065,7 @@ export function QueryTab({
     // The data editor writes SQL: MongoDB results stay read-only.
     if (isMongo(connection.driver)) return null;
     const ref = tab.tableRef;
-    const viewer =
-      !!tab.table &&
-      !!ref &&
-      result.sql === viewerSql(connection.driver, tab.table, tab.filter ?? "", tab.sort ?? null);
+    const viewer = !!tab.table && !!ref && viewerOwn.has(result.sql);
     if (!viewer && results.length !== 1) return null;
     const forget = <T,>(p: Promise<T>, drop: () => void) =>
       p.catch((e: unknown) => {
@@ -977,6 +1090,7 @@ export function QueryTab({
     };
     return {
       connection,
+      database: tab.database,
       key: viewer ? `table:${tab.table}` : `sql:${result.sql}`,
       quiet: !viewer,
       readOnly: null,
@@ -989,6 +1103,14 @@ export function QueryTab({
       },
       onDirtyChange: setUnsaved,
     };
+  }
+
+  /** The viewer's table, for the notes in the grid header; none for other results. */
+  function notesScope(result: Result): NotesScope | null {
+    const ref = tab.tableRef;
+    if (!(tab.table && ref) || isMongo(connection.driver)) return null;
+    if (!viewerOwn.has(result.sql)) return null;
+    return { connectionId: connection.id, database: tab.database, schema: ref.schema, table: ref.name };
   }
 
   // The open transaction's clock, and one warning when it has been open too long.
@@ -1045,9 +1167,8 @@ export function QueryTab({
   // ClickHouse and MongoDB have no transactions (`capabilities.transactions` is false): no
   // commit mode.
   const showTx = toolbar.visible.transactions && connection.driver !== "clickhouse" && !isMongo(connection.driver);
-  const current = results[activeResult];
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
-  const rowsResult = current?.status.kind === "rows" && current.columns ? current : null;
+  const rowsResult = shown?.status.kind === "rows" && shown.columns ? shown : null;
   const manual = tx !== null && !tx.autocommit;
   const exportBusy = exporting !== null && exporting.done === null;
 
@@ -1197,36 +1318,7 @@ export function QueryTab({
           )}
         </div>
         {tab.table && (
-          <form
-            className="viewer-bar"
-            onSubmit={(e) => {
-              e.preventDefault();
-              applyViewer({ filter });
-            }}
-          >
-            <span className="muted small">{isMongo(connection.driver) ? t("Filter") : "WHERE"}</span>
-            <input
-              value={filter}
-              aria-label={isMongo(connection.driver) ? t("Filter") : "WHERE"}
-              placeholder={t(
-                isMongo(connection.driver)
-                  ? "e.g. { total: { $gt: 100 }, status: 'paid' }"
-                  : "e.g. total > 100 AND status = 'paid'",
-              )}
-              onChange={(e) => setFilter(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape" && filter) {
-                  setFilter("");
-                  applyViewer({ filter: "" });
-                }
-              }}
-            />
-            <button type="submit">{t("Apply")}</button>
-            {tab.sort && (
-              <button type="button" className="link" onClick={() => applyViewer({ sort: null })}>
-                {t("Sorted by {column}", { column: tab.sort.column })} {tab.sort.desc ? "▼" : "▲"} ×
-              </button>
-            )}
+          <div className="viewer-bar">
             <span className="spacer" />
             {count && <span className="muted small">{count}</span>}
             <button
@@ -1234,17 +1326,19 @@ export function QueryTab({
               className="square"
               onClick={() => void countRows()}
               aria-label={t("Count rows")}
-              title={t(isMongo(connection.driver) ? "Count rows: runs countDocuments with the filter" : "Count rows: runs SELECT COUNT(*) with the filter")}
+              title={t(isMongo(connection.driver) ? "Count rows: runs countDocuments on the collection" : "Count rows: counts the rows of the query in the editor")}
             >
               <Icon name="sequence" />
             </button>
-          </form>
+          </div>
         )}
         <SqlEditor
           ref={editor}
           initialValue={tab.sql}
           driver={connection.driver}
           catalog={catalog}
+          connectionId={connection.id}
+          database={tab.database}
           production={isProduction(connection)}
           host={host}
           onChange={(sql) => onChange({ sql })}
@@ -1288,44 +1382,44 @@ export function QueryTab({
               ))}
             </div>
           )}
-          {!tab.terminal && current && (
+          {!tab.terminal && shown && (
             <ResultPanel
-              key={current.id}
-              result={current}
-              sort={tab.table ? (tab.sort ?? null) : null}
-              onHeaderClick={tab.table && !running ? sortBy : undefined}
+              key={shown.id}
+              result={shown}
+              sort={shownSort}
+              onHeaderClick={tab.table && sortable && !running ? sortBy : undefined}
+              headerHint={
+                tab.table && !sortable && shown.status.kind === "rows"
+                  ? rewritable === shown.sql
+                    ? t("This query cannot be sorted from the header: the editor does not hold it as it ran (it was edited since, its variables were filled in, or it comes from @include).")
+                    : t("This query cannot be sorted from the header: it is not one read-only query that an ORDER BY can be added to.")
+                  : undefined
+              }
               source={{
                 connection,
-                sql: current.sql,
-                jobId: current.jobId,
+                sql: shown.sql,
+                jobId: shown.jobId,
                 table: tab.table ?? null,
-                viewer: tab.table
-                  ? {
-                      filter: tab.filter ?? "",
-                      setFilter: (next) => {
-                        setFilter(next);
-                        applyViewer({ filter: next });
-                      },
-                    }
-                  : undefined,
+                viewer: tab.table && sortable ? { addCondition } : undefined,
               }}
-              edit={editTarget(current)}
+              edit={editTarget(shown)}
+              notes={notesScope(shown)}
             />
           )}
         </div>
         <div className="statusbar" role="status">
-          {current && (
+          {shown && (
             <>
-              <span>{describe(current)}</span>
-              {(current.status.kind === "rows" || current.status.kind === "affected") && (
+              <span>{describe(shown)}</span>
+              {(shown.status.kind === "rows" || shown.status.kind === "affected") && (
                 <span className="muted">
-                  {t(current.status.kind === "rows" && !current.status.finished ? "first rows in {time}" : "took {time}", {
-                    time: formatMs(current.status.elapsedMs),
+                  {t(shown.status.kind === "rows" && !shown.status.finished ? "first rows in {time}" : "took {time}", {
+                    time: formatMs(shown.status.elapsedMs),
                   })}
                 </span>
               )}
-              {(current.status.kind === "rows" || current.status.kind === "affected") &&
-                isSlow(current.status.elapsedMs, slowSeconds) && (
+              {(shown.status.kind === "rows" || shown.status.kind === "affected") &&
+                isSlow(shown.status.elapsedMs, slowSeconds) && (
                   <span
                     className="slow-query"
                     title={t("Slower than {n} s (Settings). Explain (Ctrl+Shift+E) shows where the time goes.", { n: slowSeconds })}
@@ -1333,8 +1427,8 @@ export function QueryTab({
                     {t("slow")}
                   </span>
                 )}
-              {current.status.kind === "rows" && !current.status.finished && (
-                <button className="link" onClick={() => fetchAll(current)}>
+              {shown.status.kind === "rows" && !shown.status.finished && (
+                <button className="link" onClick={() => fetchAll(shown)}>
                   {t("Fetch all")}
                 </button>
               )}

@@ -54,22 +54,12 @@
   top: -5px;
 }
 
-.modal.wide {
-  width: min(820px, calc(100vw - 32px));
+.modal.connection-dialog {
+  width: min(680px, calc(100vw - 32px));
 }
 
-.sql-preview {
-  margin: 0;
-  padding: 8px 10px;
-  max-height: 50vh;
-  overflow: auto;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  white-space: pre-wrap;
-  word-break: break-word;
+.modal.wide {
+  width: min(820px, calc(100vw - 32px));
 }
 
 .modal-backdrop {
@@ -95,21 +85,28 @@
   box-shadow: var(--shadow);
 }
 
-/* Menus and dialogs are a faint glass: a little of what is behind shows through, blurred
-   enough that the text on them reads as on a solid one. */
+/* Menus, dialogs and the editor's tooltips are a faint glass: a little of what is behind
+   shows through, blurred enough that the text on them reads as on a solid one. The tokens
+   are also read by the SQL editor's theme (editor/SqlEditor.tsx), with a solid fallback. */
 @supports (background: color-mix(in srgb, red 50%, transparent)) and ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass-blur: blur(20px) saturate(140%);
+    --glass-menu: color-mix(in srgb, var(--bg-sidebar) 88%, transparent);
+    --glass-dialog: color-mix(in srgb, var(--bg-sidebar) 92%, transparent);
+  }
+
   .context-menu,
   .modal {
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
   }
 
   .context-menu {
-    background: color-mix(in srgb, var(--bg-sidebar) 88%, transparent);
+    background: var(--glass-menu);
   }
 
   .modal {
-    background: color-mix(in srgb, var(--bg-sidebar) 92%, transparent);
+    background: var(--glass-dialog);
   }
 }
 
@@ -123,7 +120,6 @@
 }
 
 .modal.confirm p {
-  margin: 0;
   font-size: 14px;
   line-height: 1.5;
   color: var(--fg-strong);
@@ -135,6 +131,21 @@
   letter-spacing: -0.01em;
   color: var(--fg-strong);
   margin: 0 0 4px;
+}
+
+/* The dialog's column spaces its parts: paragraphs add no margins of their own. */
+.modal p {
+  margin: 0;
+}
+
+/* Errors, warnings and notes in a dialog: one box style, aligned with its fields. */
+.modal .notice {
+  display: block;
+  margin: 0;
+}
+
+.modal .notice:not(.error, .ok, .warn) {
+  background: var(--hover);
 }
 
 .field {
@@ -213,15 +224,6 @@
   margin-top: 8px;
 }
 
-.modal.settings section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px 16px;
-  border-radius: var(--radius-xl);
-  background: var(--bg);
-}
-
 .modal.settings h3 {
   font-size: 14px;
   font-weight: 600;
@@ -273,6 +275,7 @@ button.primary.danger:hover:not(:disabled) {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .record-fields {
@@ -324,7 +327,7 @@ button.primary.danger:hover:not(:disabled) {
   width: 104px;
   padding: 5px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   background: var(--bg-input);
   cursor: pointer;
   font-size: 11px;
@@ -372,7 +375,7 @@ button.primary.danger:hover:not(:disabled) {
   justify-content: center;
   align-items: flex-start;
   padding-top: 12vh;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.5);
 }
 
 .palette {
@@ -475,7 +478,6 @@ button.primary.danger:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: 12px;
 }
 
 .settings-header h2 {
@@ -485,7 +487,7 @@ button.primary.danger:hover:not(:disabled) {
 .settings-header .modal-search {
   flex: 1;
   max-width: 320px;
-  margin: 0 0 0 auto;
+  margin-left: auto;
 }
 
 /* A panel the search left out stays mounted, hidden. */
@@ -514,13 +516,13 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .settings-nav button {
+  flex: none;
   min-height: 30px;
   border: none;
   background: none;
   text-align: left;
   padding: 0 10px;
-  border-radius: var(--radius-xl);
-  color: var(--fg);
+  color: var(--fg-muted);
 }
 
 .settings-nav button:hover {
@@ -528,12 +530,33 @@ button.primary.danger:hover:not(:disabled) {
   color: var(--fg);
 }
 
+.settings-nav [role="tab"][aria-selected="true"] {
+  background: var(--active);
+  color: var(--fg-strong);
+}
+
+/* One section at a time, in a dialog that keeps its height: the panel scrolls. */
 .settings-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  min-height: 0;
   overflow: auto;
-  padding-right: 4px;
+  padding: 0 4px 0 18px;
+  border-left: 1px solid var(--border);
+}
+
+/* While searching, the matches of every section, grouped under their section's name. */
+.settings-results > section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-results > section:not([hidden]) ~ section:not([hidden]) {
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
 }
 
 .shortcuts table {
@@ -566,7 +589,6 @@ button.primary.danger:hover:not(:disabled) {
 
 .shortcuts-filter {
   width: 100%;
-  margin-bottom: 4px;
 }
 
 .ssh-section {
@@ -592,7 +614,7 @@ button.primary.danger:hover:not(:disabled) {
   align-items: flex-start;
   gap: 2px;
   padding: 8px 10px;
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   text-align: left;
 }
 
@@ -608,7 +630,7 @@ button.primary.danger:hover:not(:disabled) {
   padding: 12px;
   margin-bottom: 12px;
   border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   color: var(--fg-muted);
 }
 
@@ -627,7 +649,7 @@ button.primary.danger:hover:not(:disabled) {
   overflow: auto;
   padding: 6px 8px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   background: var(--bg-input);
 }
 
@@ -703,9 +725,12 @@ button.primary.danger:hover:not(:disabled) {
   display: none;
 }
 
-/* The master password in the Settings. */
+/* Pages of the Settings: their parts spaced by the column's gap. */
 .master-password,
-.master-password-form {
+.master-password-form,
+.drivers-panel,
+.vendor-drivers,
+.shortcuts {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -777,22 +802,16 @@ button.primary.danger:hover:not(:disabled) {
   word-break: break-word;
 }
 
-button.danger {
-  background: var(--error);
-  border-color: var(--error);
-  color: #fff;
-}
-
 .modal.driver-picker {
   width: min(640px, calc(100vw - 32px));
 }
 
-/* A search field at the top of a dialog: the database picker, the settings. */
+/* A search field at the top of a dialog: the database picker, the settings. Spaced, like
+   the dialog's other parts, by its column's gap. */
 .modal-search {
   position: relative;
   display: flex;
   align-items: center;
-  margin: 8px 0 10px;
 }
 
 .modal-search-icon {
@@ -860,7 +879,7 @@ button.danger {
 /* Drivers downloaded when a database needs one. */
 
 .driver-popup {
-  width: min(460px, 92vw);
+  width: min(460px, calc(100vw - 32px));
 }
 
 .driver-popup progress {
@@ -875,10 +894,15 @@ button.danger {
   background: var(--bg-input);
 }
 
-.profile-fields {
+/* Fields that belong together, two a row. */
+.field-grid:empty {
+  display: none;
+}
+
+.field-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .driver-state {
@@ -968,10 +992,6 @@ button.danger {
   color: var(--error);
 }
 
-.activity-empty {
-  margin: 12px 0;
-}
-
 /* A vendor's address, shown to copy: the app opens no browser. */
 .driver-popup .address {
   user-select: text;
@@ -979,7 +999,7 @@ button.danger {
 }
 
 .vendor-drivers {
-  margin-top: 14px;
+  margin-top: 6px;
 }
 
 .vendor-drivers .driver-state {

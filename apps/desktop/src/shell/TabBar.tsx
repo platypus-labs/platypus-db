@@ -104,6 +104,9 @@ export const TabBar = forwardRef<HTMLDivElement, Props>(function TabBar(props, r
                 style={conn}
                 title={tab.pinned ? props.title(tab) : undefined}
                 onClick={() => props.onActivate(tab)}
+                // The press of the middle button starts the browser's autoscroll when the bar overflows,
+                // and that swallows the click: it is cancelled here.
+                onMouseDown={(e) => e.button === 1 && e.preventDefault()}
                 onAuxClick={(e) => e.button === 1 && props.onClose(tab)}
                 onContextMenu={(e: MouseEvent) => {
                   e.preventDefault();

@@ -73,6 +73,7 @@ export default async function (page) {
 
   // Settings › Drivers lists the system's ODBC drivers.
   await page.eval(`document.querySelector('button[aria-label="Settings"]').click()`);
+  await page.settingsTab("Drivers");
   await page.waitFor(`document.querySelector('.modal.settings .odbc-system') !== null`, 15_000);
   const listed = await page.eval(`document.querySelector('.modal.settings .odbc-system').textContent`);
   assert.ok(listed.includes("SQL Server"), listed);

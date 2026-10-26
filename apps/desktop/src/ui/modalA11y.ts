@@ -9,8 +9,12 @@ const FOCUSABLE =
 
 let titles = 0;
 
+/** What Tab reaches, in order: shown, and not taken out of the sequence with a negative
+ *  tabindex (as the unselected tabs of a tab list are). */
 const focusables = (root: HTMLElement) =>
-  [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.getClientRects().length > 0);
+  [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    (el) => el.getClientRects().length > 0 && !(Number(el.getAttribute("tabindex")) < 0),
+  );
 
 /** The element that had the focus before each open dialog. */
 const openers = new WeakMap<HTMLElement, Element | null>();

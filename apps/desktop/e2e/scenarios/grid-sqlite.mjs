@@ -115,11 +115,14 @@ export default async function (page) {
   await page.key("F7", "F7", 118);
   await page.waitFor(`document.querySelector('.value-panel') === null`);
 
-  // Quick filter on the focused value.
+  // Quick filter on the focused value: the editor's statement gets the condition.
   await openMenu(page, 130); // the name column
   await page.eval(`${menuButton("Filter")}.click()`);
   await page.waitFor(`${menuButton("Equal to this value")} !== undefined`);
   await page.eval(`${menuButton("Equal to this value")}.click()`);
   await page.waitFor(`${status} === '1 row'`, 15_000);
-  assert.equal(await page.eval(`${visibleTab}.querySelector('.viewer-bar input').value`), "name = 'apple'");
+  assert.match(
+    await page.eval(`${visibleTab}.querySelector('.cm-content').textContent`),
+    /FROM itemsWHERE name = 'apple'$/,
+  );
 }

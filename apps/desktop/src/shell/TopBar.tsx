@@ -10,6 +10,7 @@ import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
 import { useActivity } from "./activity";
 import { openActivity } from "./ActivityDialog";
+import { SIDEBAR_TOGGLE_ID, toggleSidebar, toggleSidebarTitle, useSidebarCollapsed } from "./sidebar";
 import { t, plural } from "../i18n";
 
 interface Props {
@@ -25,6 +26,7 @@ export function TopBar({ project, connection }: Props) {
   const keys = palette && shortcutLabel(palette);
   const type = CONNECTION_TYPES.find((t) => t.value === connection?.connection_type);
   const ownTitleBar = useSetting(titleBarSetting) !== "system" && !MAC;
+  const sidebarCollapsed = useSidebarCollapsed();
   // The window opens with the bar the setting asks for (lib.rs); a change applies at once.
   const opened = useRef(ownTitleBar);
   useEffect(() => {
@@ -38,6 +40,17 @@ export function TopBar({ project, connection }: Props) {
   return (
     <header className={`topbar${ownTitleBar ? " own-title-bar" : ""}`} {...drag}>
       <img className="topbar-mark" src={mark} alt="PlatypusDB" width={26} height={26} {...drag} />
+      <button
+        type="button"
+        id={SIDEBAR_TOGGLE_ID}
+        className="icon"
+        title={toggleSidebarTitle()}
+        aria-label={t("Show or hide the navigator")}
+        aria-expanded={!sidebarCollapsed}
+        onClick={toggleSidebar}
+      >
+        <Icon name="sidebar" />
+      </button>
       <span className="topbar-project" {...drag}>
         {project?.name ?? t("All connections")}
       </span>

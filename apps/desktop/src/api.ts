@@ -817,6 +817,50 @@ export interface ConnectionFolder {
   parent?: string | null;
 }
 
+/** What a note or tag is on: `database` empty for the connection's own, `column` for the object. */
+export interface CatalogKey {
+  database: string;
+  schema: string;
+  object: string;
+  column: string;
+}
+
+/** A local note and tags, never written to the database. */
+export interface CatalogEntry {
+  key: CatalogKey;
+  note: string;
+  tags: string[];
+}
+
+export interface TagCount {
+  tag: string;
+  count: number;
+}
+
+/** The column picked to describe a table's rows beside the foreign keys to it; `key.column` is empty. */
+export interface DisplayColumn {
+  key: CatalogKey;
+  column: string;
+}
+
+export type DocsFormat = "markdown" | "html";
+
+/** What the schema documentation covers and where it is written. */
+export interface DocsRequest {
+  title: string;
+  schemas: string[];
+  views: boolean;
+  diagrams: boolean;
+  notes: boolean;
+  format: DocsFormat;
+  path: string;
+}
+
+export type DocsEvent =
+  | { kind: "progress"; done: number; total: number }
+  | { kind: "finished"; path: string }
+  | { kind: "failed"; message: string };
+
 /** A folder of projects in the rail; a project is in one at most. */
 export interface ProjectFolder {
   id: string;
@@ -1115,6 +1159,17 @@ export const api = {
   /** The table a query reads, when its rows are that table's rows. */
   querySource: (sql: string, driver: DriverKind) => invoke<QuerySource | null>("query_source", { sql, driver }),
   lintSql: (sql: string, driver: DriverKind) => invoke<SqlLint>("lint_sql", { sql, driver }),
+  /** `sql` sorted by `column` (or, with `null`, unsorted): only its top-level ORDER BY changes.
+   *  `null` when it is not a read-only query the sort can be placed in with certainty. */
+  sqlOrderBy: (sql: string, driver: DriverKind, column: string | null, desc: boolean) =>
+    invoke<string | null>("sql_order_by", { sql, driver, column, desc }),
+  /** Whether a header click may rewrite `sql` (see `sqlOrderBy`). */
+  sqlSortable: (sql: string, driver: DriverKind) => invoke<boolean>("sql_sortable", { sql, driver }),
+  /** The query counting the rows of `sql`; `null` when it cannot be counted. */
+  sqlCountQuery: (sql: string, driver: DriverKind) => invoke<string | null>("sql_count_query", { sql, driver }),
+  /** `sql` with `condition` added to its top-level WHERE; `null` when it cannot be placed. */
+  sqlAddCondition: (sql: string, driver: DriverKind, condition: string) =>
+    invoke<string | null>("sql_add_condition", { sql, driver, condition }),
   /** Saved scripts of a project, `null` for All connections. */
   listScripts: (project: string | null) => invoke<ScriptList>("list_scripts", { project }),
   /** A new empty script; returns its relative path. */
@@ -1243,4 +1298,34 @@ export const api = {
   fetchAll: (jobId: number) => invoke<void>("fetch_all", { jobId }),
   cancelQuery: (jobId: number) => invoke<void>("cancel_query", { jobId }),
   closeQuery: (jobId: number) => invoke<void>("close_query", { jobId }),
+  catalogEntries: (connectionId: string) => invoke<CatalogEntry[]>("catalog_entries", { connectionId }),
+  saveCatalogEntry: (connectionId: string, key: CatalogKey, note: string, tags: string[]) =>
+    invoke<CatalogEntry>("save_catalog_entry", { connectionId, key, note, tags }),
+  catalogTags: (connectionId: string) => invoke<TagCount[]>("catalog_tags", { connectionId }),
+  renameCatalogKey: (connectionId: string, from: CatalogKey, to: CatalogKey) =>
+    invoke<void>("rename_catalog_key", { connectionId, from, to }),
+  commentSql: (
+    sessionId: number,
+    schema: string,
+    table: string,
+    column: string | null,
+    comment: string | null,
+) => invoke<string>("comment_sql", { sessionId, schema, table, column, comment }),
+  catalogDisplayColumns: (connectionId: string) =>
+    invoke<DisplayColumn[]>("catalog_display_columns", { connectionId }),
+  setCatalogDisplayColumn: (connectionId: string, key: CatalogKey, column: string | null) =>
+    invoke<void>("set_catalog_display_column", { connectionId, key, column }),
+  /** Writes the documentation of `request.schemas`; cancelled with `cancelDocs`. */
+  exportDocs: (
+    sessionId: number,
+    connectionId: string,
+    database: string | null,
+    request: DocsRequest,
+    onEvent: (e: DocsEvent) => void,
+  ) => {
+    const channel = new Channel<DocsEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("export_docs", { sessionId, connectionId, database, request, onEvent: channel });
+  },
+  cancelDocs: (exportId: number) => invoke<void>("cancel_docs", { exportId }),
 };

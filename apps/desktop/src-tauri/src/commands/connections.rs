@@ -184,10 +184,13 @@ pub fn delete_connection(
     state: State<'_, AppState>,
     id: Uuid,
 ) -> CommandResult<Vec<SavedConnection>> {
-    state.with_store(|s| {
+    let list = state.with_store(|s| {
         s.delete(id)?;
         Ok(s.list().to_vec())
-    })
+    })?;
+    // Leftovers (a failed delete here) are pruned at the next start.
+    state.forget_catalog(id);
+    Ok(list)
 }
 
 /// Sets the logical key the data editor uses for a table without a primary key; no

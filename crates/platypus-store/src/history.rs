@@ -138,20 +138,7 @@ impl HistoryStore {
     }
 
     fn init(db: Connection) -> Result<Self> {
-        let version: i64 = db
-            .pragma_query_value(None, "user_version", |r| r.get(0))
-            .map_err(db_error)?;
-        let version = usize::try_from(version).unwrap_or(usize::MAX);
-        if version > MIGRATIONS.len() {
-            return Err(StoreError::History(format!(
-                "history database is from a newer PlatypusDB (schema {version})"
-            )));
-        }
-        for (i, migration) in MIGRATIONS.iter().enumerate().skip(version) {
-            db.execute_batch(migration).map_err(db_error)?;
-            db.pragma_update(None, "user_version", clamp_i64(i as u64 + 1))
-                .map_err(db_error)?;
-        }
+        crate::sqlite::migrate(&db, MIGRATIONS, "history", StoreError::History)?;
         Ok(Self { db })
     }
 

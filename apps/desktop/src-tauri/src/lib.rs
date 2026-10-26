@@ -12,7 +12,9 @@ mod querylog;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use platypus_store::{ConnectionStore, HistoryStore, KeyringSecrets, SettingsStore, VaultSecrets};
+use platypus_store::{
+    CatalogStore, ConnectionStore, HistoryStore, KeyringSecrets, SettingsStore, VaultSecrets,
+};
 use tauri::Manager;
 
 use crate::commands::AppState;
@@ -87,6 +89,11 @@ fn open_settings(app: &tauri::App) -> Result<SettingsStore, String> {
     SettingsStore::open(dir.join("settings.toml")).map_err(|e| e.to_string())
 }
 
+fn open_catalog(app: &tauri::App) -> Result<CatalogStore, String> {
+    let dir = dir(app, false)?;
+    CatalogStore::open(&dir.join("catalog.db")).map_err(|e| e.to_string())
+}
+
 fn open_history(app: &tauri::App) -> Result<HistoryStore, String> {
     let dir = dir(app, false)?;
     let history = HistoryStore::open(&dir.join("history.db")).map_err(|e| e.to_string())?;
@@ -130,9 +137,11 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         open_store(app, vault_path.as_deref().ok()),
         vault_path,
         open_history(app),
+        open_catalog(app),
         settings,
         dir(app, false).map(|d| d.join("scripts")),
     );
+    state.prune_catalog();
     app.manage(state);
     // Downloaded drivers live with the data; removals that Windows refused are finished.
     if let Ok(data) = dir(app, false) {
@@ -260,6 +269,10 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::sql::format_sql,
         commands::sql::query_source,
         commands::sql::lint_sql,
+        commands::sql::sql_order_by,
+        commands::sql::sql_count_query,
+        commands::sql::sql_sortable,
+        commands::sql::sql_add_condition,
         commands::scripts::list_scripts,
         commands::scripts::create_script,
         commands::scripts::create_script_folder,
@@ -268,6 +281,15 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::scripts::link_script,
         commands::cli::run_cli,
         commands::cli::cancel_cli,
+        commands::catalog::catalog_entries,
+        commands::catalog::save_catalog_entry,
+        commands::catalog::catalog_tags,
+        commands::catalog::rename_catalog_key,
+        commands::catalog::comment_sql,
+        commands::catalog::catalog_display_columns,
+        commands::catalog::set_catalog_display_column,
+        commands::catalog::export_docs,
+        commands::catalog::cancel_docs,
         commands::history::search_history,
         commands::history::delete_history,
         commands::files::read_text_file,

@@ -31,6 +31,7 @@ platypus-sql = { path = "crates/platypus-sql" }
 platypus-schema = { path = "crates/platypus-schema" }
 platypus-store = { path = "crates/platypus-store" }
 platypus-tls = { path = "crates/platypus-tls" }
+platypus-docs = { path = "crates/platypus-docs" }
 
 argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
 arrow-array = "60"
@@ -81,6 +82,14 @@ all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 module_name_repetitions = "allow"
 missing_errors_doc = "allow"
+
+# Development builds keep line tables for backtraces and no debug info for dependencies:
+# the `target` folder stays a fraction of the size.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
 
 [profile.release]
 codegen-units = 1

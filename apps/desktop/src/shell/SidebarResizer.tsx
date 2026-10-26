@@ -4,6 +4,8 @@ import { t } from "../i18n";
 
 /** Where the width of the connections column is kept, in pixels. */
 const KEY = "layout.sidebar_width";
+/** Where earlier builds kept it: still read, removed on the next change. */
+const OLD_KEY = "ui.sidebar_width";
 /** Also the fallback of `--sidebar-width` in shell.css. */
 const DEFAULT = 260;
 const MIN = 180;
@@ -20,7 +22,7 @@ function clamp(width: number): number {
  *  the window gets too small for it. */
 export function useSidebarWidth(): [number, (width: number) => void] {
   const [width, setWidth] = useState(() => {
-    const saved = getStored(KEY);
+    const saved = getStored(KEY) ?? getStored(OLD_KEY);
     return typeof saved === "number" ? clamp(saved) : DEFAULT;
   });
   useEffect(() => {
@@ -31,7 +33,12 @@ export function useSidebarWidth(): [number, (width: number) => void] {
   return [width, (w) => setWidth(clamp(w))];
 }
 
-const save = (width: number) => void setStored(KEY, width === DEFAULT ? null : width).catch(() => {});
+/** Both changes are made in memory at once (the next save already sees them); each write
+ *  sets its own key, so their order does not matter. */
+function save(width: number) {
+  if (getStored(OLD_KEY) !== undefined) setStored(OLD_KEY, null).catch(() => {});
+  setStored(KEY, width === DEFAULT ? null : width).catch(() => {});
+}
 
 /** The handle between the connections and the work: dragged, or the arrows once focused,
  *  set the width; a double-click goes back to the default. Saved when the drag ends. */

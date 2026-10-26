@@ -39,12 +39,11 @@ export function openTable(connection: SavedConnection, schema: string, table: st
   const d = connection.driver;
   const target = `${quoteIdent(schema, d)}.${quoteIdent(table, d)}`;
   workbench().openTab("query", connection.id, {
-    sql: viewerSql(d, target, filter, null),
+    sql: viewerSql(d, target, filter),
     autorun: true,
     title: table,
     table: target,
     tableRef: { schema, name: table, kind: "table" },
-    filter,
   });
 }
 

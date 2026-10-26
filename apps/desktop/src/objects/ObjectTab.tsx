@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { createElement, useEffect, useState } from "react";
 import {
   api,
+  type CatalogKey,
+  type DriverKind,
   type ObjectKind,
   type ObjectTarget,
   type Property,
@@ -8,12 +10,15 @@ import {
   toCommandError,
 } from "../api";
 import { isRelation } from "../components/Navigator";
+import { catalogKey, useCatalogVersion } from "../catalog/catalog";
+import { CatalogTags, NotesPanel, useNoteDraft } from "../catalog/NotesPanel";
 import { Icon, objectIcon } from "../ui/Icon";
 import { SqlEditor } from "../editor/SqlEditor";
-import { onNavigatorRefresh } from "../navigatorEvents";
+import { onNavigatorRefresh, requestNavigatorRefresh } from "../navigatorEvents";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
+import { SqlActionDialog } from "./SqlActionDialog";
 import { t, msg } from "../i18n";
 
 export type ObjectSection =
@@ -24,6 +29,8 @@ export type ObjectSection =
   | "foreign_keys"
   | "references"
   | "ddl";
+
+const NO_COMMENTS: DriverKind[] = ["sqlite", "libsql", "mongo"];
 
 /** Details of one database object: properties, structure and DDL. */
 export interface ObjectTabModel extends TabBase {
@@ -85,16 +92,62 @@ interface Loaded {
   details: TableDetails | null;
   /** `null` when the driver cannot print DDL. */
   ddl: string | null;
+  /** The comment of a table or view, from the object list as every driver fills it. */
+  comment: string | null;
+}
+
+async function loadObject(sid: number, tab: ObjectTabModel, commentable: boolean): Promise<Loaded> {
+  const target: ObjectTarget = { schema: tab.schema, name: tab.name, kind: tab.objectKind, parent: tab.parent };
+  const relation = isRelation(tab.objectKind);
+  const ddlSupported = workbench().capabilities(sid)?.object_ddl ?? true;
+  const [properties, details, ddl, comment] = await Promise.all([
+    api.objectProperties(sid, target),
+    relation ? api.tableDetails(sid, tab.schema, tab.name) : Promise.resolve(null),
+    ddlSupported ? api.objectDdl(sid, target) : Promise.resolve(null),
+    relation && commentable
+      ? api.listObjects(sid, tab.schema).then((list) => list.find((o) => o.name === tab.name && isRelation(o.kind))?.comment ?? null)
+      : Promise.resolve(null),
+  ]);
+  return { properties, details, ddl, comment };
 }
 
 export function ObjectTab({ tab, connection, active, sideSession, onChange }: TabProps<ObjectTabModel>) {
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
+  // Also re-renders the note and tag cells of the columns, which read the catalog as they draw.
+  const catalogVersion = useCatalogVersion();
+  const ckey = (column = "") => catalogKey(tab.database, tab.schema, tab.name, column);
   const sections = sectionsFor(tab.objectKind);
   const section = tab.section && sections.includes(tab.section) ? tab.section : sections[0]!;
-  const target: ObjectTarget = { schema: tab.schema, name: tab.name, kind: tab.objectKind, parent: tab.parent };
   const qualified = qualifiedName(connection.driver, { name: tab.schema, current: tab.currentSchema }, tab.name);
+
+  // The database keeps comments; the app writes those of tables (the statements it generates
+  // are table ones), and shows the others.
+  const commentable = !NO_COMMENTS.includes(connection.driver);
+  const editable = commentable && tab.objectKind === "table";
+
+  function editComment(column: string | null, current: string | null) {
+    workbench().openDialog((close) =>
+      createElement(SqlActionDialog, {
+        connection,
+        database: tab.database ?? null,
+        title: t("Comment of {name}", { name: column ?? tab.name }),
+        description: t("Written to the database, visible to everyone who reads it."),
+        confirm: t("Save comment"),
+        danger: false,
+        options: { rename: current ?? "", renameLabel: t("Comment"), allowEmpty: true, multiline: true },
+        generate: async ({ newName }) => {
+          const sid = await sideSession();
+          return sid === null ? null : api.commentSql(sid, tab.schema, tab.name, column, newName || null);
+        },
+        // Reloads this tab too, and the navigator's tooltips.
+        onDone: () => requestNavigatorRefresh({ connectionId: connection.id, database: tab.database, schema: tab.schema }),
+        onClose: close,
+      }),
+    );
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -103,14 +156,8 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
       const sid = await sideSession();
       if (sid === null || cancelled) return;
       try {
-        const relation = isRelation(tab.objectKind);
-        const ddlSupported = workbench().capabilities(sid)?.object_ddl ?? true;
-        const [properties, details, ddl] = await Promise.all([
-          api.objectProperties(sid, target),
-          relation ? api.tableDetails(sid, tab.schema, tab.name) : Promise.resolve(null),
-          ddlSupported ? api.objectDdl(sid, target) : Promise.resolve(null),
-        ]);
-        if (!cancelled) setData({ properties, details, ddl });
+        const loaded = await loadObject(sid, tab, commentable);
+        if (!cancelled) setData(loaded);
       } catch (e) {
         if (!cancelled) setError(toCommandError(e).message);
       }
@@ -119,6 +166,18 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
       cancelled = true;
     };
   }, [version]);
+
+  // The tags in use, offered to the tag fields; again after a save, which may add one.
+  useEffect(() => {
+    let stale = false;
+    const show = (tags: string[]) => {
+      if (!stale) setTagSuggestions(tags);
+    };
+    api.catalogTags(tab.connectionId).then((t) => show(t.map((x) => x.tag)), () => show([]));
+    return () => {
+      stale = true;
+    };
+  }, [tab.connectionId, catalogVersion]);
 
   // Reload when the object's schema changes, e.g. after an ALTER from the navigator.
   useEffect(
@@ -144,6 +203,18 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
   }
 
   const d = data?.details;
+  const relation = isRelation(tab.objectKind);
+  const showComment = commentable && relation;
+  const objectComment = (
+    <>
+      {data?.comment}{" "}
+      {editable && (
+        <button className="link" onClick={() => editComment(null, data?.comment ?? null)}>
+          {t("Edit")}
+        </button>
+      )}
+    </>
+  );
 
   return (
     <div className="object-tab" style={{ display: active ? "flex" : "none" }}>
@@ -160,14 +231,15 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
           </span>
         </div>
         <span className="spacer" />
-        {isRelation(tab.objectKind) && (
+        {relation && (
           <button
             onClick={() =>
               workbench().openTab("query", connection.id, {
-                sql: viewerSql(connection.driver, qualified, "", null),
+                sql: viewerSql(connection.driver, qualified),
                 autorun: true,
                 title: tab.name,
                 table: qualified,
+                tableRef: { schema: tab.schema, name: tab.name, kind: tab.objectKind },
                 database: tab.database,
               })
             }
@@ -192,6 +264,14 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
           <Icon name="refresh" />
         </button>
       </header>
+      {relation && (
+        <NotesPanel
+          connectionId={connection.id}
+          catalogKey={ckey()}
+          suggestions={tagSuggestions}
+          columns={tab.objectKind === "table" ? d?.columns.map((c) => c.name) : undefined}
+        />
+      )}
       <nav className="object-sections">
         {sections.map((s) => (
           <button key={s} className={s === section ? "active" : ""} onClick={() => onChange({ section: s })}>
@@ -211,13 +291,15 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               [t("Kind"), t(KIND_LABELS[tab.objectKind])],
               [t("Schema"), tab.schema],
               ...(tab.parent ? [[t(tab.objectKind === "trigger" ? "Table" : "Partition of"), tab.parent]] : []),
-              ...data.properties.map((p) => [p.name, p.value]),
+              ...(showComment ? [[t("Comment"), objectComment]] : []),
+              // Some drivers list the comment among the properties: it is shown once, above.
+              ...data.properties.filter((p) => !(showComment && p.name === "Comment")).map((p) => [p.name, p.value]),
             ]}
           />
         )}
         {d && section === "columns" && (
           <MetaTable
-            head={["#", t("Name"), t("Type"), t("Nullable"), t("Default"), t("Key"), t("Comment")]}
+            head={["#", t("Name"), t("Type"), t("Nullable"), t("Default"), t("Key"), t("Comment (database)"), t("Note"), t("Tags")]}
             rows={d.columns.map((c, i) => [
               String(i + 1),
               c.name,
@@ -225,7 +307,25 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               t(c.nullable ? "yes" : "no"),
               c.default ?? "",
               c.primary_key ? "PK" : "",
-              c.comment ?? "",
+              editable ? (
+                <button key="comment" className="link" onClick={() => editComment(c.name, c.comment)}>
+                  {c.comment || t("Edit")}
+                </button>
+              ) : (
+                <span key="comment" title={commentable ? undefined : t("This database has no comments: use a note")}>
+                  {c.comment ?? ""}
+                </span>
+              ),
+              // Keyed by column: after a reload that moves the columns, a field being typed in
+              // does not pass to another one.
+              <ColumnNote key={`note ${c.name}`} connectionId={connection.id} catalogKey={ckey(c.name)} />,
+              <CatalogTags
+                key={`tags ${c.name}`}
+                label={t("Tags of {column}", { column: c.name })}
+                connectionId={connection.id}
+                catalogKey={ckey(c.name)}
+                suggestions={tagSuggestions}
+              />,
             ])}
           />
         )}
@@ -321,3 +421,7 @@ function MetaTable({ head, rows }: { head: string[]; rows: React.ReactNode[][] }
   );
 }
 
+function ColumnNote({ connectionId, catalogKey }: { connectionId: string; catalogKey: CatalogKey }) {
+  const note = useNoteDraft(connectionId, catalogKey);
+  return <input className="cell-input" aria-label={t("Note of {column}", { column: catalogKey.column })} {...note} />;
+}

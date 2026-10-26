@@ -10,12 +10,14 @@ import {
   type GenerateTarget,
   type ObjectKind,
 } from "../api";
+import { catalogKey, renameCatalog, reportCatalogError } from "../catalog/catalog";
+import { renamedObject } from "../catalog/renames";
 import { isRelation } from "../components/Navigator";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { getSetting } from "../settings";
 import { quoteIdent, selectLimit } from "../sqlNames";
 import { workbench } from "../workbench";
-import { SqlActionDialog, type SqlActionOptions } from "./SqlActionDialog";
+import { type SqlActionChoices, SqlActionDialog, type SqlActionOptions } from "./SqlActionDialog";
 import { t, msg } from "../i18n";
 
 type ObjectArg = ActionScopes["navigator.object"];
@@ -142,7 +144,8 @@ function qualified({ connection: { driver }, schema, object: { name } }: ObjectA
 function confirmStatement(
   arg: ObjectArg,
   dialog: { title: string; description: string; confirm: string; options: SqlActionOptions },
-  request: (choices: { cascade: boolean; newName: string }) => GenerateRequest,
+  request: (choices: SqlActionChoices) => GenerateRequest,
+  after?: (choices: SqlActionChoices) => void,
 ) {
   workbench().openDialog((close) =>
     createElement(SqlActionDialog, {
@@ -150,12 +153,14 @@ function confirmStatement(
       database: arg.database,
       ...dialog,
       generate: (choices) => api.generateSql(arg.connection.driver, target(arg), request(choices)),
-      onDone: () =>
+      onDone: (choices) => {
+        after?.(choices);
         requestNavigatorRefresh({
           connectionId: arg.connection.id,
           database: arg.database,
           schema: arg.schema.name,
-        }),
+        });
+      },
       onClose: close,
     }),
   );
@@ -178,6 +183,13 @@ registerAction({
         options: { rename: arg.object.name.replace(/\(.*$/, "") },
       },
       ({ newName }) => ({ statement: "rename", new_name: newName }),
+      ({ newName }) => {
+        const from = catalogKey(arg.database, arg.schema.name, arg.object.name);
+        const object = renamedObject(arg.object.name, newName);
+        if (object) {
+          renameCatalog(arg.connection.id, from, { ...from, object }).catch(reportCatalogError);
+        }
+      },
     ),
 });
 

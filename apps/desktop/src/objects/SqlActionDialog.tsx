@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type SavedConnection, toCommandError } from "../api";
 import { workbench } from "../workbench";
 import { t } from "../i18n";
@@ -8,6 +8,18 @@ export interface SqlActionOptions {
   cascade?: boolean;
   /** Asks for a new name, starting from this one. */
   rename?: string;
+  /** Label of the text field when it is not a name. */
+  renameLabel?: string;
+  /** The text may be emptied (clearing a comment). */
+  allowEmpty?: boolean;
+  /** The text may span lines (a comment): Enter starts a new line, Ctrl+Enter runs. */
+  multiline?: boolean;
+}
+
+/** What the user chose in the dialog, as the statement is generated from it. */
+export interface SqlActionChoices {
+  cascade: boolean;
+  newName: string;
 }
 
 interface Props {
@@ -18,13 +30,18 @@ interface Props {
   description: string;
   /** Primary button label, e.g. "Drop". */
   confirm: string;
+  /** Whether the statement destroys something; the primary button then says so. Default true. */
+  danger?: boolean;
   options: SqlActionOptions;
   /** The statement for the current choices; `null` when they produce none. */
-  generate: (choices: { cascade: boolean; newName: string }) => Promise<string | null>;
+  generate: (choices: SqlActionChoices) => Promise<string | null>;
   /** Called after the statement ran. */
-  onDone: () => void;
+  onDone: (choices: SqlActionChoices) => void;
   onClose: () => void;
 }
+
+/** How long typing pauses before the statement is generated again. */
+const TYPING_PAUSE_MS = 250;
 
 /** Shows the statement an object action will run, lets the user adjust it, then runs it
  *  on the navigator session. */
@@ -32,36 +49,55 @@ export function SqlActionDialog(props: Props) {
   const { connection, database, options } = props;
   const [cascade, setCascade] = useState(false);
   const [newName, setNewName] = useState(options.rename ?? "");
-  const [sql, setSql] = useState<string | null>(null);
+  /** The last statement generated, with the choices it was generated for. */
+  const [preview, setPreview] = useState<(SqlActionChoices & { sql: string | null }) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  // The first statement comes at once; while typing, after a pause.
+  const opened = useRef(true);
   const renaming = options.rename !== undefined;
-  const unchanged = renaming && (newName.trim() === "" || newName === options.rename);
+  const unchanged = renaming && ((newName.trim() === "" && !options.allowEmpty) || newName === options.rename);
+  const choices: SqlActionChoices = { cascade, newName: newName.trim() };
+  // Only the statement of what the dialog shows now runs: one still being generated for an
+  // earlier keystroke does not.
+  const fresh = !unchanged && preview?.cascade === choices.cascade && preview.newName === choices.newName;
+  const sql = fresh ? preview.sql : null;
+  const runnable = !!sql && !running && !connection.read_only;
 
   useEffect(() => {
-    let current = true;
     if (unchanged) {
-      setSql(null);
+      setPreview(null);
       return;
     }
-    props.generate({ cascade, newName: newName.trim() }).then(
-      (s) => current && setSql(s),
-      (e: unknown) => current && setError(toCommandError(e).message),
+    let current = true;
+    const timer = window.setTimeout(
+      () =>
+        props.generate(choices).then(
+          (s) => {
+            if (!current) return;
+            setPreview({ ...choices, sql: s });
+            setError(null);
+          },
+          (e: unknown) => current && setError(toCommandError(e).message),
+        ),
+      opened.current ? 0 : TYPING_PAUSE_MS,
     );
+    opened.current = false;
     return () => {
       current = false;
+      window.clearTimeout(timer);
     };
   }, [cascade, newName]);
 
   async function run() {
-    if (!sql) return;
+    if (!runnable) return;
     setRunning(true);
     setError(null);
     try {
       const sid = await workbench().sideSession(connection, database);
       if (sid === null) return;
       await api.executeStatement(sid, sql);
-      props.onDone();
+      props.onDone(choices);
       props.onClose();
     } catch (e) {
       setError(toCommandError(e).message);
@@ -69,6 +105,13 @@ export function SqlActionDialog(props: Props) {
       setRunning(false);
     }
   }
+
+  const field = {
+    autoFocus: true,
+    value: newName,
+    onChange: (e: { target: { value: string } }) => setNewName(e.target.value),
+  };
+  const hint = options.renameLabel ? t("Change the text.") : t("Type a new name.");
 
   return (
     <div className="modal-backdrop" onMouseDown={props.onClose}>
@@ -85,8 +128,21 @@ export function SqlActionDialog(props: Props) {
         <p className="muted small">{props.description}</p>
         {renaming && (
           <label className="field">
-            <span>{t("New name")}</span>
-            <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} />
+            <span>{options.renameLabel ?? t("New name")}</span>
+            {options.multiline ? (
+              <textarea
+                {...field}
+                rows={4}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    e.currentTarget.form?.requestSubmit();
+                  }
+                }}
+              />
+            ) : (
+              <input {...field} />
+            )}
           </label>
         )}
         {options.cascade && (
@@ -95,7 +151,7 @@ export function SqlActionDialog(props: Props) {
             <span>{t("CASCADE: also drop the objects that depend on it")}</span>
           </label>
         )}
-        <pre className="sql-preview">{sql ?? (unchanged ? t("Type a new name.") : "…")}</pre>
+        <pre className="sql-preview">{unchanged ? hint : (preview?.sql ?? "…")}</pre>
         {connection.read_only && (
           <div className="notice warn small">{t("{name} is read-only: this statement cannot be run.", { name: connection.name })}</div>
         )}
@@ -118,9 +174,9 @@ export function SqlActionDialog(props: Props) {
           </button>
           <button
             type="submit"
-            className="primary danger"
+            className={props.danger === false ? "primary" : "primary danger"}
             autoFocus={!renaming}
-            disabled={!sql || running || connection.read_only}
+            disabled={!runnable}
           >
             {running ? t("Running…") : props.confirm}
           </button>
