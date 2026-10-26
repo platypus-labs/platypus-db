@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { api, type ColumnInfo, type CommandError } from "../api";
 import type { GridSource } from "../grid/DataGrid";
 import { useFormatSignature } from "../grid/formats";
@@ -88,9 +88,11 @@ interface PanelProps {
   notes?: NotesScope | null;
   /** Shown as a chart instead of the grid: what it draws, and where a change of it goes. */
   chart?: { config: ChartConfig | null; onConfig: (config: ChartConfig) => void } | null;
+  /** Above the grid or the chart: the result's SQL field. */
+  toolbar?: ReactNode;
 }
 
-export function ResultPanel({ result, sort, onHeaderClick, headerHint, source, edit, notes, chart }: PanelProps) {
+export function ResultPanel({ result, sort, onHeaderClick, headerHint, source, edit, notes, chart, toolbar }: PanelProps) {
   const [cache, setCache] = useState<RowCache | null>(null);
   const [version, setVersion] = useState(0);
   const { jobId, columns, status } = result;
@@ -149,6 +151,7 @@ export function ResultPanel({ result, sort, onHeaderClick, headerHint, source, e
   return (
     <>
       {bar}
+      {chart && toolbar && <div className="edit-bar">{toolbar}</div>}
       {chart ? (
         <ChartView
           jobId={jobId}
@@ -171,6 +174,7 @@ export function ResultPanel({ result, sort, onHeaderClick, headerHint, source, e
           source={source}
           edit={edit}
           notes={notes}
+          toolbar={toolbar}
         />
       )}
     </>

@@ -29,6 +29,8 @@ export interface ResultHost {
   results(): ResultRows[];
   /** The result shown, if it has a job. */
   activeJob(): number | null;
+  /** Puts the focus in the SQL field of the result shown. */
+  querySql(): void;
 }
 
 const hosts = new Set<ResultHost>();

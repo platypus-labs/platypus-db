@@ -32,6 +32,7 @@ import { viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { ResultSourceBar } from "../analysis/QueryWithSql";
+import { useResultSql } from "../analysis/ResultSql";
 import { provideResults, resultsWithRows, type ResultSource } from "../analysis/resultHosts";
 import { basename } from "../workspace";
 import {
@@ -240,9 +241,19 @@ export function QueryTab({
   const [activeResult, setActiveResult] = useState(0);
   const [running, setRunning] = useState(false);
   const shown = results[activeResult];
+  /** The SQL field of the shown result; the grid shows its output in place of the result. */
+  const resultSql = useResultSql({
+    connection,
+    results,
+    shown,
+    enabled: !isMongo(connection.driver) && !tab.terminal,
+    canLeave: async () => !unsaved.current || ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }),
+  });
+  /** The rows on screen: the shown result, or the output of its SQL field. */
+  const view = resultSql.output ?? shown;
   // "Query with SQL" reads this tab's results with rows and which one is shown.
-  const resultsNow = useRef({ results, shown, active });
-  resultsNow.current = { results, shown, active };
+  const resultsNow = useRef({ results, shown, active, focusSql: resultSql.focus });
+  resultsNow.current = { results, shown, active, focusSql: resultSql.focus };
   useEffect(
     () =>
       provideResults({
@@ -251,6 +262,7 @@ export function QueryTab({
         shown: () => resultsNow.current.active,
         results: () => resultsWithRows(resultsNow.current.results),
         activeJob: () => resultsNow.current.shown?.jobId ?? null,
+        querySql: () => resultsNow.current.focusSql(),
       }),
     [],
   );
@@ -291,10 +303,11 @@ export function QueryTab({
     filters && filters.result.id === shown?.id && filters.result.columns === shown.columns ? filters.columns : undefined;
   /** The viewer's sort of the shown statement, for the header arrow and the next click. */
   const shownSort = tab.table && shown ? sortOf(tab.sorts, shown.sql) : null;
-  /** The shown statement's chart, if one was made; it stays with the statement across runs. */
-  const shownChart = shown ? chartOf(tab.charts, shown.sql) : null;
+  /** The chart of the statement on screen, if one was made; it stays with the statement across
+   *  runs. */
+  const shownChart = view ? chartOf(tab.charts, view.sql) : null;
   const setChart = (patch: Partial<Omit<SavedChart, "query">>) => {
-    if (shown) onChange({ charts: withChart(tab.charts, shown.sql, patch) });
+    if (view) onChange({ charts: withChart(tab.charts, view.sql, patch) });
   };
   // A count belongs to the statement it counted.
   const shownKey = shown ? queryKey(shown.sql) : null;
@@ -1055,7 +1068,11 @@ export function QueryTab({
       }
       return;
     }
-    const sessionId = await ensureSession();
+    // The output of the SQL field runs again on the copy it was read from, a session that runs
+    // one statement at a time: the output keeps the rows it has read.
+    const output = result === resultSql.output;
+    if (output && result.jobId !== null) await api.stopFetch(result.jobId);
+    const sessionId = output ? resultSql.sessionId : await ensureSession();
     if (sessionId === null) return;
     setExporting({ exportId: null, rows: 0, done: null, failed: false });
     try {
@@ -1281,7 +1298,7 @@ export function QueryTab({
   // commit mode.
   const showTx = toolbar.visible.transactions && connection.driver !== "clickhouse" && !isMongo(connection.driver);
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
-  const rowsResult = shown?.status.kind === "rows" && shown.columns ? shown : null;
+  const rowsResult = view?.status.kind === "rows" && view.columns ? view : null;
   const manual = tx !== null && !tx.autocommit;
   const exportBusy = exporting !== null && exporting.done === null;
 
@@ -1526,7 +1543,16 @@ export function QueryTab({
               ))}
             </div>
           )}
-          {!tab.terminal && shown && (
+          {!tab.terminal && view && resultSql.output && (
+            <ResultPanel
+              key={view.id}
+              result={view}
+              source={{ connection: resultSql.connection ?? connection, sql: view.sql, jobId: view.jobId, table: null }}
+              chart={shownChart?.shown ? { config: shownChart.config, onConfig: (config) => setChart({ config }) } : null}
+              toolbar={resultSql.bar}
+            />
+          )}
+          {!tab.terminal && shown && !resultSql.output && (
             <ResultPanel
               key={shown.id}
               result={shown}
@@ -1549,23 +1575,24 @@ export function QueryTab({
               edit={editTarget(shown)}
               notes={notesScope(shown)}
               chart={shownChart?.shown ? { config: shownChart.config, onConfig: (config) => setChart({ config }) } : null}
+              toolbar={resultSql.bar}
             />
           )}
         </div>
         <div className="statusbar" role="status">
-          {shown && (
+          {view && (
             <>
-              <span>{describe(shown)}</span>
+              <span>{describe(view)}</span>
               {rowsResult && <ChartToggle chart={!!shownChart?.shown} onChange={(on) => setChart({ shown: on })} />}
-              {(shown.status.kind === "rows" || shown.status.kind === "affected") && (
+              {(view.status.kind === "rows" || view.status.kind === "affected") && (
                 <span className="muted">
-                  {t(shown.status.kind === "rows" && !shown.status.finished ? "first rows in {time}" : "took {time}", {
-                    time: formatMs(shown.status.elapsedMs),
+                  {t(view.status.kind === "rows" && !view.status.finished ? "first rows in {time}" : "took {time}", {
+                    time: formatMs(view.status.elapsedMs),
                   })}
                 </span>
               )}
-              {(shown.status.kind === "rows" || shown.status.kind === "affected") &&
-                isSlow(shown.status.elapsedMs, slowSeconds) && (
+              {(view.status.kind === "rows" || view.status.kind === "affected") &&
+                isSlow(view.status.elapsedMs, slowSeconds) && (
                   <span
                     className="slow-query"
                     title={t("Slower than {n} s (Settings). Explain (Ctrl+Shift+E) shows where the time goes.", { n: slowSeconds })}
@@ -1573,8 +1600,8 @@ export function QueryTab({
                     {t("slow")}
                   </span>
                 )}
-              {shown.status.kind === "rows" && !shown.status.finished && (
-                <button className="link" onClick={() => fetchAll(shown)}>
+              {view.status.kind === "rows" && !view.status.finished && (
+                <button className="link" onClick={() => fetchAll(view)}>
                   {t("Fetch all")}
                 </button>
               )}
@@ -1583,11 +1610,11 @@ export function QueryTab({
                   {t("Export…")}
                 </button>
               )}
-              {compare.kept(shown) && (
+              {compare.kept(view) && (
                 <button
                   className="link"
-                  disabled={!compare.comparable(shown)}
-                  title={compare.comparable(shown) ? undefined : t("The columns changed since the previous run.")}
+                  disabled={!compare.comparable(view)}
+                  title={compare.comparable(view) ? undefined : t("The columns changed since the previous run.")}
                   onClick={() => void compareShown()}
                 >
                   {t("Compare with previous run")}

@@ -96,6 +96,8 @@ interface Options {
   grid: RefObject<GridApi | null>;
   /** The element holding the grid: bounds the editors and receives the typed keys. */
   box: RefObject<HTMLDivElement | null>;
+  /** At the end of the bar, also when the result is not a table's: the result's SQL field. */
+  extra?: ReactNode;
 }
 
 /** What the editor adds to a result grid. */
@@ -158,7 +160,7 @@ function decoration(value: CellInput, background: string): CellDecoration {
 const columnsOf = (meta: EditMeta) => meta.columns.flatMap((c, i) => (c ? [i] : []));
 
 /** Editing of a result of one table: inline editors, new and deleted rows, save. */
-export function useTableEditor({ target, jobId, columns, cache, version, grid, box }: Options): TableEditorHost {
+export function useTableEditor({ target, jobId, columns, cache, version, grid, box, extra }: Options): TableEditorHost {
   const [meta, setMeta] = useState<EditMeta | ReadOnly | null>(null);
   const [state, setState] = useState(edits.EMPTY);
   const current = useRef(state);
@@ -600,9 +602,9 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
   const showBar = !target?.quiet || (meta !== null && !("hidden" in meta && meta.hidden));
   const keyTable = keys?.table ?? noKey?.table;
 
-  const bar = target && (
-    <div className="edit-bar" hidden={!showBar}>
-      {readOnly !== null ? (
+  const bar = (target || extra) && (
+    <div className="edit-bar" hidden={!showBar && !extra}>
+      {!target || !showBar ? null : readOnly !== null ? (
         <>
           <span className="muted small">{t("Read-only: {reason}.", { reason: t(readOnly) })}</span>
           {noKey && (
@@ -655,6 +657,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
           )}
         </>
       )}
+      {extra}
       {error && (
         <span className="error-text small edit-error" title={error}>
           {error}

@@ -1286,6 +1286,26 @@ const it: Record<string, string> = {
   "Compared the first {before} and {after} loaded rows: rows found in only one run are counted only when the other run was loaded in full. Load all the rows of both runs for a complete comparison.":
     "Confrontate le prime {before} e {after} righe caricate: le righe presenti in una sola esecuzione contano solo se l'altra è stata caricata per intero. Caricare tutte le righe di entrambe le esecuzioni per un confronto completo.",
   "Reload from result": "Ricarica dal risultato",
+  "SQL on the loaded rows: WHERE …, ORDER BY …, GROUP BY … or SELECT … FROM result":
+    "SQL sulle righe caricate: WHERE …, ORDER BY …, GROUP BY … o SELECT … FROM result",
+  "Runs on a copy of the loaded rows in an in-memory DuckDB, not on the database. A clause or a condition applies to the result; other results of the tab are r1, r2, …. Enter runs, Ctrl+Enter opens a larger editor, Escape returns to the result.":
+    "Gira su una copia delle righe caricate in un DuckDB in memoria, non sul database. Una clausola o una condizione si applica al risultato; gli altri risultati della scheda sono r1, r2, …. Invio esegue, Ctrl+Invio apre un editor più grande, Esc torna al risultato.",
+  "SQL on the result": "SQL sul risultato",
+  "Back to the result": "Torna al risultato",
+  "Back to the result (Escape)": "Torna al risultato (Esc)",
+  "Larger editor": "Editor più grande",
+  "Larger editor (Ctrl+Enter)": "Editor più grande (Ctrl+Invio)",
+  "Only a query that returns rows can be shown.": "Si può mostrare solo una query che restituisce righe.",
+  "The grid shows the output of the SQL, not the result: × or Escape returns to it.":
+    "La griglia mostra l'output dell'SQL, non il risultato: × o Esc torna al risultato.",
+  "SQL view · {n} row": "Vista SQL · {n} riga",
+  "SQL view · {n} rows": "Vista SQL · {n} righe",
+  "partial": "parziale",
+  "reloaded": "ricaricato",
+  "The result ran again: its rows were loaded again.": "Il risultato è stato rieseguito: le sue righe sono state ricaricate.",
+  "Open in a tab": "Apri in una scheda",
+  "Opens the SQL in a new tab on a copy of the results": "Apre l'SQL in una nuova scheda su una copia dei risultati",
+  "Run (Ctrl+Enter)": "Esegui (Ctrl+Invio)",
 
   // Analysis (group M): compare with the previous run
   "Compare with previous run": "Confronta con l'esecuzione precedente",

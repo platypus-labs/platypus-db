@@ -1,15 +1,17 @@
-// SQL on results: "Query with SQL" in the grid's menu copies the rows into the table `result`
-// of an in-memory DuckDB, queried in a new tab; after the source tab runs again, "Reload from
-// result" copies them again and runs the query once more.
+// SQL on a result: the field above the grid runs a query, or a clause, on a copy of the loaded
+// rows in an in-memory DuckDB and the grid shows its output in place of the result; Escape
+// returns to the result. After the statement runs again, the next query loads the new rows.
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { editorText, openTable, rerun, runQuery, sqliteConnection, status, visibleTab } from "../query.mjs";
+import { openTable, rerun, sqliteConnection, status, visibleTab } from "../query.mjs";
 
 const NAME = "E2E sql on results";
-const menuButton = (label) =>
-  `[...document.querySelectorAll('.context-menu button')].find(b => b.querySelector('span')?.textContent === ${JSON.stringify(label)})`;
-const tab = (start) => `[...document.querySelectorAll('.tab')].find(t => t.textContent.startsWith(${JSON.stringify(start)}))`;
+const field = `${visibleTab}?.querySelector('.result-sql .cm-content')`;
+const fieldText = `(${visibleTab}?.querySelector('.result-sql .cm-line')?.textContent ?? '')`;
+const mark = `(${visibleTab}?.querySelector('.result-sql-mark')?.textContent ?? '')`;
+const completing = `${visibleTab}?.querySelector('.result-sql .cm-tooltip-autocomplete') != null`;
+const clearStatus = `(() => { const s = ${visibleTab}?.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`;
 
 export function setup({ dir }) {
   sqliteConnection(dir, {
@@ -21,31 +23,53 @@ export function setup({ dir }) {
   });
 }
 
+/** Types `sql` as the field's whole text. It ends with a character that closes the completion
+ *  list, which would otherwise take Enter. */
+async function typeInField(page, sql) {
+  await page.waitFor(`${field} != null`);
+  await page.eval(`${field}.focus()`);
+  await page.key("a", "KeyA", 65, 2);
+  await page.type(sql);
+  await page.waitFor(`${fieldText} === ${JSON.stringify(sql)}`);
+  await page.waitFor(`!(${completing})`);
+}
+
+/** Presses `key` in the field and waits for the status to become `rows` (emptied first: the
+ *  old text may be the same). */
+async function pressIn(page, key, code, keyCode, rows) {
+  await page.eval(clearStatus);
+  await page.eval(`${field}.focus()`);
+  await page.key(key, code, keyCode);
+  await page.waitFor(`${status} === ${JSON.stringify(rows)}`, 15_000);
+}
+
 export default async function (page, { dir }) {
   await openTable(page, NAME, "items", "5 rows");
 
-  // From the grid's menu: a new tab on the copied rows.
-  const grid = await page.eval(`(() => { const r = ${visibleTab}.querySelector('.grid-scroll').getBoundingClientRect(); return { x: r.x, y: r.y }; })()`);
-  await page.click(grid.x + 40, grid.y + 52, { button: "right" });
-  await page.waitFor(`${menuButton("Query with SQL")} !== undefined`);
-  await page.eval(`${menuButton("Query with SQL")}.click()`);
-  await page.waitFor(`${tab("SQL on results")}?.classList.contains('active') === true`, 15_000);
-  await page.waitFor(`${editorText} === 'SELECT * FROM result'`);
-  await rerun(page);
-  assert.equal(await page.eval(status), "5 rows");
-  await runQuery(page, "SELECT grp, count(*) AS n FROM result GROUP BY grp ORDER BY grp");
-  assert.equal(await page.eval(status), "2 rows");
+  // A whole query on the copy of the rows: the grid shows its output.
+  await typeInField(page, "SELECT grp, count(*) AS n FROM result GROUP BY grp ORDER BY grp;");
+  await pressIn(page, "Enter", "Enter", 13, "2 rows");
+  await page.waitFor(`${mark}.startsWith('SQL view · 2 rows')`);
 
-  // A new row read by the source tab, then Reload from result: the query runs again on it.
+  // Escape returns to the result.
+  await pressIn(page, "Escape", "Escape", 27, "5 rows");
+  assert.equal(await page.eval(mark), "");
+  assert.equal(await page.eval(fieldText), "");
+
+  // A condition alone is the WHERE of the result.
+  await typeInField(page, "grp = 1");
+  await pressIn(page, "Enter", "Enter", 13, "3 rows");
+
+  // The statement runs again on a new row: the grid shows the result, and the next query
+  // loads the new rows.
   const db = new DatabaseSync(join(dir, "results.db"), { timeout: 5_000 });
-  db.exec("INSERT INTO items VALUES (6, 3, 'f')");
+  db.exec("INSERT INTO items VALUES (6, 1, 'f')");
   db.close();
-  await page.eval(`${tab("items")}.click()`);
-  await page.waitFor(`${visibleTab}?.querySelector('.viewer-bar') != null`);
   await rerun(page);
   assert.equal(await page.eval(status), "6 rows");
-  await page.eval(`${tab("SQL on results")}.click()`);
-  await page.waitFor(`${visibleTab}?.querySelector('.result-source') != null`);
-  await page.eval(`[...${visibleTab}.querySelectorAll('.result-source button')].find(b => b.textContent === 'Reload from result').click()`);
-  await page.waitFor(`${status} === '3 rows'`, 15_000);
+  assert.equal(await page.eval(mark), "");
+  assert.equal(await page.eval(fieldText), "grp = 1");
+  await pressIn(page, "Enter", "Enter", 13, "4 rows");
+  await page.waitFor(`${mark}.includes('reloaded')`);
+  await pressIn(page, "Escape", "Escape", 27, "6 rows");
 }
