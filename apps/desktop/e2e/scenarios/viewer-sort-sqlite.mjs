@@ -34,11 +34,17 @@ save_password = false
   );
 }
 
-/** Empties the status first: "3 rows" may be the old state, the run's end is a new text. */
+const cancel = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')`;
+
+/** Empties the status first: "3 rows" may be the old state. The run's end is a new text with
+ *  Cancel disabled again; "Executing…" is only its start. */
 async function afterRun(page, action) {
   await page.eval(`(() => { const s = ${statusSpan}; if (s) s.textContent = ''; })()`);
   await action();
-  await page.waitFor(`${status} !== ''`, 15_000);
+  await page.waitFor(
+    `(() => { const s = ${status}; return ${cancel}?.disabled === true && s !== '' && !s.includes('Executing'); })()`,
+    15_000,
+  );
 }
 
 export default async function (page) {
