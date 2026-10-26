@@ -113,6 +113,10 @@ pub struct FakeColumn {
     /// The column takes no value twice (a unique index or constraint of its own).
     #[serde(default)]
     pub unique: bool,
+    /// The column's type as the database names it: for a MongoDB field, the BSON type of the
+    /// sampled documents (`long`, `double`, `decimal`…), which the written numbers take.
+    #[serde(default)]
+    pub data_type: Option<String>,
 }
 
 const FIRST: &[&str] = &[
@@ -372,6 +376,18 @@ pub fn batch(
     first: u64,
     rows: usize,
 ) -> Result<RecordBatch, ArrowError> {
+    // The number of the last row, added to a sequence's start.
+    let last = i64::try_from((first + rows as u64).saturating_sub(1)).ok();
+    let beyond = |c: &FakeColumn| {
+        matches!(c.generator, Generator::Sequence { start }
+            if last.and_then(|l| start.checked_add(l)).is_none())
+    };
+    if let Some(c) = columns.iter().find(|c| beyond(c)) {
+        return Err(ArrowError::ComputeError(format!(
+            "the keys of {} go beyond the largest integer",
+            c.name
+        )));
+    }
     let today = days_since_epoch();
     let arrays: Vec<ArrayRef> = columns
         .iter()
@@ -516,15 +532,73 @@ async fn composite_keys(
     Ok(())
 }
 
-/// The first key after `max`, the largest one (whole or not); 1 without one.
-fn after(max: Option<&str>) -> i64 {
-    let max = max.and_then(|m| {
-        m.parse::<i64>().ok().or_else(|| {
-            #[expect(clippy::cast_possible_truncation, reason = "a key fits in i64")]
-            m.parse::<f64>().ok().map(|f| f.floor() as i64)
-        })
-    });
-    max.unwrap_or(0).saturating_add(1)
+/// 2^63, the first `f64` beyond `i64`.
+const I64_LIMIT: f64 = 9_223_372_036_854_775_808.0;
+
+/// The largest whole number at most `m`, a number as the database writes it: `None` for text
+/// that is not a number, an error for a number beyond `i64`.
+fn whole(m: &str) -> Result<Option<i64>, ()> {
+    let m = m.trim();
+    if let Ok(n) = m.parse::<i64>() {
+        return Ok(Some(n));
+    }
+    // `123.45` exactly, beyond what an f64 holds.
+    if let Some((int, fraction)) = m.split_once('.')
+        && !fraction.is_empty()
+        && fraction.bytes().all(|b| b.is_ascii_digit())
+        && let Ok(n) = int.parse::<i64>()
+    {
+        let below = m.starts_with('-') && fraction.bytes().any(|b| b != b'0');
+        return if below {
+            n.checked_sub(1).ok_or(()).map(Some)
+        } else {
+            Ok(Some(n))
+        };
+    }
+    let Ok(f) = m.parse::<f64>() else {
+        return Ok(None);
+    };
+    if !f.is_finite() || f.floor() < -I64_LIMIT || f.floor() >= I64_LIMIT {
+        return Err(());
+    }
+    #[expect(clippy::cast_possible_truncation, reason = "within i64, checked above")]
+    Ok(Some(f.floor() as i64))
+}
+
+/// The keys after `max`, the largest of column `name`, for `rows` rows; from 1 without one.
+fn next_key(name: &str, max: Option<&str>, rows: u64) -> Result<Generator, ImportError> {
+    let beyond = || {
+        ImportError::Plan(format!(
+            "{name}: {rows} keys after the largest go beyond the largest integer"
+        ))
+    };
+    let largest = match max.map(whole) {
+        Some(Err(())) => return Err(beyond()),
+        Some(Ok(n)) => n.unwrap_or(0),
+        None => 0,
+    };
+    let last = i64::try_from(rows)
+        .ok()
+        .and_then(|r| largest.checked_add(r));
+    match (largest.checked_add(1), last) {
+        (Some(start), Some(_)) => Ok(Generator::Sequence { start }),
+        _ => Err(beyond()),
+    }
+}
+
+/// Refuses the settings no value comes from: numbers between bounds beyond `f64`.
+fn check(column: &FakeColumn) -> Result<(), ImportError> {
+    match column.generator {
+        Generator::Decimal { min, max, .. }
+            if !(min.is_finite() && max.is_finite() && (max - min).is_finite()) =>
+        {
+            Err(ImportError::Plan(format!(
+                "{}: the bounds of its numbers are too large",
+                column.name
+            )))
+        }
+        _ => Ok(()),
+    }
 }
 
 /// The generator `column` stands for, read from the table's database where it says so;
@@ -535,12 +609,12 @@ async fn resolve(
     column: FakeColumn,
     token: &str,
 ) -> Result<Generator, ImportError> {
+    check(&column)?;
     let name = column.name.as_str();
     let generator = match column.generator {
         Generator::NextKey => {
             let sql = format!("SELECT MAX({}) FROM {table}", dialect.quote_ident(name));
-            let start = after(query_value(conn, &sql).await?.as_deref());
-            Generator::Sequence { start }
+            next_key(name, query_value(conn, &sql).await?.as_deref(), rows)?
         }
         Generator::Reference {
             schema,
@@ -636,12 +710,11 @@ pub async fn fill(
     composite_keys(target, dialect, &mut columns, &mut rng).await?;
     let mut resolved = Vec::with_capacity(columns.len());
     for c in columns {
-        let name = c.name.clone();
-        let generator = resolve((target, dialect), (&qualified, rows), c, &token).await?;
+        let generator = resolve((target, dialect), (&qualified, rows), c.clone(), &token).await?;
         resolved.push(FakeColumn {
-            name,
             generator,
             unique: false,
+            ..c
         });
     }
     let plan = ImportPlan {
@@ -705,7 +778,7 @@ fn largest_number(collection: &str, field: &str) -> String {
         format!("{{ {f}: 1, \"_id\": 0 }}")
     };
     format!(
-        "{collection}.find({{ {f}: {{ \"$type\": [\"int\", \"long\", \"double\"] }} }}, \
+        "{collection}.find({{ {f}: {{ \"$type\": [\"int\", \"long\", \"double\", \"decimal\"] }} }}, \
          {projection}).sort({{ {f}: -1 }}).limit(1)"
     )
 }
@@ -718,13 +791,18 @@ async fn resolve_field(
     column: FakeColumn,
     token: &str,
 ) -> Result<Generator, ImportError> {
+    check(&column)?;
     let name = column.name.as_str();
     let generator = match column.generator {
+        // A query reads `a.b` as a path and `$a` as an operator, not as the field's name.
+        Generator::NextKey if name.contains('.') || name.starts_with('$') => {
+            return Err(ImportError::Plan(format!(
+                "{name}: no keys after the largest for a field named with `.` or `$`"
+            )));
+        }
         Generator::NextKey => {
             let max = query_value(conn, &largest_number(collection, name)).await?;
-            Generator::Sequence {
-                start: after(max.as_deref()),
-            }
+            next_key(name, max.as_deref(), rows)?
         }
         Generator::Reference { table, .. } => {
             return Err(ImportError::Plan(format!(
@@ -740,12 +818,36 @@ async fn resolve_field(
     distinct(generator, (name, rows), token, Some("MongoDB"))
 }
 
-/// Value `row` of `array`, filled by `generator`, as mongosh reads it: dates as `ISODate`,
-/// integers beyond 32 bits as `NumberLong`, arrays and documents as their JSON.
-fn shell_value(generator: &Generator, array: &dyn Array, row: usize) -> String {
+/// Whole number `n` as mongosh reads it into a field of BSON type `data_type`: a 32-bit int
+/// when it fits and the field is no other number. `NumberLong` takes the digits as text,
+/// which no double rounds.
+fn shell_integer(n: i64, data_type: Option<&str>) -> String {
+    match data_type {
+        Some("double") => format!("{n}.0"),
+        Some("decimal") => format!("NumberDecimal(\"{n}\")"),
+        Some("long") => format!("NumberLong(\"{n}\")"),
+        _ if i32::try_from(n).is_ok() => n.to_string(),
+        _ => format!("NumberLong(\"{n}\")"),
+    }
+}
+
+/// Number `v` as mongosh reads it, a `NumberDecimal` into a decimal field.
+fn shell_number(v: f64, data_type: Option<&str>) -> String {
+    match data_type {
+        _ if v.is_nan() => "NaN".to_owned(),
+        _ if v.is_infinite() => if v > 0.0 { "Infinity" } else { "-Infinity" }.to_owned(),
+        Some("decimal") => format!("NumberDecimal(\"{v}\")"),
+        _ => format!("{v:?}"),
+    }
+}
+
+/// Value `row` of `array`, filled as `column` says, as mongosh reads it: dates as `ISODate`,
+/// numbers of the field's type, arrays and documents as their JSON.
+fn shell_value(column: &FakeColumn, array: &dyn Array, row: usize) -> String {
     if array.is_null(row) {
         return "null".to_owned();
     }
+    let data_type = column.data_type.as_deref();
     let date = |seconds: Option<i64>| {
         seconds
             .and_then(|s| chrono::DateTime::from_timestamp(s, 0))
@@ -755,15 +857,10 @@ fn shell_value(generator: &Generator, array: &dyn Array, row: usize) -> String {
             )
     };
     match array.data_type() {
-        DataType::Int64 => {
-            let n = array.as_primitive::<Int64Type>().value(row);
-            if i32::try_from(n).is_ok() {
-                n.to_string()
-            } else {
-                format!("NumberLong({n})")
-            }
+        DataType::Int64 => shell_integer(array.as_primitive::<Int64Type>().value(row), data_type),
+        DataType::Float64 => {
+            shell_number(array.as_primitive::<Float64Type>().value(row), data_type)
         }
-        DataType::Float64 => format!("{:?}", array.as_primitive::<Float64Type>().value(row)),
         DataType::Boolean => array.as_boolean().value(row).to_string(),
         DataType::Date32 => {
             let days = i64::from(array.as_primitive::<Date32Type>().value(row));
@@ -775,7 +872,7 @@ fn shell_value(generator: &Generator, array: &dyn Array, row: usize) -> String {
         }
         _ => {
             let text = array.as_string::<i32>().value(row);
-            match generator {
+            match column.generator {
                 Generator::ObjectId => format!("ObjectId({})", quote(text)),
                 Generator::WordList | Generator::Document => text.to_owned(),
                 _ => quote(text),
@@ -793,7 +890,7 @@ fn insert_many(collection: &str, columns: &[FakeColumn], batch: &RecordBatch) ->
                 .iter()
                 .zip(batch.columns())
                 .map(|(c, a)| {
-                    let value = shell_value(&c.generator, a.as_ref(), row);
+                    let value = shell_value(c, a.as_ref(), row);
                     format!("{}: {value}", quote(&c.name))
                 })
                 .collect();
@@ -806,7 +903,8 @@ fn insert_many(collection: &str, columns: &[FakeColumn], batch: &RecordBatch) ->
 /// Adds `rows` fake documents to `collection` of the MongoDB database `db` (the session's
 /// without one) on `target`, a connection of its own, a statement per [`BATCH_ROWS`]
 /// documents. There are no transactions: the documents of the statements before a failure
-/// stay. `progress` gets the documents written so far and returns false to stop.
+/// stay. `progress` gets the documents written so far and returns false to stop before the
+/// next statement.
 pub async fn fill_collection(
     target: &dyn Connection,
     (db, collection): (Option<&str>, &str),
@@ -822,12 +920,11 @@ pub async fn fill_collection(
     let token = rng.token();
     let mut resolved = Vec::with_capacity(columns.len());
     for c in columns {
-        let name = c.name.clone();
-        let generator = resolve_field(target, (&at, rows), c, &token).await?;
+        let generator = resolve_field(target, (&at, rows), c.clone(), &token).await?;
         resolved.push(FakeColumn {
-            name,
             generator,
             unique: false,
+            ..c
         });
     }
     let mut written = 0;
@@ -837,7 +934,8 @@ pub async fn fill_collection(
         let sql = insert_many(&at, &resolved, &batch);
         target.execute(&sql, &ExecOptions::default()).await?;
         written += n as u64;
-        if !progress(written) {
+        // Stopped during the last statement, every document is written all the same.
+        if !progress(written) && written < rows {
             return Err(ImportError::Cancelled);
         }
     }
@@ -863,6 +961,14 @@ mod tests {
             name: name.to_owned(),
             generator,
             unique: false,
+            data_type: None,
+        }
+    }
+
+    fn typed(name: &str, generator: Generator, data_type: &str) -> FakeColumn {
+        FakeColumn {
+            data_type: Some(data_type.to_owned()),
+            ..column(name, generator)
         }
     }
 
@@ -1009,11 +1115,32 @@ mod tests {
 
     #[test]
     fn next_key_after_the_largest_number() {
-        assert_eq!(after(None), 1);
-        assert_eq!(after(Some("41")), 42);
-        assert_eq!(after(Some("41.5")), 42);
-        assert_eq!(after(Some("-3")), -2);
-        assert_eq!(after(Some("abc")), 1);
+        let start = |max: Option<&str>, rows| match next_key("k", max, rows) {
+            Ok(Generator::Sequence { start }) => Some(start),
+            _ => None,
+        };
+        assert_eq!(start(None, 10), Some(1));
+        assert_eq!(start(Some("41"), 10), Some(42));
+        assert_eq!(start(Some("41.5"), 10), Some(42));
+        assert_eq!(start(Some("41.00"), 10), Some(42));
+        assert_eq!(start(Some("-3"), 10), Some(-2));
+        assert_eq!(start(Some("-3.5"), 10), Some(-3));
+        assert_eq!(
+            start(Some("1.5E+3"), 10),
+            Some(1501),
+            "Decimal128's exponent"
+        );
+        // Beyond what an f64 holds exactly: a NUMERIC(20, 2) maximum.
+        assert_eq!(
+            start(Some("9007199254740997.00"), 10),
+            Some(9_007_199_254_740_998)
+        );
+        assert_eq!(start(Some("abc"), 10), Some(1), "text keys");
+        for beyond in ["inf", "NaN", "1e30", "9223372036854775807"] {
+            assert_eq!(start(Some(beyond), 10), None, "{beyond}");
+        }
+        assert_eq!(start(Some("9223372036854775797"), 10), Some(i64::MAX - 9));
+        assert_eq!(start(Some("9223372036854775797"), 11), None);
         let src = largest_number(&collection_ref(None, "customers"), "_id");
         let Command::Collection {
             db: None,
@@ -1027,7 +1154,7 @@ mod tests {
         assert_eq!(to_shell(&find.sort.unwrap().into()), "{ _id: -1 }");
         assert_eq!(
             to_shell(&find.filter.into()),
-            r#"{ _id: { $type: ["int", "long", "double"] } }"#
+            r#"{ _id: { $type: ["int", "long", "double", "decimal"] } }"#
         );
         let src = largest_number(&collection_ref(None, "customers"), "n");
         let Command::Collection {
@@ -1040,6 +1167,77 @@ mod tests {
         assert_eq!(
             to_shell(&find.projection.unwrap().into()),
             "{ n: 1, _id: 0 }"
+        );
+    }
+
+    /// The values of `columns` in the first document mongosh reads from their statement.
+    fn first_document(columns: &[FakeColumn]) -> Vec<String> {
+        let mut rng = Rng::new(7);
+        let batch = batch(&mut rng, columns, 0, 1).unwrap();
+        let src = insert_many(&collection_ref(None, "c"), columns, &batch);
+        let Command::Collection {
+            op: CollectionOp::InsertMany(docs),
+            ..
+        } = shell::parse(&src).unwrap()
+        else {
+            panic!("{src}");
+        };
+        columns
+            .iter()
+            .map(|c| to_shell(docs[0].get(&c.name).unwrap()))
+            .collect()
+    }
+
+    #[test]
+    fn numbers_take_the_type_of_their_field() {
+        let seq = |start| Generator::Sequence { start };
+        let decimal = Generator::Decimal {
+            min: 2.5,
+            max: 2.5,
+            scale: 1,
+        };
+        let values = first_document(&[
+            // Beyond 2^53: digits a double would round.
+            column("big", seq(9_007_199_254_740_993)),
+            column("max", seq(i64::MAX)),
+            column("small", seq(5)),
+            typed("long", seq(5), "long"),
+            typed("double", seq(5), "double"),
+            typed("decimal", seq(5), "decimal"),
+            typed("price", decimal.clone(), "decimal"),
+            column("ratio", decimal),
+        ]);
+        assert_eq!(
+            values,
+            [
+                "NumberLong(9007199254740993)",
+                "NumberLong(9223372036854775807)",
+                "5",
+                "NumberLong(5)",
+                "5.0",
+                "NumberDecimal(\"5\")",
+                "NumberDecimal(\"2.5\")",
+                "2.5"
+            ]
+        );
+        assert_eq!(shell_number(f64::INFINITY, None), "Infinity");
+    }
+
+    #[test]
+    fn refuses_values_beyond_their_type() {
+        let decimal = |min, max| column("n", Generator::Decimal { min, max, scale: 2 });
+        assert!(check(&decimal(0.0, 1e308)).is_ok());
+        assert!(
+            check(&decimal(-1e308, 1e308)).is_err(),
+            "the span overflows"
+        );
+        assert!(check(&decimal(0.0, f64::INFINITY)).is_err());
+        let mut rng = Rng::new(7);
+        let last = [column("id", Generator::Sequence { start: i64::MAX })];
+        assert!(batch(&mut rng, &last, 0, 1).is_ok());
+        assert!(
+            batch(&mut rng, &last, 0, 2).is_err(),
+            "no key after i64::MAX"
         );
     }
 

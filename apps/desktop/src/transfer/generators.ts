@@ -18,7 +18,7 @@ export type Kind = Generator["kind"];
 export const MONGO_ONLY: Kind[] = ["object_id", "word_list", "document"];
 
 /** Generators that repeat values, which a unique column refuses. */
-export const REPEATING: Kind[] = ["integer", "decimal", "bool", "choice", "date", "timestamp"];
+export const REPEATING: Kind[] = ["integer", "decimal", "bool", "choice", "date", "timestamp", "word_list", "document"];
 
 /** The generator a column most likely wants, from its keys, name and type; `mongo` for a
  * field of a MongoDB collection, typed as the documents sampled. */
@@ -31,6 +31,8 @@ export function suggest(column: ColumnMeta, fk: ForeignKeyMeta | undefined, uniq
   if (mongo && type === "objectid") return "object_id";
   if (mongo && type === "array") return "word_list";
   if (mongo && type === "document") return "document";
+  // An `_id` of text or of several types: numbers would land among other keys.
+  if (mongo && column.primary_key && !integer && !/double|decimal/.test(type)) return "object_id";
   if (unique && (integer || /numeric|decimal/.test(type))) return "next_key";
   if (column.primary_key) return integer ? "next_key" : /uuid|uniqueidentifier/.test(type) ? "uuid" : "next_key";
   if (column.enum_values.length > 0) return "choice";
@@ -41,6 +43,8 @@ export function suggest(column: ColumnMeta, fk: ForeignKeyMeta | undefined, uniq
   if (name.includes("city")) return "city";
   if (/phone|tel/.test(name)) return "phone";
   if (/bool|^bit/.test(type)) return "bool";
+  // BSON's date holds the time too.
+  if (mongo && type === "date") return "timestamp";
   if (/timestamp|datetime/.test(type)) return "timestamp";
   if (/date/.test(type)) return "date";
   if (/uuid|uniqueidentifier/.test(type)) return "uuid";

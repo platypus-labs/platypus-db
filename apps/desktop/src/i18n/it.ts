@@ -1132,6 +1132,8 @@ const it: Record<string, string> = {
   "Adding… {n} rows": "Aggiunta… {n} righe",
   "Added {n} rows.": "Aggiunte {n} righe.",
   "Nothing was added: ": "Non è stato aggiunto niente:",
+  "Added at least {n} documents, then stopped: ": "Aggiunti almeno {n} documenti, poi interrotto: ",
+  "Stopped after {n} documents.": "Interrotto dopo {n} documenti.",
   "Generate": "Genera",
   "{type}, unique": "{type}, unico",
   "Generator of {column}": "Generatore di {column}",

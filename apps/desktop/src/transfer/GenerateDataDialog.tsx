@@ -121,12 +121,14 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
 
   async function run() {
     if (sid === null) return;
-    const specs = filled.map((c) => ({ name: c.column.name, generator: c.generator, unique: c.unique }));
-    await start(
-      (onEvent) => api.fakeRows(sid, currentSchema ? null : schema, table, rows, specs, onEvent),
-      () => requestNavigatorRefresh({ connectionId: connection.id, database, schema }),
-    );
+    // The type picks the BSON type of a MongoDB field's numbers.
+    const specs = filled.map((c) => ({ name: c.column.name, generator: c.generator, unique: c.unique, data_type: c.column.data_type }));
+    const refresh = () => requestNavigatorRefresh({ connectionId: connection.id, database, schema });
+    // MongoDB has no transactions: the documents of a failed or stopped run stay.
+    await start((onEvent) => api.fakeRows(sid, currentSchema ? null : schema, table, rows, specs, onEvent), refresh, mongo ? refresh : undefined);
   }
+
+  const failed = mongo ? (n: number) => t("Added at least {n} documents, then stopped: ", { n: n.toLocaleString() }) : t("Nothing was added: ");
 
   const running = status.state === "running";
   const close = () => !running && onClose();
@@ -154,7 +156,11 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
             <GeneratorRow key={column.name} column={column} fk={fk} unique={unique} mongo={mongo} kind={g.kind} disabled={running} onChange={(k) => choose(i, k)} />
           ))}
         </div>
-        <JobFooter status={status} messages={[msg("Adding… {n} rows"), msg("Added {n} rows.")]} failed={t("Nothing was added: ")} onClose={onClose}>
+        <JobFooter status={status} messages={[msg("Adding… {n} rows"), msg("Added {n} rows.")]} 
+          failed={failed}
+          stopped={mongo ? msg("Stopped after {n} documents.") : undefined}
+          onClose={onClose}
+        >
           <button type="button" className="primary" disabled={running || sid === null || filled.length === 0} onClick={request}>
             {t("Generate")}
           </button>

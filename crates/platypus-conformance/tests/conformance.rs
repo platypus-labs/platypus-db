@@ -2897,6 +2897,7 @@ async fn fills_tables_with_fake_rows() {
             name: name.to_owned(),
             generator,
             unique: false,
+            data_type: None,
         };
         // The two columns of the composite foreign key, from one parent row.
         let reference = |column: &str| Generator::Reference {

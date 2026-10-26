@@ -200,8 +200,14 @@ async fn fills_a_collection_with_fake_documents() {
         name: name.to_owned(),
         generator,
         unique,
+        data_type: None,
     };
     let columns = vec![
+        // A long field takes longs, even the small numbers.
+        FakeColumn {
+            data_type: Some("long".to_owned()),
+            ..column("visits", Generator::Integer { min: 1, max: 9 }, false)
+        },
         column("_id", Generator::NextKey, false),
         column("email", Generator::Email, true),
         column("tags", Generator::WordList, false),
@@ -225,7 +231,7 @@ async fn fills_a_collection_with_fake_documents() {
     assert_eq!(rows(conn, "db.fake_rows.find()").await, 601);
     let typed = "db.fake_rows.find({ _id: { $gt: 7, $lte: 607 }, tags: { $type: 'array' }, \
                  address: { $type: 'object' }, created_at: { $type: 'date' }, \
-                 owner: { $type: 'objectId' } })";
+                 owner: { $type: 'objectId' }, visits: { $type: 'long' } })";
     assert_eq!(rows(conn, typed).await, 600);
 
     // Another run goes on after the largest key, with unique values of its own.
@@ -248,5 +254,22 @@ async fn fills_a_collection_with_fake_documents() {
         "{failed:?}"
     );
     assert_eq!(rows(conn, "db.fake_rows.find()").await, 611);
+
+    // No next key for a field whose name a query reads as a path.
+    let dotted = vec![column("a.b", Generator::NextKey, false)];
+    let refused = fill_collection(conn, at, dotted, 1, |_| true).await;
+    assert!(matches!(refused, Err(ImportError::Plan(_))), "{refused:?}");
+
+    // Stop ends before the next statement; asked during the last one, the run is complete.
+    let name = || vec![column("email", Generator::Email, true)];
+    let stopped = fill_collection(conn, at, name(), 600, |_| false).await;
+    assert!(
+        matches!(stopped, Err(ImportError::Cancelled)),
+        "{stopped:?}"
+    );
+    assert_eq!(rows(conn, "db.fake_rows.find()").await, 1111);
+    let late = fill_collection(conn, at, name(), 10, |_| false).await;
+    assert_eq!(late.unwrap(), 10);
+    assert_eq!(rows(conn, "db.fake_rows.find()").await, 1121);
     run("db.fake_rows.drop()").await;
 }

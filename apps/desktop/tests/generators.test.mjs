@@ -1,7 +1,7 @@
 // Unit tests of the generators suggested for fake rows (src/transfer/generators.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { suggest } from "../src/transfer/generators.ts";
+import { REPEATING, suggest } from "../src/transfer/generators.ts";
 
 const column = (name, data_type, primary_key = false) => ({ name, data_type, primary_key, default: null, enum_values: [] });
 
@@ -22,9 +22,21 @@ test("a collection's fields get generators of MongoDB's types", () => {
   assert.equal(mongo(column("email", "string"), true), "email");
   assert.equal(mongo(column("full_name", "string")), "full_name");
   assert.equal(mongo(column("country", "string")), "text");
-  assert.equal(mongo(column("created_at", "date")), "date");
+  assert.equal(mongo(column("created_at", "date")), "timestamp", "BSON dates hold the time");
+  assert.equal(suggest(column("born", "date"), undefined), "date", "a SQL date has none");
+  // An _id that is not a number gets ObjectIds, not numbers among its keys.
+  assert.equal(mongo(column("_id", "string", true), true), "object_id");
+  assert.equal(mongo(column("_id", "mixed", true), true), "object_id");
+  assert.equal(mongo(column("_id", "binData", true), true), "object_id");
+  assert.equal(mongo(column("_id", "double", true), true), "next_key");
+  assert.equal(mongo(column("_id", "decimal", true), true), "next_key");
   assert.equal(mongo(column("tags", "array")), "word_list");
   assert.equal(mongo(column("address", "document")), "document");
   assert.equal(mongo(column("visits", "long")), "integer");
   assert.equal(mongo(column("score", "double")), "decimal");
+});
+
+test("a unique field is not offered arrays or documents, which repeat", () => {
+  for (const kind of ["word_list", "document", "integer", "date"]) assert.ok(REPEATING.includes(kind), kind);
+  for (const kind of ["object_id", "next_key", "email", "uuid"]) assert.ok(!REPEATING.includes(kind), kind);
 });

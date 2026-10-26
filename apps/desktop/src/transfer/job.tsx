@@ -1,31 +1,24 @@
 import { type ReactNode, useState } from "react";
 import { api, type ExportEvent, toCommandError } from "../api";
 import { t } from "../i18n";
+import { afterEvent, type JobStatus } from "./jobStatus";
 
-/** A transfer job (export, migration, generated rows) as its dialog shows it. */
-export type JobStatus =
-  | { state: "idle" }
-  | { state: "running"; id: number | null; rows: number }
-  | { state: "done"; rows: number; warnings: string[] }
-  | { state: "failed"; message: string };
+export type { JobStatus };
 
 /** The status of a job and how to start one, following its events. */
 export function useJob() {
   const [status, setStatus] = useState<JobStatus>({ state: "idle" });
-  const fail = (e: unknown) => setStatus({ state: "failed", message: toCommandError(e).message });
+  const fail = (e: unknown) => setStatus({ state: "failed", message: toCommandError(e).message, rows: 0 });
 
-  /** Starts the job `begin` spawns; `onDone` runs once it has finished. */
-  async function start(begin: (onEvent: (e: ExportEvent) => void) => Promise<number>, onDone?: () => void) {
+  /** Starts the job `begin` spawns; `onDone` runs once it has finished, `onStopped` once it
+   *  has failed or been stopped (for a job whose written rows stay). */
+  async function start(begin: (onEvent: (e: ExportEvent) => void) => Promise<number>, onDone?: () => void, onStopped?: () => void) {
     setStatus({ state: "running", id: null, rows: 0 });
     try {
       const id = await begin((event) => {
-        if (event.type === "progress") setStatus((s) => (s.state === "running" ? { ...s, rows: event.rows } : s));
-        else if (event.type === "failed") setStatus({ state: "failed", message: event.error.message });
-        else if (event.type === "cancelled") setStatus({ state: "idle" });
-        else {
-          setStatus({ state: "done", rows: event.rows, warnings: event.warnings ?? [] });
-          onDone?.();
-        }
+        setStatus((s) => afterEvent(s, event));
+        if (event.type === "done") onDone?.();
+        else if (event.type !== "progress") onStopped?.();
       });
       setStatus((s) => (s.state === "running" ? { ...s, id } : s));
     } catch (e) {
@@ -43,13 +36,17 @@ export function JobFooter(props: {
   /** The notices while it runs and once done, with `{n}` for the rows and marked with `msg`,
    *  e.g. `["Copying… {n} rows", "Copied {n} rows."]`. */
   messages: [string, string];
-  /** Put before a failure's message. */
-  failed?: string;
+  /** Put before a failure's message; a function gets the rows written before. */
+  failed?: string | ((rows: number) => string);
+  /** The notice once stopped, with `{n}` for the rows written and marked with `msg`; none
+   *  for a job that leaves nothing behind. */
+  stopped?: string;
   stop?: string;
   onClose: () => void;
   children: ReactNode;
 }) {
-  const { status, messages, failed = "", stop = t("Stop"), onClose, children } = props;
+  const { status, messages, failed = "", stopped, stop = t("Stop"), onClose, children } = props;
+  const notice = status.state === "cancelled" && stopped !== undefined;
   return (
     <>
       {status.state === "running" && <div className="notice small">{t(messages[0], { n: status.rows.toLocaleString() })}</div>}
@@ -71,10 +68,11 @@ export function JobFooter(props: {
       )}
       {status.state === "failed" && (
         <div className="notice error small">
-          {failed}
+          {typeof failed === "function" ? failed(status.rows) : failed}
           {status.message}
         </div>
       )}
+      {notice && <div className="notice warn small">{t(stopped, { n: status.rows.toLocaleString() })}</div>}
       <div className="actions">
         <span className="spacer" />
         {status.state === "running" ? (
@@ -83,7 +81,7 @@ export function JobFooter(props: {
           </button>
         ) : (
           <button type="button" onClick={onClose}>
-            {t(status.state === "done" ? "Close" : "Cancel")}
+            {t(status.state === "done" || notice ? "Close" : "Cancel")}
           </button>
         )}
         {children}
