@@ -217,6 +217,22 @@ test("SQL Server brackets after other bracketed names", () => {
   assert.ok(labels(optionsAt("SELECT * FROM customers WHERE [Customer's] = 1 AND na|", tsql)).includes("column:name"));
 });
 
+test("USING names tables in DELETE and MERGE only", () => {
+  const sources = (sql) => (at(sql, { explicit: true }) ?? []).filter((o) => o.startsWith("source:"));
+  // DDL: an access method, a conversion expression.
+  assert.deepEqual(sources("CREATE TABLE t (a int, |) USING heap"), []);
+  assert.deepEqual(sources("ALTER TABLE orders ALTER COLUMN | TYPE bigint USING total::bigint"), []);
+  assert.deepEqual(sources("CREATE INDEX i ON orders USING gin (|)"), []);
+  // JOIN … USING (column) names a column, never a table.
+  assert.ok(!columns("SELECT * FROM orders o JOIN customers c USING (id) WHERE |", { explicit: true }).some((c) => c.endsWith("@id")));
+  // DELETE and MERGE: every table of the list, a subquery too.
+  const del = columns("DELETE FROM orders USING customers c, products WHERE |", { explicit: true });
+  assert.ok(del.includes("column:name@c") && del.includes("column:sku@products"));
+  assert.ok(columns("MERGE INTO orders o USING customers s ON s.id = o.customer_id WHEN MATCHED THEN UPDATE SET total = na|").includes("column:name@s"));
+  assert.deepEqual(at("MERGE INTO orders o USING (SELECT id, name FROM customers) s ON s.|"), ["column:id", "column:name"]);
+  assert.ok(columns("WITH x AS (SELECT 1 n) DELETE FROM orders USING x WHERE |", { explicit: true }).includes("column:n@x"));
+});
+
 test("a CTE completes after its name before FROM is written", () => {
   assert.deepEqual(at("WITH x AS (SELECT id, total AS amount FROM orders) SELECT x.|"), ["column:id", "column:amount"]);
 });

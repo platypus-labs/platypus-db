@@ -402,13 +402,25 @@ class Statement {
   private parseRefs() {
     const t = this.tokens;
     for (let i = 0; i < t.length; i++) {
-      // `MERGE ... USING s` and `DELETE ... USING s`; not `JOIN ... USING (column)`.
-      if (isWord(t[i], "USING") && isName(t[i + 1])) this.item(i + 1);
-      if (!isWord(t[i], "FROM", "JOIN", "UPDATE", "INTO")) continue;
-      const from = isWord(t[i], "FROM");
+      // FROM and USING take a list of tables, the others one.
+      const list = isWord(t[i], "FROM") || (isWord(t[i], "USING") && this.usingTables(i));
+      if (!list && !isWord(t[i], "JOIN", "UPDATE", "INTO")) continue;
       let k = this.item(i + 1);
-      while (from && t[k]?.text === "," && t[k]!.parent === t[i]!.parent) k = this.item(k + 1);
+      while (list && t[k]?.text === "," && t[k]!.parent === t[i]!.parent) k = this.item(k + 1);
     }
+  }
+
+  /** Whether the `USING` at `i` names tables: in `DELETE … USING` and `MERGE … USING`, not in
+   *  `JOIN … USING (column)` or in DDL (`USING heap`, `TYPE int USING x::int`). */
+  private usingTables(i: number): boolean {
+    const t = this.tokens;
+    for (let k = i - 1; k >= 0; k--) {
+      if (t[k]!.parent !== t[i]!.parent || t[k]!.kind !== "word") continue;
+      const w = t[k]!.text.toUpperCase();
+      if (w === "DELETE" || w === "MERGE") return true;
+      if (w === "JOIN" || w === "SELECT" || w === "CREATE" || w === "ALTER") return false;
+    }
+    return false;
   }
 
   /** The `(` around token position `pos` (a character offset), innermost first. */
