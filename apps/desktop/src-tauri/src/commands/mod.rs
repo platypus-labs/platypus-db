@@ -51,7 +51,9 @@ use platypus_driver_odbc::OdbcDriver;
 use platypus_driver_oracle::OracleDriver;
 use platypus_driver_pg::PgDriver;
 use platypus_driver_sqlite::SqliteDriver;
-use platypus_store::{CatalogStore, ConnectionStore, HistoryStore, SettingsStore, VaultSecrets};
+use platypus_store::{
+    CatalogStore, ConnectionStore, HistoryStore, ImportedSecrets, SettingsStore, VaultSecrets,
+};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -84,6 +86,9 @@ pub struct AppState {
     previous_runs: Mutex<HashMap<u64, analysis::diff::PreviousRun>>,
     /// Documentation exports running, by id: cancelling one stops it before the file is written.
     docs: Mutex<HashMap<u64, tokio_util::sync::CancellationToken>>,
+    /// The passwords of the last file read for an import, by connection id: they stay here,
+    /// out of the page, until the import is saved.
+    import_secrets: Mutex<HashMap<Uuid, ImportedSecrets>>,
     /// What the query manager shows.
     query_log: Arc<QueryLog>,
     next_id: AtomicU64,
@@ -128,6 +133,7 @@ impl AppState {
             clis: Mutex::new(HashMap::new()),
             previous_runs: Mutex::new(HashMap::new()),
             docs: Mutex::new(HashMap::new()),
+            import_secrets: Mutex::new(HashMap::new()),
             query_log: Arc::default(),
             next_id: AtomicU64::new(1),
         }

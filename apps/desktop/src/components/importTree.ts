@@ -2,7 +2,7 @@
  * The import dialog's preview: each imported project as a tree of folders and connections,
  * what is ticked in it, and the request that saves the ticked part.
  */
-import type { ImportedProject, ImportInto, ImportRequest, SavedConnection } from "../api";
+import type { ImportedProject, ImportInto, ImportRequest, SavedConnection, SkippedConnection } from "../api";
 
 export interface FolderView {
   /** Names from the project's root; empty for the root itself. */
@@ -78,7 +78,23 @@ function picked(project: ImportedProject, ticked: ReadonlySet<string>): Imported
     return inside.length === 0 || inside.some((c) => ticked.has(c.id));
   });
   const placement = Object.fromEntries(Object.entries(project.placement).filter(([id]) => ticked.has(id)));
-  return { ...project, connections, folders, placement };
+  const with_password = (project.with_password ?? []).filter((id) => ticked.has(id));
+  return { ...project, connections, folders, placement, skipped: [], notes: {}, project_notes: [], with_password };
+}
+
+/** How many connections of the file come with a saved password. */
+export function savedPasswords(projects: ImportedProject[]): number {
+  return projects.reduce((n, p) => n + (p.with_password?.length ?? 0), 0);
+}
+
+/** Whether the file held no connection at all, imported or left out. */
+export function isEmptyImport(projects: ImportedProject[]): boolean {
+  return projects.every((p) => p.connections.length === 0 && p.skipped.length === 0);
+}
+
+/** The tool's ids of a left-out connection's database and driver, e.g. `oracle · oracle_thin`. */
+export function skippedIds(s: SkippedConnection): string {
+  return [s.provider, s.driver].filter(Boolean).join(" · ") || "?";
 }
 
 export function importRequest(
@@ -86,9 +102,10 @@ export function importRequest(
   ticked: ReadonlySet<string>,
   into: ImportInto[],
   railFolder: string | null,
+  passwords = false,
 ): ImportRequest {
   const targets = projects
     .map((p, i) => ({ project: picked(p, ticked), into: into[i] ?? { kind: "none" as const } }))
     .filter((t) => t.project.connections.length > 0);
-  return { targets, rail_folder: railFolder?.trim() || null };
+  return { targets, rail_folder: railFolder?.trim() || null, passwords };
 }

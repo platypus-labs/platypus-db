@@ -5956,7 +5956,9 @@ dependencies = [
 name = "platypus-store"
 version = "0.2.0"
 dependencies = [
+ "aes",
  "argon2",
+ "cbc",
  "keyring",
  "platypus-core",
  "ring",
@@ -5966,6 +5968,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "toml 1.1.8+spec-1.1.0",
+ "unicode-normalization",
  "uuid",
  "zip 9.1.0",
 ]

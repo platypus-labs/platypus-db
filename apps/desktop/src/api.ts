@@ -884,7 +884,50 @@ export interface ImportedProject {
   connections: SavedConnection[];
   /** The folder of each connection not at the root, by connection id. */
   placement: Record<string, string[]>;
+  /** The connections of the file that are not imported. */
+  skipped: SkippedConnection[];
+  /** What a connection needs before it can connect, by connection id. */
+  notes: Record<string, ImportNote[]>;
+  /** What to know about the project as a whole. */
+  project_notes: ProjectNote[];
+  /** The connections that come with a saved password; the passwords stay in the backend. */
+  with_password: string[];
 }
+
+/** A connection of the file to a database the import does not read, with the tool's own
+ *  ids of the database and its driver. */
+export interface SkippedConnection {
+  name: string;
+  provider: string;
+  driver: string;
+}
+
+/** Windows or Entra ID logins, which the SQL Server driver does not do, and a named
+ *  instance without a port. */
+export type ImportNote = { kind: "windows_auth" } | { kind: "entra_auth" } | { kind: "named_instance"; instance: string };
+
+/** About a pasted URL or connection string: the notes of an import, and the parameters it
+ *  left out (by name). */
+export type ParseNote = ImportNote | { kind: "ignored"; keys: string[] };
+
+/** The connection form's fields read from a pasted URL or connection string. */
+export interface ParsedConnection {
+  driver: DriverKind;
+  host: string;
+  port: number | null;
+  database: string;
+  user: string;
+  password: string | null;
+  ssl_mode: SslMode;
+  ssl_root_cert: string | null;
+  ssl_client_cert: string | null;
+  ssl_client_key: string | null;
+  options: Record<string, string>;
+  notes: ParseNote[];
+}
+
+/** DBeaver keeps no saved logins for the project, or they could not be read. */
+export type ProjectNote = { kind: "no_saved_logins" } | { kind: "saved_logins_unreadable" };
 
 export type ImportInto =
   | { kind: "new_project"; name: string }
@@ -895,6 +938,8 @@ export interface ImportRequest {
   targets: { project: ImportedProject; into: ImportInto }[];
   /** A rail folder with this name holds the new projects. */
   rail_folder: string | null;
+  /** Saves the passwords read with the file; otherwise each connection asks on first use. */
+  passwords: boolean;
 }
 
 /** Connections, projects and rail folders, after a change that touches more than one. */
@@ -993,6 +1038,10 @@ export const api = {
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
   defaultConnection: (driver: DriverKind) =>
     invoke<SavedConnection>("default_connection", { driver }),
+  /** Reads a URL (`postgres://…`), a JDBC URL or a `Server=…;Database=…` string. */
+  parseConnectionUrl: (input: string) => invoke<ParsedConnection>("parse_connection_url", { input }),
+  /** The URL of a saved connection, without its password. */
+  connectionUrl: (connectionId: string) => invoke<string>("connection_url", { connectionId }),
   /** `projects` replaces the projects the connection is in; `null` leaves them. */
   saveConnection: (
     connection: SavedConnection,
@@ -1005,6 +1054,8 @@ export const api = {
   readImport: (source: ImportSource, path: string) => invoke<ImportedProject[]>("read_import", { source, path }),
   /** Saves what was picked from an import, all or nothing. */
   saveImported: (request: ImportRequest) => invoke<Workspace>("save_imported", { request }),
+  /** Drops the passwords `readImport` keeps for `saveImported`. */
+  forgetImport: () => invoke<void>("forget_import"),
   listProjects: () => invoke<Project[]>("list_projects"),
   saveProject: (project: Project) => invoke<Project[]>("save_project", { project }),
   /** Deletes a project; its connections stay. */
@@ -1025,6 +1076,20 @@ export const api = {
   /** Puts a connection into a folder of the project, or at its root with `null`. */
   placeConnection: (projectId: string, connectionId: string, folderId: string | null) =>
     invoke<Project[]>("place_connection", { projectId, connectionId, folderId }),
+  /** Moves a connection into a folder of the project (`null`: its root), just before
+   *  `before` or after the last connection there. */
+  arrangeConnection: (projectId: string, connectionId: string, folderId: string | null, before: string | null) =>
+    invoke<Project[]>("arrange_connection", { projectId, connectionId, folderId, before }),
+  /** Moves a folder into `parent` (`null`: the root), just before the folder `before` or
+   *  after the last one there. */
+  arrangeConnectionFolder: (projectId: string, folderId: string, parent: string | null, before: string | null) =>
+    invoke<Project[]>("arrange_connection_folder", { projectId, folderId, parent, before }),
+  /** Drops the connection `dragged` onto `target`: a new folder named `name` holds both. */
+  groupConnections: (projectId: string, target: string, dragged: string, name: string) =>
+    invoke<{ folder: string; projects: Project[] }>("group_connections", { projectId, target, dragged, name }),
+  /** Moves a connection in the list All connections shows: before `before`, or to the end. */
+  reorderConnection: (connectionId: string, before: string | null) =>
+    invoke<Workspace>("reorder_connection", { connectionId, before }),
   listProjectFolders: () => invoke<ProjectFolder[]>("list_project_folders"),
   /** Drops `dragged` onto `target` in the rail: both end up in one folder. */
   groupProjects: (target: string, dragged: string) => invoke<Workspace>("group_projects", { target, dragged }),
@@ -1330,10 +1395,11 @@ export const api = {
     invoke<(string | null)[][]>("row_values", { jobId, offset, limit }),
   /** The elements of a PostgreSQL array (or the fields of a composite value); `null` when
    *  the text is not one, e.g. a nested array. */
-  splitLiteral: (composite: boolean, text: string) =>
-    invoke<(string | null)[] | null>("split_literal", { composite, text }),
-  joinLiteral: (composite: boolean, items: (string | null)[]) =>
-    invoke<string>("join_literal", { composite, items }),
+  /** `typeName` is the array's type (`box[]` separates its elements with `;`). */
+  splitLiteral: (composite: boolean, typeName: string, text: string) =>
+    invoke<(string | null)[] | null>("split_literal", { composite, typeName, text }),
+  joinLiteral: (composite: boolean, typeName: string, items: (string | null)[]) =>
+    invoke<string>("join_literal", { composite, typeName, items }),
   /** Loaded rows of a result in a clipboard format; `table` names the table in INSERTs. */
   copyRows: (
     jobId: number,

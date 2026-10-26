@@ -92,13 +92,24 @@ and shows the ODBC drivers and data sources of the system.
 
 - A new connection starts from a grid of database logos, with a search on top (`Enter` takes
   the first match); the `+` of the navigator opens it, and so does a right-click on a connection
-  or below the list. Paste a `postgres://`, `mysql://`, `sqlserver://`, `clickhouse://`,
-  `libsql://` or `mongodb://` URL to fill the form.
+  or below the list. Or paste a connection under the logos: a URL (`postgres://`,
+  `mysql://`, `sqlserver://`, `clickhouse://`, `libsql://`, `mongodb://`), a JDBC URL or an
+  ADO.NET / ODBC string (`Server=tcp:db,1433;Database=shop;User Id=sa;…`), and the form opens
+  filled in for that database. The driver is set by the choice: *Back* returns to the logos, and a
+  URL pasted in the form for another database offers to go back. Windows logins and SQL Server
+  named instances without a port are pointed out. *Copy as URL* in a connection's menu copies
+  its URL without the password.
 - **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`, with their
   folders. A DBeaver project export (`.dbp`) brings its projects too, optionally gathered in a
-  folder of the project rail.
+  folder of the project rail. From DBeaver (a `.dbp` or a workspace) the saved user names and
+  passwords come along too, SSH tunnel ones included: the passwords go to the keychain (or the
+  master-password vault) like typed ones. Untick *Import saved users and passwords* to bring
+  only the user names. Passwords DBeaver protects with its own master password cannot be read;
+  those connections ask for theirs on first use, as do the ones of the other tools.
 - **Folders**: connections inside a project go in nested folders (drag them, or *Move to
   folder*); projects in the rail go in folders too, by dropping one project on another.
+  Connections and folders keep the order you give them: drag one above or below another, or
+  press Alt+Up / Alt+Down; a connection dropped onto another makes a new folder of the two.
 - **TLS** with libpq `sslmode` semantics, custom CAs, and client certificates for PostgreSQL and
   MySQL.
 - **SSH tunnels** with a password, a key or the SSH agent, optionally through a jump host;

@@ -28,7 +28,9 @@ export function setup({ dir }) {
            CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customers (id), total REAL);
            INSERT INTO orders VALUES (10, 1, 5.5), (11, 2, 7);
            CREATE TABLE log (at TEXT, msg TEXT);
-           INSERT INTO log VALUES ('t1', 'a'), ('t2', 'b');`);
+           INSERT INTO log VALUES ('t1', 'a'), ('t2', 'b');
+           CREATE TABLE docs (id INTEGER PRIMARY KEY, doc JSON);
+           INSERT INTO docs VALUES (1, '{"a":1,"b":[1,2]}');`);
   db.close();
   writeFileSync(
     join(dir, "connections.toml"),
@@ -168,4 +170,16 @@ export default async function (page, { dir, shots }) {
 
   const toml = readFileSync(join(dir, "connections.toml"), "utf8");
   assert.match(toml, /\[\[connections\.virtual_keys\]\]\s+schema = "main"\s+table = "log"\s+columns = \["at"\]/);
+
+  // Formatting JSON in the cell editor is only visual: applying it is not a change.
+  await openTable(page, "docs");
+  await page.waitFor(`${editBar}.includes('to edit a cell')`, 15_000);
+  await focusCell(page, 0, 1);
+  await page.key("F2", "F2", 113);
+  await page.waitFor(`document.querySelector('.cell-popup-text') !== null`);
+  await page.eval(`${button("document.querySelector('.cell-popup')", "Format JSON")}.click()`);
+  await page.waitFor(`document.querySelector('.cell-popup-text').value.includes('\\n')`);
+  await page.eval(`${button("document.querySelector('.cell-popup')", "Apply")}.click()`);
+  await page.waitFor(`document.querySelector('.cell-popup') === null`);
+  assert.ok(!/changed/.test(await page.eval(editBar)), "formatting JSON marked the cell as changed");
 }

@@ -1,13 +1,18 @@
 // Import of a DBeaver project export (.dbp) with two projects and nested folders: the
 // preview shows projects, folders and connections, an unticked connection stays out, and
 // the two new projects end up in a rail folder named after the file, with their folders in
-// the navigator.
+// the navigator. Then a SQL Server export whose connection has only a JDBC URL (host, port
+// and database empty) and a user name and password saved in DBeaver's encrypted
+// credentials-config.json, one with Windows login on a named instance, and an Oracle one
+// that is listed as not imported, with the reason.
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const FIXTURE = resolve(dirname(fileURLToPath(import.meta.url)), "../fixtures/two-projects.dbp");
+const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), "../fixtures");
+const FIXTURE = join(FIXTURES, "two-projects.dbp");
+const SQLSERVER = join(FIXTURES, "sqlserver-url.dbp");
 const dialog = `document.querySelector('.import-dialog')`;
 const rowOf = (name) =>
   `[...${dialog}.querySelectorAll('.import-row')].find(r => r.textContent.includes(${JSON.stringify(name)}))`;
@@ -69,4 +74,43 @@ export default async function (page) {
   // Collapsing the rail folder keeps the active project marked on it.
   await page.eval(`document.querySelector('.project-folder-head').click()`);
   await page.waitFor(`document.querySelector('.project-folder.active') !== null`);
+
+  await importSqlServer(page);
+}
+
+/** SQL Server connections set by URL only, with Windows login, and one left out. */
+async function importSqlServer(page) {
+  await page.eval(`window.__platypus.answer('file', ${JSON.stringify(SQLSERVER)})`);
+  await page.eval(`document.querySelector('.sidebar-header button[title^="Import connections"]').click()`);
+  await page.waitFor(`${dialog} !== null`);
+  await page.eval(`${dialog}.querySelector('.import-choose').click()`);
+  await page.waitFor(`${dialog}.querySelectorAll('.import-row.connection').length === 2`, 15_000);
+
+  assert.match(await page.eval(`${rowOf("Vericode Società")}.textContent`), /Vericode Società/);
+  // The user name comes from DBeaver's encrypted credentials-config.json.
+  assert.match(await page.eval(`${rowOf("sql-url")}.textContent`), /vc_reader@vc-sql01:1433\/Vericode/);
+  // Its saved password comes along unless unticked.
+  assert.equal(await page.eval(`${dialog}.querySelector('.import-passwords input').checked`), true);
+  assert.equal(await page.eval(`${dialog}.querySelectorAll('.import-project-note').length`), 0);
+  assert.match(await page.eval(`${rowOf("sql-windows")}.textContent`), /SRV:1433\/app/);
+  const notes = await page.eval(`[...${dialog}.querySelectorAll('.import-note')].map(n => n.textContent)`);
+  assert.equal(notes.length, 2, JSON.stringify(notes));
+  assert.match(notes[0], /SQLEXPRESS/);
+  assert.match(notes[1], /Windows authentication/);
+  const skipped = await page.eval(`[...${dialog}.querySelectorAll('.import-row.skipped')].map(r => r.textContent)`);
+  assert.equal(skipped.length, 1, JSON.stringify(skipped));
+  assert.match(skipped[0], /Legacy Oracle.*oracle · oracle_thin/);
+
+  await page.waitFor(`[...${dialog}.querySelectorAll('button')].some(b => b.textContent.trim() === 'Import 2')`);
+  await page.eval(`[...${dialog}.querySelectorAll('button')].find(b => b.textContent.trim() === 'Import 2').click()`);
+  await page.waitFor(`${dialog} === null`);
+
+  // The new project holds the SQL Server connections in their folder.
+  await page.waitFor(`document.querySelector('.project-square[title="Vericode Società"]') !== null`);
+  await page.eval(`document.querySelector('.project-square[title="Vericode Società"]').click()`);
+  await page.waitFor(`${treeRows}.some(([l]) => l === 'sql-url')`);
+  assert.deepEqual(
+    (await page.eval(treeRows)).map(([label]) => label),
+    ["Clienti", "sql-url", "sql-windows"],
+  );
 }

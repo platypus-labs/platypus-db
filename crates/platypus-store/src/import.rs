@@ -1,19 +1,23 @@
 //! Connections imported from other tools: DBeaver (`data-sources.json`, or the projects of
 //! a `.dbp` export), DataGrip (`dataSources.xml`), pgAdmin (an exported `servers.json`) and
-//! libpq's `pg_service.conf`. Folders come along; passwords do not: each connection asks for
-//! its password on first use.
+//! libpq's `pg_service.conf`. Folders come along. DBeaver's saved user names and passwords
+//! come along too (its `credentials-config.json`); the passwords are kept apart from what
+//! the dialog sees, in [`ImportedProject::secrets`]. Other connections ask for their
+//! password on first use.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use platypus_core::{DriverKind, SslMode};
+use platypus_core::{DriverKind, JdbcUrl, Secret, SslMode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
 use crate::connections::{ConnectionType, SavedConnection, SavedSsh, SshAuthKind};
 use crate::{Result, StoreError};
+use credentials::{Credentials, Saved};
 
+mod credentials;
 mod dbp;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,7 +38,7 @@ pub struct ImportFile {
 
 /// What a file holds for one project: its connections and their folders. Files of a single
 /// set of connections give one project without a name.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ImportedProject {
     pub name: Option<String>,
     /// Each folder as its names from the root; parents before their children.
@@ -42,15 +46,71 @@ pub struct ImportedProject {
     pub connections: Vec<SavedConnection>,
     /// The folder of each connection not at the root.
     pub placement: BTreeMap<Uuid, Vec<String>>,
+    /// The connections of the file that are not imported.
+    #[serde(default)]
+    pub skipped: Vec<SkippedConnection>,
+    /// What to know before using a connection, by connection id.
+    #[serde(default)]
+    pub notes: BTreeMap<Uuid, Vec<ImportNote>>,
+    /// What to know about the project as a whole.
+    #[serde(default)]
+    pub project_notes: Vec<ProjectNote>,
+    /// The connections that come with a saved password.
+    #[serde(default)]
+    pub with_password: Vec<Uuid>,
+    /// The saved passwords, by connection id. Never serialized: they do not leave the
+    /// backend, which keeps them until the import is saved.
+    #[serde(skip)]
+    pub secrets: BTreeMap<Uuid, ImportedSecrets>,
+}
+
+/// The passwords saved for an imported connection.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ImportedSecrets {
+    pub password: Option<Secret>,
+    /// The SSH tunnel's password, or the passphrase of its key.
+    pub ssh: Option<Secret>,
+}
+
+/// Something to know about a whole project of the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectNote {
+    /// DBeaver keeps no saved users or passwords for it.
+    NoSavedLogins,
+    /// Its saved users and passwords could not be read: DBeaver may protect them with a
+    /// master password.
+    SavedLoginsUnreadable,
+}
+
+/// A connection of the file to a database the import does not read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkippedConnection {
+    pub name: String,
+    /// The tool's own ids of the database and its driver, e.g. DBeaver's `oracle` and
+    /// `oracle_thin`.
+    pub provider: String,
+    pub driver: String,
+}
+
+/// Something an imported connection needs before it can connect.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ImportNote {
+    /// It logged in with Windows (integrated, NTLM or Kerberos): here it needs a SQL Server
+    /// login.
+    WindowsAuth,
+    /// It logged in with Microsoft Entra ID (Azure Active Directory).
+    EntraAuth,
+    /// A SQL Server named instance without a port: the port it listens on is needed.
+    NamedInstance { instance: String },
 }
 
 impl ImportedProject {
     fn new(connections: Vec<SavedConnection>) -> Self {
         Self {
-            name: None,
-            folders: Vec::new(),
             connections,
-            placement: BTreeMap::new(),
+            ..Self::default()
         }
     }
 
@@ -78,6 +138,29 @@ impl ImportedProject {
         }
         self.connections.extend(other.connections);
         self.placement.extend(other.placement);
+        self.skipped.extend(other.skipped);
+        self.notes.extend(other.notes);
+        for note in other.project_notes {
+            self.note(note);
+        }
+        self.with_password.extend(other.with_password);
+        self.secrets.extend(other.secrets);
+    }
+
+    fn note(&mut self, note: ProjectNote) {
+        if !self.project_notes.contains(&note) {
+            self.project_notes.push(note);
+        }
+    }
+
+    /// Keeps the passwords saved for a connection.
+    fn keep_secrets(&mut self, connection: Uuid, secrets: ImportedSecrets) {
+        if secrets.password.is_some() {
+            self.with_password.push(connection);
+        }
+        if secrets != ImportedSecrets::default() {
+            self.secrets.insert(connection, secrets);
+        }
     }
 
     /// Puts a connection in the folder at `path`, made if missing.
@@ -127,7 +210,8 @@ pub fn detect() -> Vec<ImportFile> {
 }
 
 /// The projects in `path`, as `source` writes them, with new ids. A DBeaver file is either
-/// a `data-sources.json` or a `.dbp` export with several projects.
+/// a `data-sources.json`, with its saved logins in `credentials-config.json` beside it, or
+/// a `.dbp` export with several projects.
 pub fn import(source: ImportSource, path: &Path) -> Result<Vec<ImportedProject>> {
     let read = |p: &Path| {
         std::fs::read(p).map_err(|source| StoreError::Io {
@@ -147,7 +231,7 @@ pub fn import(source: ImportSource, path: &Path) -> Result<Vec<ImportedProject>>
             if bytes.starts_with(b"PK\x03\x04") {
                 dbp::projects(&bytes).map_err(invalid)
             } else {
-                dbeaver(&String::from_utf8_lossy(&bytes))
+                dbeaver(&String::from_utf8_lossy(&bytes), &credentials_beside(path))
                     .map(|p| vec![p])
                     .map_err(invalid)
             }
@@ -167,53 +251,41 @@ pub fn import(source: ImportSource, path: &Path) -> Result<Vec<ImportedProject>>
     }
 }
 
+/// The saved logins of the workspace whose `data-sources.json` is at `path`.
+fn credentials_beside(path: &Path) -> Credentials {
+    match std::fs::read(path.with_file_name("credentials-config.json")) {
+        Ok(bytes) => Credentials::of(Some(&bytes)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Credentials::Missing,
+        Err(_) => Credentials::Unreadable,
+    }
+}
+
 fn connection(name: &str, driver: DriverKind) -> SavedConnection {
     let mut c = SavedConnection::new(name, driver);
-    // No password comes along: ask for it on first use.
+    // Ask for the password on first use, unless the import saves one.
     c.save_password = false;
     c
 }
 
-/// Fills driver, host, port and database from a JDBC URL; `false` for other databases.
-fn apply_jdbc(c: &mut SavedConnection, url: &str) -> bool {
-    let Some(rest) = url.strip_prefix("jdbc:") else {
-        return false;
-    };
-    if let Some(path) = rest.strip_prefix("sqlite:") {
-        c.driver = DriverKind::Sqlite;
-        c.host.clear();
-        c.port = None;
-        path.clone_into(&mut c.database);
-        return true;
-    }
-    let (driver, rest) = if let Some(r) = rest.strip_prefix("postgresql://") {
-        (DriverKind::Postgres, r)
-    } else if let Some(r) = rest
-        .strip_prefix("mysql://")
-        .or_else(|| rest.strip_prefix("mariadb://"))
-    {
-        (DriverKind::MySql, r)
-    } else {
-        return false;
-    };
-    c.driver = driver;
-    let rest = rest.split(['?', ';']).next().unwrap_or_default();
-    let (address, database) = rest.split_once('/').unwrap_or((rest, ""));
-    // `[::1]:5432`, `host:5432` or just a host.
-    let (host, port) = match address.strip_prefix('[') {
-        Some(inner) => match inner.split_once(']') {
-            Some((h, rest)) => (h, rest.strip_prefix(':').and_then(|p| p.parse().ok())),
-            None => (inner, None),
-        },
-        None => match address.rsplit_once(':') {
-            Some((h, p)) => (h, p.parse().ok()),
-            None => (address, None),
-        },
-    };
-    host.clone_into(&mut c.host);
-    c.port = port.or(driver.default_port());
-    database.clone_into(&mut c.database);
-    true
+/// A JDBC URL of a database the import reads; others are left out like unknown drivers.
+fn read_jdbc(url: &str) -> Option<JdbcUrl> {
+    JdbcUrl::parse(url).ok().filter(|u| {
+        matches!(
+            u.config.driver,
+            DriverKind::Postgres | DriverKind::MySql | DriverKind::Sqlite | DriverKind::SqlServer
+        )
+    })
+}
+
+/// Takes driver, host, port, database, user and TLS mode from a JDBC URL; not the password.
+fn apply_jdbc(c: &mut SavedConnection, url: &JdbcUrl) {
+    let config = &url.config;
+    c.driver = config.driver;
+    config.host.clone_into(&mut c.host);
+    c.port = config.port;
+    config.database.clone_into(&mut c.database);
+    config.user.clone_into(&mut c.user);
+    c.ssl_mode = config.ssl_mode;
 }
 
 fn text(v: &Value, key: &str) -> Option<String> {
@@ -224,8 +296,11 @@ fn text(v: &Value, key: &str) -> Option<String> {
     }
 }
 
-fn dbeaver(json: &str) -> Result<ImportedProject, String> {
-    let root: Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
+/// A `data-sources.json`, with the project's saved logins.
+fn dbeaver(json: &str, credentials: &Credentials) -> Result<ImportedProject, String> {
+    // A byte order mark is not JSON.
+    let root: Value =
+        serde_json::from_str(json.trim_start_matches('\u{feff}')).map_err(|e| e.to_string())?;
     let mut project = ImportedProject::new(Vec::new());
     for folder in root
         .get("folders")
@@ -238,83 +313,270 @@ fn dbeaver(json: &str) -> Result<ImportedProject, String> {
     let Some(connections) = root.get("connections").and_then(Value::as_object) else {
         return Ok(project);
     };
-    let mut out = Vec::new();
-    for entry in connections.values() {
-        let config = entry.get("configuration").unwrap_or(&Value::Null);
-        let name = text(entry, "name").unwrap_or_else(|| "DBeaver connection".to_owned());
-        let provider = text(entry, "provider").unwrap_or_default();
-        let driver_id = text(entry, "driver").unwrap_or_default();
-        let mut c = connection(&name, DriverKind::Postgres);
-        let known = match text(config, "url") {
-            Some(url) if apply_jdbc(&mut c, &url) => true,
-            _ => {
-                let driver = match (provider.as_str(), driver_id.as_str()) {
-                    ("postgresql", _) => Some(DriverKind::Postgres),
-                    ("mysql" | "mariadb", _) => Some(DriverKind::MySql),
-                    (_, d) if d.contains("sqlite") => Some(DriverKind::Sqlite),
-                    _ => None,
-                };
-                if let Some(driver) = driver {
-                    c.driver = driver;
-                    c.port = driver.default_port();
-                }
-                driver.is_some()
-            }
-        };
-        if !known {
-            continue;
-        }
-        if let Some(host) = text(config, "host") {
-            c.host = host;
-        }
-        if let Some(port) = text(config, "port").and_then(|p| p.parse().ok()) {
-            c.port = Some(port);
-        }
-        if let Some(database) = text(config, "database") {
-            c.database = database;
-        }
-        if let Some(user) = text(config, "user") {
-            c.user = user;
-        }
-        c.read_only = entry
-            .get("read-only")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        c.connection_type = match text(config, "type").as_deref() {
-            Some("dev") => Some(ConnectionType::Dev),
-            Some("test") => Some(ConnectionType::Test),
-            Some("prod") => Some(ConnectionType::Prod),
-            _ => None,
-        };
-        let tunnel = config
-            .get("handlers")
-            .and_then(|h| h.get("ssh_tunnel"))
-            .filter(|t| t.get("enabled").and_then(Value::as_bool).unwrap_or(false));
-        if let Some(props) = tunnel.and_then(|t| t.get("properties")) {
-            c.ssh = text(props, "host").map(|host| SavedSsh {
-                host,
-                port: text(props, "port")
-                    .and_then(|p| p.parse().ok())
-                    .unwrap_or(22),
-                user: text(props, "user").unwrap_or_default(),
-                auth: match text(props, "authType").as_deref() {
-                    Some("PUBLIC_KEY") => SshAuthKind::Key,
-                    Some("AGENT") => SshAuthKind::Agent,
-                    _ => SshAuthKind::Password,
-                },
-                key_path: text(props, "keyPath").map(PathBuf::from),
-                secret_id: Uuid::new_v4(),
-                jump: None,
-            });
-        }
-        if let Some(folder) = text(entry, "folder") {
-            project.place(c.id, &folder);
-        }
-        out.push(c);
+    match credentials {
+        Credentials::Missing => project.note(ProjectNote::NoSavedLogins),
+        Credentials::Unreadable => project.note(ProjectNote::SavedLoginsUnreadable),
+        Credentials::Read(_) => {}
     }
-    out.sort_by(|a, b| a.name.cmp(&b.name));
-    project.connections = out;
+    for (id, entry) in connections {
+        match dbeaver_connection(entry, credentials.get(id)) {
+            Ok((c, notes, secrets)) => {
+                if let Some(folder) = text(entry, "folder") {
+                    project.place(c.id, &folder);
+                }
+                if !notes.is_empty() {
+                    project.notes.insert(c.id, notes);
+                }
+                project.keep_secrets(c.id, secrets);
+                project.connections.push(c);
+            }
+            Err(skipped) => project.skipped.push(skipped),
+        }
+    }
+    project.connections.sort_by(|a, b| a.name.cmp(&b.name));
+    project.skipped.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(project)
+}
+
+/// One entry of `connections`, with what DBeaver saved for it, or what it is when its
+/// database is not one of these.
+fn dbeaver_connection(
+    entry: &Value,
+    saved: Option<&Saved>,
+) -> Result<(SavedConnection, Vec<ImportNote>, ImportedSecrets), SkippedConnection> {
+    let config = entry.get("configuration").unwrap_or(&Value::Null);
+    let name = text(entry, "name").unwrap_or_else(|| "DBeaver connection".to_owned());
+    let provider = text(entry, "provider").unwrap_or_default();
+    let driver_id = text(entry, "driver").unwrap_or_default();
+    // A connection set by URL keeps only the URL, without host, port and database.
+    let url = text(config, "url").and_then(|u| read_jdbc(&u));
+    let Some(driver) = url
+        .as_ref()
+        .map(|u| u.config.driver)
+        .or_else(|| dbeaver_driver(&provider, &driver_id))
+    else {
+        return Err(SkippedConnection {
+            name,
+            provider,
+            driver: driver_id,
+        });
+    };
+    let mut c = connection(&name, driver);
+    c.port = driver.default_port();
+    if let Some(url) = &url {
+        apply_jdbc(&mut c, url);
+    }
+    // DBeaver connects with the URL when the connection is set by URL, else with the
+    // fields: their leftovers in the other mode do not count.
+    let by_url = url.is_some() && text(config, "configurationType").as_deref() == Some("URL");
+    if !by_url {
+        dbeaver_address(&mut c, config);
+    }
+    if let Some(user) = text(config, "user") {
+        c.user = user;
+    }
+    c.read_only = entry
+        .get("read-only")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    c.connection_type = match text(config, "type").as_deref() {
+        Some("dev") => Some(ConnectionType::Dev),
+        Some("test") => Some(ConnectionType::Test),
+        Some("prod") => Some(ConnectionType::Prod),
+        _ => None,
+    };
+    c.ssh = dbeaver_ssh(config);
+    let secrets = saved.map(|s| apply_saved(&mut c, s)).unwrap_or_default();
+    let notes = if driver == DriverKind::SqlServer {
+        let port_given =
+            url.as_ref().is_some_and(|u| u.port_given) || !by_url && text(config, "port").is_some();
+        sqlserver_details(&mut c, config, url.as_ref(), port_given)
+    } else {
+        Vec::new()
+    };
+    Ok((c, notes, secrets))
+}
+
+/// Host, port and database from the fields of DBeaver's connection dialog.
+fn dbeaver_address(c: &mut SavedConnection, config: &Value) {
+    if let Some(host) = text(config, "host") {
+        c.host = host;
+    }
+    if let Some(port) = text(config, "port").and_then(|p| p.parse().ok()) {
+        c.port = Some(port);
+    }
+    if let Some(database) = text(config, "database") {
+        c.database = database;
+    }
+}
+
+/// Takes the user names DBeaver saved for the connection and its SSH tunnel; returns the
+/// passwords, which are saved only if the user wants them.
+fn apply_saved(c: &mut SavedConnection, saved: &Saved) -> ImportedSecrets {
+    if let Some(user) = &saved.connection.user {
+        user.clone_into(&mut c.user);
+    }
+    let ssh = c.ssh.as_mut().and_then(|ssh| {
+        if let Some(user) = &saved.ssh.user {
+            user.clone_into(&mut ssh.user);
+        }
+        // The agent holds its own keys.
+        match ssh.auth {
+            SshAuthKind::Agent => None,
+            SshAuthKind::Password | SshAuthKind::Key => saved.ssh.password.clone(),
+        }
+    });
+    ImportedSecrets {
+        password: saved.connection.password.clone(),
+        ssh,
+    }
+}
+
+/// The database of a DBeaver connection by its provider and driver ids, for one without a
+/// JDBC URL this import reads.
+fn dbeaver_driver(provider: &str, driver: &str) -> Option<DriverKind> {
+    let driver = driver.to_ascii_lowercase();
+    match provider.to_ascii_lowercase().as_str() {
+        "postgresql" => Some(DriverKind::Postgres),
+        "mysql" | "mariadb" => Some(DriverKind::MySql),
+        "sqlserver" | "mssql" => Some(DriverKind::SqlServer),
+        _ if driver.contains("sqlite") => Some(DriverKind::Sqlite),
+        _ if sqlserver_driver(&driver) => Some(DriverKind::SqlServer),
+        _ => None,
+    }
+}
+
+/// DBeaver's SQL Server drivers, also under its generic provider: `mssql_jdbc_ms_new`,
+/// `microsoft`, `jtds_sqlserver`, `azure_ms_new`; not jTDS for Sybase.
+fn sqlserver_driver(driver: &str) -> bool {
+    !driver.contains("sybase")
+        && (driver.contains("mssql")
+            || driver.contains("sqlserver")
+            || driver.contains("jtds")
+            || driver == "microsoft"
+            || driver.starts_with("azure") && driver.contains("_ms"))
+}
+
+/// The SSH tunnel of a DBeaver connection, when it is on.
+fn dbeaver_ssh(config: &Value) -> Option<SavedSsh> {
+    let tunnel = config
+        .get("handlers")
+        .and_then(|h| h.get("ssh_tunnel"))
+        .filter(|t| t.get("enabled").and_then(Value::as_bool).unwrap_or(false))?;
+    let props = tunnel.get("properties")?;
+    Some(SavedSsh {
+        host: text(props, "host")?,
+        port: text(props, "port")
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(22),
+        user: text(props, "user").unwrap_or_default(),
+        auth: match text(props, "authType").as_deref() {
+            Some("PUBLIC_KEY") => SshAuthKind::Key,
+            Some("AGENT") => SshAuthKind::Agent,
+            _ => SshAuthKind::Password,
+        },
+        key_path: text(props, "keyPath").map(PathBuf::from),
+        secret_id: Uuid::new_v4(),
+        jump: None,
+    })
+}
+
+/// Splits a named instance off the host (`SRV\SQLEXPRESS`), takes the user from the
+/// driver properties, and notes what the connection needs here that it did not in DBeaver.
+fn sqlserver_details(
+    c: &mut SavedConnection,
+    config: &Value,
+    url: Option<&JdbcUrl>,
+    port_given: bool,
+) -> Vec<ImportNote> {
+    let mut notes = Vec::new();
+    let (host, instance) = JdbcUrl::split_instance(&c.host);
+    c.host = host;
+    let instance = instance.or_else(|| url.and_then(|u| u.instance.clone()));
+    // With a port, the instance is not looked up, as for the JDBC driver.
+    if let Some(instance) = instance
+        && !port_given
+    {
+        notes.push(ImportNote::NamedInstance { instance });
+    }
+    let mut props = url.map(|u| u.properties.clone()).unwrap_or_default();
+    // The driver properties set in DBeaver's connection dialog.
+    if let Some(own) = config.get("properties").and_then(Value::as_object) {
+        props.extend(
+            own.iter()
+                .filter_map(|(k, v)| Some((k.to_ascii_lowercase(), v.as_str()?.to_owned()))),
+        );
+    }
+    if c.user.is_empty()
+        && let Some(user) = props.get("user")
+    {
+        user.clone_into(&mut c.user);
+    }
+    if let Some(note) = sqlserver_login(&dbeaver_auth(config), &props) {
+        notes.push(note);
+    }
+    notes
+}
+
+/// DBeaver's authentication model (`sqlserver_native`, `sqlserver_ntlm`, …) and the values
+/// of older versions' authentication properties, in lower case.
+fn dbeaver_auth(config: &Value) -> String {
+    let mut auth = text(config, "auth-model").unwrap_or_default();
+    for (key, value) in config
+        .get("provider-properties")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+        .filter(|(k, _)| k.to_ascii_lowercase().contains("auth"))
+    {
+        auth.push(' ');
+        match value {
+            // A flag such as `@dbeaver-windows-auth@`: its name says which.
+            Value::Bool(true) => auth.push_str(key),
+            Value::String(v) if v == "true" => auth.push_str(key),
+            Value::String(v) => auth.push_str(v),
+            _ => {}
+        }
+    }
+    auth.to_ascii_lowercase().replace('-', "_")
+}
+
+/// A login that this app's SQL Server driver does not do: it signs in with a SQL Server
+/// login and password only.
+fn sqlserver_login(auth: &str, props: &BTreeMap<String, String>) -> Option<ImportNote> {
+    let prop = |k: &str| {
+        props
+            .get(k)
+            .map(|v| v.to_ascii_lowercase())
+            .unwrap_or_default()
+    };
+    let entra = [
+        "_ad_",
+        "ad_password",
+        "ad_msi",
+        "entra",
+        "azure",
+        "active_directory",
+    ]
+    .iter()
+    .any(|w| auth.contains(w))
+        || prop("authentication").starts_with("activedirectory");
+    if entra {
+        return Some(ImportNote::EntraAuth);
+    }
+    // `native` alone is DBeaver's generic user and password.
+    let windows = auth.split_whitespace().any(|a| {
+        a != "native"
+            && ["native", "windows", "ntlm", "kerberos", "integrated"]
+                .iter()
+                .any(|w| a.contains(w))
+    }) || prop("integratedsecurity") == "true"
+        || matches!(
+            prop("authenticationscheme").as_str(),
+            "ntlm" | "javakerberos" | "nativeauthentication"
+        )
+        || !prop("domain").is_empty();
+    windows.then_some(ImportNote::WindowsAuth)
 }
 
 fn pgadmin(json: &str) -> Result<ImportedProject, String> {
@@ -443,9 +705,10 @@ fn datagrip(xml: &str, local: &str) -> Vec<SavedConnection> {
         let head = format!(" {block}");
         let name = attribute(&head, "name").unwrap_or_else(|| "DataGrip connection".to_owned());
         let mut c = connection(&name, DriverKind::Postgres);
-        if !element(block, "jdbc-url").is_some_and(|url| apply_jdbc(&mut c, &url)) {
+        let Some(url) = element(block, "jdbc-url").and_then(|url| read_jdbc(&url)) else {
             continue;
-        }
+        };
+        apply_jdbc(&mut c, &url);
         if let Some(uuid) = attribute(&head, "uuid")
             && let Some((_, user)) = users.iter().find(|(u, _)| *u == uuid)
         {
@@ -472,7 +735,16 @@ mod tests {
               "configuration": {"url": "jdbc:sqlite:C:/data/app.db"}},
             "oracle-1": {"provider": "oracle", "name": "Skip me", "configuration": {"url": "jdbc:oracle:thin:@x"}}
         }}"#;
-        let found = dbeaver(json).unwrap().connections;
+        let project = dbeaver(json, &Credentials::Missing).unwrap();
+        assert_eq!(
+            project.skipped,
+            [SkippedConnection {
+                name: "Skip me".to_owned(),
+                provider: "oracle".to_owned(),
+                driver: String::new(),
+            }]
+        );
+        let found = project.connections;
         assert_eq!(found.len(), 2);
         let local = &found[0];
         assert_eq!(
@@ -564,7 +836,7 @@ mod tests {
 
     #[test]
     fn dbeaver_folders() {
-        let project = dbeaver(FOLDERED).unwrap();
+        let project = dbeaver(FOLDERED, &Credentials::Missing).unwrap();
         assert_eq!(project.name, None);
         assert_eq!(
             project.folders,
@@ -700,6 +972,37 @@ mod tests {
     }
 
     #[test]
+    fn dbp_keeps_same_named_projects_apart() {
+        use std::io::Write as _;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("two.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        for (workspace, conn) in [("a", "one"), ("b", "two")] {
+            zip.start_file(
+                format!("{workspace}/General/.dbeaver/data-sources.json"),
+                options,
+            )
+            .unwrap();
+            zip.write_all(
+                format!(
+                    r#"{{"connections": {{"{conn}": {{"provider": "postgresql", "name": "{conn}",
+                    "configuration": {{"host": "h", "database": "d"}}}}}}}}"#
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        }
+        zip.finish().unwrap();
+        let projects = import(ImportSource::Dbeaver, &path).unwrap();
+        let read: Vec<_> = projects
+            .iter()
+            .map(|p| (p.name.as_deref(), p.connections.len()))
+            .collect();
+        assert_eq!(read, [(Some("General"), 1), (Some("General"), 1)]);
+    }
+
+    #[test]
     fn dbeaver_source_accepts_json() {
         let dir = tempfile::tempdir().unwrap();
         let json = dir.path().join("data-sources.json");
@@ -719,5 +1022,402 @@ mod tests {
         assert_eq!(project.placement.get(&a), Some(&path(&["Team"])));
         // pgAdmin's default group is no folder.
         assert_eq!(project.placement.len(), 1);
+    }
+
+    /// SQL Server as DBeaver writes it: by URL only, by fields, with Windows, NTLM or
+    /// Entra ID logins, named instances, under the generic provider, and jTDS.
+    const SQLSERVER: &str = r#"{"folders": {"Clienti": {}}, "connections": {
+        "sqlserver-url": {"provider": "sqlserver", "driver": "mssql_jdbc_ms_new", "name": "Vericode",
+          "folder": "Clienti", "configuration": {"configurationType": "URL",
+          "url": "jdbc:sqlserver://vc-sql01:1433;databaseName=Vericode;encrypt=true;trustServerCertificate=true",
+          "user": "sa", "auth-model": "sqlserver_database", "type": "prod"}},
+        "sqlserver-fields": {"provider": "sqlserver", "driver": "microsoft", "name": "Fields",
+          "configuration": {"host": "10.1.2.3", "port": "1500", "database": "erp",
+          "auth-model": "sqlserver_database"}},
+        "sqlserver-windows": {"provider": "sqlserver", "driver": "mssql_jdbc_ms_new", "name": "Windows",
+          "configuration": {"host": "SRV\\SQLEXPRESS", "database": "app", "auth-model": "sqlserver_native"}},
+        "sqlserver-instance-port": {"provider": "mssql", "driver": "microsoft", "name": "Instance with port",
+          "configuration": {"url": "jdbc:sqlserver://SRV\\PROD:14330;databaseName=x;integratedSecurity=true"}},
+        "generic-jtds": {"provider": "generic", "driver": "jtds_sqlserver", "name": "jTDS",
+          "configuration": {"url": "jdbc:jtds:sqlserver://legacy:1433/erp;domain=CORP"}},
+        "generic-ms": {"provider": "generic", "driver": "mssql_jdbc_ms", "name": "Generic",
+          "configuration": {"host": "g", "properties": {"integratedSecurity": "true"}}},
+        "azure": {"provider": "sqlserver", "driver": "azure_ms_new", "name": "Azure",
+          "configuration": {"url": "jdbc:sqlserver://acme.database.windows.net:1433;database=sales;user=bob@acme.com",
+          "auth-model": "sqlserver_ad_password"}},
+        "ntlm": {"provider": "sqlserver", "driver": "mssql_jdbc_ms_new", "name": "NTLM",
+          "configuration": {"host": "n", "auth-model": "sqlserver_ntlm"}},
+        "sybase": {"provider": "generic", "driver": "jtds_sybase", "name": "Sybase",
+          "configuration": {"url": "jdbc:jtds:sybase://s:5000/db"}}
+    }}"#;
+
+    fn named<'a>(project: &'a ImportedProject, name: &str) -> &'a SavedConnection {
+        project.connections.iter().find(|c| c.name == name).unwrap()
+    }
+
+    fn notes_of(project: &ImportedProject, name: &str) -> Vec<ImportNote> {
+        let id = named(project, name).id;
+        project.notes.get(&id).cloned().unwrap_or_default()
+    }
+
+    fn address(c: &SavedConnection) -> (&str, Option<u16>, &str) {
+        (c.host.as_str(), c.port, c.database.as_str())
+    }
+
+    #[test]
+    fn dbeaver_sqlserver_shapes() {
+        let project = dbeaver(SQLSERVER, &Credentials::Missing).unwrap();
+        assert_eq!(project.connections.len(), 8);
+        assert!(
+            project
+                .connections
+                .iter()
+                .all(|c| c.driver == DriverKind::SqlServer)
+        );
+        let at = |n: &str| address(named(&project, n));
+        let vericode = named(&project, "Vericode");
+        assert_eq!(at("Vericode"), ("vc-sql01", Some(1433), "Vericode"));
+        assert_eq!(vericode.user, "sa");
+        assert_eq!(vericode.connection_type, Some(ConnectionType::Prod));
+        assert_eq!(
+            project.placement.get(&vericode.id),
+            Some(&path(&["Clienti"]))
+        );
+        assert_eq!(at("Fields"), ("10.1.2.3", Some(1500), "erp"));
+        assert_eq!(at("jTDS"), ("legacy", Some(1433), "erp"));
+        assert_eq!(at("Windows"), ("SRV", Some(1433), "app"));
+        assert_eq!(at("Instance with port"), ("SRV", Some(14330), "x"));
+        assert_eq!(named(&project, "Azure").user, "bob@acme.com");
+
+        assert_eq!(notes_of(&project, "Vericode"), Vec::<ImportNote>::new());
+        assert_eq!(notes_of(&project, "Fields"), Vec::<ImportNote>::new());
+        assert_eq!(
+            notes_of(&project, "Windows"),
+            [
+                ImportNote::NamedInstance {
+                    instance: "SQLEXPRESS".to_owned()
+                },
+                ImportNote::WindowsAuth
+            ]
+        );
+        // With a port the instance needs nothing.
+        assert_eq!(
+            notes_of(&project, "Instance with port"),
+            [ImportNote::WindowsAuth]
+        );
+        assert_eq!(notes_of(&project, "jTDS"), [ImportNote::WindowsAuth]);
+        assert_eq!(notes_of(&project, "Generic"), [ImportNote::WindowsAuth]);
+        assert_eq!(notes_of(&project, "NTLM"), [ImportNote::WindowsAuth]);
+        assert_eq!(notes_of(&project, "Azure"), [ImportNote::EntraAuth]);
+
+        assert_eq!(
+            project.skipped,
+            [SkippedConnection {
+                name: "Sybase".to_owned(),
+                provider: "generic".to_owned(),
+                driver: "jtds_sybase".to_owned(),
+            }]
+        );
+    }
+
+    #[test]
+    fn dbeaver_older_windows_auth_flag() {
+        let json = r#"{"connections": {"a": {"provider": "sqlserver", "name": "a",
+            "configuration": {"host": "h", "provider-properties": {"@dbeaver-windows-auth@": "true",
+            "@dbeaver-show-all-schemas@": "true"}}},
+            "b": {"provider": "sqlserver", "name": "b",
+            "configuration": {"host": "h", "provider-properties": {"@dbeaver-windows-auth@": "false"}}}}}"#;
+        let project = dbeaver(json, &Credentials::Missing).unwrap();
+        assert_eq!(notes_of(&project, "a"), [ImportNote::WindowsAuth]);
+        assert_eq!(notes_of(&project, "b"), Vec::<ImportNote>::new());
+    }
+
+    #[test]
+    fn dbeaver_json_with_byte_order_mark() {
+        let json = format!("\u{feff}{SQLSERVER}");
+        assert_eq!(
+            dbeaver(&json, &Credentials::Missing)
+                .unwrap()
+                .connections
+                .len(),
+            8
+        );
+    }
+
+    /// A zip with these entries.
+    fn zip_of(dir: &Path, entries: &[(&str, &[u8])]) -> PathBuf {
+        use std::io::Write as _;
+        let path = dir.join("export.dbp");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        for (name, bytes) in entries {
+            zip.start_file(*name, options).unwrap();
+            zip.write_all(bytes).unwrap();
+        }
+        zip.finish().unwrap();
+        path
+    }
+
+    const URL_ONLY: &[u8] = br#"{"connections": {"sqlserver-1": {"provider": "sqlserver",
+        "driver": "mssql_jdbc_ms_new", "name": "Vericode", "configuration": {"configurationType": "URL",
+        "url": "jdbc:sqlserver://vc-sql01:1433;databaseName=Vericode"}}}}"#;
+
+    #[test]
+    fn dbp_sqlserver_only_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let meta = "<archive><projects><project name=\"Vericode Società\"/></projects></archive>";
+        let file = zip_of(
+            dir.path(),
+            &[
+                ("meta.xml", meta.as_bytes()),
+                (
+                    "projects/Vericode Società/.project",
+                    b"<projectDescription/>",
+                ),
+                (
+                    "projects/Vericode Società/.dbeaver/credentials-config.json",
+                    b"\x01\x02encrypted",
+                ),
+                (
+                    "projects/Vericode Società/.dbeaver/data-sources.json",
+                    URL_ONLY,
+                ),
+            ],
+        );
+        let projects = import(ImportSource::Dbeaver, &file).unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].name.as_deref(), Some("Vericode Società"));
+        let c = &projects[0].connections[0];
+        assert_eq!(c.driver, DriverKind::SqlServer);
+        assert_eq!(address(c), ("vc-sql01", Some(1433), "Vericode"));
+        // Not DBeaver's encryption: imported without its logins, and said so.
+        assert_eq!(
+            projects[0].project_notes,
+            [ProjectNote::SavedLoginsUnreadable]
+        );
+        assert!(projects[0].secrets.is_empty());
+    }
+
+    /// Connections by URL and by fields, both with leftovers of the other mode.
+    const MODES: &[u8] = br#"{"connections": {
+        "by-url": {"provider": "postgresql", "driver": "postgres-jdbc", "name": "by url",
+          "configuration": {"configurationType": "URL", "host": "old-host", "port": "5999",
+          "database": "old", "url": "jdbc:postgresql://new-host:6543/app"}},
+        "by-fields": {"provider": "postgresql", "driver": "postgres-jdbc", "name": "by fields",
+          "configuration": {"configurationType": "MANUAL", "host": "field-host", "port": "5440",
+          "database": "field", "url": "jdbc:postgresql://stale:5432/stale"}},
+        "sql-url": {"provider": "sqlserver", "driver": "mssql_jdbc_ms_new", "name": "sql url",
+          "configuration": {"configurationType": "URL", "port": "1433",
+          "url": "jdbc:sqlserver://SRV\\PROD;databaseName=x"}},
+        "tunnel": {"provider": "mysql", "driver": "mysql8", "name": "tunnel",
+          "configuration": {"host": "db", "database": "crm", "handlers": {"ssh_tunnel":
+          {"enabled": true, "properties": {"host": "bastion", "authType": "PASSWORD"}}}}},
+        "agent": {"provider": "mysql", "driver": "mysql8", "name": "agent",
+          "configuration": {"host": "db", "handlers": {"ssh_tunnel":
+          {"enabled": true, "properties": {"host": "bastion", "authType": "AGENT"}}}}}
+    }}"#;
+
+    #[test]
+    fn dbeaver_url_or_fields() {
+        let json = std::str::from_utf8(MODES).unwrap();
+        let project = dbeaver(json, &Credentials::Missing).unwrap();
+        assert_eq!(
+            address(named(&project, "by url")),
+            ("new-host", Some(6543), "app")
+        );
+        assert_eq!(
+            address(named(&project, "by fields")),
+            ("field-host", Some(5440), "field")
+        );
+        // The port field of a connection by URL does not count: the instance needs one.
+        assert_eq!(
+            notes_of(&project, "sql url"),
+            [ImportNote::NamedInstance {
+                instance: "PROD".to_owned()
+            }]
+        );
+    }
+
+    const LOGINS: &str = r##"{
+        "by-url": {"#connection": {"user": "app", "password": "pg-pass"}},
+        "by-fields": {"#connection": {"user": "reader"}},
+        "tunnel": {"#connection": {"user": "crm", "password": "my-pass"},
+                   "network/ssh_tunnel": {"user": "ops", "password": "ssh-pass"}},
+        "agent": {"network/ssh_tunnel": {"user": "me", "password": "unused"}}}"##;
+
+    fn encrypted(key: &[u8; 16]) -> Vec<u8> {
+        credentials::tests::encrypt(LOGINS, key)
+    }
+
+    #[test]
+    fn dbp_brings_saved_logins() {
+        let dir = tempfile::tempdir().unwrap();
+        let logins = encrypted(&credentials::DEFAULT_KEY);
+        let file = zip_of(
+            dir.path(),
+            &[
+                ("projects/P/.dbeaver/credentials-config.json", &logins),
+                ("projects/P/.dbeaver/data-sources.json", MODES),
+            ],
+        );
+        let project = &import(ImportSource::Dbeaver, &file).unwrap()[0];
+        assert_eq!(project.project_notes, []);
+        let by_url = named(project, "by url");
+        assert_eq!(by_url.user, "app");
+        assert!(!by_url.save_password);
+        assert_eq!(named(project, "by fields").user, "reader");
+        let tunnel = named(project, "tunnel");
+        assert_eq!(tunnel.user, "crm");
+        assert_eq!(tunnel.ssh.as_ref().unwrap().user, "ops");
+        assert_eq!(
+            project.secrets.get(&by_url.id),
+            Some(&ImportedSecrets {
+                password: Some(Secret::new("pg-pass")),
+                ssh: None,
+            })
+        );
+        assert_eq!(
+            project.secrets.get(&tunnel.id),
+            Some(&ImportedSecrets {
+                password: Some(Secret::new("my-pass")),
+                ssh: Some(Secret::new("ssh-pass")),
+            })
+        );
+        // A user name alone, and an agent, which needs no password.
+        let reader = named(project, "by fields").id;
+        let agent = named(project, "agent");
+        assert_eq!(agent.ssh.as_ref().unwrap().user, "me");
+        assert_eq!(project.secrets.get(&reader), None);
+        assert_eq!(project.secrets.get(&agent.id), None);
+        let mut with_password = project.with_password.clone();
+        with_password.sort();
+        let mut expected = vec![by_url.id, tunnel.id];
+        expected.sort();
+        assert_eq!(with_password, expected);
+        // What the dialog sees holds no password.
+        let json = serde_json::to_string(project).unwrap();
+        assert!(
+            !json.contains("pg-pass") && !json.contains("ssh-pass"),
+            "{json}"
+        );
+    }
+
+    #[test]
+    fn dbp_logins_under_another_key_or_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let logins = encrypted(&[9; 16]);
+        let file = zip_of(
+            dir.path(),
+            &[
+                ("projects/Locked/.dbeaver/credentials-config.json", &logins),
+                ("projects/Locked/.dbeaver/data-sources.json", MODES),
+                ("projects/None/.dbeaver/data-sources.json", MODES),
+            ],
+        );
+        let projects = import(ImportSource::Dbeaver, &file).unwrap();
+        let (locked, none) = (&projects[0], &projects[1]);
+        assert_eq!(locked.project_notes, [ProjectNote::SavedLoginsUnreadable]);
+        assert_eq!(none.project_notes, [ProjectNote::NoSavedLogins]);
+        for p in &projects {
+            assert!(p.secrets.is_empty() && p.with_password.is_empty());
+            assert_eq!(named(p, "by url").user, "");
+        }
+    }
+
+    #[test]
+    fn workspace_logins_beside_data_sources() {
+        let dir = tempfile::tempdir().unwrap();
+        let json = dir.path().join("data-sources.json");
+        std::fs::write(&json, MODES).unwrap();
+        let project = &import(ImportSource::Dbeaver, &json).unwrap()[0];
+        assert_eq!(project.project_notes, [ProjectNote::NoSavedLogins]);
+        std::fs::write(
+            dir.path().join("credentials-config.json"),
+            encrypted(&credentials::DEFAULT_KEY),
+        )
+        .unwrap();
+        let project = &import(ImportSource::Dbeaver, &json).unwrap()[0];
+        assert_eq!(project.project_notes, []);
+        assert_eq!(named(project, "tunnel").user, "crm");
+        assert_eq!(project.with_password.len(), 2);
+    }
+
+    #[test]
+    fn dbp_entry_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let other = br#"{"connections": {"o": {"provider": "oracle", "driver": "oracle_thin",
+            "name": "Ora", "configuration": {"url": "jdbc:oracle:thin:@o:1521/x"}}}}"#;
+        let file = zip_of(
+            dir.path(),
+            &[
+                // Written on Windows, and a zip of workspace folders without `projects/`.
+                ("projects\\Win\\.dbeaver\\data-sources.json", URL_ONLY),
+                ("workspace6/General/.dbeaver/data-sources-2.json", URL_ONLY),
+                // Only a connection that is left out: the project stays, to say why.
+                ("projects/Only Oracle/.dbeaver/data-sources.json", other),
+            ],
+        );
+        let projects = import(ImportSource::Dbeaver, &file).unwrap();
+        let names: Vec<_> = projects.iter().map(|p| p.name.as_deref()).collect();
+        assert_eq!(names, [Some("General"), Some("Only Oracle"), Some("Win")]);
+        assert_eq!(projects[0].connections.len(), 1);
+        assert_eq!(projects[2].connections.len(), 1);
+        assert_eq!(projects[1].connections.len(), 0);
+        assert_eq!(projects[1].skipped[0].driver, "oracle_thin");
+    }
+
+    #[test]
+    fn dbp_without_connections_says_so() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = zip_of(dir.path(), &[("projects/P/Scripts/a.sql", b"select 1")]);
+        let err = import(ImportSource::Dbeaver, &file).unwrap_err();
+        assert!(err.to_string().contains("data-sources"), "{err}");
+    }
+
+    #[test]
+    fn dbp_names_the_entry_that_is_not_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = zip_of(
+            dir.path(),
+            &[("projects/P/.dbeaver/data-sources.json", b"{oops")],
+        );
+        let err = import(ImportSource::Dbeaver, &file).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("projects/P/.dbeaver/data-sources.json"),
+            "{err}"
+        );
+    }
+
+    /// The export the E2E scenario imports.
+    #[test]
+    fn dbp_e2e_sqlserver_fixture() {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/e2e/fixtures/sqlserver-url.dbp");
+        let projects = import(ImportSource::Dbeaver, &file).unwrap();
+        assert_eq!(projects.len(), 1);
+        let project = &projects[0];
+        assert_eq!(project.name.as_deref(), Some("Vericode Società"));
+        let url = named(project, "sql-url");
+        assert_eq!(address(url), ("vc-sql01", Some(1433), "Vericode"));
+        // Its synthetic saved login, under DBeaver's default key.
+        assert_eq!(url.user, "vc_reader");
+        assert_eq!(project.with_password, [url.id]);
+        assert_eq!(
+            project.secrets[&url.id].password,
+            Some(Secret::new("fake-password"))
+        );
+        assert_eq!(project.project_notes, []);
+        assert_eq!(
+            notes_of(project, "sql-windows"),
+            [
+                ImportNote::NamedInstance {
+                    instance: "SQLEXPRESS".to_owned()
+                },
+                ImportNote::WindowsAuth
+            ]
+        );
+        assert_eq!(project.skipped[0].name, "Legacy Oracle");
     }
 }

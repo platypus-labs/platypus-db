@@ -290,23 +290,24 @@ pub fn row_values(
     rows_text(&*state.job(job_id)?, offset, limit)
 }
 
-/// The elements of a PostgreSQL array (or, `composite`, the fields of a composite value)
-/// for the data editor's list; `None` when the text is not one, to edit it as text.
+/// The elements of a PostgreSQL array of the type `type_name` (its delimiter is `;` for
+/// boxes), or, `composite`, the fields of a composite value, for the data editor's list;
+/// `None` when the text is not one, to edit it as text.
 #[tauri::command]
-pub fn split_literal(composite: bool, text: String) -> Option<Vec<Option<String>>> {
+pub fn split_literal(composite: bool, type_name: &str, text: &str) -> Option<Vec<Option<String>>> {
     if composite {
-        pg_literal::split_composite(&text)
+        pg_literal::split_composite(text)
     } else {
-        pg_literal::split_array(&text)
+        pg_literal::split_array(text, pg_literal::array_delimiter(type_name))
     }
 }
 
 /// The array (or composite) literal of the data editor's list.
 #[tauri::command]
-pub fn join_literal(composite: bool, items: Vec<Option<String>>) -> String {
+pub fn join_literal(composite: bool, type_name: &str, items: Vec<Option<String>>) -> String {
     if composite {
         pg_literal::join_composite(&items)
     } else {
-        pg_literal::join_array(&items)
+        pg_literal::join_array(&items, pg_literal::array_delimiter(type_name))
     }
 }
