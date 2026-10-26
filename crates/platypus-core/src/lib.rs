@@ -15,7 +15,9 @@ mod metadata;
 mod transaction;
 
 pub use capabilities::{Capabilities, ObjectRef, unsupported};
-pub use config::{Bridge, ConnectionConfig, DriverKind, Secret, SshAuth, SshConfig, SslMode};
+pub use config::{
+    Bridge, ConnectionConfig, DriverKind, JdbcUrl, Secret, SshAuth, SshConfig, SslMode,
+};
 pub use connection::{
     CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, RecordBatchStream,
     ServerInfo,

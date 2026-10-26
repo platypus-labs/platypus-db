@@ -10,6 +10,10 @@ use url::Url;
 
 use crate::{Error, Result, SessionInit};
 
+mod jdbc;
+
+pub use jdbc::JdbcUrl;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DriverKind {
