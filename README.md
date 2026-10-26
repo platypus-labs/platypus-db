@@ -92,8 +92,13 @@ and shows the ODBC drivers and data sources of the system.
 
 - A new connection starts from a grid of database logos, with a search on top (`Enter` takes
   the first match); the `+` of the navigator opens it, and so does a right-click on a connection
-  or below the list. Paste a `postgres://`, `mysql://`, `sqlserver://`, `clickhouse://`,
-  `libsql://` or `mongodb://` URL to fill the form.
+  or below the list. Or paste a connection under the logos: a URL (`postgres://`,
+  `mysql://`, `sqlserver://`, `clickhouse://`, `libsql://`, `mongodb://`), a JDBC URL or an
+  ADO.NET / ODBC string (`Server=tcp:db,1433;Database=shop;User Id=sa;…`), and the form opens
+  filled in for that database. The driver is set by the choice: *Back* returns to the logos, and a
+  URL pasted in the form for another database offers to go back. Windows logins and SQL Server
+  named instances without a port are pointed out. *Copy as URL* in a connection's menu copies
+  its URL without the password.
 - **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`, with their
   folders. A DBeaver project export (`.dbp`) brings its projects too, optionally gathered in a
   folder of the project rail.
