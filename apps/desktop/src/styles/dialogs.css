@@ -783,11 +783,6 @@ button.primary.danger:hover:not(:disabled) {
   word-break: break-word;
 }
 
-.driver-search {
-  width: 100%;
-  margin: 4px 0 8px;
-}
-
 .modal.driver-picker {
   width: min(640px, calc(100vw - 32px));
 }

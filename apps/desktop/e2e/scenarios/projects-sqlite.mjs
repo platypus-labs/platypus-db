@@ -288,13 +288,15 @@ async function members(page, dir, shots) {
     "Neon",
     "AlloyDB",
   ]);
-  // The search field has the focus, filters the tiles, Esc clears it and Enter picks the last one.
+  // The search field has the focus, filters the tiles by name or driver (MariaDB speaks
+  // MySQL's), Esc clears it and Enter picks the first match.
   const tiles = `[...document.querySelectorAll('.driver-tile')].map(b => b.textContent)`;
-  assert.equal(await page.eval(`document.activeElement === document.querySelector('.driver-search')`), true);
+  const search = `document.querySelector('.driver-picker .modal-search input')`;
+  assert.equal(await page.eval(`document.activeElement === ${search}`), true);
   await page.type("SQL");
-  await page.waitFor(`${tiles}.join() === 'PostgreSQL,MySQL,SQL Server,SQLite,Turso / libSQL'`);
+  await page.waitFor(`${tiles}.join() === 'PostgreSQL,MySQL,MariaDB,SQL Server,SQLite,Turso / libSQL'`);
   await page.key("Escape", "Escape", 27);
-  await page.waitFor(`document.querySelector('.driver-search').value === '' && ${tiles}.length === 23`);
+  await page.waitFor(`${search}.value === '' && ${tiles}.length === 23`);
   await page.type("sqlite");
   await page.waitFor(`${tiles}.join() === 'SQLite'`);
   await page.key("Enter", "Enter", 13);
