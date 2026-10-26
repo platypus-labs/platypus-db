@@ -26,13 +26,15 @@ registerTabKind({
   create: (init) => {
     const sql = init.sql ?? "";
     const filePath = init.filePath ?? null;
-    return { savedSql: filePath ? sql : null, ...init, sql, filePath };
+    // A data viewer opens with its own query; a restored one brings the one it saved, if any.
+    const viewerQuery = init.viewerQuery !== undefined ? init.viewerQuery : init.table ? sql : null;
+    return { savedSql: filePath ? sql : null, ...init, sql, filePath, viewerQuery };
   },
   label: (tab: QueryTabModel) => {
     if (!tab.filePath) return tab.title ?? "";
     return `${basename(tab.filePath)}${tab.sql !== tab.savedSql ? " •" : ""}`;
   },
-  persist: ({ sql, filePath, savedSql, title, table, tableRef, sort, database, variables, terminal }) => ({
+  persist: ({ sql, filePath, savedSql, title, table, tableRef, sort, viewerQuery, database, variables, terminal }) => ({
     database,
     sql,
     filePath,
@@ -41,6 +43,7 @@ registerTabKind({
     table,
     tableRef,
     sort,
+    viewerQuery,
     variables,
     terminal,
   }),
@@ -52,6 +55,7 @@ registerTabKind({
     table: text(saved.table),
     tableRef: tableRef(saved.tableRef),
     sort: (saved.sort as Sort | null | undefined) ?? null,
+    viewerQuery: text(saved.viewerQuery),
     database: text(saved.database),
     variables: strings(saved.variables),
     terminal: saved.terminal === true,

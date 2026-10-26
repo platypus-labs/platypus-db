@@ -44,7 +44,7 @@ import { scrollSideways } from "../ui/scroll";
 import { notifyRunEnded } from "../shell/notify";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
 import { runGate } from "./runGate";
-import { type ViewerSort, nextSort, queryKey, sortIn, sortOf, statementRange } from "./viewerSort";
+import { type ViewerSort, nextSort, queryKey, sortIn, sortOf, statementRange, viewerQueries } from "./viewerSort";
 import { t, plural, msg } from "../i18n";
 
 /** Auto-refresh intervals in seconds, `0` for off. */
@@ -87,6 +87,10 @@ export interface QueryTabModel extends TabBase {
   tableRef?: TableRef | null;
   /** Data viewer: the header sort, with the statement it was written into. */
   sort?: ViewerSort | null;
+  /** Data viewer: its own query, the one it opened with or the last rewrite of it by the header
+   *  sort or a quick filter. Its rows are the table's rows; another query typed in the tab is
+   *  not the viewer's. */
+  viewerQuery?: string | null;
   /** Values of `${name}` and `:name`, kept with the tab. */
   variables?: Record<string, string>;
   /** Results as text, like a console, instead of the grid. */
@@ -226,8 +230,10 @@ export function QueryTab({
   useEffect(() => setCount(null), [shownKey]);
   /** The run going on was started by auto-refresh. */
   const autoRun = useRef(false);
-  /** Texts of the data viewer's own queries: its first one and each sort's, to tell them from other queries. */
-  const viewerQueries = useRef(new Set([queryKey(tab.sql)]));
+  /** The data viewer's own queries, to tell them from other queries typed in the tab. */
+  const [viewerOwn] = useState(() =>
+    viewerQueries(tab.viewerQuery, tab.table ? viewerSql(connection.driver, tab.table) : null),
+  );
   const [blocked, setBlocked] = useState<RunMode | null>(null);
   const [panel, setPanel] = useState<SidePanel | null>(null);
   const togglePanel = (p: SidePanel) => setPanel((open) => (open === p ? null : p));
@@ -834,7 +840,7 @@ export function QueryTab({
       onError(t("This query cannot be changed from the grid: edit it in the editor."));
       return null;
     }
-    viewerQueries.current.add(queryKey(next));
+    if (viewerOwn.rewritten(result.sql, next)) onChange({ viewerQuery: next });
     ed.setText(text.slice(0, range.from) + next + text.slice(range.to));
     // The cursor inside the statement, so that it is the one that runs.
     const inside = range.from + Math.floor(next.length / 2);
@@ -876,11 +882,6 @@ export function QueryTab({
         (next) => next !== null && sort && onChange({ sort: sortIn(sort, next) }),
       );
     });
-  }
-
-  /** Whether `sql` is one of the viewer's own queries: it reads exactly the viewer's table. */
-  function isViewerQuery(sql: string) {
-    return viewerQueries.current.has(queryKey(sql)) || sql === viewerSql(connection.driver, tab.table ?? "");
   }
 
   /** Header clicks cycle a column of the shown statement through ascending, descending and
@@ -1059,10 +1060,7 @@ export function QueryTab({
     // The data editor writes SQL: MongoDB results stay read-only.
     if (isMongo(connection.driver)) return null;
     const ref = tab.tableRef;
-    const viewer =
-      !!tab.table &&
-      !!ref &&
-      isViewerQuery(result.sql);
+    const viewer = !!tab.table && !!ref && viewerOwn.has(result.sql);
     if (!viewer && results.length !== 1) return null;
     const forget = <T,>(p: Promise<T>, drop: () => void) =>
       p.catch((e: unknown) => {
@@ -1106,7 +1104,7 @@ export function QueryTab({
   function notesScope(result: Result): NotesScope | null {
     const ref = tab.tableRef;
     if (!(tab.table && ref) || isMongo(connection.driver)) return null;
-    if (!isViewerQuery(result.sql)) return null;
+    if (!viewerOwn.has(result.sql)) return null;
     return { connectionId: connection.id, database: tab.database, schema: ref.schema, table: ref.name };
   }
 

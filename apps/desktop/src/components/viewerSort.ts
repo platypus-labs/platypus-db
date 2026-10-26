@@ -32,3 +32,21 @@ export function nextSort(current: Sort | null, column: string): Sort | null {
 
 /** `sort` as written into the statement `sql`. */
 export const sortIn = (sort: Sort | null, sql: string): ViewerSort | null => sort && { ...sort, query: queryKey(sql) };
+
+/** The data viewer's own queries: `own` (the one it opened with, its table's plain query) and
+ *  the rewrites of them by the header sort and the quick filters. Only these read exactly the
+ *  viewer's table, so only their rows are edited as its rows; another query typed in the tab,
+ *  or a rewrite of one, reads whatever it names. */
+export function viewerQueries(...own: (string | null | undefined)[]) {
+  const keys = new Set(own.filter((sql): sql is string => !!sql).map(queryKey));
+  return {
+    has: (sql: string) => keys.has(queryKey(sql)),
+    /** Records `next`, written from `source`; true when it is one of the viewer's queries,
+     *  which it is when `source` is. */
+    rewritten(source: string, next: string): boolean {
+      if (!keys.has(queryKey(source))) return false;
+      keys.add(queryKey(next));
+      return true;
+    },
+  };
+}

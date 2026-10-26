@@ -1,5 +1,6 @@
 // The data viewer keeps the query of its editor: a WHERE typed there survives the header sort
-// (which only changes the top-level ORDER BY), and "Count rows" counts that query.
+// (which only changes the top-level ORDER BY), and "Count rows" counts that query. Another
+// table's query typed there is never edited as the viewer's table, even once sorted.
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -18,7 +19,9 @@ export function setup({ dir }) {
   const path = join(dir, "sort.db");
   const db = new DatabaseSync(path);
   db.exec(`CREATE TABLE items (id INTEGER PRIMARY KEY, grp INTEGER, name TEXT);
-           INSERT INTO items VALUES (1, 1, 'c'), (2, 2, 'b'), (3, 1, 'a'), (4, 2, 'd'), (5, 1, 'e');`);
+           INSERT INTO items VALUES (1, 1, 'c'), (2, 2, 'b'), (3, 1, 'a'), (4, 2, 'd'), (5, 1, 'e');
+           CREATE TABLE others (code INTEGER PRIMARY KEY, label TEXT);
+           INSERT INTO others VALUES (1, 'x'), (2, 'y');`);
   db.close();
   writeFileSync(
     join(dir, "connections.toml"),
@@ -105,4 +108,22 @@ export default async function (page) {
   await header();
   await page.sleep(500);
   assert.equal(await page.eval(editorText), update);
+
+  // Another query typed in the viewer does not read the viewer's table, sorted or not: the rows
+  // of a join stay read-only instead of being edited as rows of items.
+  const join = "SELECT o.code, o.label FROM others o JOIN items i ON i.id = o.code";
+  const editBar = `${visibleTab}.querySelector('.edit-bar:not([hidden])')`;
+  await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
+  await page.key("a", "KeyA", 65, CTRL);
+  await page.type(join);
+  await page.waitFor(`${editorText} === ${JSON.stringify(join)}`);
+  await afterRun(page, () => page.key("Enter", "Enter", 13, CTRL));
+  assert.equal(await page.eval(status), "2 rows");
+  await afterRun(page, header);
+  assert.match(await page.eval(editorText), /
+ORDER BY code ASC$/);
+  assert.equal(await page.eval(status), "2 rows");
+  // The viewer's edit bar would show at once; give the grid's edit target time to load.
+  await page.sleep(500);
+  assert.equal(await page.eval(`${editBar} === null`), true, "the sorted join is not editable as items");
 }
