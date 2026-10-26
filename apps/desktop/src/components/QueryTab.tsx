@@ -216,7 +216,7 @@ export function QueryTab({
   /** When the open transaction began, as far as the tab saw it. */
   const [txSince, setTxSince] = useState<number | null>(null);
   /** The statements run in the open transaction that change data or schema. */
-  const [pending, setPending] = useState<string[]>([]);
+  const [uncommitted, setUncommitted] = useState<string[]>([]);
   const [pendingOpen, setPendingOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const warnMinutes = useSetting(transactionWarning);
@@ -852,7 +852,7 @@ export function QueryTab({
     if (!state) return;
     setTx(state);
     const change = kind === "dml" || kind === "ddl";
-    setPending((list) => (!state.open ? [] : change ? [...list, sql] : list));
+    setUncommitted((list) => (!state.open ? [] : change ? [...list, sql] : list));
   }
 
   async function refreshTx(sessionId: number) {
@@ -1177,7 +1177,7 @@ export function QueryTab({
   useEffect(() => {
     if (!tx?.open) {
       setTxSince(null);
-      setPending([]);
+      setUncommitted([]);
       setPendingOpen(false);
       warned.current = false;
       return;
@@ -1328,7 +1328,7 @@ export function QueryTab({
               title={t("A transaction is open: changes are not visible to others yet, and locks are held")}
             >
               ● {t("Transaction open {time}", { time: elapsed(txAge) })}
-              {pending.length > 0 && ` · ${plural(pending.length, "{n} change", "{n} changes")}`}
+              {uncommitted.length > 0 && ` · ${plural(uncommitted.length, "{n} change", "{n} changes")}`}
             </button>
           )}
           {toolbar.visible.files && (
@@ -1592,7 +1592,7 @@ export function QueryTab({
       )}
       {pendingOpen && (
         <PendingDialog
-          statements={pending}
+          statements={uncommitted}
           onEnd={(commit) => {
             setPendingOpen(false);
             if (commit !== null) void endTransaction(commit);
