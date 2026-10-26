@@ -1,9 +1,9 @@
 //! Client libraries the app installs from their vendors' sites: Oracle's Instant Client, which
 //! the native Oracle driver loads, IBM's Data Server Driver for ODBC and CLI, and DuckDB's
-//! shared library, which the DuckDB driver loads. The archives (zip, or `.tar.gz`) are checked against the SHA-256 recorded here and unpacked under
-//! `<data>/drivers/vendor/<name>/<version>/`; IBM's driver is then registered with the
-//! system's ODBC driver manager by IBM's own program, which on Windows needs administrator
-//! rights.
+//! shared library, which the DuckDB driver loads. The archives (zip, or `.tar.gz`) are checked
+//! against the SHA-256 recorded here and unpacked under
+//! `<data>/drivers/vendor/<name>/<version>/`; IBM's driver is then registered with the system's
+//! ODBC driver manager by IBM's own program, which on Windows needs administrator rights.
 
 use std::io::Read as _;
 use std::path::{Component, Path, PathBuf};
@@ -166,45 +166,35 @@ fn db2() -> Option<VendorPackage> {
 /// processors.
 fn duckdb() -> Option<VendorPackage> {
     const BASE: &str = "https://github.com/duckdb/duckdb/releases/download/v2.0.0";
-    let (archive, library) = match platform() {
+    let (file, sha256, size, library) = match platform() {
         "windows_amd64" => (
-            archive(
-                format!("{BASE}/duckdb-shared-libs-windows-amd64.tar.gz"),
-                "2b83169128239de5f45fe21de80f99bf436e53aa4bb24020dd951a1ba8d4b95f",
-                19_833_650,
-            ),
+            "windows-amd64",
+            "2b83169128239de5f45fe21de80f99bf436e53aa4bb24020dd951a1ba8d4b95f",
+            19_833_650,
             "duckdb.dll",
         ),
         "windows_arm64" => (
-            archive(
-                format!("{BASE}/duckdb-shared-libs-windows-arm64.tar.gz"),
-                "159ce60eb587112b8c5f290b8beea56af5f13be4d13679de127ad9bfaafb7447",
-                18_389_170,
-            ),
+            "windows-arm64",
+            "159ce60eb587112b8c5f290b8beea56af5f13be4d13679de127ad9bfaafb7447",
+            18_389_170,
             "duckdb.dll",
         ),
         "linux_amd64" => (
-            archive(
-                format!("{BASE}/duckdb-shared-libs-linux-amd64.tar.gz"),
-                "993ad89e7dfca66cd6da994c2cad090c2fc160ddf9f550498a098ab4bb13cfb1",
-                27_841_656,
-            ),
+            "linux-amd64",
+            "993ad89e7dfca66cd6da994c2cad090c2fc160ddf9f550498a098ab4bb13cfb1",
+            27_841_656,
             "libduckdb.so",
         ),
         "linux_arm64" => (
-            archive(
-                format!("{BASE}/duckdb-shared-libs-linux-arm64.tar.gz"),
-                "c60eecf91143ca6bbac55c4f4d40dc22520488b0ac257c86e0fe9a2b451cf2b7",
-                25_735_927,
-            ),
+            "linux-arm64",
+            "c60eecf91143ca6bbac55c4f4d40dc22520488b0ac257c86e0fe9a2b451cf2b7",
+            25_735_927,
             "libduckdb.so",
         ),
         "macos_arm64" | "macos_amd64" => (
-            archive(
-                format!("{BASE}/duckdb-shared-libs-osx-universal.tar.gz"),
-                "14cd63180614cfd961f7959146ecd9087527ff20b67311efdc3fa1c29c18204d",
-                40_361_654,
-            ),
+            "osx-universal",
+            "14cd63180614cfd961f7959146ecd9087527ff20b67311efdc3fa1c29c18204d",
+            40_361_654,
             "libduckdb.dylib",
         ),
         _ => return None,
@@ -216,7 +206,11 @@ fn duckdb() -> Option<VendorPackage> {
         license: "MIT".to_owned(),
         license_url: "https://github.com/duckdb/duckdb/blob/main/LICENSE".to_owned(),
         vendor_url: "https://duckdb.org".to_owned(),
-        archives: vec![archive],
+        archives: vec![archive(
+            format!("{BASE}/duckdb-shared-libs-{file}.tar.gz"),
+            sha256,
+            size,
+        )],
         library: library.to_owned(),
         register: None,
         unregister: None,
@@ -266,15 +260,16 @@ pub async fn install_vendor(
         .await?;
         check(&bytes, &archive.sha256)?;
         done += bytes.len() as u64;
-        downloaded.push(bytes);
+        let unpack: fn(&[u8], &Path) -> Result<(), DriverError> =
+            if archive.url.ends_with(".tar.gz") {
+                untar
+            } else {
+                unzip
+            };
+        downloaded.push((bytes, unpack));
     }
     let tmp = drivers_dir(data_dir).join(format!("{TMP_PREFIX}{}", uuid::Uuid::new_v4()));
     let target = vendor_dir(data_dir).join(&package.name);
-    let tarballs: Vec<bool> = package
-        .archives
-        .iter()
-        .map(|a| a.url.ends_with(".tar.gz"))
-        .collect();
     let record = Installed {
         name: package.name.clone(),
         title: package.title.clone(),
@@ -285,14 +280,7 @@ pub async fn install_vendor(
     tokio::task::spawn_blocking(move || {
         let result = downloaded
             .iter()
-            .zip(tarballs)
-            .try_for_each(|(bytes, tarball)| {
-                if tarball {
-                    untar(bytes, &tmp)
-                } else {
-                    unzip(bytes, &tmp)
-                }
-            })
+            .try_for_each(|(bytes, unpack)| unpack(bytes, &tmp))
             .and_then(|()| {
                 if tmp.join(&record.library).is_file() {
                     crate::install::place(&tmp, &target, record)

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type DriverKind, type OdbcSystem, type VendorStatus, toCommandError } from "../api";
+import { api, type DriverKind, type OdbcSystem, type VendorStatus, toCommandError, VENDOR_DRIVERS } from "../api";
 import { askDriver } from "./DriverPopup";
 import { DRIVER_NAMES } from "./names";
 import { t, msg, tNodes } from "../i18n";
@@ -220,7 +220,7 @@ export function VendorDriversSection() {
       <p className="muted small">
         {t("Oracle connects through Oracle Instant Client, IBM Db2 through IBM's ODBC driver, and DuckDB databases and data files through DuckDB's library: each installed from its vendor the first time it is needed.")}
       </p>
-      {(["oracle", "db2", "duckdb"] as const).map((d) => (
+      {VENDOR_DRIVERS.map((d) => (
         <div key={d} className="driver-row" data-vendor-driver={d}>
           <strong>{DRIVER_NAMES[d]}</strong>
           <span className="spacer" />

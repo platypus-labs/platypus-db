@@ -3,7 +3,7 @@
 //! package [`PACKAGE`] of `platypus-drivers`. `platypus-duckdb-loader` loads it, once per
 //! process.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use platypus_core::{DriverKind, Error, Result};
@@ -33,7 +33,7 @@ pub fn load_from(path: &Path) -> Result<()> {
     load_with(|| Ok(path.to_owned()))
 }
 
-fn load_with(find: impl FnOnce() -> Result<std::path::PathBuf>) -> Result<()> {
+fn load_with(find: impl FnOnce() -> Result<PathBuf>) -> Result<()> {
     let mut loaded = LOADED
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
