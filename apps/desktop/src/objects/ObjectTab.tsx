@@ -154,7 +154,9 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
     void (async () => {
       setError(null);
       const sid = await sideSession();
-      if (sid === null || cancelled) return;
+      if (cancelled) return;
+      // The password prompt was cancelled or the connection failed: say so, not "Loading…".
+      if (sid === null) return setError(t("Not connected."));
       try {
         const loaded = await loadObject(sid, tab, commentable);
         if (!cancelled) setData(loaded);
