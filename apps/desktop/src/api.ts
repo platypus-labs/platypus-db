@@ -888,6 +888,10 @@ export interface ImportedProject {
   skipped: SkippedConnection[];
   /** What a connection needs before it can connect, by connection id. */
   notes: Record<string, ImportNote[]>;
+  /** What to know about the project as a whole. */
+  project_notes: ProjectNote[];
+  /** The connections that come with a saved password; the passwords stay in the backend. */
+  with_password: string[];
 }
 
 /** A connection of the file to a database the import does not read, with the tool's own
@@ -902,6 +906,9 @@ export interface SkippedConnection {
  *  instance without a port. */
 export type ImportNote = { kind: "windows_auth" } | { kind: "entra_auth" } | { kind: "named_instance"; instance: string };
 
+/** DBeaver keeps no saved logins for the project, or they could not be read. */
+export type ProjectNote = { kind: "no_saved_logins" } | { kind: "saved_logins_unreadable" };
+
 export type ImportInto =
   | { kind: "new_project"; name: string }
   | { kind: "existing"; id: string }
@@ -911,6 +918,8 @@ export interface ImportRequest {
   targets: { project: ImportedProject; into: ImportInto }[];
   /** A rail folder with this name holds the new projects. */
   rail_folder: string | null;
+  /** Saves the passwords read with the file; otherwise each connection asks on first use. */
+  passwords: boolean;
 }
 
 /** Connections, projects and rail folders, after a change that touches more than one. */

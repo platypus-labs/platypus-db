@@ -10,6 +10,7 @@ import {
   type ImportSource,
   isEmbedded,
   type Project,
+  type ProjectNote,
   type SavedConnection,
   toCommandError,
   type Workspace,
@@ -25,6 +26,7 @@ import {
   importRequest,
   isEmptyImport,
   projectTree,
+  savedPasswords,
   skippedIds,
   toggleAll,
 } from "./importTree";
@@ -70,6 +72,16 @@ function noteText(note: ImportNote): string {
   }
 }
 
+/** What to know about a whole project of the file. */
+function projectNoteText(note: ProjectNote): string {
+  switch (note.kind) {
+    case "no_saved_logins":
+      return t("No saved users or passwords in this project: each connection asks for its password the first time.");
+    case "saved_logins_unreadable":
+      return t("Saved passwords could not be read: DBeaver may protect them with a master password.");
+  }
+}
+
 /** Whether `c` looks like a connection that is already saved. */
 function duplicate(c: SavedConnection, existing: SavedConnection[]) {
   return existing.some(
@@ -78,7 +90,8 @@ function duplicate(c: SavedConnection, existing: SavedConnection[]) {
 }
 
 /** Reads the projects, folders and connections of DBeaver, DataGrip, pgAdmin or
- *  `pg_service.conf`, and saves the ticked ones. Passwords are asked for on first use. */
+ *  `pg_service.conf`, and saves the ticked ones. DBeaver's saved passwords come along unless
+ *  the user opts out; other connections ask for theirs on first use. */
 export function ImportDialog({ existing, projects, project, onImported, onClose }: Props) {
   const [found, setFound] = useState<ImportFile[]>([]);
   const [source, setSource] = useState<ImportSource>("dbeaver");
@@ -87,6 +100,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
   const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
   const [into, setInto] = useState<ImportInto[]>([]);
   const [railFolder, setRailFolder] = useState<string | null>(null);
+  const [passwords, setPasswords] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -132,7 +146,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
     setSaving(true);
     try {
       // The rail folder is offered for two new projects or more.
-      onImported(await api.saveImported(importRequest(read, ticked, into, newProjects.length > 1 ? railFolder : null)));
+      onImported(await api.saveImported(importRequest(read, ticked, into, newProjects.length > 1 ? railFolder : null, passwords)));
     } catch (e) {
       setError(toCommandError(e).message);
       setSaving(false);
@@ -202,7 +216,21 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
                 />
               ))}
             </div>
-            <p className="muted small">{t("Passwords are not imported: each connection asks for its own the first time.")}</p>
+            {savedPasswords(read) > 0 ? (
+              <label className="check import-passwords">
+                <input type="checkbox" checked={passwords} onChange={(e) => setPasswords(e.target.checked)} />
+                <span>
+                  {t("Import saved users and passwords")}
+                  <span className="muted small import-passwords-hint">
+                    {passwords
+                      ? t("Passwords go to the app's secret store, as if typed in the connection dialog.")
+                      : t("Only the user names: each connection asks for its password the first time.")}
+                  </span>
+                </span>
+              </label>
+            ) : (
+              <p className="muted small">{t("Passwords are not imported: each connection asks for its own the first time.")}</p>
+            )}
           </>
         )}
         <div className="actions">
@@ -279,6 +307,11 @@ function ProjectRows({ project, ticked, existing, projects, into, onTicked, onIn
           <option value="none">{t("No project")}</option>
         </select>
       </div>
+      {(project.project_notes ?? []).map((note) => (
+        <div key={note.kind} className={`small import-project-note ${note.kind === "saved_logins_unreadable" ? "import-note" : "muted"}`} style={{ paddingLeft: 18 }}>
+          {projectNoteText(note)}
+        </div>
+      ))}
       <FolderRows folder={root} depth={1} ticked={ticked} existing={existing} notes={project.notes} onTicked={onTicked} />
       {project.skipped.map((s, i) => (
         <div key={i} className="import-row skipped" role="treeitem" style={{ paddingLeft: 18 }}>
