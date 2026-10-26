@@ -128,6 +128,8 @@ const END_SELECT = new Set(
 );
 /** Words that start a clause, to tell which one a list is in. */
 const CLAUSES = new Set([...END_SELECT, "SELECT", "SET", "ON", "JOIN"]);
+/** Words a `USING` may belong to: only DELETE and MERGE take tables there. */
+const USING_OWNERS = new Set(["DELETE", "MERGE", "JOIN", "SELECT", "CREATE", "ALTER"]);
 
 /** The SQL with strings and comments blanked out, the same length. */
 export function maskSql(sql: string, options: ScopeOptions = {}): string {
@@ -421,14 +423,19 @@ class Statement {
   /** Whether the `USING` at `i` names tables: in `DELETE … USING` and `MERGE … USING`, not in
    *  `JOIN … USING (column)` or in DDL (`USING heap`, `TYPE int USING x::int`). */
   private usingTables(i: number): boolean {
+    const owner = this.nearest(i, USING_OWNERS);
+    return owner === "DELETE" || owner === "MERGE";
+  }
+
+  /** The nearest of `words` at or before token `i`, at its level, upper-cased; null if none. */
+  private nearest(i: number, words: Set<string>): string | null {
     const t = this.tokens;
-    for (let k = i - 1; k >= 0; k--) {
+    for (let k = i; k >= 0; k--) {
       if (t[k]!.parent !== t[i]!.parent || t[k]!.kind !== "word") continue;
       const w = t[k]!.text.toUpperCase();
-      if (w === "DELETE" || w === "MERGE") return true;
-      if (w === "JOIN" || w === "SELECT" || w === "CREATE" || w === "ALTER") return false;
+      if (words.has(w)) return w;
     }
-    return false;
+    return null;
   }
 
   /** The `(` around token position `pos` (a character offset), innermost first. */
@@ -522,24 +529,12 @@ class Statement {
     return i;
   }
 
-  /** The clause token `i` is in, at its own level: the nearest of FROM, SET, SELECT… at or
-   *  before it, upper-cased; null when there is none. */
-  private clauseOf(i: number): string | null {
-    const t = this.tokens;
-    for (let k = i; k >= 0; k--) {
-      if (t[k]!.parent !== t[i]!.parent || t[k]!.kind !== "word") continue;
-      const w = t[k]!.text.toUpperCase();
-      if (CLAUSES.has(w)) return w;
-    }
-    return null;
-  }
-
   /** Whether the cursor after token `i` names a table: after FROM, JOIN... or a comma of FROM. */
   tablePosition(i: number): boolean {
     const prev = this.tokens[i];
     if (!prev) return false;
     if (prev.kind === "word" && TABLE_KEYWORDS.has(prev.text.toUpperCase())) return true;
-    return prev.text === "," && this.clauseOf(i) === "FROM";
+    return prev.text === "," && this.nearest(i, CLAUSES) === "FROM";
   }
 
   /** Whether the cursor after token `i` names a target column, which is written without its
@@ -548,7 +543,7 @@ class Statement {
     const t = this.tokens;
     const prev = t[i];
     if (!prev || !(isWord(prev, "SET") || prev.text === "," || prev.text === "(")) return false;
-    if (prev.text !== "(" && this.clauseOf(i) === "SET") return true;
+    if (prev.text !== "(" && this.nearest(i, CLAUSES) === "SET") return true;
     let k = (prev.text === "(" ? i : prev.parent) - 1;
     if (t[k + 1]?.text !== "(") return false;
     if (isWord(t[k], "INSERT", "USING", "CONFLICT")) return true;

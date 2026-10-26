@@ -189,7 +189,7 @@ impl<'a> Tokens<'a> {
 
     /// Whether the token at `i` stands where an operand goes: after an operator, a comma, a
     /// dot or a word such as `SELECT` or `WHERE`. A word there is a name, never a clause.
-    fn after_operator(&self, i: usize) -> bool {
+    fn operand_at(&self, i: usize) -> bool {
         let Some(prev) = i.checked_sub(1).and_then(|p| self.list.get(p)) else {
             return false;
         };
@@ -263,7 +263,7 @@ fn clause_at(t: &Tokens, i: usize, dialect: Dialect) -> Result<Option<Clause>, (
         _ => None,
     };
     // `SELECT offset FROM t`, `WHERE limit > 1`: a column named like a clause.
-    Ok(clause.filter(|_| !t.after_operator(i)))
+    Ok(clause.filter(|_| !t.operand_at(i)))
 }
 
 /// Skips what follows `SELECT` before the select list; returns the index of its first token.
