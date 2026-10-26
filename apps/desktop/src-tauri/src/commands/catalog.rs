@@ -1,6 +1,7 @@
 //! Notes and tags on tables and columns (`platypus_store::CatalogStore`), and the schema
 //! documentation written with them.
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use futures::StreamExt;
@@ -141,8 +142,9 @@ pub enum DocsEvent {
     Failed { message: String },
 }
 
-/// Documents `request.schemas` on the session's connection and writes the file. Returns an
-/// id for `cancel_docs`; progress and the outcome arrive on `on_event`, nothing once cancelled.
+/// Documents `request.schemas` on the session's connection and writes the file, at
+/// `request.path` or, when that is relative, in the user's documents folder. Returns an id for
+/// `cancel_docs`; progress and the outcome arrive on `on_event`, nothing once cancelled.
 #[tauri::command]
 pub async fn export_docs(
     app: AppHandle,
@@ -150,9 +152,22 @@ pub async fn export_docs(
     session_id: u64,
     connection_id: Uuid,
     database: Option<String>,
-    request: DocsRequest,
+    mut request: DocsRequest,
     on_event: Channel<DocsEvent>,
 ) -> CommandResult<u64> {
+    // The notes are looked up by connection: another connection's would document the wrong one.
+    if state.session(session_id)?.connection_id != connection_id {
+        return Err(CommandError::new(
+            "invalid",
+            format!("session {session_id} is not on connection {connection_id}"),
+        ));
+    }
+    let documents = app
+        .path()
+        .document_dir()
+        .or_else(|_| app.path().home_dir())
+        .ok();
+    request.path = docs_path(request.path, documents)?;
     let conn = state.live(session_id).await?;
     // Without its notes the documentation is still worth writing.
     let notes = if request.notes {
@@ -175,16 +190,11 @@ pub async fn export_docs(
             token: &token,
             events: &on_event,
         };
-        let outcome = write_docs(&run).await;
+        let outcome = docs_outcome(&run).await;
         lock(&app.state::<AppState>().docs).remove(&id);
-        let event = match outcome {
-            Ok(false) => return,
-            Ok(true) => DocsEvent::Finished {
-                path: request.path.clone(),
-            },
-            Err(message) => DocsEvent::Failed { message },
-        };
-        let _ = on_event.send(event);
+        if let Some(event) = outcome {
+            let _ = on_event.send(event);
+        }
     });
     Ok(id)
 }
@@ -197,6 +207,17 @@ pub fn cancel_docs(state: State<'_, AppState>, export_id: u64) {
     }
 }
 
+/// Where the documentation goes: `path` when it is absolute, else in `base` (the user's
+/// documents folder), never in the app's working folder.
+fn docs_path(path: PathBuf, base: Option<PathBuf>) -> CommandResult<PathBuf> {
+    if path.is_absolute() {
+        return Ok(path);
+    }
+    base.map(|base| base.join(&path)).ok_or_else(|| {
+        CommandError::new("invalid", format!("{} is not a full path", path.display()))
+    })
+}
+
 /// What every object of one documentation export shares.
 struct DocsRun<'a> {
     conn: &'a dyn Connection,
@@ -207,13 +228,38 @@ struct DocsRun<'a> {
     events: &'a Channel<DocsEvent>,
 }
 
-/// Whether objects of `kind` are documented: tables, and views when asked.
-fn documented(kind: ObjectKind, views: bool) -> bool {
-    kind == ObjectKind::Table
-        || (views && matches!(kind, ObjectKind::View | ObjectKind::MaterializedView))
+/// The objects of a schema that are documented: its tables, without the partitions of a table
+/// listed with them (the navigator shows those under their table), and its views when asked.
+fn documented(objects: Vec<ObjectMeta>, views: bool) -> Vec<ObjectMeta> {
+    let tables: HashSet<String> = objects
+        .iter()
+        .filter(|o| o.kind == ObjectKind::Table)
+        .map(|o| o.name.clone())
+        .collect();
+    objects
+        .into_iter()
+        .filter(|o| match o.kind {
+            ObjectKind::Table => !o.parent.as_ref().is_some_and(|p| tables.contains(p)),
+            ObjectKind::View | ObjectKind::MaterializedView => views,
+            _ => false,
+        })
+        .collect()
 }
 
-/// Reads every documented object and writes the file; `Ok(false)` when cancelled first.
+/// Runs an export to the event that ends it; `None` when it was cancelled. A cancel drops the
+/// listing or the reads in flight at once.
+async fn docs_outcome(run: &DocsRun<'_>) -> Option<DocsEvent> {
+    match run.token.run_until_cancelled(write_docs(run)).await? {
+        Ok(false) => None,
+        Ok(true) => Some(DocsEvent::Finished {
+            path: run.request.path.clone(),
+        }),
+        Err(message) => Some(DocsEvent::Failed { message }),
+    }
+}
+
+/// Reads every documented object and writes the file; `Ok(false)` when cancelled before the
+/// file is written.
 async fn write_docs(run: &DocsRun<'_>) -> Result<bool, String> {
     let request = run.request;
     let mut listed = Vec::with_capacity(request.schemas.len());
@@ -223,11 +269,7 @@ async fn write_docs(run: &DocsRun<'_>) -> Result<bool, String> {
             .objects(schema)
             .await
             .map_err(|e| format!("{schema}: {e}"))?;
-        let kept: Vec<ObjectMeta> = objects
-            .into_iter()
-            .filter(|o| documented(o.kind, request.views))
-            .collect();
-        listed.push((schema, kept));
+        listed.push((schema, documented(objects, request.views)));
     }
     let total = listed.iter().map(|(_, objects)| objects.len()).sum();
     let mut done = 0;
@@ -237,15 +279,15 @@ async fn write_docs(run: &DocsRun<'_>) -> Result<bool, String> {
         diagrams: request.diagrams,
     };
     for (schema, objects) in &listed {
-        let Some(doc) = collect_schema(run, schema, objects, &mut done, total).await else {
-            return Ok(false);
-        };
-        model.schemas.push(doc);
+        model
+            .schemas
+            .push(collect_schema(run, schema, objects, &mut done, total).await);
     }
     let text = match request.format {
         DocsFormat::Markdown => platypus_docs::markdown(&model),
         DocsFormat::Html => platypus_docs::html(&model),
     };
+    // Rendering runs without a pause: a cancel during it is seen here.
     if run.token.is_cancelled() {
         return Ok(false);
     }
@@ -255,28 +297,25 @@ async fn write_docs(run: &DocsRun<'_>) -> Result<bool, String> {
     Ok(true)
 }
 
-/// The objects of `schema` with their details, read four at a time and counted in `done`;
-/// `None` once cancelled.
+/// The objects of `schema` with their details, read four at a time and counted in `done`.
 async fn collect_schema(
     run: &DocsRun<'_>,
     schema: &str,
     objects: &[ObjectMeta],
     done: &mut usize,
     total: usize,
-) -> Option<DocSchema> {
+) -> DocSchema {
     // The reads are made first: a closure inside the stream would keep the export's task
     // from being `Send`. They start only once polled.
     let reads: Vec<_> = objects
         .iter()
         .map(|o| run.conn.table_details(schema, &o.name))
         .collect();
-    let mut details = futures::stream::iter(reads).buffered(4);
+    let mut details = futures::stream::iter(reads)
+        .buffered(4)
+        .zip(futures::stream::iter(objects));
     let mut docs = Vec::with_capacity(objects.len());
-    for object in objects {
-        let read = details.next().await?;
-        if run.token.is_cancelled() {
-            return None;
-        }
+    while let Some((read, object)) = details.next().await {
         let read = read.map_err(|e| e.to_string());
         let doc = doc_object(
             run.database,
@@ -290,10 +329,10 @@ async fn collect_schema(
         *done += 1;
         let _ = run.events.send(DocsEvent::Progress { done: *done, total });
     }
-    Some(DocSchema {
+    DocSchema {
         name: schema.to_owned(),
         objects: docs,
-    })
+    }
 }
 
 /// One table or view of the documentation: its details (or why they could not be read) with
@@ -573,9 +612,184 @@ mod tests {
         assert_eq!(doc.kind, platypus_docs::DocKind::View);
         assert_eq!(doc.note, "");
         assert_eq!(doc.error.as_deref(), Some("denied"));
-        assert!(super::documented(ObjectKind::Table, false));
-        assert!(!super::documented(ObjectKind::View, false));
-        assert!(super::documented(ObjectKind::MaterializedView, true));
-        assert!(!super::documented(ObjectKind::Sequence, true));
+    }
+
+    #[test]
+    fn documents_tables_and_views_when_asked_without_partitions() {
+        use platypus_core::{ObjectKind, ObjectMeta};
+        let object = |name: &str, kind, parent: Option<&str>| ObjectMeta {
+            parent: parent.map(str::to_owned),
+            ..ObjectMeta::new(name, kind, None)
+        };
+        let objects = vec![
+            object("orders", ObjectKind::Table, None),
+            object("orders_2026", ObjectKind::Table, Some("orders")),
+            object("lone_part", ObjectKind::Table, Some("elsewhere")),
+            object("v", ObjectKind::View, None),
+            object("mv", ObjectKind::MaterializedView, None),
+            object("s", ObjectKind::Sequence, None),
+            object("trg", ObjectKind::Trigger, Some("orders")),
+        ];
+        let names = |views| -> Vec<String> {
+            super::documented(objects.clone(), views)
+                .into_iter()
+                .map(|o| o.name)
+                .collect()
+        };
+        assert_eq!(names(false), ["orders", "lone_part"]);
+        assert_eq!(names(true), ["orders", "lone_part", "v", "mv"]);
+    }
+
+    #[test]
+    fn a_relative_path_goes_in_the_documents_folder() {
+        let documents = std::env::temp_dir();
+        let absolute = documents.join("docs.md");
+        assert_eq!(super::docs_path(absolute.clone(), None).unwrap(), absolute);
+        assert_eq!(
+            super::docs_path("docs.md".into(), Some(documents.clone())).unwrap(),
+            absolute
+        );
+        let err = super::docs_path("docs.md".into(), None).unwrap_err();
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["kind"], "invalid");
+        assert_eq!(json["message"], "docs.md is not a full path");
+    }
+
+    mod export {
+        use std::path::{Path, PathBuf};
+        use std::sync::{Arc, Mutex};
+
+        use platypus_core::{Connection, ConnectionConfig, Driver, DriverKind, ExecOptions};
+        use serde_json::{Value, json};
+        use tauri::ipc::{Channel, InvokeResponseBody};
+        use tokio_util::sync::CancellationToken;
+
+        use super::super::{DocsEvent, DocsFormat, DocsRequest, DocsRun, docs_outcome};
+
+        /// A SQLite database with two tables and a view.
+        async fn database(dir: &Path) -> Box<dyn Connection> {
+            let path = dir.join("shop.db");
+            std::fs::File::create(&path).unwrap();
+            let mut config = ConnectionConfig::new(DriverKind::Sqlite);
+            config.database = path.to_string_lossy().into_owned();
+            let conn = platypus_driver_sqlite::SqliteDriver
+                .connect(&config)
+                .await
+                .unwrap();
+            for sql in [
+                "CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT)",
+                "CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customers(id))",
+                "CREATE VIEW recent AS SELECT id FROM orders",
+            ] {
+                conn.execute(sql, &ExecOptions::default()).await.unwrap();
+            }
+            conn
+        }
+
+        fn request(path: PathBuf, format: DocsFormat, views: bool) -> DocsRequest {
+            DocsRequest {
+                title: "shop".to_owned(),
+                schemas: vec!["main".to_owned()],
+                views,
+                diagrams: true,
+                notes: false,
+                format,
+                path,
+            }
+        }
+
+        /// Runs an export: the event that ends it, and the progress events sent before.
+        fn export(request: &DocsRequest, token: &CancellationToken) -> (Option<Value>, Vec<Value>) {
+            let dir = tempfile::tempdir().unwrap();
+            let seen = Arc::new(Mutex::new(Vec::new()));
+            let sink = Arc::clone(&seen);
+            let events = Channel::<DocsEvent>::new(move |body| {
+                if let InvokeResponseBody::Json(json) = body {
+                    sink.lock()
+                        .unwrap()
+                        .push(serde_json::from_str(&json).unwrap());
+                }
+                Ok(())
+            });
+            let outcome = tauri::async_runtime::block_on(async {
+                let conn = database(dir.path()).await;
+                let run = DocsRun {
+                    conn: conn.as_ref(),
+                    database: "",
+                    request,
+                    notes: &[],
+                    token,
+                    events: &events,
+                };
+                docs_outcome(&run).await
+            });
+            let outcome = outcome.map(|e| serde_json::to_value(e).unwrap());
+            let seen = seen.lock().unwrap().clone();
+            (outcome, seen)
+        }
+
+        #[test]
+        fn writes_the_file_after_one_progress_event_per_object() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("shop.html");
+            let request = request(path.clone(), DocsFormat::Html, false);
+            let (outcome, progress) = export(&request, &CancellationToken::new());
+            assert_eq!(outcome, Some(json!({ "kind": "finished", "path": path })));
+            assert_eq!(
+                progress,
+                [
+                    json!({ "kind": "progress", "done": 1, "total": 2 }),
+                    json!({ "kind": "progress", "done": 2, "total": 2 }),
+                ]
+            );
+            let page = std::fs::read_to_string(&path).unwrap();
+            assert!(
+                page.contains("<pre class=\"mermaid\">erDiagram\n"),
+                "{page}"
+            );
+            assert!(page.contains("main.orders"), "{page}");
+            assert!(!page.contains("main.recent"), "{page}");
+        }
+
+        #[test]
+        fn views_are_documented_when_asked() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("shop.md");
+            let request = request(path.clone(), DocsFormat::Markdown, true);
+            let (outcome, progress) = export(&request, &CancellationToken::new());
+            assert_eq!(outcome.unwrap()["kind"], "finished");
+            assert_eq!(progress.len(), 3);
+            let text = std::fs::read_to_string(&path).unwrap();
+            assert!(text.contains("## main.recent"), "{text}");
+            assert!(text.contains("```mermaid\nerDiagram\n"), "{text}");
+        }
+
+        #[test]
+        fn a_cancelled_export_writes_nothing() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("shop.md");
+            let token = CancellationToken::new();
+            token.cancel();
+            let (outcome, progress) =
+                export(&request(path.clone(), DocsFormat::Markdown, true), &token);
+            assert_eq!(outcome, None);
+            assert_eq!(progress, Vec::<Value>::new());
+            assert!(!path.exists());
+        }
+
+        #[test]
+        fn a_file_that_cannot_be_written_fails() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("missing").join("shop.md");
+            let (outcome, progress) = export(
+                &request(path, DocsFormat::Markdown, false),
+                &CancellationToken::new(),
+            );
+            let outcome = outcome.unwrap();
+            assert_eq!(outcome["kind"], "failed");
+            let message = outcome["message"].as_str().unwrap();
+            assert!(message.starts_with("cannot write "), "{message}");
+            assert_eq!(progress.len(), 2);
+        }
     }
 }
