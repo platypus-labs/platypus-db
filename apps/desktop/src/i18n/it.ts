@@ -1231,6 +1231,18 @@ const it: Record<string, string> = {
   // Analysis (group M): charts
 
   // Analysis (group M): SQL on results
+  "Query the result with SQL": "Interroga il risultato con SQL",
+  "Query with SQL": "Interroga con SQL",
+  "No result with rows in the tab shown": "Nessun risultato con righe nella scheda mostrata",
+  "MongoDB results cannot be queried with SQL": "I risultati di MongoDB non si interrogano con SQL",
+  "Loading all the rows of the result: {rows}": "Caricamento di tutte le righe del risultato: {rows}",
+  "This tab has no result with rows.": "Questa scheda non ha risultati con righe.",
+  "Results of {name}": "Risultati di {name}",
+  "SQL on results": "SQL sui risultati",
+  "The tab the results came from is closed.": "La scheda da cui vengono i risultati è chiusa.",
+  "Tables of the results of another tab: {tables}": "Tabelle dai risultati di un'altra scheda: {tables}",
+  "Partial: reading stopped at the memory limit.": "Parziale: la lettura si è fermata al limite di memoria.",
+  "Reload from result": "Ricarica dal risultato",
 
   // Analysis (group M): compare with the previous run
 };

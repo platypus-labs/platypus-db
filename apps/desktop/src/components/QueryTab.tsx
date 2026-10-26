@@ -31,6 +31,8 @@ import { defineSetting, getSetting, useSetting } from "../settings";
 import { viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
+import { ResultSourceBar } from "../analysis/QueryWithSql";
+import { provideResults, resultsWithRows, type ResultSource } from "../analysis/resultHosts";
 import { basename } from "../workspace";
 import { type CheckedStatement, type GuardRequest, check, elapsed, transactionWarning } from "../guards/guards";
 import { GuardDialog } from "../guards/GuardDialog";
@@ -103,6 +105,9 @@ export interface QueryTabModel extends TabBase {
   viewerQuery?: string | null;
   /** Values of `${name}` and `:name`, kept with the tab. */
   variables?: Record<string, string>;
+  /** "Query with SQL": where the tables of this tab came from. Not persisted: the temporary
+   *  connection does not outlive the app. */
+  resultSource?: ResultSource;
   /** Results as text, like a console, instead of the grid. */
   terminal?: boolean;
 }
@@ -214,6 +219,20 @@ export function QueryTab({
   const [activeResult, setActiveResult] = useState(0);
   const [running, setRunning] = useState(false);
   const shown = results[activeResult];
+  // "Query with SQL" reads this tab's results with rows and which one is shown.
+  const resultsNow = useRef({ results, shown, active });
+  resultsNow.current = { results, shown, active };
+  useEffect(
+    () =>
+      provideResults({
+        tabKey: tab.key,
+        connection,
+        shown: () => resultsNow.current.active,
+        results: () => resultsWithRows(resultsNow.current.results),
+        activeJob: () => resultsNow.current.shown?.jobId ?? null,
+      }),
+    [],
+  );
   /** Data viewer: the last statement found to be a read-only query the header sort can rewrite
    *  with certainty; asked once per statement, not at each keystroke. */
   const [rewritable, setRewritable] = useState<string | null>(null);
@@ -1377,6 +1396,18 @@ export function QueryTab({
         />
         <div className="splitter" onMouseDown={startResize} />
         <div className="results">
+          {tab.resultSource && (
+            <ResultSourceBar
+              source={tab.resultSource}
+              connection={connection}
+              onReloaded={(source) => {
+                onChange({ resultSource: source });
+                onNeedCatalog(true);
+                // The query shown runs again on the new rows.
+                if (lastPlanned.current.length > 0) void run("statement", false, lastPlanned.current);
+              }}
+            />
+          )}
           {blocked !== null && (
             <div className="notice warn">
               {t("{name} is read-only and this may modify data.", { name: connection.name })}
