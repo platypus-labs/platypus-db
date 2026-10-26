@@ -274,7 +274,7 @@ impl JdbcUrl {
 }
 
 /// `[::1]:5432`, `host:5432` or just a host.
-fn host_port(address: &str) -> (String, Option<u16>) {
+pub(super) fn host_port(address: &str) -> (String, Option<u16>) {
     let (host, port) = match address.strip_prefix('[') {
         Some(inner) => match inner.split_once(']') {
             Some((h, rest)) => (h, rest.strip_prefix(':').and_then(|p| p.parse().ok())),

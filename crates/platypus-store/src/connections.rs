@@ -730,6 +730,15 @@ impl ConnectionStore {
         out
     }
 
+    /// The URL of a saved connection, with its network profile's SSL settings and without
+    /// its password (see [`ConnectionConfig::to_url`]).
+    pub fn url_of(&self, id: Uuid) -> Result<String> {
+        let saved = self.get(id).ok_or(StoreError::NotFound(id))?;
+        self.effective(saved).config(None).to_url().ok_or_else(|| {
+            StoreError::Invalid(format!("{} connections have no URL", saved.driver.name()))
+        })
+    }
+
     /// Inserts or replaces (by id) a connection and updates its keychain entry.
     pub fn save(&mut self, connection: SavedConnection, password: PasswordUpdate) -> Result<()> {
         self.check_connection(&connection)?;
@@ -952,6 +961,28 @@ mod tests {
         assert!(projects.iter().all(|p| p.connections == [shared.id]));
         assert_eq!(projects[0].initials, "CR");
         assert_eq!(projects[1].initials, "IN");
+    }
+
+    #[test]
+    fn url_of_a_saved_connection_has_no_password() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        let c = sample();
+        s.save(c.clone(), PasswordUpdate::Set(Secret::new("hunter2")))
+            .unwrap();
+        let url = s.url_of(c.id).unwrap();
+        assert_eq!(
+            url,
+            "postgres://platypus@localhost:55432/platypus?sslmode=disable"
+        );
+        assert_eq!(ConnectionConfig::from_url(&url).unwrap(), c.config(None));
+        let snow = SavedConnection::new("Snow", DriverKind::Snowflake);
+        s.save(snow.clone(), PasswordUpdate::Keep).unwrap();
+        assert!(matches!(s.url_of(snow.id), Err(StoreError::Invalid(_))));
+        assert!(matches!(
+            s.url_of(Uuid::new_v4()),
+            Err(StoreError::NotFound(_))
+        ));
     }
 
     #[test]
