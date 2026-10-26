@@ -1,9 +1,10 @@
 // Whether Enter after a word means a newline rather than accepting the selected completion.
 // Plain logic, tested on its own (tests/typedWord.test.mjs).
 
-/** The word before the cursor: letters, digits, `_`, `$` and `#`. */
+/** The word before the cursor: letters and digits of any script (with their accents), `_`,
+ *  `$` and `#`. */
 export function wordBefore(text: string): string | undefined {
-  return /[\w$#]+$/.exec(text)?.[0];
+  return /[\p{L}\p{M}\p{N}_$#]+$/u.exec(text)?.[0];
 }
 
 /** Whether accepting `entry` would leave `word` exactly as typed: the same text in the same
