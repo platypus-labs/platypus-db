@@ -38,11 +38,33 @@ pub struct ParameterSpan {
     end: usize,
 }
 
+/// Statements a script sends together: a Transact-SQL batch up to `GO`.
+#[derive(Debug, Serialize)]
+pub struct BatchSpan {
+    /// Indices into `statements`, `first..end`.
+    first: usize,
+    end: usize,
+    /// How many times it runs (`GO 3`).
+    repeat: u32,
+}
+
 #[derive(Debug, Serialize)]
 pub struct SqlAnalysis {
     statements: Vec<StatementSpan>,
     /// Index into `statements` of the one to run for the cursor.
     at_cursor: Option<usize>,
+    /// Groups of statements that a script runs together; empty when each runs alone.
+    batches: Vec<BatchSpan>,
+}
+
+/// The end of a statement as it is sent: in Transact-SQL its `;`, which `MERGE` requires
+/// (and every statement accepts).
+fn sent_end(sql: &str, dialect: Dialect, end: usize) -> usize {
+    if dialect == Dialect::SqlServer && sql[end..].starts_with(';') {
+        end + 1
+    } else {
+        end
+    }
 }
 
 /// Maps byte offsets of `src` to UTF-16 offsets and back.
@@ -86,8 +108,21 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
     let dialect = Dialect::from(driver);
     let statements = platypus_sql::split(&sql, dialect);
     let at = platypus_sql::statement_at(&sql, dialect, map.to_byte(cursor));
+    let batches = if dialect == Dialect::SqlServer {
+        platypus_sql::batches(&sql, dialect)
+            .into_iter()
+            .map(|b| BatchSpan {
+                first: b.statements.start,
+                end: b.statements.end,
+                repeat: b.repeat,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     SqlAnalysis {
         at_cursor: at.and_then(|at| statements.iter().position(|s| *s == at)),
+        batches,
         statements: statements
             .iter()
             .map(|s| {
@@ -100,7 +135,7 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
                 };
                 StatementSpan {
                     start: map.to_utf16(s.start),
-                    end: map.to_utf16(s.end),
+                    end: map.to_utf16(sent_end(&sql, dialect, s.end)),
                     read_only: matches!(
                         analysis.kind,
                         StatementKind::Query | StatementKind::Command
@@ -142,6 +177,7 @@ fn analyze_mongo(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
     let at = shell::statement_at(src, map.to_byte(cursor));
     SqlAnalysis {
         at_cursor: at.and_then(|at| statements.iter().position(|s| *s == at)),
+        batches: Vec::new(),
         statements: statements
             .iter()
             .map(|range| {
