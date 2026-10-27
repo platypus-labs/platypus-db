@@ -24,6 +24,8 @@ export interface Workbench {
   /** Opens the new connection dialog; the connection goes into `folder` of the active
    *  project when given. */
   newConnection(folder?: string | null): void;
+  /** Saves a copy of the connection, with its passwords, and opens it for editing. */
+  duplicateConnection(connection: SavedConnection): Promise<void>;
   /** Opens the project dialog; `null` makes a new project. */
   editProject(project: Project | null): void;
   /** Deletes a project after asking, closing its tabs; its connections stay. */

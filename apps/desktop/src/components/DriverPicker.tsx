@@ -26,7 +26,7 @@ import { fold } from "../ui/textSearch";
 import { t, msg } from "../i18n";
 
 /** What a profile fills in beyond the driver's defaults. */
-export type Preset = Partial<Pick<SavedConnection, "port" | "user" | "database" | "ssl_mode">>;
+export type Preset = Partial<Pick<SavedConnection, "host" | "port" | "user" | "database" | "ssl_mode">>;
 
 /** A generic database cylinder, for SQL Server, YugabyteDB, Oracle, Db2 and ODBC, which
  *  simple-icons lacks. */
@@ -69,9 +69,10 @@ const CHOICES: Choice[] = [
   },
   { driver: "mongo", label: "MongoDB", path: siMongodb.path, bg: DARK, fg: `#${siMongodb.hex}` },
   // Through ADBC drivers, downloaded when a connection first needs one.
-  { driver: "snowflake", label: "Snowflake", path: siSnowflake.path, bg: `#${siSnowflake.hex}`, fg: "#fff" },
+  // A cloud service: the account (or workspace) to type in place of `localhost`.
+  { driver: "snowflake", label: "Snowflake", path: siSnowflake.path, bg: `#${siSnowflake.hex}`, fg: "#fff", preset: { host: "" } },
   { driver: "bigquery", label: "BigQuery", path: siGooglebigquery.path, bg: `#${siGooglebigquery.hex}`, fg: "#fff" },
-  { driver: "databricks", label: "Databricks", path: siDatabricks.path, bg: `#${siDatabricks.hex}`, fg: "#fff" },
+  { driver: "databricks", label: "Databricks", path: siDatabricks.path, bg: `#${siDatabricks.hex}`, fg: "#fff", preset: { host: "" } },
   { driver: "trino", label: "Trino", path: siTrino.path, bg: `#${siTrino.hex}`, fg: "#fff" },
   { driver: "adbc", label: msg("Other ADBC driver"), path: siApachearrow.path, bg: DARK, fg: "#fff" },
   // Oracle through Instant Client, Db2 and the rest through ODBC: installed when needed.

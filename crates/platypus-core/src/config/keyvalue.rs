@@ -32,7 +32,7 @@ impl ConnectionConfig {
     /// documentation for how the driver is chosen. Errors name keys, never values, and a
     /// host that holds a login or other keys is an error.
     pub fn from_connection_string(input: &str) -> Result<Self> {
-        parse(input).map(|parsed| parsed.config)
+        parse(input, None).map(|parsed| parsed.config)
     }
 }
 
@@ -44,16 +44,16 @@ struct Pair {
     value: String,
 }
 
-pub(super) fn parse(input: &str) -> Result<ParsedConnection> {
+pub(super) fn parse(input: &str, hint: Option<DriverKind>) -> Result<ParsedConnection> {
     let parsed = match libpq::parse(input) {
         Some(parsed) => parsed?,
-        None => read(input)?,
+        None => read(input, hint)?,
     };
     parsed.config.check_host()?;
     Ok(parsed)
 }
 
-fn read(input: &str) -> Result<ParsedConnection> {
+fn read(input: &str, hint: Option<DriverKind>) -> Result<ParsedConnection> {
     let pairs = pairs(input)?;
     if pairs.is_empty() {
         return Err(Error::Config(
@@ -76,6 +76,10 @@ fn read(input: &str) -> Result<ParsedConnection> {
         }
         _ if last("dsn").is_some() => None,
         _ if last("host").is_some() => Some(DriverKind::Postgres),
+        // The form the string is pasted in says which database it is for.
+        _ if hint.is_some_and(|h| by_name(h.name()).is_some()) => hint,
+        // `Port=` is no `SqlClient` key (it puts the port after a comma): Connector/NET.
+        _ if last("port").is_some() => Some(DriverKind::MySql),
         _ => Some(DriverKind::SqlServer),
     };
     match driver {
@@ -323,6 +327,10 @@ fn braced(v: &str) -> String {
 mod tests {
     use super::*;
 
+    fn parse(input: &str) -> Result<ParsedConnection> {
+        super::parse(input, None)
+    }
+
     fn parse_ok(input: &str) -> ParsedConnection {
         parse(input).unwrap()
     }
@@ -476,6 +484,36 @@ mod tests {
     }
 
     #[test]
+    fn the_form_tells_strings_without_a_driver_apart() {
+        let string = "Server=h;Database=app;Uid=root;Pwd=x";
+        let read = |hint| super::parse(string, hint).unwrap().config;
+        assert_eq!(read(None).driver, DriverKind::SqlServer);
+        let c = read(Some(DriverKind::MySql));
+        assert_eq!(at(&c), (DriverKind::MySql, "h", Some(3306), "app", "root"));
+        assert_eq!(c.password, Some(Secret::new("x")));
+        // A driver named in the string wins; so does Npgsql's `Host=`.
+        let c = super::parse(
+            "Driver={ODBC Driver 18 for SQL Server};Server=s",
+            Some(DriverKind::MySql),
+        )
+        .unwrap()
+        .config;
+        assert_eq!(c.driver, DriverKind::SqlServer);
+        let c = super::parse("Host=pg;Database=d", Some(DriverKind::SqlServer))
+            .unwrap()
+            .config;
+        assert_eq!(c.driver, DriverKind::Postgres);
+        // A hint without a connection string of its own is no hint.
+        assert_eq!(
+            super::parse(string, Some(DriverKind::Mongo))
+                .unwrap()
+                .config
+                .driver,
+            DriverKind::SqlServer
+        );
+    }
+
+    #[test]
     fn quoted_values_and_empty_pairs() {
         let c =
             parse_ok(r#"Server=h;;Password="a;b""c";User Id='o''neil'; Database={x}}y};"#).config;
@@ -491,6 +529,9 @@ mod tests {
             assert!(!err.contains("hunter2"), "{err}");
         }
         assert!(ConnectionConfig::from_connection_string(";;").is_err());
+        // Connector/NET writes `Port=`, which `SqlClient` does not know.
+        let c = parse_ok("Server=h;Port=3306;Database=app;Uid=root;Pwd=x;").config;
+        assert_eq!(at(&c), (DriverKind::MySql, "h", Some(3306), "app", "root"));
         assert_eq!(
             ConnectionConfig::from_connection_string("Server=h")
                 .unwrap()

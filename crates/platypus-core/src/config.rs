@@ -322,15 +322,33 @@ impl ConnectionConfig {
     /// MongoDB connection string (`mongodb://`, `mongodb+srv://`). An unknown parameter is
     /// an error; [`ConnectionConfig::parse_any`] leaves it out with a note instead.
     pub fn from_url(input: &str) -> Result<Self> {
-        let (config, unknown) = Self::read_url(input)?;
-        match unknown.first() {
+        let read = Self::read_url(input, None)?;
+        if let Some(host) = read.other_hosts.first() {
+            return Err(Error::Config(format!(
+                "the URL names several hosts; only one is supported (`{host}` is another)"
+            )));
+        }
+        match read.unknown.first() {
             Some(key) => Err(Error::Config(format!("unknown URL parameter `{key}`"))),
-            None => Ok(config),
+            None => Ok(read.config),
         }
     }
 
-    /// A URL as [`ConnectionConfig::from_url`] reads it, and the parameters it does not know.
-    fn read_url(input: &str) -> Result<(Self, Vec<String>)> {
+    /// The TLS mode of a URL that does not say: `libsql://` is HTTPS (Turso's URLs give the
+    /// token, which goes to the server only over verified TLS); the other schemes follow
+    /// [`SslMode::default`].
+    #[must_use]
+    pub const fn url_ssl_mode(driver: DriverKind) -> SslMode {
+        match driver {
+            DriverKind::Libsql => SslMode::VerifyFull,
+            _ => SslMode::Prefer,
+        }
+    }
+
+    /// A URL as [`ConnectionConfig::from_url`] reads it, with the parameters it does not
+    /// know. `hint` is the database the URL is pasted for: it decides what `http://` and
+    /// `https://` (libSQL or ClickHouse) are.
+    fn read_url(input: &str, hint: Option<DriverKind>) -> Result<UrlRead> {
         let mongo = match input.strip_prefix("mongodb+srv://") {
             Some(rest) => Some(Self::from_mongo_url(rest, true)?),
             None => input
@@ -340,9 +358,11 @@ impl ConnectionConfig {
         };
         if let Some(config) = mongo {
             config.check_host()?;
-            return Ok((config, Vec::new()));
+            return Ok(UrlRead::of(config));
         }
-        let url = Url::parse(input).map_err(|e| Error::Config(format!("invalid URL: {e}")))?;
+        // libpq's failover list (`h1:5432,h2:5433`), which `Url` refuses: the first host.
+        let (input, other_hosts) = first_host(input);
+        let url = Url::parse(&input).map_err(|e| Error::Config(format!("invalid URL: {e}")))?;
         let driver = match url.scheme() {
             "postgres" | "postgresql" => DriverKind::Postgres,
             "mysql" | "mariadb" => DriverKind::MySql,
@@ -350,28 +370,31 @@ impl ConnectionConfig {
             "duckdb" => DriverKind::DuckDb,
             "sqlserver" | "mssql" => DriverKind::SqlServer,
             "clickhouse" => DriverKind::ClickHouse,
-            "libsql" => DriverKind::Libsql,
+            // libSQL clients take Hrana over WebSocket too; the app speaks HTTP to the same
+            // server.
+            "libsql" | "ws" | "wss" => DriverKind::Libsql,
+            "http" | "https"
+                if matches!(hint, Some(DriverKind::Libsql | DriverKind::ClickHouse)) =>
+            {
+                hint.unwrap_or(DriverKind::Libsql)
+            }
             other => return Err(Error::Config(format!("unsupported URL scheme `{other}`"))),
         };
         let mut config = Self::new(driver);
+        config.ssl_mode = match url.scheme() {
+            "ws" | "http" => SslMode::Disable,
+            "wss" | "https" => SslMode::VerifyFull,
+            _ => Self::url_ssl_mode(driver),
+        };
 
         if driver.is_embedded() {
             config.host.clear();
-            let path = decode(url.path())?;
-            // `sqlite:///C:/data/app.db` has the path `/C:/data/app.db`.
-            let windows_drive = path.len() > 2
-                && path.as_bytes()[2] == b':'
-                && path.as_bytes()[1].is_ascii_alphabetic();
-            config.database = if windows_drive {
-                path[1..].to_owned()
-            } else {
-                path
-            };
-            return Ok((config, Vec::new()));
+            config.database = embedded_path(&url, &input)?;
+            return Ok(UrlRead::of(config));
         }
 
         if let Some(host) = url.host_str() {
-            host.trim_matches(['[', ']']).clone_into(&mut config.host);
+            config.host = url_host(host)?;
         }
         if let Some(port) = url.port() {
             config.port = Some(port);
@@ -407,7 +430,11 @@ impl ConnectionConfig {
             config.port = Some(8443);
         }
         config.check_host()?;
-        Ok((config, unknown))
+        Ok(UrlRead {
+            config,
+            unknown,
+            other_hosts,
+        })
     }
 
     /// A MongoDB connection string after its scheme. It can list several hosts, which
@@ -470,8 +497,10 @@ impl ConnectionConfig {
                 _ => options.push(pair.to_owned()),
             }
         }
+        // The path's database is where the user authenticates, whether the password is in
+        // the URL or typed apart (the connection string spec, mongosh).
         if !database.is_empty()
-            && config.password.is_some()
+            && !config.user.is_empty()
             && !query.split('&').any(|p| p.starts_with("authSource="))
         {
             options.push(format!("authSource={database}"));
@@ -490,7 +519,7 @@ impl ConnectionConfig {
     /// a login or other keys where the host goes: one with `@`, `=`, `;`, spaces, or a `:`
     /// outside an IPv6 address. A MongoDB seed list (`a:27017,b:27018`) is checked host by
     /// host. The error does not repeat the host, which may hold a password.
-    fn check_host(&self) -> Result<()> {
+    pub fn check_host(&self) -> Result<()> {
         let valid = if self.driver == DriverKind::Mongo {
             self.host.split(',').all(seed_host)
         } else {
@@ -528,6 +557,94 @@ impl ConnectionConfig {
         };
         self.database = rest;
         names
+    }
+}
+
+/// What a URL gives: the connection, the parameters it does not know, and the hosts after
+/// the first of a failover list.
+pub(crate) struct UrlRead {
+    pub config: ConnectionConfig,
+    pub unknown: Vec<String>,
+    pub other_hosts: Vec<String>,
+}
+
+impl UrlRead {
+    const fn of(config: ConnectionConfig) -> Self {
+        Self {
+            config,
+            unknown: Vec::new(),
+            other_hosts: Vec::new(),
+        }
+    }
+}
+
+/// The URL with only the first host of a `host1:port1,host2:port2` list, and the others.
+fn first_host(input: &str) -> (std::borrow::Cow<'_, str>, Vec<String>) {
+    let Some((scheme, rest)) = input.split_once("://") else {
+        return (input.into(), Vec::new());
+    };
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (authority, tail) = rest.split_at(end);
+    let (login, hosts) = match authority.rsplit_once('@') {
+        Some((login, hosts)) => (Some(login), hosts),
+        None => (None, authority),
+    };
+    let mut list = hosts.split(',');
+    let first = list.next().unwrap_or_default();
+    let others: Vec<String> = list.filter(|h| !h.is_empty()).map(str::to_owned).collect();
+    if others.is_empty() {
+        return (input.into(), others);
+    }
+    let login = login.map(|l| format!("{l}@")).unwrap_or_default();
+    (format!("{scheme}://{login}{first}{tail}").into(), others)
+}
+
+/// The file of a SQLite or DuckDB URL. `sqlite:///C:/data/app.db` has the path
+/// `/C:/data/app.db`; `sqlite://C:/data/app.db`, with two slashes, has the drive as its
+/// host. `duckdb:///:memory:` is the in-memory database, as `to_url` writes it.
+fn embedded_path(url: &Url, input: &str) -> Result<String> {
+    let path = decode(url.path())?;
+    let host = url.host_str().unwrap_or_default();
+    let drive = |s: &str| s.len() == 1 && s.as_bytes()[0].is_ascii_alphabetic();
+    if !host.is_empty() && !host.eq_ignore_ascii_case("localhost") {
+        // `C:` reads as the host `C` without a port.
+        let written_as_drive = input
+            .split_once("://")
+            .is_some_and(|(_, rest)| rest.starts_with(&format!("{host}:")));
+        if drive(host) && url.port().is_none() && written_as_drive {
+            return Ok(format!("{host}:{path}"));
+        }
+        return Err(Error::Config(format!(
+            "the file of a {} URL goes after three slashes, as in {}:///C:/data/app.db",
+            url.scheme(),
+            url.scheme()
+        )));
+    }
+    if path == "/:memory:" {
+        return Ok(":memory:".to_owned());
+    }
+    let windows_drive =
+        path.len() > 2 && path.as_bytes()[2] == b':' && path.as_bytes()[1].is_ascii_alphabetic();
+    Ok(if windows_drive {
+        path[1..].to_owned()
+    } else {
+        path
+    })
+}
+
+/// A URL's host as a resolver takes it: without IPv6 brackets, and a name with non-ASCII
+/// letters (`dé.example`, percent-encoded in a URL of a scheme `Url` does not know) as its
+/// punycode.
+fn url_host(host: &str) -> Result<String> {
+    let host = decode(host.trim_matches(['[', ']']))?;
+    if host.is_ascii() {
+        return Ok(host);
+    }
+    match url::Host::parse(&host) {
+        Ok(url::Host::Domain(ascii)) => Ok(ascii),
+        _ => Err(Error::Config(
+            "the host name of the URL is not valid".to_owned(),
+        )),
     }
 }
 
@@ -820,12 +937,113 @@ mod tests {
             c.drop_secret_options(),
             ["tlsCertificateKeyFilePassword", "authMechanismProperties"]
         );
-        assert_eq!(c.database, "db?replicaSet=rs0&w=majority");
+        assert_eq!(c.database, "db?replicaSet=rs0&w=majority&authSource=db");
         let mut c = ConnectionConfig::from_url(
             "mongodb://u@h/db?authMechanismProperties=SERVICE_NAME:mongodb",
         )
         .unwrap();
         assert_eq!(c.drop_secret_options(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn mongo_auth_source_does_not_depend_on_the_password_in_the_url() {
+        for url in ["mongodb://u:p@h:27017/shop", "mongodb://u@h:27017/shop"] {
+            let c = ConnectionConfig::from_url(url).unwrap();
+            assert_eq!(c.database, "shop?authSource=shop", "{url}");
+        }
+        // No user, nothing to authenticate; an explicit authSource is kept.
+        let c = ConnectionConfig::from_url("mongodb://h/shop").unwrap();
+        assert_eq!(c.database, "shop");
+        let c = ConnectionConfig::from_url("mongodb://u@h/shop?authSource=admin").unwrap();
+        assert_eq!(c.database, "shop?authSource=admin");
+    }
+
+    #[test]
+    fn libsql_urls_verify_tls_unless_they_say_otherwise() {
+        let c = ConnectionConfig::from_url("libsql://db-acme.turso.io?authToken=tok").unwrap();
+        assert_eq!(c.ssl_mode, SslMode::VerifyFull);
+        let c = ConnectionConfig::from_url("libsql://h?sslmode=require").unwrap();
+        assert_eq!(c.ssl_mode, SslMode::Require);
+        let c = ConnectionConfig::from_url("ws://localhost:8080").unwrap();
+        assert_eq!(
+            (c.driver, c.ssl_mode),
+            (DriverKind::Libsql, SslMode::Disable)
+        );
+        assert_eq!(c.port, Some(8080));
+        let c = ConnectionConfig::from_url("wss://db-acme.turso.io").unwrap();
+        assert_eq!(
+            (c.driver, c.ssl_mode),
+            (DriverKind::Libsql, SslMode::VerifyFull)
+        );
+        // `http(s)://` only for a form that says which database it is.
+        assert!(ConnectionConfig::from_url("http://localhost:8080").is_err());
+        let p = ConnectionConfig::parse_any_for("http://localhost:8080", Some(DriverKind::Libsql))
+            .unwrap();
+        assert_eq!(
+            (p.config.driver, p.config.ssl_mode, p.config.port),
+            (DriverKind::Libsql, SslMode::Disable, Some(8080))
+        );
+        let p = ConnectionConfig::parse_any_for("https://ch.example", Some(DriverKind::ClickHouse))
+            .unwrap();
+        assert_eq!(
+            (p.config.driver, p.config.ssl_mode, p.config.port),
+            (DriverKind::ClickHouse, SslMode::VerifyFull, Some(8443))
+        );
+        // Other databases keep `prefer` as their default.
+        let c = ConnectionConfig::from_url("postgres://u@h/d").unwrap();
+        assert_eq!(c.ssl_mode, SslMode::Prefer);
+    }
+
+    #[test]
+    fn embedded_urls_keep_drives_and_the_in_memory_database() {
+        let file = |url: &str| ConnectionConfig::from_url(url).map(|c| c.database);
+        assert_eq!(file("sqlite://C:/data/x.db").unwrap(), "C:/data/x.db");
+        assert_eq!(file("sqlite:///C:/data/x.db").unwrap(), "C:/data/x.db");
+        assert_eq!(file("sqlite://localhost/tmp/x.db").unwrap(), "/tmp/x.db");
+        assert_eq!(file("duckdb:///:memory:").unwrap(), ":memory:");
+        assert_eq!(file("duckdb::memory:").unwrap(), ":memory:");
+        // A host that is no drive: the user meant a path, which needs three slashes.
+        let err = file("sqlite://data/x.db").unwrap_err().to_string();
+        assert!(err.contains("three slashes"), "{err}");
+        assert!(file("sqlite://C:5/x.db").is_err());
+    }
+
+    #[test]
+    fn non_ascii_hosts_become_punycode() {
+        let c = ConnectionConfig::from_url("postgres://u@dé.example/db").unwrap();
+        assert_eq!(c.host, "xn--d-bga.example");
+        let c = ConnectionConfig::from_url("mysql://u@d%C3%A9.example/db").unwrap();
+        assert_eq!(c.host, "xn--d-bga.example");
+        let c = ConnectionConfig::from_url("postgres://u@Db.Example/db").unwrap();
+        assert_eq!(c.host, "Db.Example");
+    }
+
+    #[test]
+    fn failover_lists_keep_the_first_host() {
+        let p = ConnectionConfig::parse_any("postgres://u@h1:5432,h2:5433/db").unwrap();
+        assert_eq!((p.config.host.as_str(), p.config.port), ("h1", Some(5432)));
+        assert_eq!(p.config.database, "db");
+        assert_eq!(
+            p.notes,
+            [ParseNote::OtherHosts {
+                hosts: vec!["h2:5433".to_owned()]
+            }]
+        );
+        let err = ConnectionConfig::from_url("postgres://u:hunter2@h1,h2/db")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("several hosts") && !err.contains("hunter2"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn hosts_are_checked_for_logins() {
+        let mut c = ConnectionConfig::new(DriverKind::MySql);
+        c.host = "root:s3cret@db.example.com:3306".to_owned();
+        let err = c.check_host().unwrap_err().to_string();
+        assert!(!err.contains("s3cret"), "{err}");
     }
 
     #[test]
