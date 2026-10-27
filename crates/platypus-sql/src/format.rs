@@ -298,7 +298,8 @@ fn atoms(src: &str, dialect: Dialect) -> Vec<Atom<'_>> {
                 continue;
             }
             TokenKind::LineComment => (Kind::LineComment, i + 1),
-            TokenKind::BlockComment => (Kind::BlockComment, i + 1),
+            // Only executable lexers make `ExecComment`: the formatter reads whole comments.
+            TokenKind::BlockComment | TokenKind::ExecComment => (Kind::BlockComment, i + 1),
             TokenKind::String | TokenKind::QuotedIdent => (Kind::Literal, i + 1),
             // A prefixed string: `N'x'`, `X'0F'`, `_utf8mb4'x'`.
             TokenKind::Word

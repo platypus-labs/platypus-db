@@ -75,12 +75,13 @@ pub(crate) struct Words<'a> {
 }
 
 impl<'a> Words<'a> {
-    /// The tokens of `sql` without whitespace and comments.
+    /// The tokens of `sql` without whitespace and comments, reading the body of a MySQL
+    /// executable comment (`/*! … */`) as the code it is.
     pub(crate) fn new(sql: &'a str, dialect: Dialect) -> Self {
         Words {
             src: sql,
-            tokens: Lexer::new(sql, dialect)
-                .filter(|t| !t.is_trivia())
+            tokens: Lexer::executable(sql, dialect)
+                .filter(|t| !t.is_trivia() && t.kind != TokenKind::ExecComment)
                 .collect(),
         }
     }
@@ -295,5 +296,23 @@ mod tests {
         assert_eq!(kind("begin"), StatementKind::Other);
         assert_eq!(kind("set search_path = x"), StatementKind::Other);
         assert_eq!(kind("@set x = 1"), StatementKind::Command);
+    }
+
+    #[test]
+    fn reads_what_the_server_runs() {
+        let my = |sql| analyze(sql, Dialect::MySql);
+        assert_eq!(my("/*!40101 SET NAMES utf8 */").kind, StatementKind::Other);
+        assert_eq!(
+            my("SELECT 1 /*! INTO OUTFILE '/tmp/x' */").kind,
+            StatementKind::Dml
+        );
+        assert_eq!(my("DELETE FROM t /*! WHERE id = 1 */").unfiltered, None);
+        assert_eq!(
+            my("DELETE FROM t /* WHERE id = 1 */").unfiltered,
+            Some(table(None, "t"))
+        );
+        let ms = |sql| analyze(sql, Dialect::SqlServer).kind;
+        assert_eq!(ms("SELECT 1 COMMIT EXEC('x')"), StatementKind::Dml);
+        assert_eq!(ms("[xp_cmdshell] 'whoami'"), StatementKind::Dml);
     }
 }
