@@ -224,12 +224,25 @@ pub fn returns_rows(sql: &str) -> bool {
         })
 }
 
+/// `sql` without the `;` that ends it, and what follows it: Trino's driver sends the text
+/// as one statement, and Trino refuses a terminator ("mismatched input ';'").
+pub fn without_terminator(sql: &str) -> &str {
+    let last = Lexer::new(sql, Dialect::Ansi)
+        .filter(|t| !t.is_trivia())
+        .last();
+    match last {
+        Some(t) if t.kind == TokenKind::Symbol && t.text(sql) == ";" => &sql[..t.start],
+        _ => sql,
+    }
+}
+
 fn execute(
     connection: &mut ManagedConnection,
     sql: &str,
     batch_size: usize,
     reply: oneshot::Sender<Result<Started>>,
 ) {
+    let sql = without_terminator(sql);
     let statement = connection.new_statement().and_then(|mut s| {
         s.set_sql_query(sql)?;
         Ok(s)
@@ -321,5 +334,14 @@ mod tests {
         ] {
             assert!(!super::returns_rows(sql), "{sql}");
         }
+    }
+
+    #[test]
+    fn terminators_are_left_out() {
+        use super::without_terminator as w;
+        assert_eq!(w("DROP TABLE \"g\";"), "DROP TABLE \"g\"");
+        assert_eq!(w("SELECT 1 ;  -- done\n"), "SELECT 1 ");
+        assert_eq!(w("SELECT ';'"), "SELECT ';'");
+        assert_eq!(w("SELECT 1"), "SELECT 1");
     }
 }
