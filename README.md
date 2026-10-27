@@ -529,6 +529,7 @@ shortcuts.
 | `Ctrl+Shift+C` | Copy the selection with headers |
 | `Ctrl+F`, `F7` | Find in the results / value panel (grid focused) |
 | `Ctrl+Alt+R` | Record view of the focused row; `←` `→` move through the rows |
+| `F5`, `F2`, `F4`, `Delete` | Navigator: refresh, rename, edit the table, drop (after its confirmation) |
 
 </details>
 

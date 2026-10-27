@@ -26,7 +26,7 @@ export function tableCatalogMoves(original: { name: string }, design: NamedDesig
 }
 
 /** The catalog name of an object after a rename; a routine keeps its "(args)" signature. */
-export function renamedObject(name: string, newName: string): string | null {
-  const bare = name.replace(/\(.*$/, "");
+export function renamedObject(name: string, newName: string, routine: boolean): string | null {
+  const bare = routine ? name.replace(/\(.*$/, "") : name;
   return newName && newName !== bare ? newName + name.slice(bare.length) : null;
 }

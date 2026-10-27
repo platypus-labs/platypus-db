@@ -8,6 +8,7 @@ import {
   type ExportFormat,
   type ExportOptions,
   type FilterTarget,
+  type ObjectMeta,
   type ParameterSpan,
   type StatementSpan,
   type QueryEvent,
@@ -59,6 +60,7 @@ import { ChartToggle } from "../analysis/ChartView";
 import { chartOf, type SavedChart, withChart } from "../analysis/chartConfig";
 import { runGate } from "./runGate";
 import { RunMemory, rerunsUnasked } from "./rerun";
+import { requestNavigatorRefresh } from "../navigatorEvents";
 import {
   type ShownSort,
   type ViewerSort,
@@ -776,7 +778,8 @@ export function QueryTab({
     setRunning(false);
     currentJob.current = null;
     if (queue.some((p) => DDL.test(p.sql))) {
-      onNeedCatalog(true);
+      // The navigator, open object tabs and autocompletion (App) reload what changed.
+      requestNavigatorRefresh({ connectionId: connection.id, database: tab.database ?? null });
       details.current = null;
       sources.current.clear();
     }
@@ -851,7 +854,9 @@ export function QueryTab({
         : [...schemas.filter((s) => s.current), ...schemas.filter((s) => !s.current && !s.system)];
       for (const s of candidates) {
         const objects = (await api.listObjects(id, s.name)).filter((o) => o.kind !== "trigger");
-        const base = (o: { name: string }) => o.name.replace(/\(.*$/, "");
+        // A routine is listed with its arguments; a table's name may hold a `(` too.
+        const base = (o: ObjectMeta) =>
+          o.kind === "function" || o.kind === "procedure" ? o.name.replace(/\(.*$/, "") : o.name;
         const object = objects.find((o) => base(o) === name) ?? objects.find((o) => same(base(o), name));
         if (object) {
           workbench().openTab("object", connection.id, {

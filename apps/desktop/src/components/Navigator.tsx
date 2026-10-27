@@ -129,6 +129,7 @@ const FOLDERS: { kind: ObjectKind; label: string }[] = [
   { kind: "extension", label: msg("Extensions") },
   { kind: "event", label: msg("Events") },
   { kind: "dictionary", label: msg("Dictionaries") },
+  { kind: "synonym", label: msg("Synonyms") },
 ];
 
 
@@ -339,7 +340,8 @@ export function Navigator(props: Props) {
     const open = !expanded.has(key);
     // Collapsing keeps the state below, so reopening shows the same nodes.
     setExpanded((s) => (open ? new Set(s).add(key) : withoutPrefix(s, key)));
-    if (open && (!cache.has(key) || isCached(key))) onOpen?.();
+    // A load that failed is tried again, e.g. a table dropped and created again since.
+    if (open && (!cache.has(key) || isCached(key) || cache.get(key)?.state === "error")) onOpen?.();
   }
 
   /** Forgets everything loaded under `key` and reloads it if open (`open`: whether the
@@ -347,6 +349,32 @@ export function Navigator(props: Props) {
   function refresh(key: string, reload: () => void, open = expanded.has(key)) {
     updateCache((m) => new Map([...m].filter(([k]) => !isUnder(k, key))));
     if (open) reload();
+  }
+
+  /** Reloads the schemas of a database and, in place, the schemas and tables open below it
+   *  (e.g. after DDL run in an editor, whose schema is not known). */
+  function reloadDatabase(c: SavedConnection, db: string | null, open?: boolean) {
+    const base = baseKey(c, db);
+    const schemas = loaded<SchemaMeta[]>(base);
+    const reopen: (() => void)[] = [];
+    for (const s of schemas ?? []) {
+      const skey = `${base}/${s.name}`;
+      if (!expanded.has(skey)) continue;
+      reopen.push(() => loadObjects(c, db, s.name));
+      for (const o of loaded<ObjectMeta[]>(skey) ?? []) {
+        if (isRelation(o.kind) && expanded.has(`${skey}/${o.name}`)) {
+          reopen.push(() => void loadDetails(c, db, s.name, o.name));
+        }
+      }
+    }
+    // Only this database's schemas: the server's list of databases and the others stay.
+    updateCache((m) => new Map([...m].filter(([k]) => k !== base && !k.startsWith(`${base}/`))));
+    if (!(open ?? expanded.has(base))) return;
+    if (!schemas) loadSchemas(c, db);
+    else {
+      void load(c, db, base, (sid) => api.listSchemas(sid));
+      reopen.forEach((f) => f());
+    }
   }
 
   async function openConnection(c: SavedConnection) {
@@ -416,6 +444,7 @@ export function Navigator(props: Props) {
     props,
     refresh,
     refreshConnection,
+    reloadDatabase,
     loadSchemas,
     loadObjects,
     loadDetails,
@@ -438,7 +467,7 @@ export function Navigator(props: Props) {
         const base = baseKey(c, db);
         // Another database's schemas show under its database node.
         const open = db === null ? undefined : n.isOpen(`${c.id}#db:${db}`);
-        if (schema === undefined) n.refresh(base, () => n.loadSchemas(c, db), open);
+        if (schema === undefined) n.reloadDatabase(c, db, open);
         else n.refresh(`${base}/${schema}`, () => n.loadObjects(c, db, schema));
       }),
     [],
@@ -746,19 +775,21 @@ export function Navigator(props: Props) {
     const entry = catalogEntry(c.id, catalogKey(db, schema.name, object.name));
     const marked = !!(entry?.note || entry?.tags.length);
     const title = annotation(entry, object.comment);
-    // Triggers are named per table in PostgreSQL: the key includes the table.
-    const okey = `${baseKey(c, db)}/${schema.name}/${object.kind === "trigger" && object.parent ? `${object.parent}.` : ""}${object.name}`;
+    // A relation's key is that of its details. Other kinds can share a name with a relation
+    // or each other (a MySQL function and procedure): their key adds the kind, and triggers,
+    // named per table in PostgreSQL, their table.
+    const okey = `${baseKey(c, db)}/${schema.name}/${object.name}`;
     const target = qualifiedName(c.driver, schema, object.name);
     const menu: MenuTarget = { scope: "navigator.object", arg: { connection: c, database: db, schema, object, target } };
     if (!isRelation(object.kind)) {
       return [
         {
-          key: okey,
+          key: `${okey}~${object.kind}${object.kind === "trigger" && object.parent ? `~${object.parent}` : ""}`,
           depth,
           label: object.name,
           icon,
           detail: object.parent ? t("on {table}", { table: object.parent }) : undefined,
-          title,
+          title: title && `${object.name}\n${title}`,
           marked,
           onOpen: () => openObject(c, db, schema, object),
           menu,
@@ -774,7 +805,8 @@ export function Navigator(props: Props) {
         label: object.name,
         icon,
         count: rowCount(object),
-        title: [title, sizeDetail(object)].filter(Boolean).join("\n") || undefined,
+        // The full name first: a long one is cut in the row.
+        title: [object.name, title, sizeDetail(object)].filter(Boolean).join("\n"),
         marked,
         expanded: open,
         onToggle: () => toggle(okey, () => void loadDetails(c, db, schema.name, object.name)),
@@ -1163,6 +1195,7 @@ interface NavigatorApi {
   props: Props;
   refresh: (key: string, reload: () => void, open?: boolean) => void;
   refreshConnection: (c: SavedConnection) => void;
+  reloadDatabase: (c: SavedConnection, db: string | null, open?: boolean) => void;
   loadSchemas: (c: SavedConnection, db: string | null) => void;
   loadObjects: (c: SavedConnection, db: string | null, schema: string) => void;
   loadDetails: (c: SavedConnection, db: string | null, schema: string, name: string) => Promise<TableDetails | null>;
@@ -1251,6 +1284,7 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       id: "connection.refresh",
       scope: "navigator.connection",
       title: "Refresh",
+      shortcut: "F5",
       group: "refresh",
       order: 50,
       run: ({ connection }) => {
@@ -1339,6 +1373,7 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       id: "database.refresh",
       scope: "navigator.database",
       title: "Refresh",
+      shortcut: "F5",
       group: "refresh",
       order: 50,
       run: ({ connection, database, name }) => {
@@ -1380,6 +1415,7 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       id: "schema.refresh",
       scope: "navigator.schema",
       title: "Refresh",
+      shortcut: "F5",
       group: "refresh",
       order: 50,
       run: ({ connection, database, schema }) =>
@@ -1441,13 +1477,18 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       id: "object.refresh",
       scope: "navigator.object",
       title: "Refresh",
+      shortcut: "F5",
       group: "refresh",
       order: 60,
-      when: ({ object }) => isRelation(object.kind),
-      run: ({ connection, database, schema, object }) =>
-        n().refresh(`${baseKey(connection, database)}/${schema.name}/${object.name}`, () => {
-          void n().loadDetails(connection, database, schema.name, object.name);
-        }),
+      // A relation reloads its details, another object the objects of its schema.
+      run: ({ connection, database, schema, object }) => {
+        const key = `${baseKey(connection, database)}/${schema.name}`;
+        if (isRelation(object.kind)) {
+          n().refresh(`${key}/${object.name}`, () => void n().loadDetails(connection, database, schema.name, object.name));
+        } else {
+          n().refresh(key, () => n().loadObjects(connection, database, schema.name));
+        }
+      },
     }),
     registerAction({
       id: "column.copy_name",
