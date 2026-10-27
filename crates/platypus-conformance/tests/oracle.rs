@@ -1003,3 +1003,68 @@ async fn qa_fixora_connects_as_sysdba() {
     };
     assert_eq!(scalar(&*conn, "SELECT USER FROM DUAL").await, "SYS");
 }
+
+/// Runs `DBMS_SESSION.SLEEP(20)` on `conn`, cancels it after 2 s and answers how it ended,
+/// once it did within 10 s of the cancel.
+async fn cancelled_sleep(conn: &Arc<dyn Connection>) -> Result<(), Error> {
+    let cancel = conn.cancel_handle();
+    let running = {
+        let conn = Arc::clone(conn);
+        tokio::spawn(async move {
+            conn.execute(
+                "BEGIN DBMS_SESSION.SLEEP(20); END;",
+                &ExecOptions::default(),
+            )
+            .await
+            .map(|_| ())
+        })
+    };
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let started = std::time::Instant::now();
+    cancel.cancel().await.unwrap();
+    let outcome = tokio::time::timeout(Duration::from_secs(15), running)
+        .await
+        .expect("the cancelled call should end")
+        .unwrap();
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "the call ran {:?} after Cancel",
+        started.elapsed()
+    );
+    outcome
+}
+
+/// Cancel stops a PL/SQL call waiting on the server, which a break may not reach (through
+/// Docker's port forwarding it does not): a user who may cancel others' SQL cancels it from
+/// a second session and keeps the session; another gives the session up and is told so.
+#[tokio::test]
+async fn qa_fixora_cancels_plsql_sleep() {
+    let Some(conn) = oracle().await else { return };
+    let conn: Arc<dyn Connection> = conn.into();
+    match cancelled_sleep(&conn).await {
+        // The break reached the server.
+        Err(Error::Cancelled) => assert!(!conn.is_closed()),
+        Err(Error::Other(message)) => {
+            assert!(message.contains("did not stop on Cancel"), "{message}");
+            assert!(conn.is_closed(), "the app opens a new connection");
+            assert!(!conn.transaction().open);
+            assert!(matches!(
+                conn.execute("SELECT 1 FROM DUAL", &ExecOptions::default())
+                    .await,
+                Err(Error::Closed)
+            ));
+        }
+        other => panic!("{other:?}"),
+    }
+
+    let mut config = config();
+    "sys as sysdba".clone_into(&mut config.user);
+    let Some(sys) = connect_with(&config).await else {
+        return;
+    };
+    let sys: Arc<dyn Connection> = sys.into();
+    let outcome = cancelled_sleep(&sys).await;
+    assert!(matches!(outcome, Err(Error::Cancelled)), "{outcome:?}");
+    assert!(!sys.is_closed());
+    assert_eq!(scalar(&*sys, "SELECT 1 FROM DUAL").await, "1");
+}

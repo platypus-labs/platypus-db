@@ -17,7 +17,7 @@ oracle = "0.6"
 platypus-core.workspace = true
 platypus-drivers.workspace = true
 platypus-sql.workspace = true
-tokio = { workspace = true, features = ["sync", "rt"] }
+tokio = { workspace = true, features = ["sync", "rt", "time"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

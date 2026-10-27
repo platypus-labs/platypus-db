@@ -23,6 +23,9 @@ const APP = new Set([
   msg("no database file given"),
   msg("commit or roll back the open transaction first"),
   msg("The connection was lost and has been reopened; the open transaction was rolled back."),
+  msg(
+    "The statement did not stop on Cancel, so its connection was closed and a new one is opened; the open transaction was rolled back.",
+  ),
   msg("the table must be rebuilt outside a transaction: commit or roll back first"),
 ]);
 

@@ -1464,6 +1464,8 @@ const it: Record<string, string> = {
   "no database file given": "Nessun file del database indicato",
   "commit or roll back the open transaction first": "Prima esegui il commit o il rollback della transazione aperta",
   "The connection was lost and has been reopened; the open transaction was rolled back.": "La connessione era caduta ed è stata riaperta; la transazione aperta è stata annullata.",
+  "The statement did not stop on Cancel, so its connection was closed and a new one is opened; the open transaction was rolled back.":
+    "L'istruzione non si è fermata con Annulla, quindi la sua connessione è stata chiusa e ne viene aperta una nuova; la transazione aperta è stata annullata.",
   "the table must be rebuilt outside a transaction: commit or roll back first": "La tabella va ricostruita fuori da una transazione: prima esegui il commit o il rollback",
   "{path} does not exist, nor does its folder": "{path} non esiste, e nemmeno la sua cartella",
   "{path} not found: a relative path is not created, give the full path of the file": "{path} non trovato: un percorso relativo non viene creato, indica il percorso completo del file",

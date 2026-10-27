@@ -5,8 +5,7 @@
 
 use std::fmt::Write as _;
 use std::path::PathBuf;
-use std::sync::mpsc as std_mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::StreamExt as _;
@@ -26,6 +25,7 @@ mod meta;
 mod plsql;
 mod read_as;
 mod session;
+mod stop;
 
 use session::{Command, Login, Messages, Started};
 
@@ -213,10 +213,10 @@ impl Driver for OracleDriver {
 }
 
 pub struct OracleConnection {
-    commands: Mutex<std_mpsc::Sender<Command>>,
+    /// The session's thread and what stops its statements.
+    stopper: Arc<stop::Stopper>,
     /// What PL/SQL printed (`DBMS_OUTPUT`), until [`Connection::take_messages`].
     messages: Messages,
-    canceller: OracleCanceller,
     server: ServerInfo,
     dictionary: meta::Dictionary,
     tx: TxTracker,
@@ -244,15 +244,18 @@ impl OracleConnection {
             privilege,
         };
         let messages = Messages::default();
-        let (commands, opened) = session::spawn(login, Arc::clone(&messages))?;
+        let (commands, opened) = session::spawn(login.clone(), Arc::clone(&messages))?;
         let opened = opened.await.map_err(|_| Error::Closed)??;
         Ok(Self {
             dictionary: meta::Dictionary::of(&opened.version),
-            commands: Mutex::new(commands),
+            stopper: Arc::new(stop::Stopper::new(
+                opened.cancel,
+                opened.busy,
+                opened.ids,
+                login,
+                commands,
+            )),
             messages,
-            canceller: OracleCanceller {
-                connection: opened.cancel,
-            },
             server: ServerInfo {
                 product: "Oracle".to_owned(),
                 version: opened.version,
@@ -262,10 +265,14 @@ impl OracleConnection {
         })
     }
 
+    /// Sends a command to the session's thread; none goes to a session given up.
     fn send(&self, command: Command) -> Result<()> {
-        self.commands
+        self.stopper
+            .commands
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .ok_or(Error::Closed)?
             .send(command)
             .map_err(|_| Error::Closed)
     }
@@ -294,12 +301,22 @@ impl Connection for OracleConnection {
         let command = plsql::command(sql);
         let sql = command.as_deref().unwrap_or_else(|| statement_text(sql));
         let (reply, started) = oneshot::channel();
+        // Registered before the statement starts, so a Cancel that gives the session up
+        // wakes it.
+        let given_up = std::pin::pin!(self.stopper.given_up.notified());
         self.send(Command::Execute {
             sql: sql.to_owned(),
             batch_size: options.batch_size.max(1),
             reply,
         })?;
-        let started = started.await.map_err(|_| Error::Closed)?;
+        let started = match futures::future::select(started, given_up).await {
+            futures::future::Either::Left((started, _)) => started.map_err(|_| Error::Closed)?,
+            futures::future::Either::Right(_) => {
+                // The old session rolls its transaction back when it ends.
+                self.tx.set_open(false);
+                return Err(stop::abandoned());
+            }
+        };
         // Oracle commits before and after DDL, in either mode.
         self.tx.after(TxControl::effect(sql), true);
         match started.map_err(|e| in_characters(e, sql))? {
@@ -315,7 +332,9 @@ impl Connection for OracleConnection {
     }
 
     fn cancel_handle(&self) -> CancelHandle {
-        CancelHandle::new(self.canceller.clone())
+        CancelHandle::new(OracleCanceller {
+            stopper: Arc::clone(&self.stopper),
+        })
     }
 
     fn server_info(&self) -> &ServerInfo {
@@ -337,11 +356,13 @@ impl Connection for OracleConnection {
         explain::explain(self, statement_text(sql)).await
     }
 
+    /// Closed too once Cancel gave the session up: the app opens a new connection.
     fn is_closed(&self) -> bool {
-        !matches!(
-            self.canceller.connection.status(),
-            Ok(oracle::ConnStatus::Normal)
-        )
+        self.stopper.abandoned()
+            || !matches!(
+                self.stopper.connection.status(),
+                Ok(oracle::ConnStatus::Normal)
+            )
     }
 
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {
@@ -429,20 +450,16 @@ impl Connection for OracleConnection {
 }
 
 /// Breaks the statement running on the connection, from another thread: it fails with
-/// ORA-01013 and the session stays usable.
-#[derive(Clone)]
+/// ORA-01013 and the session stays usable. One the break does not stop is stopped harder
+/// (see [`stop`]).
 struct OracleCanceller {
-    connection: Arc<oracle::Connection>,
+    stopper: Arc<stop::Stopper>,
 }
 
 #[async_trait]
 impl Canceller for OracleCanceller {
     async fn cancel(&self) -> Result<()> {
-        let connection = Arc::clone(&self.connection);
-        tokio::task::spawn_blocking(move || connection.break_execution())
-            .await
-            .map_err(|e| Error::Other(e.to_string()))?
-            .map_err(|e| oracle_error(&e))
+        Arc::clone(&self.stopper).cancel().await
     }
 }
 

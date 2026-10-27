@@ -15,6 +15,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::binds::{Lob, lob_binds};
 use crate::convert::Batcher;
 use crate::oracle_error;
+use crate::stop::Busy;
 
 pub enum Command {
     Execute {
@@ -38,6 +39,7 @@ pub enum Started {
 }
 
 /// How to open the connection.
+#[derive(Clone)]
 pub struct Login {
     pub user: String,
     pub password: String,
@@ -55,9 +57,13 @@ pub struct Opened {
     pub cancel: Arc<Connection>,
     pub version: String,
     pub encrypted: bool,
+    /// The statement the session waits on the server for.
+    pub busy: Busy,
+    /// The session's `SID` and `SERIAL#`, to stop its statement from another session.
+    pub ids: Option<(u64, u64)>,
 }
 
-fn open(login: &Login) -> Result<(Arc<Connection>, Opened)> {
+fn open(login: &Login, busy: Busy) -> Result<(Arc<Connection>, Opened)> {
     let mut connector = Connector::new(&login.user, &login.password, &login.connect_string);
     // No user: the operating system's account, or a wallet, signs in.
     connector.external_auth(login.user.is_empty());
@@ -80,11 +86,21 @@ fn open(login: &Login) -> Result<(Arc<Connection>, Opened)> {
             &[],
         )
         .is_ok_and(|p| p.eq_ignore_ascii_case("tcps"));
+    // `DBMS_DEBUG_JDWP` tells every session its own ids; `V$SESSION` needs a grant.
+    let ids = connection
+        .query_row_as::<(u64, u64)>(
+            "SELECT DBMS_DEBUG_JDWP.CURRENT_SESSION_ID, DBMS_DEBUG_JDWP.CURRENT_SESSION_SERIAL \
+             FROM DUAL",
+            &[],
+        )
+        .ok();
     let connection = Arc::new(connection);
     let opened = Opened {
         cancel: Arc::clone(&connection),
         version,
         encrypted,
+        busy,
+        ids,
     };
     Ok((connection, opened))
 }
@@ -96,15 +112,18 @@ pub fn spawn(
 ) -> Result<(std_mpsc::Sender<Command>, oneshot::Receiver<Result<Opened>>)> {
     let (commands, inbox) = std_mpsc::channel();
     let (ready, opened) = oneshot::channel();
+    let busy = Busy::default();
     std::thread::Builder::new()
         .name("platypus-oracle".to_owned())
-        .spawn(move || match open(&login) {
+        .spawn(move || match open(&login, busy.clone()) {
             Ok((connection, info)) => {
                 let mut session = Session {
                     connection,
                     autocommit: true,
                     implicit: false,
                     messages,
+                    busy,
+                    executed: 0,
                 };
                 let _ = ready.send(Ok(info));
                 // Ends when the connection, and with it the sender, is dropped.
@@ -130,6 +149,9 @@ struct Session {
     /// `ROLLBACK`.
     implicit: bool,
     messages: Messages,
+    busy: Busy,
+    /// Statements run so far: the number of the running one, for [`Busy`].
+    executed: u64,
 }
 
 /// The binds of [`lob_binds`] as the client library takes them.
@@ -197,6 +219,8 @@ impl Session {
             let _ = reply.send(self.control(c).map(|()| Started::Affected(0)));
             return;
         }
+        self.executed += 1;
+        let id = self.executed;
         let (text, lobs) = lob_binds(sql);
         let boxed = lob_params(&lobs);
         let params: Vec<(&str, &dyn ToSql)> = boxed.iter().map(|(n, v)| (*n, v.as_ref())).collect();
@@ -208,7 +232,7 @@ impl Session {
             }
         };
         if statement.is_query() {
-            self.stream(&text, &mut statement, &params, batch_size, reply);
+            self.stream(&text, &mut statement, &params, batch_size, id, reply);
             // The rows a `SELECT … FOR UPDATE` locked stay locked until a commit.
             if self.autocommit && !self.implicit && locks_rows(sql) {
                 let _ = self.connection.commit();
@@ -216,8 +240,9 @@ impl Session {
             return;
         }
         let committing = self.autocommit && !self.implicit;
-        let result = statement
-            .execute_named(&params)
+        let result = self
+            .busy
+            .call(id, || statement.execute_named(&params))
             .map_err(|e| oracle_error(&e))
             .and_then(|()| self.compiled(sql))
             .and_then(|()| {
@@ -307,17 +332,23 @@ impl Session {
         statement: &mut Statement,
         params: &[(&str, &dyn ToSql)],
         batch_size: usize,
+        id: u64,
         reply: oneshot::Sender<Result<Started>>,
     ) {
+        let reading = Reading {
+            busy: &self.busy,
+            id,
+            batch_size,
+        };
         // A file locator fails only when its first row is read: the query runs again first.
-        let failed = match statement.query_named(params) {
+        let failed = match self.busy.call(id, || statement.query_named(params)) {
             Ok(rows)
                 if !rows
                     .column_info()
                     .iter()
                     .any(|c| *c.oracle_type() == OracleType::BFILE) =>
             {
-                return Self::send_rows(rows, &[], batch_size, reply);
+                return reading.send_rows(rows, &[], reply);
             }
             Ok(_) => None,
             Err(e) => Some(e),
@@ -337,60 +368,11 @@ impl Session {
                 return;
             }
         };
-        match again.query_named(params) {
-            Ok(rows) => Self::send_rows(rows, &retry.labels, batch_size, reply),
+        match self.busy.call(id, || again.query_named(params)) {
+            Ok(rows) => reading.send_rows(rows, &retry.labels, reply),
             Err(e) => {
                 let _ = reply.send(Err(oracle_error(&e)));
             }
-        }
-    }
-
-    /// Answers with `rows`, read in batches while the receiver takes them; the columns of
-    /// `labels` read through a conversion.
-    fn send_rows(
-        mut rows: ResultSet<'_, Row>,
-        labels: &[(usize, &str)],
-        batch_size: usize,
-        reply: oneshot::Sender<Result<Started>>,
-    ) {
-        let mut batcher = match Batcher::new(rows.column_info(), batch_size) {
-            Ok(b) => b,
-            Err(e) => {
-                let _ = reply.send(Err(e));
-                return;
-            }
-        };
-        for &(index, label) in labels {
-            batcher.label(index, label);
-        }
-        // The first batch is read before answering, so its errors fail the statement itself,
-        // and its rows settle the types left to them.
-        let first = next_batch(&mut rows, &mut batcher, batch_size);
-        let started = first.and_then(|first| Ok((first, batcher.schema()?)));
-        let (first, schema) = match started {
-            Ok(started) => started,
-            Err(e) => {
-                let _ = reply.send(Err(e));
-                return;
-            }
-        };
-        let (tx, rx) = mpsc::channel(1);
-        if reply.send(Ok(Started::Rows(schema, rx))).is_err() {
-            return;
-        }
-        let mut batch = first;
-        while let Some(b) = batch {
-            // Stopped reading: the statement is dropped with the result, which ends it.
-            if tx.blocking_send(Ok(b)).is_err() {
-                return;
-            }
-            batch = match next_batch(&mut rows, &mut batcher, batch_size) {
-                Ok(next) => next,
-                Err(e) => {
-                    let _ = tx.blocking_send(Err(e));
-                    return;
-                }
-            };
         }
     }
 
@@ -410,22 +392,85 @@ impl Session {
     }
 }
 
-/// The next batch of `rows`; `None` at their end.
-fn next_batch(
-    rows: &mut ResultSet<'_, Row>,
-    batcher: &mut Batcher,
+/// How the rows of statement `id` are read: in batches of `batch_size`, each fetch a call
+/// to the server ([`Busy`]).
+struct Reading<'a> {
+    busy: &'a Busy,
+    id: u64,
     batch_size: usize,
-) -> Result<Option<RecordBatch>> {
-    while batcher.rows() < batch_size {
-        match rows.next() {
-            Some(row) => batcher.push(row.map_err(|e| oracle_error(&e))?.sql_values())?,
-            None => break,
+}
+
+impl Reading<'_> {
+    /// Answers with `rows`, read in batches while the receiver takes them; the columns of
+    /// `labels` read through a conversion.
+    fn send_rows(
+        &self,
+        mut rows: ResultSet<'_, Row>,
+        labels: &[(usize, &str)],
+        reply: oneshot::Sender<Result<Started>>,
+    ) {
+        let batch_size = self.batch_size;
+        let mut batcher = match Batcher::new(rows.column_info(), batch_size) {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = reply.send(Err(e));
+                return;
+            }
+        };
+        for &(index, label) in labels {
+            batcher.label(index, label);
+        }
+        // The first batch is read before answering, so its errors fail the statement itself,
+        // and its rows settle the types left to them.
+        let first = self.next_batch(&mut rows, &mut batcher);
+        let started = first.and_then(|first| Ok((first, batcher.schema()?)));
+        let (first, schema) = match started {
+            Ok(started) => started,
+            Err(e) => {
+                let _ = reply.send(Err(e));
+                return;
+            }
+        };
+        let (tx, rx) = mpsc::channel(1);
+        if reply.send(Ok(Started::Rows(schema, rx))).is_err() {
+            return;
+        }
+        let mut batch = first;
+        while let Some(b) = batch {
+            // Stopped reading: the statement is dropped with the result, which ends it.
+            if tx.blocking_send(Ok(b)).is_err() {
+                return;
+            }
+            batch = match self.next_batch(&mut rows, &mut batcher) {
+                Ok(next) => next,
+                Err(e) => {
+                    let _ = tx.blocking_send(Err(e));
+                    return;
+                }
+            };
         }
     }
-    if batcher.rows() == 0 {
-        return Ok(None);
+
+    /// The next batch of `rows`; `None` at their end.
+    fn next_batch(
+        &self,
+        rows: &mut ResultSet<'_, Row>,
+        batcher: &mut Batcher,
+    ) -> Result<Option<RecordBatch>> {
+        self.busy.call(self.id, || {
+            while batcher.rows() < self.batch_size {
+                match rows.next() {
+                    Some(row) => batcher.push(row.map_err(|e| oracle_error(&e))?.sql_values())?,
+                    None => break,
+                }
+            }
+            Ok::<_, Error>(())
+        })?;
+        if batcher.rows() == 0 {
+            return Ok(None);
+        }
+        batcher.finish().map(Some)
     }
-    batcher.finish().map(Some)
 }
 
 /// Whether a query locks the rows it reads (`FOR UPDATE`).
