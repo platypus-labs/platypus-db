@@ -253,12 +253,12 @@ impl Connection for Logged {
     }
 
     /// One entry for all of them, as they reach the server together.
-    async fn execute_all(&self, statements: &[&str]) -> Executed {
+    async fn execute_all(&self, statements: &[&str], expected: &[u64]) -> Executed {
         let id = self
             .log
             .start(&self.connection, LogKind::Query, statements.join(";\n"));
         let started = Instant::now();
-        let executed = self.inner.execute_all(statements).await;
+        let executed = self.inner.execute_all(statements, expected).await;
         let rows = executed.rows.iter().sum();
         self.log.update(id, |e| e.rows = Some(rows));
         let error = executed.error.as_ref().map(ToString::to_string);

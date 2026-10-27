@@ -242,6 +242,7 @@ pub async fn table_details(
                     columns: vec![r.text(3)],
                     unique: r.flag(1),
                     primary: r.flag(2),
+                    partial: false,
                     size: None,
                 },
             )

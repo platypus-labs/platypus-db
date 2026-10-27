@@ -363,7 +363,7 @@ async fn indexes(conn: &dyn Connection, relation: &str) -> Result<Vec<IndexMeta>
                     array_to_string(ARRAY(
                         SELECT pg_get_indexdef(i.indexrelid, k, true)
                         FROM generate_series(1, i.indnkeyatts) k ORDER BY k), chr(31)),
-                    {size}
+                    {size}, i.indpred IS NOT NULL
              FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid
              WHERE i.indrelid = {relation}
              ORDER BY i.indisprimary DESC, ic.relname"
@@ -375,6 +375,7 @@ async fn indexes(conn: &dyn Connection, relation: &str) -> Result<Vec<IndexMeta>
         name: r.text(0),
         unique: r.flag(1),
         primary: r.flag(2),
+        partial: r.flag(5),
         columns: list(r.opt(3)),
         size: r.number(4),
     })

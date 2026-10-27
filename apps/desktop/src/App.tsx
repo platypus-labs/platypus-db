@@ -29,7 +29,7 @@ import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } fr
 import { dbKey, provideWorkbench, workbench } from "./workbench";
 import type { IconName } from "./ui/Icon";
 import { ask, isAsking } from "./ui/ask";
-import { type PersistedTab, loadWorkspace, saveWorkspace } from "./workspace";
+import { type PersistedTab, flushWorkspace, loadWorkspace, saveWorkspace } from "./workspace";
 import { connectionsOf, loadActiveProject, projectKey, saveActiveProject } from "./projects/state";
 import { forgetCatalog } from "./catalog/catalog";
 import { ProjectRail } from "./projects/ProjectRail";
@@ -220,6 +220,24 @@ export function App() {
     saveWorkspace({ tabs: kept.map((k) => k.saved), active });
   }, [workspaceReady, tabs, activeTab, activeProject]);
 
+  // Closing the window asks first, as closing the tabs does, when some have edits not saved or
+  // a transaction open; the workspace is written at once instead of after its debounce.
+  const tabsNow = useRef(tabs);
+  tabsNow.current = tabs;
+  useEffect(() => {
+    const off = getCurrentWindow().onCloseRequested(async (event) => {
+      flushWorkspace();
+      const changed = tabsNow.current.filter((tab) => tab.unsaved || tab.txOpen).length;
+      const question = plural(
+        changed,
+        "One tab has changes not saved or committed. Close the window and discard them?",
+        "{n} tabs have changes not saved or committed. Close the window and discard them?",
+      );
+      if (changed > 0 && !(await ask(question, { confirm: t("Close"), danger: true }))) event.preventDefault();
+    });
+    return () => void off.then((unlisten) => unlisten());
+  }, []);
+
   // A temporary connection goes with its last tab: its navigator sessions close, then it.
   useEffect(() => {
     for (const [id, temp] of temporary.current) {
@@ -405,8 +423,20 @@ export function App() {
     return unlocking.current;
   }
 
+  /** The password asked for each connection, shared by every session waiting for it. */
+  const passwordAsks = useRef(new Map<string, Promise<string | null>>());
+  /** The password dialog shows one connection at a time: the others wait their turn. */
+  const passwordTurn = useRef<Promise<unknown>>(Promise.resolve());
+
   function askPassword(connection: SavedConnection) {
-    return new Promise<string | null>((resolve) => setPasswordRequest({ connection, resolve }));
+    const asked = passwordAsks.current.get(connection.id);
+    if (asked) return asked;
+    const answer = passwordTurn.current
+      .then(() => new Promise<string | null>((resolve) => setPasswordRequest({ connection, resolve })))
+      .finally(() => passwordAsks.current.delete(connection.id));
+    passwordTurn.current = answer;
+    passwordAsks.current.set(connection.id, answer);
+    return answer;
   }
 
   /** Opens a session, asking for the password when it is not saved; `null` on failure.

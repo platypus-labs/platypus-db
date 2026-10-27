@@ -32,10 +32,12 @@ pub trait Connection: Send + Sync + fmt::Debug {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult>;
 
     /// Runs `statements`, which return no rows and control no transaction, in order, up to
-    /// the first that fails. Drivers that can send them together, saving a round trip per
-    /// statement, do; the default runs them one at a time with [`execute`](Self::execute).
-    async fn execute_all(&self, statements: &[&str]) -> Executed {
-        execute_each(self, statements).await
+    /// the first that fails or changes a number of rows other than its entry in `expected`
+    /// (where it has one). Drivers that can send them together, saving a round trip per
+    /// statement, do, and may have run some past that one; the default runs them one at a
+    /// time with [`execute`](Self::execute).
+    async fn execute_all(&self, statements: &[&str], expected: &[u64]) -> Executed {
+        execute_each(self, statements, expected).await
     }
 
     /// A handle that cancels the statement currently running on this connection.
@@ -138,20 +140,29 @@ pub struct Executed {
 }
 
 /// [`Connection::execute_all`] one statement at a time, for drivers that cannot send
-/// several together.
-pub async fn execute_each<C: Connection + ?Sized>(conn: &C, statements: &[&str]) -> Executed {
+/// several together: it stops at the first that fails or changes other than its
+/// `expected` rows.
+pub async fn execute_each<C: Connection + ?Sized>(
+    conn: &C,
+    statements: &[&str],
+    expected: &[u64],
+) -> Executed {
     let mut rows = Vec::with_capacity(statements.len());
-    for sql in statements {
-        match conn.execute(sql, &ExecOptions::default()).await {
-            Ok(ExecResult::Affected { rows: n }) => rows.push(n),
+    for (i, sql) in statements.iter().enumerate() {
+        let n = match conn.execute(sql, &ExecOptions::default()).await {
+            Ok(ExecResult::Affected { rows: n }) => n,
             // Dropping the stream ends the statement.
-            Ok(ExecResult::Rows(_)) => rows.push(0),
+            Ok(ExecResult::Rows(_)) => 0,
             Err(error) => {
                 return Executed {
                     rows,
                     error: Some(error),
                 };
             }
+        };
+        rows.push(n);
+        if expected.get(i).is_some_and(|&e| e != n) {
+            break;
         }
     }
     Executed { rows, error: None }

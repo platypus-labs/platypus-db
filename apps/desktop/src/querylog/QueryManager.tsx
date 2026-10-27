@@ -73,13 +73,16 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const since = useRef(0);
+  /** Bumped by Clear: a poll that started before it brings entries that are gone. */
+  const clears = useRef(0);
 
   useEffect(() => {
     let live = true;
     const poll = async () => {
+      const epoch = clears.current;
       try {
         const page = await api.queryLog(since.current);
-        if (!live) return;
+        if (!live || epoch !== clears.current) return;
         since.current = page.rev;
         if (page.entries.length) {
           setEntries((old) => {
@@ -101,7 +104,15 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
   }, []);
 
   async function clear() {
-    await api.clearQueryLog();
+    clears.current++;
+    try {
+      await api.clearQueryLog();
+    } catch (e) {
+      setError(toCommandError(e).message);
+      return;
+    }
+    // Polls started while clearing are dropped too.
+    clears.current++;
     setEntries([]);
     setSelected(null);
   }

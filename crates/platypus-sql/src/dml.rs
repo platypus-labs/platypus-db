@@ -9,7 +9,7 @@
 
 use std::borrow::Cow;
 use std::fmt;
-use std::fmt::Write as _;
+use std::ops::Range;
 
 use platypus_core::arrow_schema::DataType;
 use platypus_core::{Connection, Error, ExecOptions, ExecResult};
@@ -105,6 +105,54 @@ fn is_number(s: &str) -> bool {
     mantissa_ok && exponent_ok
 }
 
+/// Digits past which a number keeps its exponent: no exact type holds more.
+const MAX_PLAIN_DIGITS: u64 = 1000;
+
+/// A number of [`is_number`] without its exponent, e.g. `-1.5e3` as `-1500`: the same
+/// value, exact.
+fn plain_number(s: &str) -> String {
+    let Some(at) = s.find(['e', 'E']) else {
+        return s.to_owned();
+    };
+    let (mantissa, exponent) = (&s[..at], &s[at + 1..]);
+    let Ok(exponent) = exponent.parse::<i64>() else {
+        return s.to_owned();
+    };
+    let (negative, mantissa) = match mantissa.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, mantissa.strip_prefix('+').unwrap_or(mantissa)),
+    };
+    let (int, frac) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let digits = format!("{int}{frac}");
+    let Some(point) = i64::try_from(int.len())
+        .ok()
+        .and_then(|n| n.checked_add(exponent))
+    else {
+        return s.to_owned();
+    };
+    if point.unsigned_abs() > MAX_PLAIN_DIGITS {
+        return s.to_owned();
+    }
+    let zeros = |n: i64| "0".repeat(usize::try_from(n).unwrap_or(0));
+    let len = i64::try_from(digits.len()).unwrap_or(i64::MAX);
+    let (int, frac) = if point <= 0 {
+        (String::new(), format!("{}{digits}", zeros(-point)))
+    } else if point >= len {
+        (format!("{digits}{}", zeros(point - len)), String::new())
+    } else {
+        let split = usize::try_from(point).unwrap_or(0);
+        (digits[..split].to_owned(), digits[split..].to_owned())
+    };
+    let int = int.trim_start_matches('0');
+    let int = if int.is_empty() { "0" } else { int };
+    let sign = if negative { "-" } else { "" };
+    if frac.is_empty() {
+        format!("{sign}{int}")
+    } else {
+        format!("{sign}{int}.{frac}")
+    }
+}
+
 fn is_integer(s: &str) -> bool {
     let digits = s.strip_prefix(['+', '-']).unwrap_or(s);
     !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
@@ -151,7 +199,9 @@ impl Column<'_> {
             ValueKind::Integer => {
                 return Err(self.invalid(format!("'{text}' is not a whole number")));
             }
-            ValueKind::Decimal | ValueKind::Float if is_number(trimmed) => trimmed.to_owned(),
+            // Exact digits: a `VALUES` list with an exponent in it can turn the column float.
+            ValueKind::Decimal if is_number(trimmed) => plain_number(trimmed),
+            ValueKind::Float if is_number(trimmed) => trimmed.to_owned(),
             ValueKind::Float
                 if ["nan", "infinity", "+infinity", "-infinity", "inf", "-inf"]
                     .iter()
@@ -336,6 +386,10 @@ pub fn delete(
 /// (Oracle takes 1,000 expressions in a list, SQL Server 1,000 rows in `VALUES`).
 pub const BATCH_ROWS: usize = 500;
 
+/// Most bytes of SQL a batched statement grows to: well under MySQL's default
+/// `max_allowed_packet` (4 MiB) and the request limits of drivers over HTTP.
+pub const BATCH_BYTES: usize = 1 << 20;
+
 /// A statement that saving runs, and the rows it must change.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Statement {
@@ -360,81 +414,109 @@ impl Statement {
     }
 }
 
-/// Whether `(k1, k2) IN ((…), (…))` works and uses the key's index. MySQL takes row values
-/// too, but older servers scan the table for them; `OR` of the rows works everywhere.
-const fn has_row_values(dialect: Dialect) -> bool {
-    matches!(
-        dialect,
-        Dialect::Postgres | Dialect::DuckDb | Dialect::Sqlite
-    )
+/// How a statement lists rows by a key of several columns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RowList {
+    /// `(k1, k2) IN ((…), (…))`.
+    Tuples,
+    /// `(k1, k2) IN (VALUES (…), (…))`: SQLite before 3.37 takes row values on the right
+    /// of `IN` only from a subquery.
+    Values,
+    /// `(k1 = … AND k2 = …) OR …`, which every database takes. DuckDB compares row values
+    /// as structs, which can miss timestamps, decimals and UUIDs written as text; older
+    /// MySQL servers scan the table for row values.
+    Or,
 }
 
-/// Whether `INSERT … VALUES` takes several rows: Oracle's before 23ai does not.
+const fn row_list(dialect: Dialect) -> RowList {
+    match dialect {
+        Dialect::Postgres => RowList::Tuples,
+        Dialect::Sqlite => RowList::Values,
+        _ => RowList::Or,
+    }
+}
+
+/// Whether `INSERT … VALUES` takes several rows: Oracle's does not before 23ai, nor do some
+/// databases behind generic ODBC and ADBC drivers.
 const fn has_multi_row_values(dialect: Dialect) -> bool {
-    !matches!(dialect, Dialect::Oracle)
+    !matches!(dialect, Dialect::Oracle | Dialect::Ansi)
 }
 
-/// The literals of a key's values, `, `-separated, into `out`.
-fn key_literals(
+/// Splits items of the given sizes into consecutive runs of at most [`BATCH_ROWS`] items
+/// and, unless a run is a single item, [`BATCH_BYTES`] bytes.
+fn batch_runs(sizes: impl IntoIterator<Item = usize>) -> Vec<Range<usize>> {
+    let mut runs = Vec::new();
+    let (mut start, mut bytes) = (0, 0);
+    let mut end = 0;
+    for size in sizes {
+        if end > start && (end - start == BATCH_ROWS || bytes + size > BATCH_BYTES) {
+            runs.push(start..end);
+            (start, bytes) = (end, 0);
+        }
+        bytes += size;
+        end += 1;
+    }
+    if end > start {
+        runs.push(start..end);
+    }
+    runs
+}
+
+/// A key as an item of the list of [`key_list`]: its literals, or for [`RowList::Or`] its
+/// `k1 = … AND k2 = …` in parentheses.
+fn key_item(
     dialect: Dialect,
     columns: &[Column<'_>],
     key: &[(usize, Option<&str>)],
-    out: &mut String,
-) -> Result<()> {
+) -> Result<String> {
+    let mut out = String::new();
+    let composite = key.len() > 1;
+    if composite && row_list(dialect) == RowList::Or {
+        out.push('(');
+        key_match(dialect, columns, key, &mut out)?;
+        out.push(')');
+        return Ok(out);
+    }
+    if composite {
+        out.push('(');
+    }
     for (i, &(index, value)) in key.iter().enumerate() {
         if i > 0 {
             out.push_str(", ");
         }
         out.push_str(&column(columns, index)?.literal(dialect, value)?);
     }
-    Ok(())
-}
-
-/// ` WHERE …` matching any of `keys`, which pair the same columns with values that are not
-/// NULL: `k IN (…)`, `(k1, k2) IN ((…), …)` where the dialect has row values, else
-/// `(k1 = … AND k2 = …) OR …`. A single key gets the plain `WHERE` of [`delete`].
-fn where_any(
-    dialect: Dialect,
-    columns: &[Column<'_>],
-    keys: &[&[(usize, Option<&str>)]],
-) -> Result<String> {
-    let [first, ..] = keys else {
-        return Err(no_key());
-    };
-    if keys.len() == 1 || first.is_empty() {
-        return where_clause(dialect, columns, first);
+    if composite {
+        out.push(')');
     }
-    let mut out = String::from(" WHERE ");
-    let composite = first.len() > 1;
-    if composite && !has_row_values(dialect) {
-        for (i, key) in keys.iter().enumerate() {
-            out.push_str(if i > 0 { " OR (" } else { "(" });
-            key_match(dialect, columns, key, &mut out)?;
-            out.push(')');
-        }
-        return Ok(out);
-    }
-    let names = first
-        .iter()
-        .map(|&(index, _)| Ok(dialect.quote_ident(column(columns, index)?.name)))
-        .collect::<Result<Vec<_>>>()?;
-    let (open, close) = if composite { ("(", ")") } else { ("", "") };
-    let _ = write!(out, "{open}{}{close} IN (", names.join(", "));
-    for (i, key) in keys.iter().enumerate() {
-        if i > 0 {
-            out.push_str(", ");
-        }
-        out.push_str(open);
-        key_literals(dialect, columns, key, &mut out)?;
-        out.push_str(close);
-    }
-    out.push(')');
     Ok(out)
 }
 
+/// The condition matching any of the keys of `items` (from [`key_item`]), whose columns
+/// are those of `key`.
+fn key_list(
+    dialect: Dialect,
+    columns: &[Column<'_>],
+    key: &[(usize, Option<&str>)],
+    items: &[String],
+) -> Result<String> {
+    let names = key
+        .iter()
+        .map(|&(index, _)| Ok(dialect.quote_ident(column(columns, index)?.name)))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(match (names.as_slice(), row_list(dialect)) {
+        ([name], _) => format!("{name} IN ({})", items.join(", ")),
+        (_, RowList::Or) => items.join(" OR "),
+        (_, RowList::Tuples) => format!("({}) IN ({})", names.join(", "), items.join(", ")),
+        (_, RowList::Values) => {
+            format!("({}) IN (VALUES {})", names.join(", "), items.join(", "))
+        }
+    })
+}
+
 /// The `DELETE` statements of the rows with `keys`, each pairing the key columns with a
-/// row's values: up to [`BATCH_ROWS`] rows per statement. A key with a NULL value, which no
-/// list matches, gets a statement of its own with `IS NULL`.
+/// row's values: up to [`BATCH_ROWS`] rows and [`BATCH_BYTES`] bytes per statement. A key
+/// with a NULL value, which no list matches, gets a statement of its own with `IS NULL`.
 ///
 /// [`apply`] checks a statement's total of rows only, so the key must be unique (a primary
 /// or unique key): with duplicates, a missing row and an extra one could make up the count.
@@ -448,14 +530,24 @@ pub fn deletes(
         a.iter().map(|&(c, _)| c).eq(b.iter().map(|&(c, _)| c))
     };
     let first = keys.first().map_or(&[][..], Vec::as_slice);
-    let (listed, single): (Vec<&[_]>, Vec<&[_]>) = keys
+    let (listed, single): (Vec<&[_]>, Vec<&[_]>) =
+        keys.iter().map(Vec::as_slice).partition(|key| {
+            !key.is_empty() && key.iter().all(|(_, v)| v.is_some()) && same_columns(first, key)
+        });
+    let items = listed
         .iter()
-        .map(Vec::as_slice)
-        .partition(|key| key.iter().all(|(_, v)| v.is_some()) && same_columns(first, key));
-    let mut statements = Vec::with_capacity(listed.len().div_ceil(BATCH_ROWS) + single.len());
-    for chunk in listed.chunks(BATCH_ROWS) {
-        let sql = format!("DELETE FROM {table}{}", where_any(dialect, columns, chunk)?);
-        statements.push(Statement::of(sql, chunk.len()));
+        .map(|key| key_item(dialect, columns, key))
+        .collect::<Result<Vec<_>>>()?;
+    let runs = batch_runs(items.iter().map(String::len));
+    let mut statements = Vec::with_capacity(runs.len() + single.len());
+    for run in runs {
+        let sql = if run.len() == 1 {
+            delete(dialect, table, columns, listed[run.start])?
+        } else {
+            let list = key_list(dialect, columns, first, &items[run.clone()])?;
+            format!("DELETE FROM {table} WHERE {list}")
+        };
+        statements.push(Statement::of(sql, run.len()));
     }
     for key in single {
         statements.push(Statement::one(delete(dialect, table, columns, key)?));
@@ -463,13 +555,50 @@ pub fn deletes(
     Ok(statements)
 }
 
+/// Whether a literal is a quoted string (`'…'`, `N'…'`, `E'…'`); `None` for NULL, which
+/// goes with either. A `VALUES` list unifies each column's type across its rows, and some
+/// databases fail on, or round, numbers mixed with strings (`'NaN'`).
+fn literal_form(literal: &str) -> Option<bool> {
+    (literal != "NULL").then(|| literal.trim_start_matches(['N', 'E']).starts_with('\''))
+}
+
+/// An `INSERT` being filled with rows.
+struct OpenInsert<'c> {
+    names: Vec<Cow<'c, str>>,
+    /// [`literal_form`] by column, of the rows so far.
+    forms: Vec<Option<bool>>,
+    values: String,
+    rows: usize,
+}
+
+impl OpenInsert<'_> {
+    fn takes(&self, names: &[Cow<'_, str>], forms: &[Option<bool>], tuple: &str) -> bool {
+        self.names == names
+            && self.values.len() + tuple.len() <= BATCH_BYTES
+            && self
+                .forms
+                .iter()
+                .zip(forms)
+                .all(|(a, b)| a.is_none() || b.is_none() || a == b)
+    }
+
+    fn statement(self, table: &str) -> Statement {
+        let sql = format!(
+            "INSERT INTO {table} ({}) VALUES {}",
+            self.names.join(", "),
+            self.values
+        );
+        Statement::of(sql, self.rows)
+    }
+}
+
 /// The `INSERT` statements of new `rows`, in their order: consecutive rows that set the
-/// same columns share a `VALUES` list of up to [`BATCH_ROWS`] rows, where the dialect takes
-/// several.
-pub fn inserts(
+/// same columns, with literals of the same form, share a `VALUES` list of up to
+/// [`BATCH_ROWS`] rows and [`BATCH_BYTES`] bytes, where the dialect takes several rows.
+pub fn inserts<'c>(
     dialect: Dialect,
     table: &str,
-    columns: &[Column<'_>],
+    columns: &'c [Column<'_>],
     rows: &[Vec<(usize, Value<'_>)>],
 ) -> Result<Vec<Statement>> {
     let limit = if has_multi_row_values(dialect) {
@@ -478,32 +607,37 @@ pub fn inserts(
         1
     };
     let mut statements = Vec::new();
-    // The statement being filled: its column names, its `VALUES` rows and how many.
-    let mut open: Option<(Vec<Cow<'_, str>>, String, usize)> = None;
-    let close = |(names, values, n): (Vec<Cow<'_, str>>, String, usize)| {
-        let sql = format!("INSERT INTO {table} ({}) VALUES {values}", names.join(", "));
-        Statement::of(sql, n)
-    };
+    let mut open: Option<OpenInsert<'c>> = None;
     for values in rows {
         let (names, literals) = insert_row(dialect, columns, values)?;
+        let tuple = format!("({})", literals.join(", "));
+        let forms: Vec<_> = literals.iter().map(|l| literal_form(l)).collect();
         if open
             .as_ref()
-            .is_some_and(|(set, _, n)| *set != names || *n == limit)
+            .is_some_and(|o| o.rows == limit || !o.takes(&names, &forms, &tuple))
         {
-            statements.extend(open.take().map(close));
+            statements.extend(open.take().map(|o| o.statement(table)));
         }
         if names.is_empty() {
             statements.push(Statement::one(insert_defaults(dialect, table, columns)));
             continue;
         }
-        let (_, text, n) = open.get_or_insert_with(|| (names, String::new(), 0));
-        if *n > 0 {
-            text.push_str(", ");
+        let o = open.get_or_insert_with(|| OpenInsert {
+            names,
+            forms: vec![None; forms.len()],
+            values: String::new(),
+            rows: 0,
+        });
+        for (form, new) in o.forms.iter_mut().zip(forms) {
+            *form = form.or(new);
         }
-        let _ = write!(text, "({})", literals.join(", "));
-        *n += 1;
+        if o.rows > 0 {
+            o.values.push_str(", ");
+        }
+        o.values.push_str(&tuple);
+        o.rows += 1;
     }
-    statements.extend(open.map(close));
+    statements.extend(open.map(|o| o.statement(table)));
     Ok(statements)
 }
 
@@ -519,11 +653,19 @@ pub enum ApplyError {
         rows: u64,
         expected: u64,
     },
+    /// The save failed in manual-commit mode where the database has no savepoints: the
+    /// session's whole transaction was rolled back, its other uncommitted changes with it.
+    SessionRolledBack(Box<ApplyError>),
 }
 
 impl fmt::Display for ApplyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
+            Self::SessionRolledBack(ref cause) => write!(
+                f,
+                "{cause}. The database has no savepoints, so the whole transaction was rolled \
+                 back, with the other changes not committed yet"
+            ),
             Self::Failed { index, ref error } => write!(f, "statement {}: {error}", index + 1),
             Self::RowCount {
                 index,
@@ -577,14 +719,43 @@ async fn exec_one(conn: &dyn Connection, sql: &str) -> Result<u64, Error> {
 
 const SAVEPOINT: &str = "platypus_edit";
 
+/// The statements around a save: the one that opens it, those that keep it and those that
+/// undo it.
+fn bracket(dialect: Dialect, manual: bool) -> (Option<String>, Vec<String>, Vec<String>) {
+    if !manual {
+        return (
+            Some("BEGIN".to_owned()),
+            vec!["COMMIT".to_owned()],
+            vec!["ROLLBACK".to_owned()],
+        );
+    }
+    if !dialect.has_savepoints() {
+        return (None, Vec::new(), vec!["ROLLBACK".to_owned()]);
+    }
+    // Oracle's savepoints last until the transaction ends.
+    let release = dialect
+        .releases_savepoints()
+        .then(|| format!("RELEASE SAVEPOINT {SAVEPOINT}"));
+    let undo = std::iter::once(format!("ROLLBACK TO SAVEPOINT {SAVEPOINT}"))
+        .chain(release.clone())
+        .collect();
+    (
+        Some(format!("SAVEPOINT {SAVEPOINT}")),
+        release.into_iter().collect(),
+        undo,
+    )
+}
+
 /// Runs `statements`, each of which must change the rows it names, all or none. They go
-/// to the server together where the driver can send them so ([`Connection::execute_all`]),
-/// and the row counts are checked once they ran. In autocommit mode they run in a
+/// to the server together where the driver can send them so ([`Connection::execute_all`]);
+/// otherwise they stop at the first row count off. In autocommit mode they run in a
 /// transaction of their own and are committed; in manual-commit mode they join the
-/// session's transaction behind a savepoint, and stay uncommitted. Without savepoints
-/// (DuckDB) a failed statement in manual-commit mode rolls back the whole transaction,
-/// which DuckDB aborts on errors anyway; so does a row count off once rows changed, as
-/// nothing else can undo them. Statements that found no row leave the transaction as it was.
+/// session's transaction behind a savepoint, and stay uncommitted.
+///
+/// Without savepoints (DuckDB, Db2, Snowflake…) a failure in manual-commit mode rolls back
+/// the session's whole transaction, as nothing else can undo the statements before it, and
+/// says so ([`ApplyError::SessionRolledBack`]); a save that changed nothing yet leaves it
+/// as it was.
 pub async fn apply(
     conn: &dyn Connection,
     dialect: Dialect,
@@ -592,31 +763,15 @@ pub async fn apply(
 ) -> Result<(), ApplyError> {
     let manual = !conn.transaction().autocommit;
     let savepointless = manual && !dialect.has_savepoints();
-    let (begin, end, undo) = if savepointless {
-        (None, Vec::new(), vec!["ROLLBACK".to_owned()])
-    } else if manual {
-        (
-            Some(format!("SAVEPOINT {SAVEPOINT}")),
-            vec![format!("RELEASE SAVEPOINT {SAVEPOINT}")],
-            vec![
-                format!("ROLLBACK TO SAVEPOINT {SAVEPOINT}"),
-                format!("RELEASE SAVEPOINT {SAVEPOINT}"),
-            ],
-        )
-    } else {
-        (
-            Some("BEGIN".to_owned()),
-            vec!["COMMIT".to_owned()],
-            vec!["ROLLBACK".to_owned()],
-        )
-    };
+    let (begin, end, undo) = bracket(dialect, manual);
     if let Some(begin) = begin {
         exec_one(conn, &begin)
             .await
             .map_err(|error| ApplyError::Failed { index: 0, error })?;
     }
     let sql: Vec<&str> = statements.iter().map(|s| s.sql.as_str()).collect();
-    let ran = conn.execute_all(&sql).await;
+    let expected: Vec<u64> = statements.iter().map(|s| s.rows).collect();
+    let ran = conn.execute_all(&sql, &expected).await;
     let mismatch = ran
         .rows
         .iter()
@@ -650,7 +805,10 @@ pub async fn apply(
             }));
         }
     }
-    outcome
+    match outcome {
+        Err(e) if savepointless && !untouched => Err(ApplyError::SessionRolledBack(Box::new(e))),
+        outcome => outcome,
+    }
 }
 
 #[cfg(test)]
@@ -886,7 +1044,10 @@ mod tests {
         let names = [vec![(1, Some("it's"))], vec![(1, Some("a\\b"))]];
         assert_eq!(
             sql(&deletes(Dialect::MySql, "t", &cols, &names).unwrap()),
-            [("DELETE FROM t WHERE name IN ('it''s', 'a\\\\b')", 2)]
+            [(
+                "DELETE FROM t WHERE name IN ('it''s', _utf8mb4 X'615c62')",
+                2
+            )]
         );
         assert_eq!(
             sql(&deletes(Dialect::SqlServer, "t", &cols, &names).unwrap()),
@@ -903,14 +1064,23 @@ mod tests {
             vec![(0, Some("1")), (1, Some("a"))],
             vec![(0, Some("2")), (1, Some("b"))],
         ];
-        for d in [Dialect::Postgres, Dialect::DuckDb, Dialect::Sqlite] {
-            assert_eq!(
-                sql(&deletes(d, "t", &cols, &keys).unwrap()),
-                [("DELETE FROM t WHERE (id, name) IN ((1, 'a'), (2, 'b'))", 2)],
-                "{d:?}"
-            );
-        }
-        for d in [Dialect::MySql, Dialect::ClickHouse, Dialect::BigQuery] {
+        assert_eq!(
+            sql(&deletes(Dialect::Postgres, "t", &cols, &keys).unwrap()),
+            [("DELETE FROM t WHERE (id, name) IN ((1, 'a'), (2, 'b'))", 2)]
+        );
+        assert_eq!(
+            sql(&deletes(Dialect::Sqlite, "t", &cols, &keys).unwrap()),
+            [(
+                "DELETE FROM t WHERE (id, name) IN (VALUES (1, 'a'), (2, 'b'))",
+                2
+            )]
+        );
+        for d in [
+            Dialect::MySql,
+            Dialect::ClickHouse,
+            Dialect::BigQuery,
+            Dialect::DuckDb,
+        ] {
             assert_eq!(
                 sql(&deletes(d, "t", &cols, &keys).unwrap()),
                 [(
@@ -1016,6 +1186,165 @@ mod tests {
         );
         assert!(statements[0].sql.ends_with("(499), (500)"));
         assert_eq!(statements[1].sql, "INSERT INTO t (id) VALUES (501), (502)");
+    }
+
+    #[test]
+    fn saves_behind_a_savepoint_where_there_is_one() {
+        let s = |v: &[&str]| v.iter().map(|&x| x.to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            bracket(Dialect::Oracle, false),
+            (Some("BEGIN".to_owned()), s(&["COMMIT"]), s(&["ROLLBACK"]))
+        );
+        assert_eq!(
+            bracket(Dialect::Postgres, true),
+            (
+                Some("SAVEPOINT platypus_edit".to_owned()),
+                s(&["RELEASE SAVEPOINT platypus_edit"]),
+                s(&[
+                    "ROLLBACK TO SAVEPOINT platypus_edit",
+                    "RELEASE SAVEPOINT platypus_edit"
+                ])
+            )
+        );
+        // Oracle has no RELEASE: the savepoint lasts until the transaction ends.
+        assert_eq!(
+            bracket(Dialect::Oracle, true),
+            (
+                Some("SAVEPOINT platypus_edit".to_owned()),
+                Vec::new(),
+                s(&["ROLLBACK TO SAVEPOINT platypus_edit"])
+            )
+        );
+        assert_eq!(
+            bracket(Dialect::DuckDb, true),
+            (None, Vec::new(), s(&["ROLLBACK"]))
+        );
+        let rolled_back = ApplyError::SessionRolledBack(Box::new(ApplyError::RowCount {
+            index: 0,
+            rows: 0,
+            expected: 1,
+        }));
+        assert!(
+            rolled_back
+                .to_string()
+                .contains("the whole transaction was rolled back"),
+            "{rolled_back}"
+        );
+    }
+
+    #[test]
+    fn writes_decimals_without_exponent() {
+        for (typed, plain) in [
+            ("1e3", "1000"),
+            ("-1.5E-3", "-0.0015"),
+            ("+2.50e1", "25.0"),
+            (".5e1", "5"),
+            ("5.e2", "500"),
+            ("0.001e2", "0.1"),
+            ("12.50", "12.50"),
+            ("-7", "-7"),
+        ] {
+            assert_eq!(plain_number(typed), plain, "{typed}");
+        }
+        // Too far to write out: left as typed, for the server to refuse.
+        assert_eq!(plain_number("1e99999"), "1e99999");
+        let decimal = col("n", ValueKind::Decimal);
+        let float = col("f", ValueKind::Float);
+        let pg = Dialect::Postgres;
+        assert_eq!(decimal.literal(pg, Some(" 1.25e2 ")).unwrap(), "125");
+        assert_eq!(float.literal(pg, Some("1.25e2")).unwrap(), "1.25e2");
+    }
+
+    #[test]
+    fn quotes_backslashes_whatever_the_server_reads() {
+        let cols = columns();
+        let pg = Dialect::Postgres;
+        let sql = insert(
+            pg,
+            "t",
+            &cols,
+            &[(1, Value::Text("x\\'); DROP TABLE t; --"))],
+        )
+        .unwrap();
+        assert_eq!(
+            sql,
+            "INSERT INTO t (name) VALUES (E'x\\\\''); DROP TABLE t; --')"
+        );
+        let keys = [vec![(1, Some("a\\")), (0, Some("1"))]];
+        assert_eq!(
+            deletes(pg, "t", &cols, &keys).unwrap()[0].sql,
+            "DELETE FROM t WHERE name = E'a\\\\' AND id = 1"
+        );
+    }
+
+    #[test]
+    fn batches_stay_under_a_byte_budget() {
+        let cols = columns();
+        let long: Vec<String> = (0..5)
+            .map(|i| format!("{i}{}", "x".repeat(400_000)))
+            .collect();
+        let keys: Vec<_> = long.iter().map(|v| vec![(1, Some(v.as_str()))]).collect();
+        let statements = deletes(Dialect::MySql, "t", &cols, &keys).unwrap();
+        assert_eq!(
+            statements.iter().map(|s| s.rows).collect::<Vec<_>>(),
+            [2, 2, 1]
+        );
+        assert!(statements.iter().all(|s| s.sql.len() <= BATCH_BYTES + 100));
+        assert!(
+            statements[2]
+                .sql
+                .starts_with("DELETE FROM t WHERE name = '4x")
+        );
+
+        let rows: Vec<_> = long.iter().map(|v| vec![(1, Value::Text(v))]).collect();
+        let statements = inserts(Dialect::MySql, "t", &cols, &rows).unwrap();
+        assert_eq!(
+            statements.iter().map(|s| s.rows).collect::<Vec<_>>(),
+            [2, 2, 1]
+        );
+        assert!(statements.iter().all(|s| s.sql.len() <= BATCH_BYTES + 100));
+    }
+
+    #[test]
+    fn keeps_numbers_and_strings_apart_in_values_lists() {
+        let cols = [col("id", ValueKind::Integer), col("f", ValueKind::Float)];
+        let row = |id, f| vec![(0, Value::Text(id)), (1, f)];
+        let rows = [
+            row("1", Value::Text("1.5")),
+            row("2", Value::Null),
+            row("3", Value::Text("2")),
+            row("4", Value::Text("NaN")),
+            row("5", Value::Null),
+            row("6", Value::Text("infinity")),
+            row("7", Value::Text("1e3")),
+        ];
+        assert_eq!(
+            sql(&inserts(Dialect::SqlServer, "t", &cols, &rows).unwrap()),
+            [
+                (
+                    "INSERT INTO t (id, f) VALUES (1, 1.5), (2, NULL), (3, 2)",
+                    3
+                ),
+                (
+                    "INSERT INTO t (id, f) VALUES (4, N'NaN'), (5, NULL), (6, N'infinity')",
+                    3
+                ),
+                ("INSERT INTO t (id, f) VALUES (7, 1e3)", 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn inserts_one_row_per_statement_for_generic_drivers() {
+        let cols = columns();
+        let rows = [vec![(0, Value::Text("1"))], vec![(0, Value::Text("2"))]];
+        assert_eq!(
+            sql(&inserts(Dialect::Ansi, "t", &cols, &rows).unwrap()),
+            [
+                ("INSERT INTO t (\"id\") VALUES (1)", 1),
+                ("INSERT INTO t (\"id\") VALUES (2)", 1),
+            ]
+        );
     }
 
     #[test]

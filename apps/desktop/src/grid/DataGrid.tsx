@@ -16,6 +16,7 @@ import { THEME_EVENT } from "../theme";
 import { workbench } from "../workbench";
 import { type ColumnLayout, EMPTY_LAYOUT, moveColumn, resolveLayout } from "./layout";
 import type { RowCache } from "./RowCache";
+import { shiftSelection } from "./selectionShift";
 import "./actions";
 
 /** Row height, from the `--grid-row-h` variable (the density setting); see `readTheme`. */
@@ -91,6 +92,9 @@ export interface GridApi {
   /** The result row shown at a grid row; `null` for the `topRows`. */
   dataRow(row: number): number | null;
   select(anchor: Cell, focus?: Cell): void;
+  /** The `topRows` go from `before` to `after` (new rows added or dropped on top): the
+   *  selection moves with its rows, or clears when a new row it was on is gone. */
+  topRowsChanged(before: number, after: number): void;
   selectAll(): void;
   /** The result columns shown, left to right. */
   visibleColumns(): number[];
@@ -643,6 +647,18 @@ export function DataGrid({
     select: (a, f = a) => {
       anchor.current = a;
       setFocus(f, true);
+    },
+    topRowsChanged: (before, after) => {
+      const a = anchor.current;
+      const f = focus.current;
+      if (!a || !f || before === after) return;
+      // Not through `setFocus`: it would clamp to the row count before the new rows render.
+      const moved = shiftSelection(a, f, before, after);
+      anchor.current = moved?.anchor ?? null;
+      focus.current = moved?.focus ?? null;
+      props.current.onFocusChange?.(focus.current);
+      props.current.onSelectionChange?.();
+      schedule();
     },
     selectAll: () => {
       const { view } = props.current.resolved;

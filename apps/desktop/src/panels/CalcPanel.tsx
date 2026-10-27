@@ -1,6 +1,7 @@
 import { type RefObject, useEffect, useState } from "react";
 import { api, type ColumnInfo, type ColumnStats, toCommandError } from "../api";
 import type { GridApi } from "../grid/DataGrid";
+import { formatExact } from "../grid/exactNumber";
 import { t, plural } from "../i18n";
 
 interface Props {
@@ -101,10 +102,10 @@ function lines(s: ColumnStats): [string, string][] {
   const n = s.numbers;
   if (n) {
     out.push(
-      [t("Sum"), number.format(n.sum)],
+      [t("Sum"), formatExact(number, n.sum, n.sum_exact)],
       [t("Average"), number.format(n.avg)],
-      [t("Minimum"), number.format(n.min)],
-      [t("Maximum"), number.format(n.max)],
+      [t("Minimum"), formatExact(number, n.min, n.min_exact)],
+      [t("Maximum"), formatExact(number, n.max, n.max_exact)],
       [t("Median"), number.format(n.median)],
     );
     if (n.stddev !== null) out.push([t("Std deviation"), number.format(n.stddev)]);

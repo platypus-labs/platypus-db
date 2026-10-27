@@ -24,6 +24,9 @@ export interface EditMeta {
   key: number[];
   /** The virtual key's columns, when the key is one the user set. */
   virtualKey: string[] | null;
+  /** The key tells every row of the table apart: a primary key or a unique index on all
+   *  the rows, not a virtual key nor a primary key that is not unique (ClickHouse). */
+  uniqueKey: boolean;
   /** Catalog details by result column; `undefined` for expressions, which stay read-only. */
   columns: (ColumnMeta | undefined)[];
 }
@@ -85,24 +88,27 @@ export function editMeta(source: EditSource, columns: ColumnInfo[], virtualKeys:
   const present = (names: string[]) => names.length > 0 && names.every((n) => index.has(n));
   const find = byName(details);
   // SQLite reports `INTEGER PRIMARY KEY` columns as nullable, though they never hold NULL.
-  const primary =
-    details.indexes.find((i) => i.primary)?.columns ??
-    details.columns.filter((c) => c.primary_key).map((c) => c.name);
-  const uniques = details.indexes.filter((i) => i.unique && i.columns.every((n) => find(n)?.nullable === false));
+  const primaryIndex = details.indexes.find((i) => i.primary);
+  const primary = primaryIndex?.columns ?? details.columns.filter((c) => c.primary_key).map((c) => c.name);
+  // A partial index is unique among the rows of its condition only: it tells no row apart.
+  const uniques = details.indexes.filter(
+    (i) => i.unique && !i.partial && i.columns.every((n) => find(n)?.nullable === false),
+  );
   const unique = uniques.find((i) => present(i.columns));
   const virtual = virtualKeys
     .find((k) => k.schema === table.schema && k.table === table.name)
     ?.columns.map((n) => find(n)?.name ?? n);
-  const meta = (key: string[], virtualKey: string[] | null): EditMeta => ({
+  const meta = (key: string[], virtualKey: string[] | null, uniqueKey: boolean): EditMeta => ({
     table,
     details,
     key: key.map((n) => index.get(n)!),
     virtualKey,
+    uniqueKey,
     columns: mapped,
   });
-  if (present(primary)) return meta(primary, null);
-  if (unique) return meta(unique.columns, null);
-  if (virtual && present(virtual)) return meta(virtual, virtual);
+  if (present(primary)) return meta(primary, null, !primaryIndex || (primaryIndex.unique && !primaryIndex.partial));
+  if (unique) return meta(unique.columns, null, true);
+  if (virtual && present(virtual)) return meta(virtual, virtual, false);
   const keyed = primary.length > 0 || uniques.length > 0 || virtual !== undefined;
   if (keyed) return { reason: msg("the result does not include the table's key columns"), catalog };
   return {

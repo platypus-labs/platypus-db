@@ -456,6 +456,8 @@ export interface IndexMeta {
   columns: string[];
   unique: boolean;
   primary: boolean;
+  /** Covers only the rows of a condition (`WHERE`). */
+  partial: boolean;
   size: number | null;
 }
 
@@ -674,6 +676,11 @@ export interface SelectionStats {
   avg: number | null;
   min: number | null;
   max: number | null;
+  /** `sum`, `min` and `max` as exact decimal text, when every number is an integer or a
+   *  decimal of one scale (the numbers above round integers beyond 2^53). */
+  sum_exact: string | null;
+  min_exact: string | null;
+  max_exact: string | null;
 }
 
 /** Statistics of one column over selected rows, for the calc panel. */
@@ -690,6 +697,10 @@ export interface ColumnStats {
     max: number;
     median: number;
     stddev: number | null;
+    /** As in `SelectionStats`. */
+    sum_exact: string | null;
+    min_exact: string | null;
+    max_exact: string | null;
   } | null;
   /** Smallest and largest text of other columns. */
   first: string | null;

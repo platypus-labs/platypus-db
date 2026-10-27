@@ -205,14 +205,21 @@ impl Connection for PgConnection {
         result
     }
 
-    /// All the statements in one simple query: one round trip for all of them, where
-    /// [`execute`](Self::execute) takes two per statement (prepare, then run).
-    async fn execute_all(&self, statements: &[&str]) -> Executed {
+    /// The statements in simple queries of up to [`SIMPLE_QUERY_BYTES`]: one round trip for
+    /// many of them, where [`execute`](Self::execute) takes two per statement (prepare, then
+    /// run). Statements with a backslash are joined only while `standard_conforming_strings`
+    /// is on: with it off, `\'` in a plain literal would end the literal, and what follows
+    /// would run as a statement of its own.
+    async fn execute_all(&self, statements: &[&str], expected: &[u64]) -> Executed {
         // An empty query would still open a transaction in manual-commit mode.
         if statements.is_empty() || statements.iter().any(|s| classify(s) != TxEffect::None) {
-            return execute_each(self, statements).await;
+            return execute_each(self, statements, expected).await;
         }
-        let _guard = self.busy.lock().await;
+        let guard = self.busy.lock().await;
+        if statements.iter().any(|s| s.contains('\\')) && !self.conforming_strings().await {
+            drop(guard);
+            return execute_each(self, statements, expected).await;
+        }
         if self.tx.needs_begin(TxEffect::None) {
             if let Err(e) = self.client.batch_execute("BEGIN").await {
                 return Executed {
@@ -223,18 +230,32 @@ impl Connection for PgConnection {
             self.tx.set_open(true);
         }
         let mut rows = Vec::with_capacity(statements.len());
-        let result = self.simple_counts(&statements.join(";\n"), &mut rows).await;
-        self.tx.after(TxEffect::None, false);
-        let error = match result {
-            Err(e) => Some(map_error(e)),
+        let mut error = None;
+        for group in simple_groups(statements) {
+            let before = rows.len();
+            let sql = statements[group.clone()].join(";\n");
+            if let Err(e) = self.simple_counts(&sql, &mut rows).await {
+                error = Some(map_error(e));
+                break;
+            }
             // A statement the server split differently would shift every count after it.
-            Ok(()) if rows.len() != statements.len() => Some(Error::Unsupported(format!(
-                "the server ran {} statements instead of {}",
-                rows.len(),
-                statements.len()
-            ))),
-            Ok(()) => None,
-        };
+            if rows.len() != group.end {
+                error = Some(Error::Unsupported(format!(
+                    "the server ran {} statements instead of {}",
+                    rows.len() - before,
+                    group.len()
+                )));
+                break;
+            }
+            let off = rows[before..]
+                .iter()
+                .zip(expected.iter().skip(before))
+                .any(|(n, e)| n != e);
+            if off {
+                break;
+            }
+        }
+        self.tx.after(TxEffect::None, false);
         Executed { rows, error }
     }
 
@@ -332,6 +353,22 @@ impl Connection for PgConnection {
 }
 
 impl PgConnection {
+    /// Whether `standard_conforming_strings` is on: backslashes in plain literals are
+    /// themselves. Called with the session's lock held.
+    async fn conforming_strings(&self) -> bool {
+        self.client
+            .simple_query("SHOW standard_conforming_strings")
+            .await
+            .ok()
+            .and_then(|messages| {
+                messages.into_iter().find_map(|m| match m {
+                    SimpleQueryMessage::Row(row) => row.get(0).map(|v| v == "on"),
+                    _ => None,
+                })
+            })
+            .unwrap_or(false)
+    }
+
     /// Runs `sql` as a simple query, adding the rows each of its statements changed to
     /// `rows`; on an error, `rows` holds the counts of the statements before it.
     async fn simple_counts(
@@ -422,6 +459,26 @@ impl PgConnection {
             stream.boxed(),
         )))
     }
+}
+
+/// Most bytes of SQL in one simple query of [`PgConnection::execute_all`]: a protocol
+/// message holds at most 1 GiB.
+const SIMPLE_QUERY_BYTES: usize = 64 << 20;
+
+/// `statements` in consecutive runs of up to [`SIMPLE_QUERY_BYTES`], a statement longer
+/// than that in a run of its own.
+fn simple_groups(statements: &[&str]) -> Vec<std::ops::Range<usize>> {
+    let mut groups = Vec::new();
+    let (mut start, mut bytes) = (0, 0);
+    for (i, sql) in statements.iter().enumerate() {
+        if i > start && bytes + sql.len() > SIMPLE_QUERY_BYTES {
+            groups.push(start..i);
+            (start, bytes) = (i, 0);
+        }
+        bytes += sql.len() + 2;
+    }
+    groups.push(start..statements.len());
+    groups
 }
 
 fn no_params() -> std::iter::Empty<&'static (dyn ToSql + Sync)> {

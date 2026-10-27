@@ -399,7 +399,7 @@ async fn mysql_columns(
             } else if d.parse::<f64>().is_ok() || is_bit_or_hex_literal(&d) {
                 Some(d)
             } else {
-                Some(Dialect::MySql.quote_literal(&d))
+                Some(Dialect::MySql.quote_string(&d))
             }
         });
     }
