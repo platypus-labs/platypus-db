@@ -3873,3 +3873,371 @@ async fn qa_fixsafe_estimates_rows_of_tables_never_analyzed() {
         assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
     }
 }
+
+/// Every SQLite keyword: SQLite has no catalog of them.
+const SQLITE_KEYWORDS: &str = "ABORT ACTION ADD AFTER ALL ALTER ALWAYS ANALYZE AND AS ASC ATTACH \
+    AUTOINCREMENT BEFORE BEGIN BETWEEN BY CASCADE CASE CAST CHECK COLLATE COLUMN COMMIT CONFLICT \
+    CONSTRAINT CREATE CROSS CURRENT CURRENT_DATE CURRENT_TIME CURRENT_TIMESTAMP DATABASE DEFAULT \
+    DEFERRABLE DEFERRED DELETE DESC DETACH DISTINCT DO DROP EACH ELSE END ESCAPE EXCEPT EXCLUDE \
+    EXCLUSIVE EXISTS EXPLAIN FAIL FILTER FIRST FOLLOWING FOR FOREIGN FROM FULL GENERATED GLOB GROUP \
+    GROUPS HAVING IF IGNORE IMMEDIATE IN INDEX INDEXED INITIALLY INNER INSERT INSTEAD INTERSECT INTO \
+    IS ISNULL JOIN KEY LAST LEFT LIKE LIMIT MATCH MATERIALIZED NATURAL NO NOT NOTHING NOTNULL NULL \
+    NULLS OF OFFSET ON OR ORDER OTHERS OUTER OVER PARTITION PLAN PRAGMA PRECEDING PRIMARY QUERY \
+    RAISE RANGE RECURSIVE REFERENCES REGEXP REINDEX RELEASE RENAME REPLACE RESTRICT RETURNING \
+    RIGHT ROLLBACK ROW ROWS SAVEPOINT SELECT SET TABLE TEMP TEMPORARY THEN TIES TO TRANSACTION \
+    TRIGGER UNBOUNDED UNION UNIQUE UPDATE USING VACUUM VALUES VIEW VIRTUAL WHEN WHERE WINDOW WITH \
+    WITHOUT";
+
+/// The keywords of the backend's database, from its own catalog where it has one.
+async fn keywords(b: &Backend, conn: &dyn Connection) -> Vec<String> {
+    let sql = match b.name {
+        "postgres" => "SELECT word FROM pg_get_keywords()",
+        "mysql" | "mariadb" => "SELECT WORD FROM information_schema.KEYWORDS",
+        "duckdb" => "SELECT keyword_name FROM duckdb_keywords()",
+        "sqlite" | "libsql" => {
+            return SQLITE_KEYWORDS
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect();
+        }
+        _ => return Vec::new(),
+    };
+    let mut words = Vec::new();
+    for batch in collect(b, conn, sql).await {
+        for row in 0..batch.num_rows() {
+            words.extend(cell(&batch, 0, row));
+        }
+    }
+    words
+}
+
+/// A table named like each keyword of the database, written by `Dialect::quote_ident`, is
+/// read back from its own rows: a name left bare is either a syntax error or, on
+/// PostgreSQL, a value function such as `current_role` read in its place.
+#[tokio::test]
+async fn qa_fixnav_keyword_table_names_are_quoted_where_needed() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let conn = b.connect().await;
+        let d = platypus_sql::Dialect::from(b.config.driver);
+        let words = keywords(&b, &*conn).await;
+        if words.is_empty() {
+            continue;
+        }
+        let mut wrong = Vec::new();
+        for word in &words {
+            // PostgreSQL folds bare names to lower case; the others keep the case given.
+            let name = word.to_lowercase();
+            let table = d.quote_ident(&name);
+            let created = run(&*conn, &b.create_temp(&table, "x INT")).await;
+            if created.is_err() {
+                wrong.push(format!("{table}: {}", created.unwrap_err()));
+                continue;
+            }
+            let _ = run(&*conn, &format!("INSERT INTO {table} VALUES (42)")).await;
+            let select = d.select(&platypus_sql::ObjectName::new(None, &name), &["x"], None);
+            match conn.execute(&select, &ExecOptions::default()).await {
+                Ok(ExecResult::Rows(stream)) => {
+                    let batches: Vec<RecordBatch> = stream.try_collect().await.unwrap_or_default();
+                    if batches.first().and_then(|b| cell(b, 0, 0)).as_deref() != Some("42") {
+                        wrong.push(format!("{select}: other rows"));
+                    }
+                }
+                other => wrong.push(format!("{select}: {other:?}")),
+            }
+            let _ = run(&*conn, &format!("DROP TABLE {table}")).await;
+        }
+        assert!(wrong.is_empty(), "{}: {wrong:#?}", b.name);
+    }
+}
+
+/// PostgreSQL lists routines with their named arguments (`f(a integer)`); their details and
+/// DDL are read by that name. A table dropped since it was listed has no details.
+#[tokio::test]
+async fn qa_fixnav_pg_routines_by_their_listed_name() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        if b.name != "postgres" {
+            continue;
+        }
+        let conn = b.connect().await;
+        let s = "qa_fixnav_routines";
+        run(&*conn, &format!("DROP SCHEMA IF EXISTS {s} CASCADE"))
+            .await
+            .unwrap();
+        run(&*conn, &format!("CREATE SCHEMA {s}")).await.unwrap();
+        run(
+            &*conn,
+            &format!(
+                "CREATE FUNCTION {s}.add(a integer, b integer) RETURNS integer \
+                 LANGUAGE sql AS 'SELECT a + b'"
+            ),
+        )
+        .await
+        .unwrap();
+        run(
+            &*conn,
+            &format!("CREATE PROCEDURE {s}.log(msg text) LANGUAGE sql AS 'SELECT 1'"),
+        )
+        .await
+        .unwrap();
+        run(&*conn, &format!("CREATE TABLE {s}.\"t(1)\" (id int)"))
+            .await
+            .unwrap();
+        let objects = conn.objects(s).await.unwrap();
+        for o in objects.iter().filter(|o| o.kind != ObjectKind::Table) {
+            let object = ObjectRef {
+                schema: s,
+                name: &o.name,
+                kind: o.kind,
+                parent: None,
+            };
+            let ddl = conn
+                .object_ddl(&object)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", o.name));
+            assert!(ddl.starts_with("CREATE OR REPLACE"), "{}: {ddl}", o.name);
+            let props = conn.object_properties(&object).await.unwrap();
+            assert!(!props.is_empty(), "{}", o.name);
+        }
+        let names: Vec<&str> = objects.iter().map(|o| o.name.as_str()).collect();
+        assert!(names.contains(&"add(a integer, b integer)"), "{names:?}");
+
+        // Drop and select a table whose name has a parenthesis.
+        let d = platypus_sql::Dialect::Postgres;
+        let t = platypus_sql::ObjectName::new(Some(s), "t(1)");
+        run(&*conn, &d.select(&t, &[], None)).await.unwrap();
+        run(&*conn, &d.drop(ObjectKind::Table, &t, false).unwrap())
+            .await
+            .unwrap();
+        let missing = conn.table_details(s, "t(1)").await;
+        assert!(
+            matches!(&missing, Err(e) if e.to_string().contains("qa_fixnav_routines.\"t(1)\" not found")),
+            "{missing:?}"
+        );
+        run(&*conn, &format!("DROP SCHEMA {s} CASCADE"))
+            .await
+            .unwrap();
+    }
+}
+
+/// A SQLite or DuckDB table created again by the table editor keeps its generated columns,
+/// collations, table options, partial indexes and triggers.
+#[tokio::test]
+async fn qa_fixnav_rebuild_keeps_what_the_design_does_not_show() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let sqlite = b.config.driver == DriverKind::Sqlite;
+        if !sqlite && b.config.driver != DriverKind::DuckDb {
+            continue;
+        }
+        let conn = b.connect().await;
+        let d = platypus_sql::Dialect::from(b.config.driver);
+        let _ = run(&*conn, "DROP TABLE qa_fixnav_g").await;
+        let options = if sqlite { " WITHOUT ROWID" } else { "" };
+        run(
+            &*conn,
+            &format!(
+                "CREATE TABLE qa_fixnav_g (id INTEGER PRIMARY KEY, a INTEGER, \
+                 b INTEGER GENERATED ALWAYS AS (a * 2) VIRTUAL, c VARCHAR COLLATE NOCASE){options}"
+            ),
+        )
+        .await
+        .unwrap();
+        run(
+            &*conn,
+            "INSERT INTO qa_fixnav_g (id, a, c) VALUES (1, 5, 'x')",
+        )
+        .await
+        .unwrap();
+        if sqlite {
+            run(
+                &*conn,
+                "CREATE INDEX qa_fixnav_gi ON qa_fixnav_g (a) WHERE a > 0",
+            )
+            .await
+            .unwrap();
+            run(
+                &*conn,
+                "CREATE TRIGGER qa_fixnav_gt AFTER UPDATE ON qa_fixnav_g \
+                 BEGIN UPDATE qa_fixnav_g SET c = 'y' WHERE id = new.id AND c = 'x'; END",
+            )
+            .await
+            .unwrap();
+        }
+        let old = platypus_schema::load(&*conn, d, &b.schema, "qa_fixnav_g")
+            .await
+            .unwrap();
+        assert!(old.columns[2].generated.is_some(), "{}: {old:?}", b.name);
+        assert_eq!(old.columns[2].default, None, "{}", b.name);
+        let mut new = old.clone();
+        new.columns[1].data_type = "BIGINT".to_owned();
+        let read = redesign(&b, &*conn, Some(&old), &new).await;
+        assert!(read.columns[2].generated.is_some(), "{}: {read:?}", b.name);
+        assert_eq!(
+            read.columns[3].collation.as_deref(),
+            Some("NOCASE"),
+            "{}",
+            b.name
+        );
+        run(&*conn, "UPDATE qa_fixnav_g SET a = 7 WHERE id = 1")
+            .await
+            .unwrap();
+        let batches = collect(&b, &*conn, "SELECT b, c FROM qa_fixnav_g").await;
+        assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("14"), "{}", b.name);
+        if sqlite {
+            assert_eq!(read.options.as_deref(), Some("WITHOUT ROWID"));
+            assert_eq!(read.triggers.len(), 1, "{read:?}");
+            assert!(
+                read.indexes[0]
+                    .sql
+                    .as_deref()
+                    .is_some_and(|s| s.contains("WHERE a > 0"))
+            );
+            // The trigger ran again after the rebuild.
+            assert_eq!(cell(&batches[0], 1, 0).as_deref(), Some("y"));
+        }
+        run(&*conn, "DROP TABLE qa_fixnav_g").await.unwrap();
+    }
+}
+
+/// MySQL redefines a generated column with its clause, not with `EXTRA`'s words.
+#[tokio::test]
+async fn qa_fixnav_mysql_generated_column_is_kept() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        if b.config.driver != DriverKind::MySql {
+            continue;
+        }
+        let conn = b.connect().await;
+        let d = platypus_sql::Dialect::MySql;
+        let _ = run(&*conn, "DROP TABLE qa_fixnav_mg").await;
+        run(
+            &*conn,
+            "CREATE TABLE qa_fixnav_mg (id int PRIMARY KEY, qty int, \
+             dbl int GENERATED ALWAYS AS (qty * 2) VIRTUAL, \
+             code varchar(10) COLLATE utf8mb4_bin)",
+        )
+        .await
+        .unwrap();
+        let old = platypus_schema::load(&*conn, d, &b.schema, "qa_fixnav_mg")
+            .await
+            .unwrap();
+        assert_eq!(old.columns[2].extra, None, "{}: {old:?}", b.name);
+        let mut new = old.clone();
+        new.columns[2].comment = Some("doubled".to_owned());
+        new.columns[3].comment = Some("code".to_owned());
+        let read = redesign(&b, &*conn, Some(&old), &new).await;
+        assert!(read.columns[2].generated.is_some(), "{}: {read:?}", b.name);
+        assert_eq!(
+            read.columns[3].collation.as_deref(),
+            Some("utf8mb4_bin"),
+            "{}",
+            b.name
+        );
+        run(&*conn, "INSERT INTO qa_fixnav_mg (id, qty) VALUES (1, 4)")
+            .await
+            .unwrap();
+        let batches = collect(&b, &*conn, "SELECT dbl FROM qa_fixnav_mg").await;
+        assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("8"), "{}", b.name);
+        run(&*conn, "DROP TABLE qa_fixnav_mg").await.unwrap();
+    }
+}
+
+/// ClickHouse changes a column's type with `MODIFY COLUMN`; a failed script says what
+/// stays applied.
+#[tokio::test]
+async fn qa_fixnav_clickhouse_alters_columns() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        if b.config.driver != DriverKind::ClickHouse {
+            continue;
+        }
+        let conn = b.connect().await;
+        let d = platypus_sql::Dialect::ClickHouse;
+        let _ = run(&*conn, "DROP TABLE IF EXISTS qa_fixnav_ch").await;
+        run(
+            &*conn,
+            "CREATE TABLE qa_fixnav_ch (id Int32, qty Nullable(Int32) DEFAULT 1 COMMENT 'q') \
+             ENGINE = MergeTree ORDER BY id",
+        )
+        .await
+        .unwrap();
+        let old = platypus_schema::load(&*conn, d, &b.schema, "qa_fixnav_ch")
+            .await
+            .unwrap();
+        let mut new = old.clone();
+        new.columns[1].data_type = "Nullable(Int64)".to_owned();
+        new.columns[1].name = "amount".to_owned();
+        let read = redesign(&b, &*conn, Some(&old), &new).await;
+        assert_eq!(read.columns[1].name, "amount");
+        assert_eq!(read.columns[1].data_type, "Nullable(Int64)");
+        assert_eq!(read.columns[1].default.as_deref(), Some("1"));
+        assert_eq!(read.columns[1].comment.as_deref(), Some("q"));
+
+        // A rename, then a type ClickHouse rejects: the rename stays and is reported.
+        let mut bad = read.clone();
+        bad.columns[1].name = "qty".to_owned();
+        bad.columns[1].data_type = "NoSuchType".to_owned();
+        let script = platypus_schema::script(d, &b.schema, Some(&read), &bad).unwrap();
+        assert!(
+            script
+                .warnings
+                .iter()
+                .any(|w| w.starts_with("ClickHouse applies"))
+        );
+        let err = platypus_schema::apply(&*conn, &script).await.unwrap_err();
+        assert_eq!(err.applied.len(), 1, "{err:?}");
+        assert!(err.applied[0].contains("RENAME COLUMN"), "{err:?}");
+        run(&*conn, "DROP TABLE qa_fixnav_ch").await.unwrap();
+    }
+}
+
+/// SQL Server synonyms are listed, with their DDL; DuckDB prints ENUM types.
+#[tokio::test]
+async fn qa_fixnav_synonyms_and_enum_types() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let conn = b.connect().await;
+        let (create, drop, name, kind, expected) = match b.config.driver {
+            DriverKind::SqlServer => (
+                format!(
+                    "CREATE SYNONYM {}.qa_fixnav_syn FOR {}.customers",
+                    b.schema, b.schema
+                ),
+                format!("DROP SYNONYM {}.qa_fixnav_syn", b.schema),
+                "qa_fixnav_syn",
+                ObjectKind::Synonym,
+                format!(
+                    "CREATE SYNONYM {}.qa_fixnav_syn FOR [{}].[customers];",
+                    b.schema, b.schema
+                ),
+            ),
+            DriverKind::DuckDb => (
+                "CREATE TYPE \"qa fixnav mood\" AS ENUM ('sad', 'it''s ok')".to_owned(),
+                "DROP TYPE \"qa fixnav mood\"".to_owned(),
+                "qa fixnav mood",
+                ObjectKind::Type,
+                "CREATE TYPE \"qa fixnav mood\" AS ENUM ('sad', 'it''s ok');".to_owned(),
+            ),
+            _ => continue,
+        };
+        let _ = run(&*conn, &drop).await;
+        run(&*conn, &create).await.unwrap();
+        let objects = conn.objects(&b.schema).await.unwrap();
+        assert!(
+            objects.iter().any(|o| o.name == name && o.kind == kind),
+            "{}: {objects:?}",
+            b.name
+        );
+        let object = ObjectRef {
+            schema: &b.schema,
+            name,
+            kind,
+            parent: None,
+        };
+        let ddl = conn.object_ddl(&object).await;
+        run(&*conn, &drop).await.unwrap();
+        assert_eq!(ddl.unwrap(), expected, "{}", b.name);
+    }
+}

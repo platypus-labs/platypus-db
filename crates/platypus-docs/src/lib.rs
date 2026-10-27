@@ -4,6 +4,8 @@ mod html;
 mod markdown;
 pub mod mermaid;
 
+use std::fmt::Write as _;
+
 use serde::{Deserialize, Serialize};
 
 pub use html::html;
@@ -82,14 +84,26 @@ pub struct DocIndex {
     pub unique: bool,
 }
 
-/// The anchor of `schema.name` in both formats: lower case letters and digits only.
+/// The anchor of `schema.name` in both formats, written as the heading's `id`: lower case
+/// letters, digits and `_` stay, a `.` separates schema and name, any other character is
+/// written `-<hex code>-`, so that two names never share one (`a_b`, `ab`, `AB`).
 #[must_use]
 pub fn anchor(schema: &str, name: &str) -> String {
-    format!("{schema}{name}")
-        .chars()
-        .filter(char::is_ascii_alphanumeric)
-        .collect::<String>()
-        .to_lowercase()
+    fn part(out: &mut String, text: &str) {
+        for c in text.chars() {
+            if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' {
+                out.push(c);
+            } else {
+                let _ = write!(out, "-{:x}-", u32::from(c));
+            }
+        }
+    }
+    let mut out = String::with_capacity(schema.len() + name.len() + 4);
+    part(&mut out, schema);
+    // The only `.` written as it is.
+    out.push('.');
+    part(&mut out, name);
+    out
 }
 
 /// Whether the diagram of `schema` is drawn.
@@ -165,6 +179,15 @@ mod tests {
     }
 
     #[test]
+    fn anchors_differ_for_every_name() {
+        assert_eq!(anchor("main", "order_items"), "main.order_items");
+        let names = ["a_b", "ab", "AB", "a.b", "a-b", "\u{e8}"];
+        let anchors: std::collections::HashSet<_> = names.iter().map(|n| anchor("s", n)).collect();
+        assert_eq!(anchors.len(), names.len(), "{anchors:?}");
+        assert_ne!(anchor("a", "b.c"), anchor("a.b", "c"));
+    }
+
+    #[test]
     fn markdown_lists_tables_columns_and_keys() {
         let md = markdown(&model());
         assert!(md.starts_with("# shop\n"), "{md}");
@@ -172,7 +195,11 @@ mod tests {
         assert!(md.contains(r"All \| orders"), "{md}");
         assert!(md.contains("One row<br>per order"), "{md}");
         assert!(md.contains("| customer_id | integer | yes |"), "{md}");
-        assert!(md.contains("[public.customers](#publiccustomers)"), "{md}");
+        assert!(md.contains("[public.customers](#public.customers)"), "{md}");
+        assert!(
+            md.contains("<a id=\"public.customers\"></a>\n\n## public.customers"),
+            "{md}"
+        );
         assert!(md.contains("```mermaid\nerDiagram"), "{md}");
         assert!(md.contains("\"orders\" }o--|| \"customers\""), "{md}");
     }

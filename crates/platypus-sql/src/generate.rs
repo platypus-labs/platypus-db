@@ -28,14 +28,21 @@ impl<'a> ObjectName<'a> {
 }
 
 impl Dialect {
-    /// The qualified name; a PostgreSQL routine keeps its argument list unquoted.
+    /// The qualified name of a table or another object without arguments.
     #[must_use]
     pub fn object(self, o: &ObjectName<'_>) -> String {
-        match (self, o.name.split_once('(')) {
-            (Self::Postgres, Some((base, args))) => {
+        self.qualified(o.schema, o.name)
+    }
+
+    /// The qualified name of an object of `kind`: a PostgreSQL routine keeps its argument
+    /// list unquoted, any other name is quoted whole, `(` included.
+    fn object_of(self, kind: ObjectKind, o: &ObjectName<'_>) -> String {
+        let routine = matches!(kind, ObjectKind::Function | ObjectKind::Procedure);
+        match (self, routine, o.name.split_once('(')) {
+            (Self::Postgres, true, Some((base, args))) => {
                 format!("{}({args}", self.qualified(o.schema, base))
             }
-            _ => self.qualified(o.schema, o.name),
+            _ => self.object(o),
         }
     }
 
@@ -268,6 +275,7 @@ impl Dialect {
             ) => "PROCEDURE",
             (Self::MySql, ObjectKind::Event) => "EVENT",
             (Self::ClickHouse, ObjectKind::Dictionary) => "DICTIONARY",
+            (Self::SqlServer | Self::Oracle, ObjectKind::Synonym) => "SYNONYM",
             _ => return None,
         })
     }
@@ -289,7 +297,7 @@ impl Dialect {
                 self.qualified(o.schema, o.parent?)
             ),
             (Self::Postgres, ObjectKind::Extension) => self.quote_ident(o.name).into_owned(),
-            _ => self.object(o),
+            _ => self.object_of(kind, o),
         };
         let cascade = if cascade && self.supports_cascade() {
             " CASCADE"
@@ -324,7 +332,7 @@ impl Dialect {
                 _ => Some(format!(
                     "ALTER {} {} RENAME TO {to};",
                     self.keyword(kind)?,
-                    self.object(o)
+                    self.object_of(kind, o)
                 )),
             },
             // RENAME TABLE moves views too; the new name stays in the same schema.
@@ -391,7 +399,7 @@ impl Dialect {
             .then(|| {
                 format!(
                     "EXEC sp_rename {}, {};",
-                    self.quote_literal(&self.object(o)),
+                    self.quote_literal(&self.object_of(kind, o)),
                     self.quote_literal(new_name)
                 )
             }),
@@ -502,6 +510,18 @@ mod tests {
         assert_eq!(
             pg.drop(ObjectKind::Function, &f, true).unwrap(),
             "DROP FUNCTION demo.\"Add\"(integer, integer) CASCADE;"
+        );
+        // A table's name is quoted whole, even with a `(` in it.
+        let t = ObjectName::new(Some("demo"), "t(1)");
+        assert_eq!(
+            pg.drop(ObjectKind::Table, &t, false).unwrap(),
+            "DROP TABLE demo.\"t(1)\";"
+        );
+        assert_eq!(pg.select(&t, &[], None), "SELECT *\nFROM demo.\"t(1)\";");
+        assert_eq!(pg.truncate(&t), "TRUNCATE TABLE demo.\"t(1)\";");
+        assert_eq!(
+            pg.rename(ObjectKind::Table, &t, "t2").unwrap(),
+            "ALTER TABLE demo.\"t(1)\" RENAME TO t2;"
         );
         let trg = ObjectName {
             parent: Some("orders"),

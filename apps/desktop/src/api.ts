@@ -412,7 +412,8 @@ export type ObjectKind =
   | "domain"
   | "extension"
   | "event"
-  | "dictionary";
+  | "dictionary"
+  | "synonym";
 
 export interface ObjectMeta {
   name: string;
@@ -543,6 +544,10 @@ export interface TableDesign {
   foreign_keys: ForeignKeyDesign[];
   /** UNIQUE and CHECK constraints. */
   constraints: ConstraintDesign[];
+  /** SQLite's `WITHOUT ROWID`, `STRICT`, kept from the database. */
+  options?: string | null;
+  /** The table's `CREATE TRIGGER` statements (SQLite), run again when it is rebuilt. */
+  triggers?: string[];
 }
 
 export interface ColumnDesign {
@@ -556,6 +561,10 @@ export interface ColumnDesign {
   comment: string | null;
   /** Kept from the database, e.g. MySQL's `auto_increment`. */
   extra?: string | null;
+  /** `GENERATED ALWAYS AS (…) VIRTUAL` of a generated column, kept from the database. */
+  generated?: string | null;
+  /** A collation other than the default one, kept from the database. */
+  collation?: string | null;
 }
 
 export interface IndexDesign {
@@ -563,6 +572,8 @@ export interface IndexDesign {
   name: string;
   columns: string[];
   unique: boolean;
+  /** Its own `CREATE INDEX` (SQLite), run again while the index is unchanged. */
+  sql?: string | null;
 }
 
 export interface ForeignKeyDesign {
