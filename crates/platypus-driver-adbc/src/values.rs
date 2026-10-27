@@ -3,6 +3,7 @@
 //! `{[a b] [1 x] true}`), shown as the app shows other maps and structs (`{k: 1}`,
 //! `{a: 1, b: x}`).
 
+use std::fmt::Write as _;
 use std::sync::Arc;
 
 use arrow_array::cast::AsArray as _;
@@ -99,7 +100,10 @@ pub fn batch(batch: RecordBatch, target: &SchemaRef) -> Result<RecordBatch> {
 
 /// 16 bytes as `8-4-4-4-12` hex digits.
 fn uuid_text(bytes: &[u8]) -> String {
-    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    let hex = bytes.iter().fold(String::new(), |mut hex, b| {
+        let _ = write!(hex, "{b:02x}");
+        hex
+    });
     if hex.len() != 32 {
         return hex;
     }

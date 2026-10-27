@@ -4582,18 +4582,20 @@ async fn qa_fixdbs_pg(url: &str) -> Option<Box<dyn Connection>> {
     }
 }
 
-/// CockroachDB's STRING(n), its arrays copied to PostgreSQL, TimescaleDB's schemas and
-/// hypertables, YugabyteDB's sharding.
-#[tokio::test]
-async fn qa_fixdbs_pg_wire_flavours() {
-    use platypus_core::ObjectRef;
-    let _serial = SERIAL.lock().await;
-    let table = |schema, name| ObjectRef {
+/// A table of `schema`, for the DDL and properties calls.
+fn qa_fixdbs_table<'a>(schema: &'a str, name: &'a str) -> platypus_core::ObjectRef<'a> {
+    platypus_core::ObjectRef {
         schema,
         name,
         kind: ObjectKind::Table,
         parent: None,
-    };
+    }
+}
+
+/// CockroachDB's STRING(n), and its arrays copied to PostgreSQL.
+#[tokio::test]
+async fn qa_fixdbs_cockroach_strings_and_arrays() {
+    let _serial = SERIAL.lock().await;
     if let Some(crdb) =
         qa_fixdbs_pg("postgres://root@localhost:56257/platypus?sslmode=disable").await
     {
@@ -4609,7 +4611,10 @@ async fn qa_fixdbs_pg_wire_flavours() {
         }
         let details = crdb.table_details("qa_fixdbs", "s").await.unwrap();
         assert_eq!(details.columns[1].data_type, "character varying(40)");
-        let ddl = crdb.object_ddl(&table("qa_fixdbs", "s")).await.unwrap();
+        let ddl = crdb
+            .object_ddl(&qa_fixdbs_table("qa_fixdbs", "s"))
+            .await
+            .unwrap();
         assert!(ddl.contains("character varying(40)"), "{ddl}");
         run(&*crdb, "DROP TABLE qa_fixdbs.s").await.unwrap();
         for statement in platypus_sql::split(&ddl, platypus_sql::Dialect::Postgres) {
@@ -4638,6 +4643,12 @@ async fn qa_fixdbs_pg_wire_flavours() {
         drop(stream);
         run(&*crdb, "DROP SCHEMA qa_fixdbs CASCADE").await.unwrap();
     }
+}
+
+/// TimescaleDB's schemas, routines and hypertables.
+#[tokio::test]
+async fn qa_fixdbs_timescale_catalogs() {
+    let _serial = SERIAL.lock().await;
     let admin = "postgres://platypus:platypus@localhost:55433/platypus?sslmode=disable";
     if let Some(admin) = qa_fixdbs_pg(admin).await {
         for sql in [
@@ -4679,7 +4690,7 @@ async fn qa_fixdbs_pg_wire_flavours() {
             "the extension's functions are its own"
         );
         let properties = ts
-            .object_properties(&table("public", "metrics"))
+            .object_properties(&qa_fixdbs_table("public", "metrics"))
             .await
             .unwrap();
         let size = properties
@@ -4687,7 +4698,10 @@ async fn qa_fixdbs_pg_wire_flavours() {
             .find(|p| p.name == "Table size")
             .map(|p| p.value.clone());
         assert!(size.is_some_and(|s| s != "0 bytes"), "{properties:?}");
-        let ddl = ts.object_ddl(&table("public", "metrics")).await.unwrap();
+        let ddl = ts
+            .object_ddl(&qa_fixdbs_table("public", "metrics"))
+            .await
+            .unwrap();
         assert!(ddl.contains("SELECT create_hypertable("), "{ddl}");
         assert!(
             ddl.contains("timescaledb.compress_segmentby = 'device'"),
@@ -4698,6 +4712,12 @@ async fn qa_fixdbs_pg_wire_flavours() {
             .await
             .unwrap();
     }
+}
+
+/// YugabyteDB's sharding in the DDL.
+#[tokio::test]
+async fn qa_fixdbs_yugabyte_sharding() {
+    let _serial = SERIAL.lock().await;
     if let Some(yb) =
         qa_fixdbs_pg("postgres://yugabyte:yugabyte@localhost:55434/yugabyte?sslmode=disable").await
     {
@@ -4712,13 +4732,13 @@ async fn qa_fixdbs_pg_wire_flavours() {
                 .unwrap_or_else(|e| panic!("{sql}: {e}"));
         }
         let ddl = yb
-            .object_ddl(&table("public", "qa_fixdbs_r"))
+            .object_ddl(&qa_fixdbs_table("public", "qa_fixdbs_r"))
             .await
             .unwrap();
         assert!(ddl.contains("PRIMARY KEY (id ASC)"), "{ddl}");
         assert!(ddl.contains("SPLIT AT VALUES ((100))"), "{ddl}");
         let ddl = yb
-            .object_ddl(&table("public", "qa_fixdbs_h"))
+            .object_ddl(&qa_fixdbs_table("public", "qa_fixdbs_h"))
             .await
             .unwrap();
         assert!(ddl.contains("PRIMARY KEY (id HASH)"), "{ddl}");

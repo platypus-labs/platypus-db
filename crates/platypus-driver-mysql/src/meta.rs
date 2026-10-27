@@ -188,6 +188,21 @@ pub async fn search_metadata(conn: &MySqlConnection, needle: &str) -> Result<Vec
         .collect())
 }
 
+/// The type of column `c` (of `information_schema.COLUMNS`). MariaDB's JSON is a LONGTEXT
+/// with a `CHECK (json_valid(column))` named like the column: it is `json` here.
+fn column_type(conn: &MySqlConnection) -> &'static str {
+    if platypus_core::Connection::server_info(conn).product == "MariaDB" {
+        "CASE WHEN c.DATA_TYPE = 'longtext' AND EXISTS (
+             SELECT 1 FROM information_schema.CHECK_CONSTRAINTS k
+             WHERE k.CONSTRAINT_SCHEMA = c.TABLE_SCHEMA AND k.TABLE_NAME = c.TABLE_NAME
+               AND k.CONSTRAINT_NAME = c.COLUMN_NAME
+               AND k.CHECK_CLAUSE = CONCAT('json_valid(`', c.COLUMN_NAME, '`)'))
+         THEN 'json' ELSE c.COLUMN_TYPE END"
+    } else {
+        "c.COLUMN_TYPE"
+    }
+}
+
 pub async fn table_details(
     conn: &MySqlConnection,
     schema: &str,
@@ -199,17 +214,7 @@ pub async fn table_details(
         conn.literal(table)
     );
 
-    // MariaDB's JSON is a LONGTEXT with a CHECK (json_valid(column)) of the column's name.
-    let column_type = if platypus_core::Connection::server_info(conn).product == "MariaDB" {
-        "CASE WHEN c.DATA_TYPE = 'longtext' AND EXISTS (
-             SELECT 1 FROM information_schema.CHECK_CONSTRAINTS k
-             WHERE k.CONSTRAINT_SCHEMA = c.TABLE_SCHEMA AND k.TABLE_NAME = c.TABLE_NAME
-               AND k.CONSTRAINT_NAME = c.COLUMN_NAME
-               AND k.CHECK_CLAUSE = CONCAT('json_valid(`', c.COLUMN_NAME, '`)'))
-         THEN 'json' ELSE c.COLUMN_TYPE END"
-    } else {
-        "c.COLUMN_TYPE"
-    };
+    let column_type = column_type(conn);
     let columns = query_text(
         conn,
         &format!(

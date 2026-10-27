@@ -359,9 +359,6 @@ async fn qa_fixdbs_odbc_sql_server_takes_its_own_literals_and_types() {
     use platypus_sql::Dialect;
     use platypus_sql::dml::{Column, Value, ValueKind, update};
     use platypus_transfer::fake::{FakeColumn, Generator, fill};
-    use platypus_transfer::import::{
-        ImportColumn, ImportMode, ImportPlan, import_rows, target_type,
-    };
 
     let Some(t) = sql_server().await else { return };
     let conn = t.connect().await;
@@ -437,9 +434,19 @@ async fn qa_fixdbs_odbc_sql_server_takes_its_own_literals_and_types() {
         types[3..],
         ["datetime2(7)", "datetimeoffset(7)", "time(7)", "money"]
     );
+    qa_fixdbs_odbc_import(&*conn, d).await;
+    run(&*conn, "DROP TABLE dbo.qa_fixdbs_u").await;
+}
+
+/// Imports a row into a new SQL Server table, with the types the import dialog suggests.
+async fn qa_fixdbs_odbc_import(conn: &dyn Connection, d: platypus_sql::Dialect) {
+    use platypus_transfer::import::{
+        ImportColumn, ImportMode, ImportPlan, import_rows, target_type,
+    };
+
     // Import into a new table, with the types the dialog suggests.
     let batch = rows(
-        &*conn,
+        conn,
         "SELECT CAST(1 AS bigint) AS id, N'h\u{e9}llo' AS name, CAST(1.25 AS float) AS amount, \
          CAST('2025-01-02' AS date) AS day, CAST('2025-01-02 10:00:00' AS datetime2) AS ts",
     )
@@ -471,11 +478,10 @@ async fn qa_fixdbs_odbc_sql_server_takes_its_own_literals_and_types() {
     };
     let stream =
         platypus_core::RecordBatchStream::new(schema, futures::stream::iter([Ok(batch)]).boxed());
-    let imported = import_rows(stream, (&*conn, d), &plan, |_| true)
+    let imported = import_rows(stream, (conn, d), &plan, |_| true)
         .await
         .unwrap();
     assert_eq!(imported, 1);
-    assert_eq!(count(&*conn, "dbo.qa_fixdbs_imp").await, "1");
-    run(&*conn, "DROP TABLE dbo.qa_fixdbs_imp").await;
-    run(&*conn, "DROP TABLE dbo.qa_fixdbs_u").await;
+    assert_eq!(count(conn, "dbo.qa_fixdbs_imp").await, "1");
+    run(conn, "DROP TABLE dbo.qa_fixdbs_imp").await;
 }

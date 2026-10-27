@@ -603,7 +603,10 @@ mod tests {
             changes_in("DELETE HISTORY FROM qa_dbs_sv", my),
             ["DELETE HISTORY qa_dbs_sv"]
         );
-        assert!(changes_in("DELETE HISTORY FROM t BEFORE SYSTEM_TIME '2020-01-01'", my).is_empty());
+        assert_eq!(
+            changes_in("DELETE HISTORY FROM t BEFORE SYSTEM_TIME '2020-01-01'", my),
+            Vec::<String>::new()
+        );
         assert_eq!(
             changes_in("DELETE g FROM qa_safe_g g JOIN qa_safe_h h", my),
             ["DELETE qa_safe_g"]
