@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { registerAction } from "../actions";
 import { api, isMongo, opensDataFile, type SavedConnection, type SchemaMeta, toCommandError } from "../api";
 import { isRelation } from "../components/Navigator";
+import { omitsSchema, schemaRef } from "../sqlNames";
 import { answerFor } from "../testAnswers";
 import { workbench } from "../workbench";
 import { t } from "../i18n";
@@ -16,7 +17,7 @@ const at = (connection: SavedConnection, database: string | null, schema: Schema
   connection,
   database,
   schema: schema.name,
-  currentSchema: schema.current,
+  currentSchema: omitsSchema(connection.driver, schema.current),
   table,
 });
 
@@ -86,7 +87,7 @@ function openExport(
       connection,
       database,
       schema: schema.name,
-      currentSchema: schema.current,
+      currentSchema: omitsSchema(connection.driver, schema.current),
       tables,
       onClose: close,
     }),
@@ -102,7 +103,7 @@ registerAction({
   multiple: true,
   when: ({ object, selection }) => (selection ?? [{ object }]).every((s) => s.object.kind === "table"),
   run: ({ connection, database, schema, object, selection }) =>
-    openExport(connection, database, schema, (selection ?? [{ schema, object }]).map((s) => ({ schema: s.schema.current ? null : s.schema.name, name: s.object.name }))),
+    openExport(connection, database, schema, (selection ?? [{ schema, object }]).map((s) => ({ schema: schemaRef(connection.driver, s.schema), name: s.object.name }))),
 });
 
 registerAction({
@@ -185,7 +186,7 @@ registerAction({
         connection,
         database,
         schema: schema.name,
-        currentSchema: schema.current,
+        currentSchema: omitsSchema(connection.driver, schema.current),
         table: object.name,
         onClose: close,
       }),

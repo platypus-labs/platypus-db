@@ -16,7 +16,7 @@ import { isRelation } from "../components/Navigator";
 import { renameBookmarks } from "../navigator/prefs";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { getSetting } from "../settings";
-import { quoteIdent, selectLimit } from "../sqlNames";
+import { quoteIdent, schemaRef, selectLimit } from "../sqlNames";
 import { workbench } from "../workbench";
 import { type SqlActionChoices, SqlActionDialog, type SqlActionOptions } from "./SqlActionDialog";
 import { t, msg } from "../i18n";
@@ -33,9 +33,9 @@ const can = (driver: DriverKind, list: "droppable" | "renamable", kind: ObjectKi
 
 const isTable = (kind: ObjectKind) => kind === "table" || kind === "foreign_table";
 
-function target({ schema, object }: ObjectArg): GenerateTarget {
+function target({ connection, schema, object }: ObjectArg): GenerateTarget {
   return {
-    schema: schema.current ? null : schema.name,
+    schema: schemaRef(connection.driver, schema),
     name: object.name,
     kind: object.kind,
     parent: object.parent,
