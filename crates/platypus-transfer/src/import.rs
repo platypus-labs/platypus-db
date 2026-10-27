@@ -498,6 +498,13 @@ fn is_array_type(name: &str) -> bool {
 
 /// The length of a declared `varchar(n)` or `char(n)`.
 pub(crate) fn text_length(name: &str) -> Option<u32> {
+    // ClickHouse's `Nullable(FixedString(4))`, `LowCardinality(…)`.
+    let mut name = name.trim();
+    for wrapper in ["Nullable(", "LowCardinality("] {
+        if let Some(inner) = name.strip_prefix(wrapper) {
+            name = inner.strip_suffix(')').unwrap_or(inner).trim();
+        }
+    }
     let (base, args) = name.split_once('(')?;
     let base = base.trim().to_ascii_lowercase();
     let text = [
@@ -507,9 +514,14 @@ pub(crate) fn text_length(name: &str) -> Option<u32> {
         "char",
         "character",
         "nchar",
+        // Oracle's, as `VARCHAR2(50 BYTE)` too, and ClickHouse's.
+        "varchar2",
+        "nvarchar2",
+        "fixedstring",
     ];
+    let length = args.trim_end_matches(')').split_whitespace().next()?;
     text.contains(&base.as_str())
-        .then(|| args.trim_end_matches(')').trim().parse().ok())
+        .then(|| length.parse().ok())
         .flatten()
 }
 

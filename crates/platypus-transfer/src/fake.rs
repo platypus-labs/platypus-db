@@ -1099,6 +1099,8 @@ mod tests {
             ),
             typed("at", Generator::Time, "time"),
             typed("ip", Generator::Ip, "inet"),
+            typed("fx", Generator::Text, "Nullable(FixedString(4))"),
+            typed("o", Generator::City, "VARCHAR2(3 BYTE)"),
         ];
         let mut rng = Rng::new(7);
         let batch = batch(&mut rng, &columns, 0, 50).unwrap();
@@ -1114,6 +1116,8 @@ mod tests {
             );
             assert_eq!(text(3, r).len(), 8);
             assert!(text(4, r).starts_with("10."), "{}", text(4, r));
+            assert!(text(5, r).len() <= 4, "{}", text(5, r));
+            assert!(text(6, r).chars().count() <= 3, "{}", text(6, r));
         }
         assert_eq!(cut("lorem ipsum".to_owned(), 6, false), "lorem");
     }
