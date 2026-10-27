@@ -1,6 +1,8 @@
 //! The schema linter: what in the tables of a schema is likely a mistake, each finding with
 //! the statement that fixes it where there is one.
 
+use std::collections::BTreeMap;
+
 use platypus_core::{ConstraintKind, IndexMeta, TableDetails};
 use platypus_sql::Dialect;
 use serde::Serialize;
@@ -32,10 +34,42 @@ pub struct Finding {
     pub table: String,
     /// The index or foreign key concerned; `None` for the table itself.
     pub object: Option<String>,
+    /// What is wrong, in English.
     pub message: String,
+    /// The message with `{name}` in place of each of `values`, for the UI to translate.
+    pub template: &'static str,
+    pub values: BTreeMap<&'static str, String>,
     /// The statement that fixes it, to review before running.
     pub fix: Option<String>,
 }
+
+/// A finding's text: `template` with `{name}` replaced by each of `values`.
+struct Text {
+    template: &'static str,
+    values: BTreeMap<&'static str, String>,
+}
+
+impl Text {
+    fn new(template: &'static str, values: &[(&'static str, String)]) -> Self {
+        Self {
+            template,
+            values: values.iter().cloned().collect(),
+        }
+    }
+
+    fn render(&self) -> String {
+        self.values
+            .iter()
+            .fold(self.template.to_owned(), |text, (name, value)| {
+                text.replace(&format!("{{{name}}}"), value)
+            })
+    }
+}
+
+// The catalog gives no WHERE of a partial index nor INCLUDE columns.
+const DUPLICATE: &str =
+    "Same columns as index {index}. Check first that neither is partial or has included columns.";
+const REDUNDANT: &str = "Index {index} starts with the same columns. Check first that neither is partial or has included columns.";
 
 /// Every finding in the tables of `schema`, table by table.
 #[must_use]
@@ -43,24 +77,23 @@ pub fn lint(dialect: Dialect, schema: &str, tables: &[SchemaTable]) -> Vec<Findi
     let mut findings = Vec::new();
     for table in tables {
         let d = &table.details;
-        let finding = |kind, object: Option<&str>, message: String, fix: Option<String>| Finding {
+        let finding = |kind, object: Option<&str>, text: Text, fix: Option<String>| Finding {
             kind,
             table: table.name.clone(),
             object: object.map(str::to_owned),
-            message,
+            message: text.render(),
+            template: text.template,
+            values: text.values,
             fix,
         };
         if let Some(error) = &table.error {
-            findings.push(finding(LintKind::Unreadable, None, error.clone(), None));
+            let text = Text::new("{error}", &[("error", error.clone())]);
+            findings.push(finding(LintKind::Unreadable, None, text, None));
             continue;
         }
         if !d.columns.iter().any(|c| c.primary_key) {
-            findings.push(finding(
-                LintKind::NoPrimaryKey,
-                None,
-                "The table has no primary key.".to_owned(),
-                None,
-            ));
+            let text = Text::new("The table has no primary key.", &[]);
+            findings.push(finding(LintKind::NoPrimaryKey, None, text, None));
         }
         for fk in &d.foreign_keys {
             if !d
@@ -75,13 +108,14 @@ pub fn lint(dialect: Dialect, schema: &str, tables: &[SchemaTable]) -> Vec<Findi
                     unique: false,
                     sql: None,
                 };
+                let text = Text::new(
+                    "No index on the foreign key columns ({columns}).",
+                    &[("columns", fk.columns.join(", "))],
+                );
                 findings.push(finding(
                     LintKind::UnindexedForeignKey,
                     Some(&fk.name),
-                    format!(
-                        "No index on the foreign key columns ({}).",
-                        fk.columns.join(", ")
-                    ),
+                    text,
                     Some(create_index(dialect, schema, &table.name, &index)),
                 ));
             }
@@ -96,29 +130,34 @@ pub fn lint(dialect: Dialect, schema: &str, tables: &[SchemaTable]) -> Vec<Findi
                     continue;
                 };
                 if !same_type(from, to) {
+                    let text = Text::new(
+                        "{column} is {type} but {referenced} is {referenced_type}.",
+                        &[
+                            ("column", column.clone()),
+                            ("type", from.to_owned()),
+                            ("referenced", format!("{}.{referenced}", fk.ref_table)),
+                            ("referenced_type", to.to_owned()),
+                        ],
+                    );
                     findings.push(finding(
                         LintKind::ForeignKeyTypeMismatch,
                         Some(&fk.name),
-                        format!(
-                            "{column} is {from} but {}.{referenced} is {to}.",
-                            fk.ref_table
-                        ),
+                        text,
                         None,
                     ));
                 }
             }
         }
         for (kind, index, other) in overlapping_indexes(&d.indexes) {
-            let message = match kind {
-                LintKind::DuplicateIndex => format!("Same columns as index {}.", other.name),
-                _ => format!("Index {} starts with the same columns.", other.name),
+            let template = if kind == LintKind::DuplicateIndex {
+                DUPLICATE
+            } else {
+                REDUNDANT
             };
-            // The catalog gives no WHERE of a partial index nor INCLUDE columns.
-            let message =
-                format!("{message} Check first that neither is partial or has included columns.");
+            let text = Text::new(template, &[("index", other.name.clone())]);
             let fix =
                 droppable(d, index).then(|| drop_index(dialect, schema, &table.name, &index.name));
-            findings.push(finding(kind, Some(&index.name), message, fix));
+            findings.push(finding(kind, Some(&index.name), text, fix));
         }
     }
     findings

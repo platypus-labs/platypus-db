@@ -19,6 +19,13 @@ const KIND_LABELS: Record<LintKind, string> = {
   unreadable: msg("Could not be read"),
 };
 
+// The linter's texts (`template` of a finding), translated where they are shown.
+msg("The table has no primary key.");
+msg("No index on the foreign key columns ({columns}).");
+msg("{column} is {type} but {referenced} is {referenced_type}.");
+msg("Same columns as index {index}. Check first that neither is partial or has included columns.");
+msg("Index {index} starts with the same columns. Check first that neither is partial or has included columns.");
+
 /** The schema linter's findings: tables without a primary key, foreign keys without an index,
  *  duplicate or redundant indexes, foreign keys whose type differs from the referenced column.
  *  The fixes open in an SQL editor, to review and run there. */
@@ -69,7 +76,7 @@ export function LintDialog({ connection, database, schema, onClose }: Props) {
                       {f.object ? `${f.table} · ${f.object}` : f.table}
                     </button>
                   </div>
-                  <div className="small">{f.message}</div>
+                  <div className="small">{t(f.template, f.values)}</div>
                   {f.fix && (
                     <div className="lint-fix">
                       <code>{f.fix}</code>

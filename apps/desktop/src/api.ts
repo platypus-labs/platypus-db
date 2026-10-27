@@ -637,7 +637,10 @@ export interface LintFinding {
   table: string;
   /** The index or foreign key concerned; `null` for the table itself. */
   object: string | null;
+  /** In English; `template` with `values` is the same text, to translate. */
   message: string;
+  template: string;
+  values: Record<string, string>;
   fix: string | null;
 }
 
