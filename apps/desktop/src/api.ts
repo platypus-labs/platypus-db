@@ -305,9 +305,14 @@ export interface ColumnInfo {
 export type QueryEvent =
   | { type: "started"; columns: ColumnInfo[]; elapsed_ms: number }
   | { type: "progress"; rows: number; fetching: boolean }
-  | { type: "finished"; rows: number; elapsed_ms: number; complete: boolean; stopped: boolean }
+  | { type: "finished"; rows: number; elapsed_ms: number; complete: boolean; stopped: boolean; more: boolean }
   | { type: "affected"; rows: number; elapsed_ms: number }
-  | { type: "failed"; error: CommandError };
+  | { type: "failed"; error: CommandError }
+  /** The statement's next result (a T-SQL batch, a MySQL CALL): the events after this one are
+   *  about job `job_id`. */
+  | { type: "next"; job_id: number }
+  /** What the server said meanwhile: notices, PRINT, warnings. */
+  | { type: "messages"; lines: string[] };
 
 export interface UnfilteredTable {
   schema: string | null;
@@ -374,6 +379,9 @@ export interface CliOutput {
 export interface SqlAnalysis {
   statements: StatementSpan[];
   at_cursor: number | null;
+  /** Statements a script sends together (T-SQL batches up to GO), as `first..end` indices
+   *  into `statements`, run `repeat` times (`GO 3`); empty when each runs alone. */
+  batches: { first: number; end: number; repeat: number }[];
 }
 
 export interface HistoryEntry {

@@ -10,6 +10,7 @@
 mod csvfile;
 mod database;
 mod error;
+mod explain;
 pub mod files;
 mod meta;
 mod types;
@@ -260,6 +261,10 @@ impl Connection for DuckDbConnection {
         meta::object_ddl(self, object).await
     }
 
+    async fn explain(&self, sql: &str, analyze: bool) -> Result<platypus_core::Explain> {
+        explain::explain(self, sql, analyze).await
+    }
+
     async fn object_properties(&self, object: &ObjectRef<'_>) -> Result<Vec<Property>> {
         meta::object_properties(self, object).await
     }
@@ -290,6 +295,7 @@ impl Connection for DuckDbConnection {
         platypus_core::Capabilities {
             transactions: true,
             cancel: true,
+            explain: true,
             object_ddl: true,
             metadata_search: true,
             ..Default::default()

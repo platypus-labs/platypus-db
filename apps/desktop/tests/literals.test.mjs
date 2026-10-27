@@ -1,7 +1,7 @@
 // Unit tests of parameter values written as SQL literals (src/editor/literals.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { literal, substitute } from "../src/editor/literals.ts";
+import { literal, originalOffset, substitute, utf16Offset } from "../src/editor/literals.ts";
 
 const path = "C:\\temp\\new";
 
@@ -51,4 +51,24 @@ test("substitute fills placeholders by name and position", () => {
     substitute(sql, spans, { a: path, "?1": "7", col: "x" }, "clickhouse"),
     "SELECT * FROM t WHERE a = 'C:\\\\temp\\\\new' AND b = 7 AND c = x",
   );
+});
+
+test("a position in the filled-in SQL maps back to the editor's text", () => {
+  const sql = "SELECT :p AS a, nosuch FROM t";
+  const spans = [{ kind: "named", name: "p", start: 7, end: 9 }];
+  const values = { p: "a much longer value" };
+  const sent = substitute(sql, spans, values, "sqlite");
+  const at = sent.indexOf("nosuch");
+  assert.equal(originalOffset(sql, spans, values, "sqlite", at), sql.indexOf("nosuch"));
+  assert.equal(originalOffset(sql, spans, values, "sqlite", 3), 3, "before the value");
+  assert.equal(originalOffset(sql, spans, values, "sqlite", 10), 7, "inside the value");
+  assert.equal(originalOffset(sql, [], {}, "sqlite", 5), 5);
+});
+
+test("server positions count characters, JavaScript counts UTF-16 units", () => {
+  const sql = "SELECT '\u{1F600}\u{1F600}', nosuch FROM t";
+  const chars = [...sql].indexOf("n");
+  assert.equal(utf16Offset(sql, chars), sql.indexOf("nosuch"));
+  assert.equal(utf16Offset("abc", 2), 2);
+  assert.equal(utf16Offset("ab", 5), 5, "past the end");
 });

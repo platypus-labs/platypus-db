@@ -208,8 +208,8 @@ impl Current {
 }
 
 /// If a Transact-SQL batch separator (`GO`, optionally with a count, alone on its line)
-/// is `word`, the end of its line.
-fn batch_separator(src: &str, word: &Token) -> Option<usize> {
+/// is `word`, the end of its line and how many times the batch before it runs (`GO 3`).
+fn batch_separator(src: &str, word: &Token) -> Option<(usize, u32)> {
     if !word.text(src).eq_ignore_ascii_case("go") {
         return None;
     }
@@ -222,7 +222,26 @@ fn batch_separator(src: &str, word: &Token) -> Option<usize> {
         .map_or(src.len(), |i| word.end + i);
     let rest = src[word.end..line_end].trim();
     let rest = rest.split("--").next().unwrap_or_default().trim();
-    rest.bytes().all(|b| b.is_ascii_digit()).then_some(line_end)
+    if !rest.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    // `GO` alone runs the batch once, and so does a count too large to be meant.
+    let count = rest.parse::<u32>().map_or(1, |n| n.max(1));
+    Some((line_end, count))
+}
+
+/// If the custom delimiter `delimiter` (MySQL `DELIMITER $$`) ends within the word
+/// `token`, where it is glued to the last word of a statement (`END$$`: `$` belongs to MySQL
+/// names), the offset where it starts. The `mysql` client finds it anywhere outside quotes.
+fn delimiter_in_word(src: &str, token: &Token, delimiter: &str) -> Option<usize> {
+    if delimiter == ";" || token.kind != TokenKind::Word {
+        return None;
+    }
+    token
+        .text(src)
+        .find(delimiter)
+        .filter(|&i| i > 0)
+        .map(|i| token.start + i)
 }
 
 /// If `token` is an Oracle `/` alone on its line, which ends a statement (as in SQL*Plus),
@@ -271,7 +290,83 @@ fn client_command(src: &str, token: &Token) -> Option<usize> {
 /// `/*!40101 SET … */;` is a statement of its own.
 #[must_use]
 pub fn split(src: &str, dialect: Dialect) -> Vec<Statement> {
+    scan(src, dialect).statements
+}
+
+/// A Transact-SQL batch: the statements up to a `GO` line, which the server runs together
+/// (a variable declared in one statement lives to the end of the batch), `repeat` times
+/// (`GO 3`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Batch {
+    /// Indices into [`split`]'s statements.
+    pub statements: std::ops::Range<usize>,
+    pub repeat: u32,
+}
+
+/// The batches of a script: in Transact-SQL the statements between `GO` lines, a client
+/// command (`@set`) being a batch of its own; in other dialects each statement.
+#[must_use]
+pub fn batches(src: &str, dialect: Dialect) -> Vec<Batch> {
+    let scan = scan(src, dialect);
+    if dialect != Dialect::SqlServer {
+        return (0..scan.statements.len())
+            .map(|i| Batch {
+                statements: i..i + 1,
+                repeat: 1,
+            })
+            .collect();
+    }
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut ends = scan.batch_ends.iter().peekable();
+    for (i, s) in scan.statements.iter().enumerate() {
+        let command = s.text(src).starts_with('@');
+        if command && start < i {
+            out.push(Batch {
+                statements: start..i,
+                repeat: 1,
+            });
+            start = i;
+        }
+        // A `GO` right after this statement ends its batch; one with no statement before it
+        // since the last ran nothing.
+        let mut repeat = None;
+        while let Some(&&(after, count)) = ends.peek() {
+            if after > i + 1 {
+                break;
+            }
+            ends.next();
+            if after == i + 1 && repeat.is_none() {
+                repeat = Some(count);
+            }
+        }
+        if command || repeat.is_some() {
+            out.push(Batch {
+                statements: start..i + 1,
+                repeat: if command { 1 } else { repeat.unwrap_or(1) },
+            });
+            start = i + 1;
+        }
+    }
+    if start < scan.statements.len() {
+        out.push(Batch {
+            statements: start..scan.statements.len(),
+            repeat: 1,
+        });
+    }
+    out
+}
+
+/// What [`scan`] found.
+struct Scan {
+    statements: Vec<Statement>,
+    /// Transact-SQL `GO` lines: how many statements precede each, and its count.
+    batch_ends: Vec<(usize, u32)>,
+}
+
+fn scan(src: &str, dialect: Dialect) -> Scan {
     let mut statements = Vec::new();
+    let mut batch_ends = Vec::new();
     let mut lexer = Lexer::executable(src, dialect);
     let mut current = Current::default();
     let mut delimiter = String::from(";");
@@ -291,10 +386,22 @@ pub fn split(src: &str, dialect: Dialect) -> Vec<Statement> {
         }
         if dialect == Dialect::SqlServer
             && token.kind == TokenKind::Word
-            && let Some(line_end) = batch_separator(src, &token)
+            && let Some((line_end, count)) = batch_separator(src, &token)
         {
             statements.extend(current.take());
+            batch_ends.push((statements.len(), count));
             lexer.seek(line_end);
+            continue;
+        }
+        if dialect == Dialect::MySql
+            && current.at_boundary()
+            && let Some(cut) = delimiter_in_word(src, &token, &delimiter)
+        {
+            current.start.get_or_insert(token.start);
+            current.end = cut;
+            current.word(&src[token.start..cut], dialect);
+            statements.extend(current.take());
+            lexer.seek(cut + delimiter.len());
             continue;
         }
         if dialect == Dialect::Oracle
@@ -330,20 +437,51 @@ pub fn split(src: &str, dialect: Dialect) -> Vec<Statement> {
         }
     }
     statements.extend(current.take());
-    statements
+    Scan {
+        statements,
+        batch_ends,
+    }
 }
 
 /// The statement to run for a cursor at `offset`: the one containing it, else the closest
 /// one before it (the cursor usually sits after a `;` or on the next line), else the next.
+/// A comment on its own line right above a statement (no blank line between) belongs to that
+/// statement.
 #[must_use]
 pub fn statement_at(src: &str, dialect: Dialect, offset: usize) -> Option<Statement> {
     let statements = split(src, dialect);
-    statements
-        .iter()
-        .rev()
-        .find(|s| s.start <= offset)
-        .or_else(|| statements.first())
-        .copied()
+    let before = statements.iter().rposition(|s| s.start <= offset);
+    let Some(i) = before else {
+        return statements.first().copied();
+    };
+    let current = statements[i];
+    if let Some(next) = statements.get(i + 1)
+        && offset > current.end
+        && comment_above(src, current.end, offset, next.start)
+    {
+        return Some(*next);
+    }
+    Some(current)
+}
+
+/// Whether the cursor at `offset`, between a statement that ends at `end` and the next one
+/// at `next`, stands on a comment line that leads to the next statement: a line of its own
+/// after the line where the statement ended, with text on it, and no blank line down to the
+/// next statement.
+fn comment_above(src: &str, end: usize, offset: usize, next: usize) -> bool {
+    let offset = (offset..=next)
+        .find(|&i| src.is_char_boundary(i))
+        .unwrap_or(next);
+    let line_start = src[..offset].rfind('\n').map_or(0, |i| i + 1);
+    let line_end = src[offset..].find('\n').map_or(src.len(), |i| offset + i);
+    let line = src[line_start..line_end].trim_start();
+    if line_start <= end || !["--", "/*", "#", "//"].iter().any(|c| line.starts_with(c)) {
+        return false;
+    }
+    let next_line = src[..next].rfind('\n').map_or(0, |i| i + 1);
+    !src[line_start..next_line.max(line_start)]
+        .lines()
+        .any(|line| line.trim().is_empty())
 }
 
 const READ_ONLY_LEADERS: &[&str] = &[
@@ -618,6 +756,71 @@ mod tests {
     }
 
     #[test]
+    fn mysql_delimiter_glued_to_the_last_word() {
+        let src = "DROP PROCEDURE IF EXISTS p;\nDELIMITER $$\nCREATE PROCEDURE p()\nBEGIN\n  \
+                   SELECT 1 AS one;\nEND$$\nDELIMITER ;\nCALL p();";
+        assert_eq!(
+            texts(src, Dialect::MySql),
+            [
+                "DROP PROCEDURE IF EXISTS p",
+                "CREATE PROCEDURE p()\nBEGIN\n  SELECT 1 AS one;\nEND",
+                "CALL p()"
+            ]
+        );
+        // Wherever it stands outside quotes, as the `mysql` client reads it.
+        let src = "DELIMITER $$\nSELECT 'a$$b' AS x, a$$SELECT 2$$";
+        assert_eq!(
+            texts(src, Dialect::MySql),
+            ["SELECT 'a$$b' AS x, a", "SELECT 2"]
+        );
+        // With the default delimiter, `$` stays part of names.
+        assert_eq!(
+            texts("SELECT a$$b FROM t", Dialect::MySql),
+            ["SELECT a$$b FROM t"]
+        );
+    }
+
+    #[test]
+    fn sql_server_scripts_run_by_batch() {
+        let ms = Dialect::SqlServer;
+        let src = "DECLARE @x int = 5;\nSELECT @x * 2;\nGO\nINSERT INTO t VALUES (1)\nGO 3\n\
+                   @set y = 1\nSELECT 1;\nSELECT 2";
+        assert_eq!(split(src, ms).len(), 6);
+        assert_eq!(
+            batches(src, ms),
+            [
+                Batch {
+                    statements: 0..2,
+                    repeat: 1
+                },
+                Batch {
+                    statements: 2..3,
+                    repeat: 3
+                },
+                Batch {
+                    statements: 3..4,
+                    repeat: 1
+                },
+                Batch {
+                    statements: 4..6,
+                    repeat: 1
+                },
+            ]
+        );
+        // `GO` lines with nothing before them run nothing; `GO 0` runs once.
+        let empty = "GO 5\nGO\nSELECT 1\nGO 0\nGO 2";
+        assert_eq!(
+            batches(empty, ms),
+            [Batch {
+                statements: 0..1,
+                repeat: 1
+            }]
+        );
+        // Elsewhere every statement is a batch of its own.
+        assert_eq!(batches("select 1; select 2", Dialect::Postgres).len(), 2);
+    }
+
+    #[test]
     fn client_commands_end_at_the_line() {
         let src = "@set id = 1;\n@include 'a b.sql'\r\nselect :id;\n@echo it's done";
         assert_eq!(
@@ -759,6 +962,29 @@ mod tests {
             Some("select 9")
         );
         assert_eq!(statement_at("", Dialect::Postgres, 0), None);
+    }
+
+    #[test]
+    fn a_comment_above_a_statement_belongs_to_it() {
+        let src = "select 1;\n-- about 2\n-- more\nselect 2; -- after 2\n\n-- loose\n\nselect 3";
+        let at = |needle: &str| {
+            let offset = src.find(needle).unwrap() + 2;
+            statement_at(src, Dialect::Postgres, offset).map(|s| s.text(src))
+        };
+        assert_eq!(at("-- about"), Some("select 2"));
+        assert_eq!(at("-- more"), Some("select 2"));
+        assert_eq!(at("-- after"), Some("select 2"), "same line as statement 2");
+        assert_eq!(
+            at("-- loose"),
+            Some("select 2"),
+            "a blank line before statement 3"
+        );
+        let block = "select 1;\n/* x */ select 2";
+        let offset = block.find("x */").unwrap();
+        assert_eq!(
+            statement_at(block, Dialect::Postgres, offset).map(|s| s.text(block)),
+            Some("select 2")
+        );
     }
 
     #[test]

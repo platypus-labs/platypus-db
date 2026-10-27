@@ -5718,6 +5718,7 @@ dependencies = [
  "futures",
  "platypus-core",
  "platypus-sql",
+ "serde_json",
  "tempfile",
  "tokio",
  "zip 9.1.0",

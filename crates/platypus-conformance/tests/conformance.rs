@@ -1167,10 +1167,37 @@ fn plan_mentions(node: &PlanNode, name: &str) -> bool {
         || node.children.iter().any(|c| plan_mentions(c, name))
 }
 
-/// Some step has actual rows and its own share of the time.
+/// Some step has actual rows.
 fn plan_has_actuals(node: &PlanNode) -> bool {
-    (node.actual_rows.is_some() && node.self_ms.is_some())
-        || node.children.iter().any(plan_has_actuals)
+    node.actual_rows.is_some() || node.children.iter().any(plan_has_actuals)
+}
+
+/// What a database's plans hold, where they differ.
+struct PlanSupport {
+    /// The steps name the tables they read (ClickHouse names its storage engine instead).
+    names_tables: bool,
+    /// A plan that runs the statement: none in SQLite, ClickHouse and SQL Server here.
+    analyzes: bool,
+    /// Analyze inside an open transaction, rolled back to a savepoint: DuckDB has none.
+    analyzes_in_transaction: bool,
+}
+
+/// Whether the plans give the rows read by full scans, to suggest indexes: PostgreSQL's and
+/// MySQL's.
+fn plans_suggest(b: &Backend) -> bool {
+    matches!(b.config.driver, DriverKind::Postgres | DriverKind::MySql)
+        && b.product != "CockroachDB"
+}
+
+fn plan_support(b: &Backend) -> PlanSupport {
+    let driver = b.config.driver;
+    let analyzes =
+        !b.speaks_sqlite() && !matches!(driver, DriverKind::ClickHouse | DriverKind::SqlServer);
+    PlanSupport {
+        names_tables: driver != DriverKind::ClickHouse,
+        analyzes,
+        analyzes_in_transaction: analyzes && driver != DriverKind::DuckDb,
+    }
 }
 
 /// Plans come back as a tree. With analyze the statement runs, and what it changes is
@@ -1186,50 +1213,70 @@ async fn explains_queries() {
         if !conn.capabilities().explain {
             continue;
         }
-        let create = format!("CREATE {}TABLE conf_plan (id INT)", b.temporary());
-        affected(&b, conn, &create).await;
-        affected(&b, conn, "INSERT INTO conf_plan VALUES (1), (2), (3)").await;
+        let support = plan_support(&b);
+        let table = b.temp("conf_plan");
+        run(conn, &b.create_temp("conf_plan", "id INT"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        affected(
+            &b,
+            conn,
+            &format!("INSERT INTO {table} VALUES (1), (2), (3)"),
+        )
+        .await;
         let count = || async {
-            let rows = collect(&b, conn, "SELECT count(*) FROM conf_plan").await;
+            let rows = collect(&b, conn, &format!("SELECT count(*) FROM {table}")).await;
             cell(&rows[0], 0, 0).unwrap()
         };
-        let select = "SELECT * FROM conf_plan WHERE id > 1";
-        let plan = conn.explain(select, false).await.unwrap();
+        let select = format!("SELECT * FROM {table} WHERE id > 1");
+        let plan = conn
+            .explain(&select, false)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         assert!(!plan.analyzed && !plan.plan.is_empty(), "{}", b.name);
-        assert!(
-            plan_mentions(&plan.root, "conf_plan"),
-            "{}: {:#?}",
-            b.name,
-            plan.root
-        );
+        if support.names_tables {
+            assert!(
+                plan_mentions(&plan.root, "conf_plan"),
+                "{}: {:#?}",
+                b.name,
+                plan.root
+            );
+        }
 
-        let plan = conn.explain(select, true).await.unwrap();
-        // SQLite (and libSQL) has no plan that runs the statement.
-        let analyzes = !b.speaks_sqlite();
-        assert_eq!(plan.analyzed, analyzes, "{}", b.name);
-        assert_eq!(
-            plan_has_actuals(&plan.root),
-            analyzes,
-            "{}: {:#?}",
-            b.name,
-            plan.root
-        );
+        let analyzed = conn.explain(&select, true).await;
+        if !support.analyzes {
+            // A plan without its actual figures, or a plain refusal.
+            if let Ok(plan) = analyzed {
+                assert!(
+                    !plan.analyzed && !plan_has_actuals(&plan.root),
+                    "{}",
+                    b.name
+                );
+            }
+            continue;
+        }
+        let plan = analyzed.unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert!(plan.analyzed, "{}", b.name);
+        assert!(plan_has_actuals(&plan.root), "{}: {:#?}", b.name, plan.root);
 
         // MySQL analyzes only the multi-table form of DELETE.
         let delete = if b.product == "MySQL" {
-            "DELETE p FROM conf_plan p WHERE p.id > 1"
+            "DELETE p FROM conf_plan p WHERE p.id > 1".to_owned()
         } else {
-            "DELETE FROM conf_plan WHERE id > 1"
+            format!("DELETE FROM {table} WHERE id > 1")
         };
-        conn.explain(delete, true)
+        conn.explain(&delete, true)
             .await
             .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         assert_eq!(count().await, "3", "{}: analyze rolled back", b.name);
         assert!(!conn.transaction().open, "{}", b.name);
+        if !support.analyzes_in_transaction {
+            continue;
+        }
 
         conn.set_autocommit(false).await.unwrap();
-        affected(&b, conn, "INSERT INTO conf_plan VALUES (4)").await;
-        conn.explain(delete, true).await.unwrap();
+        affected(&b, conn, &format!("INSERT INTO {table} VALUES (4)")).await;
+        conn.explain(&delete, true).await.unwrap();
         assert!(conn.transaction().open, "{}: still open", b.name);
         assert_eq!(count().await, "4", "{}: only the analyze undone", b.name);
         conn.rollback().await.unwrap();
@@ -1247,7 +1294,7 @@ async fn suggests_indexes_for_large_scans() {
         let conn = b.connect().await;
         let conn = &*conn;
         // Plans are optional: `capabilities_match_optional_methods` checks the others.
-        if !conn.capabilities().explain {
+        if !conn.capabilities().explain || !plan_support(&b).analyzes {
             continue;
         }
         run(
@@ -1261,16 +1308,15 @@ async fn suggests_indexes_for_large_scans() {
             .await
             .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         let tables: Vec<_> = plan.suggestions.iter().map(|s| s.table.as_str()).collect();
-        // SQLite plans have no row counts to judge a table by.
-        let expected: &[&str] = if b.speaks_sqlite() {
-            &[]
-        } else {
+        // Only some plans have the row counts to judge a table by.
+        let expected: &[&str] = if plans_suggest(&b) {
             &["conf_big"]
+        } else {
+            &[]
         };
         assert_eq!(tables, expected, "{}: {:#?}", b.name, plan.root);
     }
 }
-
 /// Every optional method agrees with its capability flag: unsupported ones fail with
 /// `Error::Unsupported`, supported ones never do.
 #[tokio::test]
@@ -4239,5 +4285,147 @@ async fn qa_fixnav_synonyms_and_enum_types() {
         let ddl = conn.object_ddl(&object).await;
         run(&*conn, &drop).await.unwrap();
         assert_eq!(ddl.unwrap(), expected, "{}", b.name);
+    }
+}
+
+/// Every result of a statement, in turn: the batches of each result set, until a count.
+async fn qa_fixsql_results(b: &Backend, conn: &dyn Connection, sql: &str) -> Vec<Vec<RecordBatch>> {
+    let mut sets = Vec::new();
+    let mut next = Some(
+        conn.execute(sql, &ExecOptions::default())
+            .await
+            .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name)),
+    );
+    while let Some(ExecResult::Rows(mut stream)) = next {
+        let mut batches = Vec::new();
+        while let Some(batch) = stream.next().await {
+            batches.push(batch.unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name)));
+        }
+        sets.push(batches);
+        next = match stream.take_next() {
+            Some(follows) => follows
+                .await
+                .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name)),
+            None => None,
+        };
+    }
+    sets
+}
+
+/// A Transact-SQL batch and a MySQL `CALL` return every result set, one after the other,
+/// and leave the session free for the next statement.
+#[tokio::test]
+async fn qa_fixsql_multiple_result_sets() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let statement = match b.config.driver {
+            DriverKind::SqlServer => "SELECT 1 AS a SELECT 2 AS b",
+            DriverKind::MySql => {
+                run(conn, "DROP PROCEDURE IF EXISTS qa_fixsql_two")
+                    .await
+                    .unwrap();
+                run(
+                    conn,
+                    "CREATE PROCEDURE qa_fixsql_two() BEGIN SELECT 1 AS a; SELECT 2 AS b; END",
+                )
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+                "CALL qa_fixsql_two()"
+            }
+            _ => continue,
+        };
+        let sets = qa_fixsql_results(&b, conn, statement).await;
+        let names: Vec<_> = sets
+            .iter()
+            .map(|s| s[0].schema().field(0).name().clone())
+            .collect();
+        assert_eq!(names, ["a", "b"], "{}", b.name);
+        assert_eq!(cell(&sets[1][0], 0, 0).as_deref(), Some("2"), "{}", b.name);
+        // The next statement runs on the same session.
+        let rows = collect(&b, conn, "SELECT 3").await;
+        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
+
+        if b.config.driver == DriverKind::SqlServer {
+            // The CATCH block's result is not lost.
+            let sets = qa_fixsql_results(
+                &b,
+                conn,
+                "BEGIN TRY SELECT 1/0 AS x END TRY BEGIN CATCH SELECT ERROR_MESSAGE() AS m END CATCH",
+            )
+            .await;
+            let last = sets.last().unwrap();
+            assert_eq!(last[0].schema().field(0).name(), "m", "{}", b.name);
+            assert!(cell(&last[0], 0, 0).unwrap().contains("zero"), "{}", b.name);
+            // The statements of a batch share its variables.
+            let sets =
+                qa_fixsql_results(&b, conn, "DECLARE @x int = 5;\nSELECT @x * 2 AS dbl;").await;
+            assert_eq!(cell(&sets[0][0], 0, 0).as_deref(), Some("10"), "{}", b.name);
+        } else {
+            run(conn, "DROP PROCEDURE qa_fixsql_two").await.unwrap();
+        }
+    }
+}
+
+/// What the server says beside the results: PostgreSQL notices, Transact-SQL `PRINT`, MySQL
+/// warnings.
+#[tokio::test]
+async fn qa_fixsql_server_messages() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let (sql, expected) = match (b.config.driver, b.name) {
+            (DriverKind::Postgres, "postgres") => (
+                "DO $$ BEGIN RAISE NOTICE 'qa_fixsql notice'; END $$",
+                "qa_fixsql notice",
+            ),
+            (DriverKind::SqlServer, _) => ("PRINT 'qa_fixsql print'", "qa_fixsql print"),
+            (DriverKind::MySql, _) => ("SELECT CAST('1x' AS SIGNED) AS n", "1x"),
+            _ => continue,
+        };
+        conn.take_messages();
+        qa_fixsql_results(&b, conn, sql).await;
+        let messages = conn.take_messages();
+        assert!(
+            messages.iter().any(|m| m.contains(expected)),
+            "{}: {messages:?}",
+            b.name
+        );
+        assert!(conn.take_messages().is_empty(), "{}: taken once", b.name);
+    }
+}
+
+/// In manual-commit mode a failed statement is undone alone: the changes before it stay,
+/// and the commit keeps them.
+#[tokio::test]
+async fn qa_fixsql_manual_commit_survives_a_failed_statement() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        if b.config.driver != DriverKind::Postgres {
+            continue;
+        }
+        let conn = b.connect().await;
+        let conn = &*conn;
+        run(conn, &b.create_temp("qa_fixsql_tx", "id INT PRIMARY KEY"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        conn.set_autocommit(false).await.unwrap();
+        affected(&b, conn, "INSERT INTO qa_fixsql_tx VALUES (1)").await;
+        let duplicate = execute(conn, "INSERT INTO qa_fixsql_tx VALUES (1)").await;
+        assert!(duplicate.is_err(), "{}", b.name);
+        assert!(conn.transaction().open, "{}", b.name);
+        // The transaction goes on: it is not aborted.
+        affected(&b, conn, "INSERT INTO qa_fixsql_tx VALUES (2)").await;
+        conn.commit()
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        conn.set_autocommit(true).await.unwrap();
+        let rows = collect(&b, conn, "SELECT count(*) FROM qa_fixsql_tx").await;
+        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("2"), "{}", b.name);
     }
 }

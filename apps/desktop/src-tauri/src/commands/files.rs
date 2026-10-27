@@ -4,11 +4,80 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{CommandError, CommandResult};
 
-/// Reads a script picked by the user in the open dialog.
+/// Reads a script picked by the user in the open dialog, or named by `@include`, whatever
+/// editor saved it: see [`decode_text`].
 #[tauri::command]
 pub fn read_text_file(path: PathBuf) -> CommandResult<String> {
-    std::fs::read_to_string(&path)
+    std::fs::read(&path)
+        .map(|bytes| decode_text(&bytes))
         .map_err(|e| CommandError::new("io", format!("cannot read {}: {e}", path.display())))
+}
+
+/// The text of a script file: UTF-8 or UTF-16 as its byte order mark says (the mark itself
+/// dropped, the server would read it as text); without one, UTF-16 when every other byte is
+/// zero (ASCII text), else UTF-8, else Windows-1252 (an ANSI file of Windows).
+fn decode_text(bytes: &[u8]) -> String {
+    let utf16 = |bytes: &[u8], little: bool| {
+        let units: Vec<u16> = bytes
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&pair| {
+                if little {
+                    u16::from_le_bytes(pair)
+                } else {
+                    u16::from_be_bytes(pair)
+                }
+            })
+            .collect();
+        String::from_utf16_lossy(&units)
+    };
+    if let Some(rest) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
+        return String::from_utf8_lossy(rest).into_owned();
+    }
+    if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE]) {
+        return utf16(rest, true);
+    }
+    if let Some(rest) = bytes.strip_prefix(&[0xFE, 0xFF]) {
+        return utf16(rest, false);
+    }
+    let zeros = |offset: usize| {
+        bytes
+            .iter()
+            .skip(offset)
+            .step_by(2)
+            .filter(|&&b| b == 0)
+            .count()
+    };
+    let half = bytes.len() / 2;
+    if bytes.len().is_multiple_of(2) && half > 0 {
+        if zeros(1) * 10 >= half * 9 {
+            return utf16(bytes, true);
+        }
+        if zeros(0) * 10 >= half * 9 {
+            return utf16(bytes, false);
+        }
+    }
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return text.to_owned();
+    }
+    bytes.iter().map(|&b| windows_1252(b)).collect()
+}
+
+/// The character of a Windows-1252 byte: Latin-1, but for the printable characters at
+/// 0x80..0xA0.
+fn windows_1252(byte: u8) -> char {
+    const HIGH: [u16; 32] = [
+        0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160,
+        0x2039, 0x0152, 0x008D, 0x017D, 0x008F, 0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022,
+        0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178,
+    ];
+    match byte {
+        0x80..=0x9F => {
+            char::from_u32(u32::from(HIGH[usize::from(byte - 0x80)])).unwrap_or('\u{FFFD}')
+        }
+        other => char::from(other),
+    }
 }
 
 /// Writes a script to a path picked by the user in the save dialog.
@@ -112,6 +181,29 @@ mod tests {
         ] {
             assert_eq!(pasted_dir(Path::new(other), temp), None, "{other}");
         }
+    }
+
+    #[test]
+    fn reads_scripts_in_any_common_encoding() {
+        use super::decode_text;
+        assert_eq!(decode_text(b"\xEF\xBB\xBFSELECT 1"), "SELECT 1");
+        let little: Vec<u8> = [0xFF, 0xFE]
+            .into_iter()
+            .chain("SELECT 'é'".encode_utf16().flat_map(u16::to_le_bytes))
+            .collect();
+        assert_eq!(decode_text(&little), "SELECT 'é'");
+        let big: Vec<u8> = [0xFE, 0xFF]
+            .into_iter()
+            .chain("SELECT 2".encode_utf16().flat_map(u16::to_be_bytes))
+            .collect();
+        assert_eq!(decode_text(&big), "SELECT 2");
+        let no_bom: Vec<u8> = "SELECT 3"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        assert_eq!(decode_text(&no_bom), "SELECT 3");
+        assert_eq!(decode_text(b"SELECT 'caf\xE9 \x80'"), "SELECT 'café €'");
+        assert_eq!(decode_text("SELECT 'café'".as_bytes()), "SELECT 'café'");
     }
 
     #[test]

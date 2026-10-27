@@ -30,6 +30,42 @@ export function literal(value: string, driver: DriverKind): string {
   return `${prefix}'${quoted}'`;
 }
 
+/** Where offset `pos` of `substitute(sql, spans, values, driver)` stands in `sql`: past a value,
+ *  shifted back by what the values added; inside one, at its placeholder. */
+export function originalOffset(
+  sql: string,
+  spans: ParameterSpan[],
+  values: Record<string, string>,
+  driver: DriverKind,
+  pos: number,
+): number {
+  const keys = parameterKeys(spans);
+  // How much longer the substituted text is so far.
+  let shift = 0;
+  for (const [i, p] of spans.entries()) {
+    const value = values[keys[i]!] ?? "";
+    const text = p.kind === "variable" ? value : literal(value, driver);
+    const start = p.start + shift;
+    if (pos < start) break;
+    if (pos < start + text.length) return p.start;
+    shift += text.length - (p.end - p.start);
+  }
+  return Math.max(0, Math.min(sql.length, pos - shift));
+}
+
+/** The UTF-16 offset (JavaScript's) of the code point at index `n` of `text`: servers count
+ *  characters, so an emoji before an error moves it by one unit. */
+export function utf16Offset(text: string, n: number): number {
+  let units = 0;
+  let count = 0;
+  for (const ch of text) {
+    if (count >= n) break;
+    units += ch.length;
+    count++;
+  }
+  return units + Math.max(0, n - count);
+}
+
 /** `sql` with its placeholders (offsets relative to `sql`) replaced by `values`. */
 export function substitute(
   sql: string,

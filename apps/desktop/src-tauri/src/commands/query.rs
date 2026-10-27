@@ -5,20 +5,21 @@ use std::time::SystemTime;
 
 use platypus_core::Error;
 use platypus_store::{HistoryStatus, NewHistoryEntry};
-use tauri::State;
 use tauri::ipc::{Channel, Response};
+use tauri::{Manager, State};
 
 use super::{AppState, lock};
 use crate::display;
 use crate::error::{CommandError, CommandResult};
 use crate::formats::DisplayFormat;
-use crate::jobs::{Job, Outcome, QueryEvent};
+use crate::jobs::{Job, Outcome, QueryEvent, Register};
 
 /// Starts a statement and returns its job id at once; progress arrives on `on_event`.
 /// `limit` caps the rows fetched and frees the session afterwards (script mode). `history`
 /// false keeps the run out of the query history, e.g. an auto-refresh.
 #[tauri::command]
 pub async fn run_query(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     session_id: u64,
     sql: String,
@@ -28,7 +29,18 @@ pub async fn run_query(
 ) -> CommandResult<u64> {
     let keep = history.unwrap_or(true);
     state.may_run(session_id, &sql)?;
+    let before = state.session(session_id)?.conn;
     let conn = state.live(session_id).await?;
+    if !Arc::ptr_eq(&before, &conn) {
+        // The statement runs, but not where the user set things up.
+        let _ = on_event.send(QueryEvent::Messages {
+            lines: vec![
+                "The connection was lost and has been reopened: the session's settings \
+                 (SET, USE, search_path, temporary tables, variables) are back to their defaults."
+                    .to_owned(),
+            ],
+        });
+    }
     let session = state.session(session_id)?;
     let history = Arc::clone(&state.history);
     let started_at = SystemTime::now();
@@ -62,7 +74,14 @@ pub async fn run_query(
             });
         }
     };
-    let job = Job::start(session_id, conn, sql, limit, on_event, record);
+    // The further results of the statement get jobs of their own, found like this one.
+    let register: Register = Arc::new(move |job: Arc<Job>| {
+        let state = app.state::<AppState>();
+        let job_id = state.next_id();
+        lock(&state.jobs).insert(job_id, job);
+        job_id
+    });
+    let job = Job::start(session_id, conn, sql, limit, on_event, record, register);
     let job_id = state.next_id();
     lock(&state.jobs).insert(job_id, job);
     Ok(job_id)
@@ -101,12 +120,21 @@ pub async fn cancel_query(state: State<'_, AppState>, job_id: u64) -> CommandRes
     job.cancel().await
 }
 
-/// Releases a result's buffers; an unfinished query is cancelled.
+/// Releases a result's buffers; an unfinished query is cancelled on the server first, as
+/// dropping it stops reading but leaves a statement that has not answered running there.
 #[tauri::command]
-pub fn close_query(state: State<'_, AppState>, job_id: u64) {
-    if let Some(job) = lock(&state.jobs).remove(&job_id) {
+pub async fn close_query(state: State<'_, AppState>, job_id: u64) -> CommandResult<()> {
+    let job = lock(&state.jobs).remove(&job_id);
+    if let Some(job) = job {
+        // Only a statement that has not answered yet: a cancel sent after the server finished
+        // could stop the session's next statement instead.
+        if job.waits_for_server() {
+            // Best effort: the result goes either way.
+            let _ = job.cancel().await;
+        }
         job.close();
     }
+    Ok(())
 }
 
 /// Stops fetching every unfinished result of a session, so it can run another statement.

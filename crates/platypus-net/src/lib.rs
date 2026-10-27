@@ -371,6 +371,10 @@ impl Connection for Tunneled {
         !self.tunnel.is_closed() && self.inner.check_alive().await
     }
 
+    fn take_messages(&self) -> Vec<String> {
+        self.inner.take_messages()
+    }
+
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {
         self.inner.schemas().await
     }

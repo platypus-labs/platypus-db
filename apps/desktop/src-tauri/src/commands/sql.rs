@@ -43,11 +43,36 @@ pub struct ParameterSpan {
     end: usize,
 }
 
+/// Statements a script sends together: a Transact-SQL batch up to `GO`.
+#[derive(Debug, Serialize)]
+pub struct BatchSpan {
+    /// Indices into `statements`, `first..end`.
+    first: usize,
+    end: usize,
+    /// How many times it runs (`GO 3`).
+    repeat: u32,
+}
+
 #[derive(Debug, Serialize)]
 pub struct SqlAnalysis {
     statements: Vec<StatementSpan>,
     /// Index into `statements` of the one to run for the cursor.
     at_cursor: Option<usize>,
+    /// Groups of statements that a script runs together; empty when each runs alone.
+    batches: Vec<BatchSpan>,
+}
+
+/// The end of statement `s` as it is sent: in Transact-SQL with its `;`, which `MERGE`
+/// requires (and every statement accepts); a client command (`@set`) never takes it.
+fn sent_end(sql: &str, dialect: Dialect, s: platypus_sql::Statement) -> usize {
+    if dialect == Dialect::SqlServer
+        && sql[s.end..].starts_with(';')
+        && !s.text(sql).starts_with('@')
+    {
+        s.end + 1
+    } else {
+        s.end
+    }
 }
 
 /// Maps byte offsets of `src` to UTF-16 offsets and back.
@@ -91,8 +116,21 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
     let dialect = Dialect::from(driver);
     let statements = platypus_sql::split(&sql, dialect);
     let at = platypus_sql::statement_at(&sql, dialect, map.to_byte(cursor));
+    let batches = if dialect == Dialect::SqlServer {
+        platypus_sql::batches(&sql, dialect)
+            .into_iter()
+            .map(|b| BatchSpan {
+                first: b.statements.start,
+                end: b.statements.end,
+                repeat: b.repeat,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     SqlAnalysis {
         at_cursor: at.and_then(|at| statements.iter().position(|s| *s == at)),
+        batches,
         statements: statements
             .iter()
             .map(|s| {
@@ -105,7 +143,7 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
                 };
                 StatementSpan {
                     start: map.to_utf16(s.start),
-                    end: map.to_utf16(s.end),
+                    end: map.to_utf16(sent_end(&sql, dialect, *s)),
                     read_only: matches!(
                         analysis.kind,
                         StatementKind::Query | StatementKind::Command
@@ -168,6 +206,7 @@ fn analyze_mongo(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
     let at = shell::statement_at(src, map.to_byte(cursor));
     SqlAnalysis {
         at_cursor: at.and_then(|at| statements.iter().position(|s| *s == at)),
+        batches: Vec::new(),
         statements: statements
             .iter()
             .map(|range| {
@@ -433,6 +472,28 @@ mod tests {
         assert!(only_reads("db.a.find()\nshow dbs", DriverKind::Mongo));
         assert!(!only_reads("db.a.find()\ndb.a.drop()", DriverKind::Mongo));
         assert!(!only_reads("db.a.find(", DriverKind::Mongo));
+    }
+
+    #[test]
+    fn sql_server_statements_keep_their_semicolon_and_batches() {
+        let sql = "@set x = 1;\nDECLARE @a int = 1;\nMERGE t USING s ON 1 = 1 WHEN MATCHED THEN DELETE;\nGO 2\nSELECT 1"
+            .to_owned();
+        let a = analyze_sql(sql.clone(), DriverKind::SqlServer, 0);
+        let text = |i: usize| &sql[a.statements[i].start..a.statements[i].end];
+        assert_eq!(text(0), "@set x = 1");
+        assert_eq!(text(1), "DECLARE @a int = 1;");
+        assert!(text(2).ends_with("DELETE;"));
+        let batches: Vec<_> = a
+            .batches
+            .iter()
+            .map(|b| (b.first, b.end, b.repeat))
+            .collect();
+        assert_eq!(batches, [(0, 1, 1), (1, 3, 2), (3, 4, 1)]);
+        assert!(
+            analyze_sql("select 1;".to_owned(), DriverKind::Postgres, 0)
+                .batches
+                .is_empty()
+        );
     }
 
     #[test]

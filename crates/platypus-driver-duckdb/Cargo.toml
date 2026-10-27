@@ -19,6 +19,7 @@ encoding_rs = "0.8"
 futures.workspace = true
 platypus-core.workspace = true
 platypus-sql.workspace = true
+serde_json.workspace = true
 tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
