@@ -158,12 +158,52 @@ struct Special<'a> {
 
 impl DisplayIndex for Special<'_> {
     fn write(&self, idx: usize, f: &mut dyn Write) -> FormatResult {
-        match text(self.array, idx) {
-            Some(text) => f.write_str(&text)?,
-            None => self.inner.value(idx).write(f)?,
+        if let Some(text) = text(self.array, idx) {
+            f.write_str(&text)?;
+        } else if before_christ(self.array, idx) {
+            let shown = self.inner.value(idx).try_to_string()?;
+            f.write_str(&bc_text(&shown).unwrap_or(shown))?;
+        } else {
+            self.inner.value(idx).write(f)?;
         }
         Ok(())
     }
+}
+
+/// Days from the epoch to 0001-01-01, and seconds: anything earlier is BC.
+const FIRST_AD_DAY: i32 = -719_162;
+const FIRST_AD_SECOND: i64 = -62_135_596_800;
+
+/// Whether value `i` of `array` is a date or time before the year 1.
+fn before_christ(array: &dyn Array, i: usize) -> bool {
+    if array.is_null(i) {
+        return false;
+    }
+    match array.data_type() {
+        DataType::Date32 => array.as_primitive::<Date32Type>().value(i) < FIRST_AD_DAY,
+        DataType::Timestamp(TimeUnit::Second, _) => {
+            array.as_primitive::<TimestampSecondType>().value(i) < FIRST_AD_SECOND
+        }
+        DataType::Timestamp(TimeUnit::Millisecond, _) => {
+            array.as_primitive::<TimestampMillisecondType>().value(i) < FIRST_AD_SECOND * 1_000
+        }
+        DataType::Timestamp(TimeUnit::Microsecond, _) => {
+            array.as_primitive::<TimestampMicrosecondType>().value(i) < FIRST_AD_SECOND * 1_000_000
+        }
+        _ => false,
+    }
+}
+
+/// A date shown with a year of 0 or less (`-0043-03-15`, as chrono counts) written as
+/// PostgreSQL does: `0044-03-15 BC`, the rest of the text kept.
+fn bc_text(text: &str) -> Option<String> {
+    let (negative, rest) = text.strip_prefix('-').map_or((false, text), |r| (true, r));
+    let digits = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
+    let year: i64 = rest[..digits].parse().ok()?;
+    let year = if negative { -year } else { year };
+    (year <= 0).then(|| format!("{:04}{} BC", 1 - year, &rest[digits..]))
 }
 
 /// [`ArrayFormatter::try_new`], with the reserved values shown as their text.
@@ -174,6 +214,18 @@ pub fn formatter<'a>(
     array: &'a dyn Array,
     options: &FormatOptions<'a>,
 ) -> Result<ArrayFormatter<'a>, ArrowError> {
+    if matches!(
+        array.data_type(),
+        DataType::List(_)
+            | DataType::LargeList(_)
+            | DataType::FixedSizeList(..)
+            | DataType::Struct(_)
+            | DataType::Map(..)
+    ) {
+        // A NULL inside a list or a struct, where nothing would tell it from an empty text.
+        let nested = options.clone().with_null("NULL");
+        return ArrayFormatter::try_new(array, &nested);
+    }
     let inner = ArrayFormatter::try_new(array, options)?;
     if !may_hold(array.data_type()) {
         return Ok(inner);
@@ -295,6 +347,37 @@ mod tests {
         ] {
             assert!(arrow_array::temporal_conversions::timestamp_us_to_datetime(micros).is_none());
         }
+    }
+
+    #[test]
+    fn shows_bc_dates_as_postgresql_does() {
+        // 0044-03-15 BC is year -43 to chrono.
+        let ides = chrono_days(-43, 3, 15).unwrap();
+        let dates = Date32Array::from(vec![ides, chrono_days(0, 1, 1).unwrap()]);
+        assert_eq!(shown(&dates), ["0044-03-15 BC", "0001-01-01 BC"]);
+        let noon = TimestampMicrosecondArray::from(vec![
+            i64::from(ides) * MICROS_PER_DAY + 43_200_000_000,
+        ]);
+        assert_eq!(shown(&noon), ["0044-03-15T12:00:00 BC"]);
+        assert_eq!(bc_text("2024-01-01"), None);
+    }
+
+    /// Days from the epoch to that day of the proleptic Gregorian calendar.
+    fn chrono_days(y: i64, m: i64, d: i64) -> Option<i32> {
+        let y = if m <= 2 { y - 1 } else { y };
+        let era = y.div_euclid(400);
+        let yoe = y - era * 400;
+        let doy = (153 * (m + if m > 2 { -3 } else { 9 }) + 2) / 5 + d - 1;
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        i32::try_from(era * 146_097 + doe - 719_468).ok()
+    }
+
+    #[test]
+    fn shows_nulls_inside_lists() {
+        let list = arrow_array::ListArray::from_iter_primitive::<arrow_array::types::Int32Type, _, _>(
+            vec![Some(vec![Some(1), None, Some(3)])],
+        );
+        assert_eq!(shown(&list), ["[1, NULL, 3]"]);
     }
 
     #[test]
