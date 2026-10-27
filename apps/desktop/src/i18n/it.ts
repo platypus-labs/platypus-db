@@ -1399,6 +1399,14 @@ const it: Record<string, string> = {
   "Don't save": "Non salvare",
   "Enabled": "Attivo",
   "Disabled": "Disattivo",
+  // Checks of the connection store
+  "project name is required": "Il nome del progetto è obbligatorio",
+  "connection name is required": "Il nome della connessione è obbligatorio",
+  "profile name is required": "Il nome del profilo è obbligatorio",
+  "initials are one or two characters": "Le iniziali sono uno o due caratteri",
+  "a client certificate needs both the certificate and its key": "Un certificato client richiede sia il certificato sia la sua chiave",
+  "a connection cannot go before itself": "Una connessione non può andare prima di sé stessa",
+  "a project named \"{name}\" exists already": "Esiste già un progetto chiamato \"{name}\"",
   "settings.toml could not be read: every setting is at its default and changes are not saved until it is fixed. {message}": "Impossibile leggere settings.toml: tutte le impostazioni sono ai valori predefiniti e le modifiche non vengono salvate finché non è corretto. {message}",
 };
 

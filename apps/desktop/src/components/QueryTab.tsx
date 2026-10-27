@@ -1357,7 +1357,8 @@ export function QueryTab({
     <div className="query-tab" style={{ display: active ? "flex" : "none" }}>
       <div
         className="query-main"
-        style={{ gridTemplateRows: `auto ${tab.table ? "auto " : ""}${editorHeight}px 6px 1fr auto` }}
+        // The editor gives up height before the toolbar does in a small window.
+        style={{ gridTemplateRows: `auto ${tab.table ? "auto " : ""}minmax(60px, ${editorHeight}px) 6px 1fr auto` }}
       >
         <div className="toolbar">
           <button

@@ -117,7 +117,7 @@
 
 .modal.query-manager {
   width: min(1100px, calc(100vw - 32px));
-  height: calc(100vh - 64px);
+  height: calc(100vh - 96px);
 }
 
 .query-manager-bar {

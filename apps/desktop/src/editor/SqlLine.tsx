@@ -45,10 +45,14 @@ const singleLine = EditorState.transactionFilter.of((tr) => {
   return [tr, { changes: { from: 0, to: tr.newDoc.length, insert: text }, sequential: true }];
 });
 
+/** The field's placeholder and accessible name. */
+const texts = (text: string, label: string) => [placeholder(text), EditorView.contentAttributes.of({ "aria-label": label })];
+
 export const SqlLine = forwardRef<SqlLineHandle, Props>(function SqlLine(props, ref) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const languageConf = useRef(new Compartment());
+  const textConf = useRef(new Compartment());
   // Keymaps read the latest callbacks without rebuilding the field.
   const callbacks = useRef(props);
   callbacks.current = props;
@@ -67,8 +71,7 @@ export const SqlLine = forwardRef<SqlLineHandle, Props>(function SqlLine(props, 
         singleLine,
         syntaxHighlighting(highlight),
         languageConf.current.of(language(props.driver, props.catalog)),
-        placeholder(props.placeholder),
-        EditorView.contentAttributes.of({ "aria-label": props.label }),
+        textConf.current.of(texts(props.placeholder, props.label)),
         // The completion list (its keymap comes first) takes Enter and Escape while it is open.
         keymap.of([
           { key: "Enter", run: call("onRun"), preventDefault: true },
@@ -107,6 +110,11 @@ export const SqlLine = forwardRef<SqlLineHandle, Props>(function SqlLine(props, 
   useEffect(() => {
     view.current?.dispatch({ effects: languageConf.current.reconfigure(language(props.driver, props.catalog)) });
   }, [props.driver, props.catalog]);
+
+  // A change of language reaches the placeholder and the name too.
+  useEffect(() => {
+    view.current?.dispatch({ effects: textConf.current.reconfigure(texts(props.placeholder, props.label)) });
+  }, [props.placeholder, props.label]);
 
   useImperativeHandle(ref, () => ({ focus: () => view.current?.focus() }));
 
