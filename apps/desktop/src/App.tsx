@@ -616,11 +616,7 @@ export function App() {
       closedTabs.current.push(saved);
       if (closedTabs.current.length > CLOSED_TABS) closedTabs.current.shift();
     }
-    const session = sessions.current.get(tab.key);
-    sessions.current.delete(tab.key);
-    void session?.then((id) => {
-      if (id !== null) closeSession(id);
-    });
+    dropSession(tab.key);
     // Closing a tab of the split leaves the other one.
     const beside = split?.find((k) => k !== tab.key && split.includes(tab.key));
     setTabs((all) => {
