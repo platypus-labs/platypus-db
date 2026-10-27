@@ -456,10 +456,12 @@ pub(crate) fn literal(
 pub fn rows_text(batch: &RecordBatch) -> Result<Vec<Vec<Option<String>>>, ArrowError> {
     let options = FormatOptions::default();
     // One formatter per column, not per value.
-    let formatters = batch
-        .columns()
+    let schema = batch.schema();
+    let formatters = schema
+        .fields()
         .iter()
-        .map(|a| special::formatter(a.as_ref(), &options))
+        .zip(batch.columns())
+        .map(|(f, a)| special::column_formatter(f, a.as_ref(), &options))
         .collect::<Result<Vec<_>, _>>()?;
     Ok((0..batch.num_rows())
         .map(|row| {

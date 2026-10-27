@@ -266,11 +266,13 @@ struct BatchReader<'a> {
 
 impl<'a> BatchReader<'a> {
     fn new(batch: &'a RecordBatch, options: &'a FormatOptions<'a>) -> Result<Self, Error> {
+        let schema = batch.schema_ref();
         let columns = batch
             .columns()
             .iter()
-            .map(|c| {
-                platypus_core::special::formatter(c.as_ref(), options)
+            .zip(schema.fields())
+            .map(|(c, field)| {
+                platypus_core::special::column_formatter(field, c.as_ref(), options)
                     .map(|f| (c.data_type(), c.as_ref(), f))
             })
             .collect::<Result<_, _>>()?;

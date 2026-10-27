@@ -177,8 +177,9 @@ fn storable(schema: &SchemaRef, batches: &[RecordBatch]) -> Result<Storable, Loc
             let mut columns = batch
                 .columns()
                 .iter()
+                .zip(batch.schema_ref().fields())
                 .zip(&stores)
-                .map(|(c, store)| stored(c, *store))
+                .map(|((c, f), store)| stored(f, c, *store))
                 .collect::<Result<Vec<_>, LocalError>>()?;
             columns.extend(masked.iter().map(|&c| nulls_of(batch.column(c))));
             Ok(RecordBatch::try_new(Arc::clone(&schema), columns)?)
@@ -222,7 +223,7 @@ fn store(field: &Field, batches: &[RecordBatch], column: usize) -> Result<Store,
         | DataType::Decimal128(declared, scale)
             if scale >= 0 =>
         {
-            let Some(digits) = most_digits(batches, column)? else {
+            let Some(digits) = most_digits(field, batches, column)? else {
                 // A PostgreSQL numeric NaN: the column goes as DOUBLE, which holds it.
                 return Ok(Store::Double);
             };
@@ -247,11 +248,11 @@ fn store(field: &Field, batches: &[RecordBatch], column: usize) -> Result<Store,
 }
 
 /// `array` as `store` puts it in DuckDB.
-fn stored(array: &ArrayRef, store: Store) -> Result<ArrayRef, LocalError> {
+fn stored(field: &Field, array: &ArrayRef, store: Store) -> Result<ArrayRef, LocalError> {
     match store {
         Store::AsIs | Store::Interval | Store::Decimal(_) => Ok(Arc::clone(array)),
         // Cast from the text shown, which writes reserved values as DuckDB reads them (NaN).
-        Store::Text | Store::Huge | Store::Double => as_text(array),
+        Store::Text | Store::Huge | Store::Double => as_text(field, array),
         Store::Wide(scale) => Ok(Arc::new(
             decimals(array)?.with_precision_and_scale(MAX_DIGITS, scale)?,
         )),
@@ -312,7 +313,7 @@ fn numeric_text(field: &Field) -> bool {
 fn text_numbers(batches: &[RecordBatch], column: usize) -> Result<Store, ArrowError> {
     let (mut whole, mut fraction, mut special) = (0, 0, false);
     for batch in batches {
-        let texts = values::texts(batch.column(column).as_ref(), &FormatOptions::default())?;
+        let texts = values::column_texts(batch, column, &FormatOptions::default())?;
         for text in texts.iter().flatten() {
             let digits = text.trim().trim_start_matches(['-', '+']);
             let (int, frac) = digits.split_once('.').unwrap_or((digits, ""));
@@ -336,13 +337,18 @@ fn text_numbers(batches: &[RecordBatch], column: usize) -> Result<Store, ArrowEr
 }
 
 /// The digits of the widest value of a decimal column, at least 1.
-/// `None` when a value is a decimal `NaN` (`special::DECIMAL_NAN`), which no DECIMAL holds.
-fn most_digits(batches: &[RecordBatch], column: usize) -> Result<Option<u32>, ArrowError> {
+/// `None` when a value is a numeric `NaN` (in a field that holds them), which no DECIMAL holds.
+fn most_digits(
+    field: &Field,
+    batches: &[RecordBatch],
+    column: usize,
+) -> Result<Option<u32>, ArrowError> {
+    let nan = special::holds_decimal_nan(field);
     let mut widest = 0u128;
     for batch in batches {
         let values = decimals(batch.column(column))?;
         for v in values.iter().flatten() {
-            if v == special::DECIMAL_NAN {
+            if nan && v == special::DECIMAL_NAN {
                 return Ok(None);
             }
             widest = widest.max(v.unsigned_abs());
@@ -374,8 +380,8 @@ fn nulls_of(array: &ArrayRef) -> ArrayRef {
 }
 
 /// The values as the text the grid shows.
-fn as_text(array: &ArrayRef) -> Result<ArrayRef, LocalError> {
-    let texts = values::texts(array.as_ref(), &FormatOptions::default())?;
+fn as_text(field: &Field, array: &ArrayRef) -> Result<ArrayRef, LocalError> {
+    let texts = values::shown(field, array.as_ref(), &FormatOptions::default())?;
     Ok(Arc::new(StringArray::from(texts)))
 }
 
@@ -658,8 +664,8 @@ mod tests {
 
     #[test]
     fn decimals_wider_than_their_type() {
-        // 39 digits; `i128::MAX` itself is the reserved numeric NaN.
-        const BIG: i128 = i128::MAX - 1;
+        // 39 digits: DuckDB's largest HUGEINT, a number wherever it is not a marked NaN.
+        const BIG: i128 = i128::MAX;
         let decimal = |values: Vec<Option<i128>>, precision, scale| -> ArrayRef {
             Arc::new(
                 Decimal128Array::from(values)
@@ -681,6 +687,21 @@ mod tests {
             ),
             ("n", Arc::new(Int32Array::from(vec![1, 2, 3]))),
         ]);
+        // The NaN column as the PostgreSQL driver marks it.
+        let fields: Vec<Field> = schema
+            .fields()
+            .iter()
+            .map(|f| {
+                let f = f.as_ref().clone();
+                if f.name() == "nan" {
+                    special::with_decimal_nan(f)
+                } else {
+                    f
+                }
+            })
+            .collect();
+        let schema: SchemaRef = Arc::new(Schema::new(fields));
+        let batch = RecordBatch::try_new(Arc::clone(&schema), batch.columns().to_vec()).unwrap();
         let conn = duckdb::Connection::open_in_memory().unwrap();
         load(&conn, "wide", &schema, &[batch]).unwrap();
         assert_eq!(one(&conn, "SELECT sum(n)::BIGINT FROM wide"), 6);
@@ -712,7 +733,7 @@ mod tests {
         );
         assert_eq!(
             text(&conn, "SELECT t FROM wide WHERE n = 1"),
-            "1701411834604692317316873037158841057.26"
+            "1701411834604692317316873037158841057.27"
         );
         for c in ["h", "w", "t", "nan"] {
             let nulls = one(

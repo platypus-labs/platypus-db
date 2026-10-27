@@ -226,7 +226,9 @@ fn column_stats_of(
             let array = batch.column(c);
             s.nulls += array.null_count();
             s.values += array.len() - array.null_count();
-            let formatter = platypus_core::special::formatter(array.as_ref(), &options)?;
+            let field = batch.schema_ref().field(c).clone();
+            let formatter =
+                platypus_core::special::column_formatter(&field, array.as_ref(), &options)?;
             for row in (0..array.len()).filter(|&r| !array.is_null(r)) {
                 text.clear();
                 let _ = write!(text, "{}", formatter.value(row));
@@ -241,8 +243,10 @@ fn column_stats_of(
                 }
             }
             if numeric {
+                // A numeric NaN is no number to add up.
+                let array = platypus_core::special::without_decimal_nan(&field, array);
                 exact.add(array.as_ref())?;
-                let cast = arrow_cast::cast(array, &DataType::Float64)?;
+                let cast = arrow_cast::cast(&array, &DataType::Float64)?;
                 numbers.extend(cast.as_primitive::<Float64Type>().iter().flatten());
             }
         }
@@ -361,9 +365,16 @@ fn groups_of(
     let mut counts: HashMap<Vec<Option<String>>, usize> = HashMap::new();
     let mut rows = 0;
     for batch in batches {
+        let schema = batch.schema();
         let formatters = columns
             .iter()
-            .map(|&c| platypus_core::special::formatter(batch.column(c).as_ref(), &options))
+            .map(|&c| {
+                platypus_core::special::column_formatter(
+                    schema.field(c),
+                    batch.column(c).as_ref(),
+                    &options,
+                )
+            })
             .collect::<Result<Vec<_>, _>>()?;
         for row in 0..batch.num_rows() {
             let key = columns

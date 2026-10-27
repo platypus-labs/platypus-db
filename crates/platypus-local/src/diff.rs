@@ -273,7 +273,7 @@ impl Encoder {
                     let array = batch.column(c);
                     match common {
                         None => {
-                            let texts = values::texts(array.as_ref(), options)?;
+                            let texts = values::column_texts(batch, c, options)?;
                             Ok(Arc::new(StringArray::from(texts)) as ArrayRef)
                         }
                         Some(t) if t != array.data_type() => arrow_cast::cast(array, t),
@@ -340,9 +340,11 @@ impl<'a> Shown<'a> {
             rows += batch.num_rows();
             formatters.push(
                 batch
-                    .columns()
+                    .schema_ref()
+                    .fields()
                     .iter()
-                    .map(|c| platypus_core::special::formatter(c.as_ref(), options))
+                    .zip(batch.columns())
+                    .map(|(f, c)| platypus_core::special::column_formatter(f, c.as_ref(), options))
                     .collect::<Result<_, _>>()?,
             );
         }

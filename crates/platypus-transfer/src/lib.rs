@@ -216,8 +216,8 @@ fn output_schema(schema: &Schema, format: Format) -> SchemaRef {
     ))
 }
 
-fn to_text(array: &dyn Array) -> Result<ArrayRef, ArrowError> {
-    let formatter = special::formatter(array, &FormatOptions::default())?;
+fn to_text(field: &Field, array: &dyn Array) -> Result<ArrayRef, ArrowError> {
+    let formatter = special::column_formatter(field, array, &FormatOptions::default())?;
     let mut builder = StringBuilder::with_capacity(array.len(), array.len() * 16);
     for i in 0..array.len() {
         if array.is_null(i) {
@@ -234,11 +234,11 @@ fn to_text(array: &dyn Array) -> Result<ArrayRef, ArrowError> {
 /// date outside the calendar (`0000-00-00`) would come out as a wrong number.
 fn parquet_values(batch: &RecordBatch) -> Result<()> {
     for (field, column) in batch.schema().fields().iter().zip(batch.columns()) {
-        if special::find(column.as_ref()).is_none() {
+        if special::find(field, column.as_ref()).is_none() {
             continue;
         }
         let found = (0..column.len())
-            .filter_map(|i| special::text(column.as_ref(), i))
+            .filter_map(|i| special::column_text(field, column.as_ref(), i))
             .find(|text| !text.ends_with("infinity"));
         if let Some(text) = found {
             return Err(ExportError::Options(format!(
@@ -357,15 +357,17 @@ impl Exporter {
     }
 
     pub fn write(&mut self, batch: &RecordBatch) -> Result<()> {
+        let source = batch.schema();
         let columns = batch
             .columns()
             .iter()
             .zip(self.schema.fields())
-            .map(|(column, field)| {
+            .zip(source.fields())
+            .map(|((column, field), from)| {
                 if column.data_type() == field.data_type() {
                     Ok(Arc::clone(column))
                 } else {
-                    to_text(column.as_ref())
+                    to_text(from, column.as_ref())
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -865,7 +867,7 @@ mod tests {
                 DataType::Timestamp(TimeUnit::Microsecond, Some("+00:00".into())),
                 true,
             ),
-            Field::new("n", DataType::Decimal128(10, 2), true),
+            special::with_decimal_nan(Field::new("n", DataType::Decimal128(10, 2), true)),
         ]));
         RecordBatch::try_new(
             schema,

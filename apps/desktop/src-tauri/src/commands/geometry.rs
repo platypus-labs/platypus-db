@@ -44,9 +44,16 @@ fn geometries_of(
     let mut first = offset;
     let mut text = String::new();
     for batch in batches {
+        let schema = batch.schema();
         let formatters = columns
             .iter()
-            .map(|&c| platypus_core::special::formatter(batch.column(c).as_ref(), &options))
+            .map(|&c| {
+                platypus_core::special::column_formatter(
+                    schema.field(c),
+                    batch.column(c).as_ref(),
+                    &options,
+                )
+            })
             .collect::<Result<Vec<_>, _>>()?;
         // Row by row, so that the limit keeps the first rows of every column.
         for row in 0..batch.num_rows() {
