@@ -326,7 +326,8 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
               <select value={target.connection.id} disabled={running} onChange={(e) => chooseConnection(e.target.value)}>
                 {workbench()
                   .connections()
-                  .filter((c) => c.id === target.connection.id || !opensDataFile(c))
+                  // Read-only connections take no data.
+                  .filter((c) => c.id === target.connection.id || (!opensDataFile(c) && !c.read_only))
                   .map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -388,6 +389,9 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
           </div>
         )}
         {error && <div className="notice error small">{error}</div>}
+        {target.connection.read_only && (
+          <div className="notice warn small">{t("{name} is read-only: nothing is written there.", { name: target.connection.name })}</div>
+        )}
         {preview && (
           <>
             <div className="import-preview">
@@ -489,7 +493,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
               {t(status.state === "done" ? "Close" : "Cancel")}
             </button>
           )}
-          <button type="button" className="primary" disabled={!ready || running || status.state === "done"} onClick={request}>
+          <button type="button" className="primary" disabled={!ready || running || status.state === "done" || target.connection.read_only} onClick={request}>
             {t(transfer ? "Copy" : "Import")}
           </button>
         </div>

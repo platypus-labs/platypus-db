@@ -862,6 +862,8 @@ const it: Record<string, string> = {
   "Revert the changes": "Annulla le modifiche",
   "Revert": "Annulla",
   "{name} is read-only": "{name} è in sola lettura",
+  "{name} is read-only: nothing is written there.": "{name} è in sola lettura: lì non si scrive nulla.",
+  "{name} (read-only)": "{name} (sola lettura)",
   "Create…": "Crea…",
   "Save…": "Salva…",
   "Not null": "Non nullo",

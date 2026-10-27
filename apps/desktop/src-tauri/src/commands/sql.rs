@@ -146,6 +146,21 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
     }
 }
 
+/// Whether every statement of `sql` only reads, by the analysis the editor shows: what a
+/// read-only connection lets run.
+pub(crate) fn only_reads(sql: &str, driver: DriverKind) -> bool {
+    use platypus_driver_mongo::shell::{self, StatementKind as Kind};
+    if driver == DriverKind::Mongo {
+        return shell::split(sql).iter().all(|range| {
+            shell::parse(&sql[range.clone()]).is_ok_and(|c| shell::kind(&c) == Kind::Query)
+        });
+    }
+    let dialect = Dialect::from(driver);
+    platypus_sql::split(sql, dialect)
+        .iter()
+        .all(|s| platypus_sql::analyze(s.text(sql), dialect).kind == StatementKind::Query)
+}
+
 /// [`analyze_sql`] for mongosh statements, which have no parameters.
 fn analyze_mongo(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
     use platypus_driver_mongo::shell::{self, CollectionOp, Command, StatementKind as Kind};
@@ -407,6 +422,17 @@ mod tests {
         assert_eq!(lint.statements.len(), 1);
         assert_eq!(lint.issues[0].kind, "join_without_condition");
         assert_eq!(lint.statements[0].tables[0].name.as_deref(), Some("t"));
+    }
+
+    #[test]
+    fn tells_what_a_read_only_connection_runs() {
+        assert!(only_reads("select 1; select 2", DriverKind::Postgres));
+        assert!(!only_reads("select 1; delete from t", DriverKind::Postgres));
+        assert!(!only_reads("set search_path = x", DriverKind::Postgres));
+        assert!(!only_reads("SELECT 1 EXEC('x')", DriverKind::SqlServer));
+        assert!(only_reads("db.a.find()\nshow dbs", DriverKind::Mongo));
+        assert!(!only_reads("db.a.find()\ndb.a.drop()", DriverKind::Mongo));
+        assert!(!only_reads("db.a.find(", DriverKind::Mongo));
     }
 
     #[test]

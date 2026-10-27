@@ -286,6 +286,50 @@ impl AppState {
             .cloned()
             .ok_or_else(|| CommandError::not_found("query", id))
     }
+
+    /// The name of the session's saved connection when it is marked read-only. Read at each
+    /// call, so a change to the setting applies to open sessions too.
+    fn read_only_name(&self, session_id: u64) -> CommandResult<Option<String>> {
+        let id = self.session(session_id)?.connection_id;
+        Ok(match &*lock(&self.store) {
+            Ok(store) => store
+                .get(id)
+                .filter(|c| c.read_only)
+                .map(|c| c.name.clone()),
+            // "Query with SQL" databases are not saved, and nothing else opens without it.
+            Err(_) => None,
+        })
+    }
+
+    /// Fails when the session's connection is read-only: every command that writes checks
+    /// it here, whatever the page offered.
+    fn writable(&self, session_id: u64) -> CommandResult<()> {
+        match self.read_only_name(session_id)? {
+            Some(name) => Err(read_only_error(&name)),
+            None => Ok(()),
+        }
+    }
+
+    /// Fails when the session's connection is read-only and `sql` may change something:
+    /// only statements that read run there.
+    fn may_run(&self, session_id: u64, sql: &str) -> CommandResult<()> {
+        let Some(name) = self.read_only_name(session_id)? else {
+            return Ok(());
+        };
+        let driver = self.session(session_id)?.config.driver;
+        if sql::only_reads(sql, driver) {
+            Ok(())
+        } else {
+            Err(read_only_error(&name))
+        }
+    }
+}
+
+fn read_only_error(name: &str) -> CommandError {
+    CommandError::new(
+        "read_only",
+        format!("{name} is read-only: nothing that may change it runs there"),
+    )
 }
 
 /// Opens a connection, through its SSH tunnel when it has one.

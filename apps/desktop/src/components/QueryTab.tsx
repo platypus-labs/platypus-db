@@ -798,6 +798,10 @@ export function QueryTab({
       onError(toCommandError(e).message);
       return;
     }
+    if (saved.read_only && planned.some((p) => !p.readOnly)) {
+      onError(t("{name} is read-only and this may modify data.", { name: connection.name }));
+      return;
+    }
     if (
       connection.read_only &&
       planned.some((p) => !p.readOnly) &&
@@ -1563,7 +1567,8 @@ export function QueryTab({
           {blocked !== null && (
             <div className="notice warn">
               {t("{name} is read-only and this may modify data.", { name: connection.name })}
-              <button onClick={() => void run(blocked, true)}>{t("Run anyway")}</button>
+              {/* Only this tab is read-only: the connection, like every other entry point, refuses. */}
+              {!saved.read_only && <button onClick={() => void run(blocked, true)}>{t("Run anyway")}</button>}
             </div>
           )}
           {tab.terminal && <TerminalView blocks={terminalLog} onClear={() => setTerminalLog([])} />}

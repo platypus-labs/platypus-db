@@ -372,6 +372,7 @@ pub async fn save_changes(
     changes: Changes,
 ) -> CommandResult<Saved> {
     let job = state.job(job_id)?;
+    state.writable(job.session_id)?;
     let script = script(&state, &job, &changes)?;
     let dialect = Dialect::from(state.session(job.session_id)?.config.driver);
     let conn = state.live(job.session_id).await?;
