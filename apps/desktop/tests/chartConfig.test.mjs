@@ -33,6 +33,8 @@ test("requests name columns by position", () => {
     aggregate: "avg",
   });
   assert.equal(toRequest({ kind: "bar", x: "gone", y: [], aggregate: "sum" }, columns), null);
+  // The X column is not a series too.
+  assert.deepEqual(toRequest({ kind: "bar", x: "n", y: ["n", "total"], aggregate: "sum" }, columns)?.y, [1]);
 });
 
 test("a statement keeps its chart, whatever the spacing and final semicolon", () => {

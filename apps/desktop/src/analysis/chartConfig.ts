@@ -60,11 +60,12 @@ export function validConfig(config: ChartConfig, columns: ChartColumn[]): ChartC
   return names.has(config.x) && config.y.every((n) => names.has(n)) ? config : null;
 }
 
-/** What the backend computes for `config`, columns by position; `null` if one is missing. */
+/** What the backend computes for `config`, columns by position; `null` if one is missing. The
+ *  X column is not a series too (a chart saved before it was chosen as X). */
 export function toRequest(config: ChartConfig, columns: ChartColumn[]): ChartRequest | null {
   const index = (name: string) => columns.findIndex((c) => c.name === name);
   const x = index(config.x);
-  const y = config.y.map(index);
+  const y = config.y.filter((n) => n !== config.x).map(index);
   return x < 0 || y.some((i) => i < 0) ? null : { kind: config.kind, x, y, aggregate: config.aggregate };
 }
 
