@@ -46,7 +46,7 @@ import { TopBar } from "./shell/TopBar";
 import { Welcome } from "./shell/Welcome";
 import { TabBar, barOrder, groupTabsSetting } from "./shell/TabBar";
 import { SidebarResizer, useSidebarWidth } from "./shell/SidebarResizer";
-import { useSetting } from "./settings";
+import { settingsLoadError, useSetting } from "./settings";
 import { useSidebarCollapsed } from "./shell/sidebar";
 import { language, languageSetting, t, plural } from "./i18n";
 import { stepZoom } from "./theme";
@@ -722,6 +722,15 @@ export function App() {
   // "Add to project" lists the projects as they are.
   useEffect(() => registerAddToProject(projects ?? []), [projects]);
   useEffect(() => registerMoveToFolder(project), [project]);
+
+  // A settings.toml that cannot be read leaves every setting at its default: say so, or the
+  // user's settings look lost and every change seems to do nothing.
+  useEffect(() => {
+    const error = settingsLoadError();
+    if (error) {
+      setToast(t("settings.toml could not be read: every setting is at its default and changes are not saved until it is fixed. {message}", { message: error }));
+    }
+  }, []);
 
   // The errors nothing caught go to the Activity log too.
   useEffect(() => {

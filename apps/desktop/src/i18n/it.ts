@@ -1399,6 +1399,7 @@ const it: Record<string, string> = {
   "Don't save": "Non salvare",
   "Enabled": "Attivo",
   "Disabled": "Disattivo",
+  "settings.toml could not be read: every setting is at its default and changes are not saved until it is fixed. {message}": "Impossibile leggere settings.toml: tutte le impostazioni sono ai valori predefiniti e le modifiche non vengono salvate finché non è corretto. {message}",
 };
 
 export default it;
