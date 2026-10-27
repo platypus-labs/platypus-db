@@ -53,7 +53,17 @@ fn variables(src: &str, comments: &[(usize, usize)]) -> Vec<Parameter> {
     found
 }
 
-/// Every placeholder of `src`, in order.
+/// Whether `src` creates an Oracle routine, package, trigger or type: its PL/SQL has no bind
+/// variables, and `:NEW`, `:OLD` and `:PARENT` in a trigger name the rows it fires on.
+fn oracle_stored_plsql(src: &str) -> bool {
+    Lexer::new(src, Dialect::Oracle)
+        .find(|t| t.kind == TokenKind::Word)
+        .is_some_and(|t| t.text(src).eq_ignore_ascii_case("CREATE"))
+        && crate::is_plsql(src)
+}
+
+/// Every placeholder of `src`, in order: `:name` (and in SQLite, `@name` and `$name`), `?`
+/// outside PostgreSQL, and `${name}`.
 #[must_use]
 pub fn parameters(src: &str, dialect: Dialect) -> Vec<Parameter> {
     let tokens: Vec<_> = Lexer::new(src, dialect).collect();
@@ -64,20 +74,22 @@ pub fn parameters(src: &str, dialect: Dialect) -> Vec<Parameter> {
         .collect();
     let mut found = variables(src, &comments);
     let in_variable = |pos: usize| found.iter().any(|v| v.start <= pos && pos < v.end);
+    let named = !(dialect == Dialect::Oracle && oracle_stored_plsql(src));
     let mut more = Vec::new();
     for (i, t) in tokens.iter().enumerate() {
         if t.kind != TokenKind::Symbol || in_variable(t.start) {
             continue;
         }
-        match t.text(src) {
+        let prefix = t.text(src);
+        match prefix {
             "?" if dialect != Dialect::Postgres => more.push(Parameter {
                 kind: ParameterKind::Positional,
                 name: String::new(),
                 start: t.start,
                 end: t.end,
             }),
-            ":" => {
-                // Not `::type`, `a[1:n]` or `x:=`: the colon must follow neither a name nor
+            ":" | "@" | "$" if named && (prefix == ":" || dialect == Dialect::Sqlite) => {
+                // Not `::type`, `a[1:n]` or `x:=`: the prefix must follow neither a name nor
                 // another colon, and touch the name after it.
                 let before = src[..t.start].chars().next_back();
                 if before.is_some_and(|c| is_name_char(c) || c == ':') {
@@ -138,5 +150,51 @@ mod tests {
         assert_eq!(names("select '{}'::jsonb ? 'a'", Dialect::Postgres), []);
         assert_eq!(names("set @x := 1", Dialect::MySql), []);
         assert_eq!(names("${unclosed", Dialect::Sqlite), []);
+    }
+
+    #[test]
+    fn sqlite_names_parameters_three_ways() {
+        use ParameterKind::Named;
+        assert_eq!(
+            names(
+                "SELECT @c AS c, $d AS d, :e WHERE x = '@no'",
+                Dialect::Sqlite
+            ),
+            [
+                (Named, "c".to_owned(), "@c"),
+                (Named, "d".to_owned(), "$d"),
+                (Named, "e".to_owned(), ":e"),
+            ]
+        );
+        // Elsewhere `@x` is a variable and `$1` a parameter of the server.
+        assert_eq!(names("SELECT @c, $1", Dialect::MySql), []);
+        assert_eq!(names("SELECT @c", Dialect::SqlServer), []);
+    }
+
+    #[test]
+    fn oracle_triggers_have_no_bind_variables() {
+        let trigger = "CREATE OR REPLACE TRIGGER t BEFORE UPDATE ON emp FOR EACH ROW\n\
+                       BEGIN\n  :NEW.changed := SYSDATE;\n  IF :old.sal <> :new.sal THEN NULL; END IF;\nEND;";
+        assert_eq!(names(trigger, Dialect::Oracle), []);
+        let procedure = "CREATE PROCEDURE p IS BEGIN UPDATE t SET a = 1; END;";
+        assert_eq!(names(procedure, Dialect::Oracle), []);
+        // Anonymous blocks and plain SQL take binds; other dialects are unchanged.
+        assert_eq!(names("BEGIN :x := 1; END;", Dialect::Oracle).len(), 1);
+        assert_eq!(
+            names("select * from t where a = :new", Dialect::Oracle).len(),
+            1
+        );
+        assert_eq!(
+            names("CREATE TRIGGER t BEGIN SELECT :a; END", Dialect::Postgres).len(),
+            1
+        );
+        // `${name}` variables stay.
+        assert_eq!(
+            names(
+                "CREATE TRIGGER ${name} BEFORE INSERT ON t BEGIN :NEW.a := 1; END;",
+                Dialect::Oracle
+            ),
+            [(ParameterKind::Variable, "name".to_owned(), "${name}")]
+        );
     }
 }

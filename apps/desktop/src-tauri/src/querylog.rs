@@ -15,8 +15,9 @@ use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use platypus_core::{
     CancelHandle, Capabilities, CatalogColumn, CatalogForeignKey, Connection, ExecOptions,
-    ExecResult, Explain, MetadataMatch, ObjectMeta, ObjectRef, Property, RecordBatchStream,
-    ReferencingKey, Result, SchemaMeta, ServerInfo, TableDetails, TransactionState,
+    ExecResult, Executed, Explain, MetadataMatch, ObjectMeta, ObjectRef, Property,
+    RecordBatchStream, ReferencingKey, Result, SchemaMeta, ServerInfo, TableDetails,
+    TransactionState,
 };
 use serde::Serialize;
 
@@ -225,12 +226,13 @@ impl Connection for Logged {
                 self.log.finish(id, started, None);
                 Ok(ExecResult::Affected { rows })
             }
-            Ok(ExecResult::Rows(stream)) => {
+            Ok(ExecResult::Rows(mut stream)) => {
                 self.log.update(id, |e| {
                     e.status = LogStatus::Fetching;
                     e.rows = Some(0);
                 });
                 let schema = stream.schema();
+                let next = stream.take_next();
                 let counted = Counted {
                     inner: stream,
                     log: Arc::clone(&self.log),
@@ -239,16 +241,29 @@ impl Connection for Logged {
                     rows: 0,
                     over: false,
                 };
-                Ok(ExecResult::Rows(RecordBatchStream::new(
-                    schema,
-                    counted.boxed(),
-                )))
+                Ok(ExecResult::Rows(
+                    RecordBatchStream::new(schema, counted.boxed()).with_next(next),
+                ))
             }
             Err(e) => {
                 self.log.finish(id, started, Some(e.to_string()));
                 Err(e)
             }
         }
+    }
+
+    /// One entry for all of them, as they reach the server together.
+    async fn execute_all(&self, statements: &[&str], expected: &[u64]) -> Executed {
+        let id = self
+            .log
+            .start(&self.connection, LogKind::Query, statements.join(";\n"));
+        let started = Instant::now();
+        let executed = self.inner.execute_all(statements, expected).await;
+        let rows = executed.rows.iter().sum();
+        self.log.update(id, |e| e.rows = Some(rows));
+        let error = executed.error.as_ref().map(ToString::to_string);
+        self.log.finish(id, started, error);
+        executed
     }
 
     fn cancel_handle(&self) -> CancelHandle {
@@ -261,6 +276,15 @@ impl Connection for Logged {
 
     fn is_closed(&self) -> bool {
         self.inner.is_closed()
+    }
+
+    /// Not logged: a keep-alive, as the health ping.
+    async fn check_alive(&self) -> bool {
+        self.inner.check_alive().await
+    }
+
+    fn take_messages(&self) -> Vec<String> {
+        self.inner.take_messages()
     }
 
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {

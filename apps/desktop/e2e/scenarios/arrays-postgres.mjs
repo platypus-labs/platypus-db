@@ -52,7 +52,8 @@ export default async function (page, { shots }) {
   await run(page, SETUP, true);
   await run(page, "SELECT * FROM demo.e2e_arrays");
   assert.equal(await page.eval(status), "1 row");
-  await page.waitFor(`${visibleTab}?.querySelector('.edit-bar:not([hidden]) button')?.disabled === false`, 15_000);
+  // The table's keys are read: the edit bar's SQL field has buttons of its own before.
+  await page.waitFor(`${visibleTab}?.querySelector('.edit-bar:not([hidden])')?.textContent.includes('to edit a cell')`, 15_000);
 
   // The array: one row per element, NULL ticked for the third.
   await page.eval(`${visibleTab}.querySelector('.grid-scroll').focus()`);
@@ -152,7 +153,8 @@ export default async function (page, { shots }) {
   // An array with bounds is edited as text, bounds included, so that saving keeps them.
   await run(page, "UPDATE demo.e2e_arrays SET tags = '[0:1]={x,y}' WHERE id = 1");
   await run(page, "SELECT * FROM demo.e2e_arrays");
-  await page.waitFor(`${visibleTab}?.querySelector('.edit-bar:not([hidden]) button')?.disabled === false`, 15_000);
+  // The table's keys are read: the edit bar's SQL field has buttons of its own before.
+  await page.waitFor(`${visibleTab}?.querySelector('.edit-bar:not([hidden])')?.textContent.includes('to edit a cell')`, 15_000);
   await page.eval(`${visibleTab}.querySelector('.grid-scroll').focus()`);
   await page.key("ArrowDown", "ArrowDown", 40);
   await page.key("ArrowRight", "ArrowRight", 39);

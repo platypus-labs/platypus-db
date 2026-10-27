@@ -31,12 +31,14 @@ import {
   highlightActiveLine,
   highlightActiveLineGutter,
   highlightSpecialChars,
+  type KeyBinding,
   keymap,
   lineNumbers,
   rectangularSelection,
 } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
-import { dispatchKey } from "../actions";
+import { allActions, dispatchKey, isMac } from "../actions";
+import { bindingKey, withoutKeys } from "../shortcutKeys";
 import { type CompletionCatalog, type DriverKind, isMongo, toCommandError } from "../api";
 import { annotation, catalogEntry, catalogKey } from "../catalog/catalog";
 import { ContextMenu, type MenuState } from "../components/ContextMenu";
@@ -54,6 +56,9 @@ import { spellcheck, spellcheckSetting } from "./spellcheck";
 
 /** `append` runs the statement into a new result tab, keeping the others. */
 export type RunMode = "statement" | "script" | "append";
+
+/** CodeMirror reads `win` bindings on Windows only. */
+const isWindows = typeof navigator !== "undefined" && /Win/.test(navigator.platform);
 
 /** What the tab around the editor offers its actions. */
 export interface EditorHost {
@@ -122,7 +127,8 @@ function nameAt(state: EditorState, pos: number): [string | null, string] | null
   return [i > 0 ? unquote(parts[i - 1]!) : null, unquote(node)];
 }
 
-const highlight = HighlightStyle.define([
+/** The colors of SQL, shared with the one-line field of SQL on a result. */
+export const highlight = HighlightStyle.define([
   { tag: [t.keyword, t.operatorKeyword, t.modifier], color: "var(--syn-keyword)", fontWeight: "600" },
   { tag: [t.string, t.special(t.string)], color: "var(--syn-string)" },
   { tag: [t.number, t.bool, t.null], color: "var(--syn-number)" },
@@ -132,7 +138,7 @@ const highlight = HighlightStyle.define([
   { tag: [t.operator, t.punctuation, t.bracket], color: "var(--fg-muted)" },
 ]);
 
-const theme = EditorView.theme({
+export const theme = EditorView.theme({
   "&": { height: "100%", fontSize: "var(--editor-font-size)", backgroundColor: "var(--bg)", color: "var(--fg)" },
   // Ligatures would render `<=` as `≤`, which misleads in SQL.
   ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.55", fontVariantLigatures: "none" },
@@ -202,7 +208,8 @@ function catalogNotes(connectionId: string | undefined, database: string | null 
     annotation(catalogEntry(connectionId, catalogKey(database, schema, table, column)), undefined, { full: true });
 }
 
-function language(
+/** The dialect of `driver` with completion of `catalog`'s names, keywords and functions. */
+export function language(
   driver: DriverKind,
   catalog: CompletionCatalog | null | undefined,
   connectionId?: string,
@@ -258,11 +265,21 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
       driver: callbacks.current.driver,
       readOnly: !!callbacks.current.readOnly,
       host: callbacks.current.host,
+      commands: {
+        run: callbacks.current.onRun,
+        save: callbacks.current.onSave,
+        open: callbacks.current.onOpen,
+      },
     });
-    const run = (mode: RunMode) => () => {
-      callbacks.current.onRun?.(mode);
-      return true;
-    };
+    // CodeMirror's own bindings give way to the editor actions on the same keys: a shortcut
+    // removed or moved in the Settings must not keep working through them.
+    const taken = new Set(
+      allActions()
+        .filter((a) => a.scope === "editor")
+        .flatMap((a) => [a.shortcut ?? []].flat())
+        .map((s) => bindingKey(s, isMac)),
+    );
+    const free = (bindings: readonly KeyBinding[]) => withoutKeys(bindings, taken, isMac, isWindows);
     const state = EditorState.create({
       doc: props.initialValue,
       extensions: [
@@ -361,30 +378,19 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
             },
           }),
         ),
-        keymap.of([
-          { key: "Mod-Enter", run: run("statement"), preventDefault: true },
-          { key: "Mod-Shift-Enter", run: run("script"), preventDefault: true },
-          { key: "Alt-x", run: run("script"), preventDefault: true },
-          { key: "Mod-\\", run: run("append"), preventDefault: true },
-          {
-            key: "Mod-s",
-            run: () => (callbacks.current.onSave?.(), true),
-            preventDefault: true,
-          },
-          {
-            key: "Mod-o",
-            run: () => (callbacks.current.onOpen?.(), true),
-            preventDefault: true,
-          },
-          ...closeBracketsKeymap,
-          ...defaultKeymap,
-          ...searchKeymap,
-          ...historyKeymap,
-          ...completionKeymap,
-          ...foldKeymap,
-          { key: "Tab", run: (view) => !view.state.readOnly && expandSnippet(view) },
-          indentWithTab,
-        ]),
+        // Running, saving and opening are editor actions (editor/actions.ts).
+        keymap.of(
+          free([
+            ...closeBracketsKeymap,
+            ...defaultKeymap,
+            ...searchKeymap,
+            ...historyKeymap,
+            ...completionKeymap,
+            ...foldKeymap,
+            { key: "Tab", run: (view) => !view.state.readOnly && expandSnippet(view) },
+            indentWithTab,
+          ]),
+        ),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) {
             callbacks.current.onChange?.(u.state.doc.toString());

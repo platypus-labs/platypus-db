@@ -1,0 +1,20 @@
+// Unit tests of the status of a transfer job (src/transfer/jobStatus.ts).
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { afterEvent } from "../src/transfer/jobStatus.ts";
+
+const running = { state: "running", id: 3, rows: 0 };
+
+test("progress counts the rows while the job runs", () => {
+  assert.deepEqual(afterEvent(running, { type: "progress", rows: 500 }), { ...running, rows: 500 });
+  const done = { state: "done", rows: 9, warnings: [] };
+  assert.equal(afterEvent(done, { type: "progress", rows: 500 }), done, "a late event changes nothing");
+  assert.deepEqual(afterEvent(running, { type: "done", rows: 600, elapsed_ms: 1 }), { state: "done", rows: 600, warnings: [] });
+});
+
+test("a failed or stopped job keeps the rows written before", () => {
+  const busy = afterEvent(running, { type: "progress", rows: 500 });
+  assert.deepEqual(afterEvent(busy, { type: "failed", error: { message: "E11000" } }), { state: "failed", message: "E11000", rows: 500 });
+  assert.deepEqual(afterEvent(busy, { type: "cancelled" }), { state: "cancelled", rows: 500 });
+  assert.deepEqual(afterEvent(running, { type: "cancelled" }), { state: "cancelled", rows: 0 });
+});

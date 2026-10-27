@@ -63,11 +63,24 @@ async fn password(store: &ConnectionStore, saved: &SavedConnection) -> Result<Op
     }
     if saved.password_command.is_some() || saved.pgpass {
         let lookup = saved.clone();
-        // A password command may take a while: it runs off the async runtime.
-        return tokio::task::spawn_blocking(move || platypus_store::external_password(&lookup))
-            .await
-            .map_err(|e| AgentError::Store(e.to_string()))?
-            .map_err(|e| secret_error(&saved.name, e));
+        // A password command may take a while: it runs off the async runtime. What a failed
+        // one printed (a vault client may print a token) never reaches the agent or the
+        // history: the agent learns that it failed, the server's log how it ended.
+        return tokio::task::spawn_blocking(move || {
+            platypus_store::external_password_quiet(&lookup)
+        })
+        .await
+        .map_err(|e| AgentError::Store(e.to_string()))?
+        .map_err(|e| match e {
+            StoreError::Invalid(message) if saved.password_command.is_some() => {
+                eprintln!("platypus-mcp: `{}`: {message}", saved.name);
+                AgentError::Store(format!(
+                    "the password command of `{}` failed: the MCP server's log says how",
+                    saved.name
+                ))
+            }
+            other => secret_error(&saved.name, other),
+        });
     }
     if saved.asks_password() {
         return Err(AgentError::Denied(format!(

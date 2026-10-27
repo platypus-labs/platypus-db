@@ -1,6 +1,7 @@
 // Checks the translations (src/i18n.ts): every text given to `t`, `tNodes`, `msg` or
 // `plural`, and every action title and setting label, has its entry in each dictionary, and
-// no entry is left over. With `--untranslated` it also lists the text shown in JSX without `t`.
+// no entry is left over. With `--untranslated` it also lists the text shown in JSX without `t`
+// and the `label` properties written as plain text.
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { parseAst } from "rolldown/parseAst";
@@ -68,6 +69,11 @@ for (const file of files(src)) {
       if (showRaw && literal(n.value) === null) raw.push(`${where(n)}  ${keyName(n.key)}: (not a literal)`);
     }
     if (!showRaw) return;
+    // A `label` written as plain text outside the declaring calls (as the navigator's folders
+    // were) is shown as it is, unless it is a name (a driver, a format) that needs none.
+    if (!declaring && n.type === "Property" && keyName(n.key) === "label" && /[A-Za-z]{2}/.test(literal(n.value) ?? "")) {
+      raw.push(`${where(n)}  label: ${JSON.stringify(literal(n.value))}`);
+    }
     if (n.type === "JSXText" && /[A-Za-z]{2}/.test(n.value)) raw.push(`${where(n)}  ${n.value.trim()}`);
     if (n.type === "JSXAttribute" && ATTRS.has(n.name.name) && /[A-Za-z]{2}/.test(literal(n.value) ?? "")) {
       raw.push(`${where(n)}  ${n.name.name}="${literal(n.value)}"`);

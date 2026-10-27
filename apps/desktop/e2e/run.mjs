@@ -6,6 +6,9 @@
 //
 //   npm run e2e                 every scenario in e2e/scenarios
 //   npm run e2e -- grid         scenarios whose file name contains "grid"
+//   npm run e2e -- --skip qa-perf,oracle
+//                               every scenario but those whose file name contains one of
+//                               these words (also PLATYPUS_E2E_SKIP=qa-perf,oracle)
 //
 // Build first with `npm run tauri build -- --no-bundle`. Each scenario gets a fresh
 // profile (PLATYPUS_DATA_DIR and its own WebView2 folder), so the user's connections,
@@ -22,7 +25,14 @@ import { connect } from "./cdp.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const exe = process.env.PLATYPUS_E2E_EXE ?? resolve(here, "../../../target/release/platypus-db.exe");
 const port = Number(process.env.PLATYPUS_E2E_PORT ?? 9333);
-const filter = process.argv[2] ?? "";
+const args = process.argv.slice(2);
+const skipAt = args.indexOf("--skip");
+/** Words that leave out the scenarios whose file name contains one of them. */
+const skips = [process.env.PLATYPUS_E2E_SKIP ?? "", skipAt < 0 ? "" : (args[skipAt + 1] ?? "")]
+  .flatMap((list) => list.split(","))
+  .map((word) => word.trim())
+  .filter((word) => word !== "");
+const filter = args.find((a, i) => !a.startsWith("--") && (skipAt < 0 || i !== skipAt + 1)) ?? "";
 
 if (process.platform !== "win32") {
   console.log("e2e: skipped, only Windows (WebView2) is supported for now");
@@ -31,6 +41,11 @@ if (process.platform !== "win32") {
 
 const scenarios = readdirSync(join(here, "scenarios"))
   .filter((f) => f.endsWith(".mjs") && f.includes(filter))
+  .filter((f) => {
+    const word = skips.find((w) => f.includes(w));
+    if (word) console.log(`skip ${f}: --skip ${word}`);
+    return !word;
+  })
   .sort();
 
 let failed = 0;

@@ -2,9 +2,9 @@
 
 use platypus_core::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, Connection, ConstraintKind,
-    ConstraintMeta, FieldMeta, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch, ObjectKind,
-    ObjectMeta, ReferencingKey, Result, SEARCH_LIMIT, SchemaMeta, TableDetails, TextRowExt,
-    query_catalog, query_text,
+    ConstraintMeta, Error, FieldMeta, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch,
+    ObjectKind, ObjectMeta, ReferencingKey, Result, SEARCH_LIMIT, SchemaMeta, TableDetails,
+    TextRowExt, query_catalog, query_text,
 };
 use platypus_sql::Dialect;
 
@@ -25,8 +25,9 @@ pub(crate) fn list(cell: Option<String>) -> Vec<String> {
 pub async fn schemas(conn: &dyn Connection) -> Result<Vec<SchemaMeta>> {
     let rows = query_text(
         conn,
+        // CockroachDB adds its own catalog schemas.
         "SELECT nspname,
-                nspname IN ('pg_catalog', 'information_schema'),
+                nspname IN ('pg_catalog', 'information_schema', 'crdb_internal', 'pg_extension'),
                 nspname = current_schema()
          FROM pg_namespace
          WHERE nspname NOT LIKE 'pg\\_toast%' AND nspname NOT LIKE 'pg\\_temp\\_%'
@@ -113,10 +114,13 @@ pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMe
                     -- -1 until the table is first analyzed.
                     CASE WHEN c.relkind IN ('r', 'm') AND c.reltuples >= 0 THEN c.reltuples::bigint END,
                     -- From the statistics: pg_total_relation_size would lock every table.
+                    -- Each part by its own index lookup, so the query stays linear.
                     CASE WHEN c.relkind IN ('r', 'm') THEN
-                        (SELECT sum(r.relpages) FROM pg_class r
-                         WHERE r.oid = c.oid OR r.oid = c.reltoastrelid
-                            OR r.oid IN (SELECT indexrelid FROM pg_index WHERE indrelid = c.oid))
+                        (c.relpages::bigint
+                         + COALESCE((SELECT t.relpages FROM pg_class t WHERE t.oid = c.reltoastrelid), 0)
+                         + COALESCE((SELECT sum(ic.relpages) FROM pg_index i
+                                     JOIN pg_class ic ON ic.oid = i.indexrelid
+                                     WHERE i.indrelid = c.oid), 0))
                         * current_setting('block_size')::bigint END
              FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
              WHERE n.nspname = {schema} AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
@@ -304,6 +308,19 @@ pub async fn table_details(
     );
 
     let columns = columns(conn, &relation).await?;
+    // No columns: a table without any, or none at all (dropped since it was listed).
+    if columns.is_empty()
+        && query_text(conn, &format!("SELECT {relation}"))
+            .await?
+            .first()
+            .and_then(|r| r.opt(0))
+            .is_none()
+    {
+        return Err(Error::Other(format!(
+            "{} not found",
+            Dialect::Postgres.qualified(Some(schema), table)
+        )));
+    }
 
     let indexes = indexes(conn, &relation).await?;
 
@@ -363,7 +380,7 @@ async fn indexes(conn: &dyn Connection, relation: &str) -> Result<Vec<IndexMeta>
                     array_to_string(ARRAY(
                         SELECT pg_get_indexdef(i.indexrelid, k, true)
                         FROM generate_series(1, i.indnkeyatts) k ORDER BY k), chr(31)),
-                    {size}
+                    {size}, i.indpred IS NOT NULL
              FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid
              WHERE i.indrelid = {relation}
              ORDER BY i.indisprimary DESC, ic.relname"
@@ -375,6 +392,7 @@ async fn indexes(conn: &dyn Connection, relation: &str) -> Result<Vec<IndexMeta>
         name: r.text(0),
         unique: r.flag(1),
         primary: r.flag(2),
+        partial: r.flag(5),
         columns: list(r.opt(3)),
         size: r.number(4),
     })

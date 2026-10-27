@@ -1,5 +1,5 @@
 /** What the data editor needs to know about the table behind a result. */
-import type { ColumnInfo, ColumnMeta, ObjectKind, SourceItem, TableDetails, VirtualKey } from "../../api";
+import type { ColumnInfo, ColumnMeta, Generated, GeneratedColumn, ObjectKind, SourceItem, TableDetails, VirtualKey } from "../../api";
 import { msg } from "../../i18n";
 
 /** The table a data viewer browses. */
@@ -24,8 +24,13 @@ export interface EditMeta {
   key: number[];
   /** The virtual key's columns, when the key is one the user set. */
   virtualKey: string[] | null;
+  /** The key tells every row of the table apart: a primary key or a unique index on all
+   *  the rows, not a virtual key nor a primary key that is not unique (ClickHouse). */
+  uniqueKey: boolean;
   /** Catalog details by result column; `undefined` for expressions, which stay read-only. */
   columns: (ColumnMeta | undefined)[];
+  /** How the database fills each result column by itself, if it does. */
+  generated: (Generated | undefined)[];
 }
 
 /** Why a result cannot be edited; `noKey` when a virtual key would make it editable. */
@@ -46,6 +51,12 @@ function byName(details: TableDetails): (name: string) => ColumnMeta | undefined
   const exact = new Map(details.columns.map((c) => [c.name, c]));
   const folded = new Map(details.columns.map((c) => [c.name.toLowerCase(), c]));
   return (name) => exact.get(name) ?? folded.get(name.toLowerCase());
+}
+
+/** An index column as the catalog names it: PostgreSQL writes the names that need quoting
+ *  quoted (`"Order ID"`), as in its index definitions. */
+export function unquoted(name: string): string {
+  return /^"(?:[^"]|"")*"$/.test(name) ? name.slice(1, -1).replace(/""/g, '"') : name;
 }
 
 /** The table column behind each result column, by the select list; a string says why the
@@ -73,7 +84,12 @@ export function resultColumns(source: EditSource, columns: ColumnInfo[]): (Colum
  * The key to edit `columns` by: the primary key, else a unique index on non-null columns,
  * else the virtual key the user set. Returns why the result is read-only when there is none.
  */
-export function editMeta(source: EditSource, columns: ColumnInfo[], virtualKeys: VirtualKey[]): EditMeta | ReadOnly {
+export function editMeta(
+  source: EditSource,
+  columns: ColumnInfo[],
+  virtualKeys: VirtualKey[],
+  generatedColumns: readonly GeneratedColumn[] = [],
+): EditMeta | ReadOnly {
   const { table, details } = source;
   const mapped = resultColumns(source, columns);
   if (typeof mapped === "string") return { reason: table.kind === "table" ? mapped : msg("only tables can be edited") };
@@ -84,25 +100,31 @@ export function editMeta(source: EditSource, columns: ColumnInfo[], virtualKeys:
   const index = new Map(mapped.flatMap((c, i) => (c ? [[c.name, i] as const] : [])));
   const present = (names: string[]) => names.length > 0 && names.every((n) => index.has(n));
   const find = byName(details);
+  const indexes = details.indexes.map((i) => ({ ...i, columns: i.columns.map(unquoted) }));
   // SQLite reports `INTEGER PRIMARY KEY` columns as nullable, though they never hold NULL.
-  const primary =
-    details.indexes.find((i) => i.primary)?.columns ??
-    details.columns.filter((c) => c.primary_key).map((c) => c.name);
-  const uniques = details.indexes.filter((i) => i.unique && i.columns.every((n) => find(n)?.nullable === false));
+  const primaryIndex = indexes.find((i) => i.primary);
+  const primary = primaryIndex?.columns ?? details.columns.filter((c) => c.primary_key).map((c) => c.name);
+  // A partial index is unique among the rows of its condition only: it tells no row apart.
+  const uniques = indexes.filter(
+    (i) => i.unique && !i.partial && i.columns.every((n) => find(n)?.nullable === false),
+  );
   const unique = uniques.find((i) => present(i.columns));
   const virtual = virtualKeys
     .find((k) => k.schema === table.schema && k.table === table.name)
     ?.columns.map((n) => find(n)?.name ?? n);
-  const meta = (key: string[], virtualKey: string[] | null): EditMeta => ({
+  const kinds = new Map(generatedColumns.map((g) => [g.name, g.kind]));
+  const meta = (key: string[], virtualKey: string[] | null, uniqueKey: boolean): EditMeta => ({
     table,
     details,
     key: key.map((n) => index.get(n)!),
     virtualKey,
+    uniqueKey,
     columns: mapped,
+    generated: mapped.map((c) => (c ? kinds.get(c.name) : undefined)),
   });
-  if (present(primary)) return meta(primary, null);
-  if (unique) return meta(unique.columns, null);
-  if (virtual && present(virtual)) return meta(virtual, virtual);
+  if (present(primary)) return meta(primary, null, !primaryIndex || (primaryIndex.unique && !primaryIndex.partial));
+  if (unique) return meta(unique.columns, null, true);
+  if (virtual && present(virtual)) return meta(virtual, virtual, false);
   const keyed = primary.length > 0 || uniques.length > 0 || virtual !== undefined;
   if (keyed) return { reason: msg("the result does not include the table's key columns"), catalog };
   return {

@@ -18,23 +18,27 @@ mod tls;
 
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::PoisonError;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
-use arrow_array::RecordBatch;
+use arrow_array::{RecordBatch, RecordBatchOptions};
 use arrow_schema::Schema;
 use async_trait::async_trait;
 use futures::StreamExt;
 use platypus_core::{
     CancelHandle, Canceller, CatalogColumn, Connection, ConnectionConfig, DbError, Driver,
-    DriverKind, Error, ExecOptions, ExecResult, ObjectMeta, RecordBatchStream, ReferencingKey,
-    Result, SchemaMeta, ServerInfo, TableDetails, TransactionState, TxTracker, classify,
+    DriverKind, Error, ExecOptions, ExecResult, Executed, ObjectMeta, RecordBatchStream,
+    ReferencingKey, Result, SchemaMeta, ServerInfo, TableDetails, TransactionState, TxEffect,
+    TxTracker, classify, execute_each,
 };
 use tokio::sync::{Mutex, OwnedMutexGuard};
 use tokio_postgres::error::{ErrorPosition, SqlState};
 use tokio_postgres::tls::MakeTlsConnect;
 use tokio_postgres::types::{FromSql, ToSql, Type};
-use tokio_postgres::{CancelToken, Client, NoTls, RowStream, SimpleQueryMessage, Socket};
+use tokio_postgres::{
+    AsyncMessage, CancelToken, Client, NoTls, RowStream, SimpleQueryMessage, Socket,
+};
 use tokio_postgres_rustls::MakeRustlsConnect;
 
 use crate::columns::{ColumnBuilder, column_builder};
@@ -66,6 +70,37 @@ pub struct PgConnection {
     tx: TxTracker,
     /// Names cursors, which carry results inside transactions.
     next_cursor: AtomicU64,
+    /// A statement's [`SAVEPOINT`] is still set (its rows were on their way).
+    savepoint: AtomicBool,
+    /// The notices the server sent, until `take_messages`.
+    notices: Notices,
+}
+
+/// Whether `sql` is a `COPY` to or from the client (`STDOUT`, `STDIN`), a protocol of its own.
+fn copies_through_client(sql: &str) -> bool {
+    let words: Vec<String> = platypus_sql::Lexer::new(sql, platypus_sql::Dialect::Postgres)
+        .filter(|t| t.kind == platypus_sql::TokenKind::Word)
+        .map(|t| t.text(sql).to_ascii_uppercase())
+        .collect();
+    words.first().is_some_and(|w| w == "COPY")
+        && words.iter().any(|w| w == "STDOUT" || w == "STDIN")
+}
+
+/// What manual-commit mode sets before each statement.
+const SAVEPOINT: &str = "SAVEPOINT platypus_statement";
+
+/// The notices (`RAISE NOTICE`, warnings) of a session, as its connection task reads them.
+type Notices = Arc<std::sync::Mutex<Vec<String>>>;
+
+/// Whether `sql` sets, releases or rolls back to a savepoint of the user's, which a
+/// savepoint of the app's around it would disturb.
+fn names_savepoints(sql: &str) -> bool {
+    matches!(
+        platypus_core::leading_words(sql, 1)
+            .first()
+            .map(String::as_str),
+        Some("SAVEPOINT" | "RELEASE" | "ROLLBACK")
+    )
 }
 
 /// The server speaking the protocol, from `version()`: CockroachDB and YugabyteDB name
@@ -124,9 +159,10 @@ impl PgConnection {
         let (ssl_mode, tls) = tls::connector(config)?;
         pg.ssl_mode(ssl_mode);
 
+        let notices = Notices::default();
         let client = match &tls {
-            Some(tls) => spawn_connection(&pg, tls.clone()).await?,
-            None => spawn_connection(&pg, NoTls).await?,
+            Some(tls) => spawn_connection(&pg, tls.clone(), Arc::clone(&notices)).await?,
+            None => spawn_connection(&pg, NoTls, Arc::clone(&notices)).await?,
         };
 
         let row = client
@@ -164,11 +200,17 @@ impl PgConnection {
             busy: Arc::new(Mutex::new(())),
             tx: TxTracker::default(),
             next_cursor: AtomicU64::new(1),
+            savepoint: AtomicBool::new(false),
+            notices,
         })
     }
 }
 
-async fn spawn_connection<T>(config: &tokio_postgres::Config, tls: T) -> Result<Client>
+async fn spawn_connection<T>(
+    config: &tokio_postgres::Config,
+    tls: T,
+    notices: Notices,
+) -> Result<Client>
 where
     T: MakeTlsConnect<Socket> + Send + 'static,
     T::Stream: Send + 'static,
@@ -180,28 +222,125 @@ where
             Some(_) => map_error(e),
             None => Error::Connect(error_chain(&e)),
         })?;
-    // The connection future drives the socket; it ends when the client is dropped.
+    // The connection drives the socket, keeping the notices it reads; it ends when the
+    // client is dropped. A notice is read before the end of the statement that raised it.
+    let mut connection = connection;
     tokio::spawn(async move {
-        let _ = connection.await;
+        let mut messages = futures::stream::poll_fn(move |cx| connection.poll_message(cx));
+        while let Some(Ok(message)) = messages.next().await {
+            if let AsyncMessage::Notice(notice) = message {
+                notices
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .push(format!("{}: {}", notice.severity(), notice.message()));
+            }
+        }
     });
     Ok(client)
 }
 
 #[async_trait]
 impl Connection for PgConnection {
+    /// In manual-commit mode each statement runs under a savepoint: one that fails is undone
+    /// alone, instead of aborting the transaction and with it the changes made before it
+    /// (which `COMMIT` would then roll back).
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
         let effect = classify(sql);
         let guard = Arc::clone(&self.busy).lock_owned().await;
-        if self.tx.needs_begin(effect) {
-            self.client
-                .batch_execute("BEGIN")
-                .await
-                .map_err(map_error)?;
+        let wrap =
+            !self.tx.state().autocommit && effect == TxEffect::None && !names_savepoints(sql);
+        let begin = self.tx.needs_begin(effect);
+        let mut prelude = Vec::new();
+        if begin {
+            prelude.push("BEGIN");
+        }
+        if wrap {
+            prelude.push(SAVEPOINT);
+        }
+        self.settle_savepoint(&prelude).await?;
+        if begin {
             self.tx.set_open(true);
         }
         let result = self.execute_locked(sql, options, guard).await;
+        let result = match result {
+            Err(error) if wrap => Err(self.undo_statement(error).await),
+            // A result set may still fail as its rows come: its savepoint stays until the
+            // next statement or the end of the transaction, which release it.
+            Ok(result) => {
+                if wrap {
+                    self.savepoint.store(true, Ordering::Release);
+                }
+                Ok(result)
+            }
+            Err(error) => Err(error),
+        };
         self.tx.after(effect, false);
         result
+    }
+
+    fn take_messages(&self) -> Vec<String> {
+        std::mem::take(&mut *self.notices.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+
+    /// The statements in simple queries of up to [`SIMPLE_QUERY_BYTES`]: one round trip for
+    /// many of them, where [`execute`](Self::execute) takes two per statement (prepare, then
+    /// run). Statements with a backslash are joined only while `standard_conforming_strings`
+    /// is on: with it off, `\'` in a plain literal would end the literal, and what follows
+    /// would run as a statement of its own.
+    async fn execute_all(&self, statements: &[&str], expected: &[u64]) -> Executed {
+        // An empty query would still open a transaction in manual-commit mode.
+        if statements.is_empty() || statements.iter().any(|s| classify(s) != TxEffect::None) {
+            return execute_each(self, statements, expected).await;
+        }
+        let guard = self.busy.lock().await;
+        // The data editor's own savepoints must not sit inside a statement's.
+        if let Err(error) = self.settle_savepoint(&[]).await {
+            return Executed {
+                rows: Vec::new(),
+                error: Some(error),
+            };
+        }
+        if statements.iter().any(|s| s.contains('\\')) && !self.conforming_strings().await {
+            drop(guard);
+            return execute_each(self, statements, expected).await;
+        }
+        if self.tx.needs_begin(TxEffect::None) {
+            if let Err(e) = self.client.batch_execute("BEGIN").await {
+                return Executed {
+                    rows: Vec::new(),
+                    error: Some(map_error(e)),
+                };
+            }
+            self.tx.set_open(true);
+        }
+        let mut rows = Vec::with_capacity(statements.len());
+        let mut error = None;
+        for group in simple_groups(statements) {
+            let before = rows.len();
+            let sql = statements[group.clone()].join(";\n");
+            if let Err(e) = self.simple_counts(&sql, &mut rows).await {
+                error = Some(map_error(e));
+                break;
+            }
+            // A statement the server split differently would shift every count after it.
+            if rows.len() != group.end {
+                error = Some(Error::Unsupported(format!(
+                    "the server ran {} statements instead of {}",
+                    rows.len() - before,
+                    group.len()
+                )));
+                break;
+            }
+            let off = rows[before..]
+                .iter()
+                .zip(expected.iter().skip(before))
+                .any(|(n, e)| n != e);
+            if off {
+                break;
+            }
+        }
+        self.tx.after(TxEffect::None, false);
+        Executed { rows, error }
     }
 
     fn cancel_handle(&self) -> CancelHandle {
@@ -242,7 +381,7 @@ impl Connection for PgConnection {
 
     async fn explain(&self, sql: &str, analyze: bool) -> Result<platypus_core::Explain> {
         if is_cockroach(self) {
-            return Err(Error::Unsupported("CockroachDB query plans".to_owned()));
+            return explain::cockroach(self, sql, analyze).await;
         }
         explain::explain(self, sql, analyze).await
     }
@@ -288,8 +427,8 @@ impl Connection for PgConnection {
         platypus_core::Capabilities {
             transactions: true,
             cancel: true,
-            // CockroachDB's plans are neither PostgreSQL's JSON nor `EXPLAIN ANALYZE`'s.
-            explain: !is_cockroach(self),
+            // CockroachDB's plans are text trees of their own (`explain::cockroach`).
+            explain: true,
             object_ddl: true,
             metadata_search: true,
             multiple_databases: true,
@@ -298,11 +437,109 @@ impl Connection for PgConnection {
 }
 
 impl PgConnection {
+    /// Whether `standard_conforming_strings` is on: backslashes in plain literals are
+    /// themselves. Called with the session's lock held.
+    async fn conforming_strings(&self) -> bool {
+        self.client
+            .simple_query("SHOW standard_conforming_strings")
+            .await
+            .ok()
+            .and_then(|messages| {
+                messages.into_iter().find_map(|m| match m {
+                    SimpleQueryMessage::Row(row) => row.get(0).map(|v| v == "on"),
+                    _ => None,
+                })
+            })
+            .unwrap_or(false)
+    }
+
+    /// Runs `sql` as a simple query, adding the rows each of its statements changed to
+    /// `rows`; on an error, `rows` holds the counts of the statements before it.
+    async fn simple_counts(
+        &self,
+        sql: &str,
+        rows: &mut Vec<u64>,
+    ) -> std::result::Result<(), tokio_postgres::Error> {
+        let stream = self.client.simple_query_raw(sql).await?;
+        futures::pin_mut!(stream);
+        while let Some(message) = stream.next().await.transpose()? {
+            if let SimpleQueryMessage::CommandComplete(n) = message {
+                rows.push(n);
+            }
+        }
+        Ok(())
+    }
+
+    /// Releases the savepoint a statement left set, then runs `prelude`. A statement whose
+    /// rows failed after the first ones aborted the transaction: it is rolled back to its
+    /// savepoint, so the changes before it stay. Called with the session's lock held.
+    async fn settle_savepoint(&self, prelude: &[&str]) -> Result<()> {
+        let set = self.savepoint.swap(false, Ordering::AcqRel);
+        if !set {
+            if prelude.is_empty() {
+                return Ok(());
+            }
+            return self
+                .client
+                .batch_execute(&prelude.join("; "))
+                .await
+                .map_err(map_error);
+        }
+        let release = "RELEASE SAVEPOINT platypus_statement";
+        let sql = std::iter::once(release)
+            .chain(prelude.iter().copied())
+            .collect::<Vec<_>>()
+            .join("; ");
+        if self.client.batch_execute(&sql).await.is_ok() {
+            return Ok(());
+        }
+        self.client
+            .batch_execute(
+                "ROLLBACK TO SAVEPOINT platypus_statement; RELEASE SAVEPOINT platypus_statement",
+            )
+            .await
+            .map_err(map_error)?;
+        if prelude.is_empty() {
+            return Ok(());
+        }
+        self.client
+            .batch_execute(&prelude.join("; "))
+            .await
+            .map_err(map_error)
+    }
+
+    /// Rolls back the statement that failed with `error` to its savepoint, and says so.
+    async fn undo_statement(&self, error: Error) -> Error {
+        let undone = self
+            .client
+            .batch_execute(
+                "ROLLBACK TO SAVEPOINT platypus_statement; RELEASE SAVEPOINT platypus_statement",
+            )
+            .await;
+        match (error, undone) {
+            (Error::Database(mut db), Ok(())) => {
+                let note = "Only this statement was undone: the transaction stays open with the changes made before it.";
+                db.hint = Some(match db.hint.take() {
+                    Some(hint) => format!("{hint}\n{note}"),
+                    None => note.to_owned(),
+                });
+                Error::Database(db)
+            }
+            (error, _) => error,
+        }
+    }
+
     async fn end_transaction(&self, sql: &str) -> Result<()> {
         let _guard = self.busy.lock().await;
         if !self.tx.state().open {
             return Ok(());
         }
+        // A statement that failed after its first rows is undone before the commit, which
+        // would otherwise roll everything back.
+        if sql == "COMMIT" {
+            self.settle_savepoint(&[]).await?;
+        }
+        self.savepoint.store(false, Ordering::Release);
         let result = self.client.batch_execute(sql).await.map_err(map_error);
         // Even a failed COMMIT ends the transaction in PostgreSQL.
         self.tx.set_open(false);
@@ -323,9 +560,24 @@ impl PgConnection {
             );
             return cursor::open(Arc::clone(&self.client), &name, sql, options, guard, !open).await;
         }
+        if copies_through_client(sql) {
+            return Err(Error::Unsupported(
+                "COPY ... TO STDOUT and FROM STDIN, which stream through the client: export \
+                 the query's rows, import a file, or COPY to or from a file on the server"
+                    .to_owned(),
+            ));
+        }
         let statement = self.client.prepare(sql).await.map_err(map_error)?;
 
-        if statement.columns().is_empty() {
+        // `SELECT` without columns has rows all the same: no columns is no result only
+        // for the other statements.
+        let query = matches!(
+            platypus_core::leading_words(sql, 1)
+                .first()
+                .map(String::as_str),
+            Some("SELECT" | "VALUES" | "TABLE")
+        );
+        if statement.columns().is_empty() && !query {
             let rows = self
                 .client
                 .execute_raw(&statement, no_params())
@@ -334,13 +586,14 @@ impl PgConnection {
             return Ok(ExecResult::Affected { rows });
         }
 
-        let (fields, builders): (Vec<_>, Vec<_>) = statement
+        let (fields, mut builders): (Vec<_>, Vec<_>) = statement
             .columns()
             .iter()
             .map(column_builder)
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             .unzip();
+        columns::load_names(&self.client, &mut builders).await;
         let schema = Arc::new(Schema::new(fields));
         let rows = self
             .client
@@ -362,6 +615,26 @@ impl PgConnection {
             stream.boxed(),
         )))
     }
+}
+
+/// Most bytes of SQL in one simple query of [`PgConnection::execute_all`]: a protocol
+/// message holds at most 1 GiB.
+const SIMPLE_QUERY_BYTES: usize = 64 << 20;
+
+/// `statements` in consecutive runs of up to [`SIMPLE_QUERY_BYTES`], a statement longer
+/// than that in a run of its own.
+fn simple_groups(statements: &[&str]) -> Vec<std::ops::Range<usize>> {
+    let mut groups = Vec::new();
+    let (mut start, mut bytes) = (0, 0);
+    for (i, sql) in statements.iter().enumerate() {
+        if i > start && bytes + sql.len() > SIMPLE_QUERY_BYTES {
+            groups.push(start..i);
+            (start, bytes) = (i, 0);
+        }
+        bytes += sql.len() + 2;
+    }
+    groups.push(start..statements.len());
+    groups
 }
 
 fn no_params() -> std::iter::Empty<&'static (dyn ToSql + Sync)> {
@@ -453,7 +726,9 @@ async fn next_batch(mut state: BatchState) -> Result<Option<(RecordBatch, BatchS
         .iter_mut()
         .map(ColumnBuilder::finish)
         .collect();
-    let batch = RecordBatch::try_new(Arc::clone(&state.schema), columns)?;
+    // A result without columns (`SELECT FROM t`) still has its rows.
+    let options = RecordBatchOptions::new().with_row_count(Some(len));
+    let batch = RecordBatch::try_new_with_options(Arc::clone(&state.schema), columns, &options)?;
     Ok(Some((batch, state)))
 }
 
@@ -551,4 +826,26 @@ fn error_chain(e: &dyn std::error::Error) -> String {
         source = cause.source();
     }
     message
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tells_statements_the_savepoints_must_leave_alone() {
+        assert!(names_savepoints("savepoint a"));
+        assert!(names_savepoints("RELEASE SAVEPOINT a"));
+        assert!(names_savepoints("rollback to a"));
+        assert!(!names_savepoints("insert into t values (1)"));
+        assert!(!names_savepoints("select 'savepoint'"));
+    }
+
+    #[test]
+    fn finds_copies_through_the_client() {
+        assert!(copies_through_client("COPY (SELECT 1) TO STDOUT"));
+        assert!(copies_through_client("copy t from stdin with csv"));
+        assert!(!copies_through_client("COPY t TO '/tmp/t.csv'"));
+        assert!(!copies_through_client("SELECT 'stdout'"));
+    }
 }

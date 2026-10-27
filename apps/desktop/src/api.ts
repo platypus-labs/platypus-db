@@ -305,9 +305,23 @@ export interface ColumnInfo {
 export type QueryEvent =
   | { type: "started"; columns: ColumnInfo[]; elapsed_ms: number }
   | { type: "progress"; rows: number; fetching: boolean }
-  | { type: "finished"; rows: number; elapsed_ms: number; complete: boolean; stopped: boolean }
+  | { type: "finished"; rows: number; elapsed_ms: number; complete: boolean; stopped: boolean; more: boolean }
   | { type: "affected"; rows: number; elapsed_ms: number }
-  | { type: "failed"; error: CommandError };
+  | { type: "failed"; error: CommandError }
+  /** The statement's next result (a T-SQL batch, a MySQL CALL): the events after this one are
+   *  about job `job_id`. */
+  | { type: "next"; job_id: number }
+  /** What the server said meanwhile: notices, PRINT, warnings. */
+  | { type: "messages"; lines: string[] };
+
+export interface UnfilteredTable {
+  schema: string | null;
+  name: string;
+  /** `UPDATE`, `DELETE`, `TRUNCATE`, or mongosh's `updateMany`, `deleteMany`. */
+  verb: string;
+  /** SQL Server's `TOP (n)`: up to that many rows the database picks, not every one. */
+  limited: boolean;
+}
 
 /** Offsets are UTF-16 code units, like JavaScript string indices. */
 export interface StatementSpan {
@@ -316,8 +330,9 @@ export interface StatementSpan {
   read_only: boolean;
   /** `command` is a client command such as `@set x = 1`, run by the app. */
   kind: "query" | "dml" | "ddl" | "other" | "command";
-  /** An UPDATE or DELETE without WHERE, or a TRUNCATE: the table it changes in every row. */
-  unfiltered: { schema: string | null; name: string } | null;
+  /** The tables an UPDATE or DELETE without WHERE, or a TRUNCATE, changes in every row:
+   *  several for `TRUNCATE a, b` or a SQL Server batch. */
+  unfiltered: UnfilteredTable[];
   /** `:name`, `?` and `${name}` placeholders, in the same units as `start`. */
   parameters: ParameterSpan[];
 }
@@ -364,6 +379,9 @@ export interface CliOutput {
 export interface SqlAnalysis {
   statements: StatementSpan[];
   at_cursor: number | null;
+  /** Statements a script sends together (T-SQL batches up to GO), as `first..end` indices
+   *  into `statements`, run `repeat` times (`GO 3`); empty when each runs alone. */
+  batches: { first: number; end: number; repeat: number }[];
 }
 
 export interface HistoryEntry {
@@ -402,7 +420,8 @@ export type ObjectKind =
   | "domain"
   | "extension"
   | "event"
-  | "dictionary";
+  | "dictionary"
+  | "synonym";
 
 export interface ObjectMeta {
   name: string;
@@ -456,6 +475,8 @@ export interface IndexMeta {
   columns: string[];
   unique: boolean;
   primary: boolean;
+  /** Covers only the rows of a condition (`WHERE`). */
+  partial: boolean;
   size: number | null;
 }
 
@@ -531,6 +552,10 @@ export interface TableDesign {
   foreign_keys: ForeignKeyDesign[];
   /** UNIQUE and CHECK constraints. */
   constraints: ConstraintDesign[];
+  /** SQLite's `WITHOUT ROWID`, `STRICT`, kept from the database. */
+  options?: string | null;
+  /** The table's `CREATE TRIGGER` statements (SQLite), run again when it is rebuilt. */
+  triggers?: string[];
 }
 
 export interface ColumnDesign {
@@ -544,6 +569,10 @@ export interface ColumnDesign {
   comment: string | null;
   /** Kept from the database, e.g. MySQL's `auto_increment`. */
   extra?: string | null;
+  /** `GENERATED ALWAYS AS (…) VIRTUAL` of a generated column, kept from the database. */
+  generated?: string | null;
+  /** A collation other than the default one, kept from the database. */
+  collation?: string | null;
 }
 
 export interface IndexDesign {
@@ -551,6 +580,8 @@ export interface IndexDesign {
   name: string;
   columns: string[];
   unique: boolean;
+  /** Its own `CREATE INDEX` (SQLite), run again while the index is unchanged. */
+  sql?: string | null;
 }
 
 export interface ForeignKeyDesign {
@@ -647,15 +678,30 @@ export interface ColumnValue {
   value: CellInput;
 }
 
+/** How the database fills a column by itself: numbered when left out (serials,
+ *  `AUTO_INCREMENT`, SQLite's rowid), numbered and taking no value (`GENERATED ALWAYS AS
+ *  IDENTITY`, SQL Server's `IDENTITY`), or computed (generated columns, `rowversion`). */
+export type Generated = "numbered" | "identity" | "computed";
+
+export interface GeneratedColumn {
+  name: string;
+  kind: Generated;
+}
+
 /** Pending changes to a result of one table; see `commands/data.rs`. */
 export interface TableChanges {
   table: { schema: string; name: string };
   /** Result columns that identify a row. */
   key: number[];
+  /** The key is the table's primary or unique key, not a virtual key: deleted rows are
+   *  removed in batches. */
+  unique_key: boolean;
   /** Result columns that are the table's own, not expressions. */
   table_columns: number[];
   /** Default expressions by result column. */
   defaults: (string | null)[];
+  /** How the database fills each result column by itself, if it does. */
+  generated: (Generated | null)[];
   updates: { row: number; values: ColumnValue[] }[];
   inserts: ColumnValue[][];
   deletes: number[];
@@ -698,6 +744,11 @@ export interface SelectionStats {
   avg: number | null;
   min: number | null;
   max: number | null;
+  /** `sum`, `min` and `max` as exact decimal text, when every number is an integer or a
+   *  decimal of one scale (the numbers above round integers beyond 2^53). */
+  sum_exact: string | null;
+  min_exact: string | null;
+  max_exact: string | null;
 }
 
 /** Statistics of one column over selected rows, for the calc panel. */
@@ -714,6 +765,10 @@ export interface ColumnStats {
     max: number;
     median: number;
     stddev: number | null;
+    /** As in `SelectionStats`. */
+    sum_exact: string | null;
+    min_exact: string | null;
+    max_exact: string | null;
   } | null;
   /** Smallest and largest text of other columns. */
   first: string | null;
@@ -804,8 +859,17 @@ export interface ImportPreview {
   /** The tables of the file: one, or a workbook's sheets. */
   tables: string[];
   table: string;
-  columns: { name: string; source_type: string; target_type: string }[];
+  /** For a source table, also what a new table keeps of each column: NOT NULL, the primary
+   *  key and a default the target reads. */
+  columns: { name: string; source_type: string; target_type: string; not_null?: boolean; primary_key?: boolean; default?: string | null }[];
   rows: (string | null)[][];
+}
+
+/** How a CSV or TSV file is read: its encoding (`null` tells it from the bytes) and whether
+ *  lines with another number of values are left out instead of failing. */
+export interface FileOptions {
+  encoding: string | null;
+  skip_bad_lines: boolean;
 }
 
 /** What happens to the rows already in the table: kept, deleted first, or updated by key. */
@@ -822,7 +886,9 @@ export interface ImportPlan {
   mode?: ImportMode;
   /** The target columns that identify a row, for an upsert. */
   keys?: string[];
-  columns: { source: string; target: string; data_type: string | null }[];
+  columns: { source: string; target: string; data_type: string | null; not_null?: boolean; default?: string | null }[];
+  /** The primary key of a created table. */
+  primary_key?: string[];
 }
 
 /** A set of connections worked on together; a connection can be in several. */
@@ -935,7 +1001,7 @@ export type ImportNote = { kind: "windows_auth" } | { kind: "entra_auth" } | { k
 
 /** About a pasted URL or connection string: the notes of an import, and the parameters it
  *  left out (by name). */
-export type ParseNote = ImportNote | { kind: "ignored"; keys: string[] };
+export type ParseNote = ImportNote | { kind: "ignored"; keys: string[] } | { kind: "other_hosts"; hosts: string[] };
 
 /** The connection form's fields read from a pasted URL or connection string. */
 export interface ParsedConnection {
@@ -979,6 +1045,8 @@ export interface Workspace {
 export interface AppInfo {
   name: string;
   version: string;
+  /** The commit and date the app is built from, e.g. "82678c0 · 2026-10-27 16:52". */
+  build: string | null;
   /** Developer tools are open, as for the end-to-end tests: the page gets test hooks. */
   devtools: boolean;
   os: string;
@@ -1026,10 +1094,12 @@ export interface ChartData {
   /** Bars and pie use `categories` and `values`; lines and scatter `points`, X as a number,
    *  milliseconds since the epoch or a category's position. */
   x_axis: "category" | "number" | "time";
-  categories: string[];
+  /** `null` is the category of SQL NULL, apart from the text "NULL". */
+  categories: (string | null)[];
   /** The last category gathers the ones left out. */
   other: boolean;
-  series: { name: string; values: number[]; points: [number, number][] }[];
+  /** A value is `null` where a category has no number to aggregate (no bar, not 0). */
+  series: { name: string; values: (number | null)[]; points: [number, number][] }[];
   rows: number;
   /** Points were reduced or categories gathered to keep the chart light. */
   reduced: boolean;
@@ -1086,10 +1156,20 @@ export const api = {
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
   defaultConnection: (driver: DriverKind) =>
     invoke<SavedConnection>("default_connection", { driver }),
-  /** Reads a URL (`postgres://…`), a JDBC URL or a `Server=…;Database=…` string. */
-  parseConnectionUrl: (input: string) => invoke<ParsedConnection>("parse_connection_url", { input }),
+  /** Reads a URL (`postgres://…`), a JDBC URL or a `Server=…;Database=…` string; `driver`
+   *  is the form's, which a string that names none is read for. */
+  parseConnectionUrl: (input: string, driver: DriverKind | null = null) =>
+    invoke<ParsedConnection>("parse_connection_url", { input, driver }),
   /** The URL of a saved connection, without its password. */
   connectionUrl: (connectionId: string) => invoke<string>("connection_url", { connectionId }),
+  /** Whether a password is saved for the connection (a locked one counts). */
+  connectionHasPassword: (connectionId: string) => invoke<boolean>("connection_has_password", { connectionId }),
+  /** Saves the password typed at the prompt of a connection that keeps it in the keychain. */
+  rememberPassword: (connectionId: string, password: string) =>
+    invoke<void>("remember_password", { connectionId, password }),
+  /** Saves a copy of a connection, with its secrets, next to it. */
+  duplicateConnection: (id: string) =>
+    invoke<{ connection: SavedConnection; workspace: Workspace }>("duplicate_connection", { id }),
   /** `projects` replaces the projects the connection is in; `null` leaves them. */
   saveConnection: (
     connection: SavedConnection,
@@ -1202,6 +1282,9 @@ export const api = {
     invoke<TableHits>("search_table_data", { sessionId, schema, table, needle }),
   tableDetails: (sessionId: number, schema: string, table: string) =>
     invoke<TableDetails>("table_details", { sessionId, schema, table }),
+  /** The columns of a table the database fills by itself; empty when unknown. */
+  generatedColumns: (sessionId: number, schema: string, table: string) =>
+    invoke<GeneratedColumn[]>("generated_columns", { sessionId, schema, table }),
   referencingKeys: (sessionId: number, schema: string, table: string) =>
     invoke<ReferencingKey[]>("referencing_keys", { sessionId, schema, table }),
   transactionState: (sessionId: number) => invoke<TransactionState>("transaction_state", { sessionId }),
@@ -1249,8 +1332,8 @@ export const api = {
   },
   /** The tables of a data file and the first rows of `table`, with the column types they
    *  would take in the session's database. */
-  previewImport: (sessionId: number, path: string, table: string | null) =>
-    invoke<ImportPreview>("preview_import", { sessionId, path, table }),
+  previewImport: (sessionId: number, path: string, table: string | null, options: FileOptions | null = null) =>
+    invoke<ImportPreview>("preview_import", { sessionId, path, table, options }),
   /** Creates tables of the source session's schema in the target session's and copies their
    *  rows, then their foreign keys; cancelled with `cancelExport`. */
   migrateTables: (
@@ -1330,10 +1413,10 @@ export const api = {
   odbcSystem: () => invoke<OdbcSystem>("odbc_system"),
   /** Imports a data file into the session's database on its own connection; cancelled with
    *  `cancelExport`. */
-  importFile: (sessionId: number, path: string, plan: ImportPlan, onEvent: (e: ExportEvent) => void) => {
+  importFile: (sessionId: number, path: string, plan: ImportPlan, options: FileOptions | null, onEvent: (e: ExportEvent) => void) => {
     const channel = new Channel<ExportEvent>();
     channel.onmessage = onEvent;
-    return invoke<number>("import_file", { sessionId, path, plan, onEvent: channel });
+    return invoke<number>("import_file", { sessionId, path, plan, options, onEvent: channel });
   },
   analyzeSql: (sql: string, driver: DriverKind, cursor: number) =>
     invoke<SqlAnalysis>("analyze_sql", { sql, driver, cursor }),

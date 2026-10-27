@@ -7,6 +7,7 @@ use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use async_trait::async_trait;
 use futures::Stream;
+use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 
 use crate::{
@@ -31,6 +32,15 @@ pub trait Connection: Send + Sync + fmt::Debug {
     /// Executes a single SQL statement.
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult>;
 
+    /// Runs `statements`, which return no rows and control no transaction, in order, up to
+    /// the first that fails or changes a number of rows other than its entry in `expected`
+    /// (where it has one). Drivers that can send them together, saving a round trip per
+    /// statement, do, and may have run some past that one; the default runs them one at a
+    /// time with [`execute`](Self::execute).
+    async fn execute_all(&self, statements: &[&str], expected: &[u64]) -> Executed {
+        execute_each(self, statements, expected).await
+    }
+
     /// A handle that cancels the statement currently running on this connection.
     /// It is independent of the connection, so it can be used from another task.
     fn cancel_handle(&self) -> CancelHandle;
@@ -38,6 +48,23 @@ pub trait Connection: Send + Sync + fmt::Debug {
     fn server_info(&self) -> &ServerInfo;
 
     fn is_closed(&self) -> bool;
+
+    /// The messages the server sent with the statements run since the last call: PostgreSQL
+    /// notices, Transact-SQL `PRINT` and low-severity `RAISERROR`, MySQL warnings. Drivers
+    /// without any answer none.
+    fn take_messages(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Whether the server still holds the session, asked with a light round trip by the
+    /// drivers that learn of a dropped session only from the next statement (MySQL, SQL
+    /// Server); the others answer [`is_closed`](Self::is_closed). Run before a statement
+    /// on a session that sat idle, so that a session the server closed is reopened before
+    /// the statement rather than failing it. It never opens a transaction, and a session
+    /// busy with a statement counts as alive.
+    async fn check_alive(&self) -> bool {
+        !self.is_closed()
+    }
 
     /// Schemas (MySQL databases, SQLite attached databases) visible to the session.
     async fn schemas(&self) -> Result<Vec<SchemaMeta>>;
@@ -121,6 +148,44 @@ pub trait Connection: Send + Sync + fmt::Debug {
     }
 }
 
+/// What [`Connection::execute_all`] ran.
+#[derive(Debug, Default)]
+pub struct Executed {
+    /// The rows each statement that ran changed, in order.
+    pub rows: Vec<u64>,
+    /// Why the statement after those stopped the run.
+    pub error: Option<crate::Error>,
+}
+
+/// [`Connection::execute_all`] one statement at a time, for drivers that cannot send
+/// several together: it stops at the first that fails or changes other than its
+/// `expected` rows.
+pub async fn execute_each<C: Connection + ?Sized>(
+    conn: &C,
+    statements: &[&str],
+    expected: &[u64],
+) -> Executed {
+    let mut rows = Vec::with_capacity(statements.len());
+    for (i, sql) in statements.iter().enumerate() {
+        let n = match conn.execute(sql, &ExecOptions::default()).await {
+            Ok(ExecResult::Affected { rows: n }) => n,
+            // Dropping the stream ends the statement.
+            Ok(ExecResult::Rows(_)) => 0,
+            Err(error) => {
+                return Executed {
+                    rows,
+                    error: Some(error),
+                };
+            }
+        };
+        rows.push(n);
+        if expected.get(i).is_some_and(|&e| e != n) {
+            break;
+        }
+    }
+    Executed { rows, error: None }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ServerInfo {
     /// Product name, e.g. `PostgreSQL`.
@@ -166,16 +231,39 @@ impl fmt::Debug for ExecResult {
     }
 }
 
+/// The next result of a statement that returns several (a Transact-SQL batch with two
+/// `SELECT`s, a MySQL `CALL`): it resolves once the result before it has been read to its
+/// end, to `None` when there is no other. Dropping it leaves the rest of the statement to run
+/// to its end, its results unread.
+pub type NextResult = BoxFuture<'static, Result<Option<ExecResult>>>;
+
 /// A stream of Arrow record batches sharing one schema, known before the first batch arrives.
 pub struct RecordBatchStream {
     schema: SchemaRef,
     inner: BoxStream<'static, Result<RecordBatch>>,
+    next: Option<NextResult>,
 }
 
 impl RecordBatchStream {
     #[must_use]
     pub fn new(schema: SchemaRef, inner: BoxStream<'static, Result<RecordBatch>>) -> Self {
-        Self { schema, inner }
+        Self {
+            schema,
+            inner,
+            next: None,
+        }
+    }
+
+    /// The same stream, followed by the statement's next result.
+    #[must_use]
+    pub fn with_next(mut self, next: Option<NextResult>) -> Self {
+        self.next = next;
+        self
+    }
+
+    /// Takes what follows this result (see [`NextResult`]), to await once the stream ended.
+    pub fn take_next(&mut self) -> Option<NextResult> {
+        self.next.take()
     }
 
     #[must_use]

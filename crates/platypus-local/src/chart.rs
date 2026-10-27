@@ -16,8 +16,8 @@ pub const MAX_POINTS: usize = 2_000;
 pub const MAX_CATEGORIES: usize = 50;
 /// The category that gathers the ones left out; the UI shows its own word for it.
 pub const OTHER: &str = "Other";
-/// The category of NULL values.
-const NULL: &str = "NULL";
+/// A category: the text of its X values, `None` for NULL (apart from the text "NULL").
+pub type Category = Option<String>;
 /// The series that counts rows when no Y column is chosen.
 const COUNT: &str = "count";
 
@@ -65,7 +65,7 @@ pub enum XAxis {
 pub struct Series {
     pub name: String,
     /// Bars and pie: one value per category.
-    pub values: Vec<f64>,
+    pub values: Vec<Option<f64>>,
     /// Lines and scatter: `[x, y]` points.
     pub points: Vec<[f64; 2]>,
 }
@@ -74,7 +74,7 @@ pub struct Series {
 pub struct ChartData {
     pub x_axis: XAxis,
     /// The categories in the order they came; the last is `OTHER` when `other`.
-    pub categories: Vec<String>,
+    pub categories: Vec<Category>,
     pub other: bool,
     pub series: Vec<Series>,
     /// Rows the chart was computed from.
@@ -142,14 +142,16 @@ impl Acc {
         self.max = self.max.max(other.max);
     }
 
-    fn value(&self, aggregate: Aggregate) -> f64 {
+    /// The aggregate, `None` (no bar) when the category has no number to aggregate, as SQL's
+    /// sum, avg, min and max are NULL there.
+    fn value(&self, aggregate: Aggregate) -> Option<f64> {
         match aggregate {
-            Aggregate::Count => values::float(self.count),
-            Aggregate::Sum => self.sum,
-            _ if self.count == 0 => 0.0,
-            Aggregate::Avg => self.sum / values::float(self.count),
-            Aggregate::Min => self.min,
-            Aggregate::Max => self.max,
+            Aggregate::Count => Some(values::float(self.count)),
+            _ if self.count == 0 => None,
+            Aggregate::Sum => Some(self.sum),
+            Aggregate::Avg => Some(self.sum / values::float(self.count)),
+            Aggregate::Min => Some(self.min),
+            Aggregate::Max => Some(self.max),
         }
     }
 }
@@ -167,17 +169,16 @@ fn by_category(
     } else {
         (request.y.iter().copied().map(Some).collect(), names)
     };
-    let mut order: Vec<String> = Vec::new();
-    let mut index: HashMap<String, usize> = HashMap::new();
+    let mut order: Vec<Category> = Vec::new();
+    let mut index: HashMap<Category, usize> = HashMap::new();
     let mut accs: Vec<Vec<Acc>> = Vec::new();
     for batch in batches {
-        let labels = values::texts(batch.column(request.x).as_ref(), options)?;
+        let labels = values::column_texts(batch, request.x, options)?;
         let ys = columns
             .iter()
-            .map(|c| c.map(|c| values::numbers(batch.column(c))).transpose())
+            .map(|c| c.map(|c| values::column_numbers(batch, c)).transpose())
             .collect::<Result<Vec<_>, ArrowError>>()?;
         for (row, label) in labels.into_iter().enumerate() {
-            let label = label.unwrap_or_else(|| NULL.to_owned());
             let at = *index.entry(label).or_insert_with_key(|label| {
                 order.push(label.clone());
                 accs.push(vec![Acc::default(); columns.len()]);
@@ -220,14 +221,18 @@ fn by_category(
 /// Over `MAX_CATEGORIES` categories, the largest by the first series stay in their order and
 /// the others gather in `OTHER`, last.
 fn fold(
-    order: Vec<String>,
+    order: Vec<Category>,
     accs: Vec<Vec<Acc>>,
     aggregate: Aggregate,
-) -> (Vec<String>, Vec<Vec<Acc>>, bool) {
+) -> (Vec<Category>, Vec<Vec<Acc>>, bool) {
     if order.len() <= MAX_CATEGORIES {
         return (order, accs, false);
     }
-    let weight = |a: &[Acc]| a.first().map_or(0.0, |a| a.value(aggregate).abs());
+    let weight = |a: &[Acc]| {
+        a.first()
+            .and_then(|a| a.value(aggregate))
+            .map_or(0.0, f64::abs)
+    };
     let mut ranked: Vec<usize> = (0..order.len()).collect();
     ranked.sort_by(|&a, &b| weight(&accs[b]).total_cmp(&weight(&accs[a])));
     let mut keep = vec![false; order.len()];
@@ -247,7 +252,7 @@ fn fold(
             }
         }
     }
-    categories.push(OTHER.to_owned());
+    categories.push(Some(OTHER.to_owned()));
     kept.push(rest);
     (categories, kept, true)
 }
@@ -266,8 +271,8 @@ fn by_point(
         Kind::Time => XAxis::Time,
         Kind::Text | Kind::Opaque => XAxis::Category,
     };
-    let mut categories: Vec<String> = Vec::new();
-    let mut index: HashMap<String, usize> = HashMap::new();
+    let mut categories: Vec<Category> = Vec::new();
+    let mut index: HashMap<Category, usize> = HashMap::new();
     let mut points: Vec<Vec<[f64; 2]>> = vec![Vec::new(); request.y.len()];
     for batch in batches {
         let xs = x_values(
@@ -279,7 +284,7 @@ fn by_point(
             options,
         )?;
         for (series, &c) in points.iter_mut().zip(&request.y) {
-            let ys = values::numbers(batch.column(c))?;
+            let ys = values::column_numbers(batch, c)?;
             series.extend(xs.iter().zip(ys.iter()).filter_map(|(x, y)| match (x, y) {
                 (Some(x), Some(y)) if x.is_finite() && y.is_finite() => Some([*x, y]),
                 _ => None,
@@ -324,17 +329,16 @@ fn x_values(
     batch: &RecordBatch,
     column: usize,
     axis: XAxis,
-    categories: &mut Vec<String>,
-    index: &mut HashMap<String, usize>,
+    categories: &mut Vec<Category>,
+    index: &mut HashMap<Category, usize>,
     options: &FormatOptions<'_>,
 ) -> Result<Vec<Option<f64>>, ArrowError> {
     if axis != XAxis::Category {
-        return Ok(values::numbers(batch.column(column))?.iter().collect());
+        return Ok(values::column_numbers(batch, column)?.iter().collect());
     }
-    Ok(values::texts(batch.column(column).as_ref(), options)?
+    Ok(values::column_texts(batch, column, options)?
         .into_iter()
         .map(|label| {
-            let label = label.unwrap_or_else(|| NULL.to_owned());
             let at = *index.entry(label).or_insert_with_key(|label| {
                 categories.push(label.clone());
                 categories.len() - 1
@@ -346,7 +350,7 @@ fn x_values(
 
 /// The categories some point is at, in their order, the points' X renumbered to match: a
 /// reduced series sends the labels of the points it kept, not every text of the column.
-fn compact(series: &mut [Series], categories: Vec<String>) -> Vec<String> {
+fn compact(series: &mut [Series], categories: Vec<Category>) -> Vec<Category> {
     let position = |x: f64| usize::try_from(values::whole(x)).unwrap_or(0);
     let mut used = vec![false; categories.len()];
     for p in series.iter().flat_map(|s| &s.points) {
@@ -422,6 +426,62 @@ mod tests {
     use super::*;
 
     /// `region` (text) and `amount` (float).
+    fn cats(labels: &[&str]) -> Vec<Category> {
+        labels.iter().map(|l| Some((*l).to_owned())).collect()
+    }
+
+    /// `k` (text) and `n` (float), NULL where `None`.
+    fn keyed(rows: &[(Option<&str>, Option<f64>)]) -> (Schema, Vec<RecordBatch>) {
+        let schema = Schema::new(vec![
+            Field::new("k", DataType::Utf8, true),
+            Field::new("n", DataType::Float64, true),
+        ]);
+        let columns: Vec<ArrayRef> = vec![
+            Arc::new(StringArray::from(
+                rows.iter().map(|r| r.0).collect::<Vec<_>>(),
+            )),
+            Arc::new(Float64Array::from(
+                rows.iter().map(|r| r.1).collect::<Vec<_>>(),
+            )),
+        ];
+        let batch = RecordBatch::try_new(Arc::new(schema.clone()), columns).unwrap();
+        (schema, vec![batch])
+    }
+
+    #[test]
+    fn null_is_not_the_text_null() {
+        let (schema, batches) = keyed(&[
+            (None, Some(1.0)),
+            (Some("NULL"), Some(4.0)),
+            (Some("a"), Some(2.0)),
+        ]);
+        let bars = draw(&schema, &batches, ChartKind::Bar, 0, &[1], Aggregate::Sum);
+        assert_eq!(
+            bars.categories,
+            [None, Some("NULL".to_owned()), Some("a".to_owned())]
+        );
+        assert_eq!(bars.series[0].values, [Some(1.0), Some(4.0), Some(2.0)]);
+        let line = draw(&schema, &batches, ChartKind::Line, 0, &[1], Aggregate::Sum);
+        assert_eq!(line.categories.len(), 3);
+    }
+
+    #[test]
+    fn a_category_without_numbers_has_no_value() {
+        let (schema, batches) =
+            keyed(&[(Some("a"), None), (Some("a"), None), (Some("b"), Some(3.0))]);
+        for aggregate in [
+            Aggregate::Sum,
+            Aggregate::Avg,
+            Aggregate::Min,
+            Aggregate::Max,
+        ] {
+            let data = draw(&schema, &batches, ChartKind::Bar, 0, &[1], aggregate);
+            assert_eq!(data.series[0].values, [None, Some(3.0)], "{aggregate:?}");
+        }
+        let count = draw(&schema, &batches, ChartKind::Bar, 0, &[1], Aggregate::Count);
+        assert_eq!(count.series[0].values, [Some(0.0), Some(1.0)]);
+    }
+
     fn sales(regions: &[&str], amounts: &[f64]) -> (Schema, Vec<RecordBatch>) {
         let schema = Schema::new(vec![
             Field::new("region", DataType::Utf8, true),
@@ -457,9 +517,9 @@ mod tests {
         let (schema, batches) = sales(&["n", "s", "n"], &[1.0, 2.0, 4.0]);
         let sum = draw(&schema, &batches, ChartKind::Bar, 0, &[1], Aggregate::Sum);
         assert_eq!(sum.x_axis, XAxis::Category);
-        assert_eq!(sum.categories, ["n", "s"]);
+        assert_eq!(sum.categories, cats(&["n", "s"]));
         assert_eq!(sum.series[0].name, "amount");
-        assert_eq!(sum.series[0].values, [5.0, 2.0]);
+        assert_eq!(sum.series[0].values, [Some(5.0), Some(2.0)]);
         assert_eq!(sum.rows, 3);
         assert!(!sum.reduced && !sum.other);
         let by = |aggregate| {
@@ -467,13 +527,13 @@ mod tests {
                 .values
                 .clone()
         };
-        assert_eq!(by(Aggregate::Avg), [2.5, 2.0]);
-        assert_eq!(by(Aggregate::Min), [1.0, 2.0]);
-        assert_eq!(by(Aggregate::Max), [4.0, 2.0]);
-        assert_eq!(by(Aggregate::Count), [2.0, 1.0]);
+        assert_eq!(by(Aggregate::Avg), [Some(2.5), Some(2.0)]);
+        assert_eq!(by(Aggregate::Min), [Some(1.0), Some(2.0)]);
+        assert_eq!(by(Aggregate::Max), [Some(4.0), Some(2.0)]);
+        assert_eq!(by(Aggregate::Count), [Some(2.0), Some(1.0)]);
         let rows = draw(&schema, &batches, ChartKind::Pie, 0, &[], Aggregate::Count);
         assert_eq!(rows.series[0].name, "count");
-        assert_eq!(rows.series[0].values, [2.0, 1.0]);
+        assert_eq!(rows.series[0].values, [Some(2.0), Some(1.0)]);
     }
 
     #[test]
@@ -485,10 +545,10 @@ mod tests {
         let data = draw(&schema, &batches, ChartKind::Bar, 0, &[1], Aggregate::Sum);
         assert!(data.other && data.reduced);
         assert_eq!(data.categories.len(), MAX_CATEGORIES + 1);
-        assert_eq!(data.categories.last().map(String::as_str), Some(OTHER));
+        assert_eq!(data.categories.last(), Some(&Some(OTHER.to_owned())));
         // The 50 largest stay in their order (c10..c59); c0..c9 add up to 45.
-        assert_eq!(data.categories[0], "c10");
-        assert_eq!(data.series[0].values.last().copied(), Some(45.0));
+        assert_eq!(data.categories[0].as_deref(), Some("c10"));
+        assert_eq!(data.series[0].values.last().copied(), Some(Some(45.0)));
     }
 
     #[test]
@@ -552,7 +612,7 @@ mod tests {
         let (schema, batches) = sales(&["b", "a", "b"], &[1.0, 2.0, 3.0]);
         let data = draw(&schema, &batches, ChartKind::Line, 0, &[1], Aggregate::Sum);
         assert_eq!(data.x_axis, XAxis::Category);
-        assert_eq!(data.categories, ["b", "a"]);
+        assert_eq!(data.categories, cats(&["b", "a"]));
         assert_eq!(data.series[0].points, [[0.0, 1.0], [0.0, 3.0], [1.0, 2.0]]);
     }
 
@@ -569,7 +629,7 @@ mod tests {
         for (i, p) in points.iter().enumerate() {
             assert_eq!(p[0], values::float(i), "renumbered in order");
         }
-        assert_eq!(data.categories[0], "t0");
+        assert_eq!(data.categories[0].as_deref(), Some("t0"));
         // A category without a point (its Y is NULL) gets no label.
         let (schema, batches) = sales(&["a", "b"], &[1.0, f64::NAN]);
         let data = draw(
@@ -580,7 +640,7 @@ mod tests {
             &[1],
             Aggregate::Sum,
         );
-        assert_eq!(data.categories, ["a"]);
+        assert_eq!(data.categories, cats(&["a"]));
     }
 
     #[test]

@@ -22,6 +22,7 @@ rust_xlsxwriter.workspace = true
 platypus-core.workspace = true
 platypus-sql.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 sha2 = "0.11"
 thiserror.workspace = true
 ureq = { version = "3", default-features = false, features = ["rustls"] }
@@ -29,6 +30,7 @@ zstd = "0.14"
 
 [dev-dependencies]
 calamine.workspace = true
+platypus-driver-mongo.workspace = true
 tempfile.workspace = true
 
 [lints]

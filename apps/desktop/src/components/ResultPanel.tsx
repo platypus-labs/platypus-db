@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { api, type ColumnInfo, type CommandError } from "../api";
 import type { GridSource } from "../grid/DataGrid";
 import { useFormatSignature } from "../grid/formats";
@@ -35,6 +35,9 @@ export interface Result {
   limit: number | null;
   /** The `LIMIT` the editor added to the query (`safety.auto_limit`). */
   autoLimit?: number | null;
+  /** What the server said while the statement ran (notices, `PRINT`, warnings), and what the
+   *  app has to say about the run (a reopened connection). */
+  messages?: string[];
 }
 
 export const fmt = new Intl.NumberFormat();
@@ -88,9 +91,30 @@ interface PanelProps {
   notes?: NotesScope | null;
   /** Shown as a chart instead of the grid: what it draws, and where a change of it goes. */
   chart?: { config: ChartConfig | null; onConfig: (config: ChartConfig) => void } | null;
+  /** Above the grid or the chart: the result's SQL field. */
+  toolbar?: ReactNode;
 }
 
-export function ResultPanel({ result, sort, onHeaderClick, headerHint, source, edit, notes, chart }: PanelProps) {
+/** The messages of a result, above it. */
+function Messages({ lines }: { lines: string[] | undefined }) {
+  if (!lines?.length) return null;
+  return (
+    <pre className="result-message server-messages" aria-label={t("Messages")}>
+      {lines.join("\n")}
+    </pre>
+  );
+}
+
+export function ResultPanel(props: PanelProps) {
+  return (
+    <>
+      <Messages lines={props.result.messages} />
+      <ResultBody {...props} />
+    </>
+  );
+}
+
+function ResultBody({ result, sort, onHeaderClick, headerHint, source, edit, notes, chart, toolbar }: PanelProps) {
   const [cache, setCache] = useState<RowCache | null>(null);
   const [version, setVersion] = useState(0);
   const { jobId, columns, status } = result;
@@ -149,6 +173,12 @@ export function ResultPanel({ result, sort, onHeaderClick, headerHint, source, e
   return (
     <>
       {bar}
+      {cache.error && (
+        <div className="notice error small" role="alert">
+          {t("Rows could not be read: {message}", { message: cache.error })}
+        </div>
+      )}
+      {chart && toolbar && <div className="edit-bar">{toolbar}</div>}
       {chart ? (
         <ChartView
           jobId={jobId}
@@ -171,6 +201,7 @@ export function ResultPanel({ result, sort, onHeaderClick, headerHint, source, e
           source={source}
           edit={edit}
           notes={notes}
+          toolbar={toolbar}
         />
       )}
     </>

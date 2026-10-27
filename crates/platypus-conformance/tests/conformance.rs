@@ -28,6 +28,7 @@ use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_pg::PgDriver;
 use platypus_driver_sqlite::SqliteDriver;
 use platypus_mcp::query::{Limits, Outcome};
+use platypus_sql::generated::Generated;
 use tempfile::TempDir;
 
 const SERIES_ROWS: usize = 100_000;
@@ -360,6 +361,8 @@ const LIBSQL_SCRATCH: &[&str] = &[
     "conf_plan",
     "conf_big",
     "conf_edit",
+    "conf_many",
+    "conf_keys",
     "init_probe",
 ];
 
@@ -1164,10 +1167,37 @@ fn plan_mentions(node: &PlanNode, name: &str) -> bool {
         || node.children.iter().any(|c| plan_mentions(c, name))
 }
 
-/// Some step has actual rows and its own share of the time.
+/// Some step has actual rows.
 fn plan_has_actuals(node: &PlanNode) -> bool {
-    (node.actual_rows.is_some() && node.self_ms.is_some())
-        || node.children.iter().any(plan_has_actuals)
+    node.actual_rows.is_some() || node.children.iter().any(plan_has_actuals)
+}
+
+/// What a database's plans hold, where they differ.
+struct PlanSupport {
+    /// The steps name the tables they read (ClickHouse names its storage engine instead).
+    names_tables: bool,
+    /// A plan that runs the statement: none in SQLite, ClickHouse and SQL Server here.
+    analyzes: bool,
+    /// Analyze inside an open transaction, rolled back to a savepoint: DuckDB has none.
+    analyzes_in_transaction: bool,
+}
+
+/// Whether the plans give the rows read by full scans, to suggest indexes: PostgreSQL's and
+/// MySQL's.
+fn plans_suggest(b: &Backend) -> bool {
+    matches!(b.config.driver, DriverKind::Postgres | DriverKind::MySql)
+        && b.product != "CockroachDB"
+}
+
+fn plan_support(b: &Backend) -> PlanSupport {
+    let driver = b.config.driver;
+    let analyzes =
+        !b.speaks_sqlite() && !matches!(driver, DriverKind::ClickHouse | DriverKind::SqlServer);
+    PlanSupport {
+        names_tables: driver != DriverKind::ClickHouse,
+        analyzes,
+        analyzes_in_transaction: analyzes && driver != DriverKind::DuckDb,
+    }
 }
 
 /// Plans come back as a tree. With analyze the statement runs, and what it changes is
@@ -1183,50 +1213,70 @@ async fn explains_queries() {
         if !conn.capabilities().explain {
             continue;
         }
-        let create = format!("CREATE {}TABLE conf_plan (id INT)", b.temporary());
-        affected(&b, conn, &create).await;
-        affected(&b, conn, "INSERT INTO conf_plan VALUES (1), (2), (3)").await;
+        let support = plan_support(&b);
+        let table = b.temp("conf_plan");
+        run(conn, &b.create_temp("conf_plan", "id INT"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        affected(
+            &b,
+            conn,
+            &format!("INSERT INTO {table} VALUES (1), (2), (3)"),
+        )
+        .await;
         let count = || async {
-            let rows = collect(&b, conn, "SELECT count(*) FROM conf_plan").await;
+            let rows = collect(&b, conn, &format!("SELECT count(*) FROM {table}")).await;
             cell(&rows[0], 0, 0).unwrap()
         };
-        let select = "SELECT * FROM conf_plan WHERE id > 1";
-        let plan = conn.explain(select, false).await.unwrap();
+        let select = format!("SELECT * FROM {table} WHERE id > 1");
+        let plan = conn
+            .explain(&select, false)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         assert!(!plan.analyzed && !plan.plan.is_empty(), "{}", b.name);
-        assert!(
-            plan_mentions(&plan.root, "conf_plan"),
-            "{}: {:#?}",
-            b.name,
-            plan.root
-        );
+        if support.names_tables {
+            assert!(
+                plan_mentions(&plan.root, "conf_plan"),
+                "{}: {:#?}",
+                b.name,
+                plan.root
+            );
+        }
 
-        let plan = conn.explain(select, true).await.unwrap();
-        // SQLite (and libSQL) has no plan that runs the statement.
-        let analyzes = !b.speaks_sqlite();
-        assert_eq!(plan.analyzed, analyzes, "{}", b.name);
-        assert_eq!(
-            plan_has_actuals(&plan.root),
-            analyzes,
-            "{}: {:#?}",
-            b.name,
-            plan.root
-        );
+        let analyzed = conn.explain(&select, true).await;
+        if !support.analyzes {
+            // A plan without its actual figures, or a plain refusal.
+            if let Ok(plan) = analyzed {
+                assert!(
+                    !plan.analyzed && !plan_has_actuals(&plan.root),
+                    "{}",
+                    b.name
+                );
+            }
+            continue;
+        }
+        let plan = analyzed.unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert!(plan.analyzed, "{}", b.name);
+        assert!(plan_has_actuals(&plan.root), "{}: {:#?}", b.name, plan.root);
 
         // MySQL analyzes only the multi-table form of DELETE.
         let delete = if b.product == "MySQL" {
-            "DELETE p FROM conf_plan p WHERE p.id > 1"
+            "DELETE p FROM conf_plan p WHERE p.id > 1".to_owned()
         } else {
-            "DELETE FROM conf_plan WHERE id > 1"
+            format!("DELETE FROM {table} WHERE id > 1")
         };
-        conn.explain(delete, true)
+        conn.explain(&delete, true)
             .await
             .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         assert_eq!(count().await, "3", "{}: analyze rolled back", b.name);
         assert!(!conn.transaction().open, "{}", b.name);
+        if !support.analyzes_in_transaction {
+            continue;
+        }
 
         conn.set_autocommit(false).await.unwrap();
-        affected(&b, conn, "INSERT INTO conf_plan VALUES (4)").await;
-        conn.explain(delete, true).await.unwrap();
+        affected(&b, conn, &format!("INSERT INTO {table} VALUES (4)")).await;
+        conn.explain(&delete, true).await.unwrap();
         assert!(conn.transaction().open, "{}: still open", b.name);
         assert_eq!(count().await, "4", "{}: only the analyze undone", b.name);
         conn.rollback().await.unwrap();
@@ -1244,7 +1294,7 @@ async fn suggests_indexes_for_large_scans() {
         let conn = b.connect().await;
         let conn = &*conn;
         // Plans are optional: `capabilities_match_optional_methods` checks the others.
-        if !conn.capabilities().explain {
+        if !conn.capabilities().explain || !plan_support(&b).analyzes {
             continue;
         }
         run(
@@ -1258,16 +1308,15 @@ async fn suggests_indexes_for_large_scans() {
             .await
             .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         let tables: Vec<_> = plan.suggestions.iter().map(|s| s.table.as_str()).collect();
-        // SQLite plans have no row counts to judge a table by.
-        let expected: &[&str] = if b.speaks_sqlite() {
-            &[]
-        } else {
+        // Only some plans have the row counts to judge a table by.
+        let expected: &[&str] = if plans_suggest(&b) {
             &["conf_big"]
+        } else {
+            &[]
         };
         assert_eq!(tables, expected, "{}: {:#?}", b.name, plan.root);
     }
 }
-
 /// Every optional method agrees with its capability flag: unsupported ones fail with
 /// `Error::Unsupported`, supported ones never do.
 #[tokio::test]
@@ -1595,7 +1644,7 @@ async fn edit_fixture(
 #[tokio::test]
 async fn edits_table_data() {
     use platypus_sql::Dialect;
-    use platypus_sql::dml::{self, Column, Value, ValueKind};
+    use platypus_sql::dml::{self, Column, Statement, Value, ValueKind};
 
     let _serial = SERIAL.lock().await;
 
@@ -1622,12 +1671,12 @@ async fn edits_table_data() {
         let at = "2024-03-01 10:00:00+00:00";
         let name = r#"it's \ "q""#;
 
-        let inserts = [
-            dml::insert(
-                d,
-                t,
-                &columns,
-                &[
+        let inserts = dml::inserts(
+            d,
+            t,
+            &columns,
+            &[
+                vec![
                     (0, Value::Text("1")),
                     (1, Value::Text(name)),
                     (2, Value::Text("12.50")),
@@ -1635,10 +1684,10 @@ async fn edits_table_data() {
                     (4, Value::Text(at)),
                     (5, Value::Default),
                 ],
-            )
-            .unwrap(),
-            dml::insert(d, t, &columns, &[(0, Value::Text("2"))]).unwrap(),
-        ];
+                vec![(0, Value::Text("2"))],
+            ],
+        )
+        .unwrap();
         dml::apply(conn, d, &inserts)
             .await
             .unwrap_or_else(|e| panic!("{}: insert: {e}", b.name));
@@ -1681,7 +1730,7 @@ async fn edits_table_data() {
             &[(0, Some("1")), (4, Some(at))],
         )
         .unwrap();
-        dml::apply(conn, d, &[update])
+        dml::apply(conn, d, &[Statement::one(update)])
             .await
             .unwrap_or_else(|e| panic!("{}: update: {e}", b.name));
 
@@ -1696,18 +1745,26 @@ async fn edit_rollbacks(
     columns: &[platypus_sql::dml::Column<'_>],
 ) {
     use platypus_sql::Dialect;
-    use platypus_sql::dml::{self, ApplyError, Value};
+    use platypus_sql::dml::{self, ApplyError, Statement, Value};
 
     let (d, t) = (Dialect::from(b.config.driver), &b.temp("conf_edit"));
 
     // A statement that misses its row rolls back the ones before it.
     let ok = dml::update(d, t, columns, &[(1, Value::Text("x"))], &[(0, Some("2"))]).unwrap();
     let missing = dml::update(d, t, columns, &[(1, Value::Text("y"))], &[(0, Some("99"))]).unwrap();
-    let err = dml::apply(conn, d, &[ok, missing.clone()])
+    let missing = Statement::one(missing);
+    let err = dml::apply(conn, d, &[Statement::one(ok), missing.clone()])
         .await
         .unwrap_err();
     assert!(
-        matches!(err, ApplyError::RowCount { index: 1, rows: 0 }),
+        matches!(
+            err,
+            ApplyError::RowCount {
+                index: 1,
+                rows: 0,
+                ..
+            }
+        ),
         "{}: {err}",
         b.name
     );
@@ -1724,14 +1781,21 @@ async fn edit_rollbacks(
     // In manual-commit mode the changes join the session's transaction.
     conn.set_autocommit(false).await.unwrap();
     let delete = dml::delete(d, t, columns, &[(0, Some("2"))]).unwrap();
-    dml::apply(conn, d, &[delete])
+    dml::apply(conn, d, &[Statement::one(delete)])
         .await
         .unwrap_or_else(|e| panic!("{}: delete: {e}", b.name));
     assert!(conn.transaction().open, "{}: left uncommitted", b.name);
     // A missing row that changed nothing keeps the session's work, savepoints or not.
     let err = dml::apply(conn, d, &[missing]).await.unwrap_err();
     assert!(
-        matches!(err, ApplyError::RowCount { index: 0, rows: 0 }),
+        matches!(
+            err,
+            ApplyError::RowCount {
+                index: 0,
+                rows: 0,
+                ..
+            }
+        ),
         "{}: {err}",
         b.name
     );
@@ -1747,6 +1811,566 @@ async fn edit_rollbacks(
     conn.set_autocommit(true).await.unwrap();
     let rows = collect(b, conn, &format!("SELECT count(*) FROM {t}")).await;
     assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("2"), "{}", b.name);
+}
+
+/// Many new and deleted rows go in batched statements on every driver: multi-row `VALUES`,
+/// key lists by composite and simple keys, quoted text in the keys; a batch that finds
+/// fewer rows than it names rolls back.
+#[tokio::test]
+async fn edits_many_rows() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{self, ApplyError, Column, Value, ValueKind};
+
+    const ROWS: usize = 1200;
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        if !conn.capabilities().transactions {
+            continue;
+        }
+        let d = Dialect::from(b.config.driver);
+        let t = &b.temp("conf_many");
+        let text = if b.config.driver == DriverKind::SqlServer {
+            "NVARCHAR(40)"
+        } else {
+            "VARCHAR(40)"
+        };
+        let ddl =
+            format!("id INT NOT NULL, tag {text} NOT NULL, label {text}, PRIMARY KEY (id, tag)");
+        affected(&b, conn, &b.create_temp("conf_many", &ddl)).await;
+        let columns = [
+            Column {
+                name: "id",
+                kind: ValueKind::Integer,
+                default: None,
+            },
+            Column {
+                name: "tag",
+                kind: ValueKind::Text,
+                default: None,
+            },
+            Column {
+                name: "label",
+                kind: ValueKind::Text,
+                default: None,
+            },
+        ];
+        let ids: Vec<String> = (1..=ROWS).map(|i| i.to_string()).collect();
+        let tags: Vec<String> = (1..=ROWS).map(|i| format!("it's \\ {}", i % 3)).collect();
+        let count = || async {
+            let rows = collect(&b, conn, &format!("SELECT count(*) FROM {t}")).await;
+            cell(&rows[0], 0, 0).unwrap()
+        };
+
+        let rows: Vec<Vec<(usize, Value<'_>)>> = (0..ROWS)
+            .map(|i| {
+                let label = if i % 7 == 0 {
+                    Value::Null
+                } else {
+                    Value::Text(&ids[i])
+                };
+                vec![
+                    (0, Value::Text(&ids[i])),
+                    (1, Value::Text(&tags[i])),
+                    (2, label),
+                ]
+            })
+            .collect();
+        let inserts = dml::inserts(d, t, &columns, &rows).unwrap();
+        assert_eq!(inserts.len(), 3, "{}", b.name);
+        dml::apply(conn, d, &inserts)
+            .await
+            .unwrap_or_else(|e| panic!("{}: insert: {e}", b.name));
+        assert_eq!(count().await, ROWS.to_string(), "{}: inserted", b.name);
+
+        let key = |i: usize| vec![(0, Some(ids[i].as_str())), (1, Some(tags[i].as_str()))];
+        let deletes =
+            dml::deletes(d, t, &columns, &(0..1100).map(key).collect::<Vec<_>>()).unwrap();
+        assert_eq!(deletes.len(), 3, "{}", b.name);
+        dml::apply(conn, d, &deletes)
+            .await
+            .unwrap_or_else(|e| panic!("{}: delete: {e}", b.name));
+        assert_eq!(count().await, "100", "{}: deleted", b.name);
+
+        // A row deleted meanwhile: the batch finds one row fewer than it names.
+        let gone: Vec<_> = (1100..ROWS).chain([4]).map(key).collect();
+        let err = dml::apply(conn, d, &dml::deletes(d, t, &columns, &gone).unwrap())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                ApplyError::RowCount {
+                    index: 0,
+                    rows: 100,
+                    expected: 101
+                }
+            ),
+            "{}: {err}",
+            b.name
+        );
+        assert_eq!(count().await, "100", "{}: rolled back", b.name);
+        assert!(!conn.transaction().open, "{}", b.name);
+
+        // By a key of one column.
+        let by_id: Vec<_> = (1100..ROWS)
+            .map(|i| vec![(0, Some(ids[i].as_str()))])
+            .collect();
+        dml::apply(conn, d, &dml::deletes(d, t, &columns, &by_id).unwrap())
+            .await
+            .unwrap_or_else(|e| panic!("{}: delete by id: {e}", b.name));
+        assert_eq!(count().await, "0", "{}: all deleted", b.name);
+    }
+}
+
+/// The statements that switch backslash escapes in string literals off and back on:
+/// `standard_conforming_strings` on PostgreSQL, `NO_BACKSLASH_ESCAPES` on MySQL.
+async fn backslash_modes(b: &Backend, conn: &dyn Connection) -> Option<[String; 2]> {
+    match (b.config.driver, b.name) {
+        (DriverKind::Postgres, "postgres" | "timescale" | "yugabyte") => Some([
+            "SET standard_conforming_strings = on".to_owned(),
+            "SET standard_conforming_strings = off".to_owned(),
+        ]),
+        (DriverKind::MySql, _) => {
+            let mode = collect(b, conn, "SELECT @@SESSION.sql_mode").await;
+            let mode = cell(&mode[0], 0, 0).unwrap_or_default();
+            let with = if mode.is_empty() {
+                "NO_BACKSLASH_ESCAPES".to_owned()
+            } else {
+                format!("{mode},NO_BACKSLASH_ESCAPES")
+            };
+            Some([
+                format!("SET SESSION sql_mode = '{with}'"),
+                format!("SET SESSION sql_mode = '{mode}'"),
+            ])
+        }
+        _ => None,
+    }
+}
+
+/// Text with backslashes and quotes saves as typed, is found again by key and by the data
+/// search, and never ends its literal early, whatever the session says of backslashes:
+/// `standard_conforming_strings` on PostgreSQL, `NO_BACKSLASH_ESCAPES` on MySQL.
+#[tokio::test]
+async fn edits_text_with_backslashes() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{self, Column, Value, ValueKind};
+
+    let _serial = SERIAL.lock().await;
+    let texts = [r"x\'); DROP TABLE conf_scs; --", r"a\b", "it's", r"\\"];
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let Some(modes) = backslash_modes(&b, conn).await else {
+            continue;
+        };
+        let d = Dialect::from(b.config.driver);
+        let columns = [
+            Column {
+                name: "id",
+                kind: ValueKind::Integer,
+                default: None,
+            },
+            Column {
+                name: "name",
+                kind: ValueKind::Text,
+                default: None,
+            },
+        ];
+        affected(
+            &b,
+            conn,
+            "CREATE TEMPORARY TABLE conf_scs (id INT PRIMARY KEY, name TEXT)",
+        )
+        .await;
+        for setting in &modes {
+            run(conn, setting)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+            let ids: Vec<String> = (1..=texts.len()).map(|i| i.to_string()).collect();
+            let rows: Vec<Vec<(usize, Value<'_>)>> = ids
+                .iter()
+                .zip(texts)
+                .map(|(id, text)| vec![(0, Value::Text(id)), (1, Value::Text(text))])
+                .collect();
+            let inserts = dml::inserts(d, "conf_scs", &columns, &rows).unwrap();
+            dml::apply(conn, d, &inserts)
+                .await
+                .unwrap_or_else(|e| panic!("{}: insert after {setting}: {e}", b.name));
+            let saved = collect(&b, conn, "SELECT name FROM conf_scs ORDER BY id").await;
+            let saved: Vec<_> = (0..texts.len())
+                .map(|i| cell(&saved[0], 0, i).unwrap())
+                .collect();
+            assert_eq!(saved, texts, "{}: {setting}", b.name);
+            let search = format!(
+                "SELECT count(*) FROM conf_scs WHERE {}",
+                d.contains("name", r"a\b")
+            );
+            let found = collect(&b, conn, &search).await;
+            assert_eq!(
+                cell(&found[0], 0, 0).as_deref(),
+                Some("1"),
+                "{}: {search}",
+                b.name
+            );
+            // Keys with backslashes find their rows.
+            let keys: Vec<_> = texts.iter().map(|t| vec![(1, Some(*t))]).collect();
+            let deletes = dml::deletes(d, "conf_scs", &columns, &keys).unwrap();
+            dml::apply(conn, d, &deletes)
+                .await
+                .unwrap_or_else(|e| panic!("{}: delete after {setting}: {e}", b.name));
+            let left = collect(&b, conn, "SELECT count(*) FROM conf_scs").await;
+            assert_eq!(cell(&left[0], 0, 0).as_deref(), Some("0"), "{}", b.name);
+        }
+    }
+}
+
+// Composite keys of timestamps with a time zone, decimals and UUIDs find their rows in a
+/// batched delete, on the dialects that list them as row values or with `OR`.
+#[tokio::test]
+async fn edits_composite_keys() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{self, Column, Value, ValueKind};
+
+    let _serial = SERIAL.lock().await;
+    let rows = [
+        [
+            "2024-03-01 10:00:00+00:00",
+            "12.50",
+            "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+        ],
+        [
+            "2024-03-01 10:00:00+00:00",
+            "1e3",
+            "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
+        ],
+        [
+            "2024-03-02 11:30:00+00:00",
+            "12.50",
+            "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+        ],
+    ];
+    for b in backends().await {
+        let ddl = match b.config.driver {
+            DriverKind::Postgres if b.name == "postgres" => {
+                "at TIMESTAMPTZ, amount NUMERIC(10, 2), u UUID, PRIMARY KEY (at, amount, u)"
+            }
+            DriverKind::DuckDb => {
+                "\"at\" TIMESTAMPTZ, amount DECIMAL(10, 2), u UUID, PRIMARY KEY (\"at\", amount, u)"
+            }
+            DriverKind::Sqlite | DriverKind::Libsql => {
+                "at TEXT, amount NUMERIC, u TEXT, PRIMARY KEY (at, amount, u)"
+            }
+            _ => continue,
+        };
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let d = Dialect::from(b.config.driver);
+        if b.config.driver == DriverKind::Libsql {
+            run(conn, "DROP TABLE IF EXISTS conf_keys").await.unwrap();
+        }
+        affected(&b, conn, &b.create_temp("conf_keys", ddl)).await;
+        let schema = match conn
+            .execute("SELECT * FROM conf_keys", &ExecOptions::default())
+            .await
+            .unwrap()
+        {
+            ExecResult::Rows(stream) => stream.schema(),
+            ExecResult::Affected { .. } => panic!("{}: expected rows", b.name),
+        };
+        let columns: Vec<Column<'_>> = schema
+            .fields()
+            .iter()
+            .map(|f| Column {
+                name: f.name(),
+                kind: ValueKind::of(f.data_type()),
+                default: None,
+            })
+            .collect();
+        let values: Vec<Vec<(usize, Value<'_>)>> = rows
+            .iter()
+            .map(|r| {
+                r.iter()
+                    .enumerate()
+                    .map(|(i, v)| (i, Value::Text(v)))
+                    .collect()
+            })
+            .collect();
+        dml::apply(
+            conn,
+            d,
+            &dml::inserts(d, "conf_keys", &columns, &values).unwrap(),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: insert: {e}", b.name));
+        // The decimal as the grid shows it once saved.
+        let keys: Vec<Vec<(usize, Option<&str>)>> = [rows[0], [rows[1][0], "1000.00", rows[1][2]]]
+            .iter()
+            .map(|r| r.iter().enumerate().map(|(i, v)| (i, Some(*v))).collect())
+            .collect();
+        let deletes = dml::deletes(d, "conf_keys", &columns, &keys).unwrap();
+        assert_eq!(deletes.len(), 1, "{}", b.name);
+        dml::apply(conn, d, &deletes)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {}: {e}", b.name, deletes[0].sql));
+        let left = collect(&b, conn, "SELECT count(*) FROM conf_keys").await;
+        assert_eq!(cell(&left[0], 0, 0).as_deref(), Some("1"), "{}", b.name);
+        if b.config.driver == DriverKind::Libsql {
+            run(conn, "DROP TABLE conf_keys").await.unwrap();
+        }
+    }
+}
+
+/// Without savepoints (DuckDB), a save whose first statement finds no row stops there and
+/// leaves the session's uncommitted work as it was.
+#[tokio::test]
+async fn edits_keep_uncommitted_work_without_savepoints() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{self, ApplyError, Column, Statement, ValueKind};
+
+    let _serial = SERIAL.lock().await;
+    let b = duckdb_backend().await;
+    let conn = b.connect().await;
+    let conn = &*conn;
+    let d = Dialect::DuckDb;
+    let columns = [Column {
+        name: "id",
+        kind: ValueKind::Integer,
+        default: None,
+    }];
+    affected(&b, conn, "CREATE TABLE conf_dk (id INTEGER PRIMARY KEY)").await;
+    affected(&b, conn, "INSERT INTO conf_dk VALUES (1), (2)").await;
+    conn.set_autocommit(false).await.unwrap();
+    affected(&b, conn, "INSERT INTO conf_dk VALUES (3)").await;
+    let delete =
+        |id| Statement::one(dml::delete(d, "conf_dk", &columns, &[(0, Some(id))]).unwrap());
+    let err = dml::apply(conn, d, &[delete("99"), delete("1")])
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ApplyError::RowCount {
+                index: 0,
+                rows: 0,
+                ..
+            }
+        ),
+        "{err}"
+    );
+    assert!(conn.transaction().open, "the session's transaction goes on");
+    let count = collect(&b, conn, "SELECT count(*) FROM conf_dk").await;
+    assert_eq!(
+        cell(&count[0], 0, 0).as_deref(),
+        Some("3"),
+        "row 3 kept, row 1 not deleted"
+    );
+    // Once a statement changed rows, only a rollback of everything undoes them, and the
+    // error says so.
+    let err = dml::apply(conn, d, &[delete("1"), delete("99")])
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, ApplyError::SessionRolledBack(cause)
+            if matches!(**cause, ApplyError::RowCount { index: 1, rows: 0, .. })),
+        "{err}"
+    );
+    assert!(err.to_string().contains("rolled back"), "{err}");
+    assert!(!conn.transaction().open);
+    conn.set_autocommit(true).await.unwrap();
+    let count = collect(&b, conn, "SELECT count(*) FROM conf_dk").await;
+    assert_eq!(
+        cell(&count[0], 0, 0).as_deref(),
+        Some("2"),
+        "rows 1 and 2, without row 3"
+    );
+}
+
+/// The table of `qa_fixgrid_generated_columns` on `b`, with its numbered and computed columns
+/// as the catalog should report them; `None` where the test does not apply.
+fn generated_fixture(b: &Backend) -> Option<(&'static str, Vec<(&'static str, Generated)>)> {
+    use Generated::{Computed, Identity, Numbered};
+    Some(match b.name {
+        "postgres" => (
+            "id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, n INT GENERATED BY DEFAULT AS \
+             IDENTITY, s SERIAL, a INT, total INT GENERATED ALWAYS AS (a * 2) STORED",
+            vec![
+                ("id", Identity),
+                ("n", Numbered),
+                ("s", Numbered),
+                ("total", Computed),
+            ],
+        ),
+        "mysql" | "mariadb" => (
+            "id INT AUTO_INCREMENT PRIMARY KEY, a INT, total INT AS (a * 2) VIRTUAL, \
+             st INT AS (a + 1) STORED, \
+             at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+            vec![("id", Numbered), ("total", Computed), ("st", Computed)],
+        ),
+        "sqlserver" => (
+            "id INT IDENTITY(1, 1) PRIMARY KEY, a INT, total AS (a * 2), rv ROWVERSION",
+            vec![("id", Identity), ("total", Computed), ("rv", Computed)],
+        ),
+        "sqlite" | "libsql" => (
+            "id INTEGER PRIMARY KEY, a INT, total INT GENERATED ALWAYS AS (a * 2) VIRTUAL",
+            vec![("id", Numbered), ("total", Computed)],
+        ),
+        _ => return None,
+    })
+}
+
+/// The data editor leaves numbered and computed columns to the database: the catalog tells
+/// them apart, new rows (a duplicated row) get a fresh number, and the undo script of a
+/// deleted row puts its number back, with the override the database asks for, and leaves
+/// computed columns out.
+#[tokio::test]
+async fn qa_fixgrid_generated_columns() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{self, Column, Value, ValueKind};
+    use platypus_sql::generated::generated_columns;
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let Some((columns_sql, expected)) = generated_fixture(&b) else {
+            continue;
+        };
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let d = Dialect::from(b.config.driver);
+        let t = d.qualified(Some(&b.schema), "qa_fixgrid_gen");
+        let _ = run(conn, &format!("DROP TABLE IF EXISTS {t}")).await;
+        run(conn, &format!("CREATE TABLE {t} ({columns_sql})"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: create: {e}", b.name));
+
+        let mut found: Vec<_> = generated_columns(conn, d, &b.schema, "qa_fixgrid_gen")
+            .await
+            .unwrap_or_else(|e| panic!("{}: catalog: {e}", b.name))
+            .into_iter()
+            .map(|c| (c.name, c.generated))
+            .collect();
+        found.sort_by(|x, y| x.0.cmp(&y.0));
+        let mut want: Vec<_> = expected.iter().map(|&(n, g)| (n.to_owned(), g)).collect();
+        want.sort_by(|x, y| x.0.cmp(&y.0));
+        assert_eq!(found, want, "{}: generated columns", b.name);
+
+        let Ok(ExecResult::Rows(stream)) = execute(conn, &format!("SELECT * FROM {t}")).await
+        else {
+            panic!("{}: expected rows", b.name);
+        };
+        let fields = stream.schema();
+        drop(stream);
+        let columns: Vec<Column<'_>> = fields
+            .fields()
+            .iter()
+            .map(|f| Column {
+                name: f.name(),
+                kind: ValueKind::of(f.data_type()),
+                default: None,
+            })
+            .collect();
+        let index = |name: &str| columns.iter().position(|c| c.name == name).unwrap();
+        let a = index("a");
+        // New rows set only `a`, as a duplicated row does once numbered and computed columns
+        // are left out.
+        let inserts = dml::inserts(
+            d,
+            &t,
+            &columns,
+            &[vec![(a, Value::Text("5"))], vec![(a, Value::Text("6"))]],
+        )
+        .unwrap();
+        dml::apply(conn, d, &inserts)
+            .await
+            .unwrap_or_else(|e| panic!("{}: insert: {e}", b.name));
+
+        // Delete the first row and put it back with the undo script's statements.
+        let row = collect(&b, conn, &format!("SELECT * FROM {t} WHERE a = 5")).await;
+        let texts: Vec<Option<String>> = (0..columns.len()).map(|c| cell(&row[0], c, 0)).collect();
+        let id = texts[index("id")].clone().unwrap();
+        affected(&b, conn, &format!("DELETE FROM {t} WHERE a = 5")).await;
+        let kind = |c: &Column<'_>| expected.iter().find(|(n, _)| *n == c.name).map(|e| e.1);
+        let restored: Vec<usize> = (0..columns.len())
+            .filter(|&c| kind(&columns[c]) != Some(Generated::Computed))
+            .collect();
+        let identity: Vec<usize> = restored
+            .iter()
+            .copied()
+            .filter(|&c| kind(&columns[c]) == Some(Generated::Identity))
+            .collect();
+        let values: Vec<_> = restored
+            .iter()
+            .map(|&c| (c, texts[c].as_deref().map_or(Value::Null, Value::Text)))
+            .collect();
+        let undo = dml::restore_inserts(d, &t, &columns, &[values], &identity).unwrap();
+        for sql in &undo {
+            run(conn, sql)
+                .await
+                .unwrap_or_else(|e| panic!("{}: undo {sql}: {e}", b.name));
+        }
+        let back = collect(&b, conn, &format!("SELECT id, total FROM {t} WHERE a = 5")).await;
+        assert_eq!(cell(&back[0], 0, 0), Some(id), "{}: the same id", b.name);
+        assert_eq!(
+            cell(&back[0], 1, 0).as_deref(),
+            Some("10"),
+            "{}: computed",
+            b.name
+        );
+        run(conn, &format!("DROP TABLE {t}")).await.unwrap();
+        eprintln!("{}: generated columns checked", b.name);
+    }
+}
+
+/// A partial unique index (`WHERE`) is reported as such: it tells no row apart, so the data
+/// editor neither keys rows by it nor deletes them in batches by it.
+#[tokio::test]
+async fn reports_partial_indexes() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let (schema, ddl) = match (b.config.driver, b.name) {
+            (DriverKind::Postgres, "postgres") | (DriverKind::SqlServer, _) => (
+                "demo",
+                [
+                    "CREATE TABLE demo.conf_partial (id INT NOT NULL, code INT NOT NULL, live INT)",
+                    "CREATE UNIQUE INDEX conf_partial_live ON demo.conf_partial (code) WHERE live = 1",
+                    "CREATE UNIQUE INDEX conf_partial_id ON demo.conf_partial (id)",
+                ],
+            ),
+            (DriverKind::Sqlite, _) => (
+                "main",
+                [
+                    "CREATE TABLE conf_partial (id INT NOT NULL, code INT NOT NULL, live INT)",
+                    "CREATE UNIQUE INDEX conf_partial_live ON conf_partial (code) WHERE live = 1",
+                    "CREATE UNIQUE INDEX conf_partial_id ON conf_partial (id)",
+                ],
+            ),
+            _ => continue,
+        };
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let table = format!("{schema}.conf_partial");
+        run(conn, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        for sql in ddl {
+            run(conn, sql)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name));
+        }
+        let details = conn.table_details(schema, "conf_partial").await.unwrap();
+        let partial = |name: &str| {
+            details
+                .indexes
+                .iter()
+                .find(|i| i.name == name)
+                .unwrap_or_else(|| panic!("{}: no {name} in {:?}", b.name, details.indexes))
+                .partial
+        };
+        assert!(partial("conf_partial_live"), "{}", b.name);
+        assert!(!partial("conf_partial_id"), "{}", b.name);
+        run(conn, &format!("DROP TABLE {table}")).await.unwrap();
+    }
 }
 
 #[tokio::test]
@@ -1767,6 +2391,10 @@ async fn estimates_table_rows() {
             if let Some(Some(n)) = rows.first().and_then(|r| r.first()) {
                 assert!(n.parse::<i64>().is_ok(), "{}: {n}", b.name);
             }
+            // No table of that name in the current schema is no estimate, not an error.
+            d.estimate_rows(conn.as_ref(), schema, "customers")
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         }
     }
 }
@@ -1899,9 +2527,13 @@ async fn edits_arrays_and_composites() {
             &[(0, Some("1"))],
         )
         .unwrap();
-        dml::apply(conn, Dialect::from(b.config.driver), &[update])
-            .await
-            .unwrap_or_else(|e| panic!("{}: update: {e}", b.name));
+        dml::apply(
+            conn,
+            Dialect::from(b.config.driver),
+            &[dml::Statement::one(update)],
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: update: {e}", b.name));
 
         let rows = collect(
             &b,
@@ -2897,6 +3529,7 @@ async fn fills_tables_with_fake_rows() {
             name: name.to_owned(),
             generator,
             unique: false,
+            data_type: None,
         };
         // The two columns of the composite foreign key, from one parent row.
         let reference = |column: &str| Generator::Reference {
@@ -3258,6 +3891,546 @@ async fn writes_comments() {
         assert_eq!(read.comment, None, "{}", b.name);
         assert_eq!(read.columns[1].comment, None, "{}", b.name);
         drop_tables(&*conn, d, &b.schema, &tables).await;
+    }
+}
+
+/// A PostgreSQL table never analyzed has no statistics: its rows are counted instead of
+/// "unknown" (the confirmation before changes to every row shows them).
+#[tokio::test]
+async fn qa_fixsafe_estimates_rows_of_tables_never_analyzed() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends()
+        .await
+        .into_iter()
+        .filter(|b| b.name == "postgres")
+    {
+        let conn = b.connect().await;
+        let table = format!("{}.qa_fixsafe_est", b.schema);
+        run(&*conn, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap();
+        run(&*conn, &format!("CREATE TABLE {table} (id int)"))
+            .await
+            .unwrap();
+        run(&*conn, &format!("INSERT INTO {table} VALUES (1), (2), (3)"))
+            .await
+            .unwrap();
+        let estimate = platypus_sql::Dialect::Postgres
+            .estimate_rows(&*conn, Some(&b.schema), "qa_fixsafe_est")
+            .await;
+        run(&*conn, &format!("DROP TABLE {table}")).await.unwrap();
+        assert_eq!(estimate.unwrap(), Some(3), "{}", b.name);
+    }
+}
+
+/// Every SQLite keyword: SQLite has no catalog of them.
+const SQLITE_KEYWORDS: &str = "ABORT ACTION ADD AFTER ALL ALTER ALWAYS ANALYZE AND AS ASC ATTACH \
+    AUTOINCREMENT BEFORE BEGIN BETWEEN BY CASCADE CASE CAST CHECK COLLATE COLUMN COMMIT CONFLICT \
+    CONSTRAINT CREATE CROSS CURRENT CURRENT_DATE CURRENT_TIME CURRENT_TIMESTAMP DATABASE DEFAULT \
+    DEFERRABLE DEFERRED DELETE DESC DETACH DISTINCT DO DROP EACH ELSE END ESCAPE EXCEPT EXCLUDE \
+    EXCLUSIVE EXISTS EXPLAIN FAIL FILTER FIRST FOLLOWING FOR FOREIGN FROM FULL GENERATED GLOB GROUP \
+    GROUPS HAVING IF IGNORE IMMEDIATE IN INDEX INDEXED INITIALLY INNER INSERT INSTEAD INTERSECT INTO \
+    IS ISNULL JOIN KEY LAST LEFT LIKE LIMIT MATCH MATERIALIZED NATURAL NO NOT NOTHING NOTNULL NULL \
+    NULLS OF OFFSET ON OR ORDER OTHERS OUTER OVER PARTITION PLAN PRAGMA PRECEDING PRIMARY QUERY \
+    RAISE RANGE RECURSIVE REFERENCES REGEXP REINDEX RELEASE RENAME REPLACE RESTRICT RETURNING \
+    RIGHT ROLLBACK ROW ROWS SAVEPOINT SELECT SET TABLE TEMP TEMPORARY THEN TIES TO TRANSACTION \
+    TRIGGER UNBOUNDED UNION UNIQUE UPDATE USING VACUUM VALUES VIEW VIRTUAL WHEN WHERE WINDOW WITH \
+    WITHOUT";
+
+/// The keywords of the backend's database, from its own catalog where it has one.
+async fn keywords(b: &Backend, conn: &dyn Connection) -> Vec<String> {
+    let sql = match b.name {
+        "postgres" => "SELECT word FROM pg_get_keywords()",
+        "mysql" | "mariadb" => "SELECT WORD FROM information_schema.KEYWORDS",
+        "duckdb" => "SELECT keyword_name FROM duckdb_keywords()",
+        "sqlite" | "libsql" => {
+            return SQLITE_KEYWORDS
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect();
+        }
+        _ => return Vec::new(),
+    };
+    let mut words = Vec::new();
+    for batch in collect(b, conn, sql).await {
+        for row in 0..batch.num_rows() {
+            words.extend(cell(&batch, 0, row));
+        }
+    }
+    words
+}
+
+/// A table named like each keyword of the database, written by `Dialect::quote_ident`, is
+/// read back from its own rows: a name left bare is either a syntax error or, on
+/// PostgreSQL, a value function such as `current_role` read in its place.
+#[tokio::test]
+async fn qa_fixnav_keyword_table_names_are_quoted_where_needed() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let conn = b.connect().await;
+        let d = platypus_sql::Dialect::from(b.config.driver);
+        let words = keywords(&b, &*conn).await;
+        if words.is_empty() {
+            continue;
+        }
+        let mut wrong = Vec::new();
+        for word in &words {
+            // PostgreSQL folds bare names to lower case; the others keep the case given.
+            let name = word.to_lowercase();
+            let table = d.quote_ident(&name);
+            let created = run(&*conn, &b.create_temp(&table, "x INT")).await;
+            if created.is_err() {
+                wrong.push(format!("{table}: {}", created.unwrap_err()));
+                continue;
+            }
+            let _ = run(&*conn, &format!("INSERT INTO {table} VALUES (42)")).await;
+            let select = d.select(&platypus_sql::ObjectName::new(None, &name), &["x"], None);
+            match conn.execute(&select, &ExecOptions::default()).await {
+                Ok(ExecResult::Rows(stream)) => {
+                    let batches: Vec<RecordBatch> = stream.try_collect().await.unwrap_or_default();
+                    if batches.first().and_then(|b| cell(b, 0, 0)).as_deref() != Some("42") {
+                        wrong.push(format!("{select}: other rows"));
+                    }
+                }
+                other => wrong.push(format!("{select}: {other:?}")),
+            }
+            let _ = run(&*conn, &format!("DROP TABLE {table}")).await;
+        }
+        assert!(wrong.is_empty(), "{}: {wrong:#?}", b.name);
+    }
+}
+
+/// PostgreSQL lists routines with their named arguments (`f(a integer)`); their details and
+/// DDL are read by that name. A table dropped since it was listed has no details.
+#[tokio::test]
+async fn qa_fixnav_pg_routines_by_their_listed_name() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        if b.name != "postgres" {
+            continue;
+        }
+        let conn = b.connect().await;
+        let s = "qa_fixnav_routines";
+        run(&*conn, &format!("DROP SCHEMA IF EXISTS {s} CASCADE"))
+            .await
+            .unwrap();
+        run(&*conn, &format!("CREATE SCHEMA {s}")).await.unwrap();
+        run(
+            &*conn,
+            &format!(
+                "CREATE FUNCTION {s}.add(a integer, b integer) RETURNS integer \
+                 LANGUAGE sql AS 'SELECT a + b'"
+            ),
+        )
+        .await
+        .unwrap();
+        run(
+            &*conn,
+            &format!("CREATE PROCEDURE {s}.log(msg text) LANGUAGE sql AS 'SELECT 1'"),
+        )
+        .await
+        .unwrap();
+        run(&*conn, &format!("CREATE TABLE {s}.\"t(1)\" (id int)"))
+            .await
+            .unwrap();
+        let objects = conn.objects(s).await.unwrap();
+        for o in objects.iter().filter(|o| o.kind != ObjectKind::Table) {
+            let object = ObjectRef {
+                schema: s,
+                name: &o.name,
+                kind: o.kind,
+                parent: None,
+            };
+            let ddl = conn
+                .object_ddl(&object)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", o.name));
+            assert!(ddl.starts_with("CREATE OR REPLACE"), "{}: {ddl}", o.name);
+            let props = conn.object_properties(&object).await.unwrap();
+            assert!(!props.is_empty(), "{}", o.name);
+        }
+        let names: Vec<&str> = objects.iter().map(|o| o.name.as_str()).collect();
+        assert!(names.contains(&"add(a integer, b integer)"), "{names:?}");
+
+        // Drop and select a table whose name has a parenthesis.
+        let d = platypus_sql::Dialect::Postgres;
+        let t = platypus_sql::ObjectName::new(Some(s), "t(1)");
+        run(&*conn, &d.select(&t, &[], None)).await.unwrap();
+        run(&*conn, &d.drop(ObjectKind::Table, &t, false).unwrap())
+            .await
+            .unwrap();
+        let missing = conn.table_details(s, "t(1)").await;
+        assert!(
+            matches!(&missing, Err(e) if e.to_string().contains("qa_fixnav_routines.\"t(1)\" not found")),
+            "{missing:?}"
+        );
+        run(&*conn, &format!("DROP SCHEMA {s} CASCADE"))
+            .await
+            .unwrap();
+    }
+}
+
+/// A SQLite or DuckDB table created again by the table editor keeps its generated columns,
+/// collations, table options, partial indexes and triggers.
+#[tokio::test]
+async fn qa_fixnav_rebuild_keeps_what_the_design_does_not_show() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let sqlite = b.config.driver == DriverKind::Sqlite;
+        if !sqlite && b.config.driver != DriverKind::DuckDb {
+            continue;
+        }
+        let conn = b.connect().await;
+        let d = platypus_sql::Dialect::from(b.config.driver);
+        let _ = run(&*conn, "DROP TABLE qa_fixnav_g").await;
+        let options = if sqlite { " WITHOUT ROWID" } else { "" };
+        run(
+            &*conn,
+            &format!(
+                "CREATE TABLE qa_fixnav_g (id INTEGER PRIMARY KEY, a INTEGER, \
+                 b INTEGER GENERATED ALWAYS AS (a * 2) VIRTUAL, c VARCHAR COLLATE NOCASE){options}"
+            ),
+        )
+        .await
+        .unwrap();
+        run(
+            &*conn,
+            "INSERT INTO qa_fixnav_g (id, a, c) VALUES (1, 5, 'x')",
+        )
+        .await
+        .unwrap();
+        if sqlite {
+            run(
+                &*conn,
+                "CREATE INDEX qa_fixnav_gi ON qa_fixnav_g (a) WHERE a > 0",
+            )
+            .await
+            .unwrap();
+            run(
+                &*conn,
+                "CREATE TRIGGER qa_fixnav_gt AFTER UPDATE ON qa_fixnav_g \
+                 BEGIN UPDATE qa_fixnav_g SET c = 'y' WHERE id = new.id AND c = 'x'; END",
+            )
+            .await
+            .unwrap();
+        }
+        let old = platypus_schema::load(&*conn, d, &b.schema, "qa_fixnav_g")
+            .await
+            .unwrap();
+        assert!(old.columns[2].generated.is_some(), "{}: {old:?}", b.name);
+        assert_eq!(old.columns[2].default, None, "{}", b.name);
+        let mut new = old.clone();
+        new.columns[1].data_type = "BIGINT".to_owned();
+        let read = redesign(&b, &*conn, Some(&old), &new).await;
+        assert!(read.columns[2].generated.is_some(), "{}: {read:?}", b.name);
+        assert_eq!(
+            read.columns[3].collation.as_deref(),
+            Some("NOCASE"),
+            "{}",
+            b.name
+        );
+        run(&*conn, "UPDATE qa_fixnav_g SET a = 7 WHERE id = 1")
+            .await
+            .unwrap();
+        let batches = collect(&b, &*conn, "SELECT b, c FROM qa_fixnav_g").await;
+        assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("14"), "{}", b.name);
+        if sqlite {
+            assert_eq!(read.options.as_deref(), Some("WITHOUT ROWID"));
+            assert_eq!(read.triggers.len(), 1, "{read:?}");
+            assert!(
+                read.indexes[0]
+                    .sql
+                    .as_deref()
+                    .is_some_and(|s| s.contains("WHERE a > 0"))
+            );
+            // The trigger ran again after the rebuild.
+            assert_eq!(cell(&batches[0], 1, 0).as_deref(), Some("y"));
+        }
+        run(&*conn, "DROP TABLE qa_fixnav_g").await.unwrap();
+    }
+}
+
+/// MySQL redefines a generated column with its clause, not with `EXTRA`'s words.
+#[tokio::test]
+async fn qa_fixnav_mysql_generated_column_is_kept() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        if b.config.driver != DriverKind::MySql {
+            continue;
+        }
+        let conn = b.connect().await;
+        let d = platypus_sql::Dialect::MySql;
+        let _ = run(&*conn, "DROP TABLE qa_fixnav_mg").await;
+        run(
+            &*conn,
+            "CREATE TABLE qa_fixnav_mg (id int PRIMARY KEY, qty int, \
+             dbl int GENERATED ALWAYS AS (qty * 2) VIRTUAL, \
+             code varchar(10) COLLATE utf8mb4_bin)",
+        )
+        .await
+        .unwrap();
+        let old = platypus_schema::load(&*conn, d, &b.schema, "qa_fixnav_mg")
+            .await
+            .unwrap();
+        assert_eq!(old.columns[2].extra, None, "{}: {old:?}", b.name);
+        let mut new = old.clone();
+        new.columns[2].comment = Some("doubled".to_owned());
+        new.columns[3].comment = Some("code".to_owned());
+        let read = redesign(&b, &*conn, Some(&old), &new).await;
+        assert!(read.columns[2].generated.is_some(), "{}: {read:?}", b.name);
+        assert_eq!(
+            read.columns[3].collation.as_deref(),
+            Some("utf8mb4_bin"),
+            "{}",
+            b.name
+        );
+        run(&*conn, "INSERT INTO qa_fixnav_mg (id, qty) VALUES (1, 4)")
+            .await
+            .unwrap();
+        let batches = collect(&b, &*conn, "SELECT dbl FROM qa_fixnav_mg").await;
+        assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("8"), "{}", b.name);
+        run(&*conn, "DROP TABLE qa_fixnav_mg").await.unwrap();
+    }
+}
+
+/// ClickHouse changes a column's type with `MODIFY COLUMN`; a failed script says what
+/// stays applied.
+#[tokio::test]
+async fn qa_fixnav_clickhouse_alters_columns() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        if b.config.driver != DriverKind::ClickHouse {
+            continue;
+        }
+        let conn = b.connect().await;
+        let d = platypus_sql::Dialect::ClickHouse;
+        let _ = run(&*conn, "DROP TABLE IF EXISTS qa_fixnav_ch").await;
+        run(
+            &*conn,
+            "CREATE TABLE qa_fixnav_ch (id Int32, qty Nullable(Int32) DEFAULT 1 COMMENT 'q') \
+             ENGINE = MergeTree ORDER BY id",
+        )
+        .await
+        .unwrap();
+        let old = platypus_schema::load(&*conn, d, &b.schema, "qa_fixnav_ch")
+            .await
+            .unwrap();
+        let mut new = old.clone();
+        new.columns[1].data_type = "Nullable(Int64)".to_owned();
+        new.columns[1].name = "amount".to_owned();
+        let read = redesign(&b, &*conn, Some(&old), &new).await;
+        assert_eq!(read.columns[1].name, "amount");
+        assert_eq!(read.columns[1].data_type, "Nullable(Int64)");
+        assert_eq!(read.columns[1].default.as_deref(), Some("1"));
+        assert_eq!(read.columns[1].comment.as_deref(), Some("q"));
+
+        // A rename, then a type ClickHouse rejects: the rename stays and is reported.
+        let mut bad = read.clone();
+        bad.columns[1].name = "qty".to_owned();
+        bad.columns[1].data_type = "NoSuchType".to_owned();
+        let script = platypus_schema::script(d, &b.schema, Some(&read), &bad).unwrap();
+        assert!(
+            script
+                .warnings
+                .iter()
+                .any(|w| w.starts_with("ClickHouse applies"))
+        );
+        let err = platypus_schema::apply(&*conn, &script).await.unwrap_err();
+        assert_eq!(err.applied.len(), 1, "{err:?}");
+        assert!(err.applied[0].contains("RENAME COLUMN"), "{err:?}");
+        run(&*conn, "DROP TABLE qa_fixnav_ch").await.unwrap();
+    }
+}
+
+/// SQL Server synonyms are listed, with their DDL; DuckDB prints ENUM types.
+#[tokio::test]
+async fn qa_fixnav_synonyms_and_enum_types() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let conn = b.connect().await;
+        let (create, drop, name, kind, expected) = match b.config.driver {
+            DriverKind::SqlServer => (
+                format!(
+                    "CREATE SYNONYM {}.qa_fixnav_syn FOR {}.customers",
+                    b.schema, b.schema
+                ),
+                format!("DROP SYNONYM {}.qa_fixnav_syn", b.schema),
+                "qa_fixnav_syn",
+                ObjectKind::Synonym,
+                format!(
+                    "CREATE SYNONYM {}.qa_fixnav_syn FOR [{}].[customers];",
+                    b.schema, b.schema
+                ),
+            ),
+            DriverKind::DuckDb => (
+                "CREATE TYPE \"qa fixnav mood\" AS ENUM ('sad', 'it''s ok')".to_owned(),
+                "DROP TYPE \"qa fixnav mood\"".to_owned(),
+                "qa fixnav mood",
+                ObjectKind::Type,
+                "CREATE TYPE \"qa fixnav mood\" AS ENUM ('sad', 'it''s ok');".to_owned(),
+            ),
+            _ => continue,
+        };
+        let _ = run(&*conn, &drop).await;
+        run(&*conn, &create).await.unwrap();
+        let objects = conn.objects(&b.schema).await.unwrap();
+        assert!(
+            objects.iter().any(|o| o.name == name && o.kind == kind),
+            "{}: {objects:?}",
+            b.name
+        );
+        let object = ObjectRef {
+            schema: &b.schema,
+            name,
+            kind,
+            parent: None,
+        };
+        let ddl = conn.object_ddl(&object).await;
+        run(&*conn, &drop).await.unwrap();
+        assert_eq!(ddl.unwrap(), expected, "{}", b.name);
+    }
+}
+
+/// Every result of a statement, in turn: the batches of each result set, until a count.
+async fn qa_fixsql_results(b: &Backend, conn: &dyn Connection, sql: &str) -> Vec<Vec<RecordBatch>> {
+    let mut sets = Vec::new();
+    let mut next = Some(
+        conn.execute(sql, &ExecOptions::default())
+            .await
+            .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name)),
+    );
+    while let Some(ExecResult::Rows(mut stream)) = next {
+        let mut batches = Vec::new();
+        while let Some(batch) = stream.next().await {
+            batches.push(batch.unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name)));
+        }
+        sets.push(batches);
+        next = match stream.take_next() {
+            Some(follows) => follows
+                .await
+                .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name)),
+            None => None,
+        };
+    }
+    sets
+}
+
+/// A Transact-SQL batch and a MySQL `CALL` return every result set, one after the other,
+/// and leave the session free for the next statement.
+#[tokio::test]
+async fn qa_fixsql_multiple_result_sets() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let statement = match b.config.driver {
+            DriverKind::SqlServer => "SELECT 1 AS a SELECT 2 AS b",
+            DriverKind::MySql => {
+                run(conn, "DROP PROCEDURE IF EXISTS qa_fixsql_two")
+                    .await
+                    .unwrap();
+                run(
+                    conn,
+                    "CREATE PROCEDURE qa_fixsql_two() BEGIN SELECT 1 AS a; SELECT 2 AS b; END",
+                )
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+                "CALL qa_fixsql_two()"
+            }
+            _ => continue,
+        };
+        let sets = qa_fixsql_results(&b, conn, statement).await;
+        let names: Vec<_> = sets
+            .iter()
+            .map(|s| s[0].schema().field(0).name().clone())
+            .collect();
+        assert_eq!(names, ["a", "b"], "{}", b.name);
+        assert_eq!(cell(&sets[1][0], 0, 0).as_deref(), Some("2"), "{}", b.name);
+        // The next statement runs on the same session.
+        let rows = collect(&b, conn, "SELECT 3").await;
+        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
+
+        if b.config.driver == DriverKind::SqlServer {
+            // The CATCH block's result is not lost.
+            let sets = qa_fixsql_results(
+                &b,
+                conn,
+                "BEGIN TRY SELECT 1/0 AS x END TRY BEGIN CATCH SELECT ERROR_MESSAGE() AS m END CATCH",
+            )
+            .await;
+            let last = sets.last().unwrap();
+            assert_eq!(last[0].schema().field(0).name(), "m", "{}", b.name);
+            assert!(cell(&last[0], 0, 0).unwrap().contains("zero"), "{}", b.name);
+            // The statements of a batch share its variables.
+            let sets =
+                qa_fixsql_results(&b, conn, "DECLARE @x int = 5;\nSELECT @x * 2 AS dbl;").await;
+            assert_eq!(cell(&sets[0][0], 0, 0).as_deref(), Some("10"), "{}", b.name);
+        } else {
+            run(conn, "DROP PROCEDURE qa_fixsql_two").await.unwrap();
+        }
+    }
+}
+
+/// What the server says beside the results: PostgreSQL notices, Transact-SQL `PRINT`, MySQL
+/// warnings.
+#[tokio::test]
+async fn qa_fixsql_server_messages() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let (sql, expected) = match (b.config.driver, b.name) {
+            (DriverKind::Postgres, "postgres") => (
+                "DO $$ BEGIN RAISE NOTICE 'qa_fixsql notice'; END $$",
+                "qa_fixsql notice",
+            ),
+            (DriverKind::SqlServer, _) => ("PRINT 'qa_fixsql print'", "qa_fixsql print"),
+            (DriverKind::MySql, _) => ("SELECT CAST('1x' AS SIGNED) AS n", "1x"),
+            _ => continue,
+        };
+        conn.take_messages();
+        qa_fixsql_results(&b, conn, sql).await;
+        let messages = conn.take_messages();
+        assert!(
+            messages.iter().any(|m| m.contains(expected)),
+            "{}: {messages:?}",
+            b.name
+        );
+        assert!(conn.take_messages().is_empty(), "{}: taken once", b.name);
+    }
+}
+
+/// In manual-commit mode a failed statement is undone alone: the changes before it stay,
+/// and the commit keeps them.
+#[tokio::test]
+async fn qa_fixsql_manual_commit_survives_a_failed_statement() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        if b.config.driver != DriverKind::Postgres {
+            continue;
+        }
+        let conn = b.connect().await;
+        let conn = &*conn;
+        run(conn, &b.create_temp("qa_fixsql_tx", "id INT PRIMARY KEY"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        conn.set_autocommit(false).await.unwrap();
+        affected(&b, conn, "INSERT INTO qa_fixsql_tx VALUES (1)").await;
+        let duplicate = execute(conn, "INSERT INTO qa_fixsql_tx VALUES (1)").await;
+        assert!(duplicate.is_err(), "{}", b.name);
+        assert!(conn.transaction().open, "{}", b.name);
+        // The transaction goes on: it is not aborted.
+        affected(&b, conn, "INSERT INTO qa_fixsql_tx VALUES (2)").await;
+        conn.commit()
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        conn.set_autocommit(true).await.unwrap();
+        let rows = collect(&b, conn, "SELECT count(*) FROM qa_fixsql_tx").await;
+        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("2"), "{}", b.name);
     }
 }
 

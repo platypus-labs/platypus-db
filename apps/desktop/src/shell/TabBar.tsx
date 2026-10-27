@@ -1,5 +1,6 @@
 import { type CSSProperties, type KeyboardEvent, type MouseEvent, Fragment, forwardRef } from "react";
-import { defineSetting } from "../settings";
+import { titleWithKeys } from "../actions";
+import { defineSetting, useSettingsVersion } from "../settings";
 import type { TabModel } from "../tabs/registry";
 import { Icon, type IconName } from "../ui/Icon";
 import { scrollSideways } from "../ui/scroll";
@@ -48,6 +49,8 @@ interface Props {
 /** The tab bar: a tab list the arrows move through, Delete closes and the menu key opens the
  *  tab's menu. */
 export const TabBar = forwardRef<HTMLDivElement, Props>(function TabBar(props, ref) {
+  // The close button's tooltip names the current shortcut.
+  useSettingsVersion();
   const { tabs, activeTab, besideTab, grouped, folded } = props;
   const focusTab = (tab: TabModel | undefined, bar: HTMLElement) => {
     if (!tab) return;
@@ -62,7 +65,10 @@ export const TabBar = forwardRef<HTMLDivElement, Props>(function TabBar(props, r
     else if (e.key === "ArrowLeft") focusTab(shown[(at - 1 + shown.length) % shown.length], bar);
     else if (e.key === "Home") focusTab(shown[0], bar);
     else if (e.key === "End") focusTab(shown.at(-1), bar);
-    else if (e.key === "Delete") props.onClose(tab);
+    // A pinned tab has no close button and "Close others" keeps it: Delete does too.
+    else if (e.key === "Delete") {
+      if (!tab.pinned) props.onClose(tab);
+    }
     else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
       const r = e.currentTarget.getBoundingClientRect();
       props.onMenu(tab, r.left, r.bottom);
@@ -127,7 +133,7 @@ export const TabBar = forwardRef<HTMLDivElement, Props>(function TabBar(props, r
                     type="button"
                     className="icon"
                     tabIndex={-1}
-                    title={t("Close tab (Ctrl+W)")}
+                    title={titleWithKeys(t("Close tab"), "tab.close")}
                     aria-label={t("Close tab")}
                     onClick={(e) => {
                       e.stopPropagation();

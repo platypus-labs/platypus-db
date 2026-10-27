@@ -388,6 +388,166 @@ async fn oracle_commits_and_rolls_back() {
     run(conn, "DROP TABLE ORA_TX").await;
 }
 
+/// The data editor's batches in Oracle's dialect: one row per `INSERT` (no multi-row
+/// `VALUES` before 23ai), `OR` of composite keys and `IN` lists of single ones, and a batch
+/// that finds a row fewer than it names rolls back.
+#[tokio::test]
+async fn oracle_saves_many_edited_rows() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{self, ApplyError, Column, Value, ValueKind};
+
+    const ROWS: usize = 1200;
+    let Some(conn) = oracle().await else { return };
+    let conn = &*conn;
+    let d = Dialect::Oracle;
+    run(conn, "DROP TABLE IF EXISTS ORA_MANY").await;
+    run(
+        conn,
+        "CREATE TABLE ORA_MANY (ID NUMBER NOT NULL, TAG VARCHAR2(40) NOT NULL, \
+         LABEL VARCHAR2(40), PRIMARY KEY (ID, TAG))",
+    )
+    .await;
+    let column = |name, kind| Column {
+        name,
+        kind,
+        default: None,
+    };
+    let columns = [
+        column("ID", ValueKind::Decimal),
+        column("TAG", ValueKind::Text),
+        column("LABEL", ValueKind::Text),
+    ];
+    let ids: Vec<String> = (1..=ROWS).map(|i| i.to_string()).collect();
+    let tags: Vec<String> = (1..=ROWS).map(|i| format!("it's {}", i % 3)).collect();
+    let count = "SELECT COUNT(*) FROM ORA_MANY";
+
+    let rows: Vec<Vec<(usize, Value<'_>)>> = (0..ROWS)
+        .map(|i| {
+            vec![
+                (0, Value::Text(&ids[i])),
+                (1, Value::Text(&tags[i])),
+                (2, Value::Null),
+            ]
+        })
+        .collect();
+    let inserts = dml::inserts(d, "ORA_MANY", &columns, &rows).unwrap();
+    assert_eq!(inserts.len(), ROWS);
+    dml::apply(conn, d, &inserts).await.unwrap();
+    assert_eq!(scalar(conn, count).await, ROWS.to_string());
+
+    let key = |i: usize| vec![(0, Some(ids[i].as_str())), (1, Some(tags[i].as_str()))];
+    let keys: Vec<_> = (0..1100).map(key).collect();
+    let deletes = dml::deletes(d, "ORA_MANY", &columns, &keys).unwrap();
+    assert_eq!(deletes.len(), 3);
+    dml::apply(conn, d, &deletes).await.unwrap();
+    assert_eq!(scalar(conn, count).await, "100");
+
+    let gone: Vec<_> = (1100..ROWS).chain([4]).map(key).collect();
+    let deletes = dml::deletes(d, "ORA_MANY", &columns, &gone).unwrap();
+    let err = dml::apply(conn, d, &deletes).await.unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ApplyError::RowCount {
+                index: 0,
+                rows: 100,
+                expected: 101
+            }
+        ),
+        "{err}"
+    );
+    assert_eq!(scalar(conn, count).await, "100", "rolled back");
+
+    let by_id: Vec<_> = (1100..ROWS)
+        .map(|i| vec![(0, Some(ids[i].as_str()))])
+        .collect();
+    let deletes = dml::deletes(d, "ORA_MANY", &columns, &by_id).unwrap();
+    dml::apply(conn, d, &deletes).await.unwrap();
+    assert_eq!(scalar(conn, count).await, "0");
+    run(conn, "DROP TABLE ORA_MANY").await;
+}
+
+/// In manual-commit mode a failed save rolls back to its savepoint only: the session's other
+/// uncommitted changes stay, and so does the transaction.
+#[tokio::test]
+async fn oracle_keeps_uncommitted_work_when_a_save_fails() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{self, ApplyError, Column, Statement, Value, ValueKind};
+
+    let Some(conn) = oracle().await else { return };
+    let conn = &*conn;
+    let d = Dialect::Oracle;
+    run(conn, "DROP TABLE IF EXISTS ORA_SP").await;
+    run(
+        conn,
+        "CREATE TABLE ORA_SP (ID NUMBER PRIMARY KEY, NAME VARCHAR2(20))",
+    )
+    .await;
+    run(conn, "INSERT INTO ORA_SP VALUES (1, 'a')").await;
+    let columns = [
+        Column {
+            name: "ID",
+            kind: ValueKind::Decimal,
+            default: None,
+        },
+        Column {
+            name: "NAME",
+            kind: ValueKind::Text,
+            default: None,
+        },
+    ];
+    let update = |id: &str, name: &str| {
+        Statement::one(
+            dml::update(
+                d,
+                "ORA_SP",
+                &columns,
+                &[(1, Value::Text(name))],
+                &[(0, Some(id))],
+            )
+            .unwrap(),
+        )
+    };
+
+    conn.set_autocommit(false).await.unwrap();
+    run(conn, "INSERT INTO ORA_SP VALUES (2, 'b')").await;
+    let err = dml::apply(conn, d, &[update("1", "x"), update("99", "y")])
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ApplyError::RowCount {
+                index: 1,
+                rows: 0,
+                ..
+            }
+        ),
+        "{err}"
+    );
+    assert!(conn.transaction().open, "the session's transaction goes on");
+    assert_eq!(
+        scalar(conn, "SELECT COUNT(*) FROM ORA_SP").await,
+        "2",
+        "row 2 kept"
+    );
+    assert_eq!(
+        scalar(conn, "SELECT NAME FROM ORA_SP WHERE ID = 1").await,
+        "a",
+        "the save undone"
+    );
+    // A save that works stays uncommitted with the rest.
+    dml::apply(conn, d, &[update("2", "z")]).await.unwrap();
+    assert_eq!(
+        scalar(conn, "SELECT NAME FROM ORA_SP WHERE ID = 2").await,
+        "z"
+    );
+    conn.rollback().await.unwrap();
+    conn.set_autocommit(true).await.unwrap();
+    assert_eq!(scalar(conn, "SELECT COUNT(*) FROM ORA_SP").await, "1");
+    run(conn, "DROP TABLE ORA_SP").await;
+}
+
 #[tokio::test]
 async fn oracle_cancels_a_running_statement() {
     let Some(conn) = oracle().await else { return };
@@ -415,4 +575,22 @@ async fn oracle_cancels_a_running_statement() {
     // A break leaves the session usable.
     assert!(!conn.is_closed());
     assert_eq!(scalar(&*conn, "SELECT 1 FROM DUAL").await, "1");
+}
+
+#[tokio::test]
+async fn float_columns_keep_every_digit() {
+    let Some(conn) = oracle().await else { return };
+    let batches = rows(
+        &*conn,
+        "SELECT CAST(12345678901234567890 AS FLOAT) AS f, CAST(0.5 AS FLOAT(10)) AS g FROM dual",
+    )
+    .await;
+    assert_eq!(
+        array_value_to_string(batches[0].column(0), 0).unwrap(),
+        "12345678901234567890"
+    );
+    assert_eq!(
+        batches[0].schema().field(1).data_type(),
+        &arrow_schema::DataType::Float64
+    );
 }

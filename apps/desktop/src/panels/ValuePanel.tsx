@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { api, type ColumnInfo, toCommandError } from "../api";
 import { t, plural } from "../i18n";
+import { formatJson, isJsonDocument } from "../jsonText";
 
 /** The focused cell of a result. */
 export interface ValueTarget {
@@ -18,6 +19,11 @@ type Mode = "text" | "json" | "xml" | "hex" | "image";
 
 /** Hex dumps stop here; the full value can still be saved. */
 const HEX_LIMIT = 64 * 1024;
+/** Characters of text shown at first, and added by each "Show more": one element holding
+ *  megabytes of text takes the WebView gigabytes and seconds to lay out. */
+const TEXT_PAGE = 256 * 1024;
+/** Longer values are not parsed as JSON or XML to be indented. */
+const FORMAT_LIMIT = 1024 * 1024;
 
 const IMAGE_TYPES: [string, number[]][] = [
   ["image/png", [0x89, 0x50, 0x4e, 0x47]],
@@ -76,12 +82,10 @@ function prettyXml(text: string): string | null {
   return out.join("\n");
 }
 
+/** An object or array, indented; `null` for anything else. A plain number is valid JSON
+ *  too, but shows as text. Numbers keep their digits (no rounding above 2^53). */
 function prettyJson(text: string): string | null {
-  try {
-    return JSON.stringify(JSON.parse(text), null, 2);
-  } catch {
-    return null;
-  }
+  return isJsonDocument(text) ? formatJson(text) : null;
 }
 
 /** The focused cell's whole value: text, JSON or XML formatted, hex, or an image. */
@@ -89,12 +93,15 @@ export function ValuePanel({ target, onClose }: { target: ValueTarget | null; on
   const [bytes, setBytes] = useState<Uint8Array<ArrayBuffer> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode | null>(null);
+  /** Characters of text shown, a multiple of `TEXT_PAGE`. */
+  const [limit, setLimit] = useState(TEXT_PAGE);
   const binary = target?.column.binary ?? false;
 
   useEffect(() => {
     setBytes(null);
     setError(null);
     setMode(null);
+    setLimit(TEXT_PAGE);
     if (!target) return;
     let live = true;
     api.cellBytes(target.jobId, target.row, target.col).then(
@@ -112,8 +119,9 @@ export function ValuePanel({ target, onClose }: { target: ValueTarget | null; on
   useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url]);
 
   const formatted = useMemo(() => {
-    const json = binary ? null : prettyJson(text);
-    const xml = binary || json !== null || !text.trimStart().startsWith("<") ? null : prettyXml(text);
+    const plain = binary || text.length > FORMAT_LIMIT;
+    const json = plain ? null : prettyJson(text);
+    const xml = plain || json !== null || !text.trimStart().startsWith("<") ? null : prettyXml(text);
     return { json, xml };
   }, [text, binary]);
   const auto: Mode = image ? "image" : binary ? "hex" : formatted.json !== null ? "json" : formatted.xml !== null ? "xml" : "text";
@@ -151,7 +159,22 @@ export function ValuePanel({ target, onClose }: { target: ValueTarget | null; on
       case "xml":
         return <pre className="value-text">{formatted.xml}</pre>;
       default:
-        return <pre className="value-text">{text}</pre>;
+        return (
+          <div className="value-text">
+            <pre>{text.length > limit ? text.slice(0, limit) : text}</pre>
+            {text.length > limit && (
+              <div className="muted small value-more">
+                {t("Showing {shown} of {total} characters.", {
+                  shown: limit.toLocaleString(),
+                  total: text.length.toLocaleString(),
+                })}{" "}
+                <button className="link" onClick={() => setLimit((n) => n + TEXT_PAGE)}>
+                  {t("Show more")}
+                </button>
+              </div>
+            )}
+          </div>
+        );
     }
   })();
 

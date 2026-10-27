@@ -34,6 +34,7 @@ import {
   ListTree,
   ListVideo,
   Lock,
+  Maximize2,
   Minus,
   type LucideIcon,
   PanelLeft,
@@ -114,6 +115,7 @@ const ICONS = {
   builder: Workflow,
   minimize: Minus,
   maximize: Square,
+  expand: Maximize2,
   restore: Copy,
   close: X,
   copy: Copy,
@@ -159,6 +161,7 @@ const OBJECT_ICONS: Record<ObjectKind, IconName> = {
   extension: "extension",
   event: "event",
   dictionary: "table",
+  synonym: "view",
 };
 
 /** The icon of a kind of database object. */

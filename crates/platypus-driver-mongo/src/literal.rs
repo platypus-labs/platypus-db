@@ -164,7 +164,9 @@ impl<'a> Reader<'a> {
                 let braced = self.peek() == Some('{');
                 let hex: String = if braced {
                     self.pos += 1;
-                    let end = self.rest().find('}').unwrap_or(0);
+                    let Some(end) = self.rest().find('}') else {
+                        return self.error("unterminated \\u{…} escape");
+                    };
                     let hex = self.rest()[..end].to_owned();
                     self.pos += end + 1;
                     hex
@@ -648,6 +650,25 @@ mod tests {
         );
         assert_eq!(value("{ 'a.b': 1 }"), Bson::Document(doc! {"a.b": 1}));
         assert_eq!(value("'it\\'s\\n\\u00e9'"), Bson::String("it's\né".into()));
+    }
+
+    #[test]
+    fn unterminated_braced_escapes_are_syntax_errors() {
+        assert_eq!(value("'\\u{e9}'"), Bson::String("\u{e9}".into()));
+        for src in ["\"\\u{\u{e9}\"", "'\\u{", "'\\u{12"] {
+            let e = error(src);
+            assert!(e.message.contains("escape"), "{src}: {e:?}");
+            // The position lands on a character, whatever the offset.
+            let _ = crate::error::parse_error(src, &e);
+        }
+        let mid = ParseError {
+            offset: 1,
+            message: String::new(),
+        };
+        let crate::Error::Database(db) = crate::error::parse_error("\u{e9}\u{e9}", &mid) else {
+            panic!()
+        };
+        assert_eq!(db.position, Some(2));
     }
 
     #[test]

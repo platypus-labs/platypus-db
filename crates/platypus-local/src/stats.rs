@@ -6,7 +6,8 @@ use std::fmt::Write as _;
 use std::hash::{BuildHasher, RandomState};
 
 use arrow_array::{Array, RecordBatch};
-use arrow_cast::display::{ArrayFormatter, FormatOptions};
+use arrow_cast::display::FormatOptions;
+use arrow_row::{OwnedRow, RowConverter, SortField};
 use arrow_schema::{ArrowError, DataType, Schema};
 use serde::Serialize;
 
@@ -63,7 +64,12 @@ pub fn profile(
         p.nulls += array.null_count();
     }
     match values::kind(field) {
-        Kind::Text => text_profile(&mut p, batches, column, options)?,
+        Kind::Text => {
+            text_profile(&mut p, batches, column, options)?;
+            if values::is_span(field.data_type()) {
+                span_extremes(&mut p, batches, column, options)?;
+            }
+        }
         kind @ (Kind::Number | Kind::Time) => {
             p.distinct = distinct(batches, column, options)?;
             let time = kind == Kind::Time;
@@ -85,7 +91,8 @@ fn distinct(
     let mut text = String::new();
     for batch in batches {
         let array = batch.column(column);
-        let formatter = ArrayFormatter::try_new(array.as_ref(), options)?;
+        let field = batch.schema_ref().field(column);
+        let formatter = platypus_core::special::column_formatter(field, array.as_ref(), options)?;
         for row in (0..array.len()).filter(|&r| array.is_valid(r)) {
             text.clear();
             let _ = write!(text, "{}", formatter.value(row));
@@ -104,7 +111,7 @@ fn text_profile(
 ) -> Result<(), ArrowError> {
     let mut counts: HashMap<String, usize> = HashMap::new();
     for batch in batches {
-        for value in values::texts(batch.column(column).as_ref(), options)?
+        for value in values::column_texts(batch, column, options)?
             .into_iter()
             .flatten()
         {
@@ -129,7 +136,8 @@ fn text_profile(
     Ok(())
 }
 
-/// Numbers and times: the extremes as the grid shows them, and the histogram.
+/// Numbers and times: the extremes as the grid shows them, and the histogram, whose ends are
+/// the extremes.
 fn ranges(
     p: &mut ColumnProfile,
     batches: &[RecordBatch],
@@ -138,24 +146,28 @@ fn ranges(
     time: bool,
     options: &FormatOptions<'_>,
 ) -> Result<(), ArrowError> {
-    // Each finite value with its batch and row, to show the extremes as they are.
-    let mut found: Vec<(f64, usize, usize)> = Vec::new();
-    for (b, batch) in batches.iter().enumerate() {
-        let numbers = values::numbers(batch.column(column))?;
-        found.extend(
-            numbers
-                .iter()
-                .enumerate()
-                .filter_map(|(row, v)| v.filter(|v| v.is_finite()).map(|v| (v, b, row))),
-        );
-    }
-    let lowest = found.iter().min_by(|a, b| a.0.total_cmp(&b.0)).copied();
-    let highest = found.iter().max_by(|a, b| a.0.total_cmp(&b.0)).copied();
-    let (Some(lo), Some(hi)) = (lowest, highest) else {
+    let Some((lo, hi)) = extremes(batches, column, data_type)? else {
         return Ok(());
     };
-    p.min = Some(shown(batches, column, lo.1, lo.2, options)?);
-    p.max = Some(shown(batches, column, hi.1, hi.2, options)?);
+    let min = shown(batches, column, lo, options)?;
+    let max = shown(batches, column, hi, options)?;
+    // The ranges cut the finite values; infinities count in the first or the last one.
+    let mut numbers = Vec::new();
+    for batch in batches {
+        let all = values::column_numbers(batch, column)?;
+        numbers.extend(all.iter().flatten().filter(|v| !v.is_nan()));
+    }
+    let (flo, fhi) = numbers
+        .iter()
+        .filter(|v| v.is_finite())
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &v| {
+            (lo.min(v), hi.max(v))
+        });
+    let mut bins = if flo <= fhi {
+        histogram(numbers.iter().copied(), flo, fhi)
+    } else {
+        vec![(0.0, 0.0, numbers.len())]
+    };
     let label = |v: f64| {
         if time {
             values::time_text(data_type, values::whole(v), options)
@@ -163,31 +175,118 @@ fn ranges(
             Ok(values::format_number(v))
         }
     };
-    p.histogram = histogram(found.iter().map(|f| f.0), lo.0, hi.0)
-        .into_iter()
-        .map(|(from, to, count)| {
+    let last = bins.len().saturating_sub(1);
+    p.histogram = bins
+        .drain(..)
+        .enumerate()
+        .map(|(i, (from, to, count))| {
             Ok(Bin {
-                from: label(from)?,
-                to: label(to)?,
+                from: if i == 0 { min.clone() } else { label(from)? },
+                to: if i == last { max.clone() } else { label(to)? },
                 count,
             })
         })
         .collect::<Result<_, ArrowError>>()?;
+    p.min = Some(min);
+    p.max = Some(max);
     Ok(())
 }
 
-/// The value at `row` of batch `batch`, as the grid shows it.
+/// Where a value is: its batch and its row.
+type Spot = (usize, usize);
+
+/// A value's key and where the value is.
+type Keyed<K> = (K, Spot);
+
+/// The first smallest and the first largest of `items`.
+fn pick<K: Ord + Copy>(mut items: impl Iterator<Item = Keyed<K>>) -> Option<(Keyed<K>, Keyed<K>)> {
+    let first = items.next()?;
+    Some(items.fold((first, first), |(lo, hi), item| {
+        (
+            if item.0 < lo.0 { item } else { lo },
+            if item.0 > hi.0 { item } else { hi },
+        )
+    }))
+}
+
+/// The smallest and the largest value of a number or time column, compared exactly in their
+/// own type (integers past 2^53, wide decimals); infinities count, NaN does not.
+fn extremes(
+    batches: &[RecordBatch],
+    column: usize,
+    data_type: &DataType,
+) -> Result<Option<(Spot, Spot)>, ArrowError> {
+    let converter = RowConverter::new(vec![SortField::new(data_type.clone())])?;
+    let mut low: Option<(OwnedRow, Spot)> = None;
+    let mut high: Option<(OwnedRow, Spot)> = None;
+    for (b, batch) in batches.iter().enumerate() {
+        // A numeric NaN as NULL: no extreme.
+        let (_, array) = values::column(batch, column);
+        let array = &array;
+        let rows = converter.convert_columns(std::slice::from_ref(array))?;
+        let numbers = values::numbers(array)?;
+        let valid = (0..array.len())
+            .filter(|&r| array.is_valid(r) && !(numbers.is_valid(r) && numbers.value(r).is_nan()))
+            .map(|r| (rows.row(r), (b, r)));
+        let Some(((lo, lo_at), (hi, hi_at))) = pick(valid) else {
+            continue;
+        };
+        if low.as_ref().is_none_or(|(l, _)| lo < l.row()) {
+            low = Some((lo.owned(), lo_at));
+        }
+        if high.as_ref().is_none_or(|(h, _)| hi > h.row()) {
+            high = Some((hi.owned(), hi_at));
+        }
+    }
+    Ok(low.zip(high).map(|((_, lo), (_, hi))| (lo, hi)))
+}
+
+/// Intervals and durations: the first and the last by length, not by text.
+fn span_extremes(
+    p: &mut ColumnProfile,
+    batches: &[RecordBatch],
+    column: usize,
+    options: &FormatOptions<'_>,
+) -> Result<(), ArrowError> {
+    let mut low: Option<Keyed<i128>> = None;
+    let mut high: Option<Keyed<i128>> = None;
+    for (b, batch) in batches.iter().enumerate() {
+        let spans = values::spans(batch.column(column))?;
+        let found = spans
+            .iter()
+            .enumerate()
+            .filter_map(|(r, s)| s.map(|s| (s, (b, r))));
+        let Some((lo, hi)) = pick(found) else {
+            continue;
+        };
+        if low.is_none_or(|l| lo.0 < l.0) {
+            low = Some(lo);
+        }
+        if high.is_none_or(|h| hi.0 > h.0) {
+            high = Some(hi);
+        }
+    }
+    if let Some(((_, lo), (_, hi))) = low.zip(high) {
+        p.min = Some(shown(batches, column, lo, options)?);
+        p.max = Some(shown(batches, column, hi, options)?);
+    }
+    Ok(())
+}
+
+/// The value at `spot`, as the grid shows it.
 fn shown(
     batches: &[RecordBatch],
     column: usize,
-    batch: usize,
-    row: usize,
+    (batch, row): Spot,
     options: &FormatOptions<'_>,
 ) -> Result<String, ArrowError> {
-    let array = batches[batch].column(column);
-    Ok(ArrayFormatter::try_new(array.as_ref(), options)?
-        .value(row)
-        .to_string())
+    let batch = &batches[batch];
+    let field = batch.schema_ref().field(column);
+    Ok(
+        platypus_core::special::column_formatter(field, batch.column(column).as_ref(), options)?
+            .value(row)
+            .to_string(),
+    )
 }
 
 /// `BINS` equal ranges from `lo` to `hi` (the last one closed) and how many of `numbers` fall
@@ -223,7 +322,11 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    use arrow_array::{ArrayRef, BinaryArray, Date32Array, Int32Array, StringArray};
+    use arrow_array::types::IntervalMonthDayNanoType;
+    use arrow_array::{
+        ArrayRef, BinaryArray, Date32Array, Decimal128Array, DurationSecondArray, Float64Array,
+        Int32Array, Int64Array, IntervalMonthDayNanoArray, StringArray, UInt64Array,
+    };
     use arrow_schema::Field;
     use platypus_core::META_DB_TYPE;
 
@@ -339,6 +442,110 @@ mod tests {
         );
         assert_eq!(bins.iter().map(|b| b.2).sum::<usize>(), 3);
         assert_eq!(bins.last().map(|b| b.2), Some(1));
+    }
+
+    fn extremes_of(array: ArrayRef) -> (Option<String>, Option<String>, String, String) {
+        let field = Field::new("v", array.data_type().clone(), true);
+        let p = of(field, array);
+        let from = p
+            .histogram
+            .first()
+            .map(|b| b.from.clone())
+            .unwrap_or_default();
+        let to = p.histogram.last().map(|b| b.to.clone()).unwrap_or_default();
+        (p.min, p.max, from, to)
+    }
+
+    fn pair(min: &str, max: &str) -> (Option<String>, Option<String>, String, String) {
+        (
+            Some(min.to_owned()),
+            Some(max.to_owned()),
+            min.to_owned(),
+            max.to_owned(),
+        )
+    }
+
+    #[test]
+    fn big_integers_are_compared_exactly() {
+        let ints = Int64Array::from(vec![9_007_199_254_740_993, 9_007_199_254_740_992]);
+        assert_eq!(
+            extremes_of(Arc::new(ints)),
+            pair("9007199254740992", "9007199254740993")
+        );
+        let unsigned = UInt64Array::from(vec![u64::MAX, u64::MAX - 1, 0]);
+        assert_eq!(
+            extremes_of(Arc::new(unsigned)),
+            pair("0", "18446744073709551615")
+        );
+        let ends = Int64Array::from(vec![0, i64::MAX]);
+        assert_eq!(
+            extremes_of(Arc::new(ends)),
+            pair("0", "9223372036854775807")
+        );
+        // DuckDB's largest HUGEINT is a number.
+        let huge = Decimal128Array::from(vec![i128::MAX - 1, i128::MAX - 2, i128::MAX])
+            .with_precision_and_scale(38, 0)
+            .unwrap();
+        let (min, max, ..) = extremes_of(Arc::new(huge.clone()));
+        assert_eq!(min, Some((i128::MAX - 2).to_string()));
+        assert_eq!(max, Some(i128::MAX.to_string()));
+        // In a PostgreSQL numeric it is NaN, left out of the extremes as NaN is.
+        let field = platypus_core::special::with_decimal_nan(Field::new(
+            "n",
+            huge.data_type().clone(),
+            true,
+        ));
+        let p = of(field, Arc::new(huge));
+        assert_eq!(p.max, Some((i128::MAX - 1).to_string()));
+        assert_eq!(p.histogram.iter().map(|b| b.count).sum::<usize>(), 2);
+    }
+
+    #[test]
+    fn infinities_are_extremes_and_nan_is_not() {
+        let floats = Float64Array::from(vec![1.5, f64::INFINITY, f64::NEG_INFINITY, 2.5, f64::NAN]);
+        let field = Field::new("v", DataType::Float64, true);
+        let p = of(field, Arc::new(floats));
+        assert_eq!(
+            (p.min.as_deref(), p.max.as_deref()),
+            (Some("-inf"), Some("inf"))
+        );
+        assert_eq!(p.histogram.iter().map(|b| b.count).sum::<usize>(), 4);
+        assert_eq!(p.histogram[0].count, 2, "-inf with 1.5");
+        let only = Float64Array::from(vec![f64::INFINITY, f64::INFINITY]);
+        let p = of(Field::new("v", DataType::Float64, true), Arc::new(only));
+        assert_eq!(p.max.as_deref(), Some("inf"));
+        assert_eq!(p.histogram.len(), 1);
+    }
+
+    #[test]
+    fn intervals_by_length() {
+        let spans = IntervalMonthDayNanoArray::from(vec![
+            Some(IntervalMonthDayNanoType::make_value(0, 1, 0)),
+            Some(IntervalMonthDayNanoType::make_value(
+                0,
+                0,
+                7_200_000_000_000,
+            )),
+            None,
+            Some(IntervalMonthDayNanoType::make_value(1, 0, 0)),
+            Some(IntervalMonthDayNanoType::make_value(0, 40, 0)),
+        ]);
+        let field = Field::new("iv", spans.data_type().clone(), true);
+        let p = of(field, Arc::new(spans));
+        let shown = |v: &IntervalMonthDayNanoArray, i: usize| {
+            values::texts(v, &FormatOptions::default()).unwrap()[i].clone()
+        };
+        let all = IntervalMonthDayNanoArray::from(vec![
+            IntervalMonthDayNanoType::make_value(0, 0, 7_200_000_000_000),
+            IntervalMonthDayNanoType::make_value(0, 40, 0),
+        ]);
+        assert_eq!(p.min, shown(&all, 0), "2 hours");
+        assert_eq!(p.max, shown(&all, 1), "40 days is longer than a month");
+        let seconds = DurationSecondArray::from(vec![60, -5, 3_600]);
+        let field = Field::new("d", seconds.data_type().clone(), true);
+        let p = of(field, Arc::new(seconds.clone()));
+        let texts = values::texts(&seconds, &FormatOptions::default()).unwrap();
+        assert_eq!((p.min, p.max), (texts[1].clone(), texts[2].clone()));
     }
 
     #[test]

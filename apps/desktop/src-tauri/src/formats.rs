@@ -146,6 +146,11 @@ impl DisplayFormat {
             .iter()
             .enumerate()
         {
+            // `infinity` and dates outside the calendar, which no zone or age applies to.
+            if let Some(special) = platypus_core::special::text(array.as_ref(), i) {
+                cell(i, &special);
+                continue;
+            }
             let Some(at) = v.and_then(DateTime::from_timestamp_micros) else {
                 continue;
             };
@@ -284,6 +289,16 @@ mod tests {
         utc.timestamps(&array, |i, t| out.push((i, t.to_owned())))
             .unwrap();
         assert_eq!(out, [(0, "1970-01-01 00:00+00:00".to_owned())]);
+        let infinite: ArrayRef = Arc::new(
+            arrow_array::TimestampMicrosecondArray::from(vec![
+                platypus_core::special::TIMESTAMP_INFINITY,
+            ])
+            .with_timezone("+00:00"),
+        );
+        let mut out = Vec::new();
+        utc.timestamps(&infinite, |i, t| out.push((i, t.to_owned())))
+            .unwrap();
+        assert_eq!(out, [(0, "infinity".to_owned())]);
         assert_eq!(relative(10), "just now");
         assert_eq!(relative(3 * 3_600), "3 hours ago");
         assert_eq!(relative(-86_400), "in 1 day");

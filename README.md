@@ -107,7 +107,8 @@ and shows the ODBC drivers and data sources of the system.
   filled in for that database. The driver is set by the choice: *Back* returns to the logos, and a
   URL pasted in the form for another database offers to go back. Windows logins and SQL Server
   named instances without a port are pointed out. *Copy as URL* in a connection's menu copies
-  its URL without the password.
+  its URL without the password; *Duplicate* (also in the command palette) saves a copy with its
+  tunnel, init script and passwords, and opens it for editing.
 - **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`, with their
   folders. A DBeaver project export (`.dbp`) brings its projects too, optionally gathered in a
   folder of the project rail. From DBeaver (a `.dbp` or a workspace) the saved user names and
@@ -132,7 +133,8 @@ and shows the ODBC drivers and data sources of the system.
 - After connecting, a default schema, a time zone and bootstrap statements run on every
   connection and reconnection.
 - Idle sessions are checked every minute: the status bar shows the latency, and a connection
-  the server dropped is reopened.
+  the server dropped is reopened, before the next statement too. Editing a connection reopens
+  the sessions of its open tabs with the new settings; a tab with an open transaction asks first.
 
 ### Navigator and objects
 
@@ -237,10 +239,14 @@ and shows the ODBC drivers and data sources of the system.
 - **Column statistics**: resting the mouse on a column header shows its NULLs, distinct
   values, minimum and maximum, and a small histogram (numbers and dates) or the most frequent
   values (text), over the rows loaded.
-- **Query with SQL** (the result's menu and the command palette): the rows, loaded in full up
-  to the memory limit, become the table `result` of an in-memory DuckDB (and `r1`, `r2`, …
-  for each result of the tab), queried in a new SQL editor with completion, export and
-  charts. *Reload from result* copies them again.
+- **SQL on the result**: the field in the bar above a result's grid runs SQL on the rows
+  loaded, not on the database. A clause or a condition applies to the result
+  (`WHERE code LIKE 'B%'`, `ORDER BY name DESC`, `GROUP BY code`, `code = 'X'`), or a whole
+  query reads the table `result` (and `r1`, `r2`, … for each result of the tab, to join
+  them). Enter loads the rows in full, up to the memory limit, into an in-memory DuckDB and
+  the grid shows the output read-only, with copy, export, charts and statistics; × or Escape
+  returns to the result. Ctrl+Enter opens a larger editor, which can also open the query in a
+  new tab. When the statement runs again, the next query loads the new rows.
 - **Compare with previous run**: when a statement runs again, its result can be compared with
   the previous one: rows added, removed and changed (matched by the table's key when it has
   one), with the old value of each changed cell.
@@ -358,7 +364,9 @@ Statements in mongosh syntax: `db.orders.find({ status: 'paid' }).sort({ placed_
 `NumberLong(...)`, `/regex/i`) and Extended JSON. Results are a grid of the top-level fields
 with the focused document as a tree beside it (`F7`). The navigator lists databases,
 collections, fields sampled from the documents and indexes; the editor completes collections,
-methods and fields. `mongodb+srv://` and connection string options go in the Database field
+methods and fields. Generate data fills a collection with fake documents: new ObjectIds or
+numbers after the largest `_id`, lists of words for arrays, small documents for nested fields.
+`mongodb+srv://` and connection string options go in the Database field
 (`shop?authSource=admin&replicaSet=rs0`).
 
 ### Transactions and safety
@@ -539,6 +547,7 @@ shortcuts.
 | `Ctrl+Shift+C` | Copy the selection with headers |
 | `Ctrl+F`, `F7` | Find in the results / value panel (grid focused) |
 | `Ctrl+Alt+R` | Record view of the focused row; `←` `→` move through the rows |
+| `F5`, `F2`, `F4`, `Delete` | Navigator: refresh, rename, edit the table, drop (after its confirmation) |
 
 </details>
 

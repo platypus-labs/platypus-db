@@ -14,6 +14,8 @@ import type { ObjectMeta, Project, SavedConnection, SchemaMeta } from "./api";
 import { useSyncExternalStore } from "react";
 import { getStored, setStored, useSettingsVersion } from "./settings";
 import type { GridActionContext } from "./grid/DataGrid";
+import { language } from "./i18n";
+import { keyName, labelParts, sameKey, splitShortcuts } from "./shortcutKeys";
 
 export interface ActionScopes {
   /** Anywhere in the window; shortcuts are captured before the editor sees them. */
@@ -132,7 +134,7 @@ const shortcutKey = (id: string) => `shortcuts.${id}`;
  *  own. */
 export function shortcutsOf(action: Pick<Action, "id" | "shortcut">): string[] {
   const own = getStored(shortcutKey(action.id));
-  if (typeof own === "string") return own ? own.split(/\s*,\s*/) : [];
+  if (typeof own === "string") return splitShortcuts(own);
   return [action.shortcut ?? []].flat();
 }
 
@@ -155,19 +157,18 @@ export function shortcutOf(e: KeyboardEvent): string | null {
   if (isMac && e.ctrlKey) parts.push("Ctrl");
   if (e.altKey) parts.push("Alt");
   if (e.shiftKey) parts.push("Shift");
-  const key = e.key === " " ? "Space" : e.key === "+" ? "Plus" : e.key.length === 1 ? e.key.toUpperCase() : e.key;
-  parts.push(key);
+  parts.push(keyName(e.key));
   return parts.join("+");
 }
 
 function matches(shortcut: string, e: KeyboardEvent): boolean {
   const parts = shortcut.split("+");
-  const key = parts.pop()!.toLowerCase();
+  const key = sameKey(parts.pop()!);
   const mods = new Set(parts.map((p) => p.toLowerCase()));
   const mod = isMac ? e.metaKey : e.ctrlKey;
   return (
-    // `+` separates the keys, so the key itself is written `Plus`.
-    (e.key === " " ? "space" : e.key === "+" ? "plus" : e.key.toLowerCase()) === key &&
+    // `+` and `,` separate keys and shortcuts, so those keys are written `Plus` and `Comma`.
+    sameKey(e.key) === key &&
     mod === mods.has("mod") &&
     e.shiftKey === mods.has("shift") &&
     e.altKey === mods.has("alt") &&
@@ -218,14 +219,43 @@ export function runAction<S extends ActionScope>(
   }
 }
 
-/** The first shortcut as shown in menus: `Ctrl+Shift+T`, or `⌘⇧T` on macOS. */
-export function shortcutLabel(action: Pick<Action, "id" | "shortcut">): string | undefined {
-  const first = shortcutsOf(action)[0];
-  if (!first) return undefined;
-  if (!isMac) return first.replace("Mod", "Ctrl").replaceAll("Arrow", "");
-  const symbols: Record<string, string> = { Mod: "⌘", Shift: "⇧", Alt: "⌥", Ctrl: "⌃" };
-  return first
+/** Key names as keyboards of the interface's language print them, so menus, the palette, the
+ *  Settings and the tooltips (translated texts) name keys alike. Not through `t`: "Delete" is
+ *  also a command, translated otherwise. */
+const KEY_LABELS: Record<string, Record<string, string>> = {
+  it: {
+    Shift: "Maiusc",
+    Enter: "Invio",
+    Delete: "Canc",
+    Insert: "Ins",
+    End: "Fine",
+    Space: "Spazio",
+    Escape: "Esc",
+    PageUp: "PagSu",
+    PageDown: "PagGiù",
+  },
+};
+
+/** One shortcut as shown: `Ctrl+Shift+T`, or `⌘⇧T` on macOS. */
+export function shortcutText(shortcut: string): string {
+  const names = KEY_LABELS[language()] ?? {};
+  if (!isMac) return labelParts(shortcut, (k) => names[k] ?? k).join("+");
+  const symbols: Record<string, string> = { Mod: "⌘", Shift: "⇧", Alt: "⌥", Ctrl: "⌃", Comma: ",", Plus: "+" };
+  return shortcut
     .split("+")
     .map((p) => symbols[p] ?? p.replace("Arrow", "").toUpperCase())
     .join("");
+}
+
+/** `title` with the current shortcuts of action `id`, for a tooltip: `Close tab (Ctrl+W)`. */
+export function titleWithKeys(title: string, id: string): string {
+  const action = registry.get(id);
+  const keys = action ? shortcutsOf(action).map(shortcutText).join(", ") : "";
+  return keys ? `${title} (${keys})` : title;
+}
+
+/** The first shortcut as shown in menus: `Ctrl+Shift+T`, or `⌘⇧T` on macOS. */
+export function shortcutLabel(action: Pick<Action, "id" | "shortcut">): string | undefined {
+  const first = shortcutsOf(action)[0];
+  return first ? shortcutText(first) : undefined;
 }

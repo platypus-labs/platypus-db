@@ -7,8 +7,10 @@
 //! through a one-slot channel, so the worker only fetches as fast as they are consumed.
 //! Cancellation uses `duckdb_interrupt`.
 
+mod csvfile;
 mod database;
 mod error;
+mod explain;
 pub mod files;
 mod meta;
 mod types;
@@ -68,7 +70,7 @@ pub fn memory_path(name: &str) -> String {
 
 /// Opens the in-memory database `name`, or finds it open, with a connection to fill it.
 pub fn memory_database(name: &str) -> Result<(MemoryDatabase, duckdb::Connection)> {
-    let (database, conn) = database::connect(&memory_path(name))?;
+    let (database, conn) = database::connect(&memory_path(name), &files::ReadOptions::default())?;
     Ok((
         MemoryDatabase {
             _database: database,
@@ -121,15 +123,18 @@ impl DuckDbConnection {
         let tx = Arc::new(TxTracker::default());
         std::thread::Builder::new()
             .name("platypus-duckdb".to_owned())
-            .spawn(move || match database::connect(&config.database) {
-                // The connection is dropped before its database.
-                Ok((_database, conn)) => {
-                    let version = conn.version().unwrap_or_default();
-                    let _ = ready.send(Ok((conn.interrupt_handle(), version)));
-                    worker(&conn, &inbox, &worker_running);
-                }
-                Err(e) => {
-                    let _ = ready.send(Err(e));
+            .spawn(move || {
+                match database::connect(&config.database, &files::ReadOptions::of(&config.options))
+                {
+                    // The connection is dropped before its database.
+                    Ok((_database, conn)) => {
+                        let version = conn.version().unwrap_or_default();
+                        let _ = ready.send(Ok((conn.interrupt_handle(), version)));
+                        worker(&conn, &inbox, &worker_running);
+                    }
+                    Err(e) => {
+                        let _ = ready.send(Err(e));
+                    }
                 }
             })
             .map_err(|e| Error::Connect(format!("cannot start the DuckDB worker: {e}")))?;
@@ -256,6 +261,10 @@ impl Connection for DuckDbConnection {
         meta::object_ddl(self, object).await
     }
 
+    async fn explain(&self, sql: &str, analyze: bool) -> Result<platypus_core::Explain> {
+        explain::explain(self, sql, analyze).await
+    }
+
     async fn object_properties(&self, object: &ObjectRef<'_>) -> Result<Vec<Property>> {
         meta::object_properties(self, object).await
     }
@@ -286,6 +295,7 @@ impl Connection for DuckDbConnection {
         platypus_core::Capabilities {
             transactions: true,
             cancel: true,
+            explain: true,
             object_ddl: true,
             metadata_search: true,
             ..Default::default()
@@ -492,6 +502,12 @@ fn conform(schema: &SchemaRef, chunk: &StructArray) -> Result<RecordBatch> {
         .map(|(column, field)| {
             if column.data_type() == field.data_type() {
                 Ok(Arc::clone(column))
+            } else if let Some(bytes) = column.as_any().downcast_ref::<arrow_array::BinaryArray>()
+                && *field.data_type() == arrow_schema::DataType::Utf8
+            {
+                let bits: arrow_array::StringArray =
+                    bytes.iter().map(|b| b.and_then(types::bit_text)).collect();
+                Ok(Arc::new(bits) as arrow_array::ArrayRef)
             } else {
                 arrow_cast::cast(column, field.data_type())
             }

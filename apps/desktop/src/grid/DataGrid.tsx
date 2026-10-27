@@ -16,6 +16,7 @@ import { THEME_EVENT } from "../theme";
 import { workbench } from "../workbench";
 import { type ColumnLayout, EMPTY_LAYOUT, moveColumn, resolveLayout } from "./layout";
 import type { RowCache } from "./RowCache";
+import { shiftSelection } from "./selectionShift";
 import "./actions";
 
 /** Row height, from the `--grid-row-h` variable (the density setting); see `readTheme`. */
@@ -91,6 +92,9 @@ export interface GridApi {
   /** The result row shown at a grid row; `null` for the `topRows`. */
   dataRow(row: number): number | null;
   select(anchor: Cell, focus?: Cell): void;
+  /** The `topRows` go from `before` to `after` (new rows added or dropped on top): the
+   *  selection moves with its rows, or clears when a new row it was on is gone. */
+  topRowsChanged(before: number, after: number): void;
   selectAll(): void;
   /** The result columns shown, left to right. */
   visibleColumns(): number[];
@@ -644,6 +648,18 @@ export function DataGrid({
       anchor.current = a;
       setFocus(f, true);
     },
+    topRowsChanged: (before, after) => {
+      const a = anchor.current;
+      const f = focus.current;
+      if (!a || !f || before === after) return;
+      // Not through `setFocus`: it would clamp to the row count before the new rows render.
+      const moved = shiftSelection(a, f, before, after);
+      anchor.current = moved?.anchor ?? null;
+      focus.current = moved?.focus ?? null;
+      props.current.onFocusChange?.(focus.current);
+      props.current.onSelectionChange?.();
+      schedule();
+    },
     selectAll: () => {
       const { view } = props.current.resolved;
       if (!view.length) return;
@@ -960,15 +976,17 @@ export function DataGrid({
     const { view } = props.current.resolved;
     const first = view[0] ?? 0;
     const last = view.at(-1) ?? 0;
+    // With Ctrl, the arrows go to the edge of the data, as in spreadsheets.
     const moves: Record<string, () => Cell | null> = {
-      ArrowUp: () => f && { ...f, row: f.row - 1 },
-      ArrowDown: () => f && { ...f, row: f.row + 1 },
-      ArrowLeft: () => f && { ...f, col: shifted(f.col, -1) },
-      ArrowRight: () => f && { ...f, col: shifted(f.col, 1) },
+      ArrowUp: () => (ctrl ? { row: 0, col: f?.col ?? first } : f && { ...f, row: f.row - 1 }),
+      ArrowDown: () => (ctrl ? { row: total() - 1, col: f?.col ?? first } : f && { ...f, row: f.row + 1 }),
+      ArrowLeft: () => (ctrl ? { row: f?.row ?? 0, col: first } : f && { ...f, col: shifted(f.col, -1) }),
+      ArrowRight: () => (ctrl ? { row: f?.row ?? 0, col: last } : f && { ...f, col: shifted(f.col, 1) }),
       PageUp: () => f && { ...f, row: f.row - page },
       PageDown: () => f && { ...f, row: f.row + page },
-      Home: () => f && (ctrl ? { row: 0, col: first } : { ...f, col: first }),
-      End: () => f && (ctrl ? { row: total() - 1, col: last } : { ...f, col: last }),
+      // Ctrl+Home and Ctrl+End need no focused cell.
+      Home: () => (ctrl ? { row: 0, col: first } : f && { ...f, col: first }),
+      End: () => (ctrl ? { row: total() - 1, col: last } : f && { ...f, col: last }),
     };
     const move = moves[e.key];
     if (move) {

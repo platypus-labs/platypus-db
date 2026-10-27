@@ -243,7 +243,8 @@ pub async fn table_details(
     let rows = query_text(
         conn,
         &format!(
-            "SELECT il.name, il.\"unique\", il.origin = 'pk', coalesce(ii.name, '(expression)')
+            "SELECT il.name, il.\"unique\", il.origin = 'pk', coalesce(ii.name, '(expression)'),
+                    il.partial
              FROM pragma_index_list({table_lit}, {schema_lit}) il
              JOIN pragma_index_info(il.name, {schema_lit}) ii
              ORDER BY il.origin = 'pk' DESC, il.name, ii.seqno"
@@ -259,6 +260,7 @@ pub async fn table_details(
                     columns: vec![r.text(3)],
                     unique: r.flag(1),
                     primary: r.flag(2),
+                    partial: r.flag(4),
                     size: None,
                 },
             )
@@ -278,6 +280,7 @@ pub async fn table_details(
                     .collect(),
                 unique: true,
                 primary: true,
+                partial: false,
                 size: None,
             },
         );

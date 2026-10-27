@@ -34,11 +34,19 @@ declare module "../DataGrid" {
   }
 }
 
-/** Opens a data viewer tab on `schema.table`, filtered. */
-export function openTable(connection: SavedConnection, schema: string, table: string, filter: string) {
+/** Opens a data viewer tab on `schema.table` of `database` (`null`: the connection's own),
+ *  filtered. */
+export function openTable(
+  connection: SavedConnection,
+  database: string | null | undefined,
+  schema: string,
+  table: string,
+  filter: string,
+) {
   const d = connection.driver;
   const target = `${quoteIdent(schema, d)}.${quoteIdent(table, d)}`;
   workbench().openTab("query", connection.id, {
+    database: database ?? null,
     sql: viewerSql(d, target, filter),
     autorun: true,
     title: table,
@@ -114,7 +122,7 @@ export function useReferences({ edit, jobId, columns, row, onError }: Options) {
             const values = await literals(jobId, cell.row, fk.columns.map((c) => at(c)!));
             const filter = condition(edit.connection.driver, fk.ref_columns, values);
             if (filter === null) return onError(t("The foreign key is NULL: it points to no row."));
-            openTable(edit.connection, fk.ref_schema, fk.ref_table, filter);
+            openTable(edit.connection, edit.database, fk.ref_schema, fk.ref_table, filter);
           },
           panelOpen,
           togglePanel: () => setPanelOpen((o) => !o),
@@ -170,7 +178,12 @@ function ReferencesPanel({
     void (async () => {
       try {
         const id = await edit.session();
-        if (id === null) return;
+        // No session (the password prompt was cancelled, the connection failed): say so
+        // instead of an empty panel.
+        if (id === null) {
+          if (live) setError(t("Not connected."));
+          return;
+        }
         const found = await api.referencingKeys(id, schema, name);
         if (live) setKeys(found);
       } catch (e) {
@@ -242,7 +255,7 @@ function ReferencesPanel({
               ) : (
                 <button
                   className="link small"
-                  onClick={() => openTable(edit.connection, key.schema, key.table, filter)}
+                  onClick={() => openTable(edit.connection, edit.database, key.schema, key.table, filter)}
                   title={t("Opens {table} WHERE {filter}", { table: key.table, filter })}
                 >
                   {count === null ? t("? rows") : plural(Number(count), "{n} row", "{n} rows")}

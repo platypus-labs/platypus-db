@@ -159,11 +159,29 @@ fn fit<T>(total: usize, max: usize, render: impl Fn(usize) -> T, size: impl Fn(&
     render(fits)
 }
 
+/// Integers JavaScript (and every parser that reads numbers as doubles) keeps exactly.
+const SAFE_INTEGER: i128 = (1 << 53) - 1;
+
+/// A number as JSON: a JSON number when every parser reads it back as it is, else a string.
+/// Integers beyond 2^53 would come back as another number (9007199254740993 as
+/// 9007199254740992), so they are strings, like decimals already are.
+fn number_json(n: &str) -> Value {
+    let lossless = match n.parse::<i128>() {
+        Ok(i) => (-SAFE_INTEGER..=SAFE_INTEGER).contains(&i),
+        // Floats print as the shortest text that reads back as the same double.
+        Err(_) => n.parse::<f64>().is_ok_and(f64::is_finite),
+    };
+    match serde_json::from_str(n) {
+        Ok(value) if lossless => value,
+        _ => Value::String(n.to_owned()),
+    }
+}
+
 fn cell_json(cell: &Cell) -> Value {
     match cell {
         Cell::Null => Value::Null,
         Cell::Bool(b) => Value::Bool(*b),
-        Cell::Number(n) => serde_json::from_str(n).unwrap_or_else(|_| Value::String(n.clone())),
+        Cell::Number(n) => number_json(n),
         Cell::Text(s) => Value::String(s.clone()),
     }
 }
@@ -333,5 +351,23 @@ mod tests {
             affected.json(),
             json!({"affected_rows": 3, "elapsed_ms": 0})
         );
+    }
+
+    #[test]
+    fn keeps_numbers_that_json_parsers_would_round_as_strings() {
+        let number = |n: &str| number_json(n);
+        assert_eq!(number("9007199254740991"), json!(9_007_199_254_740_991_i64));
+        assert_eq!(
+            number("-9007199254740991"),
+            json!(-9_007_199_254_740_991_i64)
+        );
+        assert_eq!(number("9007199254740993"), json!("9007199254740993"));
+        assert_eq!(
+            number("-9223372036854775808"),
+            json!("-9223372036854775808")
+        );
+        assert_eq!(number("2.5"), json!(2.5));
+        assert_eq!(number("1e300"), json!(1e300));
+        assert_eq!(number("not a number"), json!("not a number"));
     }
 }

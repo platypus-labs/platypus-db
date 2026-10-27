@@ -2,11 +2,12 @@
  *  the right, recomputed as rows arrive; and the switch between grid and chart. */
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { api, type ChartData, type ColumnInfo, toCommandError } from "../api";
-import { msg, plural, t } from "../i18n";
+import { language, msg, t } from "../i18n";
 import { workbench } from "../workbench";
 import { Chart, useChartColors } from "./Chart";
 import { type Aggregate, type ChartConfig, type ChartKind, autoConfig, toRequest, validConfig } from "./chartConfig";
 import { exportChart } from "./chartExport";
+import { categoryLabel, hasMarks, pieParts } from "./chartScale";
 
 const KINDS: [ChartKind, string][] = [
   ["bar", msg("Bars")],
@@ -105,6 +106,8 @@ export function ChartView({ jobId, columns, rows, complete, config, onConfig }: 
     );
   };
   const grouped = shown.kind === "bar" || shown.kind === "pie";
+  const empty = data !== null && !hasMarks(data);
+  const pieNotes = data && shown.kind === "pie" && !empty ? pieNotesOf(data, t("Other")) : [];
 
   return (
     <div className="chart-view">
@@ -121,7 +124,12 @@ export function ChartView({ jobId, columns, rows, complete, config, onConfig }: 
         </label>
         <label>
           {t("X axis")}
-          <select aria-label={t("X axis")} value={shown.x} onChange={(e) => set({ x: e.target.value })}>
+          <select
+            aria-label={t("X axis")}
+            value={shown.x}
+            // The X column is no longer a series: drawn against itself, with no box to uncheck.
+            onChange={(e) => set({ x: e.target.value, y: shown.y.filter((n) => n !== e.target.value) })}
+          >
             {columns.map((c, i) => (
               <option key={i} value={c.name}>
                 {c.name}
@@ -177,23 +185,49 @@ export function ChartView({ jobId, columns, rows, complete, config, onConfig }: 
         )}
         {error && <div className="notice error">{error}</div>}
         <div className="chart-canvas" ref={canvas}>
-          {data && request && size && (
+          {data && request && size && !empty && (
             <Chart ref={svg} data={data} kind={shown.kind} width={size.width} height={size.height} colors={colors}
               otherLabel={t("Other")}
               label={t("Chart of {series}", { series: data.series.map((s) => s.name).join(", ") })}
+              locale={language()}
             />
+          )}
+          {data && request && empty && (
+            <div className="chart-empty muted">
+              {data.rows === 0 ? t("No rows to draw.") : t("No data to draw: the chosen columns hold no numbers.")}
+            </div>
           )}
         </div>
         {data && (!complete || data.reduced) && (
           <div className="chart-note muted small">
-            {!complete && plural(data.rows, "Drawn from the {n} row loaded", "Drawn from the {n} rows loaded")}
+            {!complete &&
+              t(data.rows === 1 ? "Drawn from the {n} row loaded" : "Drawn from the {n} rows loaded", {
+                n: data.rows.toLocaleString(language()),
+              })}
             {!complete && data.reduced && " · "}
             {data.reduced && t("Some points or categories are grouped to fit.")}
           </div>
         )}
+        {pieNotes.map((note) => (
+          <div key={note} className="chart-note muted small">
+            {note}
+          </div>
+        ))}
       </div>
     </div>
   );
+}
+
+/** What a pie does not show: the categories it leaves out, and the series past the first. */
+function pieNotesOf(data: ChartData, otherLabel: string): string[] {
+  const notes: string[] = [];
+  const left = pieParts(data.series[0]?.values ?? []).left;
+  if (left.length > 0) {
+    const name = (i: number) => (data.other && i === data.categories.length - 1 ? otherLabel : categoryLabel(data.categories[i] ?? null));
+    notes.push(t("Left out of the pie (zero, negative or no value): {list}", { list: left.map(name).join(", ") }));
+  }
+  if (data.series.length > 1) notes.push(t("A pie shows only its first series: {name}.", { name: data.series[0]?.name ?? "" }));
+  return notes;
 }
 
 /** Grid or chart, in the result's status bar. */

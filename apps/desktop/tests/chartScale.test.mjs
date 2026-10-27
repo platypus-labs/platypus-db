@@ -4,14 +4,17 @@ import { test } from "node:test";
 import {
   arcPath,
   band,
+  categoryLabel,
   categoryTicks,
   extent,
   formatNumber,
   formatTime,
+  hasMarks,
   linear,
   niceDomain,
   niceTicks,
   pieAngles,
+  pieParts,
   timeTicks,
   truncate,
 } from "../src/analysis/chartScale.ts";
@@ -70,6 +73,35 @@ test("slices go clockwise from the top; negatives are empty", () => {
   near(c[0], c[1]);
   assert.match(arcPath(50, 50, 10, 0, Math.PI / 2), /^M 50 50 L 60\.00 50\.00 A 10 10 0 0 1 50\.00 60\.00 Z$/);
   assert.equal(arcPath(50, 50, 10, -Math.PI / 2, (3 * Math.PI) / 2).match(/A /g).length, 2);
+});
+
+test("the last category keeps its label when asked (Other), in place of one too close", () => {
+  assert.deepEqual(categoryTicks(10, 3, true), [0, 4, 9]);
+  assert.deepEqual(categoryTicks(9, 3, true), [0, 3, 8]);
+  assert.deepEqual(categoryTicks(9, 3), [0, 3, 6]);
+  assert.deepEqual(categoryTicks(2, 10, true), [0, 1]);
+  assert.deepEqual(categoryTicks(0, 10, true), []);
+});
+
+test("SQL NULL is told apart from the text NULL", () => {
+  assert.equal(categoryLabel(null), "(NULL)");
+  assert.equal(categoryLabel("NULL"), "NULL");
+});
+
+test("nothing to draw: no category value and no point", () => {
+  assert.equal(hasMarks({ series: [] }), false);
+  assert.equal(hasMarks({ series: [{ values: [null, null], points: [] }] }), false);
+  assert.equal(hasMarks({ series: [{ values: [null, 0], points: [] }] }), true);
+  assert.equal(hasMarks({ series: [{ values: [], points: [[0, 1]] }] }), true);
+});
+
+test("a pie draws the positive values and says which it leaves out", () => {
+  assert.deepEqual(pieParts([5, -3, 2, 0, null]), { drawn: [0, 2], left: [1, 3, 4] });
+});
+
+test("numbers follow the language given, not the system's", () => {
+  assert.equal(formatNumber(0.8, "it"), "0,8");
+  assert.equal(formatNumber(0.8, "en"), "0.8");
 });
 
 test("long labels are cut", () => {

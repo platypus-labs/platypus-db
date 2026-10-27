@@ -58,12 +58,15 @@ pub fn tag_schema(schema: &Schema, stmt: &duckdb::Statement<'_>) -> SchemaRef {
         .enumerate()
         .map(|(i, field)| {
             let mut metadata = field.metadata().clone();
-            metadata.insert(
-                META_DB_TYPE.to_owned(),
-                type_name(&stmt.column_logical_type(i), 0),
-            );
+            let name = type_name(&stmt.column_logical_type(i), 0);
+            let bits = name == "BIT";
+            metadata.insert(META_DB_TYPE.to_owned(), name);
             let field = field.as_ref().clone().with_metadata(metadata);
             match portable(field.data_type()) {
+                // `BIT` arrives as DuckDB's bytes: shown as its digits, see [`bit_text`].
+                _ if bits && *field.data_type() == DataType::Binary => {
+                    field.with_data_type(DataType::Utf8)
+                }
                 Some(t) => field.with_data_type(t),
                 None => field,
             }
@@ -77,6 +80,26 @@ pub fn tag_schema(schema: &Schema, stmt: &duckdb::Statement<'_>) -> SchemaRef {
             .into_iter()
             .collect::<HashMap<_, _>>(),
     ))
+}
+
+/// A `BIT` value as DuckDB prints it (`1010`) from its bytes: the count of padding bits,
+/// then the bits, the padding first.
+#[must_use]
+pub fn bit_text(bytes: &[u8]) -> Option<String> {
+    let (&padding, bits) = bytes.split_first()?;
+    let total = bits.len() * 8;
+    let padding = usize::from(padding);
+    (padding <= total).then(|| {
+        (padding..total)
+            .map(|i| {
+                if (bits[i / 8] >> (7 - i % 8)) & 1 == 1 {
+                    '1'
+                } else {
+                    '0'
+                }
+            })
+            .collect()
+    })
 }
 
 /// The type as DuckDB prints it: `DECIMAL(12,2)`, `INTEGER[]`, `STRUCT(a INTEGER)`; a

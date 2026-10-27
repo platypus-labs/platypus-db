@@ -13,6 +13,7 @@ import {
 import { catalogKey, renameCatalog, reportCatalogError } from "../catalog/catalog";
 import { renamedObject } from "../catalog/renames";
 import { isRelation } from "../components/Navigator";
+import { renameBookmarks } from "../navigator/prefs";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { getSetting } from "../settings";
 import { quoteIdent, selectLimit } from "../sqlNames";
@@ -133,9 +134,12 @@ registerAction({
   run: (arg) => navigator.clipboard.writeText((arg.selection ?? [arg]).map(qualified).join("\n")),
 });
 
+/** Whether the name of `kind` ends with its argument list, `add(integer, integer)`. */
+const isRoutine = (kind: ObjectKind) => kind === "function" || kind === "procedure";
+
 /** `schema.name`, quoted; a PostgreSQL routine keeps its argument list unquoted. */
-function qualified({ connection: { driver }, schema, object: { name } }: ObjectArg): string {
-  const paren = driver === "postgres" ? name.indexOf("(") : -1;
+function qualified({ connection: { driver }, schema, object: { name, kind } }: ObjectArg): string {
+  const paren = driver === "postgres" && isRoutine(kind) ? name.indexOf("(") : -1;
   const quoted = paren >= 0 ? `${quoteIdent(name.slice(0, paren), driver)}${name.slice(paren)}` : quoteIdent(name, driver);
   return `${quoteIdent(schema.name, driver)}.${quoted}`;
 }
@@ -170,6 +174,7 @@ registerAction({
   id: "object.rename",
   scope: "navigator.object",
   title: "Rename…",
+  shortcut: "F2",
   group: "manage",
   order: 80,
   when: ({ connection, object }) => can(connection.driver, "renamable", object.kind),
@@ -180,14 +185,19 @@ registerAction({
         title: t("Rename {name}", { name: arg.object.name }),
         description: t("Statements and views that use the old name stop working."),
         confirm: t("Rename"),
-        options: { rename: arg.object.name.replace(/\(.*$/, "") },
+        options: { rename: isRoutine(arg.object.kind) ? arg.object.name.replace(/\(.*$/, "") : arg.object.name },
       },
       ({ newName }) => ({ statement: "rename", new_name: newName }),
       ({ newName }) => {
         const from = catalogKey(arg.database, arg.schema.name, arg.object.name);
-        const object = renamedObject(arg.object.name, newName);
+        const object = renamedObject(arg.object.name, newName, isRoutine(arg.object.kind));
         if (object) {
           renameCatalog(arg.connection.id, from, { ...from, object }).catch(reportCatalogError);
+          renameBookmarks(
+            { connectionId: arg.connection.id, database: arg.database, schema: arg.schema.name, kind: arg.object.kind },
+            arg.object.name,
+            object,
+          );
         }
       },
     ),
@@ -217,6 +227,8 @@ registerAction({
   id: "object.drop",
   scope: "navigator.object",
   title: "Drop…",
+  // Opens the same confirmation as the menu: the statement runs only from there.
+  shortcut: "Delete",
   group: "manage",
   order: 90,
   when: ({ connection, object }) => can(connection.driver, "droppable", object.kind),

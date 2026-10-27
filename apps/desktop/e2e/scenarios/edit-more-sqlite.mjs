@@ -230,30 +230,31 @@ export default async function (page, { dir, shots }) {
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.cell-editor') === null`);
 
-  // Spreadsheet rows paste as new rows, in their order.
+  // Spreadsheet rows paste as new rows, in their order, saved by one statement.
   setClipboard("12\t2\t9.5\r\n13\t1\t1\r\n");
   await focusCell(page, 0, 0);
   await page.key("V", "KeyV", 86, CTRL | SHIFT);
   await page.waitFor(`${editBar}.includes('2 rows changed')`);
   assert.equal(
     await previewSql(page),
-    "INSERT INTO main.orders (id, customer_id, total) VALUES (12, 2, 9.5);\n" +
-      "INSERT INTO main.orders (id, customer_id, total) VALUES (13, 1, 1);",
+    "INSERT INTO main.orders (id, customer_id, total) VALUES (12, 2, 9.5), (13, 1, 1);",
   );
   await saveFromPreview(page);
   await page.waitFor(`${status} === '4 rows' && ${statusBar}.includes('Undo script')`, 15_000);
 
-  // The undo script deletes the new rows again.
+  // The undo script deletes the new rows again, in one statement.
   await page.eval(`${button(visibleTab, "Undo script")}.click()`);
   await page.waitFor(`${visibleTab}?.querySelector('.cm-content')?.textContent.includes('DELETE')`);
   assert.equal(
     await page.eval(`${visibleTab}.querySelector('.cm-content').textContent`),
-    "DELETE FROM main.orders WHERE id = 12;DELETE FROM main.orders WHERE id = 13;",
+    "DELETE FROM main.orders WHERE id IN (12, 13);",
   );
+  // Blank the status, so the wait below sees the script's and not the one before it.
+  await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
   await page.eval(`${button(visibleTab, "Script")}.click()`);
-  // Both result tabs appear when the script starts; Ctrl+Enter is ignored until it ends.
+  // Ctrl+Enter is ignored until the script ends.
   await page.waitFor(
-    `${visibleTab}.querySelectorAll('.result-tab').length === 2 && ` +
+    `${status} !== '' && !${status}.includes('Executing') && ` +
       `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')?.disabled`,
     15_000,
   );

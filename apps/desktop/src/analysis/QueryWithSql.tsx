@@ -1,6 +1,7 @@
 /** "Query with SQL": the rows of a tab's results, loaded in full up to the memory limit,
- *  become tables of an in-memory DuckDB, queried in a new SQL editor on a temporary
- *  connection. The tab is a copy: "Reload from result" copies the rows again. */
+ *  become tables of an in-memory DuckDB. The field above a result's grid queries them in place
+ *  (`ResultSql.tsx`); "Open in a tab" queries them in a new SQL editor on a temporary
+ *  connection, a copy that "Reload from result" copies again. */
 import { useEffect, useRef, useState } from "react";
 import { registerAction } from "../actions";
 import { api, isMongo, type ResultTable, type SavedConnection, toCommandError } from "../api";
@@ -11,7 +12,7 @@ import { type ResultHost, type ResultSource, hostOfJob, hostOfTab, initialSql, r
 
 /** Loads every row of the results, showing how many with Cancel; false when cancelled or
  *  failed (a result closed meanwhile fails). Cancel closes the dialog at once. */
-function loadAll(jobIds: number[]): Promise<boolean> {
+export function loadAll(jobIds: number[]): Promise<boolean> {
   return new Promise((resolve) =>
     workbench().openDialog((close) => (
       <LoadDialog
@@ -71,8 +72,9 @@ function LoadDialog({ jobIds, onDone }: { jobIds: number[]; onDone: (ok: boolean
 
 const tableNames = (tables: ResultTable[]) => [...new Set(tables.map((x) => x.table))];
 
-/** Opens a SQL editor on the results of `host`: `jobId` (else the shown one) is `result`. */
-export async function queryWithSql(host: ResultHost, jobId?: number) {
+/** Opens a SQL editor on the results of `host`: `jobId` (else the shown one) is `result`;
+ *  `sql` is the editor's text, else a query of `result`. */
+export async function queryWithSql(host: ResultHost, jobId?: number, sql?: string) {
   const tables = resultTables(host.results(), jobId ?? host.activeJob());
   if (tables.length === 0) return workbench().showError(t("This tab has no result with rows."));
   if (!(await loadAll(tables.map((x) => x.job_id)))) return;
@@ -81,7 +83,7 @@ export async function queryWithSql(host: ResultHost, jobId?: number) {
   workbench().openTemporaryTab(
     "query",
     opened.connection,
-    { sql: initialSql(tables), title: t("SQL on results"), resultSource: source },
+    { sql: sql ?? initialSql(tables), title: t("SQL on results"), resultSource: source },
     () => void api.closeResultDb(opened.connection.id),
   );
 }
@@ -153,10 +155,7 @@ registerAction({
     if (!host || host.results().length === 0) return msg("No result with rows in the tab shown");
     return isMongo(host.connection.driver) ? msg("MongoDB results cannot be queried with SQL") : null;
   },
-  run: () => {
-    const host = shownHost();
-    return host ? queryWithSql(host) : undefined;
-  },
+  run: () => shownHost()?.querySql(),
 });
 
 registerAction({
@@ -166,9 +165,5 @@ registerAction({
   group: "analysis",
   order: 70,
   when: ({ source }) => source?.jobId != null && !isMongo(source.connection.driver) && hostOfJob(source.jobId) !== null,
-  run: ({ source }) => {
-    const jobId = source?.jobId;
-    const host = jobId == null ? null : hostOfJob(jobId);
-    return host && jobId != null ? queryWithSql(host, jobId) : undefined;
-  },
+  run: ({ source }) => (source?.jobId == null ? undefined : hostOfJob(source.jobId)?.querySql()),
 });

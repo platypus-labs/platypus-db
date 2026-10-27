@@ -89,7 +89,14 @@ pub fn markdown(model: &DocModel) -> String {
 }
 
 fn object(out: &mut String, schema: &str, o: &DocObject) {
-    let _ = writeln!(out, "\n## {}.{}\n", cell(schema), cell(&o.name));
+    // An explicit anchor: renderers derive a heading's own id each in their own way.
+    let _ = writeln!(
+        out,
+        "\n<a id=\"{}\"></a>\n\n## {}.{}\n",
+        anchor(schema, &o.name),
+        cell(schema),
+        cell(&o.name)
+    );
     if let Some(e) = &o.error {
         let _ = writeln!(out, "> Could not read this table: {}", cell(e));
         return;

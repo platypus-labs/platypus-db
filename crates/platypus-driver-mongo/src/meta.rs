@@ -144,6 +144,7 @@ pub async fn table_details(
                         .unwrap_or_default(),
                     unique: ix.get_bool("unique").unwrap_or(false) || name == "_id_",
                     primary: name == "_id_",
+                    partial: false,
                     size: None,
                     name,
                 }

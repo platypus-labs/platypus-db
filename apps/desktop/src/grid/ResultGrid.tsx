@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnInfo } from "../api";
 import { annotation, catalogEntry, catalogKey, useCatalogVersion } from "../catalog/catalog";
 import { CalcPanel } from "../panels/CalcPanel";
@@ -94,10 +94,12 @@ interface Props {
   edit?: TableEditTarget | null;
   /** Set for a data viewer: the columns' local notes show in the header. */
   notes?: NotesScope | null;
+  /** At the end of the bar above the grid: the result's SQL field. */
+  toolbar?: ReactNode;
 }
 
 /** A result's grid with its features: editing, search, column layout, totals and panels. */
-export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onHeaderClick, headerHint, source, edit, notes }: Props) {
+export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onHeaderClick, headerHint, source, edit, notes, toolbar }: Props) {
   const notesVersion = useCatalogVersion();
   const noteOf = (col: number) =>
     notes && columns[col]
@@ -105,7 +107,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
       : undefined;
   const grid = useRef<GridApi>(null);
   const box = useRef<HTMLDivElement>(null);
-  const editor = useTableEditor({ target: edit ?? null, jobId, columns, cache, version, grid, box });
+  const editor = useTableEditor({ target: edit ?? null, jobId, columns, cache, version, grid, box, extra: toolbar });
   const search = useGridSearch(jobId, columns.length, editor.topRows, grid);
   const stats = useSelectionStats(jobId, grid);
   const profile = useColumnProfile(jobId, columns, rowCount);
@@ -219,6 +221,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
               rowCount={total}
               topRows={editor.topRows}
               version={version}
+              pending={editor.pending}
               onMove={(row) => grid.current?.select({ row, col: focused?.col ?? 0 })}
               onClose={features.toggleRecordView}
             />

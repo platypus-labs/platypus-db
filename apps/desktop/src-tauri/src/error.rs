@@ -27,6 +27,17 @@ impl CommandError {
         }
     }
 
+    /// The same error under another kind, for the UI to branch on.
+    #[must_use]
+    pub fn with_kind(mut self, kind: &'static str) -> Self {
+        self.kind = kind;
+        self
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
     pub fn not_found(what: &str, id: impl std::fmt::Display) -> Self {
         Self::new("not_found", format!("{what} {id} not found"))
     }
@@ -37,6 +48,12 @@ impl CommandError {
     pub fn context(mut self, context: impl std::fmt::Display) -> Self {
         self.message = format!("{context}: {}", self.message);
         self.position = None;
+        self
+    }
+
+    /// Adds a paragraph after the message.
+    pub fn note(mut self, note: &str) -> Self {
+        self.message = format!("{}\n\n{note}", self.message);
         self
     }
 }

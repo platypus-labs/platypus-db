@@ -73,6 +73,7 @@ pub fn lint(dialect: Dialect, schema: &str, tables: &[SchemaTable]) -> Vec<Findi
                     name: free_name(d, &format!("{}_{}_idx", table.name, fk.columns.join("_"))),
                     columns: fk.columns.clone(),
                     unique: false,
+                    sql: None,
                 };
                 findings.push(finding(
                     LintKind::UnindexedForeignKey,
@@ -224,6 +225,7 @@ mod tests {
             columns: columns.iter().map(|&c| c.to_owned()).collect(),
             unique,
             primary,
+            partial: false,
             size: None,
         }
     }

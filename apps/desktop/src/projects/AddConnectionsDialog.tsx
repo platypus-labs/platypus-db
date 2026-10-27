@@ -3,6 +3,7 @@ import { api, type Project, type SavedConnection, toCommandError } from "../api"
 import { workbench } from "../workbench";
 import { toggled } from "../sets";
 import { t } from "../i18n";
+import { storeMessage } from "../storeErrors";
 
 interface Props {
   project: Project;
@@ -23,7 +24,7 @@ export function AddConnectionsDialog({ project, connections, onSaved, onClose }:
       for (const id of picked) projects = await api.setProjectMembership(id, project.id, true);
       onSaved(projects!);
     } catch (e) {
-      setError(toCommandError(e).message);
+      setError(storeMessage(toCommandError(e).message));
       // The ones added before the error are in the project already.
       if (projects) workbench().setProjects(projects);
     }

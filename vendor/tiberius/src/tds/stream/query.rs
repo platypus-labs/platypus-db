@@ -9,7 +9,7 @@ use std::{
     pin::Pin,
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     task::{self, Poll},
 };
@@ -97,6 +97,9 @@ pub struct QueryStream<'a> {
     result_set_index: Option<usize>,
     /// PlatypusDB: the row counts of the `DONE` tokens read so far.
     rows_affected: Arc<AtomicU64>,
+    /// PlatypusDB: the informational messages (`PRINT`, `RAISERROR` below severity 11) read
+    /// and not taken yet.
+    messages: Arc<Mutex<Vec<String>>>,
 }
 
 impl<'a> Debug for QueryStream<'a> {
@@ -114,13 +117,21 @@ impl<'a> QueryStream<'a> {
     pub(crate) fn new(token_stream: BoxStream<'a, crate::Result<ReceivedToken>>) -> Self {
         let rows_affected = Arc::new(AtomicU64::new(0));
         let counter = Arc::clone(&rows_affected);
+        let messages = Arc::new(Mutex::new(Vec::new()));
+        let infos = Arc::clone(&messages);
         let token_stream = token_stream
-            .inspect_ok(move |token| {
-                if let ReceivedToken::Done(done) | ReceivedToken::DoneInProc(done) = token {
+            .inspect_ok(move |token| match token {
+                ReceivedToken::Done(done) | ReceivedToken::DoneInProc(done) => {
                     if done.has_count() {
                         counter.fetch_add(done.rows(), Ordering::Relaxed);
                     }
                 }
+                ReceivedToken::Info(info) => {
+                    if let Ok(mut infos) = infos.lock() {
+                        infos.push(info.message.clone());
+                    }
+                }
+                _ => {}
             })
             .boxed();
         Self {
@@ -128,7 +139,16 @@ impl<'a> QueryStream<'a> {
             columns: None,
             result_set_index: None,
             rows_affected,
+            messages,
         }
+    }
+
+    /// PlatypusDB: the informational messages read since the last call.
+    pub fn take_messages(&self) -> Vec<String> {
+        self.messages
+            .lock()
+            .map(|mut m| std::mem::take(&mut *m))
+            .unwrap_or_default()
     }
 
     /// PlatypusDB: the rows the statements read so far changed, or returned, in total.

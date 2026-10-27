@@ -41,6 +41,8 @@ pub enum ObjectKind {
     Event,
     /// ClickHouse dictionary: an in-memory key-value source, queried like a table.
     Dictionary,
+    /// SQL Server synonym: another name for an object, possibly in another database.
+    Synonym,
 }
 
 impl ObjectKind {
@@ -117,6 +119,8 @@ pub struct IndexMeta {
     pub columns: Vec<String>,
     pub unique: bool,
     pub primary: bool,
+    /// Covers only the rows of a condition (`WHERE`): unique among those only.
+    pub partial: bool,
     /// Bytes on disk; `None` when the driver does not know.
     pub size: Option<u64>,
 }

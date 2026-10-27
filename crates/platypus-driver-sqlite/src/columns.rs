@@ -1,8 +1,9 @@
 //! SQLite values into Arrow columns.
 //!
 //! SQLite is dynamically typed: a column's declared type is only a hint and any row may
-//! hold any storage class. The Arrow type of each column is inferred from the first batch
-//! (falling back to the declared type), and later values are coerced when lossless.
+//! hold any storage class. The Arrow type of each column is inferred from the values of
+//! the whole result when the driver can read them ahead in time, else from the first batch
+//! (falling back to the declared type); later values are coerced when lossless.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -38,28 +39,55 @@ fn affinity(decl: &str) -> Option<Kind> {
     }
 }
 
-/// The column kind for the values seen in the first batch, or the declared type when they
-/// are all `NULL`. Mixed storage classes fall back to text, which can show anything.
-#[must_use]
-pub fn infer<'a>(decl: Option<&str>, values: impl Iterator<Item = ValueRef<'a>>) -> Kind {
-    let mut seen: Option<Kind> = None;
-    for value in values {
+/// Integers beyond this lose digits as reals.
+const EXACT_IN_REAL: u64 = 1 << 53;
+
+/// The storage classes of a column's values so far.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Seen {
+    kind: Option<Kind>,
+    /// An integer beyond what a real holds exactly.
+    big: bool,
+}
+
+impl Seen {
+    pub fn add(&mut self, value: ValueRef<'_>) {
         let kind = match value {
-            ValueRef::Null => continue,
-            ValueRef::Integer(_) => Kind::Int,
+            ValueRef::Null => return,
+            ValueRef::Integer(i) => {
+                self.big |= i.unsigned_abs() > EXACT_IN_REAL;
+                Kind::Int
+            }
             ValueRef::Real(_) => Kind::Float,
             ValueRef::Text(_) => Kind::Text,
             ValueRef::Blob(_) => Kind::Blob,
         };
-        seen = Some(match (seen, kind) {
+        self.kind = Some(match (self.kind, kind) {
             (None, k) => k,
             (Some(a), b) if a == b => a,
             (Some(Kind::Int | Kind::Float), Kind::Int | Kind::Float) => Kind::Float,
-            _ => return Kind::Text,
+            _ => Kind::Text,
         });
     }
-    seen.or_else(|| decl.and_then(affinity))
-        .unwrap_or(Kind::Text)
+
+    /// The column kind, or that of the declared type when all values were `NULL`. Mixed
+    /// storage classes, and reals with integers beyond 2^53, are text, which keeps them.
+    #[must_use]
+    pub fn kind(self, decl: Option<&str>) -> Kind {
+        match self.kind {
+            Some(Kind::Float) if self.big => Kind::Text,
+            Some(kind) => kind,
+            None => decl.and_then(affinity).unwrap_or(Kind::Text),
+        }
+    }
+}
+
+/// The column kind for `values` (see [`Seen::kind`]).
+#[must_use]
+pub fn infer<'a>(decl: Option<&str>, values: impl Iterator<Item = ValueRef<'a>>) -> Kind {
+    let mut seen = Seen::default();
+    values.for_each(|v| seen.add(v));
+    seen.kind(decl)
 }
 
 #[must_use]
@@ -122,17 +150,14 @@ pub enum ColumnBuilder {
     Blob(BinaryBuilder),
 }
 
-/// The schema of a result with `columns` (name, declared type), each column's kind
-/// inferred from the `first` rows.
+/// The schema of a result with `columns` (name, declared type), each column's kind from
+/// the values `seen` of it.
 #[must_use]
-pub fn schema(
-    columns: &[(String, Option<String>)],
-    first: &[Vec<Owned>],
-) -> (SchemaRef, Vec<Kind>) {
+pub fn schema(columns: &[(String, Option<String>)], seen: &[Seen]) -> (SchemaRef, Vec<Kind>) {
     let kinds: Vec<Kind> = columns
         .iter()
-        .enumerate()
-        .map(|(i, (_, decl))| infer(decl.as_deref(), first.iter().map(|r| r[i].value())))
+        .zip(seen)
+        .map(|((_, decl), seen)| seen.kind(decl.as_deref()))
         .collect();
     let schema = Arc::new(Schema::new(
         columns
@@ -222,10 +247,7 @@ impl ColumnBuilder {
         }
     }
 
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "SQLite itself converts integers to reals this way"
-    )]
+    #[expect(clippy::cast_precision_loss, reason = "the range is checked first")]
     pub fn append(&mut self, value: ValueRef<'_>) -> Result<(), Mismatch> {
         let mismatch = |expected| Mismatch {
             found: storage_class(value),
@@ -243,7 +265,9 @@ impl ColumnBuilder {
             }
             (Self::Int(_), _) => return Err(mismatch("integer")),
 
-            (Self::Float(b), ValueRef::Integer(i)) => b.append_value(i as f64),
+            (Self::Float(b), ValueRef::Integer(i)) if i.unsigned_abs() <= EXACT_IN_REAL => {
+                b.append_value(i as f64);
+            }
             (Self::Float(b), ValueRef::Real(r)) => b.append_value(r),
             (Self::Float(_), _) => return Err(mismatch("real")),
 
@@ -295,6 +319,30 @@ mod tests {
         assert_eq!(infer(Some("VARCHAR(10)"), std::iter::empty()), Kind::Text);
         assert_eq!(infer(Some("DECIMAL(10,2)"), std::iter::empty()), Kind::Text);
         assert_eq!(infer(None, std::iter::empty()), Kind::Text);
+    }
+
+    #[test]
+    fn integers_beyond_reals_keep_their_digits() {
+        let big = 9_007_199_254_740_993;
+        assert_eq!(
+            infer(None, [Real(0.5), Integer(big)].into_iter()),
+            Kind::Text
+        );
+        assert_eq!(
+            infer(None, [Real(0.5), Integer(1 << 53)].into_iter()),
+            Kind::Float
+        );
+        let mut real = ColumnBuilder::new(Kind::Float, 2);
+        real.append(Integer(1 << 53)).unwrap();
+        assert!(real.append(Integer(big)).is_err(), "never rounded");
+        let mut text = ColumnBuilder::new(Kind::Text, 1);
+        text.append(Integer(big)).unwrap();
+        let array = text.finish();
+        let strings = array
+            .as_any()
+            .downcast_ref::<arrow_array::StringArray>()
+            .unwrap();
+        assert_eq!(strings.value(0), "9007199254740993");
     }
 
     #[test]

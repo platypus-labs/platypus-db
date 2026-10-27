@@ -31,12 +31,15 @@ fn relation(schema: &str, name: &str) -> String {
     )
 }
 
-/// A routine named like the navigator lists it, `name(argument types)`, as an oid.
+/// A routine named like the navigator lists it, `name(identity arguments)`, as an oid
+/// subquery. The arguments carry their names and modes (`a integer, OUT b text`), which a
+/// cast to `regprocedure` would reject, so the text is matched as `objects` builds it.
 fn routine(schema: &str, name: &str) -> String {
-    let (base, args) = name.split_once('(').unwrap_or((name, ")"));
     format!(
-        "{}::regprocedure",
-        literal(&format!("{}({args}", qualified(schema, base)))
+        "(SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = {} AND p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' = {})",
+        literal(schema),
+        literal(name)
     )
 }
 
@@ -45,7 +48,7 @@ async fn row(conn: &dyn Connection, sql: &str, what: &ObjectRef<'_>) -> Result<T
         .await?
         .into_iter()
         .next()
-        .ok_or_else(|| Error::Other(format!("{} {} not found", what.schema, what.name)))
+        .ok_or_else(|| Error::Other(format!("{} not found", qualified(what.schema, what.name))))
 }
 
 async fn value(conn: &dyn Connection, sql: &str, what: &ObjectRef<'_>) -> Result<String> {
@@ -81,7 +84,10 @@ pub async fn object_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<Stri
         }
         ObjectKind::Sequence => sequence(conn, o).await,
         ObjectKind::Function | ObjectKind::Procedure => {
-            let sql = format!("SELECT pg_get_functiondef({})", routine(o.schema, o.name));
+            let sql = format!(
+                "SELECT pg_get_functiondef(p.oid) FROM pg_proc p WHERE p.oid = {}",
+                routine(o.schema, o.name)
+            );
             Ok(statement(&value(conn, &sql, o).await?))
         }
         ObjectKind::Trigger => {
@@ -110,9 +116,9 @@ pub async fn object_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<Stri
                 Dialect::Postgres.quote_literal(&version)
             ))
         }
-        ObjectKind::Event | ObjectKind::Dictionary => {
-            Err(unsupported("events and dictionaries in PostgreSQL"))
-        }
+        ObjectKind::Event | ObjectKind::Dictionary | ObjectKind::Synonym => Err(unsupported(
+            "events, dictionaries and synonyms in PostgreSQL",
+        )),
     }
 }
 
@@ -452,11 +458,9 @@ mod tests {
 
     #[test]
     fn names_routines_by_signature() {
-        assert_eq!(
-            routine("demo", "Add(integer, integer)"),
-            "E'demo.\"Add\"(integer, integer)'::regprocedure"
-        );
-        assert_eq!(routine("s", "f()"), "E's.f()'::regprocedure");
+        let add = routine("demo", "Add(a integer, b integer)");
+        assert!(add.contains("n.nspname = E'demo'"), "{add}");
+        assert!(add.contains(" = E'Add(a integer, b integer)')"), "{add}");
         assert_eq!(statement("SELECT 1 ;\n"), "SELECT 1 ;");
         assert_eq!(statement("x"), "x;");
     }

@@ -14,6 +14,10 @@ pub async fn explain(
     sql: String,
     analyze: bool,
 ) -> CommandResult<Explain> {
+    // Analyze runs the statement.
+    if analyze {
+        state.may_run(session_id, &sql)?;
+    }
     let conn = state.live(session_id).await?;
     // `EXPLAIN SELECT 1;` is a valid request, but not with a semicolon then more text.
     let sql = sql.trim().trim_end_matches(';');

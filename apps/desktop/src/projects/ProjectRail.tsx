@@ -3,6 +3,7 @@ import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
 import { railItems } from "./state";
 import { t } from "../i18n";
+import { storeMessage } from "../storeErrors";
 
 interface Props {
   projects: Project[];
@@ -23,7 +24,7 @@ const DRAG_TYPE = "application/x-platypus-project";
 function change(run: () => Promise<Workspace>) {
   run().then(
     (w) => workbench().setWorkspace(w),
-    (e: unknown) => workbench().showError(toCommandError(e).message),
+    (e: unknown) => workbench().showError(storeMessage(toCommandError(e).message)),
   );
 }
 
