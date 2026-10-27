@@ -4,9 +4,9 @@
 // tree (DBeaver lists them in a Synonyms folder). The Oracle driver has the same object kind
 // in the same situation (not tested here: no Instant Client).
 //
-// Cause: the SQL Server objects query (crates/platypus-driver-mssql) does not read type 'SN'
-// of sys.objects, and the navigator has no Synonyms folder (FOLDERS in
-// apps/desktop/src/components/Navigator.tsx).
+// Cause: there is no synonym object kind (`ObjectKind` in crates/platypus-core), so the SQL
+// Server objects query (crates/platypus-driver-mssql) skips type 'SN' of sys.objects and the
+// navigator has no Synonyms folder (FOLDERS in apps/desktop/src/components/Navigator.tsx).
 //
 // Steps: schema qa_nav_syn_s with table qa_nav_t and synonym qa_nav_syn; expand it.
 // Expected: qa_nav_syn listed. Actual: missing.
