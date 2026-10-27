@@ -345,9 +345,12 @@ export function Navigator(props: Props) {
   }
 
   /** Forgets everything loaded under `key` and reloads it if open (`open`: whether the
-   *  node showing it is expanded, when that node has another key). */
-  function refresh(key: string, reload: () => void, open = expanded.has(key)) {
-    updateCache((m) => new Map([...m].filter(([k]) => !isUnder(k, key))));
+   *  node showing it is expanded, when that node has another key). `schemasOnly` keeps what
+   *  a connection's key also holds besides its default database: the list of databases and
+   *  the other databases. */
+  function refresh(key: string, reload: () => void, open = expanded.has(key), schemasOnly = false) {
+    const under = schemasOnly ? (k: string) => k === key || k.startsWith(`${key}/`) : (k: string) => isUnder(k, key);
+    updateCache((m) => new Map([...m].filter(([k]) => !under(k))));
     if (open) reload();
   }
 
@@ -1193,7 +1196,7 @@ function withoutPrefix(set: Set<string>, key: string, children = false): Set<str
 
 interface NavigatorApi {
   props: Props;
-  refresh: (key: string, reload: () => void, open?: boolean) => void;
+  refresh: (key: string, reload: () => void, open?: boolean, schemasOnly?: boolean) => void;
   refreshConnection: (c: SavedConnection) => void;
   reloadDatabase: (c: SavedConnection, db: string | null, open?: boolean) => void;
   loadSchemas: (c: SavedConnection, db: string | null) => void;
@@ -1379,7 +1382,8 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       run: ({ connection, database, name }) => {
         const base = database === null ? connection.id : `${connection.id}@${database}`;
         const open = n().isOpen(`${connection.id}#db:${name}`) || database === null;
-        n().refresh(base, () => n().loadSchemas(connection, database), open);
+        // The default database's key is the connection's: its list of databases stays.
+        n().refresh(base, () => n().loadSchemas(connection, database), open, true);
         n().props.onRefresh(connection, database);
       },
     }),
