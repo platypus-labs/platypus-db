@@ -24,6 +24,9 @@ pub enum ValueKind {
     /// Exact numbers (decimals).
     Decimal,
     Float,
+    /// Single-precision floats (`real`): PostgreSQL reads a bare number as a double, which
+    /// equals no `real` with a fraction (0.1 is 0.100000001490116 there).
+    Real,
     /// Hex text, e.g. `deadbeef`.
     Binary,
     /// `zoned` timestamps are shown with their UTC offset.
@@ -39,6 +42,7 @@ impl ValueKind {
         match data_type {
             DataType::Boolean => Self::Bool,
             t if t.is_integer() => Self::Integer,
+            DataType::Float16 | DataType::Float32 => Self::Real,
             t if t.is_floating() => Self::Float,
             t if t.is_numeric() => Self::Decimal,
             DataType::Binary
@@ -153,6 +157,13 @@ fn plain_number(s: &str) -> String {
     }
 }
 
+/// NaN or an infinity, as floats (and PostgreSQL's numeric) spell them.
+fn is_special_number(s: &str) -> bool {
+    ["nan", "infinity", "+infinity", "-infinity", "inf", "-inf"]
+        .iter()
+        .any(|w| w.eq_ignore_ascii_case(s))
+}
+
 fn is_integer(s: &str) -> bool {
     let digits = s.strip_prefix(['+', '-']).unwrap_or(s);
     !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
@@ -201,15 +212,22 @@ impl Column<'_> {
             }
             // Exact digits: a `VALUES` list with an exponent in it can turn the column float.
             ValueKind::Decimal if is_number(trimmed) => plain_number(trimmed),
-            ValueKind::Float if is_number(trimmed) => trimmed.to_owned(),
-            ValueKind::Float
-                if ["nan", "infinity", "+infinity", "-infinity", "inf", "-inf"]
-                    .iter()
-                    .any(|w| w.eq_ignore_ascii_case(trimmed)) =>
+            // PostgreSQL's numeric has NaN and (since 14) infinities.
+            ValueKind::Decimal if dialect == Dialect::Postgres && is_special_number(trimmed) => {
+                format!("{}::numeric", dialect.quote_literal(trimmed))
+            }
+            // Read as a `real`, the shortest text of a float4 is that float4 again.
+            ValueKind::Real
+                if dialect == Dialect::Postgres
+                    && (is_number(trimmed) || is_special_number(trimmed)) =>
             {
+                format!("{}::real", dialect.quote_literal(trimmed))
+            }
+            ValueKind::Float | ValueKind::Real if is_number(trimmed) => trimmed.to_owned(),
+            ValueKind::Float | ValueKind::Real if is_special_number(trimmed) => {
                 dialect.quote_literal(trimmed)
             }
-            ValueKind::Decimal | ValueKind::Float => {
+            ValueKind::Decimal | ValueKind::Float | ValueKind::Real => {
                 return Err(self.invalid(format!("'{text}' is not a number")));
             }
             ValueKind::Bool => match parse_bool(trimmed) {
@@ -231,6 +249,18 @@ impl Column<'_> {
                     .or_else(|| trimmed.strip_suffix('Z'))
                     .unwrap_or(trimmed);
                 dialect.quote_literal(local)
+            }
+            // ClickHouse reads no offset in a DateTime literal, and a Nullable column takes
+            // NULL instead: the instant is parsed, at the precision of its fraction.
+            ValueKind::Timestamp { zoned: true } if dialect == Dialect::ClickHouse => {
+                let fraction = trimmed
+                    .split_once('.')
+                    .map_or(0, |(_, f)| f.bytes().take_while(u8::is_ascii_digit).count());
+                format!(
+                    "parseDateTime64BestEffort({}, {})",
+                    dialect.quote_literal(trimmed),
+                    if fraction > 6 { 9 } else { 6 }
+                )
             }
             ValueKind::Timestamp { .. } | ValueKind::Text => dialect.quote_literal(text),
         })
@@ -1039,6 +1069,52 @@ mod tests {
                 .unwrap()
                 .contains("seen = '2024-03-01 10:00:00.5'")
         );
+        // ClickHouse parses no offset in a literal: the instant goes through a function.
+        let zoned = col("at", ValueKind::Timestamp { zoned: true });
+        assert_eq!(
+            zoned
+                .literal(Dialect::ClickHouse, Some("2024-06-01T08:00:00Z"))
+                .unwrap(),
+            "parseDateTime64BestEffort('2024-06-01T08:00:00Z', 6)"
+        );
+        assert_eq!(
+            zoned
+                .literal(
+                    Dialect::ClickHouse,
+                    Some("2024-06-01T08:00:00.123456789+02:00")
+                )
+                .unwrap(),
+            "parseDateTime64BestEffort('2024-06-01T08:00:00.123456789+02:00', 9)"
+        );
+    }
+
+    #[test]
+    fn writes_real_and_special_numeric_keys_for_postgres() {
+        let real = col("r", ValueKind::Real);
+        let key = [(0, Some("0.1"))];
+        assert_eq!(
+            where_clause(Dialect::Postgres, &[real], &key).unwrap(),
+            " WHERE r = '0.1'::real"
+        );
+        assert_eq!(real.literal(Dialect::MySql, Some("0.1")).unwrap(), "0.1");
+        assert!(real.literal(Dialect::Postgres, Some("x")).is_err());
+        assert_eq!(
+            ValueKind::of(&DataType::Float32),
+            ValueKind::Real,
+            "a float4"
+        );
+        let numeric = col("n", ValueKind::Decimal);
+        assert_eq!(
+            numeric.literal(Dialect::Postgres, Some("NaN")).unwrap(),
+            "'NaN'::numeric"
+        );
+        assert_eq!(
+            numeric
+                .literal(Dialect::Postgres, Some("-Infinity"))
+                .unwrap(),
+            "'-Infinity'::numeric"
+        );
+        assert!(numeric.literal(Dialect::MySql, Some("NaN")).is_err());
     }
 
     #[test]

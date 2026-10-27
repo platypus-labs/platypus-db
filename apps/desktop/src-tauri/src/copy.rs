@@ -80,7 +80,7 @@ fn json_string(out: &mut String, s: &str) {
 fn json_value(out: &mut String, kind: ValueKind, value: Option<&str>) {
     match (kind, value) {
         (_, None) => out.push_str("null"),
-        (ValueKind::Integer | ValueKind::Decimal | ValueKind::Float, Some(v))
+        (ValueKind::Integer | ValueKind::Decimal | ValueKind::Float | ValueKind::Real, Some(v))
             if v.parse::<f64>().is_ok_and(f64::is_finite) =>
         {
             out.push_str(v);
@@ -120,7 +120,7 @@ fn markdown(s: &Selection<'_>) -> String {
     let numeric = |k: ValueKind| {
         matches!(
             k,
-            ValueKind::Integer | ValueKind::Decimal | ValueKind::Float
+            ValueKind::Integer | ValueKind::Decimal | ValueKind::Float | ValueKind::Real
         )
     };
     let mut out = String::from("|");
