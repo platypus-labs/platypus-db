@@ -43,6 +43,9 @@ pub enum ObjectKind {
     Dictionary,
     /// SQL Server synonym: another name for an object, possibly in another database.
     Synonym,
+    /// Oracle package: the specification of a group of routines, types and variables, and
+    /// its body.
+    Package,
 }
 
 impl ObjectKind {

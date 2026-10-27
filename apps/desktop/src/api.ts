@@ -421,7 +421,8 @@ export type ObjectKind =
   | "extension"
   | "event"
   | "dictionary"
-  | "synonym";
+  | "synonym"
+  | "package";
 
 export interface ObjectMeta {
   name: string;
