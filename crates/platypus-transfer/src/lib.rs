@@ -7,6 +7,7 @@
 
 pub mod fake;
 pub mod import;
+mod json;
 pub mod migrate;
 pub mod s3;
 mod text;
@@ -19,7 +20,6 @@ use std::sync::Arc;
 use arrow_array::builder::StringBuilder;
 use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_cast::display::FormatOptions;
-use arrow_json::writer::{JsonArray, LineDelimited};
 use arrow_schema::{ArrowError, DataType, Field, Schema, SchemaRef};
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression as ParquetCompression, ZstdLevel};
@@ -145,59 +145,14 @@ pub enum ExportError {
 pub type Result<T, E = ExportError> = std::result::Result<T, E>;
 
 enum Sink {
-    Csv(Box<arrow_csv::Writer<BufWriter<File>>>),
-    Json(arrow_json::Writer<BufWriter<File>, JsonArray>),
-    Ndjson(arrow_json::Writer<BufWriter<File>, LineDelimited>),
     Parquet(Box<ArrowWriter<BufWriter<File>>>),
     Text(Box<text::TextSink>),
 }
 
-/// Whether a column of `data_type` is written as text in `format`.
+/// Whether a column of `data_type` is written as text in `format`: the text formats write
+/// every value from its text, with its type to tell numbers (see [`text::TextSink`]).
 fn as_text(data_type: &DataType, format: Format) -> bool {
-    use DataType as T;
-    match format {
-        // The CSV writer handles scalars, not binary or nested values. Dates, timestamps
-        // and decimals are written as text too, which shows them alike, so their reserved
-        // values (`infinity`, `NaN`) come out as such.
-        Format::Csv => matches!(
-            data_type,
-            T::Binary
-                | T::LargeBinary
-                | T::BinaryView
-                | T::FixedSizeBinary(_)
-                | T::List(_)
-                | T::LargeList(_)
-                | T::Struct(_)
-                | T::Map(..)
-                | T::Date32
-                | T::Timestamp(..)
-                | T::Decimal128(..)
-        ),
-        // JSON keeps numbers, booleans and strings; decimals become strings so no digit is
-        // lost, and dates, times and bytes get their display form.
-        Format::Json | Format::Ndjson => !matches!(
-            data_type,
-            T::Null
-                | T::Boolean
-                | T::Int8
-                | T::Int16
-                | T::Int32
-                | T::Int64
-                | T::UInt8
-                | T::UInt16
-                | T::UInt32
-                | T::UInt64
-                | T::Float16
-                | T::Float32
-                | T::Float64
-                | T::Utf8
-                | T::LargeUtf8
-                | T::Utf8View
-        ),
-        Format::Parquet => matches!(data_type, T::Interval(_) | T::Duration(_)),
-        // Written from the values' text, with their types to tell numbers.
-        Format::Sql | Format::Markdown | Format::Html | Format::Xml | Format::Xlsx => false,
-    }
+    format == Format::Parquet && matches!(data_type, DataType::Interval(_) | DataType::Duration(_))
 }
 
 fn output_schema(schema: &Schema, format: Format) -> SchemaRef {
@@ -295,29 +250,16 @@ impl Exporter {
         let mut partial = path.as_os_str().to_owned();
         partial.push(".part");
         let partial = PathBuf::from(partial);
-        let file = File::create(&partial).map_err(io_error(&partial))?;
+        // The error names the file asked for, not the partial one.
+        let file = File::create(&partial).map_err(io_error(path))?;
         let out = BufWriter::with_capacity(1 << 20, file);
         let schema = output_schema(schema, options.format);
 
         let sink = match options.format {
-            Format::Csv => Sink::Csv(Box::new(
-                arrow_csv::WriterBuilder::new()
-                    .with_delimiter(delimiter)
-                    .with_header(options.header)
-                    .with_null(String::new())
-                    .build(out),
-            )),
-            Format::Json => Sink::Json(
-                arrow_json::WriterBuilder::new()
-                    .with_explicit_nulls(true)
-                    .build::<_, JsonArray>(out),
-            ),
-            Format::Ndjson => Sink::Ndjson(
-                arrow_json::WriterBuilder::new()
-                    .with_explicit_nulls(true)
-                    .build::<_, LineDelimited>(out),
-            ),
-            format @ (Format::Sql
+            format @ (Format::Csv
+            | Format::Json
+            | Format::Ndjson
+            | Format::Sql
             | Format::Markdown
             | Format::Html
             | Format::Xml
@@ -328,7 +270,11 @@ impl Exporter {
                     format,
                     &schema,
                     out,
-                    (dialect, table),
+                    text::Settings {
+                        sql: (dialect, table),
+                        delimiter,
+                        header: options.header,
+                    },
                 )?))
             }
             Format::Parquet => {
@@ -371,9 +317,6 @@ impl Exporter {
             .collect::<Result<Vec<_>, _>>()?;
         let batch = RecordBatch::try_new(Arc::clone(&self.schema), columns)?;
         match self.sink.as_mut() {
-            Some(Sink::Csv(w)) => w.write(&batch)?,
-            Some(Sink::Json(w)) => w.write(&batch)?,
-            Some(Sink::Ndjson(w)) => w.write(&batch)?,
             Some(Sink::Parquet(w)) => {
                 parquet_values(&batch)?;
                 w.write(&batch)?;
@@ -393,15 +336,6 @@ impl Exporter {
     /// Completes the file and moves it into place; returns the number of rows written.
     pub fn finish(mut self) -> Result<u64> {
         let out = match self.sink.take() {
-            Some(Sink::Csv(w)) => w.into_inner(),
-            Some(Sink::Json(mut w)) => {
-                w.finish()?;
-                w.into_inner()
-            }
-            Some(Sink::Ndjson(mut w)) => {
-                w.finish()?;
-                w.into_inner()
-            }
             Some(Sink::Parquet(w)) => w.into_inner()?,
             Some(Sink::Text(w)) => {
                 w.finish(&self.partial)?;
@@ -922,6 +856,101 @@ mod tests {
         let err = export_special(dir.path(), "s.parquet", Format::Parquet).unwrap_err();
         assert!(err.to_string().contains("`NaN`"), "{err}");
         assert!(!dir.path().join("s.parquet").exists());
+    }
+
+    /// The file `name` of one batch of `columns`, exported as `format`.
+    fn export_columns(
+        dir: &Path,
+        name: &str,
+        format: Format,
+        columns: Vec<(Field, ArrayRef)>,
+    ) -> String {
+        let (fields, arrays): (Vec<_>, Vec<_>) = columns.into_iter().unzip();
+        let schema = Arc::new(Schema::new(fields));
+        let batch = RecordBatch::try_new(Arc::clone(&schema), arrays).unwrap();
+        let path = dir.join(name);
+        let options = ExportOptions {
+            format,
+            ..ExportOptions::default()
+        };
+        let mut exporter = Exporter::create(&path, &schema, &options).unwrap();
+        exporter.write(&batch).unwrap();
+        exporter.finish().unwrap();
+        std::fs::read_to_string(path).unwrap_or_default()
+    }
+
+    #[test]
+    fn csv_tells_empty_text_from_null() {
+        let dir = tempfile::tempdir().unwrap();
+        let text: ArrayRef = Arc::new(StringArray::from(vec![None, Some(""), Some("x")]));
+        let csv = export_columns(
+            dir.path(),
+            "e.csv",
+            Format::Csv,
+            vec![(Field::new("t", DataType::Utf8, true), text)],
+        );
+        assert_eq!(csv, "t\n\n\"\"\nx\n");
+    }
+
+    #[test]
+    fn json_keeps_nested_values_as_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let declared = |name: &str, t: &str| {
+            Field::new(name, DataType::Utf8, true).with_metadata(std::collections::HashMap::from([
+                (platypus_core::META_DB_TYPE.to_owned(), t.to_owned()),
+            ]))
+        };
+        let json: ArrayRef = Arc::new(StringArray::from(vec![r#"{"a": 1}"#]));
+        let array: ArrayRef = Arc::new(StringArray::from(vec!["{1,2}"]));
+        let text = export_columns(
+            dir.path(),
+            "n.json",
+            Format::Json,
+            vec![
+                (declared("j", "jsonb"), json),
+                (declared("arr", "int4[]"), array),
+            ],
+        );
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!([{ "j": { "a": 1 }, "arr": [1, 2] }])
+        );
+    }
+
+    #[test]
+    fn excel_dates_are_dates() {
+        use calamine::{Data, Reader};
+        let dir = tempfile::tempdir().unwrap();
+        let day: ArrayRef = Arc::new(arrow_array::Date32Array::from(vec![19_753]));
+        let at: ArrayRef = Arc::new(TimestampMicrosecondArray::from(vec![1_706_697_000_000_000]));
+        export_columns(
+            dir.path(),
+            "d.xlsx",
+            Format::Xlsx,
+            vec![
+                (Field::new("d", DataType::Date32, true), day),
+                (
+                    Field::new("ts", DataType::Timestamp(TimeUnit::Microsecond, None), true),
+                    at,
+                ),
+            ],
+        );
+        let mut book = calamine::open_workbook_auto(dir.path().join("d.xlsx")).unwrap();
+        let sheet = book.worksheet_range_at(0).unwrap().unwrap();
+        let rows: Vec<_> = sheet.rows().collect();
+        assert!(matches!(rows[1][0], Data::DateTime(_)), "{:?}", rows[1][0]);
+        assert!(matches!(rows[1][1], Data::DateTime(_)), "{:?}", rows[1][1]);
+    }
+
+    #[test]
+    fn a_failed_export_names_the_file_asked_for() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nope").join("x.csv");
+        let err = Exporter::create(&path, &sample().schema(), &ExportOptions::default())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("x.csv") && !err.contains(".part"), "{err}");
     }
 
     #[test]

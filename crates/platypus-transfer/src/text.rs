@@ -1,17 +1,18 @@
-//! The formats written cell by cell from the values' text: SQL `INSERT` statements,
-//! Markdown, HTML and XML tables, and Excel workbooks.
+//! The formats written cell by cell from the values' text: CSV, JSON, SQL `INSERT`
+//! statements, Markdown, HTML and XML tables, and Excel workbooks.
 
 use std::fmt::Write as _;
 use std::io::Write;
 use std::path::Path;
 
 use arrow_array::RecordBatch;
-use arrow_schema::Schema;
+use arrow_schema::{DataType, Schema};
 use platypus_sql::Dialect;
 use platypus_sql::dml::{Column, ValueKind};
-use rust_xlsxwriter::{Workbook, Worksheet, XlsxError};
+use rust_xlsxwriter::{Format as CellFormat, Workbook, Worksheet, XlsxError};
 
 use crate::import::{literal, rows_text};
+use crate::json::JsonKind;
 use crate::{ExportError, Format, Result, io_error};
 
 /// Rows an Excel sheet holds, the header included.
@@ -23,14 +24,52 @@ const XLSX_MAX_EXACT: f64 = 9_007_199_254_740_992.0;
 /// Significant digits an Excel number keeps: decimals with more are written as text.
 const XLSX_DIGITS: usize = 15;
 
+/// What the formats take besides the rows.
+pub struct Settings {
+    /// For SQL: the dialect and the quoted table name.
+    pub sql: (Dialect, String),
+    /// For CSV: the field separator, and whether a header row comes first.
+    pub delimiter: u8,
+    pub header: bool,
+}
+
 pub struct TextSink {
     format: Format,
     names: Vec<String>,
     kinds: Vec<ValueKind>,
-    /// For SQL: the dialect and the quoted table name.
-    sql: (Dialect, String),
+    /// For JSON: which values are JSON already.
+    json: Vec<JsonKind>,
+    /// For Excel: the date or time columns, written as Excel dates.
+    dates: Vec<Option<DateCell>>,
+    settings: Settings,
     out: Out,
     rows: u32,
+    /// Whether no row was written yet (JSON separates them with commas).
+    first: bool,
+}
+
+/// A column Excel shows as a date.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DateCell {
+    Date,
+    DateTime,
+}
+
+impl DateCell {
+    fn of(data_type: &DataType) -> Option<Self> {
+        match data_type {
+            DataType::Date32 | DataType::Date64 => Some(Self::Date),
+            DataType::Timestamp(..) => Some(Self::DateTime),
+            _ => None,
+        }
+    }
+
+    fn format(self) -> CellFormat {
+        CellFormat::new().set_num_format(match self {
+            Self::Date => "yyyy-mm-dd",
+            Self::DateTime => "yyyy-mm-dd hh:mm:ss",
+        })
+    }
 }
 
 enum Out {
@@ -123,13 +162,19 @@ impl TextSink {
         format: Format,
         schema: &Schema,
         out: std::io::BufWriter<std::fs::File>,
-        sql: (Dialect, String),
+        settings: Settings,
     ) -> Result<Self> {
         let names: Vec<String> = schema.fields().iter().map(|f| f.name().clone()).collect();
         let kinds = schema
             .fields()
             .iter()
             .map(|f| ValueKind::of(f.data_type()))
+            .collect();
+        let json = schema.fields().iter().map(|f| JsonKind::of(f)).collect();
+        let dates = schema
+            .fields()
+            .iter()
+            .map(|f| DateCell::of(f.data_type()))
             .collect();
         let out = if format == Format::Xlsx {
             let mut workbook = Workbook::new();
@@ -147,9 +192,12 @@ impl TextSink {
             format,
             names,
             kinds,
-            sql,
+            json,
+            dates,
+            settings,
             out,
             rows: 0,
+            first: true,
         };
         let head = sink.head();
         sink.put(&head)?;
@@ -166,6 +214,12 @@ impl TextSink {
 
     fn head(&self) -> String {
         match self.format {
+            Format::Csv if self.settings.header => {
+                let mut s = String::new();
+                csv_line(&mut s, self.settings.delimiter, self.names.iter().map(Some));
+                s
+            }
+            Format::Json => "[".to_owned(),
             Format::Markdown => {
                 let names: Vec<String> = self.names.iter().map(|n| markdown_cell(n)).collect();
                 format!(
@@ -191,6 +245,7 @@ impl TextSink {
 
     fn tail(&self) -> &'static str {
         match self.format {
+            Format::Json => "]\n",
             Format::Html => "</tbody>\n</table>\n</body>\n</html>\n",
             Format::Xml => "</rows>\n",
             _ => "",
@@ -201,6 +256,11 @@ impl TextSink {
         let rows = rows_text(batch)?;
         if let Out::Xlsx(workbook) = &mut self.out {
             let sheet = workbook.worksheet_from_index(0)?;
+            let formats = self.dates.iter().map(|d| d.map(DateCell::format)).collect();
+            let columns = XlsxColumns {
+                kinds: &self.kinds,
+                dates: formats,
+            };
             for row in &rows {
                 self.rows += 1;
                 if self.rows >= XLSX_MAX_ROWS {
@@ -209,7 +269,7 @@ impl TextSink {
                         XLSX_MAX_ROWS - 1
                     )));
                 }
-                xlsx_row(sheet, self.rows, &self.kinds, row)?;
+                xlsx_row(sheet, self.rows, &columns, row)?;
             }
             return Ok(());
         }
@@ -220,8 +280,31 @@ impl TextSink {
         self.put(&text)
     }
 
-    fn row(&self, s: &mut String, row: &[Option<String>]) -> Result<()> {
+    fn row(&mut self, s: &mut String, row: &[Option<String>]) -> Result<()> {
         match self.format {
+            Format::Csv => {
+                csv_line(s, self.settings.delimiter, row.iter().map(Option::as_ref));
+            }
+            Format::Json | Format::Ndjson => {
+                if self.format == Format::Json && !self.first {
+                    s.push_str(",\n");
+                }
+                self.first = false;
+                s.push('{');
+                for (i, ((name, json), v)) in self.names.iter().zip(&self.json).zip(row).enumerate()
+                {
+                    if i > 0 {
+                        s.push(',');
+                    }
+                    crate::json::string(s, name);
+                    s.push(':');
+                    json.value(s, self.kinds[i], v.as_deref());
+                }
+                s.push('}');
+                if self.format == Format::Ndjson {
+                    s.push('\n');
+                }
+            }
             Format::Markdown => {
                 let cells: Vec<String> = row
                     .iter()
@@ -248,7 +331,7 @@ impl TextSink {
                 s.push_str("  </row>\n");
             }
             Format::Sql => {
-                let (dialect, table) = &self.sql;
+                let (dialect, table) = &self.settings.sql;
                 let mut literals = Vec::with_capacity(row.len());
                 for ((name, kind), v) in self.names.iter().zip(&self.kinds).zip(row) {
                     let column = Column {
@@ -269,7 +352,7 @@ impl TextSink {
                     literals.join(", ")
                 );
             }
-            _ => {}
+            Format::Parquet | Format::Xlsx => {}
         }
         Ok(())
     }
@@ -290,18 +373,51 @@ impl TextSink {
     }
 }
 
-/// One row of a sheet: numbers and booleans as such, the rest as text.
+/// A CSV line of `values`: a value is quoted when it holds the delimiter, a quote or a line
+/// break, and an empty text is `""`, so that it differs from NULL, which is nothing.
+fn csv_line<'a>(s: &mut String, delimiter: u8, values: impl Iterator<Item = Option<&'a String>>) {
+    let delimiter = char::from(delimiter);
+    for (i, v) in values.enumerate() {
+        if i > 0 {
+            s.push(delimiter);
+        }
+        let Some(v) = v else { continue };
+        if v.is_empty() || v.contains([delimiter, '"', '\n', '\r']) {
+            s.push('"');
+            s.push_str(&v.replace('"', "\"\""));
+            s.push('"');
+        } else {
+            s.push_str(v);
+        }
+    }
+    s.push('\n');
+}
+
+/// How the columns of a sheet are written.
+struct XlsxColumns<'a> {
+    kinds: &'a [ValueKind],
+    /// The cell format of a date or time column.
+    dates: Vec<Option<CellFormat>>,
+}
+
+/// One row of a sheet: numbers, booleans and dates as such, the rest as text.
 fn xlsx_row(
     sheet: &mut Worksheet,
     r: u32,
-    kinds: &[ValueKind],
+    columns: &XlsxColumns<'_>,
     row: &[Option<String>],
 ) -> Result<()> {
-    for ((c, kind), v) in (0u16..).zip(kinds).zip(row) {
+    for (((c, kind), date), v) in (0u16..).zip(columns.kinds).zip(&columns.dates).zip(row) {
         let Some(v) = v else { continue };
+        if let Some(format) = date
+            && let Some(serial) = excel_serial(v)
+        {
+            sheet.write_number_with_format(r, c, serial, format)?;
+            continue;
+        }
         let number = match kind {
             ValueKind::Decimal if significant_digits(v) > XLSX_DIGITS => None,
-            ValueKind::Integer | ValueKind::Float | ValueKind::Decimal => v
+            ValueKind::Integer | ValueKind::Float | ValueKind::Real | ValueKind::Decimal => v
                 .parse::<f64>()
                 .ok()
                 .filter(|n| n.is_finite() && n.abs() < XLSX_MAX_EXACT),
@@ -314,6 +430,27 @@ fn xlsx_row(
         };
     }
     Ok(())
+}
+
+/// Excel's serial number of a date or time as the export writes it (`2024-01-31`,
+/// `2024-01-31T10:30:00`, with a fraction or an offset, taken in UTC): days since 1899-12-30.
+/// `None` for one Excel cannot show, before 1900 or not a date.
+fn excel_serial(text: &str) -> Option<f64> {
+    use chrono::{NaiveDate, NaiveDateTime};
+    let at = if let Ok(day) = NaiveDate::parse_from_str(text, "%Y-%m-%d") {
+        day.and_hms_opt(0, 0, 0)?
+    } else if let Ok(zoned) = chrono::DateTime::parse_from_rfc3339(text) {
+        zoned.naive_utc()
+    } else {
+        NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S%.f").ok()?
+    };
+    let epoch = NaiveDate::from_ymd_opt(1899, 12, 30)?.and_hms_opt(0, 0, 0)?;
+    if at < NaiveDate::from_ymd_opt(1900, 3, 1)?.and_hms_opt(0, 0, 0)? {
+        return None;
+    }
+    let micros = (at - epoch).num_microseconds()?;
+    #[expect(clippy::cast_precision_loss, reason = "microseconds of Excel's years")]
+    Some(micros as f64 / 86_400_000_000.0)
 }
 
 /// The significant digits of a decimal's text, e.g. 3 for `-0.0120`.
