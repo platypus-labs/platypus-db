@@ -23,7 +23,7 @@ pub use connection::{
     CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, Executed,
     RecordBatchStream, ServerInfo, execute_each,
 };
-pub use error::{DbError, Error, Result};
+pub use error::{DbError, Error, Result, without_repeats};
 pub use explain::{Explain, ExplainFormat, FullScan, LARGE_SCAN_ROWS, PlanNode, explain_document};
 pub use init::{SessionInit, run_init};
 pub use metadata::{

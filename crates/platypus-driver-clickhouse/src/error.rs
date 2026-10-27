@@ -92,13 +92,15 @@ pub fn http_error(status: reqwest::StatusCode, body: &str) -> Error {
     reason = "used directly as a `map_err` callback"
 )]
 pub fn transport(e: reqwest::Error) -> Error {
+    // The request's URL holds the session and query ids and the output settings: noise.
+    let e = e.without_url();
     let mut message = e.to_string();
     let mut source = std::error::Error::source(&e);
     while let Some(inner) = source {
         message = format!("{message}: {inner}");
         source = inner.source();
     }
-    Error::Connect(message)
+    Error::Connect(platypus_core::without_repeats(&message))
 }
 
 #[cfg(test)]
