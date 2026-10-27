@@ -18,6 +18,32 @@ const STATUS_LABELS: Record<LogEntry["status"], string> = {
   failed: msg("Failed"),
 };
 
+/** The app's own requests as the backend names them (`querylog.rs`), with the name in them. */
+const REQUESTS: [RegExp, string][] = [
+  [/^schemas$/, msg("schemas")],
+  [/^databases$/, msg("databases")],
+  [/^catalog columns$/, msg("catalog columns")],
+  [/^catalog foreign keys$/, msg("catalog foreign keys")],
+  [/^autocommit on$/, msg("autocommit on")],
+  [/^autocommit off$/, msg("autocommit off")],
+  [/^objects of (.*)$/s, msg("objects of {name}")],
+  [/^table details of (.*)$/s, msg("table details of {name}")],
+  [/^foreign keys to (.*)$/s, msg("foreign keys to {name}")],
+  [/^DDL of (.*)$/s, msg("DDL of {name}")],
+  [/^properties of (.*)$/s, msg("properties of {name}")],
+  [/^search for (.*)$/s, msg("search for {name}")],
+];
+
+/** What the entry shows: a statement as sent, a request of the app in the interface's language. */
+function entryText(e: LogEntry): string {
+  if (e.kind === "query") return e.text;
+  for (const [pattern, text] of REQUESTS) {
+    const m = pattern.exec(e.text);
+    if (m) return t(text, { name: m[1] ?? "" });
+  }
+  return e.text;
+}
+
 /** Below 10 ms the tenths tell fast from instant. */
 const duration = (ms: number) => (ms < 10 ? `${ms.toFixed(1)} ms` : formatMs(Math.round(ms)));
 
@@ -122,7 +148,7 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
     (e) =>
       (metadata || e.kind !== "metadata") &&
       (!slowOnly || isSlow(e.elapsed_ms, slowSeconds)) &&
-      (!needle || e.text.toLowerCase().includes(needle) || e.connection.toLowerCase().includes(needle)),
+      (!needle || entryText(e).toLowerCase().includes(needle) || e.connection.toLowerCase().includes(needle)),
   );
   const current = entries.find((e) => e.id === selected);
 
@@ -176,8 +202,8 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
                 >
                   <td>{time.format(e.started_at)}</td>
                   <td>{e.connection}</td>
-                  <td className="query-manager-text" title={e.text}>
-                    {e.text}
+                  <td className="query-manager-text" title={entryText(e)}>
+                    {entryText(e)}
                   </td>
                   <td>{e.elapsed_ms === null ? "" : duration(e.elapsed_ms)}</td>
                   <td>{e.rows === null ? "" : fmt.format(e.rows)}</td>
@@ -191,7 +217,7 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
           <>
             {current.error && <div className="notice error small">{current.error}</div>}
             <Trace entry={current} />
-            <pre className="sql-preview">{current.text}</pre>
+            <pre className="sql-preview">{entryText(current)}</pre>
           </>
         )}
         <div className="actions">
