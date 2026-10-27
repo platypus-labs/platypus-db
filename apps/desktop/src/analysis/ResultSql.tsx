@@ -194,8 +194,18 @@ class Fields {
     this.set(key, { output: null, reloaded: false });
   }
 
+  /** The tab ran other statements: the fields of those it no longer shows go with their copy,
+   *  which can hold hundreds of MB. */
+  keepOnly(keys: ReadonlySet<string>) {
+    for (const key of this.keys()) if (!keys.has(key)) this.clear(key);
+  }
+
   dispose() {
-    for (const key of [...new Set([...this.states.keys(), ...this.copies.keys()])]) this.clear(key);
+    for (const key of this.keys()) this.clear(key);
+  }
+
+  private keys(): string[] {
+    return [...new Set([...this.states.keys(), ...this.copies.keys()])];
   }
 
   copyOf(key: string): Copy | null {
@@ -253,6 +263,10 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
     if (key !== null) fields.forget(key, shown?.jobId ?? null);
   }, [key, shown?.jobId]);
   useEffect(() => setExpanded(false), [key]);
+  // By statement, whatever its state: one running again keeps its field and copy.
+  const statements = results.map((r) => r.sql);
+  const statementsKey = statements.join("\u0000");
+  useEffect(() => fields.keepOnly(new Set(statements)), [statementsKey]);
 
   const tables = useMemo(
     () => (shown?.jobId == null ? [] : resultTables(resultsWithRows(results), shown.jobId)),
