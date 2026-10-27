@@ -14,8 +14,8 @@ pub fn read_text_file(path: PathBuf) -> CommandResult<String> {
 }
 
 /// The text of a script file: UTF-8 or UTF-16 as its byte order mark says (the mark itself
-/// dropped, the server would read it as text), UTF-8 without one, UTF-16 without one when
-/// every other byte is zero (ASCII text), else Windows-1252 (an ANSI file of Windows).
+/// dropped, the server would read it as text); without one, UTF-16 when every other byte is
+/// zero (ASCII text), else UTF-8, else Windows-1252 (an ANSI file of Windows).
 fn decode_text(bytes: &[u8]) -> String {
     let utf16 = |bytes: &[u8], little: bool| {
         let units: Vec<u16> = bytes
@@ -41,9 +41,6 @@ fn decode_text(bytes: &[u8]) -> String {
     if let Some(rest) = bytes.strip_prefix(&[0xFE, 0xFF]) {
         return utf16(rest, false);
     }
-    if let Ok(text) = std::str::from_utf8(bytes) {
-        return text.to_owned();
-    }
     let zeros = |offset: usize| {
         bytes
             .iter()
@@ -60,6 +57,9 @@ fn decode_text(bytes: &[u8]) -> String {
         if zeros(0) * 10 >= half * 9 {
             return utf16(bytes, false);
         }
+    }
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return text.to_owned();
     }
     bytes.iter().map(|&b| windows_1252(b)).collect()
 }

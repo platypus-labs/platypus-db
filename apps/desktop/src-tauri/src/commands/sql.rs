@@ -62,13 +62,16 @@ pub struct SqlAnalysis {
     batches: Vec<BatchSpan>,
 }
 
-/// The end of a statement as it is sent: in Transact-SQL its `;`, which `MERGE` requires
-/// (and every statement accepts).
-fn sent_end(sql: &str, dialect: Dialect, end: usize) -> usize {
-    if dialect == Dialect::SqlServer && sql[end..].starts_with(';') {
-        end + 1
+/// The end of statement `s` as it is sent: in Transact-SQL with its `;`, which `MERGE`
+/// requires (and every statement accepts); a client command (`@set`) never takes it.
+fn sent_end(sql: &str, dialect: Dialect, s: platypus_sql::Statement) -> usize {
+    if dialect == Dialect::SqlServer
+        && sql[s.end..].starts_with(';')
+        && !s.text(sql).starts_with('@')
+    {
+        s.end + 1
     } else {
-        end
+        s.end
     }
 }
 
@@ -140,7 +143,7 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
                 };
                 StatementSpan {
                     start: map.to_utf16(s.start),
-                    end: map.to_utf16(sent_end(&sql, dialect, s.end)),
+                    end: map.to_utf16(sent_end(&sql, dialect, *s)),
                     read_only: matches!(
                         analysis.kind,
                         StatementKind::Query | StatementKind::Command
@@ -469,6 +472,28 @@ mod tests {
         assert!(only_reads("db.a.find()\nshow dbs", DriverKind::Mongo));
         assert!(!only_reads("db.a.find()\ndb.a.drop()", DriverKind::Mongo));
         assert!(!only_reads("db.a.find(", DriverKind::Mongo));
+    }
+
+    #[test]
+    fn sql_server_statements_keep_their_semicolon_and_batches() {
+        let sql = "@set x = 1;\nDECLARE @a int = 1;\nMERGE t USING s ON 1 = 1 WHEN MATCHED THEN DELETE;\nGO 2\nSELECT 1"
+            .to_owned();
+        let a = analyze_sql(sql.clone(), DriverKind::SqlServer, 0);
+        let text = |i: usize| &sql[a.statements[i].start..a.statements[i].end];
+        assert_eq!(text(0), "@set x = 1");
+        assert_eq!(text(1), "DECLARE @a int = 1;");
+        assert!(text(2).ends_with("DELETE;"));
+        let batches: Vec<_> = a
+            .batches
+            .iter()
+            .map(|b| (b.first, b.end, b.repeat))
+            .collect();
+        assert_eq!(batches, [(0, 1, 1), (1, 3, 2), (3, 4, 1)]);
+        assert!(
+            analyze_sql("select 1;".to_owned(), DriverKind::Postgres, 0)
+                .batches
+                .is_empty()
+        );
     }
 
     #[test]
