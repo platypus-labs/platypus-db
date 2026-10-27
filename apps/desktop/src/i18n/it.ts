@@ -312,10 +312,8 @@ const it: Record<string, string> = {
   "Open tabs": "Schede aperte",
   "Show the tabs of this connection": "Mostra le schede di questa connessione",
   "Fold the tabs of this connection": "Richiudi le schede di questa connessione",
-  "Close tab (Ctrl+W)": "Chiudi la scheda (Ctrl+W)",
   "Search everything": "Cerca ovunque",
   "Search tables, queries, commands": "Cerca tabelle, query, comandi",
-  "Settings (Ctrl+,)": "Impostazioni (Ctrl+,)",
   "Minimize": "Riduci a icona",
   "Restore": "Ripristina giù",
   "Maximize": "Ingrandisci",
@@ -381,8 +379,6 @@ const it: Record<string, string> = {
   "Export failed: {message}": "Esportazione non riuscita: {message}",
   "Export cancelled": "Esportazione annullata",
   "Auto-refresh stopped: the last statements change data.": "Aggiornamento automatico fermato: le ultime istruzioni modificano i dati.",
-  "Run statement (Ctrl+Enter)": "Esegui l'istruzione (Ctrl+Invio)",
-  "Run script (Alt+X, Ctrl+Shift+Enter)": "Esegui lo script (Alt+X, Ctrl+Maiusc+Invio)",
   "Script": "Script",
   "Cancel the running statement": "Annulla l'istruzione in corso",
   "Manual commit": "Commit manuale",
@@ -399,8 +395,6 @@ const it: Record<string, string> = {
   "The connection is read-only": "La connessione è in sola lettura",
   "Read-only in this tab: click to allow changes again": "Sola lettura in questa scheda: clic per consentire di nuovo le modifiche",
   "Make this tab read-only, without changing the connection": "Rende questa scheda di sola lettura, senza cambiare la connessione",
-  "Open script (Ctrl+O)": "Apri uno script (Ctrl+O)",
-  "Save script (Ctrl+S)": "Salva lo script (Ctrl+S)",
   "Run the last statements again every few seconds, if they only read data": "Esegue di nuovo le ultime istruzioni ogni pochi secondi, se leggono soltanto",
   "Terminal mode: results as text, kept across runs": "Modalità terminale: risultati come testo, tenuti tra un'esecuzione e l'altra",
   "Terminal": "Terminale",
@@ -1403,6 +1397,28 @@ const it: Record<string, string> = {
   '{n} tabs of "{name}" have an open transaction. Reconnect them now with the new settings, rolling their changes back? Otherwise they reconnect once their transaction ends.':
     '{n} schede di "{name}" hanno una transazione aperta. Riconnetterle ora con le nuove impostazioni, annullandone le modifiche? Altrimenti si riconnettono quando la loro transazione finisce.',
   "Reconnect now": "Riconnetti ora",
+  // Editor commands and shortcuts
+  "Run statement": "Esegui l'istruzione",
+  "Run script": "Esegui lo script",
+  "Save script": "Salva lo script",
+  "Open script": "Apri uno script",
+  "Find and replace": "Trova e sostituisci",
+  "Show completions": "Mostra i suggerimenti",
+  "A key that types a character needs Ctrl or Alt.": "Un tasto che scrive un carattere richiede Ctrl o Alt.",
+  // Closing tabs
+  "Save the changes to {file}?": "Salvare le modifiche a {file}?",
+  "Don't save": "Non salvare",
+  "Enabled": "Attivo",
+  "Disabled": "Disattivo",
+  // Checks of the connection store
+  "project name is required": "Il nome del progetto è obbligatorio",
+  "connection name is required": "Il nome della connessione è obbligatorio",
+  "profile name is required": "Il nome del profilo è obbligatorio",
+  "initials are one or two characters": "Le iniziali sono uno o due caratteri",
+  "a client certificate needs both the certificate and its key": "Un certificato client richiede sia il certificato sia la sua chiave",
+  "a connection cannot go before itself": "Una connessione non può andare prima di sé stessa",
+  "a project named \"{name}\" exists already": "Esiste già un progetto chiamato \"{name}\"",
+  "settings.toml could not be read: every setting is at its default and changes are not saved until it is fixed. {message}": "Impossibile leggere settings.toml: tutte le impostazioni sono ai valori predefiniti e le modifiche non vengono salvate finché non è corretto. {message}",
 };
 
 export default it;

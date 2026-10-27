@@ -44,7 +44,7 @@ const groupOf = (e: Entry) => ("action" in e ? e.action.group : e.group);
 /** The registered actions of a scope as a popup menu, sections separated by lines. */
 export function ContextMenu({ menu, onClose, onError }: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ left: menu.x, top: menu.y });
+  const [pos, setPos] = useState<React.CSSProperties>({ left: menu.x, top: menu.y });
   const [open, setOpen] = useState<string | null>(null);
   const id = useId();
   const { scope, arg } = menu.target as { scope: ActionScope; arg: never };
@@ -76,9 +76,13 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
     const el = ref.current;
     if (!el) return;
     const { width, height } = el.getBoundingClientRect();
+    // Taller than the window (a small window, a large interface size): it scrolls, so every
+    // item can be reached. Only then, since a scrolling menu clips its submenus.
+    const room = window.innerHeight - 8;
     setPos({
       left: Math.max(0, Math.min(menu.x, window.innerWidth - width - 4)),
       top: Math.max(0, Math.min(menu.y, window.innerHeight - height - 4)),
+      ...(height > room && { maxHeight: room, overflowY: "auto" }),
     });
   }, [menu.x, menu.y]);
 

@@ -118,12 +118,13 @@ button.toggled {
 
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 7px 10px;
   background: var(--bg-tabbar);
-  overflow-x: auto;
-  scrollbar-width: thin;
+  /* Its buttons wrap in a narrow window, and its row never shrinks below them. */
+  min-height: max-content;
 }
 
 .toolbar button {
