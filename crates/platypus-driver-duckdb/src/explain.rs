@@ -1,6 +1,8 @@
 //! `EXPLAIN (FORMAT JSON)` as a plan tree.
 
-use platypus_core::{Connection, Error, Explain, ExplainFormat, PlanNode, Result, query_text};
+use platypus_core::{
+    Connection, Error, ExecOptions, Explain, ExplainFormat, PlanNode, Result, query_text,
+};
 use serde_json::Value;
 
 pub async fn explain(conn: &dyn Connection, sql: &str, analyze: bool) -> Result<Explain> {
@@ -21,9 +23,11 @@ pub async fn explain(conn: &dyn Connection, sql: &str, analyze: bool) -> Result<
                 .to_owned(),
         ));
     }
-    query_text(conn, "BEGIN").await?;
+    // `BEGIN` and `ROLLBACK` return no rows: not catalog queries.
+    let options = ExecOptions::default();
+    conn.execute("BEGIN", &options).await?;
     let plan = plan_text(conn, &format!("EXPLAIN (ANALYZE, FORMAT JSON) {sql}")).await;
-    let undone = query_text(conn, "ROLLBACK").await;
+    let undone = conn.execute("ROLLBACK", &options).await;
     let plan = plan?;
     undone?;
     Ok(Explain::new(
@@ -46,17 +50,27 @@ async fn plan_text(conn: &dyn Connection, request: &str) -> Result<String> {
 fn parse(plan: &str) -> Result<PlanNode> {
     let doc: Value = serde_json::from_str(plan)
         .map_err(|_| Error::Other("unreadable DuckDB plan".to_owned()))?;
-    // A list of steps; with analyze, a query whose `children` are the steps.
+    // A list of steps; with analyze, a query whose `children` (`operator` in newer releases)
+    // are the steps.
     let tops = match &doc {
         Value::Array(steps) => steps.clone(),
-        Value::Object(query) => query
-            .get("children")
-            .and_then(Value::as_array)
+        Value::Object(query) => ["operator", "children"]
+            .iter()
+            .find_map(|k| query.get(*k).and_then(Value::as_array))
             .cloned()
             .unwrap_or_default(),
         _ => Vec::new(),
     };
     let mut nodes: Vec<PlanNode> = tops.iter().map(node).collect();
+    // The steps that run the plan and collect its result are not the query's.
+    while let [only] = nodes.as_slice()
+        && matches!(
+            only.operation.as_str(),
+            "RESULT_COLLECTOR" | "EXECUTE" | "EXPLAIN_ANALYZE"
+        )
+    {
+        nodes = nodes.remove(0).children;
+    }
     Ok(if nodes.len() == 1 {
         nodes.remove(0)
     } else {
@@ -76,7 +90,7 @@ fn text(value: &Value) -> String {
 }
 
 fn node(step: &Value) -> PlanNode {
-    let name = ["name", "operator_name", "operator_type"]
+    let name = ["name", "operator_name", "operator_type", "type"]
         .iter()
         .find_map(|k| step.get(*k).and_then(Value::as_str))
         .unwrap_or("?")
@@ -100,11 +114,10 @@ fn node(step: &Value) -> PlanNode {
         }
         _ => {}
     }
-    node.actual_rows = step.get("operator_cardinality").and_then(Value::as_f64);
-    node.actual_ms = step
-        .get("operator_timing")
-        .and_then(Value::as_f64)
-        .map(|seconds| seconds * 1000.0);
+    // The figures of an analyzed plan, under their older and newer names.
+    let figure = |keys: [&str; 2]| keys.iter().find_map(|k| step.get(*k)?.as_f64());
+    node.actual_rows = figure(["operator_cardinality", "intermediate_rows"]);
+    node.actual_ms = figure(["operator_timing", "timing"]).map(|seconds| seconds * 1000.0);
     node.children = step
         .get("children")
         .and_then(Value::as_array)
@@ -132,6 +145,16 @@ mod tests {
         assert_eq!(root.operation, "FILTER");
         assert_eq!((root.actual_rows, root.actual_ms), (Some(8.0), Some(2.0)));
         assert_eq!(root.properties[0].1, "range > 1");
+        // Newer releases: `operator`, `type`, `timing` and `intermediate_rows`, under the
+        // steps that run the plan.
+        let analyzed = r#"{"operator": [{"type": "RESULT_COLLECTOR", "timing": 0.0,
+            "intermediate_rows": 0, "children": [{"type": "EXPLAIN_ANALYZE", "children": [
+            {"type": "TABLE_SCAN", "timing": 0.004, "intermediate_rows": 1,
+            "extra_info": {"Table": "memory.main.t", "Estimated Cardinality": "1"}}]}]}]}"#;
+        let root = parse(analyzed).unwrap();
+        assert_eq!(root.operation, "TABLE_SCAN");
+        assert_eq!(root.detail.as_deref(), Some("memory.main.t"));
+        assert_eq!((root.actual_rows, root.actual_ms), (Some(1.0), Some(4.0)));
         assert!(parse("not json").is_err());
     }
 }
