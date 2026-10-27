@@ -563,6 +563,30 @@ mod tests {
         .enumerate()
         .map(|(i, t)| (format!("c{i}"), value_and_null(t)))
         .collect();
+        columns.extend(nested_columns());
+        let named = columns
+            .iter()
+            .map(|(n, a)| (n.as_str(), Arc::clone(a)))
+            .collect();
+        let (schema, batch) = table_of(named);
+        let conn = duckdb::Connection::open_in_memory().unwrap();
+        assert_eq!(load(&conn, "every", &schema, &[batch]).unwrap(), 2);
+        for (name, _) in &columns {
+            let c = quote(name);
+            let nulls = one(
+                &conn,
+                &format!("SELECT count(*) FILTER ({c} IS NULL) FROM every"),
+            );
+            let expected = if name == "nothing" { 2 } else { 1 };
+            let data_type = schema.field_with_name(name).unwrap().data_type();
+            assert_eq!(nulls, expected, "{name} {data_type}");
+        }
+        every_type_keeps_its_values(&conn, columns.len());
+    }
+
+    /// `[value, NULL]` of binary, nested and NULL types.
+    fn nested_columns() -> Vec<(String, ArrayRef)> {
+        let mut columns: Vec<(String, ArrayRef)> = Vec::new();
         let bytes = FixedSizeBinaryArray::try_from_sparse_iter_with_size(
             vec![Some(b"ab".as_ref()), None].into_iter(),
             2,
@@ -597,52 +621,32 @@ mod tests {
         spans.append(false);
         columns.push(("spans".to_owned(), Arc::new(spans.finish())));
         columns.push(("nothing".to_owned(), Arc::new(NullArray::new(2))));
+        columns
+    }
 
-        let named = columns
-            .iter()
-            .map(|(n, a)| (n.as_str(), Arc::clone(a)))
-            .collect();
-        let (schema, batch) = table_of(named);
-        let conn = duckdb::Connection::open_in_memory().unwrap();
-        assert_eq!(load(&conn, "every", &schema, &[batch]).unwrap(), 2);
-        for (name, _) in &columns {
-            let c = quote(name);
-            let nulls = one(
-                &conn,
-                &format!("SELECT count(*) FILTER ({c} IS NULL) FROM every"),
-            );
-            let expected = if name == "nothing" { 2 } else { 1 };
-            assert_eq!(
-                nulls,
-                expected,
-                "{name} {}",
-                schema.field_with_name(name).unwrap().data_type()
-            );
-        }
-        // The intervals keep their value too.
+    /// The intervals of `every_type_keeps_its_nulls` keep their value too, and the columns of
+    /// their NULLs are gone.
+    fn every_type_keeps_its_values(conn: &duckdb::Connection, width: usize) {
         let day = one(
-            &conn,
+            conn,
             "SELECT count(*) FROM every WHERE c29 = INTERVAL 1 DAY",
         );
         assert_eq!(day, 1);
         assert_eq!(
-            text(
-                &conn,
-                "SELECT c25::VARCHAR FROM every WHERE c25 IS NOT NULL"
-            ),
+            text(conn, "SELECT c25::VARCHAR FROM every WHERE c25 IS NOT NULL"),
             "00:00:00.001"
         );
         assert_eq!(
-            text(&conn, "SELECT typeof(c29) FROM every LIMIT 1"),
+            text(conn, "SELECT typeof(c29) FROM every LIMIT 1"),
             "INTERVAL"
         );
         // No column of the NULLs is left in the table.
         assert_eq!(
             one(
-                &conn,
+                conn,
                 "SELECT count(*) FROM duckdb_columns() WHERE table_name = 'every'"
             ),
-            i64::try_from(columns.len()).unwrap()
+            i64::try_from(width).unwrap()
         );
     }
 
