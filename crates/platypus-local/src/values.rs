@@ -106,10 +106,13 @@ pub fn texts(
     options: &FormatOptions<'_>,
 ) -> Result<Vec<Option<String>>, ArrowError> {
     let formatter = ArrayFormatter::try_new(array, options)?;
+    // Logical: a column of the NULL type has no validity bitmap, yet every value is NULL.
+    let nulls = array.logical_nulls();
     Ok((0..array.len())
         .map(|row| {
-            array
-                .is_valid(row)
+            nulls
+                .as_ref()
+                .is_none_or(|n| n.is_valid(row))
                 .then(|| formatter.value(row).to_string())
         })
         .collect())
