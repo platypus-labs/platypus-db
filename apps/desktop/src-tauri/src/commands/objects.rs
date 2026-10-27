@@ -69,6 +69,7 @@ pub async fn execute_statement(
     session_id: u64,
     sql: String,
 ) -> CommandResult<Option<u64>> {
+    state.may_run(session_id, &sql)?;
     let conn = state.live(session_id).await?;
     match conn.execute(&sql, &ExecOptions::default()).await? {
         ExecResult::Affected { rows } => Ok(Some(rows)),

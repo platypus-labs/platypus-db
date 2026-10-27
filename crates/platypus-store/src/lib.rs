@@ -17,7 +17,9 @@ mod settings;
 mod sqlite;
 mod vault;
 
-pub use auth::{command_password, external_password, pgpass_password, pgpass_path};
+pub use auth::{
+    command_password, external_password, external_password_quiet, pgpass_password, pgpass_path,
+};
 pub use catalog::{
     CatalogEntry, CatalogKey, CatalogStore, DisplayColumn, TagCount, normalize_tags,
 };

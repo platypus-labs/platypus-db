@@ -79,10 +79,21 @@ fn pgpass_fields(line: &str) -> Option<[String; 5]> {
 }
 
 /// The password from the connection's command or `.pgpass`, if it uses one of them; `None`
-/// when it uses neither. Runs the command, so call it off the async runtime.
+/// when it uses neither. Runs the command, so call it off the async runtime. A failed
+/// command's error quotes the first line it printed on stderr, for the user.
 pub fn external_password(saved: &SavedConnection) -> Result<Option<Secret>> {
+    external(saved, true)
+}
+
+/// [`external_password`] whose errors never quote what the command printed (a vault client
+/// may print a token there): only how it ended. For agents, who must not read it.
+pub fn external_password_quiet(saved: &SavedConnection) -> Result<Option<Secret>> {
+    external(saved, false)
+}
+
+fn external(saved: &SavedConnection, output: bool) -> Result<Option<Secret>> {
     if let Some(command) = &saved.password_command {
-        return command_password(command).map(Some);
+        return run_command(command, output).map(Some);
     }
     if !saved.pgpass {
         return Ok(None);
@@ -108,6 +119,11 @@ pub fn external_password(saved: &SavedConnection) -> Result<Option<Secret>> {
 
 /// Runs `command` in the system shell and returns the first line it prints.
 pub fn command_password(command: &str) -> Result<Secret> {
+    run_command(command, true)
+}
+
+/// [`command_password`]; with `output`, a failure quotes the first line of stderr.
+fn run_command(command: &str, output: bool) -> Result<Secret> {
     let failed = |message: String| StoreError::Invalid(format!("password command: {message}"));
     let (shell, flags): (_, &[&str]) = if cfg!(windows) {
         ("cmd", &["/D", "/C"])
@@ -156,7 +172,7 @@ pub fn command_password(command: &str) -> Result<Secret> {
     if !status.success() {
         let stderr = err.join().unwrap_or_default();
         return Err(match stderr.lines().next().map(str::trim) {
-            Some(detail) if !detail.is_empty() => failed(format!("{status}: {detail}")),
+            Some(detail) if output && !detail.is_empty() => failed(format!("{status}: {detail}")),
             _ => failed(status.to_string()),
         });
     }
@@ -226,5 +242,21 @@ mod tests {
         assert!(command_password("exit 3").is_err());
         let empty = if cfg!(windows) { "echo." } else { "echo" };
         assert!(command_password(empty).is_err());
+    }
+
+    #[test]
+    fn quiet_errors_leave_out_what_the_command_printed() {
+        let mut saved = SavedConnection::new("x", platypus_core::DriverKind::Postgres);
+        let printing = if cfg!(windows) {
+            "echo printed-token 1>&2 && exit 3"
+        } else {
+            "echo printed-token 1>&2; exit 3"
+        };
+        saved.password_command = Some(printing.to_owned());
+        let loud = external_password(&saved).unwrap_err().to_string();
+        assert!(loud.contains("printed-token"), "{loud}");
+        let quiet = external_password_quiet(&saved).unwrap_err().to_string();
+        assert!(!quiet.contains("printed-token"), "{quiet}");
+        assert!(quiet.contains('3'), "{quiet}");
     }
 }

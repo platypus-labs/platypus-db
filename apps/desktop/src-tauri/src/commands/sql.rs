@@ -12,6 +12,10 @@ use serde::{Deserialize, Serialize};
 pub struct UnfilteredTable {
     schema: Option<String>,
     name: String,
+    /// What changes it: `UPDATE`, `DELETE`, `TRUNCATE`, or mongosh's `updateMany`, `deleteMany`.
+    verb: &'static str,
+    /// Transact-SQL's `TOP (n)`: up to that many rows the database picks, not every one.
+    limited: bool,
 }
 
 /// A statement range in UTF-16 code units, the unit JavaScript strings use, and what the
@@ -23,8 +27,9 @@ pub struct StatementSpan {
     read_only: bool,
     /// `query`, `dml`, `ddl`, `other` or `command` (`@set`, run by the app).
     kind: &'static str,
-    /// An `UPDATE` or `DELETE` without `WHERE`, or a `TRUNCATE`: its table.
-    unfiltered: Option<UnfilteredTable>,
+    /// The tables an `UPDATE` or `DELETE` without `WHERE`, or a `TRUNCATE`, changes in every
+    /// row: several for `TRUNCATE a, b` or a Transact-SQL batch.
+    unfiltered: Vec<UnfilteredTable>,
     /// Its `:name`, `?` and `${name}` placeholders, in the same units as `start`.
     parameters: Vec<ParameterSpan>,
 }
@@ -112,10 +117,16 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
                         StatementKind::Other => "other",
                         StatementKind::Command => "command",
                     },
-                    unfiltered: analysis.unfiltered.map(|t| UnfilteredTable {
-                        schema: t.schema,
-                        name: t.name,
-                    }),
+                    unfiltered: analysis
+                        .unfiltered
+                        .into_iter()
+                        .map(|u| UnfilteredTable {
+                            schema: u.table.schema,
+                            name: u.table.name,
+                            verb: u.verb,
+                            limited: u.limited,
+                        })
+                        .collect(),
                     parameters: parameters
                         .into_iter()
                         .map(|p| ParameterSpan {
@@ -135,9 +146,24 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
     }
 }
 
+/// Whether every statement of `sql` only reads, by the analysis the editor shows: what a
+/// read-only connection lets run.
+pub(crate) fn only_reads(sql: &str, driver: DriverKind) -> bool {
+    use platypus_driver_mongo::shell::{self, StatementKind as Kind};
+    if driver == DriverKind::Mongo {
+        return shell::split(sql).iter().all(|range| {
+            shell::parse(&sql[range.clone()]).is_ok_and(|c| shell::kind(&c) == Kind::Query)
+        });
+    }
+    let dialect = Dialect::from(driver);
+    platypus_sql::split(sql, dialect)
+        .iter()
+        .all(|s| platypus_sql::analyze(s.text(sql), dialect).kind == StatementKind::Query)
+}
+
 /// [`analyze_sql`] for mongosh statements, which have no parameters.
 fn analyze_mongo(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
-    use platypus_driver_mongo::shell::{self, StatementKind as Kind};
+    use platypus_driver_mongo::shell::{self, CollectionOp, Command, StatementKind as Kind};
     let statements = shell::split(src);
     let at = shell::statement_at(src, map.to_byte(cursor));
     SqlAnalysis {
@@ -157,12 +183,26 @@ fn analyze_mongo(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
                         Kind::Ddl => "ddl",
                         Kind::Other => "other",
                     },
-                    unfiltered: parsed.as_ref().and_then(shell::unfiltered).map(
-                        |(schema, name)| UnfilteredTable {
-                            schema: schema.map(str::to_owned),
-                            name: name.to_owned(),
-                        },
-                    ),
+                    unfiltered: parsed
+                        .as_ref()
+                        .and_then(|command| {
+                            let (schema, name) = shell::unfiltered(command)?;
+                            let verb = match command {
+                                Command::Collection {
+                                    op: CollectionOp::Delete { .. },
+                                    ..
+                                } => "deleteMany",
+                                _ => "updateMany",
+                            };
+                            Some(UnfilteredTable {
+                                schema: schema.map(str::to_owned),
+                                name: name.to_owned(),
+                                verb,
+                                limited: false,
+                            })
+                        })
+                        .into_iter()
+                        .collect(),
                     parameters: Vec::new(),
                 }
             })
@@ -385,16 +425,29 @@ mod tests {
     }
 
     #[test]
+    fn tells_what_a_read_only_connection_runs() {
+        assert!(only_reads("select 1; select 2", DriverKind::Postgres));
+        assert!(!only_reads("select 1; delete from t", DriverKind::Postgres));
+        assert!(!only_reads("set search_path = x", DriverKind::Postgres));
+        assert!(!only_reads("SELECT 1 EXEC('x')", DriverKind::SqlServer));
+        assert!(only_reads("db.a.find()\nshow dbs", DriverKind::Mongo));
+        assert!(!only_reads("db.a.find()\ndb.a.drop()", DriverKind::Mongo));
+        assert!(!only_reads("db.a.find(", DriverKind::Mongo));
+    }
+
+    #[test]
     fn splits_mongosh_scripts() {
         let src = "db.a.find()\ndb.b.deleteMany({})\nshow dbs".to_owned();
         let a = analyze_sql(src.clone(), DriverKind::Mongo, src.len());
         let kinds: Vec<_> = a.statements.iter().map(|s| (s.kind, s.read_only)).collect();
         assert_eq!(kinds, [("query", true), ("dml", false), ("query", true)]);
         assert_eq!(a.at_cursor, Some(2));
-        assert_eq!(
-            a.statements[1].unfiltered.as_ref().map(|t| t.name.as_str()),
-            Some("b")
-        );
+        let every: Vec<_> = a.statements[1]
+            .unfiltered
+            .iter()
+            .map(|t| (t.verb, t.name.as_str()))
+            .collect();
+        assert_eq!(every, [("deleteMany", "b")]);
         assert!(query_source(src, DriverKind::Mongo).is_none());
     }
 }
