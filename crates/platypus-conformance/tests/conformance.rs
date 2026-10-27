@@ -4569,3 +4569,161 @@ async fn qa_fixdbs_libsql_large_results() {
     assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("200000"));
     run(&*conn, &format!("DROP TABLE {table}")).await.unwrap();
 }
+
+/// A session on the PostgreSQL-protocol server at `url`, or `None` when it is unreachable.
+async fn qa_fixdbs_pg(url: &str) -> Option<Box<dyn Connection>> {
+    let config = ConnectionConfig::from_url(url).ok()?;
+    match PgDriver.connect(&config).await {
+        Ok(conn) => Some(conn),
+        Err(e) => {
+            println!("skipping {url}: {e}");
+            None
+        }
+    }
+}
+
+/// CockroachDB's STRING(n), its arrays copied to PostgreSQL, TimescaleDB's schemas and
+/// hypertables, YugabyteDB's sharding.
+#[tokio::test]
+async fn qa_fixdbs_pg_wire_flavours() {
+    use platypus_core::ObjectRef;
+    let _serial = SERIAL.lock().await;
+    let table = |schema, name| ObjectRef {
+        schema,
+        name,
+        kind: ObjectKind::Table,
+        parent: None,
+    };
+    if let Some(crdb) =
+        qa_fixdbs_pg("postgres://root@localhost:56257/platypus?sslmode=disable").await
+    {
+        for sql in [
+            "DROP SCHEMA IF EXISTS qa_fixdbs CASCADE",
+            "CREATE SCHEMA qa_fixdbs",
+            "CREATE TABLE qa_fixdbs.s (id INT8 PRIMARY KEY, name STRING(40), tags STRING[])",
+            "INSERT INTO qa_fixdbs.s VALUES (1, 'a', ARRAY['x', 'y'])",
+        ] {
+            run(&*crdb, sql)
+                .await
+                .unwrap_or_else(|e| panic!("{sql}: {e}"));
+        }
+        let details = crdb.table_details("qa_fixdbs", "s").await.unwrap();
+        assert_eq!(details.columns[1].data_type, "character varying(40)");
+        let ddl = crdb.object_ddl(&table("qa_fixdbs", "s")).await.unwrap();
+        assert!(ddl.contains("character varying(40)"), "{ddl}");
+        run(&*crdb, "DROP TABLE qa_fixdbs.s").await.unwrap();
+        for statement in platypus_sql::split(&ddl, platypus_sql::Dialect::Postgres) {
+            run(&*crdb, statement.text(&ddl))
+                .await
+                .unwrap_or_else(|e| panic!("{ddl}: {e}"));
+        }
+        run(
+            &*crdb,
+            "INSERT INTO qa_fixdbs.s VALUES (1, 'a', ARRAY['x', 'y'])",
+        )
+        .await
+        .unwrap();
+        // The array's type for a copy into PostgreSQL.
+        let ExecResult::Rows(stream) = execute(&*crdb, "SELECT tags FROM qa_fixdbs.s")
+            .await
+            .unwrap()
+        else {
+            panic!("no rows");
+        };
+        let field = stream.schema().field(0).clone();
+        assert_eq!(
+            platypus_transfer::import::target_type(&field, platypus_sql::Dialect::Postgres),
+            "text[]"
+        );
+        drop(stream);
+        run(&*crdb, "DROP SCHEMA qa_fixdbs CASCADE").await.unwrap();
+    }
+    let admin = "postgres://platypus:platypus@localhost:55433/platypus?sslmode=disable";
+    if let Some(admin) = qa_fixdbs_pg(admin).await {
+        for sql in [
+            "DROP DATABASE IF EXISTS qa_fixdbs_ts WITH (FORCE)",
+            "CREATE DATABASE qa_fixdbs_ts",
+        ] {
+            run(&*admin, sql)
+                .await
+                .unwrap_or_else(|e| panic!("{sql}: {e}"));
+        }
+        let ts = qa_fixdbs_pg(
+            "postgres://platypus:platypus@localhost:55433/qa_fixdbs_ts?sslmode=disable",
+        )
+        .await
+        .unwrap();
+        for sql in [
+            "CREATE EXTENSION timescaledb",
+            "CREATE TABLE metrics (ts timestamptz NOT NULL, device text NOT NULL, \
+             temp double precision, PRIMARY KEY (device, ts))",
+            "SELECT create_hypertable('metrics', 'ts', chunk_time_interval => interval '1 day')",
+            "INSERT INTO metrics SELECT t, 'dev' || (i % 3), i FROM generate_series(\
+             timestamptz '2025-01-01', timestamptz '2025-01-05', interval '1 hour') \
+             WITH ORDINALITY AS g(t, i)",
+            "ALTER TABLE metrics SET (timescaledb.compress, timescaledb.compress_segmentby = 'device')",
+            "ANALYZE metrics",
+        ] {
+            run(&*ts, sql)
+                .await
+                .unwrap_or_else(|e| panic!("{sql}: {e}"));
+        }
+        let schemas = ts.schemas().await.unwrap();
+        let system = |name: &str| schemas.iter().find(|s| s.name == name).map(|s| s.system);
+        assert_eq!(system("_timescaledb_catalog"), Some(true));
+        assert_eq!(system("timescaledb_information"), Some(true));
+        assert_eq!(system("public"), Some(false));
+        let objects = ts.objects("public").await.unwrap();
+        assert!(
+            !objects.iter().any(|o| o.name.starts_with("time_bucket(")),
+            "the extension's functions are its own"
+        );
+        let properties = ts
+            .object_properties(&table("public", "metrics"))
+            .await
+            .unwrap();
+        let size = properties
+            .iter()
+            .find(|p| p.name == "Table size")
+            .map(|p| p.value.clone());
+        assert!(size.is_some_and(|s| s != "0 bytes"), "{properties:?}");
+        let ddl = ts.object_ddl(&table("public", "metrics")).await.unwrap();
+        assert!(ddl.contains("SELECT create_hypertable("), "{ddl}");
+        assert!(
+            ddl.contains("timescaledb.compress_segmentby = 'device'"),
+            "{ddl}"
+        );
+        drop(ts);
+        run(&*admin, "DROP DATABASE qa_fixdbs_ts WITH (FORCE)")
+            .await
+            .unwrap();
+    }
+    if let Some(yb) =
+        qa_fixdbs_pg("postgres://yugabyte:yugabyte@localhost:55434/yugabyte?sslmode=disable").await
+    {
+        for sql in [
+            "DROP TABLE IF EXISTS qa_fixdbs_r",
+            "DROP TABLE IF EXISTS qa_fixdbs_h",
+            "CREATE TABLE qa_fixdbs_r (id bigint, v text, PRIMARY KEY (id ASC)) SPLIT AT VALUES ((100))",
+            "CREATE TABLE qa_fixdbs_h (id bigint PRIMARY KEY, v text) SPLIT INTO 3 TABLETS",
+        ] {
+            run(&*yb, sql)
+                .await
+                .unwrap_or_else(|e| panic!("{sql}: {e}"));
+        }
+        let ddl = yb
+            .object_ddl(&table("public", "qa_fixdbs_r"))
+            .await
+            .unwrap();
+        assert!(ddl.contains("PRIMARY KEY (id ASC)"), "{ddl}");
+        assert!(ddl.contains("SPLIT AT VALUES ((100))"), "{ddl}");
+        let ddl = yb
+            .object_ddl(&table("public", "qa_fixdbs_h"))
+            .await
+            .unwrap();
+        assert!(ddl.contains("PRIMARY KEY (id HASH)"), "{ddl}");
+        assert!(ddl.contains("SPLIT INTO 3 TABLETS"), "{ddl}");
+        run(&*yb, "DROP TABLE qa_fixdbs_r").await.unwrap();
+        run(&*yb, "DROP TABLE qa_fixdbs_h").await.unwrap();
+    }
+}

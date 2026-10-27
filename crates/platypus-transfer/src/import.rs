@@ -468,6 +468,11 @@ pub fn target_type(field: &Field, target: Dialect) -> String {
     )
     .then(|| field.metadata().get(META_DB_TYPE))
     .flatten();
+    // A PostgreSQL or CockroachDB array arrives as its text, `{x,y}`, which PostgreSQL reads
+    // back into an array of the same type.
+    if let Some(array) = declared.filter(|t| target == Dialect::Postgres && is_array_type(t)) {
+        return array.clone();
+    }
     // Text of a bounded length keeps it: MySQL cannot index (or key) TEXT.
     if let Some(n) = declared.and_then(|t| text_length(t)) {
         return match target {
@@ -478,6 +483,17 @@ pub fn target_type(field: &Field, target: Dialect) -> String {
     }
     let declared = declared.and_then(|t| declared_type(t));
     target.column_type(declared.as_ref().unwrap_or(field.data_type()))
+}
+
+/// Whether `name` is an array of a plain type, `text[]` or `int8[]`, as the PostgreSQL
+/// driver names the arrays it reads as text.
+fn is_array_type(name: &str) -> bool {
+    name.strip_suffix("[]").is_some_and(|element| {
+        !element.is_empty()
+            && element
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b' ')
+    })
 }
 
 /// The length of a declared `varchar(n)` or `char(n)`.
@@ -1230,6 +1246,12 @@ mod tests {
         assert_eq!(
             target_type(&field(DataType::Float64, "DECIMAL(10, 2)"), d),
             "DOUBLE PRECISION"
+        );
+        // Arrays of PostgreSQL and CockroachDB, as their text.
+        assert_eq!(target_type(&field(DataType::Utf8, "text[]"), d), "text[]");
+        assert_eq!(
+            target_type(&field(DataType::Utf8, "text[]"), Dialect::MySql),
+            "TEXT"
         );
     }
 
