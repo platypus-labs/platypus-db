@@ -23,6 +23,8 @@ pub enum Kind {
     Float32,
     Float64,
     Text,
+    /// Cursors and file locators, which have no text: their values read as NULL.
+    Opaque,
     Binary,
     /// `DATE`, which holds seconds.
     Date,
@@ -42,7 +44,11 @@ pub fn kind(t: &OracleType) -> Kind {
         }
         OracleType::Int64 => Kind::Int64,
         OracleType::BinaryFloat => Kind::Float32,
-        OracleType::BinaryDouble | OracleType::Float(_) => Kind::Float64,
+        OracleType::BinaryDouble => Kind::Float64,
+        // `FLOAT(p)` is a decimal number of `p` bits: up to 49 bits (15 digits) a double
+        // holds every value exactly, beyond (the default is 126) it is exact text.
+        OracleType::Float(p) if p <= 49 => Kind::Float64,
+        OracleType::RefCursor | OracleType::BFILE => Kind::Opaque,
         OracleType::Raw(_) | OracleType::LongRaw | OracleType::BLOB => Kind::Binary,
         OracleType::Date => Kind::Date,
         OracleType::Timestamp(_) => Kind::Timestamp,
@@ -58,7 +64,7 @@ fn data_type(kind: Kind) -> DataType {
         Kind::Decimal(p, s) => DataType::Decimal128(p, s),
         Kind::Float32 => DataType::Float32,
         Kind::Float64 => DataType::Float64,
-        Kind::Text => DataType::Utf8,
+        Kind::Text | Kind::Opaque => DataType::Utf8,
         Kind::Binary => DataType::Binary,
         Kind::Date => DataType::Timestamp(TimeUnit::Second, None),
         Kind::Timestamp => DataType::Timestamp(TimeUnit::Microsecond, None),
@@ -140,7 +146,8 @@ enum Builder {
     Decimal(Decimal128Builder, i8),
     Float32(Float32Builder),
     Float64(Float64Builder),
-    Text(StringBuilder),
+    /// `true` for [`Kind::Opaque`] values.
+    Text(StringBuilder, bool),
     Binary(BinaryBuilder),
     Date(TimestampSecondBuilder),
     Timestamp(TimestampMicrosecondBuilder, bool),
@@ -164,7 +171,10 @@ impl Builder {
             ),
             Kind::Float32 => Self::Float32(Float32Builder::with_capacity(capacity)),
             Kind::Float64 => Self::Float64(Float64Builder::with_capacity(capacity)),
-            Kind::Text => Self::Text(StringBuilder::with_capacity(capacity, capacity * 16)),
+            Kind::Text | Kind::Opaque => Self::Text(
+                StringBuilder::with_capacity(capacity, capacity * 16),
+                kind == Kind::Opaque,
+            ),
             Kind::Binary => Self::Binary(BinaryBuilder::with_capacity(capacity, capacity * 16)),
             Kind::Date => Self::Date(TimestampSecondBuilder::with_capacity(capacity)),
             Kind::Timestamp => {
@@ -187,8 +197,10 @@ impl Builder {
             }
             Self::Float32(b) => b.append_option(get(value)?),
             Self::Float64(b) => b.append_option(get(value)?),
-            // Types without a text form (cursors, files) read as NULL.
-            Self::Text(b) => b.append_option(value.get::<Option<String>>().ok().flatten()),
+            // Types without a text form (cursors, files) read as NULL; for any other type a
+            // value that cannot be read is an error, not a NULL.
+            Self::Text(b, true) => b.append_option(value.get::<Option<String>>().ok().flatten()),
+            Self::Text(b, false) => b.append_option(get::<Option<String>>(value)?),
             Self::Binary(b) => b.append_option(get::<Option<Vec<u8>>>(value)?),
             Self::Date(b) => {
                 let t: Option<Timestamp> = get(value)?;
@@ -210,7 +222,7 @@ impl Builder {
             Self::Decimal(b, _) => b,
             Self::Float32(b) => b,
             Self::Float64(b) => b,
-            Self::Text(b) => b,
+            Self::Text(b, _) => b,
             Self::Binary(b) => b,
             Self::Date(b) => b,
             Self::Timestamp(b, _) => b,
@@ -282,7 +294,9 @@ mod tests {
             "no precision"
         );
         assert_eq!(kind(&OracleType::Number(5, -2)), Kind::Text);
-        assert_eq!(kind(&OracleType::Float(126)), Kind::Float64);
+        assert_eq!(kind(&OracleType::Float(126)), Kind::Text, "38 digits");
+        assert_eq!(kind(&OracleType::Float(49)), Kind::Float64, "15 digits");
+        assert_eq!(kind(&OracleType::RefCursor), Kind::Opaque);
         assert_eq!(kind(&OracleType::BinaryFloat), Kind::Float32);
         assert_eq!(kind(&OracleType::Varchar2(20)), Kind::Text);
         assert_eq!(kind(&OracleType::CLOB), Kind::Text);

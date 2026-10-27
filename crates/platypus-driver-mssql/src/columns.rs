@@ -3,6 +3,11 @@
 //! TDS sends typed values: they are appended to the builder of their column without going
 //! through text. Dates count days from 0001-01-01 (`date`, `datetime2`) or 1900-01-01
 //! (`datetime`, `smalldatetime`); `datetimeoffset` values arrive in UTC.
+//!
+//! Values that an Arrow type would change are text as SQL Server writes them, which it
+//! reads back exactly: `datetime2(7)` (100 ns, finer than Arrow's microseconds over its
+//! range) and `datetimeoffset` (each value with its own offset). `datetime` counts 1/300
+//! of a second, shown and written back in milliseconds as SQL Server rounds them.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -116,7 +121,7 @@ pub enum ColumnBuilder {
     Float64(Float64Builder),
     /// The scale of the column, to align values that carry another.
     Decimal(Decimal128Builder, (u8, i8)),
-    /// `money`, read as a float by the protocol library and stored with 4 decimals.
+    /// `money`, a count of ten-thousandths: a decimal with 4 decimals.
     Money(Decimal128Builder),
     Date(Date32Builder),
     Time(Time64NanosecondBuilder),
@@ -145,16 +150,18 @@ pub fn column_builder(spec: &ColumnSpec) -> (Field, ColumnBuilder) {
         }
         T::Daten => ColumnBuilder::Date(Date32Builder::new()),
         T::Timen => ColumnBuilder::Time(Time64NanosecondBuilder::new()),
+        T::Datetime2 if spec.scale.is_none_or(|s| s > 6) => {
+            ColumnBuilder::Text(StringBuilder::new())
+        }
         T::Datetime4 | T::Datetime | T::Datetimen | T::Datetime2 => {
             ColumnBuilder::Timestamp(TimestampMicrosecondBuilder::new(), false)
-        }
-        T::DatetimeOffsetn => {
-            ColumnBuilder::Timestamp(TimestampMicrosecondBuilder::new().with_timezone(UTC), true)
         }
         T::BigVarBin | T::BigBinary | T::Image | T::Udt => {
             ColumnBuilder::Binary(BinaryBuilder::new())
         }
-        T::Guid
+        // Each `datetimeoffset` value keeps its own offset, as text.
+        T::DatetimeOffsetn
+        | T::Guid
         | T::BigVarChar
         | T::BigChar
         | T::NVarchar
@@ -238,9 +245,10 @@ fn timestamp_micros(value: &ColumnData<'_>) -> Option<i64> {
     Some(match value {
         ColumnData::DateTime(Some(dt)) => {
             let days = i64::from(dt.days()) - DAYS_FROM_1900;
-            // 1/300 of a second, rounded to the microsecond.
-            let micros = (i64::from(dt.seconds_fragments()) * 10_000 + 1) / 3;
-            days * MICROS_PER_DAY + micros
+            // 1/300 of a second, rounded to the millisecond as SQL Server shows it: a
+            // string with more digits is no `datetime` to it.
+            let millis = (i64::from(dt.seconds_fragments()) * 10 + 1) / 3;
+            days * MICROS_PER_DAY + millis * 1000
         }
         ColumnData::SmallDateTime(Some(dt)) => {
             let days = i64::from(dt.days()) - DAYS_FROM_1900;
@@ -257,6 +265,30 @@ fn timestamp_micros(value: &ColumnData<'_>) -> Option<i64> {
         ColumnData::Date(Some(d)) => date_days(*d) * MICROS_PER_DAY,
         _ => return None,
     })
+}
+
+/// A time of day `nanos` after midnight with `scale` fractional digits, e.g. `10:00:00.5`.
+fn time_text(nanos: i64, scale: u8) -> String {
+    let secs = nanos / 1_000_000_000;
+    let mut s = format!("{:02}:{:02}:{:02}", secs / 3600, secs / 60 % 60, secs % 60);
+    if scale > 0 {
+        let frac = format!("{:09}", nanos % 1_000_000_000);
+        let _ = write!(s, ".{}", &frac[..usize::from(scale.min(9))]);
+    }
+    s
+}
+
+/// The date `days` after 1970-01-01 and the time `nanos` after its midnight (carried into
+/// the next or previous day when beyond it), as SQL Server writes them.
+fn datetime_text(days: i64, nanos: i64, scale: u8) -> Option<String> {
+    const NANOS_PER_DAY: i64 = MICROS_PER_DAY * 1000;
+    let days = days + nanos.div_euclid(NANOS_PER_DAY);
+    let days = i32::try_from(days).ok()?;
+    let date = arrow_array::temporal_conversions::date32_to_datetime(days)?.date();
+    Some(format!(
+        "{date} {}",
+        time_text(nanos.rem_euclid(NANOS_PER_DAY), scale)
+    ))
 }
 
 /// `value` with `scale` decimals as text, e.g. `-1.50`.
@@ -286,22 +318,20 @@ fn text(value: &ColumnData<'_>) -> Option<String> {
             let _ = write!(s, "{byte:02X}");
             s
         }),
-        ColumnData::Time(Some(t)) => {
-            let nanos = time_nanos(*t);
-            let secs = nanos / 1_000_000_000;
-            let mut s = format!("{:02}:{:02}:{:02}", secs / 3600, secs / 60 % 60, secs % 60);
-            if t.scale() > 0 {
-                let frac = format!("{:09}", nanos % 1_000_000_000);
-                let _ = write!(s, ".{}", &frac[..usize::from(t.scale().min(9))]);
-            }
-            s
-        }
+        ColumnData::Time(Some(t)) => time_text(time_nanos(*t), t.scale()),
         ColumnData::Date(Some(d)) => date32_to_datetime(i32::try_from(date_days(*d)).ok()?)?
             .date()
             .to_string(),
+        ColumnData::DateTime2(Some(dt)) => datetime_text(
+            date_days(dt.date()),
+            time_nanos(dt.time()),
+            dt.time().scale(),
+        )?,
         ColumnData::DateTimeOffset(Some(dto)) => {
             let offset = i64::from(dto.offset());
-            let local = timestamp_us_to_datetime(timestamp_micros(value)? + offset * 60_000_000)?;
+            let utc = dto.datetime2();
+            let nanos = time_nanos(utc.time()) + offset * 60_000_000_000;
+            let local = datetime_text(date_days(utc.date()), nanos, utc.time().scale())?;
             let sign = if offset < 0 { '-' } else { '+' };
             format!(
                 "{local} {sign}{:02}:{:02}",
@@ -309,9 +339,7 @@ fn text(value: &ColumnData<'_>) -> Option<String> {
                 offset.abs() % 60
             )
         }
-        ColumnData::DateTime(Some(_))
-        | ColumnData::SmallDateTime(Some(_))
-        | ColumnData::DateTime2(Some(_)) => {
+        ColumnData::DateTime(Some(_)) | ColumnData::SmallDateTime(Some(_)) => {
             timestamp_us_to_datetime(timestamp_micros(value)?)?.to_string()
         }
         other => integer(other)?.to_string(),
@@ -433,10 +461,13 @@ impl ColumnBuilder {
                     .ok_or_else(|| format!("{n:?} does not fit the column's scale"))?;
                 b.append_value(v);
             }
-            #[expect(clippy::cast_possible_truncation, reason = "money has 19 digits")]
             Self::Money(b) => {
-                let v = float(value).ok_or_else(wrong)?;
-                b.append_value((v * 10_000.0).round() as i128);
+                let ColumnData::Numeric(Some(n)) = value else {
+                    return Err(wrong());
+                };
+                let v = rescale(n.value(), n.scale(), 4)
+                    .ok_or_else(|| format!("{n:?} does not fit money"))?;
+                b.append_value(v);
             }
             Self::Date(b) => {
                 let ColumnData::Date(Some(d)) = value else {
@@ -597,9 +628,16 @@ mod tests {
             ),
             ["12.50", "-0.50"]
         );
+        // The largest money, beyond what a float holds exactly.
         assert_eq!(
-            shown(&spec(T::Money), &[ColumnData::F64(Some(12.3456))]),
-            ["12.3456"]
+            shown(
+                &spec(T::Money),
+                &[ColumnData::Numeric(Some(Numeric::new_with_scale(
+                    i128::from(i64::MAX),
+                    4
+                )))]
+            ),
+            ["922337203685477.5807"]
         );
         let (_, mut int) = column_builder(&spec(T::Int2));
         assert!(int.append(&ColumnData::I32(Some(70_000))).is_err());
@@ -619,29 +657,64 @@ mod tests {
             shown(&spec(T::Timen), &[ColumnData::Time(Some(ten))]),
             ["01:00:00.123456700"]
         );
+        // datetime2(7) keeps its 100 ns as text; with up to 6 digits it is a timestamp.
+        let mut seven = spec(T::Datetime2);
+        seven.scale = Some(7);
         assert_eq!(
             shown(
-                &spec(T::Datetime2),
+                &seven,
                 &[ColumnData::DateTime2(Some(DateTime2::new(date, ten)))]
+            ),
+            ["2024-03-01 01:00:00.1234567"]
+        );
+        let mut six = spec(T::Datetime2);
+        six.scale = Some(6);
+        let micro = Time::new(3_600_000_000 + 123_456, 6);
+        assert_eq!(
+            shown(
+                &six,
+                &[ColumnData::DateTime2(Some(DateTime2::new(date, micro)))]
             ),
             ["2024-03-01T01:00:00.123456"]
         );
+        // datetime in milliseconds, as SQL Server shows and reads it: 1/300 s is .003,
+        // 299/300 s is .997.
         assert_eq!(
             shown(
                 &spec(T::Datetimen),
                 &[
                     ColumnData::DateTime(Some(DateTime::new(45_350, 300 * 3600 + 1))),
+                    ColumnData::DateTime(Some(DateTime::new(45_350, 300 * 3600 + 299))),
+                    ColumnData::DateTime(Some(DateTime::new(45_350, 300 * 86_400 - 1))),
                     ColumnData::SmallDateTime(Some(SmallDateTime::new(45_350, 90))),
                 ]
             ),
-            ["2024-03-01T01:00:00.003333", "2024-03-01T01:30:00"]
+            [
+                "2024-03-01T01:00:00.003",
+                "2024-03-01T01:00:00.997",
+                "2024-03-01T23:59:59.997",
+                "2024-03-01T01:30:00"
+            ]
         );
-        // 10:00 at +02:00 is 08:00 UTC, which is what the protocol sends.
+        // 10:00 at +02:00 is 08:00 UTC, which is what the protocol sends; the value keeps
+        // its offset. Late at night UTC is the next day at +02:00.
         let utc = DateTime2::new(date, Time::new(8 * 3600, 0));
         let dto = ColumnData::DateTimeOffset(Some(DateTimeOffset::new(utc, 120)));
+        let late = DateTime2::new(date, Time::new(23 * 3600 * 10_000_000 + 5, 7));
         assert_eq!(
-            shown(&spec(T::DatetimeOffsetn), std::slice::from_ref(&dto)),
-            ["2024-03-01T08:00:00Z"]
+            shown(
+                &spec(T::DatetimeOffsetn),
+                &[
+                    dto.clone(),
+                    ColumnData::DateTimeOffset(Some(DateTimeOffset::new(late, 120))),
+                    ColumnData::DateTimeOffset(Some(DateTimeOffset::new(utc, -330))),
+                ]
+            ),
+            [
+                "2024-03-01 10:00:00 +02:00",
+                "2024-03-02 01:00:00.0000005 +02:00",
+                "2024-03-01 02:30:00 -05:30"
+            ]
         );
         assert_eq!(
             shown(&spec(T::SSVariant), &[dto]),

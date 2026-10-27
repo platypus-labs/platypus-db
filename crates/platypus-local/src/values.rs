@@ -6,7 +6,7 @@ use std::sync::Arc;
 use arrow_array::cast::AsArray;
 use arrow_array::types::{Float64Type, Int64Type};
 use arrow_array::{Array, ArrayRef, Float64Array, Int64Array, TimestampMillisecondArray};
-use arrow_cast::display::{ArrayFormatter, FormatOptions};
+use arrow_cast::display::FormatOptions;
 use arrow_schema::{ArrowError, DataType, Field, Schema, TimeUnit};
 use platypus_core::META_DB_TYPE;
 
@@ -95,7 +95,7 @@ pub fn time_text(
         DataType::Date32 | DataType::Date64 => arrow_cast::cast(&stamp, &DataType::Date32)?,
         _ => stamp,
     };
-    Ok(ArrayFormatter::try_new(value.as_ref(), options)?
+    Ok(platypus_core::special::formatter(value.as_ref(), options)?
         .value(0)
         .to_string())
 }
@@ -105,7 +105,7 @@ pub fn texts(
     array: &dyn Array,
     options: &FormatOptions<'_>,
 ) -> Result<Vec<Option<String>>, ArrowError> {
-    let formatter = ArrayFormatter::try_new(array, options)?;
+    let formatter = platypus_core::special::formatter(array, options)?;
     Ok((0..array.len())
         .map(|row| {
             array

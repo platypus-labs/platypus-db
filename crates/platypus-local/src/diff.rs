@@ -318,7 +318,7 @@ impl<'a> Shown<'a> {
                 batch
                     .columns()
                     .iter()
-                    .map(|c| ArrayFormatter::try_new(c.as_ref(), options))
+                    .map(|c| platypus_core::special::formatter(c.as_ref(), options))
                     .collect::<Result<_, _>>()?,
             );
         }

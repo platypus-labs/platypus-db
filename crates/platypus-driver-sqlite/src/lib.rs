@@ -14,7 +14,7 @@ pub mod meta;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, mpsc as std_mpsc};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
@@ -30,7 +30,7 @@ use rusqlite::types::ValueRef;
 use rusqlite::{ErrorCode, InterruptHandle, OpenFlags};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::columns::{ColumnBuilder, Kind, Mismatch, Owned};
+use crate::columns::{ColumnBuilder, Kind, Mismatch, Owned, Seen};
 
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -396,15 +396,41 @@ fn run(conn: &rusqlite::Connection, command: Command, in_transaction: &AtomicBoo
         return;
     }
 
-    stream_rows(&mut stmt, &sql, batch_size, reply);
+    stream_rows(conn, &mut stmt, &sql, batch_size, reply);
 }
 
 fn value<'a>(row: &'a rusqlite::Row<'_>, i: usize) -> ValueRef<'a> {
     row.get_ref(i).unwrap_or(ValueRef::Null)
 }
 
-/// Answers with the schema, then streams the rows of a statement that returns some.
+/// How long reading a result ahead for its column types may take.
+const SURVEY_TIME: Duration = Duration::from_secs(1);
+
+/// The values of each of the `width` columns of the whole result of `sql`, read with a
+/// statement of its own; `None` when that fails or takes longer than [`SURVEY_TIME`].
+fn survey(conn: &rusqlite::Connection, sql: &str, width: usize) -> Option<Vec<Seen>> {
+    let deadline = Instant::now() + SURVEY_TIME;
+    let mut stmt = conn.prepare(sql).ok()?;
+    let mut rows = stmt.raw_query();
+    let mut seen = vec![Seen::default(); width];
+    let mut read: u32 = 0;
+    while let Some(row) = rows.next().ok()? {
+        for (i, s) in seen.iter_mut().enumerate() {
+            s.add(value(row, i));
+        }
+        read = read.wrapping_add(1);
+        if read.is_multiple_of(1024) && Instant::now() > deadline {
+            return None;
+        }
+    }
+    Some(seen)
+}
+
+/// Answers with the schema, then streams the rows of a statement that returns some. When
+/// more rows follow the first batch, a read-only statement is read ahead (see [`survey`])
+/// so that every value fits its column.
 fn stream_rows(
+    conn: &rusqlite::Connection,
     stmt: &mut rusqlite::Statement<'_>,
     sql: &str,
     batch_size: usize,
@@ -416,6 +442,7 @@ fn stream_rows(
         .map(|c| (c.name().to_owned(), c.decl_type().map(str::to_owned)))
         .collect();
     let width = columns.len();
+    let readonly = stmt.readonly();
     let mut rows = stmt.raw_query();
 
     // The first batch is read before answering, both to infer column types and so that
@@ -436,7 +463,19 @@ fn stream_rows(
         }
     }
 
-    let (schema, kinds) = columns::schema(&columns, &first);
+    let mut seen = vec![Seen::default(); width];
+    for row in &first {
+        for (s, v) in seen.iter_mut().zip(row) {
+            s.add(v.value());
+        }
+    }
+    if !exhausted
+        && readonly
+        && let Some(all) = survey(conn, sql, width)
+    {
+        seen = all;
+    }
+    let (schema, kinds) = columns::schema(&columns, &seen);
     let (tx, rx) = mpsc::channel(1);
     if reply
         .send(Ok(Started::Rows(Arc::clone(&schema), rx)))

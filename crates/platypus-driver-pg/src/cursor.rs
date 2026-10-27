@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use arrow_array::RecordBatch;
+use arrow_array::{RecordBatch, RecordBatchOptions};
 use arrow_schema::Schema;
 use futures::StreamExt;
 use platypus_core::{Error, ExecOptions, ExecResult, RecordBatchStream, Result, leading_words};
@@ -17,7 +17,7 @@ use platypus_sql::Dialect;
 use tokio::sync::OwnedMutexGuard;
 use tokio_postgres::{Client, Statement};
 
-use crate::columns::{ColumnBuilder, column_builder};
+use crate::columns::{ColumnBuilder, column_builder, load_names};
 use crate::{append_row, map_error, no_params};
 
 /// Whether `sql` can be declared as a cursor: a plain query with no side effects
@@ -60,13 +60,14 @@ pub async fn open(
             return Err(in_query(map_error(e), sql, &declare));
         }
     };
-    let (fields, builders): (Vec<_>, Vec<_>) = fetch
+    let (fields, mut builders): (Vec<_>, Vec<_>) = fetch
         .columns()
         .iter()
         .map(column_builder)
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .unzip();
+    load_names(&client, &mut builders).await;
     let schema = Arc::new(Schema::new(fields));
     let state = CursorState {
         client,
@@ -172,7 +173,9 @@ async fn next_batch(mut state: CursorState) -> Result<Option<(RecordBatch, Curso
         .iter_mut()
         .map(ColumnBuilder::finish)
         .collect();
-    let batch = RecordBatch::try_new(Arc::clone(&state.schema), columns)?;
+    // A result without columns (`SELECT FROM t`) still has its rows.
+    let options = RecordBatchOptions::new().with_row_count(Some(len));
+    let batch = RecordBatch::try_new_with_options(Arc::clone(&state.schema), columns, &options)?;
     Ok(Some((batch, state)))
 }
 

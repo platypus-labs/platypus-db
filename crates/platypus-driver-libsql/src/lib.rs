@@ -101,7 +101,7 @@ impl Connection for LibsqlConnection {
             });
         }
         let batch_size = options.batch_size.max(1);
-        let (schema, kinds, rows) = typed_rows(result, batch_size)?;
+        let (schema, kinds, rows) = typed_rows(result)?;
         Ok(ExecResult::Rows(RecordBatchStream::new(
             Arc::clone(&schema),
             batches(schema, kinds, rows, batch_size).boxed(),
@@ -197,12 +197,9 @@ impl Connection for LibsqlConnection {
     }
 }
 
-/// The schema, column kinds and rows of a result; the kinds are inferred from the first
-/// batch, as the SQLite driver does.
-fn typed_rows(
-    result: StmtResult,
-    batch_size: usize,
-) -> Result<(SchemaRef, Vec<Kind>, Vec<Vec<Owned>>)> {
+/// The schema, column kinds and rows of a result; the server sends every row at once, so
+/// the kinds are inferred from all of them and every value fits its column.
+fn typed_rows(result: StmtResult) -> Result<(SchemaRef, Vec<Kind>, Vec<Vec<Owned>>)> {
     let columns: Vec<(String, Option<String>)> = result
         .cols
         .into_iter()
@@ -213,7 +210,13 @@ fn typed_rows(
         .into_iter()
         .map(|row| row.into_iter().map(hrana::Value::into_owned).collect())
         .collect::<Result<Vec<Vec<Owned>>>>()?;
-    let (schema, kinds) = columns::schema(&columns, &rows[..rows.len().min(batch_size)]);
+    let mut seen = vec![columns::Seen::default(); columns.len()];
+    for row in &rows {
+        for (s, v) in seen.iter_mut().zip(row) {
+            s.add(v.value());
+        }
+    }
+    let (schema, kinds) = columns::schema(&columns, &seen);
     Ok((schema, kinds, rows))
 }
 
@@ -278,7 +281,7 @@ mod tests {
                         [{"type":"integer","value":"3"},{"type":"text","value":"c"}]],
                 "affected_row_count":0}"#,
         );
-        let (schema, kinds, rows) = typed_rows(result, 2).unwrap();
+        let (schema, kinds, rows) = typed_rows(result).unwrap();
         assert_eq!(kinds, [Kind::Int, Kind::Text]);
         let out: Vec<RecordBatch> = batches(schema, kinds, rows, 2).try_collect().await.unwrap();
         assert_eq!(
@@ -288,16 +291,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fails_on_values_that_do_not_fit_the_first_rows() {
+    async fn types_columns_from_every_row() {
         let result = result(
             r#"{"cols":[{"name":"x","decltype":null}],
                 "rows":[[{"type":"integer","value":"1"}],[{"type":"blob","base64":"AQ=="}]],
                 "affected_row_count":0}"#,
         );
-        let (schema, kinds, rows) = typed_rows(result, 1).unwrap();
+        let (schema, kinds, rows) = typed_rows(result).unwrap();
+        assert_eq!(kinds, [Kind::Text]);
         let out: Vec<Result<RecordBatch>> = batches(schema, kinds, rows, 1).collect().await;
         assert_eq!(out.len(), 2);
-        assert!(matches!(out[1], Err(Error::Decode { .. })), "{out:?}");
+        assert!(out.iter().all(Result::is_ok), "{out:?}");
     }
 
     #[test]
@@ -310,7 +314,7 @@ mod tests {
             rows: Vec::new(),
             affected_row_count: 0,
         };
-        let (schema, _, rows) = typed_rows(result, 10).unwrap();
+        let (schema, _, rows) = typed_rows(result).unwrap();
         assert_eq!(schema.field(0).name(), "");
         assert_eq!(rows.len(), 0);
     }

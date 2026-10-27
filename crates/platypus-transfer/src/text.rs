@@ -11,7 +11,7 @@ use platypus_sql::Dialect;
 use platypus_sql::dml::{Column, ValueKind};
 use rust_xlsxwriter::{Workbook, Worksheet, XlsxError};
 
-use crate::import::rows_text;
+use crate::import::{literal, rows_text};
 use crate::{ExportError, Format, Result, io_error};
 
 /// Rows an Excel sheet holds, the header included.
@@ -44,11 +44,71 @@ impl From<XlsxError> for ExportError {
     }
 }
 
+/// Characters a cell holds at most in Excel.
+const XLSX_MAX_CHARS: usize = 32_767;
+
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+/// Whether XML 1.0 forbids `c` in a document, even as a character reference: the control
+/// characters other than tab and line breaks, and U+FFFE and U+FFFF.
+fn xml_forbidden(c: char) -> bool {
+    matches!(c, '\0'..='\u{8}' | '\u{b}' | '\u{c}' | '\u{e}'..='\u{1f}' | '\u{fffe}' | '\u{ffff}')
+}
+
+/// `bytes` in standard base64, with padding.
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0usize, |n, (i, &b)| n | (usize::from(b) << (16 - 8 * i)));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(char::from(ALPHABET[(n >> (18 - 6 * i)) & 63]));
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
+/// A `<field>` element of the XML export. A value with characters XML cannot hold is
+/// written in base64 (of its UTF-8), marked `encoding="base64"`.
+fn xml_field(s: &mut String, name: &str, value: Option<&str>) {
+    let name: String = name
+        .chars()
+        .map(|c| if xml_forbidden(c) { '\u{fffd}' } else { c })
+        .collect();
+    let name = xml_escape(&name);
+    let _ = match value {
+        None => writeln!(s, "    <field name=\"{name}\" null=\"true\"/>"),
+        Some(v) if v.chars().any(xml_forbidden) => writeln!(
+            s,
+            "    <field name=\"{name}\" encoding=\"base64\">{}</field>",
+            base64(v.as_bytes())
+        ),
+        Some(v) => writeln!(s, "    <field name=\"{name}\">{}</field>", xml_escape(v)),
+    };
+}
+
+/// `v` cut to fit an Excel cell, ending with a note of how long it was.
+fn xlsx_text(v: &str) -> std::borrow::Cow<'_, str> {
+    let Some((cut, _)) = v.char_indices().nth(XLSX_MAX_CHARS) else {
+        return v.into();
+    };
+    let total = v.chars().count();
+    let note = format!("… [cut: {total} characters, Excel holds {XLSX_MAX_CHARS}]");
+    let keep = XLSX_MAX_CHARS - note.chars().count();
+    let end = v.char_indices().nth(keep).map_or(cut, |(i, _)| i);
+    format!("{}{note}", &v[..end]).into()
 }
 
 fn markdown_cell(s: &str) -> String {
@@ -183,16 +243,7 @@ impl TextSink {
             Format::Xml => {
                 s.push_str("  <row>\n");
                 for (name, v) in self.names.iter().zip(row) {
-                    let name = xml_escape(name);
-                    match v {
-                        Some(v) => {
-                            let _ =
-                                writeln!(s, "    <field name=\"{name}\">{}</field>", xml_escape(v));
-                        }
-                        None => {
-                            let _ = writeln!(s, "    <field name=\"{name}\" null=\"true\"/>");
-                        }
-                    }
+                    xml_field(s, name, v.as_deref());
                 }
                 s.push_str("  </row>\n");
             }
@@ -206,8 +257,7 @@ impl TextSink {
                         default: None,
                     };
                     literals.push(
-                        column
-                            .literal(*dialect, v.as_deref())
+                        literal(&column, *dialect, v.as_deref())
                             .map_err(|e| ExportError::Options(e.to_string()))?,
                     );
                 }
@@ -260,7 +310,7 @@ fn xlsx_row(
         match (kind, number) {
             (_, Some(n)) => sheet.write_number(r, c, n)?,
             (ValueKind::Bool, _) => sheet.write_boolean(r, c, v == "true")?,
-            _ => sheet.write_string(r, c, v)?,
+            _ => sheet.write_string(r, c, xlsx_text(v))?,
         };
     }
     Ok(())
@@ -277,4 +327,50 @@ fn significant_digits(v: &str) -> usize {
         .filter(char::is_ascii_digit)
         .skip_while(|&c| c == '0')
         .count()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encodes_base64() {
+        let cases = [
+            ("", ""),
+            ("f", "Zg=="),
+            ("fo", "Zm8="),
+            ("foo", "Zm9v"),
+            ("foob", "Zm9vYg=="),
+            ("\u{1}x", "AXg="),
+        ];
+        for (input, output) in cases {
+            assert_eq!(base64(input.as_bytes()), output, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn writes_xml_control_characters_in_base64() {
+        let mut s = String::new();
+        xml_field(&mut s, "a\u{2}b", Some("x\u{1}y"));
+        xml_field(&mut s, "n", Some("tab\tand <tag>"));
+        xml_field(&mut s, "z", None);
+        assert_eq!(
+            s,
+            "    <field name=\"a\u{fffd}b\" encoding=\"base64\">eAF5</field>\n    \
+             <field name=\"n\">tab\tand &lt;tag&gt;</field>\n    \
+             <field name=\"z\" null=\"true\"/>\n"
+        );
+    }
+
+    #[test]
+    fn cuts_text_longer_than_an_excel_cell() {
+        assert_eq!(xlsx_text("short"), "short");
+        // Two bytes each: the limit counts characters.
+        let exact = "\u{e9}".repeat(XLSX_MAX_CHARS);
+        assert_eq!(xlsx_text(&exact), exact.as_str());
+        let long = "\u{e9}".repeat(40_000);
+        let cut = xlsx_text(&long);
+        assert_eq!(cut.chars().count(), XLSX_MAX_CHARS);
+        assert!(cut.ends_with("[cut: 40000 characters, Excel holds 32767]"));
+    }
 }

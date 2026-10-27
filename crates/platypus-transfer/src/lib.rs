@@ -18,14 +18,14 @@ use std::sync::Arc;
 
 use arrow_array::builder::StringBuilder;
 use arrow_array::{Array, ArrayRef, RecordBatch};
-use arrow_cast::display::{ArrayFormatter, FormatOptions};
+use arrow_cast::display::FormatOptions;
 use arrow_json::writer::{JsonArray, LineDelimited};
 use arrow_schema::{ArrowError, DataType, Field, Schema, SchemaRef};
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression as ParquetCompression, ZstdLevel};
 use parquet::errors::ParquetError;
 use parquet::file::properties::WriterProperties;
-use platypus_core::DriverKind;
+use platypus_core::{DriverKind, special};
 use platypus_sql::Dialect;
 use serde::Deserialize;
 
@@ -156,7 +156,9 @@ enum Sink {
 fn as_text(data_type: &DataType, format: Format) -> bool {
     use DataType as T;
     match format {
-        // The CSV writer handles scalars, not binary or nested values.
+        // The CSV writer handles scalars, not binary or nested values. Dates, timestamps
+        // and decimals are written as text too, which shows them alike, so their reserved
+        // values (`infinity`, `NaN`) come out as such.
         Format::Csv => matches!(
             data_type,
             T::Binary
@@ -167,6 +169,9 @@ fn as_text(data_type: &DataType, format: Format) -> bool {
                 | T::LargeList(_)
                 | T::Struct(_)
                 | T::Map(..)
+                | T::Date32
+                | T::Timestamp(..)
+                | T::Decimal128(..)
         ),
         // JSON keeps numbers, booleans and strings; decimals become strings so no digit is
         // lost, and dates, times and bytes get their display form.
@@ -212,7 +217,7 @@ fn output_schema(schema: &Schema, format: Format) -> SchemaRef {
 }
 
 fn to_text(array: &dyn Array) -> Result<ArrayRef, ArrowError> {
-    let formatter = ArrayFormatter::try_new(array, &FormatOptions::default())?;
+    let formatter = special::formatter(array, &FormatOptions::default())?;
     let mut builder = StringBuilder::with_capacity(array.len(), array.len() * 16);
     for i in 0..array.len() {
         if array.is_null(i) {
@@ -222,6 +227,28 @@ fn to_text(array: &dyn Array) -> Result<ArrayRef, ArrowError> {
         }
     }
     Ok(Arc::new(builder.finish()))
+}
+
+/// Fails on a value Parquet cannot store. It keeps dates, timestamps and decimals as
+/// numbers: their infinities are DuckDB's and read back as such, but a decimal `NaN` or a
+/// date outside the calendar (`0000-00-00`) would come out as a wrong number.
+fn parquet_values(batch: &RecordBatch) -> Result<()> {
+    for (field, column) in batch.schema().fields().iter().zip(batch.columns()) {
+        if special::find(column.as_ref()).is_none() {
+            continue;
+        }
+        let found = (0..column.len())
+            .filter_map(|i| special::text(column.as_ref(), i))
+            .find(|text| !text.ends_with("infinity"));
+        if let Some(text) = found {
+            return Err(ExportError::Options(format!(
+                "column `{}` holds `{text}`, which Parquet cannot store: export to another \
+                 format, or cast the column to text in the query",
+                field.name()
+            )));
+        }
+    }
+    Ok(())
 }
 
 pub struct Exporter {
@@ -347,7 +374,10 @@ impl Exporter {
             Some(Sink::Csv(w)) => w.write(&batch)?,
             Some(Sink::Json(w)) => w.write(&batch)?,
             Some(Sink::Ndjson(w)) => w.write(&batch)?,
-            Some(Sink::Parquet(w)) => w.write(&batch)?,
+            Some(Sink::Parquet(w)) => {
+                parquet_values(&batch)?;
+                w.write(&batch)?;
+            }
             Some(Sink::Text(w)) => w.write(&batch)?,
             None => {}
         }
@@ -445,15 +475,35 @@ pub fn upload(path: &Path, url: &str) -> Result<()> {
     let file = File::open(path).map_err(io_error(path))?;
     // S3 takes no chunked body: the length goes first.
     let length = file.metadata().map_err(io_error(path))?.len();
-    let redact = |e: &dyn std::fmt::Display| {
-        let host = url.split('?').next().unwrap_or_default();
-        ExportError::Upload(e.to_string().replace(url, host))
-    };
     ureq::put(url)
         .header("Content-Length", length.to_string())
         .send(ureq::SendBody::from_owned_reader(file))
         .map(|_| ())
-        .map_err(|e| redact(&e))
+        .map_err(|e| ExportError::Upload(redact(&e.to_string(), url)))
+}
+
+/// `message` without the signature of `url`, however the HTTP client spelled the URL: the
+/// query of any URL in it is cut, and each value of the query is hidden wherever it shows.
+fn redact(message: &str, url: &str) -> String {
+    let (base, query) = url.split_once('?').unwrap_or((url, ""));
+    let mut text = message.replace(url, base);
+    let values = query
+        .split('&')
+        .filter_map(|pair| pair.split_once('=').map(|(_, v)| v))
+        .filter(|v| !v.is_empty());
+    for value in values {
+        text = text.replace(value, "…");
+    }
+    text.split_inclusive(char::is_whitespace)
+        .map(|word| match word.find('?') {
+            // A path or URL with a query: keep up to the `?` and the space after.
+            Some(i) if word[..i].contains('/') => {
+                let end = word.trim_end().len();
+                format!("{}{}", &word[..i], &word[end..])
+            }
+            _ => word.to_owned(),
+        })
+        .collect()
 }
 
 impl Drop for Exporter {
@@ -777,5 +827,130 @@ mod tests {
         request.join().unwrap();
         assert!(err.contains("403"), "{err}");
         assert!(!err.contains("secret"), "{err}");
+    }
+
+    #[test]
+    fn redacts_signed_urls_however_spelled() {
+        let url = "https://b.s3.amazonaws.com/out.csv?X-Amz-Credential=AKIA%2F2026&X-Amz-Signature=deadbeef";
+        let messages = [
+            format!("{url}: connection refused"),
+            // Normalized by the client: another spelling of the same URL.
+            "PUT https://b.s3.amazonaws.com:443/out.csv?X-Amz-Credential=AKIA%2F2026&X-Amz-Signature=deadbeef failed".to_owned(),
+            "bad signature deadbeef".to_owned(),
+            "redirect to /out.csv?token=other".to_owned(),
+        ];
+        for message in &messages {
+            let shown = redact(message, url);
+            for secret in ["deadbeef", "AKIA", "token=other"] {
+                assert!(!shown.contains(secret), "{shown}");
+            }
+        }
+        assert_eq!(
+            redact(&messages[0], url),
+            "https://b.s3.amazonaws.com/out.csv: connection refused"
+        );
+        assert_eq!(
+            redact(&messages[1], url),
+            "PUT https://b.s3.amazonaws.com:443/out.csv failed"
+        );
+        assert_eq!(redact("what? no", url), "what? no");
+    }
+
+    /// A date, a timestamp and a decimal column, each with a reserved value in row 0.
+    fn special_batch() -> RecordBatch {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("d", DataType::Date32, true),
+            Field::new(
+                "t",
+                DataType::Timestamp(TimeUnit::Microsecond, Some("+00:00".into())),
+                true,
+            ),
+            Field::new("n", DataType::Decimal128(10, 2), true),
+        ]));
+        RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(arrow_array::Date32Array::from(vec![
+                    special::DATE_INFINITY,
+                    0,
+                ])),
+                Arc::new(
+                    TimestampMicrosecondArray::from(vec![special::TIMESTAMP_NEG_INFINITY, 0])
+                        .with_timezone("+00:00"),
+                ),
+                Arc::new(
+                    Decimal128Array::from(vec![special::DECIMAL_NAN, 150])
+                        .with_precision_and_scale(10, 2)
+                        .unwrap(),
+                ),
+            ],
+        )
+        .unwrap()
+    }
+
+    fn export_special(dir: &Path, name: &str, format: Format) -> Result<String> {
+        let path = dir.join(name);
+        let batch = special_batch();
+        let options = ExportOptions {
+            format,
+            ..ExportOptions::default()
+        };
+        let mut exporter = Exporter::create(&path, &batch.schema(), &options)?;
+        exporter.write(&batch)?;
+        exporter.finish()?;
+        Ok(std::fs::read_to_string(&path).unwrap_or_default())
+    }
+
+    #[test]
+    fn exports_infinities_and_nan_as_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let csv = export_special(dir.path(), "s.csv", Format::Csv).unwrap();
+        let lines: Vec<_> = csv.lines().collect();
+        assert_eq!(lines[1], "infinity,-infinity,NaN");
+        assert_eq!(lines[2], "1970-01-01,1970-01-01T00:00:00Z,1.50");
+        let json = export_special(dir.path(), "s.json", Format::Json).unwrap();
+        assert!(
+            json.contains(r#"{"d":"infinity","t":"-infinity","n":"NaN"}"#),
+            "{json}"
+        );
+        let sql = export_special(dir.path(), "s.sql", Format::Sql).unwrap();
+        assert!(
+            sql.contains("VALUES ('infinity', '-infinity', 'NaN');"),
+            "{sql}"
+        );
+        // Parquet keeps the infinities (DuckDB's own) but has no decimal NaN.
+        let err = export_special(dir.path(), "s.parquet", Format::Parquet).unwrap_err();
+        assert!(err.to_string().contains("`NaN`"), "{err}");
+        assert!(!dir.path().join("s.parquet").exists());
+    }
+
+    #[test]
+    fn exports_cells_longer_than_excel_holds() {
+        use calamine::{Data, Reader};
+        let dir = tempfile::tempdir().unwrap();
+        let schema = Arc::new(Schema::new(vec![Field::new("s", DataType::Utf8, true)]));
+        let long = "x".repeat(40_000);
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![Arc::new(StringArray::from(vec![long.as_str(), "ok"]))],
+        )
+        .unwrap();
+        let path = dir.path().join("long.xlsx");
+        let options = ExportOptions {
+            format: Format::Xlsx,
+            ..ExportOptions::default()
+        };
+        let mut exporter = Exporter::create(&path, &schema, &options).unwrap();
+        exporter.write(&batch).unwrap();
+        assert_eq!(exporter.finish().unwrap(), 2);
+        let mut book = calamine::open_workbook_auto(&path).unwrap();
+        let sheet = book.worksheet_range_at(0).unwrap().unwrap();
+        let rows: Vec<_> = sheet.rows().collect();
+        let Data::String(cut) = &rows[1][0] else {
+            panic!("{:?}", rows[1][0]);
+        };
+        assert_eq!(cut.chars().count(), 32_767);
+        assert!(cut.starts_with("xxx") && cut.ends_with("Excel holds 32767]"));
+        assert_eq!(rows[2][0], Data::String("ok".into()));
     }
 }
