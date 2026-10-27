@@ -131,7 +131,7 @@ export function seedTrinoDriver(dir) {
  *  `{ sqlite: path }` / `{ duckdb: path }`), each with its password from a command. */
 export function conns(dir, list, extra = "") {
   let text = "version = 7\n";
-  list.forEach(([name, db], i) => {
+  list.forEach(([name, db, more = ""], i) => {
     const id = `00000000-0000-4000-8000-0000000d${String(i).padStart(4, "0")}`;
     const d = typeof db === "string" ? DBS[db] : null;
     const body = d
@@ -139,7 +139,7 @@ export function conns(dir, list, extra = "") {
       : db.sqlite
         ? `driver = "sqlite"\ndatabase = '${db.sqlite}'`
         : `driver = "duckdb"\ndatabase = '${db.duckdb}'`;
-    text += `\n[[connections]]\nid = "${id}"\nname = "${name}"\n${body}\nsave_password = ${d?.savePassword ? "true" : "false"}\n`;
+    text += `\n[[connections]]\nid = "${id}"\nname = "${name}"\n${body}\n${more ? `${more}\n` : ""}save_password = ${d?.savePassword ? "true" : "false"}\n`;
     if (d?.options) text += `\n[connections.options]\n${d.options}\n`;
   });
   writeFileSync(join(dir, "connections.toml"), text + extra);
