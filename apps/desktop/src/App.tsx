@@ -24,6 +24,7 @@ import { CommandPalette } from "./shell/CommandPalette";
 import "./tabs";
 import "./objects/actions";
 import "./transfer/actions";
+import "./schema/actions";
 import "./querylog/actions";
 import { setAnswer } from "./testAnswers";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
@@ -1124,6 +1125,7 @@ function tabIcon(t: TabModel): IconName {
   if (t.kind === "object") return "object";
   if (t.kind === "builder") return "builder";
   if (t.kind === "table-editor") return "edit";
+  if (t.kind === "erd") return "schema";
   return "tableRef" in t && t.tableRef ? "table" : "sql";
 }
 

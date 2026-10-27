@@ -2,7 +2,7 @@
 //! that script (see `platypus-schema`).
 
 use platypus_core::DriverKind;
-use platypus_schema::{Script, TableDesign};
+use platypus_schema::{Finding, SchemaTable, Script, TableDesign};
 use platypus_sql::Dialect;
 use serde::Serialize;
 use tauri::State;
@@ -76,4 +76,60 @@ pub async fn apply_table_script(
                 )
             ))
         })
+}
+
+/// The tables of `schema` with their details, those in `tables` or all, for the ER diagram.
+#[tauri::command]
+pub async fn schema_tables(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: String,
+    tables: Option<Vec<String>>,
+) -> CommandResult<Vec<SchemaTable>> {
+    let conn = state.live(session_id).await?;
+    Ok(platypus_schema::read_tables(conn.as_ref(), &schema, tables.as_deref()).await?)
+}
+
+/// What the linter finds in the tables of `schema`.
+#[tauri::command]
+pub async fn lint_schema(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: String,
+) -> CommandResult<Vec<Finding>> {
+    let dialect = Dialect::from(state.session(session_id)?.config.driver);
+    let conn = state.live(session_id).await?;
+    let tables = platypus_schema::read_tables(conn.as_ref(), &schema, None).await?;
+    Ok(platypus_schema::lint(dialect, &schema, &tables))
+}
+
+/// The script that makes `target_schema` on the target session like `source_schema` on the
+/// source session, in the target's dialect.
+#[tauri::command]
+pub async fn compare_schemas(
+    state: State<'_, AppState>,
+    source_session: u64,
+    source_schema: String,
+    target_session: u64,
+    target_schema: String,
+) -> CommandResult<DesignScript> {
+    let source_dialect = Dialect::from(state.session(source_session)?.config.driver);
+    let dialect = Dialect::from(state.session(target_session)?.config.driver);
+    if source_dialect != dialect {
+        return Err(CommandError::new(
+            "different_databases",
+            "Schemas can be compared only between databases of the same kind.",
+        ));
+    }
+    let source = state.live(source_session).await?;
+    let target = state.live(target_session).await?;
+    let wanted = platypus_schema::load_designs(source.as_ref(), dialect, &source_schema).await?;
+    let current = platypus_schema::load_designs(target.as_ref(), dialect, &target_schema).await?;
+    let script =
+        platypus_schema::compare(dialect, &target_schema, &source_schema, &wanted, &current)
+            .map_err(|e| CommandError::new("invalid_design", e))?;
+    Ok(DesignScript {
+        sql: script.text(),
+        script,
+    })
 }

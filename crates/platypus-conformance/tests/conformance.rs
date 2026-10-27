@@ -4433,3 +4433,99 @@ async fn qa_fixsql_manual_commit_survives_a_failed_statement() {
         assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("2"), "{}", b.name);
     }
 }
+
+/// The schema comparison creates two tables joined by a foreign key, the linter reads them
+/// back (the key has no index but in MySQL, which indexes every key), and a second
+/// comparison drops them again.
+#[tokio::test]
+async fn compares_and_lints_schemas() {
+    use platypus_schema::{ColumnDesign, ForeignKeyDesign, LintKind, TableDesign};
+    use platypus_sql::Dialect;
+
+    let _serial = SERIAL.lock().await;
+    let tables = ["conf_cmp_parent".to_owned(), "conf_cmp_child".to_owned()];
+    for b in backends().await.iter().filter(|b| b.keys()) {
+        let conn = b.connect().await;
+        let d = Dialect::from(b.config.driver);
+        drop_tables(&*conn, d, &b.schema, &tables).await;
+        let current = schema_designs(b, &*conn).await;
+        let mut wanted = current.clone();
+        wanted.push(TableDesign {
+            name: "conf_cmp_child".to_owned(),
+            columns: vec![
+                ColumnDesign {
+                    primary_key: true,
+                    ..design_column("id", "INT", false)
+                },
+                design_column("parent_id", "INT", true),
+            ],
+            foreign_keys: vec![ForeignKeyDesign {
+                name: "conf_cmp_child_parent".to_owned(),
+                columns: vec!["parent_id".to_owned()],
+                ref_schema: b.schema.clone(),
+                ref_table: "conf_cmp_parent".to_owned(),
+                ref_columns: vec!["id".to_owned()],
+                ..ForeignKeyDesign::default()
+            }],
+            ..TableDesign::default()
+        });
+        wanted.push(TableDesign {
+            name: "conf_cmp_parent".to_owned(),
+            columns: vec![ColumnDesign {
+                primary_key: true,
+                ..design_column("id", "INT", false)
+            }],
+            ..TableDesign::default()
+        });
+        let script = platypus_schema::compare(d, &b.schema, &b.schema, &wanted, &current)
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(script.statements.len(), 2, "{}: {}", b.name, script.text());
+        apply_script(b, &*conn, &script).await;
+
+        let read = platypus_schema::read_tables(&*conn, &b.schema, Some(&tables))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(read.len(), 2, "{}", b.name);
+        let findings = platypus_schema::lint(d, &b.schema, &read);
+        let unindexed = findings
+            .iter()
+            .any(|f| f.kind == LintKind::UnindexedForeignKey && f.table == "conf_cmp_child");
+        assert_eq!(unindexed, d != Dialect::MySql, "{}: {findings:?}", b.name);
+
+        let now = schema_designs(b, &*conn).await;
+        let same = platypus_schema::compare(d, &b.schema, &b.schema, &now, &now)
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(same.statements, Vec::<String>::new(), "{}", b.name);
+        let script = platypus_schema::compare(d, &b.schema, &b.schema, &current, &now)
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(script.statements.len(), 2, "{}: {}", b.name, script.text());
+        assert!(
+            script.statements[0].contains("conf_cmp_child"),
+            "{}",
+            b.name
+        );
+        apply_script(b, &*conn, &script).await;
+        drop_tables(&*conn, d, &b.schema, &tables).await;
+    }
+}
+
+async fn schema_designs(b: &Backend, conn: &dyn Connection) -> Vec<platypus_schema::TableDesign> {
+    let d = platypus_sql::Dialect::from(b.config.driver);
+    platypus_schema::load_designs(conn, d, &b.schema)
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name))
+}
+
+async fn apply_script(b: &Backend, conn: &dyn Connection, script: &platypus_schema::Script) {
+    platypus_schema::apply(conn, script)
+        .await
+        .unwrap_or_else(|e| {
+            panic!(
+                "{}: {}: {}\n{}",
+                b.name,
+                e.statement,
+                e.error,
+                script.text()
+            )
+        });
+}

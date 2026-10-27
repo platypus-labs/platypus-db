@@ -338,5 +338,8 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::schema::table_design,
         commands::schema::table_script,
         commands::schema::apply_table_script,
+        commands::schema::schema_tables,
+        commands::schema::lint_schema,
+        commands::schema::compare_schemas,
     ]
 }

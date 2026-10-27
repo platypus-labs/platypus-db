@@ -50,8 +50,8 @@ servers that speak the PostgreSQL protocol: **CockroachDB**, **YugabyteDB**, **T
 - **Know the schema**: object details, local notes and tags on tables and columns (`#pii` in the
   navigator's filter), the database's own comments, and documentation as Markdown or a single
   HTML file with an ER diagram.
-- **Design and tune**: a table editor that shows its `ALTER TABLE` first, a visual query
-  builder, query plans with a heatmap and index suggestions, and a query manager with the time
+- **Design and tune**: a table editor that shows its `ALTER TABLE` first, ER diagrams, a schema
+  check, a schema comparison that writes the migration script, a visual query builder, query plans with a heatmap and index suggestions, and a query manager with the time
   of every statement.
 - **Move data around**: import and export CSV, JSON, Parquet, Excel and more, copy tables and
   whole schemas between any two databases, generate fake rows.
@@ -289,6 +289,22 @@ actions, and UNIQUE and CHECK constraints. Saving shows the `CREATE TABLE` or `A
 script first and runs it in one transaction where the database can roll DDL back (MySQL
 commits each statement). SQLite and DuckDB, which alter little in place, get the table
 created again with its rows copied.
+
+### ER diagrams, schema check and schema comparison
+
+- **ER diagram**: right-click a schema, *ER diagram*, or some selected tables, *Show in ER
+  diagram*. Tables are laid out from their foreign keys, right of the tables they reference;
+  drag them where you want them, choose the tables with *Tables…*, add notes. The diagram is
+  kept with its tab and exports to SVG or PNG. A schema of more than 100 tables asks which
+  ones to show first.
+- **Check schema…**: tables without a primary key, foreign keys without an index, duplicate
+  indexes and indexes that another one starts with, foreign keys of another type than the
+  column they reference. The `CREATE INDEX` or `DROP INDEX` that fixes a finding opens in the
+  SQL editor, to review and run there.
+- **Compare with…**: pick another schema of the same kind of database, on this connection or
+  another one: the script that makes it like this one (tables created, altered and dropped,
+  in an order the foreign keys allow) opens in the SQL editor of that connection. Tables and
+  their parts are matched by name, so a renamed column is a dropped column and a new one.
 
 ### Visual query builder
 
@@ -575,7 +591,7 @@ crates/
   platypus-drivers/        drivers downloaded on first use: the dbc registry, Instant Client, IBM's ODBC driver
   platypus-tls/            rustls client configuration with libpq `sslmode` semantics
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
-  platypus-schema/         table designs for the table editor and the DDL between them
+  platypus-schema/         table designs, the DDL between them, schema linter and comparison
   platypus-net/            SSH tunnels (russh)
   platypus-store/          connections (TOML + OS keychain), imports, query history and catalog notes (SQLite)
   platypus-transfer/       streaming exports, imports, copies between databases, fake rows

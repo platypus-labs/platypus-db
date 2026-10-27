@@ -65,6 +65,21 @@ pub fn script(
     Ok(script)
 }
 
+/// `CREATE INDEX` of `index` on `schema.table`.
+pub(crate) fn create_index(
+    dialect: Dialect,
+    schema: &str,
+    table: &str,
+    index: &IndexDesign,
+) -> String {
+    Ddl { d: dialect, schema }.create_index(table, index)
+}
+
+/// `DROP INDEX` of the index `name` on `schema.table`.
+pub(crate) fn drop_index(dialect: Dialect, schema: &str, table: &str, name: &str) -> String {
+    Ddl { d: dialect, schema }.drop_index(table, name)
+}
+
 fn validate(design: &TableDesign) -> Result<(), String> {
     if design.name.trim().is_empty() {
         return Err("The table needs a name.".to_owned());

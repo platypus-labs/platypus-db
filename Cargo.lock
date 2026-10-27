@@ -5945,6 +5945,7 @@ dependencies = [
 name = "platypus-schema"
 version = "0.2.0"
 dependencies = [
+ "futures",
  "platypus-core",
  "platypus-sql",
  "serde",

@@ -6,3 +6,4 @@ import "./builder";
 import "./explain";
 import "./tableEditor";
 import "./diff";
+import "./erd";

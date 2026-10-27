@@ -99,7 +99,7 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 | F — Connettività e credenziali | ✅ fatto (P1, P2) |
 | G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
 | H — Import, export e trasferimento | ✅ fatto (P1; P2 e P3 in parte) |
-| I — Strumenti di schema | ✅ fatto (P1) |
+| I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
 | J — Amministrazione del server | 🔒 Delfa · group-j-admin · 2026-10-26 |
 | K — Shell ed ergonomia | ✅ fatto (P1, P2) |
 | L — Sicurezza operativa | ✅ fatto (P1, P2) |
@@ -437,7 +437,7 @@ schema copiato; nelle viste si riscrive ogni nome uguale allo schema seguito da 
 
 ### Gruppo I — Strumenti di schema
 
-**Stato: P1 completata** (editor tabella grafico). Il crate `platypus-schema` legge il design di
+**Stato: P1 e P2 completate, P3 in parte.** Editor tabella grafico (P1): il crate `platypus-schema` legge il design di
 una tabella (`load`: dettagli del driver più le azioni delle FK, gli `auto_increment` e i default
 letterali di MySQL, l'`AUTOINCREMENT` di SQLite) e genera lo script da un design all'altro
 (`script`): le parti cambiate si eliminano e si ricreano, le colonne si rinominano e si
@@ -449,21 +449,37 @@ trigger vanno ricreati a mano). `apply` esegue tutto in una transazione dove il 
 commenti di colonna non si scrivono in SQLite; le colonne generate e gli indici su espressioni
 restano come sono solo se non si toccano.
 
-**Area:** `apps/desktop/src/erd/` (tab `erd`), `apps/desktop/src/table-editor/`, nuovo crate `platypus-schema` (modello di schema, diff, DDL)
+Diagramma ER, linter (P2), diagrammi personalizzati e confronto schemi (P3): `platypus-schema` legge
+tutte le tabelle di uno schema (`read_tables`, `load_designs`, quattro alla volta, senza le
+partizioni). Il tab `erd` dispone le tabelle a colonne per profondità delle FK (quelle senza FK in
+una griglia sotto), le tabelle si trascinano e le posizioni, le tabelle scelte, le note e lo zoom
+restano con il tab; export SVG e PNG con `exportChart` del gruppo M; oltre 100 tabelle chiede
+prima quali mostrare. Il linter (`lint`) segnala tabelle senza PK, FK senza indice (un indice
+che inizia con le sue colonne, in qualunque ordine), indici duplicati e contenuti in un altro,
+tipi diversi tra FK e colonna referenziata (stesso schema), con il `CREATE INDEX`/`DROP INDEX`
+da aprire nell'editor. Il confronto (`compare`) abbina tabelle e parti per nome: le tabelle nuove
+si creano e quelle in più si eliminano nell'ordine delle FK, le altre passano per `script`;
+solo tra database dello stesso tipo, lo script si apre nell'editor della destinazione. Limiti:
+una colonna rinominata diventa eliminata e aggiunta; viste, routine e sequenze non si
+confrontano; le tabelle in più si eliminano dopo le modifiche alle altre (cambiare la PK di una
+tabella ancora referenziata da una che sparisce fallisce); il linter non vede il WHERE degli
+indici parziali né le colonne INCLUDE, e lo dice nel messaggio; i diagrammi vivono nel tab (chiuso il tab, il diagramma si perde).
+
+**Area:** `apps/desktop/src/erd/` (tab `erd`), `apps/desktop/src/schema/` (linter e confronto), `apps/desktop/src/table-editor/`, nuovo crate `platypus-schema` (modello di schema, diff, DDL)
 **Dipende da:** 0.3, 0.5; per il DDL completo serve il gruppo C
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Diagramma ER in sola lettura dalle FK, layout automatico, export PNG/SVG | P2 | D |
-| Diagrammi personalizzati: si scelgono le tabelle, con note | P3 | D |
+| ✅ Diagramma ER in sola lettura dalle FK, layout automatico, export PNG/SVG | P2 | D |
+| ✅ Diagrammi personalizzati: si scelgono le tabelle, con note | P3 | D |
 | ERD in modifica: si disegna lo schema e si genera il DDL | P3 | D+ |
 | ✅ **Editor tabella grafico**: crea e modifica colonne, indici, vincoli e FK, con anteprima dell'ALTER | P1 | D |
 | Creazione di viste, trigger, funzioni e sequenze da form | P3 | D |
-| **Confronto schemi** con script di migrazione | P3 | D+ |
+| ✅ **Confronto schemi** con script di migrazione | P3 | D+ |
 | **Confronto dati** tra due tabelle, con script di sincronizzazione | P3 | D+ |
 | Changelog Liquibase/Flyway generati dal confronto | P3 | D+ |
 | Timeline delle modifiche di schema (snapshot periodici e diff) | P3 | N |
-| 🆕 **Linter dello schema**: tabelle senza PK, FK senza indice, indici duplicati o contenuti in altri, tipi diversi tra FK e colonna referenziata | P2 | N |
+| ✅ **Linter dello schema**: tabelle senza PK, FK senza indice, indici duplicati o contenuti in altri, tipi diversi tra FK e colonna referenziata | P2 | N |
 | 🆕 Stato delle migrazioni di un progetto (Flyway, Liquibase, Prisma, Alembic, Rails): applicate, pendenti, divergenti | P3 | N |
 
 ---

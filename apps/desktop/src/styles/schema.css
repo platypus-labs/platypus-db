@@ -1,0 +1,98 @@
+/* Schema tools: the ER diagram tab, the schema linter and the schema comparison. */
+
+.erd .object-header {
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.erd-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.erd-canvas svg {
+  display: block;
+  user-select: none;
+}
+
+.erd-loading {
+  position: absolute;
+  margin: 14px;
+}
+
+.erd-table,
+.erd-note {
+  cursor: grab;
+}
+
+.erd-table:active,
+.erd-note:active {
+  cursor: grabbing;
+}
+
+.modal.erd-tables,
+.modal.schema-lint {
+  width: min(640px, calc(100vw - 32px));
+}
+
+.erd-table-list,
+.lint-findings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  max-height: 50vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.erd-table-list li label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 8px;
+}
+
+.lint-findings li {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.lint-findings li:last-child {
+  border-bottom: none;
+}
+
+.lint-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.lint-kind {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--warn);
+}
+
+.lint-kind.no_primary_key,
+.lint-kind.foreign_key_type_mismatch {
+  color: var(--error);
+}
+
+.lint-fix {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.lint-fix code {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
