@@ -444,10 +444,24 @@ export function QueryTab({
   }, [tab.database]);
 
   useEffect(() => {
-    if (!tab.autorun) return;
+    if (!tab.autorun) {
+      // A new editor takes the keys at once (Ctrl+T, New SQL script); a data viewer leaves
+      // them where they were, e.g. in the navigator.
+      if (active && !tab.table) editor.current?.focus();
+      return;
+    }
     onChange({ autorun: false });
     void run("statement");
   }, []);
+
+  // A data viewer restored at start reads its table's rows again once shown, as it did when
+  // opened: only while the editor holds one of the viewer's own queries, which only read.
+  const restoreRows = useRef(!tab.autorun && !!tab.table && viewerOwn.has(tab.sql));
+  useEffect(() => {
+    if (!active || !restoreRows.current) return;
+    restoreRows.current = false;
+    void run("statement");
+  }, [active]);
 
   // Changes to the results wait for one render every `RENDER_EVERY_MS`: a script of a thousand
   // statements would otherwise render every result tab for each event of each statement.
