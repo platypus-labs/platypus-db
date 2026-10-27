@@ -377,7 +377,7 @@ fn tsql_batch(w: &Words<'_>, main: usize, end: usize) -> Vec<Unfiltered> {
             || (w.is(i, CHANGES)
                 && !w.symbol(i - 1, ",")
                 && !w.is(i - 1, CLAUSE_BEFORE)
-                && !(w.is(i - 1, &["ON"]) && w.is(i + 1, ACTIONS)))
+                && (!w.is(i - 1, &["ON"]) || !w.is(i + 1, ACTIONS)))
     };
     let starts_statement =
         |i: usize| w.is(i, TSQL_STARTS) && (!w.is(i, CHANGES) || starts_change(i));
@@ -600,7 +600,10 @@ mod tests {
             changes_in("UPDATE qa_safe_g g JOIN qa_safe_h h ON 1 SET g.v = 1", my),
             ["UPDATE qa_safe_g"]
         );
-        assert!(changes_in("DELETE g FROM qa_safe_g g WHERE g.id = 1", my).is_empty());
+        assert_eq!(
+            changes_in("DELETE g FROM qa_safe_g g WHERE g.id = 1", my),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
@@ -633,7 +636,7 @@ mod tests {
             "UPDATE STATISTICS t",
             "DECLARE c CURSOR FOR SELECT a FROM t FOR UPDATE",
         ] {
-            assert!(changes_in(sql, ms).is_empty(), "{sql}");
+            assert_eq!(changes_in(sql, ms), Vec::<String>::new(), "{sql}");
         }
         // Statements a MySQL DELIMITER joined.
         assert_eq!(
@@ -644,19 +647,19 @@ mod tests {
             ["DELETE u"]
         );
         // A routine's body runs later.
-        assert!(
+        assert_eq!(
             changes_in(
                 "CREATE PROCEDURE p() BEGIN DELETE FROM u; END",
                 Dialect::MySql
-            )
-            .is_empty()
+            ),
+            Vec::<String>::new()
         );
-        assert!(
+        assert_eq!(
             changes_in(
                 "CREATE TRIGGER t AFTER INSERT ON a BEGIN UPDATE b SET n = 1; END",
                 Dialect::Sqlite
-            )
-            .is_empty()
+            ),
+            Vec::<String>::new()
         );
         // Whatever the server's string settings: NO_BACKSLASH_ESCAPES ends this string early,
         // and the WHERE is then in a comment.
@@ -725,10 +728,9 @@ mod tests {
             my("SELECT 1 /*! INTO OUTFILE '/tmp/x' */").kind,
             StatementKind::Dml
         );
-        assert!(
-            my("DELETE FROM t /*! WHERE id = 1 */")
-                .unfiltered
-                .is_empty()
+        assert_eq!(
+            changes_in("DELETE FROM t /*! WHERE id = 1 */", Dialect::MySql),
+            Vec::<String>::new()
         );
         assert_eq!(
             changes_in("DELETE FROM t /* WHERE id = 1 */", Dialect::MySql),
