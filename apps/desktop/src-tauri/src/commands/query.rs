@@ -27,6 +27,7 @@ pub async fn run_query(
     on_event: Channel<QueryEvent>,
 ) -> CommandResult<u64> {
     let keep = history.unwrap_or(true);
+    state.may_run(session_id, &sql)?;
     let conn = state.live(session_id).await?;
     let session = state.session(session_id)?;
     let history = Arc::clone(&state.history);

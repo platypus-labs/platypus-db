@@ -309,6 +309,15 @@ export type QueryEvent =
   | { type: "affected"; rows: number; elapsed_ms: number }
   | { type: "failed"; error: CommandError };
 
+export interface UnfilteredTable {
+  schema: string | null;
+  name: string;
+  /** `UPDATE`, `DELETE`, `TRUNCATE`, or mongosh's `updateMany`, `deleteMany`. */
+  verb: string;
+  /** SQL Server's `TOP (n)`: up to that many rows the database picks, not every one. */
+  limited: boolean;
+}
+
 /** Offsets are UTF-16 code units, like JavaScript string indices. */
 export interface StatementSpan {
   start: number;
@@ -316,8 +325,9 @@ export interface StatementSpan {
   read_only: boolean;
   /** `command` is a client command such as `@set x = 1`, run by the app. */
   kind: "query" | "dml" | "ddl" | "other" | "command";
-  /** An UPDATE or DELETE without WHERE, or a TRUNCATE: the table it changes in every row. */
-  unfiltered: { schema: string | null; name: string } | null;
+  /** The tables an UPDATE or DELETE without WHERE, or a TRUNCATE, changes in every row:
+   *  several for `TRUNCATE a, b` or a SQL Server batch. */
+  unfiltered: UnfilteredTable[];
   /** `:name`, `?` and `${name}` placeholders, in the same units as `start`. */
   parameters: ParameterSpan[];
 }
@@ -402,7 +412,8 @@ export type ObjectKind =
   | "domain"
   | "extension"
   | "event"
-  | "dictionary";
+  | "dictionary"
+  | "synonym";
 
 export interface ObjectMeta {
   name: string;
@@ -533,6 +544,10 @@ export interface TableDesign {
   foreign_keys: ForeignKeyDesign[];
   /** UNIQUE and CHECK constraints. */
   constraints: ConstraintDesign[];
+  /** SQLite's `WITHOUT ROWID`, `STRICT`, kept from the database. */
+  options?: string | null;
+  /** The table's `CREATE TRIGGER` statements (SQLite), run again when it is rebuilt. */
+  triggers?: string[];
 }
 
 export interface ColumnDesign {
@@ -546,6 +561,10 @@ export interface ColumnDesign {
   comment: string | null;
   /** Kept from the database, e.g. MySQL's `auto_increment`. */
   extra?: string | null;
+  /** `GENERATED ALWAYS AS (…) VIRTUAL` of a generated column, kept from the database. */
+  generated?: string | null;
+  /** A collation other than the default one, kept from the database. */
+  collation?: string | null;
 }
 
 export interface IndexDesign {
@@ -553,6 +572,8 @@ export interface IndexDesign {
   name: string;
   columns: string[];
   unique: boolean;
+  /** Its own `CREATE INDEX` (SQLite), run again while the index is unchanged. */
+  sql?: string | null;
 }
 
 export interface ForeignKeyDesign {
@@ -1036,10 +1057,12 @@ export interface ChartData {
   /** Bars and pie use `categories` and `values`; lines and scatter `points`, X as a number,
    *  milliseconds since the epoch or a category's position. */
   x_axis: "category" | "number" | "time";
-  categories: string[];
+  /** `null` is the category of SQL NULL, apart from the text "NULL". */
+  categories: (string | null)[];
   /** The last category gathers the ones left out. */
   other: boolean;
-  series: { name: string; values: number[]; points: [number, number][] }[];
+  /** A value is `null` where a category has no number to aggregate (no bar, not 0). */
+  series: { name: string; values: (number | null)[]; points: [number, number][] }[];
   rows: number;
   /** Points were reduced or categories gathered to keep the chart light. */
   reduced: boolean;

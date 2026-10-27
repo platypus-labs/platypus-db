@@ -316,8 +316,18 @@ impl Agent {
     /// The tables, views, routines and other objects of a schema.
     pub async fn list_objects(&self, connection: &str, schema: &str) -> Result<Value> {
         let lease = self.open(connection).await?;
-        let objects = timed(lease.conn().objects(schema)).await;
-        let objects = lease.settle(objects)?;
+        let conn = lease.conn();
+        // No objects may also mean no such schema: say so, rather than an empty list.
+        let objects = timed(async {
+            let objects = conn.objects(schema).await?;
+            let exists =
+                !objects.is_empty() || conn.schemas().await?.iter().any(|s| s.name == schema);
+            Ok::<_, Error>(exists.then_some(objects))
+        })
+        .await;
+        let objects = lease.settle(objects)?.ok_or_else(|| {
+            AgentError::NotFound(format!("`{connection}` has no schema `{schema}`"))
+        })?;
         Ok(json!(
             objects.iter().map(ObjectInfo::from).collect::<Vec<_>>()
         ))
@@ -331,8 +341,21 @@ impl Agent {
         table: &str,
     ) -> Result<Value> {
         let lease = self.open(connection).await?;
-        let details = timed(lease.conn().table_details(schema, table)).await;
-        lease.settle(details).map(|d| json!(d))
+        let conn = lease.conn();
+        // A missing table reads as one without columns: say so instead.
+        let details = timed(async {
+            let details = conn.table_details(schema, table).await?;
+            let exists = !details.columns.is_empty()
+                || conn.objects(schema).await?.iter().any(|o| o.name == table);
+            Ok::<_, Error>(exists.then_some(details))
+        })
+        .await;
+        let details = lease.settle(details)?.ok_or_else(|| {
+            AgentError::NotFound(format!(
+                "`{connection}` has no table or view `{schema}.{table}`"
+            ))
+        })?;
+        Ok(json!(details))
     }
 
     /// The `CREATE` statement of an object. Without `kind`, the object is looked up in

@@ -14,7 +14,7 @@ use crate::ddl::{self, Check, Column, ForeignKey, Index, Sequence};
 const D: Dialect = Dialect::SqlServer;
 
 /// The `sys.objects` types the navigator shows.
-const KINDS: &str = "'U', 'V', 'SO', 'FN', 'IF', 'TF', 'FS', 'FT', 'P', 'PC', 'TR', 'TA'";
+const KINDS: &str = "'U', 'V', 'SO', 'FN', 'IF', 'TF', 'FS', 'FT', 'P', 'PC', 'TR', 'TA', 'SN'";
 
 /// Groups rows of one constraint or index; names may contain any character.
 const SEPARATOR: char = '\u{1f}';
@@ -37,6 +37,7 @@ fn object_kind(code: &str) -> ObjectKind {
         "P" | "PC" | "X" => ObjectKind::Procedure,
         "TR" | "TA" => ObjectKind::Trigger,
         "TY" => ObjectKind::Type,
+        "SN" => ObjectKind::Synonym,
         _ => ObjectKind::Table,
     }
 }
@@ -558,6 +559,11 @@ pub async fn object_ddl(conn: &MssqlConnection, o: &ObjectRef<'_>) -> Result<Str
         }
         ObjectKind::Sequence => sequence_ddl(conn, &qualified, &id).await,
         ObjectKind::Type => type_ddl(conn, &qualified).await,
+        ObjectKind::Synonym => {
+            let sql = format!("SELECT base_object_name FROM sys.synonyms WHERE object_id = {id}");
+            let target = first_row(conn, &sql, &qualified).await?.text(0);
+            Ok(format!("CREATE SYNONYM {qualified} FOR {target};"))
+        }
         other => Err(unsupported(&format!("{other:?} objects in SQL Server"))),
     }
 }
@@ -616,7 +622,8 @@ pub async fn object_properties(conn: &MssqlConnection, o: &ObjectRef<'_>) -> Res
         | ObjectKind::Function
         | ObjectKind::Procedure
         | ObjectKind::Trigger
-        | ObjectKind::Sequence => (
+        | ObjectKind::Sequence
+        | ObjectKind::Synonym => (
             format!("SELECT o.type_desc, {common} FROM sys.objects o WHERE o.object_id = {id}"),
             &["Type", "Owner", "Created", "Modified"],
         ),
@@ -653,6 +660,7 @@ mod tests {
         assert_eq!(object_kind("TR"), ObjectKind::Trigger);
         assert_eq!(object_kind("SO"), ObjectKind::Sequence);
         assert_eq!(object_kind("TY"), ObjectKind::Type);
+        assert_eq!(object_kind("SN"), ObjectKind::Synonym);
     }
 
     #[test]

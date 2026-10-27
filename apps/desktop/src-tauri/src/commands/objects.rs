@@ -69,6 +69,7 @@ pub async fn execute_statement(
     session_id: u64,
     sql: String,
 ) -> CommandResult<Option<u64>> {
+    state.may_run(session_id, &sql)?;
     let conn = state.live(session_id).await?;
     match conn.execute(&sql, &ExecOptions::default()).await? {
         ExecResult::Affected { rows } => Ok(Some(rows)),
@@ -169,7 +170,7 @@ pub struct DialectSupport {
     renamable: Vec<ObjectKind>,
 }
 
-const ALL_KINDS: [ObjectKind; 13] = [
+const ALL_KINDS: [ObjectKind; 14] = [
     ObjectKind::Table,
     ObjectKind::View,
     ObjectKind::MaterializedView,
@@ -183,6 +184,7 @@ const ALL_KINDS: [ObjectKind; 13] = [
     ObjectKind::Extension,
     ObjectKind::Event,
     ObjectKind::Dictionary,
+    ObjectKind::Synonym,
 ];
 
 #[tauri::command]

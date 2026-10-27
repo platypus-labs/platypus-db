@@ -1,4 +1,4 @@
-import type { GuardRequest } from "./guards";
+import type { GuardRequest, UnfilteredChange } from "./guards";
 import { t, plural } from "../i18n";
 
 /** Statements listed at most; the rest are counted. */
@@ -8,6 +8,15 @@ const SHOWN = 20;
 export function preview(sql: string) {
   const line = sql.replace(/\s+/g, " ").trim();
   return line.length > 160 ? `${line.slice(0, 160)}…` : line;
+}
+
+/** What a change does to its table, after its verb: TRUNCATE has no WHERE, MongoDB has
+ *  filters and documents, SQL Server's TOP picks some rows. */
+function changeText(u: UnfilteredChange) {
+  if (u.verb === "TRUNCATE") return t("empties");
+  if (u.documents) return t("with an empty filter changes every document of");
+  if (u.limited) return t("without WHERE changes rows the database picks in");
+  return t("without WHERE changes every row of");
 }
 
 /** Asks before risky statements run, or says why they will not. */
@@ -21,9 +30,11 @@ export function GuardDialog({ request, onAnswer }: { request: GuardRequest; onAn
           <div className="notice warn small">
             {unfiltered.map((u, i) => (
               <div key={i}>
-                <strong>{preview(u.sql).split(" ")[0]?.toUpperCase()}</strong> {t("without WHERE changes every row of")}{" "}
-                <code>{u.table}</code>
-                {u.rows === null ? ` ${t("(row count unknown)")}` : `: ${plural(u.rows, "about {n} row", "about {n} rows")}`}.
+                <strong>{u.limited ? `${u.verb} TOP` : u.verb}</strong> {changeText(u)} <code>{u.table}</code>
+                {u.rows === null
+                  ? ` ${t("(row count unknown)")}`
+                  : `: ${u.documents ? plural(u.rows, "about {n} document", "about {n} documents") : plural(u.rows, "about {n} row", "about {n} rows")}`}
+                .
               </div>
             ))}
           </div>

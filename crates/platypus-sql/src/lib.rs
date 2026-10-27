@@ -19,7 +19,7 @@ pub mod pg_literal;
 mod rewrite;
 mod source;
 
-pub use analysis::{Analysis, StatementKind, TableName, analyze};
+pub use analysis::{Analysis, StatementKind, TableName, Unfiltered, analyze};
 pub use dialect::{Dialect, contains_pattern};
 pub use format::{FormatOptions, KeywordCase, format};
 pub use generate::ObjectName;

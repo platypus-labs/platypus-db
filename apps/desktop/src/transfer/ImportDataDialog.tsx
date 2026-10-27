@@ -361,8 +361,8 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
               <select value={target.connection.id} disabled={running} onChange={(e) => chooseConnection(e.target.value)}>
                 {workbench()
                   .connections()
-                  // MongoDB takes no SQL tables.
-                  .filter((c) => c.id === target.connection.id || (!opensDataFile(c) && !isMongo(c.driver)))
+                  // MongoDB takes no SQL tables, and read-only connections take no data.
+                  .filter((c) => c.id === target.connection.id || (!opensDataFile(c) && !isMongo(c.driver) && !c.read_only))
                   .map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -454,6 +454,9 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
         )}
         {!error && fileOptions.skip_bad_lines && preview && (
           <div className="notice warn small">{t("The lines with another number of values are left out.")}</div>
+        )}
+        {target.connection.read_only && (
+          <div className="notice warn small">{t("{name} is read-only: nothing is written there.", { name: target.connection.name })}</div>
         )}
         {preview && (
           <>
@@ -558,7 +561,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
               {t(status.state === "done" ? "Close" : "Cancel")}
             </button>
           )}
-          <button type="button" className="primary" disabled={!ready || running || status.state === "done"} onClick={request}>
+          <button type="button" className="primary" disabled={!ready || running || status.state === "done" || target.connection.read_only} onClick={request}>
             {t(transfer ? "Copy" : "Import")}
           </button>
         </div>

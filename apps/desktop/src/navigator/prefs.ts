@@ -78,7 +78,32 @@ export function toggleBookmark(b: Bookmark) {
   write({ ...prefs, bookmarks });
 }
 
-export const navigatorFilter = (connectionId: string): NavigatorFilter | undefined => prefs.filters[connectionId];
+/** Points the bookmarks of an object renamed from `from` to `to`, with the triggers that
+ *  name it as their table. */
+export function renameBookmarks(
+  where: Pick<Bookmark, "connectionId" | "database" | "schema" | "kind">,
+  from: string,
+  to: string,
+) {
+  const inSchema = (b: Bookmark) =>
+    b.connectionId === where.connectionId && b.database === where.database && b.schema === where.schema;
+  let changed = false;
+  const bookmarks = prefs.bookmarks.map((b) => {
+    if (!inSchema(b)) return b;
+    if (b.kind === where.kind && b.name === from) {
+      changed = true;
+      return { ...b, name: to };
+    }
+    if (b.kind === "trigger" && b.parent === from && where.kind === "table") {
+      changed = true;
+      return { ...b, parent: to };
+    }
+    return b;
+  });
+  if (changed) write({ ...prefs, bookmarks });
+}
+
+export const navigatorFilter =(connectionId: string): NavigatorFilter | undefined => prefs.filters[connectionId];
 
 /** `null` or empty patterns remove the connection's filter. */
 export function setNavigatorFilter(connectionId: string, filter: NavigatorFilter | null) {

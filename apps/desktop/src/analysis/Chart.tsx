@@ -8,6 +8,7 @@ import type { ChartKind } from "./chartConfig";
 import {
   arcPath,
   band,
+  categoryLabel,
   categoryTicks,
   extent,
   formatNumber,
@@ -16,6 +17,7 @@ import {
   niceDomain,
   niceTicks,
   pieAngles,
+  pieParts,
   timeTicks,
   truncate,
 } from "./chartScale";
@@ -70,6 +72,8 @@ interface ShapeProps {
   plot: Plot;
   color: (i: number) => string;
   colors: ChartColors;
+  /** Numbers as this language writes them. */
+  locale: string;
 }
 
 interface ChartProps {
@@ -82,11 +86,14 @@ interface ChartProps {
   otherLabel: string;
   /** The chart's accessible name. */
   label: string;
+  /** Numbers as this language writes them: the interface's. */
+  locale: string;
   ref?: Ref<SVGSVGElement>;
 }
 
-export function Chart({ data, kind, width, height, colors, otherLabel, label, ref }: ChartProps) {
-  const categories = data.other ? [...data.categories.slice(0, -1), otherLabel] : data.categories;
+export function Chart({ data, kind, width, height, colors, otherLabel, label, locale, ref }: ChartProps) {
+  const labels = data.categories.map(categoryLabel);
+  const categories = data.other ? [...labels.slice(0, -1), otherLabel] : labels;
   const plot: Plot = {
     left: MARGIN.left,
     right: Math.max(MARGIN.left + 10, width - MARGIN.right),
@@ -94,8 +101,10 @@ export function Chart({ data, kind, width, height, colors, otherLabel, label, re
     bottom: Math.max(MARGIN.top + 10, height - MARGIN.bottom),
   };
   const color = (i: number) => colors.series[i % colors.series.length] || colors.text;
-  const legend = kind === "pie" ? categories : data.series.length > 1 ? data.series.map((s) => s.name) : [];
-  const shapes = { data, categories, plot, color, colors };
+  // A pie's legend names the slices drawn, in their colours.
+  const slices = pieParts(data.series[0]?.values ?? []).drawn;
+  const legend = kind === "pie" ? slices.map((i) => categories[i] ?? "") : data.series.length > 1 ? data.series.map((s) => s.name) : [];
+  const shapes = { data, categories, plot, color, colors, locale };
   return (
     <svg
       ref={ref}
@@ -136,14 +145,14 @@ function Legend({ labels, color, colors, width }: { labels: string[]; color: (i:
   return <g className="chart-legend">{items}</g>;
 }
 
-function YAxis({ ticks, y, plot, colors }: { ticks: number[]; y: (v: number) => number; plot: Plot; colors: ChartColors }) {
+function YAxis({ ticks, y, plot, colors, locale }: { ticks: number[]; y: (v: number) => number; plot: Plot; colors: ChartColors; locale: string }) {
   return (
     <g className="chart-axis">
       {ticks.map((v) => (
         <g key={v}>
           <line x1={plot.left} x2={plot.right} y1={y(v)} y2={y(v)} stroke={colors.grid} />
           <text x={plot.left - 6} y={y(v) + 4} textAnchor="end" fill={colors.muted}>
-            {formatNumber(v)}
+            {formatNumber(v, locale)}
           </text>
         </g>
       ))}
@@ -151,19 +160,21 @@ function YAxis({ ticks, y, plot, colors }: { ticks: number[]; y: (v: number) => 
   );
 }
 
-function Bars({ data, categories, plot, color, colors }: ShapeProps) {
-  const values = data.series.flatMap((s) => s.values);
+function Bars({ data, categories, plot, color, colors, locale }: ShapeProps) {
+  const values = data.series.flatMap((s) => s.values).filter((v): v is number => v !== null);
   const [lo, hi] = niceDomain(Math.min(0, ...values), Math.max(0, ...values), 5);
   const y = linear([lo, hi], [plot.bottom, plot.top]);
   const outer = band(categories.length, plot.left, plot.right, 0.2);
   const inner = band(Math.max(1, data.series.length), 0, outer.width, 0.05);
-  const labelled = categoryTicks(categories.length, Math.max(1, Math.floor((plot.right - plot.left) / 70)));
+  const labelled = categoryTicks(categories.length, Math.max(1, Math.floor((plot.right - plot.left) / 70)), data.other);
   return (
     <g>
-      <YAxis ticks={niceTicks(lo, hi, 5)} y={y} plot={plot} colors={colors} />
+      <YAxis ticks={niceTicks(lo, hi, 5)} y={y} plot={plot} colors={colors} locale={locale} />
       {categories.map((label, i) =>
         data.series.map((s, k) => {
-          const v = s.values[i] ?? 0;
+          // No number to aggregate: no bar, rather than one of 0.
+          const v = s.values[i] ?? null;
+          if (v === null) return null;
           return (
             <rect
               key={`${i}-${k}`}
@@ -174,7 +185,7 @@ function Bars({ data, categories, plot, color, colors }: ShapeProps) {
               height={Math.abs(y(v) - y(0))}
               fill={color(k)}
             >
-              <title>{`${label} · ${s.name}: ${formatNumber(v)}`}</title>
+              <title>{`${label} · ${s.name}: ${formatNumber(v, locale)}`}</title>
             </rect>
           );
         }),
@@ -188,7 +199,7 @@ function Bars({ data, categories, plot, color, colors }: ShapeProps) {
   );
 }
 
-function Points({ data, kind, categories, plot, color, colors }: ShapeProps & { kind: ChartKind }) {
+function Points({ data, kind, categories, plot, color, colors, locale }: ShapeProps & { kind: ChartKind }) {
   const all = data.series.flatMap((s) => s.points);
   const [x0, x1] = extent(all.map((p) => p[0]));
   const [ylo, yhi] = extent(all.map((p) => p[1]));
@@ -199,10 +210,10 @@ function Points({ data, kind, categories, plot, color, colors }: ShapeProps & { 
   const ticks =
     data.x_axis === "time" ? timeTicks(x0, x1, room) : data.x_axis === "number" ? niceTicks(x0, x1, room) : categoryTicks(categories.length, room);
   const label = (v: number) =>
-    data.x_axis === "time" ? formatTime(v, x1 - x0) : data.x_axis === "number" ? formatNumber(v) : truncate(categories[Math.round(v)] ?? "", 14);
+    data.x_axis === "time" ? formatTime(v, x1 - x0) : data.x_axis === "number" ? formatNumber(v, locale) : truncate(categories[Math.round(v)] ?? "", 14);
   return (
     <g>
-      <YAxis ticks={niceTicks(lo, hi, 5)} y={y} plot={plot} colors={colors} />
+      <YAxis ticks={niceTicks(lo, hi, 5)} y={y} plot={plot} colors={colors} locale={locale} />
       {ticks.map((v) => (
         <text key={v} x={x(v)} y={plot.bottom + 16} textAnchor="middle" fill={colors.muted}>
           {label(v)}
@@ -230,7 +241,7 @@ function Points({ data, kind, categories, plot, color, colors }: ShapeProps & { 
                 fill={color(k)}
                 fillOpacity={kind === "scatter" ? 0.75 : 1}
               >
-                <title>{`${s.name} · ${label(a)}: ${formatNumber(b)}`}</title>
+                <title>{`${s.name} · ${label(a)}: ${formatNumber(b, locale)}`}</title>
               </circle>
             ))}
         </g>
@@ -239,20 +250,22 @@ function Points({ data, kind, categories, plot, color, colors }: ShapeProps & { 
   );
 }
 
-function Pie({ data, categories, plot, color, colors }: ShapeProps) {
-  const values = data.series[0]?.values ?? [];
+/** The slices of the first series' positive values; the others are left out (the chart's note
+ *  says which), so the colours follow the slices drawn, as the legend does. */
+function Pie({ data, categories, plot, color, colors, locale }: ShapeProps) {
+  const all = data.series[0]?.values ?? [];
+  const drawn = pieParts(all).drawn;
+  const values = drawn.map((i) => all[i] ?? 0);
   const r = Math.max(10, Math.min(plot.right - plot.left, plot.bottom - plot.top) / 2);
   const cx = (plot.left + plot.right) / 2;
   const cy = (plot.top + plot.bottom) / 2;
   return (
     <g>
-      {pieAngles(values).map(([a0, a1], i) =>
-        a1 > a0 ? (
-          <path key={i} className="chart-slice" d={arcPath(cx, cy, r, a0, a1)} fill={color(i)} stroke={colors.background}>
-            <title>{`${categories[i] ?? ""}: ${formatNumber(values[i] ?? 0)}`}</title>
-          </path>
-        ) : null,
-      )}
+      {pieAngles(values).map(([a0, a1], k) => (
+        <path key={k} className="chart-slice" d={arcPath(cx, cy, r, a0, a1)} fill={color(k)} stroke={colors.background}>
+          <title>{`${categories[drawn[k] ?? 0] ?? ""}: ${formatNumber(values[k] ?? 0, locale)}`}</title>
+        </path>
+      ))}
     </g>
   );
 }

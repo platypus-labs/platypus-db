@@ -23,8 +23,13 @@ test("nothing moves when nothing was renamed", () => {
 });
 
 test("a routine keeps its signature", () => {
-  assert.equal(renamedObject("f(integer, text)", "g"), "g(integer, text)");
-  assert.equal(renamedObject("f(integer)", "f"), null);
-  assert.equal(renamedObject("t", "u"), "u");
-  assert.equal(renamedObject("t", ""), null);
+  assert.equal(renamedObject("f(integer, text)", "g", true), "g(integer, text)");
+  assert.equal(renamedObject("f(integer)", "f", true), null);
+  assert.equal(renamedObject("t", "u", false), "u");
+  assert.equal(renamedObject("t", "", false), null);
+});
+
+test("a table's name is renamed whole, parentheses included", () => {
+  assert.equal(renamedObject("t(1)", "u", false), "u");
+  assert.equal(renamedObject("t(1)", "t(1)", false), null);
 });

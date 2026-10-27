@@ -99,14 +99,31 @@ impl Diff {
     }
 }
 
-/// Same column names and types, in the same order.
+/// Same column names, in the same order. Their types may differ: a driver that tells them
+/// from the values (SQLite's NUMERIC: integers in a run, floats in the next) changes them
+/// between runs of one statement, so the values are compared in a type both runs take
+/// (`common_type`).
 #[must_use]
 pub fn same_columns(a: &Schema, b: &Schema) -> bool {
     a.fields().len() == b.fields().len()
         && a.fields()
             .iter()
             .zip(b.fields())
-            .all(|(x, y)| x.name() == y.name() && x.data_type() == y.data_type())
+            .all(|(x, y)| x.name() == y.name())
+}
+
+/// The type the values of a column are compared in when it is `a` in one run and `b` in the
+/// other: that type when they agree, the other one beside NULL, a number type for two number
+/// types (whole numbers as `Decimal128(38, 0)`, others as `Float64`), else text as shown.
+fn common_type(a: &DataType, b: &DataType) -> DataType {
+    let integer = |t: &DataType| t.is_integer();
+    match (a, b) {
+        _ if a == b => a.clone(),
+        (DataType::Null, other) | (other, DataType::Null) => other.clone(),
+        _ if integer(a) && integer(b) => DataType::Decimal128(38, 0),
+        _ if a.is_numeric() && b.is_numeric() => DataType::Float64,
+        _ => DataType::Utf8,
+    }
 }
 
 /// What changed from `before` to `after`, rows matched by the `key` columns when given, else
@@ -124,9 +141,9 @@ pub fn diff(
     if let Some(&column) = key.and_then(|k| k.iter().find(|&&c| c >= width)) {
         return Err(LocalError::NoColumn(column));
     }
-    let whole = Encoder::new(after.schema, (0..width).collect())?;
+    let whole = Encoder::new(before.schema, after.schema, (0..width).collect())?;
     let keys = key
-        .map(|k| Encoder::new(after.schema, k.to_vec()))
+        .map(|k| Encoder::new(before.schema, after.schema, k.to_vec()))
         .transpose()?;
     let old = Run::new(before, &whole, keys.as_ref(), options)?;
     let new = Run::new(after, &whole, keys.as_ref(), options)?;
@@ -210,18 +227,23 @@ fn changed(
 struct Encoder {
     converter: RowConverter,
     columns: Vec<usize>,
-    /// Columns of a type the row format lacks, encoded as the text shown.
-    as_text: Vec<bool>,
+    /// The type each column is compared in; `None` for the text shown, for a type the row
+    /// format lacks or two types with nothing in common.
+    types: Vec<Option<DataType>>,
 }
 
 impl Encoder {
-    fn new(schema: &Schema, columns: Vec<usize>) -> Result<Self, ArrowError> {
-        let mut as_text = Vec::with_capacity(columns.len());
+    /// For the `columns` of a result that is `before` in one run and `after` in the other.
+    fn new(before: &Schema, after: &Schema, columns: Vec<usize>) -> Result<Self, ArrowError> {
+        let mut types = Vec::with_capacity(columns.len());
         let mut fields = Vec::with_capacity(columns.len());
         for &c in &columns {
-            let field = SortField::new(schema.field(c).data_type().clone());
-            let text = !RowConverter::supports_fields(std::slice::from_ref(&field));
-            as_text.push(text);
+            let (a, b) = (before.field(c).data_type(), after.field(c).data_type());
+            let common = common_type(a, b);
+            let field = SortField::new(common.clone());
+            let text = (common == DataType::Utf8 && a != b)
+                || !RowConverter::supports_fields(std::slice::from_ref(&field));
+            types.push((!text).then_some(common));
             fields.push(if text {
                 SortField::new(DataType::Utf8)
             } else {
@@ -231,7 +253,7 @@ impl Encoder {
         Ok(Self {
             converter: RowConverter::new(fields)?,
             columns,
-            as_text,
+            types,
         })
     }
 
@@ -246,14 +268,16 @@ impl Encoder {
             let arrays = self
                 .columns
                 .iter()
-                .zip(&self.as_text)
-                .map(|(&c, &text)| {
+                .zip(&self.types)
+                .map(|(&c, common)| {
                     let array = batch.column(c);
-                    if text {
-                        let texts = values::texts(array.as_ref(), options)?;
-                        Ok(Arc::new(StringArray::from(texts)) as ArrayRef)
-                    } else {
-                        Ok(Arc::clone(array))
+                    match common {
+                        None => {
+                            let texts = values::texts(array.as_ref(), options)?;
+                            Ok(Arc::new(StringArray::from(texts)) as ArrayRef)
+                        }
+                        Some(t) if t != array.data_type() => arrow_cast::cast(array, t),
+                        Some(_) => Ok(Arc::clone(array)),
                     }
                 })
                 .collect::<Result<Vec<_>, ArrowError>>()?;
@@ -414,7 +438,7 @@ impl<'a> Pending<'a> {
 mod tests {
     use std::time::{Duration, Instant};
 
-    use arrow_array::{Float64Array, Int32Array};
+    use arrow_array::{Float64Array, Int32Array, Int64Array, NullArray, UInt64Array};
     use arrow_schema::Field;
 
     use super::*;
@@ -588,12 +612,69 @@ mod tests {
         );
     }
 
+    /// `id` (Int32) and `v`, a column of `values`.
+    fn typed(values: ArrayRef) -> (Schema, Vec<RecordBatch>) {
+        let schema = Schema::new(vec![
+            Field::new("id", DataType::Int32, false),
+            Field::new("v", values.data_type().clone(), true),
+        ]);
+        let ids: ArrayRef = Arc::new(Int32Array::from_iter_values((1..).take(values.len())));
+        let batch = RecordBatch::try_new(Arc::new(schema.clone()), vec![ids, values]).unwrap();
+        (schema, vec![batch])
+    }
+
+    fn compare_typed(before: ArrayRef, after: ArrayRef) -> Diff {
+        let (s1, b1) = typed(before);
+        let (s2, b2) = typed(after);
+        let run = |schema, batches| Table {
+            schema,
+            batches,
+            complete: true,
+        };
+        diff(
+            run(&s1, &b1),
+            run(&s2, &b2),
+            Some(&[0]),
+            &FormatOptions::default(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_column_whose_type_changes_compares_by_value() {
+        // SQLite NUMERIC: integers in the first run, floats once a value is 2.5.
+        let d = compare_typed(
+            Arc::new(Int64Array::from(vec![10, 20])),
+            Arc::new(Float64Array::from(vec![10.0, 2.5])),
+        );
+        assert_eq!((d.added, d.removed, d.changed), (0, 0, 1));
+        assert_eq!(d.rows[0].values[1].as_deref(), Some("2.5"));
+        assert_eq!(d.rows[0].before, [(1, Some("20".to_owned()))]);
+        // Whole numbers of other widths, and NULL-typed then filled.
+        let d = compare_typed(
+            Arc::new(Int32Array::from(vec![1, 2])),
+            Arc::new(UInt64Array::from(vec![1, u64::MAX])),
+        );
+        assert_eq!(d.changed, 1);
+        let d = compare_typed(
+            Arc::new(NullArray::new(2)),
+            Arc::new(Int64Array::from(vec![None, Some(3)])),
+        );
+        assert_eq!(d.changed, 1);
+        // Nothing in common: compared as shown.
+        let d = compare_typed(
+            Arc::new(Int64Array::from(vec![1, 2])),
+            Arc::new(StringArray::from(vec!["1", "two"])),
+        );
+        assert_eq!(d.changed, 1);
+    }
+
     #[test]
     fn other_columns_or_keys_are_errors() {
         let (schema, batches) = table(&[(1, "a")]);
         let other = Schema::new(vec![
-            Field::new("id", DataType::Int64, false),
-            Field::new("name", DataType::Utf8, true),
+            Field::new("id", DataType::Int32, false),
+            Field::new("label", DataType::Utf8, true),
         ]);
         let options = FormatOptions::default();
         let this = Table {

@@ -193,8 +193,8 @@ impl PlatypusServer {
 
     #[tool(
         description = "Runs one SQL statement on a connection and returns its rows as an \
-        aligned text table (or JSON with format=json), saying when rows or long values were \
-        left out. Defaults: 100 rows, 32768 bytes, 30 s timeout; max_rows, max_bytes and \
+        aligned text table (or JSON with format=json, where integers beyond 2^53 are strings \
+        so that no JSON parser rounds them), saying when rows or long values were left out. Defaults: 100 rows, 32768 bytes, 30 s timeout; max_rows, max_bytes and \
         timeout_seconds raise them up to 10000 rows, 1048576 bytes and 300 s. On read_only \
         connections only statements that change nothing run, in a read-only transaction; on \
         read_write connections changes commit at once, and UPDATE or DELETE without WHERE is \

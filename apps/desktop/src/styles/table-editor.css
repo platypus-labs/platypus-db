@@ -39,3 +39,8 @@
 .table-editor .notice + .notice {
   margin-top: 6px;
 }
+
+/* A failed save lists the statements that stay applied, one per line. */
+.table-editor .notice.error {
+  white-space: pre-wrap;
+}

@@ -2,6 +2,7 @@
 //! database with [`load`], and the DDL that turns one design into another ([`script`]),
 //! `CREATE TABLE` for a new table. [`apply`] runs that script.
 
+mod create;
 mod ddl;
 
 use std::fmt::Write;
@@ -31,6 +32,14 @@ pub struct TableDesign {
     /// The table's comment; `None` for none.
     #[serde(default)]
     pub comment: Option<String>,
+    /// What follows the column list of SQLite's `CREATE TABLE`, kept when the table is created
+    /// again: `WITHOUT ROWID`, `STRICT`.
+    #[serde(default)]
+    pub options: Option<String>,
+    /// The `CREATE TRIGGER` statements of the table (SQLite), run again after it is created
+    /// again.
+    #[serde(default)]
+    pub triggers: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +58,13 @@ pub struct ColumnDesign {
     /// SQLite's `AUTOINCREMENT`.
     #[serde(default)]
     pub extra: Option<String>,
+    /// The clause that computes a generated column, as the column definition writes it:
+    /// `GENERATED ALWAYS AS (a * 2) VIRTUAL`. Such a column has no default.
+    #[serde(default)]
+    pub generated: Option<String>,
+    /// The column's collation where it is not the default one: `NOCASE`, `utf8mb4_bin`.
+    #[serde(default)]
+    pub collation: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,6 +73,10 @@ pub struct IndexDesign {
     pub name: String,
     pub columns: Vec<String>,
     pub unique: bool,
+    /// The index's own `CREATE INDEX` (SQLite), which can say more than its columns (an
+    /// expression, a `WHERE`, a collation): run again as it is while the index is unchanged.
+    #[serde(default)]
+    pub sql: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,6 +175,8 @@ pub fn design_of(dialect: Dialect, table: &str, details: &TableDetails) -> Table
                 primary_key: c.primary_key,
                 comment: c.comment.clone(),
                 extra: None,
+                generated: None,
+                collation: None,
             })
             .collect(),
         primary_key_name: details
@@ -171,6 +193,7 @@ pub fn design_of(dialect: Dialect, table: &str, details: &TableDetails) -> Table
                 name: i.name.clone(),
                 columns: i.columns.clone(),
                 unique: i.unique,
+                sql: None,
             })
             .collect(),
         foreign_keys: details
@@ -224,6 +247,8 @@ pub fn design_of(dialect: Dialect, table: &str, details: &TableDetails) -> Table
             })
             .collect(),
         comment: None,
+        options: None,
+        triggers: Vec::new(),
     }
 }
 
@@ -326,24 +351,86 @@ pub async fn load(
         }
     }
     match dialect {
-        Dialect::MySql => mysql_columns(conn, &mut design, &s, &t).await?,
-        Dialect::Sqlite => {
+        Dialect::MySql => {
+            mysql_columns(conn, &mut design, &s, &t).await?;
             let sql = format!(
-                "SELECT sql FROM {}.sqlite_master WHERE type = 'table' AND name = {t}",
-                dialect.quote_ident(schema)
+                "SHOW CREATE TABLE {}",
+                dialect.qualified(Some(schema), table)
             );
-            let rows = query_text(conn, &sql).await?;
-            let autoincrement = rows
-                .first()
-                .is_some_and(|r| r.text(0).to_ascii_uppercase().contains("AUTOINCREMENT"));
-            let mut keys = design.columns.iter_mut().filter(|c| c.primary_key);
-            if let (true, Some(key), None) = (autoincrement, keys.next(), keys.next()) {
-                key.extra = Some("AUTOINCREMENT".to_owned());
+            if let Some(create) = query_text(conn, &sql).await?.first().and_then(|r| r.opt(1)) {
+                apply_definition(&mut design, &create::parse(&create, dialect));
+            }
+            // ENGINE and the like stay as they are: MySQL alters tables in place.
+            design.options = None;
+        }
+        Dialect::Sqlite => sqlite_definitions(conn, &mut design, schema, &t).await?,
+        Dialect::DuckDb => {
+            let sql = format!(
+                "SELECT sql FROM duckdb_tables()
+                 WHERE database_name = current_database() AND schema_name = {s} AND table_name = {t}"
+            );
+            if let Some(create) = query_text(conn, &sql).await?.first().and_then(|r| r.opt(0)) {
+                apply_definition(&mut design, &create::parse(&create, dialect));
             }
         }
         _ => {}
     }
     Ok(design)
+}
+
+/// What the design keeps of a SQLite table beyond its details, read from the SQL SQLite keeps
+/// of it: `AUTOINCREMENT`, generated columns, collations, table options, the statements of
+/// its indexes and its triggers.
+async fn sqlite_definitions(
+    conn: &dyn Connection,
+    design: &mut TableDesign,
+    schema: &str,
+    table: &str,
+) -> Result<()> {
+    let sql = format!(
+        "SELECT type, name, sql FROM {}.sqlite_master
+         WHERE tbl_name = {table} AND type IN ('table', 'index', 'trigger') AND sql IS NOT NULL
+         ORDER BY type = 'table' DESC, name",
+        Dialect::Sqlite.quote_ident(schema)
+    );
+    for row in query_text(conn, &sql).await? {
+        let (kind, name, text) = (row.text(0), row.text(1), row.text(2));
+        match kind.as_str() {
+            "table" => {
+                let definition = create::parse(&text, Dialect::Sqlite);
+                apply_definition(design, &definition);
+                let mut keys = design.columns.iter_mut().filter(|c| c.primary_key);
+                if let (true, Some(key), None) =
+                    (definition.autoincrement, keys.next(), keys.next())
+                {
+                    key.extra = Some("AUTOINCREMENT".to_owned());
+                }
+            }
+            "index" => {
+                if let Some(index) = design.indexes.iter_mut().find(|i| i.name == name) {
+                    index.sql = Some(text);
+                }
+            }
+            _ => design.triggers.push(text),
+        }
+    }
+    Ok(())
+}
+
+/// Copies what a parsed `CREATE TABLE` says of its columns and options into `design`.
+fn apply_definition(design: &mut TableDesign, definition: &create::Definition) {
+    for parsed in &definition.columns {
+        let Some(column) = design.columns.iter_mut().find(|c| c.name == parsed.name) else {
+            continue;
+        };
+        if parsed.generated.is_some() {
+            // DuckDB reports the expression as the column's default.
+            column.default = None;
+            column.generated.clone_from(&parsed.generated);
+        }
+        column.collation.clone_from(&parsed.collation);
+    }
+    design.options.clone_from(&definition.options);
 }
 
 /// A referential action as the catalogs name it (`c`, `CASCADE`, `SET_NULL`), or `None` for
@@ -377,9 +464,21 @@ async fn mysql_columns(
         };
         let extra = row.text(1);
         let generated = extra.contains("DEFAULT_GENERATED");
+        // A generated column's `VIRTUAL GENERATED` is not syntax: its clause comes from
+        // SHOW CREATE TABLE below.
         let kept: Vec<&str> = extra
             .split_whitespace()
-            .filter(|w| !w.eq_ignore_ascii_case("DEFAULT_GENERATED"))
+            .filter(|w| {
+                ![
+                    "DEFAULT_GENERATED",
+                    "GENERATED",
+                    "VIRTUAL",
+                    "STORED",
+                    "PERSISTENT",
+                ]
+                .iter()
+                .any(|g| w.eq_ignore_ascii_case(g))
+            })
             .collect();
         column.extra = (!kept.is_empty()).then(|| kept.join(" "));
         let mariadb = row.flag(2);
@@ -418,6 +517,9 @@ fn is_bit_or_hex_literal(text: &str) -> bool {
 pub struct ApplyError {
     pub statement: String,
     pub error: Error,
+    /// The statements that ran before it and stay applied: a script that is not
+    /// transactional (MySQL, ClickHouse) cannot undo them.
+    pub applied: Vec<String>,
 }
 
 async fn exec(conn: &dyn Connection, sql: &str) -> Result<()> {
@@ -434,7 +536,13 @@ pub async fn apply(
 ) -> std::result::Result<(), Box<ApplyError>> {
     let fail = |statement: &str| {
         let statement = statement.to_owned();
-        move |error| Box::new(ApplyError { statement, error })
+        move |error| {
+            Box::new(ApplyError {
+                statement,
+                error,
+                applied: Vec::new(),
+            })
+        }
     };
     let autocommit = conn.transaction().autocommit;
     // SQLite ignores `PRAGMA foreign_keys` inside a transaction: dropping the old table would
@@ -454,12 +562,16 @@ pub async fn apply(
         Ok(())
     };
     if result.is_ok() {
-        for s in &script.statements {
+        for (i, s) in script.statements.iter().enumerate() {
             if let Err(e) = exec(conn, s).await {
                 if tx {
                     let _ = exec(conn, "ROLLBACK").await;
                 }
-                result = Err(fail(s)(e));
+                let mut error = fail(s)(e);
+                if !script.transactional {
+                    error.applied = script.statements[..i].to_vec();
+                }
+                result = Err(error);
                 break;
             }
         }

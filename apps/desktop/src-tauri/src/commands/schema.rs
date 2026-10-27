@@ -55,11 +55,25 @@ pub async fn apply_table_script(
     session_id: u64,
     script: Script,
 ) -> CommandResult<()> {
+    state.writable(session_id)?;
     let conn = state.live(session_id).await?;
     platypus_schema::apply(conn.as_ref(), &script)
         .await
         .map_err(|e| {
             let first_line = e.statement.lines().next().unwrap_or_default();
-            CommandError::from(&e.error).context(first_line)
+            let error = CommandError::from(&e.error).context(first_line);
+            if e.applied.is_empty() {
+                return error;
+            }
+            // What ran before cannot be undone: say what the table now has.
+            let applied: Vec<&str> = e.applied.iter().map(String::as_str).collect();
+            error.note(&format!(
+                "These statements ran before it and stay applied:
+{};",
+                applied.join(
+                    ";
+"
+                )
+            ))
         })
 }
