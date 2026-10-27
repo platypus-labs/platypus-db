@@ -249,7 +249,6 @@ fn action_clauses(
         let Some(action) = action else { continue };
         let taken = match target {
             Dialect::DuckDb => false,
-            // RESTRICT is SQL Server's NO ACTION.
             Dialect::SqlServer => action != "RESTRICT",
             Dialect::Oracle => {
                 event == "DELETE" && matches!(action.as_str(), "CASCADE" | "SET NULL")
@@ -258,7 +257,9 @@ fn action_clauses(
         };
         if taken {
             let _ = write!(clauses, " ON {event} {action}");
-        } else if !(target == Dialect::SqlServer && action == "RESTRICT") {
+        } else if action != "RESTRICT" {
+            // The targets without RESTRICT check their keys at once, which restricts already
+            // (MariaDB's catalog says RESTRICT of a key declared without an action).
             skipped.push(format!(
                 "{label}: {} has no ON {event} {action}; the key was copied without it",
                 database(target)
@@ -1306,14 +1307,17 @@ mod tests {
             clause(Dialect::Sqlite, &mut skipped),
             " ON DELETE CASCADE ON UPDATE RESTRICT"
         );
-        // SQL Server's NO ACTION restricts already.
+        // SQL Server's and DuckDB's keys restrict already.
         assert_eq!(
             clause(Dialect::SqlServer, &mut skipped),
             " ON DELETE CASCADE"
         );
         assert_eq!(skipped, Vec::<String>::new());
         assert_eq!(clause(Dialect::DuckDb, &mut skipped), "");
-        assert_eq!(skipped.len(), 2, "{skipped:?}");
+        assert_eq!(
+            skipped,
+            ["t.fk: DuckDB has no ON DELETE CASCADE; the key was copied without it"]
+        );
         assert_eq!(
             action_clauses(Dialect::MySql, None, "t.fk", &mut skipped),
             ""
