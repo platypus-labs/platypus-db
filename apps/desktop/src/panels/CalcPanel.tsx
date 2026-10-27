@@ -2,7 +2,7 @@ import { type RefObject, useEffect, useState } from "react";
 import { api, type ColumnInfo, type ColumnStats, toCommandError } from "../api";
 import type { GridApi } from "../grid/DataGrid";
 import { formatExact } from "../grid/exactNumber";
-import { t, plural } from "../i18n";
+import { formatCount, t, plural } from "../i18n";
 
 interface Props {
   jobId: number;
@@ -95,9 +95,9 @@ export function CalcPanel({ jobId, columns, grid, selection, onClose }: Props) {
 
 function lines(s: ColumnStats): [string, string][] {
   const out: [string, string][] = [
-    [t("Count"), s.values.toLocaleString()],
-    ["NULL", s.nulls.toLocaleString()],
-    [t("Distinct"), s.distinct.toLocaleString()],
+    [t("Count"), formatCount(s.values)],
+    ["NULL", formatCount(s.nulls)],
+    [t("Distinct"), formatCount(s.distinct)],
   ];
   const n = s.numbers;
   if (n) {

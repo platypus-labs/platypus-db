@@ -15,7 +15,7 @@ import { defineSetting, getSetting, useSetting } from "../settings";
 import { dropCached, loadCached, pruneCached, saveCached } from "../navigator/diskCache";
 import { FilterDialog } from "../navigator/FilterDialog";
 import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
-import { onNavigatorRefresh } from "../navigatorEvents";
+import { onNavigatorRefresh, onRevealConnection } from "../navigatorEvents";
 import { toggleSidebar, toggleSidebarTitle } from "../shell/sidebar";
 import { annotation, catalogEntry, catalogKey, parseFilter, useCatalogVersion } from "../catalog/catalog";
 import { openDocs } from "../catalog/DocsDialog";
@@ -345,9 +345,12 @@ export function Navigator(props: Props) {
   }
 
   /** Forgets everything loaded under `key` and reloads it if open (`open`: whether the
-   *  node showing it is expanded, when that node has another key). */
-  function refresh(key: string, reload: () => void, open = expanded.has(key)) {
-    updateCache((m) => new Map([...m].filter(([k]) => !isUnder(k, key))));
+   *  node showing it is expanded, when that node has another key). `schemasOnly` keeps what
+   *  a connection's key also holds besides its default database: the list of databases and
+   *  the other databases. */
+  function refresh(key: string, reload: () => void, open = expanded.has(key), schemasOnly = false) {
+    const under = schemasOnly ? (k: string) => k === key || k.startsWith(`${key}/`) : (k: string) => isUnder(k, key);
+    updateCache((m) => new Map([...m].filter(([k]) => !under(k))));
     if (open) reload();
   }
 
@@ -505,7 +508,8 @@ export function Navigator(props: Props) {
       connected: active.has(c.id),
       onToggle: () => toggle(ckey, () => void openConnection(c)),
       onOpen: () => onOpenTab(c),
-      ...status(ckey),
+      // Loading shows in the row below it; a failure marks the connection too.
+      ...(status(ckey).status === "error" ? status(ckey) : {}),
       menu: { scope: "navigator.connection", arg: { connection: c } },
       item: { kind: "connection", id: c.id },
       actions: (
@@ -643,7 +647,8 @@ export function Navigator(props: Props) {
     const schemas = loaded<SchemaMeta[]>(base);
     if (!schemas) {
       const s = status(base);
-      if (s.status) out.push({ key: `${base}#status`, depth, label: s.detail ?? "", muted: true, ...s });
+      // The text is the row's label: not repeated as its detail.
+      if (s.status) out.push({ key: `${base}#status`, depth, label: s.detail ?? "", muted: true, status: s.status });
       return out;
     }
     const hidden = prefs.filters[c.id];
@@ -926,16 +931,28 @@ export function Navigator(props: Props) {
   const current = anchor.current !== null && rows.some((r) => r.key === anchor.current) ? anchor.current : null;
 
   // A row moved by a shortcut loses the focus when React moves its element: give it back,
-  // shortly after the key only, so a later click elsewhere keeps its own.
+  // shortly after the key only, so a later click elsewhere keeps its own. A connection just
+  // made gets it the same way once its row shows, when its dialog has left the focus nowhere.
   const moved = useRef<{ key: string; at: number } | null>(null);
   const treeRef = useRef<HTMLUListElement>(null);
   useEffect(() => {
     if (!moved.current || document.activeElement !== document.body) return;
     const { key, at } = moved.current;
+    const index = rows.findIndex((r) => r.key === key);
+    if (index < 0 && Date.now() - at <= 2000) return;
     moved.current = null;
     if (Date.now() - at > 2000) return;
-    treeRef.current?.querySelector<HTMLElement>(`[data-row="${rows.findIndex((r) => r.key === key)}"]`)?.focus();
+    treeRef.current?.querySelector<HTMLElement>(`[data-row="${index}"]`)?.focus();
   });
+  useEffect(
+    () =>
+      onRevealConnection((id) => {
+        anchor.current = id;
+        setSelected(new Set([id]));
+        moved.current = { key: id, at: Date.now() };
+      }),
+    [],
+  );
 
   /** The tree from the keyboard: arrows move and open or close, Enter opens, the menu key
    *  shows the row's menu, as in a file explorer. */
@@ -1126,7 +1143,7 @@ export function Navigator(props: Props) {
             {...rowDropHandlers(row)}
             title={
               row.status === "error"
-                ? row.detail
+                ? (row.detail ?? row.label)
                 : (row.title ?? (row.detail ? `${row.label}  ${row.detail}` : undefined))
             }
             onClick={(e) => select(row.key, e)}
@@ -1193,7 +1210,7 @@ function withoutPrefix(set: Set<string>, key: string, children = false): Set<str
 
 interface NavigatorApi {
   props: Props;
-  refresh: (key: string, reload: () => void, open?: boolean) => void;
+  refresh: (key: string, reload: () => void, open?: boolean, schemasOnly?: boolean) => void;
   refreshConnection: (c: SavedConnection) => void;
   reloadDatabase: (c: SavedConnection, db: string | null, open?: boolean) => void;
   loadSchemas: (c: SavedConnection, db: string | null) => void;
@@ -1379,7 +1396,8 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       run: ({ connection, database, name }) => {
         const base = database === null ? connection.id : `${connection.id}@${database}`;
         const open = n().isOpen(`${connection.id}#db:${name}`) || database === null;
-        n().refresh(base, () => n().loadSchemas(connection, database), open);
+        // The default database's key is the connection's: its list of databases stays.
+        n().refresh(base, () => n().loadSchemas(connection, database), open, true);
         n().props.onRefresh(connection, database);
       },
     }),

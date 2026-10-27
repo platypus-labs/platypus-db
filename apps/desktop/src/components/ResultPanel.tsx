@@ -7,7 +7,7 @@ import { RowCache } from "../grid/RowCache";
 import { ChartView } from "../analysis/ChartView";
 import type { ChartConfig } from "../analysis/chartConfig";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
-import { t, plural } from "../i18n";
+import { formatCount, t, plural } from "../i18n";
 
 export type ResultStatus =
   | { kind: "pending" }
@@ -40,7 +40,8 @@ export interface Result {
   messages?: string[];
 }
 
-export const fmt = new Intl.NumberFormat();
+/** Counts as the interface's language groups them (see `formatCount`). */
+export const fmt = { format: formatCount };
 
 export function formatMs(ms: number) {
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s`;

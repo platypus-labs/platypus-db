@@ -52,9 +52,15 @@ export function tNodes(text: string, nodes: Record<string, ReactNode>): ReactNod
     .map((part, i) => createElement(Fragment, { key: i }, i % 2 ? (nodes[part] ?? `{${part}}`) : part));
 }
 
+/** A count grouped as the interface's language writes it ("1,500" in English, "1500" and
+ *  "100.000" in Italian), not as the operating system's does. */
+export function formatCount(n: number): string {
+  return n.toLocaleString(language() === "it" ? "it-IT" : "en-US");
+}
+
 /** `one` or `many` by `n`, translated, with `{n}` replaced: `plural(n, "{n} row", "{n} rows")`. */
 export function plural(n: number, one: string, many: string, vars?: Record<string, string | number>): string {
-  return t(n === 1 ? one : many, { ...vars, n: n.toLocaleString() });
+  return t(n === 1 ? one : many, { ...vars, n: formatCount(n) });
 }
 
 /** Marks text that is translated where it is shown, e.g. a label declared at load time, for

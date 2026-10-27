@@ -4,7 +4,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { type MutableRefObject, type RefObject, useState } from "react";
 import { api, toCommandError } from "../../api";
-import { t } from "../../i18n";
+import { formatCount, t } from "../../i18n";
 import { answerFor } from "../../testAnswers";
 import { ask } from "../../ui/ask";
 import type { Cell, GridApi } from "../DataGrid";
@@ -17,7 +17,7 @@ const LARGE_FILE = 50 * 1024 * 1024;
 /** Files above this size are not loaded (`MAX_CELL_FILE` in `commands/grid.rs`). */
 const MAX_FILE = 200 * 1024 * 1024;
 
-const megabytes = (size: number) => Math.round(size / (1024 * 1024)).toLocaleString();
+const megabytes = (size: number) => formatCount(Math.round(size / (1024 * 1024)));
 
 /** How loading a cell from a file ended: `cancelled` when the user gave up before anything
  *  was read, `failed` when it was reported in the edit bar. */

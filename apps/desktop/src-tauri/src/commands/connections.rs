@@ -379,13 +379,16 @@ pub struct SessionInfo {
 }
 
 /// Opens a session for a saved connection. `password` overrides the stored one, `database`
-/// the saved database (another database of the same server).
+/// the saved database (another database of the same server). A `side` session (the
+/// navigator's) stays in autocommit mode on production too: it has no Commit button, and its
+/// one-off changes commit once their dialog is confirmed.
 #[tauri::command]
 pub async fn open_session(
     state: State<'_, AppState>,
     connection_id: Uuid,
     password: Option<String>,
     database: Option<String>,
+    side: Option<bool>,
 ) -> CommandResult<SessionInfo> {
     // "Query with SQL" reaches its in-memory database through a connection that is not saved.
     if let Some((config, label)) = state.result_db_config(connection_id) {
@@ -411,7 +414,7 @@ pub async fn open_session(
         && saved.save_password
         && saved.password_command.is_none()
         && !saved.pgpass;
-    let production = saved.connection_type == Some(ConnectionType::Prod);
+    let production = saved.connection_type == Some(ConnectionType::Prod) && side != Some(true);
     let mut config = state.with_store(|s| Ok(config_of(s, &saved, secret, &SshSecrets::new())))?;
     let label = match &database {
         Some(database) => format!("{} · {database}", saved.name),

@@ -44,7 +44,7 @@ interface Props {
 const TYPING_PAUSE_MS = 250;
 
 /** Shows the statement an object action will run, lets the user adjust it, then runs it
- *  on the navigator session. */
+ *  on the navigator session, where it commits at once (on production too). */
 export function SqlActionDialog(props: Props) {
   const { connection, database, options } = props;
   const [cascade, setCascade] = useState(false);

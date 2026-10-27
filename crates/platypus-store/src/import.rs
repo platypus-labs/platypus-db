@@ -104,6 +104,9 @@ pub enum ImportNote {
     EntraAuth,
     /// A SQL Server named instance without a port: the port it listens on is needed.
     NamedInstance { instance: String },
+    /// The database file is not there (a relative path stays as it was written): it must be
+    /// chosen before connecting.
+    MissingFile { path: String },
 }
 
 impl ImportedProject {
@@ -225,7 +228,7 @@ pub fn import(source: ImportSource, path: &Path) -> Result<Vec<ImportedProject>>
         message,
     };
     let one = |connections| Ok(vec![ImportedProject::new(connections)]);
-    match source {
+    let mut projects = match source {
         ImportSource::Dbeaver => {
             let bytes = read(path)?;
             if bytes.starts_with(b"PK\x03\x04") {
@@ -248,7 +251,54 @@ pub fn import(source: ImportSource, path: &Path) -> Result<Vec<ImportedProject>>
             };
             one(datagrip(&read_text(path)?, &users))
         }
+    }?;
+    let base = project_folder(path);
+    for project in &mut projects {
+        locate_files(project, base);
     }
+    Ok(projects)
+}
+
+/// Where relative database files are looked for: the folder of a `.dbp` export, the project
+/// folder of a `data-sources.json` (`<project>/.dbeaver/`) or a `dataSources.xml`
+/// (`<project>/.idea/`).
+fn project_folder(path: &Path) -> Option<&Path> {
+    let parent = path.parent()?;
+    match parent.file_name().and_then(|n| n.to_str()) {
+        Some(".dbeaver" | ".idea") => parent.parent(),
+        _ => Some(parent),
+    }
+}
+
+/// Resolves the relative paths of database files against `base` when the file is there, and
+/// notes the files that are not: opening them would create an empty database instead.
+fn locate_files(project: &mut ImportedProject, base: Option<&Path>) {
+    for c in &mut project.connections {
+        let path = c.database.as_str();
+        let uri = path.starts_with("file:") || path.contains("://");
+        if !c.driver.is_embedded() || path.is_empty() || path == ":memory:" || uri {
+            continue;
+        }
+        let file = Path::new(path);
+        if file.has_root() || has_drive(path) {
+            if file.exists() {
+                continue;
+            }
+        } else if let Some(found) = base.map(|b| b.join(file)).filter(|f| f.is_file()) {
+            c.database = found.to_string_lossy().into_owned();
+            continue;
+        }
+        let note = ImportNote::MissingFile {
+            path: c.database.clone(),
+        };
+        project.notes.entry(c.id).or_default().push(note);
+    }
+}
+
+/// `C:/x.db` or `C:\x.db`: absolute on Windows, written so on any system.
+fn has_drive(path: &str) -> bool {
+    let b = path.as_bytes();
+    b.len() > 2 && b[0].is_ascii_alphabetic() && b[1] == b':' && matches!(b[2], b'/' | b'\\')
 }
 
 /// The saved logins of the workspace whose `data-sources.json` is at `path`.
@@ -895,6 +945,36 @@ mod tests {
         zip.write_all(b"select 1").unwrap();
         zip.finish().unwrap();
         path
+    }
+
+    #[test]
+    fn relative_files_are_found_in_the_project_folder_or_noted() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("proj").join(".dbeaver");
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::write(dir.path().join("proj").join("here.db"), b"").unwrap();
+        let json = config.join("data-sources.json");
+        std::fs::write(
+            &json,
+            r#"{"connections": {
+              "a": {"provider": "generic", "driver": "sqlite_jdbc", "name": "a", "configuration": {"url": "jdbc:sqlite:here.db"}},
+              "b": {"provider": "generic", "driver": "sqlite_jdbc", "name": "b", "configuration": {"url": "jdbc:sqlite:gone.db"}}}}"#,
+        )
+        .unwrap();
+        let project = import(ImportSource::Dbeaver, &json).unwrap().remove(0);
+        let (a, b) = (&project.connections[0], &project.connections[1]);
+        assert_eq!(
+            Path::new(&a.database),
+            dir.path().join("proj").join("here.db")
+        );
+        assert!(!project.notes.contains_key(&a.id));
+        assert_eq!(b.database, "gone.db");
+        assert_eq!(
+            project.notes[&b.id],
+            [ImportNote::MissingFile {
+                path: "gone.db".to_owned()
+            }]
+        );
     }
 
     #[test]

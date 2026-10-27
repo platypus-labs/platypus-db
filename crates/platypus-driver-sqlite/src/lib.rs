@@ -84,14 +84,19 @@ fn open(config: &ConnectionConfig) -> Result<rusqlite::Connection> {
     }
     let memory = path == ":memory:";
     // A new file in an existing folder is a new, empty database, as DuckDB makes one; a
-    // missing folder is more likely a typo or a drive not mounted.
+    // missing folder is more likely a typo or a drive not mounted. A relative path is never
+    // created: it would land wherever the program was started from (an imported connection
+    // whose file is elsewhere would open as an empty database).
     let uri = path.starts_with("file:");
     let file = Path::new(path);
-    let in_a_folder = file
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .is_none_or(Path::is_dir);
-    if !memory && !uri && !file.exists() && !in_a_folder {
+    let missing = !memory && !uri && !file.exists();
+    if missing && !file.has_root() {
+        return Err(Error::Connect(format!(
+            "{path} not found: a relative path is not created, give the full path of the file"
+        )));
+    }
+    let in_a_folder = file.parent().is_none_or(Path::is_dir);
+    if missing && !in_a_folder {
         return Err(Error::Connect(format!(
             "{path} does not exist, nor does its folder"
         )));
@@ -600,5 +605,40 @@ fn map_error(e: rusqlite::Error, sql: &str) -> Error {
             ..DbError::default()
         }),
         other => Error::Other(other.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config(path: &str) -> ConnectionConfig {
+        let mut config = ConnectionConfig::new(DriverKind::Sqlite);
+        path.clone_into(&mut config.database);
+        config
+    }
+
+    fn error(path: &str) -> String {
+        open(&config(path))
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn a_missing_relative_file_is_not_created() {
+        let name = format!("platypus-missing-{}.db", std::process::id());
+        assert!(error(&name).contains("relative path"));
+        assert!(!Path::new(&name).exists());
+    }
+
+    #[test]
+    fn a_missing_file_in_a_folder_is_a_new_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("new.db");
+        open(&config(path.to_str().unwrap())).unwrap();
+        assert!(path.exists());
+        let missing = dir.path().join("nope").join("x.db");
+        assert!(error(missing.to_str().unwrap()).contains("nor does its folder"));
     }
 }
