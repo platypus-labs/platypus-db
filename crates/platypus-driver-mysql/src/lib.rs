@@ -9,8 +9,8 @@ pub mod columns;
 mod explain;
 mod meta;
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, PoisonError};
 use std::time::Duration;
 
 use arrow_array::RecordBatch;
@@ -67,6 +67,7 @@ pub struct MySqlConnection {
     /// Whether the session's time zone is UTC, so that `TIMESTAMP` values are instants of
     /// it; read again after a statement that names `time_zone`.
     utc: Arc<AtomicBool>,
+    messages: Messages,
 }
 
 fn ssl_opts(config: &ConnectionConfig) -> Result<Option<SslOpts>> {
@@ -184,6 +185,7 @@ impl MySqlConnection {
                 opts,
                 connection_id: conn.id(),
                 timeout,
+                requested: Arc::new(AtomicBool::new(false)),
             },
             conn: Arc::new(Mutex::new(conn)),
             server: ServerInfo {
@@ -194,6 +196,7 @@ impl MySqlConnection {
             no_backslash_escapes: sql_mode.contains("NO_BACKSLASH_ESCAPES"),
             tx: TxTracker::default(),
             closed: Arc::new(AtomicBool::new(false)),
+            messages: Messages::default(),
             utc: Arc::new(AtomicBool::new(true)),
         })
     }
@@ -209,9 +212,42 @@ impl MySqlConnection {
     }
 }
 
+/// The warnings of the statements run, until `take_messages`.
+type Messages = Arc<std::sync::Mutex<Vec<String>>>;
+
+/// How a result of a statement starts, as its task tells the connection.
 enum Started {
     Affected(u64),
-    Rows(SchemaRef, mpsc::Receiver<Result<RecordBatch>>),
+    /// A result set: its rows, then what follows it.
+    Rows(
+        SchemaRef,
+        mpsc::Receiver<Result<RecordBatch>>,
+        oneshot::Receiver<Result<Option<Started>>>,
+    ),
+}
+
+/// Where a task sends the next result of its statement; `None` when there is no other.
+type Reply = oneshot::Sender<Result<Option<Started>>>;
+
+impl Started {
+    fn into_result(self) -> ExecResult {
+        match self {
+            Self::Affected(rows) => ExecResult::Affected { rows },
+            Self::Rows(schema, mut rx, next) => {
+                let stream = futures::stream::poll_fn(move |cx| rx.poll_recv(cx));
+                let next: platypus_core::NextResult = Box::pin(async move {
+                    match next.await {
+                        Ok(Ok(Some(started))) => Ok(Some(started.into_result())),
+                        Ok(Ok(None)) | Err(_) => Ok(None),
+                        Ok(Err(e)) => Err(e),
+                    }
+                });
+                ExecResult::Rows(
+                    RecordBatchStream::new(schema, stream.boxed()).with_next(Some(next)),
+                )
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -233,6 +269,10 @@ impl Connection for MySqlConnection {
 
     fn is_closed(&self) -> bool {
         self.closed.load(Ordering::Acquire)
+    }
+
+    fn take_messages(&self) -> Vec<String> {
+        std::mem::take(&mut *self.messages.lock().unwrap_or_else(PoisonError::into_inner))
     }
 
     /// `COM_PING`, which opens no transaction. The socket of a session the server closed
@@ -358,17 +398,17 @@ impl MySqlConnection {
         let mut conn = Arc::clone(&self.conn).lock_owned().await;
         let (reply, started) = oneshot::channel();
         let sql = sql.to_owned();
-        let batch_size = options.batch_size.max(1);
-        let canceller = self.canceller.clone();
-        let closed = Arc::clone(&self.closed);
         // Read under the lock: a statement that changed the zone has updated it by now.
         let utc = Arc::clone(&self.utc);
-        let in_utc = utc.load(Ordering::Acquire);
+        let task = Task {
+            batch_size: options.batch_size.max(1),
+            canceller: self.canceller.clone(),
+            closed: Arc::clone(&self.closed),
+            utc: utc.load(Ordering::Acquire),
+            messages: Arc::clone(&self.messages),
+        };
         tokio::spawn(async move {
-            run(
-                &mut conn, &sql, batch_size, reply, &canceller, &closed, in_utc,
-            )
-            .await;
+            run(&mut conn, &sql, &task, reply).await;
             if names_time_zone(&sql)
                 && let Some(in_utc) = session_in_utc(&mut conn).await
             {
@@ -376,31 +416,19 @@ impl MySqlConnection {
             }
         });
         match started.await.map_err(|_| Error::Closed)?? {
-            Started::Affected(rows) => Ok(ExecResult::Affected { rows }),
-            Started::Rows(schema, mut rx) => {
-                let stream = futures::stream::poll_fn(move |cx| rx.poll_recv(cx));
-                Ok(ExecResult::Rows(RecordBatchStream::new(
-                    schema,
-                    stream.boxed(),
-                )))
-            }
+            Some(started) => Ok(started.into_result()),
+            None => Ok(ExecResult::Affected { rows: 0 }),
         }
     }
 }
 
-/// Runs one statement on the locked connection: answers with its kind, then streams the
-/// rows. A consumer that goes away gets its query killed and the rest of it drained, so
-/// the connection is clean before the lock is released.
-async fn run(
-    conn: &mut Conn,
-    sql: &str,
-    batch_size: usize,
-    reply: oneshot::Sender<Result<Started>>,
-    canceller: &MySqlCanceller,
-    closed: &AtomicBool,
-    utc: bool,
-) {
-    let fail = |e: mysql_async::Error| lost(map_error_in(e, sql), closed);
+/// Runs one statement on the locked connection: answers with its first result, then streams
+/// the rows of each result set in turn (a `CALL` may return several). A consumer that goes
+/// away gets its query killed and the rest of it drained, so the connection is clean before
+/// the lock is released; one that stops asking for the next result leaves the rest unread.
+async fn run(conn: &mut Conn, sql: &str, task: &Task, reply: Reply) {
+    task.canceller.requested.store(false, Ordering::Release);
+    let fail = |e: mysql_async::Error| lost(map_error_in(e, sql), &task.closed);
     let mut result = match conn.query_iter(sql).await {
         Ok(result) => result,
         Err(e) => {
@@ -411,71 +439,183 @@ async fn run(
     if result.columns_ref().is_empty() {
         let rows = result.affected_rows();
         let drained = result.drop_result().await;
-        let _ = reply.send(drained.map(|()| Started::Affected(rows)).map_err(fail));
+        task.keep_warnings(conn).await;
+        let answer = match drained {
+            // `KILL QUERY` ends `SLEEP()` and the like as if they were done.
+            Ok(()) if task.canceller.requested.load(Ordering::Acquire) => Err(Error::Cancelled),
+            Ok(()) => Ok(Some(Started::Affected(rows))),
+            Err(e) => Err(fail(e)),
+        };
+        let _ = reply.send(answer);
         return;
     }
-    let mut stream = match result.stream::<Row>().await {
-        Ok(Some(stream)) => stream,
-        Ok(None) => {
-            let _ = reply.send(Ok(Started::Affected(0)));
-            return;
-        }
-        Err(e) => {
-            let _ = reply.send(Err(fail(e)));
-            return;
-        }
-    };
-
-    let (fields, mut builders): (Vec<_>, Vec<_>) = stream
-        .columns_ref()
-        .iter()
-        .map(|c| column_builder(&ColumnSpec::from(c), utc))
-        .unzip();
-    let schema: SchemaRef = Arc::new(Schema::new(fields));
-    let (tx, rx) = mpsc::channel(1);
-    let mut abandoned = reply
-        .send(Ok(Started::Rows(Arc::clone(&schema), rx)))
-        .is_err();
-
-    let mut len = 0;
-    while !abandoned {
-        let row = tokio::select! {
-            () = tx.closed() => {
-                abandoned = true;
+    let mut reply = Some(reply);
+    let mut first = true;
+    // The rows of the last result set end once the warnings are read: they come first.
+    let mut last: Option<mpsc::Sender<Result<RecordBatch>>> = None;
+    let mut abandoned = false;
+    loop {
+        let mut stream = match result.stream::<Row>().await {
+            Ok(Some(stream)) => stream,
+            Ok(None) => break,
+            Err(e) => {
+                let error = fail(e);
+                match (last.take(), reply.take()) {
+                    (_, Some(to)) => {
+                        let _ = to.send(Err(error));
+                    }
+                    (Some(tx), None) => {
+                        let _ = tx.send(Err(error)).await;
+                    }
+                    (None, None) => {}
+                }
                 break;
             }
-            row = stream.next() => row,
         };
-        // `last`: nothing more will be sent; `kill`: the server is still sending rows.
-        let (batch, last, kill) = match row {
-            Some(Ok(row)) => match append_row(&mut builders, &schema, &row) {
-                Ok(()) => {
-                    len += 1;
-                    if len < batch_size {
-                        continue;
-                    }
-                    (finish(&mut builders, &schema), false, false)
-                }
-                Err(e) => (Err(e), true, true),
-            },
-            Some(Err(e)) => (Err(fail(e)), true, false),
-            None if len > 0 => (finish(&mut builders, &schema), true, false),
-            None => break,
+        // The OK packet that ends a `CALL`.
+        if stream.columns_ref().is_empty() {
+            continue;
+        }
+        let (fields, builders): (Vec<_>, Vec<_>) = stream
+            .columns_ref()
+            .iter()
+            .map(|c| column_builder(&ColumnSpec::from(c), task.utc))
+            .unzip();
+        let schema: SchemaRef = Arc::new(Schema::new(fields));
+        let Some(to) = reply.take() else {
+            // Nobody asks for this result: read it to the end unseen.
+            while let Some(Ok(_)) = stream.next().await {}
+            continue;
         };
-        len = 0;
-        abandoned = tx.send(batch).await.is_err() || kill;
-        if last {
+        let (tx, rx) = mpsc::channel(1);
+        let (next, follows) = oneshot::channel();
+        drop(last.take());
+        if to
+            .send(Ok(Some(Started::Rows(Arc::clone(&schema), rx, follows))))
+            .is_err()
+        {
+            abandoned = first;
+            if abandoned {
+                break;
+            }
+            while let Some(Ok(_)) = stream.next().await {}
+            continue;
+        }
+        first = false;
+        reply = Some(next);
+        let mut sink = Sink {
+            schema,
+            builders,
+            tx,
+        };
+        abandoned = sink.stream(&mut stream, task, &fail).await;
+        if abandoned {
             break;
         }
+        last = Some(sink.tx);
     }
 
     if abandoned {
-        let _ = canceller.cancel().await;
+        let _ = task.canceller.cancel().await;
     }
-    drop(stream);
-    // Reads whatever is left, including further result sets; errors (such as the one
-    // caused by the kill) only matter to a consumer that is gone.
+    // Reads whatever is left; errors (such as the one caused by the kill) only matter to a
+    // consumer that is gone.
     let _ = result.drop_result().await;
+    if !abandoned {
+        task.keep_warnings(conn).await;
+    }
+    drop(last);
+    if let Some(to) = reply.take() {
+        let _ = to.send(Ok(None));
+    }
+}
+
+/// What a statement's task needs besides the connection.
+struct Task {
+    batch_size: usize,
+    canceller: MySqlCanceller,
+    closed: Arc<AtomicBool>,
+    /// The session's zone is UTC (see `columns`).
+    utc: bool,
+    messages: Messages,
+}
+
+impl Task {
+    /// Keeps the warnings of the statement just run for `take_messages`.
+    async fn keep_warnings(&self, conn: &mut Conn) {
+        if conn.get_warnings() == 0 {
+            return;
+        }
+        let Ok(rows) = conn
+            .query::<(String, Option<u32>, String), _>("SHOW WARNINGS")
+            .await
+        else {
+            return;
+        };
+        self.messages
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .extend(rows.into_iter().map(|(level, code, message)| match code {
+                Some(code) => format!("{level} {code}: {message}"),
+                None => format!("{level}: {message}"),
+            }));
+    }
+}
+
+/// The rows of a result set on their way to the consumer.
+struct Sink {
+    schema: SchemaRef,
+    builders: Vec<ColumnBuilder>,
+    tx: mpsc::Sender<Result<RecordBatch>>,
+}
+
+impl Sink {
+    /// Sends the rows of `stream` in batches; `true` when the consumer went away or the
+    /// statement must be killed.
+    async fn stream(
+        &mut self,
+        stream: &mut (impl futures::Stream<Item = mysql_async::Result<Row>> + Unpin),
+        task: &Task,
+        fail: &impl Fn(mysql_async::Error) -> Error,
+    ) -> bool {
+        let mut len = 0;
+        loop {
+            let row = tokio::select! {
+                () = self.tx.closed() => return true,
+                row = stream.next() => row,
+            };
+            // `last`: nothing more will be sent; `kill`: the server is still sending rows.
+            let (batch, last, kill) = match row {
+                Some(Ok(row)) => match append_row(&mut self.builders, &self.schema, &row) {
+                    Ok(()) => {
+                        len += 1;
+                        if len < task.batch_size {
+                            continue;
+                        }
+                        (finish(&mut self.builders, &self.schema), false, false)
+                    }
+                    Err(e) => (Err(e), true, true),
+                },
+                Some(Err(e)) => (Err(fail(e)), true, false),
+                None if len > 0 => (finish(&mut self.builders, &self.schema), true, false),
+                None => return false,
+            };
+            len = 0;
+            // `KILL QUERY` ends `SELECT SLEEP()` with a row, as if it were done.
+            let batch = if task.canceller.requested.load(Ordering::Acquire) {
+                Err(Error::Cancelled)
+            } else {
+                batch
+            };
+            let cancelled = batch.is_err();
+            if self.tx.send(batch).await.is_err() || kill {
+                return true;
+            }
+            if last || cancelled {
+                return false;
+            }
+        }
+    }
 }
 
 fn append_row(builders: &mut [ColumnBuilder], schema: &Schema, row: &Row) -> Result<()> {
@@ -516,11 +656,15 @@ struct MySqlCanceller {
     opts: Opts,
     connection_id: u32,
     timeout: Duration,
+    /// A cancel was asked during the running statement, which `KILL QUERY` may end as if
+    /// it were done (`SLEEP()` returns 1): it reports itself cancelled.
+    requested: Arc<AtomicBool>,
 }
 
 #[async_trait]
 impl Canceller for MySqlCanceller {
     async fn cancel(&self) -> Result<()> {
+        self.requested.store(true, Ordering::Release);
         let mut conn = open(self.opts.clone(), self.timeout).await?;
         let killed = conn
             .query_drop(format!("KILL QUERY {}", self.connection_id))

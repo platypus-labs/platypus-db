@@ -124,6 +124,61 @@ impl PlanNode {
     }
 }
 
+/// The tree of a plan the database writes as indented text: `step` tells, for each line,
+/// whether it starts a step, at which column (deeper columns are children of the step above)
+/// and with which operation. Other lines are properties of the step above them (`key: value`),
+/// or of the plan when no step came yet. Several top-level steps hang under one `Plan`.
+#[must_use]
+pub fn plan_from_text(text: &str, step: impl Fn(&str) -> Option<(usize, String)>) -> PlanNode {
+    // The open steps, deepest last, with their columns.
+    let mut open: Vec<(usize, PlanNode)> = Vec::new();
+    let mut tops: Vec<PlanNode> = Vec::new();
+    let mut loose: Vec<(String, String)> = Vec::new();
+    let close = |open: &mut Vec<(usize, PlanNode)>, tops: &mut Vec<PlanNode>| {
+        if let Some((_, node)) = open.pop() {
+            match open.last_mut() {
+                Some((_, parent)) => parent.children.push(node),
+                None => tops.push(node),
+            }
+        }
+    };
+    for line in text.lines() {
+        if let Some((column, operation)) = step(line) {
+            while open.last().is_some_and(|(c, _)| *c >= column) {
+                close(&mut open, &mut tops);
+            }
+            open.push((column, PlanNode::new(operation)));
+            continue;
+        }
+        let property = line.trim().trim_start_matches(['│', '|']).trim();
+        if property.is_empty() {
+            continue;
+        }
+        let pair = match property.split_once(": ") {
+            Some((key, value)) => (key.trim().to_owned(), value.trim().to_owned()),
+            None => (String::new(), property.to_owned()),
+        };
+        match open.last_mut() {
+            Some((_, node)) => node.properties.push(pair),
+            None => loose.push(pair),
+        }
+    }
+    while !open.is_empty() {
+        close(&mut open, &mut tops);
+    }
+    let mut root = if tops.len() == 1 {
+        tops.remove(0)
+    } else {
+        PlanNode {
+            children: tops,
+            ..PlanNode::new("Plan")
+        }
+    };
+    loose.append(&mut root.properties);
+    root.properties = loose;
+    root
+}
+
 /// Runs a plan request and returns the plan document: the first column of its rows, one
 /// line each. With `analyze` the request executes the statement, so it runs in a
 /// transaction rolled back afterwards (a savepoint inside an open one): what the statement
@@ -205,6 +260,45 @@ mod tests {
             (plain.root.self_cost, plain.root.self_ms),
             (Some(3.0), None)
         );
+    }
+
+    #[test]
+    fn reads_plans_written_as_indented_text() {
+        let indent = |line: &str| {
+            let text = line.trim_start();
+            (!text.is_empty()).then(|| (line.len() - text.len(), text.to_owned()))
+        };
+        let clickhouse =
+            "Expression (Project names)\n  Filter (WHERE)\n    ReadFromSystemNumbers\n  Sort";
+        let root = plan_from_text(clickhouse, indent);
+        assert_eq!(root.operation, "Expression (Project names)");
+        let ops: Vec<_> = root.children.iter().map(|c| c.operation.as_str()).collect();
+        assert_eq!(ops, ["Filter (WHERE)", "Sort"]);
+        assert_eq!(
+            root.children[0].children[0].operation,
+            "ReadFromSystemNumbers"
+        );
+
+        let bullet = |line: &str| {
+            let at = line.find('•')?;
+            Some((
+                line[..at].chars().count(),
+                line[at + '•'.len_utf8()..].trim().to_owned(),
+            ))
+        };
+        let cockroach = "distribution: local\n\n• filter\n│ filter: x > 1\n│\n└── • scan\n      table: t@t_pkey";
+        let root = plan_from_text(cockroach, bullet);
+        assert_eq!(root.operation, "filter");
+        assert_eq!(
+            root.properties,
+            [
+                ("distribution".to_owned(), "local".to_owned()),
+                ("filter".to_owned(), "x > 1".to_owned())
+            ]
+        );
+        assert_eq!(root.children[0].operation, "scan");
+        assert_eq!(root.children[0].properties[0].1, "t@t_pkey");
+        assert_eq!(plan_from_text("a\nb", indent).children.len(), 2, "two tops");
     }
 
     #[test]

@@ -32,6 +32,44 @@ pub async fn explain(conn: &PgConnection, sql: &str, analyze: bool) -> Result<Ex
     Ok(Explain::new(ExplainFormat::Json, plan, root, analyze))
 }
 
+/// CockroachDB's `EXPLAIN [ANALYZE]`: a text tree whose steps start with `•`, their
+/// details on the lines below.
+pub async fn cockroach(conn: &PgConnection, sql: &str, analyze: bool) -> Result<Explain> {
+    let prefix = if analyze {
+        "EXPLAIN ANALYZE"
+    } else {
+        "EXPLAIN"
+    };
+    let plan = explain_document(conn, &format!("{prefix} {sql}"), analyze).await?;
+    let mut root = platypus_core::plan_from_text(&plan, |line| {
+        let at = line.find('•')?;
+        let operation = line[at + '•'.len_utf8()..].trim().to_owned();
+        Some((line[..at].chars().count(), operation))
+    });
+    cockroach_figures(&mut root);
+    Ok(Explain::new(ExplainFormat::Text, plan, root, analyze))
+}
+
+/// The table and the row counts of a CockroachDB step, from its detail lines.
+fn cockroach_figures(node: &mut PlanNode) {
+    let count = |text: &str| {
+        text.split_whitespace()
+            .next()
+            .and_then(|n| n.replace(',', "").parse::<f64>().ok())
+    };
+    for (key, value) in &node.properties {
+        match key.as_str() {
+            "table" => node.detail = Some(value.clone()),
+            "estimated row count" => node.rows = count(value),
+            "actual row count" => node.actual_rows = count(value),
+            _ => {}
+        }
+    }
+    for child in &mut node.children {
+        cockroach_figures(child);
+    }
+}
+
 fn parse(plan: &str) -> Result<PlanNode> {
     let unreadable = || Error::Other("unreadable PostgreSQL plan".to_owned());
     let doc: Value = serde_json::from_str(plan).map_err(|_| unreadable())?;

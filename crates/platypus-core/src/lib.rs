@@ -21,11 +21,13 @@ pub use config::{
     SshConfig, SslMode,
 };
 pub use connection::{
-    CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, Executed,
+    CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, Executed, NextResult,
     RecordBatchStream, ServerInfo, execute_each,
 };
 pub use error::{DbError, Error, Result, without_repeats};
-pub use explain::{Explain, ExplainFormat, FullScan, LARGE_SCAN_ROWS, PlanNode, explain_document};
+pub use explain::{
+    Explain, ExplainFormat, FullScan, LARGE_SCAN_ROWS, PlanNode, explain_document, plan_from_text,
+};
 pub use init::{SessionInit, run_init};
 pub use metadata::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, ConstraintKind, ConstraintMeta,

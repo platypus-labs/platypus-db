@@ -241,6 +241,7 @@ impl Connection for ClickHouseConnection {
         Capabilities {
             transactions: false,
             cancel: true,
+            explain: true,
             object_ddl: true,
             metadata_search: true,
             ..Capabilities::default()
@@ -249,6 +250,24 @@ impl Connection for ClickHouseConnection {
 
     async fn object_ddl(&self, object: &ObjectRef<'_>) -> Result<String> {
         meta::object_ddl(self, object).await
+    }
+
+    /// `EXPLAIN indexes = 1`, a tree indented by two spaces. ClickHouse cannot run a
+    /// statement for its actual rows and times: with `analyze` the plan comes without them.
+    async fn explain(&self, sql: &str, _analyze: bool) -> Result<platypus_core::Explain> {
+        let plan =
+            platypus_core::explain_document(self, &format!("EXPLAIN indexes = 1 {sql}"), false)
+                .await?;
+        let root = platypus_core::plan_from_text(&plan, |line| {
+            let text = line.trim_start();
+            (!text.is_empty()).then(|| (line.len() - text.len(), text.to_owned()))
+        });
+        Ok(platypus_core::Explain::new(
+            platypus_core::ExplainFormat::Text,
+            plan,
+            root,
+            false,
+        ))
     }
 
     async fn object_properties(&self, object: &ObjectRef<'_>) -> Result<Vec<Property>> {
