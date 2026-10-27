@@ -33,6 +33,9 @@ pub enum ValueKind {
     Timestamp {
         zoned: bool,
     },
+    Date,
+    /// A time of day.
+    Time,
     Text,
 }
 
@@ -52,6 +55,8 @@ impl ValueKind {
             DataType::Timestamp(_, tz) => Self::Timestamp {
                 zoned: tz.is_some(),
             },
+            DataType::Date32 | DataType::Date64 => Self::Date,
+            DataType::Time32(_) | DataType::Time64(_) => Self::Time,
             _ => Self::Text,
         }
     }
@@ -262,7 +267,25 @@ impl Column<'_> {
                     if fraction > 6 { 9 } else { 6 }
                 )
             }
-            ValueKind::Timestamp { .. } | ValueKind::Text => dialect.quote_literal(text),
+            // Standard SQL's typed literals: Trino converts no text to a date or time, not
+            // even on INSERT.
+            ValueKind::Date if dialect == Dialect::Ansi => {
+                format!("DATE {}", dialect.quote_literal(trimmed))
+            }
+            ValueKind::Time if dialect == Dialect::Ansi => {
+                format!("TIME {}", dialect.quote_literal(trimmed))
+            }
+            ValueKind::Timestamp { .. } if dialect == Dialect::Ansi => {
+                // `2024-01-02T03:04:05` as Arrow writes it, `2024-01-02 03:04:05` in SQL.
+                let sql = match trimmed.split_at_checked(10) {
+                    Some((day, rest)) if rest.starts_with('T') => format!("{day} {}", &rest[1..]),
+                    _ => trimmed.to_owned(),
+                };
+                format!("TIMESTAMP {}", dialect.quote_literal(&sql))
+            }
+            ValueKind::Timestamp { .. } | ValueKind::Date | ValueKind::Time | ValueKind::Text => {
+                dialect.quote_literal(text)
+            }
         })
     }
 
@@ -990,6 +1013,26 @@ mod tests {
             .unwrap(),
             "UPDATE demo.Items SET name = NULL WHERE id = 1 AND name IS NULL"
         );
+    }
+
+    #[test]
+    fn standard_sql_types_its_dates_and_times() {
+        let lit = |kind, text| col("c", kind).literal(Dialect::Ansi, Some(text)).unwrap();
+        assert_eq!(lit(ValueKind::Date, "2024-01-02"), "DATE '2024-01-02'");
+        assert_eq!(lit(ValueKind::Time, "10:11:12"), "TIME '10:11:12'");
+        assert_eq!(
+            lit(
+                ValueKind::Timestamp { zoned: false },
+                "2024-01-02T03:04:05.5"
+            ),
+            "TIMESTAMP '2024-01-02 03:04:05.5'"
+        );
+        // Elsewhere the server converts the text.
+        let pg = col("c", ValueKind::Date)
+            .literal(Dialect::Postgres, Some("2024-01-02"))
+            .unwrap();
+        assert_eq!(pg, "'2024-01-02'");
+        assert_eq!(ValueKind::of(&DataType::Date32), ValueKind::Date);
     }
 
     #[test]

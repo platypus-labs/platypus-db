@@ -811,7 +811,9 @@ pub async fn fill(
             .map(|c| ImportColumn {
                 source: c.name.clone(),
                 target: c.name.clone(),
-                data_type: None,
+                // The rows are not a new table's: the declared type types text values where
+                // the database converts none (see `import::typed_text`).
+                data_type: c.data_type.clone(),
                 not_null: false,
                 default: None,
             })

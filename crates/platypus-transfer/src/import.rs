@@ -270,9 +270,18 @@ impl ImportPlan {
                 .map(|row| {
                     let literals = columns
                         .iter()
+                        .zip(&self.columns)
                         .zip(row)
-                        .map(|(c, text)| literal(c, dialect, text.as_deref()))
-                        .collect::<Result<Vec<_>, _>>()?;
+                        .map(|((c, plan), text)| {
+                            let lit = literal(c, dialect, text.as_deref())?;
+                            Ok(match (c.kind, text) {
+                                (ValueKind::Text, Some(_)) => {
+                                    typed_text(dialect, plan.data_type.as_deref(), lit)
+                                }
+                                _ => lit,
+                            })
+                        })
+                        .collect::<Result<Vec<_>, InvalidValue>>()?;
                     Ok(format!("({})", literals.join(", ")))
                 })
                 .collect::<Result<Vec<_>, ImportError>>()?
@@ -511,6 +520,31 @@ fn declared_type(name: &str) -> Option<DataType> {
         }
         _ => return None,
     })
+}
+
+/// Text `literal` for a column declared `declared` (a `uuid`, a `json`) in standard SQL,
+/// whose Trino converts no text to another type, not even on INSERT: a literal of the
+/// declared type, `uuid '…'`, or a `CAST` for a type with arguments. Elsewhere, and for text
+/// columns, `literal` itself.
+fn typed_text(dialect: Dialect, declared: Option<&str>, literal: String) -> String {
+    let Some(declared) = declared.map(str::trim).filter(|d| !d.is_empty()) else {
+        return literal;
+    };
+    let lower = declared.to_ascii_lowercase();
+    let text = ["char", "text", "string", "clob"]
+        .iter()
+        .any(|t| lower.contains(t));
+    if dialect != Dialect::Ansi || text {
+        return literal;
+    }
+    if declared
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    {
+        format!("{declared} {literal}")
+    } else {
+        format!("CAST({literal} AS {declared})")
+    }
 }
 
 /// Significant digits a double keeps: SQLite reads a number literal with more as a double.
@@ -962,6 +996,28 @@ mod tests {
             p.insert_sql(Dialect::Postgres, &batch()).unwrap(),
             [r#"INSERT INTO public."Sales" (id, item) VALUES (1, 'it''s'), (NULL, 'ink')"#]
         );
+    }
+
+    #[test]
+    fn standard_sql_types_text_of_other_columns() {
+        let mut p = plan(false);
+        p.columns[1].data_type = Some("uuid".to_owned());
+        assert_eq!(
+            p.insert_sql(Dialect::Ansi, &batch()).unwrap(),
+            [
+                r#"INSERT INTO "public"."Sales" ("id", "item") VALUES (1, uuid 'it''s'), (NULL, uuid 'ink')"#
+            ]
+        );
+        p.columns[1].data_type = Some("decimal(5, 2)".to_owned());
+        assert!(
+            p.insert_sql(Dialect::Ansi, &batch()).unwrap()[0]
+                .contains("CAST('ink' AS decimal(5, 2))")
+        );
+        // Text stays text, and other databases convert it themselves.
+        p.columns[1].data_type = Some("varchar(10)".to_owned());
+        assert!(p.insert_sql(Dialect::Ansi, &batch()).unwrap()[0].contains("(NULL, 'ink')"));
+        p.columns[1].data_type = Some("uuid".to_owned());
+        assert!(p.insert_sql(Dialect::Postgres, &batch()).unwrap()[0].contains("(NULL, 'ink')"));
     }
 
     /// A batch of ids and names.
