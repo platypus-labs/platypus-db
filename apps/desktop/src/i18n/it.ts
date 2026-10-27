@@ -1392,6 +1392,14 @@ const it: Record<string, string> = {
   "Rows could not be read: {message}": "Impossibile leggere le righe: {message}",
   "One tab has changes not saved or committed. Close the window and discard them?": "Una scheda ha modifiche non salvate o non confermate. Chiudere la finestra e scartarle?",
   "{n} tabs have changes not saved or committed. Close the window and discard them?": "{n} schede hanno modifiche non salvate o non confermate. Chiudere la finestra e scartarle?",
+  // Editor commands and shortcuts
+  "Run statement": "Esegui l'istruzione",
+  "Run script": "Esegui lo script",
+  "Save script": "Salva lo script",
+  "Open script": "Apri uno script",
+  "Find and replace": "Trova e sostituisci",
+  "Show completions": "Mostra i suggerimenti",
+  "A key that types a character needs Ctrl or Alt.": "Un tasto che scrive un carattere richiede Ctrl o Alt.",
 };
 
 export default it;
