@@ -318,8 +318,10 @@ impl<'a> Nested<'a> {
 
     fn array(&self) -> &'a dyn Array {
         match self {
-            Self::List { array, .. } | Self::Struct { array, .. } | Self::Text(array) => *array,
-            Self::Leaf(array, _) => *array,
+            Self::List { array, .. }
+            | Self::Struct { array, .. }
+            | Self::Text(array)
+            | Self::Leaf(array, _) => *array,
         }
     }
 
@@ -372,7 +374,7 @@ impl DisplayIndex for Nested<'_> {
                 f.write_char(if tuple { ')' } else { '}' })?;
             }
             Self::Text(array) => {
-                f.write_str(&arrow_cast::display::array_value_to_string(*array, idx)?)?
+                f.write_str(&arrow_cast::display::array_value_to_string(*array, idx)?)?;
             }
             Self::Leaf(_, inner) => inner.value(idx).write(f)?,
         }
