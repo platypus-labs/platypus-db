@@ -40,7 +40,16 @@ export default async function (page) {
 
   // A result not loaded in full.
   await runQuery(page, "SELECT cat, v FROM many ORDER BY id");
-  const loaded = Number((await page.eval(status)).match(/^(\d+) rows loaded/)?.[1]);
+  // The grid's first window asks for rows beyond it once the first page arrived: the count
+  // is final when it stops growing.
+  const count = async () => Number((await page.eval(status)).match(/^(\d+) rows loaded/)?.[1] ?? 0);
+  let loaded = await count();
+  for (let i = 0; i < 20; i++) {
+    await page.sleep(500);
+    const now = await count();
+    if (now > 0 && now === loaded) break;
+    loaded = now;
+  }
   assert.ok(loaded > 0 && loaded < 30000, await page.eval(status));
   const v = await profileOf(page, "v");
   // Numbers in the interface's language: English groups thousands.

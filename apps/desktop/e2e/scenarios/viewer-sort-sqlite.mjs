@@ -182,5 +182,6 @@ export default async function (page) {
   assert.equal(await page.eval(status), "2 rows");
   // The viewer's edit bar would show at once; give the grid's edit target time to load.
   await page.sleep(500);
-  assert.equal(await page.eval(`${editBar} === null`), true, "the sorted join is not editable as items");
+  // The bar holds the SQL field of the result anyway: no editing is offered in it.
+  assert.doesNotMatch(await page.eval(`${editBar}?.textContent ?? ''`), /edit a cell/, "the sorted join is not editable as items");
 }
