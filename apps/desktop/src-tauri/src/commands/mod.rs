@@ -325,6 +325,33 @@ impl AppState {
     }
 }
 
+/// Runs a one-off change (a navigator drop, rename or truncate, a table editor save) so that
+/// it is committed, or rolled back on error, before it returns: never left pending in a
+/// transaction that nothing shows nor commits. A session in manual-commit mode runs it in
+/// autocommit mode, then goes back; one with a transaction open refuses it.
+pub(crate) async fn one_off<T, F>(conn: &Arc<dyn Connection>, run: F) -> CommandResult<T>
+where
+    F: std::future::Future<Output = CommandResult<T>>,
+{
+    let before = conn.transaction();
+    if before.autocommit {
+        return run.await;
+    }
+    if before.open {
+        return Err(platypus_core::open_transaction_error().into());
+    }
+    conn.set_autocommit(true).await?;
+    let result = run.await;
+    // A statement that left a transaction open (it cannot be committed on its own) is undone.
+    if conn.transaction().open {
+        let _ = conn.rollback().await;
+    }
+    let restored = conn.set_autocommit(false).await;
+    let value = result?;
+    restored?;
+    Ok(value)
+}
+
 fn read_only_error(name: &str) -> CommandError {
     CommandError::new(
         "read_only",

@@ -529,7 +529,7 @@ export function App() {
   /** Opens a session, asking for the password when it is not saved; `null` on failure.
    *  `database` opens another database of the server than the saved one. A password the
    *  server refuses (typed, or missing from the keychain) is asked again, with its answer. */
-  async function connect(connection: SavedConnection, database?: string | null): Promise<number | null> {
+  async function connect(connection: SavedConnection, database?: string | null, side = false): Promise<number | null> {
     // Typed this run: asked for, or missing from the keychain.
     let password = passwords.current.get(connection.id);
     let prompted = false;
@@ -542,7 +542,7 @@ export function App() {
     const target = database ? `${connection.name}/${database}` : connection.name;
     for (;;) {
       const typed = password;
-      const open = () => track(t("Connect to {name}", { name: target }), withDriver(() => api.openSession(connection.id, typed, database)));
+      const open = () => track(t("Connect to {name}", { name: target }), withDriver(() => api.openSession(connection.id, typed, database, side)));
       try {
         let session;
         try {
@@ -632,7 +632,7 @@ export function App() {
   }
 
   function navigatorSession(connection: SavedConnection, database?: string | null) {
-    return cached(navSessions.current, dbKey(connection.id, database), () => connect(connection, database));
+    return cached(navSessions.current, dbKey(connection.id, database), () => connect(connection, database, true));
   }
 
   /** Closes the navigator sessions of every database of the connection. */
