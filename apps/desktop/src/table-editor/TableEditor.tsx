@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { catalogKey, renameCatalog } from "../catalog/catalog";
 import { tableCatalogMoves } from "../catalog/renames";
+import { renameBookmarks } from "../navigator/prefs";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { Icon, objectIcon } from "../ui/Icon";
@@ -211,6 +212,10 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
       if (sid === null) return;
       await api.applyTableScript(sid, ready.script);
       if (original) {
+        if (original.name !== design.name) {
+          const where = { connectionId: connection.id, database: tab.database ?? null, schema: tab.schema, kind: "table" as const };
+          renameBookmarks(where, original.name, design.name);
+        }
         try {
           for (const m of tableCatalogMoves(original, design)) {
             await renameCatalog(
@@ -289,6 +294,7 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
               <span className="type-cell">
                 <input value={c.data_type} list={id("types")} onChange={(e) => setColumn(i, { data_type: e.target.value })} aria-label={t("Type")} />
                 {c.extra && <span className="muted small">{c.extra}</span>}
+                {c.generated && <span className="muted small" title={c.generated}>{t("generated")}</span>}
               </span>,
               <input type="checkbox" checked={!c.nullable || c.primary_key} disabled={c.primary_key} onChange={(e) => setColumn(i, { nullable: !e.target.checked })} aria-label={t("Not null")} />,
               <input value={c.default ?? ""} placeholder={t("none")} onChange={(e) => setColumn(i, { default: orNull(e.target.value) })} aria-label={t("Default")} />,

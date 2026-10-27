@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 
 use platypus_core::ObjectKind;
-use platypus_sql::{Dialect, ObjectName};
+use platypus_sql::{Dialect, Lexer, ObjectName, Token, TokenKind};
 
 use crate::{
     ColumnDesign, ConstraintDesign, ConstraintType, ForeignKeyDesign, IndexDesign, Script,
@@ -52,11 +52,15 @@ pub fn script(
             }
         }
     }
-    if dialect == Dialect::MySql && script.statements.len() > 1 {
-        script.warnings.push(
-            "MySQL commits each statement by itself: if one fails, the ones before it stay applied."
-                .to_owned(),
-        );
+    if !script.transactional && script.statements.len() > 1 {
+        let database = if dialect == Dialect::MySql {
+            "MySQL commits"
+        } else {
+            "ClickHouse applies"
+        };
+        script.warnings.push(format!(
+            "{database} each statement by itself: if one fails, the ones before it stay applied."
+        ));
     }
     Ok(script)
 }
@@ -256,7 +260,8 @@ impl<'a> Diff<'a> {
                     .iter()
                     .any(|(o, n)| definition_changed(o, n))
                 || self.added_columns.iter().any(|c| {
-                    !c.nullable
+                    text(c.generated.as_ref()).is_some()
+                        || !c.nullable
                         || c.primary_key
                         || text(c.default.as_ref()).is_some_and(|d| !constant(d))
                 }))
@@ -296,7 +301,35 @@ fn comment_changed(o: &ColumnDesign, n: &ColumnDesign) -> bool {
 
 /// Whether anything but the column's name and comment changed.
 fn definition_changed(o: &ColumnDesign, n: &ColumnDesign) -> bool {
-    type_changed(o, n) || o.nullable != n.nullable || default_changed(o, n) || o.extra != n.extra
+    type_changed(o, n)
+        || o.nullable != n.nullable
+        || default_changed(o, n)
+        || o.extra != n.extra
+        || text(o.generated.as_ref()) != text(n.generated.as_ref())
+        || text(o.collation.as_ref()) != text(n.collation.as_ref())
+}
+
+/// Whether a ClickHouse default (as its driver reports it) has its own keyword instead of
+/// `DEFAULT`: `MATERIALIZED x`, `ALIAS x`, `EPHEMERAL x`.
+fn clickhouse_default_kind(default: &str) -> bool {
+    let word = default.split_whitespace().next().unwrap_or_default();
+    ["MATERIALIZED", "ALIAS", "EPHEMERAL"]
+        .iter()
+        .any(|k| word.eq_ignore_ascii_case(k))
+}
+
+/// A ClickHouse type made `Nullable` or not, as the column's `nullable` says.
+fn clickhouse_type(c: &ColumnDesign) -> String {
+    let ty = c.data_type.trim();
+    let inner = ty
+        .strip_prefix("Nullable(")
+        .and_then(|t| t.strip_suffix(')'));
+    match (c.nullable, inner) {
+        // `LowCardinality(Nullable(String))` is nullable already.
+        (true, None) if !ty.contains("Nullable(") => format!("Nullable({ty})"),
+        (false, Some(inner)) => inner.to_owned(),
+        _ => ty.to_owned(),
+    }
 }
 
 struct Ddl<'a> {
@@ -333,19 +366,44 @@ impl Ddl<'_> {
     }
 
     fn column(&self, c: &ColumnDesign) -> String {
-        let mut def = format!("{} {}", self.q(&c.name), c.data_type.trim());
+        // ClickHouse writes nullability in the type.
+        let clickhouse = self.d == Dialect::ClickHouse;
+        let ty = if clickhouse {
+            clickhouse_type(c)
+        } else {
+            c.data_type.trim().to_owned()
+        };
+        let mut def = format!("{} {ty}", self.q(&c.name));
+        if let Some(collation) = text(c.collation.as_ref()) {
+            let _ = write!(def, " COLLATE {collation}");
+        }
         let extra = text(c.extra.as_ref());
         if self.d == Dialect::Sqlite && extra == Some("AUTOINCREMENT") {
             def.push_str(" PRIMARY KEY AUTOINCREMENT");
         }
-        if !c.nullable {
+        let generated = text(c.generated.as_ref());
+        if let Some(clause) = generated {
+            def.push(' ');
+            def.push_str(clause);
+        }
+        if !c.nullable && !clickhouse {
             def.push_str(" NOT NULL");
         } else if self.d == Dialect::SqlServer {
             def.push_str(" NULL");
         }
-        if let Some(default) = text(c.default.as_ref()) {
-            def.push_str(" DEFAULT ");
-            def.push_str(default);
+        match text(c.default.as_ref()) {
+            // A generated column takes no default.
+            Some(_) if generated.is_some() => {}
+            // ClickHouse's other kinds of default are their own keyword.
+            Some(default) if clickhouse && clickhouse_default_kind(default) => {
+                def.push(' ');
+                def.push_str(default);
+            }
+            Some(default) => {
+                def.push_str(" DEFAULT ");
+                def.push_str(default);
+            }
+            None => {}
         }
         if self.d == Dialect::MySql {
             if let Some(extra) = extra {
@@ -418,11 +476,15 @@ impl Ddl<'_> {
         }
         parts.extend(design.constraints.iter().map(|c| self.constraint(c)));
         parts.extend(design.foreign_keys.iter().map(|f| self.foreign_key(f)));
-        format!(
+        let mut sql = format!(
             "CREATE TABLE {} (\n  {}\n)",
             self.table(name),
             parts.join(",\n  ")
-        )
+        );
+        if let Some(options) = text(design.options.as_ref()) {
+            let _ = write!(sql, " {options}");
+        }
+        sql
     }
 
     fn create_index(&self, table: &str, i: &IndexDesign) -> String {
@@ -787,6 +849,10 @@ impl Ddl<'_> {
             }
             return;
         }
+        if self.d == Dialect::ClickHouse {
+            Self::alter_clickhouse_column(&t, &c, o, n, out);
+            return;
+        }
         // PostgreSQL; SQLite and DuckDB rebuild instead.
         if type_changed(o, n) {
             out.push(format!(
@@ -802,6 +868,40 @@ impl Ddl<'_> {
                 Some(default) => format!("ALTER TABLE {t} ALTER COLUMN {c} SET DEFAULT {default}"),
                 None => format!("ALTER TABLE {t} ALTER COLUMN {c} DROP DEFAULT"),
             });
+        }
+    }
+
+    /// `MODIFY COLUMN` with the type (nullability is part of it), which keeps the column's
+    /// default and comment unless the default changes too.
+    fn alter_clickhouse_column(
+        table: &str,
+        column: &str,
+        old: &ColumnDesign,
+        new: &ColumnDesign,
+        out: &mut Vec<String>,
+    ) {
+        let (t, c) = (table, column);
+        let retyped = type_changed(old, new) || old.nullable != new.nullable;
+        let redefault = default_changed(old, new);
+        if !retyped && !redefault {
+            return;
+        }
+        let ty = clickhouse_type(new);
+        match text(new.default.as_ref()).filter(|_| redefault) {
+            Some(d) if clickhouse_default_kind(d) => {
+                out.push(format!("ALTER TABLE {t} MODIFY COLUMN {c} {ty} {d}"));
+            }
+            Some(d) => out.push(format!(
+                "ALTER TABLE {t} MODIFY COLUMN {c} {ty} DEFAULT {d}"
+            )),
+            None => {
+                if retyped {
+                    out.push(format!("ALTER TABLE {t} MODIFY COLUMN {c} {ty}"));
+                }
+                if redefault {
+                    out.push(format!("ALTER TABLE {t} MODIFY COLUMN {c} REMOVE DEFAULT"));
+                }
+            }
         }
     }
 
@@ -823,9 +923,11 @@ impl Ddl<'_> {
         out.push(format!("DROP TABLE {table}"));
         out.push(self.create_table(new, &new.name));
         if copy {
+            // A generated column computes its values again.
             let (from, to): (Vec<String>, Vec<String>) = diff
                 .kept_columns
                 .iter()
+                .filter(|(_, n)| text(n.generated.as_ref()).is_none())
                 .map(|(o, n)| (o.name.clone(), n.name.clone()))
                 .unzip();
             out.push(format!(
@@ -841,30 +943,90 @@ impl Ddl<'_> {
         } else {
             "DuckDB"
         };
-        let mut warning = format!(
+        script.warnings.push(format!(
             "{database} cannot make these changes in place: the table is created again and its rows copied."
-        );
-        if self.d == Dialect::Sqlite {
-            warning.push_str(" Its triggers are dropped with it.");
+        ));
+        let mut from_design = Vec::new();
+        for i in &new.indexes {
+            match self.index_as_written(old, new, diff, i) {
+                Some(sql) => script.statements.push(sql),
+                // The drivers list an expression index's key parts as `(expression)`.
+                None if i.columns.iter().any(|c| c == "(expression)") => {
+                    script.warnings.push(format!(
+                        "Index {} is on an expression: create it again by hand.",
+                        i.name
+                    ));
+                }
+                None => from_design.push(i.clone()),
+            }
         }
-        script.warnings.push(warning);
-        // The drivers list an expression index's key parts as `(expression)`, not its SQL.
-        let (indexes, expressions): (Vec<IndexDesign>, Vec<IndexDesign>) = new
-            .indexes
-            .iter()
-            .cloned()
-            .partition(|i| !i.columns.iter().any(|c| c == "(expression)"));
-        for i in &expressions {
-            script.warnings.push(format!(
-                "Index {} is on an expression: create it again by hand.",
-                i.name
-            ));
-        }
-        let new = TableDesign {
-            indexes,
+        let design = TableDesign {
+            indexes: from_design,
             ..new.clone()
         };
-        self.indexes_and_comments(&new, &new.name, script);
+        self.indexes_and_comments(&design, &new.name, script);
+        self.recreate_triggers(old, new, diff, script);
+    }
+
+    /// The `CREATE INDEX` the database keeps of an index the design leaves as it was (its
+    /// columns not renamed either), on the table's new name: it keeps what the design does
+    /// not hold (a `WHERE`, a collation, an expression).
+    fn index_as_written(
+        &self,
+        old: &TableDesign,
+        new: &TableDesign,
+        diff: &Diff<'_>,
+        i: &IndexDesign,
+    ) -> Option<String> {
+        let sql = text(i.sql.as_ref())?;
+        let changed = diff.indexes.added.iter().any(|a| std::ptr::eq(*a, i));
+        let renamed_columns = diff
+            .kept_columns
+            .iter()
+            .any(|(o, n)| o.name != n.name && i.columns.contains(&n.name));
+        (!changed && !renamed_columns).then(|| self.on_table(sql, &old.name, &new.name))
+    }
+
+    /// Creates the table's triggers (SQLite) again after a rebuild dropped them.
+    fn recreate_triggers(
+        &self,
+        old: &TableDesign,
+        new: &TableDesign,
+        diff: &Diff<'_>,
+        script: &mut Script,
+    ) {
+        if new.triggers.is_empty() {
+            return;
+        }
+        for trigger in &new.triggers {
+            script
+                .statements
+                .push(self.on_table(trigger, &old.name, &new.name));
+        }
+        let columns_changed = !diff.dropped_columns.is_empty()
+            || diff.kept_columns.iter().any(|(o, n)| o.name != n.name);
+        script.warnings.push(if columns_changed {
+            "Its triggers are created again as they were: check those that use a renamed or dropped column."
+                .to_owned()
+        } else {
+            "Its triggers are created again.".to_owned()
+        });
+    }
+
+    /// `sql` (a `CREATE INDEX` or `CREATE TRIGGER`) with the table after its first `ON`
+    /// renamed from `from` to `to`.
+    fn on_table(&self, sql: &str, from: &str, to: &str) -> String {
+        if from == to {
+            return sql.to_owned();
+        }
+        let tokens: Vec<Token> = Lexer::new(sql, self.d).filter(|t| !t.is_trivia()).collect();
+        let on = tokens
+            .iter()
+            .position(|t| t.kind == TokenKind::Word && t.text(sql).eq_ignore_ascii_case("ON"));
+        match on.and_then(|i| tokens.get(i + 1)) {
+            Some(name) => format!("{}{}{}", &sql[..name.start], self.q(to), &sql[name.end..]),
+            None => sql.to_owned(),
+        }
     }
 }
 
@@ -900,6 +1062,7 @@ mod tests {
                 name: "orders_total".to_owned(),
                 columns: vec!["total".to_owned()],
                 unique: false,
+                sql: None,
             }],
             ..TableDesign::default()
         }
@@ -1097,6 +1260,137 @@ mod tests {
             ]
         );
         assert_eq!(s.before, Vec::<String>::new());
+    }
+
+    #[test]
+    fn sqlite_rebuild_keeps_what_the_editor_does_not_show() {
+        let mut old = orders();
+        old.columns.push(ColumnDesign {
+            generated: Some("GENERATED ALWAYS AS (total * 2) VIRTUAL".to_owned()),
+            ..column("double", "numeric")
+        });
+        old.columns[2].collation = Some("NOCASE".to_owned());
+        old.options = Some("WITHOUT ROWID, STRICT".to_owned());
+        old.indexes[0].sql =
+            Some("CREATE INDEX orders_total ON orders (total) WHERE total > 0".to_owned());
+        old.triggers =
+            vec!["CREATE TRIGGER audit AFTER INSERT ON \"orders\" BEGIN SELECT 1; END".to_owned()];
+        let mut new = old.clone();
+        new.columns[1].data_type = "real".to_owned();
+        new.name = "purchases".to_owned();
+        let s = script(Dialect::Sqlite, "main", Some(&old), &new).unwrap();
+        assert_eq!(
+            s.statements,
+            [
+                "CREATE TABLE main._platypus_orders AS SELECT * FROM main.orders",
+                "DROP TABLE main.orders",
+                "CREATE TABLE main.purchases (\n  id integer NOT NULL,\n  total real,\n  \
+                 note text COLLATE NOCASE,\n  double numeric GENERATED ALWAYS AS (total * 2) VIRTUAL,\n  \
+                 PRIMARY KEY (id)\n) WITHOUT ROWID, STRICT",
+                "INSERT INTO main.purchases (id, total, note) SELECT id, total, note FROM main._platypus_orders",
+                "DROP TABLE main._platypus_orders",
+                "CREATE INDEX orders_total ON purchases (total) WHERE total > 0",
+                "CREATE TRIGGER audit AFTER INSERT ON purchases BEGIN SELECT 1; END",
+            ]
+        );
+        assert!(
+            s.warnings
+                .iter()
+                .any(|w| w == "Its triggers are created again."),
+            "{s:?}"
+        );
+
+        // An index on a renamed column is written from the design.
+        let mut new = old.clone();
+        new.columns[1].name = "amount".to_owned();
+        new.columns[0].data_type = "int".to_owned();
+        new.indexes[0].columns = vec!["amount".to_owned()];
+        let s = script(Dialect::Sqlite, "main", Some(&old), &new).unwrap();
+        assert!(
+            s.statements
+                .contains(&"CREATE INDEX main.orders_total ON orders (amount)".to_owned()),
+            "{s:?}"
+        );
+        assert!(
+            s.warnings.iter().any(|w| w.contains("renamed or dropped")),
+            "{s:?}"
+        );
+    }
+
+    #[test]
+    fn mysql_redefines_generated_columns_with_their_clause() {
+        let mut old = orders();
+        old.columns.push(ColumnDesign {
+            generated: Some("GENERATED ALWAYS AS ((`total` * 2)) VIRTUAL".to_owned()),
+            collation: None,
+            ..column("dbl", "int")
+        });
+        let mut new = old.clone();
+        new.columns[3].comment = Some("doubled".to_owned());
+        new.columns[2].collation = Some("utf8mb4_bin".to_owned());
+        let s = script(Dialect::MySql, "shop", Some(&old), &new).unwrap();
+        assert_eq!(
+            s.statements,
+            [
+                "ALTER TABLE shop.orders CHANGE COLUMN note note text COLLATE utf8mb4_bin",
+                "ALTER TABLE shop.orders CHANGE COLUMN dbl dbl int GENERATED ALWAYS AS ((`total` * 2)) VIRTUAL COMMENT 'doubled'",
+            ]
+        );
+    }
+
+    #[test]
+    fn clickhouse_modifies_columns_and_warns_it_is_not_atomic() {
+        let old = TableDesign {
+            name: "t".to_owned(),
+            columns: vec![
+                ColumnDesign {
+                    nullable: false,
+                    ..column("id", "Int32")
+                },
+                column("qty", "Nullable(Int32)"),
+                ColumnDesign {
+                    default: Some("5".to_owned()),
+                    ..column("n", "Nullable(Int32)")
+                },
+            ],
+            ..TableDesign::default()
+        };
+        let mut new = old.clone();
+        new.columns[1].name = "amount".to_owned();
+        new.columns[1].data_type = "Nullable(Int64)".to_owned();
+        new.columns[0].nullable = true;
+        new.columns[2].default = None;
+        let s = script(Dialect::ClickHouse, "db", Some(&old), &new).unwrap();
+        assert_eq!(
+            s.statements,
+            [
+                "ALTER TABLE db.t MODIFY COLUMN id Nullable(Int32)",
+                "ALTER TABLE db.t RENAME COLUMN qty TO amount",
+                "ALTER TABLE db.t MODIFY COLUMN amount Nullable(Int64)",
+                "ALTER TABLE db.t MODIFY COLUMN n REMOVE DEFAULT",
+            ]
+        );
+        assert!(!s.transactional);
+        assert!(
+            s.warnings[0].starts_with("ClickHouse applies each statement"),
+            "{s:?}"
+        );
+
+        let mut new = old.clone();
+        new.columns[2].default = Some("7".to_owned());
+        new.columns.push(ColumnDesign {
+            original: None,
+            default: Some("MATERIALIZED id * 2".to_owned()),
+            ..column("m", "Int64")
+        });
+        let s = script(Dialect::ClickHouse, "db", Some(&old), &new).unwrap();
+        assert_eq!(
+            s.statements,
+            [
+                "ALTER TABLE db.t MODIFY COLUMN n Nullable(Int32) DEFAULT 7",
+                "ALTER TABLE db.t ADD COLUMN m Nullable(Int64) MATERIALIZED id * 2",
+            ]
+        );
     }
 
     #[test]

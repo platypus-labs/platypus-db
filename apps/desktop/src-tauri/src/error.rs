@@ -39,6 +39,12 @@ impl CommandError {
         self.position = None;
         self
     }
+
+    /// Adds a paragraph after the message.
+    pub fn note(mut self, note: &str) -> Self {
+        self.message = format!("{}\n\n{note}", self.message);
+        self
+    }
 }
 
 impl From<&Error> for CommandError {
