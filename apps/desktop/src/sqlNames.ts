@@ -1,90 +1,9 @@
 import type { DriverKind } from "./api";
-import { collectionRef, shellString } from "./editor/mongo";
+import { collectionRef } from "./editor/mongo";
+import { quoteIdent } from "./sqlIdent";
 import { defineSetting } from "./settings";
 
-/** Words that cannot be bare identifiers in at least one supported dialect. */
-const RESERVED = new Set(
-  (
-    "ALL ANALYSE ANALYZE AND ANTI ANY ARRAY AS ASC ASOF ASYMMETRIC AT AUTHORIZATION BETWEEN " +
-    "BINARY BOTH BY CASE CAST CHECK COLLATE COLLATION COLUMN COLUMNS CONCURRENTLY CONSTRAINT " +
-    "CREATE CROSS CURRENT_DATE CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER DEFAULT " +
-    "DEFERRABLE DELETE DESC DESCRIBE DISTINCT DO DROP ELSE END EXCEPT EXISTS FALSE FETCH FOR " +
-    "FOREIGN FREEZE FROM FULL GLOB GRANT GROUP HAVING ILIKE IN INDEX INITIALLY INNER INSERT " +
-    "INTERSECT INTO IS ISNULL JOIN KEY LAMBDA LATERAL LEADING LEFT LIKE LIMIT NATURAL NOT " +
-    "NOTNULL NULL OFFSET ON ONLY OR ORDER OUTER OVERLAPS PIVOT PIVOT_LONGER PIVOT_WIDER " +
-    "PLACING POSITIONAL PRIMARY QUALIFY REFERENCES RETURNING RIGHT ROW ROWS SELECT SEMI SET " +
-    "SHOW SIMILAR SOME SUMMARIZE SYMMETRIC TABLE TABLESAMPLE THEN TO TRAILING TRUE UNION " +
-    "UNIQUE UNPACK UNPIVOT UPDATE USER USING VALUES VARIADIC VERBOSE WHEN WHERE WINDOW WITH"
-  ).split(" "),
-);
-
-/** Further words that Transact-SQL reserves (`TSQL_RESERVED` in `dialect.rs`). */
-const TSQL_RESERVED = new Set(
-  (
-    "ADD BACKUP BEGIN BREAK BROWSE BULK CASCADE CHECKPOINT CLOSE CLUSTERED COALESCE COMMIT " +
-    "COMPUTE CONTAINS CONTAINSTABLE CONTINUE CONVERT CURSOR DATABASE DBCC DEALLOCATE DECLARE " +
-    "DENY DISK DISTRIBUTED DOUBLE DUMP ERRLVL ESCAPE EXEC EXECUTE EXIT EXTERNAL FILE FILLFACTOR " +
-    "FREETEXT FREETEXTTABLE FUNCTION GOTO HOLDLOCK IDENTITY IDENTITYCOL IDENTITY_INSERT IF KILL " +
-    "LINENO LOAD MERGE NATIONAL NOCHECK NONCLUSTERED NULLIF OF OFF OFFSETS OPEN OPENDATASOURCE " +
-    "OPENQUERY OPENROWSET OPENXML OPTION OVER PERCENT PIVOT PLAN PRECISION PRINT PROC PROCEDURE " +
-    "PUBLIC RAISERROR READ READTEXT RECONFIGURE REPLICATION RESTORE RESTRICT RETURN REVERT REVOKE " +
-    "ROLLBACK ROWCOUNT ROWGUIDCOL RULE SAVE SCHEMA SECURITYAUDIT SEMANTICKEYPHRASETABLE " +
-    "SESSION_USER SETUSER SHUTDOWN STATISTICS SYSTEM_USER TABLESAMPLE TEXTSIZE TOP TRAN " +
-    "TRANSACTION TRIGGER TRUNCATE TRY_CONVERT TSEQUAL UNPIVOT UPDATETEXT USE VARYING VIEW " +
-    "WAITFOR WHILE WITHIN WRITETEXT"
-  ).split(" "),
-);
-
-/** Further words that Oracle reserves (`ORACLE_RESERVED` in `dialect.rs`). */
-const ORACLE_RESERVED = new Set(
-  (
-    "ACCESS ADD ALTER AUDIT CHAR CLUSTER COMMENT COMPRESS CONNECT CURRENT DATE DECIMAL EXCLUSIVE " +
-    "FILE FLOAT IDENTIFIED IMMEDIATE INCREMENT INITIAL INTEGER LEVEL LOCK LONG MAXEXTENTS MINUS " +
-    "MLSLABEL MODE MODIFY NOAUDIT NOCOMPRESS NOWAIT NUMBER OF OFFLINE ONLINE OPTION PCTFREE PRIOR " +
-    "PUBLIC RAW RENAME RESOURCE REVOKE ROWID ROWNUM SESSION SHARE SIZE SMALLINT START SUCCESSFUL " +
-    "SYNONYM SYSDATE TRIGGER UID VALIDATE VARCHAR VARCHAR2 VIEW WHENEVER"
-  ).split(" "),
-);
-
-/** Quotes an identifier only when the dialect requires it. Mirrors `Dialect::quote_ident`
- *  in `crates/platypus-sql/src/dialect.rs`; keep the two in sync. */
-export function quoteIdent(name: string, driver: DriverKind): string {
-  // A field name as a mongosh document key.
-  if (driver === "mongo") return /^[A-Za-z_$][\w$]*$/.test(name) ? name : shellString(name);
-  const upper = name.toUpperCase();
-  const reserved = RESERVED.has(upper);
-  if (driver === "sqlserver") {
-    const bare = /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !reserved && !TSQL_RESERVED.has(upper);
-    return bare ? name : `[${name.replaceAll("]", "]]")}]`;
-  }
-  if (driver === "mysql") {
-    return /^[A-Za-z_][A-Za-z0-9_$]*$/.test(name) && !reserved ? name : `\`${name.replaceAll("`", "``")}\``;
-  }
-  // A backslash escapes the next character inside ClickHouse quotes.
-  if (driver === "clickhouse") {
-    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !reserved) return name;
-    return `\`${name.replaceAll("`", "``").replaceAll("\\", "\\\\")}\``;
-  }
-  // BigQuery escapes with a backslash, Spark doubles the backtick.
-  if (driver === "bigquery" || driver === "databricks") {
-    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !reserved) return name;
-    const escaped =
-      driver === "bigquery" ? name.replaceAll("\\", "\\\\").replaceAll("`", "\\`") : name.replaceAll("`", "``");
-    return `\`${escaped}\``;
-  }
-  // Oracle and Db2 fold bare names to upper case; Oracle allows `$` and `#` in them.
-  if (driver === "oracle" || driver === "db2") {
-    const oracle = driver === "oracle";
-    const bare = oracle ? /^[A-Z][A-Z0-9_$#]*$/ : /^[A-Z][A-Z0-9_]*$/;
-    const bareOk = bare.test(name) && !reserved && !(oracle && ORACLE_RESERVED.has(upper));
-    return bareOk ? name : `"${name.replaceAll('"', '""')}"`;
-  }
-  // PostgreSQL folds bare names to lower case, Snowflake to upper case and Trino to lower
-  // case (only names that read the same either way stay bare); SQLite and DuckDB ignore case.
-  const ansi = driver === "snowflake" || driver === "trino" || driver === "adbc" || driver === "odbc";
-  const bare = driver === "postgres" ? /^[a-z_][a-z0-9_$]*$/ : ansi ? /^[A-Z_][A-Z0-9_]*$/ : /^[A-Za-z_][A-Za-z0-9_]*$/;
-  return bare.test(name) && !reserved ? name : `"${name.replaceAll('"', '""')}"`;
-}
+export { quoteIdent } from "./sqlIdent";
 
 /** `schema.name`, or just `name` for the session's current schema. */
 export function qualifiedName(

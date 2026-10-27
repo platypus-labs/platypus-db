@@ -2,7 +2,7 @@
 //! literals, boolean and binary values, defaults, row limits. Features that build SQL (data editing, DDL, import,
 //! the data viewer) go through these methods instead of matching on the driver.
 //!
-//! `apps/desktop/src/sqlNames.ts` mirrors [`Dialect::quote_ident`] for the UI; keep the two
+//! `apps/desktop/src/sqlIdent.ts` mirrors [`Dialect::quote_ident`] for the UI; keep the two
 //! in sync.
 
 use std::borrow::Cow;
@@ -92,7 +92,10 @@ const RESERVED: &[&str] = &[
     "CONSTRAINT",
     "CREATE",
     "CROSS",
+    "CURRENT_CATALOG",
     "CURRENT_DATE",
+    "CURRENT_ROLE",
+    "CURRENT_SCHEMA",
     "CURRENT_TIME",
     "CURRENT_TIMESTAMP",
     "CURRENT_USER",
@@ -137,6 +140,8 @@ const RESERVED: &[&str] = &[
     "LEFT",
     "LIKE",
     "LIMIT",
+    "LOCALTIME",
+    "LOCALTIMESTAMP",
     "NATURAL",
     "NOT",
     "NOTNULL",
@@ -162,12 +167,14 @@ const RESERVED: &[&str] = &[
     "ROWS",
     "SELECT",
     "SEMI",
+    "SESSION_USER",
     "SET",
     "SHOW",
     "SIMILAR",
     "SOME",
     "SUMMARIZE",
     "SYMMETRIC",
+    "SYSTEM_USER",
     "TABLE",
     "TABLESAMPLE",
     "THEN",
@@ -280,11 +287,9 @@ const TSQL_RESERVED: &[&str] = &[
     "SCHEMA",
     "SECURITYAUDIT",
     "SEMANTICKEYPHRASETABLE",
-    "SESSION_USER",
     "SETUSER",
     "SHUTDOWN",
     "STATISTICS",
-    "SYSTEM_USER",
     "TABLESAMPLE",
     "TEXTSIZE",
     "TOP",
@@ -369,6 +374,220 @@ const ORACLE_RESERVED: &[&str] = &[
     "WHENEVER",
 ];
 
+/// Further words that MySQL and MariaDB reserve (`information_schema.KEYWORDS` with
+/// `RESERVED = 1` on MySQL 8.4; the keywords MariaDB 11.4 rejects as bare table names).
+const MYSQL_RESERVED: &[&str] = &[
+    "ACCESSIBLE",
+    "ADD",
+    "ALTER",
+    "ASENSITIVE",
+    "BEFORE",
+    "BIGINT",
+    "BLOB",
+    "CALL",
+    "CASCADE",
+    "CHANGE",
+    "CHAR",
+    "CHARACTER",
+    "CONDITION",
+    "CONTINUE",
+    "CONVERT",
+    "CUBE",
+    "CUME_DIST",
+    "CURSOR",
+    "DATABASE",
+    "DATABASES",
+    "DAY_HOUR",
+    "DAY_MICROSECOND",
+    "DAY_MINUTE",
+    "DAY_SECOND",
+    "DEC",
+    "DECIMAL",
+    "DECLARE",
+    "DELAYED",
+    "DELETE_DOMAIN_ID",
+    "DENSE_RANK",
+    "DETERMINISTIC",
+    "DISTINCTROW",
+    "DIV",
+    "DOUBLE",
+    "DO_DOMAIN_IDS",
+    "DUAL",
+    "EACH",
+    "ELSEIF",
+    "EMPTY",
+    "ENCLOSED",
+    "ESCAPED",
+    "EXIT",
+    "EXPLAIN",
+    "FIRST_VALUE",
+    "FLOAT",
+    "FLOAT4",
+    "FLOAT8",
+    "FORCE",
+    "FULLTEXT",
+    "FUNCTION",
+    "GENERATED",
+    "GET",
+    "GROUPING",
+    "GROUPS",
+    "HIGH_PRIORITY",
+    "HOUR_MICROSECOND",
+    "HOUR_MINUTE",
+    "HOUR_SECOND",
+    "IF",
+    "IGNORE",
+    "IGNORE_DOMAIN_IDS",
+    "INFILE",
+    "INOUT",
+    "INSENSITIVE",
+    "INT",
+    "INT1",
+    "INT2",
+    "INT3",
+    "INT4",
+    "INT8",
+    "INTEGER",
+    "INTERVAL",
+    "IO_AFTER_GTIDS",
+    "IO_BEFORE_GTIDS",
+    "ITERATE",
+    "JSON_TABLE",
+    "KEYS",
+    "KILL",
+    "LAG",
+    "LAST_VALUE",
+    "LEAD",
+    "LEAVE",
+    "LINEAR",
+    "LINES",
+    "LOAD",
+    "LOCK",
+    "LONG",
+    "LONGBLOB",
+    "LONGTEXT",
+    "LOOP",
+    "LOW_PRIORITY",
+    "MASTER_DEMOTE_TO_REPLICA",
+    "MASTER_DEMOTE_TO_SLAVE",
+    "MASTER_SSL_VERIFY_SERVER_CERT",
+    "MATCH",
+    "MAXVALUE",
+    "MEDIUMBLOB",
+    "MEDIUMINT",
+    "MEDIUMTEXT",
+    "MIDDLEINT",
+    "MINUTE_MICROSECOND",
+    "MINUTE_SECOND",
+    "MOD",
+    "MODIFIES",
+    "NO_WRITE_TO_BINLOG",
+    "NTH_VALUE",
+    "NTILE",
+    "NUMERIC",
+    "OF",
+    "OPTIMIZE",
+    "OPTIMIZER_COSTS",
+    "OPTION",
+    "OPTIONALLY",
+    "OUT",
+    "OUTFILE",
+    "OVER",
+    "PAGE_CHECKSUM",
+    "PARSE_VCOL_EXPR",
+    "PARTITION",
+    "PERCENT_RANK",
+    "PORTION",
+    "PRECISION",
+    "PROCEDURE",
+    "PURGE",
+    "RANGE",
+    "RANK",
+    "READ",
+    "READS",
+    "READ_WRITE",
+    "REAL",
+    "RECURSIVE",
+    "REF_SYSTEM_ID",
+    "REGEXP",
+    "RELEASE",
+    "RENAME",
+    "REPEAT",
+    "REPLACE",
+    "REQUIRE",
+    "RESIGNAL",
+    "RESTRICT",
+    "RETURN",
+    "REVOKE",
+    "RLIKE",
+    "ROW_NUMBER",
+    "SCHEMA",
+    "SCHEMAS",
+    "SECOND_MICROSECOND",
+    "SENSITIVE",
+    "SEPARATOR",
+    "SIGNAL",
+    "SMALLINT",
+    "SPATIAL",
+    "SPECIFIC",
+    "SQL",
+    "SQLEXCEPTION",
+    "SQLSTATE",
+    "SQLWARNING",
+    "SQL_AFTER_GTIDS",
+    "SQL_BEFORE_GTIDS",
+    "SQL_BIG_RESULT",
+    "SQL_CALC_FOUND_ROWS",
+    "SQL_SMALL_RESULT",
+    "SSL",
+    "STARTING",
+    "STATS_AUTO_RECALC",
+    "STATS_PERSISTENT",
+    "STATS_SAMPLE_PAGES",
+    "STORED",
+    "STRAIGHT_JOIN",
+    "SYSTEM",
+    "TERMINATED",
+    "TINYBLOB",
+    "TINYINT",
+    "TINYTEXT",
+    "TRIGGER",
+    "UNDO",
+    "UNLOCK",
+    "UNSIGNED",
+    "USAGE",
+    "USE",
+    "UTC_DATE",
+    "UTC_TIME",
+    "UTC_TIMESTAMP",
+    // Not reserved, but MariaDB reads `INSERT INTO value VALUES …` as `VALUE (…)`.
+    "VALUE",
+    "VARBINARY",
+    "VARCHAR",
+    "VARCHARACTER",
+    "VARYING",
+    "VIRTUAL",
+    "WHILE",
+    "WRITE",
+    "XOR",
+    "YEAR_MONTH",
+    "ZEROFILL",
+];
+
+/// Further SQLite keywords that cannot be bare table or column names (every keyword of
+/// SQLite 3.4x tried as one).
+const SQLITE_RESERVED: &[&str] = &[
+    "ADD",
+    "ALTER",
+    "AUTOINCREMENT",
+    "COMMIT",
+    "ESCAPE",
+    "IF",
+    "NOTHING",
+    "RAISE",
+    "TRANSACTION",
+];
+
 pub(crate) fn is_reserved(name: &str, dialect: Dialect) -> bool {
     // The lists are sorted; the `sorted_reserved_words` test keeps them so.
     let upper = name.to_ascii_uppercase();
@@ -377,6 +596,8 @@ pub(crate) fn is_reserved(name: &str, dialect: Dialect) -> bool {
         || match dialect {
             Dialect::SqlServer => found(TSQL_RESERVED),
             Dialect::Oracle => found(ORACLE_RESERVED),
+            Dialect::MySql => found(MYSQL_RESERVED),
+            Dialect::Sqlite => found(SQLITE_RESERVED),
             _ => false,
         }
 }
@@ -1082,7 +1303,13 @@ mod tests {
 
     #[test]
     fn sorted_reserved_words() {
-        for list in [RESERVED, TSQL_RESERVED, ORACLE_RESERVED] {
+        for list in [
+            RESERVED,
+            TSQL_RESERVED,
+            ORACLE_RESERVED,
+            MYSQL_RESERVED,
+            SQLITE_RESERVED,
+        ] {
             assert!(list.windows(2).all(|w| w[0] < w[1]), "{list:?}");
         }
     }
@@ -1105,6 +1332,39 @@ mod tests {
         assert_eq!(duck.quote_ident("Orders"), "Orders");
         assert_eq!(duck.quote_ident("qualify"), "\"qualify\"");
         assert_eq!(duck.quote_ident("a b"), "\"a b\"");
+    }
+
+    #[test]
+    fn quotes_each_dialects_reserved_words() {
+        // PostgreSQL reads these as value functions in FROM: a table must be quoted.
+        for name in [
+            "current_role",
+            "current_schema",
+            "current_catalog",
+            "session_user",
+            "system_user",
+            "localtime",
+            "localtimestamp",
+        ] {
+            assert_eq!(Dialect::Postgres.quote_ident(name), format!("\"{name}\""));
+        }
+        for name in ["rank", "range", "interval", "groups", "lead", "read", "div"] {
+            assert_eq!(Dialect::MySql.quote_ident(name), format!("`{name}`"));
+            assert_eq!(Dialect::Postgres.quote_ident(name), name, "{name}");
+        }
+        for name in [
+            "transaction",
+            "commit",
+            "add",
+            "alter",
+            "escape",
+            "nothing",
+            "autoincrement",
+        ] {
+            assert_eq!(Dialect::Sqlite.quote_ident(name), format!("\"{name}\""));
+        }
+        assert_eq!(Dialect::Sqlite.quote_ident("rank"), "rank");
+        assert_eq!(Dialect::MySql.quote_ident("transaction"), "transaction");
     }
 
     #[test]
