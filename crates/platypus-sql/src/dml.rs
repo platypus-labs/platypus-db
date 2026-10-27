@@ -321,15 +321,28 @@ pub fn update(
     Ok(sql)
 }
 
+/// The columns of a new row, as [`insert_row`] writes them.
+struct InsertRow<'c> {
+    names: Vec<Cow<'c, str>>,
+    literals: Vec<String>,
+    /// It gives a value to one of the `identity` columns of [`insert_row`].
+    identity: bool,
+}
+
 /// The quoted names and the literals of the columns a new row sets: those left at their
-/// default are left out.
+/// default are left out. `identity` lists the columns the database numbers, which take a
+/// value only with an override (see [`restore_inserts`]).
 fn insert_row<'c>(
     dialect: Dialect,
     columns: &'c [Column<'_>],
     values: &[(usize, Value<'_>)],
-) -> Result<(Vec<Cow<'c, str>>, Vec<String>)> {
-    let mut names = Vec::with_capacity(values.len());
-    let mut literals = Vec::with_capacity(values.len());
+    identity: &[usize],
+) -> Result<InsertRow<'c>> {
+    let mut row = InsertRow {
+        names: Vec::with_capacity(values.len()),
+        literals: Vec::with_capacity(values.len()),
+        identity: false,
+    };
     for &(index, value) in values {
         let c = column(columns, index)?;
         let text = match value {
@@ -337,10 +350,11 @@ fn insert_row<'c>(
             Value::Null => None,
             Value::Text(text) => Some(text),
         };
-        names.push(dialect.quote_ident(c.name));
-        literals.push(c.literal(dialect, text)?);
+        row.identity |= identity.contains(&index);
+        row.names.push(dialect.quote_ident(c.name));
+        row.literals.push(c.literal(dialect, text)?);
     }
-    Ok((names, literals))
+    Ok(row)
 }
 
 /// `INSERT INTO table DEFAULT VALUES`, or the dialect's form of it.
@@ -351,6 +365,16 @@ fn insert_defaults(dialect: Dialect, table: &str, columns: &[Column<'_>]) -> Str
     dialect.insert_defaults(table, &any)
 }
 
+/// What comes between the column list and `VALUES`: PostgreSQL takes values for identity
+/// columns `GENERATED ALWAYS` only when told to.
+const fn overriding(dialect: Dialect, identity: bool) -> &'static str {
+    if identity && matches!(dialect, Dialect::Postgres) {
+        " OVERRIDING SYSTEM VALUE"
+    } else {
+        ""
+    }
+}
+
 /// `INSERT INTO table (…) VALUES (…)`. Columns left at their default are omitted.
 pub fn insert(
     dialect: Dialect,
@@ -358,14 +382,14 @@ pub fn insert(
     columns: &[Column<'_>],
     values: &[(usize, Value<'_>)],
 ) -> Result<String> {
-    let (names, literals) = insert_row(dialect, columns, values)?;
-    if names.is_empty() {
+    let row = insert_row(dialect, columns, values, &[])?;
+    if row.names.is_empty() {
         return Ok(insert_defaults(dialect, table, columns));
     }
     Ok(format!(
         "INSERT INTO {table} ({}) VALUES ({})",
-        names.join(", "),
-        literals.join(", ")
+        row.names.join(", "),
+        row.literals.join(", ")
     ))
 }
 
@@ -565,6 +589,8 @@ fn literal_form(literal: &str) -> Option<bool> {
 /// An `INSERT` being filled with rows.
 struct OpenInsert<'c> {
     names: Vec<Cow<'c, str>>,
+    /// [`overriding`] of the rows, which set the same columns.
+    overriding: &'static str,
     /// [`literal_form`] by column, of the rows so far.
     forms: Vec<Option<bool>>,
     values: String,
@@ -584,8 +610,9 @@ impl OpenInsert<'_> {
 
     fn statement(self, table: &str) -> Statement {
         let sql = format!(
-            "INSERT INTO {table} ({}) VALUES {}",
+            "INSERT INTO {table} ({}){} VALUES {}",
             self.names.join(", "),
+            self.overriding,
             self.values
         );
         Statement::of(sql, self.rows)
@@ -595,21 +622,58 @@ impl OpenInsert<'_> {
 /// The `INSERT` statements of new `rows`, in their order: consecutive rows that set the
 /// same columns, with literals of the same form, share a `VALUES` list of up to
 /// [`BATCH_ROWS`] rows and [`BATCH_BYTES`] bytes, where the dialect takes several rows.
-pub fn inserts<'c>(
+pub fn inserts(
+    dialect: Dialect,
+    table: &str,
+    columns: &[Column<'_>],
+    rows: &[Vec<(usize, Value<'_>)>],
+) -> Result<Vec<Statement>> {
+    batched_inserts(dialect, table, columns, rows, &[]).map(|(statements, _)| statements)
+}
+
+/// The statements that put deleted `rows` back, for an undo script: [`inserts`] that give
+/// the `identity` columns (numbered by the database, which takes a value for them only when
+/// told to) their old values, with `OVERRIDING SYSTEM VALUE` (PostgreSQL) or between `SET
+/// IDENTITY_INSERT … ON` and `OFF` (SQL Server).
+pub fn restore_inserts(
+    dialect: Dialect,
+    table: &str,
+    columns: &[Column<'_>],
+    rows: &[Vec<(usize, Value<'_>)>],
+    identity: &[usize],
+) -> Result<Vec<String>> {
+    let (statements, any_identity) = batched_inserts(dialect, table, columns, rows, identity)?;
+    let mut sql: Vec<String> = statements.into_iter().map(|s| s.sql).collect();
+    if any_identity && dialect == Dialect::SqlServer {
+        sql.insert(0, format!("SET IDENTITY_INSERT {table} ON"));
+        sql.push(format!("SET IDENTITY_INSERT {table} OFF"));
+    }
+    Ok(sql)
+}
+
+/// The statements of [`inserts`] that may set the `identity` columns, and whether any does.
+fn batched_inserts<'c>(
     dialect: Dialect,
     table: &str,
     columns: &'c [Column<'_>],
     rows: &[Vec<(usize, Value<'_>)>],
-) -> Result<Vec<Statement>> {
+    identity: &[usize],
+) -> Result<(Vec<Statement>, bool)> {
     let limit = if has_multi_row_values(dialect) {
         BATCH_ROWS
     } else {
         1
     };
     let mut statements = Vec::new();
+    let mut any_identity = false;
     let mut open: Option<OpenInsert<'c>> = None;
     for values in rows {
-        let (names, literals) = insert_row(dialect, columns, values)?;
+        let InsertRow {
+            names,
+            literals,
+            identity: sets_identity,
+        } = insert_row(dialect, columns, values, identity)?;
+        any_identity |= sets_identity;
         let tuple = format!("({})", literals.join(", "));
         let forms: Vec<_> = literals.iter().map(|l| literal_form(l)).collect();
         if open
@@ -624,6 +688,7 @@ pub fn inserts<'c>(
         }
         let o = open.get_or_insert_with(|| OpenInsert {
             names,
+            overriding: overriding(dialect, sets_identity),
             forms: vec![None; forms.len()],
             values: String::new(),
             rows: 0,
@@ -638,7 +703,7 @@ pub fn inserts<'c>(
         o.rows += 1;
     }
     statements.extend(open.map(|o| o.statement(table)));
-    Ok(statements)
+    Ok((statements, any_identity))
 }
 
 /// Why [`apply`] rolled back.
@@ -1343,6 +1408,63 @@ mod tests {
             [
                 ("INSERT INTO t (\"id\") VALUES (1)", 1),
                 ("INSERT INTO t (\"id\") VALUES (2)", 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn restores_rows_with_their_identity_values() {
+        let cols = columns();
+        let rows = [
+            vec![(0, Value::Text("1")), (1, Value::Text("a"))],
+            vec![(0, Value::Text("2")), (1, Value::Null)],
+        ];
+        let pg = table(Dialect::Postgres);
+        assert_eq!(
+            restore_inserts(Dialect::Postgres, &pg, &cols, &rows, &[0]).unwrap(),
+            [
+                "INSERT INTO demo.\"Items\" (id, name) OVERRIDING SYSTEM VALUE VALUES (1, 'a'), (2, NULL)"
+            ]
+        );
+        // Serials and the like take the values as they are.
+        assert_eq!(
+            restore_inserts(Dialect::Postgres, &pg, &cols, &rows, &[]).unwrap(),
+            ["INSERT INTO demo.\"Items\" (id, name) VALUES (1, 'a'), (2, NULL)"]
+        );
+        let mssql = table(Dialect::SqlServer);
+        assert_eq!(
+            restore_inserts(Dialect::SqlServer, &mssql, &cols, &rows, &[0]).unwrap(),
+            [
+                "SET IDENTITY_INSERT demo.Items ON",
+                "INSERT INTO demo.Items (id, name) VALUES (1, N'a'), (2, NULL)",
+                "SET IDENTITY_INSERT demo.Items OFF",
+            ]
+        );
+        // No identity value given: nothing to switch on.
+        assert_eq!(
+            restore_inserts(
+                Dialect::SqlServer,
+                &mssql,
+                &cols,
+                &[vec![(1, Value::Text("a"))]],
+                &[0]
+            )
+            .unwrap(),
+            ["INSERT INTO demo.Items (name) VALUES (N'a')"]
+        );
+        // Rows that set the identity and rows that do not go in statements of their own.
+        assert_eq!(
+            restore_inserts(
+                Dialect::Postgres,
+                &pg,
+                &cols,
+                &[vec![(1, Value::Text("a"))], rows[0].clone()],
+                &[0]
+            )
+            .unwrap(),
+            [
+                "INSERT INTO demo.\"Items\" (name) VALUES ('a')",
+                "INSERT INTO demo.\"Items\" (id, name) OVERRIDING SYSTEM VALUE VALUES (1, 'a')",
             ]
         );
     }

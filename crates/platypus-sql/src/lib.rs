@@ -1,6 +1,7 @@
 //! Dialect-aware SQL utilities: statement splitting, the statement under the cursor, a
 //! conservative read-only check, the [`Dialect`] rules for generating SQL, the table a query
-//! reads ([`source_table`]), the [`dml`] that saves edited table data, the editor's formatter
+//! reads ([`source_table`]), the [`dml`] that saves edited table data and the columns it leaves
+//! to the database ([`generated`]), the editor's formatter
 //! ([`format()`]) and the PostgreSQL array and composite literals the data editor splits
 //! ([`pg_literal`]), the editor's parameters ([`parameters`]) and linter ([`lint()`]). All
 //! offsets are byte offsets into the input.
@@ -10,6 +11,7 @@ mod dialect;
 pub mod dml;
 mod format;
 mod generate;
+pub mod generated;
 mod lexer;
 mod lint;
 mod params;
