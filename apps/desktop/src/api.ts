@@ -995,9 +995,13 @@ export interface SkippedConnection {
   driver: string;
 }
 
-/** Windows or Entra ID logins, which the SQL Server driver does not do, and a named
- *  instance without a port. */
-export type ImportNote = { kind: "windows_auth" } | { kind: "entra_auth" } | { kind: "named_instance"; instance: string };
+/** Windows or Entra ID logins, which the SQL Server driver does not do, a named instance
+ *  without a port, and a database file that is not there. */
+export type ImportNote =
+  | { kind: "windows_auth" }
+  | { kind: "entra_auth" }
+  | { kind: "named_instance"; instance: string }
+  | { kind: "missing_file"; path: string };
 
 /** About a pasted URL or connection string: the notes of an import, and the parameters it
  *  left out (by name). */

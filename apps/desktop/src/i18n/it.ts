@@ -657,6 +657,7 @@ const it: Record<string, string> = {
   "Windows authentication is not supported: enter a SQL Server login to connect.": "L'autenticazione di Windows non è supportata: per connetterti inserisci un login di SQL Server.",
   "Microsoft Entra ID (Azure AD) sign-in is not supported: enter a SQL Server login to connect.": "L'accesso con Microsoft Entra ID (Azure AD) non è supportato: per connetterti inserisci un login di SQL Server.",
   "Named instance {instance}: set the port it listens on.": "Istanza denominata {instance}: imposta la porta su cui è in ascolto.",
+  "The database file {path} was not found: choose it before connecting.": "Il file del database {path} non è stato trovato: sceglilo prima di connetterti.",
   "Not used here: {keys}.": "Non usati qui: {keys}.",
   "Not imported: unsupported database ({ids})": "Non importata: database non supportato ({ids})",
   "The saved passwords are encrypted. Enter the master password to use them.": "Le password salvate sono cifrate. Inserisci la password principale per usarle.",

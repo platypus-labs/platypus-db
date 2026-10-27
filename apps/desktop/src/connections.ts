@@ -28,6 +28,8 @@ export function noteText(note: ParseNote): string {
       return t("Microsoft Entra ID (Azure AD) sign-in is not supported: enter a SQL Server login to connect.");
     case "named_instance":
       return t("Named instance {instance}: set the port it listens on.", { instance: note.instance });
+    case "missing_file":
+      return t("The database file {path} was not found: choose it before connecting.", { path: note.path });
     case "ignored":
       return t("Not used here: {keys}.", { keys: note.keys.join(", ") });
     case "other_hosts":
