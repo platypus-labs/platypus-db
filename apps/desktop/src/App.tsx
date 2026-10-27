@@ -781,7 +781,7 @@ export function App() {
     importConnections: () => setDialog({ kind: "import" }),
     openDataFile: () =>
       void pickDataFile()
-        .then((path) => path !== null && openDroppedFile(path))
+        .then((path) => (path === null ? undefined : openDroppedFile(path)))
         .catch((e: unknown) => setToast(toCommandError(e).message)),
     closeTabs,
     patchTab,
