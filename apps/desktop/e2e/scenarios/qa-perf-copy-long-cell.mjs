@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
-import { clipboardAfter, gridAt, openEditor, run, saveConnections, sqliteEntry } from "../perf.mjs";
+import { clipboardAfter, gridAt, openEditor, run, saveConnections, sqliteEntry, visibleTab } from "../perf.mjs";
 
 const NAME = "QA perf long cell";
 const LENGTH = 10_000;
@@ -27,11 +27,12 @@ export function setup({ dir }) {
 export default async function (page) {
   await openEditor(page, NAME);
   await run(page, "SELECT body FROM docs");
+  // Until its rows arrive the column is as wide as its header, and the click would land to
+  // its right: wait until the grid has sized it to the text.
+  await page.waitFor(`${visibleTab}.querySelector('.grid-canvas')?.dataset.measures !== undefined`);
   const g = await gridAt(page);
   await page.click(g.x + 120, g.y + 60);
   await page.waitFor(`document.activeElement?.classList.contains('grid-scroll') === true`);
-  // The cell's text is drawn once its block is fetched.
-  await page.sleep(500);
   const text = await clipboardAfter(page, "c", "KeyC", 67, CTRL);
   assert.equal(text.length, LENGTH, `copied ${text.length} characters, ending ${JSON.stringify(text.slice(-5))}`);
   assert.equal(text, "ab".repeat(LENGTH / 2));

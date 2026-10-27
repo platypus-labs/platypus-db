@@ -3,7 +3,7 @@
 // opens the query in a tab of its own.
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { CTRL, assert, connections, copyAll, editBar, editorText, expand, openData, status, stubClipboard, visibleTab } from "../qa-grid.mjs";
+import { CTRL, assert, grid, connections, copyAll, editBar, editorText, expand, openData, status, stubClipboard, visibleTab } from "../qa-grid.mjs";
 
 export function setup({ dir }) {
   const db = new DatabaseSync(join(dir, "field.db"));
@@ -37,10 +37,11 @@ export default async function (page) {
   assert.equal(await fieldRun(page, "note LIKE '%''%' OR note IS NULL"), "1\tRome\tit's\n2\tOslo\t");
   assert.equal(await fieldRun(page, "ORDER BY id DESC LIMIT 3"), "4\tRome\t\n3\tRome\ta,b\n2\tOslo\t");
   assert.equal(await fieldRun(page, "GROUP BY city ORDER BY city"), "Oslo\t1\nRome\t3");
-  // Escape goes back to the result.
-  await page.eval(`${field}.focus()`);
+  // Escape goes back to the result. Its grid comes a moment after the output's goes, with a
+  // new field that takes the focus: keys sent before then would reach the field.
+  await page.eval(`${field}.focus(); window.__outputGrid = ${grid}; null`);
   await page.key("Escape", "Escape", 27);
-  await page.waitFor(`${mark} === null`);
+  await page.waitFor(`${mark} === null && ${grid} && ${grid} !== window.__outputGrid && document.activeElement === ${field}`);
   assert.equal(await page.eval(status), "4 rows");
   assert.equal((await copyAll(page)).split("\n").length, 4);
   // The larger editor opens the query in a tab.
