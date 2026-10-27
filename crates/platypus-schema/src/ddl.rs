@@ -22,7 +22,7 @@ pub fn script(
     original: Option<&TableDesign>,
     design: &TableDesign,
 ) -> Result<Script, String> {
-    validate(design)?;
+    validate(dialect, design)?;
     let mut script = Script {
         // MySQL commits each DDL statement, ClickHouse has no DDL transactions.
         transactional: !matches!(dialect, Dialect::MySql | Dialect::ClickHouse),
@@ -80,7 +80,7 @@ pub(crate) fn drop_index(dialect: Dialect, schema: &str, table: &str, name: &str
     Ddl { d: dialect, schema }.drop_index(table, name)
 }
 
-fn validate(design: &TableDesign) -> Result<(), String> {
+fn validate(dialect: Dialect, design: &TableDesign) -> Result<(), String> {
     if design.name.trim().is_empty() {
         return Err("The table needs a name.".to_owned());
     }
@@ -91,7 +91,8 @@ fn validate(design: &TableDesign) -> Result<(), String> {
         if c.name.trim().is_empty() {
             return Err(format!("Column {} has no name.", i + 1));
         }
-        if c.data_type.trim().is_empty() {
+        // SQLite's columns can be declared without a type: `CREATE TABLE t (x)`.
+        if c.data_type.trim().is_empty() && dialect != Dialect::Sqlite {
             return Err(format!("Column {} has no type.", c.name));
         }
         if design.columns[..i].iter().any(|o| o.name == c.name) {
@@ -388,7 +389,10 @@ impl Ddl<'_> {
         } else {
             c.data_type.trim().to_owned()
         };
-        let mut def = format!("{} {ty}", self.q(&c.name));
+        let mut def = self.q(&c.name);
+        if !ty.is_empty() {
+            let _ = write!(def, " {ty}");
+        }
         if let Some(collation) = text(c.collation.as_ref()) {
             let _ = write!(def, " COLLATE {collation}");
         }
@@ -1524,6 +1528,32 @@ mod tests {
         design.columns[1].data_type = " ".to_owned();
         assert!(script(Dialect::Postgres, "s", None, &design).is_err());
         assert!(script(Dialect::Postgres, "s", None, &TableDesign::default()).is_err());
+    }
+
+    #[test]
+    fn sqlite_columns_can_have_no_type() {
+        let mut design = orders();
+        design.columns[2].data_type = String::new();
+        let created = statements(Dialect::Sqlite, None, &design);
+        assert!(
+            created[0].contains("note,") || created[0].contains("note)"),
+            "{created:?}"
+        );
+        assert!(!created[0].contains("note "), "{created:?}");
+        // An unchanged table needs nothing, a changed one is rebuilt with the typeless column.
+        assert_eq!(
+            statements(Dialect::Sqlite, Some(&design), &design),
+            Vec::<String>::new()
+        );
+        let mut changed = design.clone();
+        changed.columns[1].data_type = "real".to_owned();
+        let rebuilt = statements(Dialect::Sqlite, Some(&design), &changed);
+        assert!(
+            rebuilt.iter().any(|s| s.starts_with("CREATE TABLE")
+                && s.contains("total real")
+                && !s.contains("note ")),
+            "{rebuilt:?}"
+        );
     }
 
     fn commented(table: Option<&str>, column: Option<&str>) -> TableDesign {
