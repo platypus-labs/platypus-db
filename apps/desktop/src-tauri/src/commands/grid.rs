@@ -23,7 +23,7 @@ use crate::jobs::Job;
 const SEARCH_LIMIT: usize = 10_000;
 
 fn dialect(state: &AppState, job: &Job) -> CommandResult<Dialect> {
-    Ok(Dialect::from(state.session(job.session_id)?.config.driver))
+    state.dialect(job.session_id)
 }
 
 fn schema(job: &Job) -> CommandResult<arrow_schema::SchemaRef> {

@@ -280,6 +280,16 @@ impl AppState {
         Ok(conn)
     }
 
+    /// The dialect of the values and statements written on the session: its driver's, or
+    /// that of the database behind the generic ODBC driver ([`Dialect::of_server`]).
+    fn dialect(&self, id: u64) -> CommandResult<platypus_sql::Dialect> {
+        let session = self.session(id)?;
+        Ok(platypus_sql::Dialect::of_server(
+            session.config.driver,
+            &session.raw.server_info().product,
+        ))
+    }
+
     fn job(&self, id: u64) -> CommandResult<Arc<Job>> {
         lock(&self.jobs)
             .get(&id)

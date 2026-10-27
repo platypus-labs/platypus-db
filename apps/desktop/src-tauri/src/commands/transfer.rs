@@ -98,7 +98,7 @@ pub async fn preview_import(
     table: Option<String>,
     options: Option<FileOptions>,
 ) -> CommandResult<ImportPreview> {
-    let dialect = Dialect::from(state.session(session_id)?.config.driver);
+    let dialect = state.dialect(session_id)?;
     let file = open_file(&path, &options.unwrap_or_default()).await?;
     let schema = file
         .schemas()
@@ -174,7 +174,7 @@ pub async fn preview_transfer(
     target_session_id: u64,
 ) -> CommandResult<ImportPreview> {
     let config = state.session(source_session_id)?.config;
-    let target = Dialect::from(state.session(target_session_id)?.config.driver);
+    let target = state.dialect(target_session_id)?;
     let source = super::connect(&config).await?;
     let mut shown = preview(
         &*source,
@@ -362,7 +362,8 @@ where
             &log,
             &session.label,
         );
-        work(job, target, Dialect::from(session.config.driver)).await
+        let dialect = Dialect::of_server(session.config.driver, &target.server_info().product);
+        work(job, target, dialect).await
     });
     let id = state.next_id();
     lock(&state.exports).insert(id, job);

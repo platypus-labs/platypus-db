@@ -62,6 +62,21 @@ impl From<DriverKind> for Dialect {
     }
 }
 
+impl Dialect {
+    /// The dialect of the values and statements a session of `driver` writes, on a server
+    /// that names itself `product` ([`platypus_core::ServerInfo::product`]): through the
+    /// generic ODBC driver, SQL Server takes its own literals (`N'…'` keeps text outside
+    /// the code page, a bit is `1`) and types, not standard SQL's.
+    #[must_use]
+    pub fn of_server(driver: DriverKind, product: &str) -> Self {
+        if driver == DriverKind::Odbc && product.contains("SQL Server") {
+            Self::SqlServer
+        } else {
+            Self::from(driver)
+        }
+    }
+}
+
 /// Words that cannot be bare identifiers in at least one supported dialect.
 const RESERVED: &[&str] = &[
     "ALL",
@@ -1660,6 +1675,18 @@ mod tests {
         assert_eq!(Dialect::from(DriverKind::Oracle), ora);
         assert_eq!(Dialect::from(DriverKind::Db2), db2);
         assert_eq!(Dialect::from(DriverKind::Odbc), Dialect::Ansi);
+        assert_eq!(
+            Dialect::of_server(DriverKind::Odbc, "Microsoft SQL Server"),
+            Dialect::SqlServer
+        );
+        assert_eq!(
+            Dialect::of_server(DriverKind::Odbc, "Oracle"),
+            Dialect::Ansi
+        );
+        assert_eq!(
+            Dialect::of_server(DriverKind::Postgres, "PostgreSQL"),
+            Dialect::Postgres
+        );
         assert!(ora.has_savepoints() && !db2.has_savepoints());
         for d in [ora, db2] {
             assert_eq!(d.quote_ident("ORDERS"), "ORDERS");
