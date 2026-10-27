@@ -1,6 +1,6 @@
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { defineSetting, getSetting } from "../settings";
-import { t } from "../i18n";
+import { formatCount, t } from "../i18n";
 
 export const notifySetting = defineSetting<number>({
   key: "editor.notify_after_seconds",
@@ -21,7 +21,7 @@ export async function notifyRunEnded(startedAt: number, connection: string, fail
     if (!(await isPermissionGranted()) && (await requestPermission()) !== "granted") return;
     sendNotification({
       title: t(failed ? "Query failed on {name}" : "Query finished on {name}", { name: connection }),
-      body: t("After {n} s", { n: seconds.toLocaleString() }),
+      body: t("After {n} s", { n: formatCount(seconds) }),
     });
   } catch (e) {
     console.warn("notification", e);

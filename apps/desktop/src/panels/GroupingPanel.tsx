@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type ColumnInfo, type GroupCounts, toCommandError } from "../api";
-import { t, plural } from "../i18n";
+import { formatCount, t, plural } from "../i18n";
 
 interface Props {
   jobId: number;
@@ -69,7 +69,7 @@ export function GroupingPanel({ jobId, cols, columns, rows, onClose }: Props) {
                   ))}
                   <td className="num">
                     <span className="bar" style={{ width: `${(g.count / max) * 100}%` }} />
-                    {g.count.toLocaleString()}
+                    {formatCount(g.count)}
                   </td>
                 </tr>
               ))}
@@ -79,8 +79,8 @@ export function GroupingPanel({ jobId, cols, columns, rows, onClose }: Props) {
       )}
       {counts && (
         <div className="muted small value-size">
-          {plural(counts.distinct, "{n} value in {rows} loaded rows", "{n} values in {rows} loaded rows", { rows: counts.rows.toLocaleString() })}
-          {counts.distinct > counts.groups.length && ` ${t("(top {n} shown)", { n: counts.groups.length.toLocaleString() })}`}
+          {plural(counts.distinct, "{n} value in {rows} loaded rows", "{n} values in {rows} loaded rows", { rows: formatCount(counts.rows) })}
+          {counts.distinct > counts.groups.length && ` ${t("(top {n} shown)", { n: formatCount(counts.groups.length) })}`}
         </div>
       )}
     </aside>

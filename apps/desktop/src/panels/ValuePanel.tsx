@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { api, type ColumnInfo, toCommandError } from "../api";
-import { t, plural } from "../i18n";
+import { formatCount, t, plural } from "../i18n";
 import { formatJson, isJsonDocument } from "../jsonText";
 
 /** The focused cell of a result. */
@@ -49,7 +49,7 @@ function hexDump(bytes: Uint8Array): string {
     const ascii = Array.from(chunk, (b) => (b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : ".")).join("");
     lines.push(`${i.toString(16).padStart(8, "0")}  ${hex.padEnd(47)}  ${ascii}`);
   }
-  if (bytes.length > end) lines.push(`… ${t("{n} more bytes", { n: (bytes.length - end).toLocaleString() })}`);
+  if (bytes.length > end) lines.push(`… ${t("{n} more bytes", { n: formatCount(bytes.length - end) })}`);
   return lines.join("\n");
 }
 
@@ -165,8 +165,8 @@ export function ValuePanel({ target, onClose }: { target: ValueTarget | null; on
             {text.length > limit && (
               <div className="muted small value-more">
                 {t("Showing {shown} of {total} characters.", {
-                  shown: limit.toLocaleString(),
-                  total: text.length.toLocaleString(),
+                  shown: formatCount(limit),
+                  total: formatCount(text.length),
                 })}{" "}
                 <button className="link" onClick={() => setLimit((n) => n + TEXT_PAGE)}>
                   {t("Show more")}
