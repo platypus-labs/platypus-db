@@ -84,8 +84,7 @@ export function oracleSetup(dir, { client = true, extra = "", fields = {} } = {}
 /** Runs `sql` (a SQL*Plus script) as `platypus` in the container; returns its output.
  *  Stops at the first error and throws it. */
 export function ora(sql, { user = "platypus/platypus@FREEPDB1", check = true } = {}) {
-  const script = `set define off
-set pagesize 0 feedback off heading off linesize 32767 trimout on trimspool on long 100000 serveroutput on\nwhenever sqlerror exit failure\n${sql}\nexit\n`;
+  const script = `set define off\nset pagesize 0 feedback off heading off linesize 32767 trimout on trimspool on long 100000 serveroutput on\nwhenever sqlerror exit failure\n${sql}\nexit\n`;
   const r = spawnSync("docker", ["exec", "-i", CONTAINER, "sqlplus", "-s", "-l", user], { input: script, encoding: "utf8" });
   const out = (r.stdout ?? "").replace(/\r/g, "").trim();
   if (check && r.status !== 0) throw new Error(`oracle: ${out || r.stderr}`);
@@ -115,6 +114,16 @@ export async function oracleEditor(page, name = CONN) {
   await page.eval(`document.querySelectorAll('#qa-conn').forEach(e => e.removeAttribute('id')); ${treeRow(name)}.id = 'qa-conn'`);
   await page.clickSel("#qa-conn", { clickCount: 2 });
   await page.waitFor(`${visibleTab}?.querySelector('.cm-content') != null`, 30_000);
+  // Copies are read from window.__copied (see qa-grid.mjs `copied`).
+  await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
+}
+
+/** Runs `sql` (`script`: the whole editor, Alt+X) and returns the status and the error
+ *  shown, if any. */
+export async function runOra(page, sql, script = false) {
+  const { run } = await import("./qa-grid.mjs");
+  const status = await run(page, sql, script);
+  return { status, error: await page.eval(resultError) };
 }
 
 /** The text of the shown result error, or null. */
