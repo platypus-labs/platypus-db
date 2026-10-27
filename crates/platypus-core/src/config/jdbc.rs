@@ -20,6 +20,9 @@ pub struct JdbcUrl {
     pub instance: Option<String>,
     /// The URL's properties (`;key=value` or `?key=value&…`), keys in lower case.
     pub properties: BTreeMap<String, String>,
+    /// The hosts after the first of a failover list (`//h1:5432,h2:5432/db`): the app
+    /// connects to the first one only.
+    pub other_hosts: Vec<String>,
 }
 
 impl fmt::Debug for JdbcUrl {
@@ -34,6 +37,7 @@ impl fmt::Debug for JdbcUrl {
             .field("port_given", &self.port_given)
             .field("instance", &self.instance)
             .field("properties", &properties)
+            .field("other_hosts", &self.other_hosts)
             .finish()
     }
 }
@@ -129,6 +133,7 @@ impl JdbcUrl {
             port_given: false,
             instance: None,
             properties: BTreeMap::new(),
+            other_hosts: Vec::new(),
         }
     }
 
@@ -168,7 +173,9 @@ impl JdbcUrl {
                     None => rest,
                 };
                 let (address, database) = rest.split_once('/').unwrap_or((rest, ""));
-                jdbc.set_address(address.split(',').next().unwrap_or_default());
+                let mut hosts = address.split(',');
+                jdbc.set_address(hosts.next().unwrap_or_default());
+                jdbc.other_hosts = hosts.filter(|h| !h.is_empty()).map(str::to_owned).collect();
                 jdbc.config.database = decode(database)?;
             }
             None => jdbc.config.database = decode(rest)?,

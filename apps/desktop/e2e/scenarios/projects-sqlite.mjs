@@ -116,7 +116,9 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`${tabCount} === 1 && ${editorText} === "SELECT 'rossi'"`);
   assert.equal(await page.eval(`${treeRow("B dev")} === undefined`), true);
 
-  // A workspace saved by 0.2.0: its tabs are All connections', and it is replaced.
+  // A workspace saved by 0.2.0: its tabs are All connections', and it is replaced. A save still
+  // waiting would be written as the page goes, and drop the old workspace with it.
+  await page.sleep(600);
   await page.eval(`localStorage.removeItem('platypus.workspace.v2'); localStorage.removeItem('platypus.project.v1');
     localStorage.setItem('platypus.workspace.v1', JSON.stringify({
       tabs: [
@@ -125,8 +127,9 @@ export default async function (page, { dir, shots }) {
       ],
       active: 1,
     }))`);
-  // Nothing may save the old tabs again before the reload.
-  await page.eval(`window.addEventListener('beforeunload', () => localStorage.removeItem('platypus.workspace.v2'))`);
+  // Nothing may save the old tabs again before the reload: the app writes a pending save as
+  // the page goes (pagehide), and this listener, added after the app's, runs after it.
+  await page.eval(`window.addEventListener('pagehide', () => localStorage.removeItem('platypus.workspace.v2'))`);
   await page.eval(`location.reload()`);
   await page.waitFor(`window.__platypus !== undefined && ${treeRow("B dev")} !== undefined`, 15_000);
   await page.waitFor(`${tabCount} === 2`);

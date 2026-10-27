@@ -2,7 +2,7 @@
  * The import dialog's preview: each imported project as a tree of folders and connections,
  * what is ticked in it, and the request that saves the ticked part.
  */
-import type { ImportedProject, ImportInto, ImportRequest, SavedConnection, SkippedConnection } from "../api";
+import type { ImportedProject, ImportInto, ImportRequest, Project, SavedConnection, SkippedConnection } from "../api";
 
 export interface FolderView {
   /** Names from the project's root; empty for the root itself. */
@@ -57,10 +57,15 @@ export function toggleAll(ids: string[], picked: ReadonlySet<string>): Set<strin
   return next;
 }
 
-/** A named project becomes a new project; a file of plain connections joins the active
+/** A named project goes into the saved project of that name (an earlier import of the
+ *  same file), else becomes a new project; a file of plain connections joins the active
  *  project, or no project in All connections. */
-export function defaultInto(project: ImportedProject, active: string | null): ImportInto {
-  if (project.name) return { kind: "new_project", name: project.name };
+export function defaultInto(project: ImportedProject, active: string | null, existing: readonly Project[] = []): ImportInto {
+  if (project.name) {
+    const name = project.name.trim().toLowerCase();
+    const same = existing.find((p) => p.name.trim().toLowerCase() === name);
+    return same ? { kind: "existing", id: same.id } : { kind: "new_project", name: project.name };
+  }
   return active ? { kind: "existing", id: active } : { kind: "none" };
 }
 

@@ -686,10 +686,18 @@ impl Dialect {
             Self::Ansi | Self::Snowflake | Self::BigQuery | Self::Databricks => {
                 "SELECT NULL".to_owned()
             }
-            Self::Postgres => format!(
-                "SELECT CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::bigint END                  FROM pg_class c WHERE c.oid = to_regclass({})",
-                self.quote_literal(&self.qualified(schema, table))
-            ),
+            // A table never analyzed has no statistics (`reltuples` is -1, or 0 on 0 pages
+            // before PostgreSQL 14): its rows are counted, up to a million.
+            Self::Postgres => {
+                let name = self.qualified(schema, table);
+                format!(
+                    "SELECT CASE WHEN c.reltuples > 0 OR (c.reltuples = 0 AND c.relpages > 0) \
+                     THEN c.reltuples::bigint \
+                     ELSE (SELECT count(*) FROM (SELECT 1 FROM {name} LIMIT 1000000) s) END \
+                     FROM pg_class c WHERE c.oid = to_regclass({})",
+                    self.quote_literal(&name)
+                )
+            }
             Self::MySql => format!(
                 "SELECT TABLE_ROWS FROM information_schema.TABLES                  WHERE TABLE_SCHEMA = {} AND TABLE_NAME = {}",
                 schema.map_or_else(|| "DATABASE()".to_owned(), |s| self.quote_literal(s)),

@@ -105,7 +105,8 @@
   border-radius: var(--radius-sheet);
   padding: 20px 22px;
   width: min(520px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
+  /* Clear of the top bar, whose window buttons stay above dialogs. */
+  max-height: calc(100vh - 96px);
   overflow: auto;
   display: flex;
   flex-direction: column;
@@ -503,7 +504,7 @@ button.primary.danger:hover:not(:disabled) {
 
 .modal.settings {
   width: min(820px, calc(100vw - 32px));
-  height: min(720px, calc(100vh - 32px));
+  height: min(720px, calc(100vh - 96px));
   overflow: hidden;
 }
 

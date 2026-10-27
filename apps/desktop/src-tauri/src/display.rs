@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use arrow_array::builder::StringBuilder;
 use arrow_array::{Array, ArrayRef, RecordBatch};
-use arrow_cast::display::{ArrayFormatter, FormatOptions};
+use arrow_cast::display::FormatOptions;
 use arrow_ipc::writer::StreamWriter;
 use arrow_schema::{ArrowError, DataType, Field, Schema};
 
@@ -49,7 +49,7 @@ fn render(array: &ArrayRef, format: &DisplayFormat) -> Result<ArrayRef, ArrowErr
         .with_date_format(Some(&format.date))
         .with_timestamp_format(Some(&format.timestamp))
         .with_timestamp_tz_format(Some(&format.timestamp_tz));
-    let formatter = ArrayFormatter::try_new(array.as_ref(), &options)?;
+    let formatter = platypus_core::special::formatter(array.as_ref(), &options)?;
     let numeric = array.data_type().is_numeric();
     let mut cell = String::new();
     for i in 0..array.len() {
@@ -100,7 +100,7 @@ pub fn columns_text(
     // One formatter per column, not per value.
     let formatters = arrays
         .iter()
-        .map(|array| ArrayFormatter::try_new(array.as_ref(), &options))
+        .map(|array| platypus_core::special::formatter(array.as_ref(), &options))
         .collect::<Result<Vec<_>, _>>()?;
     for row in 0..batch.num_rows() {
         out.push(

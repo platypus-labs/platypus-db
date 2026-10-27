@@ -4,11 +4,11 @@
 use std::sync::Arc;
 
 use arrow_array::cast::AsArray;
-use arrow_array::types::{Float64Type, Int64Type};
+use arrow_array::types::{Decimal128Type, Float64Type, Int64Type, IntervalMonthDayNanoType};
 use arrow_array::{Array, ArrayRef, Float64Array, Int64Array, TimestampMillisecondArray};
-use arrow_cast::display::{ArrayFormatter, FormatOptions};
-use arrow_schema::{ArrowError, DataType, Field, Schema, TimeUnit};
-use platypus_core::META_DB_TYPE;
+use arrow_cast::display::FormatOptions;
+use arrow_schema::{ArrowError, DataType, Field, IntervalUnit, Schema, TimeUnit};
+use platypus_core::{META_DB_TYPE, special};
 
 use crate::LocalError;
 
@@ -74,7 +74,20 @@ pub fn numbers(array: &ArrayRef) -> Result<Float64Array, ArrowError> {
     }
     // The default cast is safe: what does not convert becomes NULL.
     let cast = arrow_cast::cast(&source, &DataType::Float64)?;
-    Ok(cast.as_primitive::<Float64Type>().clone())
+    let floats = cast.as_primitive::<Float64Type>().clone();
+    if let DataType::Decimal128(_, _) = array.data_type() {
+        // A numeric NaN is stored as a reserved decimal: NaN here too, not a huge number.
+        let decimals = array.as_primitive::<Decimal128Type>();
+        return Ok(floats
+            .iter()
+            .zip(decimals.iter())
+            .map(|(f, d)| match d {
+                Some(special::DECIMAL_NAN) => Some(f64::NAN),
+                _ => f,
+            })
+            .collect());
+    }
+    Ok(floats)
 }
 
 /// Dates and timestamps as milliseconds since the epoch.
@@ -95,9 +108,50 @@ pub fn time_text(
         DataType::Date32 | DataType::Date64 => arrow_cast::cast(&stamp, &DataType::Date32)?,
         _ => stamp,
     };
-    Ok(ArrayFormatter::try_new(value.as_ref(), options)?
+    Ok(platypus_core::special::formatter(value.as_ref(), options)?
         .value(0)
         .to_string())
+}
+
+/// An interval or a duration: a length of time.
+#[must_use]
+pub fn is_span(data_type: &DataType) -> bool {
+    matches!(data_type, DataType::Interval(_) | DataType::Duration(_))
+}
+
+/// Nanoseconds in a day.
+const DAY_NANOS: i128 = 86_400_000_000_000;
+
+/// Intervals and durations as nanoseconds, to order them: a month counts 30 days and a day 24
+/// hours, as PostgreSQL and DuckDB compare intervals. `None` for NULL and other types.
+pub fn spans(array: &ArrayRef) -> Result<Vec<Option<i128>>, ArrowError> {
+    let per_unit = match array.data_type() {
+        DataType::Duration(TimeUnit::Second) => 1_000_000_000,
+        DataType::Duration(TimeUnit::Millisecond) => 1_000_000,
+        DataType::Duration(TimeUnit::Microsecond) => 1_000,
+        DataType::Duration(TimeUnit::Nanosecond) => 1,
+        DataType::Interval(_) => {
+            let unit = DataType::Interval(IntervalUnit::MonthDayNano);
+            let intervals = arrow_cast::cast(array, &unit)?;
+            return Ok(intervals
+                .as_primitive::<IntervalMonthDayNanoType>()
+                .iter()
+                .map(|v| {
+                    v.map(|v| {
+                        (i128::from(v.months) * 30 + i128::from(v.days)) * DAY_NANOS
+                            + i128::from(v.nanoseconds)
+                    })
+                })
+                .collect());
+        }
+        _ => return Ok(vec![None; array.len()]),
+    };
+    let counts = arrow_cast::cast(array, &DataType::Int64)?;
+    Ok(counts
+        .as_primitive::<Int64Type>()
+        .iter()
+        .map(|v| v.map(|v| i128::from(v) * per_unit))
+        .collect())
 }
 
 /// The text of every value as the grid shows it; `None` for NULL.
@@ -105,21 +159,30 @@ pub fn texts(
     array: &dyn Array,
     options: &FormatOptions<'_>,
 ) -> Result<Vec<Option<String>>, ArrowError> {
-    let formatter = ArrayFormatter::try_new(array, options)?;
+    let formatter = platypus_core::special::formatter(array, options)?;
+    // Logical: a column of the NULL type has no validity bitmap, yet every value is NULL.
+    let nulls = array.logical_nulls();
     Ok((0..array.len())
         .map(|row| {
-            array
-                .is_valid(row)
+            nulls
+                .as_ref()
+                .is_none_or(|n| n.is_valid(row))
                 .then(|| formatter.value(row).to_string())
         })
         .collect())
 }
 
-/// A number for labels: whole numbers without decimals, tiny ones in scientific notation,
-/// others with up to six decimals.
+/// A number for labels: whole numbers without decimals, tiny and huge ones in scientific
+/// notation (past 1e15 a double no longer holds every digit), others with up to six decimals.
 #[must_use]
 pub fn format_number(value: f64) -> String {
-    if value.fract().abs() < f64::EPSILON && value.abs() < 1e15 {
+    if value.abs() >= 1e15 {
+        let text = format!("{value:.6e}");
+        let (mantissa, exponent) = text.split_once('e').unwrap_or((&text, "0"));
+        let mantissa = mantissa.trim_end_matches('0').trim_end_matches('.');
+        return format!("{mantissa}e{exponent}");
+    }
+    if value.fract().abs() < f64::EPSILON {
         return format!("{value:.0}");
     }
     if value.abs() > 0.0 && value.abs() < 1e-4 {
@@ -241,6 +304,9 @@ mod tests {
         assert_eq!(format_number(-0.5), "-0.5");
         assert_eq!(format_number(1.234_567_89), "1.234568");
         assert_eq!(format_number(0.000_012), "1.2e-5");
+        assert_eq!(format_number(9_223_372_036_854_775_807.0), "9.223372e18");
+        assert_eq!(format_number(-1e30), "-1e30");
+        assert_eq!(format_number(999_999_999_999_999.0), "999999999999999");
     }
 
     #[test]

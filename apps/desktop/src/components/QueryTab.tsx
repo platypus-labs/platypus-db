@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { titleWithKeys } from "../actions";
 import {
   api,
   toCommandError,
@@ -798,6 +799,10 @@ export function QueryTab({
       onError(toCommandError(e).message);
       return;
     }
+    if (saved.read_only && planned.some((p) => !p.readOnly)) {
+      onError(t("{name} is read-only and this may modify data.", { name: connection.name }));
+      return;
+    }
     if (
       connection.read_only &&
       planned.some((p) => !p.readOnly) &&
@@ -1356,20 +1361,21 @@ export function QueryTab({
     <div className="query-tab" style={{ display: active ? "flex" : "none" }}>
       <div
         className="query-main"
-        style={{ gridTemplateRows: `auto ${tab.table ? "auto " : ""}${editorHeight}px 6px 1fr auto` }}
+        // The editor gives up height before the toolbar does in a small window.
+        style={{ gridTemplateRows: `auto ${tab.table ? "auto " : ""}minmax(60px, ${editorHeight}px) 6px 1fr auto` }}
       >
         <div className="toolbar">
           <button
             className="primary"
             onClick={() => void run("statement")}
-            title={t("Run statement (Ctrl+Enter)")}
+            title={titleWithKeys(t("Run statement"), "editor.run_statement")}
             aria-label={t("Run")}
           >
             <Icon name="run" />
             {t("Run")}
           </button>
           {toolbar.visible.script && (
-            <button onClick={() => void run("script")} title={t("Run script (Alt+X, Ctrl+Shift+Enter)")} aria-label={t("Script")}>
+            <button onClick={() => void run("script")} title={titleWithKeys(t("Run script"), "editor.run_script")} aria-label={t("Script")}>
               {toolbar.label("script", t("Script"))}
             </button>
           )}
@@ -1452,10 +1458,10 @@ export function QueryTab({
           {toolbar.visible.files && (
             <>
               <span className="divider" />
-              <button onClick={() => void openFile()} title={t("Open script (Ctrl+O)")} aria-label={t("Open")}>
+              <button onClick={() => void openFile()} title={titleWithKeys(t("Open script"), "editor.open")} aria-label={t("Open")}>
                 {toolbar.label("open", t("Open"))}
               </button>
-              <button onClick={() => void saveFile()} title={t("Save script (Ctrl+S)")} aria-label={t("Save")}>
+              <button onClick={() => void saveFile()} title={titleWithKeys(t("Save script"), "editor.save")} aria-label={t("Save")}>
                 {toolbar.label("save", t("Save"))}
                 {dirty ? " •" : ""}
               </button>
@@ -1563,7 +1569,8 @@ export function QueryTab({
           {blocked !== null && (
             <div className="notice warn">
               {t("{name} is read-only and this may modify data.", { name: connection.name })}
-              <button onClick={() => void run(blocked, true)}>{t("Run anyway")}</button>
+              {/* Only this tab is read-only: the connection, like every other entry point, refuses. */}
+              {!saved.read_only && <button onClick={() => void run(blocked, true)}>{t("Run anyway")}</button>}
             </div>
           )}
           {tab.terminal && <TerminalView blocks={terminalLog} onClear={() => setTerminalLog([])} />}

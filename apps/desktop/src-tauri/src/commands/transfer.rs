@@ -306,6 +306,8 @@ fn spawn_job<F>(
 where
     F: Future<Output = CommandResult<u64>> + Send + 'static,
 {
+    // Every job here writes into the session's database.
+    state.writable(session_id)?;
     let session = state.session(session_id)?;
     let log = Arc::clone(&state.query_log);
     let job = Export::spawn(on_event, true, move |job| async move {

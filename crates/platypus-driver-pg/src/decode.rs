@@ -510,9 +510,14 @@ fn format_composite(
         };
         let value = buf.get(..len).ok_or_else(|| invalid("record"))?;
         buf = &buf[len..];
+        // An anonymous `record` names each field's type only in the field's header.
+        let oid = u32::from_be_bytes([header[0], header[1], header[2], header[3]]);
+        let named = Type::from_oid(oid);
         let ty = fields
             .get(i)
-            .map_or(&Type::TEXT, tokio_postgres::types::Field::type_);
+            .map(tokio_postgres::types::Field::type_)
+            .or(named.as_ref())
+            .unwrap_or(&Type::TEXT);
         push_element(&mut out, &format_value(ty, value)?, Literal::Composite);
     }
     out.push(')');
@@ -573,6 +578,206 @@ fn format_geometric(ty: &Type, raw: &[u8]) -> DecodeResult<String> {
             let [x, y, r] = floats::<3>(raw, "circle")?;
             let _ = write!(out, "<({x},{y}),{r}>");
         }
+    }
+    Ok(out)
+}
+
+/// `bit(n)` and `bit varying`: the number of bits, then the bits, first bit highest.
+fn format_bits(raw: &[u8]) -> DecodeResult<String> {
+    let len = usize::try_from(i32::from_be_bytes(take(raw, "bit")?))?;
+    let bytes = &raw[4..];
+    (0..len)
+        .map(|i| {
+            let byte = bytes.get(i / 8)?;
+            Some(if (byte >> (7 - i % 8)) & 1 == 1 {
+                '1'
+            } else {
+                '0'
+            })
+        })
+        .collect::<Option<String>>()
+        .ok_or_else(|| invalid("bit"))
+}
+
+/// A NUL-terminated string at the start of `buf`, and what follows it.
+fn c_string<'a>(buf: &'a [u8], what: &str) -> DecodeResult<(&'a str, &'a [u8])> {
+    let end = buf
+        .iter()
+        .position(|&b| b == 0)
+        .ok_or_else(|| invalid(what))?;
+    Ok((std::str::from_utf8(&buf[..end])?, &buf[end + 1..]))
+}
+
+/// A lexeme or operand quoted as `tsvectorout` and `tsqueryout` do: `'` and `\` doubled.
+fn push_quoted_lexeme(out: &mut String, lexeme: &str) {
+    out.push('\'');
+    for c in lexeme.chars() {
+        if matches!(c, '\'' | '\\') {
+            out.push(c);
+        }
+        out.push(c);
+    }
+    out.push('\'');
+}
+
+/// `tsvector`: the lexemes, each with its positions and their weights (`'fox':3A,5`).
+fn format_tsvector(raw: &[u8]) -> DecodeResult<String> {
+    let count = i32::from_be_bytes(take(raw, "tsvector")?);
+    let mut buf = &raw[4..];
+    let mut out = String::new();
+    for i in 0..count {
+        if i > 0 {
+            out.push(' ');
+        }
+        let (lexeme, rest) = c_string(buf, "tsvector")?;
+        push_quoted_lexeme(&mut out, lexeme);
+        let positions = u16::from_be_bytes(take(rest, "tsvector")?);
+        buf = &rest[2..];
+        for p in 0..usize::from(positions) {
+            let entry = u16::from_be_bytes(take(buf.get(p * 2..).unwrap_or_default(), "tsvector")?);
+            out.push(if p == 0 { ':' } else { ',' });
+            let _ = write!(out, "{}", entry & 0x3fff);
+            match entry >> 14 {
+                3 => out.push('A'),
+                2 => out.push('B'),
+                1 => out.push('C'),
+                _ => {}
+            }
+        }
+        buf = &buf[usize::from(positions) * 2..];
+    }
+    Ok(out)
+}
+
+/// One item of a `tsquery` in its wire order: an operator, then its right operand, then
+/// its left one.
+enum QueryItem<'a> {
+    Operand {
+        text: &'a str,
+        weight: u8,
+        prefix: bool,
+    },
+    /// 1 not, 2 and, 3 or, 4 phrase (with its distance).
+    Operator(u8, i16),
+}
+
+/// The text of the item at `items[*at]` as `tsqueryout` writes it (its `infix`), moving
+/// `at` past it and its operands.
+fn write_query(
+    out: &mut String,
+    items: &[QueryItem<'_>],
+    at: &mut usize,
+    parent: u8,
+    right_of_phrase: bool,
+) -> DecodeResult<()> {
+    let item = items.get(*at).ok_or_else(|| invalid("tsquery"))?;
+    *at += 1;
+    match *item {
+        QueryItem::Operand {
+            text,
+            weight,
+            prefix,
+        } => {
+            push_quoted_lexeme(out, text);
+            if weight != 0 || prefix {
+                out.push(':');
+                if prefix {
+                    out.push('*');
+                }
+                for (bit, letter) in [(8, 'A'), (4, 'B'), (2, 'C'), (1, 'D')] {
+                    if weight & bit != 0 {
+                        out.push(letter);
+                    }
+                }
+            }
+        }
+        QueryItem::Operator(1, _) => {
+            let open = 4 < parent;
+            out.push_str(if open { "( !" } else { "!" });
+            write_query(out, items, at, 4, false)?;
+            if open {
+                out.push_str(" )");
+            }
+        }
+        QueryItem::Operator(op, distance) => {
+            let priority = match op {
+                2 => 2,
+                3 => 1,
+                _ => 3,
+            };
+            let open = priority < parent || (op == 4 && right_of_phrase);
+            let mut right = String::new();
+            write_query(&mut right, items, at, priority, op == 4)?;
+            if open {
+                out.push_str("( ");
+            }
+            write_query(out, items, at, priority, false)?;
+            let _ = match op {
+                2 => write!(out, " & {right}"),
+                3 => write!(out, " | {right}"),
+                _ if distance == 1 => write!(out, " <-> {right}"),
+                _ => write!(out, " <{distance}> {right}"),
+            };
+            if open {
+                out.push_str(" )");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `tsquery`, as `tsqueryout` writes it: `'fat' & ( 'rat' | 'cat' )`.
+fn format_tsquery(raw: &[u8]) -> DecodeResult<String> {
+    let count = usize::try_from(i32::from_be_bytes(take(raw, "tsquery")?))?;
+    let mut buf = &raw[4..];
+    let mut items = Vec::with_capacity(count);
+    for _ in 0..count {
+        let (&kind, rest) = buf.split_first().ok_or_else(|| invalid("tsquery"))?;
+        if kind == 1 {
+            let [weight, prefix]: [u8; 2] = take(rest, "tsquery")?;
+            let (text, rest) = c_string(&rest[2..], "tsquery")?;
+            items.push(QueryItem::Operand {
+                text,
+                weight,
+                prefix: prefix != 0,
+            });
+            buf = rest;
+        } else {
+            let (&op, rest) = rest.split_first().ok_or_else(|| invalid("tsquery"))?;
+            if op == 4 {
+                items.push(QueryItem::Operator(
+                    op,
+                    i16::from_be_bytes(take(rest, "tsquery")?),
+                ));
+                buf = &rest[2..];
+            } else {
+                items.push(QueryItem::Operator(op, 0));
+                buf = rest;
+            }
+        }
+    }
+    let mut out = String::new();
+    if !items.is_empty() {
+        write_query(&mut out, &items, &mut 0, 0, false)?;
+    }
+    Ok(out)
+}
+
+/// `pg_snapshot` and `txid_snapshot`: `xmin:xmax:xip,…`.
+fn format_snapshot(raw: &[u8]) -> DecodeResult<String> {
+    let count = usize::try_from(i32::from_be_bytes(take(raw, "snapshot")?))?;
+    let number = |i: usize| -> DecodeResult<u64> {
+        Ok(u64::from_be_bytes(take(
+            raw.get(4 + i * 8..).unwrap_or_default(),
+            "snapshot",
+        )?))
+    };
+    let mut out = format!("{}:{}:", number(0)?, number(1)?);
+    for i in 0..count {
+        if i > 0 {
+            out.push(',');
+        }
+        let _ = write!(out, "{}", number(2 + i)?);
     }
     Ok(out)
 }
@@ -641,6 +846,27 @@ pub fn format_value(ty: &Type, raw: &[u8]) -> DecodeResult<String> {
                 .collect::<Vec<_>>()
                 .join(":"))
         }
+        Type::MACADDR8 => {
+            let b: [u8; 8] = take(raw, "macaddr8")?;
+            Ok(b.iter()
+                .map(|x| format!("{x:02x}"))
+                .collect::<Vec<_>>()
+                .join(":"))
+        }
+        Type::BIT | Type::VARBIT => format_bits(raw),
+        Type::PG_LSN => {
+            let lsn = u64::from_be_bytes(take(raw, "pg_lsn")?);
+            Ok(format!("{:X}/{:X}", lsn >> 32, lsn & 0xffff_ffff))
+        }
+        Type::TS_VECTOR => format_tsvector(raw),
+        Type::RECORD => format_composite(&[], raw),
+        Type::TSQUERY => format_tsquery(raw),
+        Type::XID8 => Ok(u64::from_be_bytes(take(raw, "xid8")?).to_string()),
+        Type::PG_SNAPSHOT | Type::TXID_SNAPSHOT => format_snapshot(raw),
+        // A version byte (1), then the text.
+        Type::JSONPATH => {
+            Ok(std::str::from_utf8(raw.get(1..).ok_or_else(|| invalid("jsonpath"))?)?.to_owned())
+        }
         Type::POINT => {
             let p = pg::point_from_sql(raw)?;
             Ok(format!("({},{})", p.x(), p.y()))
@@ -673,6 +899,92 @@ mod tests {
             b.extend_from_slice(&d.to_be_bytes());
         }
         b
+    }
+
+    #[test]
+    fn formats_bits_addresses_and_lsns() {
+        assert_eq!(
+            format_value(&Type::BIT, &[0, 0, 0, 4, 0xA0]).unwrap(),
+            "1010"
+        );
+        assert_eq!(
+            format_value(&Type::VARBIT, &[0, 0, 0, 10, 0xFF, 0x40]).unwrap(),
+            "1111111101"
+        );
+        assert_eq!(format_value(&Type::VARBIT, &[0, 0, 0, 0]).unwrap(), "");
+        assert_eq!(
+            format_value(&Type::MACADDR8, &[8, 0, 0x2b, 1, 2, 3, 4, 5]).unwrap(),
+            "08:00:2b:01:02:03:04:05"
+        );
+        assert_eq!(
+            format_value(&Type::PG_LSN, &0x16_B374_D848_u64.to_be_bytes()).unwrap(),
+            "16/B374D848"
+        );
+        assert_eq!(format_value(&Type::JSONPATH, b"\x01$.a").unwrap(), "$.a");
+    }
+
+    #[test]
+    fn formats_text_search_values() {
+        let mut vector = vec![0, 0, 0, 2];
+        vector.extend_from_slice(b"fox\0\0\x01\0\x03it's\0\0\x02");
+        vector.extend_from_slice(&((3u16 << 14) | 2).to_be_bytes());
+        vector.extend_from_slice(&5u16.to_be_bytes());
+        assert_eq!(
+            format_value(&Type::TS_VECTOR, &vector).unwrap(),
+            "'fox':3 'it''s':2A,5"
+        );
+
+        let operand = |text: &str, weight: u8, prefix: u8| {
+            let mut b = vec![1, weight, prefix];
+            b.extend_from_slice(text.as_bytes());
+            b.push(0);
+            b
+        };
+        let query = |items: &[Vec<u8>]| {
+            let mut b = i32::try_from(items.len()).unwrap().to_be_bytes().to_vec();
+            for item in items {
+                b.extend_from_slice(item);
+            }
+            format_value(&Type::TSQUERY, &b).unwrap()
+        };
+        let (and, or, not) = (vec![2, 2], vec![2, 3], vec![2, 1]);
+        // 'fat' & ( 'rat' | 'cat' ): an operator, its right operand, then its left one.
+        assert_eq!(
+            query(&[
+                and.clone(),
+                or.clone(),
+                operand("cat", 0, 0),
+                operand("rat", 0, 0),
+                operand("fat", 0, 0)
+            ]),
+            "'fat' & ( 'rat' | 'cat' )"
+        );
+        assert_eq!(
+            query(&[not, and, operand("b", 0, 0), operand("a", 12, 1)]),
+            "!( 'a':*AB & 'b' )"
+        );
+        assert_eq!(
+            query(&[vec![2, 4, 0, 2], operand("b", 0, 0), operand("a", 0, 0)]),
+            "'a' <2> 'b'"
+        );
+        assert_eq!(
+            query(&[or, operand("b", 0, 0), operand("a", 0, 0)]),
+            "'a' | 'b'"
+        );
+        assert_eq!(query(&[]), "");
+    }
+
+    #[test]
+    fn formats_anonymous_records_by_their_field_types() {
+        // (1,"a b") with an int4 field and a text field.
+        let mut record = 2_i32.to_be_bytes().to_vec();
+        record.extend_from_slice(&23_u32.to_be_bytes());
+        record.extend_from_slice(&4_i32.to_be_bytes());
+        record.extend_from_slice(&1_i32.to_be_bytes());
+        record.extend_from_slice(&25_u32.to_be_bytes());
+        record.extend_from_slice(&3_i32.to_be_bytes());
+        record.extend_from_slice(b"a b");
+        assert_eq!(format_value(&Type::RECORD, &record).unwrap(), "(1,\"a b\")");
     }
 
     #[test]

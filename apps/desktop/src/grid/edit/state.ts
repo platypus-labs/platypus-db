@@ -132,7 +132,7 @@ const values = (cells: Cells): ColumnValue[] => [...cells].map(([column, value])
  *  keep theirs. */
 export function toChanges(
   state: EditState,
-  target: Pick<TableChanges, "table" | "key" | "unique_key" | "table_columns" | "defaults">,
+  target: Pick<TableChanges, "table" | "key" | "unique_key" | "table_columns" | "defaults" | "generated">,
 ): TableChanges {
   return {
     ...target,

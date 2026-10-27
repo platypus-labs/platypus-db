@@ -46,6 +46,18 @@ pub struct RowUpdate {
     values: Vec<ColumnValue>,
 }
 
+/// How the database fills a column by itself (see [`platypus_sql::generated`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Generated {
+    /// Numbered when left out; takes the values given.
+    Numbered,
+    /// Numbered; takes a value only with an override.
+    Identity,
+    /// Computed, never written.
+    Computed,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct TableRef {
     schema: String,
@@ -68,6 +80,10 @@ pub struct Changes {
     table_columns: Vec<usize>,
     /// Default expressions by result column, for dialects without a `DEFAULT` keyword.
     defaults: Vec<Option<String>>,
+    /// How the database fills each result column by itself, if it does: the undo script
+    /// leaves computed columns out and puts identity values back with an override.
+    #[serde(default)]
+    generated: Vec<Option<Generated>>,
     updates: Vec<RowUpdate>,
     /// New rows, as the values the user set; other columns take their default.
     inserts: Vec<Vec<ColumnValue>>,
@@ -226,21 +242,24 @@ fn delete_statements(
         .collect::<CommandResult<Vec<_>>>()?;
     let keys: Vec<_> = keys.iter().map(|k| borrowed(k)).collect();
     let statements = target.deletes(changes, &keys);
+    let generated = |c: usize| changes.generated.get(c).copied().flatten();
+    let restored: Vec<usize> = changes
+        .table_columns
+        .iter()
+        .copied()
+        .filter(|&c| generated(c) != Some(Generated::Computed))
+        .collect();
+    let identity: Vec<usize> = restored
+        .iter()
+        .copied()
+        .filter(|&c| generated(c) == Some(Generated::Identity))
+        .collect();
     let rows: Vec<Vec<_>> = texts
         .iter()
-        .map(|text| {
-            changes
-                .table_columns
-                .iter()
-                .map(|&c| (c, loaded(text, c)))
-                .collect()
-        })
+        .map(|text| restored.iter().map(|&c| (c, loaded(text, c))).collect())
         .collect();
-    let undo = dml::inserts(dialect, table, columns, &rows).map_err(invalid)?;
-    Ok((
-        statements.map_err(invalid)?,
-        undo.into_iter().map(|s| s.sql).collect(),
-    ))
+    let undo = dml::restore_inserts(dialect, table, columns, &rows, &identity).map_err(invalid)?;
+    Ok((statements.map_err(invalid)?, undo))
 }
 
 /// The updates, one per row, and the updates that put the loaded values back.
@@ -372,6 +391,7 @@ pub async fn save_changes(
     changes: Changes,
 ) -> CommandResult<Saved> {
     let job = state.job(job_id)?;
+    state.writable(job.session_id)?;
     let script = script(&state, &job, &changes)?;
     let dialect = Dialect::from(state.session(job.session_id)?.config.driver);
     let conn = state.live(job.session_id).await?;

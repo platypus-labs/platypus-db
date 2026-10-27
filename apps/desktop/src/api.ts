@@ -309,6 +309,15 @@ export type QueryEvent =
   | { type: "affected"; rows: number; elapsed_ms: number }
   | { type: "failed"; error: CommandError };
 
+export interface UnfilteredTable {
+  schema: string | null;
+  name: string;
+  /** `UPDATE`, `DELETE`, `TRUNCATE`, or mongosh's `updateMany`, `deleteMany`. */
+  verb: string;
+  /** SQL Server's `TOP (n)`: up to that many rows the database picks, not every one. */
+  limited: boolean;
+}
+
 /** Offsets are UTF-16 code units, like JavaScript string indices. */
 export interface StatementSpan {
   start: number;
@@ -316,8 +325,9 @@ export interface StatementSpan {
   read_only: boolean;
   /** `command` is a client command such as `@set x = 1`, run by the app. */
   kind: "query" | "dml" | "ddl" | "other" | "command";
-  /** An UPDATE or DELETE without WHERE, or a TRUNCATE: the table it changes in every row. */
-  unfiltered: { schema: string | null; name: string } | null;
+  /** The tables an UPDATE or DELETE without WHERE, or a TRUNCATE, changes in every row:
+   *  several for `TRUNCATE a, b` or a SQL Server batch. */
+  unfiltered: UnfilteredTable[];
   /** `:name`, `?` and `${name}` placeholders, in the same units as `start`. */
   parameters: ParameterSpan[];
 }
@@ -622,6 +632,16 @@ export interface ColumnValue {
   value: CellInput;
 }
 
+/** How the database fills a column by itself: numbered when left out (serials,
+ *  `AUTO_INCREMENT`, SQLite's rowid), numbered and taking no value (`GENERATED ALWAYS AS
+ *  IDENTITY`, SQL Server's `IDENTITY`), or computed (generated columns, `rowversion`). */
+export type Generated = "numbered" | "identity" | "computed";
+
+export interface GeneratedColumn {
+  name: string;
+  kind: Generated;
+}
+
 /** Pending changes to a result of one table; see `commands/data.rs`. */
 export interface TableChanges {
   table: { schema: string; name: string };
@@ -634,6 +654,8 @@ export interface TableChanges {
   table_columns: number[];
   /** Default expressions by result column. */
   defaults: (string | null)[];
+  /** How the database fills each result column by itself, if it does. */
+  generated: (Generated | null)[];
   updates: { row: number; values: ColumnValue[] }[];
   inserts: ColumnValue[][];
   deletes: number[];
@@ -922,7 +944,7 @@ export type ImportNote = { kind: "windows_auth" } | { kind: "entra_auth" } | { k
 
 /** About a pasted URL or connection string: the notes of an import, and the parameters it
  *  left out (by name). */
-export type ParseNote = ImportNote | { kind: "ignored"; keys: string[] };
+export type ParseNote = ImportNote | { kind: "ignored"; keys: string[] } | { kind: "other_hosts"; hosts: string[] };
 
 /** The connection form's fields read from a pasted URL or connection string. */
 export interface ParsedConnection {
@@ -1013,10 +1035,12 @@ export interface ChartData {
   /** Bars and pie use `categories` and `values`; lines and scatter `points`, X as a number,
    *  milliseconds since the epoch or a category's position. */
   x_axis: "category" | "number" | "time";
-  categories: string[];
+  /** `null` is the category of SQL NULL, apart from the text "NULL". */
+  categories: (string | null)[];
   /** The last category gathers the ones left out. */
   other: boolean;
-  series: { name: string; values: number[]; points: [number, number][] }[];
+  /** A value is `null` where a category has no number to aggregate (no bar, not 0). */
+  series: { name: string; values: (number | null)[]; points: [number, number][] }[];
   rows: number;
   /** Points were reduced or categories gathered to keep the chart light. */
   reduced: boolean;
@@ -1073,10 +1097,20 @@ export const api = {
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
   defaultConnection: (driver: DriverKind) =>
     invoke<SavedConnection>("default_connection", { driver }),
-  /** Reads a URL (`postgres://…`), a JDBC URL or a `Server=…;Database=…` string. */
-  parseConnectionUrl: (input: string) => invoke<ParsedConnection>("parse_connection_url", { input }),
+  /** Reads a URL (`postgres://…`), a JDBC URL or a `Server=…;Database=…` string; `driver`
+   *  is the form's, which a string that names none is read for. */
+  parseConnectionUrl: (input: string, driver: DriverKind | null = null) =>
+    invoke<ParsedConnection>("parse_connection_url", { input, driver }),
   /** The URL of a saved connection, without its password. */
   connectionUrl: (connectionId: string) => invoke<string>("connection_url", { connectionId }),
+  /** Whether a password is saved for the connection (a locked one counts). */
+  connectionHasPassword: (connectionId: string) => invoke<boolean>("connection_has_password", { connectionId }),
+  /** Saves the password typed at the prompt of a connection that keeps it in the keychain. */
+  rememberPassword: (connectionId: string, password: string) =>
+    invoke<void>("remember_password", { connectionId, password }),
+  /** Saves a copy of a connection, with its secrets, next to it. */
+  duplicateConnection: (id: string) =>
+    invoke<{ connection: SavedConnection; workspace: Workspace }>("duplicate_connection", { id }),
   /** `projects` replaces the projects the connection is in; `null` leaves them. */
   saveConnection: (
     connection: SavedConnection,
@@ -1189,6 +1223,9 @@ export const api = {
     invoke<TableHits>("search_table_data", { sessionId, schema, table, needle }),
   tableDetails: (sessionId: number, schema: string, table: string) =>
     invoke<TableDetails>("table_details", { sessionId, schema, table }),
+  /** The columns of a table the database fills by itself; empty when unknown. */
+  generatedColumns: (sessionId: number, schema: string, table: string) =>
+    invoke<GeneratedColumn[]>("generated_columns", { sessionId, schema, table }),
   referencingKeys: (sessionId: number, schema: string, table: string) =>
     invoke<ReferencingKey[]>("referencing_keys", { sessionId, schema, table }),
   transactionState: (sessionId: number) => invoke<TransactionState>("transaction_state", { sessionId }),

@@ -8,10 +8,12 @@
 //! the rows with the same key.
 
 use arrow_array::RecordBatch;
-use arrow_cast::display::{ArrayFormatter, FormatOptions};
+use arrow_cast::display::FormatOptions;
 use arrow_schema::{ArrowError, DataType, Field, TimeUnit};
 use futures::StreamExt;
-use platypus_core::{Connection, ExecOptions, ExecResult, META_DB_TYPE, RecordBatchStream};
+use platypus_core::{
+    Connection, ExecOptions, ExecResult, META_DB_TYPE, RecordBatchStream, special,
+};
 use platypus_sql::Dialect;
 use platypus_sql::dml::{Column, InvalidValue, ValueKind};
 use serde::Deserialize;
@@ -272,7 +274,7 @@ impl ImportPlan {
                     let literals = columns
                         .iter()
                         .zip(row)
-                        .map(|(c, text)| c.literal(dialect, text.as_deref()))
+                        .map(|(c, text)| literal(c, dialect, text.as_deref()))
                         .collect::<Result<Vec<_>, _>>()?;
                     Ok(format!("({})", literals.join(", ")))
                 })
@@ -433,6 +435,23 @@ fn declared_type(name: &str) -> Option<DataType> {
     })
 }
 
+/// The literal of `text` for `column`. PostgreSQL's decimal `NaN` is written as a float's
+/// `NaN`, quoted.
+pub(crate) fn literal(
+    column: &Column<'_>,
+    dialect: Dialect,
+    text: Option<&str>,
+) -> Result<String, InvalidValue> {
+    if matches!(column.kind, ValueKind::Decimal) && text == Some("NaN") {
+        let float = Column {
+            kind: ValueKind::Float,
+            ..*column
+        };
+        return float.literal(dialect, text);
+    }
+    column.literal(dialect, text)
+}
+
 /// The values of `batch` as text, row by row, `None` for NULL: what an import writes.
 pub fn rows_text(batch: &RecordBatch) -> Result<Vec<Vec<Option<String>>>, ArrowError> {
     let options = FormatOptions::default();
@@ -440,7 +459,7 @@ pub fn rows_text(batch: &RecordBatch) -> Result<Vec<Vec<Option<String>>>, ArrowE
     let formatters = batch
         .columns()
         .iter()
-        .map(|a| ArrayFormatter::try_new(a.as_ref(), &options))
+        .map(|a| special::formatter(a.as_ref(), &options))
         .collect::<Result<Vec<_>, _>>()?;
     Ok((0..batch.num_rows())
         .map(|row| {
@@ -496,6 +515,20 @@ pub(crate) async fn query_value(
         .and_then(|mut r| r.swap_remove(0)))
 }
 
+/// The schema an unqualified `CREATE TABLE` creates its table in; `None` where it cannot be
+/// asked.
+async fn current_schema(conn: &dyn Connection, dialect: Dialect) -> Option<String> {
+    let sql = match dialect {
+        Dialect::Postgres | Dialect::DuckDb => "SELECT current_schema()",
+        Dialect::MySql => "SELECT DATABASE()",
+        Dialect::SqlServer => "SELECT SCHEMA_NAME()",
+        Dialect::Oracle => "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM dual",
+        Dialect::Sqlite => return Some("main".to_owned()),
+        _ => return None,
+    };
+    query_value(conn, sql).await.ok().flatten()
+}
+
 async fn exec(conn: &dyn Connection, sql: &str) -> Result<(), platypus_core::Error> {
     // Dropping a stream of rows ends the statement.
     conn.execute(sql, &ExecOptions::default()).await.map(|_| ())
@@ -537,11 +570,17 @@ pub async fn import_rows(
     if transaction {
         exec(target, "BEGIN").await?;
     }
-    let mut created = false;
+    // The table a failed import created, by its full name: an unqualified one could find
+    // another table of that name further down the search path once a rollback undid it.
+    let mut created: Option<String> = None;
     let outcome = async {
         if plan.create {
+            let schema = match &plan.schema {
+                Some(schema) => Some(schema.clone()),
+                None => current_schema(target, dialect).await,
+            };
             exec(target, &plan.create_sql(dialect)?).await?;
-            created = true;
+            created = Some(dialect.qualified(schema.as_deref(), &plan.table));
         }
         if plan.mode() == ImportMode::Replace {
             exec(target, &format!("DELETE FROM {}", plan.table(dialect))).await?;
@@ -581,10 +620,11 @@ pub async fn import_rows(
         if transaction {
             let _ = target.rollback().await;
         }
-        if created {
-            // Only MySQL still has the table; elsewhere the DROP fails. In manual-commit mode
-            // it opens a transaction, ended here.
-            let _ = exec(target, &format!("DROP TABLE {}", plan.table(dialect))).await;
+        // Most databases' rollback undid the CREATE already, and the DROP fails; MySQL,
+        // Oracle and CockroachDB keep the table. In manual-commit mode it opens a
+        // transaction, ended here.
+        if let Some(table) = created {
+            let _ = exec(target, &format!("DROP TABLE {table}")).await;
             let _ = target.rollback().await;
         }
     }
@@ -755,6 +795,24 @@ mod tests {
                 row(None, "e")
             ]
         );
+    }
+
+    #[test]
+    fn writes_decimal_nan() {
+        let column = Column {
+            name: "n",
+            kind: ValueKind::Decimal,
+            default: None,
+        };
+        assert_eq!(
+            literal(&column, Dialect::Postgres, Some("NaN")).unwrap(),
+            "'NaN'"
+        );
+        assert_eq!(
+            literal(&column, Dialect::Postgres, Some("1.50")).unwrap(),
+            "1.50"
+        );
+        assert!(literal(&column, Dialect::Postgres, Some("x")).is_err());
     }
 
     #[test]

@@ -19,7 +19,20 @@ const focusables = (root: HTMLElement) =>
 /** The element that had the focus before each open dialog. */
 const openers = new WeakMap<HTMLElement, Element | null>();
 
+/** The element focused last, and the one before it: a field with autoFocus takes the focus
+ *  before the dialog is seen here, so the opener is then the one before. */
+let focused: Element | null = null;
+let before: Element | null = null;
+
+/** Dialogs, and the command palette, which gives the focus back the same way. */
+const LAYERS = ".modal, .palette";
+
 function prepare(modal: HTMLElement) {
+  if (modal.matches(".palette")) {
+    const active = document.activeElement;
+    openers.set(modal, modal.contains(active) ? before : active);
+    return;
+  }
   if (!modal.hasAttribute("role")) modal.setAttribute("role", "dialog");
   modal.setAttribute("aria-modal", "true");
   if (!modal.hasAttribute("aria-labelledby") && !modal.hasAttribute("aria-label")) {
@@ -29,7 +42,8 @@ function prepare(modal: HTMLElement) {
       modal.setAttribute("aria-labelledby", heading.id);
     }
   }
-  openers.set(modal, document.activeElement);
+  const active = document.activeElement;
+  openers.set(modal, modal.contains(active) ? before : active);
   // A field with autoFocus keeps it; otherwise the first control, or the dialog itself.
   requestAnimationFrame(() => {
     if (!modal.isConnected || modal.contains(document.activeElement)) return;
@@ -51,7 +65,17 @@ function closed(modal: HTMLElement) {
 }
 
 const modalsIn = (node: Node): HTMLElement[] =>
-  node instanceof HTMLElement ? [...(node.matches(".modal") ? [node] : []), ...node.querySelectorAll<HTMLElement>(".modal")] : [];
+  node instanceof HTMLElement ? [...(node.matches(LAYERS) ? [node] : []), ...node.querySelectorAll<HTMLElement>(LAYERS)] : [];
+
+/** Escape with the focus nowhere (after a click on a dialog's blank area) still reaches the
+ *  dialog on top, whose own handler closes it. */
+function escapeToTop(e: KeyboardEvent) {
+  if (e.key !== "Escape" || e.defaultPrevented) return;
+  const active = document.activeElement;
+  if (e.target !== document.body || (active && active !== document.body)) return;
+  const top = [...document.querySelectorAll<HTMLElement>(LAYERS)].filter((m) => m.getClientRects().length > 0).at(-1);
+  top?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+}
 
 function trapTab(e: KeyboardEvent) {
   if (e.key !== "Tab") return;
@@ -79,5 +103,15 @@ export function startModalA11y() {
       r.removedNodes.forEach((n) => modalsIn(n).forEach(closed));
     }
   }).observe(document.body, { childList: true, subtree: true });
+  document.addEventListener(
+    "focusin",
+    (e) => {
+      if (e.target === focused) return;
+      before = focused;
+      focused = e.target as Element;
+    },
+    true,
+  );
   document.addEventListener("keydown", trapTab, true);
+  document.addEventListener("keydown", escapeToTop);
 }

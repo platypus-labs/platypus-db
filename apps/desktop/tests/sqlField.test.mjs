@@ -42,6 +42,37 @@ test("a GROUP BY selects its expressions and the count of each group", () => {
   assert.equal(resultQuery("GROUP BY ALL"), "SELECT *, count(*) AS count FROM result GROUP BY ALL");
 });
 
+test("GROUP BY ordinals name the result's columns", () => {
+  const columns = ["id", "city"];
+  assert.equal(resultQuery("GROUP BY 1", columns), 'SELECT "id", count(*) AS count FROM result GROUP BY "id"');
+  assert.equal(
+    resultQuery("GROUP BY 2 ORDER BY 2", columns),
+    'SELECT "city", count(*) AS count FROM result GROUP BY "city" ORDER BY 2',
+  );
+  assert.equal(
+    resultQuery("n > 1 GROUP BY 2, lower(x) HAVING count(*) > 1", columns),
+    'SELECT "city", lower(x), count(*) AS count FROM result WHERE n > 1 GROUP BY "city", lower(x) HAVING count(*) > 1',
+  );
+  assert.equal(resultQuery("GROUP BY 1", ['a"b']), 'SELECT "a""b", count(*) AS count FROM result GROUP BY "a""b"');
+  // Past the last column the ordinal stays, for the database to report.
+  assert.equal(resultQuery("GROUP BY 3", columns), "SELECT 3, count(*) AS count FROM result GROUP BY 3");
+});
+
+test("a condition in parentheses or on a column named like a query word is a WHERE", () => {
+  assert.equal(resultQuery("(id = 1 OR id = 2)"), "SELECT * FROM result WHERE (id = 1 OR id = 2)");
+  assert.equal(resultQuery("(grp = 1 OR grp = 2) AND name = 'a'"), "SELECT * FROM result WHERE (grp = 1 OR grp = 2) AND name = 'a'");
+  assert.equal(resultQuery("values = 3"), 'SELECT * FROM result WHERE "values" = 3');
+  assert.equal(resultQuery("show IS NULL"), 'SELECT * FROM result WHERE "show" IS NULL');
+  assert.equal(resultQuery("table in ('a', 'b')"), `SELECT * FROM result WHERE "table" in ('a', 'b')`);
+  assert.equal(resultQuery("(from >= 2)"), 'SELECT * FROM result WHERE ("from" >= 2)');
+  // Still whole queries.
+  assert.equal(resultQuery("((SELECT 1))"), "((SELECT 1))");
+  assert.equal(resultQuery("( with t as (select 1) select * from t)"), "( with t as (select 1) select * from t)");
+  assert.equal(resultQuery("values (1), (2)"), "values (1), (2)");
+  assert.equal(resultQuery("show tables"), "show tables");
+  assert.equal(resultQuery("table result"), "table result");
+});
+
 test("keywords in strings, quoted names and parentheses are not the statement's", () => {
   const sql = `a = 'order by' AND "group by" IN (SELECT 1 ORDER BY 1) ORDER BY a`;
   const masked = topLevel(sql);
