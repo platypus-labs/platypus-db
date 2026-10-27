@@ -14,12 +14,34 @@ use arrow_array::builder::{
 };
 use arrow_schema::{DataType, Field, TimeUnit};
 use mysql_async::consts::{ColumnFlags, ColumnType};
+use platypus_core::special;
 
 /// Collation id of the `binary` character set: bytes, not text.
 const BINARY_CHARSET: u16 = 63;
 
-/// Sessions use UTC, so `TIMESTAMP` values are instants in this zone.
+/// Sessions start in UTC, so `TIMESTAMP` values are instants in this zone. A session set to
+/// another zone gets them as wall times of that zone, which are not labelled.
 pub const SESSION_TIME_ZONE: &str = "+00:00";
+
+/// Whether a MySQL time zone setting (`+00:00`, `UTC`, `Europe/Rome`, …) is UTC.
+#[must_use]
+pub fn is_utc(zone: &str) -> bool {
+    let zone = zone.trim();
+    let offset = zone.trim_start_matches(['+', '-']);
+    matches!(offset, "00:00" | "0:00")
+        || [
+            "UTC",
+            "Etc/UTC",
+            "GMT",
+            "Etc/GMT",
+            "UCT",
+            "Universal",
+            "Zulu",
+            "Z",
+        ]
+        .iter()
+        .any(|z| z.eq_ignore_ascii_case(zone))
+}
 
 /// The column facts the mapping needs, decoupled from `mysql_async::Column` for tests.
 #[derive(Debug, Clone)]
@@ -154,9 +176,10 @@ pub enum ColumnBuilder {
     Binary(BinaryBuilder),
 }
 
-/// The Arrow field and an empty builder for a result column.
+/// The Arrow field and an empty builder for a result column; `utc` when the session's time
+/// zone is UTC.
 #[must_use]
-pub fn column_builder(spec: &ColumnSpec) -> (Field, ColumnBuilder) {
+pub fn column_builder(spec: &ColumnSpec, utc: bool) -> (Field, ColumnBuilder) {
     use ColumnType as T;
     let unsigned = spec.unsigned();
     let builder = match spec.column_type {
@@ -183,15 +206,18 @@ pub fn column_builder(spec: &ColumnSpec) -> (Field, ColumnBuilder) {
             None => ColumnBuilder::Text(StringBuilder::new()),
         },
         T::MYSQL_TYPE_DATE | T::MYSQL_TYPE_NEWDATE => ColumnBuilder::Date(Date32Builder::new()),
-        T::MYSQL_TYPE_DATETIME | T::MYSQL_TYPE_DATETIME2 => {
-            ColumnBuilder::Timestamp(TimestampMicrosecondBuilder::new(), None)
-        }
-        T::MYSQL_TYPE_TIMESTAMP | T::MYSQL_TYPE_TIMESTAMP2 => {
+        T::MYSQL_TYPE_TIMESTAMP | T::MYSQL_TYPE_TIMESTAMP2 if utc => {
             let tz: Arc<str> = Arc::from(SESSION_TIME_ZONE);
             ColumnBuilder::Timestamp(
                 TimestampMicrosecondBuilder::new().with_timezone(Arc::clone(&tz)),
                 Some(tz),
             )
+        }
+        T::MYSQL_TYPE_DATETIME
+        | T::MYSQL_TYPE_DATETIME2
+        | T::MYSQL_TYPE_TIMESTAMP
+        | T::MYSQL_TYPE_TIMESTAMP2 => {
+            ColumnBuilder::Timestamp(TimestampMicrosecondBuilder::new(), None)
         }
         T::MYSQL_TYPE_BIT => ColumnBuilder::Bit(UInt64Builder::new()),
         T::MYSQL_TYPE_GEOMETRY | T::MYSQL_TYPE_VECTOR => {
@@ -232,21 +258,65 @@ fn num(s: &str) -> Option<i64> {
     s.parse().ok()
 }
 
-/// `YYYY-MM-DD` to days since the epoch; `None` for zero or invalid dates.
-fn parse_date(s: &str) -> Option<i64> {
+/// `YYYY-MM-DD` as its parts.
+fn date_parts(s: &str) -> Option<(i64, i64, i64)> {
     let mut parts = s.splitn(3, '-');
-    let (y, m, d) = (
+    Some((
         num(parts.next()?)?,
         num(parts.next()?)?,
         num(parts.next()?)?,
-    );
-    ((1..=12).contains(&m) && (1..=31).contains(&d)).then(|| days_from_civil(y, m, d))
+    ))
 }
 
-/// `YYYY-MM-DD HH:MM:SS[.ffffff]` to microseconds since the epoch.
+/// Whether the calendar has that day.
+fn is_valid_date(y: i64, m: i64, d: i64) -> bool {
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let days = match m {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        1..=12 => 31,
+        _ => return false,
+    };
+    (1..=days).contains(&d)
+}
+
+/// The parts of a date the calendar does not have, as `special` takes them.
+fn invalid_parts(y: i64, m: i64, d: i64) -> Option<(u16, u8, u8)> {
+    Some((
+        u16::try_from(y).ok()?,
+        u8::try_from(m).ok()?,
+        u8::try_from(d).ok()?,
+    ))
+}
+
+/// `YYYY-MM-DD` to days since the epoch. Zero dates (`0000-00-00`, `2024-00-10`) and, with
+/// `ALLOW_INVALID_DATES`, days past the month's end are the reserved values of
+/// [`special::invalid_date`], shown as MySQL writes them.
+fn parse_date(s: &str) -> Option<i32> {
+    let (y, m, d) = date_parts(s)?;
+    if is_valid_date(y, m, d) {
+        return i32::try_from(days_from_civil(y, m, d)).ok();
+    }
+    let (y, m, d) = invalid_parts(y, m, d)?;
+    special::invalid_date(y, m, d)
+}
+
+/// `YYYY-MM-DD HH:MM:SS[.ffffff]` to microseconds since the epoch; a date the calendar
+/// does not have is a reserved value of [`special::invalid_timestamp`].
 fn parse_datetime(s: &str) -> Option<i64> {
     let (date, time) = s.split_once(' ').unwrap_or((s, "00:00:00"));
-    let days = parse_date(date)?;
+    let (y, m, d) = date_parts(date)?;
+    let micros = time_micros(time)?;
+    if is_valid_date(y, m, d) {
+        return Some(days_from_civil(y, m, d) * 86_400_000_000 + micros);
+    }
+    let (y, m, d) = invalid_parts(y, m, d)?;
+    special::invalid_timestamp(y, m, d, micros)
+}
+
+/// `HH:MM:SS[.ffffff]` to microseconds after midnight.
+fn time_micros(time: &str) -> Option<i64> {
     let (hms, frac) = time.split_once('.').unwrap_or((time, ""));
     let mut parts = hms.splitn(3, ':');
     let (h, m, sec) = (
@@ -260,7 +330,7 @@ fn parse_datetime(s: &str) -> Option<i64> {
         let digits: String = frac.chars().chain(std::iter::repeat('0')).take(6).collect();
         num(&digits)?
     };
-    Some(((days * 24 + h) * 60 + m) * 60_000_000 + sec * 1_000_000 + micros)
+    Some((h * 60 + m) * 60_000_000 + sec * 1_000_000 + micros)
 }
 
 /// A decimal literal to its unscaled `i128` at `scale`; extra digits are rejected.
@@ -336,11 +406,16 @@ impl ColumnBuilder {
                     parse_decimal(text, *scale).ok_or_else(|| format!("bad decimal `{text}`"))?,
                 );
             }
-            // Zero dates such as `0000-00-00` have no calendar equivalent.
             Self::Date(b) => {
-                b.append_option(parse_date(text()?).and_then(|d| i32::try_from(d).ok()));
+                let text = text()?;
+                b.append_value(parse_date(text).ok_or_else(|| format!("bad date `{text}`"))?);
             }
-            Self::Timestamp(b, _) => b.append_option(parse_datetime(text()?)),
+            Self::Timestamp(b, _) => {
+                let text = text()?;
+                b.append_value(
+                    parse_datetime(text).ok_or_else(|| format!("bad date and time `{text}`"))?,
+                );
+            }
             Self::Bit(b) => {
                 if bytes.len() > 8 {
                     return Err(format!("BIT value of {} bytes", bytes.len()));
@@ -413,7 +488,9 @@ mod tests {
     fn parses_dates_and_times() {
         assert_eq!(parse_date("1970-01-01"), Some(0));
         assert_eq!(parse_date("2000-03-01"), Some(11_017));
-        assert_eq!(parse_date("0000-00-00"), None);
+        assert_eq!(parse_date("0000-00-00"), special::invalid_date(0, 0, 0));
+        assert_eq!(parse_date("2023-02-29"), special::invalid_date(2023, 2, 29));
+        assert_eq!(parse_date("2000-02-29"), Some(11_016));
         assert_eq!(
             parse_datetime("1970-01-02 00:00:01.5"),
             Some(86_401_500_000)
@@ -440,7 +517,7 @@ mod tests {
         );
         assert_eq!(decimal.decimal(), Some((20, 6)));
         assert_eq!(decimal.type_name(), "DECIMAL(20,6)");
-        let (field, _) = column_builder(&decimal);
+        let (field, _) = column_builder(&decimal, true);
         assert_eq!(field.data_type(), &DataType::Decimal128(20, 6));
 
         let ubig = spec(
@@ -450,23 +527,21 @@ mod tests {
             0,
         );
         assert_eq!(ubig.type_name(), "BIGINT UNSIGNED");
-        assert_eq!(column_builder(&ubig).0.data_type(), &DataType::UInt64);
+        assert_eq!(column_builder(&ubig, true).0.data_type(), &DataType::UInt64);
 
         let mut blob = spec(ColumnType::MYSQL_TYPE_BLOB, ColumnFlags::empty(), 65_535, 0);
-        assert_eq!(column_builder(&blob).0.data_type(), &DataType::Utf8);
+        assert_eq!(column_builder(&blob, true).0.data_type(), &DataType::Utf8);
         blob.charset = BINARY_CHARSET;
-        assert_eq!(column_builder(&blob).0.data_type(), &DataType::Binary);
+        assert_eq!(column_builder(&blob, true).0.data_type(), &DataType::Binary);
         assert_eq!(blob.type_name(), "BLOB");
     }
 
     #[test]
     fn decodes_values() {
-        let (_, mut bit) = column_builder(&spec(
-            ColumnType::MYSQL_TYPE_BIT,
-            ColumnFlags::empty(),
-            8,
-            0,
-        ));
+        let (_, mut bit) = column_builder(
+            &spec(ColumnType::MYSQL_TYPE_BIT, ColumnFlags::empty(), 8, 0),
+            true,
+        );
         bit.append(Some(&[0x01, 0x02])).unwrap();
         bit.append(None).unwrap();
         let array = bit.finish();
@@ -476,12 +551,79 @@ mod tests {
             .unwrap();
         assert_eq!(bits.iter().collect::<Vec<_>>(), [Some(258), None]);
 
-        let (_, mut int) = column_builder(&spec(
-            ColumnType::MYSQL_TYPE_LONG,
-            ColumnFlags::empty(),
-            11,
-            0,
-        ));
+        let (_, mut int) = column_builder(
+            &spec(ColumnType::MYSQL_TYPE_LONG, ColumnFlags::empty(), 11, 0),
+            true,
+        );
         assert!(int.append(Some(b"12x")).is_err());
+
+        // Zero and invalid dates show as MySQL writes them, not as NULL or another day.
+        let shown = |column_type, values: &[&[u8]]| {
+            let (_, mut b) = column_builder(&spec(column_type, ColumnFlags::empty(), 19, 0), true);
+            for v in values {
+                b.append(Some(v)).unwrap();
+            }
+            let array = b.finish();
+            let options = arrow_cast::display::FormatOptions::default();
+            let f = special::formatter(array.as_ref(), &options).unwrap();
+            (0..array.len())
+                .map(|i| f.value(i).to_string())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            shown(
+                ColumnType::MYSQL_TYPE_DATE,
+                &[b"0000-00-00", b"2024-02-31", b"2024-00-10", b"2024-02-29"]
+            ),
+            ["0000-00-00", "2024-02-31", "2024-00-10", "2024-02-29"]
+        );
+        assert_eq!(
+            shown(
+                ColumnType::MYSQL_TYPE_TIMESTAMP,
+                &[
+                    b"0000-00-00 00:00:00",
+                    b"2023-02-29 10:00:00.5",
+                    b"2024-01-01 10:00:00"
+                ]
+            ),
+            [
+                "0000-00-00 00:00:00",
+                "2023-02-29 10:00:00.500000",
+                "2024-01-01T10:00:00Z"
+            ]
+        );
+        let (_, mut date) = column_builder(
+            &spec(ColumnType::MYSQL_TYPE_DATE, ColumnFlags::empty(), 10, 0),
+            true,
+        );
+        assert!(date.append(Some(b"x")).is_err(), "no NULL for a bad date");
+    }
+
+    #[test]
+    fn tells_utc_zones() {
+        for zone in ["+00:00", "-00:00", "UTC", "utc", "Etc/UTC", "GMT"] {
+            assert!(is_utc(zone), "{zone}");
+        }
+        for zone in ["+02:00", "Europe/Rome", "Europe/London", "SYSTEM"] {
+            assert!(!is_utc(zone), "{zone}");
+        }
+    }
+
+    #[test]
+    fn timestamps_of_other_zones_are_wall_times() {
+        let ts = spec(
+            ColumnType::MYSQL_TYPE_TIMESTAMP,
+            ColumnFlags::empty(),
+            19,
+            0,
+        );
+        assert!(matches!(
+            column_builder(&ts, true).0.data_type(),
+            DataType::Timestamp(_, Some(_))
+        ));
+        assert_eq!(
+            column_builder(&ts, false).0.data_type(),
+            &DataType::Timestamp(TimeUnit::Microsecond, None)
+        );
     }
 }
