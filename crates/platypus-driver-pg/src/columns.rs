@@ -11,13 +11,13 @@ use arrow_array::builder::{
 };
 use arrow_array::types::IntervalMonthDayNano;
 use arrow_schema::{ArrowError, DataType, Field, IntervalUnit, TimeUnit};
-use platypus_core::META_DB_TYPE;
+use platypus_core::{META_DB_TYPE, special};
 use postgres_protocol::types as pg;
 use tokio_postgres::Column;
 use tokio_postgres::types::{Kind, Type};
 
 use crate::decode::{
-    self, DecodeResult, PG_EPOCH_DAYS, PG_EPOCH_MICROS, format_value, numeric_from_sql,
+    self, DecodeResult, Numeric, PG_EPOCH_DAYS, PG_EPOCH_MICROS, format_value, numeric_from_sql,
     numeric_typmod,
 };
 
@@ -36,7 +36,8 @@ pub enum ColumnBuilder {
     UInt32(UInt32Builder),
     Float32(Float32Builder),
     Float64(Float64Builder),
-    /// `numeric(p,s)` with `p <= 38`. Non-finite values (`NaN`, infinities) become null.
+    /// `numeric(p,s)` with `0 < p <= 38` and `s <= p`. `NaN` is [`special::DECIMAL_NAN`];
+    /// such a column holds no infinity.
     Decimal {
         builder: Decimal128Builder,
         precision: u8,
@@ -48,7 +49,7 @@ pub enum ColumnBuilder {
     Binary(BinaryBuilder),
     Date(Date32Builder),
     Time(Time64MicrosecondBuilder),
-    /// `timestamp` and `timestamptz` (`utc`). `±infinity` saturate to the `i64` extremes.
+    /// `timestamp` and `timestamptz` (`utc`). `Â±infinity` saturate to the `i64` extremes.
     Timestamp {
         builder: TimestampMicrosecondBuilder,
         utc: bool,
@@ -106,15 +107,13 @@ pub fn column_builder(column: &Column) -> Result<(Field, ColumnBuilder), ArrowEr
         Type::OID => ColumnBuilder::UInt32(UInt32Builder::new()),
         Type::FLOAT4 => ColumnBuilder::Float32(Float32Builder::new()),
         Type::FLOAT8 => ColumnBuilder::Float64(Float64Builder::new()),
-        Type::NUMERIC => match numeric_typmod(column.type_modifier()) {
-            Some((precision, scale)) if (1..=DECIMAL128_MAX_PRECISION).contains(&precision) => {
-                ColumnBuilder::Decimal {
-                    builder: Decimal128Builder::new().with_precision_and_scale(precision, scale)?,
-                    precision,
-                    scale,
-                }
-            }
-            _ => formatted(ty),
+        Type::NUMERIC => match decimal_type(column.type_modifier()) {
+            Some((precision, scale)) => ColumnBuilder::Decimal {
+                builder: Decimal128Builder::new().with_precision_and_scale(precision, scale)?,
+                precision,
+                scale,
+            },
+            None => formatted(ty),
         },
         Type::TEXT
         | Type::VARCHAR
@@ -137,6 +136,16 @@ pub fn column_builder(column: &Column) -> Result<(Field, ColumnBuilder), ArrowEr
         [(META_DB_TYPE.to_owned(), type_label(column))],
     ));
     Ok((field, builder))
+}
+
+/// `(precision, scale)` of a `numeric` type modifier that an Arrow `Decimal128` holds.
+/// PostgreSQL 15 allows a scale above the precision, e.g. `numeric(3,5)`, which Arrow does
+/// not: those, and `numeric` without a modifier, are text.
+fn decimal_type(typmod: i32) -> Option<(u8, i8)> {
+    numeric_typmod(typmod).filter(|&(precision, scale)| {
+        (1..=DECIMAL128_MAX_PRECISION).contains(&precision)
+            && i16::from(scale) <= i16::from(precision)
+    })
 }
 
 fn formatted(ty: &Type) -> ColumnBuilder {
@@ -196,7 +205,13 @@ impl ColumnBuilder {
             Self::Float32(b) => b.append_value(pg::float4_from_sql(raw)?),
             Self::Float64(b) => b.append_value(pg::float8_from_sql(raw)?),
             Self::Decimal { builder, scale, .. } => {
-                builder.append_option(numeric_from_sql(raw)?.to_i128(*scale));
+                let value = match numeric_from_sql(raw)? {
+                    Numeric::NaN => special::DECIMAL_NAN,
+                    n => n
+                        .to_i128(*scale)
+                        .ok_or_else(|| format!("{n} does not fit the column's numeric type"))?,
+                };
+                builder.append_value(value);
             }
             Self::Text(b) => b.append_value(std::str::from_utf8(raw)?),
             Self::Jsonb(b) => {
@@ -204,10 +219,18 @@ impl ColumnBuilder {
                 b.append_value(std::str::from_utf8(raw.get(1..).ok_or("empty jsonb")?)?);
             }
             Self::Binary(b) => b.append_value(raw),
-            Self::Date(b) => b.append_value(pg::date_from_sql(raw)?.saturating_add(PG_EPOCH_DAYS)),
+            Self::Date(b) => b.append_value(match pg::date_from_sql(raw)? {
+                i32::MAX => special::DATE_INFINITY,
+                i32::MIN => special::DATE_NEG_INFINITY,
+                days => days.saturating_add(PG_EPOCH_DAYS),
+            }),
             Self::Time(b) => b.append_value(pg::time_from_sql(raw)?),
             Self::Timestamp { builder: b, .. } => {
-                b.append_value(pg::timestamp_from_sql(raw)?.saturating_add(PG_EPOCH_MICROS));
+                b.append_value(match pg::timestamp_from_sql(raw)? {
+                    i64::MAX => special::TIMESTAMP_INFINITY,
+                    i64::MIN => special::TIMESTAMP_NEG_INFINITY,
+                    micros => micros.saturating_add(PG_EPOCH_MICROS),
+                });
             }
             Self::Interval(b) => {
                 let (micros, days, months) = decode::interval_from_sql(raw)?;
@@ -261,5 +284,79 @@ impl ColumnBuilder {
             Self::Timestamp { builder: b, .. } => Arc::new(b.finish()),
             Self::Interval(b) => Arc::new(b.finish()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use arrow_array::Array;
+
+    use super::*;
+
+    /// The values as every text output shows them.
+    fn shown(builder: &mut ColumnBuilder, values: &[&[u8]]) -> Vec<String> {
+        for v in values {
+            builder.append(Some(v)).unwrap();
+        }
+        let array = builder.finish();
+        let options = arrow_cast::display::FormatOptions::default();
+        let f = special::formatter(array.as_ref(), &options).unwrap();
+        (0..array.len()).map(|i| f.value(i).to_string()).collect()
+    }
+
+    #[test]
+    fn keeps_infinite_dates_and_timestamps() {
+        let mut dates = ColumnBuilder::Date(Date32Builder::new());
+        assert_eq!(
+            shown(
+                &mut dates,
+                &[
+                    &i32::MAX.to_be_bytes(),
+                    &i32::MIN.to_be_bytes(),
+                    &0_i32.to_be_bytes()
+                ]
+            ),
+            ["infinity", "-infinity", "2000-01-01"]
+        );
+        let mut stamps = ColumnBuilder::timestamp(true);
+        assert_eq!(
+            shown(
+                &mut stamps,
+                &[
+                    &i64::MAX.to_be_bytes(),
+                    &i64::MIN.to_be_bytes(),
+                    &0_i64.to_be_bytes()
+                ]
+            ),
+            ["infinity", "-infinity", "2000-01-01T00:00:00Z"]
+        );
+    }
+
+    #[test]
+    fn keeps_numeric_nan() {
+        let mut numbers = ColumnBuilder::Decimal {
+            builder: Decimal128Builder::new()
+                .with_precision_and_scale(10, 2)
+                .unwrap(),
+            precision: 10,
+            scale: 2,
+        };
+        // ndigits, weight, sign, dscale; then the base-10000 digits.
+        let nan: &[u8] = &[0, 0, 0, 0, 0xC0, 0, 0, 0];
+        let one_and_a_half: &[u8] = &[0, 2, 0, 0, 0, 0, 0, 2, 0, 1, 0x13, 0x88];
+        assert_eq!(shown(&mut numbers, &[nan, one_and_a_half]), ["NaN", "1.50"]);
+        // A constrained numeric holds no infinity: it is an error, not a NULL.
+        let infinity: &[u8] = &[0, 0, 0, 0, 0xD0, 0, 0, 0];
+        assert!(numbers.append(Some(infinity)).is_err());
+    }
+
+    #[test]
+    fn decimal_columns_only_for_scales_arrow_takes() {
+        let typmod = |p: i32, s: i32| ((p << 16) | (s & 0x7ff)) + 4;
+        assert_eq!(decimal_type(typmod(10, 2)), Some((10, 2)));
+        assert_eq!(decimal_type(typmod(5, -2)), Some((5, -2)));
+        assert_eq!(decimal_type(typmod(3, 5)), None, "scale above precision");
+        assert_eq!(decimal_type(typmod(39, 0)), None);
+        assert_eq!(decimal_type(-1), None, "no modifier");
     }
 }
