@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { actionsFor, runAction, shortcutLabel } from "../actions";
 import { api, type CompletionCatalog, type HistoryEntry, isEmbedded, type SavedConnection, toCommandError } from "../api";
 import { projectKey } from "../projects/state";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import { parseDbKey, workbench } from "../workbench";
-import { type FuzzyMatch, fuzzy } from "./fuzzy";
+import { type FuzzyMatch, fuzzy, highlightRuns } from "./fuzzy";
 import { t } from "../i18n";
 
 /** Results shown at most. */
@@ -31,10 +31,9 @@ interface Props {
 
 /** The label with its matched characters bold. */
 function Highlight({ text, match }: { text: string; match: FuzzyMatch }) {
-  const marked = new Set(match.positions);
   return (
     <>
-      {[...text].map((c, i) => (marked.has(i) ? <b key={i}>{c}</b> : c))}
+      {highlightRuns(text, match.positions).map((run, i) => (run.marked ? <b key={i}>{run.text}</b> : <Fragment key={i}>{run.text}</Fragment>))}
     </>
   );
 }
