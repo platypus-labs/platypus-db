@@ -169,7 +169,7 @@ pub struct DialectSupport {
     renamable: Vec<ObjectKind>,
 }
 
-const ALL_KINDS: [ObjectKind; 13] = [
+const ALL_KINDS: [ObjectKind; 14] = [
     ObjectKind::Table,
     ObjectKind::View,
     ObjectKind::MaterializedView,
@@ -183,6 +183,7 @@ const ALL_KINDS: [ObjectKind; 13] = [
     ObjectKind::Extension,
     ObjectKind::Event,
     ObjectKind::Dictionary,
+    ObjectKind::Synonym,
 ];
 
 #[tauri::command]

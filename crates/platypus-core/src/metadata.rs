@@ -41,6 +41,8 @@ pub enum ObjectKind {
     Event,
     /// ClickHouse dictionary: an in-memory key-value source, queried like a table.
     Dictionary,
+    /// SQL Server synonym: another name for an object, possibly in another database.
+    Synonym,
 }
 
 impl ObjectKind {

@@ -161,6 +161,7 @@ const OBJECT_ICONS: Record<ObjectKind, IconName> = {
   extension: "extension",
   event: "event",
   dictionary: "table",
+  synonym: "view",
 };
 
 /** The icon of a kind of database object. */
