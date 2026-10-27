@@ -47,6 +47,22 @@
   grid-template-columns: minmax(140px, 1fr) 1fr;
 }
 
+/* A generator with the bounds of its numbers. */
+.generator {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+
+.generator select {
+  flex: 1;
+  min-width: 0;
+}
+
+.generator-bound {
+  width: 7em;
+}
+
 .import-modes {
   display: flex;
   flex-wrap: wrap;

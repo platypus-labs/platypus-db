@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, opensDataFile, type SavedConnection, type SchemaMeta } from "../api";
+import { api, isMongo, opensDataFile, type SavedConnection, type SchemaMeta } from "../api";
 import { GuardDialog } from "../guards/GuardDialog";
 import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { requestNavigatorRefresh } from "../navigatorEvents";
@@ -22,7 +22,7 @@ interface Props {
 export function MigrateDialog({ connection, database, schema, tables: chosen, onClose }: Props) {
   const targets = workbench()
     .connections()
-    .filter((c) => c.id !== connection.id && !opensDataFile(c));
+    .filter((c) => c.id !== connection.id && !opensDataFile(c) && !isMongo(c.driver));
   const [tables, setTables] = useState<string[] | null>(chosen);
   const [target, setTarget] = useState<SavedConnection | null>(targets[0] ?? null);
   const [schemas, setSchemas] = useState<SchemaMeta[]>([]);
