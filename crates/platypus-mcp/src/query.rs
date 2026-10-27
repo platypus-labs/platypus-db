@@ -270,7 +270,8 @@ impl<'a> BatchReader<'a> {
             .columns()
             .iter()
             .map(|c| {
-                ArrayFormatter::try_new(c.as_ref(), options).map(|f| (c.data_type(), c.as_ref(), f))
+                platypus_core::special::formatter(c.as_ref(), options)
+                    .map(|f| (c.data_type(), c.as_ref(), f))
             })
             .collect::<Result<_, _>>()?;
         Ok(Self { columns })

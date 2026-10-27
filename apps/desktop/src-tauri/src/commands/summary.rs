@@ -9,7 +9,6 @@ use std::hash::{BuildHasher, RandomState};
 use arrow_array::cast::AsArray;
 use arrow_array::types::Float64Type;
 use arrow_array::{Array, RecordBatch};
-use arrow_cast::display::ArrayFormatter;
 use arrow_schema::DataType;
 use serde::Serialize;
 use tauri::State;
@@ -151,7 +150,7 @@ fn column_stats_of(
             let array = batch.column(c);
             s.nulls += array.null_count();
             s.values += array.len() - array.null_count();
-            let formatter = ArrayFormatter::try_new(array.as_ref(), &options)?;
+            let formatter = platypus_core::special::formatter(array.as_ref(), &options)?;
             for row in (0..array.len()).filter(|&r| !array.is_null(r)) {
                 text.clear();
                 let _ = write!(text, "{}", formatter.value(row));
@@ -279,7 +278,7 @@ fn groups_of(
     for batch in batches {
         let formatters = columns
             .iter()
-            .map(|&c| ArrayFormatter::try_new(batch.column(c).as_ref(), &options))
+            .map(|&c| platypus_core::special::formatter(batch.column(c).as_ref(), &options))
             .collect::<Result<Vec<_>, _>>()?;
         for row in 0..batch.num_rows() {
             let key = columns

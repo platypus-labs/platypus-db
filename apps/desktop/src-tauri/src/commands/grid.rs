@@ -6,7 +6,6 @@ use std::fmt::Write as _;
 
 use arrow_array::Array;
 use arrow_array::cast::AsArray;
-use arrow_cast::display::ArrayFormatter;
 use platypus_sql::Dialect;
 use platypus_sql::dml::{Column, ValueKind};
 use serde::Serialize;
@@ -301,7 +300,7 @@ fn search(job: &Job, text: &str) -> CommandResult<SearchResult> {
         let formatters = batch
             .columns()
             .iter()
-            .map(|a| ArrayFormatter::try_new(a.as_ref(), &options))
+            .map(|a| platypus_core::special::formatter(a.as_ref(), &options))
             .collect::<Result<Vec<_>, _>>()?;
         for row in 0..batch.num_rows() {
             for (col, (array, f)) in batch.columns().iter().zip(&formatters).enumerate() {

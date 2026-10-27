@@ -4,7 +4,6 @@
 use std::fmt::Write as _;
 
 use arrow_array::{Array, RecordBatch};
-use arrow_cast::display::ArrayFormatter;
 use platypus_core::geometry::{self, Shape};
 use serde::Serialize;
 use tauri::State;
@@ -47,7 +46,7 @@ fn geometries_of(
     for batch in batches {
         let formatters = columns
             .iter()
-            .map(|&c| ArrayFormatter::try_new(batch.column(c).as_ref(), &options))
+            .map(|&c| platypus_core::special::formatter(batch.column(c).as_ref(), &options))
             .collect::<Result<Vec<_>, _>>()?;
         // Row by row, so that the limit keeps the first rows of every column.
         for row in 0..batch.num_rows() {
