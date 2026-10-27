@@ -11,7 +11,7 @@ import {
   toCommandError,
   type SavedConnection,
 } from "./api";
-import { onNavigatorRefresh, requestNavigatorRefresh } from "./navigatorEvents";
+import { onNavigatorRefresh, requestNavigatorRefresh, revealConnection } from "./navigatorEvents";
 import { ConnectionDialog } from "./components/ConnectionDialog";
 import { ImportDialog } from "./components/ImportDialog";
 import { UnlockDialog } from "./components/MasterPassword";
@@ -1044,6 +1044,8 @@ export function App() {
             const before = connections?.find((c) => c.id === dialog.connection.id);
             await connectionsSaved(all);
             const saved = all.find((c) => c.id === dialog.connection.id);
+            // A new connection is selected in the navigator, with the focus, as the next step.
+            if (!before && saved) revealConnection(saved.id);
             if (before && saved && sessionSettingsChanged(before, saved)) void followEdit(saved);
             if (dialog.folder && activeProject && saved) {
               api.placeConnection(activeProject, saved.id, dialog.folder).then(setProjects, (e: unknown) => setToast(toCommandError(e).message));

@@ -15,7 +15,7 @@ import { defineSetting, getSetting, useSetting } from "../settings";
 import { dropCached, loadCached, pruneCached, saveCached } from "../navigator/diskCache";
 import { FilterDialog } from "../navigator/FilterDialog";
 import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
-import { onNavigatorRefresh } from "../navigatorEvents";
+import { onNavigatorRefresh, onRevealConnection } from "../navigatorEvents";
 import { toggleSidebar, toggleSidebarTitle } from "../shell/sidebar";
 import { annotation, catalogEntry, catalogKey, parseFilter, useCatalogVersion } from "../catalog/catalog";
 import { openDocs } from "../catalog/DocsDialog";
@@ -931,16 +931,28 @@ export function Navigator(props: Props) {
   const current = anchor.current !== null && rows.some((r) => r.key === anchor.current) ? anchor.current : null;
 
   // A row moved by a shortcut loses the focus when React moves its element: give it back,
-  // shortly after the key only, so a later click elsewhere keeps its own.
+  // shortly after the key only, so a later click elsewhere keeps its own. A connection just
+  // made gets it the same way once its row shows, when its dialog has left the focus nowhere.
   const moved = useRef<{ key: string; at: number } | null>(null);
   const treeRef = useRef<HTMLUListElement>(null);
   useEffect(() => {
     if (!moved.current || document.activeElement !== document.body) return;
     const { key, at } = moved.current;
+    const index = rows.findIndex((r) => r.key === key);
+    if (index < 0 && Date.now() - at <= 2000) return;
     moved.current = null;
     if (Date.now() - at > 2000) return;
-    treeRef.current?.querySelector<HTMLElement>(`[data-row="${rows.findIndex((r) => r.key === key)}"]`)?.focus();
+    treeRef.current?.querySelector<HTMLElement>(`[data-row="${index}"]`)?.focus();
   });
+  useEffect(
+    () =>
+      onRevealConnection((id) => {
+        anchor.current = id;
+        setSelected(new Set([id]));
+        moved.current = { key: id, at: Date.now() };
+      }),
+    [],
+  );
 
   /** The tree from the keyboard: arrows move and open or close, Enter opens, the menu key
    *  shows the row's menu, as in a file explorer. */

@@ -276,6 +276,7 @@ export function QueryTab({
   // A tab made read-only gets every check of a read-only connection.
   const connection = useMemo(() => (tab.readOnly ? { ...saved, read_only: true } : saved), [saved, tab.readOnly]);
   const editor = useRef<SqlEditorHandle>(null);
+  const root = useRef<HTMLDivElement>(null);
   const [tx, setTx] = useState<TransactionState | null>(null);
   /** A run waiting for the answer to its checks. */
   const [guard, setGuard] = useState<{ request: GuardRequest; resolve: (run: boolean) => void } | null>(null);
@@ -1490,9 +1491,16 @@ export function QueryTab({
         setUnsaved(false);
         setUndoScript(undo);
         // The statement of the edited result runs again in its place, the other results stay;
-        // only a statement that reads runs unasked.
+        // only a statement that reads runs unasked. The grid that had the focus (Ctrl+S) gets
+        // it back once its rows are drawn again.
+        const focus = document.activeElement;
+        const inGrid = !focus || focus === document.body || !!focus.closest(".grid-scroll");
         const again = memory.current.readOf(result.id);
-        if (again) void run("statement", false, [again], false, result.id);
+        if (!again) return;
+        void run("statement", false, [again], false, result.id).then(() => {
+          if (!inGrid || (document.activeElement && document.activeElement !== document.body)) return;
+          root.current?.querySelector<HTMLElement>(".grid-scroll")?.focus();
+        });
       },
       onDirtyChange: setUnsaved,
     };
@@ -1571,7 +1579,7 @@ export function QueryTab({
   const exportBusy = exporting !== null && exporting.done === null;
 
   return (
-    <div className="query-tab" style={{ display: active ? "flex" : "none" }}>
+    <div className="query-tab" ref={root} style={{ display: active ? "flex" : "none" }}>
       <div
         className="query-main"
         // The editor gives up height before the toolbar does in a small window.
