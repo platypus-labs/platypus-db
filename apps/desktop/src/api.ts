@@ -1061,9 +1061,19 @@ export interface AppInfo {
 }
 
 /** Normalizes anything thrown by `invoke` into a `CommandError`. */
+/** Puts the backend's own messages in the interface's language (`storeErrors.ts`, set at
+ *  start: importing it here would import this module back through the settings). */
+let appMessage = (message: string) => message;
+export function translateAppMessages(translate: (message: string) => string) {
+  appMessage = translate;
+}
+
+/** The error a command failed with; the app's own messages in the interface's language, the
+ *  databases' as they are. */
 export function toCommandError(e: unknown): CommandError {
   if (e && typeof e === "object" && "kind" in e && "message" in e) {
-    return e as CommandError;
+    const error = e as CommandError;
+    return error.kind === "database" ? error : { ...error, message: appMessage(error.message) };
   }
   return { kind: "other", message: String(e), code: null, detail: null, hint: null, position: null };
 }
