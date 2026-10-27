@@ -75,9 +75,10 @@ class Fields {
     if (text !== this.get(key).text) this.set(key, { text });
   }
 
-  /** Runs `text` on the copy of `tables`, `of` being the result's job. */
-  async run(key: string, text: string, tables: ResultTable[], of: number) {
-    const sql = resultQuery(text);
+  /** Runs `text` on the copy of `tables`, `of` being the result's job and `columns` its
+   *  column names. */
+  async run(key: string, text: string, tables: ResultTable[], of: number, columns: readonly string[]) {
+    const sql = resultQuery(text, columns);
     if (sql === null) return this.clear(key);
     const token = ++this.token;
     this.tokens.set(key, token);
@@ -279,6 +280,8 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
   // The results change as their rows arrive, their tables and columns once per run.
   const catalogKey = named.map((x) => `${x.table}:${x.columns.map((c) => c.name).join(",")}`).join(";");
   const catalog = useMemo(() => resultCatalog(named), [catalogKey]);
+  /** The result's column names, which `GROUP BY` ordinals in the field name. */
+  const columnNames = named.find((x) => x.table === "result")?.columns.map((c) => c.name) ?? [];
 
   const output = state.output && state.output.of === shown?.jobId ? state.output.result : null;
   const copy = output && key !== null ? fields.copyOf(key) : null;
@@ -288,7 +291,7 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
     const of = shown.jobId;
     keepFocus.current = true;
     if (resultQuery(text) !== null && !output && !(await canLeave())) return;
-    await fields.run(key, text, tables, of);
+    await fields.run(key, text, tables, of, columnNames);
   };
   const clear = () => {
     if (key === null) return;
@@ -299,7 +302,7 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
   const openInTab = (text: string) => {
     setExpanded(false);
     const host = shown?.jobId == null ? null : hostOfJob(shown.jobId);
-    if (host) void queryWithSql(host, shown?.jobId ?? undefined, resultQuery(text) ?? undefined);
+    if (host) void queryWithSql(host, shown?.jobId ?? undefined, resultQuery(text, columnNames) ?? undefined);
   };
 
   const bar =

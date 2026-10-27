@@ -12,21 +12,23 @@ import {
   toggleComment,
 } from "@codemirror/commands";
 import { foldAll, unfoldAll } from "@codemirror/language";
-import { selectNextOccurrence, selectSelectionMatches } from "@codemirror/search";
+import { startCompletion } from "@codemirror/autocomplete";
+import { openSearchPanel, selectNextOccurrence, selectSelectionMatches } from "@codemirror/search";
 import type { EditorView } from "@codemirror/view";
 import { createElement } from "react";
-import { registerAction } from "../actions";
+import { isMac, registerAction } from "../actions";
 import { api, type DriverKind, type FormatSettings } from "../api";
 import { defineSetting, getSetting } from "../settings";
 import { workbench } from "../workbench";
-import type { EditorHost } from "./SqlEditor";
+import type { EditorHost, RunMode } from "./SqlEditor";
 import { SnippetsDialog } from "./SnippetsDialog";
 import { msg } from "../i18n";
 
 declare module "../actions" {
   interface ActionScopes {
-    /** The SQL editor with focus or a context menu. */
-    editor: { view: EditorView; driver: DriverKind; readOnly: boolean; host?: EditorHost };
+    /** The SQL editor with focus or a context menu; `commands` are its owner's (run, save,
+     *  open), absent where it has none. */
+    editor: { view: EditorView; driver: DriverKind; readOnly: boolean; host?: EditorHost; commands?: EditorCommands };
   }
 }
 
@@ -165,6 +167,76 @@ const CLIENTS: Partial<Record<DriverKind, string>> = {
   sqlite: "sqlite3",
   sqlserver: "sqlcmd",
 };
+
+/** What the editor's owner does on its commands. */
+export interface EditorCommands {
+  run?: (mode: RunMode) => void;
+  save?: () => void;
+  open?: () => void;
+}
+
+registerAction({
+  id: "editor.run_statement",
+  scope: "editor",
+  title: "Run statement",
+  shortcut: "Mod+Enter",
+  group: "run",
+  order: 1,
+  when: ({ commands }) => !!commands?.run,
+  run: ({ commands }) => commands?.run?.("statement"),
+});
+
+registerAction({
+  id: "editor.run_script",
+  scope: "editor",
+  title: "Run script",
+  // Alt+X first: the one menus and the Settings show.
+  shortcut: ["Alt+X", "Mod+Shift+Enter"],
+  group: "run",
+  order: 2,
+  when: ({ commands }) => !!commands?.run,
+  run: ({ commands }) => commands?.run?.("script"),
+});
+
+registerAction({
+  id: "editor.save",
+  scope: "editor",
+  title: "Save script",
+  shortcut: "Mod+S",
+  hidden: true,
+  when: ({ commands }) => !!commands?.save,
+  run: ({ commands }) => commands?.save?.(),
+});
+
+registerAction({
+  id: "editor.open",
+  scope: "editor",
+  title: "Open script",
+  shortcut: "Mod+O",
+  hidden: true,
+  when: ({ commands }) => !!commands?.open,
+  run: ({ commands }) => commands?.open?.(),
+});
+
+// Not through `command`: the search field and the completion list keep the focus.
+registerAction({
+  id: "editor.find",
+  scope: "editor",
+  title: "Find and replace",
+  shortcut: "Mod+F",
+  group: "search",
+  order: 50,
+  run: ({ view }) => void openSearchPanel(view),
+});
+
+registerAction({
+  id: "editor.autocomplete",
+  scope: "editor",
+  title: "Show completions",
+  shortcut: isMac ? "Ctrl+Space" : "Mod+Space",
+  hidden: true,
+  run: ({ view }) => void startCompletion(view),
+});
 
 registerAction({
   id: "editor.run_append",

@@ -11,13 +11,40 @@ pub fn message(e: &mongodb::error::Error) -> String {
         ErrorKind::Command(c) => c.message.clone(),
         ErrorKind::Write(WriteFailure::WriteError(w)) => w.message.clone(),
         ErrorKind::Write(WriteFailure::WriteConcernError(w)) => w.message.clone(),
+        ErrorKind::ServerSelection { message, .. } => server_selection(message),
         ErrorKind::Authentication { message, .. }
-        | ErrorKind::ServerSelection { message, .. }
         | ErrorKind::InvalidArgument { message, .. }
         | ErrorKind::DnsResolve { message, .. }
         | ErrorKind::InvalidTlsConfig { message, .. } => message.clone(),
         ErrorKind::Io(io) => io.to_string(),
         _ => e.to_string(),
+    }
+}
+
+/// A server selection failure without the topology the driver describes after it, but for
+/// the first server's error: `Server selection timeout: No available servers. Topology:
+/// { Type: Unknown, Servers: [ { Address: h:27017, Type: Unknown, Error: Kind: I/O error:
+/// …, labels: {} } ] }` gives `Server selection timeout: No available servers (h:27017:
+/// I/O error: …)`.
+fn server_selection(message: &str) -> String {
+    let Some((head, topology)) = message.split_once("Topology:") else {
+        return message.to_owned();
+    };
+    let head = head.trim_end().trim_end_matches(['.', ',']);
+    let field = |name: &str| {
+        let start = topology.find(name)? + name.len();
+        let rest = &topology[start..];
+        let end = [", labels:", ", Type:", ", Error:", " }"]
+            .iter()
+            .filter_map(|stop| rest.find(stop))
+            .min()
+            .unwrap_or(rest.len());
+        Some(rest[..end].trim().trim_start_matches("Kind: ").to_owned())
+    };
+    match (field("Address: "), field("Error: ")) {
+        (Some(address), Some(error)) => format!("{head} ({address}: {error})"),
+        (None, Some(error)) => format!("{head} ({error})"),
+        _ => head.to_owned(),
     }
 }
 
@@ -81,4 +108,22 @@ pub fn parse_error(src: &str, e: &ParseError) -> Error {
         position: u32::try_from(chars + 1).ok(),
         ..DbError::default()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::server_selection;
+
+    #[test]
+    fn server_selection_errors_leave_out_the_topology() {
+        let message = "Server selection timeout: No available servers. Topology: { Type: \
+                       Unknown, Servers: [ { Address: localhost:57017, Type: Unknown, Error: \
+                       Kind: I/O error: received corrupt message, labels: {} } ] }";
+        assert_eq!(
+            server_selection(message),
+            "Server selection timeout: No available servers (localhost:57017: I/O error: \
+             received corrupt message)"
+        );
+        assert_eq!(server_selection("no topology"), "no topology");
+    }
 }

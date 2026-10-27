@@ -1,6 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useRef, useState } from "react";
-import { runAction, shortcutLabel, useActions } from "../actions";
+import { runAction, shortcutLabel, titleWithKeys, useActions } from "../actions";
 import type { Project, SavedConnection } from "../api";
 import mark from "../assets/brand/platypus-mark.png";
 import { CONNECTION_TYPES } from "../connections";
@@ -78,7 +78,7 @@ export function TopBar({ project, connection }: Props) {
       </button>
       <ActivityButton />
       <ThemeButton />
-      <button type="button" className="icon" title={t("Settings (Ctrl+,)")} aria-label={t("Settings")} onClick={() => workbench().openSettings()}>
+      <button type="button" className="icon" title={titleWithKeys(t("Settings"), "app.settings")} aria-label={t("Settings")} onClick={() => workbench().openSettings()}>
         <Icon name="settings" />
       </button>
       {ownTitleBar && <WindowControls />}

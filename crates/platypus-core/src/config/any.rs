@@ -30,12 +30,19 @@ pub enum ParseNote {
     NamedInstance { instance: String },
     /// Parameters or keys the app does not use, by name only (their values may be secret).
     Ignored { keys: Vec<String> },
+    /// A failover list: the app connects to the first host only, these are left out.
+    OtherHosts { hosts: Vec<String> },
 }
 
 impl ParseNote {
     /// The note for the keys left out, or `None` when there are none.
     pub(super) fn ignored(keys: Vec<String>) -> Option<Self> {
         (!keys.is_empty()).then_some(Self::Ignored { keys })
+    }
+
+    /// The note for the hosts after the first, or `None` when there are none.
+    pub(super) fn other_hosts(hosts: Vec<String>) -> Option<Self> {
+        (!hosts.is_empty()).then_some(Self::OtherHosts { hosts })
     }
 }
 
@@ -47,7 +54,39 @@ impl ConnectionConfig {
     /// a host that holds a login or other keys is an error: nothing but the password field
     /// gets a secret.
     pub fn parse_any(input: &str) -> Result<ParsedConnection> {
-        let input = input.trim();
+        Self::parse_any_for(input, None)
+    }
+
+    /// [`ConnectionConfig::parse_any`] for a form of the database `hint`: a connection
+    /// string that does not name its driver (`Server=…;Uid=…`, as `SqlClient` and MySQL
+    /// Connector/NET both write) is read as one for it, and `http(s)://` as a libSQL or
+    /// ClickHouse URL. Settings the saved connection has no field for (the application
+    /// name, the connect timeout) are noted as not used.
+    pub fn parse_any_for(input: &str, hint: Option<DriverKind>) -> Result<ParsedConnection> {
+        let mut parsed = Self::read_any(input.trim(), hint)?;
+        let defaults = Self::new(parsed.config.driver);
+        let mut dropped = Vec::new();
+        if parsed.config.application_name != defaults.application_name {
+            dropped.push("application_name".to_owned());
+        }
+        if parsed.config.connect_timeout != defaults.connect_timeout {
+            dropped.push("connect_timeout".to_owned());
+        }
+        let ignored = parsed.notes.iter_mut().find_map(|n| match n {
+            ParseNote::Ignored { keys } => Some(keys),
+            _ => None,
+        });
+        match ignored {
+            Some(keys) => {
+                dropped.retain(|d| !keys.contains(d));
+                keys.extend(dropped);
+            }
+            None => parsed.notes.extend(ParseNote::ignored(dropped)),
+        }
+        Ok(parsed)
+    }
+
+    fn read_any(input: &str, hint: Option<DriverKind>) -> Result<ParsedConnection> {
         if input
             .get(..5)
             .is_some_and(|p| p.eq_ignore_ascii_case("jdbc:"))
@@ -60,17 +99,19 @@ impl ConnectionConfig {
             });
         }
         if has_scheme(input) {
-            let (mut config, mut unknown) = Self::read_url(input)?;
-            if config.driver == DriverKind::Mongo {
-                unknown.extend(config.drop_secret_options());
+            let mut read = Self::read_url(input, hint)?;
+            if read.config.driver == DriverKind::Mongo {
+                read.unknown.extend(read.config.drop_secret_options());
             }
+            let mut notes: Vec<ParseNote> = ParseNote::ignored(read.unknown).into_iter().collect();
+            notes.extend(ParseNote::other_hosts(read.other_hosts));
             return Ok(ParsedConnection {
-                config,
-                notes: ParseNote::ignored(unknown).into_iter().collect(),
+                config: read.config,
+                notes,
             });
         }
         if input.contains('=') {
-            return keyvalue::parse(input);
+            return keyvalue::parse(input, hint);
         }
         Err(Error::Config(
             "not a connection URL (postgres://…, jdbc:…) or connection string (Server=…;Database=…)"
@@ -99,6 +140,7 @@ fn jdbc_notes(jdbc: &JdbcUrl) -> Vec<ParseNote> {
         });
     }
     notes.extend(login_note(&jdbc.properties));
+    notes.extend(ParseNote::other_hosts(jdbc.other_hosts.clone()));
     notes
 }
 
@@ -239,6 +281,37 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(!err.contains("hunter2"), "{err}");
+    }
+
+    #[test]
+    fn notes_what_the_saved_connection_cannot_keep() {
+        let p = parse("jdbc:postgresql://h1:5432,h2:5432/app");
+        assert_eq!(p.config.host, "h1");
+        assert_eq!(
+            p.notes,
+            [ParseNote::OtherHosts {
+                hosts: vec!["h2:5432".to_owned()]
+            }]
+        );
+        let p = parse("postgres://u@h/db?application_name=foo&connect_timeout=5&x=1");
+        assert_eq!(
+            p.notes,
+            [ParseNote::Ignored {
+                keys: vec![
+                    "x".to_owned(),
+                    "application_name".to_owned(),
+                    "connect_timeout".to_owned()
+                ]
+            }]
+        );
+        let p = parse("Server=db;Database=x;Application Name=app");
+        assert_eq!(
+            p.notes,
+            [ParseNote::Ignored {
+                keys: vec!["application_name".to_owned()]
+            }]
+        );
+        assert_eq!(parse("postgres://u@h/db").notes, []);
     }
 
     #[test]
