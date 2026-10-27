@@ -201,11 +201,22 @@ button.toggled {
   background: var(--bg-sidebar);
 }
 
+/* Takes the room the toolbar has left, up to its whole text, and is cut short rather than
+   pushing the buttons after it onto a second row while a transaction is open. */
 .tx-open {
+  flex: 1000 1 0;
+  min-width: 0;
+  max-width: max-content;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--warn, #e8590c);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
+}
+
+.toolbar button.tx-open {
+  display: block;
 }
 
 .editor {
