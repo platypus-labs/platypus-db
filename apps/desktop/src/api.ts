@@ -622,6 +622,16 @@ export interface ColumnValue {
   value: CellInput;
 }
 
+/** How the database fills a column by itself: numbered when left out (serials,
+ *  `AUTO_INCREMENT`, SQLite's rowid), numbered and taking no value (`GENERATED ALWAYS AS
+ *  IDENTITY`, SQL Server's `IDENTITY`), or computed (generated columns, `rowversion`). */
+export type Generated = "numbered" | "identity" | "computed";
+
+export interface GeneratedColumn {
+  name: string;
+  kind: Generated;
+}
+
 /** Pending changes to a result of one table; see `commands/data.rs`. */
 export interface TableChanges {
   table: { schema: string; name: string };
@@ -634,6 +644,8 @@ export interface TableChanges {
   table_columns: number[];
   /** Default expressions by result column. */
   defaults: (string | null)[];
+  /** How the database fills each result column by itself, if it does. */
+  generated: (Generated | null)[];
   updates: { row: number; values: ColumnValue[] }[];
   inserts: ColumnValue[][];
   deletes: number[];
@@ -1189,6 +1201,9 @@ export const api = {
     invoke<TableHits>("search_table_data", { sessionId, schema, table, needle }),
   tableDetails: (sessionId: number, schema: string, table: string) =>
     invoke<TableDetails>("table_details", { sessionId, schema, table }),
+  /** The columns of a table the database fills by itself; empty when unknown. */
+  generatedColumns: (sessionId: number, schema: string, table: string) =>
+    invoke<GeneratedColumn[]>("generated_columns", { sessionId, schema, table }),
   referencingKeys: (sessionId: number, schema: string, table: string) =>
     invoke<ReferencingKey[]>("referencing_keys", { sessionId, schema, table }),
   transactionState: (sessionId: number) => invoke<TransactionState>("transaction_state", { sessionId }),

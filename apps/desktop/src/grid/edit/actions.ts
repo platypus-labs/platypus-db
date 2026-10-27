@@ -204,6 +204,17 @@ registerAction({
 });
 
 registerAction({
+  id: "grid.redo_change",
+  scope: "grid",
+  title: "Redo change",
+  shortcut: ["Mod+Y", "Mod+Shift+Z"],
+  group: "save",
+  order: 42,
+  when: ({ source }) => source?.edit?.canRedo === true,
+  run: ({ source }) => source!.edit!.redo(),
+});
+
+registerAction({
   id: "grid.discard_changes",
   scope: "grid",
   title: "Discard changes",

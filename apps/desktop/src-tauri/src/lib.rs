@@ -246,6 +246,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::meta::list_schemas,
         commands::meta::list_objects,
         commands::meta::table_details,
+        commands::meta::generated_columns,
         commands::meta::referencing_keys,
         commands::meta::lookup_values,
         commands::search::search_metadata,
