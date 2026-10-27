@@ -292,13 +292,9 @@ export default async function (page, { shots, dir }) {
   await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);
   await page.waitFor(`document.querySelector('.modal.settings') === null`);
   await markGrid(page);
-  const deadline = Date.now() + 10_000;
-  let text = "";
-  while (!text.includes("1,234.5") && Date.now() < deadline) {
-    text = await copyAll(page);
-    await page.sleep(100);
-  }
-  assert.equal(text, "10\t1\t1,234.5\n11\t1\t2.0\n12\t2\t3.25");
+  // The grid shows 1,234.5; copying keeps the plain values, which paste back into the grid
+  // and into other programs whatever the display format.
+  assert.equal(await copyAll(page), "10\t1\t1234.5\n11\t1\t2.0\n12\t2\t3.25");
 
   await closeTab(page);
   await openTable(page, "places", "4 rows");

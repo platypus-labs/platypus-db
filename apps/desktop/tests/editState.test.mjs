@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EMPTY, addRows, changedRows, deleteRows, setCells, toChanges } from "../src/grid/edit/state.ts";
 
-const target = { table: { schema: "public", name: "study_type" }, key: [0], unique_key: true, table_columns: [0, 1], defaults: [null, null] };
+const target = { table: { schema: "public", name: "study_type" }, key: [0], unique_key: true, table_columns: [0, 1], defaults: [null, null], generated: [null, null] };
 const range = (from, n) => Array.from({ length: n }, (_, i) => from + i);
 
 test("deleting rows drops their changes and new rows, once each", () => {
