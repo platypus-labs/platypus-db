@@ -183,17 +183,43 @@ impl Dialect {
                 format!("{insert}\nON DUPLICATE KEY UPDATE {}", set.join(",\n    "))
             }
             Self::SqlServer | Self::Db2 => self.merge(table, &all, keys, &others, rows),
-            // No upsert where data editing is not offered; Oracle has no `VALUES` rows
-            // before 23ai.
-            Self::ClickHouse
-            | Self::Ansi
-            | Self::Snowflake
-            | Self::BigQuery
-            | Self::Databricks
-            | Self::Oracle => {
+            Self::Oracle => Self::oracle_merge(table, &all, &self.columns(keys), &others, rows),
+            // No upsert where data editing is not offered.
+            Self::ClickHouse | Self::Ansi | Self::Snowflake | Self::BigQuery | Self::Databricks => {
                 return None;
             }
         })
+    }
+
+    /// Oracle's upsert: `MERGE` of the `rows`, a `VALUES` list as a table (23ai, as the
+    /// imports' multi-row `INSERT`s), on the key; no `AS` before aliases, the condition in
+    /// parentheses, and the key never updated.
+    fn oracle_merge(
+        table: &str,
+        all: &[String],
+        keys: &[String],
+        others: &[String],
+        rows: &str,
+    ) -> String {
+        let on: Vec<String> = keys
+            .iter()
+            .map(|k| format!("target.{k} = source.{k}"))
+            .collect();
+        let matched = if others.is_empty() {
+            String::new()
+        } else {
+            let set: Vec<String> = others.iter().map(|q| format!("{q} = source.{q}")).collect();
+            format!("\nWHEN MATCHED THEN\n  UPDATE SET {}", set.join(",\n    "))
+        };
+        let values: Vec<String> = all.iter().map(|q| format!("source.{q}")).collect();
+        format!(
+            "MERGE INTO {table} target\nUSING (VALUES {rows}) source ({})\nON ({}){matched}\n\
+             WHEN NOT MATCHED THEN\n  INSERT ({}) VALUES ({})",
+            all.join(", "),
+            on.join(" AND "),
+            all.join(", "),
+            values.join(", ")
+        )
     }
 
     /// The upsert of Transact-SQL and Db2: `MERGE` of the `rows` on the key.
@@ -276,6 +302,7 @@ impl Dialect {
             (Self::MySql, ObjectKind::Event) => "EVENT",
             (Self::ClickHouse, ObjectKind::Dictionary) => "DICTIONARY",
             (Self::SqlServer | Self::Oracle, ObjectKind::Synonym) => "SYNONYM",
+            (Self::Oracle, ObjectKind::Package) => "PACKAGE",
             _ => return None,
         })
     }
@@ -588,7 +615,20 @@ mod tests {
 FROM HR.EMP
 FETCH FIRST 5 ROWS ONLY;"
         );
-        assert_eq!(Dialect::Oracle.upsert(&t, &cols, &["ID"]), None);
+        assert_eq!(
+            Dialect::Oracle
+                .upsert_rows("T", &cols, &["ID"], "(1, 'a'), (2, 'b')")
+                .unwrap(),
+            "MERGE INTO T target\nUSING (VALUES (1, 'a'), (2, 'b')) source (ID, NAME)\n\
+             ON (target.ID = source.ID)\nWHEN MATCHED THEN\n  UPDATE SET NAME = source.NAME\n\
+             WHEN NOT MATCHED THEN\n  INSERT (ID, NAME) VALUES (source.ID, source.NAME)"
+        );
+        assert!(
+            !Dialect::Oracle
+                .upsert_rows("T", &["ID"], &["ID"], "(1)")
+                .unwrap()
+                .contains("WHEN MATCHED")
+        );
         let merge = Dialect::Db2.upsert(&t, &cols, &["ID"]).unwrap();
         assert!(merge.starts_with("MERGE INTO HR.EMP AS target"), "{merge}");
         assert!(

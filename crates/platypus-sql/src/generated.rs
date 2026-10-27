@@ -65,6 +65,14 @@ pub fn query(dialect: Dialect, schema: &str, table: &str) -> Option<String> {
              FROM pragma_table_xinfo({t}, {s}) x",
             dialect.quote_ident(schema)
         ),
+        // Virtual columns, and identities (12c): `ALWAYS` takes no value, `BY DEFAULT` does.
+        Dialect::Oracle => format!(
+            "SELECT c.COLUMN_NAME, c.VIRTUAL_COLUMN, i.GENERATION_TYPE
+             FROM ALL_TAB_COLS c
+             LEFT JOIN ALL_TAB_IDENTITY_COLS i ON i.OWNER = c.OWNER
+               AND i.TABLE_NAME = c.TABLE_NAME AND i.COLUMN_NAME = c.COLUMN_NAME
+             WHERE c.OWNER = {s} AND c.TABLE_NAME = {t} AND c.HIDDEN_COLUMN = 'NO'"
+        ),
         _ => return None,
     })
 }
@@ -124,6 +132,12 @@ fn generated(dialect: Dialect, row: &TextRow) -> Option<Generated> {
                 None
             }
         }
+        Dialect::Oracle => match (row.text(1).as_str(), row.text(2).as_str()) {
+            ("YES", _) => Some(Generated::Computed),
+            (_, "ALWAYS") => Some(Generated::Identity),
+            (_, t) if t.starts_with("BY DEFAULT") => Some(Generated::Numbered),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -195,6 +209,29 @@ mod tests {
                 ("s".to_owned(), Generated::Numbered),
                 ("total".to_owned(), Generated::Computed),
             ]
+        );
+    }
+
+    #[test]
+    fn reads_oracle_identities_and_virtual_columns() {
+        let rows = [
+            row(&[Some("ID"), Some("NO"), Some("ALWAYS")]),
+            row(&[Some("N"), Some("NO"), Some("BY DEFAULT ON NULL")]),
+            row(&[Some("TWICE"), Some("YES"), None]),
+            row(&[Some("A"), Some("NO"), None]),
+        ];
+        assert_eq!(
+            kinds(Dialect::Oracle, &rows),
+            [
+                ("ID".to_owned(), Generated::Identity),
+                ("N".to_owned(), Generated::Numbered),
+                ("TWICE".to_owned(), Generated::Computed),
+            ]
+        );
+        assert!(
+            query(Dialect::Oracle, "HR", "T")
+                .unwrap()
+                .contains("ALL_TAB_IDENTITY_COLS")
         );
     }
 

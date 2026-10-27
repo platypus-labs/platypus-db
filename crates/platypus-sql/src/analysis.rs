@@ -449,11 +449,16 @@ pub fn analyze(sql: &str, dialect: Dialect) -> Analysis {
         };
     }
     let first = Words::new(sql, dialect).word(0).unwrap_or_default();
+    // An Oracle `BEGIN` with more after it is a PL/SQL block, which may change anything
+    // (`DELETE`, `EXECUTE IMMEDIATE 'DROP …'`); a bare one is a transaction's start.
+    let block = dialect == Dialect::Oracle
+        && first == "BEGIN"
+        && platypus_core::TxControl::of(sql).is_none();
     let kind = if is_read_only(sql, dialect) {
         StatementKind::Query
     } else if DDL.contains(&first.as_str()) {
         StatementKind::Ddl
-    } else if OTHER.contains(&first.as_str()) {
+    } else if OTHER.contains(&first.as_str()) && !block {
         StatementKind::Other
     } else {
         StatementKind::Dml
@@ -718,6 +723,25 @@ mod tests {
         assert_eq!(kind("begin"), StatementKind::Other);
         assert_eq!(kind("set search_path = x"), StatementKind::Other);
         assert_eq!(kind("@set x = 1"), StatementKind::Command);
+        // Oracle PL/SQL blocks and calls change what they like.
+        let ora = |sql| analyze(sql, Dialect::Oracle).kind;
+        assert_eq!(ora("BEGIN DELETE FROM t; END;"), StatementKind::Dml);
+        assert_eq!(
+            ora("BEGIN EXECUTE IMMEDIATE 'DROP TABLE t'; END;"),
+            StatementKind::Dml
+        );
+        assert_eq!(
+            ora("DECLARE x NUMBER; BEGIN NULL; END;"),
+            StatementKind::Dml
+        );
+        assert_eq!(ora("CALL p()"), StatementKind::Dml);
+        assert_eq!(ora("EXEC p"), StatementKind::Dml);
+        assert_eq!(
+            ora("WITH FUNCTION f RETURN NUMBER IS BEGIN RETURN 1; END; SELECT f FROM DUAL"),
+            StatementKind::Dml
+        );
+        assert_eq!(ora("BEGIN"), StatementKind::Other);
+        assert_eq!(ora("COMMIT"), StatementKind::Other);
     }
 
     #[test]
