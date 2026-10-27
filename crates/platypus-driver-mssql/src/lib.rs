@@ -272,14 +272,11 @@ impl Connection for MssqlConnection {
             return true;
         };
         let probe = run_simple(&mut session, "SELECT 1", &self.closed);
-        match tokio::time::timeout(PING_TIMEOUT, probe).await {
-            Ok(_) => !self.is_closed(),
+        if tokio::time::timeout(PING_TIMEOUT, probe).await.is_err() {
             // Unanswered: the half-read response leaves the protocol out of step.
-            Err(_) => {
-                self.closed.store(true, Ordering::Release);
-                false
-            }
+            self.closed.store(true, Ordering::Release);
         }
+        !self.is_closed()
     }
 
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {

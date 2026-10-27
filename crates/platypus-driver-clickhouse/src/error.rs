@@ -87,10 +87,6 @@ pub fn http_error(status: reqwest::StatusCode, body: &str) -> Error {
 }
 
 /// Transport failures: the server is unreachable or the connection broke.
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "used directly as a `map_err` callback"
-)]
 pub fn transport(e: reqwest::Error) -> Error {
     // The request's URL holds the session and query ids and the output settings: noise.
     let e = e.without_url();
