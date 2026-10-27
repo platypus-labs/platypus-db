@@ -353,8 +353,10 @@ pub fn check<'a>(
                 _ => "changes the session or its transaction",
             }
         ))),
+        // Also anywhere in a Transact-SQL batch or after a MySQL `DELIMITER`.
         (AgentAccess::ReadWrite, _)
-            if matches!(classify(statement), TxEffect::Begin | TxEffect::End) =>
+            if analysis.transaction
+                || matches!(classify(statement), TxEffect::Begin | TxEffect::End) =>
         {
             Err(AgentError::Denied(
                 "each statement an agent runs commits on its own: BEGIN, COMMIT and ROLLBACK \
@@ -362,18 +364,25 @@ pub fn check<'a>(
                     .to_owned(),
             ))
         }
-        (AgentAccess::ReadWrite, _) => match (&analysis.unfiltered, unfiltered) {
-            (Some(table), UnfilteredRule::Refuse) => Err(AgentError::Denied(format!(
-                "this statement changes every row of `{}`: add a WHERE. PlatypusDB's Safety \
+        (AgentAccess::ReadWrite, _)
+            if !analysis.unfiltered.is_empty() && unfiltered == UnfilteredRule::Refuse =>
+        {
+            let tables: Vec<String> = analysis
+                .unfiltered
+                .iter()
+                .map(|u| match &u.table.schema {
+                    Some(schema) => format!("`{schema}.{}`", u.table.name),
+                    None => format!("`{}`", u.table.name),
+                })
+                .collect();
+            Err(AgentError::Denied(format!(
+                "this statement changes every row of {}: add a WHERE. PlatypusDB's Safety \
                  settings ask before UPDATE or DELETE without WHERE and TRUNCATE, and agents \
                  cannot answer",
-                table.schema.as_ref().map_or_else(
-                    || table.name.clone(),
-                    |schema| format!("{schema}.{}", table.name)
-                )
-            ))),
-            _ => Ok(statement),
-        },
+                tables.join(", ")
+            )))
+        }
+        (AgentAccess::ReadWrite, _) => Ok(statement),
     }
 }
 
@@ -720,6 +729,54 @@ mod tests {
         assert!(rw("delete from t", UnfilteredRule::Allow).is_ok());
         assert!(denied(rw("commit", UnfilteredRule::Allow)).contains("commits on its own"));
         assert!(denied(rw("start transaction", UnfilteredRule::Allow)).contains("BEGIN"));
+        let both = denied(rw("truncate a, s.b", UnfilteredRule::Refuse));
+        assert!(both.contains("`a`, `s.b`"), "{both}");
+    }
+
+    /// A Transact-SQL batch needs no `;`, and a MySQL `DELIMITER` joins statements: the
+    /// checks look at every statement in them.
+    #[test]
+    fn read_write_checks_every_statement_of_a_batch() {
+        let rw = |sql, dialect| {
+            check(
+                sql,
+                dialect,
+                AgentAccess::ReadWrite,
+                UnfilteredRule::Refuse,
+                "db",
+            )
+        };
+        let ms = Dialect::SqlServer;
+        let every = denied(rw("UPDATE t SET a = 1 WHERE id = 1 DELETE FROM u", ms));
+        assert!(every.contains("every row of `u`"), "{every}");
+        let top = denied(rw("DELETE TOP (2) FROM qa_safe_g", ms));
+        assert!(top.contains("`qa_safe_g`"), "{top}");
+        let alias = denied(rw(
+            "UPDATE g SET v = 1 FROM qa_safe_g g JOIN h ON 1 = 1",
+            ms,
+        ));
+        assert!(alias.contains("`qa_safe_g`"), "{alias}");
+        for sql in [
+            "SELECT 1 BEGIN TRAN",
+            "UPDATE t SET a = 1 WHERE id = 1 COMMIT",
+        ] {
+            assert!(denied(rw(sql, ms)).contains("BEGIN, COMMIT"), "{sql}");
+        }
+        assert!(rw("UPDATE t SET a = 1 WHERE id = 1", ms).is_ok());
+        let my = Dialect::MySql;
+        let joined = denied(rw(
+            "DELIMITER //\nUPDATE t SET a = 1 WHERE id = 1; DELETE FROM u//",
+            my,
+        ));
+        assert!(joined.contains("every row of `u`"), "{joined}");
+        assert!(denied(rw("DELIMITER //\nSELECT 1; COMMIT//", my)).contains("BEGIN, COMMIT"));
+        assert!(
+            rw(
+                "DELIMITER //\nCREATE PROCEDURE p() BEGIN DELETE FROM u; END//",
+                my
+            )
+            .is_ok()
+        );
     }
 
     #[test]
