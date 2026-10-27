@@ -73,6 +73,42 @@ Object.assign(DBS, {
   },
 });
 
+/** Transact-SQL that drops the SQL Server schema qa_dbs with every table in it. */
+export const MSSQL_DROP = `IF SCHEMA_ID('qa_dbs') IS NOT NULL BEGIN
+DECLARE @s nvarchar(max) = N'';
+SELECT @s += N'DROP TABLE qa_dbs.' + QUOTENAME(name) + N';' FROM sys.tables WHERE schema_id = SCHEMA_ID('qa_dbs');
+EXEC (@s);
+DROP SCHEMA qa_dbs;
+END;
+GO`;
+
+/** Creates the SQL Server schema qa_dbs afresh and runs `sql` (batches ending with GO) in it. */
+export const mssqlSchema = (sql) => sh("mssql", `${MSSQL_DROP}\nCREATE SCHEMA qa_dbs;\nGO\n${sql}\nGO`);
+
+/** connections.toml with the generic ODBC connection "QA ODBC" to the SQL Server container,
+ *  through Windows' own "SQL Server" driver. */
+export function odbcConnection(dir) {
+  writeFileSync(
+    join(dir, "connections.toml"),
+    `version = 7
+
+[[connections]]
+id = "00000000-0000-4000-8000-0000000d0080"
+name = "QA ODBC"
+driver = "odbc"
+host = ""
+database = ""
+user = "sa"
+save_password = false
+password_command = "echo Platypus-2026"
+
+[connections.options]
+driver = "SQL Server"
+connection_string = "Server=127.0.0.1,51433;Database=platypus"
+`,
+  );
+}
+
 /** Creates the TimescaleDB database qa_dbs_ts (the shared `platypus` database has no
  *  timescaledb extension) and runs `sql` in it. */
 export function timescaleDb(sql) {
@@ -91,6 +127,7 @@ export function libsql(...statements) {
     { input: JSON.stringify({ statements }), encoding: "utf8" },
   );
   const out = JSON.parse(r.stdout);
+  if (!Array.isArray(out)) throw new Error(`libsql: ${r.stdout}`);
   const failed = out.find((o) => o.error);
   if (failed) throw new Error(`libsql: ${failed.error.message}`);
   return out.at(-1).results.rows;

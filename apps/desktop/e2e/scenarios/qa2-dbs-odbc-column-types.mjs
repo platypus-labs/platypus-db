@@ -13,40 +13,15 @@
 // Suspected: crates/platypus-driver-odbc/src/meta.rs (the type name built from SQLColumns'
 // TYPE_NAME + COLUMN_SIZE / DECIMAL_DIGITS for every type that has a size).
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { needsPorts, openPath, sh } from "../qa-dbs.mjs";
+import { MSSQL_DROP, mssqlSchema, needsPorts, odbcConnection, openPath, sh } from "../qa-dbs.mjs";
 import { menu } from "../qa-xfer.mjs";
 import { editor } from "../qa-nav-table-editor.mjs";
 
 export const skip = needsPorts(51433);
 
 export function setup({ dir }) {
-  sh("mssql", `IF SCHEMA_ID('qa_dbs') IS NOT NULL BEGIN DROP TABLE IF EXISTS qa_dbs.t; DROP SCHEMA qa_dbs; END;
-GO
-CREATE SCHEMA qa_dbs;
-GO
-CREATE TABLE qa_dbs.t (id int PRIMARY KEY, d datetime2(7), o datetimeoffset, tm time(7), m money);
-GO`);
-  writeFileSync(
-    join(dir, "connections.toml"),
-    `version = 7
-
-[[connections]]
-id = "00000000-0000-4000-8000-0000000d0083"
-name = "QA ODBC"
-driver = "odbc"
-host = ""
-database = ""
-user = "sa"
-save_password = false
-password_command = "echo Platypus-2026"
-
-[connections.options]
-driver = "SQL Server"
-connection_string = "Server=127.0.0.1,51433;Database=platypus"
-`,
-  );
+  mssqlSchema(`CREATE TABLE qa_dbs.t (id int PRIMARY KEY, d datetime2(7), o datetimeoffset, tm time(7), m money);`);
+  odbcConnection(dir);
 }
 
 export default async function (page) {
@@ -57,6 +32,6 @@ export default async function (page) {
     const types = await page.eval(`[...${editor}.querySelectorAll('tbody tr')].map(r => r.querySelectorAll('td')[1].querySelector('input').value)`);
     assert.deepEqual(types.slice(1), ["datetime2(7)", "datetimeoffset(7)", "time(7)", "money"]);
   } finally {
-    sh("mssql", "DROP TABLE IF EXISTS qa_dbs.t; DROP SCHEMA IF EXISTS qa_dbs;");
+    sh("mssql", MSSQL_DROP);
   }
 }

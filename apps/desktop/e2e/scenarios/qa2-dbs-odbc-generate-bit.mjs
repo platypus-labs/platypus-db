@@ -10,39 +10,14 @@
 // Suspected: the boolean literal of the generic ODBC dialect in crates/platypus-sql (the
 // insert of generated rows), which assumes TRUE/FALSE are valid.
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { needsPorts, openPath, sh } from "../qa-dbs.mjs";
+import { MSSQL_DROP, mssqlSchema, needsPorts, odbcConnection, openPath, sh } from "../qa-dbs.mjs";
 import { generate } from "../qa-xfer.mjs";
 
 export const skip = needsPorts(51433);
 
 export function setup({ dir }) {
-  sh("mssql", `IF SCHEMA_ID('qa_dbs') IS NOT NULL BEGIN DROP TABLE IF EXISTS qa_dbs.g; DROP SCHEMA qa_dbs; END;
-GO
-CREATE SCHEMA qa_dbs;
-GO
-CREATE TABLE qa_dbs.g (id int PRIMARY KEY, ok bit, name nvarchar(20));
-GO`);
-  writeFileSync(
-    join(dir, "connections.toml"),
-    `version = 7
-
-[[connections]]
-id = "00000000-0000-4000-8000-0000000d0082"
-name = "QA ODBC"
-driver = "odbc"
-host = ""
-database = ""
-user = "sa"
-save_password = false
-password_command = "echo Platypus-2026"
-
-[connections.options]
-driver = "SQL Server"
-connection_string = "Server=127.0.0.1,51433;Database=platypus"
-`,
-  );
+  mssqlSchema(`CREATE TABLE qa_dbs.g (id int PRIMARY KEY, ok bit, name nvarchar(20));`);
+  odbcConnection(dir);
 }
 
 export default async function (page) {
@@ -53,6 +28,6 @@ export default async function (page) {
     assert.match(out, /Added 5 rows/);
     assert.equal(sh("mssql", "SET NOCOUNT ON; SELECT count(*) FROM qa_dbs.g"), "5");
   } finally {
-    sh("mssql", "DROP TABLE IF EXISTS qa_dbs.g; DROP SCHEMA IF EXISTS qa_dbs;");
+    sh("mssql", MSSQL_DROP);
   }
 }
