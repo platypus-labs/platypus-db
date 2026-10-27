@@ -360,6 +360,8 @@ pub(crate) async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connect
 pub struct AppInfo {
     name: &'static str,
     version: &'static str,
+    /// The commit and date the app is built from (`build.rs`), when built from a checkout.
+    build: Option<&'static str>,
     os: &'static str,
     arch: &'static str,
     /// The developer tools port is open (`PLATYPUS_DEVTOOLS_PORT`), as for the end-to-end
@@ -372,6 +374,7 @@ pub fn app_info() -> AppInfo {
     AppInfo {
         name: "PlatypusDB",
         version: platypus_core::VERSION,
+        build: option_env!("PLATYPUS_BUILD"),
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
         devtools: std::env::var_os("PLATYPUS_DEVTOOLS_PORT").is_some(),

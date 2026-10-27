@@ -1018,6 +1018,8 @@ export interface Workspace {
 export interface AppInfo {
   name: string;
   version: string;
+  /** The commit and date the app is built from, e.g. "82678c0 · 2026-10-27 16:52". */
+  build: string | null;
   /** Developer tools are open, as for the end-to-end tests: the page gets test hooks. */
   devtools: boolean;
   os: string;

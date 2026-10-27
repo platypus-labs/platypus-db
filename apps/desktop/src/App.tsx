@@ -164,7 +164,7 @@ export function App() {
     );
     api.listProjectFolders().then(setProjectFolders, () => setProjectFolders([]));
     api.appInfo().then((i) => {
-      setVersion(i.version);
+      setVersion(i.build ? `${i.version} · ${i.build}` : i.version);
       // The end-to-end tests drive what has no button yet through these.
       if (i.devtools) {
         (window as unknown as { __platypus: object }).__platypus = {
