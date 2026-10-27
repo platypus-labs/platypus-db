@@ -100,8 +100,9 @@ pub fn map_error(e: &mongodb::error::Error) -> Error {
 
 /// A syntax error of a statement, with its 1-based character position.
 pub fn parse_error(src: &str, e: &ParseError) -> Error {
+    // An offset inside a character counts the characters before it.
     let offset = e.offset.min(src.len());
-    let chars = src[..offset].chars().count();
+    let chars = src.char_indices().take_while(|&(i, _)| i < offset).count();
     Error::Database(DbError {
         code: Some("SyntaxError".to_owned()),
         message: e.message.clone(),

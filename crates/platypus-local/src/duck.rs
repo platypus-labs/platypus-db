@@ -9,7 +9,7 @@ use arrow_array::{Array, ArrayRef, BooleanArray, Decimal128Array, RecordBatch, S
 use arrow_cast::display::FormatOptions;
 use arrow_schema::{ArrowError, DataType, Field, Schema, SchemaRef};
 use duckdb::vtab::arrow::{ArrowBatchRegistration, ArrowVTab};
-use platypus_core::META_DB_TYPE;
+use platypus_core::{META_DB_TYPE, special};
 
 use crate::{LocalError, values};
 
@@ -115,7 +115,8 @@ enum Store {
     /// Numbers a driver sends as text (PostgreSQL's `numeric` without a precision), cast by
     /// the copy to a DECIMAL of this scale, which holds them all.
     Decimal(u8),
-    /// The same past `MAX_DIGITS` or with NaN or infinities: cast to DOUBLE.
+    /// Numbers past `MAX_DIGITS` or with NaN or infinities (also a decimal column holding a
+    /// numeric NaN): as text, cast to DOUBLE by the copy.
     Double,
 }
 
@@ -157,10 +158,8 @@ fn storable(schema: &SchemaRef, batches: &[RecordBatch]) -> Result<Storable, Loc
         .zip(&names)
         .map(|((f, store), name)| {
             let data_type = match store {
-                Store::AsIs | Store::Interval | Store::Decimal(_) | Store::Double => {
-                    f.data_type().clone()
-                }
-                Store::Text | Store::Huge => DataType::Utf8,
+                Store::AsIs | Store::Interval | Store::Decimal(_) => f.data_type().clone(),
+                Store::Text | Store::Huge | Store::Double => DataType::Utf8,
                 Store::Wide(scale) => DataType::Decimal128(MAX_DIGITS, *scale),
             };
             Field::new(name, data_type, true)
@@ -223,7 +222,10 @@ fn store(field: &Field, batches: &[RecordBatch], column: usize) -> Result<Store,
         | DataType::Decimal128(declared, scale)
             if scale >= 0 =>
         {
-            let digits = most_digits(batches, column)?;
+            let Some(digits) = most_digits(batches, column)? else {
+                // A PostgreSQL numeric NaN: the column goes as DOUBLE, which holds it.
+                return Ok(Store::Double);
+            };
             return Ok(if digits <= u32::from(declared) {
                 Store::AsIs
             } else if digits <= u32::from(MAX_DIGITS) {
@@ -247,8 +249,9 @@ fn store(field: &Field, batches: &[RecordBatch], column: usize) -> Result<Store,
 /// `array` as `store` puts it in DuckDB.
 fn stored(array: &ArrayRef, store: Store) -> Result<ArrayRef, LocalError> {
     match store {
-        Store::AsIs | Store::Interval | Store::Decimal(_) | Store::Double => Ok(Arc::clone(array)),
-        Store::Text | Store::Huge => as_text(array),
+        Store::AsIs | Store::Interval | Store::Decimal(_) => Ok(Arc::clone(array)),
+        // Cast from the text shown, which writes reserved values as DuckDB reads them (NaN).
+        Store::Text | Store::Huge | Store::Double => as_text(array),
         Store::Wide(scale) => Ok(Arc::new(
             decimals(array)?.with_precision_and_scale(MAX_DIGITS, scale)?,
         )),
@@ -333,16 +336,19 @@ fn text_numbers(batches: &[RecordBatch], column: usize) -> Result<Store, ArrowEr
 }
 
 /// The digits of the widest value of a decimal column, at least 1.
-fn most_digits(batches: &[RecordBatch], column: usize) -> Result<u32, ArrowError> {
+/// `None` when a value is a decimal `NaN` (`special::DECIMAL_NAN`), which no DECIMAL holds.
+fn most_digits(batches: &[RecordBatch], column: usize) -> Result<Option<u32>, ArrowError> {
     let mut widest = 0u128;
     for batch in batches {
         let values = decimals(batch.column(column))?;
-        widest = values
-            .iter()
-            .flatten()
-            .fold(widest, |w, v| w.max(v.unsigned_abs()));
+        for v in values.iter().flatten() {
+            if v == special::DECIMAL_NAN {
+                return Ok(None);
+            }
+            widest = widest.max(v.unsigned_abs());
+        }
     }
-    Ok(widest.checked_ilog10().map_or(1, |d| d + 1))
+    Ok(Some(widest.checked_ilog10().map_or(1, |d| d + 1)))
 }
 
 /// A decimal column as `Decimal128`, its scale kept.
@@ -652,6 +658,8 @@ mod tests {
 
     #[test]
     fn decimals_wider_than_their_type() {
+        // 39 digits; `i128::MAX` itself is the reserved numeric NaN.
+        const BIG: i128 = i128::MAX - 1;
         let decimal = |values: Vec<Option<i128>>, precision, scale| -> ArrayRef {
             Arc::new(
                 Decimal128Array::from(values)
@@ -661,14 +669,16 @@ mod tests {
         };
         let (schema, batch) = table_of(vec![
             // A HUGEINT as the DuckDB driver reads it: 39 digits in a DECIMAL(38, 0).
-            (
-                "h",
-                decimal(vec![Some(i128::MAX), None, Some(-i128::MAX)], 38, 0),
-            ),
+            ("h", decimal(vec![Some(BIG), None, Some(-BIG)], 38, 0)),
             // Digits past the declared precision, within 38.
             ("w", decimal(vec![Some(12_345_678), None, Some(1)], 5, 2)),
             // Past 38 digits with a scale: text.
-            ("t", decimal(vec![Some(i128::MAX), None, Some(1)], 38, 2)),
+            ("t", decimal(vec![Some(BIG), None, Some(1)], 38, 2)),
+            // A PostgreSQL numeric NaN: DOUBLE.
+            (
+                "nan",
+                decimal(vec![Some(150), None, Some(special::DECIMAL_NAN)], 10, 2),
+            ),
             ("n", Arc::new(Int32Array::from(vec![1, 2, 3]))),
         ]);
         let conn = duckdb::Connection::open_in_memory().unwrap();
@@ -676,13 +686,25 @@ mod tests {
         assert_eq!(one(&conn, "SELECT sum(n)::BIGINT FROM wide"), 6);
         assert_eq!(
             text(&conn, "SELECT max(h)::VARCHAR FROM wide"),
-            i128::MAX.to_string()
+            BIG.to_string()
         );
         assert_eq!(
             text(&conn, "SELECT min(h)::VARCHAR FROM wide"),
-            (-i128::MAX).to_string()
+            (-BIG).to_string()
         );
         assert_eq!(text(&conn, "SELECT typeof(h) FROM wide LIMIT 1"), "HUGEINT");
+        assert_eq!(
+            text(&conn, "SELECT typeof(nan) FROM wide LIMIT 1"),
+            "DOUBLE"
+        );
+        assert_eq!(
+            one(&conn, "SELECT count(*) FILTER (isnan(nan)) FROM wide"),
+            1
+        );
+        assert_eq!(
+            one(&conn, "SELECT count(*) FILTER (nan = 1.5) FROM wide"),
+            1
+        );
         assert_eq!(text(&conn, "SELECT max(w)::VARCHAR FROM wide"), "123456.78");
         assert_eq!(
             text(&conn, "SELECT typeof(w) FROM wide LIMIT 1"),
@@ -690,9 +712,9 @@ mod tests {
         );
         assert_eq!(
             text(&conn, "SELECT t FROM wide WHERE n = 1"),
-            "1701411834604692317316873037158841057.27"
+            "1701411834604692317316873037158841057.26"
         );
-        for c in ["h", "w", "t"] {
+        for c in ["h", "w", "t", "nan"] {
             let nulls = one(
                 &conn,
                 &format!("SELECT count(*) FILTER ({c} IS NULL) FROM wide"),

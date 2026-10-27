@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 use std::hash::{BuildHasher, RandomState};
 
 use arrow_array::{Array, RecordBatch};
-use arrow_cast::display::{ArrayFormatter, FormatOptions};
+use arrow_cast::display::FormatOptions;
 use arrow_row::{OwnedRow, RowConverter, SortField};
 use arrow_schema::{ArrowError, DataType, Schema};
 use serde::Serialize;
@@ -91,7 +91,7 @@ fn distinct(
     let mut text = String::new();
     for batch in batches {
         let array = batch.column(column);
-        let formatter = ArrayFormatter::try_new(array.as_ref(), options)?;
+        let formatter = platypus_core::special::formatter(array.as_ref(), options)?;
         for row in (0..array.len()).filter(|&r| array.is_valid(r)) {
             text.clear();
             let _ = write!(text, "{}", formatter.value(row));
@@ -278,7 +278,7 @@ fn shown(
     options: &FormatOptions<'_>,
 ) -> Result<String, ArrowError> {
     let array = batches[batch].column(column);
-    Ok(ArrayFormatter::try_new(array.as_ref(), options)?
+    Ok(platypus_core::special::formatter(array.as_ref(), options)?
         .value(row)
         .to_string())
 }
@@ -476,12 +476,13 @@ mod tests {
             extremes_of(Arc::new(ends)),
             pair("0", "9223372036854775807")
         );
-        let huge = Decimal128Array::from(vec![i128::MAX, i128::MAX - 1])
+        // `i128::MAX` is the reserved numeric NaN, left out of the extremes as NaN is.
+        let huge = Decimal128Array::from(vec![i128::MAX - 1, i128::MAX - 2, i128::MAX])
             .with_precision_and_scale(38, 0)
             .unwrap();
         let (min, max, ..) = extremes_of(Arc::new(huge));
-        assert_eq!(min, Some((i128::MAX - 1).to_string()));
-        assert_eq!(max, Some(i128::MAX.to_string()));
+        assert_eq!(min, Some((i128::MAX - 2).to_string()));
+        assert_eq!(max, Some((i128::MAX - 1).to_string()));
     }
 
     #[test]

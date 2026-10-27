@@ -492,6 +492,12 @@ fn conform(schema: &SchemaRef, chunk: &StructArray) -> Result<RecordBatch> {
         .map(|(column, field)| {
             if column.data_type() == field.data_type() {
                 Ok(Arc::clone(column))
+            } else if let Some(bytes) = column.as_any().downcast_ref::<arrow_array::BinaryArray>()
+                && *field.data_type() == arrow_schema::DataType::Utf8
+            {
+                let bits: arrow_array::StringArray =
+                    bytes.iter().map(|b| b.and_then(types::bit_text)).collect();
+                Ok(Arc::new(bits) as arrow_array::ArrayRef)
             } else {
                 arrow_cast::cast(column, field.data_type())
             }

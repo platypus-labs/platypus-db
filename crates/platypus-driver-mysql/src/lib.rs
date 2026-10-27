@@ -64,6 +64,9 @@ pub struct MySqlConnection {
     tx: TxTracker,
     /// Set once an error shows the server connection is gone.
     closed: Arc<AtomicBool>,
+    /// Whether the session's time zone is UTC, so that `TIMESTAMP` values are instants of
+    /// it; read again after a statement that names `time_zone`.
+    utc: Arc<AtomicBool>,
 }
 
 fn ssl_opts(config: &ConnectionConfig) -> Result<Option<SslOpts>> {
@@ -191,6 +194,7 @@ impl MySqlConnection {
             no_backslash_escapes: sql_mode.contains("NO_BACKSLASH_ESCAPES"),
             tx: TxTracker::default(),
             closed: Arc::new(AtomicBool::new(false)),
+            utc: Arc::new(AtomicBool::new(true)),
         })
     }
 
@@ -357,8 +361,19 @@ impl MySqlConnection {
         let batch_size = options.batch_size.max(1);
         let canceller = self.canceller.clone();
         let closed = Arc::clone(&self.closed);
+        // Read under the lock: a statement that changed the zone has updated it by now.
+        let utc = Arc::clone(&self.utc);
+        let in_utc = utc.load(Ordering::Acquire);
         tokio::spawn(async move {
-            run(&mut conn, &sql, batch_size, reply, &canceller, &closed).await;
+            run(
+                &mut conn, &sql, batch_size, reply, &canceller, &closed, in_utc,
+            )
+            .await;
+            if names_time_zone(&sql)
+                && let Some(in_utc) = session_in_utc(&mut conn).await
+            {
+                utc.store(in_utc, Ordering::Release);
+            }
         });
         match started.await.map_err(|_| Error::Closed)?? {
             Started::Affected(rows) => Ok(ExecResult::Affected { rows }),
@@ -383,6 +398,7 @@ async fn run(
     reply: oneshot::Sender<Result<Started>>,
     canceller: &MySqlCanceller,
     closed: &AtomicBool,
+    utc: bool,
 ) {
     let fail = |e: mysql_async::Error| lost(map_error_in(e, sql), closed);
     let mut result = match conn.query_iter(sql).await {
@@ -413,7 +429,7 @@ async fn run(
     let (fields, mut builders): (Vec<_>, Vec<_>) = stream
         .columns_ref()
         .iter()
-        .map(|c| column_builder(&ColumnSpec::from(c)))
+        .map(|c| column_builder(&ColumnSpec::from(c), utc))
         .unzip();
     let schema: SchemaRef = Arc::new(Schema::new(fields));
     let (tx, rx) = mpsc::channel(1);
@@ -523,6 +539,27 @@ fn connect_error(e: mysql_async::Error) -> Error {
 }
 
 /// Records errors that mean the connection is gone, so the session can reconnect.
+/// Whether `sql` may set the session's time zone.
+fn names_time_zone(sql: &str) -> bool {
+    sql.to_ascii_lowercase().contains("time_zone")
+}
+
+/// Whether the session's time zone is UTC (`SYSTEM` when the server's is); `None` when it
+/// cannot be read.
+async fn session_in_utc(conn: &mut Conn) -> Option<bool> {
+    let (session, system): (String, String) = conn
+        .query_first("SELECT @@session.time_zone, @@system_time_zone")
+        .await
+        .ok()
+        .flatten()?;
+    let zone = if session.eq_ignore_ascii_case("SYSTEM") {
+        system
+    } else {
+        session
+    };
+    Some(columns::is_utc(&zone))
+}
+
 fn lost(error: Error, closed: &AtomicBool) -> Error {
     if matches!(error, Error::Connect(_) | Error::Closed) {
         closed.store(true, Ordering::Release);

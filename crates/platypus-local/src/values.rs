@@ -4,11 +4,11 @@
 use std::sync::Arc;
 
 use arrow_array::cast::AsArray;
-use arrow_array::types::{Float64Type, Int64Type, IntervalMonthDayNanoType};
+use arrow_array::types::{Decimal128Type, Float64Type, Int64Type, IntervalMonthDayNanoType};
 use arrow_array::{Array, ArrayRef, Float64Array, Int64Array, TimestampMillisecondArray};
-use arrow_cast::display::{ArrayFormatter, FormatOptions};
+use arrow_cast::display::FormatOptions;
 use arrow_schema::{ArrowError, DataType, Field, IntervalUnit, Schema, TimeUnit};
-use platypus_core::META_DB_TYPE;
+use platypus_core::{META_DB_TYPE, special};
 
 use crate::LocalError;
 
@@ -74,7 +74,20 @@ pub fn numbers(array: &ArrayRef) -> Result<Float64Array, ArrowError> {
     }
     // The default cast is safe: what does not convert becomes NULL.
     let cast = arrow_cast::cast(&source, &DataType::Float64)?;
-    Ok(cast.as_primitive::<Float64Type>().clone())
+    let floats = cast.as_primitive::<Float64Type>().clone();
+    if let DataType::Decimal128(_, _) = array.data_type() {
+        // A numeric NaN is stored as a reserved decimal: NaN here too, not a huge number.
+        let decimals = array.as_primitive::<Decimal128Type>();
+        return Ok(floats
+            .iter()
+            .zip(decimals.iter())
+            .map(|(f, d)| match d {
+                Some(special::DECIMAL_NAN) => Some(f64::NAN),
+                _ => f,
+            })
+            .collect());
+    }
+    Ok(floats)
 }
 
 /// Dates and timestamps as milliseconds since the epoch.
@@ -95,7 +108,7 @@ pub fn time_text(
         DataType::Date32 | DataType::Date64 => arrow_cast::cast(&stamp, &DataType::Date32)?,
         _ => stamp,
     };
-    Ok(ArrayFormatter::try_new(value.as_ref(), options)?
+    Ok(platypus_core::special::formatter(value.as_ref(), options)?
         .value(0)
         .to_string())
 }
@@ -146,7 +159,7 @@ pub fn texts(
     array: &dyn Array,
     options: &FormatOptions<'_>,
 ) -> Result<Vec<Option<String>>, ArrowError> {
-    let formatter = ArrayFormatter::try_new(array, options)?;
+    let formatter = platypus_core::special::formatter(array, options)?;
     // Logical: a column of the NULL type has no validity bitmap, yet every value is NULL.
     let nulls = array.logical_nulls();
     Ok((0..array.len())
