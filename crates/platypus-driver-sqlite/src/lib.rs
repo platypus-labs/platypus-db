@@ -83,13 +83,24 @@ fn open(config: &ConnectionConfig) -> Result<rusqlite::Connection> {
         return Err(Error::Config("no database file given".to_owned()));
     }
     let memory = path == ":memory:";
-    if !memory && !path.starts_with("file:") && !Path::new(path).exists() {
-        return Err(Error::Connect(format!("{path} does not exist")));
+    // A new file in an existing folder is a new, empty database, as DuckDB makes one; a
+    // missing folder is more likely a typo or a drive not mounted.
+    let uri = path.starts_with("file:");
+    let file = Path::new(path);
+    let in_a_folder = file
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .is_none_or(Path::is_dir);
+    if !memory && !uri && !file.exists() && !in_a_folder {
+        return Err(Error::Connect(format!(
+            "{path} does not exist, nor does its folder"
+        )));
     }
+    let create = memory || (!uri && in_a_folder);
     let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE
         | OpenFlags::SQLITE_OPEN_URI
         | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-    if memory {
+    if create {
         flags |= OpenFlags::SQLITE_OPEN_CREATE;
     }
     let conn = rusqlite::Connection::open_with_flags(path, flags)

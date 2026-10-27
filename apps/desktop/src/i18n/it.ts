@@ -1392,6 +1392,17 @@ const it: Record<string, string> = {
   "Rows could not be read: {message}": "Impossibile leggere le righe: {message}",
   "One tab has changes not saved or committed. Close the window and discard them?": "Una scheda ha modifiche non salvate o non confermate. Chiudere la finestra e scartarle?",
   "{n} tabs have changes not saved or committed. Close the window and discard them?": "{n} schede hanno modifiche non salvate o non confermate. Chiudere la finestra e scartarle?",
+  "Only the first host is used; left out: {hosts}.": "Si usa solo il primo host; esclusi: {hosts}.",
+  "The port must be a number from 1 to 65535.": "La porta deve essere un numero da 1 a 65535.",
+  Duplicate: "Duplica",
+  "Duplicate connection: {name}": "Duplica la connessione: {name}",
+  "No password is saved for this connection: it will be saved in the keychain.":
+    "Per questa connessione non è salvata alcuna password: verrà salvata nel portachiavi.",
+  'A tab of "{name}" has an open transaction. Reconnect it now with the new settings, rolling its changes back? Otherwise it reconnects once the transaction ends.':
+    'Una scheda di "{name}" ha una transazione aperta. Riconnetterla ora con le nuove impostazioni, annullandone le modifiche? Altrimenti si riconnette quando la transazione finisce.',
+  '{n} tabs of "{name}" have an open transaction. Reconnect them now with the new settings, rolling their changes back? Otherwise they reconnect once their transaction ends.':
+    '{n} schede di "{name}" hanno una transazione aperta. Riconnetterle ora con le nuove impostazioni, annullandone le modifiche? Altrimenti si riconnettono quando la loro transazione finisce.',
+  "Reconnect now": "Riconnetti ora",
 };
 
 export default it;

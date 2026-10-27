@@ -31,6 +31,31 @@ const URL_DRIVERS: ReadonlySet<DriverKind> = new Set([
 
 export const hasUrl = (driver: DriverKind) => URL_DRIVERS.has(driver);
 
+/** A login typed in the host field, `user:password@host:port`, split into its fields;
+ *  `null` when the host holds none (or is a MongoDB seed list, or a URL, which the paste
+ *  handler reads). The password may hold `@` and `:`: the host is after the last `@`. */
+export function splitLogin(text: string): { user: string; password: string | null; host: string; port: number | null } | null {
+  const s = text.trim();
+  const at = s.lastIndexOf("@");
+  if (at <= 0 || s.includes("://")) return null;
+  const login = s.slice(0, at);
+  const address = s.slice(at + 1);
+  if (!address || /[\s/,@]/.test(address)) return null;
+  const colon = login.indexOf(":");
+  const user = colon < 0 ? login : login.slice(0, colon);
+  const password = colon < 0 ? null : login.slice(colon + 1);
+  const withPort = /^(\[[^\]]+\]|[^:[\]]+):(\d{1,5})$/.exec(address);
+  if (withPort) {
+    const port = Number(withPort[2]);
+    if (port < 1 || port > 65535) return null;
+    return { user, password, host: withPort[1]!.replace(/^\[|\]$/g, ""), port };
+  }
+  return { user, password, host: address.replace(/^\[|\]$/g, ""), port: null };
+}
+
+/** Whether a port typed in the form can be one; none is fine (the driver's default). */
+export const validPort = (port: number | null) => port === null || (Number.isInteger(port) && port >= 1 && port <= 65535);
+
 /** The form's connection with the fields of a parsed URL; the name, when empty, becomes the
  *  database's (without its options) or the host. */
 export function withParsed(conn: SavedConnection, parsed: ParsedConnection): SavedConnection {

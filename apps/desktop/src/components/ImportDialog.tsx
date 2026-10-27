@@ -108,7 +108,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
       const all = await api.readImport(next.source, next.path);
       setRead(all);
       setTicked(new Set(all.flatMap((p) => p.connections).filter((c) => !duplicate(c, existing)).map((c) => c.id)));
-      setInto(all.map((p) => defaultInto(p, project)));
+      setInto(all.map((p) => defaultInto(p, project, projects)));
       setRailFolder(all.filter((p) => p.name).length > 1 ? railName(next.path) : null);
     } catch (e) {
       setError(toCommandError(e).message);

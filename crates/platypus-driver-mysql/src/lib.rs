@@ -33,6 +33,9 @@ const QUERY_INTERRUPTED: u16 = 1317;
 
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// How long [`Connection::check_alive`] waits for the server's answer.
+const PING_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MySqlDriver;
 
@@ -226,6 +229,30 @@ impl Connection for MySqlConnection {
 
     fn is_closed(&self) -> bool {
         self.closed.load(Ordering::Acquire)
+    }
+
+    /// `COM_PING`, which opens no transaction. The socket of a session the server closed
+    /// (`wait_timeout`, `KILL`) fails only when used.
+    async fn check_alive(&self) -> bool {
+        if self.is_closed() {
+            return false;
+        }
+        // A statement holds the connection: in use, so alive.
+        let Ok(mut conn) = self.conn.try_lock() else {
+            return true;
+        };
+        match tokio::time::timeout(PING_TIMEOUT, conn.ping()).await {
+            Ok(Ok(())) => true,
+            Ok(Err(e)) => {
+                lost(map_error(e), &self.closed);
+                !self.is_closed()
+            }
+            // Unanswered: the half-sent ping leaves the protocol out of step.
+            Err(_) => {
+                self.closed.store(true, Ordering::Release);
+                false
+            }
+        }
     }
 
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {
@@ -491,7 +518,7 @@ impl Canceller for MySqlCanceller {
 fn connect_error(e: mysql_async::Error) -> Error {
     match e {
         mysql_async::Error::Server(_) => map_error(e),
-        other => Error::Connect(other.to_string()),
+        other => Error::Connect(platypus_core::without_repeats(&other.to_string())),
     }
 }
 
@@ -518,7 +545,7 @@ fn map_error_in(e: mysql_async::Error, sql: &str) -> Error {
             message: s.message,
             hint: None,
         }),
-        mysql_async::Error::Io(e) => Error::Connect(e.to_string()),
+        mysql_async::Error::Io(e) => Error::Connect(platypus_core::without_repeats(&e.to_string())),
         mysql_async::Error::Driver(DriverError::ConnectionClosed) => Error::Closed,
         other => Error::Other(other.to_string()),
     }

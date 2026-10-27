@@ -63,7 +63,8 @@ export default async function (page) {
   assert.equal(mongo, "mongodb://u@h1:1,h2:2/shop?replicaSet=rs0&authSource=admin");
 
   const libsql = await copyUrl(page, "QA libsql");
-  assert.equal(libsql, "libsql://db-acme.turso.io?sslmode=verify-full");
+  // `libsql://` means verified TLS (CONN-04): the default mode is not written out.
+  assert.equal(libsql, "libsql://db-acme.turso.io");
 
   assert.equal(await copyUrl(page, "QA oracle"), null);
 }

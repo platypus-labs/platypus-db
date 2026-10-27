@@ -69,3 +69,42 @@ impl fmt::Display for DbError {
 }
 
 impl std::error::Error for DbError {}
+
+/// A message made of a chain of causes (`a: b: c`) without the causes that repeat an
+/// earlier one, as some libraries print theirs (`Input/output error: Input/output error:
+/// …`).
+#[must_use]
+pub fn without_repeats(message: &str) -> String {
+    let mut kept: Vec<&str> = Vec::new();
+    for part in message.split(": ") {
+        if !kept
+            .iter()
+            .any(|k| k.trim().eq_ignore_ascii_case(part.trim()))
+        {
+            kept.push(part);
+        }
+    }
+    kept.join(": ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::without_repeats;
+
+    #[test]
+    fn drops_repeated_causes() {
+        assert_eq!(
+            without_repeats("Input/output error: Input/output error: invalid peer certificate"),
+            "Input/output error: invalid peer certificate"
+        );
+        assert_eq!(
+            without_repeats(
+                "An error occured during the attempt of performing I/O: An error occured \
+                 during the attempt of performing I/O: reset"
+            ),
+            "An error occured during the attempt of performing I/O: reset"
+        );
+        assert_eq!(without_repeats("a: b: c"), "a: b: c");
+        assert_eq!(without_repeats("plain"), "plain");
+    }
+}

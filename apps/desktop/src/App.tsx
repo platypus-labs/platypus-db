@@ -11,11 +11,12 @@ import {
   toCommandError,
   type SavedConnection,
 } from "./api";
-import { onNavigatorRefresh } from "./navigatorEvents";
+import { onNavigatorRefresh, requestNavigatorRefresh } from "./navigatorEvents";
 import { ConnectionDialog } from "./components/ConnectionDialog";
 import { ImportDialog } from "./components/ImportDialog";
 import { UnlockDialog } from "./components/MasterPassword";
 import { asksPassword, connectionColor } from "./connections";
+import { sessionSettingsChanged } from "./connectionEdit";
 import { Navigator } from "./components/Navigator";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -77,6 +78,8 @@ type Dialog =
 
 interface PasswordRequest {
   connection: SavedConnection;
+  /** The server's answer to the password tried before. */
+  error: string | null;
   resolve: (password: string | null) => void;
 }
 
@@ -376,6 +379,69 @@ export function App() {
     setProjectFolders(w.project_folders);
   }
 
+  /** Tabs whose session waits for their transaction to end before following an edit of
+   *  their connection. */
+  const staleSessions = useRef(new Set<number>());
+
+  /** Closes a tab's session: its next statement opens another one. */
+  function dropSession(key: number) {
+    const session = sessions.current.get(key);
+    sessions.current.delete(key);
+    void session?.then((id) => {
+      if (id !== null) closeSession(id);
+    });
+  }
+
+  /** Sessions opened before an edit of `connection` that changed how they connect (another
+   *  database, a production type now in manual commit…) are reopened with the saved
+   *  settings on their next use. A tab with an open transaction is asked about: now, rolling
+   *  it back, or once it ends. */
+  async function followEdit(connection: SavedConnection) {
+    disconnectNavigator(connection);
+    requestNavigatorRefresh({ connectionId: connection.id });
+    const own = tabs.filter((tab) => tab.connectionId === connection.id && sessions.current.has(tab.key));
+    const busy = own.filter((tab) => tab.txOpen);
+    for (const tab of own) if (!tab.txOpen) dropSession(tab.key);
+    if (busy.length === 0) return;
+    const question = plural(
+      busy.length,
+      'A tab of "{name}" has an open transaction. Reconnect it now with the new settings, rolling its changes back? Otherwise it reconnects once the transaction ends.',
+      '{n} tabs of "{name}" have an open transaction. Reconnect them now with the new settings, rolling their changes back? Otherwise they reconnect once their transaction ends.',
+      { name: connection.name },
+    );
+    const now = await ask(question, { confirm: t("Reconnect now"), danger: true });
+    for (const tab of busy) {
+      if (now) {
+        dropSession(tab.key);
+        patchTab(tab.key, { txOpen: false });
+      } else {
+        staleSessions.current.add(tab.key);
+      }
+    }
+  }
+
+  // A tab waiting for its transaction to end follows the edit once it has.
+  useEffect(() => {
+    for (const key of staleSessions.current) {
+      const tab = tabs.find((t) => t.key === key);
+      if (tab?.txOpen) continue;
+      staleSessions.current.delete(key);
+      if (tab) dropSession(key);
+    }
+  }, [tabs]);
+
+  /** Saves a copy of the connection, with its passwords, and opens it for editing. */
+  async function duplicateConnection(c: SavedConnection) {
+    const { connection, workspace } = await api.duplicateConnection(c.id);
+    setWorkspace(workspace);
+    setDialog({
+      kind: "connection",
+      connection,
+      existing: true,
+      memberOf: workspace.projects.filter((p) => p.connections.includes(connection.id)).map((p) => p.id),
+    });
+  }
+
   /** After a command that saved connections: the projects they joined or left changed too. */
   async function connectionsSaved(all: SavedConnection[]) {
     setConnections(all);
@@ -428,11 +494,12 @@ export function App() {
   /** The password dialog shows one connection at a time: the others wait their turn. */
   const passwordTurn = useRef<Promise<unknown>>(Promise.resolve());
 
-  function askPassword(connection: SavedConnection) {
+  /** Asks for the connection's password; `error` is why the previous one did not do. */
+  function askPassword(connection: SavedConnection, error: string | null = null) {
     const asked = passwordAsks.current.get(connection.id);
     if (asked) return asked;
     const answer = passwordTurn.current
-      .then(() => new Promise<string | null>((resolve) => setPasswordRequest({ connection, resolve })))
+      .then(() => new Promise<string | null>((resolve) => setPasswordRequest({ connection, error, resolve })))
       .finally(() => passwordAsks.current.delete(connection.id));
     passwordTurn.current = answer;
     passwordAsks.current.set(connection.id, answer);
@@ -440,37 +507,51 @@ export function App() {
   }
 
   /** Opens a session, asking for the password when it is not saved; `null` on failure.
-   *  `database` opens another database of the server than the saved one. */
+   *  `database` opens another database of the server than the saved one. A password the
+   *  server refuses (typed, or missing from the keychain) is asked again, with its answer. */
   async function connect(connection: SavedConnection, database?: string | null): Promise<number | null> {
-    let password: string | undefined;
-    if (asksPassword(connection)) {
-      password = passwords.current.get(connection.id);
-      if (password === undefined) {
-        const entered = await askPassword(connection);
+    // Typed this run: asked for, or missing from the keychain.
+    let password = passwords.current.get(connection.id);
+    let prompted = false;
+    if (password === undefined && asksPassword(connection)) {
+      const entered = await askPassword(connection);
+      if (entered === null) return null;
+      password = entered;
+    }
+    // A database reached through a driver not downloaded yet: offer it, then go on.
+    const target = database ? `${connection.name}/${database}` : connection.name;
+    for (;;) {
+      const typed = password;
+      const open = () => track(t("Connect to {name}", { name: target }), withDriver(() => api.openSession(connection.id, typed, database)));
+      try {
+        let session;
+        try {
+          session = await open();
+        } catch (e) {
+          // Saved passwords behind a master password not entered yet: ask, then try again.
+          if (toCommandError(e).kind !== "locked" || !(await askUnlock())) throw e;
+          session = await open();
+        }
+        if (typed !== undefined) {
+          passwords.current.set(connection.id, typed);
+          // "Saved in the keychain" with none there: it is now.
+          if (prompted && connection.save_password && !asksPassword(connection)) void api.rememberPassword(connection.id, typed).catch(() => {});
+        }
+        capabilities.current.set(session.session_id, session.capabilities);
+        setOpenSessions((m) => new Map(m).set(session.session_id, connection.id));
+        return session.session_id;
+      } catch (e) {
+        passwords.current.delete(connection.id);
+        const error = toCommandError(e);
+        if (error.kind !== "auth") {
+          setToast(`${connection.name}: ${error.message}`);
+          return null;
+        }
+        const entered = await askPassword(connection, error.message);
         if (entered === null) return null;
         password = entered;
+        prompted = true;
       }
-    }
-    try {
-      // A database reached through a driver not downloaded yet: offer it, then go on.
-      const target = database ? `${connection.name}/${database}` : connection.name;
-      const open = () => track(t("Connect to {name}", { name: target }), withDriver(() => api.openSession(connection.id, password, database)));
-      let session;
-      try {
-        session = await open();
-      } catch (e) {
-        // Saved passwords behind a master password not entered yet: ask, then try again.
-        if (toCommandError(e).kind !== "locked" || !(await askUnlock())) throw e;
-        session = await open();
-      }
-      if (password !== undefined) passwords.current.set(connection.id, password);
-      capabilities.current.set(session.session_id, session.capabilities);
-      setOpenSessions((m) => new Map(m).set(session.session_id, connection.id));
-      return session.session_id;
-    } catch (e) {
-      passwords.current.delete(connection.id);
-      setToast(`${connection.name}: ${toCommandError(e).message}`);
-      return null;
     }
   }
 
@@ -565,11 +646,7 @@ export function App() {
       closedTabs.current.push(saved);
       if (closedTabs.current.length > CLOSED_TABS) closedTabs.current.shift();
     }
-    const session = sessions.current.get(tab.key);
-    sessions.current.delete(tab.key);
-    void session?.then((id) => {
-      if (id !== null) closeSession(id);
-    });
+    dropSession(tab.key);
     // Closing a tab of the split leaves the other one.
     const beside = split?.find((k) => k !== tab.key && split.includes(tab.key));
     setTabs((all) => {
@@ -673,6 +750,7 @@ export function App() {
       return tab !== undefined;
     },
     sideSession: (connection, database) => shell.current.navigatorSession(connection, database),
+    duplicateConnection: (connection) => duplicateConnection(connection),
     capabilities: (sessionId) => capabilities.current.get(sessionId),
     showError: setToast,
     openSettings: () => setSettingsOpen(true),
@@ -684,6 +762,19 @@ export function App() {
   });
 
   useEffect(() => registerShellActions(shell), []);
+  // In a connection's menu, beside Copy as URL; the palette lists it for each connection.
+  useEffect(
+    () =>
+      registerAction({
+        id: "connection.duplicate",
+        scope: "navigator.connection",
+        title: "Duplicate",
+        group: "manage",
+        order: 88,
+        run: ({ connection }) => workbench().duplicateConnection(connection),
+      }),
+    [],
+  );
   // "Add to project" lists the projects as they are.
   useEffect(() => registerAddToProject(projects ?? []), [projects]);
   useEffect(() => registerMoveToFolder(project), [project]);
@@ -863,8 +954,10 @@ export function App() {
           driverChosen={dialog.driverChosen}
           onClose={() => setDialog(null)}
           onSaved={async (all) => {
+            const before = connections?.find((c) => c.id === dialog.connection.id);
             await connectionsSaved(all);
             const saved = all.find((c) => c.id === dialog.connection.id);
+            if (before && saved && sessionSettingsChanged(before, saved)) void followEdit(saved);
             if (dialog.folder && activeProject && saved) {
               api.placeConnection(activeProject, saved.id, dialog.folder).then(setProjects, (e: unknown) => setToast(toCommandError(e).message));
             }
@@ -933,6 +1026,7 @@ export function App() {
       {passwordRequest && (
         <PasswordPrompt
           connection={passwordRequest.connection}
+          error={passwordRequest.error}
           onDone={(password) => {
             passwordRequest.resolve(password);
             setPasswordRequest(null);
@@ -1139,9 +1233,12 @@ function tabMenuActions(s: () => ShellApi) {
 
 function PasswordPrompt({
   connection,
+  error,
   onDone,
 }: {
   connection: SavedConnection;
+  /** Why the previous password did not do: the server's answer. */
+  error: string | null;
   onDone: (password: string | null) => void;
 }) {
   const [password, setPassword] = useState("");
@@ -1162,6 +1259,14 @@ function PasswordPrompt({
           </span>
           <input autoFocus type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </label>
+        {connection.save_password && !asksPassword(connection) && (
+          <p className="muted small">{t("No password is saved for this connection: it will be saved in the keychain.")}</p>
+        )}
+        {error && (
+          <div className="notice error" role="alert">
+            {error}
+          </div>
+        )}
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={() => onDone(null)}>

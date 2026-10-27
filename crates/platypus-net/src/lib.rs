@@ -150,6 +150,10 @@ async fn agent_auth(session: &mut Session, server: &SshConfig) -> Result<AuthRes
     })
 }
 
+/// How long reaching an SSH server and its handshake may take, as the databases' own
+/// connect timeout.
+const SSH_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 fn client_config() -> Arc<client::Config> {
     Arc::new(client::Config {
         keepalive_interval: Some(std::time::Duration::from_secs(30)),
@@ -169,13 +173,21 @@ async fn open_session(server: &SshConfig, known_hosts: &Path) -> Result<(Session
     };
     let (mut session, mut jumps) = match &server.jump {
         None => {
-            let session = client::connect(
+            let connecting = client::connect(
                 client_config(),
                 (server.host.as_str(), server.port),
                 handler,
-            )
-            .await
-            .map_err(|e| ssh_error(server, e))?;
+            );
+            // An address that drops packets would wait for the system's TCP timeout.
+            let session = tokio::time::timeout(SSH_CONNECT_TIMEOUT, connecting)
+                .await
+                .map_err(|_| {
+                    ssh_error(
+                        server,
+                        format!("no answer within {} s", SSH_CONNECT_TIMEOUT.as_secs()),
+                    )
+                })?
+                .map_err(|e| ssh_error(server, e))?;
             (session, Vec::new())
         }
         Some(jump) => {
@@ -353,6 +365,10 @@ impl Connection for Tunneled {
 
     fn is_closed(&self) -> bool {
         self.inner.is_closed() || self.tunnel.is_closed()
+    }
+
+    async fn check_alive(&self) -> bool {
+        !self.tunnel.is_closed() && self.inner.check_alive().await
     }
 
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {

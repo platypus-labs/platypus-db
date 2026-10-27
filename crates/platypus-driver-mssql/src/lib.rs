@@ -47,6 +47,9 @@ const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 const DEFAULT_PORT: u16 = 1433;
 
+/// How long [`Connection::check_alive`] waits for the server's answer.
+const PING_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MssqlDriver;
 
@@ -124,21 +127,27 @@ async fn login(session: tiberius::Config, host: &str, port: u16) -> tiberius::Re
 
 /// Logs in, falling back to plaintext for `prefer` when the server has no TLS, and
 /// following one redirection (Azure SQL gateways send clients to the database's node)
-/// unless the connection goes through a tunnel, which leads to one address only.
-async fn open(config: &ConnectionConfig) -> Result<Session> {
+/// unless the connection goes through a tunnel, which leads to one address only. Returns
+/// the session with whether it is encrypted: when the client asks for encryption the login
+/// fails rather than going on in plaintext, so it is unless `prefer` fell back.
+/// (`CONNECTIONPROPERTY` has no `encrypt_option`, and `sys.dm_exec_connections` needs
+/// `VIEW SERVER STATE`.)
+async fn open(config: &ConnectionConfig) -> Result<(Session, bool)> {
     let mut session = session_config(config);
     let (host, port) = match config.connect_addr {
         Some(addr) => (addr.ip().to_string(), addr.port()),
         None => (config.host.clone(), config.port.unwrap_or(DEFAULT_PORT)),
     };
+    let mut encrypted = config.ssl_mode != SslMode::Disable;
     let mut result = login(session.clone(), &host, port).await;
     if config.ssl_mode == SslMode::Prefer
         && matches!(&result, Err(tiberius::error::Error::Tls(m)) if m == NO_SERVER_TLS)
     {
         session.encryption(EncryptionLevel::NotSupported);
+        encrypted = false;
         result = login(session.clone(), &host, port).await;
     }
-    match result {
+    let session = match result {
         Err(tiberius::error::Error::Routing { host, port }) if config.connect_addr.is_none() => {
             session.host(&host);
             session.port(port);
@@ -146,7 +155,8 @@ async fn open(config: &ConnectionConfig) -> Result<Session> {
         }
         other => other,
     }
-    .map_err(|e| connect_error(e, &host, port))
+    .map_err(|e| connect_error(e, &host, port))?;
+    Ok((session, encrypted))
 }
 
 impl MssqlConnection {
@@ -158,7 +168,7 @@ impl MssqlConnection {
             )));
         }
         let timeout = config.connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT);
-        let mut session = tokio::time::timeout(timeout, open(config))
+        let (mut session, encrypted) = tokio::time::timeout(timeout, open(config))
             .await
             .map_err(|_| Error::Connect(format!("timed out after {}s", timeout.as_secs())))??;
 
@@ -166,8 +176,7 @@ impl MssqlConnection {
         let row = session
             .simple_query(
                 "SELECT CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128)), \
-                 CAST(SERVERPROPERTY('EngineEdition') AS INT), \
-                 CAST(CONNECTIONPROPERTY('encrypt_option') AS NVARCHAR(10))",
+                 CAST(SERVERPROPERTY('EngineEdition') AS INT)",
             )
             .await
             .map_err(|e| map_error(e, ""))?
@@ -194,7 +203,7 @@ impl MssqlConnection {
             server: ServerInfo {
                 product: product.to_owned(),
                 version: text(0),
-                encrypted: text(2).eq_ignore_ascii_case("TRUE"),
+                encrypted,
             },
             tx: TxTracker::default(),
             closed: Arc::new(AtomicBool::new(false)),
@@ -249,6 +258,25 @@ impl Connection for MssqlConnection {
 
     fn is_closed(&self) -> bool {
         self.closed.load(Ordering::Acquire)
+    }
+
+    /// `SELECT 1` on the session, outside the transaction tracking: in manual-commit mode
+    /// the driver sends `BEGIN TRANSACTION` itself, so the probe opens none. A session
+    /// killed on the server fails only when used.
+    async fn check_alive(&self) -> bool {
+        if self.is_closed() {
+            return false;
+        }
+        // A statement holds the session: in use, so alive.
+        let Ok(mut session) = self.session.try_lock() else {
+            return true;
+        };
+        let probe = run_simple(&mut session, "SELECT 1", &self.closed);
+        if tokio::time::timeout(PING_TIMEOUT, probe).await.is_err() {
+            // Unanswered: the half-read response leaves the protocol out of step.
+            self.closed.store(true, Ordering::Release);
+        }
+        !self.is_closed()
     }
 
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {
@@ -653,7 +681,9 @@ impl Canceller for MssqlCanceller {
 fn connect_error(e: tiberius::error::Error, host: &str, port: u16) -> Error {
     match e {
         tiberius::error::Error::Server(_) => map_error(e, ""),
-        other => Error::Connect(format!("{host}:{port}: {other}")),
+        other => Error::Connect(platypus_core::without_repeats(&format!(
+            "{host}:{port}: {other}"
+        ))),
     }
 }
 
@@ -695,7 +725,7 @@ fn map_error(e: tiberius::error::Error, sql: &str) -> Error {
         }
         // The response can no longer be followed: the session is unusable.
         E::Io { .. } | E::Protocol(_) | E::Tls(_) | E::Routing { .. } => {
-            Error::Connect(e.to_string())
+            Error::Connect(platypus_core::without_repeats(&e.to_string()))
         }
         other => Error::Other(other.to_string()),
     }
