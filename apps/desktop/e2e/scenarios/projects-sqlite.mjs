@@ -116,7 +116,9 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`${tabCount} === 1 && ${editorText} === "SELECT 'rossi'"`);
   assert.equal(await page.eval(`${treeRow("B dev")} === undefined`), true);
 
-  // A workspace saved by 0.2.0: its tabs are All connections', and it is replaced.
+  // A workspace saved by 0.2.0: its tabs are All connections', and it is replaced. A save still
+  // waiting would be written as the page goes, and drop the old workspace with it.
+  await page.sleep(600);
   await page.eval(`localStorage.removeItem('platypus.workspace.v2'); localStorage.removeItem('platypus.project.v1');
     localStorage.setItem('platypus.workspace.v1', JSON.stringify({
       tabs: [
