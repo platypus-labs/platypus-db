@@ -295,7 +295,10 @@ impl ImportPlan {
                         dialect
                             .upsert_rows(&table, &names, &keys, &values)
                             .ok_or_else(|| {
-                                ImportError::Plan("ClickHouse has no upsert".to_owned())
+                                ImportError::Plan(
+                                    "this database cannot update rows by key (no upsert)"
+                                        .to_owned(),
+                                )
                             })?,
                     );
                 }
@@ -481,6 +484,18 @@ pub fn target_type(field: &Field, target: Dialect) -> String {
             _ => format!("VARCHAR({n})"),
         };
     }
+    // An Oracle `NUMBER` without a precision reaches Arrow as a decimal whose scale its first
+    // rows set: the target takes any number too, where it has such a type.
+    let unbounded = matches!(field.data_type(), DataType::Decimal128(..))
+        && field
+            .metadata()
+            .get(META_DB_TYPE)
+            .is_some_and(|t| t == "NUMBER");
+    match target {
+        Dialect::Postgres if unbounded => return "NUMERIC".to_owned(),
+        Dialect::Oracle if unbounded => return "NUMBER".to_owned(),
+        _ => {}
+    }
     let declared = declared.and_then(|t| declared_type(t));
     target.column_type(declared.as_ref().unwrap_or(field.data_type()))
 }
@@ -496,8 +511,16 @@ fn is_array_type(name: &str) -> bool {
     })
 }
 
-/// The length of a declared `varchar(n)` or `char(n)`.
+/// The length of a declared `varchar(n)` or `char(n)` (Oracle's `VARCHAR2(n)`,
+/// `VARCHAR2(n CHAR)` too).
 pub(crate) fn text_length(name: &str) -> Option<u32> {
+    text_limit(name).map(|(n, _)| n)
+}
+
+/// The length of a declared text type and whether it counts bytes: Oracle's `VARCHAR2(n)`
+/// and `VARCHAR2(n BYTE)` do (by default), `VARCHAR2(n CHAR)`, `NVARCHAR2(n)` and the other
+/// databases' `varchar(n)` count characters.
+pub(crate) fn text_limit(name: &str) -> Option<(u32, bool)> {
     // ClickHouse's `Nullable(FixedString(4))`, `LowCardinality(…)`.
     let mut name = name.trim();
     for wrapper in ["Nullable(", "LowCardinality("] {
@@ -519,10 +542,18 @@ pub(crate) fn text_length(name: &str) -> Option<u32> {
         "nvarchar2",
         "fixedstring",
     ];
-    let length = args.trim_end_matches(')').split_whitespace().next()?;
-    text.contains(&base.as_str())
-        .then(|| length.parse().ok())
-        .flatten()
+    if !text.contains(&base.as_str()) {
+        return None;
+    }
+    let mut words = args.trim_end_matches(')').split_whitespace();
+    let n = words.next()?.parse().ok()?;
+    let bytes = match words.next().map(str::to_ascii_uppercase).as_deref() {
+        Some("BYTE") => true,
+        Some("CHAR") => false,
+        Some(_) => return None,
+        None => base == "varchar2",
+    };
+    Some((n, bytes))
 }
 
 /// The Arrow type of a declared column type, for the types other databases share.
@@ -1264,6 +1295,14 @@ mod tests {
         assert_eq!(
             target_type(&field(DataType::Utf8, "text[]"), Dialect::MySql),
             "TEXT"
+        );
+        // Oracle's NUMBER without a precision takes any number.
+        let number = field(DataType::Decimal128(38, 1), "NUMBER");
+        assert_eq!(target_type(&number, d), "NUMERIC");
+        assert_eq!(target_type(&number, Dialect::Oracle), "NUMBER");
+        assert_eq!(
+            target_type(&field(DataType::Utf8, "VARCHAR2(8 CHAR)"), d),
+            "VARCHAR(8)"
         );
     }
 

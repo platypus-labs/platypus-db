@@ -69,6 +69,15 @@ struct Current {
 /// Words between `CREATE` and the kind of object in Oracle.
 const ORACLE_CREATE_MODIFIERS: &[&str] = &["OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE"];
 
+/// Whether an Oracle statement starting with `head` (upper-cased words) runs to a `/` line,
+/// as its `;` do not end it: PL/SQL ([`plsql_head`]), or a query that declares PL/SQL
+/// functions first (`WITH FUNCTION f … END; SELECT f(1) FROM DUAL`, 12c).
+fn oracle_block_head(head: &[String]) -> bool {
+    plsql_head(head)
+        || matches!(head, [with, routine, third, ..]
+            if with == "WITH" && (routine == "FUNCTION" || routine == "PROCEDURE") && third != "AS")
+}
+
 /// Whether an Oracle statement starting with `head` (upper-cased words) is PL/SQL: a block,
 /// or a routine, package, trigger or type being created.
 fn plsql_head(head: &[String]) -> bool {
@@ -124,7 +133,7 @@ impl Current {
         if dialect == Dialect::Oracle {
             if self.head.len() < ORACLE_CREATE_MODIFIERS.len() + 2 {
                 self.head.push(upper);
-                self.whole_batch = self.whole_batch || plsql_head(&self.head);
+                self.whole_batch = self.whole_batch || oracle_block_head(&self.head);
             }
             return;
         }
@@ -932,6 +941,25 @@ mod tests {
             "create or replace view v as select 1 x from dual"
         ));
         assert!(!is_plsql("select 1 from dual"));
+    }
+
+    #[test]
+    fn oracle_with_function_runs_to_a_slash_line() {
+        let query = "WITH FUNCTION f(x NUMBER) RETURN NUMBER IS BEGIN RETURN x * 2; END;\n\
+                     SELECT f(21) v FROM DUAL";
+        assert_eq!(texts(query, Dialect::Oracle), [query]);
+        let script = format!("{query}\n/\nselect 1 from dual;");
+        assert_eq!(
+            texts(&script, Dialect::Oracle),
+            [query, "select 1 from dual"]
+        );
+        // Its final `;` goes, as after any query.
+        assert!(!is_plsql(query));
+        // A common table expression named `function`.
+        assert_eq!(
+            texts("with function as (select 1 x from dual) select x from function; select 2 from dual", Dialect::Oracle).len(),
+            2
+        );
     }
 
     #[test]

@@ -169,6 +169,77 @@ fn is_special_number(s: &str) -> bool {
         .any(|w| w.eq_ignore_ascii_case(s))
 }
 
+/// `n` ASCII digits at the start of `s`, and the rest.
+fn digits(s: &str, n: usize) -> Option<(&str, &str)> {
+    let head = s.get(..n)?;
+    head.bytes()
+        .all(|b| b.is_ascii_digit())
+        .then(|| (head, &s[n..]))
+}
+
+/// An Oracle ANSI literal of a date or time as the grid and exports write it
+/// (`2024-02-29`, `2024-02-29 13:45:59.123456789`, `T` for the space, and for a `zoned` one an
+/// offset, `+02:00` or `Z`): `DATE '…'` or `TIMESTAMP '…'`. `None` for other text (a year
+/// before Christ, the session's own format), which stays a string.
+fn oracle_datetime(text: &str, zoned: bool) -> Option<String> {
+    let (year, rest) = digits(text, 4)?;
+    let (month, rest) = digits(rest.strip_prefix('-')?, 2)?;
+    let (day, rest) = digits(rest.strip_prefix('-')?, 2)?;
+    let date = format!("{year}-{month}-{day}");
+    if rest.is_empty() {
+        return Some(format!("DATE '{date}'"));
+    }
+    let rest = rest.strip_prefix([' ', 'T'])?;
+    let (hour, rest) = digits(rest, 2)?;
+    let (minute, rest) = digits(rest.strip_prefix(':')?, 2)?;
+    let (second, rest) = match rest.strip_prefix(':') {
+        Some(r) => digits(r, 2)?,
+        None => ("00", rest),
+    };
+    let (fraction, rest) = match rest.strip_prefix('.') {
+        Some(r) => {
+            let n = r.bytes().take_while(u8::is_ascii_digit).count();
+            if n == 0 || n > 9 {
+                return None;
+            }
+            (&r[..n], &r[n..])
+        }
+        None => ("", rest),
+    };
+    let fraction = if fraction.is_empty() {
+        String::new()
+    } else {
+        format!(".{fraction}")
+    };
+    let time = format!("{date} {hour}:{minute}:{second}{fraction}");
+    let zone = rest.trim();
+    let offset = match zone {
+        "" => None,
+        "Z" | "UTC" | "+00" => Some("+00:00".to_owned()),
+        _ if zoned => {
+            let (sign, digits_part) = zone.split_at(1);
+            if !matches!(sign, "+" | "-") {
+                return None;
+            }
+            let compact = digits_part.replace(':', "");
+            let (h, m) = match compact.len() {
+                2 => (&compact[..2], "00"),
+                4 => (&compact[..2], &compact[2..]),
+                _ => return None,
+            };
+            if !(h.bytes().chain(m.bytes()).all(|b| b.is_ascii_digit())) {
+                return None;
+            }
+            Some(format!("{sign}{h}:{m}"))
+        }
+        _ => return None,
+    };
+    Some(match offset {
+        Some(offset) => format!("TIMESTAMP '{time} {offset}'"),
+        None => format!("TIMESTAMP '{time}'"),
+    })
+}
+
 fn is_integer(s: &str) -> bool {
     let digits = s.strip_prefix(['+', '-']).unwrap_or(s);
     !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
@@ -266,6 +337,14 @@ impl Column<'_> {
                     dialect.quote_literal(trimmed),
                     if fraction > 6 { 9 } else { 6 }
                 )
+            }
+            // Oracle reads a string as a time with the session's NLS formats: an ANSI literal
+            // does not depend on them.
+            ValueKind::Timestamp { zoned } if dialect == Dialect::Oracle => {
+                oracle_datetime(trimmed, zoned).unwrap_or_else(|| dialect.quote_literal(text))
+            }
+            ValueKind::Date if dialect == Dialect::Oracle => {
+                oracle_datetime(trimmed, false).unwrap_or_else(|| dialect.quote_literal(text))
             }
             // Standard SQL's typed literals: Trino converts no text to a date or time, not
             // even on INSERT.
@@ -972,6 +1051,48 @@ mod tests {
         assert!(is_integer("-42"));
         assert!(!is_integer("4.2"));
         assert!(!is_integer("+"));
+    }
+
+    #[test]
+    fn oracle_times_do_not_depend_on_nls() {
+        let naive = col("t", ValueKind::Timestamp { zoned: false });
+        let zoned = col("z", ValueKind::Timestamp { zoned: true });
+        let ora = |c: &Column<'_>, v| c.literal(Dialect::Oracle, Some(v)).unwrap();
+        assert_eq!(
+            ora(&naive, "2021-02-03 04:05:06"),
+            "TIMESTAMP '2021-02-03 04:05:06'"
+        );
+        assert_eq!(
+            ora(&naive, "2024-02-29T13:45:59.123456789"),
+            "TIMESTAMP '2024-02-29 13:45:59.123456789'"
+        );
+        assert_eq!(ora(&naive, "2024-02-29"), "DATE '2024-02-29'");
+        assert_eq!(
+            ora(&naive, "2024-02-29 10:30"),
+            "TIMESTAMP '2024-02-29 10:30:00'"
+        );
+        assert_eq!(
+            ora(&zoned, "2024-01-01 08:00:00.500+02:00"),
+            "TIMESTAMP '2024-01-01 08:00:00.500 +02:00'"
+        );
+        assert_eq!(
+            ora(&zoned, "2024-01-01T08:00:00Z"),
+            "TIMESTAMP '2024-01-01 08:00:00 +00:00'"
+        );
+        // Anything else is left to the session's formats.
+        assert_eq!(ora(&naive, "03-FEB-21"), "'03-FEB-21'");
+        assert_eq!(
+            ora(&naive, "0044-03-15 00:00:00 BC"),
+            "'0044-03-15 00:00:00 BC'"
+        );
+        // Elsewhere a date stays a string.
+        assert_eq!(ValueKind::of(&DataType::Date32), ValueKind::Date);
+        assert_eq!(
+            naive
+                .literal(Dialect::Postgres, Some("2024-02-29"))
+                .unwrap(),
+            "'2024-02-29'"
+        );
     }
 
     #[test]

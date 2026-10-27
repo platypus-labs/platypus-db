@@ -914,8 +914,8 @@ impl Dialect {
     }
 
     /// About how many rows `table` has, by [`Dialect::row_estimate_sql`]; `None` when
-    /// unknown, or when there is no such table. A PostgreSQL table never analyzed has its
-    /// rows counted, up to a million.
+    /// unknown, or when there is no such table. A PostgreSQL table never analyzed, or an Oracle
+    /// one without statistics, has its rows counted, up to a million.
     ///
     /// # Errors
     ///
@@ -939,6 +939,14 @@ impl Dialect {
             Some(None) if self == Self::Postgres => {
                 let count = format!(
                     "SELECT count(*) FROM (SELECT 1 FROM {} LIMIT 1000000) s",
+                    self.qualified(schema, table)
+                );
+                first(platypus_core::query_text(conn, &count).await?).flatten()
+            }
+            // An Oracle table whose statistics were never gathered (most new tables).
+            Some(None) if self == Self::Oracle => {
+                let count = format!(
+                    "SELECT COUNT(*) FROM {} WHERE ROWNUM <= 1000000",
                     self.qualified(schema, table)
                 );
                 first(platypus_core::query_text(conn, &count).await?).flatten()

@@ -130,6 +130,7 @@ const FOLDERS: { kind: ObjectKind; label: string }[] = [
   { kind: "event", label: msg("Events") },
   { kind: "dictionary", label: msg("Dictionaries") },
   { kind: "synonym", label: msg("Synonyms") },
+  { kind: "package", label: msg("Packages") },
 ];
 
 

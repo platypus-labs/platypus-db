@@ -594,3 +594,412 @@ async fn float_columns_keep_every_digit() {
         &arrow_schema::DataType::Float64
     );
 }
+
+/// The error of `sql`, which must fail.
+async fn failure(conn: &dyn Connection, sql: &str) -> Error {
+    match conn.execute(sql, &ExecOptions::default()).await {
+        Ok(ExecResult::Rows(stream)) => match stream.try_collect::<Vec<_>>().await {
+            Ok(_) => panic!("{sql}: no error"),
+            Err(e) => e,
+        },
+        Ok(ExecResult::Affected { .. }) => panic!("{sql}: no error"),
+        Err(e) => e,
+    }
+}
+
+/// Runs `sql` without caring whether it works (dropping what may not exist).
+async fn quietly(conn: &dyn Connection, sql: &str) {
+    let _ = conn.execute(sql, &ExecOptions::default()).await;
+}
+
+/// Numbers without a precision are decimals that sort as numbers; `TIMESTAMP(9)` keeps
+/// nanoseconds.
+#[tokio::test]
+async fn qa_fixora_numbers_and_nanoseconds() {
+    use arrow_schema::{DataType, TimeUnit};
+    let Some(conn) = oracle().await else { return };
+    let batches = rows(
+        &*conn,
+        "SELECT LEVEL n, LEVEL / 2 h, CAST(LEVEL AS INTEGER) i FROM DUAL CONNECT BY LEVEL <= 20",
+    )
+    .await;
+    let schema = batches[0].schema();
+    assert_eq!(schema.field(0).data_type(), &DataType::Decimal128(38, 0));
+    assert_eq!(schema.field(1).data_type(), &DataType::Decimal128(38, 1));
+    assert_eq!(schema.field(2).data_type(), &DataType::Decimal128(38, 0));
+    let last = &batches[batches.len() - 1];
+    let row = last.num_rows() - 1;
+    assert_eq!(cell(last, 0, row), "20");
+    assert_eq!(cell(last, 1, row), "10.0");
+    assert_eq!(
+        scalar(&*conn, "SELECT 1/3 FROM DUAL").await,
+        format!("0.{}", "3".repeat(38))
+    );
+    // Beyond 38 digits: the exact text.
+    assert!(
+        scalar(&*conn, "SELECT 1E+125 FROM DUAL")
+            .await
+            .starts_with('1')
+    );
+    let batches = rows(
+        &*conn,
+        "SELECT CAST(TIMESTAMP '2024-02-29 13:45:59.123456789' AS TIMESTAMP(9)) t, \
+         CAST(TIMESTAMP '2024-02-29 13:45:59.123456789 +02:00' AS TIMESTAMP(9) WITH TIME ZONE) z \
+         FROM DUAL",
+    )
+    .await;
+    assert_eq!(cell(&batches[0], 0, 0), "2024-02-29T13:45:59.123456789");
+    assert_eq!(cell(&batches[0], 1, 0), "2024-02-29T11:45:59.123456789Z");
+    // Out of the nanoseconds' range: microseconds, as before.
+    let batches = rows(
+        &*conn,
+        "SELECT CAST(TIMESTAMP '9999-12-31 00:00:00.5' AS TIMESTAMP(9)) t FROM DUAL",
+    )
+    .await;
+    assert_eq!(
+        batches[0].schema().field(0).data_type(),
+        &DataType::Timestamp(TimeUnit::Microsecond, None)
+    );
+    assert_eq!(cell(&batches[0], 0, 0), "9999-12-31T00:00:00.500");
+}
+
+/// `JSON`, `VECTOR`, cursor and `BFILE` columns are read as text.
+#[tokio::test]
+async fn qa_fixora_json_vector_cursor_and_file_columns() {
+    let Some(conn) = oracle().await else { return };
+    let conn = &*conn;
+    quietly(conn, "DROP TABLE QA_FIXORA_JV PURGE").await;
+    run(
+        conn,
+        "CREATE TABLE QA_FIXORA_JV (ID NUMBER PRIMARY KEY, J JSON, V VECTOR(3, FLOAT32))",
+    )
+    .await;
+    run(
+        conn,
+        "INSERT INTO QA_FIXORA_JV VALUES (1, JSON('{\"a\": 1, \"b\": [true, null, \"x\"]}'), \
+         TO_VECTOR('[1.5, 2, -3]'))",
+    )
+    .await;
+    let batches = rows(conn, "SELECT * FROM QA_FIXORA_JV").await;
+    let batch = &batches[0];
+    assert_eq!(cell(batch, 0, 0), "1");
+    assert_eq!(cell(batch, 1, 0), "{\"a\":1,\"b\":[true,null,\"x\"]}");
+    assert_eq!(cell(batch, 2, 0), "[1.5E+000,2.0E+000,-3.0E+000]");
+    assert_eq!(
+        batch.schema().field(1).metadata()[platypus_core::META_DB_TYPE],
+        "JSON"
+    );
+    run(conn, "DROP TABLE QA_FIXORA_JV PURGE").await;
+
+    assert_eq!(
+        scalar(
+            conn,
+            "SELECT BFILENAME('DATA_PUMP_DIR', 'x.txt') f FROM DUAL"
+        )
+        .await,
+        "BFILENAME('DATA_PUMP_DIR', 'x.txt')"
+    );
+    assert_eq!(
+        scalar(
+            conn,
+            "SELECT CURSOR(SELECT 1 one, 'a' t FROM DUAL) c FROM DUAL"
+        )
+        .await,
+        "[{\"ONE\":\"1\",\"T\":\"a\"}]"
+    );
+}
+
+/// PL/SQL created with errors fails with them; `DBMS_OUTPUT` reaches the messages; SQL*Plus'
+/// `EXEC` and `SHOW ERRORS` run.
+#[tokio::test]
+async fn qa_fixora_compile_errors_output_and_commands() {
+    let Some(conn) = oracle().await else { return };
+    let conn = &*conn;
+    let sql = "CREATE OR REPLACE PROCEDURE QA_FIXORA_BAD AS\nBEGIN\n  x := 1;\nEND;";
+    let Error::Database(e) = failure(conn, sql).await else {
+        panic!("not a database error");
+    };
+    assert_eq!(e.code.as_deref(), Some("PLS-00201"), "{e:?}");
+    let at = usize::try_from(e.position.unwrap()).unwrap() - 1;
+    assert!(sql[at..].starts_with("x := 1"), "{e:?}");
+    let shown = rows(conn, "SHOW ERRORS PROCEDURE QA_FIXORA_BAD").await;
+    assert!(shown.iter().map(RecordBatch::num_rows).sum::<usize>() > 0);
+    run(
+        conn,
+        "CREATE OR REPLACE PROCEDURE QA_FIXORA_BAD AS BEGIN NULL; END;",
+    )
+    .await;
+    run(conn, "DROP PROCEDURE QA_FIXORA_BAD").await;
+
+    conn.take_messages();
+    run(
+        conn,
+        "DECLARE x NUMBER := 1; BEGIN DBMS_OUTPUT.PUT_LINE('qa_fixora hello ' || x); \
+         DBMS_OUTPUT.PUT_LINE('second'); END;",
+    )
+    .await;
+    assert_eq!(conn.take_messages(), ["qa_fixora hello 1", "second"]);
+    run(conn, "EXEC DBMS_OUTPUT.PUT_LINE('exec')").await;
+    assert_eq!(conn.take_messages(), ["exec"]);
+}
+
+/// Values the data editor, imports and copies write: long CLOB and BLOB values, dates and
+/// times whatever the session's formats.
+#[tokio::test]
+async fn qa_fixora_long_lobs_and_times_save() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{Column, ValueKind};
+    let Some(conn) = oracle().await else { return };
+    let conn = &*conn;
+    quietly(conn, "DROP TABLE QA_FIXORA_LV PURGE").await;
+    run(
+        conn,
+        "CREATE TABLE QA_FIXORA_LV (ID NUMBER(5) PRIMARY KEY, C CLOB, B BLOB, D DATE, \
+         T TIMESTAMP(9))",
+    )
+    .await;
+    run(
+        conn,
+        "ALTER SESSION SET NLS_DATE_FORMAT = 'DD-MON-RR' \
+         NLS_TIMESTAMP_FORMAT = 'DD-MON-RR HH.MI.SSXFF AM'",
+    )
+    .await;
+    let literal = |kind, value: &str| {
+        Column {
+            name: "x",
+            kind,
+            default: None,
+        }
+        .literal(Dialect::Oracle, Some(value))
+        .unwrap()
+    };
+    let text = format!("{}'!", "é".repeat(4999));
+    let hex = "0aff".repeat(1500);
+    let sql = format!(
+        "INSERT INTO QA_FIXORA_LV VALUES (1, {}, {}, {}, {})",
+        literal(ValueKind::Text, &text),
+        literal(ValueKind::Binary, &hex),
+        literal(ValueKind::Timestamp { zoned: false }, "2024-02-29T00:00:00"),
+        literal(
+            ValueKind::Timestamp { zoned: false },
+            "2021-02-03 04:05:06.123456789"
+        ),
+    );
+    assert_eq!(run(conn, &sql).await, 1);
+    let update = format!(
+        "UPDATE QA_FIXORA_LV SET C = {} WHERE ID = 1",
+        literal(ValueKind::Text, &"y".repeat(6000))
+    );
+    assert_eq!(run(conn, &update).await, 1);
+    assert_eq!(
+        scalar(
+            conn,
+            "SELECT LENGTH(C) || '|' || DBMS_LOB.GETLENGTH(B) || '|' || TO_CHAR(D, 'YYYY-MM-DD') \
+             || '|' || TO_CHAR(T, 'HH24:MI:SS.FF9') FROM QA_FIXORA_LV"
+        )
+        .await,
+        "6000|3000|2024-02-29|04:05:06.123456789"
+    );
+    run(conn, "DROP TABLE QA_FIXORA_LV PURGE").await;
+}
+
+/// Packages and synonyms are listed, identity sequences are not, indexes show their
+/// expressions, and the DDL of PL/SQL runs back as a script.
+#[tokio::test]
+async fn qa_fixora_navigator_objects_and_ddl() {
+    let Some(conn) = oracle().await else { return };
+    let conn = &*conn;
+    quietly(conn, "DROP TABLE QA_FIXORA_NT PURGE").await;
+    quietly(conn, "DROP SYNONYM QA_FIXORA_NS").await;
+    quietly(conn, "DROP PACKAGE QA_FIXORA_NP").await;
+    run(
+        conn,
+        "CREATE TABLE QA_FIXORA_NT (ID NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY, \
+         NAME VARCHAR2(20), SALARY NUMBER)",
+    )
+    .await;
+    run(
+        conn,
+        "CREATE INDEX QA_FIXORA_NT_UP ON QA_FIXORA_NT (UPPER(NAME))",
+    )
+    .await;
+    run(
+        conn,
+        "CREATE INDEX QA_FIXORA_NT_DESC ON QA_FIXORA_NT (ID, SALARY DESC)",
+    )
+    .await;
+    run(conn, "CREATE SYNONYM QA_FIXORA_NS FOR QA_FIXORA_NT").await;
+    run(
+        conn,
+        "CREATE OR REPLACE PACKAGE QA_FIXORA_NP AS FUNCTION one RETURN NUMBER; END;",
+    )
+    .await;
+    run(
+        conn,
+        "CREATE OR REPLACE PACKAGE BODY QA_FIXORA_NP AS FUNCTION one RETURN NUMBER IS \
+         BEGIN RETURN 1; END; END;",
+    )
+    .await;
+    run(
+        conn,
+        "CREATE OR REPLACE TRIGGER QA_FIXORA_NT_TRG BEFORE INSERT ON QA_FIXORA_NT \
+         FOR EACH ROW\nBEGIN\n  :NEW.SALARY := NVL(:NEW.SALARY, 0);\nEND;",
+    )
+    .await;
+
+    let objects = conn.objects("PLATYPUS").await.unwrap();
+    let kind = |name: &str| objects.iter().find(|o| o.name == name).map(|o| o.kind);
+    assert_eq!(kind("QA_FIXORA_NP"), Some(ObjectKind::Package));
+    assert_eq!(kind("QA_FIXORA_NS"), Some(ObjectKind::Synonym));
+    assert!(objects.iter().all(|o| !o.name.starts_with("ISEQ$$")));
+
+    let details = conn
+        .table_details("PLATYPUS", "QA_FIXORA_NT")
+        .await
+        .unwrap();
+    let index = |name: &str| {
+        details
+            .indexes
+            .iter()
+            .find(|i| i.name == name)
+            .map(|i| i.columns.clone())
+    };
+    assert_eq!(
+        index("QA_FIXORA_NT_UP"),
+        Some(vec!["UPPER(\"NAME\")".to_owned()])
+    );
+    assert_eq!(
+        index("QA_FIXORA_NT_DESC"),
+        Some(vec!["ID".to_owned(), "SALARY DESC".to_owned()])
+    );
+    qa_fixora_ddl_runs_back(conn).await;
+    run(conn, "DROP PACKAGE QA_FIXORA_NP").await;
+    run(conn, "DROP SYNONYM QA_FIXORA_NS").await;
+    run(conn, "DROP TABLE QA_FIXORA_NT PURGE").await;
+}
+
+/// The DDL of the objects of [`qa_fixora_navigator_objects_and_ddl`]: PL/SQL with its `/`
+/// lines, which runs back as a script leaving the objects valid; a table's without.
+async fn qa_fixora_ddl_runs_back(conn: &dyn Connection) {
+    use platypus_sql::Dialect;
+    let ddl = |name: &'static str, kind| ObjectRef {
+        schema: "PLATYPUS",
+        name,
+        kind,
+        parent: None,
+    };
+    let package = conn
+        .object_ddl(&ddl("QA_FIXORA_NP", ObjectKind::Package))
+        .await
+        .unwrap();
+    assert!(package.contains("PACKAGE BODY"), "{package}");
+    let synonym = conn
+        .object_ddl(&ddl("QA_FIXORA_NS", ObjectKind::Synonym))
+        .await
+        .unwrap();
+    assert!(synonym.contains("SYNONYM"), "{synonym}");
+    let trigger = conn
+        .object_ddl(&ddl("QA_FIXORA_NT_TRG", ObjectKind::Trigger))
+        .await
+        .unwrap();
+    assert!(trigger.contains("\n/"), "{trigger}");
+    // Run back as a script, the trigger and the package stay valid.
+    for script in [&trigger, &package] {
+        for statement in platypus_sql::split(script, Dialect::Oracle) {
+            run(conn, statement.text(script)).await;
+        }
+    }
+    assert_eq!(
+        scalar(
+            conn,
+            "SELECT COUNT(*) FROM USER_OBJECTS WHERE OBJECT_NAME IN ('QA_FIXORA_NT_TRG', \
+             'QA_FIXORA_NP') AND STATUS <> 'VALID'"
+        )
+        .await,
+        "0"
+    );
+    // The table's DDL, without terminators, as before.
+    let table = conn
+        .object_ddl(&ddl("QA_FIXORA_NT", ObjectKind::Table))
+        .await
+        .unwrap();
+    assert!(!table.trim_end().ends_with(';'), "{table}");
+}
+
+/// Explain plan, inline PL/SQL functions, `MERGE` upserts, generated columns and row counts
+/// without statistics.
+#[tokio::test]
+async fn qa_fixora_plans_merges_and_generated_columns() {
+    use platypus_sql::Dialect;
+    use platypus_sql::generated::{Generated, generated_columns};
+    let Some(conn) = oracle().await else { return };
+    let conn = &*conn;
+    quietly(conn, "DROP TABLE QA_FIXORA_PM PURGE").await;
+    run(
+        conn,
+        "CREATE TABLE QA_FIXORA_PM (ID NUMBER(10) PRIMARY KEY, NAME VARCHAR2(20), \
+         TWICE NUMBER GENERATED ALWAYS AS (ID * 2) VIRTUAL)",
+    )
+    .await;
+    run(conn, "INSERT INTO QA_FIXORA_PM (ID, NAME) VALUES (1, 'a')").await;
+    run(conn, "INSERT INTO QA_FIXORA_PM (ID, NAME) VALUES (2, 'b')").await;
+
+    let plan = conn
+        .explain("SELECT * FROM QA_FIXORA_PM WHERE ID = 1", false)
+        .await
+        .unwrap();
+    assert!(plan.plan.contains("QA_FIXORA_PM"), "{}", plan.plan);
+    assert_eq!(plan.root.operation, "SELECT STATEMENT");
+
+    let query = "WITH FUNCTION f(x NUMBER) RETURN NUMBER IS BEGIN RETURN x * 2; END;\n\
+                 SELECT f(21) v FROM DUAL";
+    let statements = platypus_sql::split(query, Dialect::Oracle);
+    assert_eq!(statements.len(), 1);
+    assert_eq!(scalar(conn, statements[0].text(query)).await, "42");
+
+    let merge = Dialect::Oracle
+        .upsert_rows(
+            "QA_FIXORA_PM",
+            &["ID", "NAME"],
+            &["ID"],
+            "(2, 'B'), (3, 'c')",
+        )
+        .unwrap();
+    assert_eq!(run(conn, &merge).await, 2);
+    assert_eq!(
+        scalar(
+            conn,
+            "SELECT LISTAGG(ID || NAME, ',') WITHIN GROUP (ORDER BY ID) FROM QA_FIXORA_PM"
+        )
+        .await,
+        "1a,2B,3c"
+    );
+
+    let generated = generated_columns(conn, Dialect::Oracle, "PLATYPUS", "QA_FIXORA_PM")
+        .await
+        .unwrap();
+    assert_eq!(generated.len(), 1);
+    assert_eq!(
+        (generated[0].name.as_str(), generated[0].generated),
+        ("TWICE", Generated::Computed)
+    );
+    assert_eq!(
+        Dialect::Oracle
+            .estimate_rows(conn, None, "QA_FIXORA_PM")
+            .await
+            .unwrap(),
+        Some(3)
+    );
+    run(conn, "DROP TABLE QA_FIXORA_PM PURGE").await;
+}
+
+/// `sys as sysdba`, as SQL*Plus takes it.
+#[tokio::test]
+async fn qa_fixora_connects_as_sysdba() {
+    let mut config = config();
+    "sys as sysdba".clone_into(&mut config.user);
+    let Some(conn) = connect_with(&config).await else {
+        return;
+    };
+    assert_eq!(scalar(&*conn, "SELECT USER FROM DUAL").await, "SYS");
+}
