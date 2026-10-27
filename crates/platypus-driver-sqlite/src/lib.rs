@@ -619,7 +619,10 @@ mod tests {
     }
 
     fn error(path: &str) -> String {
-        open(&config(path)).err().map(|e| e.to_string()).unwrap_or_default()
+        open(&config(path))
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default()
     }
 
     #[test]
