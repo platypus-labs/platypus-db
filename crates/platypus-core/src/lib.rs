@@ -12,6 +12,7 @@ mod explain;
 pub mod geometry;
 mod init;
 mod metadata;
+pub mod special;
 mod transaction;
 
 pub use capabilities::{Capabilities, ObjectRef, unsupported};
