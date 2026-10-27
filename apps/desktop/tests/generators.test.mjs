@@ -8,6 +8,10 @@ const column = (name, data_type, primary_key = false, nullable = true) => ({ nam
 test("a table's columns get generators by their keys, names and types", () => {
   assert.equal(suggest(column("id", "integer", true), undefined), "next_key");
   assert.equal(suggest(column("id", "uuid", true), undefined), "uuid");
+  // A hypertable keyed by device and time: the time part takes times, not numbers.
+  assert.equal(suggest(column("ts", "timestamp with time zone", true), undefined), "timestamp");
+  assert.equal(suggest(column("day", "date", true), undefined), "date");
+  assert.equal(suggest(column("ts", "timestamp", true), undefined, true), "next_key", "a key of its own");
   assert.equal(suggest(column("email", "text"), undefined, true), "email");
   assert.equal(suggest(column("code", "numeric"), undefined, true), "next_key");
   assert.equal(suggest(column("tags", "array"), undefined), "null", "no MongoDB generators");
@@ -26,6 +30,12 @@ test("columns get values their types take, or are left out", () => {
   assert.equal(kind("tiny", "tinyint"), "integer");
   assert.equal(kind("name_id", "integer"), "integer", "names only for text");
   assert.equal(kind("shape", "geometry", false), "skip");
+  // Composite types whose fields are integers hold no whole number.
+  assert.equal(kind("s", "struct(a integer, b varchar)"), "null", "a DuckDB STRUCT");
+  assert.equal(kind("u", "union(n integer, s varchar)"), "null", "a DuckDB UNION");
+  assert.equal(kind("r", "row(a integer, b varchar)"), "null", "a Trino ROW");
+  assert.equal(kind("a", "array(integer)"), "null", "a Trino array");
+  assert.equal(kind("l", "integer[]"), "null", "a DuckDB list");
   // MariaDB writes no default as the text NULL.
   assert.equal(suggest({ ...column("name", "varchar(50)"), default: "NULL" }, undefined), "full_name");
   assert.equal(suggest({ ...column("n", "int"), default: "0" }, undefined), "skip");

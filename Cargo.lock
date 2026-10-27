@@ -5735,6 +5735,7 @@ dependencies = [
  "futures",
  "platypus-core",
  "platypus-driver-sqlite",
+ "platypus-sql",
  "platypus-tls",
  "reqwest",
  "serde",

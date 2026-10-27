@@ -110,12 +110,29 @@ fn type_text(c: &ColumnRow) -> String {
     if c.type_name.contains('(') {
         return c.type_name.clone();
     }
+    let lower = c.type_name.to_ascii_lowercase();
+    // SQL Server's dates and times: the size is the length of their text, whose fraction
+    // has as many digits as the precision (the `SQL Server` driver even reports them as
+    // text). `datetime2(7)` is 27 characters long.
+    let unfractioned = match lower.as_str() {
+        "datetime2" => Some(19),
+        "datetimeoffset" => Some(26),
+        "time" => Some(8),
+        _ => None,
+    };
+    if let Some(base) = unfractioned {
+        return match c.size {
+            Some(size) if size > base + 1 => format!("{}({})", c.type_name, size - base - 1),
+            Some(size) if lower != "time" && size <= base => format!("{}(0)", c.type_name),
+            _ => c.type_name.clone(),
+        };
+    }
+    // `money` is a decimal of a fixed precision, which it does not take.
+    let exact = EXACT.contains(&c.sql_type) && (lower.contains("num") || lower.contains("dec"));
     match (c.size, c.digits) {
         (Some(size), _) if SIZED.contains(&c.sql_type) => format!("{}({size})", c.type_name),
-        (Some(p), Some(s)) if EXACT.contains(&c.sql_type) && s > 0 => {
-            format!("{}({p},{s})", c.type_name)
-        }
-        (Some(p), _) if EXACT.contains(&c.sql_type) => format!("{}({p})", c.type_name),
+        (Some(p), Some(s)) if exact && s > 0 => format!("{}({p},{s})", c.type_name),
+        (Some(p), _) if exact => format!("{}({p})", c.type_name),
         _ => c.type_name.clone(),
     }
 }
@@ -330,6 +347,32 @@ mod tests {
         assert_eq!(
             types,
             ["NUMBER(10)", "VARCHAR2(50)", "NUMBER(10,2)", "DATE"]
+        );
+        // SQL Server through its old `SQL Server` driver: dates and times as text.
+        let mssql = table_details(
+            vec![
+                column("d", -9, "datetime2", Some(27), None),
+                column("o", -9, "datetimeoffset", Some(34), None),
+                column("t", -9, "time", Some(16), None),
+                column("m", 3, "money", Some(19), Some(4)),
+                column("z", -9, "datetime2", Some(19), None),
+                column("n", 2, "numeric", Some(10), Some(2)),
+            ],
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        );
+        let types: Vec<_> = mssql.columns.iter().map(|c| c.data_type.as_str()).collect();
+        assert_eq!(
+            types,
+            [
+                "datetime2(7)",
+                "datetimeoffset(7)",
+                "time(7)",
+                "money",
+                "datetime2(0)",
+                "numeric(10,2)"
+            ]
         );
         assert!(details.columns[0].primary_key && !details.columns[0].nullable);
         assert_eq!(details.indexes[0].name, "EMP_PK");

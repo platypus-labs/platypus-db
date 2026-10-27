@@ -14,6 +14,8 @@ export function preview(sql: string) {
  *  filters and documents, SQL Server's TOP picks some rows. */
 function changeText(u: UnfilteredChange) {
   if (u.verb === "TRUNCATE") return t("empties");
+  // MariaDB's DELETE HISTORY leaves the current rows as they are.
+  if (u.verb === "DELETE HISTORY") return t("erases every past version of the rows of");
   if (u.documents) return t("with an empty filter changes every document of");
   if (u.limited) return t("without WHERE changes rows the database picks in");
   return t("without WHERE changes every row of");

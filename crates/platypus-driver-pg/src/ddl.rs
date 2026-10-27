@@ -11,7 +11,7 @@ use platypus_core::{
 };
 use platypus_sql::Dialect;
 
-use crate::meta::{list, literal};
+use crate::meta::{COLUMN_TYPE, list, literal};
 
 fn ident(name: &str) -> Cow<'_, str> {
     Dialect::Postgres.quote_ident(name)
@@ -122,6 +122,158 @@ pub async fn object_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<Stri
     }
 }
 
+/// Whether the TimescaleDB extension is installed in the database.
+async fn has_timescale(conn: &dyn Connection) -> Result<bool> {
+    let rows = query_text(
+        conn,
+        "SELECT 1 FROM pg_extension WHERE extname = 'timescaledb'",
+    )
+    .await?;
+    Ok(!rows.is_empty())
+}
+
+/// The `TimescaleDB` hypertable `o`'s row estimate and sizes, in the columns of the
+/// properties query; `None` for any other table.
+async fn hypertable_sizes(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<Option<TextRow>> {
+    if !has_timescale(conn).await? {
+        return Ok(None);
+    }
+    let rows = query_text(
+        conn,
+        &format!(
+            "SELECT NULL, approximate_row_count(h.oid),
+                    pg_size_pretty(s.total_bytes), pg_size_pretty(s.table_bytes),
+                    pg_size_pretty(s.index_bytes),
+                    (SELECT coalesce(ts.spcname, 'default') FROM pg_class c
+                     LEFT JOIN pg_tablespace ts ON ts.oid = c.reltablespace WHERE c.oid = h.oid)
+             FROM (SELECT {} AS oid) h, hypertable_detailed_size(h.oid) s
+             WHERE EXISTS (SELECT 1 FROM timescaledb_information.hypertables i
+                           WHERE i.hypertable_schema = {} AND i.hypertable_name = {})",
+            relation(o.schema, o.name),
+            literal(o.schema),
+            literal(o.name)
+        ),
+    )
+    .await?;
+    Ok(rows.into_iter().next())
+}
+
+/// The statements that make table `name` the `TimescaleDB` hypertable it is: its dimensions
+/// and compression. Empty for any other table.
+async fn hypertable(conn: &dyn Connection, o: &ObjectRef<'_>, name: &str) -> Result<String> {
+    if crate::is_cockroach(conn) || !has_timescale(conn).await? {
+        return Ok(String::new());
+    }
+    let (schema, table) = (literal(o.schema), literal(o.name));
+    let dimensions = query_text(
+        conn,
+        &format!(
+            "SELECT column_name, dimension_type, time_interval::text, integer_interval::text,
+                    num_partitions::text
+             FROM timescaledb_information.dimensions
+             WHERE hypertable_schema = {schema} AND hypertable_name = {table}
+             ORDER BY dimension_number"
+        ),
+    )
+    .await?;
+    let target = Dialect::Postgres.quote_literal(name);
+    let mut out = Vec::new();
+    for (i, d) in dimensions.iter().enumerate() {
+        let column = Dialect::Postgres.quote_literal(&d.text(0));
+        let interval = match (d.opt(2), d.opt(3)) {
+            (Some(t), _) => format!("INTERVAL {}", Dialect::Postgres.quote_literal(&t)),
+            (None, Some(n)) => n,
+            (None, None) => String::new(),
+        };
+        out.push(match (i, d.opt(4)) {
+            (0, _) => format!(
+                "SELECT create_hypertable({target}, {column}, chunk_time_interval => {interval});"
+            ),
+            (_, Some(partitions)) => format!(
+                "SELECT add_dimension({target}, {column}, number_partitions => {partitions});"
+            ),
+            _ => format!(
+                "SELECT add_dimension({target}, {column}, chunk_time_interval => {interval});"
+            ),
+        });
+    }
+    if out.is_empty() {
+        return Ok(String::new());
+    }
+    let compression = query_text(
+        conn,
+        &format!(
+            "SELECT h.compression_enabled,
+                    (SELECT string_agg(quote_ident(s.attname), ', ' ORDER BY s.segmentby_column_index)
+                     FROM timescaledb_information.compression_settings s
+                     WHERE s.hypertable_schema = h.hypertable_schema
+                       AND s.hypertable_name = h.hypertable_name
+                       AND s.segmentby_column_index IS NOT NULL),
+                    (SELECT string_agg(quote_ident(s.attname)
+                                       || CASE WHEN s.orderby_asc THEN '' ELSE ' DESC' END,
+                                       ', ' ORDER BY s.orderby_column_index)
+                     FROM timescaledb_information.compression_settings s
+                     WHERE s.hypertable_schema = h.hypertable_schema
+                       AND s.hypertable_name = h.hypertable_name
+                       AND s.orderby_column_index IS NOT NULL)
+             FROM timescaledb_information.hypertables h
+             WHERE h.hypertable_schema = {schema} AND h.hypertable_name = {table}"
+        ),
+    )
+    .await?;
+    if let Some(c) = compression.first().filter(|c| c.flag(0)) {
+        let mut options = vec!["timescaledb.compress".to_owned()];
+        if let Some(by) = c.opt(1) {
+            options.push(format!(
+                "timescaledb.compress_segmentby = {}",
+                Dialect::Postgres.quote_literal(&by)
+            ));
+        }
+        if let Some(by) = c.opt(2) {
+            options.push(format!(
+                "timescaledb.compress_orderby = {}",
+                Dialect::Postgres.quote_literal(&by)
+            ));
+        }
+        out.push(format!("ALTER TABLE {name} SET ({});", options.join(", ")));
+    }
+    Ok(out.join("\n"))
+}
+
+/// YugabyteDB's sharding of table `rel`: its primary key's columns with their `HASH` or
+/// `ASC`/`DESC` (`pg_get_constraintdef` leaves them out, and a key without them is sharded
+/// by hash), and how its tablets are split.
+async fn yugabyte_sharding(
+    conn: &dyn Connection,
+    rel: &str,
+) -> Result<(Option<String>, Option<String>)> {
+    let rows = query_text(
+        conn,
+        &format!(
+            "SELECT (SELECT pg_get_indexdef(con.conindid) FROM pg_constraint con
+                     WHERE con.conrelid = {rel} AND con.contype = 'p'),
+                    yb_get_range_split_clause({rel}),
+                    (SELECT p.num_tablets::text FROM yb_table_properties({rel}) p
+                     WHERE p.num_hash_key_columns > 0)"
+        ),
+    )
+    .await?;
+    let Some(r) = rows.first() else {
+        return Ok((None, None));
+    };
+    // `CREATE UNIQUE INDEX r_pkey ON s.r USING lsm (id ASC)`.
+    let key = r.opt(0).and_then(|def| {
+        let columns = def.rsplit_once(" USING ")?.1;
+        let columns = &columns[columns.find('(')?..];
+        Some(format!("PRIMARY KEY {columns}"))
+    });
+    let split = r
+        .opt(1)
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| r.opt(2).map(|n| format!("SPLIT INTO {n} TABLETS")));
+    Ok((key, split))
+}
+
 async fn table(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<String> {
     let rel = relation(o.schema, o.name);
     let name = qualified(o.schema, o.name);
@@ -144,7 +296,7 @@ async fn table(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<String> {
     let columns = query_text(
         conn,
         &format!(
-            "SELECT a.attname, format_type(a.atttypid, a.atttypmod), a.attnotnull,
+            "SELECT a.attname, {COLUMN_TYPE}, a.attnotnull,
                     pg_get_expr(d.adbin, d.adrelid), a.attidentity::text, a.attgenerated::text,
                     col_description(a.attrelid, a.attnum)
              FROM pg_attribute a
@@ -179,8 +331,15 @@ async fn table(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<String> {
     .await?;
 
     let indexes: Vec<String> = indexes.iter().map(|i| format!("{};", i.text(0))).collect();
+    let mut create = create_table(&name, &info, &columns, &constraints);
+    if crate::is_yugabyte(conn) && info.opt(3).is_none() {
+        let sharding = yugabyte_sharding(conn, &rel).await.unwrap_or((None, None));
+        create = with_sharding(create, sharding);
+    }
     let sections = [
-        create_table(&name, &info, &columns, &constraints),
+        create,
+        // What the TimescaleDB catalog cannot tell is left out, not the whole DDL.
+        hypertable(conn, o, &name).await.unwrap_or_default(),
         indexes.join(
             "
 ",
@@ -249,6 +408,25 @@ SERVER {}",
         );
     }
     sql.push(';');
+    sql
+}
+
+/// The `CREATE TABLE` statement `create` with YugabyteDB's `key` (in place of the plain
+/// `PRIMARY KEY (…)` constraint) and `split` clause.
+fn with_sharding(create: String, (key, split): (Option<String>, Option<String>)) -> String {
+    let mut sql = create;
+    if let Some(key) = key
+        && let Some(at) = sql.find(" PRIMARY KEY (")
+    {
+        let start = at + 1;
+        if let Some(end) = sql[start..].find(')') {
+            sql.replace_range(start..=start + end, &key);
+        }
+    }
+    if let Some(split) = split {
+        let body = sql.trim_end_matches(';').to_owned();
+        sql = format!("{body}\n{split};");
+    }
     sql
 }
 
@@ -392,6 +570,14 @@ pub async fn object_properties(conn: &dyn Connection, o: &ObjectRef<'_>) -> Resu
         .await?;
         let mut props = vec![Property::new("Owner", r.text(0))];
         if matches!(o.kind, ObjectKind::Table | ObjectKind::MaterializedView) {
+            // A hypertable's rows and sizes are those of its chunks: its own table is empty.
+            let hyper = match o.kind {
+                ObjectKind::Table if !crate::is_cockroach(conn) => {
+                    hypertable_sizes(conn, o).await.unwrap_or(None)
+                }
+                _ => None,
+            };
+            let r = hyper.as_ref().unwrap_or(&r);
             // -1 until the table is first analyzed or vacuumed.
             let rows = r.text(1);
             let estimate = if rows.starts_with('-') {

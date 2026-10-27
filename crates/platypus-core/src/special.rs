@@ -18,12 +18,12 @@ use std::fmt::Write;
 
 use arrow_array::cast::AsArray;
 use arrow_array::types::{
-    Date32Type, Decimal128Type, TimestampMicrosecondType, TimestampMillisecondType,
-    TimestampSecondType,
+    Date32Type, Decimal128Type, IntervalDayTimeType, IntervalMonthDayNanoType,
+    IntervalYearMonthType, TimestampMicrosecondType, TimestampMillisecondType, TimestampSecondType,
 };
 use arrow_array::{Array, ArrayRef, RecordBatch, StringArray};
 use arrow_cast::display::{ArrayFormatter, DisplayIndex, FormatOptions, FormatResult};
-use arrow_schema::{ArrowError, DataType, Field, Schema, TimeUnit};
+use arrow_schema::{ArrowError, DataType, Field, IntervalUnit, Schema, TimeUnit};
 
 /// `Date32` days of `infinity` and `-infinity`.
 pub const DATE_INFINITY: i32 = i32::MAX;
@@ -324,6 +324,15 @@ pub fn formatter<'a>(
         let nested = options.clone().with_null("NULL");
         return ArrayFormatter::try_new(array, &nested);
     }
+    if matches!(array.data_type(), DataType::Interval(_)) {
+        return Ok(ArrayFormatter::new(
+            Box::new(Interval {
+                array,
+                null: options.null(),
+            }),
+            options.safe(),
+        ));
+    }
     let inner = ArrayFormatter::try_new(array, options)?;
     if !may_hold(array.data_type()) {
         return Ok(inner);
@@ -494,8 +503,85 @@ impl DisplayIndex for Top<'_> {
     }
 }
 
+/// An interval as PostgreSQL and DuckDB print it: `1 year 2 mons 3 days 04:05:06.5`, the
+/// time part left out when it is zero and something else is not; Arrow's own text is
+/// `1 years 2 mons 3 days 4 hours 5 mins 6.500000000 secs`.
+struct Interval<'a> {
+    array: &'a dyn Array,
+    null: &'a str,
+}
+
+/// `[months, days, nanoseconds]` of interval `i` of `array`.
+fn interval_parts(array: &dyn Array, i: usize) -> Option<(i32, i32, i64)> {
+    Some(match array.data_type() {
+        DataType::Interval(IntervalUnit::YearMonth) => {
+            (array.as_primitive::<IntervalYearMonthType>().value(i), 0, 0)
+        }
+        DataType::Interval(IntervalUnit::DayTime) => {
+            let v = array.as_primitive::<IntervalDayTimeType>().value(i);
+            (0, v.days, i64::from(v.milliseconds) * 1_000_000)
+        }
+        DataType::Interval(IntervalUnit::MonthDayNano) => {
+            let v = array.as_primitive::<IntervalMonthDayNanoType>().value(i);
+            (v.months, v.days, v.nanoseconds)
+        }
+        _ => return None,
+    })
+}
+
+/// The text of an interval of `months`, `days` and `nanos`.
+#[must_use]
+pub fn interval_text(months: i32, days: i32, nanos: i64) -> String {
+    let mut out = String::new();
+    let mut part = |n: i64, unit: &str| {
+        if n != 0 {
+            if !out.is_empty() {
+                out.push(' ');
+            }
+            let _ = write!(out, "{n} {unit}{}", if n.abs() == 1 { "" } else { "s" });
+        }
+    };
+    part(i64::from(months / 12), "year");
+    part(i64::from(months % 12), "mon");
+    part(i64::from(days), "day");
+    if nanos != 0 || out.is_empty() {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        if nanos < 0 {
+            out.push('-');
+        }
+        let n = nanos.unsigned_abs();
+        let seconds = n / 1_000_000_000;
+        let _ = write!(
+            out,
+            "{:02}:{:02}:{:02}",
+            seconds / 3_600,
+            seconds / 60 % 60,
+            seconds % 60
+        );
+        let fraction = n % 1_000_000_000;
+        if fraction != 0 {
+            let digits = format!("{fraction:09}");
+            let _ = write!(out, ".{}", digits.trim_end_matches('0'));
+        }
+    }
+    out
+}
+
+impl DisplayIndex for Interval<'_> {
+    fn write(&self, idx: usize, f: &mut dyn Write) -> FormatResult {
+        match interval_parts(self.array, idx).filter(|_| self.array.is_valid(idx)) {
+            Some((months, days, nanos)) => f.write_str(&interval_text(months, days, nanos))?,
+            None => f.write_str(self.null)?,
+        }
+        Ok(())
+    }
+}
+
 /// `batch` with each column that holds a reserved value turned into text, for writers that
-/// format values themselves (CSV, JSON): the column's type is kept otherwise.
+/// format values themselves (CSV, JSON): the column's type is kept otherwise. Intervals
+/// become text too, as [`formatter`] writes them.
 ///
 /// # Errors
 /// When a column cannot be formatted.
@@ -505,7 +591,9 @@ pub fn with_text(batch: &RecordBatch) -> Result<RecordBatch, ArrowError> {
         .fields()
         .iter()
         .zip(batch.columns())
-        .map(|(f, c)| find(f, c.as_ref()).is_some())
+        .map(|(f, c)| {
+            matches!(c.data_type(), DataType::Interval(_)) || find(f, c.as_ref()).is_some()
+        })
         .collect();
     if !special.contains(&true) {
         return Ok(batch.clone());
@@ -727,5 +815,37 @@ mod tests {
         assert!(d.is_null(2));
         let plain = with_text(&batch.slice(1, 2)).unwrap();
         assert_eq!(plain.schema().field(0).data_type(), &DataType::Date32);
+    }
+
+    #[test]
+    fn shows_intervals_as_the_databases_print_them() {
+        use arrow_array::IntervalMonthDayNanoArray;
+        use arrow_array::types::IntervalMonthDayNano;
+        let second = 1_000_000_000;
+        let intervals = IntervalMonthDayNanoArray::from(vec![
+            Some(IntervalMonthDayNano::new(
+                0,
+                1,
+                (2 * 3_600 + 3 * 60 + 4) * second,
+            )),
+            Some(IntervalMonthDayNano::new(0, 0, 3_600 * second)),
+            Some(IntervalMonthDayNano::new(1, 0, second + second / 2)),
+            Some(IntervalMonthDayNano::new(14, 3, 0)),
+            Some(IntervalMonthDayNano::new(0, 0, 0)),
+            Some(IntervalMonthDayNano::new(0, -2, -90 * second)),
+            None,
+        ]);
+        assert_eq!(
+            shown(&intervals),
+            [
+                "1 day 02:03:04",
+                "01:00:00",
+                "1 mon 00:00:01.5",
+                "1 year 2 mons 3 days",
+                "00:00:00",
+                "-2 days -00:01:30",
+                "NULL"
+            ]
+        );
     }
 }

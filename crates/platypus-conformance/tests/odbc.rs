@@ -353,3 +353,135 @@ async fn odbc_cancel_gives_up_a_waiting_statement() {
         );
     }
 }
+
+#[tokio::test]
+async fn qa_fixdbs_odbc_sql_server_takes_its_own_literals_and_types() {
+    use platypus_sql::Dialect;
+    use platypus_sql::dml::{Column, Value, ValueKind, update};
+    use platypus_transfer::fake::{FakeColumn, Generator, fill};
+
+    let Some(t) = sql_server().await else { return };
+    let conn = t.connect().await;
+    let d = Dialect::of_server(DriverKind::Odbc, &conn.server_info().product);
+    assert_eq!(d, Dialect::SqlServer);
+    run(&*conn, "DROP TABLE IF EXISTS dbo.qa_fixdbs_u").await;
+    run(&*conn, "DROP TABLE IF EXISTS dbo.qa_fixdbs_imp").await;
+    run(
+        &*conn,
+        "CREATE TABLE dbo.qa_fixdbs_u (id int PRIMARY KEY, ok bit, name nvarchar(40), \
+         d datetime2(7), o datetimeoffset, tm time(7), m money)",
+    )
+    .await;
+    // Generate data: a bit takes 1 and 0, not TRUE.
+    let column = |name: &str, generator| FakeColumn {
+        name: name.to_owned(),
+        generator,
+        unique: false,
+        data_type: None,
+    };
+    let columns = vec![
+        column("id", Generator::NextKey),
+        column("ok", Generator::Bool),
+        column("name", Generator::FullName),
+    ];
+    let added = fill(
+        (&*conn, d),
+        (Some("dbo"), "qa_fixdbs_u"),
+        columns,
+        5,
+        |_| true,
+    )
+    .await
+    .unwrap();
+    assert_eq!(added, 5);
+    // The data editor's save keeps text outside the code page.
+    let value = "n\u{eb}w \u{1F600} \u{416}";
+    let cols = [
+        Column {
+            name: "id",
+            kind: ValueKind::Integer,
+            default: None,
+        },
+        Column {
+            name: "name",
+            kind: ValueKind::Text,
+            default: None,
+        },
+    ];
+    let sql = update(
+        d,
+        &d.qualified(Some("dbo"), "qa_fixdbs_u"),
+        &cols,
+        &[(1, Value::Text(value))],
+        &[(0, Some("1"))],
+    )
+    .unwrap();
+    run(&*conn, &sql).await;
+    let same = rows(
+        &*conn,
+        &format!("SELECT COUNT(*) FROM dbo.qa_fixdbs_u WHERE name = N'{value}' AND id = 1"),
+    )
+    .await;
+    assert_eq!(cell(&same[0], 0, 0), "1", "{sql}");
+    // Types as SQL Server writes them.
+    let details = conn.table_details("dbo", "qa_fixdbs_u").await.unwrap();
+    let types: Vec<_> = details
+        .columns
+        .iter()
+        .map(|c| c.data_type.as_str())
+        .collect();
+    assert_eq!(
+        types[3..],
+        ["datetime2(7)", "datetimeoffset(7)", "time(7)", "money"]
+    );
+    qa_fixdbs_odbc_import(&*conn, d).await;
+    run(&*conn, "DROP TABLE dbo.qa_fixdbs_u").await;
+}
+
+/// Imports a row into a new SQL Server table, with the types the import dialog suggests.
+async fn qa_fixdbs_odbc_import(conn: &dyn Connection, d: platypus_sql::Dialect) {
+    use platypus_transfer::import::{
+        ImportColumn, ImportMode, ImportPlan, import_rows, target_type,
+    };
+
+    // Import into a new table, with the types the dialog suggests.
+    let batch = rows(
+        conn,
+        "SELECT CAST(1 AS bigint) AS id, N'h\u{e9}llo' AS name, CAST(1.25 AS float) AS amount, \
+         CAST('2025-01-02' AS date) AS day, CAST('2025-01-02 10:00:00' AS datetime2) AS ts",
+    )
+    .await
+    .remove(0);
+    let schema = batch.schema();
+    let plan = ImportPlan {
+        source_table: String::new(),
+        source_schema: None,
+        schema: Some("dbo".to_owned()),
+        table: "qa_fixdbs_imp".to_owned(),
+        create: true,
+        mode: ImportMode::Append,
+        keys: Vec::new(),
+        primary_key: Vec::new(),
+        identity: None,
+        constraints: Vec::new(),
+        columns: schema
+            .fields()
+            .iter()
+            .map(|f| ImportColumn {
+                source: f.name().clone(),
+                target: f.name().clone(),
+                data_type: Some(target_type(f, d)),
+                not_null: false,
+                default: None,
+            })
+            .collect(),
+    };
+    let stream =
+        platypus_core::RecordBatchStream::new(schema, futures::stream::iter([Ok(batch)]).boxed());
+    let imported = import_rows(stream, (conn, d), &plan, |_| true)
+        .await
+        .unwrap();
+    assert_eq!(imported, 1);
+    assert_eq!(count(conn, "dbo.qa_fixdbs_imp").await, "1");
+    run(conn, "DROP TABLE dbo.qa_fixdbs_imp").await;
+}

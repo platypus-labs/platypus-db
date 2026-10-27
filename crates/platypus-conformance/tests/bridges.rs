@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use arrow_array::RecordBatch;
 use arrow_array::cast::AsArray as _;
-use futures::TryStreamExt as _;
+use futures::{StreamExt as _, TryStreamExt as _};
 use platypus_core::{
     Connection, ConnectionConfig, Driver as _, DriverKind, Error, ExecOptions, ExecResult,
     ObjectKind, SslMode,
@@ -50,6 +50,11 @@ async fn trino_driver() -> Option<&'static PathBuf> {
 
 /// A session on the Trino container, in `memory.default`.
 async fn trino() -> Option<Box<dyn Connection>> {
+    trino_in("default").await
+}
+
+/// A session on the Trino container, in `memory.<schema>`.
+async fn trino_in(schema: &str) -> Option<Box<dyn Connection>> {
     let reachable = tokio::time::timeout(
         Duration::from_secs(2),
         tokio::net::TcpStream::connect(TRINO),
@@ -69,7 +74,7 @@ async fn trino() -> Option<Box<dyn Connection>> {
     config.ssl_mode = SslMode::Disable;
     config
         .options
-        .insert("schema".to_owned(), "default".to_owned());
+        .insert("schema".to_owned(), schema.to_owned());
     let driver = AdbcDriver {
         data_dir: dir.clone(),
     };
@@ -213,4 +218,166 @@ async fn trino_syntax_error_is_database_error() {
         .await
         .unwrap_err();
     assert!(matches!(err, Error::Database(_)), "{err}");
+}
+
+async fn run(conn: &dyn Connection, sql: &str) {
+    if let Err(e) = conn.execute(sql, &ExecOptions::default()).await {
+        panic!("{sql}: {e}");
+    }
+}
+
+#[tokio::test]
+async fn qa_fixdbs_trino_current_schema() {
+    let Some(conn) = trino().await else { return };
+    run(&*conn, "CREATE SCHEMA IF NOT EXISTS memory.qa_fixdbs_s").await;
+    let other = trino_in("qa_fixdbs_s").await.unwrap();
+    let schemas = other.schemas().await.unwrap();
+    let current: Vec<_> = schemas
+        .iter()
+        .filter(|s| s.current)
+        .map(|s| s.name.as_str())
+        .collect();
+    assert_eq!(current, ["qa_fixdbs_s"]);
+    run(&*conn, "DROP SCHEMA memory.qa_fixdbs_s").await;
+}
+
+/// Values of the one-column result of `sql`, as text.
+async fn texts(conn: &dyn Connection, sql: &str) -> Vec<Option<String>> {
+    let mut out = Vec::new();
+    for batch in rows(conn, sql).await {
+        let text = arrow_cast::cast(batch.column(0), &arrow_schema::DataType::Utf8).unwrap();
+        out.extend(text.as_string::<i32>().iter().map(|v| v.map(str::to_owned)));
+    }
+    out
+}
+
+#[tokio::test]
+async fn qa_fixdbs_trino_statements_end_with_a_terminator() {
+    let Some(conn) = trino().await else { return };
+    run(&*conn, "DROP SCHEMA IF EXISTS memory.qa_fixdbs_t CASCADE").await;
+    run(&*conn, "CREATE SCHEMA memory.qa_fixdbs_t;").await;
+    run(&*conn, "CREATE TABLE memory.qa_fixdbs_t.g (id bigint);").await;
+    run(&*conn, "INSERT INTO memory.qa_fixdbs_t.g VALUES (1);").await;
+    run(
+        &*conn,
+        "ALTER TABLE \"qa_fixdbs_t\".\"g\" RENAME TO \"g2\";
+-- renamed",
+    )
+    .await;
+    let ddl = conn
+        .object_ddl(&platypus_core::ObjectRef {
+            schema: "qa_fixdbs_t",
+            name: "g2",
+            kind: ObjectKind::Table,
+            parent: None,
+        })
+        .await
+        .unwrap();
+    assert!(ddl.contains("CREATE TABLE"), "{ddl}");
+    assert!(conn.capabilities().object_ddl);
+    assert_eq!(
+        texts(&*conn, "SELECT count(*) FROM memory.qa_fixdbs_t.g2;").await,
+        [Some("1".to_owned())]
+    );
+    run(&*conn, "DROP TABLE \"qa_fixdbs_t\".\"g2\";").await;
+    run(&*conn, "DROP SCHEMA memory.qa_fixdbs_t").await;
+}
+
+#[tokio::test]
+async fn qa_fixdbs_trino_generates_and_imports_typed_values() {
+    use platypus_sql::Dialect;
+    use platypus_transfer::fake::{FakeColumn, Generator, fill};
+    use platypus_transfer::import::{
+        ImportColumn, ImportMode, ImportPlan, import_rows, target_type,
+    };
+
+    let Some(conn) = trino().await else { return };
+    run(&*conn, "DROP SCHEMA IF EXISTS memory.qa_fixdbs_g CASCADE").await;
+    run(&*conn, "CREATE SCHEMA memory.qa_fixdbs_g").await;
+    run(
+        &*conn,
+        "CREATE TABLE memory.qa_fixdbs_g.g (id bigint, ts timestamp(3), d date,          u uuid, name varchar, t time(3), j json)",
+    )
+    .await;
+    let column = |name: &str, generator, data_type: &str| FakeColumn {
+        name: name.to_owned(),
+        generator,
+        unique: false,
+        data_type: Some(data_type.to_owned()),
+    };
+    let columns = vec![
+        column("id", Generator::Integer { min: 1, max: 1000 }, "bigint"),
+        column("ts", Generator::Timestamp, "timestamp(3)"),
+        column("d", Generator::Date, "date"),
+        column("u", Generator::Uuid, "uuid"),
+        column("name", Generator::FullName, "varchar"),
+        column("t", Generator::Time, "time(3)"),
+        column("j", Generator::Document, "json"),
+    ];
+    let at = (Some("qa_fixdbs_g"), "g");
+    let added = fill((&*conn, Dialect::Ansi), at, columns, 10, |_| true)
+        .await
+        .unwrap();
+    assert_eq!(added, 10);
+    assert_eq!(
+        texts(&*conn, "SELECT count(*) FROM memory.qa_fixdbs_g.g").await,
+        [Some("10".to_owned())]
+    );
+    // Import into a new table, its types as the dialog suggests them.
+    let batch = rows(
+        &*conn,
+        "SELECT 1 AS id, 'x' AS name, 1.25e0 AS amount, DATE '2025-01-02' AS day,          TIMESTAMP '2025-01-02 10:00:00' AS ts",
+    )
+    .await
+    .remove(0);
+    let schema = batch.schema();
+    let plan = ImportPlan {
+        source_table: String::new(),
+        source_schema: None,
+        schema: Some("qa_fixdbs_g".to_owned()),
+        table: "imp".to_owned(),
+        create: true,
+        mode: ImportMode::Append,
+        keys: Vec::new(),
+        primary_key: Vec::new(),
+        identity: None,
+        constraints: Vec::new(),
+        columns: schema
+            .fields()
+            .iter()
+            .map(|f| ImportColumn {
+                source: f.name().clone(),
+                target: f.name().clone(),
+                data_type: Some(target_type(f, Dialect::Ansi)),
+                not_null: false,
+                default: None,
+            })
+            .collect(),
+    };
+    let stream =
+        platypus_core::RecordBatchStream::new(schema, futures::stream::iter([Ok(batch)]).boxed());
+    let imported = import_rows(stream, (&*conn, Dialect::Ansi), &plan, |_| true)
+        .await
+        .unwrap();
+    assert_eq!(imported, 1);
+    assert_eq!(
+        texts(&*conn, "SELECT day FROM memory.qa_fixdbs_g.imp").await,
+        [Some("2025-01-02".to_owned())]
+    );
+    run(&*conn, "DROP SCHEMA memory.qa_fixdbs_g CASCADE").await;
+}
+
+#[tokio::test]
+async fn qa_fixdbs_trino_maps_rows_and_uuids() {
+    let Some(conn) = trino().await else { return };
+    let batches = rows(
+        &*conn,
+        "SELECT MAP(ARRAY['k'], ARRAY[1]) AS m, CAST(ROW(1, 'x') AS row(a integer, b varchar)) AS r,          UUID 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12' AS u",
+    )
+    .await;
+    let batch = &batches[0];
+    let text = |c: usize| batch.column(c).as_string::<i32>().value(0).to_owned();
+    assert_eq!(text(0), "{k: 1}");
+    assert_eq!(text(1), "{a: 1, b: x}");
+    assert_eq!(text(2), "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12");
 }

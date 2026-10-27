@@ -126,6 +126,11 @@ pub(crate) fn is_cockroach(conn: &dyn Connection) -> bool {
     conn.server_info().product == "CockroachDB"
 }
 
+/// Whether `conn` is YugabyteDB, whose keys and tables are sharded.
+pub(crate) fn is_yugabyte(conn: &dyn Connection) -> bool {
+    conn.server_info().product == "YugabyteDB"
+}
+
 impl PgConnection {
     pub async fn connect(config: &ConnectionConfig) -> Result<Self> {
         if config.driver != DriverKind::Postgres {

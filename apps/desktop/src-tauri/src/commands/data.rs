@@ -334,7 +334,7 @@ fn insert_statements(
 /// The statements for `changes`: deletes first, which frees unique values for the updates
 /// and inserts that follow. The undo script does the opposite, in the opposite order.
 fn script(state: &AppState, job: &Job, changes: &Changes) -> CommandResult<Script> {
-    let dialect = Dialect::from(state.session(job.session_id)?.config.driver);
+    let dialect = state.dialect(job.session_id)?;
     let (schema, _) = job
         .window(0, 0)
         .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;
@@ -393,6 +393,8 @@ pub async fn save_changes(
     let job = state.job(job_id)?;
     state.writable(job.session_id)?;
     let script = script(&state, &job, &changes)?;
+    // The driver's dialect brackets the statements: the generic ODBC driver translates no
+    // SAVEPOINT for SQL Server, as the native one does.
     let dialect = Dialect::from(state.session(job.session_id)?.config.driver);
     let conn = state.live(job.session_id).await?;
     stop_jobs(&state, job.session_id);

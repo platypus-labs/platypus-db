@@ -15,6 +15,7 @@ base64 = "0.22"
 futures.workspace = true
 platypus-core.workspace = true
 platypus-driver-sqlite.workspace = true
+platypus-sql.workspace = true
 platypus-tls.workspace = true
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
 serde.workspace = true

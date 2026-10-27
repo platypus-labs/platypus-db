@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use arrow_schema::{DataType, FieldRef, Schema, SchemaRef};
+use arrow_array::{Array as _, StringArray, UnionArray};
+use arrow_cast::display::FormatOptions;
+use arrow_schema::{ArrowError, DataType, FieldRef, Schema, SchemaRef};
 use duckdb::core::{LogicalTypeHandle, LogicalTypeId};
 use platypus_core::META_DB_TYPE;
 
@@ -67,6 +69,10 @@ pub fn tag_schema(schema: &Schema, stmt: &duckdb::Statement<'_>) -> SchemaRef {
                 _ if bits && *field.data_type() == DataType::Binary => {
                     field.with_data_type(DataType::Utf8)
                 }
+                // A `UNION` is the value of its member, see [`union_text`].
+                _ if matches!(field.data_type(), DataType::Union(..)) => {
+                    field.with_data_type(DataType::Utf8)
+                }
                 Some(t) => field.with_data_type(t),
                 None => field,
             }
@@ -80,6 +86,33 @@ pub fn tag_schema(schema: &Schema, stmt: &duckdb::Statement<'_>) -> SchemaRef {
             .into_iter()
             .collect::<HashMap<_, _>>(),
     ))
+}
+
+/// The values of a `UNION` column as DuckDB prints them: the value of the member each row
+/// holds (`5`, not Arrow's `{n=5}`), NULL where that value is NULL (Arrow's `{n=}`).
+///
+/// # Errors
+/// When Arrow cannot format a member's values.
+pub fn union_text(union: &UnionArray) -> Result<StringArray, ArrowError> {
+    let DataType::Union(fields, _) = union.data_type() else {
+        return Err(ArrowError::InvalidArgumentError("not a union".to_owned()));
+    };
+    let options = FormatOptions::default();
+    let members = fields
+        .iter()
+        .map(|(id, _)| {
+            let child = union.child(id);
+            platypus_core::special::formatter(child.as_ref(), &options).map(|f| (id, child, f))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((0..union.len())
+        .map(|i| {
+            let id = union.type_id(i);
+            let offset = union.value_offset(i);
+            let (_, child, f) = members.iter().find(|(m, ..)| *m == id)?;
+            child.is_valid(offset).then(|| f.value(offset).to_string())
+        })
+        .collect())
 }
 
 /// A `BIT` value as DuckDB prints it (`1010`) from its bytes: the count of padding bits,
