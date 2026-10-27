@@ -1374,6 +1374,17 @@ const it: Record<string, string> = {
   "The file is {size} MB: a cell can load files up to {limit} MB.": "Il file è di {size} MB: una cella può caricare file fino a {limit} MB.",
   "Some rows changed meanwhile: their cells were left as they are.": "Alcune righe sono cambiate nel frattempo: le loro celle restano come sono.",
   "The row changed while the file was read: the file was not loaded.": "La riga è cambiata durante la lettura del file: il file non è stato caricato.",
+  "Only the first host is used; left out: {hosts}.": "Si usa solo il primo host; esclusi: {hosts}.",
+  "The port must be a number from 1 to 65535.": "La porta deve essere un numero da 1 a 65535.",
+  Duplicate: "Duplica",
+  "Duplicate connection: {name}": "Duplica la connessione: {name}",
+  "No password is saved for this connection: it will be saved in the keychain.":
+    "Per questa connessione non è salvata alcuna password: verrà salvata nel portachiavi.",
+  'A tab of "{name}" has an open transaction. Reconnect it now with the new settings, rolling its changes back? Otherwise it reconnects once the transaction ends.':
+    'Una scheda di "{name}" ha una transazione aperta. Riconnetterla ora con le nuove impostazioni, annullandone le modifiche? Altrimenti si riconnette quando la transazione finisce.',
+  '{n} tabs of "{name}" have an open transaction. Reconnect them now with the new settings, rolling their changes back? Otherwise they reconnect once their transaction ends.':
+    '{n} schede di "{name}" hanno una transazione aperta. Riconnetterle ora con le nuove impostazioni, annullandone le modifiche? Altrimenti si riconnettono quando la loro transazione finisce.',
+  "Reconnect now": "Riconnetti ora",
 };
 
 export default it;

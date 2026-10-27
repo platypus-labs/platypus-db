@@ -113,6 +113,12 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
         detail: isEmbedded(c.driver) ? c.database : `${c.host}/${c.database}`,
         run: () => workbench().openTab("query", c.id),
       })),
+      ...connections.map((c) => ({
+        key: `duplicate:${c.id}`,
+        kind: t("Connection"),
+        label: t("Duplicate connection: {name}", { name: c.name }),
+        run: () => workbench().duplicateConnection(c).catch((e: unknown) => workbench().showError(toCommandError(e).message)),
+      })),
       ...Object.entries(catalogs).flatMap(([key, catalog]) => {
         const { connectionId, database } = parseDbKey(key);
         const connection = byId.get(connectionId);
