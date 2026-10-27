@@ -156,11 +156,12 @@ pub fn column_builder(spec: &ColumnSpec) -> (Field, ColumnBuilder) {
         T::Datetime4 | T::Datetime | T::Datetimen | T::Datetime2 => {
             ColumnBuilder::Timestamp(TimestampMicrosecondBuilder::new(), false)
         }
-        T::DatetimeOffsetn => ColumnBuilder::Text(StringBuilder::new()),
         T::BigVarBin | T::BigBinary | T::Image | T::Udt => {
             ColumnBuilder::Binary(BinaryBuilder::new())
         }
-        T::Guid
+        // Each `datetimeoffset` value keeps its own offset, as text.
+        T::DatetimeOffsetn
+        | T::Guid
         | T::BigVarChar
         | T::BigChar
         | T::NVarchar

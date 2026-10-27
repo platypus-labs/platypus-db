@@ -942,7 +942,9 @@ mod tests {
         };
         let query = |items: &[Vec<u8>]| {
             let mut b = i32::try_from(items.len()).unwrap().to_be_bytes().to_vec();
-            items.iter().for_each(|i| b.extend_from_slice(i));
+            for item in items {
+                b.extend_from_slice(item);
+            }
             format_value(&Type::TSQUERY, &b).unwrap()
         };
         let (and, or, not) = (vec![2, 2], vec![2, 3], vec![2, 1]);

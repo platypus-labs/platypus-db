@@ -214,7 +214,7 @@ async fn pg_types_decode_as_postgresql_prints_them() {
         ])]
     );
     let (types, rows) = texts_with(conn, "SELECT FROM generate_series(1, 3)", 1000).await;
-    assert!(types.is_empty());
+    assert_eq!(types.len(), 0, "no columns");
     assert_eq!(rows.len(), 3, "rows without columns");
 }
 

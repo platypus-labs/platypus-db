@@ -107,10 +107,9 @@ impl Kind {
         Some(match alias {
             "null" | "undefined" | "missing" => return None,
             "object" => Self::Document,
-            "javascriptWithScope" => Self::Other("javascript"),
+            "javascript" | "javascriptWithScope" => Self::Other("javascript"),
             "regex" => Self::Other("regex"),
             "timestamp" => Self::Other("timestamp"),
-            "javascript" => Self::Other("javascript"),
             "symbol" => Self::Other("symbol"),
             "minKey" => Self::Other("minKey"),
             "maxKey" => Self::Other("maxKey"),
@@ -295,7 +294,9 @@ fn field(name: &str, kind: Kind) -> Field {
 #[must_use]
 pub fn value_schema(name: &str, values: &[Bson]) -> SchemaRef {
     let mut seen = Seen::default();
-    values.iter().for_each(|v| seen.value(v));
+    for v in values {
+        seen.value(v);
+    }
     Arc::new(Schema::new(vec![field(name, seen.kind())]))
 }
 
@@ -536,7 +537,7 @@ mod tests {
             doc! { "a": 2.5 },
             doc! { "d": 9_007_199_254_740_993_i64 },
         ] {
-            let err = to_batch(&schema, &[misfit.clone()])
+            let err = to_batch(&schema, std::slice::from_ref(&misfit))
                 .unwrap_err()
                 .to_string();
             assert!(err.contains("cannot hold exactly"), "{misfit}: {err}");
