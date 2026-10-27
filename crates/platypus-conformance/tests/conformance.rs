@@ -4529,3 +4529,43 @@ async fn apply_script(b: &Backend, conn: &dyn Connection, script: &platypus_sche
             )
         });
 }
+
+/// A libSQL table of 200 000 rows opens: its result is larger than a Hrana pipeline's
+/// response may be (`RESPONSE_TOO_LARGE`), and a query inside a transaction sees its rows.
+#[tokio::test]
+async fn qa_fixdbs_libsql_large_results() {
+    let Some(b) = libsql_backend().await else {
+        return;
+    };
+    let conn = LibsqlDriver.connect(&b.config).await.unwrap();
+    let table = "qa_fixdbs_big";
+    run(&*conn, &format!("DROP TABLE IF EXISTS {table}"))
+        .await
+        .unwrap();
+    run(
+        &*conn,
+        &format!(
+            "CREATE TABLE {table} AS WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL \
+             SELECT x + 1 FROM c WHERE x < 200000) \
+             SELECT x AS id, 'row number ' || x || ' with some padding text' AS label FROM c"
+        ),
+    )
+    .await
+    .unwrap();
+    let batches = collect(&b, &*conn, &format!("SELECT * FROM {table}")).await;
+    let rows: usize = batches.iter().map(RecordBatch::num_rows).sum();
+    assert_eq!(rows, 200_000);
+    // Queries and statements share the stream and its transaction.
+    run(&*conn, "BEGIN").await.unwrap();
+    run(&*conn, &format!("DELETE FROM {table} WHERE id > 10"))
+        .await
+        .unwrap();
+    assert!(conn.transaction().open);
+    let batches = collect(&b, &*conn, &format!("SELECT COUNT(*) FROM {table}")).await;
+    assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("10"));
+    assert!(conn.transaction().open);
+    conn.rollback().await.unwrap();
+    let batches = collect(&b, &*conn, &format!("SELECT COUNT(*) FROM {table}")).await;
+    assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("200000"));
+    run(&*conn, &format!("DROP TABLE {table}")).await.unwrap();
+}
