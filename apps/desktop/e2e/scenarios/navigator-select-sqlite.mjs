@@ -78,7 +78,7 @@ export default async function (page) {
   assert.ok(!items.some((i) => i.startsWith("Drop")), `no Drop in ${items}`);
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Generate DDL')).click()`);
   await page.waitFor(`document.querySelector('.tab.active')?.textContent.startsWith('DDL of 2 objects')`, 10_000);
-  const ddl = await page.eval(`[...${queryTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n')`);
+  const ddl = await page.eval(`[...${queryTab}.querySelectorAll('.editor .cm-line')].map(l => l.textContent).join('\\n')`);
   assert.match(ddl, /CREATE TABLE .*\ba\b/i);
   assert.match(ddl, /CREATE TABLE .*\bc\b/i);
 
@@ -107,7 +107,7 @@ export default async function (page) {
   await page.mouse("mouseMoved", x, g.y + 40);
   await page.mouse("mouseReleased", x, g.y + 40);
   await page.sleep(500);
-  const sql = await page.eval(`[...${queryTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join(' ')`);
+  const sql = await page.eval(`[...${queryTab}.querySelectorAll('.editor .cm-line')].map(l => l.textContent).join(' ')`);
   assert.doesNotMatch(sql, /ORDER BY/, "no sort from the scrollbar");
   assert.ok(first > 0 && first < ROWS, `a page of rows, not ${first}`);
   await page.waitFor(

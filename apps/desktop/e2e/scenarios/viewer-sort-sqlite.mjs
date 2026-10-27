@@ -13,7 +13,7 @@ const NAME = "E2E viewer sort";
 const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
 const statusSpan = `${visibleTab}?.querySelector('.statusbar span')`;
 const status = `(${statusSpan}?.textContent ?? '')`;
-const editorText = `[...${visibleTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n')`;
+const editorText = `[...${visibleTab}.querySelectorAll('.editor .cm-line')].map(l => l.textContent).join('\\n')`;
 const treeRow = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
 

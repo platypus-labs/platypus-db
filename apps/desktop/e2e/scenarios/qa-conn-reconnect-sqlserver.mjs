@@ -48,6 +48,10 @@ export default async function (page) {
 
   await page.eval(`${tab("QA ms victim")}.click()`);
   await page.waitFor(`${visibleTab}.innerText.includes('QA ms victim')`);
+  // Only a session idle over a second is asked whether the server still holds it
+  // (IDLE_CHECK in src-tauri/src/commands/mod.rs): statements that follow one another pay no
+  // round trip. The kill above can come sooner than that after the victim's INSERT.
+  await page.sleep(1500);
   let status;
   let text;
   try {
