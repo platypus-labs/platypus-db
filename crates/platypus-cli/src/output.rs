@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use arrow_array::builder::StringBuilder;
 use arrow_array::{Array, ArrayRef, RecordBatch};
-use arrow_cast::display::{ArrayFormatter, FormatOptions};
+use arrow_cast::display::FormatOptions;
 use arrow_schema::{ArrowError, DataType, Field, Schema, SchemaRef};
 use platypus_core::Error;
 
@@ -39,7 +39,7 @@ fn needs_text(data_type: &DataType) -> bool {
 
 /// Renders an array with Arrow's display rules (hex for binary, ISO-like for intervals).
 fn to_text(array: &ArrayRef) -> Result<ArrayRef, ArrowError> {
-    let formatter = ArrayFormatter::try_new(array.as_ref(), &FormatOptions::default())?;
+    let formatter = platypus_core::special::formatter(array.as_ref(), &FormatOptions::default())?;
     let mut builder = StringBuilder::with_capacity(array.len(), array.len() * 16);
     for i in 0..array.len() {
         if array.is_null(i) {
@@ -101,6 +101,8 @@ impl Sink {
             })
             .collect::<Result<Vec<ArrayRef>, _>>()?;
         let batch = RecordBatch::try_new(Arc::clone(&self.schema), columns)?;
+        // Infinities and NaN that typed columns hold as reserved values, as text.
+        let batch = platypus_core::special::with_text(&batch)?;
         match &mut self.kind {
             SinkKind::Table { batches, .. } => batches.push(batch),
             SinkKind::Csv(w) => w.write(&batch)?,

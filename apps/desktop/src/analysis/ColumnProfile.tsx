@@ -3,14 +3,15 @@
 import { Fragment, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { api, type ColumnInfo, type ColumnProfile } from "../api";
 import type { HeaderHover } from "../grid/DataGrid";
-import { plural, t } from "../i18n";
+import { language, t } from "../i18n";
 
 /** How long the mouse rests on a header before the box shows. */
 const DELAY_MS = 500;
 /** The box's width, to keep it inside the grid. */
 const WIDTH = 300;
-const count = new Intl.NumberFormat();
-const percent = new Intl.NumberFormat(undefined, { style: "percent", maximumFractionDigits: 1 });
+/** Counts and shares as the interface language writes them, not the system. */
+const count = (n: number) => n.toLocaleString(language());
+const percent = (n: number) => n.toLocaleString(language(), { style: "percent", maximumFractionDigits: 1 });
 
 /** The profile of the column whose header the mouse rests on, cached by result, column and
  *  rows loaded: more rows compute it again. */
@@ -69,9 +70,9 @@ function ProfileBox({ hover, column, profile }: { hover: HeaderHover; column: Co
       </div>
       <dl>
         <dt>{t("NULL values")}</dt>
-        <dd>{percent.format(nulls)}</dd>
+        <dd>{percent(nulls)}</dd>
         <dt>{t("Distinct")}</dt>
-        <dd>{count.format(profile.distinct)}</dd>
+        <dd>{count(profile.distinct)}</dd>
         {profile.min !== null && (
           <>
             <dt>{t("Minimum")}</dt>
@@ -89,7 +90,7 @@ function ProfileBox({ hover, column, profile }: { hover: HeaderHover; column: Co
             {profile.top.map((v) => (
               <Fragment key={v.value}>
                 <span>{v.value}</span>
-                <span>{count.format(v.count)}</span>
+                <span>{count(v.count)}</span>
               </Fragment>
             ))}
           </div>
@@ -97,8 +98,8 @@ function ProfileBox({ hover, column, profile }: { hover: HeaderHover; column: Co
       )}
       <div className="column-profile-scope muted">
         {profile.complete
-          ? plural(profile.rows, "of all {n} row", "of all {n} rows")
-          : plural(profile.rows, "of {n} loaded row", "of {n} loaded rows")}
+          ? t(profile.rows === 1 ? "of all {n} row" : "of all {n} rows", { n: count(profile.rows) })
+          : t(profile.rows === 1 ? "of {n} loaded row" : "of {n} loaded rows", { n: count(profile.rows) })}
       </div>
     </div>
   );

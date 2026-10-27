@@ -7,6 +7,7 @@ use platypus_core::{
     CatalogForeignKey, DriverKind, ObjectMeta, ReferencingKey, SchemaMeta, TableDetails,
 };
 use platypus_sql::Dialect;
+use platypus_sql::generated::{self, Generated};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -82,6 +83,41 @@ pub async fn table_details(
     Ok(conn.table_details(&schema, &table).await?)
 }
 
+/// A column the database fills by itself, for the data editor.
+#[derive(Debug, Serialize)]
+pub struct GeneratedColumn {
+    name: String,
+    /// `numbered`, `identity` or `computed` (see [`Generated`]).
+    kind: &'static str,
+}
+
+/// The columns of `schema.table` the database fills by itself: the data editor leaves them
+/// out of what it writes. Empty when the catalog cannot tell, e.g. on an old server.
+#[tauri::command]
+pub async fn generated_columns(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: String,
+    table: String,
+) -> CommandResult<Vec<GeneratedColumn>> {
+    let dialect = Dialect::from(state.session(session_id)?.config.driver);
+    let conn = state.live(session_id).await?;
+    let columns = generated::generated_columns(conn.as_ref(), dialect, &schema, &table)
+        .await
+        .unwrap_or_default();
+    Ok(columns
+        .into_iter()
+        .map(|c| GeneratedColumn {
+            name: c.name,
+            kind: match c.generated {
+                Generated::Numbered => "numbered",
+                Generated::Identity => "identity",
+                Generated::Computed => "computed",
+            },
+        })
+        .collect())
+}
+
 /// The foreign keys of other tables that point at `schema.table`, for the References panel.
 #[tauri::command]
 pub async fn referencing_keys(
@@ -105,12 +141,13 @@ pub async fn estimate_rows(
 ) -> CommandResult<Option<u64>> {
     let driver = state.session(session_id)?.config.driver;
     let conn = state.live(session_id).await?;
-    let sql = if driver == DriverKind::Mongo {
-        let collection = platypus_driver_mongo::generate::collection_ref(schema.as_deref(), &table);
-        format!("{collection}.estimatedDocumentCount()")
-    } else {
-        Dialect::from(driver).row_estimate_sql(schema.as_deref(), &table)
-    };
+    if driver != DriverKind::Mongo {
+        return Ok(Dialect::from(driver)
+            .estimate_rows(conn.as_ref(), schema.as_deref(), &table)
+            .await?);
+    }
+    let collection = platypus_driver_mongo::generate::collection_ref(schema.as_deref(), &table);
+    let sql = format!("{collection}.estimatedDocumentCount()");
     let rows = platypus_core::query_text(conn.as_ref(), &sql).await?;
     Ok(rows
         .into_iter()

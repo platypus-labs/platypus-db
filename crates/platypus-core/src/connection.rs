@@ -7,6 +7,7 @@ use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use async_trait::async_trait;
 use futures::Stream;
+use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 
 use crate::{
@@ -47,6 +48,23 @@ pub trait Connection: Send + Sync + fmt::Debug {
     fn server_info(&self) -> &ServerInfo;
 
     fn is_closed(&self) -> bool;
+
+    /// The messages the server sent with the statements run since the last call: PostgreSQL
+    /// notices, Transact-SQL `PRINT` and low-severity `RAISERROR`, MySQL warnings. Drivers
+    /// without any answer none.
+    fn take_messages(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Whether the server still holds the session, asked with a light round trip by the
+    /// drivers that learn of a dropped session only from the next statement (MySQL, SQL
+    /// Server); the others answer [`is_closed`](Self::is_closed). Run before a statement
+    /// on a session that sat idle, so that a session the server closed is reopened before
+    /// the statement rather than failing it. It never opens a transaction, and a session
+    /// busy with a statement counts as alive.
+    async fn check_alive(&self) -> bool {
+        !self.is_closed()
+    }
 
     /// Schemas (MySQL databases, SQLite attached databases) visible to the session.
     async fn schemas(&self) -> Result<Vec<SchemaMeta>>;
@@ -213,16 +231,39 @@ impl fmt::Debug for ExecResult {
     }
 }
 
+/// The next result of a statement that returns several (a Transact-SQL batch with two
+/// `SELECT`s, a MySQL `CALL`): it resolves once the result before it has been read to its
+/// end, to `None` when there is no other. Dropping it leaves the rest of the statement to run
+/// to its end, its results unread.
+pub type NextResult = BoxFuture<'static, Result<Option<ExecResult>>>;
+
 /// A stream of Arrow record batches sharing one schema, known before the first batch arrives.
 pub struct RecordBatchStream {
     schema: SchemaRef,
     inner: BoxStream<'static, Result<RecordBatch>>,
+    next: Option<NextResult>,
 }
 
 impl RecordBatchStream {
     #[must_use]
     pub fn new(schema: SchemaRef, inner: BoxStream<'static, Result<RecordBatch>>) -> Self {
-        Self { schema, inner }
+        Self {
+            schema,
+            inner,
+            next: None,
+        }
+    }
+
+    /// The same stream, followed by the statement's next result.
+    #[must_use]
+    pub fn with_next(mut self, next: Option<NextResult>) -> Self {
+        self.next = next;
+        self
+    }
+
+    /// Takes what follows this result (see [`NextResult`]), to await once the stream ended.
+    pub fn take_next(&mut self) -> Option<NextResult> {
+        self.next.take()
     }
 
     #[must_use]

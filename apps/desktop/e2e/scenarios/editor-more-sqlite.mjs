@@ -10,7 +10,8 @@ import { CTRL } from "../cdp.mjs";
 const NAME = "E2E SQLite";
 const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
 const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ?? '')`;
-const editorText = `[...${visibleTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n')`;
+// The editor's lines, not those of a result's SQL field (`.sql-line`, with its placeholder).
+const editorText = `[...${visibleTab}.querySelectorAll('.cm-line')].filter(l => !l.closest('.sql-line')).map(l => l.textContent).join('\\n')`;
 const options = `[...document.querySelectorAll('.cm-tooltip-autocomplete li')].map(li => li.textContent)`;
 const resultTabs = `[...${visibleTab}.querySelectorAll('.result-tab')].map(t => t.textContent)`;
 const button = (label) => `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === ${JSON.stringify(label)})`;

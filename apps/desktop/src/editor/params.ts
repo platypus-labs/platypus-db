@@ -4,7 +4,7 @@
  * `${name}` takes the text as typed, e.g. a table name. Values are the tab's variables,
  * which `@set name = value` also sets.
  */
-import type { ExportFormat } from "../api";
+import type { Compression, ExportFormat } from "../api";
 import { t } from "../i18n";
 
 export { literal, parameterKeys, substitute } from "./literals";
@@ -18,13 +18,18 @@ export type ClientCommand =
   | { name: "set"; variable: string; value: string }
   | { name: "echo"; text: string }
   | { name: "include"; path: string }
-  | { name: "export"; path: string; format: ExportFormat }
+  | { name: "export"; path: string; format: ExportFormat; delimiter: string; compression: Compression }
   | { name: "error"; message: string };
+
+/** Where `@export` sends the next statement's rows, and how. */
+export type ExportTarget = Omit<Extract<ClientCommand, { name: "export" }>, "name">;
 
 const unquote = (s: string) => s.trim().replace(/^(['"])(.*)\1$/, "$2");
 
 const FORMATS: Record<string, ExportFormat> = {
   csv: "csv",
+  tsv: "csv",
+  txt: "csv",
   json: "json",
   ndjson: "ndjson",
   parquet: "parquet",
@@ -53,9 +58,16 @@ export function parseCommand(text: string): ClientCommand {
       return rest.trim() ? { name: "include", path: unquote(rest) } : { name: "error", message: t("Usage: @include file.sql") };
     case "export": {
       const path = unquote(rest);
-      if (!path) return { name: "error", message: t("Usage: @export file.csv (also .json, .ndjson, .parquet, .xlsx, .sql, .md, .html, .xml)") };
-      const ext = /\.(\w+)$/.exec(path)?.[1]?.toLowerCase() ?? "";
-      return { name: "export", path, format: FORMATS[ext] ?? "csv" };
+      const usage = t("Usage: @export file.csv (also .tsv, .json, .ndjson, .parquet, .xlsx, .sql, .md, .html, .xml, and .gz or .zst after them)");
+      if (!path) return { name: "error", message: usage };
+      // `.gz` and `.zst` compress the file of the extension before them.
+      const [, base = path, packed] = /^(.*?)(?:\.(gz|zst))?$/i.exec(path) ?? [];
+      const compression: Compression = packed?.toLowerCase() === "gz" ? "gzip" : packed ? "zstd" : "none";
+      const ext = /\.(\w+)$/.exec(base)?.[1]?.toLowerCase();
+      // A file without an extension is CSV; one the export does not know is an error.
+      const format = ext === undefined ? "csv" : FORMATS[ext];
+      if (!format) return { name: "error", message: usage };
+      return { name: "export", path, format, delimiter: ext === "tsv" ? "\t" : ",", compression };
     }
     default:
       return { name: "error", message: t("Unknown command @{word}: use @set, @echo, @include or @export", { word }) };

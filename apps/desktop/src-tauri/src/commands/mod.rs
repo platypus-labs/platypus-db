@@ -38,6 +38,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 
 use platypus_core::{Connection, ConnectionConfig, Driver, DriverKind, Error};
 use platypus_driver_adbc::AdbcDriver;
@@ -106,7 +107,41 @@ struct Session {
     label: String,
     /// `conn` without the query log, for keep-alives.
     raw: Arc<dyn Connection>,
+    /// When the session was last given work, shared by the clones of the session.
+    last_used: Arc<Mutex<Instant>>,
 }
+
+impl Session {
+    fn new(
+        connection_id: Uuid,
+        raw: Arc<dyn Connection>,
+        conn: Arc<dyn Connection>,
+        config: ConnectionConfig,
+        label: String,
+    ) -> Self {
+        Self {
+            connection_id,
+            conn,
+            config,
+            label,
+            raw,
+            last_used: Arc::new(Mutex::new(Instant::now())),
+        }
+    }
+
+    /// How long the session sat idle; it is in use from now.
+    fn idle(&self) -> Duration {
+        let mut last = lock(&self.last_used);
+        let idle = last.elapsed();
+        *last = Instant::now();
+        idle
+    }
+}
+
+/// A session idle this long is asked whether the server still holds it before it gets
+/// more work (see `Connection::check_alive`): statements of a script that follow one
+/// another pay no round trip, a statement run by hand does.
+const IDLE_CHECK: Duration = Duration::from_secs(1);
 
 pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -213,12 +248,17 @@ impl AppState {
             .ok_or_else(|| CommandError::not_found("session", id))
     }
 
-    /// The session's connection, reopened first if the server dropped it. Manual-commit
-    /// mode carries over; a transaction that was open is lost, which is reported as an
-    /// error instead of running the statement outside it.
+    /// The session's connection, reopened first if the server dropped it: after a while
+    /// idle, the driver is asked (a server may drop a session without the driver noticing
+    /// until the next statement, which would fail). Nothing that was sent is run again.
+    /// Manual-commit mode carries over; a transaction that was open is lost, which is
+    /// reported as an error instead of running the statement outside it.
     async fn live(&self, id: u64) -> CommandResult<Arc<dyn Connection>> {
         let session = self.session(id)?;
-        if !session.conn.is_closed() {
+        let idle = session.idle();
+        let alive =
+            !session.conn.is_closed() && (idle < IDLE_CHECK || session.raw.check_alive().await);
+        if alive {
             return Ok(session.conn);
         }
         let previous = session.conn.transaction();
@@ -246,6 +286,50 @@ impl AppState {
             .cloned()
             .ok_or_else(|| CommandError::not_found("query", id))
     }
+
+    /// The name of the session's saved connection when it is marked read-only. Read at each
+    /// call, so a change to the setting applies to open sessions too.
+    fn read_only_name(&self, session_id: u64) -> CommandResult<Option<String>> {
+        let id = self.session(session_id)?.connection_id;
+        Ok(match &*lock(&self.store) {
+            Ok(store) => store
+                .get(id)
+                .filter(|c| c.read_only)
+                .map(|c| c.name.clone()),
+            // "Query with SQL" databases are not saved, and nothing else opens without it.
+            Err(_) => None,
+        })
+    }
+
+    /// Fails when the session's connection is read-only: every command that writes checks
+    /// it here, whatever the page offered.
+    fn writable(&self, session_id: u64) -> CommandResult<()> {
+        match self.read_only_name(session_id)? {
+            Some(name) => Err(read_only_error(&name)),
+            None => Ok(()),
+        }
+    }
+
+    /// Fails when the session's connection is read-only and `sql` may change something:
+    /// only statements that read run there.
+    fn may_run(&self, session_id: u64, sql: &str) -> CommandResult<()> {
+        let Some(name) = self.read_only_name(session_id)? else {
+            return Ok(());
+        };
+        let driver = self.session(session_id)?.config.driver;
+        if sql::only_reads(sql, driver) {
+            Ok(())
+        } else {
+            Err(read_only_error(&name))
+        }
+    }
+}
+
+fn read_only_error(name: &str) -> CommandError {
+    CommandError::new(
+        "read_only",
+        format!("{name} is read-only: nothing that may change it runs there"),
+    )
 }
 
 /// Opens a connection, through its SSH tunnel when it has one.
@@ -276,6 +360,8 @@ pub(crate) async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connect
 pub struct AppInfo {
     name: &'static str,
     version: &'static str,
+    /// The commit and date the app is built from (`build.rs`), when built from a checkout.
+    build: Option<&'static str>,
     os: &'static str,
     arch: &'static str,
     /// The developer tools port is open (`PLATYPUS_DEVTOOLS_PORT`), as for the end-to-end
@@ -288,6 +374,7 @@ pub fn app_info() -> AppInfo {
     AppInfo {
         name: "PlatypusDB",
         version: platypus_core::VERSION,
+        build: option_env!("PLATYPUS_BUILD"),
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
         devtools: std::env::var_os("PLATYPUS_DEVTOOLS_PORT").is_some(),

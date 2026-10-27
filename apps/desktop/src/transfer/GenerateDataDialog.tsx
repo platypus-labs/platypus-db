@@ -6,7 +6,7 @@ import { requestNavigatorRefresh } from "../navigatorEvents";
 import { workbench } from "../workbench";
 import { JobFooter, useJob } from "./job";
 import { t, plural, msg } from "../i18n";
-import { type Generator, type Kind, MONGO_ONLY, REPEATING, suggest } from "./generators";
+import { type Generator, isJson, JSON_KINDS, type Kind, MONGO_ONLY, numberRange, REPEATING, suggest } from "./generators";
 
 const LABELS: Record<Kind, string> = {
   skip: msg("Default (not filled)"),
@@ -27,6 +27,8 @@ const LABELS: Record<Kind, string> = {
   object_id: msg("New ObjectId"),
   date: msg("Date"),
   timestamp: msg("Date and time"),
+  time: msg("Time of day"),
+  ip: msg("IP address"),
   uuid: "UUID",
   choice: msg("One of the enum's values"),
   null: "NULL",
@@ -42,13 +44,15 @@ interface Props {
   onClose: () => void;
 }
 
-/** The generator of `kind` for `column`, with its default settings. */
+/** The generator of `kind` for `column`, with its default settings: numbers within what its
+ *  type holds. */
 function generator(kind: Kind, column: ColumnMeta, fk: ForeignKeyMeta | undefined): Generator {
+  const range = numberRange(column.data_type);
   switch (kind) {
     case "integer":
-      return { kind, min: 1, max: 1000 };
+      return { kind, min: range.min, max: range.max };
     case "decimal":
-      return { kind, min: 0, max: 1000, scale: 2 };
+      return { kind, min: range.min, max: range.max, scale: range.scale };
     case "reference":
       return {
         kind,
@@ -89,13 +93,16 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
         const id = await workbench().sideSession(connection, database);
         if (id === null) return;
         const details = await api.tableDetails(id, schema, table);
+        // Identities and computed columns are the database's to fill: an identity refuses
+        // values, and a numbered key would fall behind its sequence.
+        const generated = mongo ? [] : await api.generatedColumns(id, schema, table).catch(() => []);
         setSid(id);
         setColumns(
           details.columns.map((column) => {
             const fk = details.foreign_keys.find((k) => k.columns.includes(column.name));
             // A collection's `_id` takes no value twice.
             const unique = isUnique(details, column.name) || (mongo && column.name === "_id");
-            const kind = suggest(column, fk, unique, mongo);
+            const kind = suggest(column, fk, unique, mongo, generated.some((g) => g.name === column.name));
             // A unique column with no generator of distinct values to suggest is left to its default.
             const usable = unique && REPEATING.includes(kind) ? "skip" : kind;
             return { column, fk, unique, generator: generator(usable, column, fk) };
@@ -134,6 +141,11 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
   const close = () => !running && onClose();
   const choose = (i: number, kind: Kind) =>
     setColumns((cs) => cs.map((c, j) => (j === i ? { ...c, generator: generator(kind, c.column, c.fk) } : c)));
+  /** Sets a bound of the numbers of column `i`. */
+  const bound = (i: number, which: "min" | "max", value: number) =>
+    setColumns((cs) =>
+      cs.map((c, j) => (j === i && (c.generator.kind === "integer" || c.generator.kind === "decimal") ? { ...c, generator: { ...c.generator, [which]: value } } : c)),
+    );
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div className="modal wide generate-data" onKeyDown={(e) => e.key === "Escape" && close()}>
@@ -153,15 +165,26 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
           <span className="muted small">{t("Column")}</span>
           <span className="muted small">{t("Filled with")}</span>
           {columns.map(({ column, fk, unique, generator: g }, i) => (
-            <GeneratorRow key={column.name} column={column} fk={fk} unique={unique} mongo={mongo} kind={g.kind} disabled={running} onChange={(k) => choose(i, k)} />
+            <GeneratorRow
+              key={column.name}
+              column={column}
+              fk={fk}
+              unique={unique}
+              mongo={mongo}
+              generator={g}
+              disabled={running}
+              onChange={(k) => choose(i, k)}
+              onBound={(which, v) => bound(i, which, v)}
+            />
           ))}
         </div>
+        {connection.read_only && <div className="notice warn small">{t("{name} is read-only: nothing is written there.", { name: connection.name })}</div>}
         <JobFooter status={status} messages={[msg("Adding… {n} rows"), msg("Added {n} rows.")]} 
           failed={failed}
-          stopped={mongo ? msg("Stopped after {n} documents.") : undefined}
+          stopped={mongo ? msg("Stopped after {n} documents.") : msg("Stopped: nothing was added.")}
           onClose={onClose}
         >
-          <button type="button" className="primary" disabled={running || sid === null || filled.length === 0} onClick={request}>
+          <button type="button" className="primary" disabled={running || sid === null || filled.length === 0 || connection.read_only} onClick={request}>
             {t("Generate")}
           </button>
         </JobFooter>
@@ -184,30 +207,50 @@ function GeneratorRow(props: {
   fk: ForeignKeyMeta | undefined;
   unique: boolean;
   mongo: boolean;
-  kind: Kind;
+  generator: Generator;
   disabled: boolean;
   onChange: (kind: Kind) => void;
+  onBound: (which: "min" | "max", value: number) => void;
 }) {
-  const { column, fk, unique, mongo, kind, disabled, onChange } = props;
+  const { column, fk, unique, mongo, generator: g, disabled, onChange, onBound } = props;
+  const json = isJson(column.data_type.toLowerCase());
   const kinds = (Object.keys(LABELS) as Kind[]).filter(
     (k) =>
       (k !== "reference" || fk) &&
       (k !== "choice" || column.enum_values.length > 0) &&
       !(unique && REPEATING.includes(k)) &&
-      (mongo || !MONGO_ONLY.includes(k)),
+      (mongo || !MONGO_ONLY.includes(k) || (json && JSON_KINDS.includes(k))),
+  );
+  const number = (which: "min" | "max", value: number, label: string) => (
+    <input
+      type="number"
+      className="generator-bound"
+      value={value}
+      disabled={disabled}
+      aria-label={t(label, { column: column.name })}
+      onChange={(e) => Number.isFinite(e.target.valueAsNumber) && onBound(which, e.target.valueAsNumber)}
+    />
   );
   return (
     <>
       <span>
         {column.name} <span className="muted small">{unique ? t("{type}, unique", { type: column.data_type }) : column.data_type}</span>
       </span>
-      <select value={kind} disabled={disabled} aria-label={t("Generator of {column}", { column: column.name })} onChange={(e) => onChange(e.target.value as Kind)}>
-        {kinds.map((k) => (
-          <option key={k} value={k}>
-            {k === "reference" && fk ? `${t(LABELS[k])} (${fk.ref_table})` : t(LABELS[k])}
-          </option>
-        ))}
-      </select>
+      <span className="generator">
+        <select value={g.kind} disabled={disabled} aria-label={t("Generator of {column}", { column: column.name })} onChange={(e) => onChange(e.target.value as Kind)}>
+          {kinds.map((k) => (
+            <option key={k} value={k}>
+              {k === "reference" && fk ? `${t(LABELS[k])} (${fk.ref_table})` : t(LABELS[k])}
+            </option>
+          ))}
+        </select>
+        {(g.kind === "integer" || g.kind === "decimal") && (
+          <>
+            {number("min", g.min, msg("Least value of {column}"))}
+            {number("max", g.max, msg("Greatest value of {column}"))}
+          </>
+        )}
+      </span>
     </>
   );
 }

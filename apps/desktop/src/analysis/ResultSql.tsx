@@ -75,9 +75,10 @@ class Fields {
     if (text !== this.get(key).text) this.set(key, { text });
   }
 
-  /** Runs `text` on the copy of `tables`, `of` being the result's job. */
-  async run(key: string, text: string, tables: ResultTable[], of: number) {
-    const sql = resultQuery(text);
+  /** Runs `text` on the copy of `tables`, `of` being the result's job and `columns` its
+   *  column names. */
+  async run(key: string, text: string, tables: ResultTable[], of: number, columns: readonly string[]) {
+    const sql = resultQuery(text, columns);
     if (sql === null) return this.clear(key);
     const token = ++this.token;
     this.tokens.set(key, token);
@@ -194,8 +195,18 @@ class Fields {
     this.set(key, { output: null, reloaded: false });
   }
 
+  /** The tab ran other statements: the fields of those it no longer shows go with their copy,
+   *  which can hold hundreds of MB. */
+  keepOnly(keys: ReadonlySet<string>) {
+    for (const key of this.keys()) if (!keys.has(key)) this.clear(key);
+  }
+
   dispose() {
-    for (const key of [...new Set([...this.states.keys(), ...this.copies.keys()])]) this.clear(key);
+    for (const key of this.keys()) this.clear(key);
+  }
+
+  private keys(): string[] {
+    return [...new Set([...this.states.keys(), ...this.copies.keys()])];
   }
 
   copyOf(key: string): Copy | null {
@@ -253,6 +264,10 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
     if (key !== null) fields.forget(key, shown?.jobId ?? null);
   }, [key, shown?.jobId]);
   useEffect(() => setExpanded(false), [key]);
+  // By statement, whatever its state: one running again keeps its field and copy.
+  const statements = results.map((r) => r.sql);
+  const statementsKey = statements.join("\u0000");
+  useEffect(() => fields.keepOnly(new Set(statements)), [statementsKey]);
 
   const tables = useMemo(
     () => (shown?.jobId == null ? [] : resultTables(resultsWithRows(results), shown.jobId)),
@@ -265,6 +280,8 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
   // The results change as their rows arrive, their tables and columns once per run.
   const catalogKey = named.map((x) => `${x.table}:${x.columns.map((c) => c.name).join(",")}`).join(";");
   const catalog = useMemo(() => resultCatalog(named), [catalogKey]);
+  /** The result's column names, which `GROUP BY` ordinals in the field name. */
+  const columnNames = named.find((x) => x.table === "result")?.columns.map((c) => c.name) ?? [];
 
   const output = state.output && state.output.of === shown?.jobId ? state.output.result : null;
   const copy = output && key !== null ? fields.copyOf(key) : null;
@@ -274,7 +291,7 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
     const of = shown.jobId;
     keepFocus.current = true;
     if (resultQuery(text) !== null && !output && !(await canLeave())) return;
-    await fields.run(key, text, tables, of);
+    await fields.run(key, text, tables, of, columnNames);
   };
   const clear = () => {
     if (key === null) return;
@@ -285,7 +302,7 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
   const openInTab = (text: string) => {
     setExpanded(false);
     const host = shown?.jobId == null ? null : hostOfJob(shown.jobId);
-    if (host) void queryWithSql(host, shown?.jobId ?? undefined, resultQuery(text) ?? undefined);
+    if (host) void queryWithSql(host, shown?.jobId ?? undefined, resultQuery(text, columnNames) ?? undefined);
   };
 
   const bar =

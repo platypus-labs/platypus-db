@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use arrow_array::builder::StringBuilder;
 use arrow_array::{Array, ArrayRef, RecordBatch};
-use arrow_cast::display::{ArrayFormatter, FormatOptions};
+use arrow_cast::display::FormatOptions;
 use arrow_ipc::writer::StreamWriter;
 use arrow_schema::{ArrowError, DataType, Field, Schema};
 
@@ -35,7 +35,7 @@ fn grid_cell(cell: &str) -> String {
     cell
 }
 
-fn render(array: &ArrayRef, format: &DisplayFormat) -> Result<ArrayRef, ArrowError> {
+fn render(field: &Field, array: &ArrayRef, format: &DisplayFormat) -> Result<ArrayRef, ArrowError> {
     let mut builder = StringBuilder::with_capacity(array.len(), array.len() * 16);
     if format.own_timestamps(array.data_type()) {
         let mut cells = vec![None; array.len()];
@@ -49,7 +49,7 @@ fn render(array: &ArrayRef, format: &DisplayFormat) -> Result<ArrayRef, ArrowErr
         .with_date_format(Some(&format.date))
         .with_timestamp_format(Some(&format.timestamp))
         .with_timestamp_tz_format(Some(&format.timestamp_tz));
-    let formatter = ArrayFormatter::try_new(array.as_ref(), &options)?;
+    let formatter = platypus_core::special::column_formatter(field, array.as_ref(), &options)?;
     let numeric = array.data_type().is_numeric();
     let mut cell = String::new();
     for i in 0..array.len() {
@@ -84,23 +84,24 @@ pub fn columns_text(
     columns: Option<&[usize]>,
     out: &mut Vec<Vec<Option<String>>>,
 ) -> Result<(), ArrowError> {
-    let arrays: Vec<&ArrayRef> = match columns {
-        None => batch.columns().iter().collect(),
-        Some(columns) => columns
-            .iter()
-            .map(|&c| {
-                batch
-                    .columns()
-                    .get(c)
-                    .ok_or_else(|| ArrowError::InvalidArgumentError(format!("no column {c}")))
-            })
-            .collect::<Result<_, _>>()?,
-    };
+    let all: Vec<usize> = (0..batch.num_columns()).collect();
+    let columns = columns.unwrap_or(&all);
+    if let Some(c) = columns.iter().find(|&&c| c >= batch.num_columns()) {
+        return Err(ArrowError::InvalidArgumentError(format!("no column {c}")));
+    }
+    let arrays: Vec<&ArrayRef> = columns.iter().map(|&c| batch.column(c)).collect();
+    let schema = batch.schema_ref();
     let options = format_options();
     // One formatter per column, not per value.
-    let formatters = arrays
+    let formatters = columns
         .iter()
-        .map(|array| ArrayFormatter::try_new(array.as_ref(), &options))
+        .map(|&c| {
+            platypus_core::special::column_formatter(
+                schema.field(c),
+                batch.column(c).as_ref(),
+                &options,
+            )
+        })
         .collect::<Result<Vec<_>, _>>()?;
     for row in 0..batch.num_rows() {
         out.push(
@@ -133,7 +134,8 @@ pub fn to_ipc(
         let columns = batch
             .columns()
             .iter()
-            .map(|c| render(c, format))
+            .zip(schema.fields())
+            .map(|(c, f)| render(f, c, format))
             .collect::<Result<Vec<_>, _>>()?;
         writer.write(&RecordBatch::try_new(Arc::clone(&text_schema), columns)?)?;
     }

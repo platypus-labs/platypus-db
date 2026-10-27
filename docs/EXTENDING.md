@@ -587,7 +587,11 @@ true and the app exposes test hooks on `window.__platypus`, such as `switchProje
 npm run tauri build -- --no-bundle
 npm run e2e              # all scenarios
 npm run e2e -- postgres  # file names containing "postgres"
+npm run e2e -- --skip qa-perf,oracle  # all but file names containing "qa-perf" or "oracle"
 ```
+
+`PLATYPUS_E2E_SKIP=qa-perf,oracle` does the same as `--skip`, and the two can be combined
+with a filter (`npm run e2e -- postgres --skip arrays`).
 
 A scenario in `e2e/scenarios/` exports:
 - `default(page, ctx)`, which runs the steps;

@@ -4,7 +4,9 @@
 //! then pauses (the driver applies backpressure, so the server waits too); scrolling the
 //! grid raises the target. A memory cap stops runaway results.
 
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -78,6 +80,17 @@ pub enum QueryEvent {
         complete: bool,
         /// Fetching was stopped to free the session (COMMIT, ROLLBACK).
         stopped: bool,
+        /// Another result of the statement follows ([`QueryEvent::Next`]).
+        more: bool,
+    },
+    /// The statement's next result, whose events follow on the same channel, has the job
+    /// `job_id`.
+    Next {
+        job_id: u64,
+    },
+    /// What the server said while the statement ran: notices, `PRINT`, warnings.
+    Messages {
+        lines: Vec<String>,
     },
     Affected {
         rows: u64,
@@ -184,6 +197,8 @@ pub struct Job {
     buffer: Mutex<Buffer>,
     events: Channel<QueryEvent>,
     started: Instant,
+    /// Time spent waiting for the grid to ask for more rows, not counted as the query's.
+    paused_ms: AtomicU64,
     /// Set once the background task has sent its last event, or the job was stopped or closed.
     done: AtomicBool,
     /// An `Ending`: why fetching ended, set before `done`.
@@ -231,9 +246,39 @@ pub enum Outcome {
     },
 }
 
+/// Reports how the statement of a job went, once: see [`Outcome`].
+pub struct OutcomeOf {
+    started: Instant,
+    report: Box<dyn FnOnce(Outcome) + Send>,
+}
+
+/// Registers the job of a statement's next result (see [`QueryEvent::Next`]) and returns its id.
+pub type Register = Arc<dyn Fn(Arc<Job>) -> u64 + Send + Sync>;
+
 impl Job {
+    fn new(
+        session_id: u64,
+        conn: &Arc<dyn Connection>,
+        limit: Option<usize>,
+        events: Channel<QueryEvent>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            session_id,
+            buffer: Mutex::new(Buffer::default()),
+            events,
+            started: Instant::now(),
+            paused_ms: AtomicU64::new(0),
+            done: AtomicBool::new(false),
+            ending: AtomicU8::new(Ending::Running as u8),
+            target: watch::Sender::new(limit.unwrap_or(PREFETCH_ROWS)),
+            cancel: conn.cancel_handle(),
+            task: Mutex::new(None),
+        })
+    }
+
     /// Starts `sql` in the background. With `limit`, at most that many rows are fetched and
     /// the rest of the result is cancelled (used for scripts, which must free the session).
+    /// Each further result of the statement gets a job of its own, made known by `register`.
     pub fn start(
         session_id: u64,
         conn: Arc<dyn Connection>,
@@ -241,81 +286,159 @@ impl Job {
         limit: Option<usize>,
         events: Channel<QueryEvent>,
         on_outcome: impl FnOnce(Outcome) + Send + 'static,
+        register: Register,
     ) -> Arc<Self> {
-        let job = Arc::new(Self {
-            session_id,
-            buffer: Mutex::new(Buffer::default()),
-            events: events.clone(),
-            started: Instant::now(),
-            done: AtomicBool::new(false),
-            ending: AtomicU8::new(Ending::Running as u8),
-            target: watch::Sender::new(limit.unwrap_or(PREFETCH_ROWS)),
-            cancel: conn.cancel_handle(),
-            task: Mutex::new(None),
-        });
+        let job = Self::new(session_id, &conn, limit, events);
         let task = Arc::clone(&job);
         let run = async move {
-            Arc::clone(&task)
-                .run(conn, sql, limit, events, on_outcome)
+            let started = Instant::now();
+            let options = ExecOptions {
+                batch_size: BATCH_SIZE,
+                paged: true,
+            };
+            let result = conn.execute(&sql, &options).await;
+            let outcome = OutcomeOf {
+                started,
+                report: Box::new(on_outcome),
+            };
+            task.consume(conn, result, limit, register, Some(outcome))
                 .await;
-            task.done.store(true, Ordering::Release);
         };
         *lock(&job.task) = Some(tauri::async_runtime::spawn(run));
         job
     }
 
-    async fn run(
+    /// Sends what the server said meanwhile (notices, `PRINT`), before the event it came with.
+    fn send_messages(&self, conn: &dyn Connection) {
+        let lines = conn.take_messages();
+        if !lines.is_empty() {
+            let _ = self.events.send(QueryEvent::Messages { lines });
+        }
+    }
+
+    /// Milliseconds since the job started, without the time it waited for the grid to ask
+    /// for more rows.
+    fn working_ms(&self) -> u64 {
+        millis(self.started).saturating_sub(self.paused_ms.load(Ordering::Relaxed))
+    }
+
+    /// Reports `result`, buffers its rows, then hands the statement's next result to a job
+    /// of its own. Marks the job done at the end. Boxed: the next job's task runs it again.
+    fn consume(
         self: Arc<Self>,
         conn: Arc<dyn Connection>,
-        sql: String,
+        result: platypus_core::Result<ExecResult>,
         limit: Option<usize>,
-        events: Channel<QueryEvent>,
-        on_outcome: impl FnOnce(Outcome) + Send + 'static,
-    ) {
+        register: Register,
+        outcome: Option<OutcomeOf>,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        Box::pin(async move {
+            let next = self.read(&*conn, result, limit, outcome).await;
+            self.done.store(true, Ordering::Release);
+            let Some(next) = next else {
+                return;
+            };
+            let child = Self::new(self.session_id, &conn, limit, self.events.clone());
+            let job_id = register(Arc::clone(&child));
+            let _ = self.events.send(QueryEvent::Next { job_id });
+            let run = Arc::clone(&child).consume(conn, next, limit, register, None);
+            *lock(&child.task) = Some(tauri::async_runtime::spawn(run));
+        })
+    }
+
+    /// Reports `result` and buffers its rows; returns the statement's next result, if any.
+    async fn read(
+        &self,
+        conn: &dyn Connection,
+        result: platypus_core::Result<ExecResult>,
+        limit: Option<usize>,
+        outcome: Option<OutcomeOf>,
+    ) -> Option<platypus_core::Result<ExecResult>> {
         // A closed channel only means the UI went away; the job is closed separately.
         let send = |event| {
-            let _ = events.send(event);
+            let _ = self.events.send(event);
         };
-        let progress = |rows, fetching| send(QueryEvent::Progress { rows, fetching });
-        let started = Instant::now();
-        let options = ExecOptions {
-            batch_size: BATCH_SIZE,
-            paged: true,
-        };
-        let mut stream = match conn.execute(&sql, &options).await {
+        self.send_messages(conn);
+        let mut stream = match result {
             Err(error) => {
                 send(QueryEvent::Failed {
                     error: CommandError::from(&error),
                 });
-                return on_outcome(Outcome::Failed {
-                    error,
-                    elapsed: started.elapsed(),
-                });
+                if let Some(o) = outcome {
+                    (o.report)(Outcome::Failed {
+                        error,
+                        elapsed: o.started.elapsed(),
+                    });
+                }
+                return None;
             }
             Ok(ExecResult::Affected { rows }) => {
                 send(QueryEvent::Affected {
                     rows,
-                    elapsed_ms: millis(started),
+                    elapsed_ms: self.working_ms(),
                 });
-                return on_outcome(Outcome::Affected {
-                    rows,
-                    elapsed: started.elapsed(),
-                });
+                if let Some(o) = outcome {
+                    (o.report)(Outcome::Affected {
+                        rows,
+                        elapsed: o.started.elapsed(),
+                    });
+                }
+                return None;
             }
             Ok(ExecResult::Rows(stream)) => stream,
         };
-        on_outcome(Outcome::Rows {
-            elapsed: started.elapsed(),
-        });
+        if let Some(o) = outcome {
+            (o.report)(Outcome::Rows {
+                elapsed: o.started.elapsed(),
+            });
+        }
         let cap = limit.unwrap_or(usize::MAX);
 
         let schema = stream.schema();
         lock(&self.buffer).schema = Some(Arc::clone(&schema));
         send(QueryEvent::Started {
             columns: ColumnInfo::from_schema(&schema),
-            elapsed_ms: millis(started),
+            elapsed_ms: self.working_ms(),
         });
 
+        let ending = self.fetch(conn, &mut stream, cap).await?;
+        // What follows the rows, once they were all read; dropping an unfinished stream
+        // cancels the rest of the statement server-side.
+        let follows = if ending == Ending::Complete {
+            stream.take_next()
+        } else {
+            None
+        };
+        drop(stream);
+        let next = match follows {
+            Some(next) => next.await.transpose(),
+            None => None,
+        };
+        let rows = lock(&self.buffer).rows;
+        self.end(ending);
+        self.send_messages(conn);
+        send(QueryEvent::Finished {
+            rows,
+            elapsed_ms: self.working_ms(),
+            complete: ending == Ending::Complete,
+            stopped: false,
+            more: next.is_some(),
+        });
+        next
+    }
+
+    /// Reads the rows of `stream` as the grid asks for them, up to `cap`; `None` when
+    /// reading failed (and was reported).
+    async fn fetch(
+        &self,
+        conn: &dyn Connection,
+        stream: &mut platypus_core::RecordBatchStream,
+        cap: usize,
+    ) -> Option<Ending> {
+        let send = |event| {
+            let _ = self.events.send(event);
+        };
+        let progress = |rows, fetching| send(QueryEvent::Progress { rows, fetching });
         let mut demand = self.target.subscribe();
         let mut last_report = Instant::now();
         let ending = loop {
@@ -329,11 +452,10 @@ impl Job {
             }
             if (*demand.borrow()).min(cap) <= rows {
                 progress(rows, false);
-                if demand
-                    .wait_for(|target| (*target).min(cap) > rows)
-                    .await
-                    .is_err()
-                {
+                let paused = Instant::now();
+                let waited = demand.wait_for(|target| (*target).min(cap) > rows).await;
+                self.paused_ms.fetch_add(millis(paused), Ordering::Relaxed);
+                if waited.is_err() {
                     break Ending::Stopped;
                 }
                 progress(rows, true);
@@ -342,9 +464,11 @@ impl Job {
                 None => break Ending::Complete,
                 Some(Err(e)) => {
                     self.end(Ending::Failed);
-                    return send(QueryEvent::Failed {
+                    self.send_messages(conn);
+                    send(QueryEvent::Failed {
                         error: CommandError::from(&e),
                     });
+                    return None;
                 }
                 Some(Ok(batch)) => {
                     let mut buffer = lock(&self.buffer);
@@ -360,16 +484,7 @@ impl Job {
                 last_report = Instant::now();
             }
         };
-        // Dropping an unfinished stream cancels the rest of the query server-side.
-        drop(stream);
-        let rows = lock(&self.buffer).rows;
-        self.end(ending);
-        send(QueryEvent::Finished {
-            rows,
-            elapsed_ms: millis(started),
-            complete: ending == Ending::Complete,
-            stopped: false,
-        });
+        Some(ending)
     }
 
     /// Records why fetching ended, unless a reason already was: the first one stays.
@@ -419,6 +534,11 @@ impl Job {
         self.cancel.cancel().await.map_err(Into::into)
     }
 
+    /// The statement runs and the server has not answered yet: no rows, no count.
+    pub fn waits_for_server(&self) -> bool {
+        !self.is_done() && lock(&self.buffer).schema.is_none()
+    }
+
     /// The background task has sent its last event: the session is free again.
     pub fn is_done(&self) -> bool {
         self.done.load(Ordering::Acquire)
@@ -455,9 +575,10 @@ impl Job {
         }
         let _ = self.events.send(QueryEvent::Finished {
             rows: lock(&self.buffer).rows,
-            elapsed_ms: millis(self.started),
+            elapsed_ms: self.working_ms(),
             complete: false,
             stopped: true,
+            more: false,
         });
     }
 
@@ -553,6 +674,7 @@ mod tests {
             buffer: Mutex::new(buffer(&[3, 4])),
             events: Channel::new(|_| Ok(())),
             started: Instant::now(),
+            paused_ms: AtomicU64::new(0),
             done: AtomicBool::new(false),
             ending: AtomicU8::new(Ending::Running as u8),
             target: watch::Sender::new(PREFETCH_ROWS),

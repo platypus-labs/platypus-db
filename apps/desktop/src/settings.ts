@@ -52,12 +52,19 @@ export function settingDefs(): AnyDef[] {
   return [...defs.values()];
 }
 
+/** Why the stored values could not be read (e.g. a syntax error in settings.toml); `null` once
+ *  they were. The app shows it: every setting is at its default until the file is fixed. */
+let loadError: string | null = null;
+export const settingsLoadError = () => loadError;
+
 /** Loads stored values; call once before rendering. Failures leave the defaults. */
 export async function loadSettings() {
   try {
     values = flatten(await api.getSettings());
+    loadError = null;
     changed();
   } catch (e) {
+    loadError = e instanceof Error ? e.message : typeof e === "string" ? e : ((e as { message?: string })?.message ?? String(e));
     console.warn("settings", e);
   }
 }

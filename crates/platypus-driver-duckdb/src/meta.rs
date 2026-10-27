@@ -448,6 +448,8 @@ pub async fn search_metadata(conn: &dyn Connection, needle: &str) -> Result<Vec<
 pub async fn object_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<String> {
     let at = format!("{HERE} AND schema_name = {}", literal(o.schema));
     let name = literal(o.name);
+    // Macros and types are printed from their parts, with the name as it must be written.
+    let quoted = literal(&D.quote_ident(o.name));
     let sql = match o.kind {
         ObjectKind::Table => format!(
             "SELECT sql FROM (
@@ -464,7 +466,7 @@ pub async fn object_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<Stri
             format!("SELECT sql FROM duckdb_sequences() WHERE {at} AND sequence_name = {name}")
         }
         ObjectKind::Function => format!(
-            "SELECT 'CREATE MACRO ' || function_name || '(' || array_to_string(parameters, ', ')
+            "SELECT 'CREATE MACRO ' || {quoted} || '('|| array_to_string(parameters, ', ')
                     || ') AS ' || CASE WHEN function_type = 'table_macro' THEN 'TABLE ' ELSE '' END
                     || macro_definition
              FROM duckdb_functions()
@@ -472,9 +474,10 @@ pub async fn object_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<Stri
                AND function_type IN ('macro', 'table_macro')"
         ),
         ObjectKind::Type => format!(
-            "SELECT 'CREATE TYPE ' || type_name || ' AS ' || CASE WHEN logical_type = 'ENUM'
+            // `lambda l: …`: the bundled DuckDB rejects the older `l -> …`.
+            "SELECT 'CREATE TYPE ' || {quoted} || ' AS ' || CASE WHEN logical_type = 'ENUM'
                     THEN 'ENUM (' || array_to_string(list_transform(labels,
-                         l -> '''' || replace(l, '''', '''''') || ''''), ', ') || ')'
+                         lambda l:'''' || replace(l, '''', '''''') || ''''), ', ') || ')'
                     ELSE logical_type END
              FROM duckdb_types() WHERE {at} AND type_name = {name} AND NOT internal"
         ),

@@ -105,8 +105,12 @@ export function keywordCompletion(dialect: SQLDialect, driver: DriverKind): Comp
   const upper = source(true);
   const lower = source(false);
   return (context) => {
+    const word = context.matchBefore(/\w+/);
+    const from = word?.from ?? context.pos;
+    // Not after a dot: `demo.ord` names an object of schema demo, never a keyword.
+    if (context.state.sliceDoc(from - 1, from) === ".") return null;
     const mode = getSetting(formatKeywordCase);
-    const typed = context.matchBefore(/\w+/)?.text ?? "";
+    const typed = word?.text ?? "";
     const asLower = mode === "lower" || (mode === "preserve" && typed !== "" && typed === typed.toLowerCase());
     return (asLower ? lower : upper)(context);
   };

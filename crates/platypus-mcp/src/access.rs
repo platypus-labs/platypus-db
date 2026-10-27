@@ -2,7 +2,7 @@
 //! with the same analysis the app runs before a statement (`platypus_sql::analyze`).
 
 use platypus_core::{TxEffect, classify};
-use platypus_sql::{Dialect, Lexer, StatementKind, TokenKind};
+use platypus_sql::{Dialect, Lexer, StatementKind, Token, TokenKind};
 pub use platypus_store::AgentAccess;
 use platypus_store::SettingsStore;
 
@@ -32,59 +32,279 @@ impl UnfilteredRule {
     }
 }
 
+/// What reaches outside a read-only transaction in a dialect, or runs SQL text the
+/// statement check cannot see. Names are lower case; a trailing `*` matches any end.
+struct Outside {
+    /// Names that do it wherever they stand.
+    words: &'static [&'static str],
+    /// Names that do it only when called, `name(…)`: as plain words they are common
+    /// column names (`url`, `file`, `query`).
+    calls: &'static [&'static str],
+    /// Names the patterns above match that only read.
+    reads: &'static [&'static str],
+}
+
 /// PostgreSQL functions that act outside the transaction (other sessions, the server's
-/// configuration and files, notifications, session locks): a `READ ONLY` transaction lets
-/// them run.
-const POSTGRES_OUTSIDE: &[&str] = &[
-    "pg_terminate_backend",
-    "pg_cancel_backend",
-    "pg_reload_conf",
-    "pg_rotate_logfile",
-    "pg_promote",
-    "lo_import",
-    "lo_export",
-    "pg_notify",
-];
-/// Families of them: `dblink_exec`, `pg_advisory_lock`, adminpack's `pg_file_write`…
-const POSTGRES_OUTSIDE_PREFIXES: &[&str] =
-    &["dblink", "pg_advisory_", "pg_try_advisory_", "pg_file_"];
-/// MySQL and MariaDB read and write the server's files whatever the transaction.
-const MYSQL_OUTSIDE: &[&str] = &["load_file", "outfile", "dumpfile"];
+/// configuration and files, replication, notifications, session locks), which a `READ
+/// ONLY` transaction lets run, or run a query given as text (`query_to_xml`, `ts_stat`).
+/// Families: `dblink_exec`, `pg_advisory_lock`, adminpack's `pg_file_write`…
+const POSTGRES_OUTSIDE: Outside = Outside {
+    words: &[
+        "pg_terminate_backend",
+        "pg_cancel_backend",
+        "pg_reload_conf",
+        "pg_rotate_logfile",
+        "pg_promote",
+        "lo_import",
+        "lo_export",
+        "pg_notify",
+        "dblink*",
+        "pg_advisory_*",
+        "pg_try_advisory_*",
+        "pg_file_*",
+        "pg_read_file",
+        "pg_read_binary_file",
+        "pg_stat_file",
+        "pg_ls_*",
+        "pg_create_*",
+        "pg_drop_replication_slot",
+        "pg_replication_*",
+        "pg_logical_*",
+        "pg_switch_wal",
+        "pg_backup_*",
+        "pg_start_backup",
+        "pg_stop_backup",
+        "pg_log_backend_memory_contexts",
+        "query_to_xml*",
+        "ts_stat",
+    ],
+    calls: &[],
+    reads: &[],
+};
+/// MySQL and MariaDB read and write the server's files whatever the transaction, and keep
+/// named locks (and `lib_mysqludf_sys` commands) past it.
+const MYSQL_OUTSIDE: Outside = Outside {
+    words: &[
+        "load_file",
+        "outfile",
+        "dumpfile",
+        "get_lock",
+        "release_lock",
+        "release_all_locks",
+        "sys_exec",
+        "sys_eval",
+    ],
+    calls: &[],
+    reads: &[],
+};
 /// Snowflake's `SYSTEM$` functions run inside a `SELECT` but include ones that act on other
 /// sessions and queries (`SYSTEM$CANCEL_QUERY`, `SYSTEM$ABORT_SESSION`) or on objects
 /// (`SYSTEM$PIPE_FORCE_RESUME`): agents get none of them.
-const SNOWFLAKE_OUTSIDE_PREFIXES: &[&str] = &["system$"];
+const SNOWFLAKE_OUTSIDE: Outside = Outside {
+    words: &["system$*"],
+    calls: &[],
+    reads: &[],
+};
+/// SQLite extension loading and the shell's file functions.
+const SQLITE_OUTSIDE: Outside = Outside {
+    words: &[],
+    calls: &[
+        "load_extension",
+        "readfile",
+        "writefile",
+        "edit",
+        "fts3_tokenizer",
+    ],
+    reads: &[],
+};
+/// DuckDB runs inside the app, with the user's rights: its table functions read any local
+/// file (or URL), and `query()` runs SQL given as text.
+const DUCKDB_OUTSIDE: Outside = Outside {
+    words: &[],
+    calls: &[
+        "read_*",
+        "parquet_*",
+        "sniff_csv",
+        "glob",
+        "getenv",
+        "query",
+        "query_table",
+        "sqlite_*",
+        "postgres_*",
+        "mysql_*",
+        "iceberg_*",
+        "delta_*",
+        "st_read",
+        "json_execute_serialized_sql",
+        "load_aws_credentials",
+    ],
+    reads: &[],
+};
+/// ClickHouse table functions read the server's files, other servers and URLs, or run
+/// scripts (`executable`).
+const CLICKHOUSE_OUTSIDE: Outside = Outside {
+    words: &[],
+    calls: &[
+        "file",
+        "url",
+        "urlcluster",
+        "s3",
+        "s3cluster",
+        "gcs",
+        "hdfs",
+        "hdfscluster",
+        "azureblobstorage",
+        "remote",
+        "remotesecure",
+        "cluster",
+        "clusterallreplicas",
+        "mysql",
+        "postgresql",
+        "mongodb",
+        "redis",
+        "jdbc",
+        "odbc",
+        "sqlite",
+        "executable",
+    ],
+    reads: &[],
+};
+/// Oracle's packages reach files, the network and other sessions (`UTL_FILE`, `UTL_HTTP`,
+/// `DBMS_PIPE`), or run SQL or PL/SQL given as text (`DBMS_XMLQUERY`, `DBMS_XMLGEN`), and
+/// Oracle runs agents' statements in no read-only transaction.
+const ORACLE_OUTSIDE: Outside = Outside {
+    words: &[
+        "dbms_*",
+        "utl_*",
+        "owa_*",
+        "ctx_*",
+        "htp",
+        "htf",
+        "httpuritype",
+    ],
+    calls: &[],
+    reads: &[
+        "dbms_lob",
+        "dbms_random",
+        "dbms_metadata",
+        "dbms_utility",
+        "dbms_xplan",
+        "dbms_assert",
+    ],
+};
+/// Trino connectors' pass-through table functions run their SQL on the source database.
+const TRINO_OUTSIDE: Outside = Outside {
+    words: &[],
+    calls: &["query", "raw_query"],
+    reads: &[],
+};
+/// Spark calls Java methods.
+const DATABRICKS_OUTSIDE: Outside = Outside {
+    words: &[],
+    calls: &["reflect", "try_reflect", "java_method"],
+    reads: &[],
+};
+/// `EXTERNAL_QUERY` runs its SQL text on an external database.
+const BIGQUERY_OUTSIDE: Outside = Outside {
+    words: &[],
+    calls: &["external_query"],
+    reads: &[],
+};
+const NOTHING_OUTSIDE: Outside = Outside {
+    words: &[],
+    calls: &[],
+    reads: &[],
+};
+
+impl Outside {
+    fn of(dialect: Dialect) -> &'static Self {
+        match dialect {
+            Dialect::Postgres => &POSTGRES_OUTSIDE,
+            Dialect::MySql => &MYSQL_OUTSIDE,
+            Dialect::Snowflake => &SNOWFLAKE_OUTSIDE,
+            Dialect::Sqlite => &SQLITE_OUTSIDE,
+            Dialect::DuckDb => &DUCKDB_OUTSIDE,
+            Dialect::ClickHouse => &CLICKHOUSE_OUTSIDE,
+            Dialect::Oracle => &ORACLE_OUTSIDE,
+            Dialect::Ansi => &TRINO_OUTSIDE,
+            Dialect::Databricks => &DATABRICKS_OUTSIDE,
+            Dialect::BigQuery => &BIGQUERY_OUTSIDE,
+            // Transact-SQL's (`OPENROWSET`, `xp_cmdshell`…) are no query to the analysis.
+            // `CALL`, which runs procedures such as Trino's `system.runtime.kill_query`, is
+            // never a query either.
+            Dialect::SqlServer | Dialect::Db2 => &NOTHING_OUTSIDE,
+        }
+    }
+
+    /// Whether `name` (lower case), called when `call`, reaches outside.
+    fn reaches(&self, name: &str, call: bool) -> bool {
+        let hit = |patterns: &[&str]| {
+            patterns.iter().any(|p| match p.strip_suffix('*') {
+                Some(prefix) => name.starts_with(prefix),
+                None => name == *p,
+            })
+        };
+        (hit(self.words) || (call && hit(self.calls))) && !self.reads.contains(&name)
+    }
+}
+
+/// A DuckDB table read from a file or URL named in the `FROM` list: `FROM 'x.csv'`,
+/// `FROM "x.parquet"`, `JOIN 'https://…'`.
+fn duckdb_file_scan(src: &str, tokens: &[Token]) -> Option<usize> {
+    let mut in_from = false;
+    (1..tokens.len()).find(|&i| {
+        let prev = &tokens[i - 1];
+        let prev_text = prev.text(src);
+        let prev_word = (prev.kind == TokenKind::Word).then(|| prev_text.to_ascii_uppercase());
+        let opens_from = matches!(prev_word.as_deref(), Some("FROM" | "JOIN"));
+        if opens_from {
+            in_from = true;
+        } else if matches!(
+            prev_word.as_deref(),
+            Some(
+                "SELECT" | "WHERE" | "GROUP" | "HAVING" | "ORDER" | "WINDOW" | "QUALIFY" | "LIMIT"
+            )
+        ) {
+            in_from = false;
+        }
+        let starts_table =
+            opens_from || (in_from && prev.kind == TokenKind::Symbol && prev_text == ",");
+        let t = &tokens[i];
+        let text = t.text(src);
+        starts_table
+            && (t.kind == TokenKind::String
+                || (t.kind == TokenKind::QuotedIdent && text.contains(['.', '/', '\\', ':'])))
+    })
+}
 
 /// The first word of `statement` naming something that reaches outside a read-only
-/// transaction in `dialect`, as written.
+/// transaction in `dialect`, as written, however the server reads the statement.
 fn outside_effect(statement: &str, dialect: Dialect) -> Option<&str> {
-    let (names, prefixes): (&[&str], &[&str]) = match dialect {
-        Dialect::Postgres => (POSTGRES_OUTSIDE, POSTGRES_OUTSIDE_PREFIXES),
-        Dialect::MySql => (MYSQL_OUTSIDE, &[]),
-        Dialect::Snowflake => (&[], SNOWFLAKE_OUTSIDE_PREFIXES),
-        // `CALL`, which runs procedures such as Trino's `system.runtime.kill_query`, is
-        // never a query: the analysis refuses it already.
-        Dialect::Sqlite
-        | Dialect::DuckDb
-        | Dialect::SqlServer
-        | Dialect::ClickHouse
-        | Dialect::Ansi
-        | Dialect::BigQuery
-        | Dialect::Databricks
-        | Dialect::Oracle
-        | Dialect::Db2 => {
-            return None;
-        }
-    };
-    Lexer::new(statement, dialect)
-        .filter_map(|t| match t.kind {
-            TokenKind::Word => Some(t.text(statement)),
-            TokenKind::QuotedIdent => Some(t.text(statement).trim_matches(['"', '`', '[', ']'])),
-            _ => None,
-        })
-        .find(|word| {
-            let word = word.to_ascii_lowercase();
-            names.contains(&word.as_str()) || prefixes.iter().any(|p| word.starts_with(p))
+    let outside = Outside::of(dialect);
+    Lexer::readings(statement, dialect)
+        .into_iter()
+        .find_map(|lexer| {
+            let tokens: Vec<Token> = lexer
+                .filter(|t| !t.is_trivia() && t.kind != TokenKind::ExecComment)
+                .collect();
+            if dialect == Dialect::DuckDb
+                && let Some(i) = duckdb_file_scan(statement, &tokens)
+            {
+                return Some(tokens[i].text(statement));
+            }
+            tokens.iter().enumerate().find_map(|(i, t)| {
+                let name = match t.kind {
+                    TokenKind::Word => t.text(statement),
+                    TokenKind::QuotedIdent => t.text(statement).trim_matches(['"', '`', '[', ']']),
+                    _ => return None,
+                };
+                let call = tokens
+                    .get(i + 1)
+                    .is_some_and(|n| n.kind == TokenKind::Symbol && n.text(statement) == "(");
+                outside
+                    .reaches(&name.to_ascii_lowercase(), call)
+                    .then_some(name)
+            })
         })
 }
 
@@ -133,8 +353,10 @@ pub fn check<'a>(
                 _ => "changes the session or its transaction",
             }
         ))),
+        // Also anywhere in a Transact-SQL batch or after a MySQL `DELIMITER`.
         (AgentAccess::ReadWrite, _)
-            if matches!(classify(statement), TxEffect::Begin | TxEffect::End) =>
+            if analysis.transaction
+                || matches!(classify(statement), TxEffect::Begin | TxEffect::End) =>
         {
             Err(AgentError::Denied(
                 "each statement an agent runs commits on its own: BEGIN, COMMIT and ROLLBACK \
@@ -142,18 +364,25 @@ pub fn check<'a>(
                     .to_owned(),
             ))
         }
-        (AgentAccess::ReadWrite, _) => match (&analysis.unfiltered, unfiltered) {
-            (Some(table), UnfilteredRule::Refuse) => Err(AgentError::Denied(format!(
-                "this statement changes every row of `{}`: add a WHERE. PlatypusDB's Safety \
+        (AgentAccess::ReadWrite, _)
+            if !analysis.unfiltered.is_empty() && unfiltered == UnfilteredRule::Refuse =>
+        {
+            let tables: Vec<String> = analysis
+                .unfiltered
+                .iter()
+                .map(|u| match &u.table.schema {
+                    Some(schema) => format!("`{schema}.{}`", u.table.name),
+                    None => format!("`{}`", u.table.name),
+                })
+                .collect();
+            Err(AgentError::Denied(format!(
+                "this statement changes every row of {}: add a WHERE. PlatypusDB's Safety \
                  settings ask before UPDATE or DELETE without WHERE and TRUNCATE, and agents \
                  cannot answer",
-                table.schema.as_ref().map_or_else(
-                    || table.name.clone(),
-                    |schema| format!("{schema}.{}", table.name)
-                )
-            ))),
-            _ => Ok(statement),
-        },
+                tables.join(", ")
+            )))
+        }
+        (AgentAccess::ReadWrite, _) => Ok(statement),
     }
 }
 
@@ -343,6 +572,143 @@ mod tests {
         }
     }
 
+    /// Statements an agent with read-only access may try to write or reach outside with:
+    /// each is refused, as a write, an outside effect or more than one statement.
+    mod bypass {
+        use platypus_sql::Dialect::{self, *};
+
+        pub(super) const ATTEMPTS: &[(Dialect, &str)] = &[
+            (MySql, "SELECT 1 /*! INTO OUTFILE '/tmp/x' */"),
+            (MySql, "SELECT /*! LOAD_FILE('/etc/passwd') */"),
+            (MySql, "SELECT /*M!100100 LOAD_FILE('/etc/passwd') */"),
+            (MySql, "SELECT 1 /*!; COMMIT; DELETE FROM t */"),
+            (
+                MySql,
+                "DELIMITER //\nSELECT 1; SET GLOBAL general_log = 1//",
+            ),
+            // Read as the server does under NO_BACKSLASH_ESCAPES.
+            (MySql, r"SELECT 'a\' , LOAD_FILE('/etc/passwd') -- '"),
+            (MySql, r"SELECT 'a\'; COMMIT; DELETE FROM t; -- '"),
+            (MySql, "SELECT GET_LOCK('x', 10)"),
+            (
+                SqlServer,
+                "SELECT 1 COMMIT EXEC('INS'+'ERT INTO t VALUES (1)')",
+            ),
+            (SqlServer, "SELECT 1 EXEC xp_cmdshell 'whoami'"),
+            (SqlServer, "[xp_cmdshell] 'whoami'"),
+            (SqlServer, "SELECT 0xINSERT INTO t VALUES (1)"),
+            (
+                SqlServer,
+                "SELECT * FROM OPENROWSET(BULK 'c:\\secret.txt', SINGLE_CLOB) x",
+            ),
+            (SqlServer, "SELECT * FROM OPENQUERY(srv, 'DELETE FROM t')"),
+            (
+                Postgres,
+                "select query_to_xml('select pg_reload_conf()', true, true, '')",
+            ),
+            (Postgres, "select pg_read_file('/etc/passwd')"),
+            (Postgres, "select * from pg_ls_dir('.')"),
+            (Postgres, "select pg_create_restore_point('x')"),
+            (Postgres, "select 1 -- x\r; select pg_reload_conf()"),
+            (Postgres, r"select 'x\''; delete from t; --'"),
+            (Postgres, "copy (select 1) to program 'id'"),
+            (DuckDb, "SELECT * FROM read_csv('/etc/passwd')"),
+            (DuckDb, "select * from read_text('~/.ssh/id_rsa')"),
+            (DuckDb, "SELECT * FROM 'C:/Users/x/.ssh/id_rsa'"),
+            (DuckDb, "SELECT * FROM \"secrets.csv\""),
+            (DuckDb, "SELECT * FROM t, 'x.parquet'"),
+            (
+                DuckDb,
+                "SELECT * FROM t JOIN 'https://example.com/x.csv' USING (a)",
+            ),
+            (DuckDb, "SELECT * FROM query('SELECT 1')"),
+            (DuckDb, "SELECT getenv('HOME')"),
+            (DuckDb, "SELECT * FROM glob('*')"),
+            (DuckDb, "select * from sqlite_scan('x.db', 't')"),
+            (DuckDb, "COPY t TO 'x.csv'"),
+            (DuckDb, "INSTALL httpfs"),
+            (DuckDb, "ATTACH 'x.db'"),
+            (Sqlite, "select load_extension('x')"),
+            (Sqlite, "select writefile('x', 'y')"),
+            (Sqlite, "ATTACH 'x.db' AS y"),
+            (Sqlite, "PRAGMA writable_schema = 1"),
+            (ClickHouse, "SELECT * FROM file('x.csv')"),
+            (
+                ClickHouse,
+                "SELECT * FROM url('http://169.254.169.254/', CSV)",
+            ),
+            (
+                ClickHouse,
+                "SELECT * FROM executable('x.sh', TSV, 'a String')",
+            ),
+            (ClickHouse, "SELECT * FROM remote('h', db.t)"),
+            (
+                Oracle,
+                "select dbms_xmlquery.newcontext('begin null; end;') from dual",
+            ),
+            (Oracle, "select utl_http.request('http://x') from dual"),
+            (Oracle, "select httpuritype('http://x').getclob() from dual"),
+            (
+                Oracle,
+                "WITH FUNCTION f RETURN NUMBER IS BEGIN RETURN 1; END; SELECT f FROM dual",
+            ),
+            (
+                Ansi,
+                "SELECT * FROM TABLE(system.query(query => 'DELETE FROM t'))",
+            ),
+            (
+                Databricks,
+                "SELECT reflect('java.lang.Runtime', 'getRuntime')",
+            ),
+            (
+                BigQuery,
+                "SELECT * FROM EXTERNAL_QUERY('c', 'DELETE FROM t')",
+            ),
+        ];
+    }
+
+    #[test]
+    fn read_only_refuses_bypass_attempts() {
+        use Dialect::*;
+        let attempts = bypass::ATTEMPTS;
+        for &(dialect, sql) in attempts {
+            let checked = check(
+                sql,
+                dialect,
+                AgentAccess::ReadOnly,
+                UnfilteredRule::Allow,
+                "db",
+            );
+            assert!(
+                matches!(checked, Err(AgentError::Denied(_) | AgentError::Invalid(_))),
+                "{dialect:?}: {sql}: {checked:?}"
+            );
+        }
+        let queries: &[(Dialect, &str)] = &[
+            (MySql, "SELECT /*+ BKA(t) */ * FROM t"),
+            (MySql, "SELECT /*! STRAIGHT_JOIN */ a FROM t"),
+            (
+                SqlServer,
+                "SELECT a FROM t OPTION (USE HINT ('DISABLE_OPTIMIZER_ROWGOAL'))",
+            ),
+            (ClickHouse, "SELECT url, file FROM t"),
+            (DuckDb, "SELECT query FROM t WHERE a = 'x.csv'"),
+            (DuckDb, "SELECT 'x.csv' AS f, read FROM t"),
+            (Oracle, "select dbms_lob.substr(c, 10, 1) from t"),
+            (Ansi, "SELECT query FROM system.runtime.queries"),
+        ];
+        for &(dialect, sql) in queries {
+            let checked = check(
+                sql,
+                dialect,
+                AgentAccess::ReadOnly,
+                UnfilteredRule::Allow,
+                "db",
+            );
+            assert!(checked.is_ok(), "{dialect:?}: {sql}: {checked:?}");
+        }
+    }
+
     #[test]
     fn one_statement_per_call() {
         let rw = |sql| check(sql, PG, AgentAccess::ReadWrite, UnfilteredRule::Allow, "db");
@@ -363,6 +729,54 @@ mod tests {
         assert!(rw("delete from t", UnfilteredRule::Allow).is_ok());
         assert!(denied(rw("commit", UnfilteredRule::Allow)).contains("commits on its own"));
         assert!(denied(rw("start transaction", UnfilteredRule::Allow)).contains("BEGIN"));
+        let both = denied(rw("truncate a, s.b", UnfilteredRule::Refuse));
+        assert!(both.contains("`a`, `s.b`"), "{both}");
+    }
+
+    /// A Transact-SQL batch needs no `;`, and a MySQL `DELIMITER` joins statements: the
+    /// checks look at every statement in them.
+    #[test]
+    fn read_write_checks_every_statement_of_a_batch() {
+        let rw = |sql, dialect| {
+            check(
+                sql,
+                dialect,
+                AgentAccess::ReadWrite,
+                UnfilteredRule::Refuse,
+                "db",
+            )
+        };
+        let ms = Dialect::SqlServer;
+        let every = denied(rw("UPDATE t SET a = 1 WHERE id = 1 DELETE FROM u", ms));
+        assert!(every.contains("every row of `u`"), "{every}");
+        let top = denied(rw("DELETE TOP (2) FROM qa_safe_g", ms));
+        assert!(top.contains("`qa_safe_g`"), "{top}");
+        let alias = denied(rw(
+            "UPDATE g SET v = 1 FROM qa_safe_g g JOIN h ON 1 = 1",
+            ms,
+        ));
+        assert!(alias.contains("`qa_safe_g`"), "{alias}");
+        for sql in [
+            "SELECT 1 BEGIN TRAN",
+            "UPDATE t SET a = 1 WHERE id = 1 COMMIT",
+        ] {
+            assert!(denied(rw(sql, ms)).contains("BEGIN, COMMIT"), "{sql}");
+        }
+        assert!(rw("UPDATE t SET a = 1 WHERE id = 1", ms).is_ok());
+        let my = Dialect::MySql;
+        let joined = denied(rw(
+            "DELIMITER //\nUPDATE t SET a = 1 WHERE id = 1; DELETE FROM u//",
+            my,
+        ));
+        assert!(joined.contains("every row of `u`"), "{joined}");
+        assert!(denied(rw("DELIMITER //\nSELECT 1; COMMIT//", my)).contains("BEGIN, COMMIT"));
+        assert!(
+            rw(
+                "DELIMITER //\nCREATE PROCEDURE p() BEGIN DELETE FROM u; END//",
+                my
+            )
+            .is_ok()
+        );
     }
 
     #[test]

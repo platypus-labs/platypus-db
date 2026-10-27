@@ -55,12 +55,12 @@ export default async function (page) {
   await runStatement(page, "INSERT INTO qa_sql_ok_tx VALUES (5)");
   assert.match((await page.eval(resultError)) ?? "", /transaction was rolled back/);
 
-  // Closing a tab with an open transaction asks first.
+  // Closing a tab with an open transaction asks first: Commit or Rollback, then close.
   await runStatement(page, "INSERT INTO qa_sql_ok_tx VALUES (6)");
   await page.waitFor(`${badge}?.includes('change')`);
   await page.eval(`document.querySelector('.tab.active button[aria-label="Close tab"]').click()`);
   await page.waitFor(`document.querySelector('.modal')?.textContent.includes('open transaction')`);
-  await page.eval(`[...document.querySelectorAll('.modal button')].find(b => b.textContent.trim() === 'Close').click()`);
+  await page.eval(`[...document.querySelectorAll('.modal button')].find(b => b.textContent.trim() === 'Rollback').click()`);
   await page.waitFor(`${tabs}.length === 1`);
   assert.equal(await count(page), "n\n1");
   await runStatement(page, "DROP TABLE qa_sql_ok_tx");

@@ -12,6 +12,7 @@ import {
 } from "../actions";
 import { toCommandError } from "../api";
 import { useSettingsVersion } from "../settings";
+import { typesText } from "../shortcutKeys";
 import { msg, t } from "../i18n";
 import { fold } from "../ui/textSearch";
 
@@ -59,10 +60,14 @@ export function ShortcutsPanel({ search = "" }: { search?: string }) {
     .filter((a) => actionMatches(a, needle) && actionMatches(a, search))
     .sort((a, b) => a.scope.localeCompare(b.scope) || t(a.title).localeCompare(t(b.title)));
 
-  /** Other actions of the same scope that answer to `shortcut`. */
+  /** Other actions that answer to `shortcut` where `action` does: of the same scope, or global
+   *  ones, whose keys are taken before any other scope sees them. */
   const clashes = (action: Action, shortcut: string) =>
     allActions().filter(
-      (a) => a.id !== action.id && a.scope === action.scope && shortcutsOf(a).some((s) => s.toLowerCase() === shortcut.toLowerCase()),
+      (a) =>
+        a.id !== action.id &&
+        (a.scope === action.scope || a.scope === "global" || action.scope === "global") &&
+        shortcutsOf(a).some((s) => s.toLowerCase() === shortcut.toLowerCase()),
     );
 
   function save(action: Action, shortcut: string | null) {
@@ -80,6 +85,8 @@ export function ShortcutsPanel({ search = "" }: { search?: string }) {
     }
     const shortcut = shortcutOf(e.nativeEvent);
     if (!shortcut) return;
+    // A letter alone would run the action instead of being typed: still recording.
+    if (typesText(shortcut)) return setError(t("A key that types a character needs Ctrl or Alt."));
     save(action, shortcut);
     setRecording(null);
   }

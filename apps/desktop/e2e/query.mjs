@@ -8,7 +8,8 @@ import { CTRL } from "./cdp.mjs";
 export const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
 const statusSpan = `${visibleTab}?.querySelector('.statusbar span')`;
 export const status = `(${statusSpan}?.textContent ?? '')`;
-export const editorText = `[...${visibleTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n')`;
+// The SQL editor only: the field above a result is a CodeMirror too.
+export const editorText = `[...(${visibleTab}?.querySelector('.editor')?.querySelectorAll('.cm-line') ?? [])].map(l => l.textContent).join('\\n')`;
 const cancel = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')`;
 export const treeRow = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;

@@ -35,6 +35,9 @@ export interface Result {
   limit: number | null;
   /** The `LIMIT` the editor added to the query (`safety.auto_limit`). */
   autoLimit?: number | null;
+  /** What the server said while the statement ran (notices, `PRINT`, warnings), and what the
+   *  app has to say about the run (a reopened connection). */
+  messages?: string[];
 }
 
 export const fmt = new Intl.NumberFormat();
@@ -92,7 +95,26 @@ interface PanelProps {
   toolbar?: ReactNode;
 }
 
-export function ResultPanel({ result, sort, onHeaderClick, headerHint, source, edit, notes, chart, toolbar }: PanelProps) {
+/** The messages of a result, above it. */
+function Messages({ lines }: { lines: string[] | undefined }) {
+  if (!lines?.length) return null;
+  return (
+    <pre className="result-message server-messages" aria-label={t("Messages")}>
+      {lines.join("\n")}
+    </pre>
+  );
+}
+
+export function ResultPanel(props: PanelProps) {
+  return (
+    <>
+      <Messages lines={props.result.messages} />
+      <ResultBody {...props} />
+    </>
+  );
+}
+
+function ResultBody({ result, sort, onHeaderClick, headerHint, source, edit, notes, chart, toolbar }: PanelProps) {
   const [cache, setCache] = useState<RowCache | null>(null);
   const [version, setVersion] = useState(0);
   const { jobId, columns, status } = result;

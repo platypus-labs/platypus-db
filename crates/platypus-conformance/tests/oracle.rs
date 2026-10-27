@@ -576,3 +576,21 @@ async fn oracle_cancels_a_running_statement() {
     assert!(!conn.is_closed());
     assert_eq!(scalar(&*conn, "SELECT 1 FROM DUAL").await, "1");
 }
+
+#[tokio::test]
+async fn float_columns_keep_every_digit() {
+    let Some(conn) = oracle().await else { return };
+    let batches = rows(
+        &*conn,
+        "SELECT CAST(12345678901234567890 AS FLOAT) AS f, CAST(0.5 AS FLOAT(10)) AS g FROM dual",
+    )
+    .await;
+    assert_eq!(
+        array_value_to_string(batches[0].column(0), 0).unwrap(),
+        "12345678901234567890"
+    );
+    assert_eq!(
+        batches[0].schema().field(1).data_type(),
+        &arrow_schema::DataType::Float64
+    );
+}

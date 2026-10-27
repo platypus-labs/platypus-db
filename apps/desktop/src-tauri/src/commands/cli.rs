@@ -214,6 +214,7 @@ pub async fn run_cli(
     run_id: u64,
     script: String,
 ) -> CommandResult<CliOutput> {
+    state.may_run(session_id, &script)?;
     let (stop, cancel) = oneshot::channel();
     lock(&state.clis).insert(run_id, stop);
     let out = run(&state, session_id, script, cancel).await;

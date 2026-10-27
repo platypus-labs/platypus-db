@@ -6,17 +6,19 @@
 //! Whatever cannot follow (a default or CHECK written in another dialect, a key SQLite cannot
 //! add to an existing table) is left out with a warning: the tables and rows are there anyway.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
 
 use arrow_schema::SchemaRef;
 use platypus_core::{
     ColumnMeta, Connection, ConstraintKind, ExecOptions, ExecResult, ForeignKeyMeta, META_DB_TYPE,
     ObjectKind, ObjectRef, TableDetails,
 };
-use platypus_sql::{Dialect, Lexer, TokenKind};
+use platypus_sql::{Dialect, Lexer, Token, TokenKind};
 
 use crate::import::{
-    ImportColumn, ImportError, ImportMode, ImportPlan, import, query_rows, query_value, target_type,
+    ImportColumn, ImportError, ImportMode, ImportPlan, current_schema, import, query_rows,
+    query_value, target_type,
 };
 
 /// What a migration did.
@@ -38,6 +40,16 @@ struct Table {
     fields: SchemaRef,
     /// The column the database numbers by itself: an integer primary key of its own.
     identity: Option<String>,
+    /// The actions of the foreign keys that have some, by the key's name.
+    actions: HashMap<String, Actions>,
+}
+
+/// What a foreign key does to the rows that refer to a deleted or changed key: `CASCADE`,
+/// `SET NULL`, `SET DEFAULT` or `RESTRICT`; `None` for `NO ACTION`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct Actions {
+    on_delete: Option<String>,
+    on_update: Option<String>,
 }
 
 impl Table {
@@ -87,8 +99,12 @@ async fn read_table((source, dialect, schema): End<'_>, name: &str) -> Result<Ta
         details,
         fields,
         identity: None,
+        actions: HashMap::new(),
     };
     table.identity = identity((source, dialect, schema), &table).await?;
+    if !table.details.foreign_keys.is_empty() {
+        table.actions = actions((source, dialect, schema), name).await;
+    }
     Ok(table)
 }
 
@@ -151,6 +167,148 @@ async fn identity(
         _ => !value.is_empty(),
     };
     Ok(found.then(|| key.name.clone()))
+}
+
+/// The actions of the foreign keys of `table`, by key name, as the source's catalog has
+/// them; none where it cannot be asked (or fails: the keys are copied without).
+async fn actions((source, dialect, schema): End<'_>, table: &str) -> HashMap<String, Actions> {
+    let qualified = literal(&dialect.qualified(Some(schema), table));
+    let query = match dialect {
+        Dialect::Postgres => format!(
+            "SELECT conname, confdeltype::text, confupdtype::text FROM pg_constraint \
+             WHERE contype = 'f' AND conrelid = {qualified}::regclass"
+        ),
+        Dialect::MySql => format!(
+            "SELECT CONSTRAINT_NAME, DELETE_RULE, UPDATE_RULE \
+             FROM information_schema.REFERENTIAL_CONSTRAINTS \
+             WHERE CONSTRAINT_SCHEMA = {} AND TABLE_NAME = {}",
+            literal(schema),
+            literal(table)
+        ),
+        Dialect::SqlServer => format!(
+            "SELECT name, delete_referential_action_desc, update_referential_action_desc \
+             FROM sys.foreign_keys WHERE parent_object_id = OBJECT_ID({qualified})"
+        ),
+        // The driver names SQLite's keys after their number.
+        Dialect::Sqlite => format!(
+            "SELECT DISTINCT {} || id, on_delete, on_update FROM pragma_foreign_key_list({}, {})",
+            literal(&format!("fk_{table}_")),
+            literal(table),
+            literal(schema)
+        ),
+        _ => return HashMap::new(),
+    };
+    let rows = query_rows(source, &query).await.unwrap_or_default();
+    rows.into_iter()
+        .filter_map(|row| {
+            let mut row = row.into_iter();
+            let name = row.next()??;
+            let mut action = || row.next().flatten().and_then(|a| fk_action(&a));
+            let actions = Actions {
+                on_delete: action(),
+                on_update: action(),
+            };
+            (actions != Actions::default()).then_some((name, actions))
+        })
+        .collect()
+}
+
+/// A foreign key action as the catalogs write it (`CASCADE`, `SET_NULL`, PostgreSQL's `c`),
+/// in SQL; `None` for no action.
+fn fk_action(text: &str) -> Option<String> {
+    let action = match text.trim() {
+        "c" => "CASCADE".to_owned(),
+        "n" => "SET NULL".to_owned(),
+        "d" => "SET DEFAULT".to_owned(),
+        "r" => "RESTRICT".to_owned(),
+        other => other.to_ascii_uppercase().replace('_', " "),
+    };
+    matches!(
+        action.as_str(),
+        "CASCADE" | "SET NULL" | "SET DEFAULT" | "RESTRICT"
+    )
+    .then_some(action)
+}
+
+/// The `ON DELETE` and `ON UPDATE` clauses of `actions` that `target` takes; what it takes not
+/// is a warning under `label`.
+fn action_clauses(
+    target: Dialect,
+    actions: Option<&Actions>,
+    label: &str,
+    skipped: &mut Vec<String>,
+) -> String {
+    let Some(actions) = actions else {
+        return String::new();
+    };
+    let mut clauses = String::new();
+    for (event, action) in [
+        ("DELETE", &actions.on_delete),
+        ("UPDATE", &actions.on_update),
+    ] {
+        let Some(action) = action else { continue };
+        let taken = match target {
+            Dialect::DuckDb => false,
+            Dialect::SqlServer => action != "RESTRICT",
+            Dialect::Oracle => {
+                event == "DELETE" && matches!(action.as_str(), "CASCADE" | "SET NULL")
+            }
+            _ => true,
+        };
+        if taken {
+            let _ = write!(clauses, " ON {event} {action}");
+        } else if action != "RESTRICT" {
+            // The targets without RESTRICT check their keys at once, which restricts already
+            // (MariaDB's catalog says RESTRICT of a key declared without an action).
+            skipped.push(format!(
+                "{label}: {} has no ON {event} {action}; the key was copied without it",
+                database(target)
+            ));
+        }
+    }
+    clauses
+}
+
+/// What a copy of one table into a new table keeps of a source column, as [`migrate`] does:
+/// NOT NULL, the primary key and a default the target reads.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ColumnTraits {
+    pub name: String,
+    pub not_null: bool,
+    pub primary_key: bool,
+    /// As the target writes it.
+    pub default: Option<String>,
+}
+
+/// The [`ColumnTraits`] of the columns of `table` in `schema` (the session's when `None`) of
+/// `source`, for a new table of `target`.
+pub async fn column_traits(
+    (source, dialect): (&dyn Connection, Dialect),
+    (schema, table): (Option<&str>, &str),
+    target: Dialect,
+) -> Result<Vec<ColumnTraits>, ImportError> {
+    let schema = match schema {
+        Some(schema) => schema.to_owned(),
+        None => current_schema(source, dialect).await.unwrap_or_default(),
+    };
+    let details = source.table_details(&schema, table).await?;
+    Ok(details
+        .columns
+        .iter()
+        .map(|c| ColumnTraits {
+            name: c.name.clone(),
+            not_null: !c.nullable,
+            primary_key: c.primary_key,
+            default: c
+                .default
+                .as_deref()
+                .and_then(|d| portable_default(d, (dialect, target), &c.data_type))
+                // ClickHouse has none of the current time's names.
+                .filter(|d| {
+                    d != "NULL" && !(target == Dialect::ClickHouse && d.starts_with("CURRENT_"))
+                }),
+        })
+        .collect())
 }
 
 /// `tables` with each after the tables its foreign keys point at, where a cycle allows it:
@@ -376,6 +534,7 @@ impl Migration<'_> {
                 "ALTER TABLE {t} MODIFY {c} {data_type} DEFAULT ({value}){}",
                 if column.nullable { "" } else { " NOT NULL" }
             ),
+            Dialect::ClickHouse => format!("ALTER TABLE {t} MODIFY COLUMN {c} DEFAULT {value}"),
             _ => format!("ALTER TABLE {t} ALTER COLUMN {c} SET DEFAULT {value}"),
         };
         self.defaults.push(Step {
@@ -422,8 +581,14 @@ impl Migration<'_> {
             } else {
                 self.table(&fk.ref_table)
             };
+            let actions = action_clauses(
+                self.target,
+                table.actions.get(&fk.name),
+                &label,
+                &mut self.skipped,
+            );
             clauses.push(format!(
-                "CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {referenced} ({})",
+                "CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {referenced} ({}){actions}",
                 self.target.quote_ident(&fk.name),
                 names(self.target, &fk.columns),
                 names(self.target, &fk.ref_columns)
@@ -466,17 +631,30 @@ impl Migration<'_> {
         let t = self.table(&table.name);
         for fk in &table.details.foreign_keys {
             let label = format!("{}.{}", table.name, fk.name);
+            if self.target == Dialect::ClickHouse {
+                self.skipped.push(format!(
+                    "{label}: ClickHouse has no foreign keys, the key was not copied"
+                ));
+                continue;
+            }
             if !self.copied(&label, fk) {
                 continue;
             }
-            let sql = foreign_key_sql(self.target, self.schema, &table.name, fk);
+            let actions = action_clauses(
+                self.target,
+                table.actions.get(&fk.name),
+                &label,
+                &mut self.skipped,
+            );
+            let sql = foreign_key_sql(self.target, self.schema, &table.name, fk) + &actions;
             self.end.push(Step { label, sql });
         }
         for c in checks(&table.details) {
+            let definition = translated_check(&c.definition, (self.source, self.target));
             let sql = format!(
                 "ALTER TABLE {t} ADD CONSTRAINT {} {}",
                 self.target.quote_ident(&c.name),
-                check_clause(&requote(&c.definition, (self.source, self.target)))
+                check_clause(&definition)
             );
             let label = format!("{}.{}", table.name, c.name);
             self.end.push(Step { label, sql });
@@ -505,6 +683,13 @@ impl Migration<'_> {
                 continue;
             }
             let label = format!("{}.{name}", table.name);
+            if self.target == Dialect::ClickHouse {
+                self.skipped.push(format!(
+                    "{label}: ClickHouse has no secondary {}indexes, the index was not copied",
+                    if unique { "unique " } else { "" }
+                ));
+                continue;
+            }
             let targets: Option<Vec<&ImportColumn>> = columns
                 .iter()
                 .map(|c| plan.columns.iter().find(|p| &p.target == c))
@@ -582,14 +767,21 @@ fn foreign_key_sql(dialect: Dialect, schema: &str, table: &str, fk: &ForeignKeyM
     )
 }
 
-/// Runs `sql` in a transaction of its own, so that a failure aborts nothing else.
+/// Runs `sql` in a transaction of its own, so that a failure aborts nothing else; on its own
+/// where the target has no transactions (ClickHouse).
 async fn apply(conn: &dyn Connection, sql: &str) -> Result<(), platypus_core::Error> {
-    conn.execute("BEGIN", &ExecOptions::default()).await?;
+    let transaction = conn.capabilities().transactions;
+    if transaction {
+        conn.execute("BEGIN", &ExecOptions::default()).await?;
+    }
     // Read to the end: a `SELECT setval(...)` runs as its rows are read.
     match query_rows(conn, sql).await {
-        Ok(_) => conn.commit().await,
+        Ok(_) if transaction => conn.commit().await,
+        Ok(_) => Ok(()),
         Err(e) => {
-            let _ = conn.rollback().await;
+            if transaction {
+                let _ = conn.rollback().await;
+            }
             Err(match e {
                 ImportError::Database(e) => e,
                 e => platypus_core::Error::Other(e.to_string()),
@@ -829,6 +1021,139 @@ fn requote(sql: &str, (source, target): (Dialect, Dialect)) -> String {
     out
 }
 
+/// A CHECK's condition written for `source` as `target` reads it: names quoted its way, and
+/// PostgreSQL's casts (`(0)::numeric`) and `= ANY (ARRAY[…])` lists, which only PostgreSQL
+/// and DuckDB read, as plain values and `IN (…)`.
+fn translated_check(sql: &str, (source, target): (Dialect, Dialect)) -> String {
+    let sql = requote(sql, (source, target));
+    let casts = |d: Dialect| matches!(d, Dialect::Postgres | Dialect::DuckDb);
+    if !casts(source) || casts(target) {
+        return sql;
+    }
+    in_lists(&without_casts(&sql, target), target)
+}
+
+/// Words that continue a type's name: `character varying`, `timestamp with time zone`.
+const TYPE_WORDS: [&str; 6] = ["varying", "precision", "with", "without", "time", "zone"];
+
+/// `sql` without its `::type` casts.
+fn without_casts(sql: &str, dialect: Dialect) -> String {
+    let tokens: Vec<_> = Lexer::new(sql, dialect).collect();
+    let mut out = String::with_capacity(sql.len());
+    let mut i = 0;
+    while i < tokens.len() {
+        let t = tokens[i];
+        let cast = t.text(sql) == ":" && tokens.get(i + 1).is_some_and(|n| n.text(sql) == ":");
+        if !cast {
+            out.push_str(t.text(sql));
+            i += 1;
+            continue;
+        }
+        // The type: words (some of several), arguments in parentheses, `[]`.
+        i += 2;
+        let mut words = 0;
+        let type_word = |t: &Token| {
+            t.kind == TokenKind::Word
+                && TYPE_WORDS
+                    .iter()
+                    .any(|w| t.text(sql).eq_ignore_ascii_case(w))
+        };
+        while let Some(t) = tokens.get(i) {
+            let text = t.text(sql);
+            match t.kind {
+                TokenKind::Word | TokenKind::QuotedIdent if words == 0 || type_word(t) => {
+                    words += 1;
+                    i += 1;
+                }
+                TokenKind::Whitespace if words > 0 => {
+                    let next = tokens[i + 1..]
+                        .iter()
+                        .find(|t| t.kind != TokenKind::Whitespace);
+                    if next.is_some_and(type_word) {
+                        i += 1;
+                    } else {
+                        break;
+                    }
+                }
+                TokenKind::Symbol if text == "." && words > 0 => i += 1,
+                TokenKind::Symbol if text == "(" && words > 0 => {
+                    while let Some(t) = tokens.get(i) {
+                        i += 1;
+                        if t.text(sql) == ")" {
+                            break;
+                        }
+                    }
+                }
+                TokenKind::Symbol
+                    if text == "[" && tokens.get(i + 1).is_some_and(|n| n.text(sql) == "]") =>
+                {
+                    i += 2;
+                }
+                _ => break,
+            }
+        }
+    }
+    out
+}
+
+/// `sql` with each `= ANY (ARRAY[a, b])` written `IN (a, b)`.
+fn in_lists(sql: &str, dialect: Dialect) -> String {
+    let tokens: Vec<_> = Lexer::new(sql, dialect)
+        .filter(|t| t.kind != TokenKind::Whitespace)
+        .collect();
+    let text = |i: usize| tokens.get(i).map_or("", |t| t.text(sql));
+    let mut out = String::with_capacity(sql.len());
+    let mut copied = 0;
+    let mut i = 0;
+    while i < tokens.len() {
+        // `= ANY (` and maybe more parentheses, `ARRAY[`.
+        let open = (i + 2..tokens.len())
+            .take_while(|&j| text(j) == "(")
+            .count();
+        let list = text(i) == "="
+            && text(i + 1).eq_ignore_ascii_case("ANY")
+            && open > 0
+            && text(i + 2 + open).eq_ignore_ascii_case("ARRAY")
+            && text(i + 3 + open) == "[";
+        if !list {
+            i += 1;
+            continue;
+        }
+        // The matching `]`, then the parentheses closed.
+        let start = i + 3 + open;
+        let mut depth = 0;
+        let mut end = start;
+        while end < tokens.len() {
+            match text(end) {
+                "[" => depth += 1,
+                "]" => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            end += 1;
+        }
+        let closed = (end + 1..tokens.len())
+            .take_while(|&j| text(j) == ")")
+            .count();
+        if text(end) != "]" || closed < open {
+            i += 1;
+            continue;
+        }
+        out.push_str(&sql[copied..tokens[i].start]);
+        out.push_str("IN (");
+        out.push_str(&sql[tokens[start].end..tokens[end].start]);
+        out.push(')');
+        copied = tokens[end + open].end;
+        i = end + open + 1;
+    }
+    out.push_str(&sql[copied..]);
+    out
+}
+
 /// `ddl` with the names it qualifies with schema `from` qualified with `to`.
 fn requalify(ddl: &str, dialect: Dialect, from: &str, to: &str) -> String {
     if from == to {
@@ -961,7 +1286,75 @@ mod tests {
             },
             fields: std::sync::Arc::new(arrow_schema::Schema::empty()),
             identity: None,
+            actions: HashMap::new(),
         }
+    }
+
+    #[test]
+    fn foreign_key_actions_follow_where_the_target_has_them() {
+        assert_eq!(fk_action("c").as_deref(), Some("CASCADE"));
+        assert_eq!(fk_action("SET_NULL").as_deref(), Some("SET NULL"));
+        assert_eq!(fk_action("NO ACTION"), None);
+        assert_eq!(fk_action("a"), None);
+        let actions = Actions {
+            on_delete: Some("CASCADE".to_owned()),
+            on_update: Some("RESTRICT".to_owned()),
+        };
+        let mut skipped = Vec::new();
+        let clause =
+            |d, skipped: &mut Vec<String>| action_clauses(d, Some(&actions), "t.fk", skipped);
+        assert_eq!(
+            clause(Dialect::Sqlite, &mut skipped),
+            " ON DELETE CASCADE ON UPDATE RESTRICT"
+        );
+        // SQL Server's and DuckDB's keys restrict already.
+        assert_eq!(
+            clause(Dialect::SqlServer, &mut skipped),
+            " ON DELETE CASCADE"
+        );
+        assert_eq!(skipped, Vec::<String>::new());
+        assert_eq!(clause(Dialect::DuckDb, &mut skipped), "");
+        assert_eq!(
+            skipped,
+            ["t.fk: DuckDB has no ON DELETE CASCADE; the key was copied without it"]
+        );
+        assert_eq!(
+            action_clauses(Dialect::MySql, None, "t.fk", &mut skipped),
+            ""
+        );
+    }
+
+    #[test]
+    fn checks_lose_postgres_casts_elsewhere() {
+        let pg = (Dialect::Postgres, Dialect::MySql);
+        assert_eq!(
+            translated_check("CHECK ((total >= (0)::numeric))", pg),
+            "CHECK ((total >= (0)))"
+        );
+        assert_eq!(
+            translated_check(
+                "CHECK (((status)::text = ANY ((ARRAY['new'::character varying, 'done'::character varying])::text[])))",
+                pg
+            ),
+            "CHECK (((status) IN ('new', 'done')))"
+        );
+        assert_eq!(
+            translated_check("CHECK ((kind = ANY (ARRAY['a'::text, 'b'::text])))", pg),
+            "CHECK ((kind IN ('a', 'b')))"
+        );
+        assert_eq!(
+            translated_check(
+                "CHECK ((at > '2020-01-01 00:00:00'::timestamp without time zone))",
+                pg
+            ),
+            "CHECK ((at > '2020-01-01 00:00:00'))"
+        );
+        // Between PostgreSQL databases the text stays.
+        let same = (Dialect::Postgres, Dialect::Postgres);
+        assert_eq!(
+            translated_check("CHECK ((n >= (0)::numeric))", same),
+            "CHECK ((n >= (0)::numeric))"
+        );
     }
 
     #[test]

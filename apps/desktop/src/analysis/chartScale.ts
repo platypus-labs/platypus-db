@@ -72,7 +72,8 @@ export function formatTime(ms: number, span: number): string {
 
 const compact = new Map<string, Intl.NumberFormat>();
 
-/** A number in a few characters: 1.5K, 2M, 0.25. */
+/** A number in a few characters: 1.5K, 2M, 0.25; written as `locale` writes numbers (the
+ *  interface language, not the system's). */
 export function formatNumber(v: number, locale?: string): string {
   const key = locale ?? "";
   let format = compact.get(key);
@@ -89,12 +90,36 @@ export function band(n: number, start: number, end: number, padding: number) {
   return { step: size, width: size * (1 - padding), at: (i: number) => start + size * i + (size * padding) / 2 };
 }
 
-/** Which of `n` categories get a label when only `room` fit: every k-th from the first. */
-export function categoryTicks(n: number, room: number): number[] {
+/** Which of `n` categories get a label when only `room` fit: every k-th from the first, and
+ *  with `last` the last one always (the category that gathers the others), in place of a
+ *  label too close to it. */
+export function categoryTicks(n: number, room: number, last = false): number[] {
   const every = Math.max(1, Math.ceil(n / Math.max(1, room)));
   const ticks: number[] = [];
   for (let i = 0; i < n; i += every) ticks.push(i);
+  const end = n - 1;
+  if (last && n > 0 && ticks.at(-1) !== end) {
+    if (end - (ticks.at(-1) ?? -every) < every) ticks.pop();
+    ticks.push(end);
+  }
   return ticks;
+}
+
+/** The label of a category: `null` is SQL NULL, told apart from the text "NULL". */
+export const categoryLabel = (c: string | null): string => c ?? "(NULL)";
+
+/** A chart's data has something to draw: a value of a bar or slice, or a point. */
+export function hasMarks(data: { series: { values: (number | null)[]; points: unknown[] }[] }): boolean {
+  return data.series.some((s) => s.points.length > 0 || s.values.some((v) => v !== null));
+}
+
+/** The categories a pie draws (a positive value) and the ones it leaves out (zero, negative or
+ *  no value), by index. */
+export function pieParts(values: readonly (number | null)[]): { drawn: number[]; left: number[] } {
+  const drawn: number[] = [];
+  const left: number[] = [];
+  values.forEach((v, i) => (v !== null && v > 0 ? drawn : left).push(i));
+  return { drawn, left };
 }
 
 /** Start and end angle of each slice, clockwise from the top; negative values count as 0. */

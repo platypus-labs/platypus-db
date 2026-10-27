@@ -7,12 +7,14 @@ use std::sync::Arc;
 
 use futures::TryStreamExt;
 use platypus_core::{Connection, ConnectionConfig, DriverKind, ExecOptions, ExecResult};
-use platypus_driver_duckdb::files::is_data_file;
+use platypus_driver_duckdb::files::{BAD_LINES, ReadOptions, is_data_file};
 use platypus_sql::Dialect;
 use platypus_transfer::fake::{FakeColumn, fill, fill_collection};
-use platypus_transfer::import::{ImportError, ImportPlan, import, rows_text, target_type};
-use platypus_transfer::migrate::migrate;
-use serde::Serialize;
+use platypus_transfer::import::{
+    ImportError, ImportPlan, import, import_query, rows_text, select_all, target_type,
+};
+use platypus_transfer::migrate::{ColumnTraits, column_traits, migrate};
+use serde::{Deserialize, Serialize};
 use tauri::State;
 use tauri::ipc::Channel;
 
@@ -31,6 +33,19 @@ pub struct PreviewColumn {
     source_type: String,
     /// The column type that holds it in the target database.
     target_type: String,
+    /// What a new table keeps of a source table's column; none for a file.
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    traits: Option<ColumnTraits>,
+}
+
+/// How a delimited file is read, as chosen in the import dialog.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct FileOptions {
+    /// Its encoding's label; none tells it from the bytes.
+    encoding: Option<String>,
+    /// Lines with another number of values are left out.
+    skip_bad_lines: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -42,7 +57,7 @@ pub struct ImportPreview {
     rows: Vec<Vec<Option<String>>>,
 }
 
-async fn open_file(path: &Path) -> CommandResult<Box<dyn Connection>> {
+async fn open_file(path: &Path, options: &FileOptions) -> CommandResult<Box<dyn Connection>> {
     let path = path.to_string_lossy();
     if !is_data_file(&path) {
         return Err(CommandError::new(
@@ -52,7 +67,25 @@ async fn open_file(path: &Path) -> CommandResult<Box<dyn Connection>> {
     }
     let mut config = ConnectionConfig::new(DriverKind::DuckDb);
     config.database = path.into_owned();
-    Ok(super::connect(&config).await?)
+    if let Some(encoding) = &options.encoding {
+        config
+            .options
+            .insert(ReadOptions::ENCODING.to_owned(), encoding.clone());
+    }
+    if options.skip_bad_lines {
+        config
+            .options
+            .insert(ReadOptions::SKIP_BAD_LINES.to_owned(), "true".to_owned());
+    }
+    super::connect(&config).await.map_err(|e| {
+        // Lines that do not fit can be left out: the dialog offers it.
+        let e = CommandError::from(e);
+        if e.message().contains(BAD_LINES) {
+            e.with_kind("bad_lines")
+        } else {
+            e
+        }
+    })
 }
 
 /// The tables of the file at `path` and the first rows of `table` (by default the first),
@@ -63,9 +96,10 @@ pub async fn preview_import(
     session_id: u64,
     path: PathBuf,
     table: Option<String>,
+    options: Option<FileOptions>,
 ) -> CommandResult<ImportPreview> {
     let dialect = Dialect::from(state.session(session_id)?.config.driver);
-    let file = open_file(&path).await?;
+    let file = open_file(&path, &options.unwrap_or_default()).await?;
     let schema = file
         .schemas()
         .await?
@@ -84,22 +118,19 @@ pub async fn preview_import(
     let table = table
         .or_else(|| tables.first().cloned())
         .ok_or_else(|| CommandError::new("import", "the file has no data"))?;
-    preview(&*file, (Dialect::DuckDb, None), tables, table, dialect).await
+    preview(&*file, (DriverKind::DuckDb, None), tables, table, dialect).await
 }
 
 /// The first rows of `table` (in `schema`) read on `source`, with the column types they would
 /// take in `target`.
 async fn preview(
     source: &dyn Connection,
-    (dialect, schema): (Dialect, Option<&str>),
+    (driver, schema): (DriverKind, Option<&str>),
     tables: Vec<String>,
     table: String,
     target: Dialect,
 ) -> CommandResult<ImportPreview> {
-    let sql = dialect.limited(
-        &format!("SELECT * FROM {}", dialect.qualified(schema, &table)),
-        PREVIEW_ROWS,
-    );
+    let sql = select_all(driver, (schema, &table), Some(PREVIEW_ROWS));
     let ExecResult::Rows(stream) = source.execute(&sql, &ExecOptions::default()).await? else {
         return Err(CommandError::new("import", "the source returned no rows"));
     };
@@ -116,6 +147,7 @@ async fn preview(
                 .cloned()
                 .unwrap_or_else(|| f.data_type().to_string()),
             target_type: target_type(f, target),
+            traits: None,
         })
         .collect();
     let mut rows = Vec::new();
@@ -144,15 +176,25 @@ pub async fn preview_transfer(
     let config = state.session(source_session_id)?.config;
     let target = Dialect::from(state.session(target_session_id)?.config.driver);
     let source = super::connect(&config).await?;
-    let dialect = Dialect::from(config.driver);
-    preview(
+    let mut shown = preview(
         &*source,
-        (dialect, schema.as_deref()),
+        (config.driver, schema.as_deref()),
         vec![table.clone()],
-        table,
+        table.clone(),
         target,
     )
-    .await
+    .await?;
+    if config.driver != DriverKind::Mongo {
+        let at = (schema.as_deref(), table.as_str());
+        let source = (&*source, Dialect::from(config.driver));
+        // Without them the copy still works, as a plain table.
+        if let Ok(traits) = column_traits(source, at, target).await {
+            for column in &mut shown.columns {
+                column.traits = traits.iter().find(|t| t.name == column.name).cloned();
+            }
+        }
+    }
+    Ok(shown)
 }
 
 /// Imports the file at `path` into the session's database on a connection of its own, as
@@ -164,9 +206,13 @@ pub fn import_file(
     session_id: u64,
     path: PathBuf,
     plan: ImportPlan,
+    options: Option<FileOptions>,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
-    let source = async move { Ok((open_file(&path).await?, Dialect::DuckDb)) };
+    let source = async move {
+        let file = open_file(&path, &options.unwrap_or_default()).await?;
+        Ok((file, DriverKind::DuckDb))
+    };
     start(&state, session_id, source, plan, on_event)
 }
 
@@ -181,10 +227,7 @@ pub fn transfer_table(
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
     let config = state.session(source_session_id)?.config;
-    let source = async move {
-        let dialect = Dialect::from(config.driver);
-        Ok((super::connect(&config).await?, dialect))
-    };
+    let source = async move { Ok((super::connect(&config).await?, config.driver)) };
     start(&state, target_session_id, source, plan, on_event)
 }
 
@@ -193,7 +236,7 @@ pub fn transfer_table(
 fn start(
     state: &AppState,
     target_session_id: u64,
-    source: impl Future<Output = CommandResult<(Box<dyn Connection>, Dialect)>> + Send + 'static,
+    source: impl Future<Output = CommandResult<(Box<dyn Connection>, DriverKind)>> + Send + 'static,
     plan: ImportPlan,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
@@ -202,17 +245,20 @@ fn start(
         target_session_id,
         on_event,
         move |job, target, dialect| async move {
-            let (source, source_dialect) = source.await?;
-            import(
-                (&*source, source_dialect),
-                (&*target, dialect),
-                &plan,
-                |rows| {
-                    job.progress(rows);
-                    !job.stopping()
-                },
-            )
-            .await
+            let (source, driver) = source.await?;
+            let progress = |rows| {
+                job.progress(rows);
+                !job.stopping()
+            };
+            let target = (&*target, dialect);
+            // MongoDB reads its collection with `find`, not SQL.
+            if driver == DriverKind::Mongo {
+                let at = (plan.source_schema.as_deref(), plan.source_table.as_str());
+                let query = select_all(driver, at, None);
+                import_query(&*source, &query, target, &plan, progress).await
+            } else {
+                import((&*source, Dialect::from(driver)), target, &plan, progress).await
+            }
             .map_err(import_error)
         },
     )
@@ -306,6 +352,8 @@ fn spawn_job<F>(
 where
     F: Future<Output = CommandResult<u64>> + Send + 'static,
 {
+    // Every job here writes into the session's database.
+    state.writable(session_id)?;
     let session = state.session(session_id)?;
     let log = Arc::clone(&state.query_log);
     let job = Export::spawn(on_event, true, move |job| async move {

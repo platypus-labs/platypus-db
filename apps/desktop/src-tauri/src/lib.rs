@@ -180,6 +180,9 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::connections::default_connection,
         commands::connections::parse_connection_url,
         commands::connections::connection_url,
+        commands::connections::connection_has_password,
+        commands::connections::remember_password,
+        commands::connections::duplicate_connection,
         commands::connections::save_connection,
         commands::connections::delete_connection,
         commands::connections::set_virtual_key,
@@ -246,6 +249,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::meta::list_schemas,
         commands::meta::list_objects,
         commands::meta::table_details,
+        commands::meta::generated_columns,
         commands::meta::referencing_keys,
         commands::meta::lookup_values,
         commands::search::search_metadata,
@@ -334,5 +338,8 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::schema::table_design,
         commands::schema::table_script,
         commands::schema::apply_table_script,
+        commands::schema::schema_tables,
+        commands::schema::lint_schema,
+        commands::schema::compare_schemas,
     ]
 }

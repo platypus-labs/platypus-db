@@ -89,6 +89,8 @@ export default async function (page) {
     assert.ok(mark < MARK_LIMIT_MS, `marking ${n} rows took ${Math.round(mark)} ms`);
     assert.ok(saved < SAVE_LIMIT_MS, `saving ${n} deleted rows took ${Math.round(saved)} ms`);
     await run(page, `SELECT count(*) AS left_rows FROM ${TABLE}`);
+    // The count's grid is in place once its bar says it cannot be edited (the table's was).
+    await page.waitFor(`${editBar}.includes('Read-only')`, 15_000);
     await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
     await page.eval(`window.__copied = undefined; ${grid}.focus()`);
     await page.key("a", "KeyA", 65, CTRL);

@@ -7,8 +7,12 @@
 import type { ColumnInfo, CompletionCatalog, QueryEvent, ResultTable } from "../api";
 import type { Result } from "../components/ResultPanel";
 
-/** Words that start a whole query, run as typed. DuckDB also reads `FROM t` alone. */
-const QUERY_START = /^(?:\(|(?:select|with|from|values|table|describe|summarize|pivot|unpivot|explain|show)\b)/i;
+/** Words that start a whole query, run as typed, after any opening parentheses (`(SELECT …)
+ *  UNION …`). DuckDB also reads `FROM t` alone. */
+const QUERY_START = /^\(*\s*(?:select|with|from|values|table|describe|summarize|pivot|unpivot|explain|show)\b/i;
+/** What follows a column in a condition: an operator, a comparison word, or nothing. A column
+ *  named like a query word (`values = 3`, `(show IS NULL)`) makes a condition, not a query. */
+const CONDITION_NEXT = /^\s*(?:$|[=<>!~^&|%:.,)]|(?:is|in|not|like|ilike|glob|similar|between|and|or|collate|isnull|notnull)\b)/i;
 /** Clauses that continue `SELECT … FROM result`. */
 const CLAUSE_START =
   /^(?:where|group\s+by|order\s+by|having|limit|offset|qualify|window|using\s+sample|(?:natural\s+|cross\s+|positional\s+|asof\s+)?(?:(?:left|right|full|inner|semi|anti)\s+(?:outer\s+)?)?join)\b/i;
@@ -42,28 +46,72 @@ export function topLevel(sql: string): string {
   return out;
 }
 
-/** What `SELECT` lists for `fragment`: with a `GROUP BY`, its expressions and the count of
- *  each group, since `*` would name columns that are not grouped. */
-function selectList(fragment: string): string {
+/** `name` as a quoted identifier. */
+const quoteName = (name: string) => `"${name.replace(/"/g, '""')}"`;
+
+/** The comma-separated items of `text` at its top level, trimmed. */
+function topItems(text: string): string[] {
+  const masked = topLevel(text);
+  const items: string[] = [];
+  let from = 0;
+  for (let i = 0; i <= masked.length; i++) {
+    if (i === masked.length || masked[i] === ",") {
+      items.push(text.slice(from, i).trim());
+      from = i + 1;
+    }
+  }
+  return items;
+}
+
+/** `fragment` and what `SELECT` lists for it: with a `GROUP BY`, its expressions and the
+ *  count of each group, since `*` would name columns that are not grouped. Ordinals (`GROUP
+ *  BY 2`) become the names of the result's `columns`: in the select list they would be
+ *  constants, and in the `GROUP BY` they would point at the list's own items. */
+function grouped(fragment: string, columns: readonly string[]): { select: string; fragment: string } {
   const masked = topLevel(fragment);
   const group = /\bgroup\s+by\b/i.exec(masked);
-  if (!group) return "*";
+  if (!group) return { select: "*", fragment };
   const start = group.index + group[0].length;
-  const end = AFTER_GROUP.exec(masked.slice(start));
-  const exprs = fragment.slice(start, end ? start + end.index : fragment.length).trim();
-  if (!exprs) return "*";
-  return `${/^all$/i.test(exprs) ? "*" : exprs}, count(*) AS count`;
+  const after = AFTER_GROUP.exec(masked.slice(start));
+  const end = after ? start + after.index : fragment.length;
+  const exprs = fragment.slice(start, end).trim();
+  if (!exprs) return { select: "*", fragment };
+  if (/^all$/i.test(exprs)) return { select: "*, count(*) AS count", fragment };
+  const items = topItems(exprs).map((item) => {
+    const name = /^\d+$/.test(item) ? columns[Number(item) - 1] : undefined;
+    return name === undefined ? item : quoteName(name);
+  });
+  const list = items.join(", ");
+  if (list === exprs) return { select: `${list}, count(*) AS count`, fragment };
+  const tail = fragment.slice(end).trimStart();
+  return {
+    select: `${list}, count(*) AS count`,
+    fragment: `${fragment.slice(0, start)} ${list}${tail ? ` ${tail}` : ""}`,
+  };
+}
+
+/** `sql` as typed when it is a whole query, i.e. it starts with a query word that is not the
+ *  column of a condition; else `sql` with such a column quoted, since DuckDB reserves some of
+ *  these words (`values = 3`); else `null`. */
+function wholeQuery(sql: string): { query: string } | { condition: string } | null {
+  const start = QUERY_START.exec(sql);
+  if (!start) return null;
+  if (!CONDITION_NEXT.test(sql.slice(start[0].length))) return { query: sql };
+  const word = /\w+$/.exec(start[0])!;
+  return { condition: `${sql.slice(0, word.index)}${quoteName(word[0])}${sql.slice(start[0].length)}` };
 }
 
 /** The query the field's `text` runs: a whole query as typed; a clause (`WHERE …`, `ORDER BY
  *  …`, `GROUP BY …`, a join) after `SELECT … FROM result`; anything else as the condition of
- *  a `WHERE`. `null` for no text. */
-export function resultQuery(text: string): string | null {
-  const sql = text.trim().replace(/;+\s*$/, "").trim();
+ *  a `WHERE`. `columns` are the result's, which `GROUP BY` ordinals name. `null` for no text. */
+export function resultQuery(text: string, columns: readonly string[] = []): string | null {
+  let sql = text.trim().replace(/;+\s*$/, "").trim();
   if (!sql) return null;
-  if (QUERY_START.test(sql)) return sql;
-  const fragment = CLAUSE_START.test(sql) ? sql : `WHERE ${sql}`;
-  return `SELECT ${selectList(fragment)} FROM result ${fragment}`;
+  const whole = wholeQuery(sql);
+  if (whole && "query" in whole) return whole.query;
+  if (whole) sql = whole.condition;
+  const query = grouped(CLAUSE_START.test(sql) ? sql : `WHERE ${sql}`, columns);
+  return `SELECT ${query.select} FROM result ${query.fragment}`;
 }
 
 /** The copy holds other results than `wanted` (the tab ran again): it must be loaded again. */
@@ -106,6 +154,11 @@ export function withEvent(result: Result, event: QueryEvent): Result {
       return { ...result, status: { kind: "affected", rows: event.rows, elapsedMs: event.elapsed_ms } };
     case "failed":
       return { ...result, status: { kind: "error", error: event.error } };
+    case "messages":
+      return { ...result, messages: [...(result.messages ?? []), ...event.lines] };
+    // The field shows the first result of its query; DuckDB, which runs it, has no other.
+    case "next":
+      return result;
   }
 }
 

@@ -291,6 +291,21 @@ fn describes_the_schema(client: &mut Client) {
         &json!({ "connection": "App db", "text": "T" }),
     );
     assert!(!error && found.contains("\"name\":\"t\""), "{found}");
+    // What does not exist is an error, not an empty answer.
+    let (missing, error) = client.call(
+        "describe_table",
+        &json!({ "connection": "App db", "schema": "main", "table": "nope" }),
+    );
+    assert!(
+        error && missing.contains("no table or view `main.nope`"),
+        "{missing}"
+    );
+    let (missing, error) = client.call(
+        "list_objects",
+        &json!({ "connection": "App db", "schema": "nope" }),
+    );
+    // SQLite fails on its own; other databases list nothing, which is reported as missing.
+    assert!(error, "{missing}");
 }
 
 #[test]

@@ -7,10 +7,11 @@
 //! TDS attention: the server stops the batch and the session stays usable, with its
 //! transaction, temporary tables and settings.
 //!
-//! A batch can return several result sets; like the other drivers, `execute` streams the
-//! first one and reads the rest to the end without returning them, so every statement of
-//! the batch runs and its errors are reported. A batch without results reports the rows
-//! its statements changed in total.
+//! A batch can return several result sets: `execute` streams the first one, and each is
+//! followed by the next ([`platypus_core::NextResult`]); one nobody asks for is read to the end
+//! unseen, so every statement of the batch runs and its errors are reported. A batch without
+//! results reports the rows its statements changed in total. `PRINT` and other
+//! informational messages are kept for [`Connection::take_messages`].
 
 #[doc(hidden)]
 pub mod columns;
@@ -47,6 +48,9 @@ const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 const DEFAULT_PORT: u16 = 1433;
 
+/// How long [`Connection::check_alive`] waits for the server's answer.
+const PING_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MssqlDriver;
 
@@ -73,6 +77,7 @@ pub struct MssqlConnection {
     tx: TxTracker,
     /// Set once an error shows the server connection is gone.
     closed: Arc<AtomicBool>,
+    messages: Messages,
 }
 
 /// The `tiberius` configuration of `config`, without the address to connect to.
@@ -124,21 +129,27 @@ async fn login(session: tiberius::Config, host: &str, port: u16) -> tiberius::Re
 
 /// Logs in, falling back to plaintext for `prefer` when the server has no TLS, and
 /// following one redirection (Azure SQL gateways send clients to the database's node)
-/// unless the connection goes through a tunnel, which leads to one address only.
-async fn open(config: &ConnectionConfig) -> Result<Session> {
+/// unless the connection goes through a tunnel, which leads to one address only. Returns
+/// the session with whether it is encrypted: when the client asks for encryption the login
+/// fails rather than going on in plaintext, so it is unless `prefer` fell back.
+/// (`CONNECTIONPROPERTY` has no `encrypt_option`, and `sys.dm_exec_connections` needs
+/// `VIEW SERVER STATE`.)
+async fn open(config: &ConnectionConfig) -> Result<(Session, bool)> {
     let mut session = session_config(config);
     let (host, port) = match config.connect_addr {
         Some(addr) => (addr.ip().to_string(), addr.port()),
         None => (config.host.clone(), config.port.unwrap_or(DEFAULT_PORT)),
     };
+    let mut encrypted = config.ssl_mode != SslMode::Disable;
     let mut result = login(session.clone(), &host, port).await;
     if config.ssl_mode == SslMode::Prefer
         && matches!(&result, Err(tiberius::error::Error::Tls(m)) if m == NO_SERVER_TLS)
     {
         session.encryption(EncryptionLevel::NotSupported);
+        encrypted = false;
         result = login(session.clone(), &host, port).await;
     }
-    match result {
+    let session = match result {
         Err(tiberius::error::Error::Routing { host, port }) if config.connect_addr.is_none() => {
             session.host(&host);
             session.port(port);
@@ -146,7 +157,8 @@ async fn open(config: &ConnectionConfig) -> Result<Session> {
         }
         other => other,
     }
-    .map_err(|e| connect_error(e, &host, port))
+    .map_err(|e| connect_error(e, &host, port))?;
+    Ok((session, encrypted))
 }
 
 impl MssqlConnection {
@@ -158,7 +170,7 @@ impl MssqlConnection {
             )));
         }
         let timeout = config.connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT);
-        let mut session = tokio::time::timeout(timeout, open(config))
+        let (mut session, encrypted) = tokio::time::timeout(timeout, open(config))
             .await
             .map_err(|_| Error::Connect(format!("timed out after {}s", timeout.as_secs())))??;
 
@@ -166,8 +178,7 @@ impl MssqlConnection {
         let row = session
             .simple_query(
                 "SELECT CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128)), \
-                 CAST(SERVERPROPERTY('EngineEdition') AS INT), \
-                 CAST(CONNECTIONPROPERTY('encrypt_option') AS NVARCHAR(10))",
+                 CAST(SERVERPROPERTY('EngineEdition') AS INT)",
             )
             .await
             .map_err(|e| map_error(e, ""))?
@@ -194,17 +205,52 @@ impl MssqlConnection {
             server: ServerInfo {
                 product: product.to_owned(),
                 version: text(0),
-                encrypted: text(2).eq_ignore_ascii_case("TRUE"),
+                encrypted,
             },
             tx: TxTracker::default(),
             closed: Arc::new(AtomicBool::new(false)),
+            messages: Messages::default(),
         })
     }
 }
 
+/// The informational messages of the statements run (`PRINT`, `RAISERROR` below severity
+/// 11), until [`Connection::take_messages`] takes them.
+type Messages = Arc<std::sync::Mutex<Vec<String>>>;
+
+/// How a result of a batch starts, as its task tells the connection.
 enum Started {
     Affected(u64),
-    Rows(SchemaRef, mpsc::Receiver<Result<RecordBatch>>),
+    /// A result set: its rows, then what follows it.
+    Rows(
+        SchemaRef,
+        mpsc::Receiver<Result<RecordBatch>>,
+        oneshot::Receiver<Result<Option<Started>>>,
+    ),
+}
+
+/// Where a task sends the next result of its batch; `None` when there is no other.
+type Reply = oneshot::Sender<Result<Option<Started>>>;
+
+impl Started {
+    fn into_result(self) -> ExecResult {
+        match self {
+            Self::Affected(rows) => ExecResult::Affected { rows },
+            Self::Rows(schema, mut rx, next) => {
+                let stream = futures::stream::poll_fn(move |cx| rx.poll_recv(cx));
+                let next: platypus_core::NextResult = Box::pin(async move {
+                    match next.await {
+                        Ok(Ok(Some(started))) => Ok(Some(started.into_result())),
+                        Ok(Ok(None)) | Err(_) => Ok(None),
+                        Ok(Err(e)) => Err(e),
+                    }
+                });
+                ExecResult::Rows(
+                    RecordBatchStream::new(schema, stream.boxed()).with_next(Some(next)),
+                )
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -247,8 +293,31 @@ impl Connection for MssqlConnection {
         &self.server
     }
 
+    fn take_messages(&self) -> Vec<String> {
+        std::mem::take(&mut *self.messages.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+
     fn is_closed(&self) -> bool {
         self.closed.load(Ordering::Acquire)
+    }
+
+    /// `SELECT 1` on the session, outside the transaction tracking: in manual-commit mode
+    /// the driver sends `BEGIN TRANSACTION` itself, so the probe opens none. A session
+    /// killed on the server fails only when used.
+    async fn check_alive(&self) -> bool {
+        if self.is_closed() {
+            return false;
+        }
+        // A statement holds the session: in use, so alive.
+        let Ok(mut session) = self.session.try_lock() else {
+            return true;
+        };
+        let probe = run_simple(&mut session, "SELECT 1", &self.closed);
+        if tokio::time::timeout(PING_TIMEOUT, probe).await.is_err() {
+            // Unanswered: the half-read response leaves the protocol out of step.
+            self.closed.store(true, Ordering::Release);
+        }
+        !self.is_closed()
     }
 
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {
@@ -287,6 +356,16 @@ impl Connection for MssqlConnection {
         meta::databases(self).await
     }
 
+    async fn explain(&self, sql: &str, analyze: bool) -> Result<platypus_core::Explain> {
+        if analyze {
+            return Err(Error::Unsupported(
+                "SQL Server plans with actual rows; Explain plan shows the estimated one"
+                    .to_owned(),
+            ));
+        }
+        self.showplan(sql).await
+    }
+
     async fn search_metadata(&self, needle: &str) -> Result<Vec<MetadataMatch>> {
         meta::search_metadata(self, needle).await
     }
@@ -315,15 +394,51 @@ impl Connection for MssqlConnection {
         platypus_core::Capabilities {
             transactions: true,
             cancel: true,
+            explain: true,
             object_ddl: true,
             multiple_databases: true,
             metadata_search: true,
-            ..Default::default()
         }
     }
 }
 
 impl MssqlConnection {
+    /// The estimated plan, from `SET SHOWPLAN_TEXT ON`: the statement is compiled, not run.
+    async fn showplan(&self, sql: &str) -> Result<platypus_core::Explain> {
+        let mut session = self.session.lock().await;
+        run_simple(&mut session, "SET SHOWPLAN_TEXT ON", &self.closed).await?;
+        let fail = |e| lost(map_error(e, sql), &self.closed);
+        let sets = match session.simple_query(sql).await {
+            Ok(stream) => stream.into_results().await.map_err(fail),
+            Err(e) => Err(fail(e)),
+        };
+        let off = run_simple(&mut session, "SET SHOWPLAN_TEXT OFF", &self.closed).await;
+        let sets = sets?;
+        off?;
+        // Each step is a line `|--Operation(...)`, indented by its depth; the other rows
+        // repeat the statement.
+        let plan = sets
+            .iter()
+            .flatten()
+            .filter_map(|row| row.get::<&str, _>(0))
+            .filter(|line| line.contains("|--"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if plan.is_empty() {
+            return Err(Error::Other("the database returned no plan".to_owned()));
+        }
+        let root = platypus_core::plan_from_text(&plan, |line| {
+            let at = line.find("|--")?;
+            Some((line[..at].chars().count(), line[at + 3..].trim().to_owned()))
+        });
+        Ok(platypus_core::Explain::new(
+            platypus_core::ExplainFormat::Text,
+            plan,
+            root,
+            false,
+        ))
+    }
+
     /// Ends the open transaction; the server may have rolled it back already (some errors
     /// do), hence the `@@TRANCOUNT` check.
     async fn end_transaction(&self, sql: &str) -> Result<()> {
@@ -347,18 +462,13 @@ impl MssqlConnection {
             sql,
             batch_size: options.batch_size.max(1),
             closed: Arc::clone(&self.closed),
+            messages: Arc::clone(&self.messages),
         };
         let canceller = self.canceller.clone();
         tokio::spawn(async move { statement.run(session, reply, &canceller).await });
         match started.await.map_err(|_| Error::Closed)?? {
-            Started::Affected(rows) => Ok(ExecResult::Affected { rows }),
-            Started::Rows(schema, mut rx) => {
-                let stream = futures::stream::poll_fn(move |cx| rx.poll_recv(cx));
-                Ok(ExecResult::Rows(RecordBatchStream::new(
-                    schema,
-                    stream.boxed(),
-                )))
-            }
+            Some(started) => Ok(started.into_result()),
+            None => Ok(ExecResult::Affected { rows: 0 }),
         }
     }
 }
@@ -404,6 +514,7 @@ struct Statement {
     sql: String,
     batch_size: usize,
     closed: Arc<AtomicBool>,
+    messages: Messages,
 }
 
 impl Statement {
@@ -411,12 +522,24 @@ impl Statement {
         lost(map_error(e, &self.sql), &self.closed)
     }
 
-    /// Sends the batch, answers with its kind, then streams the rows of its first result.
-    /// The session is clean when the lock is released.
+    /// Moves the messages read so far where `take_messages` finds them, before the consumer
+    /// hears of what came with them.
+    fn keep_messages(&self, results: &tiberius::QueryStream<'_>) {
+        let read = results.take_messages();
+        if !read.is_empty() {
+            self.messages
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .extend(read);
+        }
+    }
+
+    /// Sends the batch, answers with its first result, then streams the rows of each result
+    /// set in turn. The session is clean when the lock is released.
     async fn run(
         self,
         mut session: OwnedMutexGuard<Session>,
-        reply: oneshot::Sender<Result<Started>>,
+        reply: Reply,
         canceller: &MssqlCanceller,
     ) {
         // Armed before sending: a cancel while a long script is written stops it too.
@@ -436,7 +559,7 @@ impl Statement {
     async fn read(
         &self,
         session: &mut Session,
-        reply: oneshot::Sender<Result<Started>>,
+        reply: Reply,
         cancelled: &CancellationToken,
     ) -> Outcome {
         let mut results = tokio::select! {
@@ -453,71 +576,84 @@ impl Statement {
                 }
             },
         };
-        let columns = tokio::select! {
-            biased;
-            () = cancelled.cancelled() => {
-                let _ = reply.send(Err(Error::Cancelled));
-                return Outcome::Interrupted;
-            }
-            item = results.next() => match item {
-                Some(Ok(QueryItem::Metadata(meta))) => meta.columns().to_vec(),
-                Some(Ok(QueryItem::Row(_))) => {
-                    let _ = reply.send(Err(Error::Other("rows before their columns".to_owned())));
-                    return Outcome::Interrupted;
-                }
-                Some(Err(e)) => {
-                    let _ = reply.send(Err(self.fail(e)));
-                    return Outcome::Finished;
-                }
-                None => {
-                    let _ = reply.send(Ok(Started::Affected(results.rows_affected())));
-                    return Outcome::Finished;
-                }
-            },
-        };
-
-        let (fields, builders): (Vec<_>, Vec<_>) = columns
-            .iter()
-            .map(|c| column_builder(&ColumnSpec::from(c)))
-            .unzip();
-        let schema: SchemaRef = Arc::new(Schema::new(fields));
-        let (tx, rx) = mpsc::channel(1);
-        if reply
-            .send(Ok(Started::Rows(Arc::clone(&schema), rx)))
-            .is_err()
-        {
-            return Outcome::Interrupted;
-        }
-        let mut rows = RowSink {
-            schema,
-            builders,
-            len: 0,
-            batch_size: self.batch_size,
-            tx,
-        };
-        self.stream(&mut results, &mut rows, cancelled).await
+        self.stream(&mut results, reply, cancelled).await
     }
 
-    /// Streams the rows of the first result set and reads the further ones to the end.
+    /// Streams the batch's result sets one after the other: each goes to the consumer once
+    /// it has asked for what follows the one before (`reply`). A consumer that stops asking
+    /// leaves the rest to run to its end unread; one that drops a result set it is reading
+    /// stops the batch.
     async fn stream(
         &self,
         results: &mut tiberius::QueryStream<'_>,
-        rows: &mut RowSink,
+        reply: Reply,
         cancelled: &CancellationToken,
     ) -> Outcome {
-        let mut first = true;
+        let mut reply = Some(reply);
+        let mut sink: Option<RowSink> = None;
+        let mut sets = 0;
         loop {
             let item = tokio::select! {
                 biased;
                 () = cancelled.cancelled() => {
-                    rows.send(Err(Error::Cancelled), cancelled).await;
+                    match (&sink, reply.take()) {
+                        (Some(rows), _) => { rows.send(Err(Error::Cancelled), cancelled).await; }
+                        (None, Some(reply)) => { let _ = reply.send(Err(Error::Cancelled)); }
+                        (None, None) => {}
+                    }
                     return Outcome::Interrupted;
                 }
-                () = rows.tx.closed() => return Outcome::Interrupted,
+                () = async {
+                    match &sink {
+                        Some(rows) => rows.tx.closed().await,
+                        None => futures::future::pending().await,
+                    }
+                } => return Outcome::Interrupted,
                 item = results.next() => item,
             };
+            self.keep_messages(results);
             match item {
-                Some(Ok(QueryItem::Row(row))) if first => {
+                Some(Ok(QueryItem::Metadata(meta))) => {
+                    if let Some(mut rows) = sink.take()
+                        && !rows.flush(cancelled).await
+                    {
+                        return Outcome::Interrupted;
+                    }
+                    sets += 1;
+                    let Some(to) = reply.take() else {
+                        continue;
+                    };
+                    let (fields, builders): (Vec<_>, Vec<_>) = meta
+                        .columns()
+                        .iter()
+                        .map(|c| column_builder(&ColumnSpec::from(c)))
+                        .unzip();
+                    let schema: SchemaRef = Arc::new(Schema::new(fields));
+                    let (tx, rx) = mpsc::channel(1);
+                    let (next, follows) = oneshot::channel();
+                    if to
+                        .send(Ok(Some(Started::Rows(Arc::clone(&schema), rx, follows))))
+                        .is_err()
+                    {
+                        // The first result's consumer is gone; a later one only stopped asking.
+                        if sets == 1 {
+                            return Outcome::Interrupted;
+                        }
+                        continue;
+                    }
+                    sink = Some(RowSink {
+                        schema,
+                        builders,
+                        len: 0,
+                        batch_size: self.batch_size,
+                        tx,
+                    });
+                    reply = Some(next);
+                }
+                Some(Ok(QueryItem::Row(row))) => {
+                    let Some(rows) = sink.as_mut() else {
+                        continue;
+                    };
                     if let Err(e) = rows.append(&row) {
                         rows.send(Err(e), cancelled).await;
                         return Outcome::Interrupted;
@@ -526,22 +662,24 @@ impl Statement {
                         return Outcome::Interrupted;
                     }
                 }
-                Some(Ok(QueryItem::Row(_))) => {}
-                Some(Ok(QueryItem::Metadata(_))) => {
-                    if first && !rows.flush(cancelled).await {
-                        return Outcome::Interrupted;
-                    }
-                    first = false;
-                }
                 Some(Err(e)) => {
-                    if !first || rows.flush(cancelled).await {
-                        rows.send(Err(self.fail(e)), cancelled).await;
+                    let error = self.fail(e);
+                    if let Some(mut rows) = sink.take() {
+                        if rows.flush(cancelled).await {
+                            rows.send(Err(error), cancelled).await;
+                        }
+                    } else if let Some(to) = reply.take() {
+                        let _ = to.send(Err(error));
                     }
                     return Outcome::Finished;
                 }
                 None => {
-                    if first {
+                    if let Some(mut rows) = sink.take() {
                         rows.flush(cancelled).await;
+                    }
+                    if let Some(to) = reply.take() {
+                        let last = (sets == 0).then(|| Started::Affected(results.rows_affected()));
+                        let _ = to.send(Ok(last));
                     }
                     return Outcome::Finished;
                 }
@@ -550,7 +688,7 @@ impl Statement {
     }
 }
 
-/// The rows of the first result set on their way to the consumer.
+/// The rows of a result set on their way to the consumer.
 struct RowSink {
     schema: SchemaRef,
     builders: Vec<ColumnBuilder>,
@@ -653,7 +791,9 @@ impl Canceller for MssqlCanceller {
 fn connect_error(e: tiberius::error::Error, host: &str, port: u16) -> Error {
     match e {
         tiberius::error::Error::Server(_) => map_error(e, ""),
-        other => Error::Connect(format!("{host}:{port}: {other}")),
+        other => Error::Connect(platypus_core::without_repeats(&format!(
+            "{host}:{port}: {other}"
+        ))),
     }
 }
 
@@ -695,7 +835,7 @@ fn map_error(e: tiberius::error::Error, sql: &str) -> Error {
         }
         // The response can no longer be followed: the session is unusable.
         E::Io { .. } | E::Protocol(_) | E::Tls(_) | E::Routing { .. } => {
-            Error::Connect(e.to_string())
+            Error::Connect(platypus_core::without_repeats(&e.to_string()))
         }
         other => Error::Other(other.to_string()),
     }

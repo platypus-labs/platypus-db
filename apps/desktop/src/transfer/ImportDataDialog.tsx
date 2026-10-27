@@ -4,7 +4,9 @@ import {
   api,
   type ColumnMeta,
   DATA_FILE_EXTENSIONS,
+  isMongo,
   type ExportEvent,
+  type FileOptions,
   type ImportMode,
   type ImportPlan,
   type ImportPreview,
@@ -53,7 +55,23 @@ type Status =
   | { state: "idle" }
   | { state: "running"; id: number | null; rows: number }
   | { state: "done"; rows: number; ms: number }
-  | { state: "failed"; message: string };
+  | { state: "failed"; message: string }
+  | { state: "cancelled" };
+
+/** The encodings a CSV file can be read in; the first tells it from the bytes. */
+const ENCODINGS: { value: string | null; label: string }[] = [
+  { value: null, label: msg("Detect") },
+  { value: "utf-8", label: "UTF-8" },
+  { value: "windows-1252", label: "Windows-1252" },
+  { value: "iso-8859-1", label: "ISO-8859-1" },
+  { value: "utf-16le", label: "UTF-16 LE" },
+  { value: "utf-16be", label: "UTF-16 BE" },
+];
+
+const DEFAULT_FILE_OPTIONS: FileOptions = { encoding: null, skip_bad_lines: false };
+
+/** Whether `path` is read as delimited text, whose encoding and lines can be chosen. */
+const isDelimited = (path: string) => /\.(csv|tsv)$/i.test(path.trim());
 
 const MODES: { value: ImportMode; label: string }[] = [
   { value: "append", label: msg("Add the rows") },
@@ -87,6 +105,10 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
   const [mode, setMode] = useState<ImportMode>("append");
   const [status, setStatus] = useState<Status>({ state: "idle" });
   const [error, setError] = useState<string | null>(null);
+  /** The file's lines do not all hold as many values: they can be left out. */
+  const [badLines, setBadLines] = useState(false);
+  /** How the file is read; `loaded` was read so. */
+  const [fileOptions, setFileOptions] = useState<FileOptions>(DEFAULT_FILE_OPTIONS);
   const fail = (e: unknown) => setError(failure(e));
   /** The confirmation a production connection asks before the import. */
   const [confirm, setConfirm] = useState<GuardRequest | null>(null);
@@ -185,13 +207,15 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
     }
   }
 
-  async function loadFile(file: string, sheet: string | null) {
+  async function loadFile(file: string, sheet: string | null, options: FileOptions = fileOptions) {
     if (sid === null) return;
     const token = ++previewToken.current;
     setError(null);
+    setBadLines(false);
     setStatus({ state: "idle" });
+    setFileOptions(options);
     try {
-      const p = await api.previewImport(sid, file, sheet);
+      const p = await api.previewImport(sid, file, sheet, options);
       if (token !== previewToken.current) return;
       show(p);
       setLoaded(file);
@@ -201,8 +225,12 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
       setPreview(null);
       setLoaded(null);
       setError(failure(e));
+      setBadLines(toCommandError(e).kind === "bad_lines");
     }
   }
+
+  /** Reads the file again, from its first sheet, as `options` say. */
+  const reload = (options: FileOptions) => path.trim() && void loadFile(path.trim(), null, options);
 
   async function choose() {
     const file = await open({
@@ -212,7 +240,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
     });
     if (typeof file !== "string") return;
     setPath(file);
-    await loadFile(file, null);
+    await loadFile(file, null, DEFAULT_FILE_OPTIONS);
   }
 
   function plan(p: ImportPreview): ImportPlan {
@@ -222,14 +250,21 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
       schema: target.currentSchema ? null : target.schema,
     };
     if (existing === null) {
+      const columns = p.columns.flatMap((c, i) => {
+        const n = newColumns[i];
+        return n?.include
+          ? [{ source: c.name, target: n.target.trim(), data_type: n.type.trim(), not_null: c.not_null ?? false, default: c.default ?? null }]
+          : [];
+      });
+      // A copied table keeps its primary key, when every column of it is copied.
+      const key = p.columns.filter((c) => c.primary_key);
+      const keyed = key.length > 0 && key.every((c) => columns.some((x) => x.source === c.name));
       return {
         ...base,
         table: newTable.trim(),
         create: true,
-        columns: p.columns.flatMap((c, i) => {
-          const n = newColumns[i];
-          return n?.include ? [{ source: c.name, target: n.target.trim(), data_type: n.type.trim() }] : [];
-        }),
+        columns,
+        primary_key: keyed ? key.map((c) => columns.find((x) => x.source === c.name)!.target) : [],
       };
     }
     return {
@@ -262,7 +297,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
         setStatus({ state: "failed", message: event.error.message });
         break;
       case "cancelled":
-        setStatus({ state: "idle" });
+        setStatus({ state: "cancelled" });
     }
   }
 
@@ -271,7 +306,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
     setStatus({ state: "running", id: null, rows: 0 });
     try {
       const p = plan(preview);
-      const id = source ? await api.transferTable(sourceSid!, sid, p, onEvent) : await api.importFile(sid, loaded!, p, onEvent);
+      const id = source ? await api.transferTable(sourceSid!, sid, p, onEvent) : await api.importFile(sid, loaded!, p, fileOptions, onEvent);
       setStatus((s) => (s.state === "running" ? { ...s, id } : s));
     } catch (e) {
       setStatus({ state: "failed", message: failure(e) });
@@ -326,7 +361,8 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
               <select value={target.connection.id} disabled={running} onChange={(e) => chooseConnection(e.target.value)}>
                 {workbench()
                   .connections()
-                  .filter((c) => c.id === target.connection.id || !opensDataFile(c))
+                  // MongoDB takes no SQL tables, and read-only connections take no data.
+                  .filter((c) => c.id === target.connection.id || (!opensDataFile(c) && !isMongo(c.driver) && !c.read_only))
                   .map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -369,12 +405,28 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
                 placeholder={t("CSV, TSV, JSON, NDJSON, Parquet or Excel")}
                 title={path}
                 onChange={(e) => setPath(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && path.trim() && void loadFile(path.trim(), null)}
+                onKeyDown={(e) => e.key === "Enter" && path.trim() && void loadFile(path.trim(), null, DEFAULT_FILE_OPTIONS)}
               />
             </label>
             <button type="button" className="align-end" disabled={running || sid === null} onClick={() => void choose()}>
               {t("Choose file…")}
             </button>
+            {isDelimited(path) && (
+              <label className="field">
+                <span>{t("Encoding")}</span>
+                <select
+                  value={fileOptions.encoding ?? ""}
+                  disabled={running}
+                  onChange={(e) => reload({ ...fileOptions, encoding: e.target.value || null })}
+                >
+                  {ENCODINGS.map((e) => (
+                    <option key={e.label} value={e.value ?? ""}>
+                      {t(e.label)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {preview && preview.tables.length > 1 && (
               <label className="field">
                 <span>{t("Sheet")}</span>
@@ -387,7 +439,25 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
             )}
           </div>
         )}
-        {error && <div className="notice error small">{error}</div>}
+        {error && (
+          <div className="notice error small">
+            {error}
+            {badLines && (
+              <>
+                {" "}
+                <button type="button" className="link" disabled={running} onClick={() => reload({ ...fileOptions, skip_bad_lines: true })}>
+                  {t("Leave these lines out")}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+        {!error && fileOptions.skip_bad_lines && preview && (
+          <div className="notice warn small">{t("The lines with another number of values are left out.")}</div>
+        )}
+        {target.connection.read_only && (
+          <div className="notice warn small">{t("{name} is read-only: nothing is written there.", { name: target.connection.name })}</div>
+        )}
         {preview && (
           <>
             <div className="import-preview">
@@ -437,7 +507,8 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
             ) : (
               <>
                 <div className="import-modes" role="radiogroup" aria-label={t("Rows already in the table")}>
-                  {MODES.map((m) => {
+                  {/* ClickHouse updates no row by its key. */}
+                  {MODES.filter((m) => m.value !== "upsert" || target.connection.driver !== "clickhouse").map((m) => {
                     const off = m.value === "upsert" && keys.length === 0;
                     return (
                       <label key={m.value} className="check" title={off ? t("The table has no primary key") : undefined}>
@@ -478,6 +549,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
           </div>
         )}
         {status.state === "failed" && <div className="notice error small">{t("Nothing was imported: {message}", { message: status.message })}</div>}
+        {status.state === "cancelled" && <div className="notice warn small">{t("Import cancelled: nothing was imported.")}</div>}
         <div className="actions">
           <span className="spacer" />
           {running ? (
@@ -489,7 +561,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
               {t(status.state === "done" ? "Close" : "Cancel")}
             </button>
           )}
-          <button type="button" className="primary" disabled={!ready || running || status.state === "done"} onClick={request}>
+          <button type="button" className="primary" disabled={!ready || running || status.state === "done" || target.connection.read_only} onClick={request}>
             {t(transfer ? "Copy" : "Import")}
           </button>
         </div>

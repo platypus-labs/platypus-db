@@ -30,6 +30,8 @@ export function noteText(note: ParseNote): string {
       return t("Named instance {instance}: set the port it listens on.", { instance: note.instance });
     case "ignored":
       return t("Not used here: {keys}.", { keys: note.keys.join(", ") });
+    case "other_hosts":
+      return t("Only the first host is used; left out: {hosts}.", { hosts: note.hosts.join(", ") });
   }
 }
 

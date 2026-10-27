@@ -9,6 +9,7 @@ import { fold, startsWord } from "../ui/textSearch";
 import { DriversPanel } from "../drivers/DriversPanel";
 import { MasterPasswordPanel } from "./MasterPassword";
 import { msg, t } from "../i18n";
+import { settingNumber } from "./settingValue";
 
 type Value = boolean | number | string;
 
@@ -302,7 +303,7 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
       type="button"
       className="link"
       style={{ visibility: changed ? "visible" : "hidden", gridColumn: c.type === "swatches" ? 3 : undefined }}
-      title={c.type === "color" ? t("Back to the theme's color") : t("Default: {value}", { value: String(def.default) })}
+      title={c.type === "color" ? t("Back to the theme's color") : t("Default: {value}", { value: defaultText(def) })}
       onClick={() => onSave(null)}
     >
       {t("Reset")}
@@ -333,19 +334,26 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
   );
 }
 
-/** Saves on blur or Enter, and only valid numbers within bounds. */
+/** The default of a setting as its control names it: an option's label, On or Off. */
+function defaultText(def: SettingDef<Value>): string {
+  const c = def.control;
+  if (c.type === "select" || c.type === "swatches") {
+    const option = (c.options as { value: unknown; label: string }[]).find((o) => o.value === def.default);
+    if (option) return t(option.label);
+  }
+  if (c.type === "boolean") return t(def.default ? "Enabled" : "Disabled");
+  return String(def.default);
+}
+
+/** Saves on blur or Enter, and only valid numbers within bounds (whole ones for a whole
+ *  step). */
 function NumberInput(props: { value: number; min?: number; max?: number; step?: number; onCommit: (n: number) => void }) {
   const [text, setText] = useState(String(props.value));
   // Follows the value when it changes elsewhere (Reset): blur would save the old one.
   useEffect(() => setText(String(props.value)), [props.value]);
   const commit = () => {
-    const n = Number(text);
-    const valid =
-      text.trim() !== "" &&
-      Number.isFinite(n) &&
-      (props.min === undefined || n >= props.min) &&
-      (props.max === undefined || n <= props.max);
-    if (valid && n !== props.value) props.onCommit(n);
+    const n = settingNumber(text, props);
+    if (n !== null && n !== props.value) props.onCommit(n);
     else setText(String(props.value));
   };
   return (

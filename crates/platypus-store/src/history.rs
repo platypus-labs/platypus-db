@@ -130,6 +130,11 @@ impl HistoryStore {
         let db = Connection::open(path).map_err(db_error)?;
         db.pragma_update(None, "journal_mode", "WAL")
             .map_err(db_error)?;
+        // An entry per statement run: a script of a thousand statements must not wait for a
+        // thousand disk flushes. With WAL the file stays consistent; a power cut may lose the
+        // last entries only.
+        db.pragma_update(None, "synchronous", "NORMAL")
+            .map_err(db_error)?;
         Self::init(db)
     }
 

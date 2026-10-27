@@ -27,6 +27,8 @@ registerAction({
   title: "Create table…",
   group: "manage",
   order: 10,
+  // The editor writes SQL DDL: MongoDB has no table to design.
+  when: ({ connection }) => connection.driver !== "mongo",
   run: ({ connection, database, schema }) =>
     workbench().openTab("table-editor", connection.id, { database, schema: schema.name, table: null }),
 });
@@ -35,9 +37,10 @@ registerAction({
   id: "table_editor.edit",
   scope: "navigator.object",
   title: "Edit table…",
+  shortcut: "F4",
   group: "manage",
   order: 70,
-  when: ({ object }) => object.kind === "table",
+  when: ({ connection, object }) => object.kind === "table" && connection.driver !== "mongo",
   run: ({ connection, database, schema, object }) =>
     workbench().openTab("table-editor", connection.id, {
       database,

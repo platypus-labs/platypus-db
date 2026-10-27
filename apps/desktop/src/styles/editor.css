@@ -118,12 +118,13 @@ button.toggled {
 
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 7px 10px;
   background: var(--bg-tabbar);
-  overflow-x: auto;
-  scrollbar-width: thin;
+  /* Its buttons wrap in a narrow window, and its row never shrinks below them. */
+  min-height: max-content;
 }
 
 .toolbar button {
@@ -504,6 +505,19 @@ button.toggled {
 
 .message-output.failed {
   color: var(--error);
+}
+
+/* Server messages (notices, PRINT, warnings) above a result. */
+.server-messages {
+  margin: 0;
+  padding: 4px 12px;
+  max-height: 7.5em;
+  flex-shrink: 0;
+  overflow: auto;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
 }
 
 /* Terminal mode */

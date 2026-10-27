@@ -21,6 +21,7 @@ use serde::Deserialize;
 
 use crate::import::{
     ImportColumn, ImportError, ImportMode, ImportPlan, import_rows, query_rows, query_value,
+    text_length,
 };
 
 /// Rows per generated batch.
@@ -61,6 +62,10 @@ pub enum Generator {
     Date,
     /// Times within the last ten years.
     Timestamp,
+    /// A time of day, `HH:MM:SS`.
+    Time,
+    /// An IPv4 address of a private network.
+    Ip,
     Uuid,
     /// A new MongoDB `ObjectId`, as its 24 hex digits.
     ObjectId,
@@ -338,6 +343,18 @@ fn text(rng: &mut Rng, generator: &Generator, row: u64) -> Option<String> {
         })
         .to_string(),
         Generator::ObjectId => object_id(rng, row),
+        Generator::Time => format!(
+            "{:02}:{:02}:{:02}",
+            rng.below(24),
+            rng.below(60),
+            rng.below(60)
+        ),
+        Generator::Ip => format!(
+            "10.{}.{}.{}",
+            rng.below(256),
+            rng.below(256),
+            1 + rng.below(254)
+        ),
         Generator::Uuid => {
             let (a, b) = (rng.next(), rng.next());
             // Version 4, variant 1.
@@ -367,6 +384,21 @@ fn text(rng: &mut Rng, generator: &Generator, row: u64) -> Option<String> {
         }
         _ => return None,
     })
+}
+
+/// `value` in at most `limit` characters: its start, or with `end` its end; no space left
+/// at the edge.
+fn cut(value: String, limit: usize, end: bool) -> String {
+    let count = value.chars().count();
+    if count <= limit {
+        return value;
+    }
+    let kept: String = if end {
+        value.chars().skip(count - limit).collect()
+    } else {
+        value.chars().take(limit).collect()
+    };
+    kept.trim().to_owned()
 }
 
 /// `rows` rows of `columns`, the first numbered `first` (for sequences and unique values).
@@ -437,8 +469,22 @@ pub fn batch(
                     Arc::new(b.finish())
                 }
                 other => {
+                    // A text of a bounded length (`varchar(5)`) is cut to it; a unique one
+                    // keeps its end, which tells it apart.
+                    let limit = c
+                        .data_type
+                        .as_deref()
+                        .and_then(text_length)
+                        .and_then(|n| usize::try_from(n).ok());
+                    let unique = matches!(other, Generator::Unique { .. });
                     let mut b = StringBuilder::with_capacity(rows, rows * 16);
-                    numbers.for_each(|n| b.append_option(text(rng, other, n)));
+                    numbers.for_each(|n| {
+                        let value = text(rng, other, n);
+                        b.append_option(match limit {
+                            Some(limit) => value.map(|v| cut(v, limit, unique)),
+                            None => value,
+                        });
+                    });
                     Arc::new(b.finish())
                 }
             }
@@ -447,8 +493,28 @@ pub fn batch(
     RecordBatch::try_new(schema(columns), arrays)
 }
 
+/// The error of foreign key column `name`, whose referenced `table` has no rows.
+fn no_keys(name: &str, table: &str) -> ImportError {
+    ImportError::Plan(format!(
+        "{name} refers to {table}, which has no rows to point at: fill it first"
+    ))
+}
+
+/// Whether the table a foreign key references, `(schema, table)`, is `own`, the one filled.
+/// A schema left out is the session's, whichever it names.
+fn is_own(referenced: (Option<&str>, &str), own: (Option<&str>, &str)) -> bool {
+    fn named(s: Option<&str>) -> Option<&str> {
+        s.filter(|s| !s.is_empty())
+    }
+    referenced.1 == own.1
+        && match (named(referenced.0), named(own.0)) {
+            (Some(a), Some(b)) => a == b,
+            _ => true,
+        }
+}
+
 /// The keys a foreign key can take, at most [`REFERENCE_VALUES`]: the rows of `columns` of
-/// `table` without NULL, `filter` added to their `WHERE`.
+/// `table` without NULL, `filter` added to their `WHERE`. None when it has no rows.
 async fn keys(
     conn: &dyn Connection,
     dialect: Dialect,
@@ -465,24 +531,17 @@ async fn keys(
         not_null.join(" AND ")
     );
     let rows = query_rows(conn, &dialect.limited(&select, REFERENCE_VALUES)).await?;
-    let rows: Vec<Vec<String>> = rows
+    Ok(rows
         .into_iter()
         .filter_map(|r| r.into_iter().collect())
-        .collect();
-    if rows.is_empty() {
-        return Err(ImportError::Plan(format!(
-            "{} refers to {table}, which has no rows to point at: fill it first",
-            columns.join(", ")
-        )));
-    }
-    Ok(rows)
+        .collect())
 }
 
 /// Turns the columns of each composite foreign key (the references with one `key`) into
 /// [`Generator::Tuple`]s over rows of the referenced table.
 async fn composite_keys(
-    conn: &dyn Connection,
-    dialect: Dialect,
+    (conn, dialect): (&dyn Connection, Dialect),
+    own: (Option<&str>, &str),
     columns: &mut [FakeColumn],
     rng: &mut Rng,
 ) -> Result<(), ImportError> {
@@ -519,7 +578,19 @@ async fn composite_keys(
         };
         let referenced: Vec<&str> = referenced.iter().map(String::as_str).collect();
         let at = (schema.as_deref(), table.as_str());
-        let rows = Arc::new(keys(conn, dialect, at, &referenced, "").await?);
+        let rows = keys(conn, dialect, at, &referenced, "").await?;
+        if rows.is_empty() {
+            // The first rows of a table that refers to itself point at none.
+            if !is_own(at, own) {
+                let names: Vec<&str> = parts.iter().map(|&i| columns[i].name.as_str()).collect();
+                return Err(no_keys(&names.join(", "), &table));
+            }
+            for &i in &parts {
+                columns[i].generator = Generator::Null;
+            }
+            continue;
+        }
+        let rows = Arc::new(rows);
         let seed = rng.next();
         for (part, i) in parts.into_iter().enumerate() {
             columns[i].generator = Generator::Tuple {
@@ -605,7 +676,7 @@ fn check(column: &FakeColumn) -> Result<(), ImportError> {
 /// `rows` and `token` (this run's) keep the values of a unique column apart.
 async fn resolve(
     (conn, dialect): (&dyn Connection, Dialect),
-    (table, rows): (&str, u64),
+    (own, table, rows): ((Option<&str>, &str), &str, u64),
     column: FakeColumn,
     token: &str,
 ) -> Result<Generator, ImportError> {
@@ -635,16 +706,22 @@ async fn resolve(
                 .into_iter()
                 .map(|mut r| r.swap_remove(0))
                 .collect();
-            if !column.unique {
+            if values.is_empty() {
+                // The first rows of a table that refers to itself point at none.
+                if !is_own(at, own) {
+                    return Err(no_keys(name, &referenced));
+                }
+                Generator::Null
+            } else if !column.unique {
                 return Ok(Generator::Choice { values });
-            }
-            if (values.len() as u64) < rows {
+            } else if (values.len() as u64) < rows {
                 return Err(ImportError::Plan(format!(
                     "{name} is unique, and only {} keys of {referenced} are not used yet",
                     values.len()
                 )));
+            } else {
+                Generator::Distinct { values }
             }
-            Generator::Distinct { values }
         }
         other => other,
     };
@@ -707,10 +784,11 @@ pub async fn fill(
     let qualified = dialect.qualified(schema, table);
     let mut rng = Rng::from_clock();
     let token = rng.token();
-    composite_keys(target, dialect, &mut columns, &mut rng).await?;
+    composite_keys((target, dialect), (schema, table), &mut columns, &mut rng).await?;
     let mut resolved = Vec::with_capacity(columns.len());
     for c in columns {
-        let generator = resolve((target, dialect), (&qualified, rows), c.clone(), &token).await?;
+        let at = ((schema, table), qualified.as_str(), rows);
+        let generator = resolve((target, dialect), at, c.clone(), &token).await?;
         resolved.push(FakeColumn {
             generator,
             unique: false,
@@ -760,7 +838,7 @@ fn quote(s: &str) -> String {
 }
 
 /// A collection in mongosh, of `db` or of the session's database.
-fn collection_ref(db: Option<&str>, collection: &str) -> String {
+pub(crate) fn collection_ref(db: Option<&str>, collection: &str) -> String {
     let base = db.map_or_else(
         || "db".to_owned(),
         |d| format!("db.getSiblingDB({})", quote(d)),
@@ -1002,6 +1080,48 @@ mod tests {
         let uuid = batch.column(4).as_string::<i32>().value(0).to_owned();
         assert_eq!((uuid.len(), &uuid[14..15]), (36, "4"));
         assert_eq!(batch.column(5).null_count(), 50);
+    }
+
+    #[test]
+    fn text_fits_the_length_of_its_column() {
+        let columns = [
+            typed("code", Generator::Text, "character varying(5)"),
+            typed("cc", Generator::FullName, "character(2)"),
+            typed(
+                "u",
+                Generator::Unique {
+                    inner: Box::new(Generator::FullName),
+                    token: "t0k3n0".to_owned(),
+                },
+                "varchar(8)",
+            ),
+            typed("at", Generator::Time, "time"),
+            typed("ip", Generator::Ip, "inet"),
+        ];
+        let mut rng = Rng::new(7);
+        let batch = batch(&mut rng, &columns, 0, 50).unwrap();
+        let text = |c: usize, r: usize| batch.column(c).as_string::<i32>().value(r).to_owned();
+        for r in 0..50 {
+            assert!(text(0, r).chars().count() <= 5, "{}", text(0, r));
+            assert!(text(1, r).chars().count() <= 2, "{}", text(1, r));
+            // A unique value keeps the end that tells it apart.
+            assert!(
+                text(2, r).ends_with(&format!("t0k3n0{r}")),
+                "{}",
+                text(2, r)
+            );
+            assert_eq!(text(3, r).len(), 8);
+            assert!(text(4, r).starts_with("10."), "{}", text(4, r));
+        }
+        assert_eq!(cut("lorem ipsum".to_owned(), 6, false), "lorem");
+    }
+
+    #[test]
+    fn a_table_refers_to_itself() {
+        assert!(is_own((Some("public"), "tree"), (None, "tree")));
+        assert!(is_own((Some(""), "tree"), (Some("app"), "tree")));
+        assert!(!is_own((Some("public"), "tree"), (Some("app"), "tree")));
+        assert!(!is_own((None, "parent"), (None, "tree")));
     }
 
     #[test]

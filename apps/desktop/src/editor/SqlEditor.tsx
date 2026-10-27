@@ -31,12 +31,14 @@ import {
   highlightActiveLine,
   highlightActiveLineGutter,
   highlightSpecialChars,
+  type KeyBinding,
   keymap,
   lineNumbers,
   rectangularSelection,
 } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
-import { dispatchKey } from "../actions";
+import { allActions, dispatchKey, isMac } from "../actions";
+import { bindingKey, withoutKeys } from "../shortcutKeys";
 import { type CompletionCatalog, type DriverKind, isMongo, toCommandError } from "../api";
 import { annotation, catalogEntry, catalogKey } from "../catalog/catalog";
 import { ContextMenu, type MenuState } from "../components/ContextMenu";
@@ -54,6 +56,9 @@ import { spellcheck, spellcheckSetting } from "./spellcheck";
 
 /** `append` runs the statement into a new result tab, keeping the others. */
 export type RunMode = "statement" | "script" | "append";
+
+/** CodeMirror reads `win` bindings on Windows only. */
+const isWindows = typeof navigator !== "undefined" && /Win/.test(navigator.platform);
 
 /** What the tab around the editor offers its actions. */
 export interface EditorHost {
@@ -260,11 +265,21 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
       driver: callbacks.current.driver,
       readOnly: !!callbacks.current.readOnly,
       host: callbacks.current.host,
+      commands: {
+        run: callbacks.current.onRun,
+        save: callbacks.current.onSave,
+        open: callbacks.current.onOpen,
+      },
     });
-    const run = (mode: RunMode) => () => {
-      callbacks.current.onRun?.(mode);
-      return true;
-    };
+    // CodeMirror's own bindings give way to the editor actions on the same keys: a shortcut
+    // removed or moved in the Settings must not keep working through them.
+    const taken = new Set(
+      allActions()
+        .filter((a) => a.scope === "editor")
+        .flatMap((a) => [a.shortcut ?? []].flat())
+        .map((s) => bindingKey(s, isMac)),
+    );
+    const free = (bindings: readonly KeyBinding[]) => withoutKeys(bindings, taken, isMac, isWindows);
     const state = EditorState.create({
       doc: props.initialValue,
       extensions: [
@@ -363,30 +378,19 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
             },
           }),
         ),
-        keymap.of([
-          { key: "Mod-Enter", run: run("statement"), preventDefault: true },
-          { key: "Mod-Shift-Enter", run: run("script"), preventDefault: true },
-          { key: "Alt-x", run: run("script"), preventDefault: true },
-          { key: "Mod-\\", run: run("append"), preventDefault: true },
-          {
-            key: "Mod-s",
-            run: () => (callbacks.current.onSave?.(), true),
-            preventDefault: true,
-          },
-          {
-            key: "Mod-o",
-            run: () => (callbacks.current.onOpen?.(), true),
-            preventDefault: true,
-          },
-          ...closeBracketsKeymap,
-          ...defaultKeymap,
-          ...searchKeymap,
-          ...historyKeymap,
-          ...completionKeymap,
-          ...foldKeymap,
-          { key: "Tab", run: (view) => !view.state.readOnly && expandSnippet(view) },
-          indentWithTab,
-        ]),
+        // Running, saving and opening are editor actions (editor/actions.ts).
+        keymap.of(
+          free([
+            ...closeBracketsKeymap,
+            ...defaultKeymap,
+            ...searchKeymap,
+            ...historyKeymap,
+            ...completionKeymap,
+            ...foldKeymap,
+            { key: "Tab", run: (view) => !view.state.readOnly && expandSnippet(view) },
+            indentWithTab,
+          ]),
+        ),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) {
             callbacks.current.onChange?.(u.state.doc.toString());
