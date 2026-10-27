@@ -1397,6 +1397,8 @@ const it: Record<string, string> = {
   // Closing tabs
   "Save the changes to {file}?": "Salvare le modifiche a {file}?",
   "Don't save": "Non salvare",
+  "Enabled": "Attivo",
+  "Disabled": "Disattivo",
 };
 
 export default it;
