@@ -103,7 +103,9 @@ export function dropAll(...objects) {
 export async function connectOracle(page, child = "PLATYPUS", name = CONN) {
   const { treeRow } = await import("./qa-grid.mjs");
   await page.waitFor(`${treeRow(name)} !== undefined`);
-  await page.eval(`${treeRow(name)}.querySelector(".twisty").click()`);
+  if (await page.eval(`${treeRow(name)}.getAttribute("aria-expanded") !== "true"`)) {
+    await page.eval(`${treeRow(name)}.querySelector(".twisty").click()`);
+  }
   await page.waitFor(`${treeRow(child)} !== undefined`, 60_000);
 }
 
