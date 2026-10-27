@@ -247,6 +247,13 @@ export function shortcutText(shortcut: string): string {
     .join("");
 }
 
+/** `title` with the current shortcuts of action `id`, for a tooltip: `Close tab (Ctrl+W)`. */
+export function titleWithKeys(title: string, id: string): string {
+  const action = registry.get(id);
+  const keys = action ? shortcutsOf(action).map(shortcutText).join(", ") : "";
+  return keys ? `${title} (${keys})` : title;
+}
+
 /** The first shortcut as shown in menus: `Ctrl+Shift+T`, or `⌘⇧T` on macOS. */
 export function shortcutLabel(action: Pick<Action, "id" | "shortcut">): string | undefined {
   const first = shortcutsOf(action)[0];
