@@ -9,7 +9,7 @@
 // details.
 // Expected: the hypertable's size (hypertable_size('metrics'), here several hundred kB) and
 // its row estimate; ideally its chunks and compression state, as DBeaver's TimescaleDB view.
-// Actual: Table size 0 bytes, Total size 24 kB.
+// Actual: Table size 0 bytes, Total size 24 kB, Estimated rows 0 (after ANALYZE).
 // Suspected: crates/platypus-driver-pg/src/meta.rs:371 (pg_total_relation_size of the parent
 // only) and ddl.rs (no TimescaleDB awareness).
 import assert from "node:assert/strict";

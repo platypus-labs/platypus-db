@@ -1,4 +1,4 @@
-// DBS-xx (high): on a libSQL server (sqld, Turso) a table whose rows exceed the server's
+// DBS-12 (high): on a libSQL server (sqld, Turso) a table whose rows exceed the server's
 // response limit cannot be opened at all: "Open data" (and any query returning many rows)
 // fails with "RESPONSE_TOO_LARGE: Response is too large" and shows no row, while every other
 // driver streams the first page of the same table. The driver asks for the whole result in one
