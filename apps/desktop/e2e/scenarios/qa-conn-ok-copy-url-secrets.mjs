@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { button, dialog, formField, menu, menuItem, openPicker, paste, picker, treeRow, urlField } from "../conn-helpers.mjs";
+import { button, dialog, formField, menu, menuItem, openPicker, paste, picker, treeRow, urlField, newFromUrl } from "../conn-helpers.mjs";
 
 const CONNECTIONS = [
   ["01", "QA pg odd", `driver = "postgres"\nhost = "::1"\nport = 5433\ndatabase = "my db/ü"\nuser = "u@x:y/z"\nssl_mode = "require"`],
@@ -38,9 +38,7 @@ async function copyUrl(page, name) {
 }
 
 async function readBack(page, url) {
-  await openPicker(page);
-  await page.eval(paste(`document.querySelector(${JSON.stringify(urlField)})`, url));
-  await page.waitFor(`${dialog} !== null`);
+  await newFromUrl(page, url);
   const fields = await page.eval(`Object.fromEntries([...document.querySelectorAll('.connection-dialog [data-page=general] label.field')].map(l => [l.querySelector('span').textContent, l.querySelector('input, select')?.value]))`);
   await page.eval(`${button(dialog, "Cancel")}.click()`);
   await page.waitFor(`${dialog} === null && ${picker} === null`);

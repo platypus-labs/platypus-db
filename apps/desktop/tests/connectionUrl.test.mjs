@@ -2,7 +2,7 @@
 // (src/connectionUrl.ts); the parsing itself is the backend's.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { hasUrl, looksLikeConnection, splitLogin, validPort, withParsed } from "../src/connectionUrl.ts";
+import { applyUrlEdit, hasUrl, looksLikeConnection, splitLogin, urlModeDriver, validPort, withParsed } from "../src/connectionUrl.ts";
 
 const form = (over = {}) => ({
   id: "c1",
@@ -105,4 +105,31 @@ test("ports are 1 to 65535, or none", () => {
   assert.equal(validPort(5432), true);
   assert.equal(validPort(65535), true);
   for (const bad of [0, 70000, -1, 1.5, Number.NaN]) assert.equal(validPort(bad), false, String(bad));
+});
+
+test("the URL mode is for the drivers with a server and a URL", () => {
+  for (const d of ["postgres", "mysql", "sqlserver", "clickhouse", "libsql", "mongo"]) assert.equal(urlModeDriver(d), true, d);
+  for (const d of ["sqlite", "duckdb", "oracle", "snowflake", "odbc"]) assert.equal(urlModeDriver(d), false, d);
+});
+
+test("a URL edit updates the settings but keeps the name and the driver", () => {
+  const out = applyUrlEdit(form({ name: "Mine" }), "old", "postgres://u@db.example:6543/shop", parsed({ password: null, driver: "mysql" }));
+  assert.equal(out.conn.host, "db.example");
+  assert.equal(out.conn.port, 6543);
+  assert.equal(out.conn.database, "shop");
+  assert.equal(out.conn.name, "Mine");
+  assert.equal(out.conn.driver, "postgres");
+  assert.equal(out.password, "old");
+  assert.equal(out.draft, "postgres://u@db.example:6543/shop");
+});
+
+test("a password in the URL goes to the password field and out of the URL text", () => {
+  const out = applyUrlEdit(form(), "", "postgres://u:p@db.example/shop", parsed({ password: "p" }));
+  assert.equal(out.password, "p");
+  assert.equal(out.draft, null);
+  assert.equal(JSON.stringify(out.conn).includes('"p"'), false);
+});
+
+test("a URL edit does not name an unnamed connection", () => {
+  assert.equal(applyUrlEdit(form(), "", "x", parsed()).conn.name, "");
 });

@@ -7,16 +7,14 @@
 // Actual: prefer.
 // Suspected: crates/platypus-core/src/config.rs `read_url` (libSQL keeps SslMode::default()).
 import assert from "node:assert/strict";
-import { dialog, formField, openPicker, paste, seedSqlite, urlField } from "../conn-helpers.mjs";
+import { dialog, formField, openPicker, paste, seedSqlite, urlField, newFromUrl } from "../conn-helpers.mjs";
 
 export function setup({ dir }) {
   seedSqlite(dir);
 }
 
 export default async function (page) {
-  await openPicker(page);
-  await page.eval(paste(`document.querySelector(${JSON.stringify(urlField)})`, "libsql://db-acme.turso.io?authToken=tok"));
-  await page.waitFor(`${dialog} !== null`);
+  await newFromUrl(page, "libsql://db-acme.turso.io?authToken=tok");
   assert.equal(await page.eval(`document.querySelector('.connection-dialog .dialog-header .driver-icon').getAttribute('aria-label')`), "Turso / libSQL");
   await page.eval(`[...document.querySelectorAll('.dialog-tabs button')].find(b => b.textContent.startsWith('Network')).click()`);
   await page.waitFor(`${formField("SSL mode")} !== undefined`);

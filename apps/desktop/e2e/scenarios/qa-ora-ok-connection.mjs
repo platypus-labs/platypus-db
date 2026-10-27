@@ -6,7 +6,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { assert, needsOracle, oracleSetup } from "../qa-ora.mjs";
-import { button, dialog, fillForm, formField, newConnection, openPicker, paste, picker, testConnection, urlField } from "../conn-helpers.mjs";
+import { button, dialog, fillForm, formField, newConnection, openPicker, paste, picker, testConnection, urlField, newFromUrl } from "../conn-helpers.mjs";
 
 export const skip = needsOracle();
 
@@ -33,9 +33,7 @@ export default async function (page) {
   await page.eval(`${button(dialog, "Cancel")}.click()`);
   await page.waitFor(`${dialog} === null`);
 
-  await openPicker(page);
-  await page.eval(paste(`document.querySelector(${JSON.stringify(urlField)})`, "jdbc:oracle:thin:@//127.0.0.1:51521/FREEPDB1"));
-  await page.waitFor(`${dialog} !== null && ${picker} === null`);
+  await newFromUrl(page, "jdbc:oracle:thin:@//127.0.0.1:51521/FREEPDB1");
   assert.deepEqual(
     await page.eval(`[${formField("Host")}.value, ${formField("Port")}.value, ${formField("Service name")}.value]`),
     ["127.0.0.1", "51521", "FREEPDB1"],

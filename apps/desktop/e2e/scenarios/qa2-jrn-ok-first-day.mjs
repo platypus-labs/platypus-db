@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CTRL } from "../cdp.mjs";
-import { button as dialogButton, dialog, notice, paste, testConnection } from "../conn-helpers.mjs";
+import { button as dialogButton, dialog, notice, paste, testConnection, newFromUrl } from "../conn-helpers.mjs";
 import { needsPostgres, openPath, psql, psqlTry, restart, status, treeRow, visibleTab } from "../qa-jrn.mjs";
 import { menu } from "../qa-nav-helpers.mjs";
 import { answerSave, exportResult } from "../qa-xfer.mjs";
@@ -33,8 +33,7 @@ export default async function (page, ctx) {
     assert.equal(await page.eval(`document.querySelectorAll('.tree-row').length`), 0);
     await page.eval(`document.querySelector('.welcome-cta').click()`);
     await page.waitFor(`document.querySelector('.modal.driver-picker') !== null`);
-    await page.eval(paste(`document.querySelector('.driver-picker [data-field="connection_url"]')`, URL));
-    await page.waitFor(`${dialog} !== null`);
+    await newFromUrl(page, URL);
     assert.match(await testConnection(page), /^Connected/, await page.eval(notice));
     await page.eval(`${dialogButton(dialog, "Save")}.click()`);
     await page.waitFor(`${dialog} === null`, 15_000);
