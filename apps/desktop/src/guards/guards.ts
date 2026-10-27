@@ -58,7 +58,13 @@ export interface CheckedStatement {
 
 export interface UnfilteredChange {
   sql: string;
+  /** What changes the table: `UPDATE`, `DELETE`, `TRUNCATE`, `deleteMany`, `updateMany`. */
+  verb: string;
   table: string;
+  /** SQL Server's `TOP (n)`: up to that many rows, which the database picks. */
+  limited: boolean;
+  /** MongoDB: the table is a collection of documents. */
+  documents: boolean;
   /** About how many rows; `null` when unknown. */
   rows: number | null;
 }
@@ -85,17 +91,17 @@ export async function check(
   session: () => Promise<number | null>,
 ): Promise<GuardRequest | null> {
   const mode = getSetting(unfilteredSetting);
-  const risky = mode === "off" ? [] : statements.filter((s) => s.span.unfiltered);
+  const risky = mode === "off" ? [] : statements.flatMap(({ sql, span }) => span.unfiltered.map((t) => ({ sql, t })));
   const production = needsProductionConfirm(connection)
     ? statements.filter((s) => s.span.kind === "dml" || s.span.kind === "ddl").map((s) => s.sql)
     : [];
   if (risky.length === 0 && production.length === 0) return null;
   const id = risky.length ? await session().catch(() => null) : null;
   const unfiltered = await Promise.all(
-    risky.map(async ({ sql, span }) => {
-      const t = span.unfiltered!;
+    risky.map(async ({ sql, t }) => {
       const rows = id === null ? null : await api.estimateRows(id, t.schema, t.name).catch(() => null);
-      return { sql, table: t.schema ? `${t.schema}.${t.name}` : t.name, rows };
+      const table = t.schema ? `${t.schema}.${t.name}` : t.name;
+      return { sql, verb: t.verb, table, limited: t.limited, documents: connection.driver === "mongo", rows };
     }),
   );
   return { connection, unfiltered, production, blocked: mode === "block" && unfiltered.length > 0 };

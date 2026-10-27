@@ -309,6 +309,15 @@ export type QueryEvent =
   | { type: "affected"; rows: number; elapsed_ms: number }
   | { type: "failed"; error: CommandError };
 
+export interface UnfilteredTable {
+  schema: string | null;
+  name: string;
+  /** `UPDATE`, `DELETE`, `TRUNCATE`, or mongosh's `updateMany`, `deleteMany`. */
+  verb: string;
+  /** SQL Server's `TOP (n)`: up to that many rows the database picks, not every one. */
+  limited: boolean;
+}
+
 /** Offsets are UTF-16 code units, like JavaScript string indices. */
 export interface StatementSpan {
   start: number;
@@ -316,8 +325,9 @@ export interface StatementSpan {
   read_only: boolean;
   /** `command` is a client command such as `@set x = 1`, run by the app. */
   kind: "query" | "dml" | "ddl" | "other" | "command";
-  /** An UPDATE or DELETE without WHERE, or a TRUNCATE: the table it changes in every row. */
-  unfiltered: { schema: string | null; name: string } | null;
+  /** The tables an UPDATE or DELETE without WHERE, or a TRUNCATE, changes in every row:
+   *  several for `TRUNCATE a, b` or a SQL Server batch. */
+  unfiltered: UnfilteredTable[];
   /** `:name`, `?` and `${name}` placeholders, in the same units as `start`. */
   parameters: ParameterSpan[];
 }
