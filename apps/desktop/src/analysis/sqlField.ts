@@ -154,6 +154,11 @@ export function withEvent(result: Result, event: QueryEvent): Result {
       return { ...result, status: { kind: "affected", rows: event.rows, elapsedMs: event.elapsed_ms } };
     case "failed":
       return { ...result, status: { kind: "error", error: event.error } };
+    case "messages":
+      return { ...result, messages: [...(result.messages ?? []), ...event.lines] };
+    // The field shows the first result of its query; DuckDB, which runs it, has no other.
+    case "next":
+      return result;
   }
 }
 

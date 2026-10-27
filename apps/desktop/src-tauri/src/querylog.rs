@@ -226,12 +226,13 @@ impl Connection for Logged {
                 self.log.finish(id, started, None);
                 Ok(ExecResult::Affected { rows })
             }
-            Ok(ExecResult::Rows(stream)) => {
+            Ok(ExecResult::Rows(mut stream)) => {
                 self.log.update(id, |e| {
                     e.status = LogStatus::Fetching;
                     e.rows = Some(0);
                 });
                 let schema = stream.schema();
+                let next = stream.take_next();
                 let counted = Counted {
                     inner: stream,
                     log: Arc::clone(&self.log),
@@ -240,10 +241,9 @@ impl Connection for Logged {
                     rows: 0,
                     over: false,
                 };
-                Ok(ExecResult::Rows(RecordBatchStream::new(
-                    schema,
-                    counted.boxed(),
-                )))
+                Ok(ExecResult::Rows(
+                    RecordBatchStream::new(schema, counted.boxed()).with_next(next),
+                ))
             }
             Err(e) => {
                 self.log.finish(id, started, Some(e.to_string()));
@@ -281,6 +281,10 @@ impl Connection for Logged {
     /// Not logged: a keep-alive, as the health ping.
     async fn check_alive(&self) -> bool {
         self.inner.check_alive().await
+    }
+
+    fn take_messages(&self) -> Vec<String> {
+        self.inner.take_messages()
     }
 
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {

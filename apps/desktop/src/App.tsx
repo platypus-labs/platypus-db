@@ -368,11 +368,23 @@ export function App() {
     setDialog({ kind: "connection", connection: { ...connection, name, database: path }, existing: false, memberOf: active ? [active] : [], driverChosen: true });
   }
 
+  /** A script dropped on the window opens in a new SQL editor of the shown tab's connection. */
+  async function openDroppedScript(path: string) {
+    const { tabs: shown, activeTab: key } = shell.current;
+    const active = shown.find((t) => t.key === key);
+    if (!active) return setToast(t("Open a connection first, then drop the script on its tab."));
+    const sql = await api.readTextFile(path);
+    workbench().openTab("query", active.connectionId, { sql, filePath: path, database: active.database });
+  }
+
   useEffect(() => {
     const off = getCurrentWebview().onDragDropEvent(({ payload }) => {
       // The import dialog reads the files dropped on it.
       if (shell.current.importOpen) return;
-      const path = payload.type === "drop" ? payload.paths.find(isDataFile) : undefined;
+      const dropped = payload.type === "drop" ? payload.paths : [];
+      const script = dropped.find((p) => /\.sql$/i.test(p));
+      if (script) return void openDroppedScript(script).catch((e: unknown) => setToast(toCommandError(e).message));
+      const path = dropped.find(isDataFile);
       if (path) void openDroppedFile(path).catch((e: unknown) => setToast(toCommandError(e).message));
     });
     return () => void off.then((unlisten) => unlisten());
@@ -637,15 +649,32 @@ export function App() {
     }
   }
 
+  /** Asks what becomes of the open transaction of a tab that closes: committed, rolled back
+   *  (as closing its session does), or the tab stays; `false` keeps it open. */
+  async function endOpenTransaction(tab: TabModel): Promise<boolean> {
+    const answer = await choose(t("This tab has an open transaction. Commit it or roll it back before closing?"), [
+      { label: t("Commit"), value: "commit", primary: true },
+      { label: t("Rollback"), value: "rollback", danger: true },
+    ]);
+    if (answer !== "commit") return answer === "rollback";
+    try {
+      const id = await sessions.current.get(tab.key);
+      if (id != null) await api.endTransaction(id, true);
+      return true;
+    } catch (e) {
+      setToast(toCommandError(e).message);
+      return false;
+    }
+  }
+
   /** Asks before closing `tab` what closing would lose: grid edits, an open transaction, text
    *  not saved to its script file (which can be saved first); `false` keeps it open. */
   async function confirmClose(tab: TabModel): Promise<boolean> {
-    const question = tab.unsaved
-      ? t("This tab has unsaved changes. Close it and discard them?")
-      : tab.txOpen
-        ? t("This tab has an open transaction. Close it and roll back the uncommitted changes?")
-        : null;
-    if (question && !(await ask(question, { confirm: t("Close"), danger: true }))) return false;
+    if (tab.unsaved) {
+      if (!(await ask(t("This tab has unsaved changes. Close it and discard them?"), { confirm: t("Close"), danger: true }))) return false;
+    } else if (tab.txOpen && !(await endOpenTransaction(tab))) {
+      return false;
+    }
     const file = unsavedFile(tab);
     if (!file) return true;
     const answer = await choose(t("Save the changes to {file}?", { file: basename(file.path) }), [

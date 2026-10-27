@@ -1,9 +1,8 @@
 import { Icon } from "../ui/Icon";
 import { type CSSProperties, useEffect, useState } from "react";
 import { api, type Explain, type PlanNode, toCommandError } from "../api";
-import { fmt } from "../components/ResultPanel";
 import type { TabBase, TabProps } from "../tabs/registry";
-import { t, msg } from "../i18n";
+import { language, t, msg } from "../i18n";
 
 export type ExplainView = "tree" | "text" | "table";
 
@@ -41,8 +40,11 @@ function steps(node: PlanNode, collapsed?: Set<string>, depth = 0, path = "0", o
   return out;
 }
 
-const num = (v: number | null) => (v === null ? "" : fmt.format(v));
-const percent = new Intl.NumberFormat(undefined, { style: "percent", maximumFractionDigits: 1 });
+/** Numbers in the interface's language, not the system's: the plan's own text (`0.0`) sits
+ *  beside them. */
+const locale = () => (language() === "it" ? "it-IT" : "en-US");
+const num = (v: number | null) => (v === null ? "" : new Intl.NumberFormat(locale(), { maximumFractionDigits: 2 }).format(v));
+const percent = { format: (v: number) => new Intl.NumberFormat(locale(), { style: "percent", maximumFractionDigits: 1 }).format(v) };
 
 /** Each step's share of the work it does itself: of the time when analyzed, else of the
  *  cost. */
@@ -67,7 +69,7 @@ function misestimate(n: PlanNode): number | null {
 function Misestimate({ node }: { node: PlanNode }) {
   const factor = misestimate(node);
   if (factor === null) return null;
-  const times = fmt.format(Math.round(Math.abs(factor)));
+  const times = num(Math.round(Math.abs(factor)));
   return (
     <span
       className="explain-misestimate"
