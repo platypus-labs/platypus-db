@@ -14,8 +14,8 @@ use arrow_array::builder::{
 };
 use arrow_array::{ArrayRef, RecordBatch, RecordBatchOptions};
 use arrow_schema::{DataType, Field, Schema, SchemaRef, TimeUnit};
-use mongodb::bson::{Bson, Document};
-use platypus_core::{META_DB_TYPE, Result};
+use mongodb::bson::{Bson, Document, doc};
+use platypus_core::{Error, META_DB_TYPE, Result};
 
 /// The BSON type of a column, as far as the Arrow type goes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +102,26 @@ impl Kind {
         }
     }
 
+    /// The kind of a `$type` alias, as the server names value types; `None` for null.
+    fn from_alias(alias: &str) -> Option<Self> {
+        Some(match alias {
+            "null" | "undefined" | "missing" => return None,
+            "object" => Self::Document,
+            "javascriptWithScope" => Self::Other("javascript"),
+            "regex" => Self::Other("regex"),
+            "timestamp" => Self::Other("timestamp"),
+            "javascript" => Self::Other("javascript"),
+            "symbol" => Self::Other("symbol"),
+            "minKey" => Self::Other("minKey"),
+            "maxKey" => Self::Other("maxKey"),
+            "dbPointer" => Self::Other("dbPointer"),
+            name => match Self::from_name(name) {
+                Self::Mixed => Self::Other("unknown"),
+                kind => kind,
+            },
+        })
+    }
+
     /// The kind of that [`Self::name`]; [`Self::Mixed`] for the other types.
     fn from_name(name: &str) -> Self {
         [
@@ -123,35 +143,142 @@ impl Kind {
     }
 }
 
-/// The schema of documents like `sample`: their top-level fields, `_id` first, then in
-/// the order they first appear. A field with only nulls is text.
-#[must_use]
-pub fn infer_schema(sample: &[Document]) -> SchemaRef {
-    let mut order: Vec<&str> = Vec::new();
-    let mut kinds: HashMap<&str, Option<Kind>> = HashMap::new();
-    for doc in sample {
-        for (key, value) in doc {
-            let kind = Kind::of(value);
-            if let Some(slot) = kinds.get_mut(key.as_str()) {
-                *slot = match (*slot, kind) {
-                    (Some(a), Some(b)) => Some(a.merge(b)),
-                    (a, b) => a.or(b),
-                };
-            } else {
-                order.push(key);
-                kinds.insert(key, kind);
-            }
+/// Integers beyond this lose digits as doubles.
+const EXACT_IN_DOUBLE: i64 = 1 << 53;
+
+/// The values a column has to hold: their kinds merged, and whether a long among them is
+/// beyond what a double holds exactly.
+#[derive(Debug, Default, Clone, Copy)]
+struct Seen {
+    kind: Option<Kind>,
+    big: bool,
+}
+
+impl Seen {
+    fn add(&mut self, kind: Option<Kind>, big: bool) {
+        self.kind = match (self.kind, kind) {
+            (Some(a), Some(b)) => Some(a.merge(b)),
+            (a, b) => a.or(b),
+        };
+        self.big |= big;
+    }
+
+    fn value(&mut self, value: &Bson) {
+        let big =
+            matches!(value, Bson::Int64(n) if n.unsigned_abs() > EXACT_IN_DOUBLE.unsigned_abs());
+        self.add(Kind::of(value), big);
+    }
+
+    /// The column's kind: a double column with such a long is text, which keeps both exact.
+    /// A field with only nulls is text too.
+    fn kind(self) -> Kind {
+        match self.kind.unwrap_or(Kind::String) {
+            Kind::Double if self.big => Kind::Mixed,
+            kind => kind,
         }
     }
+}
+
+/// The fields of `sample` in the order they first appear, with the values seen of each.
+fn survey_sample(sample: &[Document]) -> (Vec<&str>, HashMap<&str, Seen>) {
+    let mut order: Vec<&str> = Vec::new();
+    let mut seen: HashMap<&str, Seen> = HashMap::new();
+    for doc in sample {
+        for (key, value) in doc {
+            seen.entry(key.as_str())
+                .or_insert_with(|| {
+                    order.push(key);
+                    Seen::default()
+                })
+                .value(value);
+        }
+    }
+    (order, seen)
+}
+
+/// The schema of `order`'s fields, `_id` first.
+fn schema_of(mut order: Vec<&str>, seen: &HashMap<&str, Seen>) -> SchemaRef {
     if let Some(i) = order.iter().position(|&k| k == "_id") {
         let id = order.remove(i);
         order.insert(0, id);
     }
     let fields: Vec<Field> = order
         .into_iter()
-        .map(|name| {
-            let kind = kinds[name].unwrap_or(Kind::String);
-            field(name, kind)
+        .map(|name| field(name, seen.get(name).copied().unwrap_or_default().kind()))
+        .collect();
+    Arc::new(Schema::new(fields))
+}
+
+/// The schema of documents like `sample`: their top-level fields, `_id` first, then in
+/// the order they first appear. A field with only nulls is text.
+#[must_use]
+pub fn infer_schema(sample: &[Document]) -> SchemaRef {
+    let (order, seen) = survey_sample(sample);
+    schema_of(order, &seen)
+}
+
+/// Aggregation stages that turn the documents of a result into one document per top-level
+/// field: `{ _id: name, types: [$type aliases], big: <a long beyond 2^53> }`.
+#[must_use]
+pub fn survey_stages() -> Vec<Document> {
+    let value = "$_platypus_field.v";
+    let big = doc! { "$cond": [
+        { "$and": [
+            { "$eq": [{ "$type": value }, "long"] },
+            { "$or": [
+                { "$gt": [value, EXACT_IN_DOUBLE] },
+                { "$lt": [value, -EXACT_IN_DOUBLE] },
+            ] },
+        ] },
+        true,
+        false,
+    ] };
+    vec![
+        doc! { "$project": { "_id": 0, "_platypus_field": { "$objectToArray": "$$ROOT" } } },
+        doc! { "$unwind": "$_platypus_field" },
+        doc! { "$group": {
+            "_id": "$_platypus_field.k",
+            "types": { "$addToSet": { "$type": value } },
+            "big": { "$max": big },
+        } },
+    ]
+}
+
+/// The schema of a whole result from the documents of [`survey_stages`]: the fields of the
+/// `first` documents in their order, then the fields only later documents have, by name.
+/// `None` when the survey is not one.
+#[must_use]
+pub fn surveyed_schema(first: &[Document], survey: &[Document]) -> Option<SchemaRef> {
+    let (mut order, _) = survey_sample(first);
+    let mut seen: HashMap<&str, Seen> = HashMap::new();
+    let mut late: Vec<&str> = Vec::new();
+    for field in survey {
+        let name = field.get_str("_id").ok()?;
+        let mut s = Seen::default();
+        for alias in field.get_array("types").ok()? {
+            s.add(Kind::from_alias(alias.as_str()?), false);
+        }
+        s.add(None, field.get_bool("big").unwrap_or(false));
+        if !order.contains(&name) {
+            late.push(name);
+        }
+        seen.insert(name, s);
+    }
+    late.sort_unstable();
+    order.extend(late);
+    Some(schema_of(order, &seen))
+}
+
+/// `schema` for a result whose later documents were not seen: `int` columns take any
+/// integer, as longs, since counters often outgrow 32 bits.
+#[must_use]
+pub fn widen_for_later(schema: &SchemaRef) -> SchemaRef {
+    let fields: Vec<Field> = schema
+        .fields()
+        .iter()
+        .map(|f| match kind_of_field(f) {
+            Kind::Int32 => field(f.name(), Kind::Int64),
+            _ => f.as_ref().clone(),
         })
         .collect();
     Arc::new(Schema::new(fields))
@@ -167,22 +294,23 @@ fn field(name: &str, kind: Kind) -> Field {
 /// A one-column schema for values of any type, e.g. the result of `distinct`.
 #[must_use]
 pub fn value_schema(name: &str, values: &[Bson]) -> SchemaRef {
-    let kind = values
-        .iter()
-        .filter_map(Kind::of)
-        .reduce(Kind::merge)
-        .unwrap_or(Kind::String);
-    Arc::new(Schema::new(vec![field(name, kind)]))
+    let mut seen = Seen::default();
+    values.iter().for_each(|v| seen.value(v));
+    Arc::new(Schema::new(vec![field(name, seen.kind())]))
 }
 
-/// The documents as a batch of `schema`; fields outside the schema are left out, and a
-/// value that does not fit its column's type is null (text columns take any value).
+/// The documents as a batch of `schema`; fields outside the schema are left out. A value
+/// is converted to its column's type when that keeps it exact (an int as a long, a long
+/// up to 2^53 as a double, a whole double as an integer); text columns take any value.
+///
+/// # Errors
+/// A value that its column cannot hold exactly is a decode error, never a NULL.
 pub fn to_batch(schema: &SchemaRef, docs: &[Document]) -> Result<RecordBatch> {
     let columns = schema
         .fields()
         .iter()
         .map(|f| column(f, docs.iter().map(|d| d.get(f.name()))))
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
     // No documents means no fields: a batch without columns needs its row count.
     let options = RecordBatchOptions::new().with_row_count(Some(docs.len()));
     Ok(RecordBatch::try_new_with_options(
@@ -199,43 +327,83 @@ fn kind_of_field(field: &Field) -> Kind {
         .map_or(Kind::Mixed, |n| Kind::from_name(n))
 }
 
-#[allow(clippy::cast_possible_truncation)]
-fn column<'a>(field: &Field, values: impl Iterator<Item = Option<&'a Bson>>) -> ArrayRef {
-    match kind_of_field(field) {
+/// The error for a value its column cannot hold.
+fn misfit(field: &Field, kind: Kind, value: &Bson) -> Error {
+    let found = Kind::of(value).map_or("null", Kind::name);
+    let mut shown = text(value).unwrap_or_default();
+    if let Some((cut, _)) = shown.char_indices().nth(40) {
+        shown.truncate(cut);
+        shown.push('…');
+    }
+    Error::Decode {
+        column: field.name().clone(),
+        db_type: kind.name().to_owned(),
+        message: format!(
+            "a later document holds the {found} {shown}, which this column (typed from the \
+             first documents) cannot hold exactly; read the field as text with \
+             {{ $toString: \"${}\" }} in an aggregation, or filter those documents",
+            field.name()
+        ),
+    }
+}
+
+/// Appends each value, or NULL for none, through `convert`; a value it rejects fails.
+fn append_all<'a, T>(
+    field: &Field,
+    kind: Kind,
+    values: impl Iterator<Item = Option<&'a Bson>>,
+    convert: impl Fn(&Bson) -> Option<T>,
+    mut append: impl FnMut(Option<T>),
+) -> Result<()> {
+    for v in values {
+        match v {
+            None | Some(Bson::Null | Bson::Undefined) => append(None),
+            Some(v) => append(Some(convert(v).ok_or_else(|| misfit(field, kind, v))?)),
+        }
+    }
+    Ok(())
+}
+
+fn column<'a>(field: &Field, values: impl Iterator<Item = Option<&'a Bson>>) -> Result<ArrayRef> {
+    let kind = kind_of_field(field);
+    Ok(match kind {
         Kind::Bool => {
             let mut b = BooleanBuilder::new();
-            values.for_each(|v| b.append_option(v.and_then(Bson::as_bool)));
+            append_all(field, kind, values, Bson::as_bool, |v| b.append_option(v))?;
             Arc::new(b.finish())
         }
         Kind::Int32 => {
             let mut b = Int32Builder::new();
-            values.for_each(|v| b.append_option(v.and_then(Bson::as_i32)));
+            let convert = |v: &Bson| as_i64(v).and_then(|n| i32::try_from(n).ok());
+            append_all(field, kind, values, convert, |v| b.append_option(v))?;
             Arc::new(b.finish())
         }
         Kind::Int64 => {
             let mut b = Int64Builder::new();
-            values.for_each(|v| b.append_option(v.and_then(as_i64)));
+            append_all(field, kind, values, as_i64, |v| b.append_option(v))?;
             Arc::new(b.finish())
         }
         Kind::Double => {
             let mut b = Float64Builder::new();
-            values.for_each(|v| b.append_option(v.and_then(as_f64)));
+            append_all(field, kind, values, as_f64, |v| b.append_option(v))?;
             Arc::new(b.finish())
         }
         Kind::Date => {
             let mut b = TimestampMillisecondBuilder::new().with_timezone("+00:00");
-            values.for_each(|v| match v {
-                Some(Bson::DateTime(d)) => b.append_value(d.timestamp_millis()),
-                _ => b.append_null(),
-            });
+            let convert = |v: &Bson| match v {
+                Bson::DateTime(d) => Some(d.timestamp_millis()),
+                _ => None,
+            };
+            append_all(field, kind, values, convert, |v| b.append_option(v))?;
             Arc::new(b.finish())
         }
         Kind::Binary => {
             let mut b = BinaryBuilder::new();
-            values.for_each(|v| match v {
-                Some(Bson::Binary(bin)) => b.append_value(&bin.bytes),
-                _ => b.append_null(),
-            });
+            let convert = |v: &Bson| match v {
+                Bson::Binary(bin) => Some(bin.bytes.clone()),
+                _ => None,
+            };
+            append_all(field, kind, values, convert, |v| b.append_option(v))?;
             Arc::new(b.finish())
         }
         _ => {
@@ -243,22 +411,31 @@ fn column<'a>(field: &Field, values: impl Iterator<Item = Option<&'a Bson>>) -> 
             values.for_each(|v| b.append_option(v.and_then(text)));
             Arc::new(b.finish())
         }
-    }
+    })
 }
 
+/// An integer value, or a double with a whole value an `i64` holds.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "range and fraction are checked first"
+)]
 fn as_i64(value: &Bson) -> Option<i64> {
+    // 2^63 is exactly representable; every double below it in magnitude fits an i64.
+    const LIMIT: f64 = 9_223_372_036_854_775_808.0;
     match value {
         Bson::Int32(n) => Some(i64::from(*n)),
         Bson::Int64(n) => Some(*n),
+        Bson::Double(d) if d.fract() == 0.0 && (-LIMIT..LIMIT).contains(d) => Some(*d as i64),
         _ => None,
     }
 }
 
-#[allow(clippy::cast_precision_loss)]
+/// A double, or an integer a double holds exactly.
+#[expect(clippy::cast_precision_loss, reason = "the range is checked first")]
 fn as_f64(value: &Bson) -> Option<f64> {
     match value {
         Bson::Int32(n) => Some(f64::from(*n)),
-        Bson::Int64(n) => Some(*n as f64),
+        Bson::Int64(n) if n.unsigned_abs() <= EXACT_IN_DOUBLE.unsigned_abs() => Some(*n as f64),
         Bson::Double(n) => Some(*n),
         _ => None,
     }
@@ -336,16 +513,78 @@ mod tests {
     }
 
     #[test]
-    fn keeps_integer_types_and_nulls_misfits() {
-        let schema = infer_schema(&[doc! { "a": 1, "b": 1_i64 }, doc! { "a": 2, "b": 2 }]);
+    fn converts_exactly_or_fails() {
+        let schema = infer_schema(&[
+            doc! { "a": 1, "b": 1_i64, "d": 0.5 },
+            doc! { "a": 2, "b": 2 },
+        ]);
         assert_eq!(schema.field(0).data_type(), &DataType::Int32);
         assert_eq!(schema.field(1).data_type(), &DataType::Int64);
-        // A later batch with values of another type and an unknown field.
-        let batch = to_batch(&schema, &[doc! { "a": "x", "b": 7, "c": 1 }]).unwrap();
-        assert!(batch.column(0).is_null(0));
-        assert_eq!(batch.column(1).as_primitive::<Int64Type>().value(0), 7);
-        assert_eq!(batch.num_columns(), 2);
-        let _ = batch.column(0).as_primitive::<Int32Type>();
+        // A later batch with values of other numeric types that fit, and an unknown field.
+        let batch = to_batch(
+            &schema,
+            &[doc! { "a": 7_i64, "b": 3.0, "d": 9_007_199_254_740_992_i64, "c": 1 }],
+        )
+        .unwrap();
+        assert_eq!(batch.column(0).as_primitive::<Int32Type>().value(0), 7);
+        assert_eq!(batch.column(1).as_primitive::<Int64Type>().value(0), 3);
+        assert_eq!(batch.num_columns(), 3);
+        // Values that do not fit are an error naming the column, never a NULL.
+        for misfit in [
+            doc! { "a": "x" },
+            doc! { "a": 3_000_000_000_i64 },
+            doc! { "a": 2.5 },
+            doc! { "d": 9_007_199_254_740_993_i64 },
+        ] {
+            let err = to_batch(&schema, &[misfit.clone()])
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("cannot hold exactly"), "{misfit}: {err}");
+        }
+        // Widened for later documents, an int column takes longs.
+        let wide = widen_for_later(&schema);
+        assert_eq!(wide.field(0).data_type(), &DataType::Int64);
+        let batch = to_batch(&wide, &[doc! { "a": 3_000_000_000_i64 }]).unwrap();
+        assert_eq!(
+            batch.column(0).as_primitive::<Int64Type>().value(0),
+            3_000_000_000
+        );
+    }
+
+    #[test]
+    fn longs_beyond_doubles_make_text_columns() {
+        let schema = infer_schema(&[
+            doc! { "n": 0.5, "m": 0.5 },
+            doc! { "n": 9_007_199_254_740_993_i64, "m": 9_007_199_254_740_992_i64 },
+        ]);
+        assert_eq!(schema.field(0).data_type(), &DataType::Utf8);
+        assert_eq!(schema.field(1).data_type(), &DataType::Float64);
+        let batch = to_batch(&schema, &[doc! { "n": 9_007_199_254_740_993_i64 }]).unwrap();
+        assert_eq!(
+            batch.column(0).as_string::<i32>().value(0),
+            "9007199254740993"
+        );
+    }
+
+    #[test]
+    fn schema_from_a_survey_of_the_whole_result() {
+        let first = [doc! { "_id": 1, "qty": 1, "name": "a" }];
+        let survey = [
+            doc! { "_id": "late", "types": ["string"], "big": false },
+            doc! { "_id": "qty", "types": ["int", "double"], "big": false },
+            doc! { "_id": "name", "types": ["string", "null"], "big": false },
+            doc! { "_id": "_id", "types": ["int"], "big": false },
+            doc! { "_id": "big", "types": ["long", "double"], "big": true },
+            doc! { "_id": "sub", "types": ["object"], "big": false },
+        ];
+        let schema = surveyed_schema(&first, &survey).unwrap();
+        let names: Vec<_> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+        assert_eq!(names, ["_id", "qty", "name", "big", "late", "sub"]);
+        assert_eq!(schema.field(1).data_type(), &DataType::Float64);
+        assert_eq!(schema.field(3).data_type(), &DataType::Utf8);
+        assert_eq!(db_type(&schema, 5), "document");
+        assert!(surveyed_schema(&first, &[doc! { "x": 1 }]).is_none());
+        assert_eq!(survey_stages().len(), 3);
     }
 
     #[test]

@@ -19,6 +19,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
+use std::time::Duration;
+
+use futures::TryStreamExt;
 use futures::stream::{self, BoxStream, StreamExt};
 use mongodb::bson::{Bson, Document, doc};
 use mongodb::options::AggregateOptions;
@@ -173,7 +176,7 @@ impl MongoConnection {
                         .batch_size(batch)
                         .await,
                 )?;
-                self.stream(cursor, options).await
+                self.stream(cursor, options, None).await
             }
             Command::RunCommand { db, command } => {
                 let reply = self.track(self.db(db.as_deref()).run_command(command).await)?;
@@ -213,8 +216,9 @@ impl MongoConnection {
         let comment = Bson::String(self.comment.clone());
         match op {
             CollectionOp::Find(find) => {
+                let survey = Survey::of_find(&coll, &find);
                 let cursor = self.track(self.find(&coll, find, batch).await)?;
-                self.stream(cursor, options).await
+                self.stream(cursor, options, Some(survey)).await
             }
             CollectionOp::Aggregate {
                 pipeline,
@@ -224,8 +228,9 @@ impl MongoConnection {
                     .map_err(|e| Error::Other(format!("invalid aggregate options: {e}")))?;
                 opts.batch_size = Some(batch);
                 opts.comment = Some(comment);
+                let survey = Survey::of_pipeline(&coll, &pipeline);
                 let cursor = self.track(coll.aggregate(pipeline).with_options(opts).await)?;
-                self.stream(cursor, options).await
+                self.stream(cursor, options, survey).await
             }
             CollectionOp::CountDocuments {
                 filter,
@@ -266,7 +271,7 @@ impl MongoConnection {
                         .batch_size(batch)
                         .await,
                 )?;
-                self.stream(cursor, options).await
+                self.stream(cursor, options, None).await
             }
         }
     }
@@ -395,19 +400,31 @@ impl MongoConnection {
         action.await
     }
 
-    /// The documents of `cursor` as a stream of batches. The first batch is read here, so
-    /// its fields make the schema; fields that appear only later are left out.
+    /// The documents of `cursor` as a stream of batches. The first batch is read here; when
+    /// more follow, `survey` asks the server for the fields and value types of the whole
+    /// result, so that later documents fit their columns. Without it, or when it takes too
+    /// long, the first documents make the schema: fields that appear only later are left
+    /// out, and a later value its column cannot hold exactly fails the stream.
     async fn stream(
         &self,
         mut cursor: Cursor<Document>,
         options: &ExecOptions,
+        survey: Option<Survey>,
     ) -> Result<ExecResult> {
         let size = options.batch_size.max(1);
         let mut rx = self.cancel.subscribe();
         let first = next_batch(&mut cursor, size, &mut rx, &self.closed).await?;
-        let schema = docs::infer_schema(&first);
-        let first_batch = docs::to_batch(&schema, &first)?;
         let done = first.len() < size;
+        let surveyed = match survey {
+            Some(survey) if !done => survey.schema(&first, &self.comment).await,
+            _ => None,
+        };
+        let schema = match surveyed {
+            Some(schema) => schema,
+            None if done => docs::infer_schema(&first),
+            None => docs::widen_for_later(&docs::infer_schema(&first)),
+        };
+        let first_batch = docs::to_batch(&schema, &first)?;
         let closed = Arc::clone(&self.closed);
         let state = (Some(first_batch), (!done).then_some(cursor), rx);
         let rest_schema = Arc::clone(&schema);
@@ -474,6 +491,68 @@ fn documents(items: Option<&Vec<Bson>>) -> Vec<Document> {
         .flatten()
         .filter_map(|b| b.as_document().cloned())
         .collect()
+}
+
+/// How long the survey of a result's fields may run before the first documents decide.
+const SURVEY_TIME: Duration = Duration::from_secs(2);
+
+/// The aggregation that lists the fields of a result and the types of their values: the
+/// result's own pipeline, then [`docs::survey_stages`].
+struct Survey {
+    coll: mongodb::Collection<Document>,
+    pipeline: Vec<Document>,
+}
+
+impl Survey {
+    fn of_find(coll: &mongodb::Collection<Document>, find: &Find) -> Self {
+        let mut pipeline = vec![doc! { "$match": find.filter.clone() }];
+        if let Some(sort) = &find.sort {
+            pipeline.push(doc! { "$sort": sort.clone() });
+        }
+        if let Some(skip) = find.skip {
+            pipeline.push(doc! { "$skip": i64::try_from(skip).unwrap_or(i64::MAX) });
+        }
+        // A negative limit is a single batch of that many.
+        if let Some(limit) = find.limit.filter(|&l| l != 0) {
+            pipeline.push(doc! { "$limit": limit.saturating_abs() });
+        }
+        if let Some(projection) = &find.projection {
+            pipeline.push(doc! { "$project": projection.clone() });
+        }
+        Self {
+            coll: coll.clone(),
+            pipeline,
+        }
+    }
+
+    /// `None` for a pipeline that writes (`$out`, `$merge`): running it again would write
+    /// again.
+    fn of_pipeline(coll: &mongodb::Collection<Document>, pipeline: &[Document]) -> Option<Self> {
+        let writes = pipeline
+            .iter()
+            .any(|stage| stage.contains_key("$out") || stage.contains_key("$merge"));
+        (!writes).then(|| Self {
+            coll: coll.clone(),
+            pipeline: pipeline.to_vec(),
+        })
+    }
+
+    /// The schema of the whole result; `None` when the server cannot tell in time (or the
+    /// pipeline cannot be followed by the survey), and the first documents decide.
+    async fn schema(self, first: &[Document], comment: &str) -> Option<arrow_schema::SchemaRef> {
+        let mut pipeline = self.pipeline;
+        pipeline.extend(docs::survey_stages());
+        let cursor = self
+            .coll
+            .aggregate(pipeline)
+            .max_time(SURVEY_TIME)
+            .allow_disk_use(true)
+            .comment(Bson::String(comment.to_owned()))
+            .await
+            .ok()?;
+        let fields: Vec<Document> = cursor.try_collect().await.ok()?;
+        docs::surveyed_schema(first, &fields)
+    }
 }
 
 /// Documents read at once, as a single batch of `schema`.
