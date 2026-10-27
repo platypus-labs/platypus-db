@@ -43,7 +43,8 @@ export default async function (page) {
   const loaded = Number((await page.eval(status)).match(/^(\d+) rows loaded/)?.[1]);
   assert.ok(loaded > 0 && loaded < 30000, await page.eval(status));
   const v = await profileOf(page, "v");
-  assert.equal(v.scope, `of ${loaded} loaded rows`);
+  // Numbers in the interface's language: English groups thousands.
+  assert.equal(v.scope, `of ${loaded.toLocaleString("en-US")} loaded rows`);
 
   // 120 categories: 50 bars and Other, sums as SQL's over the loaded rows.
   await showChart(page, "rect.chart-bar");
