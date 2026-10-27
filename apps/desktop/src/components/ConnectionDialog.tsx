@@ -22,7 +22,8 @@ import {
 } from "../api";
 import { AgentAccessField, withEffectiveAgentAccess } from "../agents/access";
 import { CONNECTION_TYPES, noteText } from "../connections";
-import { looksLikeConnection, withParsed } from "../connectionUrl";
+import { looksLikeConnection, splitLogin, validPort, withParsed } from "../connectionUrl";
+import { hasSessionTimeZone, withoutUnusableInit } from "../connectionEdit";
 import { toggled } from "../sets";
 import { basename } from "../workspace";
 import { DriverIcon, DriverPicker, driverName } from "./DriverPicker";
@@ -122,12 +123,16 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   /** The network profile being edited in its own dialog, and whether it is saved. */
   const [editing, setEditing] = useState<{ profile: NetworkProfile; existing: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+  /** A password is saved for this connection, for the "(saved)" placeholder. */
+  const [passwordSaved, setPasswordSaved] = useState(false);
   const [result, setResult] = useState<
     { ok: true; server: ServerInfo } | { ok: false; message: string } | null
   >(null);
 
   useEffect(() => {
     api.listNetworkProfiles().then(setProfiles, (e) => setResult({ ok: false, message: toCommandError(e).message }));
+    // Not knowing, the placeholder says nothing is saved: the field then asks for it.
+    if (existing && initial.save_password) api.connectionHasPassword(initial.id).then(setPasswordSaved, () => setPasswordSaved(false));
   }, []);
 
   const set = <K extends keyof SavedConnection>(key: K, value: SavedConnection[K]) =>
@@ -145,25 +150,45 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const secret = t(adbcProfile?.secret ?? (libsql ? "Auth token" : "Password"));
 
   // An empty password field keeps the stored one when editing.
-  const passwordInput = (): PasswordInput =>
-    password !== ""
-      ? { action: "set", value: password }
+  const passwordInput = (typed = password): PasswordInput =>
+    typed !== ""
+      ? { action: "set", value: typed }
       : existing
         ? { action: "keep" }
         : { action: "clear" };
+  const savedPlaceholder = existing && conn.save_password && passwordSaved ? t("•••••• (saved)") : "";
 
   // A profile's SSH servers are saved with the profile, not here.
   const sshSecrets = () => sshSecretsOf(conn.network_profile ? null : conn.ssh, sshTyped, savedSsh);
 
-  // The fields of the network page go to the profile when one is chosen.
+  // The fields of the network page go to the profile when one is chosen; Init settings the
+  // driver cannot apply are left out.
   const ownNetwork = (c: SavedConnection): SavedConnection =>
-    c.network_profile ? { ...c, ssh: null } : c;
+    withoutUnusableInit(c.network_profile ? { ...c, ssh: null } : c);
+
+  /** A login typed in the host field (`user:password@host:port`) moved to its fields, so
+   *  that the password goes where passwords go, never into the saved host. */
+  function takeLogin(): { c: SavedConnection; typed: string } {
+    const login = server && !adbcProfile && conn.driver !== "mongo" ? splitLogin(conn.host) : null;
+    if (!login) return { c: { ...conn, host: conn.host.trim() }, typed: password };
+    const c = { ...conn, host: login.host, port: login.port ?? conn.port, user: login.user || conn.user };
+    const typed = login.password ?? password;
+    setConn(c);
+    setPassword(typed);
+    return { c, typed };
+  }
+
+  /** The form's problem that the server would answer less clearly, or `null`. */
+  const formProblem = (c: SavedConnection) => (server && !validPort(c.port) ? t("The port must be a number from 1 to 65535.") : null);
 
   async function test() {
+    const { c, typed } = takeLogin();
+    const problem = formProblem(c);
+    if (problem) return setResult({ ok: false, message: problem });
     setBusy(true);
     setResult(null);
     try {
-      const server = await withDriver(() => api.testConnection(ownNetwork(conn), passwordInput(), sshSecrets()));
+      const server = await withDriver(() => api.testConnection(ownNetwork(c), passwordInput(typed), sshSecrets()));
       setResult({ ok: true, server });
     } catch (e) {
       setResult({ ok: false, message: toCommandError(e).message });
@@ -174,11 +199,14 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    const { c, typed } = takeLogin();
+    const problem = formProblem(c);
+    if (problem) return setResult({ ok: false, message: problem });
     setBusy(true);
     try {
       // Saved as agents get it: a production connection keeps no read-write access for later.
-      const saved = withEffectiveAgentAccess(ownNetwork(conn));
-      onSaved(await api.saveConnection(saved, passwordInput(), sshSecrets(), [...inProjects]));
+      const saved = withEffectiveAgentAccess(ownNetwork(c));
+      onSaved(await api.saveConnection(saved, passwordInput(typed), sshSecrets(), [...inProjects]));
     } catch (err) {
       setResult({ ok: false, message: toCommandError(err).message });
       setBusy(false);
@@ -228,7 +256,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     const text = e.clipboardData.getData("text").trim();
     if (!looksLikeConnection(text)) return;
     e.preventDefault();
-    api.parseConnectionUrl(text).then(
+    // The form's database reads a string that names none (`Server=…;Uid=…`) as its own.
+    api.parseConnectionUrl(text, conn.driver).then(
       (parsed) => (!existing && parsed.driver !== conn.driver ? setOtherDriver({ driver: parsed.driver, text }) : fillFrom(parsed)),
       (err) => setResult({ ok: false, message: toCommandError(err).message }),
     );
@@ -395,7 +424,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       <input
                         type="password"
                         value={password}
-                        placeholder={existing && conn.save_password ? t("•••••• (saved)") : ""}
+                        placeholder={savedPlaceholder}
                         onChange={(e) => setPassword(e.target.value)}
                         autoComplete="off"
                       />
@@ -408,7 +437,15 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                 <div className="row">
                   <label className="field grow">
                     <span>{t("Host")}</span>
-                    <input required value={conn.host} onChange={(e) => set("host", e.target.value)} onPaste={onPaste} />
+                    <input
+                      required
+                      value={conn.host}
+                      onChange={(e) => set("host", e.target.value)}
+                      onPaste={onPaste}
+                      onBlur={() => {
+                        if (conn.driver !== "mongo" && splitLogin(conn.host)) takeLogin();
+                      }}
+                    />
                   </label>
                   <label className="field port">
                     <span>{t("Port")}</span>
@@ -495,7 +532,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                         <input
                           type="password"
                           value={password}
-                          placeholder={existing && conn.save_password ? t("•••••• (saved)") : ""}
+                          placeholder={savedPlaceholder}
                           onChange={(e) => setPassword(e.target.value)}
                           autoComplete="off"
                         />
@@ -586,7 +623,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
 
           <div data-page="init" hidden={page !== "init"} className="dialog-page">
             <p className="muted small">{t("Runs after every connection, and again when a lost connection is reopened.")}</p>
-            {server && !libsql && (
+            {server && !libsql && (conn.driver === "postgres" || hasSessionTimeZone(conn.driver)) && (
               <div className="row">
                 {conn.driver === "postgres" && (
                   <label className="field grow">
@@ -599,15 +636,17 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     />
                   </label>
                 )}
-                <label className="field grow">
-                  <span>{t("Time zone")}</span>
-                  <input
-                    value={init.time_zone ?? ""}
-                    onChange={(e) => setInit("time_zone", e.target.value || null)}
-                    placeholder={conn.driver === "mysql" ? t("+01:00 or Europe/Rome") : "Europe/Rome"}
-                    data-field="init_time_zone"
-                  />
-                </label>
+                {hasSessionTimeZone(conn.driver) && (
+                  <label className="field grow">
+                    <span>{t("Time zone")}</span>
+                    <input
+                      value={init.time_zone ?? ""}
+                      onChange={(e) => setInit("time_zone", e.target.value || null)}
+                      placeholder={conn.driver === "mysql" ? t("+01:00 or Europe/Rome") : "Europe/Rome"}
+                      data-field="init_time_zone"
+                    />
+                  </label>
+                )}
               </div>
             )}
             <label className="field">

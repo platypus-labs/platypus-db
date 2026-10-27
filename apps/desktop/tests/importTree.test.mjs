@@ -1,7 +1,7 @@
 // Unit tests of the import dialog's preview (src/components/importTree.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { importRequest, isEmptyImport, savedPasswords, skippedIds } from "../src/components/importTree.ts";
+import { defaultInto, importRequest, isEmptyImport, savedPasswords, skippedIds } from "../src/components/importTree.ts";
 
 const connection = (id, name) => ({ id, name, driver: "sql_server", host: "h", port: 1433, database: "d", user: "" });
 
@@ -57,4 +57,13 @@ test("saved passwords go along only when asked, and only for ticked connections"
   assert.deepEqual(asked.targets[0].project.with_password, ["a"]);
   assert.deepEqual(asked.targets[0].project.project_notes, []);
   assert.equal(importRequest(read, new Set(["a"]), into, null).passwords, false);
+});
+test("a project imported again goes into the saved project of its name", () => {
+  const saved = [{ id: "p1", name: "Cliente Rossi" }, { id: "p2", name: "Interno" }];
+  assert.deepEqual(defaultInto(project({ name: "Cliente Rossi" }), null, saved), { kind: "existing", id: "p1" });
+  assert.deepEqual(defaultInto(project({ name: " interno " }), null, saved), { kind: "existing", id: "p2" });
+  assert.deepEqual(defaultInto(project({ name: "Nuovo" }), null, saved), { kind: "new_project", name: "Nuovo" });
+  // Plain connections join the active project, as before.
+  assert.deepEqual(defaultInto(project({ name: "" }), "p2", saved), { kind: "existing", id: "p2" });
+  assert.deepEqual(defaultInto(project({ name: "" }), null, saved), { kind: "none" });
 });

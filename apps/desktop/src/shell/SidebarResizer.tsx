@@ -18,19 +18,21 @@ function clamp(width: number): number {
   return Math.round(Math.max(MIN, Math.min(maxWidth(), width)));
 }
 
-/** The width of the connections column: the one saved, else the default; narrowed when
- *  the window gets too small for it. */
+/** The width of the connections column: the one saved, else the default; narrowed while
+ *  the window is too small for it, and back to it once the window grows again. */
 export function useSidebarWidth(): [number, (width: number) => void] {
-  const [width, setWidth] = useState(() => {
+  const [wanted, setWanted] = useState(() => {
     const saved = getStored(KEY) ?? getStored(OLD_KEY);
-    return typeof saved === "number" ? clamp(saved) : DEFAULT;
+    return typeof saved === "number" ? saved : DEFAULT;
   });
+  // The window's width, so that the clamp below follows it.
+  const [, setWindowWidth] = useState(() => window.innerWidth);
   useEffect(() => {
-    const onResize = () => setWidth((w) => clamp(w));
+    const onResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-  return [width, (w) => setWidth(clamp(w))];
+  return [clamp(wanted), (w) => setWanted(clamp(w))];
 }
 
 /** Both changes are made in memory at once (the next save already sees them); each write

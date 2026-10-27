@@ -163,8 +163,8 @@ export default async function (page, { dir, shots }) {
     `JSON.stringify([...${visibleTab}.querySelectorAll('.toolbar button')].filter(b => !b.getAttribute('aria-label') || !b.title).map(b => b.outerHTML.slice(0, 80)))`,
   );
   assert.equal(unnamed, "[]");
-  // A toolbar wider than the window scrolls with a visible scrollbar.
-  assert.equal(await page.eval(`getComputedStyle(${visibleTab}.querySelector('.toolbar')).scrollbarWidth`), "thin");
+  // A toolbar wider than the window wraps its buttons onto another line, all reachable.
+  assert.equal(await page.eval(`getComputedStyle(${visibleTab}.querySelector('.toolbar')).flexWrap`), "wrap");
 
   await page.key("j", "KeyJ", 74, CTRL);
   await page.waitFor(`document.querySelector('.palette') !== null`);

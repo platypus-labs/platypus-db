@@ -60,10 +60,11 @@ pub struct ParsedForm {
 }
 
 /// Reads a URL (`postgres://…`), a JDBC URL or an ADO.NET / ODBC connection string into
-/// the fields of the connection form. Nothing is logged: the input may hold a password.
+/// the fields of the connection form; `driver` is the form's, when it has one (see
+/// [`ConnectionConfig::parse_any_for`]). Nothing is logged: the input may hold a password.
 #[tauri::command]
-pub fn parse_connection_url(input: &str) -> CommandResult<ParsedForm> {
-    let ParsedConnection { config, notes } = ConnectionConfig::parse_any(input)?;
+pub fn parse_connection_url(input: &str, driver: Option<DriverKind>) -> CommandResult<ParsedForm> {
+    let ParsedConnection { config, notes } = ConnectionConfig::parse_any_for(input, driver)?;
     Ok(ParsedForm {
         driver: config.driver,
         host: config.host,
@@ -77,6 +78,46 @@ pub fn parse_connection_url(input: &str) -> CommandResult<ParsedForm> {
         ssl_client_key: config.ssl_client_key,
         options: config.options,
         notes,
+    })
+}
+
+/// Whether a password is saved for the connection, for the form's "(saved)" placeholder.
+#[tauri::command]
+pub fn connection_has_password(
+    state: State<'_, AppState>,
+    connection_id: Uuid,
+) -> CommandResult<bool> {
+    state.with_store(|s| s.has_password(connection_id))
+}
+
+/// Saves the password typed at the prompt of a connection that keeps it in the keychain
+/// but had none saved.
+#[tauri::command]
+pub fn remember_password(
+    state: State<'_, AppState>,
+    connection_id: Uuid,
+    password: String,
+) -> CommandResult<()> {
+    state.with_store(|s| s.set_password(connection_id, &Secret::new(password)))
+}
+
+/// A connection saved as a copy of another, and everything it joined.
+#[derive(Serialize)]
+pub struct Duplicated {
+    connection: SavedConnection,
+    workspace: super::projects::Workspace,
+}
+
+/// Saves a copy of a connection with its secrets, next to it (see
+/// `ConnectionStore::duplicate`).
+#[tauri::command]
+pub fn duplicate_connection(state: State<'_, AppState>, id: Uuid) -> CommandResult<Duplicated> {
+    state.with_store(|s| {
+        let connection = s.duplicate(id)?;
+        Ok(Duplicated {
+            connection,
+            workspace: super::projects::Workspace::of(s),
+        })
     })
 }
 
@@ -307,8 +348,26 @@ pub async fn test_connection(
         },
     };
     let config = state.with_store(|s| Ok(config_of(s, &connection, secret, &ssh)))?;
+    if !config.driver.is_embedded() {
+        config.check_host()?;
+    }
     let conn = connect(&config).await?;
     Ok(conn.server_info().clone())
+}
+
+/// Whether a failed login is about the credentials, so that asking for the password again
+/// may help. The drivers word it their own way.
+fn login_refused(e: &CommandError) -> bool {
+    let text = e.message().to_ascii_lowercase();
+    [
+        "password",
+        "authenticat",
+        "access denied",
+        "login failed",
+        "credentials",
+    ]
+    .iter()
+    .any(|word| text.contains(word))
 }
 
 #[derive(Debug, Serialize)]
@@ -337,6 +396,7 @@ pub async fn open_session(
             .cloned()
             .ok_or(platypus_store::StoreError::NotFound(connection_id))
     })?;
+    let typed = password.is_some();
     // A password command may take a while: it runs without holding the store.
     let secret = match password {
         Some(p) => Some(Secret::new(p)),
@@ -345,6 +405,12 @@ pub async fn open_session(
             None => state.with_store(|s| s.password(connection_id))?,
         },
     };
+    // Saved in the keychain, but none is there (never typed, deleted, another machine).
+    let none_saved = secret.is_none()
+        && !saved.driver.is_embedded()
+        && saved.save_password
+        && saved.password_command.is_none()
+        && !saved.pgpass;
     let production = saved.connection_type == Some(ConnectionType::Prod);
     let mut config = state.with_store(|s| Ok(config_of(s, &saved, secret, &SshSecrets::new())))?;
     let label = match &database {
@@ -354,7 +420,16 @@ pub async fn open_session(
     if let Some(database) = database {
         config.database = database;
     }
-    start_session(&state, connection_id, config, label, production).await
+    // `auth`: the UI asks for the password (again), with the server's answer.
+    start_session(&state, connection_id, config, label, production)
+        .await
+        .map_err(|e| {
+            if (typed || none_saved) && login_refused(&e) {
+                e.with_kind("auth")
+            } else {
+                e
+            }
+        })
 }
 
 /// Connects with `config` and keeps the session. Production starts in manual commit, so that
@@ -376,13 +451,7 @@ async fn start_session(
     let session_id = state.next_id();
     lock(&state.sessions).insert(
         session_id,
-        Session {
-            connection_id,
-            conn,
-            config,
-            label,
-            raw,
-        },
+        Session::new(connection_id, raw, conn, config, label),
     );
     Ok(SessionInfo {
         session_id,

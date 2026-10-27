@@ -278,6 +278,11 @@ impl Connection for Logged {
         self.inner.is_closed()
     }
 
+    /// Not logged: a keep-alive, as the health ping.
+    async fn check_alive(&self) -> bool {
+        self.inner.check_alive().await
+    }
+
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {
         self.track(LogKind::Metadata, "schemas", self.inner.schemas())
             .await

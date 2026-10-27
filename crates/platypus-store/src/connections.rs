@@ -319,6 +319,10 @@ fn trim(s: &mut String) {
     s.drain(..start);
 }
 
+/// Why `save` refuses a host such as `root:secret@db:3306`, without repeating it.
+const HOST_WITH_LOGIN: &str = "the host is not valid: it holds a login (`user:password@`), \
+     a port or other keys; put the user, password and port in their own fields";
+
 /// Drops the ids not in `known`, and repeated ones.
 fn keep_known(ids: &mut Vec<Uuid>, known: &HashSet<Uuid>) {
     let mut seen = HashSet::with_capacity(ids.len());
@@ -388,7 +392,8 @@ impl SavedConnection {
     #[must_use]
     pub fn config(&self, password: Option<Secret>) -> ConnectionConfig {
         let mut config = ConnectionConfig::new(self.driver);
-        config.host.clone_from(&self.host);
+        // Spaces copied with a host name are no part of it.
+        self.host.trim().clone_into(&mut config.host);
         config.port = self.port.or(self.driver.default_port());
         config.database.clone_from(&self.database);
         config.user.clone_from(&self.user);
@@ -759,7 +764,12 @@ impl ConnectionStore {
     }
 
     /// Inserts or replaces (by id) a connection and updates its keychain entry.
-    pub fn save(&mut self, connection: SavedConnection, password: PasswordUpdate) -> Result<()> {
+    pub fn save(
+        &mut self,
+        mut connection: SavedConnection,
+        password: PasswordUpdate,
+    ) -> Result<()> {
+        trim(&mut connection.host);
         self.check_connection(&connection)?;
         let id = connection.id;
         let save_password = connection.save_password;
@@ -776,12 +786,19 @@ impl ConnectionStore {
         }
     }
 
-    /// What `save` refuses: no name, half a client certificate, an unknown network profile.
+    /// What `save` refuses: no name, a host that holds a login or other keys (its password
+    /// would be saved in clear), half a client certificate, an unknown network profile.
     fn check_connection(&self, connection: &SavedConnection) -> Result<()> {
         if connection.name.trim().is_empty() {
             return Err(StoreError::Invalid(
                 "connection name is required".to_owned(),
             ));
+        }
+        if !connection.driver.is_embedded() {
+            connection
+                .config(None)
+                .check_host()
+                .map_err(|_| StoreError::Invalid(HOST_WITH_LOGIN.to_owned()))?;
         }
         check_client_cert(
             connection.ssl_client_cert.as_ref(),
@@ -880,6 +897,81 @@ impl ConnectionStore {
     /// A saved SSH password or passphrase.
     pub fn ssh_secret(&self, secret_id: Uuid) -> Result<Option<Secret>> {
         self.secrets.get(secret_id)
+    }
+
+    /// Saves a copy of a connection, named "… (copy)", next to it in the list and in the
+    /// same projects and folders, with copies of its saved password and SSH secrets.
+    pub fn duplicate(&mut self, id: Uuid) -> Result<SavedConnection> {
+        let source = self.get(id).ok_or(StoreError::NotFound(id))?;
+        let mut copy = source.clone();
+        copy.id = Uuid::new_v4();
+        copy.name = self.copy_name(&source.name);
+        let mut secrets = Vec::new();
+        if copy.save_password
+            && let Some(secret) = self.secrets.get(id)?
+        {
+            secrets.push((copy.id, secret));
+        }
+        let mut hop = copy.ssh.as_mut();
+        while let Some(ssh) = hop {
+            let old = ssh.secret_id;
+            ssh.secret_id = Uuid::new_v4();
+            if let Some(secret) = self.secrets.get(old)? {
+                secrets.push((ssh.secret_id, secret));
+            }
+            hop = ssh.jump.as_deref_mut();
+        }
+        let at = self
+            .connections
+            .iter()
+            .position(|c| c.id == id)
+            .map_or(self.connections.len(), |i| i + 1);
+        self.connections.insert(at, copy.clone());
+        for p in &mut self.projects {
+            if let Some(i) = p.connections.iter().position(|c| *c == id) {
+                p.connections.insert(i + 1, copy.id);
+                if let Some(folder) = p.placement.get(&id).copied() {
+                    p.placement.insert(copy.id, folder);
+                }
+            }
+        }
+        self.write()?;
+        for (secret_id, secret) in secrets {
+            self.secrets.set(secret_id, &secret)?;
+        }
+        Ok(copy)
+    }
+
+    /// `name (copy)`, or `name (copy 2)`… when that one is taken.
+    fn copy_name(&self, name: &str) -> String {
+        let taken = |n: &str| self.connections.iter().any(|c| c.name == n);
+        let mut candidate = format!("{name} (copy)");
+        let mut n = 2;
+        while taken(&candidate) {
+            candidate = format!("{name} (copy {n})");
+            n += 1;
+        }
+        candidate
+    }
+
+    /// Saves the password of a connection that keeps it in the keychain, as typed at its
+    /// prompt when none was saved; does nothing for the others.
+    pub fn set_password(&self, id: Uuid, password: &Secret) -> Result<()> {
+        match self.get(id) {
+            Some(c) if c.save_password => self.secrets.set(id, password),
+            Some(_) => Ok(()),
+            None => Err(StoreError::NotFound(id)),
+        }
+    }
+
+    /// Whether a password is saved for the connection; locked saved passwords count as
+    /// saved.
+    pub fn has_password(&self, id: Uuid) -> Result<bool> {
+        match self.password(id) {
+            Ok(secret) => Ok(secret.is_some()),
+            Err(StoreError::Locked) => Ok(true),
+            Err(e) => Err(e),
+        }
     }
 
     /// The saved password, if the connection keeps one.
@@ -1462,6 +1554,87 @@ SET b = 2;"
 
         s.delete(conn.id).unwrap();
         assert_eq!(secrets.get(ssh.secret_id).unwrap(), None);
+    }
+
+    #[test]
+    fn hosts_are_trimmed_and_logins_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        let mut conn = sample();
+        conn.host = " db.example.com ".to_owned();
+        assert_eq!(conn.config(None).host, "db.example.com");
+        s.save(conn.clone(), PasswordUpdate::Keep).unwrap();
+        assert_eq!(s.get(conn.id).unwrap().host, "db.example.com");
+
+        conn.host = "root:s3cret@db.example.com:3306".to_owned();
+        let err = s
+            .save(conn.clone(), PasswordUpdate::Keep)
+            .unwrap_err()
+            .to_string();
+        assert!(!err.contains("s3cret"), "{err}");
+        let text = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
+        assert!(!text.contains("s3cret"), "{text}");
+        // An embedded database has no host to check.
+        let mut lite = SavedConnection::new("lite", DriverKind::Sqlite);
+        lite.host = "a@b".to_owned();
+        s.save(lite, PasswordUpdate::Keep).unwrap();
+    }
+
+    #[test]
+    fn duplicates_with_the_secrets() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, secrets) = store(dir.path());
+        let mut conn = sample();
+        conn.ssh = Some(SavedSsh {
+            host: "bastion".into(),
+            port: 22,
+            user: "ops".into(),
+            auth: SshAuthKind::Password,
+            key_path: None,
+            secret_id: Uuid::new_v4(),
+            jump: None,
+        });
+        s.save(conn.clone(), PasswordUpdate::Set(Secret::new("pw")))
+            .unwrap();
+        let ssh_id = conn.ssh.as_ref().unwrap().secret_id;
+        s.set_ssh_secret(ssh_id, Some(&Secret::new("ssh-pw")))
+            .unwrap();
+        let other = SavedConnection::new("other", DriverKind::Postgres);
+        s.save(other.clone(), PasswordUpdate::Keep).unwrap();
+        let mut project = Project::new("P", "#000000");
+        project.connections = vec![conn.id, other.id];
+        s.save_project(project.clone()).unwrap();
+
+        let copy = s.duplicate(conn.id).unwrap();
+        assert_ne!(copy.id, conn.id);
+        assert_eq!(copy.name, format!("{} (copy)", conn.name));
+        assert_eq!(
+            (copy.host.as_str(), copy.port),
+            (conn.host.as_str(), conn.port)
+        );
+        let copied_ssh = copy.ssh.as_ref().unwrap().secret_id;
+        assert_ne!(copied_ssh, ssh_id);
+        assert_eq!(secrets.get(copy.id).unwrap().unwrap().expose(), "pw");
+        assert_eq!(secrets.get(copied_ssh).unwrap().unwrap().expose(), "ssh-pw");
+        let ids: Vec<Uuid> = s.list().iter().map(|c| c.id).collect();
+        assert_eq!(ids, [conn.id, copy.id, other.id]);
+        assert_eq!(s.projects()[0].connections, [conn.id, copy.id, other.id]);
+        // Deleting the copy leaves the original's secrets.
+        s.delete(copy.id).unwrap();
+        assert_eq!(secrets.get(conn.id).unwrap().unwrap().expose(), "pw");
+        assert_eq!(secrets.get(ssh_id).unwrap().unwrap().expose(), "ssh-pw");
+        assert_eq!(
+            s.duplicate(conn.id).unwrap().name,
+            format!("{} (copy)", conn.name)
+        );
+        assert_eq!(
+            s.duplicate(conn.id).unwrap().name,
+            format!("{} (copy 2)", conn.name)
+        );
+        assert!(s.has_password(conn.id).unwrap());
+        assert!(!s.has_password(other.id).unwrap());
+        s.set_password(other.id, &Secret::new("typed")).unwrap();
+        assert!(s.has_password(other.id).unwrap());
     }
 
     #[test]

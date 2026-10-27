@@ -52,7 +52,7 @@ impl ConnectionConfig {
             url.push_str(&encode(&self.database));
         }
         let mut params = Vec::new();
-        if self.ssl_mode != SslMode::default() {
+        if self.ssl_mode != Self::url_ssl_mode(self.driver) {
             params.push(format!("sslmode={}", self.ssl_mode.as_str()));
         }
         for (key, path) in [
@@ -176,17 +176,42 @@ mod tests {
             "duckdb:///tmp/x.duckdb"
         );
         round_trip("postgres://u@h/d?sslmode=verify-ca&sslrootcert=C:/certs/ca%20root.pem");
+        // libSQL's default is verified TLS; another mode is written out.
+        assert_eq!(
+            round_trip("libsql://h?sslmode=disable"),
+            "libsql://h?sslmode=disable"
+        );
+        assert_eq!(
+            round_trip("libsql://h?sslmode=prefer"),
+            "libsql://h?sslmode=prefer"
+        );
+    }
+
+    #[test]
+    fn in_memory_and_drive_urls_round_trip() {
+        let mut duck = ConnectionConfig::new(DriverKind::DuckDb);
+        duck.host.clear();
+        duck.database = ":memory:".to_owned();
+        let url = duck.to_url().unwrap();
+        assert_eq!(
+            ConnectionConfig::from_url(&url).unwrap().database,
+            ":memory:"
+        );
+        assert_eq!(
+            round_trip("sqlite://C:/data/x.db"),
+            "sqlite:///C:/data/x.db"
+        );
     }
 
     #[test]
     fn mongo_urls_round_trip() {
         assert_eq!(
             round_trip("mongodb://us%40er@db:27018/shop?replicaSet=rs0&tls=true"),
-            "mongodb://us%40er@db:27018/shop?replicaSet=rs0&tls=true"
+            "mongodb://us%40er@db:27018/shop?replicaSet=rs0&authSource=shop&tls=true"
         );
         assert_eq!(
             round_trip("mongodb+srv://u@cluster0.example.net/app"),
-            "mongodb+srv://u@cluster0.example.net/app"
+            "mongodb+srv://u@cluster0.example.net/app?authSource=app"
         );
         assert_eq!(
             round_trip("mongodb://a:1,b:2/?authSource=admin"),

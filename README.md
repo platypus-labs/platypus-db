@@ -107,7 +107,8 @@ and shows the ODBC drivers and data sources of the system.
   filled in for that database. The driver is set by the choice: *Back* returns to the logos, and a
   URL pasted in the form for another database offers to go back. Windows logins and SQL Server
   named instances without a port are pointed out. *Copy as URL* in a connection's menu copies
-  its URL without the password.
+  its URL without the password; *Duplicate* (also in the command palette) saves a copy with its
+  tunnel, init script and passwords, and opens it for editing.
 - **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`, with their
   folders. A DBeaver project export (`.dbp`) brings its projects too, optionally gathered in a
   folder of the project rail. From DBeaver (a `.dbp` or a workspace) the saved user names and
@@ -132,7 +133,8 @@ and shows the ODBC drivers and data sources of the system.
 - After connecting, a default schema, a time zone and bootstrap statements run on every
   connection and reconnection.
 - Idle sessions are checked every minute: the status bar shows the latency, and a connection
-  the server dropped is reopened.
+  the server dropped is reopened, before the next statement too. Editing a connection reopens
+  the sessions of its open tabs with the new settings; a tab with an open transaction asks first.
 
 ### Navigator and objects
 

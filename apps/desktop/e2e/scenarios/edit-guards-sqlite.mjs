@@ -115,7 +115,9 @@ export default async function (page, { dir }) {
   assert.equal(count(), 3, "the declined DELETE did not run");
   assert.equal(db.prepare("SELECT v FROM t WHERE id = 1").get().v, "edited");
 
-  // Data viewer with a second result appended: leaving the edited result asks first.
+  // Data viewer with a second result appended: leaving the edited result asks first. The
+  // connection opens in the navigator, its current schema with it.
+  await page.eval(`${treeRow(NAME)}.querySelector(".twisty").click()`);
   await openTable(page, "t");
   await page.waitFor(`${status} === '3 rows' && ${editBar}.includes('to edit a cell')`, 15_000);
   await typeSql(page, "SELECT 1 AS one");
