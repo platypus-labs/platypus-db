@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 use std::hash::{BuildHasher, RandomState};
 
 use arrow_array::cast::AsArray;
-use arrow_array::types::Float64Type;
+use arrow_array::types::{Decimal128Type, DecimalType, Float64Type};
 use arrow_array::{Array, RecordBatch};
 use arrow_cast::display::ArrayFormatter;
 use arrow_schema::DataType;
@@ -33,6 +33,72 @@ pub struct SelectionStats {
     avg: Option<f64>,
     min: Option<f64>,
     max: Option<f64>,
+    /// `sum`, `min` and `max` exactly, when every number is an integer or a decimal of one
+    /// scale: `f64` rounds integers above 2^53.
+    sum_exact: Option<String>,
+    min_exact: Option<String>,
+    max_exact: Option<String>,
+}
+
+/// Sum and extremes of integer and decimal values kept exactly, as `i128` at one scale.
+struct Exact {
+    scale: Option<i8>,
+    /// `false` once a value cannot be kept exactly: a float, or a decimal of another scale.
+    usable: bool,
+    /// `None` once the sum overflows.
+    sum: Option<i128>,
+    min: Option<i128>,
+    max: Option<i128>,
+}
+
+impl Default for Exact {
+    fn default() -> Self {
+        Self {
+            scale: None,
+            usable: true,
+            sum: Some(0),
+            min: None,
+            max: None,
+        }
+    }
+}
+
+impl Exact {
+    fn add(&mut self, array: &dyn Array) -> Result<(), arrow_schema::ArrowError> {
+        if !self.usable {
+            return Ok(());
+        }
+        let cast;
+        let (values, scale) = match array.data_type() {
+            DataType::Decimal128(_, scale) => (array.as_primitive::<Decimal128Type>(), *scale),
+            t if t.is_integer() => {
+                cast = arrow_cast::cast(array, &DataType::Decimal128(38, 0))?;
+                (cast.as_primitive::<Decimal128Type>(), 0)
+            }
+            _ => {
+                self.usable = false;
+                return Ok(());
+            }
+        };
+        if *self.scale.get_or_insert(scale) != scale {
+            self.usable = false;
+            return Ok(());
+        }
+        for v in values.iter().flatten() {
+            self.sum = self.sum.and_then(|s| s.checked_add(v));
+            self.min = Some(self.min.map_or(v, |m| m.min(v)));
+            self.max = Some(self.max.map_or(v, |m| m.max(v)));
+        }
+        Ok(())
+    }
+
+    /// `value` as decimal text; `None` when the values were not all kept exactly.
+    fn text(&self, value: Option<i128>) -> Option<String> {
+        if !self.usable {
+            return None;
+        }
+        Some(Decimal128Type::format_decimal(value?, 38, self.scale?))
+    }
 }
 
 pub(super) async fn blocking<T: Send + 'static>(
@@ -73,6 +139,7 @@ fn stats_of(
 ) -> Result<SelectionStats, arrow_schema::ArrowError> {
     let mut s = SelectionStats::default();
     let (mut sum, mut min, mut max) = (0.0, f64::INFINITY, f64::NEG_INFINITY);
+    let mut exact = Exact::default();
     for batch in batches {
         for &c in columns {
             let array = batch.column(c);
@@ -81,6 +148,7 @@ fn stats_of(
             if !array.data_type().is_numeric() {
                 continue;
             }
+            exact.add(array.as_ref())?;
             let numbers = arrow_cast::cast(array, &DataType::Float64)?;
             for v in numbers.as_primitive::<Float64Type>().iter().flatten() {
                 s.numbers += 1;
@@ -97,6 +165,9 @@ fn stats_of(
         s.avg = Some(avg);
         s.min = Some(min);
         s.max = Some(max);
+        s.sum_exact = exact.text(exact.sum);
+        s.min_exact = exact.text(exact.min);
+        s.max_exact = exact.text(exact.max);
     }
     Ok(s)
 }
@@ -126,6 +197,10 @@ pub struct NumberStats {
     median: f64,
     /// Sample standard deviation; `None` for a single value.
     stddev: Option<f64>,
+    /// `sum`, `min` and `max` exactly, for integers and decimals (see [`SelectionStats`]).
+    sum_exact: Option<String>,
+    min_exact: Option<String>,
+    max_exact: Option<String>,
 }
 
 fn column_stats_of(
@@ -147,6 +222,7 @@ fn column_stats_of(
         // Hashes, not copies of the values: a 64-bit collision is too rare to skew the count.
         let mut seen: HashSet<u64> = HashSet::new();
         let mut numbers: Vec<f64> = Vec::new();
+        let mut exact = Exact::default();
         for batch in batches {
             let array = batch.column(c);
             s.nulls += array.null_count();
@@ -166,13 +242,19 @@ fn column_stats_of(
                 }
             }
             if numeric {
+                exact.add(array.as_ref())?;
                 let cast = arrow_cast::cast(array, &DataType::Float64)?;
                 numbers.extend(cast.as_primitive::<Float64Type>().iter().flatten());
             }
         }
         s.distinct = seen.len();
         if numeric {
-            s.numbers = number_stats(&mut numbers);
+            s.numbers = number_stats(&mut numbers).map(|n| NumberStats {
+                sum_exact: exact.text(exact.sum),
+                min_exact: exact.text(exact.min),
+                max_exact: exact.text(exact.max),
+                ..n
+            });
         }
         out.push(s);
     }
@@ -204,6 +286,9 @@ fn number_stats(values: &mut [f64]) -> Option<NumberStats> {
         max: values[n - 1],
         median,
         stddev,
+        sum_exact: None,
+        min_exact: None,
+        max_exact: None,
     })
 }
 
@@ -326,7 +411,9 @@ pub async fn group_counts(
 mod tests {
     use std::sync::Arc;
 
-    use arrow_array::{Float64Array, Int32Array, StringArray};
+    use arrow_array::{
+        ArrayRef, Decimal128Array, Float64Array, Int32Array, Int64Array, StringArray,
+    };
     use arrow_schema::{Field, Schema};
 
     use super::*;
@@ -389,6 +476,55 @@ mod tests {
             (Some("a"), Some("b"))
         );
         assert_eq!(text.numbers, None);
+    }
+
+    fn one_column(array: ArrayRef) -> RecordBatch {
+        let field = Field::new("v", array.data_type().clone(), true);
+        RecordBatch::try_new(Arc::new(Schema::new(vec![field])), vec![array]).unwrap()
+    }
+
+    #[test]
+    fn big_integers_keep_their_digits() {
+        let big = one_column(Arc::new(Int64Array::from(vec![
+            Some(9_007_199_254_740_993),
+            None,
+            Some(-9_007_199_254_740_995),
+        ])));
+        let s = stats_of(std::slice::from_ref(&big), &[0]).unwrap();
+        assert_eq!(s.min_exact.as_deref(), Some("-9007199254740995"));
+        assert_eq!(s.max_exact.as_deref(), Some("9007199254740993"));
+        assert_eq!(s.sum_exact.as_deref(), Some("-2"));
+        let n = column_stats_of(&[big], &[0])
+            .unwrap()
+            .remove(0)
+            .numbers
+            .unwrap();
+        assert_eq!(n.max_exact.as_deref(), Some("9007199254740993"));
+    }
+
+    #[test]
+    fn decimals_of_one_scale_are_exact_others_are_not() {
+        let decimals = |scale: i8| {
+            one_column(Arc::new(
+                Decimal128Array::from(vec![Some(110), Some(-5)])
+                    .with_precision_and_scale(10, scale)
+                    .unwrap(),
+            ))
+        };
+        let s = stats_of(&[decimals(2), decimals(2)], &[0]).unwrap();
+        assert_eq!(
+            (
+                s.min_exact.as_deref(),
+                s.max_exact.as_deref(),
+                s.sum_exact.as_deref()
+            ),
+            (Some("-0.05"), Some("1.10"), Some("2.10"))
+        );
+        let mixed = stats_of(&[decimals(2), decimals(1)], &[0]).unwrap();
+        assert_eq!(mixed.min_exact, None);
+        // Floats are not kept exactly: the f64 totals stand alone.
+        let floats = stats_of(&[batch()], &[0, 1]).unwrap();
+        assert_eq!((floats.min_exact, floats.sum), (None, Some(11.0)));
     }
 
     #[test]

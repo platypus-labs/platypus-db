@@ -4,6 +4,7 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { api, type SelectionStats } from "../../api";
 import type { GridApi } from "../DataGrid";
+import { formatExact } from "../exactNumber";
 import { t } from "../../i18n";
 
 /** Waits for the selection to settle, e.g. while dragging. */
@@ -42,10 +43,10 @@ export function useSelectionStats(jobId: number, grid: RefObject<GridApi | null>
       </span>
       {stats.sum !== null && (
         <>
-          <span>{t("Sum {n}", { n: number.format(stats.sum) })}</span>
+          <span>{t("Sum {n}", { n: formatExact(number, stats.sum, stats.sum_exact) })}</span>
           <span>{t("Avg {n}", { n: number.format(stats.avg!) })}</span>
-          <span>{t("Min {n}", { n: number.format(stats.min!) })}</span>
-          <span>{t("Max {n}", { n: number.format(stats.max!) })}</span>
+          <span>{t("Min {n}", { n: formatExact(number, stats.min!, stats.min_exact) })}</span>
+          <span>{t("Max {n}", { n: formatExact(number, stats.max!, stats.max_exact) })}</span>
         </>
       )}
     </div>
