@@ -508,7 +508,8 @@ export function Navigator(props: Props) {
       connected: active.has(c.id),
       onToggle: () => toggle(ckey, () => void openConnection(c)),
       onOpen: () => onOpenTab(c),
-      ...status(ckey),
+      // Loading shows in the row below it; a failure marks the connection too.
+      ...(status(ckey).status === "error" ? status(ckey) : {}),
       menu: { scope: "navigator.connection", arg: { connection: c } },
       item: { kind: "connection", id: c.id },
       actions: (
@@ -646,7 +647,8 @@ export function Navigator(props: Props) {
     const schemas = loaded<SchemaMeta[]>(base);
     if (!schemas) {
       const s = status(base);
-      if (s.status) out.push({ key: `${base}#status`, depth, label: s.detail ?? "", muted: true, ...s });
+      // The text is the row's label: not repeated as its detail.
+      if (s.status) out.push({ key: `${base}#status`, depth, label: s.detail ?? "", muted: true, status: s.status });
       return out;
     }
     const hidden = prefs.filters[c.id];
@@ -1129,7 +1131,7 @@ export function Navigator(props: Props) {
             {...rowDropHandlers(row)}
             title={
               row.status === "error"
-                ? row.detail
+                ? (row.detail ?? row.label)
                 : (row.title ?? (row.detail ? `${row.label}  ${row.detail}` : undefined))
             }
             onClick={(e) => select(row.key, e)}
