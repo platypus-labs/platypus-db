@@ -3707,3 +3707,33 @@ async fn writes_comments() {
         drop_tables(&*conn, d, &b.schema, &tables).await;
     }
 }
+
+/// A PostgreSQL table never analyzed has no statistics: its rows are counted instead of
+/// "unknown" (the confirmation before changes to every row shows them).
+#[tokio::test]
+async fn qa_fixsafe_estimates_rows_of_tables_never_analyzed() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends()
+        .await
+        .into_iter()
+        .filter(|b| b.name == "postgres")
+    {
+        let conn = b.connect().await;
+        let table = format!("{}.qa_fixsafe_est", b.schema);
+        run(&*conn, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap();
+        run(&*conn, &format!("CREATE TABLE {table} (id int)"))
+            .await
+            .unwrap();
+        run(&*conn, &format!("INSERT INTO {table} VALUES (1), (2), (3)"))
+            .await
+            .unwrap();
+        let sql =
+            platypus_sql::Dialect::Postgres.row_estimate_sql(Some(&b.schema), "qa_fixsafe_est");
+        let batches = collect(&b, &*conn, &sql).await;
+        run(&*conn, &format!("DROP TABLE {table}")).await.unwrap();
+        assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
+    }
+}
