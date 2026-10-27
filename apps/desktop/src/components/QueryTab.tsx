@@ -621,6 +621,7 @@ export function QueryTab({
       );
     });
   }
+
   /** Marks where `planned` failed. The server counts the characters of what it received,
    *  `sent`: `planned` with the parameter `values` filled in, where JavaScript counts UTF-16
    *  units. */
@@ -658,6 +659,7 @@ export function QueryTab({
       setSchemaShown(schemas?.find((s) => s.current)?.name ?? null);
     }
   }
+
   /** Asks the values of a statement's parameters that this run has not set yet; `null`
    *  when the user cancels. `defined` holds the names set so far in the run. */
   async function fillParams(

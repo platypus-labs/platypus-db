@@ -156,7 +156,10 @@ mod tests {
     fn sqlite_names_parameters_three_ways() {
         use ParameterKind::Named;
         assert_eq!(
-            names("SELECT @c AS c, $d AS d, :e WHERE x = '@no'", Dialect::Sqlite),
+            names(
+                "SELECT @c AS c, $d AS d, :e WHERE x = '@no'",
+                Dialect::Sqlite
+            ),
             [
                 (Named, "c".to_owned(), "@c"),
                 (Named, "d".to_owned(), "$d"),
@@ -177,14 +180,20 @@ mod tests {
         assert_eq!(names(procedure, Dialect::Oracle), []);
         // Anonymous blocks and plain SQL take binds; other dialects are unchanged.
         assert_eq!(names("BEGIN :x := 1; END;", Dialect::Oracle).len(), 1);
-        assert_eq!(names("select * from t where a = :new", Dialect::Oracle).len(), 1);
+        assert_eq!(
+            names("select * from t where a = :new", Dialect::Oracle).len(),
+            1
+        );
         assert_eq!(
             names("CREATE TRIGGER t BEGIN SELECT :a; END", Dialect::Postgres).len(),
             1
         );
         // `${name}` variables stay.
         assert_eq!(
-            names("CREATE TRIGGER ${name} BEFORE INSERT ON t BEGIN :NEW.a := 1; END;", Dialect::Oracle),
+            names(
+                "CREATE TRIGGER ${name} BEFORE INSERT ON t BEGIN :NEW.a := 1; END;",
+                Dialect::Oracle
+            ),
             [(ParameterKind::Variable, "name".to_owned(), "${name}")]
         );
     }

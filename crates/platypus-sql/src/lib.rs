@@ -774,7 +774,10 @@ mod tests {
             ["SELECT 'a$$b' AS x, a", "SELECT 2"]
         );
         // With the default delimiter, `$` stays part of names.
-        assert_eq!(texts("SELECT a$$b FROM t", Dialect::MySql), ["SELECT a$$b FROM t"]);
+        assert_eq!(
+            texts("SELECT a$$b FROM t", Dialect::MySql),
+            ["SELECT a$$b FROM t"]
+        );
     }
 
     #[test]
@@ -971,7 +974,11 @@ mod tests {
         assert_eq!(at("-- about"), Some("select 2"));
         assert_eq!(at("-- more"), Some("select 2"));
         assert_eq!(at("-- after"), Some("select 2"), "same line as statement 2");
-        assert_eq!(at("-- loose"), Some("select 2"), "a blank line before statement 3");
+        assert_eq!(
+            at("-- loose"),
+            Some("select 2"),
+            "a blank line before statement 3"
+        );
         let block = "select 1;\n/* x */ select 2";
         let offset = block.find("x */").unwrap();
         assert_eq!(
