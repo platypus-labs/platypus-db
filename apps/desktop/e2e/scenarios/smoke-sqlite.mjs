@@ -69,6 +69,7 @@ export default async function (page, { dir }) {
     "Refresh",
     "Disconnect",
     "Navigator filters…",
+    "Duplicate",
     "Copy as URL",
     "Edit…",
     "Delete…",

@@ -1,6 +1,6 @@
 // Regression guard (passes): SQL Server batches. GO splits batches and a procedure body runs
-// to its GO; BEGIN TRY / BEGIN CATCH and BEGIN TRAN keep their statements apart as they
-// should; temp tables live across statements of the tab; Cancel stops a WAITFOR at once and
+// to its GO; a batch with BEGIN TRAN runs as one, its transaction seen by the statement
+// after; temp tables live across statements of the tab; Cancel stops a WAITFOR at once and
 // the session stays usable.
 import assert from "node:assert/strict";
 import { DB, button, clearStatus, gridTsv, openEditor, resultError, resultTabs, runScript, runStatement, saveConnections, setEditor, skipUnless, waitDone } from "../qa-sql.mjs";
@@ -19,8 +19,11 @@ export default async function (page) {
   assert.equal((await page.eval(resultTabs)).length, 3);
   assert.equal(await gridTsv(page), "r\n42");
 
-  await runScript(page, "BEGIN TRAN;\nSELECT @@TRANCOUNT AS tc;\nROLLBACK;");
-  assert.deepEqual(await page.eval(resultTabs), ["1. 0 rows affected", "2. 1 row", "3. 0 rows affected"]);
+  // One batch (no GO) goes to the server as one text, as SSMS sends it: its one result set.
+  assert.equal(await runScript(page, "BEGIN TRAN;\nSELECT @@TRANCOUNT AS tc;\nROLLBACK;"), "1 row");
+  assert.equal(await page.eval(resultError), null);
+  assert.deepEqual(await page.eval(resultTabs), []);
+  assert.equal(await gridTsv(page), "tc\n1");
 
   await runScript(page, "SELECT 1 AS x INTO #qa_sql_ok_t;\nSELECT * FROM #qa_sql_ok_t;");
   assert.equal(await gridTsv(page), "x\n1");

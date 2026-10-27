@@ -148,7 +148,8 @@ export default async function (page, { dir }) {
   await menu(page, "items", "Generate data", gen);
   await page.waitFor(`${gen}.querySelectorAll('select').length === 3`);
   const kinds = await page.eval(`[...${gen}.querySelectorAll('select')].map(s => s.value)`);
-  assert.deepEqual(kinds, ["next_key", "full_name", "decimal"]);
+  // The INTEGER PRIMARY KEY numbers itself: it is left to the database.
+  assert.deepEqual(kinds, ["skip", "full_name", "decimal"]);
   await page.eval(fill(`${gen}.querySelector('input[type=number]')`, "50"));
   await page.eval(`${button(gen, "Generate")}.click()`);
   await confirmProduction(page);

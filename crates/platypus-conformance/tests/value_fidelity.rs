@@ -480,7 +480,8 @@ async fn duckdb_special_values_and_bits() {
             "-infinity",
             "infinity",
             "1010",
-            "[1, NULL, 3]"
+            // Lists are imported as JSON.
+            "[1,null,3]"
         ])]
     );
     // The largest HUGEINT is i128::MAX, the reserved decimal NaN of PostgreSQL's numeric:

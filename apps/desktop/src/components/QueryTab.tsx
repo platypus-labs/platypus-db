@@ -780,11 +780,14 @@ export function QueryTab({
     const queue = [...planned];
     const own = queue.map((p, i) => resultOf(p, i === 0));
     const base = append ? results.length : replaced ? Math.max(0, results.indexOf(replaced)) : 0;
+    // A copy: React runs the update later, when `own` may have grown with the results an
+    // `@include` or a further result set adds by updates of their own.
+    const initial = [...own];
     setResults((all) => {
-      if (append) return [...all, ...own];
-      if (!replaced) return own;
+      if (append) return [...all, ...initial];
+      if (!replaced) return initial;
       const at = all.findIndex((r) => r.id === replaced.id);
-      return at < 0 ? [...all, ...own] : [...all.slice(0, at), ...own, ...all.slice(at + 1)];
+      return at < 0 ? [...all, ...initial] : [...all.slice(0, at), ...initial, ...all.slice(at + 1)];
     });
     if (!auto) setActiveResult(base);
     autoRun.current = auto;

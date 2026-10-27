@@ -78,7 +78,7 @@ export default async function (page) {
   assert.ok(!items.some((i) => i.startsWith("Drop")), `no Drop in ${items}`);
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Generate DDL')).click()`);
   await page.waitFor(`document.querySelector('.tab.active')?.textContent.startsWith('DDL of 2 objects')`, 10_000);
-  const ddl = await page.eval(`[...${queryTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n')`);
+  const ddl = await page.eval(`[...${queryTab}.querySelectorAll('.editor .cm-line')].map(l => l.textContent).join('\\n')`);
   assert.match(ddl, /CREATE TABLE .*\ba\b/i);
   assert.match(ddl, /CREATE TABLE .*\bc\b/i);
 
@@ -94,20 +94,24 @@ export default async function (page) {
   assert.equal(await page.eval(`document.querySelectorAll('.tab').length`), tabs, "the open tab is reused");
 
   // Only a page of the table is read; scrolling to the end reads more.
-  await page.waitFor(`${status}.includes('more available')`, 15_000);
+  // The status says "0 rows loaded · more available" from the start: wait for rows.
+  await page.waitFor(`${status}.includes('more available') && ${loaded} > 0`, 15_000);
   const first = await page.eval(loaded);
 
   // Dragging the scrollbar thumb from over the header row does not sort that column.
   await page.eval(`${queryTab}.querySelector('.grid-scroll').id = 'e2e-grid'`);
+  const scrollbar = `(() => { const s = document.getElementById('e2e-grid'); return s.offsetWidth - s.clientWidth; })()`;
+  // The grid draws the rows a moment after the status counts them.
+  await page.waitFor(`${scrollbar} > 0`, 5_000).catch(() => {});
   const g = await page.rect("#e2e-grid");
-  const bar = await page.eval(`(() => { const s = document.getElementById('e2e-grid'); return s.offsetWidth - s.clientWidth; })()`);
+  const bar = await page.eval(scrollbar);
   assert.ok(bar > 0, "the grid has a vertical scrollbar");
   const x = g.x + g.w - bar / 2;
   await page.mouse("mousePressed", x, g.y + 8);
   await page.mouse("mouseMoved", x, g.y + 40);
   await page.mouse("mouseReleased", x, g.y + 40);
   await page.sleep(500);
-  const sql = await page.eval(`[...${queryTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join(' ')`);
+  const sql = await page.eval(`[...${queryTab}.querySelectorAll('.editor .cm-line')].map(l => l.textContent).join(' ')`);
   assert.doesNotMatch(sql, /ORDER BY/, "no sort from the scrollbar");
   assert.ok(first > 0 && first < ROWS, `a page of rows, not ${first}`);
   await page.waitFor(

@@ -93,7 +93,9 @@ async function exportDocs(page, dir) {
   await page.waitFor(`${docs}.textContent.includes('Documentation written')`, 30_000);
   const text = readFileSync(out, "utf8");
   assert.doesNotMatch(text, /<!doctype/i);
-  assert.match(text, /^\| \[main\.orders\]\(#mainorders\) \| table \|/m);
+  // Each table has an explicit anchor, its name as written.
+  assert.match(text, /^\| \[main\.orders\]\(#main\.orders\) \| table \|/m);
+  assert.match(text, /^<a id="main\.orders"><\/a>$/m);
   assert.match(text, /One row per order/);
   assert.match(text, /```mermaid\nerDiagram\n/);
   await page.eval(`${button("Close")}.click()`);
