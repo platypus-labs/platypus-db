@@ -21,7 +21,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use arrow_array::RecordBatch;
+use arrow_array::{RecordBatch, RecordBatchOptions};
 use arrow_schema::Schema;
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -376,7 +376,15 @@ impl PgConnection {
         }
         let statement = self.client.prepare(sql).await.map_err(map_error)?;
 
-        if statement.columns().is_empty() {
+        // `SELECT` without columns has rows all the same: no columns is no result only
+        // for the other statements.
+        let query = matches!(
+            platypus_core::leading_words(sql, 1)
+                .first()
+                .map(String::as_str),
+            Some("SELECT" | "VALUES" | "TABLE")
+        );
+        if statement.columns().is_empty() && !query {
             let rows = self
                 .client
                 .execute_raw(&statement, no_params())
@@ -385,13 +393,14 @@ impl PgConnection {
             return Ok(ExecResult::Affected { rows });
         }
 
-        let (fields, builders): (Vec<_>, Vec<_>) = statement
+        let (fields, mut builders): (Vec<_>, Vec<_>) = statement
             .columns()
             .iter()
             .map(column_builder)
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             .unzip();
+        columns::load_names(&self.client, &mut builders).await;
         let schema = Arc::new(Schema::new(fields));
         let rows = self
             .client
@@ -504,7 +513,9 @@ async fn next_batch(mut state: BatchState) -> Result<Option<(RecordBatch, BatchS
         .iter_mut()
         .map(ColumnBuilder::finish)
         .collect();
-    let batch = RecordBatch::try_new(Arc::clone(&state.schema), columns)?;
+    // A result without columns (`SELECT FROM t`) still has its rows.
+    let options = RecordBatchOptions::new().with_row_count(Some(len));
+    let batch = RecordBatch::try_new_with_options(Arc::clone(&state.schema), columns, &options)?;
     Ok(Some((batch, state)))
 }
 

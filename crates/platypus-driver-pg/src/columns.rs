@@ -60,7 +60,29 @@ pub enum ColumnBuilder {
         builder: StringBuilder,
         ty: Type,
     },
+    /// An OID alias type (`regclass`, `regtype`, …): the name of each OID, read from the
+    /// catalog with [`Self::name_query`] before the rows; an OID without one is its number.
+    Named {
+        builder: StringBuilder,
+        ty: Type,
+        names: HashMap<u32, String>,
+    },
 }
+
+/// The catalog of each OID alias type, whose OIDs the type names.
+const NAMED: &[(Type, &str)] = &[
+    (Type::REGCLASS, "pg_class"),
+    (Type::REGTYPE, "pg_type"),
+    (Type::REGPROC, "pg_proc"),
+    (Type::REGPROCEDURE, "pg_proc"),
+    (Type::REGOPER, "pg_operator"),
+    (Type::REGOPERATOR, "pg_operator"),
+    (Type::REGNAMESPACE, "pg_namespace"),
+    (Type::REGROLE, "pg_roles"),
+    (Type::REGCONFIG, "pg_ts_config"),
+    (Type::REGDICTIONARY, "pg_ts_dict"),
+    (Type::REGCOLLATION, "pg_collation"),
+];
 
 /// Strips domains down to their base type.
 fn base_type(ty: &Type) -> &Type {
@@ -130,12 +152,35 @@ pub fn column_builder(column: &Column) -> Result<(Field, ColumnBuilder), ArrowEr
         Type::TIMESTAMPTZ => ColumnBuilder::timestamp(true),
         Type::INTERVAL => ColumnBuilder::Interval(IntervalMonthDayNanoBuilder::new()),
         _ if matches!(base.kind(), Kind::Enum(_)) => ColumnBuilder::Text(StringBuilder::new()),
+        _ if NAMED.iter().any(|(t, _)| t == base) => ColumnBuilder::Named {
+            builder: StringBuilder::new(),
+            ty: base.clone(),
+            names: HashMap::new(),
+        },
         _ => formatted(ty),
     };
     let field = Field::new(column.name(), builder.data_type(), true).with_metadata(HashMap::from(
         [(META_DB_TYPE.to_owned(), type_label(column))],
     ));
     Ok((field, builder))
+}
+
+/// Reads the names of the OIDs of the OID alias columns among `builders`, on the session
+/// that runs the query (so `regclass` names follow its search path). A catalog that cannot
+/// be read leaves the numbers.
+pub async fn load_names(client: &tokio_postgres::Client, builders: &mut [ColumnBuilder]) {
+    for builder in builders.iter_mut() {
+        let Some(sql) = builder.name_query() else {
+            continue;
+        };
+        if let Ok(rows) = client.query(&sql, &[]).await {
+            builder.set_names(
+                rows.iter()
+                    .filter_map(|r| Some((r.try_get(0).ok()?, r.try_get(1).ok()?)))
+                    .collect(),
+            );
+        }
+    }
 }
 
 /// `(precision, scale)` of a `numeric` type modifier that an Arrow `Decimal128` holds.
@@ -156,6 +201,26 @@ fn formatted(ty: &Type) -> ColumnBuilder {
 }
 
 impl ColumnBuilder {
+    /// For an OID alias column, the query of its OIDs and their names.
+    #[must_use]
+    pub fn name_query(&self) -> Option<String> {
+        let Self::Named { ty, .. } = self else {
+            return None;
+        };
+        let (_, catalog) = NAMED.iter().find(|(t, _)| t == ty)?;
+        Some(format!(
+            "SELECT oid, oid::{}::text FROM pg_catalog.{catalog}",
+            ty.name()
+        ))
+    }
+
+    /// Sets the names of an OID alias column's OIDs.
+    pub fn set_names(&mut self, names: HashMap<u32, String>) {
+        if let Self::Named { names: n, .. } = self {
+            *n = names;
+        }
+    }
+
     #[must_use]
     pub fn timestamp(utc: bool) -> Self {
         let builder = TimestampMicrosecondBuilder::new();
@@ -179,7 +244,9 @@ impl ColumnBuilder {
             Self::Decimal {
                 precision, scale, ..
             } => DataType::Decimal128(*precision, *scale),
-            Self::Text(_) | Self::Jsonb(_) | Self::Formatted { .. } => DataType::Utf8,
+            Self::Text(_) | Self::Jsonb(_) | Self::Formatted { .. } | Self::Named { .. } => {
+                DataType::Utf8
+            }
             Self::Binary(_) => DataType::Binary,
             Self::Date(_) => DataType::Date32,
             Self::Time(_) => DataType::Time64(TimeUnit::Microsecond),
@@ -241,6 +308,15 @@ impl ColumnBuilder {
                 ));
             }
             Self::Formatted { builder, ty } => builder.append_value(format_value(ty, raw)?),
+            Self::Named { builder, names, .. } => {
+                let oid = pg::oid_from_sql(raw)?;
+                match names.get(&oid) {
+                    Some(name) => builder.append_value(name),
+                    // PostgreSQL writes `-` for no object.
+                    None if oid == 0 => builder.append_value("-"),
+                    None => builder.append_value(oid.to_string()),
+                }
+            }
         }
         Ok(())
     }
@@ -255,7 +331,10 @@ impl ColumnBuilder {
             Self::Float32(b) => b.append_null(),
             Self::Float64(b) => b.append_null(),
             Self::Decimal { builder, .. } => builder.append_null(),
-            Self::Text(b) | Self::Jsonb(b) | Self::Formatted { builder: b, .. } => b.append_null(),
+            Self::Text(b)
+            | Self::Jsonb(b)
+            | Self::Formatted { builder: b, .. }
+            | Self::Named { builder: b, .. } => b.append_null(),
             Self::Binary(b) => b.append_null(),
             Self::Date(b) => b.append_null(),
             Self::Time(b) => b.append_null(),
@@ -275,9 +354,10 @@ impl ColumnBuilder {
             Self::Float32(b) => Arc::new(b.finish()),
             Self::Float64(b) => Arc::new(b.finish()),
             Self::Decimal { builder, .. } => Arc::new(builder.finish()),
-            Self::Text(b) | Self::Jsonb(b) | Self::Formatted { builder: b, .. } => {
-                Arc::new(b.finish())
-            }
+            Self::Text(b)
+            | Self::Jsonb(b)
+            | Self::Formatted { builder: b, .. }
+            | Self::Named { builder: b, .. } => Arc::new(b.finish()),
             Self::Binary(b) => Arc::new(b.finish()),
             Self::Date(b) => Arc::new(b.finish()),
             Self::Time(b) => Arc::new(b.finish()),
