@@ -515,13 +515,18 @@ pub(crate) async fn query_value(
         .and_then(|mut r| r.swap_remove(0)))
 }
 
-/// Whether a rollback undoes a `CREATE TABLE` of the transaction: MySQL, Oracle and the
-/// warehouses commit DDL at once.
-fn rolls_back_ddl(dialect: Dialect) -> bool {
-    matches!(
-        dialect,
-        Dialect::Postgres | Dialect::Sqlite | Dialect::DuckDb | Dialect::SqlServer | Dialect::Db2
-    )
+/// The schema an unqualified `CREATE TABLE` creates its table in; `None` where it cannot be
+/// asked.
+async fn current_schema(conn: &dyn Connection, dialect: Dialect) -> Option<String> {
+    let sql = match dialect {
+        Dialect::Postgres | Dialect::DuckDb => "SELECT current_schema()",
+        Dialect::MySql => "SELECT DATABASE()",
+        Dialect::SqlServer => "SELECT SCHEMA_NAME()",
+        Dialect::Oracle => "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM dual",
+        Dialect::Sqlite => return Some("main".to_owned()),
+        _ => return None,
+    };
+    query_value(conn, sql).await.ok().flatten()
 }
 
 async fn exec(conn: &dyn Connection, sql: &str) -> Result<(), platypus_core::Error> {
@@ -565,11 +570,17 @@ pub async fn import_rows(
     if transaction {
         exec(target, "BEGIN").await?;
     }
-    let mut created = false;
+    // The table a failed import created, by its full name: an unqualified one could find
+    // another table of that name further down the search path once a rollback undid it.
+    let mut created: Option<String> = None;
     let outcome = async {
         if plan.create {
+            let schema = match &plan.schema {
+                Some(schema) => Some(schema.clone()),
+                None => current_schema(target, dialect).await,
+            };
             exec(target, &plan.create_sql(dialect)?).await?;
-            created = true;
+            created = Some(dialect.qualified(schema.as_deref(), &plan.table));
         }
         if plan.mode() == ImportMode::Replace {
             exec(target, &format!("DELETE FROM {}", plan.table(dialect))).await?;
@@ -609,11 +620,11 @@ pub async fn import_rows(
         if transaction {
             let _ = target.rollback().await;
         }
-        // Where the rollback undid the CREATE, a DROP of the same name could find another
-        // table of that name further down the search path: it runs only where the table is
-        // still there. In manual-commit mode it opens a transaction, ended here.
-        if created && !(transaction && rolls_back_ddl(dialect)) {
-            let _ = exec(target, &format!("DROP TABLE {}", plan.table(dialect))).await;
+        // Most databases' rollback undid the CREATE already, and the DROP fails; MySQL,
+        // Oracle and CockroachDB keep the table. In manual-commit mode it opens a
+        // transaction, ended here.
+        if let Some(table) = created {
+            let _ = exec(target, &format!("DROP TABLE {table}")).await;
             let _ = target.rollback().await;
         }
     }
@@ -787,7 +798,7 @@ mod tests {
     }
 
     #[test]
-    fn writes_decimal_nan_and_drops_only_where_ddl_stays() {
+    fn writes_decimal_nan() {
         let column = Column {
             name: "n",
             kind: ValueKind::Decimal,
@@ -802,8 +813,6 @@ mod tests {
             "1.50"
         );
         assert!(literal(&column, Dialect::Postgres, Some("x")).is_err());
-        assert!(rolls_back_ddl(Dialect::Postgres) && rolls_back_ddl(Dialect::SqlServer));
-        assert!(!rolls_back_ddl(Dialect::MySql) && !rolls_back_ddl(Dialect::Oracle));
     }
 
     #[test]
