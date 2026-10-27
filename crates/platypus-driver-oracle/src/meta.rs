@@ -122,11 +122,12 @@ pub fn schemas(rows: &[TextRow]) -> Vec<SchemaMeta> {
 
 /// The object types the navigator lists, as `ALL_OBJECTS` names them.
 const OBJECT_TYPES: &str = "'TABLE', 'VIEW', 'MATERIALIZED VIEW', 'SEQUENCE', 'FUNCTION', \
-     'PROCEDURE', 'TRIGGER', 'TYPE'";
+     'PROCEDURE', 'TRIGGER', 'TYPE', 'PACKAGE', 'SYNONYM'";
 
-/// Tables, views, sequences, routines, triggers and types of `schema`, with the comments
-/// and row estimates of tables and the table of each trigger. A materialized view is also
-/// a table in `ALL_OBJECTS`: listed once; tables in the recycle bin are left out.
+/// Tables, views, sequences, routines, triggers, types, packages and synonyms of `schema`,
+/// with the comments and row estimates of tables and the table of each trigger. A
+/// materialized view is also a table in `ALL_OBJECTS`: listed once; tables in the recycle
+/// bin are left out, and so are the sequences of identity columns (`ISEQ$$_…`, generated).
 #[must_use]
 pub fn objects_sql(schema: &str) -> String {
     let s = lit(schema);
@@ -141,6 +142,8 @@ pub fn objects_sql(schema: &str) -> String {
            AND o.OBJECT_TYPE = 'TABLE' \
          WHERE o.OWNER = {s} AND o.OBJECT_TYPE IN ({OBJECT_TYPES}) \
            AND o.OBJECT_NAME NOT LIKE 'BIN$%' \
+           AND NOT (o.OBJECT_TYPE = 'SEQUENCE' AND (o.GENERATED = 'Y' \
+             OR o.OBJECT_NAME LIKE 'ISEQ$$\\_%' ESCAPE '\\')) \
            AND NOT (o.OBJECT_TYPE = 'TABLE' AND EXISTS (SELECT 1 FROM ALL_MVIEWS m \
              WHERE m.OWNER = o.OWNER AND m.MVIEW_NAME = o.OBJECT_NAME)) \
          ORDER BY o.OBJECT_NAME, o.OBJECT_TYPE"
@@ -157,6 +160,8 @@ fn object_kind(oracle_type: &str) -> Option<ObjectKind> {
         "PROCEDURE" => ObjectKind::Procedure,
         "TRIGGER" => ObjectKind::Trigger,
         "TYPE" => ObjectKind::Type,
+        "PACKAGE" => ObjectKind::Package,
+        "SYNONYM" => ObjectKind::Synonym,
         _ => return None,
     })
 }
@@ -252,13 +257,41 @@ pub fn constraints_sql(schema: &str, table: &str) -> String {
     )
 }
 
-/// The indexes of a table, one row per column; LOB indexes are the database's own.
+/// The indexed column or expression of a row of [`indexes_sql`]: a function-based index (and
+/// a descending column, which Oracle also stores as an expression) names a hidden column
+/// `SYS_NC…$`, its expression is in `ALL_IND_EXPRESSIONS`.
+fn index_column(r: &TextRow) -> String {
+    let expression = r
+        .opt(4)
+        .map(|e| e.trim().to_owned())
+        .filter(|e| !e.is_empty());
+    let column = match expression {
+        // A plain column: the name without its quotes, as other columns show.
+        Some(e) => match e.strip_prefix('"').and_then(|e| e.strip_suffix('"')) {
+            Some(name) if !name.contains('"') && name == name.to_ascii_uppercase() => {
+                name.to_owned()
+            }
+            _ => e,
+        },
+        None => r.text(2),
+    };
+    if r.text(3) == "DESC" {
+        format!("{column} DESC")
+    } else {
+        column
+    }
+}
+
+/// The indexes of a table, one row per column: name, uniqueness, column, `ASC` or `DESC` and
+/// the expression of a function-based index; LOB indexes are the database's own.
 #[must_use]
 pub fn indexes_sql(schema: &str, table: &str) -> String {
     format!(
-        "SELECT i.INDEX_NAME, i.UNIQUENESS, ic.COLUMN_NAME \
+        "SELECT i.INDEX_NAME, i.UNIQUENESS, ic.COLUMN_NAME, ic.DESCEND, e.COLUMN_EXPRESSION \
          FROM ALL_INDEXES i \
          JOIN ALL_IND_COLUMNS ic ON ic.INDEX_OWNER = i.OWNER AND ic.INDEX_NAME = i.INDEX_NAME \
+         LEFT JOIN ALL_IND_EXPRESSIONS e ON e.INDEX_OWNER = ic.INDEX_OWNER \
+           AND e.INDEX_NAME = ic.INDEX_NAME AND e.COLUMN_POSITION = ic.COLUMN_POSITION \
          WHERE i.TABLE_OWNER = {} AND i.TABLE_NAME = {} AND i.INDEX_TYPE <> 'LOB' \
          ORDER BY i.INDEX_NAME, ic.COLUMN_POSITION",
         lit(schema),
@@ -374,7 +407,7 @@ pub fn table_details(
                 primary: primary_name.as_ref() == Some(&name),
                 partial: false,
                 name: name.clone(),
-                columns: vec![r.text(2)],
+                columns: vec![index_column(r)],
                 unique: r.text(1) == "UNIQUE",
                 size: None,
             };
@@ -424,24 +457,40 @@ pub fn catalog_foreign_keys(rows: &[TextRow]) -> Vec<CatalogForeignKey> {
 }
 
 /// The `CREATE` statement of an object, from `DBMS_METADATA`; `None` for kinds it does not
-/// describe here.
+/// describe here. The DDL of PL/SQL (routines, triggers, types, packages) can hold several
+/// statements (a trigger's `ALTER TRIGGER … ENABLE`, a body after its specification): it
+/// comes with its terminators, a `/` line after each block, so that it runs back as a
+/// script. Terminators are a session setting, set and reset by a function of the query
+/// (Oracle 12c and later; `legacy` dictionaries go without).
 #[must_use]
-pub fn ddl_sql(object: &ObjectRef<'_>) -> Option<String> {
-    let kind = match object.kind {
-        ObjectKind::Table => "TABLE",
-        ObjectKind::View => "VIEW",
-        ObjectKind::MaterializedView => "MATERIALIZED_VIEW",
-        ObjectKind::Sequence => "SEQUENCE",
-        ObjectKind::Function => "FUNCTION",
-        ObjectKind::Procedure => "PROCEDURE",
-        ObjectKind::Trigger => "TRIGGER",
-        ObjectKind::Type => "TYPE",
+pub fn ddl_sql(object: &ObjectRef<'_>, legacy: bool) -> Option<String> {
+    let (kind, plsql) = match object.kind {
+        ObjectKind::Table => ("TABLE", false),
+        ObjectKind::View => ("VIEW", false),
+        ObjectKind::MaterializedView => ("MATERIALIZED_VIEW", false),
+        ObjectKind::Sequence => ("SEQUENCE", false),
+        ObjectKind::Synonym => ("SYNONYM", false),
+        ObjectKind::Function => ("FUNCTION", true),
+        ObjectKind::Procedure => ("PROCEDURE", true),
+        ObjectKind::Trigger => ("TRIGGER", true),
+        ObjectKind::Type => ("TYPE", true),
+        ObjectKind::Package => ("PACKAGE", true),
         _ => return None,
     };
-    Some(format!(
-        "SELECT DBMS_METADATA.GET_DDL('{kind}', {}, {}) FROM DUAL",
+    let get = format!(
+        "DBMS_METADATA.GET_DDL('{kind}', {}, {})",
         lit(object.name),
         lit(object.schema)
+    );
+    if !plsql || legacy {
+        return Some(format!("SELECT {get} FROM DUAL"));
+    }
+    Some(format!(
+        "WITH FUNCTION platypus_ddl RETURN CLOB IS d CLOB; BEGIN \
+         DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'SQLTERMINATOR', TRUE); \
+         d := {get}; \
+         DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'DEFAULT'); \
+         RETURN d; END;\nSELECT platypus_ddl FROM DUAL"
     ))
 }
 
@@ -465,8 +514,10 @@ mod tests {
             row(&[Some("EMP"), Some("TABLE"), Some("staff"), None, Some("14")]),
             row(&[Some("EMP_TRG"), Some("TRIGGER"), None, Some("EMP"), None]),
             row(&[Some("PKG"), Some("PACKAGE"), None, None, None]),
+            row(&[Some("J"), Some("JAVA CLASS"), None, None, None]),
         ]);
-        assert_eq!(o.len(), 2);
+        assert_eq!(o.len(), 3);
+        assert_eq!(o[2].kind, ObjectKind::Package);
         assert_eq!(
             (o[0].kind, o[0].rows, o[0].comment.as_deref()),
             (ObjectKind::Table, Some(14), Some("staff"))
@@ -670,13 +721,25 @@ mod tests {
             parent: None,
         };
         assert_eq!(
-            ddl_sql(&object).unwrap(),
+            ddl_sql(&object, false).unwrap(),
             "SELECT DBMS_METADATA.GET_DDL('TABLE', 'EMP', 'HR') FROM DUAL"
+        );
+        let package = ObjectRef {
+            kind: ObjectKind::Package,
+            ..object
+        };
+        let sql = ddl_sql(&package, false).unwrap();
+        assert!(sql.starts_with("WITH FUNCTION platypus_ddl"), "{sql}");
+        assert!(sql.contains("GET_DDL('PACKAGE', 'EMP', 'HR')"), "{sql}");
+        assert!(
+            ddl_sql(&package, true)
+                .unwrap()
+                .starts_with("SELECT DBMS_METADATA")
         );
         let object = ObjectRef {
             kind: ObjectKind::Extension,
             ..object
         };
-        assert!(ddl_sql(&object).is_none());
+        assert!(ddl_sql(&object, false).is_none());
     }
 }

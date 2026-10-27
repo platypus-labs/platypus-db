@@ -497,6 +497,28 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       <input value={conn.user} onChange={(e) => set("user", e.target.value)} />
                     </label>
                   )}
+                  {conn.driver === "oracle" && (
+                    <label className="field">
+                      <span>{t("Role")}</span>
+                      <select
+                        value={conn.options?.role ?? ""}
+                        onChange={(e) => {
+                          const options = { ...conn.options };
+                          if (e.target.value) options.role = e.target.value;
+                          else delete options.role;
+                          set("options", options);
+                        }}
+                        data-field="role"
+                      >
+                        <option value="">{t("No administrative role")}</option>
+                        {["SYSDBA", "SYSOPER", "SYSBACKUP", "SYSDG", "SYSKM", "SYSASM"].map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                 </div>
                 {conn.driver === "oracle" || conn.driver === "db2" ? <VendorDriverState driver={conn.driver} /> : null}
 
