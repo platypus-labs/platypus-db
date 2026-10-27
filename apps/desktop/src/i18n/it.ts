@@ -1400,6 +1400,9 @@ const it: Record<string, string> = {
   "Find and replace": "Trova e sostituisci",
   "Show completions": "Mostra i suggerimenti",
   "A key that types a character needs Ctrl or Alt.": "Un tasto che scrive un carattere richiede Ctrl o Alt.",
+  // Closing tabs
+  "Save the changes to {file}?": "Salvare le modifiche a {file}?",
+  "Don't save": "Non salvare",
 };
 
 export default it;

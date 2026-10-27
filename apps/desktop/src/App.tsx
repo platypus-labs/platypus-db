@@ -28,8 +28,8 @@ import { setAnswer } from "./testAnswers";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { dbKey, provideWorkbench, workbench } from "./workbench";
 import type { IconName } from "./ui/Icon";
-import { ask, isAsking } from "./ui/ask";
-import { type PersistedTab, flushWorkspace, loadWorkspace, saveWorkspace } from "./workspace";
+import { ask, choose, isAsking } from "./ui/ask";
+import { type PersistedTab, basename, flushWorkspace, loadWorkspace, saveWorkspace } from "./workspace";
 import { connectionsOf, loadActiveProject, projectKey, saveActiveProject } from "./projects/state";
 import { forgetCatalog } from "./catalog/catalog";
 import { ProjectRail } from "./projects/ProjectRail";
@@ -227,7 +227,7 @@ export function App() {
   useEffect(() => {
     const off = getCurrentWindow().onCloseRequested(async (event) => {
       flushWorkspace();
-      const changed = tabsNow.current.filter((tab) => tab.unsaved || tab.txOpen).length;
+      const changed = tabsNow.current.filter(hasChanges).length;
       const question = plural(
         changed,
         "One tab has changes not saved or committed. Close the window and discard them?",
@@ -235,7 +235,12 @@ export function App() {
       );
       if (changed > 0 && !(await ask(question, { confirm: t("Close"), danger: true }))) event.preventDefault();
     });
-    return () => void off.then((unlisten) => unlisten());
+    // A reload, or a window closed another way, writes the last keys typed too.
+    window.addEventListener("pagehide", flushWorkspace);
+    return () => {
+      window.removeEventListener("pagehide", flushWorkspace);
+      void off.then((unlisten) => unlisten());
+    };
   }, []);
 
   // A temporary connection goes with its last tab: its navigator sessions close, then it.
@@ -292,7 +297,7 @@ export function App() {
       return;
     }
     const own = tabs.filter((t) => t.project === p.id);
-    if (own.some((tab) => tab.unsaved || tab.txOpen) && !(await ask(t("Some of its tabs have changes not saved or committed. Close them and discard the changes?"), { confirm: t("Discard"), danger: true }))) {
+    if (own.some(hasChanges) && !(await ask(t("Some of its tabs have changes not saved or committed. Close them and discard the changes?"), { confirm: t("Discard"), danger: true }))) {
       return;
     }
     try {
@@ -406,9 +411,11 @@ export function App() {
   }
 
   /** Opens a tab in the active project, unless it says which one it belongs to. */
-  function addTab(tab: TabModel) {
+  function addTab(tab: TabModel, at?: number) {
     const placed = tab.project === undefined ? { ...tab, project: activeProject } : tab;
-    setTabs((all) => [...all, placed]);
+    setTabs((all) =>
+      at === undefined || at < 0 || at >= all.length ? [...all, placed] : [...all.slice(0, at), placed, ...all.slice(at)],
+    );
     setActiveTab(placed.key);
   }
 
@@ -549,22 +556,47 @@ export function App() {
     }
   }
 
-  function closeTab(tab: TabModel, confirmed = false) {
+  /** Asks before closing `tab` what closing would lose: grid edits, an open transaction, text
+   *  not saved to its script file (which can be saved first); `false` keeps it open. */
+  async function confirmClose(tab: TabModel): Promise<boolean> {
     const question = tab.unsaved
       ? t("This tab has unsaved changes. Close it and discard them?")
       : tab.txOpen
         ? t("This tab has an open transaction. Close it and roll back the uncommitted changes?")
         : null;
-    if (question && !confirmed) {
-      void ask(question, { confirm: t("Close"), danger: true }).then((yes) => yes && closeTab(tab, true));
+    if (question && !(await ask(question, { confirm: t("Close"), danger: true }))) return false;
+    const file = unsavedFile(tab);
+    if (!file) return true;
+    const answer = await choose(t("Save the changes to {file}?", { file: basename(file.path) }), [
+      { label: t("Save"), value: "save", primary: true },
+      { label: t("Don't save"), value: "discard", danger: true },
+    ]);
+    if (answer === null) return false;
+    if (answer === "discard") return true;
+    try {
+      await api.writeTextFile(file.path, file.sql);
+      return true;
+    } catch (e) {
+      setToast(toCommandError(e).message);
+      return false;
+    }
+  }
+
+  function closeTab(tab: TabModel, confirmed = false) {
+    if (!confirmed) {
+      void confirmClose(tab).then((yes) => yes && closeTab(tab, true));
       return;
     }
     // A temporary connection's tab cannot be reopened: its connection goes with its last tab.
     const saved = temporary.current.has(tab.connectionId) ? null : persistTab(tab);
     if (saved) {
       closedTabs.current.push(saved);
+      closedAt.set(saved, tabs.findIndex((t) => t.key === tab.key));
       if (closedTabs.current.length > CLOSED_TABS) closedTabs.current.shift();
     }
+    // The tab next to it in the bar is shown next, as browsers do.
+    const bar = visibleTabs.findIndex((t) => t.key === tab.key);
+    const neighbours = bar < 0 ? [] : [visibleTabs[bar + 1], visibleTabs[bar - 1]];
     const session = sessions.current.get(tab.key);
     sessions.current.delete(tab.key);
     void session?.then((id) => {
@@ -576,7 +608,8 @@ export function App() {
       const rest = all.filter((t) => t.key !== tab.key);
       // The next tab shown is one of the same project.
       const same = rest.filter((t) => inProject(t, tab.project ?? null));
-      const next = same.find((t) => t.key === beside)?.key ?? same.at(-1)?.key ?? null;
+      const near = neighbours.find((n) => n && same.some((t) => t.key === n.key));
+      const next = same.find((t) => t.key === beside)?.key ?? near?.key ?? same.at(-1)?.key ?? null;
       setActiveTab((active) => (active === tab.key ? next : active));
       return rest;
     });
@@ -584,7 +617,7 @@ export function App() {
 
   /** Closes several tabs, asking once if some of them have changes. */
   async function closeTabs(list: TabModel[]) {
-    const changed = list.filter((t) => t.unsaved || t.txOpen).length;
+    const changed = list.filter(hasChanges).length;
     const question = plural(
       changed,
       "One of these tabs has changes not saved or committed. Close it and discard them?",
@@ -615,7 +648,8 @@ export function App() {
     const saved = index >= 0 ? closed.splice(index, 1)[0] : undefined;
     const kind = saved && tabKind((saved.kind ?? "query") as TabKindName);
     if (!saved || !kind || !connectionById(saved.connectionId)) return;
-    addTab({ ...createTab(kind.kind, saved.connectionId, kind.restore(saved)), pinned: saved.pinned === true });
+    // Back in the place it had.
+    addTab({ ...createTab(kind.kind, saved.connectionId, kind.restore(saved)), pinned: saved.pinned === true }, closedAt.get(saved));
   };
   const openPalette = () => setPaletteOpen(true);
   // `tabs` here are the active project's: the tab actions work on what the bar shows.
@@ -623,6 +657,7 @@ export function App() {
     tabs: visibleTabs,
     activeTab,
     connections,
+    projectConnections,
     projects: projects ?? [],
     activeProject,
     addTab,
@@ -704,7 +739,8 @@ export function App() {
   // Global shortcuts, captured before the editor sees them.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (isAsking()) return;
+      // A dialog or the palette takes the keyboard: nothing acts behind it.
+      if (isAsking() || layerOpen()) return;
       dispatchKey("global", undefined, e, (err) => setToast(toCommandError(err).message));
     };
     window.addEventListener("keydown", onKey, true);
@@ -724,7 +760,13 @@ export function App() {
         ? `${connection?.name ?? "?"}/${tab.database}`
         : (connection?.name ?? "?");
     const label = tabKind(tab.kind)?.label(tab);
-    return label ? `${label} — ${name}` : name;
+    if (label) return `${label} — ${name}`;
+    // Untitled editors of one connection are told apart by number: "pg", "pg (2)", "pg (3)".
+    const same = visibleTabs.filter(
+      (t) => t.kind === tab.kind && t.connectionId === tab.connectionId && t.database === tab.database && !tabKind(t.kind)?.label(t),
+    );
+    const n = same.findIndex((t) => t.key === tab.key);
+    return n > 0 ? `${name} (${n + 1})` : name;
   }
 
   const sidebarCollapsed = useSidebarCollapsed();
@@ -958,6 +1000,22 @@ function persistTab(tab: TabModel): PersistedTab | null {
   return state ? { ...state, kind: tab.kind, connectionId: tab.connectionId, project: tab.project ?? null, ...(tab.pinned && { pinned: true }) } : null;
 }
 
+/** A dialog or the command palette is shown (one left open in a hidden tab does not count). */
+const layerOpen = () => [...document.querySelectorAll(".modal, .palette")].some((m) => m.getClientRects().length > 0);
+
+/** Where each closed tab was in the list of tabs, to reopen it in its place. */
+const closedAt = new WeakMap<PersistedTab, number>();
+
+/** A SQL editor's script file and the text not saved to it yet; `null` when it has none or
+ *  the file holds the text. */
+function unsavedFile(tab: TabModel): { path: string; sql: string } | null {
+  if (tab.kind !== "query" || !tab.filePath || tab.sql === tab.savedSql) return null;
+  return { path: tab.filePath, sql: tab.sql };
+}
+
+/** Closing the tab would lose something: grid edits, an open transaction, script text. */
+const hasChanges = (tab: TabModel) => !!tab.unsaved || !!tab.txOpen || unsavedFile(tab) !== null;
+
 /** The tab belongs to the project (`null` for All connections); tabs saved before projects
  *  have none. */
 function inProject(tab: { project?: string | null }, id: string | null): boolean {
@@ -969,6 +1027,8 @@ interface ShellApi {
   tabs: TabModel[];
   activeTab: number | null;
   connections: SavedConnection[] | null;
+  /** The connections of the project shown. */
+  projectConnections: SavedConnection[];
   projects: Project[];
   activeProject: string | null;
   switchProject: (id: string | null) => void;
@@ -1004,7 +1064,8 @@ function registerShellActions(shell: { current: ShellApi }) {
       title: "New SQL editor",
       shortcut: "Mod+T",
       run: () => {
-        const connectionId = s().tabs[index()]?.connectionId ?? s().connections?.[0]?.id;
+        // With no tab open, the first connection of the project shown.
+        const connectionId = s().tabs[index()]?.connectionId ?? s().projectConnections[0]?.id;
         if (connectionId) s().addTab(createTab("query", connectionId));
       },
     }),
