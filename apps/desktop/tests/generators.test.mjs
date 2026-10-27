@@ -1,17 +1,44 @@
 // Unit tests of the generators suggested for fake rows (src/transfer/generators.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { REPEATING, suggest } from "../src/transfer/generators.ts";
+import { numberRange, REPEATING, suggest } from "../src/transfer/generators.ts";
 
-const column = (name, data_type, primary_key = false) => ({ name, data_type, primary_key, default: null, enum_values: [] });
+const column = (name, data_type, primary_key = false, nullable = true) => ({ name, data_type, primary_key, nullable, default: null, enum_values: [] });
 
 test("a table's columns get generators by their keys, names and types", () => {
   assert.equal(suggest(column("id", "integer", true), undefined), "next_key");
   assert.equal(suggest(column("id", "uuid", true), undefined), "uuid");
   assert.equal(suggest(column("email", "text"), undefined, true), "email");
   assert.equal(suggest(column("code", "numeric"), undefined, true), "next_key");
-  assert.equal(suggest(column("tags", "array"), undefined), "text", "no MongoDB generators");
+  assert.equal(suggest(column("tags", "array"), undefined), "null", "no MongoDB generators");
   assert.equal(suggest(column("n", "long"), undefined), "text", "Oracle's LONG is text");
+});
+
+test("columns get values their types take, or are left out", () => {
+  const kind = (name, type, nullable = true) => suggest(column(name, type, false, nullable), undefined);
+  assert.equal(kind("tags", "text[]"), "null", "a PostgreSQL array");
+  assert.equal(kind("tags", "Array(String)", false), "skip", "ClickHouse fills its default");
+  assert.equal(kind("meta", "jsonb"), "document");
+  assert.equal(kind("ip", "inet"), "ip");
+  assert.equal(kind("t", "time without time zone"), "time");
+  assert.equal(kind("iv", "interval"), "null", "an interval holds no int");
+  assert.equal(kind("flag", "tinyint(1)"), "bool", "MySQL's BOOLEAN");
+  assert.equal(kind("tiny", "tinyint"), "integer");
+  assert.equal(kind("name_id", "integer"), "integer", "names only for text");
+  assert.equal(kind("shape", "geometry", false), "skip");
+  // MariaDB writes no default as the text NULL.
+  assert.equal(suggest({ ...column("name", "varchar(50)"), default: "NULL" }, undefined), "full_name");
+  assert.equal(suggest({ ...column("n", "int"), default: "0" }, undefined), "skip");
+  // Identities and computed columns are the database's.
+  assert.equal(suggest(column("id", "int", true), undefined, false, false, true), "skip");
+});
+
+test("numbers within what the type holds", () => {
+  assert.deepEqual(numberRange("tinyint"), { min: 0, max: 100, scale: 0 });
+  assert.deepEqual(numberRange("numeric(5,2)"), { min: 0, max: 999, scale: 2 });
+  assert.deepEqual(numberRange("numeric(3)"), { min: 0, max: 999, scale: 0 });
+  assert.deepEqual(numberRange("year"), { min: 1990, max: 2030, scale: 0 });
+  assert.deepEqual(numberRange("integer"), { min: 1, max: 1000, scale: 2 });
 });
 
 test("a collection's fields get generators of MongoDB's types", () => {

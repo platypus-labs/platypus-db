@@ -6,7 +6,6 @@ import {
   toCommandError,
   type ColumnInfo,
   type CommandError,
-  type ExportFormat,
   type ExportOptions,
   type FilterTarget,
   type ObjectMeta,
@@ -25,7 +24,7 @@ import type { TableEditTarget } from "../grid/edit/TableEditor";
 import { cliName } from "../editor/actions";
 import { OutlinePanel } from "../editor/OutlinePanel";
 import { ParamsDialog } from "../editor/ParamsDialog";
-import { expandVariables, parameterKeys, parseCommand, resolvePath, substitute } from "../editor/params";
+import { type ExportTarget, expandVariables, parameterKeys, parseCommand, resolvePath, substitute } from "../editor/params";
 import { type EditorHost, type RunMode, SqlEditor, type SqlEditorHandle } from "../editor/SqlEditor";
 import { TERMINAL_ROWS, type TerminalBlock, TerminalView, blockText } from "../editor/terminal";
 import { VariablesPanel } from "../editor/VariablesPanel";
@@ -541,11 +540,12 @@ export function QueryTab({
   }
 
   /** Exports the rows of `sql` to `path` instead of showing them (`@export`). */
-  function exportTo(sessionId: number, sql: string, path: string, format: ExportFormat): Promise<ResultStatus> {
+  function exportTo(sessionId: number, sql: string, target: ExportTarget): Promise<ResultStatus> {
+    const { path, format, delimiter, compression } = target;
     return new Promise((resolve) => {
       // SQL statements insert into a table named after the file.
-      const table = path.split(/[\\/]/).pop()!.replace(/\.\w+$/, "");
-      const options: ExportOptions = { format, delimiter: ",", header: true, table, driver: connection.driver };
+      const table = path.split(/[\\/]/).pop()!.replace(/(\.\w+)?(\.(gz|zst))?$/i, "");
+      const options: ExportOptions = { format, delimiter, header: true, table, driver: connection.driver, compression };
       api
         .exportQuery(sessionId, sql, path, options, (event) => {
           if (event.type === "done") {
@@ -648,7 +648,7 @@ export function QueryTab({
     const keepVariables = () =>
       onChange({ variables: Object.fromEntries(Object.entries(variables).filter(([k]) => !k.startsWith("?"))) });
     // Set by `@export`, taken by the next statement.
-    const pending: { export: { path: string; format: ExportFormat } | null } = { export: null };
+    const pending: { export: ExportTarget | null } = { export: null };
 
     /** Runs a client command; an `@include` adds the file's statements after `i`. */
     async function command(p: Planned, i: number): Promise<ResultStatus> {
@@ -664,7 +664,7 @@ export function QueryTab({
         case "export": {
           const path = resolvePath(c.path, tab.filePath);
           if (!path) return { kind: "error", error: clientError(t("Save the script first, or give @export an absolute path.")) };
-          pending.export = { path, format: c.format };
+          pending.export = { path, format: c.format, delimiter: c.delimiter, compression: c.compression };
           return { kind: "message", summary: t("Next rows to {path}", { path: c.path }), text: t("The next statement's rows go to {path}.", { path }) };
         }
         case "error":
@@ -741,7 +741,7 @@ export function QueryTab({
           const target = pending.export;
           pending.export = null;
           if (target) {
-            status = await exportTo(sessionId, sql, target.path, target.format);
+            status = await exportTo(sessionId, sql, target);
           } else {
             status = await runOne(sessionId, ran, token, history, seen);
             // A dropped connection fails before the statement reaches the server; the

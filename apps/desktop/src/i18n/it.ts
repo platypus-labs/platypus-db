@@ -737,7 +737,7 @@ const it: Record<string, string> = {
   "No statements": "Nessuna istruzione",
   "Usage: @set name = value": "Uso: @set nome = valore",
   "Usage: @include file.sql": "Uso: @include file.sql",
-  "Usage: @export file.csv (also .json, .ndjson, .parquet, .xlsx, .sql, .md, .html, .xml)": "Uso: @export file.csv (anche .json, .ndjson, .parquet, .xlsx, .sql, .md, .html, .xml)",
+  "Usage: @export file.csv (also .tsv, .json, .ndjson, .parquet, .xlsx, .sql, .md, .html, .xml, and .gz or .zst after them)": "Uso: @export file.csv (anche .tsv, .json, .ndjson, .parquet, .xlsx, .sql, .md, .html, .xml, e .gz o .zst dopo di essi)",
   "Unknown command @{word}: use @set, @echo, @include or @export": "Comando sconosciuto @{word}: usa @set, @echo, @include o @export",
   "Parameters": "Parametri",
   "Numbers, {null}, {true} and {quoted} text go in as typed, anything else as a string. {raw} variables go in as typed.": "Numeri, {null}, {true} e testo {quoted} entrano come scritti, tutto il resto come stringa. Le variabili {raw} entrano come scritte.",
@@ -1437,6 +1437,17 @@ const it: Record<string, string> = {
   "a connection cannot go before itself": "Una connessione non può andare prima di sé stessa",
   "a project named \"{name}\" exists already": "Esiste già un progetto chiamato \"{name}\"",
   "settings.toml could not be read: every setting is at its default and changes are not saved until it is fixed. {message}": "Impossibile leggere settings.toml: tutte le impostazioni sono ai valori predefiniti e le modifiche non vengono salvate finché non è corretto. {message}",
+  "Save a SQL connection to copy the collection to.": "Salva una connessione SQL in cui copiare la collezione.",
+  "Time of day": "Ora del giorno",
+  "IP address": "Indirizzo IP",
+  "Stopped: nothing was added.": "Interrotto: non è stato aggiunto niente.",
+  "Least value of {column}": "Valore minimo di {column}",
+  "Greatest value of {column}": "Valore massimo di {column}",
+  "Detect": "Rileva",
+  "Encoding": "Codifica",
+  "Leave these lines out": "Escludi queste righe",
+  "The lines with another number of values are left out.": "Le righe con un altro numero di valori sono escluse.",
+  "Import cancelled: nothing was imported.": "Importazione annullata: non è stato importato niente.",
 };
 
 export default it;

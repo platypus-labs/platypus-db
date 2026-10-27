@@ -824,8 +824,17 @@ export interface ImportPreview {
   /** The tables of the file: one, or a workbook's sheets. */
   tables: string[];
   table: string;
-  columns: { name: string; source_type: string; target_type: string }[];
+  /** For a source table, also what a new table keeps of each column: NOT NULL, the primary
+   *  key and a default the target reads. */
+  columns: { name: string; source_type: string; target_type: string; not_null?: boolean; primary_key?: boolean; default?: string | null }[];
   rows: (string | null)[][];
+}
+
+/** How a CSV or TSV file is read: its encoding (`null` tells it from the bytes) and whether
+ *  lines with another number of values are left out instead of failing. */
+export interface FileOptions {
+  encoding: string | null;
+  skip_bad_lines: boolean;
 }
 
 /** What happens to the rows already in the table: kept, deleted first, or updated by key. */
@@ -842,7 +851,9 @@ export interface ImportPlan {
   mode?: ImportMode;
   /** The target columns that identify a row, for an upsert. */
   keys?: string[];
-  columns: { source: string; target: string; data_type: string | null }[];
+  columns: { source: string; target: string; data_type: string | null; not_null?: boolean; default?: string | null }[];
+  /** The primary key of a created table. */
+  primary_key?: string[];
 }
 
 /** A set of connections worked on together; a connection can be in several. */
@@ -1284,8 +1295,8 @@ export const api = {
   },
   /** The tables of a data file and the first rows of `table`, with the column types they
    *  would take in the session's database. */
-  previewImport: (sessionId: number, path: string, table: string | null) =>
-    invoke<ImportPreview>("preview_import", { sessionId, path, table }),
+  previewImport: (sessionId: number, path: string, table: string | null, options: FileOptions | null = null) =>
+    invoke<ImportPreview>("preview_import", { sessionId, path, table, options }),
   /** Creates tables of the source session's schema in the target session's and copies their
    *  rows, then their foreign keys; cancelled with `cancelExport`. */
   migrateTables: (
@@ -1365,10 +1376,10 @@ export const api = {
   odbcSystem: () => invoke<OdbcSystem>("odbc_system"),
   /** Imports a data file into the session's database on its own connection; cancelled with
    *  `cancelExport`. */
-  importFile: (sessionId: number, path: string, plan: ImportPlan, onEvent: (e: ExportEvent) => void) => {
+  importFile: (sessionId: number, path: string, plan: ImportPlan, options: FileOptions | null, onEvent: (e: ExportEvent) => void) => {
     const channel = new Channel<ExportEvent>();
     channel.onmessage = onEvent;
-    return invoke<number>("import_file", { sessionId, path, plan, onEvent: channel });
+    return invoke<number>("import_file", { sessionId, path, plan, options, onEvent: channel });
   },
   analyzeSql: (sql: string, driver: DriverKind, cursor: number) =>
     invoke<SqlAnalysis>("analyze_sql", { sql, driver, cursor }),

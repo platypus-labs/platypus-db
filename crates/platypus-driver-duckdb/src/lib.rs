@@ -7,6 +7,7 @@
 //! through a one-slot channel, so the worker only fetches as fast as they are consumed.
 //! Cancellation uses `duckdb_interrupt`.
 
+mod csvfile;
 mod database;
 mod error;
 pub mod files;
@@ -68,7 +69,7 @@ pub fn memory_path(name: &str) -> String {
 
 /// Opens the in-memory database `name`, or finds it open, with a connection to fill it.
 pub fn memory_database(name: &str) -> Result<(MemoryDatabase, duckdb::Connection)> {
-    let (database, conn) = database::connect(&memory_path(name))?;
+    let (database, conn) = database::connect(&memory_path(name), &files::ReadOptions::default())?;
     Ok((
         MemoryDatabase {
             _database: database,
@@ -121,15 +122,18 @@ impl DuckDbConnection {
         let tx = Arc::new(TxTracker::default());
         std::thread::Builder::new()
             .name("platypus-duckdb".to_owned())
-            .spawn(move || match database::connect(&config.database) {
-                // The connection is dropped before its database.
-                Ok((_database, conn)) => {
-                    let version = conn.version().unwrap_or_default();
-                    let _ = ready.send(Ok((conn.interrupt_handle(), version)));
-                    worker(&conn, &inbox, &worker_running);
-                }
-                Err(e) => {
-                    let _ = ready.send(Err(e));
+            .spawn(move || {
+                match database::connect(&config.database, &files::ReadOptions::of(&config.options))
+                {
+                    // The connection is dropped before its database.
+                    Ok((_database, conn)) => {
+                        let version = conn.version().unwrap_or_default();
+                        let _ = ready.send(Ok((conn.interrupt_handle(), version)));
+                        worker(&conn, &inbox, &worker_running);
+                    }
+                    Err(e) => {
+                        let _ = ready.send(Err(e));
+                    }
                 }
             })
             .map_err(|e| Error::Connect(format!("cannot start the DuckDB worker: {e}")))?;

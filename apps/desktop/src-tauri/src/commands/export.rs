@@ -3,8 +3,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use platypus_sql::Dialect;
+use std::collections::HashSet;
+
 use platypus_transfer::ExportOptions;
+use platypus_transfer::import::select_all;
 use serde::Deserialize;
 use tauri::State;
 use tauri::ipc::Channel;
@@ -79,8 +81,23 @@ fn file_name(name: &str) -> String {
         .collect()
 }
 
+/// `name` made unique among `taken` (which it joins), ignoring case as Windows and macOS do:
+/// `Mix` and `mix`, or `a/b` and `a_b`, would write one file. A suffix `_2`, `_3`… tells
+/// the later ones apart.
+fn unique_name(name: String, taken: &mut HashSet<String>) -> String {
+    let mut candidate = name.clone();
+    let mut n = 1;
+    while !taken.insert(candidate.to_lowercase()) {
+        n += 1;
+        candidate = format!("{name}_{n}");
+    }
+    candidate
+}
+
 /// Exports every row of each table to `<dir>/<table>.<extension>`, one after the other on a
-/// connection of its own. Returns an id for `cancel_export`; progress counts the rows of all.
+/// connection of its own: a MongoDB collection with `find`. Two tables whose file names
+/// would be one get one each. Returns an id for `cancel_export`; progress counts the rows of
+/// all.
 #[tauri::command]
 pub fn export_tables(
     state: State<'_, AppState>,
@@ -91,17 +108,15 @@ pub fn export_tables(
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
     let session = state.session(session_id)?;
-    let dialect = Dialect::from(session.config.driver);
+    let driver = session.config.driver;
+    let mut taken = HashSet::new();
     let files = tables
         .into_iter()
         .map(|t| {
-            let sql = format!(
-                "SELECT * FROM {}",
-                dialect.qualified(t.schema.as_deref(), &t.name)
-            );
+            let sql = select_all(driver, (t.schema.as_deref(), &t.name), None);
             let path = dir.join(format!(
                 "{}.{}{}",
-                file_name(&t.name),
+                unique_name(file_name(&t.name), &mut taken),
                 options.format.extension(),
                 options.compression.suffix()
             ));
@@ -128,5 +143,11 @@ mod tests {
     fn file_names_of_tables() {
         assert_eq!(super::file_name("a/b:c"), "a_b_c");
         assert_eq!(super::file_name("Orders 2024"), "Orders 2024");
+        let mut taken = std::collections::HashSet::new();
+        let names: Vec<_> = ["Mix", "mix", "a_b", "a/b", "MIX"]
+            .into_iter()
+            .map(|n| super::unique_name(super::file_name(n), &mut taken))
+            .collect();
+        assert_eq!(names, ["Mix", "mix_2", "a_b", "a_b_2", "MIX_3"]);
     }
 }
