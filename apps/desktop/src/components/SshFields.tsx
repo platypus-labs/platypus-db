@@ -1,4 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
+import { useState } from "react";
 import type { SavedSsh, SshAuthKind } from "../api";
 import { t } from "../i18n";
 
@@ -20,6 +21,9 @@ interface Props {
 /** Host, user and login of one SSH server. */
 export function SshFields({ ssh, onChange, secret, onSecret, saved }: Props) {
   const set = <K extends keyof SavedSsh>(key: K, value: SavedSsh[K]) => onChange({ ...ssh, [key]: value });
+  // The port as typed: it may be empty while editing, and 22 is used then.
+  const [portText, setPortText] = useState(String(ssh.port));
+  const shownPort = (Number(portText) || 22) === ssh.port ? portText : String(ssh.port);
 
   async function browseKey() {
     const path = await open({ multiple: false, title: "Private key" });
@@ -39,8 +43,12 @@ export function SshFields({ ssh, onChange, secret, onSecret, saved }: Props) {
             type="number"
             min={1}
             max={65535}
-            value={ssh.port}
-            onChange={(e) => set("port", Number(e.target.value) || 22)}
+            value={shownPort}
+            placeholder="22"
+            onChange={(e) => {
+              setPortText(e.target.value);
+              set("port", Number(e.target.value) || 22);
+            }}
           />
         </label>
       </div>

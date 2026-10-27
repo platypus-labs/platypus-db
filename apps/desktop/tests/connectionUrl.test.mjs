@@ -2,7 +2,7 @@
 // (src/connectionUrl.ts); the parsing itself is the backend's.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { hasUrl, looksLikeConnection, withParsed } from "../src/connectionUrl.ts";
+import { hasUrl, looksLikeConnection, splitLogin, validPort, withParsed } from "../src/connectionUrl.ts";
 
 const form = (over = {}) => ({
   id: "c1",
@@ -86,4 +86,23 @@ test("only drivers with a URL scheme are copied as URL", () => {
   assert.equal(hasUrl("snowflake"), false);
   assert.equal(hasUrl("oracle"), false);
   assert.equal(hasUrl("odbc"), false);
+});
+
+test("a login typed in the host field is split into its fields", () => {
+  assert.deepEqual(splitLogin("root:s3cret@db.example.com:3306"), { user: "root", password: "s3cret", host: "db.example.com", port: 3306 });
+  assert.deepEqual(splitLogin(" me@db "), { user: "me", password: null, host: "db", port: null });
+  // The password may hold @ and :, the host is after the last @.
+  assert.deepEqual(splitLogin("u:p@ss:w@h"), { user: "u", password: "p@ss:w", host: "h", port: null });
+  assert.deepEqual(splitLogin("u:p@[::1]:5432"), { user: "u", password: "p", host: "::1", port: 5432 });
+  assert.deepEqual(splitLogin("u@[fe80::1]"), { user: "u", password: null, host: "fe80::1", port: null });
+  for (const plain of ["db.example.com", "@h", "u@", "postgres://u:p@h/db", "u@a:1,b:2", "u@h:99999", "u@h/db"]) {
+    assert.equal(splitLogin(plain), null, plain);
+  }
+});
+
+test("ports are 1 to 65535, or none", () => {
+  assert.equal(validPort(null), true);
+  assert.equal(validPort(5432), true);
+  assert.equal(validPort(65535), true);
+  for (const bad of [0, 70000, -1, 1.5, Number.NaN]) assert.equal(validPort(bad), false, String(bad));
 });
