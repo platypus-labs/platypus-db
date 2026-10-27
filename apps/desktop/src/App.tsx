@@ -45,7 +45,7 @@ import { ContextMenu, type MenuState } from "./components/ContextMenu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { TopBar } from "./shell/TopBar";
-import { Welcome } from "./shell/Welcome";
+import { pickDataFile, Welcome } from "./shell/Welcome";
 import { TabBar, barOrder, groupTabsSetting } from "./shell/TabBar";
 import { SidebarResizer, useSidebarWidth } from "./shell/SidebarResizer";
 import { settingsLoadError, useSetting } from "./settings";
@@ -778,6 +778,11 @@ export function App() {
     projectFolders,
     importOpen: dialog?.kind === "import",
     newConnection,
+    importConnections: () => setDialog({ kind: "import" }),
+    openDataFile: () =>
+      void pickDataFile()
+        .then((path) => path !== null && openDroppedFile(path))
+        .catch((e: unknown) => setToast(toCommandError(e).message)),
     closeTabs,
     patchTab,
     split,
@@ -1179,6 +1184,9 @@ interface ShellApi {
   split: [number, number] | null;
   openBeside: (tab: TabModel | null) => void;
   closeSplit: () => void;
+  newConnection: () => void;
+  importConnections: () => void;
+  openDataFile: () => void;
 }
 
 /** Closed tabs kept for reopening. */
@@ -1266,6 +1274,10 @@ function registerShellActions(shell: { current: ShellApi }) {
       run: () => s().openPalette(),
     }),
     registerAction({ id: "app.activity", scope: "global", title: "Activity and errors", run: openActivity }),
+    // The welcome page's actions, for the palette.
+    registerAction({ id: "app.new_connection", scope: "global", title: "New connection…", run: () => s().newConnection() }),
+    registerAction({ id: "app.import_connections", scope: "global", title: "Import connections…", run: () => s().importConnections() }),
+    registerAction({ id: "app.open_data_file", scope: "global", title: "Open a data file…", run: () => s().openDataFile() }),
     registerAction({
       id: "app.settings",
       scope: "global",

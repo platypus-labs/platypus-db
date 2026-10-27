@@ -1222,6 +1222,7 @@ const it: Record<string, string> = {
   // Connection list menu, database search, settings search, navigator width
   "New connection…": "Nuova connessione…",
   "Import connections…": "Importa le connessioni…",
+  "Open a data file…": "Apri un file di dati…",
   "Navigator: connection list": "Navigator: elenco delle connessioni",
   "Search databases…": "Cerca un database…",
   "Search databases": "Cerca un database",
