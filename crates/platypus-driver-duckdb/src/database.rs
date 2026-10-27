@@ -25,7 +25,8 @@ pub struct Database {
     loaded: Mutex<Option<SystemTime>>,
 }
 
-static OPEN: Mutex<Vec<(PathBuf, Weak<Database>)>> = Mutex::new(Vec::new());
+/// The open instances, by path and by how a data file is read.
+static OPEN: Mutex<Vec<(PathBuf, files::ReadOptions, Weak<Database>)>> = Mutex::new(Vec::new());
 
 const MEMORY: &str = ":memory:";
 
@@ -59,18 +60,22 @@ fn settings() -> Result<duckdb::Config> {
 
 /// A new connection to the database at `path` (a file, created when missing, or
 /// `:memory:`), with the instance it belongs to. Keep the instance at least as long as the
-/// connection, so that a reconnect finds it open.
-pub fn connect(path: &str) -> Result<(Arc<Database>, duckdb::Connection)> {
+/// connection, so that a reconnect finds it open. A data file read with other `options` is
+/// another instance.
+pub fn connect(
+    path: &str,
+    options: &files::ReadOptions,
+) -> Result<(Arc<Database>, duckdb::Connection)> {
     if path.is_empty() {
         return Err(Error::Config("no database file given".to_owned()));
     }
     let key = key(path)?;
     let mut open = lock(&OPEN);
-    open.retain(|(_, db)| db.strong_count() > 0);
+    open.retain(|(_, _, db)| db.strong_count() > 0);
     let existing = open
         .iter()
-        .find(|(k, _)| *k == key)
-        .and_then(|(_, db)| db.upgrade());
+        .find(|(k, o, _)| *k == key && o == options)
+        .and_then(|(_, _, db)| db.upgrade());
     // `:memory:<name>` is never a data file, whatever its name ends with.
     let data_file = !path.starts_with(MEMORY) && files::is_data_file(path);
     let database = if let Some(database) = existing {
@@ -86,7 +91,7 @@ pub fn connect(path: &str) -> Result<(Arc<Database>, duckdb::Connection)> {
             root: Mutex::new(root),
             loaded: Mutex::new(None),
         });
-        open.push((key, Arc::downgrade(&database)));
+        open.push((key, options.clone(), Arc::downgrade(&database)));
         database
     };
     drop(open);
@@ -94,7 +99,7 @@ pub fn connect(path: &str) -> Result<(Arc<Database>, duckdb::Connection)> {
         let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok();
         let mut loaded = lock(&database.loaded);
         if loaded.is_none() || *loaded != modified {
-            files::load(&lock(&database.root), path)?;
+            files::load(&lock(&database.root), path, options)?;
             *loaded = modified;
         }
     }
