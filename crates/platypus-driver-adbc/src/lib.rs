@@ -28,6 +28,7 @@ mod ipc;
 mod meta;
 pub mod profile;
 mod session;
+mod values;
 
 use session::{Command, Started};
 

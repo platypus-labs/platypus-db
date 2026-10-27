@@ -3,6 +3,7 @@
 
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::mpsc as std_mpsc;
 
 use adbc_core::options::{
@@ -18,7 +19,7 @@ use platypus_core::{DbError, Error, Result};
 use platypus_sql::{Dialect, Lexer, TokenKind};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::{ipc, profile};
+use crate::{ipc, profile, values};
 
 pub enum Command {
     Execute {
@@ -266,9 +267,12 @@ fn execute(
         .execute()
         .map_err(adbc_error)
         .and_then(|mut reader| {
-            let schema = ipc::schema(&reader.schema())?;
+            let schema = values::schema(&ipc::schema(&reader.schema())?);
             // The first batch is read before answering, so its errors fail the statement itself.
-            let first = reader.next().map(convert).transpose()?;
+            let first = reader
+                .next()
+                .map(|b| convert(b).and_then(|b| values::batch(b, &schema)))
+                .transpose()?;
             Ok((reader, schema, first))
         });
     let (reader, schema, first) = match opened {
@@ -279,10 +283,14 @@ fn execute(
         }
     };
     let (tx, rx) = mpsc::channel(1);
-    if reply.send(Ok(Started::Rows(schema, rx))).is_err() {
+    if reply
+        .send(Ok(Started::Rows(Arc::clone(&schema), rx)))
+        .is_err()
+    {
         return;
     }
-    let batches = first.into_iter().map(Ok).chain(reader.map(convert));
+    let rest = reader.map(|b| convert(b).and_then(|b| values::batch(b, &schema)));
+    let batches = first.into_iter().map(Ok).chain(rest);
     for batch in batches {
         let sent = match batch {
             Ok(batch) => send_sliced(&tx, &batch, batch_size),

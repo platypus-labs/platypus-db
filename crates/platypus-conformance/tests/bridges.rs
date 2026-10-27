@@ -366,3 +366,18 @@ async fn qa_fixdbs_trino_generates_and_imports_typed_values() {
     );
     run(&*conn, "DROP SCHEMA memory.qa_fixdbs_g CASCADE").await;
 }
+
+#[tokio::test]
+async fn qa_fixdbs_trino_maps_rows_and_uuids() {
+    let Some(conn) = trino().await else { return };
+    let batches = rows(
+        &*conn,
+        "SELECT MAP(ARRAY['k'], ARRAY[1]) AS m, CAST(ROW(1, 'x') AS row(a integer, b varchar)) AS r,          UUID 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12' AS u",
+    )
+    .await;
+    let batch = &batches[0];
+    let text = |c: usize| batch.column(c).as_string::<i32>().value(0).to_owned();
+    assert_eq!(text(0), "{k: 1}");
+    assert_eq!(text(1), "{a: 1, b: x}");
+    assert_eq!(text(2), "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12");
+}
