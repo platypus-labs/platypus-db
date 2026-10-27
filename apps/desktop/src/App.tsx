@@ -1,4 +1,4 @@
-import { type ComponentType, type CSSProperties, Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentType, type CSSProperties, Fragment, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { dispatchKey, registerAction } from "./actions";
 import {
   api,
@@ -718,7 +718,7 @@ export function App() {
     },
   });
 
-  useEffect(() => registerShellActions(shell), []);
+  useLayoutEffect(() => registerShellActions(shell), []);
   // "Add to project" lists the projects as they are.
   useEffect(() => registerAddToProject(projects ?? []), [projects]);
   useEffect(() => registerMoveToFolder(project), [project]);
@@ -745,8 +745,9 @@ export function App() {
     };
   }, []);
 
-  // Global shortcuts, captured before the editor sees them.
-  useEffect(() => {
+  // Global shortcuts, captured before the editor sees them. Before the first paint, like the
+  // shell's actions: a key pressed as soon as the window shows is not lost.
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // A dialog or the palette takes the keyboard: nothing acts behind it.
       if (isAsking() || layerOpen()) return;

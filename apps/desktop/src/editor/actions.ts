@@ -190,7 +190,8 @@ registerAction({
   id: "editor.run_script",
   scope: "editor",
   title: "Run script",
-  shortcut: ["Mod+Shift+Enter", "Alt+X"],
+  // Alt+X first: the one menus and the Settings show.
+  shortcut: ["Alt+X", "Mod+Shift+Enter"],
   group: "run",
   order: 2,
   when: ({ commands }) => !!commands?.run,
