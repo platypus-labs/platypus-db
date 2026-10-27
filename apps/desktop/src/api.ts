@@ -1013,10 +1013,12 @@ export interface ChartData {
   /** Bars and pie use `categories` and `values`; lines and scatter `points`, X as a number,
    *  milliseconds since the epoch or a category's position. */
   x_axis: "category" | "number" | "time";
-  categories: string[];
+  /** `null` is the category of SQL NULL, apart from the text "NULL". */
+  categories: (string | null)[];
   /** The last category gathers the ones left out. */
   other: boolean;
-  series: { name: string; values: number[]; points: [number, number][] }[];
+  /** A value is `null` where a category has no number to aggregate (no bar, not 0). */
+  series: { name: string; values: (number | null)[]; points: [number, number][] }[];
   rows: number;
   /** Points were reduced or categories gathered to keep the chart light. */
   reduced: boolean;

@@ -1273,6 +1273,10 @@ const it: Record<string, string> = {
   "Drawn from the {n} row loaded": "Disegnato dalla {n} riga caricata",
   "Drawn from the {n} rows loaded": "Disegnato dalle {n} righe caricate",
   "Some points or categories are grouped to fit.": "Alcuni punti o categorie sono raggruppati per stare nel grafico.",
+  "No rows to draw.": "Nessuna riga da disegnare.",
+  "No data to draw: the chosen columns hold no numbers.": "Nessun dato da disegnare: le colonne scelte non contengono numeri.",
+  "Left out of the pie (zero, negative or no value): {list}": "Esclusi dalla torta (zero, negativi o senza valore): {list}",
+  "A pie shows only its first series: {name}.": "Una torta mostra solo la prima serie: {name}.",
   "The chart could not be drawn as PNG.": "Il grafico non si può disegnare come PNG.",
 
   // Analysis (group M): SQL on results
