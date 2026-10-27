@@ -78,3 +78,26 @@ export function withParsed(conn: SavedConnection, parsed: ParsedConnection): Sav
   const named = parsed.driver === "sqlite" || parsed.driver === "duckdb" ? fileName : parsed.database.split("?")[0];
   return { ...next, name: conn.name || named || parsed.host };
 }
+
+/** How the form's address is entered: the host, port and database fields, or one URL. */
+export type ConnectBy = "host" | "url";
+
+/** The drivers whose form can be edited as a URL: a URL form with a server behind it (the
+ *  file-based ones keep their file field). */
+export const urlModeDriver = (driver: DriverKind) => hasUrl(driver) && driver !== "sqlite" && driver !== "duckdb";
+
+/** The URL typed in the form read as its settings: the connection with the URL's host,
+ *  port, database, user and options, but the name as it was (a half-typed URL must not
+ *  name the connection). A password in the URL goes to the password field (`password`,
+ *  the typed one when the URL has none) and `draft` is then dropped: the field shows the
+ *  URL printed from the settings, which has none. */
+export function applyUrlEdit(
+  conn: SavedConnection,
+  password: string,
+  typed: string,
+  parsed: ParsedConnection,
+): { conn: SavedConnection; password: string; draft: string | null } {
+  const next = { ...withParsed(conn, parsed), name: conn.name, driver: conn.driver };
+  const hasPassword = parsed.password != null;
+  return { conn: next, password: hasPassword ? parsed.password! : password, draft: hasPassword ? null : typed };
+}

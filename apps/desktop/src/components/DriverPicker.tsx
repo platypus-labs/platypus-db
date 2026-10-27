@@ -19,8 +19,7 @@ import {
   siTurso,
 } from "simple-icons";
 import { useState } from "react";
-import { api, toCommandError, type DriverKind, type ParsedConnection, type SavedConnection } from "../api";
-import { looksLikeConnection } from "../connectionUrl";
+import type { DriverKind, SavedConnection } from "../api";
 import { Icon } from "../ui/Icon";
 import { fold } from "../ui/textSearch";
 import { t, msg } from "../i18n";
@@ -167,64 +166,7 @@ function Tiles({ choices, onPick }: { choices: Choice[]; onPick: (choice: Choice
 interface Props {
   /** A tile chosen: its driver, preset and name (MariaDB, Supabase…). */
   onPick: (driver: DriverKind, preset: Preset, label: string) => void;
-  /** A URL or connection string read: the form opens filled in. */
-  onParsed: (parsed: ParsedConnection) => void;
-  /** The URL field's text to start from, e.g. one pasted in the form for another driver. */
-  initialUrl?: string;
   onClose: () => void;
-}
-
-/** "Or paste a connection URL": pasting one, or Enter, reads it; an error shows under it. */
-function UrlField({ initial, onParsed }: { initial: string; onParsed: (parsed: ParsedConnection) => void }) {
-  const [url, setUrl] = useState(initial);
-  const [error, setError] = useState<string | null>(null);
-  async function read(text: string) {
-    if (!text.trim()) return;
-    setError(null);
-    try {
-      onParsed(await api.parseConnectionUrl(text));
-    } catch (e) {
-      setError(toCommandError(e).message);
-    }
-  }
-  return (
-    <div className="driver-url">
-      <label className="field">
-        <span>{t("Or paste a connection URL")}</span>
-        <input
-          autoFocus={initial !== ""}
-          value={url}
-          placeholder="postgres://user:password@host:5432/database"
-          spellCheck={false}
-          autoComplete="off"
-          aria-invalid={error !== null}
-          aria-describedby={error ? "driver-url-error" : undefined}
-          data-field="connection_url"
-          onChange={(e) => {
-            setUrl(e.target.value);
-            setError(null);
-          }}
-          onPaste={(e) => {
-            const text = e.clipboardData.getData("text");
-            if (!looksLikeConnection(text)) return;
-            e.preventDefault();
-            setUrl(text.trim());
-            void read(text);
-          }}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter") return;
-            e.preventDefault();
-            void read(url);
-          }}
-        />
-      </label>
-      {error && (
-        <div id="driver-url-error" className="error-text small" role="alert">
-          {error}
-        </div>
-      )}
-    </div>
-  );
 }
 
 /** The choices whose (translated) name, or driver, contains `needle`, folded. */
@@ -233,7 +175,7 @@ function matching(choices: Choice[], needle: string): Choice[] {
 }
 
 /** First step of a new connection: the database, as a grid of logos, with a search. */
-export function DriverPicker({ onPick, onParsed, initialUrl = "", onClose }: Props) {
+export function DriverPicker({ onPick, onClose }: Props) {
   const [filter, setFilter] = useState("");
   const needle = fold(filter.trim());
   const main = matching(CHOICES, needle);
@@ -248,7 +190,7 @@ export function DriverPicker({ onPick, onParsed, initialUrl = "", onClose }: Pro
         <div className="modal-search">
           <Icon name="search" className="modal-search-icon" />
           <input
-            autoFocus={initialUrl === ""}
+            autoFocus
             placeholder={t("Search databases…")}
             aria-label={t("Search databases")}
             value={filter}
@@ -272,7 +214,6 @@ export function DriverPicker({ onPick, onParsed, initialUrl = "", onClose }: Pro
           </>
         )}
         {!first && <p className="muted driver-none">{t("No database matches.")}</p>}
-        <UrlField initial={initialUrl} onParsed={onParsed} />
         <div className="actions">
           <span className="spacer" />
           <button type="button" onClick={onClose}>

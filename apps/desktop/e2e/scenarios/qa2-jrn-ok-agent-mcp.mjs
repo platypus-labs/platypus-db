@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { dialog, editConnection, fill, formField, paste, saveForm } from "../conn-helpers.mjs";
+import { dialog, editConnection, fill, formField, paste, saveForm, newFromUrl } from "../conn-helpers.mjs";
 import { noMcp, startMcp } from "../mcp.mjs";
 import { needsPostgres, psql, psqlTry, treeRow, visibleTab } from "../qa-jrn.mjs";
 import { menu } from "../qa-nav-helpers.mjs";
@@ -28,8 +28,7 @@ export default async function (page, ctx) {
   try {
     await page.eval(`document.querySelector('.welcome-cta').click()`);
     await page.waitFor(`document.querySelector('.modal.driver-picker') !== null`);
-    await page.eval(paste(`document.querySelector('.driver-picker [data-field="connection_url"]')`, "postgres://platypus:platypus@localhost:55432/platypus?sslmode=disable"));
-    await page.waitFor(`${dialog} !== null`);
+    await newFromUrl(page, "postgres://platypus:platypus@localhost:55432/platypus?sslmode=disable");
     await page.eval(fill(formField("Name"), NAME));
     await saveForm(page);
     assert.doesNotMatch(readFileSync(join(ctx.dir, "connections.toml"), "utf8"), /platypus:platypus|^password\s*=/m, "the password stays out of the file");

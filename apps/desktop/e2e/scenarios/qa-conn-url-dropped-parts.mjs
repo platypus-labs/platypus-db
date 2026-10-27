@@ -10,16 +10,14 @@
 // apps/desktop/src-tauri/src/commands/connections.rs `parse_connection_url` (ParsedForm has
 // no application_name / connect_timeout).
 import assert from "node:assert/strict";
-import { button, dialog, openPicker, paste, picker, seedSqlite, urlField } from "../conn-helpers.mjs";
+import { button, dialog, openPicker, paste, picker, seedSqlite, urlField, newFromUrl } from "../conn-helpers.mjs";
 
 export function setup({ dir }) {
   seedSqlite(dir);
 }
 
 async function notesOf(page, url) {
-  await openPicker(page);
-  await page.eval(paste(`document.querySelector(${JSON.stringify(urlField)})`, url));
-  await page.waitFor(`${dialog} !== null`);
+  await newFromUrl(page, url);
   await page.sleep(200);
   const notes = await page.eval(`document.querySelector('.connection-dialog .url-notes')?.textContent ?? ''`);
   await page.eval(`${button(dialog, "Cancel")}.click()`);

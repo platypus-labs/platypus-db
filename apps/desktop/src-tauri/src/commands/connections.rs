@@ -127,6 +127,13 @@ pub fn connection_url(state: State<'_, AppState>, connection_id: Uuid) -> Comman
     state.with_store(|s| s.url_of(connection_id))
 }
 
+/// The URL of the connection as the form has it, without a password; `None` for the
+/// drivers that have no URL. Nothing is saved or read from the store.
+#[tauri::command]
+pub fn form_connection_url(connection: SavedConnection) -> Option<String> {
+    connection.config(None).to_url()
+}
+
 /// SSH passwords and passphrases typed in the form, by the `secret_id` of their server.
 pub type SshSecrets = HashMap<Uuid, PasswordInput>;
 

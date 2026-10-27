@@ -161,41 +161,51 @@ const formField = (label) =>
   `[...document.querySelectorAll('.connection-dialog label.field')].find(l => l.querySelector('span')?.textContent === ${JSON.stringify(label)})?.querySelector('input, select')`;
 
 const picker = `document.querySelector('.modal.driver-picker')`;
-const urlField = '.driver-picker [data-field="connection_url"]';
+const urlField = '.connection-dialog [data-field="connection_url"]';
 const headerIcon = `document.querySelector('.connection-dialog .dialog-header .driver-icon')`;
 
-// A URL pasted in the picker opens the form filled in; the form of a new connection has no
-// driver to change, only the database's logo, and Back returns to the picker. A URL for
-// another database pasted in the form offers to go back; a connection's menu copies its URL
-// without the password.
+// The form's "Connect by" URL mode reads a URL into the fields (the password into its own
+// field, never kept in the URL text) and prints it back from them; an unreadable one shows
+// its error and changes nothing. The form of a new connection has no driver to change, only
+// the database's logo, and Back returns to the picker. A URL for another database pasted in
+// the form offers to go back; a connection's menu copies its URL without the password.
 async function connectionUrls(page, shots) {
   await page.eval(`document.querySelector('button[title="New connection"]').click()`);
-  await page.waitFor(`document.querySelector(${JSON.stringify(urlField)}) !== null`);
-  await page.eval(paste(urlField, "postgres://u:p@db.example:6543/shop?sslmode=require"));
+  await page.waitFor(`${picker} !== null`);
+  assert.equal(await page.eval(`document.querySelector('.driver-picker [data-field="connection_url"]') === null`), true);
+  await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === 'PostgreSQL').click()`);
   await page.waitFor(`${picker} === null && document.querySelector('.connection-dialog') !== null`);
   const value = (label) => page.eval(`${formField(label)}?.value`);
-  assert.equal(await value("Name"), "shop");
+  assert.equal(await page.eval(`${formField("Driver")} === undefined`), true);
+  assert.equal(await page.eval(`${headerIcon}?.getAttribute('aria-label')`), "PostgreSQL");
+
+  // URL mode: typing a URL fills the settings; the password goes to its field, not the URL.
+  const urlValue = () => page.eval(`document.querySelector(${JSON.stringify(urlField)}).value`);
+  await page.eval(`document.querySelector('[data-field="connect_by_url"]').click()`);
+  await page.waitFor(`document.querySelector(${JSON.stringify(urlField)}) !== null`);
+  await page.eval(setField(urlField, "postgres://u:p@db.example:6543/shop?sslmode=require"));
+  await page.waitFor(`document.querySelector(${JSON.stringify(urlField)}).value === 'postgres://u@db.example:6543/shop?sslmode=require'`);
+  await page.eval(`document.querySelector(${JSON.stringify(urlField)}).blur()`);
+  if (shots) await page.screenshot(join(shots, "connection-from-url.png"));
+  assert.equal(await urlValue(), "postgres://u@db.example:6543/shop?sslmode=require");
+
+  // An unreadable URL says so under the field and changes nothing.
+  await page.eval(setField(urlField, "not a url"));
+  await page.waitFor(`document.querySelector('.connection-dialog [role="alert"]') !== null`);
+
+  // Back to the host fields: the settings are the URL's.
+  await page.eval(`document.querySelector('[data-field="connect_by_host"]').click()`);
+  await page.waitFor(`${formField("Host")} !== undefined`);
   assert.equal(await value("Host"), "db.example");
   assert.equal(await value("Port"), "6543");
   assert.equal(await value("Database"), "shop");
   assert.equal(await value("User"), "u");
   assert.equal(await value("Password"), "p");
   assert.equal(await value("SSL mode"), "require");
-  assert.equal(await page.eval(`${formField("Driver")} === undefined`), true);
-  assert.equal(await page.eval(`${headerIcon}?.getAttribute('aria-label')`), "PostgreSQL");
-  if (shots) await page.screenshot(join(shots, "connection-from-url.png"));
 
   // Back: the picker again, with nothing of the form kept.
   await page.eval(`${button("document.querySelector('.connection-dialog .actions')", "Back")}.click()`);
   await page.waitFor(`${picker} !== null && document.querySelector('.connection-dialog') === null`);
-  assert.equal(await page.eval(`document.querySelector(${JSON.stringify(urlField)}).value`), "");
-
-  // What is not a connection URL says so under the field.
-  await page.eval(setField(urlField, "not a url"));
-  await page.eval(`document.querySelector(${JSON.stringify(urlField)}).focus()`);
-  await page.key("Enter", "Enter", 13);
-  await page.waitFor(`document.querySelector('.driver-url [role="alert"]') !== null`);
-  assert.equal(await page.eval(`${picker} !== null`), true);
 
   // MySQL's form, with a PostgreSQL URL pasted in the host field: it stays MySQL's.
   await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === 'MySQL').click()`);
@@ -205,10 +215,9 @@ async function connectionUrls(page, shots) {
   await page.waitFor(`document.querySelector('.connection-dialog .url-other') !== null`);
   assert.equal(await value("Host"), "localhost");
   assert.equal(await page.eval(`${headerIcon}.getAttribute('aria-label')`), "MySQL");
-  // Its Back takes the URL to the picker's field.
+  // Its Back returns to the picker.
   await page.eval(`${button("document.querySelector('.url-other')", "Back")}.click()`);
   await page.waitFor(`${picker} !== null`);
-  assert.equal(await page.eval(`document.querySelector(${JSON.stringify(urlField)}).value`), "postgres://u@db.example/shop");
   await page.eval(`${button(picker, "Cancel")}.click()`);
   await page.waitFor(`document.querySelector('.modal') === null`);
 

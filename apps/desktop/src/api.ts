@@ -1180,6 +1180,8 @@ export const api = {
     invoke<ParsedConnection>("parse_connection_url", { input, driver }),
   /** The URL of a saved connection, without its password. */
   connectionUrl: (connectionId: string) => invoke<string>("connection_url", { connectionId }),
+  /** The URL of a form's settings, without a password; `null` when the driver has none. */
+  formConnectionUrl: (connection: SavedConnection) => invoke<string | null>("form_connection_url", { connection }),
   /** Whether a password is saved for the connection (a locked one counts). */
   connectionHasPassword: (connectionId: string) => invoke<boolean>("connection_has_password", { connectionId }),
   /** Saves the password typed at the prompt of a connection that keeps it in the keychain. */

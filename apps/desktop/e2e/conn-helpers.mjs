@@ -9,7 +9,8 @@ export const treeRow = (label) =>
 export const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
 export const dialog = `document.querySelector('.connection-dialog')`;
 export const picker = `document.querySelector('.modal.driver-picker')`;
-export const urlField = '.driver-picker [data-field="connection_url"]';
+/** The URL field of the form's "Connect by" URL mode. */
+export const urlField = '.connection-dialog [data-field="connection_url"]';
 /** The notice under the form: "Connected: …" or the error. */
 export const notice = `(document.querySelector('.connection-dialog .notice.ok, .connection-dialog .notice.error')?.textContent ?? '')`;
 
@@ -47,6 +48,52 @@ export async function newConnection(page, label) {
   await openPicker(page);
   await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === ${JSON.stringify(label)}).click()`);
   await page.waitFor(`${dialog} !== null`);
+}
+
+/** The picker's tile for the database a connection URL is for. */
+function tileOf(url) {
+  const scheme = /^(?:jdbc:)?([a-z0-9+.-]+)/i.exec(url)?.[1].toLowerCase() ?? "";
+  const tiles = [
+    [/^(postgres|postgresql)$/, "PostgreSQL"],
+    [/^mysql|^mariadb$/, "MySQL"],
+    [/^(sqlserver|mssql)$/, "SQL Server"],
+    [/^clickhouse/, "ClickHouse"],
+    [/^(libsql|turso)/, "Turso / libSQL"],
+    [/^mongodb/, "MongoDB"],
+    [/^sqlite$/, "SQLite"],
+    [/^duckdb$/, "DuckDB"],
+    [/^oracle$/, "Oracle"],
+  ];
+  return tiles.find(([re]) => re.test(scheme))?.[1] ?? "PostgreSQL";
+}
+
+/** Opens the form of a new connection for the database of `url` and enters the URL as the
+ *  user would: in the form's URL mode where the driver has one (then back to the host
+ *  fields, which the scenarios read), else pasted in the name field. The name is the
+ *  database's or the host's, as the paste gives it. */
+export async function newFromUrl(page, url) {
+  if (await page.eval(`${picker} === null`)) await openPicker(page);
+  await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === ${JSON.stringify(tileOf(url))}).click()`);
+  await page.waitFor(`${dialog} !== null`);
+  const byUrl = `document.querySelector('.connection-dialog [data-field="connect_by_url"]')`;
+  if (await page.eval(`${byUrl} === null`)) {
+    await page.eval(paste(formField("Name"), url));
+    await page.sleep(300);
+    return;
+  }
+  await page.eval(`${byUrl}.click()`);
+  await page.waitFor(`document.querySelector(${JSON.stringify(urlField)}) !== null`);
+  await page.eval(fill(`document.querySelector(${JSON.stringify(urlField)})`, url));
+  // The settings follow the URL once the backend has read it: the printed URL differs from
+  // what was typed, or the form shows an error.
+  await page.sleep(400);
+  await page.eval(`document.querySelector('.connection-dialog [data-field="connect_by_host"]').click()`);
+  await page.waitFor(`${formField("Host")} !== undefined`);
+  if (await page.eval(`${formField("Name")}.value`) === "") {
+    const database = await page.eval(`(${formField("Database")} ?? ${formField("Database (optional)")})?.value ?? ''`);
+    const host = await page.eval(`${formField("Host")}.value`);
+    await page.eval(fill(formField("Name"), database.split("?")[0] || host));
+  }
 }
 
 /** Fills the fields of the open form, by label. */

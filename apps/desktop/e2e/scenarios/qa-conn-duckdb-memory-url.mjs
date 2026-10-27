@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { dialog, formField, menu, menuItem, openPicker, paste, treeRow, urlField } from "../conn-helpers.mjs";
+import { dialog, formField, menu, menuItem, openPicker, paste, treeRow, urlField, newFromUrl } from "../conn-helpers.mjs";
 
 export function setup({ dir }) {
   writeFileSync(
@@ -36,8 +36,6 @@ export default async function (page) {
   await page.waitFor(`window.__copied !== undefined`);
   const url = await page.eval(`window.__copied`);
 
-  await openPicker(page);
-  await page.eval(paste(`document.querySelector(${JSON.stringify(urlField)})`, url));
-  await page.waitFor(`${dialog} !== null`);
+  await newFromUrl(page, url);
   assert.equal(await page.eval(`${formField("Database file")}.value`), ":memory:", `from ${url}`);
 }
