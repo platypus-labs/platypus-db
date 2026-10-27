@@ -1,5 +1,6 @@
-//! Navigator metadata from DuckDB's `duckdb_*()` catalog functions, limited to the current
-//! database (the opened file; attached databases are not listed).
+//! Navigator metadata from DuckDB's `duckdb_*()` catalog functions: the schemas of the
+//! current database (the opened file), and each attached database as a schema of its name,
+//! its `main` schema, which SQL names the same way (`other.t`).
 
 use platypus_core::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, Connection, ConstraintKind,
@@ -16,6 +17,28 @@ const SEP: char = '\u{1f}';
 
 /// The rows of the current database, in the catalog function's own columns.
 const HERE: &str = "database_name = current_database()";
+
+/// The rows of the schema the navigator lists as `s` (a literal), in the catalog function's
+/// own columns: a schema of the current database, or else the `main` schema of the attached
+/// database of that name. `same` compares two names.
+fn listed_as(s: &str, same: fn(&str, &str) -> String) -> String {
+    format!(
+        "(({HERE} AND {}) OR ({} AND schema_name = 'main' AND NOT EXISTS (
+             SELECT 1 FROM duckdb_schemas() x WHERE x.{HERE} AND {})))",
+        same("schema_name", s),
+        same("database_name", s),
+        same("x.schema_name", s),
+    )
+}
+
+fn equal(a: &str, b: &str) -> String {
+    format!("{a} = {b}")
+}
+
+/// DuckDB names are case-insensitive, quoted or not: `orders` finds `Orders`.
+fn alike(a: &str, b: &str) -> String {
+    format!("lower({a}) = lower({b})")
+}
 
 fn literal(s: &str) -> String {
     D.quote_literal(s)
@@ -41,7 +64,14 @@ pub async fn schemas(conn: &dyn Connection) -> Result<Vec<SchemaMeta>> {
         &format!(
             "SELECT schema_name, schema_name = current_schema(),
                     schema_name IN ('information_schema', 'pg_catalog')
-             FROM duckdb_schemas() WHERE {HERE} ORDER BY schema_name"
+             FROM duckdb_schemas() WHERE {HERE}
+             UNION ALL
+             SELECT d.database_name, false, false FROM duckdb_databases() d
+             WHERE NOT d.internal AND d.database_name <> current_database()
+               AND EXISTS (SELECT 1 FROM duckdb_schemas() s
+                           WHERE s.database_name = d.database_name AND s.schema_name = 'main')
+               AND d.database_name NOT IN (SELECT schema_name FROM duckdb_schemas() WHERE {HERE})
+             ORDER BY 1"
         ),
     )
     .await?;
@@ -57,7 +87,7 @@ pub async fn schemas(conn: &dyn Connection) -> Result<Vec<SchemaMeta>> {
 
 /// `(name, kind code, parent, comment, rows)` of every object in the schema literal `s`.
 fn objects_sql(s: &str) -> String {
-    let at = format!("{HERE} AND schema_name = {s}");
+    let at = listed_as(s, equal);
     format!(
         "SELECT table_name AS name, 'table' AS kind, comment, estimated_size AS rows
          FROM duckdb_tables() WHERE {at}
@@ -244,11 +274,10 @@ pub async fn table_details(
     schema: &str,
     table: &str,
 ) -> Result<TableDetails> {
-    // DuckDB names are case-insensitive, quoted or not: `orders` finds `Orders`.
     let at = format!(
-        "{HERE} AND lower(schema_name) = lower({}) AND lower(table_name) = lower({})",
-        literal(schema),
-        literal(table)
+        "{} AND {}",
+        listed_as(&literal(schema), alike),
+        alike("table_name", &literal(table))
     );
     let all = constraints(conn, &at).await?;
     let primary: Vec<String> = all
@@ -446,7 +475,7 @@ pub async fn search_metadata(conn: &dyn Connection, needle: &str) -> Result<Vec<
 
 /// The `CREATE` statement of an object; a table's is followed by its indexes.
 pub async fn object_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<String> {
-    let at = format!("{HERE} AND schema_name = {}", literal(o.schema));
+    let at = listed_as(&literal(o.schema), equal);
     let name = literal(o.name);
     // Macros and types are printed from their parts, with the name as it must be written.
     let quoted = literal(&D.quote_ident(o.name));
@@ -496,7 +525,7 @@ pub async fn object_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<Stri
 }
 
 pub async fn object_properties(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<Vec<Property>> {
-    let at = format!("{HERE} AND schema_name = {}", literal(o.schema));
+    let at = listed_as(&literal(o.schema), equal);
     let name = literal(o.name);
     let (sql, labels): (String, &[&str]) = match o.kind {
         ObjectKind::Table => (

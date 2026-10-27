@@ -3,7 +3,7 @@
 // by the pure functions of `massEdit.ts`, find and replace in a worker (`replaceRunner.ts`).
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { CellInput } from "../../api";
-import { msg, plural, t } from "../../i18n";
+import { formatCount, msg, plural, t } from "../../i18n";
 import {
   type Outcome,
   type Problem,
@@ -238,7 +238,7 @@ function replacedHeadline(result: Replaced | null): string {
   if (!result || result.replacements === 0) return t("No matches.");
   if (result.replacements === 1) return t("1 replacement in 1 cell.");
   return plural(result.changes.length, "{replacements} replacements in {n} cell.", "{replacements} replacements in {n} cells.", {
-    replacements: result.replacements.toLocaleString(),
+    replacements: formatCount(result.replacements),
   });
 }
 
@@ -264,7 +264,7 @@ export function ReplaceDialog(props: Props) {
   const status =
     valid && !result
       ? count.state === "counting" && count.done > 0
-        ? t("Counting the matches… {done} of {total} cells", { done: count.done.toLocaleString(), total: count.total.toLocaleString() })
+        ? t("Counting the matches… {done} of {total} cells", { done: formatCount(count.done), total: formatCount(count.total) })
         : t("Counting the matches…")
       : null;
   return (

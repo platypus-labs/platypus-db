@@ -20,11 +20,17 @@ interface Props {
 /** The shell's actions worth knowing first, with their shortcuts as the user set them. */
 const SHORTCUTS = ["app.palette", "tab.new", "tab.reopen", "app.settings"];
 
+/** Asks for a data file to open; `null` when none is chosen. */
+export async function pickDataFile(): Promise<string | null> {
+  const path = await open({ multiple: false, filters: [{ name: t("Data files"), extensions: DATA_FILE_EXTENSIONS }] });
+  return typeof path === "string" ? path : null;
+}
+
 /** What the workspace shows with no tab open. */
 export function Welcome({ empty, version, onNew, onImport, onOpenFile, onError }: Props) {
   async function pickFile() {
-    const path = await open({ multiple: false, filters: [{ name: t("Data files"), extensions: DATA_FILE_EXTENSIONS }] });
-    if (typeof path === "string") onOpenFile(path);
+    const path = await pickDataFile();
+    if (path !== null) onOpenFile(path);
   }
   const global = useActions("global", undefined);
   const shortcuts = SHORTCUTS.flatMap((id) => {

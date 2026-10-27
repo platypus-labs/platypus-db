@@ -1,7 +1,7 @@
 import { type PointerEvent as ReactPointerEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { api, type ColumnInfo, type Geometries, type Shape, toCommandError } from "../api";
 import type { GridApi } from "../grid/DataGrid";
-import { t, plural } from "../i18n";
+import { formatCount, t, plural } from "../i18n";
 
 interface Props {
   jobId: number;
@@ -186,7 +186,7 @@ export function MapPanel({ jobId, columns, grid, selection, rows, version, focus
         <div className="muted small value-size">
           {plural(shapes.length, "{n} geometry", "{n} geometries")}
           {data.truncated && ` ${t("(more not shown)")}`}
-          {data.unreadable > 0 && ` · ${t("{n} not readable", { n: data.unreadable.toLocaleString() })}`}
+          {data.unreadable > 0 && ` · ${t("{n} not readable", { n: formatCount(data.unreadable) })}`}
         </div>
       )}
     </aside>

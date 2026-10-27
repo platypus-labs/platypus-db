@@ -5,7 +5,7 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from "react"
 import { api, type SelectionStats } from "../../api";
 import type { GridApi } from "../DataGrid";
 import { formatExact } from "../exactNumber";
-import { t } from "../../i18n";
+import { formatCount, t } from "../../i18n";
 
 /** Waits for the selection to settle, e.g. while dragging. */
 const DELAY_MS = 150;
@@ -38,8 +38,8 @@ export function useSelectionStats(jobId: number, grid: RefObject<GridApi | null>
 
   const summary = stats && (
     <div className="grid-summary small">
-      <span title={t("{cells} cells, {nulls} NULL", { cells: stats.cells.toLocaleString(), nulls: (stats.cells - stats.values).toLocaleString() })}>
-        {t("Count {n}", { n: stats.values.toLocaleString() })}
+      <span title={t("{cells} cells, {nulls} NULL", { cells: formatCount(stats.cells), nulls: formatCount(stats.cells - stats.values) })}>
+        {t("Count {n}", { n: formatCount(stats.values) })}
       </span>
       {stats.sum !== null && (
         <>

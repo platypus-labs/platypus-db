@@ -421,7 +421,8 @@ export type ObjectKind =
   | "extension"
   | "event"
   | "dictionary"
-  | "synonym";
+  | "synonym"
+  | "package";
 
 export interface ObjectMeta {
   name: string;
@@ -637,7 +638,10 @@ export interface LintFinding {
   table: string;
   /** The index or foreign key concerned; `null` for the table itself. */
   object: string | null;
+  /** In English; `template` with `values` is the same text, to translate. */
   message: string;
+  template: string;
+  values: Record<string, string>;
   fix: string | null;
 }
 
@@ -995,9 +999,13 @@ export interface SkippedConnection {
   driver: string;
 }
 
-/** Windows or Entra ID logins, which the SQL Server driver does not do, and a named
- *  instance without a port. */
-export type ImportNote = { kind: "windows_auth" } | { kind: "entra_auth" } | { kind: "named_instance"; instance: string };
+/** Windows or Entra ID logins, which the SQL Server driver does not do, a named instance
+ *  without a port, and a database file that is not there. */
+export type ImportNote =
+  | { kind: "windows_auth" }
+  | { kind: "entra_auth" }
+  | { kind: "named_instance"; instance: string }
+  | { kind: "missing_file"; path: string };
 
 /** About a pasted URL or connection string: the notes of an import, and the parameters it
  *  left out (by name). */
@@ -1054,9 +1062,19 @@ export interface AppInfo {
 }
 
 /** Normalizes anything thrown by `invoke` into a `CommandError`. */
+/** Puts the backend's own messages in the interface's language (`storeErrors.ts`, set at
+ *  start: importing it here would import this module back through the settings). */
+let appMessage = (message: string) => message;
+export function translateAppMessages(translate: (message: string) => string) {
+  appMessage = translate;
+}
+
+/** The error a command failed with; the app's own messages in the interface's language, the
+ *  databases' as they are. */
 export function toCommandError(e: unknown): CommandError {
   if (e && typeof e === "object" && "kind" in e && "message" in e) {
-    return e as CommandError;
+    const error = e as CommandError;
+    return error.kind === "database" ? error : { ...error, message: appMessage(error.message) };
   }
   return { kind: "other", message: String(e), code: null, detail: null, hint: null, position: null };
 }
@@ -1162,6 +1180,8 @@ export const api = {
     invoke<ParsedConnection>("parse_connection_url", { input, driver }),
   /** The URL of a saved connection, without its password. */
   connectionUrl: (connectionId: string) => invoke<string>("connection_url", { connectionId }),
+  /** The URL of a form's settings, without a password; `null` when the driver has none. */
+  formConnectionUrl: (connection: SavedConnection) => invoke<string | null>("form_connection_url", { connection }),
   /** Whether a password is saved for the connection (a locked one counts). */
   connectionHasPassword: (connectionId: string) => invoke<boolean>("connection_has_password", { connectionId }),
   /** Saves the password typed at the prompt of a connection that keeps it in the keychain. */
@@ -1233,12 +1253,14 @@ export const api = {
     invoke<SavedConnection[]>("set_virtual_key", { connectionId, schema, table, columns }),
   testConnection: (connection: SavedConnection, password: PasswordInput, sshSecrets: SshSecrets = {}) =>
     invoke<ServerInfo>("test_connection", { connection, password, sshSecrets }),
-  /** `database` opens another database of the same server instead of the saved one. */
-  openSession: (connectionId: string, password?: string, database?: string | null) =>
+  /** `database` opens another database of the same server instead of the saved one. A `side`
+   *  session (the navigator's) stays in autocommit mode on production too. */
+  openSession: (connectionId: string, password?: string, database?: string | null, side = false) =>
     invoke<{ session_id: number; server: ServerInfo; capabilities: Capabilities }>("open_session", {
       connectionId,
       password: password ?? null,
       database: database ?? null,
+      side,
     }),
   closeSession: (sessionId: number) => invoke<void>("close_session", { sessionId }),
   /** Checks an idle session, reopening it if the server dropped it. */

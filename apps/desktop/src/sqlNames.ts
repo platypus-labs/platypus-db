@@ -5,6 +5,19 @@ import { defineSetting } from "./settings";
 
 export { quoteIdent } from "./sqlIdent";
 
+/** Whether SQL generated for a table of the session's `current` schema may name it without
+ *  its schema. Never on Trino: a session there resolves names in the schema of its
+ *  connection or of a `USE`, which the navigator cannot follow, and a name it resolves
+ *  elsewhere reads the rows of another table of that name. */
+export function omitsSchema(driver: DriverKind, current: boolean): boolean {
+  return current && driver !== "trino";
+}
+
+/** The schema generated SQL names a table of `schema` with: `null` where it is left out. */
+export function schemaRef(driver: DriverKind, schema: { name: string; current: boolean }): string | null {
+  return omitsSchema(driver, schema.current) ? null : schema.name;
+}
+
 /** `schema.name`, or just `name` for the session's current schema. */
 export function qualifiedName(
   driver: DriverKind,
@@ -13,7 +26,8 @@ export function qualifiedName(
 ): string {
   if (driver === "mongo") return collectionRef(schema.current ? null : schema.name, name);
   const table = quoteIdent(name, driver);
-  return schema.current ? table : `${quoteIdent(schema.name, driver)}.${table}`;
+  const own = schemaRef(driver, schema);
+  return own === null ? table : `${quoteIdent(own, driver)}.${table}`;
 }
 
 export const selectLimit = defineSetting({

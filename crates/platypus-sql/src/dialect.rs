@@ -62,6 +62,21 @@ impl From<DriverKind> for Dialect {
     }
 }
 
+impl Dialect {
+    /// The dialect of the values and statements a session of `driver` writes, on a server
+    /// that names itself `product` ([`platypus_core::ServerInfo::product`]): through the
+    /// generic ODBC driver, SQL Server takes its own literals (`N'…'` keeps text outside
+    /// the code page, a bit is `1`) and types, not standard SQL's.
+    #[must_use]
+    pub fn of_server(driver: DriverKind, product: &str) -> Self {
+        if driver == DriverKind::Odbc && product.contains("SQL Server") {
+            Self::SqlServer
+        } else {
+            Self::from(driver)
+        }
+    }
+}
+
 /// Words that cannot be bare identifiers in at least one supported dialect.
 const RESERVED: &[&str] = &[
     "ALL",
@@ -899,8 +914,8 @@ impl Dialect {
     }
 
     /// About how many rows `table` has, by [`Dialect::row_estimate_sql`]; `None` when
-    /// unknown, or when there is no such table. A PostgreSQL table never analyzed has its
-    /// rows counted, up to a million.
+    /// unknown, or when there is no such table. A PostgreSQL table never analyzed, or an Oracle
+    /// one without statistics, has its rows counted, up to a million.
     ///
     /// # Errors
     ///
@@ -924,6 +939,14 @@ impl Dialect {
             Some(None) if self == Self::Postgres => {
                 let count = format!(
                     "SELECT count(*) FROM (SELECT 1 FROM {} LIMIT 1000000) s",
+                    self.qualified(schema, table)
+                );
+                first(platypus_core::query_text(conn, &count).await?).flatten()
+            }
+            // An Oracle table whose statistics were never gathered (most new tables).
+            Some(None) if self == Self::Oracle => {
+                let count = format!(
+                    "SELECT COUNT(*) FROM {} WHERE ROWNUM <= 1000000",
                     self.qualified(schema, table)
                 );
                 first(platypus_core::query_text(conn, &count).await?).flatten()
@@ -1660,6 +1683,18 @@ mod tests {
         assert_eq!(Dialect::from(DriverKind::Oracle), ora);
         assert_eq!(Dialect::from(DriverKind::Db2), db2);
         assert_eq!(Dialect::from(DriverKind::Odbc), Dialect::Ansi);
+        assert_eq!(
+            Dialect::of_server(DriverKind::Odbc, "Microsoft SQL Server"),
+            Dialect::SqlServer
+        );
+        assert_eq!(
+            Dialect::of_server(DriverKind::Odbc, "Oracle"),
+            Dialect::Ansi
+        );
+        assert_eq!(
+            Dialect::of_server(DriverKind::Postgres, "PostgreSQL"),
+            Dialect::Postgres
+        );
         assert!(ora.has_savepoints() && !db2.has_savepoints());
         for d in [ora, db2] {
             assert_eq!(d.quote_ident("ORDERS"), "ORDERS");

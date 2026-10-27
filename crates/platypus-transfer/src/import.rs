@@ -270,9 +270,18 @@ impl ImportPlan {
                 .map(|row| {
                     let literals = columns
                         .iter()
+                        .zip(&self.columns)
                         .zip(row)
-                        .map(|(c, text)| literal(c, dialect, text.as_deref()))
-                        .collect::<Result<Vec<_>, _>>()?;
+                        .map(|((c, plan), text)| {
+                            let lit = literal(c, dialect, text.as_deref())?;
+                            Ok(match (c.kind, text) {
+                                (ValueKind::Text, Some(_)) => {
+                                    typed_text(dialect, plan.data_type.as_deref(), lit)
+                                }
+                                _ => lit,
+                            })
+                        })
+                        .collect::<Result<Vec<_>, InvalidValue>>()?;
                     Ok(format!("({})", literals.join(", ")))
                 })
                 .collect::<Result<Vec<_>, ImportError>>()?
@@ -286,7 +295,10 @@ impl ImportPlan {
                         dialect
                             .upsert_rows(&table, &names, &keys, &values)
                             .ok_or_else(|| {
-                                ImportError::Plan("ClickHouse has no upsert".to_owned())
+                                ImportError::Plan(
+                                    "this database cannot update rows by key (no upsert)"
+                                        .to_owned(),
+                                )
                             })?,
                     );
                 }
@@ -459,6 +471,11 @@ pub fn target_type(field: &Field, target: Dialect) -> String {
     )
     .then(|| field.metadata().get(META_DB_TYPE))
     .flatten();
+    // A PostgreSQL or CockroachDB array arrives as its text, `{x,y}`, which PostgreSQL reads
+    // back into an array of the same type.
+    if let Some(array) = declared.filter(|t| target == Dialect::Postgres && is_array_type(t)) {
+        return array.clone();
+    }
     // Text of a bounded length keeps it: MySQL cannot index (or key) TEXT.
     if let Some(n) = declared.and_then(|t| text_length(t)) {
         return match target {
@@ -467,12 +484,50 @@ pub fn target_type(field: &Field, target: Dialect) -> String {
             _ => format!("VARCHAR({n})"),
         };
     }
+    // An Oracle `NUMBER` without a precision reaches Arrow as a decimal whose scale its first
+    // rows set: the target takes any number too, where it has such a type.
+    let unbounded = matches!(field.data_type(), DataType::Decimal128(..))
+        && field
+            .metadata()
+            .get(META_DB_TYPE)
+            .is_some_and(|t| t == "NUMBER");
+    match target {
+        Dialect::Postgres if unbounded => return "NUMERIC".to_owned(),
+        Dialect::Oracle if unbounded => return "NUMBER".to_owned(),
+        _ => {}
+    }
     let declared = declared.and_then(|t| declared_type(t));
     target.column_type(declared.as_ref().unwrap_or(field.data_type()))
 }
 
-/// The length of a declared `varchar(n)` or `char(n)`.
+/// Whether `name` is an array of a plain type, `text[]` or `int8[]`, as the PostgreSQL
+/// driver names the arrays it reads as text.
+fn is_array_type(name: &str) -> bool {
+    name.strip_suffix("[]").is_some_and(|element| {
+        !element.is_empty()
+            && element
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b' ')
+    })
+}
+
+/// The length of a declared `varchar(n)` or `char(n)` (Oracle's `VARCHAR2(n)`,
+/// `VARCHAR2(n CHAR)` too).
 pub(crate) fn text_length(name: &str) -> Option<u32> {
+    text_limit(name).map(|(n, _)| n)
+}
+
+/// The length of a declared text type and whether it counts bytes: Oracle's `VARCHAR2(n)`
+/// and `VARCHAR2(n BYTE)` do (by default), `VARCHAR2(n CHAR)`, `NVARCHAR2(n)` and the other
+/// databases' `varchar(n)` count characters.
+pub(crate) fn text_limit(name: &str) -> Option<(u32, bool)> {
+    // ClickHouse's `Nullable(FixedString(4))`, `LowCardinality(…)`.
+    let mut name = name.trim();
+    for wrapper in ["Nullable(", "LowCardinality("] {
+        if let Some(inner) = name.strip_prefix(wrapper) {
+            name = inner.strip_suffix(')').unwrap_or(inner).trim();
+        }
+    }
     let (base, args) = name.split_once('(')?;
     let base = base.trim().to_ascii_lowercase();
     let text = [
@@ -482,10 +537,23 @@ pub(crate) fn text_length(name: &str) -> Option<u32> {
         "char",
         "character",
         "nchar",
+        // Oracle's, as `VARCHAR2(50 BYTE)` too, and ClickHouse's.
+        "varchar2",
+        "nvarchar2",
+        "fixedstring",
     ];
-    text.contains(&base.as_str())
-        .then(|| args.trim_end_matches(')').trim().parse().ok())
-        .flatten()
+    if !text.contains(&base.as_str()) {
+        return None;
+    }
+    let mut words = args.trim_end_matches(')').split_whitespace();
+    let n = words.next()?.parse().ok()?;
+    let bytes = match words.next().map(str::to_ascii_uppercase).as_deref() {
+        Some("BYTE") => true,
+        Some("CHAR") => false,
+        Some(_) => return None,
+        None => base == "varchar2",
+    };
+    Some((n, bytes))
 }
 
 /// The Arrow type of a declared column type, for the types other databases share.
@@ -511,6 +579,31 @@ fn declared_type(name: &str) -> Option<DataType> {
         }
         _ => return None,
     })
+}
+
+/// Text `literal` for a column declared `declared` (a `uuid`, a `json`) in standard SQL,
+/// whose Trino converts no text to another type, not even on INSERT: a literal of the
+/// declared type, `uuid '…'`, or a `CAST` for a type with arguments. Elsewhere, and for text
+/// columns, `literal` itself.
+fn typed_text(dialect: Dialect, declared: Option<&str>, literal: String) -> String {
+    let Some(declared) = declared.map(str::trim).filter(|d| !d.is_empty()) else {
+        return literal;
+    };
+    let lower = declared.to_ascii_lowercase();
+    let text = ["char", "text", "string", "clob"]
+        .iter()
+        .any(|t| lower.contains(t));
+    if dialect != Dialect::Ansi || text {
+        return literal;
+    }
+    if declared
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    {
+        format!("{declared} {literal}")
+    } else {
+        format!("CAST({literal} AS {declared})")
+    }
 }
 
 /// Significant digits a double keeps: SQLite reads a number literal with more as a double.
@@ -964,6 +1057,28 @@ mod tests {
         );
     }
 
+    #[test]
+    fn standard_sql_types_text_of_other_columns() {
+        let mut p = plan(false);
+        p.columns[1].data_type = Some("uuid".to_owned());
+        assert_eq!(
+            p.insert_sql(Dialect::Ansi, &batch()).unwrap(),
+            [
+                r#"INSERT INTO "public"."Sales" ("id", "item") VALUES (1, uuid 'it''s'), (NULL, uuid 'ink')"#
+            ]
+        );
+        p.columns[1].data_type = Some("decimal(5, 2)".to_owned());
+        assert!(
+            p.insert_sql(Dialect::Ansi, &batch()).unwrap()[0]
+                .contains("CAST('ink' AS decimal(5, 2))")
+        );
+        // Text stays text, and other databases convert it themselves.
+        p.columns[1].data_type = Some("varchar(10)".to_owned());
+        assert!(p.insert_sql(Dialect::Ansi, &batch()).unwrap()[0].contains("(NULL, 'ink')"));
+        p.columns[1].data_type = Some("uuid".to_owned());
+        assert!(p.insert_sql(Dialect::Postgres, &batch()).unwrap()[0].contains("(NULL, 'ink')"));
+    }
+
     /// A batch of ids and names.
     fn rows(ids: &[i64], names: &[&str]) -> RecordBatch {
         let schema = Arc::new(Schema::new(vec![
@@ -1174,6 +1289,20 @@ mod tests {
         assert_eq!(
             target_type(&field(DataType::Float64, "DECIMAL(10, 2)"), d),
             "DOUBLE PRECISION"
+        );
+        // Arrays of PostgreSQL and CockroachDB, as their text.
+        assert_eq!(target_type(&field(DataType::Utf8, "text[]"), d), "text[]");
+        assert_eq!(
+            target_type(&field(DataType::Utf8, "text[]"), Dialect::MySql),
+            "TEXT"
+        );
+        // Oracle's NUMBER without a precision takes any number.
+        let number = field(DataType::Decimal128(38, 1), "NUMBER");
+        assert_eq!(target_type(&number, d), "NUMERIC");
+        assert_eq!(target_type(&number, Dialect::Oracle), "NUMBER");
+        assert_eq!(
+            target_type(&field(DataType::Utf8, "VARCHAR2(8 CHAR)"), d),
+            "VARCHAR(8)"
         );
     }
 

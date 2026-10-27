@@ -2,6 +2,8 @@
 //! app sends to a database, with how long it took and how it ended. Sessions and exports
 //! wrap their connection in [`Logged`], which records into the [`QueryLog`] kept in memory.
 //! Scripts run with a command-line client (`commands/cli.rs`) do not pass through it.
+//! The UI translates the names of metadata and transaction requests (`QueryManager.tsx`
+//! `REQUESTS`): a new name goes there too.
 
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;

@@ -66,6 +66,7 @@ const KIND_LABELS: Record<ObjectKind, string> = {
   event: msg("Event"),
   dictionary: msg("Dictionary"),
   synonym: msg("Synonym"),
+  package: msg("Package"),
 };
 
 const SECTION_LABELS: Record<ObjectSection, string> = {

@@ -12,6 +12,14 @@ use platypus_sql::Dialect;
 const SEP: char = '\u{1f}';
 
 /// A string literal that is valid whatever `standard_conforming_strings` says.
+/// The SQL of the type of column `a` (a `pg_attribute`) as `format_type` writes it, except
+/// CockroachDB's `STRING(n)`: it is `text` with a length there, which its `format_type`
+/// writes `text(n + 4)`, a type neither database takes. PostgreSQL's `text` has none.
+pub(crate) const COLUMN_TYPE: &str = "CASE WHEN a.atttypid IN (25, 1009) AND a.atttypmod > 4 \
+     THEN 'character varying(' || (a.atttypmod - 4)::text || ')' \
+          || CASE WHEN a.atttypid = 1009 THEN '[]' ELSE '' END \
+     ELSE format_type(a.atttypid, a.atttypmod) END";
+
 pub(crate) fn literal(s: &str) -> String {
     format!("E'{}'", s.replace('\\', "\\\\").replace('\'', "''"))
 }
@@ -25,13 +33,17 @@ pub(crate) fn list(cell: Option<String>) -> Vec<String> {
 pub async fn schemas(conn: &dyn Connection) -> Result<Vec<SchemaMeta>> {
     let rows = query_text(
         conn,
-        // CockroachDB adds its own catalog schemas.
-        "SELECT nspname,
-                nspname IN ('pg_catalog', 'information_schema', 'crdb_internal', 'pg_extension'),
-                nspname = current_schema()
-         FROM pg_namespace
-         WHERE nspname NOT LIKE 'pg\\_toast%' AND nspname NOT LIKE 'pg\\_temp\\_%'
-         ORDER BY nspname",
+        // CockroachDB adds its own catalog schemas; an extension may bring schemas of its
+        // own (TimescaleDB's `_timescaledb_catalog`, `timescaledb_information`…).
+        "SELECT n.nspname,
+                n.nspname IN ('pg_catalog', 'information_schema', 'crdb_internal', 'pg_extension')
+                OR EXISTS (SELECT 1 FROM pg_depend d
+                           WHERE d.classid = 'pg_namespace'::regclass AND d.objid = n.oid
+                             AND d.deptype = 'e'),
+                n.nspname = current_schema()
+         FROM pg_namespace n
+         WHERE n.nspname NOT LIKE 'pg\\_toast%' AND n.nspname NOT LIKE 'pg\\_temp\\_%'
+         ORDER BY n.nspname",
     )
     .await?;
     Ok(rows
@@ -130,6 +142,9 @@ pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMe
                     obj_description(p.oid, 'pg_proc'), NULL, NULL, NULL
              FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
              WHERE n.nspname = {schema} AND p.prokind IN ('f', 'p')
+               -- Not the routines an extension brings (TimescaleDB's, in public).
+               AND NOT EXISTS (SELECT 1 FROM pg_depend d
+                               WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e')
              UNION ALL
              SELECT t.tgname, 'T', obj_description(t.oid, 'pg_trigger'), c.relname, NULL, NULL
              FROM pg_trigger t
@@ -256,7 +271,7 @@ async fn columns(conn: &dyn Connection, relation: &str) -> Result<Vec<ColumnMeta
     Ok(query_text(
         conn,
         &format!(
-            "SELECT a.attname, format_type(a.atttypid, a.atttypmod), NOT a.attnotnull,
+            "SELECT a.attname, {COLUMN_TYPE}, NOT a.attnotnull,
                     pg_get_expr(d.adbin, d.adrelid),
                     coalesce(a.attnum = ANY (i.indkey), false),
                     col_description(a.attrelid, a.attnum),

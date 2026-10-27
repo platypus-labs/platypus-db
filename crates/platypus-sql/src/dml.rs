@@ -33,6 +33,9 @@ pub enum ValueKind {
     Timestamp {
         zoned: bool,
     },
+    Date,
+    /// A time of day.
+    Time,
     Text,
 }
 
@@ -52,6 +55,8 @@ impl ValueKind {
             DataType::Timestamp(_, tz) => Self::Timestamp {
                 zoned: tz.is_some(),
             },
+            DataType::Date32 | DataType::Date64 => Self::Date,
+            DataType::Time32(_) | DataType::Time64(_) => Self::Time,
             _ => Self::Text,
         }
     }
@@ -164,6 +169,77 @@ fn is_special_number(s: &str) -> bool {
         .any(|w| w.eq_ignore_ascii_case(s))
 }
 
+/// `n` ASCII digits at the start of `s`, and the rest.
+fn digits(s: &str, n: usize) -> Option<(&str, &str)> {
+    let head = s.get(..n)?;
+    head.bytes()
+        .all(|b| b.is_ascii_digit())
+        .then(|| (head, &s[n..]))
+}
+
+/// An Oracle ANSI literal of a date or time as the grid and exports write it
+/// (`2024-02-29`, `2024-02-29 13:45:59.123456789`, `T` for the space, and for a `zoned` one an
+/// offset, `+02:00` or `Z`): `DATE '…'` or `TIMESTAMP '…'`. `None` for other text (a year
+/// before Christ, the session's own format), which stays a string.
+fn oracle_datetime(text: &str, zoned: bool) -> Option<String> {
+    let (year, rest) = digits(text, 4)?;
+    let (month, rest) = digits(rest.strip_prefix('-')?, 2)?;
+    let (day, rest) = digits(rest.strip_prefix('-')?, 2)?;
+    let date = format!("{year}-{month}-{day}");
+    if rest.is_empty() {
+        return Some(format!("DATE '{date}'"));
+    }
+    let rest = rest.strip_prefix([' ', 'T'])?;
+    let (hour, rest) = digits(rest, 2)?;
+    let (minute, rest) = digits(rest.strip_prefix(':')?, 2)?;
+    let (second, rest) = match rest.strip_prefix(':') {
+        Some(r) => digits(r, 2)?,
+        None => ("00", rest),
+    };
+    let (fraction, rest) = match rest.strip_prefix('.') {
+        Some(r) => {
+            let n = r.bytes().take_while(u8::is_ascii_digit).count();
+            if n == 0 || n > 9 {
+                return None;
+            }
+            (&r[..n], &r[n..])
+        }
+        None => ("", rest),
+    };
+    let fraction = if fraction.is_empty() {
+        String::new()
+    } else {
+        format!(".{fraction}")
+    };
+    let time = format!("{date} {hour}:{minute}:{second}{fraction}");
+    let zone = rest.trim();
+    let offset = match zone {
+        "" => None,
+        "Z" | "UTC" | "+00" => Some("+00:00".to_owned()),
+        _ if zoned => {
+            let (sign, digits_part) = zone.split_at(1);
+            if !matches!(sign, "+" | "-") {
+                return None;
+            }
+            let compact = digits_part.replace(':', "");
+            let (h, m) = match compact.len() {
+                2 => (&compact[..2], "00"),
+                4 => (&compact[..2], &compact[2..]),
+                _ => return None,
+            };
+            if !(h.bytes().chain(m.bytes()).all(|b| b.is_ascii_digit())) {
+                return None;
+            }
+            Some(format!("{sign}{h}:{m}"))
+        }
+        _ => return None,
+    };
+    Some(match offset {
+        Some(offset) => format!("TIMESTAMP '{time} {offset}'"),
+        None => format!("TIMESTAMP '{time}'"),
+    })
+}
+
 fn is_integer(s: &str) -> bool {
     let digits = s.strip_prefix(['+', '-']).unwrap_or(s);
     !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
@@ -262,7 +338,33 @@ impl Column<'_> {
                     if fraction > 6 { 9 } else { 6 }
                 )
             }
-            ValueKind::Timestamp { .. } | ValueKind::Text => dialect.quote_literal(text),
+            // Oracle reads a string as a time with the session's NLS formats: an ANSI literal
+            // does not depend on them.
+            ValueKind::Timestamp { zoned } if dialect == Dialect::Oracle => {
+                oracle_datetime(trimmed, zoned).unwrap_or_else(|| dialect.quote_literal(text))
+            }
+            ValueKind::Date if dialect == Dialect::Oracle => {
+                oracle_datetime(trimmed, false).unwrap_or_else(|| dialect.quote_literal(text))
+            }
+            // Standard SQL's typed literals: Trino converts no text to a date or time, not
+            // even on INSERT.
+            ValueKind::Date if dialect == Dialect::Ansi => {
+                format!("DATE {}", dialect.quote_literal(trimmed))
+            }
+            ValueKind::Time if dialect == Dialect::Ansi => {
+                format!("TIME {}", dialect.quote_literal(trimmed))
+            }
+            ValueKind::Timestamp { .. } if dialect == Dialect::Ansi => {
+                // `2024-01-02T03:04:05` as Arrow writes it, `2024-01-02 03:04:05` in SQL.
+                let sql = match trimmed.split_at_checked(10) {
+                    Some((day, rest)) if rest.starts_with('T') => format!("{day} {}", &rest[1..]),
+                    _ => trimmed.to_owned(),
+                };
+                format!("TIMESTAMP {}", dialect.quote_literal(&sql))
+            }
+            ValueKind::Timestamp { .. } | ValueKind::Date | ValueKind::Time | ValueKind::Text => {
+                dialect.quote_literal(text)
+            }
         })
     }
 
@@ -952,6 +1054,48 @@ mod tests {
     }
 
     #[test]
+    fn oracle_times_do_not_depend_on_nls() {
+        let naive = col("t", ValueKind::Timestamp { zoned: false });
+        let zoned = col("z", ValueKind::Timestamp { zoned: true });
+        let ora = |c: &Column<'_>, v| c.literal(Dialect::Oracle, Some(v)).unwrap();
+        assert_eq!(
+            ora(&naive, "2021-02-03 04:05:06"),
+            "TIMESTAMP '2021-02-03 04:05:06'"
+        );
+        assert_eq!(
+            ora(&naive, "2024-02-29T13:45:59.123456789"),
+            "TIMESTAMP '2024-02-29 13:45:59.123456789'"
+        );
+        assert_eq!(ora(&naive, "2024-02-29"), "DATE '2024-02-29'");
+        assert_eq!(
+            ora(&naive, "2024-02-29 10:30"),
+            "TIMESTAMP '2024-02-29 10:30:00'"
+        );
+        assert_eq!(
+            ora(&zoned, "2024-01-01 08:00:00.500+02:00"),
+            "TIMESTAMP '2024-01-01 08:00:00.500 +02:00'"
+        );
+        assert_eq!(
+            ora(&zoned, "2024-01-01T08:00:00Z"),
+            "TIMESTAMP '2024-01-01 08:00:00 +00:00'"
+        );
+        // Anything else is left to the session's formats.
+        assert_eq!(ora(&naive, "03-FEB-21"), "'03-FEB-21'");
+        assert_eq!(
+            ora(&naive, "0044-03-15 00:00:00 BC"),
+            "'0044-03-15 00:00:00 BC'"
+        );
+        // Elsewhere a date stays a string.
+        assert_eq!(ValueKind::of(&DataType::Date32), ValueKind::Date);
+        assert_eq!(
+            naive
+                .literal(Dialect::Postgres, Some("2024-02-29"))
+                .unwrap(),
+            "'2024-02-29'"
+        );
+    }
+
+    #[test]
     fn updates_with_typed_literals() {
         let cols = columns();
         let set = [
@@ -990,6 +1134,26 @@ mod tests {
             .unwrap(),
             "UPDATE demo.Items SET name = NULL WHERE id = 1 AND name IS NULL"
         );
+    }
+
+    #[test]
+    fn standard_sql_types_its_dates_and_times() {
+        let lit = |kind, text| col("c", kind).literal(Dialect::Ansi, Some(text)).unwrap();
+        assert_eq!(lit(ValueKind::Date, "2024-01-02"), "DATE '2024-01-02'");
+        assert_eq!(lit(ValueKind::Time, "10:11:12"), "TIME '10:11:12'");
+        assert_eq!(
+            lit(
+                ValueKind::Timestamp { zoned: false },
+                "2024-01-02T03:04:05.5"
+            ),
+            "TIMESTAMP '2024-01-02 03:04:05.5'"
+        );
+        // Elsewhere the server converts the text.
+        let pg = col("c", ValueKind::Date)
+            .literal(Dialect::Postgres, Some("2024-01-02"))
+            .unwrap();
+        assert_eq!(pg, "'2024-01-02'");
+        assert_eq!(ValueKind::of(&DataType::Date32), ValueKind::Date);
     }
 
     #[test]

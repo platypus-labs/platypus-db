@@ -7,7 +7,7 @@ use platypus_sql::Dialect;
 use serde::Serialize;
 use tauri::State;
 
-use super::AppState;
+use super::{AppState, one_off};
 use crate::error::{CommandError, CommandResult};
 
 /// The design of `schema.table` as it is in the database.
@@ -48,7 +48,7 @@ pub fn table_script(
     })
 }
 
-/// Runs a script from [`table_script`] on the session.
+/// Runs a script from [`table_script`] on the session and commits it (see [`one_off`]).
 #[tauri::command]
 pub async fn apply_table_script(
     state: State<'_, AppState>,
@@ -57,25 +57,28 @@ pub async fn apply_table_script(
 ) -> CommandResult<()> {
     state.writable(session_id)?;
     let conn = state.live(session_id).await?;
-    platypus_schema::apply(conn.as_ref(), &script)
-        .await
-        .map_err(|e| {
-            let first_line = e.statement.lines().next().unwrap_or_default();
-            let error = CommandError::from(&e.error).context(first_line);
-            if e.applied.is_empty() {
-                return error;
-            }
-            // What ran before cannot be undone: say what the table now has.
-            let applied: Vec<&str> = e.applied.iter().map(String::as_str).collect();
-            error.note(&format!(
-                "These statements ran before it and stay applied:
+    one_off(&conn, async {
+        platypus_schema::apply(conn.as_ref(), &script)
+            .await
+            .map_err(|e| {
+                let first_line = e.statement.lines().next().unwrap_or_default();
+                let error = CommandError::from(&e.error).context(first_line);
+                if e.applied.is_empty() {
+                    return error;
+                }
+                // What ran before cannot be undone: say what the table now has.
+                let applied: Vec<&str> = e.applied.iter().map(String::as_str).collect();
+                error.note(&format!(
+                    "These statements ran before it and stay applied:
 {};",
-                applied.join(
-                    ";
+                    applied.join(
+                        ";
 "
-                )
-            ))
-        })
+                    )
+                ))
+            })
+    })
+    .await
 }
 
 /// The tables of `schema` with their details, those in `tables` or all, for the ER diagram.

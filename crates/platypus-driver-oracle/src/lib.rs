@@ -5,8 +5,7 @@
 
 use std::fmt::Write as _;
 use std::path::PathBuf;
-use std::sync::mpsc as std_mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::StreamExt as _;
@@ -18,12 +17,17 @@ use platypus_core::{
 };
 use tokio::sync::oneshot;
 
+mod binds;
 mod client;
 mod convert;
+mod explain;
 mod meta;
+mod plsql;
+mod read_as;
 mod session;
+mod stop;
 
-use session::{Command, Login, Started};
+use session::{Command, Login, Messages, Started};
 
 /// Opens Oracle connections with the client library of the app's data folder, else the
 /// system's.
@@ -152,6 +156,45 @@ pub fn statement_text(sql: &str) -> &str {
     }
 }
 
+/// The administrative privileges a session can connect with, as SQL*Plus names them.
+const PRIVILEGES: &[(&str, oracle::Privilege)] = &[
+    ("SYSDBA", oracle::Privilege::Sysdba),
+    ("SYSOPER", oracle::Privilege::Sysoper),
+    ("SYSASM", oracle::Privilege::Sysasm),
+    ("SYSBACKUP", oracle::Privilege::Sysbackup),
+    ("SYSDG", oracle::Privilege::Sysdg),
+    ("SYSKM", oracle::Privilege::Syskm),
+    ("SYSRAC", oracle::Privilege::Sysrac),
+];
+
+/// The privilege of a role name; none for an empty one or `NORMAL`.
+fn privilege(name: &str) -> Result<Option<oracle::Privilege>> {
+    let name = name.trim();
+    if name.is_empty() || name.eq_ignore_ascii_case("normal") {
+        return Ok(None);
+    }
+    PRIVILEGES
+        .iter()
+        .find(|(n, _)| n.eq_ignore_ascii_case(name))
+        .map(|(_, p)| Some(*p))
+        .ok_or_else(|| Error::Config(format!("unknown Oracle role {name}: SYSDBA, SYSOPER…")))
+}
+
+/// The user and the administrative privilege of a login: the user written as SQL*Plus takes
+/// it (`sys as sysdba`), else the connection's `role` option.
+fn login_role(user: &str, role: Option<&String>) -> Result<(String, Option<oracle::Privilege>)> {
+    let words: Vec<&str> = user.split_whitespace().collect();
+    if let [name, by, role] = words.as_slice()
+        && by.eq_ignore_ascii_case("as")
+    {
+        return Ok(((*name).to_owned(), privilege(role)?));
+    }
+    Ok((
+        user.trim().to_owned(),
+        privilege(role.map_or("", String::as_str))?,
+    ))
+}
+
 #[async_trait]
 impl Driver for OracleDriver {
     fn kind(&self) -> DriverKind {
@@ -170,8 +213,10 @@ impl Driver for OracleDriver {
 }
 
 pub struct OracleConnection {
-    commands: Mutex<std_mpsc::Sender<Command>>,
-    canceller: OracleCanceller,
+    /// The session's thread and what stops its statements.
+    stopper: Arc<stop::Stopper>,
+    /// What PL/SQL printed (`DBMS_OUTPUT`), until [`Connection::take_messages`].
+    messages: Messages,
     server: ServerInfo,
     dictionary: meta::Dictionary,
     tx: TxTracker,
@@ -187,23 +232,30 @@ impl std::fmt::Debug for OracleConnection {
 
 impl OracleConnection {
     pub async fn open(config: &ConnectionConfig) -> Result<Self> {
+        let (user, privilege) = login_role(&config.user, config.options.get("role"))?;
         let login = Login {
-            user: config.user.clone(),
+            user,
             password: config
                 .password
                 .as_ref()
                 .map(|p| p.expose().to_owned())
                 .unwrap_or_default(),
             connect_string: connect_string(config)?,
+            privilege,
         };
-        let (commands, opened) = session::spawn(login)?;
+        let messages = Messages::default();
+        let (commands, opened) = session::spawn(login.clone(), Arc::clone(&messages))?;
         let opened = opened.await.map_err(|_| Error::Closed)??;
         Ok(Self {
             dictionary: meta::Dictionary::of(&opened.version),
-            commands: Mutex::new(commands),
-            canceller: OracleCanceller {
-                connection: opened.cancel,
-            },
+            stopper: Arc::new(stop::Stopper::new(
+                opened.cancel,
+                opened.busy,
+                opened.ids,
+                login,
+                commands,
+            )),
+            messages,
             server: ServerInfo {
                 product: "Oracle".to_owned(),
                 version: opened.version,
@@ -213,10 +265,14 @@ impl OracleConnection {
         })
     }
 
+    /// Sends a command to the session's thread; none goes to a session given up.
     fn send(&self, command: Command) -> Result<()> {
-        self.commands
+        self.stopper
+            .commands
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .ok_or(Error::Closed)?
             .send(command)
             .map_err(|_| Error::Closed)
     }
@@ -242,14 +298,25 @@ impl OracleConnection {
 #[async_trait]
 impl Connection for OracleConnection {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
-        let sql = statement_text(sql);
+        let command = plsql::command(sql);
+        let sql = command.as_deref().unwrap_or_else(|| statement_text(sql));
         let (reply, started) = oneshot::channel();
+        // Registered before the statement starts, so a Cancel that gives the session up
+        // wakes it.
+        let given_up = std::pin::pin!(self.stopper.given_up.notified());
         self.send(Command::Execute {
             sql: sql.to_owned(),
             batch_size: options.batch_size.max(1),
             reply,
         })?;
-        let started = started.await.map_err(|_| Error::Closed)?;
+        let started = match futures::future::select(started, given_up).await {
+            futures::future::Either::Left((started, _)) => started.map_err(|_| Error::Closed)?,
+            futures::future::Either::Right(_) => {
+                // The old session rolls its transaction back when it ends.
+                self.tx.set_open(false);
+                return Err(stop::abandoned());
+            }
+        };
         // Oracle commits before and after DDL, in either mode.
         self.tx.after(TxControl::effect(sql), true);
         match started.map_err(|e| in_characters(e, sql))? {
@@ -265,18 +332,37 @@ impl Connection for OracleConnection {
     }
 
     fn cancel_handle(&self) -> CancelHandle {
-        CancelHandle::new(self.canceller.clone())
+        CancelHandle::new(OracleCanceller {
+            stopper: Arc::clone(&self.stopper),
+        })
     }
 
     fn server_info(&self) -> &ServerInfo {
         &self.server
     }
 
-    fn is_closed(&self) -> bool {
-        !matches!(
-            self.canceller.connection.status(),
-            Ok(oracle::ConnStatus::Normal)
+    fn take_messages(&self) -> Vec<String> {
+        std::mem::take(
+            &mut *self
+                .messages
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
         )
+    }
+
+    /// `EXPLAIN PLAN`, read from the plan table. Oracle cannot run the statement for its
+    /// actual rows and times here: with `analyze` the plan comes without them.
+    async fn explain(&self, sql: &str, _analyze: bool) -> Result<platypus_core::Explain> {
+        explain::explain(self, statement_text(sql)).await
+    }
+
+    /// Closed too once Cancel gave the session up: the app opens a new connection.
+    fn is_closed(&self) -> bool {
+        self.stopper.abandoned()
+            || !matches!(
+                self.stopper.connection.status(),
+                Ok(oracle::ConnStatus::Normal)
+            )
     }
 
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {
@@ -323,7 +409,7 @@ impl Connection for OracleConnection {
     }
 
     async fn object_ddl(&self, object: &ObjectRef<'_>) -> Result<String> {
-        let sql = meta::ddl_sql(object)
+        let sql = meta::ddl_sql(object, self.dictionary.legacy)
             .ok_or_else(|| platypus_core::unsupported("DDL of this kind of object"))?;
         let rows = query_text(self, &sql).await?;
         Ok(rows
@@ -357,26 +443,23 @@ impl Connection for OracleConnection {
             transactions: true,
             cancel: true,
             object_ddl: true,
+            explain: true,
             ..Capabilities::default()
         }
     }
 }
 
 /// Breaks the statement running on the connection, from another thread: it fails with
-/// ORA-01013 and the session stays usable.
-#[derive(Clone)]
+/// ORA-01013 and the session stays usable. One the break does not stop is stopped harder
+/// (see [`stop`]).
 struct OracleCanceller {
-    connection: Arc<oracle::Connection>,
+    stopper: Arc<stop::Stopper>,
 }
 
 #[async_trait]
 impl Canceller for OracleCanceller {
     async fn cancel(&self) -> Result<()> {
-        let connection = Arc::clone(&self.connection);
-        tokio::task::spawn_blocking(move || connection.break_execution())
-            .await
-            .map_err(|e| Error::Other(e.to_string()))?
-            .map_err(|e| oracle_error(&e))
+        Arc::clone(&self.stopper).cancel().await
     }
 }
 

@@ -11,7 +11,7 @@ import {
   toCommandError,
   type SavedConnection,
 } from "./api";
-import { onNavigatorRefresh, requestNavigatorRefresh } from "./navigatorEvents";
+import { onNavigatorRefresh, requestNavigatorRefresh, revealConnection } from "./navigatorEvents";
 import { ConnectionDialog } from "./components/ConnectionDialog";
 import { ImportDialog } from "./components/ImportDialog";
 import { UnlockDialog } from "./components/MasterPassword";
@@ -45,7 +45,7 @@ import { ContextMenu, type MenuState } from "./components/ContextMenu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { TopBar } from "./shell/TopBar";
-import { Welcome } from "./shell/Welcome";
+import { pickDataFile, Welcome } from "./shell/Welcome";
 import { TabBar, barOrder, groupTabsSetting } from "./shell/TabBar";
 import { SidebarResizer, useSidebarWidth } from "./shell/SidebarResizer";
 import { settingsLoadError, useSetting } from "./settings";
@@ -529,7 +529,7 @@ export function App() {
   /** Opens a session, asking for the password when it is not saved; `null` on failure.
    *  `database` opens another database of the server than the saved one. A password the
    *  server refuses (typed, or missing from the keychain) is asked again, with its answer. */
-  async function connect(connection: SavedConnection, database?: string | null): Promise<number | null> {
+  async function connect(connection: SavedConnection, database?: string | null, side = false): Promise<number | null> {
     // Typed this run: asked for, or missing from the keychain.
     let password = passwords.current.get(connection.id);
     let prompted = false;
@@ -542,7 +542,7 @@ export function App() {
     const target = database ? `${connection.name}/${database}` : connection.name;
     for (;;) {
       const typed = password;
-      const open = () => track(t("Connect to {name}", { name: target }), withDriver(() => api.openSession(connection.id, typed, database)));
+      const open = () => track(t("Connect to {name}", { name: target }), withDriver(() => api.openSession(connection.id, typed, database, side)));
       try {
         let session;
         try {
@@ -632,7 +632,7 @@ export function App() {
   }
 
   function navigatorSession(connection: SavedConnection, database?: string | null) {
-    return cached(navSessions.current, dbKey(connection.id, database), () => connect(connection, database));
+    return cached(navSessions.current, dbKey(connection.id, database), () => connect(connection, database, true));
   }
 
   /** Closes the navigator sessions of every database of the connection. */
@@ -778,6 +778,11 @@ export function App() {
     projectFolders,
     importOpen: dialog?.kind === "import",
     newConnection,
+    importConnections: () => setDialog({ kind: "import" }),
+    openDataFile: () =>
+      void pickDataFile()
+        .then((path) => (path === null ? undefined : openDroppedFile(path)))
+        .catch((e: unknown) => setToast(toCommandError(e).message)),
     closeTabs,
     patchTab,
     split,
@@ -1039,6 +1044,8 @@ export function App() {
             const before = connections?.find((c) => c.id === dialog.connection.id);
             await connectionsSaved(all);
             const saved = all.find((c) => c.id === dialog.connection.id);
+            // A new connection is selected in the navigator, with the focus, as the next step.
+            if (!before && saved) revealConnection(saved.id);
             if (before && saved && sessionSettingsChanged(before, saved)) void followEdit(saved);
             if (dialog.folder && activeProject && saved) {
               api.placeConnection(activeProject, saved.id, dialog.folder).then(setProjects, (e: unknown) => setToast(toCommandError(e).message));
@@ -1179,6 +1186,9 @@ interface ShellApi {
   split: [number, number] | null;
   openBeside: (tab: TabModel | null) => void;
   closeSplit: () => void;
+  newConnection: () => void;
+  importConnections: () => void;
+  openDataFile: () => void;
 }
 
 /** Closed tabs kept for reopening. */
@@ -1266,6 +1276,10 @@ function registerShellActions(shell: { current: ShellApi }) {
       run: () => s().openPalette(),
     }),
     registerAction({ id: "app.activity", scope: "global", title: "Activity and errors", run: openActivity }),
+    // The welcome page's actions, for the palette.
+    registerAction({ id: "app.new_connection", scope: "global", title: "New connection…", run: () => s().newConnection() }),
+    registerAction({ id: "app.import_connections", scope: "global", title: "Import connections…", run: () => s().importConnections() }),
+    registerAction({ id: "app.open_data_file", scope: "global", title: "Open a data file…", run: () => s().openDataFile() }),
     registerAction({
       id: "app.settings",
       scope: "global",

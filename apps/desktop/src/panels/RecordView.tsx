@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type CellInput, type ColumnInfo, toCommandError } from "../api";
-import { t } from "../i18n";
+import { formatCount, t } from "../i18n";
 
 interface Props {
   jobId: number;
@@ -73,7 +73,7 @@ export function RecordView({ jobId, columns, shown, row, rowCount, topRows, vers
         <span className="small record-position">
           {dataRow < 0
             ? t("New row")
-            : t("Row {n} of {count}", { n: (dataRow + 1).toLocaleString(), count: (rowCount - topRows).toLocaleString() })}
+            : t("Row {n} of {count}", { n: formatCount(dataRow + 1), count: formatCount(rowCount - topRows) })}
         </span>
         <button onClick={() => onMove(row + 1)} disabled={row >= rowCount - 1} title={t("Next row (→)")} aria-label={t("Next row (→)")}>
           ▶

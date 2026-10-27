@@ -21,7 +21,7 @@ use serde::Deserialize;
 
 use crate::import::{
     ImportColumn, ImportError, ImportMode, ImportPlan, import_rows, query_rows, query_value,
-    text_length,
+    text_limit,
 };
 
 /// Rows per generated batch.
@@ -386,17 +386,25 @@ fn text(rng: &mut Rng, generator: &Generator, row: u64) -> Option<String> {
     })
 }
 
-/// `value` in at most `limit` characters: its start, or with `end` its end; no space left
-/// at the edge.
-fn cut(value: String, limit: usize, end: bool) -> String {
-    let count = value.chars().count();
-    if count <= limit {
+/// `value` in at most `limit` characters (UTF-8 bytes with `bytes`): its start, or with
+/// `end` its end; no space left at the edge.
+fn cut(value: String, limit: usize, end: bool, bytes: bool) -> String {
+    let size = |c: char| if bytes { c.len_utf8() } else { 1 };
+    let total: usize = value.chars().map(size).sum();
+    if total <= limit {
         return value;
     }
+    let mut used = 0;
+    let mut fits = |c: &char| {
+        used += size(*c);
+        used <= limit
+    };
     let kept: String = if end {
-        value.chars().skip(count - limit).collect()
+        let mut kept: Vec<char> = value.chars().rev().take_while(&mut fits).collect();
+        kept.reverse();
+        kept.into_iter().collect()
     } else {
-        value.chars().take(limit).collect()
+        value.chars().take_while(fits).collect()
     };
     kept.trim().to_owned()
 }
@@ -474,14 +482,14 @@ pub fn batch(
                     let limit = c
                         .data_type
                         .as_deref()
-                        .and_then(text_length)
-                        .and_then(|n| usize::try_from(n).ok());
+                        .and_then(text_limit)
+                        .and_then(|(n, bytes)| Some((usize::try_from(n).ok()?, bytes)));
                     let unique = matches!(other, Generator::Unique { .. });
                     let mut b = StringBuilder::with_capacity(rows, rows * 16);
                     numbers.for_each(|n| {
                         let value = text(rng, other, n);
                         b.append_option(match limit {
-                            Some(limit) => value.map(|v| cut(v, limit, unique)),
+                            Some((limit, bytes)) => value.map(|v| cut(v, limit, unique, bytes)),
                             None => value,
                         });
                     });
@@ -811,7 +819,9 @@ pub async fn fill(
             .map(|c| ImportColumn {
                 source: c.name.clone(),
                 target: c.name.clone(),
-                data_type: None,
+                // The rows are not a new table's: the declared type types text values where
+                // the database converts none (see `import::typed_text`).
+                data_type: c.data_type.clone(),
                 not_null: false,
                 default: None,
             })
@@ -1097,6 +1107,8 @@ mod tests {
             ),
             typed("at", Generator::Time, "time"),
             typed("ip", Generator::Ip, "inet"),
+            typed("fx", Generator::Text, "Nullable(FixedString(4))"),
+            typed("o", Generator::City, "VARCHAR2(3 BYTE)"),
         ];
         let mut rng = Rng::new(7);
         let batch = batch(&mut rng, &columns, 0, 50).unwrap();
@@ -1112,8 +1124,19 @@ mod tests {
             );
             assert_eq!(text(3, r).len(), 8);
             assert!(text(4, r).starts_with("10."), "{}", text(4, r));
+            assert!(text(5, r).len() <= 4, "{}", text(5, r));
+            assert!(text(6, r).chars().count() <= 3, "{}", text(6, r));
         }
-        assert_eq!(cut("lorem ipsum".to_owned(), 6, false), "lorem");
+        assert_eq!(cut("lorem ipsum".to_owned(), 6, false, false), "lorem");
+        // Oracle's VARCHAR2(n) counts bytes.
+        assert_eq!(cut("caffè latte".to_owned(), 5, false, true), "caff");
+        assert_eq!(cut("città".to_owned(), 5, true, true), "ittà");
+        assert_eq!(cut("città".to_owned(), 5, false, false), "città");
+        assert_eq!(text_limit("VARCHAR2(20)"), Some((20, true)));
+        assert_eq!(text_limit("VARCHAR2(8 CHAR)"), Some((8, false)));
+        assert_eq!(text_limit("NVARCHAR2(10)"), Some((10, false)));
+        assert_eq!(text_limit("varchar(5)"), Some((5, false)));
+        assert_eq!(text_limit("NUMBER(5)"), None);
     }
 
     #[test]

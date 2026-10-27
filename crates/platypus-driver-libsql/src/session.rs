@@ -7,8 +7,8 @@ use platypus_core::{ConnectionConfig, Error, Result, SslMode};
 use platypus_driver_sqlite::columns::Owned;
 
 use crate::hrana::{
-    PipelineRequest, PipelineResponse, Stmt, StmtResult, StreamRequest, StreamResponse,
-    StreamResult,
+    Batch, BatchStep, CursorRequest, PipelineRequest, PipelineResponse, Stmt, StmtResult,
+    StreamRequest, StreamResponse, StreamResult,
 };
 
 #[derive(Debug)]
@@ -132,24 +132,28 @@ impl Session {
         }
     }
 
-    /// One pipeline: the statement, then whether a transaction is open after it.
+    /// Runs `sql`: a query through a cursor, whose result has no size limit (a table of
+    /// 200 000 rows is too large for a pipeline's response: `RESPONSE_TOO_LARGE`), and
+    /// which leaves the transaction as it was; any other statement through a pipeline,
+    /// which also tells whether a transaction is open after it.
     async fn request(&mut self, sql: &str) -> std::result::Result<StmtResult, Result<Transport>> {
-        let body = PipelineRequest {
-            baton: self.baton.as_deref(),
-            requests: vec![
-                StreamRequest::Execute {
-                    stmt: Stmt {
-                        sql,
-                        want_rows: true,
-                    },
-                },
-                StreamRequest::GetAutocommit,
-            ],
-        };
+        if platypus_sql::is_read_only(sql, platypus_sql::Dialect::Sqlite) {
+            self.cursor(sql).await
+        } else {
+            self.pipeline(sql).await
+        }
+    }
+
+    /// Sends `body` to `endpoint` of the stream's server; the text of the answer.
+    async fn post(
+        &self,
+        endpoint: &str,
+        body: &impl serde::Serialize,
+    ) -> std::result::Result<String, Result<Transport>> {
         let mut request = self
             .http
-            .post(format!("{}/v3/pipeline", self.base.trim_end_matches('/')))
-            .json(&body);
+            .post(format!("{}/v3/{endpoint}", self.base.trim_end_matches('/')))
+            .json(body);
         if let Some(token) = &self.token {
             request = request.bearer_auth(token);
         }
@@ -168,11 +172,54 @@ impl Session {
                 answered: true,
             }));
         }
-        let response: PipelineResponse = response.json().await.map_err(transport)?;
-        self.baton = response.baton;
-        if let Some(base) = response.base_url {
+        response.text().await.map_err(transport)
+    }
+
+    /// The stream continues with `baton`, on `base` when the server names one.
+    fn follow(&mut self, baton: Option<String>, base: Option<String>) {
+        self.baton = baton;
+        if let Some(base) = base {
             self.base = base;
         }
+    }
+
+    /// One cursor of the statement.
+    async fn cursor(&mut self, sql: &str) -> std::result::Result<StmtResult, Result<Transport>> {
+        let body = CursorRequest {
+            baton: self.baton.as_deref(),
+            batch: Batch {
+                steps: vec![BatchStep {
+                    stmt: Stmt {
+                        sql,
+                        want_rows: true,
+                    },
+                }],
+            },
+        };
+        let text = self.post("cursor", &body).await?;
+        let (head, result) = crate::hrana::cursor_result(&text).map_err(Err)?;
+        self.follow(head.baton, head.base_url);
+        result.map_err(|error| Err(error.into_error(sql)))
+    }
+
+    /// One pipeline: the statement, then whether a transaction is open after it.
+    async fn pipeline(&mut self, sql: &str) -> std::result::Result<StmtResult, Result<Transport>> {
+        let body = PipelineRequest {
+            baton: self.baton.as_deref(),
+            requests: vec![
+                StreamRequest::Execute {
+                    stmt: Stmt {
+                        sql,
+                        want_rows: true,
+                    },
+                },
+                StreamRequest::GetAutocommit,
+            ],
+        };
+        let text = self.post("pipeline", &body).await?;
+        let response: PipelineResponse = serde_json::from_str(&text)
+            .map_err(|e| Err(Error::Other(format!("unexpected libSQL response: {e}"))))?;
+        self.follow(response.baton, response.base_url);
         let mut results = response.results.into_iter();
         let (statement, autocommit) = (results.next(), results.next());
         if let Some(StreamResult::Ok {

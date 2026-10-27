@@ -18,6 +18,7 @@ import {
 import { GuardDialog } from "../guards/GuardDialog";
 import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { requestNavigatorRefresh } from "../navigatorEvents";
+import { omitsSchema } from "../sqlNames";
 import { workbench } from "../workbench";
 import { t, plural, msg } from "../i18n";
 
@@ -326,7 +327,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
   useEffect(() => {
     if (!transfer || target.schema || schemas.length === 0) return;
     const current = schemas.find((s) => s.current) ?? schemas[0]!;
-    setTarget((t) => ({ ...t, schema: current.name, currentSchema: current.current }));
+    setTarget((t) => ({ ...t, schema: current.name, currentSchema: omitsSchema(t.connection.driver, current.current) }));
   }, [schemas]);
 
   const running = status.state === "running";
@@ -377,7 +378,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
                 disabled={running}
                 onChange={(e) => {
                   const s = schemas.find((x) => x.name === e.target.value)!;
-                  setTarget({ ...target, schema: s.name, currentSchema: s.current });
+                  setTarget({ ...target, schema: s.name, currentSchema: omitsSchema(target.connection.driver, s.current) });
                 }}
               >
                 {schemas.map((s) => (

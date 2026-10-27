@@ -33,8 +33,22 @@ export const hasDefault = (column: ColumnMeta) => column.default !== null && !/^
  *  `LONG` is text). */
 const isText = (type: string) => /char|text|string|clob|citext|^name$|^long$/.test(type);
 
+/** Whether a type holds several values: arrays (`text[]`, `array(integer)`), maps, tuples,
+ *  sets, and DuckDB's STRUCT and UNION or Trino's ROW, whose field types may say `int`. */
+const isComposite = (type: string) =>
+  /\[\]$|^_|^(array|map|tuple|nested|struct|union|row)\b|^set\(/.test(type);
+
 /** Whether a type holds whole numbers: `interval` and `point` hold no `int`. */
-const isInteger = (type: string) => /int|serial|number|^year/.test(type) && !/interval|point/.test(type);
+const isInteger = (type: string) =>
+  /int|serial|number|^year/.test(type) && !/interval|point/.test(type) && !isComposite(type);
+
+/** The generator of a date or time type, `null` for another type. */
+const temporal = (type: string): Kind | null => {
+  if (/timestamp|datetime/.test(type)) return "timestamp";
+  if (/^date/.test(type)) return "date";
+  if (/^time\b|^time$|^time\(/.test(type)) return "time";
+  return null;
+};
 
 /** The generator a column most likely wants, from its keys, name and type; `mongo` for a
  * field of a MongoDB collection, typed as the documents sampled; `generated` when the
@@ -53,10 +67,18 @@ export function suggest(column: ColumnMeta, fk: ForeignKeyMeta | undefined, uniq
   // An `_id` of text or of several types: numbers would land among other keys.
   if (mongo && column.primary_key && !integer && !/double|decimal/.test(type)) return "object_id";
   if (unique && (integer || /numeric|decimal/.test(type))) return "next_key";
-  if (column.primary_key) return integer ? "next_key" : /uuid|uniqueidentifier/.test(type) ? "uuid" : "next_key";
+  if (column.primary_key) {
+    if (integer) return "next_key";
+    if (/uuid|uniqueidentifier/.test(type)) return "uuid";
+    // A key of several columns with a time in it (a hypertable's device and time) takes
+    // times: numbers do not go into a date column.
+    const time = unique ? null : temporal(type);
+    return time ?? "next_key";
+  }
   if (column.enum_values.length > 0) return "choice";
-  // Arrays (`text[]`, ClickHouse's `Array(String)`), maps, tuples and sets: no generator.
-  if (/\[\]$|^_|^(array|map|tuple|nested)\b|^set\(/.test(type)) return column.nullable ? "null" : "skip";
+  // Arrays (`text[]`, ClickHouse's `Array(String)`), maps, tuples, sets, structs, unions and
+  // rows: no generator.
+  if (isComposite(type)) return column.nullable ? "null" : "skip";
   // MySQL's BOOLEAN is a tinyint(1); a longer bit string is no flag.
   if (/bool|^bit$|^bit\(1\)$|^tinyint\(1\)$/.test(type)) return "bool";
   if ((isText(type) && !integer) || (mongo && type === "string")) {
@@ -71,9 +93,8 @@ export function suggest(column: ColumnMeta, fk: ForeignKeyMeta | undefined, uniq
   if (isJson(type)) return "document";
   // BSON's date holds the time too.
   if (mongo && type === "date") return "timestamp";
-  if (/timestamp|datetime/.test(type)) return "timestamp";
-  if (/^date/.test(type)) return "date";
-  if (/^time\b|^time$|^time\(/.test(type)) return "time";
+  const time = temporal(type);
+  if (time) return time;
   if (/uuid|uniqueidentifier/.test(type)) return "uuid";
   if (/^(inet|cidr)/.test(type)) return "ip";
   if (/^(numeric|decimal|real|float|double|money|smallmoney|number)/.test(type) && !integer) return "decimal";

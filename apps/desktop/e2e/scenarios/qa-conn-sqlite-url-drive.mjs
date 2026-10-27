@@ -14,10 +14,10 @@ export function setup({ dir }) {
 }
 
 export default async function (page) {
-  await openPicker(page);
-  await page.eval(paste(`document.querySelector(${JSON.stringify(urlField)})`, "sqlite://C:/data/x.db"));
-  const error = `document.querySelector('.driver-url [role="alert"]')`;
-  await page.waitFor(`${dialog} !== null || ${error} !== null`);
+  // SQLite has no URL mode: the file field is its address, and a URL pasted in the name
+  // field is read into it, or refused.
+  await newFromUrl(page, "sqlite://C:/data/x.db");
+  const error = `document.querySelector('.connection-dialog .error-text, .connection-dialog .notice.error')`;
   if (await page.eval(`${error} !== null`)) return; // Refused: fine.
   assert.equal(await page.eval(`${formField("Database file")}.value`), "C:/data/x.db");
 }

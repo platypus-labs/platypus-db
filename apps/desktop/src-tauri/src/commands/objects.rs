@@ -7,7 +7,7 @@ use platypus_sql::{Dialect, ObjectName};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use super::AppState;
+use super::{AppState, one_off};
 use crate::error::CommandResult;
 
 /// An object as the UI identifies it.
@@ -62,7 +62,8 @@ pub async fn list_databases(
 }
 
 /// Runs a statement that returns nothing worth showing (DDL from the navigator), reading
-/// and discarding any rows. Returns the affected row count when there is one.
+/// and discarding any rows, and commits it (see [`one_off`]). Returns the affected row count
+/// when there is one.
 #[tauri::command]
 pub async fn execute_statement(
     state: State<'_, AppState>,
@@ -71,13 +72,16 @@ pub async fn execute_statement(
 ) -> CommandResult<Option<u64>> {
     state.may_run(session_id, &sql)?;
     let conn = state.live(session_id).await?;
-    match conn.execute(&sql, &ExecOptions::default()).await? {
-        ExecResult::Affected { rows } => Ok(Some(rows)),
-        ExecResult::Rows(stream) => {
-            stream.try_for_each(|_| async { Ok(()) }).await?;
-            Ok(None)
+    one_off(&conn, async {
+        match conn.execute(&sql, &ExecOptions::default()).await? {
+            ExecResult::Affected { rows } => Ok(Some(rows)),
+            ExecResult::Rows(stream) => {
+                stream.try_for_each(|_| async { Ok(()) }).await?;
+                Ok(None)
+            }
         }
-    }
+    })
+    .await
 }
 
 /// A table or other object to generate SQL for. Columns and keys apply to DML.
@@ -170,7 +174,7 @@ pub struct DialectSupport {
     renamable: Vec<ObjectKind>,
 }
 
-const ALL_KINDS: [ObjectKind; 14] = [
+const ALL_KINDS: [ObjectKind; 15] = [
     ObjectKind::Table,
     ObjectKind::View,
     ObjectKind::MaterializedView,
@@ -185,6 +189,7 @@ const ALL_KINDS: [ObjectKind; 14] = [
     ObjectKind::Event,
     ObjectKind::Dictionary,
     ObjectKind::Synonym,
+    ObjectKind::Package,
 ];
 
 #[tauri::command]

@@ -11,20 +11,24 @@ use adbc_core::Connection as _;
 use adbc_core::options::ObjectDepth;
 use adbc_driver_manager::ManagedConnection;
 use arrow_array::RecordBatch;
+use arrow_array::cast::AsArray as _;
+use arrow_schema::DataType;
 use async_trait::async_trait;
-use futures::StreamExt as _;
+use futures::{StreamExt as _, TryStreamExt as _};
 use platypus_core::{
     CATALOG_LIMIT, CancelHandle, Canceller, Capabilities, CatalogColumn, Connection,
-    ConnectionConfig, Driver, DriverKind, Error, ExecOptions, ExecResult, ObjectMeta,
-    RecordBatchStream, ReferencingKey, Result, SchemaMeta, ServerInfo, TableDetails,
+    ConnectionConfig, Driver, DriverKind, Error, ExecOptions, ExecResult, ObjectKind, ObjectMeta,
+    ObjectRef, RecordBatchStream, ReferencingKey, Result, SchemaMeta, ServerInfo, TableDetails,
     TransactionState,
 };
+use platypus_sql::Dialect;
 use tokio::sync::{Notify, oneshot};
 
 mod ipc;
 mod meta;
 pub mod profile;
 mod session;
+mod values;
 
 use session::{Command, Started};
 
@@ -92,6 +96,7 @@ pub struct AdbcConnection {
     /// session started.
     catalog: Option<String>,
     schema: Option<String>,
+    driver: DriverKind,
 }
 
 impl AdbcConnection {
@@ -137,6 +142,7 @@ impl AdbcConnection {
             },
             catalog,
             schema,
+            driver: config.driver,
         })
     }
 
@@ -278,8 +284,46 @@ impl Connection for AdbcConnection {
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             cancel: true,
+            object_ddl: show_create(self.driver, ObjectKind::Table).is_some(),
             ..Capabilities::default()
         }
+    }
+
+    async fn object_ddl(&self, object: &ObjectRef<'_>) -> Result<String> {
+        let what = show_create(self.driver, object.kind)
+            .ok_or_else(|| Error::Unsupported("object DDL".to_owned()))?;
+        let dialect = Dialect::from(self.driver);
+        let mut name = String::new();
+        if let Some(catalog) = &self.catalog {
+            name.push_str(&dialect.quote_ident(catalog));
+            name.push('.');
+        }
+        name.push_str(&dialect.qualified(Some(object.schema), object.name));
+        let sql = format!("SHOW CREATE {what} {name}");
+        let ExecResult::Rows(rows) = self.execute(&sql, &ExecOptions::default()).await? else {
+            return Err(Error::Unsupported("object DDL".to_owned()));
+        };
+        let batches: Vec<RecordBatch> = rows.try_collect().await?;
+        batches
+            .iter()
+            .find(|b| b.num_rows() > 0)
+            .and_then(|b| arrow_cast::cast(b.column(0), &DataType::Utf8).ok())
+            .map(|text| text.as_string::<i32>().value(0).to_owned())
+            .ok_or_else(|| Error::Unsupported(format!("{sql} returned nothing")))
+    }
+}
+
+/// What follows `SHOW CREATE` for an object of `kind` on the database of `driver`; `None`
+/// where it has no such statement.
+fn show_create(driver: DriverKind, kind: ObjectKind) -> Option<&'static str> {
+    if driver != DriverKind::Trino {
+        return None;
+    }
+    match kind {
+        ObjectKind::Table => Some("TABLE"),
+        ObjectKind::View => Some("VIEW"),
+        ObjectKind::MaterializedView => Some("MATERIALIZED VIEW"),
+        _ => None,
     }
 }
 

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { workbench } from "../workbench";
 import { type ActivityEntry, clearActivity, markSeen, useActivity } from "./activity";
-import { t } from "../i18n";
+import { formatCount, t } from "../i18n";
 
 /** Opens the log of the errors shown and the work done in the background. */
 export function openActivity() {
@@ -39,7 +39,7 @@ function ActivityDialog({ onClose }: { onClose: () => void }) {
                   {e.text}
                   {e.detail && <span className="activity-detail">{e.detail}</span>}
                 </span>
-                {e.ms !== undefined && <span className="muted activity-ms">{e.ms.toLocaleString()} ms</span>}
+                {e.ms !== undefined && <span className="muted activity-ms">{formatCount(e.ms)} ms</span>}
               </li>
             ))}
           </ol>

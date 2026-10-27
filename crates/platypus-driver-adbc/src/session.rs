@@ -3,6 +3,7 @@
 
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::mpsc as std_mpsc;
 
 use adbc_core::options::{
@@ -18,7 +19,7 @@ use platypus_core::{DbError, Error, Result};
 use platypus_sql::{Dialect, Lexer, TokenKind};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::{ipc, profile};
+use crate::{ipc, profile, values};
 
 pub enum Command {
     Execute {
@@ -224,12 +225,25 @@ pub fn returns_rows(sql: &str) -> bool {
         })
 }
 
+/// `sql` without the `;` that ends it, and what follows it: Trino's driver sends the text
+/// as one statement, and Trino refuses a terminator ("mismatched input ';'").
+pub fn without_terminator(sql: &str) -> &str {
+    let last = Lexer::new(sql, Dialect::Ansi)
+        .filter(|t| !t.is_trivia())
+        .last();
+    match last {
+        Some(t) if t.kind == TokenKind::Symbol && t.text(sql) == ";" => &sql[..t.start],
+        _ => sql,
+    }
+}
+
 fn execute(
     connection: &mut ManagedConnection,
     sql: &str,
     batch_size: usize,
     reply: oneshot::Sender<Result<Started>>,
 ) {
+    let sql = without_terminator(sql);
     let statement = connection.new_statement().and_then(|mut s| {
         s.set_sql_query(sql)?;
         Ok(s)
@@ -253,9 +267,12 @@ fn execute(
         .execute()
         .map_err(adbc_error)
         .and_then(|mut reader| {
-            let schema = ipc::schema(&reader.schema())?;
+            let schema = values::schema(&ipc::schema(&reader.schema())?);
             // The first batch is read before answering, so its errors fail the statement itself.
-            let first = reader.next().map(convert).transpose()?;
+            let first = reader
+                .next()
+                .map(|b| convert(b).and_then(|b| values::batch(b, &schema)))
+                .transpose()?;
             Ok((reader, schema, first))
         });
     let (reader, schema, first) = match opened {
@@ -266,10 +283,14 @@ fn execute(
         }
     };
     let (tx, rx) = mpsc::channel(1);
-    if reply.send(Ok(Started::Rows(schema, rx))).is_err() {
+    if reply
+        .send(Ok(Started::Rows(Arc::clone(&schema), rx)))
+        .is_err()
+    {
         return;
     }
-    let batches = first.into_iter().map(Ok).chain(reader.map(convert));
+    let rest = reader.map(|b| convert(b).and_then(|b| values::batch(b, &schema)));
+    let batches = first.into_iter().map(Ok).chain(rest);
     for batch in batches {
         let sent = match batch {
             Ok(batch) => send_sliced(&tx, &batch, batch_size),
@@ -321,5 +342,14 @@ mod tests {
         ] {
             assert!(!super::returns_rows(sql), "{sql}");
         }
+    }
+
+    #[test]
+    fn terminators_are_left_out() {
+        use super::without_terminator as w;
+        assert_eq!(w("DROP TABLE \"g\";"), "DROP TABLE \"g\"");
+        assert_eq!(w("SELECT 1 ;  -- done\n"), "SELECT 1 ");
+        assert_eq!(w("SELECT ';'"), "SELECT ';'");
+        assert_eq!(w("SELECT 1"), "SELECT 1");
     }
 }

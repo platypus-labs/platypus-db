@@ -26,6 +26,90 @@ pub struct Stmt<'a> {
     pub want_rows: bool,
 }
 
+/// `POST /v3/cursor`: the steps of `batch` run on the stream, their rows streamed back one
+/// entry per line, with no limit on the size of a result (a pipeline's response has one).
+#[derive(Debug, Serialize)]
+pub struct CursorRequest<'a> {
+    pub baton: Option<&'a str>,
+    pub batch: Batch<'a>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Batch<'a> {
+    pub steps: Vec<BatchStep<'a>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BatchStep<'a> {
+    pub stmt: Stmt<'a>,
+}
+
+/// The first line of a cursor's response.
+#[derive(Debug, Deserialize)]
+pub struct CursorResponse {
+    pub baton: Option<String>,
+    pub base_url: Option<String>,
+}
+
+/// A line of a cursor's response after the first.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum CursorEntry {
+    StepBegin {
+        cols: Vec<Col>,
+    },
+    StepEnd {
+        affected_row_count: u64,
+    },
+    StepError {
+        error: HranaError,
+    },
+    Row {
+        row: Vec<Value>,
+    },
+    Error {
+        error: HranaError,
+    },
+    #[serde(other)]
+    Other,
+}
+
+/// What a cursor of one statement answered.
+pub type CursorOutcome = (CursorResponse, Result<StmtResult, HranaError>);
+
+/// The first line (the stream's baton) of the cursor response `body`, and the result or
+/// error of its one statement.
+///
+/// # Errors
+/// When a line is not one of the protocol.
+pub fn cursor_result(body: &str) -> Result<CursorOutcome, Error> {
+    let invalid = |e: serde_json::Error| Error::Other(format!("unexpected libSQL response: {e}"));
+    let mut lines = body.lines().filter(|l| !l.trim().is_empty());
+    let first = lines
+        .next()
+        .ok_or_else(|| Error::Other("empty libSQL response".to_owned()))?;
+    let head: CursorResponse = serde_json::from_str(first).map_err(invalid)?;
+    let mut result = StmtResult {
+        cols: Vec::new(),
+        rows: Vec::new(),
+        affected_row_count: 0,
+    };
+    for line in lines {
+        match serde_json::from_str(line).map_err(invalid)? {
+            CursorEntry::StepBegin { cols } => result.cols = cols,
+            CursorEntry::Row { row } => result.rows.push(row),
+            CursorEntry::StepEnd { affected_row_count } => {
+                result.affected_row_count = affected_row_count;
+            }
+            CursorEntry::StepError { error } | CursorEntry::Error { error } => {
+                return Ok((head, Err(error)));
+            }
+            CursorEntry::Other => {}
+        }
+    }
+    Ok((head, Ok(result)))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct PipelineResponse {
     pub baton: Option<String>,
@@ -212,6 +296,26 @@ mod tests {
         );
         assert_eq!(at("no such table: t"), None);
         assert_eq!(at("(at offset 999)"), None);
+    }
+
+    #[test]
+    fn reads_cursor_responses() {
+        let body = r#"{"baton":"b","base_url":null}
+{"type":"step_begin","step":0,"cols":[{"name":"x","decltype":null}]}
+{"type":"row","row":[{"type":"integer","value":"1"}]}
+{"type":"row","row":[{"type":"text","value":"a"}]}
+{"type":"step_end","affected_row_count":0,"last_insert_rowid":null}
+{"type":"replication_index","replication_index":3}
+"#;
+        let (head, result) = cursor_result(body).unwrap();
+        assert_eq!(head.baton.as_deref(), Some("b"));
+        let result = result.unwrap();
+        assert_eq!(result.cols.len(), 1);
+        assert_eq!(result.rows.len(), 2);
+        let failed = r#"{"baton":null,"base_url":null}
+{"type":"step_error","step":0,"error":{"message":"no such table: t","code":"SQLITE_ERROR"}}
+"#;
+        assert!(cursor_result(failed).unwrap().1.is_err());
     }
 
     #[test]

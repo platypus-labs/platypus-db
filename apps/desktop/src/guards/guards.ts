@@ -99,7 +99,9 @@ export async function check(
   const id = risky.length ? await session().catch(() => null) : null;
   const unfiltered = await Promise.all(
     risky.map(async ({ sql, t }) => {
-      const rows = id === null ? null : await api.estimateRows(id, t.schema, t.name).catch(() => null);
+      // The rows a DELETE HISTORY erases are past versions, which the estimate does not count.
+      const counted = id !== null && t.verb !== "DELETE HISTORY";
+      const rows = counted ? await api.estimateRows(id, t.schema, t.name).catch(() => null) : null;
       const table = t.schema ? `${t.schema}.${t.name}` : t.name;
       return { sql, verb: t.verb, table, limited: t.limited, documents: connection.driver === "mongo", rows };
     }),

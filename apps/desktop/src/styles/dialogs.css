@@ -932,11 +932,35 @@ button.primary.danger:hover:not(:disabled) {
   color: var(--fg-muted);
 }
 
-/* The picker's "or paste a connection URL", with its error under it. */
-.driver-url {
+/* "Connect by": the host fields or one URL. */
+.connect-by {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 10px;
+}
+
+.connect-by > span {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.connect-by-options {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.connect-by-options button {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg-muted);
+}
+
+.connect-by-options button[aria-checked="true"] {
+  background: var(--accent);
+  color: var(--bg-input);
 }
 
 /* A dialog's title with the database's logo at its right. */

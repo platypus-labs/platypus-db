@@ -2,7 +2,7 @@ import { ProfileFields } from "../drivers/ProfileFields";
 import { PROFILES } from "../drivers/profiles";
 import { withDriver } from "../drivers/DriverPopup";
 import { VendorDriverState } from "../drivers/VendorDrivers";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   api,
@@ -22,7 +22,7 @@ import {
 } from "../api";
 import { AgentAccessField, withEffectiveAgentAccess } from "../agents/access";
 import { CONNECTION_TYPES, noteText } from "../connections";
-import { looksLikeConnection, splitLogin, validPort, withParsed } from "../connectionUrl";
+import { applyUrlEdit, looksLikeConnection, splitLogin, urlModeDriver, validPort, withParsed, type ConnectBy } from "../connectionUrl";
 import { hasSessionTimeZone, withoutUnusableInit } from "../connectionEdit";
 import { toggled } from "../sets";
 import { basename } from "../workspace";
@@ -112,8 +112,15 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const [picking, setPicking] = useState(!existing && !driverChosen);
   /** The picker's tile (MariaDB rather than MySQL), for the header's logo. */
   const [tile, setTile] = useState<string>();
-  /** The URL field of the picker, when going back to it with a URL for another database. */
-  const [pickerUrl, setPickerUrl] = useState("");
+  /** The address is entered as host, port and database, or as one URL. */
+  const [connectBy, setConnectBy] = useState<ConnectBy>("host");
+  /** The URL as the form's settings print it, without the password. */
+  const [printedUrl, setPrintedUrl] = useState("");
+  /** The URL being typed, while it is: the field shows it as it is, not as printed. */
+  const [urlDraft, setUrlDraft] = useState<string | null>(null);
+  const [urlError, setUrlError] = useState<string | null>(null);
+  /** Counts the URL edits, so that a slow answer for an old text is ignored. */
+  const urlEdits = useRef(0);
   /** What a pasted URL could not carry over. */
   const [notes, setNotes] = useState<ParseNote[]>([]);
   /** A URL pasted in a new connection's form that is for another database. */
@@ -147,6 +154,21 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const libsql = conn.driver === "libsql";
   /** The fields of a database reached through an ADBC driver. */
   const adbcProfile = PROFILES[conn.driver];
+  /** The address is a URL field instead of the host, port and database ones. */
+  const urlMode = connectBy === "url" && server && !adbcProfile && urlModeDriver(conn.driver);
+
+  // The URL the settings print, for the URL field.
+  useEffect(() => {
+    if (!urlMode) return;
+    let current = true;
+    api.formConnectionUrl(conn).then(
+      (url) => current && setPrintedUrl(url ?? ""),
+      () => current && setPrintedUrl(""),
+    );
+    return () => {
+      current = false;
+    };
+  }, [urlMode, conn]);
   const secret = t(adbcProfile?.secret ?? (libsql ? "Auth token" : "Password"));
 
   // An empty password field keeps the stored one when editing.
@@ -263,8 +285,35 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     );
   }
 
+  /** The URL field edited: read into the settings; one that does not parse changes nothing. */
+  function editUrl(text: string) {
+    setUrlDraft(text);
+    const edit = ++urlEdits.current;
+    if (!text.trim()) {
+      setUrlError(null);
+      return;
+    }
+    api.parseConnectionUrl(text, conn.driver).then(
+      (parsed) => {
+        if (edit !== urlEdits.current) return;
+        if (parsed.driver !== conn.driver) {
+          setUrlError(t("This URL is for {driver}: go back to choose it.", { driver: driverName(parsed.driver) }));
+          return;
+        }
+        const next = applyUrlEdit(conn, password, text, parsed);
+        setUrlError(null);
+        setConn(next.conn);
+        setPassword(next.password);
+        setUrlDraft(next.draft);
+        setNotes(parsed.notes);
+        setResult(null);
+      },
+      (err) => edit === urlEdits.current && setUrlError(toCommandError(err).message),
+    );
+  }
+
   /** Back to the choice of the database, with nothing of this form kept. */
-  function back(url = "") {
+  function back() {
     setConn(initial);
     setPassword("");
     setSshTyped({});
@@ -273,7 +322,6 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     setOtherDriver(null);
     setPage("general");
     setTile(undefined);
-    setPickerUrl(url);
     setPicking(true);
   }
 
@@ -288,15 +336,10 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   if (picking) {
     return (
       <DriverPicker
-        initialUrl={pickerUrl}
         onPick={(driver, preset, label) => {
           changeDriver(driver);
           setConn((c) => ({ ...c, ...preset }));
           setTile(label);
-          setPicking(false);
-        }}
-        onParsed={(parsed) => {
-          fillFrom(parsed);
           setPicking(false);
         }}
         onClose={onClose}
@@ -336,7 +379,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                 value={conn.name}
                 onChange={(e) => set("name", e.target.value)}
                 onPaste={onPaste}
-                placeholder={t("My database — or paste a connection URL")}
+                placeholder={t("My database")}
               />
             </label>
 
@@ -434,6 +477,57 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
               />
             ) : (
               <>
+                {server && urlModeDriver(conn.driver) && (
+                  <div className="connect-by" role="radiogroup" aria-label={t("Connect by")}>
+                    <span>{t("Connect by")}</span>
+                    <div className="connect-by-options">
+                      {(["host", "url"] as const).map((mode) => (
+                        <button
+                          type="button"
+                          role="radio"
+                          key={mode}
+                          aria-checked={connectBy === mode}
+                          data-field={`connect_by_${mode}`}
+                          onClick={() => {
+                            setConnectBy(mode);
+                            setUrlDraft(null);
+                            setUrlError(null);
+                          }}
+                        >
+                          {t(mode === "host" ? "Host" : "URL")}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {urlMode && (
+                  <div className="field">
+                    <span>{t("URL")}</span>
+                    <input
+                      value={urlDraft ?? printedUrl}
+                      onChange={(e) => editUrl(e.target.value)}
+                      onBlur={() => {
+                        urlEdits.current++;
+                        setUrlDraft(null);
+                        setUrlError(null);
+                      }}
+                      spellCheck={false}
+                      autoComplete="off"
+                      aria-invalid={urlError !== null}
+                      aria-describedby={urlError ? "conn-url-error" : undefined}
+                      title={t("The password goes to the Password field, not in the URL.")}
+                      data-field="connection_url"
+                    />
+                    {urlError && (
+                      <div id="conn-url-error" className="error-text small" role="alert">
+                        {urlError}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!urlMode && (
                 <div className="row">
                   <label className="field grow">
                     <span>{t("Host")}</span>
@@ -458,7 +552,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     />
                   </label>
                 </div>
+                )}
 
+                {!urlMode && (
                 <div className="field-grid">
                   {!libsql && (
                     <label className="field">
@@ -497,7 +593,30 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       <input value={conn.user} onChange={(e) => set("user", e.target.value)} />
                     </label>
                   )}
+                  {conn.driver === "oracle" && (
+                    <label className="field">
+                      <span>{t("Role")}</span>
+                      <select
+                        value={conn.options?.role ?? ""}
+                        onChange={(e) => {
+                          const options = { ...conn.options };
+                          if (e.target.value) options.role = e.target.value;
+                          else delete options.role;
+                          set("options", options);
+                        }}
+                        data-field="role"
+                      >
+                        <option value="">{t("No administrative role")}</option>
+                        {["SYSDBA", "SYSOPER", "SYSBACKUP", "SYSDG", "SYSKM", "SYSASM"].map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                 </div>
+                )}
                 {conn.driver === "oracle" || conn.driver === "db2" ? <VendorDriverState driver={conn.driver} /> : null}
 
                 <div className="field-grid">
@@ -666,7 +785,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           {otherDriver && (
             <div className="notice warn url-other" role="status">
               <span>{t("This URL is for {driver}: go back to choose it.", { driver: driverName(otherDriver.driver) })}</span>
-              <button type="button" onClick={() => back(otherDriver.text)}>
+              <button type="button" onClick={() => back()}>
                 {t("Back")}
               </button>
             </div>

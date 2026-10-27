@@ -276,6 +276,7 @@ export function QueryTab({
   // A tab made read-only gets every check of a read-only connection.
   const connection = useMemo(() => (tab.readOnly ? { ...saved, read_only: true } : saved), [saved, tab.readOnly]);
   const editor = useRef<SqlEditorHandle>(null);
+  const root = useRef<HTMLDivElement>(null);
   const [tx, setTx] = useState<TransactionState | null>(null);
   /** A run waiting for the answer to its checks. */
   const [guard, setGuard] = useState<{ request: GuardRequest; resolve: (run: boolean) => void } | null>(null);
@@ -444,10 +445,24 @@ export function QueryTab({
   }, [tab.database]);
 
   useEffect(() => {
-    if (!tab.autorun) return;
+    if (!tab.autorun) {
+      // A new editor takes the keys at once (Ctrl+T, New SQL script); a data viewer leaves
+      // them where they were, e.g. in the navigator.
+      if (active && !tab.table) editor.current?.focus();
+      return;
+    }
     onChange({ autorun: false });
     void run("statement");
   }, []);
+
+  // A data viewer restored at start reads its table's rows again once shown, as it did when
+  // opened: only while the editor holds one of the viewer's own queries, which only read.
+  const restoreRows = useRef(!tab.autorun && !!tab.table && viewerOwn.has(tab.sql));
+  useEffect(() => {
+    if (!active || !restoreRows.current) return;
+    restoreRows.current = false;
+    void run("statement");
+  }, [active]);
 
   // Changes to the results wait for one render every `RENDER_EVERY_MS`: a script of a thousand
   // statements would otherwise render every result tab for each event of each statement.
@@ -1476,9 +1491,16 @@ export function QueryTab({
         setUnsaved(false);
         setUndoScript(undo);
         // The statement of the edited result runs again in its place, the other results stay;
-        // only a statement that reads runs unasked.
+        // only a statement that reads runs unasked. The grid that had the focus (Ctrl+S) gets
+        // it back once its rows are drawn again.
+        const focus = document.activeElement;
+        const inGrid = !focus || focus === document.body || !!focus.closest(".grid-scroll");
         const again = memory.current.readOf(result.id);
-        if (again) void run("statement", false, [again], false, result.id);
+        if (!again) return;
+        void run("statement", false, [again], false, result.id).then(() => {
+          if (!inGrid || (document.activeElement && document.activeElement !== document.body)) return;
+          root.current?.querySelector<HTMLElement>(".grid-scroll")?.focus();
+        });
       },
       onDirtyChange: setUnsaved,
     };
@@ -1557,7 +1579,7 @@ export function QueryTab({
   const exportBusy = exporting !== null && exporting.done === null;
 
   return (
-    <div className="query-tab" style={{ display: active ? "flex" : "none" }}>
+    <div className="query-tab" ref={root} style={{ display: active ? "flex" : "none" }}>
       <div
         className="query-main"
         // The editor gives up height before the toolbar does in a small window.
