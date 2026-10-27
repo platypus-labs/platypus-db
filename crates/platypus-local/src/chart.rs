@@ -173,10 +173,10 @@ fn by_category(
     let mut index: HashMap<Category, usize> = HashMap::new();
     let mut accs: Vec<Vec<Acc>> = Vec::new();
     for batch in batches {
-        let labels = values::texts(batch.column(request.x).as_ref(), options)?;
+        let labels = values::column_texts(batch, request.x, options)?;
         let ys = columns
             .iter()
-            .map(|c| c.map(|c| values::numbers(batch.column(c))).transpose())
+            .map(|c| c.map(|c| values::column_numbers(batch, c)).transpose())
             .collect::<Result<Vec<_>, ArrowError>>()?;
         for (row, label) in labels.into_iter().enumerate() {
             let at = *index.entry(label).or_insert_with_key(|label| {
@@ -284,7 +284,7 @@ fn by_point(
             options,
         )?;
         for (series, &c) in points.iter_mut().zip(&request.y) {
-            let ys = values::numbers(batch.column(c))?;
+            let ys = values::column_numbers(batch, c)?;
             series.extend(xs.iter().zip(ys.iter()).filter_map(|(x, y)| match (x, y) {
                 (Some(x), Some(y)) if x.is_finite() && y.is_finite() => Some([*x, y]),
                 _ => None,
@@ -334,9 +334,9 @@ fn x_values(
     options: &FormatOptions<'_>,
 ) -> Result<Vec<Option<f64>>, ArrowError> {
     if axis != XAxis::Category {
-        return Ok(values::numbers(batch.column(column))?.iter().collect());
+        return Ok(values::column_numbers(batch, column)?.iter().collect());
     }
-    Ok(values::texts(batch.column(column).as_ref(), options)?
+    Ok(values::column_texts(batch, column, options)?
         .into_iter()
         .map(|label| {
             let at = *index.entry(label).or_insert_with_key(|label| {

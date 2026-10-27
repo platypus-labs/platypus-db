@@ -91,7 +91,8 @@ fn distinct(
     let mut text = String::new();
     for batch in batches {
         let array = batch.column(column);
-        let formatter = platypus_core::special::formatter(array.as_ref(), options)?;
+        let field = batch.schema_ref().field(column);
+        let formatter = platypus_core::special::column_formatter(field, array.as_ref(), options)?;
         for row in (0..array.len()).filter(|&r| array.is_valid(r)) {
             text.clear();
             let _ = write!(text, "{}", formatter.value(row));
@@ -110,7 +111,7 @@ fn text_profile(
 ) -> Result<(), ArrowError> {
     let mut counts: HashMap<String, usize> = HashMap::new();
     for batch in batches {
-        for value in values::texts(batch.column(column).as_ref(), options)?
+        for value in values::column_texts(batch, column, options)?
             .into_iter()
             .flatten()
         {
@@ -153,7 +154,7 @@ fn ranges(
     // The ranges cut the finite values; infinities count in the first or the last one.
     let mut numbers = Vec::new();
     for batch in batches {
-        let all = values::numbers(batch.column(column))?;
+        let all = values::column_numbers(batch, column)?;
         numbers.extend(all.iter().flatten().filter(|v| !v.is_nan()));
     }
     let (flo, fhi) = numbers
@@ -219,7 +220,9 @@ fn extremes(
     let mut low: Option<(OwnedRow, Spot)> = None;
     let mut high: Option<(OwnedRow, Spot)> = None;
     for (b, batch) in batches.iter().enumerate() {
-        let array = batch.column(column);
+        // A numeric NaN as NULL: no extreme.
+        let (_, array) = values::column(batch, column);
+        let array = &array;
         let rows = converter.convert_columns(std::slice::from_ref(array))?;
         let numbers = values::numbers(array)?;
         let valid = (0..array.len())
@@ -277,10 +280,13 @@ fn shown(
     (batch, row): Spot,
     options: &FormatOptions<'_>,
 ) -> Result<String, ArrowError> {
-    let array = batches[batch].column(column);
-    Ok(platypus_core::special::formatter(array.as_ref(), options)?
-        .value(row)
-        .to_string())
+    let batch = &batches[batch];
+    let field = batch.schema_ref().field(column);
+    Ok(
+        platypus_core::special::column_formatter(field, batch.column(column).as_ref(), options)?
+            .value(row)
+            .to_string(),
+    )
 }
 
 /// `BINS` equal ranges from `lo` to `hi` (the last one closed) and how many of `numbers` fall
@@ -476,13 +482,22 @@ mod tests {
             extremes_of(Arc::new(ends)),
             pair("0", "9223372036854775807")
         );
-        // `i128::MAX` is the reserved numeric NaN, left out of the extremes as NaN is.
+        // DuckDB's largest HUGEINT is a number.
         let huge = Decimal128Array::from(vec![i128::MAX - 1, i128::MAX - 2, i128::MAX])
             .with_precision_and_scale(38, 0)
             .unwrap();
-        let (min, max, ..) = extremes_of(Arc::new(huge));
+        let (min, max, ..) = extremes_of(Arc::new(huge.clone()));
         assert_eq!(min, Some((i128::MAX - 2).to_string()));
-        assert_eq!(max, Some((i128::MAX - 1).to_string()));
+        assert_eq!(max, Some(i128::MAX.to_string()));
+        // In a PostgreSQL numeric it is NaN, left out of the extremes as NaN is.
+        let field = platypus_core::special::with_decimal_nan(Field::new(
+            "n",
+            huge.data_type().clone(),
+            true,
+        ));
+        let p = of(field, Arc::new(huge));
+        assert_eq!(p.max, Some((i128::MAX - 1).to_string()));
+        assert_eq!(p.histogram.iter().map(|b| b.count).sum::<usize>(), 2);
     }
 
     #[test]

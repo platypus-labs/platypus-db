@@ -4,9 +4,11 @@
 use std::sync::Arc;
 
 use arrow_array::cast::AsArray;
-use arrow_array::types::{Decimal128Type, Float64Type, Int64Type, IntervalMonthDayNanoType};
-use arrow_array::{Array, ArrayRef, Float64Array, Int64Array, TimestampMillisecondArray};
-use arrow_cast::display::FormatOptions;
+use arrow_array::types::{Float64Type, Int64Type, IntervalMonthDayNanoType};
+use arrow_array::{
+    Array, ArrayRef, Float64Array, Int64Array, RecordBatch, TimestampMillisecondArray,
+};
+use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use arrow_schema::{ArrowError, DataType, Field, IntervalUnit, Schema, TimeUnit};
 use platypus_core::{META_DB_TYPE, special};
 
@@ -74,20 +76,36 @@ pub fn numbers(array: &ArrayRef) -> Result<Float64Array, ArrowError> {
     }
     // The default cast is safe: what does not convert becomes NULL.
     let cast = arrow_cast::cast(&source, &DataType::Float64)?;
-    let floats = cast.as_primitive::<Float64Type>().clone();
-    if let DataType::Decimal128(_, _) = array.data_type() {
-        // A numeric NaN is stored as a reserved decimal: NaN here too, not a huge number.
-        let decimals = array.as_primitive::<Decimal128Type>();
-        return Ok(floats
-            .iter()
-            .zip(decimals.iter())
-            .map(|(f, d)| match d {
-                Some(special::DECIMAL_NAN) => Some(f64::NAN),
-                _ => f,
-            })
-            .collect());
-    }
-    Ok(floats)
+    Ok(cast.as_primitive::<Float64Type>().clone())
+}
+
+/// Column `column` of `batch`: its field, which tells its reserved values, and its values
+/// with a numeric `NaN` as NULL, for sums, extremes and charts, which leave `NaN` out.
+#[must_use]
+pub fn column(batch: &RecordBatch, column: usize) -> (&Field, ArrayRef) {
+    let field = batch.schema_ref().field(column);
+    (
+        field,
+        special::without_decimal_nan(field, batch.column(column)),
+    )
+}
+
+/// [`numbers`] of column `c` of `batch`, a numeric `NaN` as NULL.
+pub fn column_numbers(batch: &RecordBatch, c: usize) -> Result<Float64Array, ArrowError> {
+    numbers(&column(batch, c).1)
+}
+
+/// [`texts`] of column `c` of `batch`, its reserved values (a numeric `NaN`) as their text.
+pub fn column_texts(
+    batch: &RecordBatch,
+    c: usize,
+    options: &FormatOptions<'_>,
+) -> Result<Vec<Option<String>>, ArrowError> {
+    shown(
+        batch.schema_ref().field(c),
+        batch.column(c).as_ref(),
+        options,
+    )
 }
 
 /// Dates and timestamps as milliseconds since the epoch.
@@ -108,7 +126,7 @@ pub fn time_text(
         DataType::Date32 | DataType::Date64 => arrow_cast::cast(&stamp, &DataType::Date32)?,
         _ => stamp,
     };
-    Ok(platypus_core::special::formatter(value.as_ref(), options)?
+    Ok(special::formatter(value.as_ref(), options)?
         .value(0)
         .to_string())
 }
@@ -154,22 +172,39 @@ pub fn spans(array: &ArrayRef) -> Result<Vec<Option<i128>>, ArrowError> {
         .collect())
 }
 
-/// The text of every value as the grid shows it; `None` for NULL.
+/// The text of every value as the grid shows it; `None` for NULL. For a result's column,
+/// [`column_texts`] or [`shown`], which know its numeric `NaN`.
 pub fn texts(
     array: &dyn Array,
     options: &FormatOptions<'_>,
 ) -> Result<Vec<Option<String>>, ArrowError> {
-    let formatter = platypus_core::special::formatter(array, options)?;
+    Ok(lines(array, &special::formatter(array, options)?))
+}
+
+/// The text of every value of column `array` of `field` as the grid shows it; `None` for NULL.
+pub fn shown(
+    field: &Field,
+    array: &dyn Array,
+    options: &FormatOptions<'_>,
+) -> Result<Vec<Option<String>>, ArrowError> {
+    Ok(lines(
+        array,
+        &special::column_formatter(field, array, options)?,
+    ))
+}
+
+/// Each value of `array` as `formatter` writes it; `None` for NULL.
+fn lines(array: &dyn Array, formatter: &ArrayFormatter<'_>) -> Vec<Option<String>> {
     // Logical: a column of the NULL type has no validity bitmap, yet every value is NULL.
     let nulls = array.logical_nulls();
-    Ok((0..array.len())
+    (0..array.len())
         .map(|row| {
             nulls
                 .as_ref()
                 .is_none_or(|n| n.is_valid(row))
                 .then(|| formatter.value(row).to_string())
         })
-        .collect())
+        .collect()
 }
 
 /// A number for labels: whole numbers without decimals, tiny and huge ones in scientific

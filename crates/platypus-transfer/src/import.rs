@@ -549,14 +549,15 @@ pub(crate) fn literal(
 /// structs and maps are JSON, which every target's text column can hold and give back.
 pub fn rows_text(batch: &RecordBatch) -> Result<Vec<Vec<Option<String>>>, ArrowError> {
     let options = FormatOptions::default();
+    let schema = batch.schema();
     let mut columns: Vec<Vec<Option<String>>> = Vec::with_capacity(batch.num_columns());
-    for array in batch.columns() {
+    for (field, array) in schema.fields().iter().zip(batch.columns()) {
         if let Some(json) = json_texts(array.as_ref()) {
             columns.push(json);
             continue;
         }
         // One formatter per column, not per value.
-        let f = special::formatter(array.as_ref(), &options)?;
+        let f = special::column_formatter(field, array.as_ref(), &options)?;
         columns.push(
             (0..array.len())
                 .map(|row| (!array.is_null(row)).then(|| f.value(row).to_string()))

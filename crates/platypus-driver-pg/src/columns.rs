@@ -36,8 +36,8 @@ pub enum ColumnBuilder {
     UInt32(UInt32Builder),
     Float32(Float32Builder),
     Float64(Float64Builder),
-    /// `numeric(p,s)` with `0 < p <= 38` and `s <= p`. `NaN` is [`special::DECIMAL_NAN`];
-    /// such a column holds no infinity.
+    /// `numeric(p,s)` with `0 < p <= 38` and `s <= p`. `NaN` is [`special::DECIMAL_NAN`], in a
+    /// field marked with [`special::META_DECIMAL_NAN`]; such a column holds no infinity.
     Decimal {
         builder: Decimal128Builder,
         precision: u8,
@@ -162,6 +162,12 @@ pub fn column_builder(column: &Column) -> Result<(Field, ColumnBuilder), ArrowEr
     let field = Field::new(column.name(), builder.data_type(), true).with_metadata(HashMap::from(
         [(META_DB_TYPE.to_owned(), type_label(column))],
     ));
+    // Its `NaN` is a reserved decimal, which the field tells from a number.
+    let field = if matches!(builder, ColumnBuilder::Decimal { .. }) {
+        special::with_decimal_nan(field)
+    } else {
+        field
+    };
     Ok((field, builder))
 }
 
@@ -424,7 +430,14 @@ mod tests {
         // ndigits, weight, sign, dscale; then the base-10000 digits.
         let nan: &[u8] = &[0, 0, 0, 0, 0xC0, 0, 0, 0];
         let one_and_a_half: &[u8] = &[0, 2, 0, 0, 0, 0, 0, 2, 0, 1, 0x13, 0x88];
-        assert_eq!(shown(&mut numbers, &[nan, one_and_a_half]), ["NaN", "1.50"]);
+        numbers.append(Some(nan)).unwrap();
+        numbers.append(Some(one_and_a_half)).unwrap();
+        let array = numbers.finish();
+        let field = special::with_decimal_nan(Field::new("n", array.data_type().clone(), true));
+        let options = arrow_cast::display::FormatOptions::default();
+        let f = special::column_formatter(&field, array.as_ref(), &options).unwrap();
+        let shown: Vec<String> = (0..2).map(|i| f.value(i).to_string()).collect();
+        assert_eq!(shown, ["NaN", "1.50"]);
         // A constrained numeric holds no infinity: it is an error, not a NULL.
         let infinity: &[u8] = &[0, 0, 0, 0, 0xD0, 0, 0, 0];
         assert!(numbers.append(Some(infinity)).is_err());

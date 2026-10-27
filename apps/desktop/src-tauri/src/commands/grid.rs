@@ -297,10 +297,12 @@ fn search(job: &Job, text: &str) -> CommandResult<SearchResult> {
     let mut cell = String::new();
     let mut start = 0;
     for batch in &batches {
-        let formatters = batch
-            .columns()
+        let schema = batch.schema();
+        let formatters = schema
+            .fields()
             .iter()
-            .map(|a| platypus_core::special::formatter(a.as_ref(), &options))
+            .zip(batch.columns())
+            .map(|(f, a)| platypus_core::special::column_formatter(f, a.as_ref(), &options))
             .collect::<Result<Vec<_>, _>>()?;
         for row in 0..batch.num_rows() {
             for (col, (array, f)) in batch.columns().iter().zip(&formatters).enumerate() {

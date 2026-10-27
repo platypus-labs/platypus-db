@@ -483,4 +483,18 @@ async fn duckdb_special_values_and_bits() {
             "[1, NULL, 3]"
         ])]
     );
+    // The largest HUGEINT is i128::MAX, the reserved decimal NaN of PostgreSQL's numeric:
+    // here it is the number it is.
+    assert_eq!(
+        texts(
+            &*conn,
+            "SELECT 170141183460469231731687303715884105727::HUGEINT, \
+             -170141183460469231731687303715884105727::HUGEINT"
+        )
+        .await,
+        [row(&[
+            "170141183460469231731687303715884105727",
+            "-170141183460469231731687303715884105727"
+        ])]
+    );
 }

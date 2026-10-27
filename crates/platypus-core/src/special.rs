@@ -4,9 +4,15 @@
 //!
 //! Drivers keep the column's type and store these values as reserved numbers that no real
 //! value uses: outside the dates chrono can show, or above the largest decimal of 38 digits.
-//! [`formatter`] shows them as the text the database prints and reads back (`infinity`,
-//! `0000-00-00`, `NaN`); every place that turns values into text goes through it. The
-//! infinities are DuckDB's own, so DuckDB and Parquet readers see them as infinities too.
+//! [`column_formatter`] shows them as the text the database prints and reads back
+//! (`infinity`, `0000-00-00`, `NaN`); every place that turns a result's values into text goes
+//! through it. The infinities are DuckDB's own, so DuckDB and Parquet readers see them as
+//! infinities too.
+//!
+//! The decimal `NaN` is the one reserved value another source can hold as a real number: a
+//! DuckDB HUGEINT read as `Decimal128(38, 0)` reaches `i128::MAX`. So it is a `NaN` only in a
+//! field the driver marks with [`META_DECIMAL_NAN`] (PostgreSQL's `numeric(p,s)`, whose real
+//! values have at most 38 digits); everywhere else it is the number it is.
 
 use std::fmt::Write;
 
@@ -25,8 +31,57 @@ pub const DATE_NEG_INFINITY: i32 = -i32::MAX;
 /// Timestamps (seconds, milliseconds or microseconds) of `infinity` and `-infinity`.
 pub const TIMESTAMP_INFINITY: i64 = i64::MAX;
 pub const TIMESTAMP_NEG_INFINITY: i64 = -i64::MAX;
-/// A `Decimal128` `NaN`: above the largest value of 38 digits.
+/// A `Decimal128` `NaN`: above the largest value of 38 digits. Only in a field marked with
+/// [`META_DECIMAL_NAN`].
 pub const DECIMAL_NAN: i128 = i128::MAX;
+/// Field metadata of a `Decimal128` column whose [`DECIMAL_NAN`] values are `NaN`.
+pub const META_DECIMAL_NAN: &str = "platypus.decimal_nan";
+
+/// `field` marked as holding [`DECIMAL_NAN`] for `NaN`.
+#[must_use]
+pub fn with_decimal_nan(field: Field) -> Field {
+    let mut metadata = field.metadata().clone();
+    metadata.insert(META_DECIMAL_NAN.to_owned(), "true".to_owned());
+    field.with_metadata(metadata)
+}
+
+/// A `Decimal128` column whose [`DECIMAL_NAN`] values are `NaN`.
+#[must_use]
+pub fn holds_decimal_nan(field: &Field) -> bool {
+    matches!(field.data_type(), DataType::Decimal128(..))
+        && field.metadata().contains_key(META_DECIMAL_NAN)
+}
+
+/// Column `array` of `field` with its decimal `NaN` values as NULL, for sums and extremes,
+/// which leave `NaN` out; any other column as it is.
+#[must_use]
+pub fn without_decimal_nan(field: &Field, array: &ArrayRef) -> ArrayRef {
+    if !holds_decimal_nan(field) {
+        return std::sync::Arc::clone(array);
+    }
+    let decimals = array.as_primitive::<Decimal128Type>();
+    let numbers: arrow_array::Decimal128Array = decimals
+        .iter()
+        .map(|v| v.filter(|&v| v != DECIMAL_NAN))
+        .collect();
+    let DataType::Decimal128(precision, scale) = *array.data_type() else {
+        return std::sync::Arc::clone(array);
+    };
+    numbers
+        .with_precision_and_scale(precision, scale)
+        .map_or_else(
+            |_| std::sync::Arc::clone(array),
+            |n| std::sync::Arc::new(n) as ArrayRef,
+        )
+}
+
+/// Value `i` of column `array` of `field` is a `NaN`.
+#[must_use]
+pub fn is_decimal_nan(field: &Field, array: &dyn Array, i: usize) -> bool {
+    holds_decimal_nan(field)
+        && array.is_valid(i)
+        && array.as_primitive::<Decimal128Type>().value(i) == DECIMAL_NAN
+}
 
 /// Dates outside the calendar are this many days plus `yyyymmdd`: about five million years
 /// before the epoch, far outside chrono's range.
@@ -109,8 +164,19 @@ fn timestamp_text(value: i64, unit: TimeUnit) -> Option<String> {
     }
 }
 
-/// The text of value `i` of `array` when it is one of the reserved values; `None` for any
-/// other value, NULL included.
+/// The text of value `i` of column `array` of `field` when it is one of the reserved values;
+/// `None` for any other value, NULL included.
+#[must_use]
+pub fn column_text(field: &Field, array: &dyn Array, i: usize) -> Option<String> {
+    if is_decimal_nan(field, array, i) {
+        return Some("NaN".to_owned());
+    }
+    text(array, i)
+}
+
+/// The text of value `i` of `array` when it is one of the reserved dates or timestamps;
+/// `None` for any other value, NULL included. A decimal `NaN` needs its field:
+/// [`column_text`].
 #[must_use]
 pub fn text(array: &dyn Array, i: usize) -> Option<String> {
     if array.is_null(i) {
@@ -127,38 +193,39 @@ pub fn text(array: &dyn Array, i: usize) -> Option<String> {
             };
             timestamp_text(value, *unit)
         }
-        DataType::Decimal128(..) => (array.as_primitive::<Decimal128Type>().value(i)
-            == DECIMAL_NAN)
-            .then(|| "NaN".to_owned()),
         _ => None,
     }
 }
 
-/// Whether arrays of this type can hold reserved values.
+/// Whether arrays of this type can hold reserved dates or timestamps.
 fn may_hold(data_type: &DataType) -> bool {
-    matches!(
-        data_type,
-        DataType::Date32 | DataType::Timestamp(..) | DataType::Decimal128(..)
-    )
+    matches!(data_type, DataType::Date32 | DataType::Timestamp(..))
 }
 
-/// The first reserved value of `array`, with its row.
+/// The first reserved value of column `array` of `field`, with its row.
 #[must_use]
-pub fn find(array: &dyn Array) -> Option<(usize, String)> {
-    if !may_hold(array.data_type()) {
+pub fn find(field: &Field, array: &dyn Array) -> Option<(usize, String)> {
+    if !may_hold(array.data_type()) && !holds_decimal_nan(field) {
         return None;
     }
-    (0..array.len()).find_map(|i| text(array, i).map(|t| (i, t)))
+    (0..array.len()).find_map(|i| column_text(field, array, i).map(|t| (i, t)))
 }
 
 struct Special<'a> {
     array: &'a dyn Array,
     inner: ArrayFormatter<'a>,
+    /// The column's `DECIMAL_NAN` values are `NaN`.
+    nan: bool,
 }
 
 impl DisplayIndex for Special<'_> {
     fn write(&self, idx: usize, f: &mut dyn Write) -> FormatResult {
-        if let Some(text) = text(self.array, idx) {
+        let nan = self.nan
+            && self.array.is_valid(idx)
+            && self.array.as_primitive::<Decimal128Type>().value(idx) == DECIMAL_NAN;
+        if nan {
+            f.write_str("NaN")?;
+        } else if let Some(text) = text(self.array, idx) {
             f.write_str(&text)?;
         } else if before_christ(self.array, idx) {
             let shown = self.inner.value(idx).try_to_string()?;
@@ -206,7 +273,32 @@ fn bc_text(text: &str) -> Option<String> {
     (year <= 0).then(|| format!("{:04}{} BC", 1 - year, &rest[digits..]))
 }
 
-/// [`ArrayFormatter::try_new`], with the reserved values shown as their text.
+/// [`ArrayFormatter::try_new`] for column `array` of `field`, with the reserved values shown
+/// as their text, the decimal `NaN` included.
+///
+/// # Errors
+/// When Arrow cannot format arrays of this type.
+pub fn column_formatter<'a>(
+    field: &Field,
+    array: &'a dyn Array,
+    options: &FormatOptions<'a>,
+) -> Result<ArrayFormatter<'a>, ArrowError> {
+    if !holds_decimal_nan(field) {
+        return formatter(array, options);
+    }
+    let inner = ArrayFormatter::try_new(array, options)?;
+    Ok(ArrayFormatter::new(
+        Box::new(Special {
+            array,
+            inner,
+            nan: true,
+        }),
+        options.safe(),
+    ))
+}
+
+/// [`ArrayFormatter::try_new`], with the reserved dates and timestamps shown as their text;
+/// for a result's column, [`column_formatter`], which also knows its decimal `NaN`.
 ///
 /// # Errors
 /// When Arrow cannot format arrays of this type.
@@ -237,7 +329,11 @@ pub fn formatter<'a>(
         return Ok(inner);
     }
     Ok(ArrayFormatter::new(
-        Box::new(Special { array, inner }),
+        Box::new(Special {
+            array,
+            inner,
+            nan: false,
+        }),
         options.safe(),
     ))
 }
@@ -404,21 +500,22 @@ impl DisplayIndex for Top<'_> {
 /// # Errors
 /// When a column cannot be formatted.
 pub fn with_text(batch: &RecordBatch) -> Result<RecordBatch, ArrowError> {
-    let special: Vec<bool> = batch
-        .columns()
+    let schema = batch.schema();
+    let special: Vec<bool> = schema
+        .fields()
         .iter()
-        .map(|c| find(c.as_ref()).is_some())
+        .zip(batch.columns())
+        .map(|(f, c)| find(f, c.as_ref()).is_some())
         .collect();
     if !special.contains(&true) {
         return Ok(batch.clone());
     }
     let options = FormatOptions::default();
-    let schema = batch.schema();
     let mut fields = Vec::with_capacity(special.len());
     let mut columns = Vec::with_capacity(special.len());
     for ((field, column), special) in schema.fields().iter().zip(batch.columns()).zip(special) {
         if special {
-            let f = formatter(column.as_ref(), &options)?;
+            let f = column_formatter(field, column.as_ref(), &options)?;
             let texts: StringArray = (0..column.len())
                 .map(|i| (!column.is_null(i)).then(|| f.value(i).to_string()))
                 .collect();
@@ -558,14 +655,53 @@ mod tests {
         assert_eq!(shown(&st), ["{'a': 1, 'b': 'x'}"]);
     }
 
+    fn column_shown(field: &Field, array: &dyn Array) -> Vec<String> {
+        let options = FormatOptions::default().with_null("NULL");
+        let f = column_formatter(field, array, &options).unwrap();
+        (0..array.len()).map(|i| f.value(i).to_string()).collect()
+    }
+
     #[test]
-    fn shows_decimal_nan_and_finds_it() {
+    fn shows_decimal_nan_only_in_a_marked_field() {
         let decimals = Decimal128Array::from(vec![Some(150), Some(DECIMAL_NAN), None])
             .with_precision_and_scale(10, 2)
             .unwrap();
-        assert_eq!(shown(&decimals), ["1.50", "NaN", "NULL"]);
-        assert_eq!(find(&decimals), Some((1, "NaN".to_owned())));
-        assert_eq!(find(&Int32Array::from(vec![i32::MAX])), None);
+        let numeric = with_decimal_nan(Field::new("n", decimals.data_type().clone(), true));
+        assert_eq!(column_shown(&numeric, &decimals), ["1.50", "NaN", "NULL"]);
+        assert_eq!(find(&numeric, &decimals), Some((1, "NaN".to_owned())));
+        assert_eq!(column_text(&numeric, &decimals, 1).as_deref(), Some("NaN"));
+        // Anywhere else i128::MAX is a number: DuckDB's largest HUGEINT.
+        let huge = Decimal128Array::from(vec![Some(DECIMAL_NAN), Some(-DECIMAL_NAN)])
+            .with_precision_and_scale(38, 0)
+            .unwrap();
+        let plain = Field::new("h", huge.data_type().clone(), true);
+        assert_eq!(
+            column_shown(&plain, &huge),
+            [
+                "170141183460469231731687303715884105727",
+                "-170141183460469231731687303715884105727"
+            ]
+        );
+        assert_eq!(find(&plain, &huge), None);
+        assert_eq!(shown(&huge)[0], "170141183460469231731687303715884105727");
+        let ints = Field::new("i", DataType::Int32, true);
+        assert_eq!(find(&ints, &Int32Array::from(vec![i32::MAX])), None);
+    }
+
+    #[test]
+    fn a_marked_decimal_column_with_nan_turns_into_text() {
+        let decimals = Decimal128Array::from(vec![Some(150), Some(DECIMAL_NAN)])
+            .with_precision_and_scale(10, 2)
+            .unwrap();
+        let numeric = with_decimal_nan(Field::new("n", decimals.data_type().clone(), true));
+        let batch = RecordBatch::try_new(
+            Arc::new(Schema::new(vec![numeric])),
+            vec![Arc::new(decimals)],
+        )
+        .unwrap();
+        let text = with_text(&batch).unwrap();
+        let n = text.column(0).as_string::<i32>();
+        assert_eq!((n.value(0), n.value(1)), ("1.50", "NaN"));
     }
 
     #[test]
