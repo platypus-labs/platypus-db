@@ -264,11 +264,13 @@ fn client_command(src: &str, token: &Token) -> Option<usize> {
 }
 
 /// Splits a script into statements. Never fails: unterminated quotes or comments simply
-/// extend to the end of the input.
+/// extend to the end of the input. The body of a MySQL executable comment (`/*! … */`) is
+/// code, as the server runs it: a `;` there ends a statement, and a dump's
+/// `/*!40101 SET … */;` is a statement of its own.
 #[must_use]
 pub fn split(src: &str, dialect: Dialect) -> Vec<Statement> {
     let mut statements = Vec::new();
-    let mut lexer = Lexer::new(src, dialect);
+    let mut lexer = Lexer::executable(src, dialect);
     let mut current = Current::default();
     let mut delimiter = String::from(";");
 
@@ -347,7 +349,7 @@ const READ_ONLY_LEADERS: &[&str] = &[
 ];
 
 /// Words that write anywhere in a statement, including data-modifying CTEs, `SELECT INTO`
-/// and `EXPLAIN ANALYZE` of DML.
+/// (and MySQL's `INTO OUTFILE`) and `EXPLAIN ANALYZE` of DML.
 const WRITE_WORDS: &[&str] = &[
     "INSERT",
     "UPDATE",
@@ -373,18 +375,174 @@ const WRITE_WORDS: &[&str] = &[
     "PG_CANCEL_BACKEND",
 ];
 
-/// Conservative check used to guard read-only connections: `true` only for statements that
-/// start like a query and mention no writing keyword. Functions with side effects called
-/// from a `SELECT` cannot be detected; `SELECT ... FOR UPDATE` errs on the safe side.
-#[must_use]
-pub fn is_read_only(sql: &str, dialect: Dialect) -> bool {
-    let mut words = Lexer::new(sql, dialect)
-        .filter(|t| t.kind == TokenKind::Word)
-        .map(|t| t.text(sql).to_ascii_uppercase());
-    let Some(first) = words.next() else {
+/// Transact-SQL needs no `;` between the statements of a batch, so `SELECT 1 COMMIT EXEC(…)`
+/// is three statements: a query may hold none of the words that start one, nor those that
+/// run dynamic SQL or reach outside the database (`OPENROWSET`, `OPENQUERY`). All are
+/// reserved, so no bare name is one, except `SEND`, `RECEIVE` and `CONVERSATION` (Service
+/// Broker), which a query then has to quote.
+const SQL_SERVER_WRITE_WORDS: &[&str] = &[
+    "EXEC",
+    "EXECUTE",
+    "SP_EXECUTESQL",
+    "COMMIT",
+    "ROLLBACK",
+    "SAVE",
+    "BEGIN",
+    "TRAN",
+    "TRANSACTION",
+    "DECLARE",
+    "SET",
+    "USE",
+    "IF",
+    "WHILE",
+    "GOTO",
+    "RETURN",
+    "BREAK",
+    "CONTINUE",
+    "PRINT",
+    "RAISERROR",
+    "WAITFOR",
+    "KILL",
+    "SHUTDOWN",
+    "BACKUP",
+    "RESTORE",
+    "DBCC",
+    "RECONFIGURE",
+    "CHECKPOINT",
+    "BULK",
+    "OPEN",
+    "CLOSE",
+    "DEALLOCATE",
+    "WRITETEXT",
+    "UPDATETEXT",
+    "SETUSER",
+    "REVERT",
+    "DENY",
+    "DUMP",
+    "LOAD",
+    "TRIGGER",
+    "OPENROWSET",
+    "OPENDATASOURCE",
+    "OPENQUERY",
+    "SEND",
+    "RECEIVE",
+    "CONVERSATION",
+];
+
+/// Oracle runs the PL/SQL a query declares in `WITH FUNCTION`, which may commit an
+/// autonomous transaction or run any statement with `EXECUTE IMMEDIATE`.
+const ORACLE_WRITE_WORDS: &[&str] = &[
+    "FUNCTION",
+    "PROCEDURE",
+    "PRAGMA",
+    "AUTONOMOUS_TRANSACTION",
+    "BEGIN",
+    "DECLARE",
+    "EXECUTE",
+    "IMMEDIATE",
+    "COMMIT",
+    "ROLLBACK",
+];
+
+/// Whether `word` (upper case) writes in `dialect` wherever it stands.
+fn writes(word: &str, dialect: Dialect) -> bool {
+    WRITE_WORDS.contains(&word)
+        || match dialect {
+            Dialect::SqlServer => SQL_SERVER_WRITE_WORDS.contains(&word) || word.starts_with("XP_"),
+            Dialect::Oracle => ORACLE_WRITE_WORDS.contains(&word),
+            _ => false,
+        }
+}
+
+/// The names a server may read in the word `t`: the word itself and, right after a digit,
+/// what follows a number that takes letters from it. Transact-SQL reads `0xINSERT` as
+/// `0x INSERT` and `1e1EXEC` as `1e1 EXEC`, where the lexer sees one word after a digit.
+fn word_readings(src: &str, t: &Token) -> Vec<String> {
+    let word = t.text(src);
+    let before = &src[..t.start];
+    let after_digit = |s: &str| s.ends_with(|c: char| c.is_ascii_digit());
+    let glued = after_digit(before) || before.strip_suffix('.').is_some_and(after_digit);
+    let mut names = vec![word.to_ascii_uppercase()];
+    if glued {
+        for (i, c) in word.char_indices() {
+            if !(c.is_ascii_hexdigit() || c == 'x' || c == 'X') {
+                break;
+            }
+            names.push(word[i + 1..].to_ascii_uppercase());
+        }
+    }
+    names
+}
+
+/// Whether one statement's tokens (no trivia, no executable comment marks) only read.
+fn reads_only(src: &str, tokens: &[Token], dialect: Dialect) -> bool {
+    let word = |i: usize| {
+        tokens
+            .get(i)
+            .filter(|t| t.kind == TokenKind::Word)
+            .map(|t| t.text(src).to_ascii_uppercase())
+    };
+    let symbol = |i: usize, s: &str| {
+        tokens
+            .get(i)
+            .is_some_and(|t| t.kind == TokenKind::Symbol && t.text(src) == s)
+    };
+    let Some(first) = tokens
+        .iter()
+        .position(|t| !(t.kind == TokenKind::Symbol && t.text(src) == "("))
+    else {
+        // Nothing but parentheses (or nothing at all) runs nothing.
         return true;
     };
-    READ_ONLY_LEADERS.contains(&first.as_str()) && words.all(|w| !WRITE_WORDS.contains(&w.as_str()))
+    if !word(first).is_some_and(|w| READ_ONLY_LEADERS.contains(&w.as_str())) {
+        return false;
+    }
+    (first..tokens.len()).all(|i| {
+        let Some(this) = word(i) else {
+            return true;
+        };
+        let next = word(i + 1);
+        let exempt = match this.as_str() {
+            // The `replace()` function, not MySQL's or SQLite's `REPLACE` statement.
+            "REPLACE" => symbol(i + 1, "("),
+            // Transact-SQL query hints: `OPTION (USE HINT (…))`, `OPTION (USE PLAN N'…')`.
+            "USE" => matches!(next.as_deref(), Some("HINT" | "PLAN")),
+            _ => false,
+        };
+        // `NEXT VALUE FOR seq` takes a sequence value; `FOR [KEY] SHARE` locks rows.
+        let sequence = this == "NEXT"
+            && next.as_deref() == Some("VALUE")
+            && word(i + 2).as_deref() == Some("FOR");
+        let locks =
+            this == "SHARE" && i > 0 && matches!(word(i - 1).as_deref(), Some("FOR" | "KEY"));
+        let written = word_readings(src, &tokens[i])
+            .iter()
+            .any(|name| writes(name, dialect));
+        !sequence && !locks && (exempt || !written)
+    })
+}
+
+/// Conservative check used to guard read-only connections: `true` only when every
+/// statement in `sql` starts like a query and mentions no writing keyword, however the
+/// server reads it ([`Lexer::readings`]): the bodies of MySQL executable comments
+/// (`/*! … */`) count as code, every `;` ends a statement (whatever the client's
+/// `DELIMITER`), and in Transact-SQL, whose batches need no `;`, so do the words that start
+/// another statement (`EXEC`, `COMMIT`, `SET`…). Anything else (a leading quoted name, an
+/// unknown first word) is not read-only.
+///
+/// Functions with side effects called from a `SELECT` cannot be detected (a PostgreSQL
+/// function that writes, a volatile one under `EXPLAIN ANALYZE`): a read-only transaction
+/// has to stop those. `SELECT ... FOR UPDATE` and `FOR SHARE` err on the safe side.
+#[must_use]
+pub fn is_read_only(sql: &str, dialect: Dialect) -> bool {
+    Lexer::readings(sql, dialect).into_iter().all(|lexer| {
+        let tokens: Vec<Token> = lexer
+            .filter(|t| !t.is_trivia() && t.kind != TokenKind::ExecComment)
+            .collect();
+        tokens
+            .split(|t| t.kind == TokenKind::Symbol && t.text(sql) == ";")
+            .all(|statement| reads_only(sql, statement, dialect))
+    })
 }
 
 #[cfg(test)]
@@ -617,5 +775,246 @@ mod tests {
         assert!(!ro("select nextval('s')"));
         assert!(!ro("update t set x = 1"));
         assert!(!ro("select * from t for update"), "errs on the safe side");
+    }
+
+    /// Statements an attacker may disguise as a query, per dialect: none is read-only.
+    mod bypass {
+        use crate::Dialect::{self, *};
+
+        pub(super) const ATTEMPTS: &[(Dialect, &str)] = &[
+            // MySQL and MariaDB executable comments run their body.
+            (MySql, "SELECT 1 /*! INTO OUTFILE '/tmp/x' */"),
+            (MySql, "SELECT 1 /*!50000 INTO OUTFILE '/tmp/x' */"),
+            (MySql, "sElEcT 1 /*!80000 iNtO dUmPfIlE '/tmp/x' */"),
+            (MySql, "SELECT 1 /*M!100100 INTO OUTFILE '/tmp/x' */"),
+            (MySql, "SELECT 1 /*!; COMMIT; DELETE FROM t */"),
+            (MySql, "SELECT 1 /*!; SET GLOBAL general_log = 1 */"),
+            (MySql, "/*!50000 DELETE FROM t */"),
+            // MySQL does not nest comments: the first `*/` ends this one.
+            (MySql, "SELECT 1 /* /* */ INTO OUTFILE '/tmp/x' -- */"),
+            // Under NO_BACKSLASH_ESCAPES, `'a\'` is a whole string.
+            (MySql, r"SELECT 'a\'; SET GLOBAL general_log = 1; -- '"),
+            (MySql, r"SELECT 'a\' INTO OUTFILE '/tmp/x' -- '"),
+            // Under ANSI_QUOTES, `"a\"` is a whole name.
+            (MySql, r#"SELECT "a\" INTO OUTFILE '/tmp/x' -- ""#),
+            // `--` before a no-break space starts no MySQL comment.
+            (
+                MySql,
+                "SELECT 1 FROM t WHERE 1 --\u{a0} INTO OUTFILE '/tmp/x'",
+            ),
+            // The server splits at `;` whatever the client's DELIMITER.
+            (MySql, "SELECT 1; SET GLOBAL general_log = 1"),
+            (MySql, "SELECT * FROM t LOCK IN SHARE MODE"),
+            (MySql, "SELECT * FROM t FOR SHARE"),
+            (MySql, "SELECT NEXT VALUE FOR s"),
+            (MySql, "SELECT NEXTVAL(s)"),
+            (MySql, "REPLACE INTO t VALUES (1)"),
+            (MySql, "DO SLEEP(1)"),
+            (MySql, "HANDLER t OPEN"),
+            (MySql, "LOAD DATA INFILE '/etc/passwd' INTO TABLE t"),
+            // Transact-SQL batches need no `;` between statements.
+            (
+                SqlServer,
+                "SELECT 1 COMMIT EXEC('INS'+'ERT INTO t VALUES (1)')",
+            ),
+            (SqlServer, "SELECT 1 EXEC xp_cmdshell 'whoami'"),
+            (SqlServer, "SELECT 1 EXECUTE sp_executesql N'DELETE FROM t'"),
+            (SqlServer, "select 1 exec master..xp_dirtree 'c:\\'"),
+            (SqlServer, "SELECT 1 BEGIN TRAN"),
+            (SqlServer, "SELECT 1 ROLLBACK"),
+            (SqlServer, "SELECT 1 SAVE TRANSACTION x"),
+            (SqlServer, "SELECT 1 DECLARE @s nvarchar(9) = N'x'"),
+            (SqlServer, "SELECT 1 SET IMPLICIT_TRANSACTIONS OFF"),
+            (SqlServer, "SELECT 1 USE master"),
+            (SqlServer, "SELECT 1 WAITFOR DELAY '00:10'"),
+            (SqlServer, "SELECT 1 KILL 52"),
+            (SqlServer, "SELECT 1 SHUTDOWN WITH NOWAIT"),
+            (SqlServer, "SELECT 1 DBCC DROPCLEANBUFFERS"),
+            (SqlServer, "SELECT 1 RECONFIGURE"),
+            (
+                SqlServer,
+                "SELECT 1 BACKUP DATABASE d TO DISK = 'c:\\x.bak'",
+            ),
+            (SqlServer, "SELECT 1 x DISABLE TRIGGER t ON u"),
+            (SqlServer, "SELECT 1 RECEIVE * FROM q"),
+            (SqlServer, "SELECT 1 IF 1 = 1 DELETE FROM t"),
+            (
+                SqlServer,
+                "WITH x AS (SELECT 1 a) SELECT * FROM x EXEC('x')",
+            ),
+            (
+                SqlServer,
+                "SELECT * FROM OPENROWSET(BULK 'c:\\secret.txt', SINGLE_CLOB) x",
+            ),
+            (SqlServer, "SELECT * FROM OPENQUERY(srv, 'DELETE FROM t')"),
+            (
+                SqlServer,
+                "SELECT * FROM OPENDATASOURCE('SQLNCLI', 'x').d.s.t",
+            ),
+            (SqlServer, "SELECT a INTO t2 FROM t"),
+            (SqlServer, "SELECT NEXT VALUE FOR s"),
+            // A procedure called by name at the start of a batch.
+            (SqlServer, "[xp_cmdshell] 'whoami'"),
+            (SqlServer, "[master]..[xp_cmdshell] 'whoami'"),
+            (SqlServer, "\"sp_executesql\" N'DELETE FROM t'"),
+            (SqlServer, "sp_executesql N'DELETE FROM t'"),
+            // Numbers that end where a keyword starts.
+            (SqlServer, "SELECT 0xINSERT INTO t VALUES (1)"),
+            (SqlServer, "SELECT 1e1EXEC('x')"),
+            (SqlServer, "SELECT 1.e1EXEC('x')"),
+            (SqlServer, "SELECT 1\u{200b}EXEC('x')"),
+            (SqlServer, "SELECT 1\nGO\nEXEC p"),
+            (SqlServer, "SELECT 1 -- x\rEXEC p"),
+            // PostgreSQL.
+            (
+                Postgres,
+                "with d as (delete from t returning *) select * from d",
+            ),
+            (Postgres, "explain analyze delete from t"),
+            (Postgres, "explain (analyze) insert into t values (1)"),
+            (Postgres, "select 1 into t2"),
+            (Postgres, "select * into temp t2 from t"),
+            // PostgreSQL ends a `--` comment at a carriage return too.
+            (Postgres, "select 1 -- x\r; delete from t"),
+            // Under standard_conforming_strings = off, `'x\''` is a whole string.
+            (Postgres, r"select 'x\'' into t --'"),
+            (Postgres, r"select 'x\''; delete from t; --'"),
+            (Postgres, "copy (select 1) to program 'id'"),
+            (Postgres, "do $$ begin delete from t; end $$"),
+            (Postgres, "select * from t for share"),
+            (Postgres, "select * from t for key share"),
+            (Postgres, "select * from t for no key update"),
+            (Postgres, "call p()"),
+            (Postgres, "select setval('s', 1)"),
+            (Postgres, "select 1; delete from t"),
+            (Postgres, "SELECT\u{3000}1\u{a0}INTO t"),
+            (Postgres, "prepare x as delete from t"),
+            (Postgres, "execute x"),
+            (Postgres, "listen c"),
+            (Postgres, "'select'"),
+            // SQLite.
+            (Sqlite, "PRAGMA query_only = OFF"),
+            (Sqlite, "ATTACH 'x.db' AS x"),
+            (Sqlite, "select 1; attach 'x.db' as x"),
+            (Sqlite, "replace into t values (1)"),
+            (Sqlite, "SELECT 1 /* x */; VACUUM INTO '/tmp/x'"),
+            (Sqlite, "WITH x AS (SELECT 1) INSERT INTO t SELECT * FROM x"),
+            // DuckDB.
+            (DuckDb, "COPY t TO '/tmp/x.csv'"),
+            (DuckDb, "INSTALL httpfs"),
+            (DuckDb, "LOAD httpfs"),
+            (DuckDb, "ATTACH 'x.db'"),
+            (DuckDb, "select 1; copy t to 'x.csv'"),
+            (DuckDb, "SET enable_external_access = true"),
+            (DuckDb, "EXPORT DATABASE '/tmp/x'"),
+            (DuckDb, "PRAGMA enable_profiling"),
+            // Oracle runs the PL/SQL of `WITH FUNCTION`.
+            (
+                Oracle,
+                "WITH FUNCTION f RETURN NUMBER IS PRAGMA AUTONOMOUS_TRANSACTION; BEGIN \
+             EXECUTE IMMEDIATE 'DELETE FROM t'; COMMIT; RETURN 1; END; SELECT f FROM dual",
+            ),
+            (Oracle, "BEGIN DELETE FROM t; END;"),
+            (Oracle, "DECLARE x NUMBER; BEGIN NULL; END;"),
+            (Oracle, "select s.nextval from dual"),
+            (Oracle, "select * from t for update"),
+            (Oracle, "EXECUTE IMMEDIATE 'DROP TABLE t'"),
+            // The rest have no read-only transaction: the check is all there is.
+            (ClickHouse, "SELECT 1; DROP TABLE t"),
+            (ClickHouse, "SYSTEM SHUTDOWN"),
+            (ClickHouse, "KILL QUERY WHERE 1"),
+            (Snowflake, r"SELECT 'a\'' ; DROP TABLE t; --'"),
+            (Snowflake, "EXECUTE IMMEDIATE 'DROP TABLE t'"),
+            (Snowflake, "CALL p()"),
+            (BigQuery, "EXECUTE IMMEDIATE 'DROP TABLE d.t'"),
+            (BigQuery, "SELECT 1; DELETE FROM d.t WHERE true"),
+            (Databricks, "SELECT 1; DROP TABLE t"),
+            (Ansi, "call system.runtime.kill_query('q')"),
+            (Db2, "SELECT * FROM FINAL TABLE (INSERT INTO t VALUES (1))"),
+            (Db2, "SELECT NEXT VALUE FOR s FROM sysibm.sysdummy1"),
+        ];
+    }
+
+    #[test]
+    fn read_only_bypass_attempts() {
+        let attempts = bypass::ATTEMPTS;
+        for &(dialect, sql) in attempts {
+            assert!(!is_read_only(sql, dialect), "{dialect:?}: {sql}");
+        }
+    }
+
+    /// Queries that look like the attempts above but only read.
+    #[test]
+    fn read_only_keeps_plain_queries() {
+        use Dialect::*;
+        let queries: &[(Dialect, &str)] = &[
+            (MySql, "SELECT /*+ MAX_EXECUTION_TIME(1000) */ * FROM t"),
+            (MySql, "SELECT /*! STRAIGHT_JOIN */ a FROM t"),
+            (
+                MySql,
+                r"SELECT 'a\'b', REPLACE(name, 'a', 'b') FROM t -- note",
+            ),
+            (MySql, "SELECT CAST(a AS CHAR CHARACTER SET utf8mb4) FROM t"),
+            (MySql, "SELECT '/*! INTO OUTFILE */' FROM t"),
+            (
+                SqlServer,
+                "SELECT CASE WHEN a = 1 THEN 'x' END AS c FROM t WITH (NOLOCK) \
+                 ORDER BY a OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY",
+            ),
+            (
+                SqlServer,
+                "SELECT a FROM t OPTION (USE HINT ('DISABLE_OPTIMIZER_ROWGOAL'))",
+            ),
+            (
+                SqlServer,
+                "SELECT 0x1F, 1e5, [exec], N'EXEC xp_cmdshell' FROM t;",
+            ),
+            (SqlServer, "WITH x AS (SELECT 1 a) SELECT * FROM x"),
+            (Postgres, "select replace(a, 'x', 'y') from t"),
+            (
+                Postgres,
+                "select $$;delete$$, 'it''s; delete', e'\\';delete'",
+            ),
+            (Postgres, "/* /* */ delete from t */ select 1"),
+            (Postgres, "select \"delete\" from t -- ; delete\r\n"),
+            (Postgres, "(select 1) union (select 2)"),
+            (Postgres, "table t"),
+            (Postgres, "values (1)"),
+            (Postgres, "show search_path"),
+            (Postgres, "select 1; select 2;"),
+            (Oracle, "select q'[delete]' from dual"),
+            (DuckDb, "SELECT * FROM t"),
+            (Sqlite, "select * from t"),
+            (Db2, "SELECT * FROM t FETCH FIRST 10 ROWS ONLY"),
+            (Postgres, ""),
+        ];
+        for &(dialect, sql) in queries {
+            assert!(is_read_only(sql, dialect), "{dialect:?}: {sql}");
+        }
+    }
+
+    #[test]
+    fn mysql_executable_comments_are_code() {
+        let my = Dialect::MySql;
+        assert_eq!(
+            texts("SELECT 1 /*!; DELETE FROM t */", my),
+            ["SELECT 1 /*!", "DELETE FROM t */"]
+        );
+        let dump = "/*!40101 SET NAMES utf8mb4 */;\n/*!40014 SET FOREIGN_KEY_CHECKS=0 */;\n\
+                    SELECT /*! SQL_NO_CACHE */ 1 /* plain */;";
+        assert_eq!(
+            texts(dump, my),
+            [
+                "/*!40101 SET NAMES utf8mb4 */",
+                "/*!40014 SET FOREIGN_KEY_CHECKS=0 */",
+                "SELECT /*! SQL_NO_CACHE */ 1"
+            ]
+        );
+        // Optimizer hints and plain comments stay comments; other dialects have none.
+        assert_eq!(texts("/*+ hint */ /* x */", my), Vec::<&str>::new());
+        assert_eq!(
+            texts("SELECT 1 /*!; DELETE FROM t */", Dialect::Postgres).len(),
+            1
+        );
     }
 }
