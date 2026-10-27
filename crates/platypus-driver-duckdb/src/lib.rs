@@ -508,6 +508,8 @@ fn conform(schema: &SchemaRef, chunk: &StructArray) -> Result<RecordBatch> {
                 let bits: arrow_array::StringArray =
                     bytes.iter().map(|b| b.and_then(types::bit_text)).collect();
                 Ok(Arc::new(bits) as arrow_array::ArrayRef)
+            } else if let Some(union) = column.as_any().downcast_ref::<arrow_array::UnionArray>() {
+                Ok(Arc::new(types::union_text(union)?) as arrow_array::ArrayRef)
             } else {
                 arrow_cast::cast(column, field.data_type())
             }

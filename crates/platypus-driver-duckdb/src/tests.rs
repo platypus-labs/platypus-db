@@ -102,6 +102,25 @@ async fn decodes_scalar_types() {
 }
 
 #[tokio::test]
+async fn unions_are_the_value_of_their_member() {
+    let conn = memory().await;
+    let batches = rows(
+        &conn,
+        "SELECT un FROM (VALUES (1, 5::UNION(n INTEGER, s VARCHAR)), \
+         (2, NULL), (3, 'x'::UNION(n INTEGER, s VARCHAR))) t(id, un) ORDER BY id",
+    )
+    .await;
+    let batch = &batches[0];
+    assert_eq!(batch.schema().field(0).data_type(), &DataType::Utf8);
+    assert_eq!(
+        batch.schema().field(0).metadata()[META_DB_TYPE],
+        "UNION(n INTEGER, s VARCHAR)"
+    );
+    let values: Vec<Option<&str>> = batch.column(0).as_string::<i32>().iter().collect();
+    assert_eq!(values, [Some("5"), None, Some("x")]);
+}
+
+#[tokio::test]
 async fn decodes_nested_types_and_enums() {
     let conn = memory().await;
     conn.execute(
