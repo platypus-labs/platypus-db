@@ -220,9 +220,15 @@ pub fn formatter<'a>(
             | DataType::LargeList(_)
             | DataType::FixedSizeList(..)
             | DataType::Struct(_)
-            | DataType::Map(..)
     ) {
-        // A NULL inside a list or a struct, where nothing would tell it from an empty text.
+        let top = Top {
+            nested: Nested::new(array, options)?,
+            null: options.null(),
+        };
+        return Ok(ArrayFormatter::new(Box::new(top), options.safe()));
+    }
+    if matches!(array.data_type(), DataType::Map(..)) {
+        // A NULL inside a map, where nothing would tell it from an empty text.
         let nested = options.clone().with_null("NULL");
         return ArrayFormatter::try_new(array, &nested);
     }
@@ -234,6 +240,160 @@ pub fn formatter<'a>(
         Box::new(Special { array, inner }),
         options.safe(),
     ))
+}
+
+/// A list or struct written with its elements as literals, as DuckDB prints them:
+/// `[1, NULL, 3]`, `['a', '', 'b']`, `{'a': 1, 'b': 'x'}`. Texts are quoted (a quote doubled),
+/// so an empty text and NULL differ, and the value reads back as the literal it shows.
+enum Nested<'a> {
+    List {
+        array: &'a dyn Array,
+        values: Box<Nested<'a>>,
+    },
+    Struct {
+        array: &'a dyn Array,
+        names: Vec<String>,
+        fields: Vec<Nested<'a>>,
+    },
+    Text(&'a dyn Array),
+    Leaf(&'a dyn Array, ArrayFormatter<'a>),
+}
+
+impl<'a> Nested<'a> {
+    fn new(array: &'a dyn Array, options: &FormatOptions<'a>) -> Result<Self, ArrowError> {
+        Ok(match array.data_type() {
+            DataType::List(_) => Self::List {
+                array,
+                values: Box::new(Self::new(
+                    array.as_list::<i32>().values().as_ref(),
+                    options,
+                )?),
+            },
+            DataType::LargeList(_) => Self::List {
+                array,
+                values: Box::new(Self::new(
+                    array.as_list::<i64>().values().as_ref(),
+                    options,
+                )?),
+            },
+            DataType::FixedSizeList(..) => Self::List {
+                array,
+                values: Box::new(Self::new(
+                    array.as_fixed_size_list().values().as_ref(),
+                    options,
+                )?),
+            },
+            DataType::Struct(fields) => Self::Struct {
+                array,
+                names: fields.iter().map(|f| f.name().clone()).collect(),
+                fields: array
+                    .as_struct()
+                    .columns()
+                    .iter()
+                    .map(|c| Self::new(c.as_ref(), options))
+                    .collect::<Result<_, _>>()?,
+            },
+            DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => Self::Text(array),
+            _ => Self::Leaf(array, formatter(array, options)?),
+        })
+    }
+
+    /// The element range of list `i`.
+    fn range(array: &dyn Array, i: usize) -> std::ops::Range<usize> {
+        match array.data_type() {
+            DataType::List(_) => {
+                let o = array.as_list::<i32>().value_offsets();
+                usize::try_from(o[i]).unwrap_or(0)..usize::try_from(o[i + 1]).unwrap_or(0)
+            }
+            DataType::LargeList(_) => {
+                let o = array.as_list::<i64>().value_offsets();
+                usize::try_from(o[i]).unwrap_or(0)..usize::try_from(o[i + 1]).unwrap_or(0)
+            }
+            _ => {
+                let n = usize::try_from(array.as_fixed_size_list().value_length()).unwrap_or(0);
+                i * n..(i + 1) * n
+            }
+        }
+    }
+
+    fn array(&self) -> &'a dyn Array {
+        match self {
+            Self::List { array, .. } | Self::Struct { array, .. } | Self::Text(array) => *array,
+            Self::Leaf(array, _) => *array,
+        }
+    }
+
+    /// Element `i`, NULL included, as a literal.
+    fn element(&self, i: usize, f: &mut dyn Write) -> FormatResult {
+        if self.array().is_null(i) {
+            f.write_str("NULL")?;
+            return Ok(());
+        }
+        match self {
+            Self::Text(array) => {
+                let text = arrow_cast::display::array_value_to_string(*array, i)?;
+                write!(f, "'{}'", text.replace('\'', "''"))?;
+            }
+            _ => self.write(i, f)?,
+        }
+        Ok(())
+    }
+}
+
+impl DisplayIndex for Nested<'_> {
+    fn write(&self, idx: usize, f: &mut dyn Write) -> FormatResult {
+        match self {
+            Self::List { array, values } => {
+                f.write_char('[')?;
+                for (n, i) in Self::range(*array, idx).enumerate() {
+                    if n > 0 {
+                        f.write_str(", ")?;
+                    }
+                    values.element(i, f)?;
+                }
+                f.write_char(']')?;
+            }
+            Self::Struct { names, fields, .. } => {
+                // Fields named 1, 2, … are a tuple's (ClickHouse): `(1, 'a')`.
+                let tuple = names
+                    .iter()
+                    .enumerate()
+                    .all(|(i, name)| *name == (i + 1).to_string());
+                f.write_char(if tuple { '(' } else { '{' })?;
+                for (n, (name, field)) in names.iter().zip(fields).enumerate() {
+                    if n > 0 {
+                        f.write_str(", ")?;
+                    }
+                    if !tuple {
+                        write!(f, "'{}': ", name.replace('\'', "''"))?;
+                    }
+                    field.element(idx, f)?;
+                }
+                f.write_char(if tuple { ')' } else { '}' })?;
+            }
+            Self::Text(array) => {
+                f.write_str(&arrow_cast::display::array_value_to_string(*array, idx)?)?
+            }
+            Self::Leaf(_, inner) => inner.value(idx).write(f)?,
+        }
+        Ok(())
+    }
+}
+
+/// A [`Nested`] column, whose NULLs are written as the options say.
+struct Top<'a> {
+    nested: Nested<'a>,
+    null: &'a str,
+}
+
+impl DisplayIndex for Top<'_> {
+    fn write(&self, idx: usize, f: &mut dyn Write) -> FormatResult {
+        if self.nested.array().is_null(idx) {
+            f.write_str(self.null)?;
+            return Ok(());
+        }
+        self.nested.write(idx, f)
+    }
 }
 
 /// `batch` with each column that holds a reserved value turned into text, for writers that
@@ -373,11 +533,27 @@ mod tests {
     }
 
     #[test]
-    fn shows_nulls_inside_lists() {
+    fn shows_lists_and_structs_as_literals() {
         let list = arrow_array::ListArray::from_iter_primitive::<arrow_array::types::Int32Type, _, _>(
-            vec![Some(vec![Some(1), None, Some(3)])],
+            vec![Some(vec![Some(1), None, Some(3)]), None],
         );
-        assert_eq!(shown(&list), ["[1, NULL, 3]"]);
+        assert_eq!(shown(&list), ["[1, NULL, 3]", "NULL"]);
+        let mut texts =
+            arrow_array::builder::ListBuilder::new(arrow_array::builder::StringBuilder::new());
+        texts.append_value([Some("a"), Some(""), Some("it's"), None]);
+        let list = texts.finish();
+        assert_eq!(shown(&list), ["['a', '', 'it''s', NULL]"]);
+        let st = arrow_array::StructArray::from(vec![
+            (
+                Arc::new(Field::new("a", DataType::Int32, true)),
+                Arc::new(Int32Array::from(vec![1])) as ArrayRef,
+            ),
+            (
+                Arc::new(Field::new("b", DataType::Utf8, true)),
+                Arc::new(StringArray::from(vec!["x"])) as ArrayRef,
+            ),
+        ]);
+        assert_eq!(shown(&st), ["{'a': 1, 'b': 'x'}"]);
     }
 
     #[test]
