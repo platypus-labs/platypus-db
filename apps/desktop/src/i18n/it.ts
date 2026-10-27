@@ -953,6 +953,7 @@ const it: Record<string, string> = {
   "Change every row?": "Modificare tutte le righe?",
   "without WHERE changes every row of": "senza WHERE modifica tutte le righe di",
   "empties": "svuota",
+  "erases every past version of the rows of": "cancella tutte le versioni passate delle righe di",
   "with an empty filter changes every document of": "con un filtro vuoto modifica tutti i documenti di",
   "without WHERE changes rows the database picks in": "senza WHERE modifica righe scelte dal database in",
   "about {n} document": "circa {n} documento",
