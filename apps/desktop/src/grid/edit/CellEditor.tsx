@@ -3,6 +3,7 @@ import type { CellInput, FieldMeta } from "../../api";
 import { LIST_MIN, LIST_SIZE, ListEditor } from "./ListEditor";
 import { popupBox } from "./popupBox";
 import { sameJson } from "./jsonChange";
+import { formatJson } from "../../jsonText";
 import type { EditorKind } from "./meta";
 import { t } from "../../i18n";
 
@@ -165,7 +166,8 @@ export function CellEditor({
               type="button"
               onClick={() => {
                 try {
-                  setText(JSON.stringify(JSON.parse(text), null, 2));
+                  // Only the layout changes: numbers keep their digits (no rounding above 2^53).
+                  setText(formatJson(text));
                 } catch (e) {
                   setProblem(t("Invalid JSON: {message}", { message: (e as Error).message }));
                 }

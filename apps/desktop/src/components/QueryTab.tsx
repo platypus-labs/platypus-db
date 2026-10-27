@@ -58,6 +58,7 @@ import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, f
 import { ChartToggle } from "../analysis/ChartView";
 import { chartOf, type SavedChart, withChart } from "../analysis/chartConfig";
 import { runGate } from "./runGate";
+import { RunMemory, rerunsUnasked } from "./rerun";
 import {
   type ShownSort,
   type ViewerSort,
@@ -234,7 +235,8 @@ export function QueryTab({
   const warnMinutes = useSetting(transactionWarning);
   const slowSeconds = useSetting(slowQuerySeconds);
   const warned = useRef(false);
-  const [count, setCount] = useState<string | null>(null);
+  /** Count rows: the text shown, and the statement (`queryKey`) it counted. */
+  const [count, setCount] = useState<{ key: string | null; text: string } | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState<ExportProgress | null>(null);
   const [results, setResults] = useState<Result[]>([]);
@@ -247,7 +249,7 @@ export function QueryTab({
     results,
     shown,
     enabled: !isMongo(connection.driver) && !tab.terminal,
-    canLeave: async () => !unsaved.current || ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }),
+    canLeave: () => discardEdits(),
   });
   /** The rows on screen: the shown result, or the output of its SQL field. */
   const view = resultSql.output ?? shown;
@@ -311,7 +313,7 @@ export function QueryTab({
   };
   // A count belongs to the statement it counted.
   const shownKey = shown ? queryKey(shown.sql) : null;
-  useEffect(() => setCount(null), [shownKey]);
+  const shownCount = count?.key === shownKey ? count.text : null;
   /** The run going on was started by auto-refresh. */
   const autoRun = useRef(false);
   /** The data viewer's own queries, to tell them from other queries typed in the tab. */
@@ -345,8 +347,8 @@ export function QueryTab({
   const details = useRef<Promise<TableDetails> | null>(null);
   /** The table each query reads, for editing its results; cleared after DDL. */
   const sources = useRef(new Map<string, Promise<EditSource | null>>());
-  /** What the last run ran, run again after saving edited rows. */
-  const lastPlanned = useRef<Planned[]>([]);
+  /** What the runs ran, to run again unasked: only statements that passed their checks. */
+  const memory = useRef(new RunMemory<Planned>());
   /** Parameter values answered in the last run, reused when it runs again. */
   const lastAnswers = useRef<Record<string, string>>({});
   /** The script running in the command-line client, which Cancel stops. */
@@ -573,13 +575,14 @@ export function QueryTab({
     return !request || new Promise<boolean>((resolve) => setGuard({ request, resolve }));
   }
 
-  /** Runs what `mode` selects in the editor, or `again` (the statements of the last run).
+  /** Runs what `mode` selects in the editor, or `again` (statements that ran before). With
+   *  `replace`, the result of that id gives way to the new one and the others stay.
    *  An `auto` refresh stays out of the query history, keeps the result tab shown and the
    *  editor as it is, and stops refreshing when a statement fails. */
-  async function run(mode: RunMode, force = false, again?: Planned[], auto = false) {
+  async function run(mode: RunMode, force = false, again?: Planned[], auto = false, replace?: number) {
     const history = !auto;
     if (running && !force) return;
-    if (unsaved.current && !(await ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }))) return;
+    if (!(await discardEdits())) return;
     const append = mode === "append";
     let planned: Planned[];
     try {
@@ -589,22 +592,32 @@ export function QueryTab({
       return;
     }
     if (planned.length === 0) return;
-    if (!again) setUndoScript(null);
-    lastPlanned.current = planned;
     if (connection.read_only && !force && planned.some((p) => !p.readOnly)) {
       setBlocked(mode);
       return;
     }
     setBlocked(null);
-    // Statements of a run asked about already go again without asking.
-    if (!again && !(await confirmed(planned))) return;
+    // Statements that only read go again without asking; anything else is asked again.
+    if (!(again && rerunsUnasked(again)) && !(await confirmed(planned))) return;
     const sessionId = await ensureSession();
     if (sessionId === null) return;
+    if (!again) setUndoScript(null);
+    const replaced = replace === undefined ? undefined : results.find((r) => r.id === replace);
+    // Remembered only now that it passed its checks: a declined run never runs again unasked.
+    if (replaced) memory.current.forget(replaced.id);
+    else memory.current.started(planned, !append);
     onNeedCatalog(false);
-    if (!append) await compare.keep(sessionId, planned, results);
+    if (!append) await compare.keep(sessionId, planned, replaced ? [replaced] : results);
 
     const token = ++runToken.current;
-    if (!append) closeJobs();
+    if (replaced) {
+      if (replaced.jobId !== null) {
+        void api.closeQuery(replaced.jobId);
+        jobs.current = jobs.current.filter((j) => j !== replaced.jobId);
+      }
+    } else if (!append) {
+      closeJobs();
+    }
     const script = mode === "script" && planned.length > 1;
     const limit = tab.terminal ? TERMINAL_ROWS : script ? getSetting(scriptRowLimit) : null;
     const resultOf = (p: Planned, first: boolean) =>
@@ -612,8 +625,13 @@ export function QueryTab({
     // `queue` grows when an `@include` adds a file's statements after itself.
     const queue = [...planned];
     const own = queue.map((p, i) => resultOf(p, i === 0));
-    const base = append ? results.length : 0;
-    setResults((all) => (append ? [...all, ...own] : own));
+    const base = append ? results.length : replaced ? Math.max(0, results.indexOf(replaced)) : 0;
+    setResults((all) => {
+      if (append) return [...all, ...own];
+      if (!replaced) return own;
+      const at = all.findIndex((r) => r.id === replaced.id);
+      return at < 0 ? [...all, ...own] : [...all.slice(0, at), ...own, ...all.slice(at + 1)];
+    });
     if (!auto) setActiveResult(base);
     autoRun.current = auto;
     cancelAsked.current = false;
@@ -711,6 +729,7 @@ export function QueryTab({
             Object.assign(variables, values);
             keepVariables();
           }
+          memory.current.ran(result.id, p);
           const autoLimit = !tab.table && p.kind === "query" ? getSetting(autoLimitSetting) : 0;
           const capped = autoLimit > 0 ? await api.sqlAddLimit(sql, connection.driver, autoLimit).catch(() => null) : null;
           // The result keeps the statement as written: the header sort and the editor find it.
@@ -772,7 +791,13 @@ export function QueryTab({
     const { from, to } = ed.getSelection();
     const script = from !== to ? ed.getText().slice(from, to) : ed.getText();
     if (!script.trim()) return;
-    const planned = plannedOf(script, (await api.analyzeSql(script, connection.driver, 0)).statements, 0);
+    let planned: Planned[];
+    try {
+      planned = plannedOf(script, (await api.analyzeSql(script, connection.driver, 0)).statements, 0);
+    } catch (e) {
+      onError(toCommandError(e).message);
+      return;
+    }
     if (
       connection.read_only &&
       planned.some((p) => !p.readOnly) &&
@@ -877,17 +902,23 @@ export function QueryTab({
     explain: isMongo(connection.driver) ? undefined : (analyze) => void explain(analyze),
   };
 
-  /** Closes a result tab and frees its rows. */
+  /** Closes a result tab and frees its rows; the shown one asks first if it has edits. */
   function closeResult(id: number) {
     const i = results.findIndex((r) => r.id === id);
     const r = results[i];
     // The run in progress places its results by position.
     if (!r || running) return;
+    if (i === activeResult && unsaved.current) return leavingEdits(() => dropResult(r, i));
+    dropResult(r, i);
+  }
+
+  function dropResult(r: Result, i: number) {
     if (r.jobId !== null) {
       void api.closeQuery(r.jobId);
       jobs.current = jobs.current.filter((j) => j !== r.jobId);
     }
-    setResults((all) => all.filter((x) => x.id !== id));
+    memory.current.forget(r.id);
+    setResults((all) => all.filter((x) => x.id !== r.id));
     setActiveResult((a) => Math.max(0, a > i || a === results.length - 1 ? a - 1 : a));
   }
 
@@ -991,12 +1022,22 @@ export function QueryTab({
       void rewriteStatement(result, rewrite).then((next) => {
         if (next !== null) onChange({ sorts: withSort(tab.sorts, next, sort) });
       });
-    if (!unsaved.current) return go();
-    void ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true }).then((yes) => {
-      if (!yes) return;
+    leavingEdits(() => {
+      // Asked already: the run that follows does not ask again.
       unsaved.current = false;
       go();
     });
+  }
+
+  /** Whether the edits of the shown result may go, asking first when there are some: running,
+   *  showing another result, the chart or the terminal drops them, as closing the tab does. */
+  async function discardEdits(): Promise<boolean> {
+    return !unsaved.current || ask(t(DISCARD_EDITS), { confirm: t("Discard"), danger: true });
+  }
+
+  /** Does `then` once the edits of the shown result may go. */
+  function leavingEdits(then: () => void) {
+    void discardEdits().then((yes) => yes && then());
   }
 
   /** Header clicks cycle a column of the shown statement through ascending, descending and
@@ -1032,21 +1073,26 @@ export function QueryTab({
 
   async function countRows() {
     if (!tab.table) return;
+    // The count shows next to the statement it counted only: another one shown meanwhile, or
+    // a later count, hides it.
+    const key = shownKey;
     const sql = await countedSql();
     if (sql === null) return;
-    setCount(t("counting…"));
+    const mine = { key, text: t("counting…") };
+    setCount(mine);
+    const show = (text: string | null) => setCount((c) => (c !== mine ? c : text === null ? null : { key, text }));
     const sessionId = await sideSession();
-    if (sessionId === null) return setCount(null);
+    if (sessionId === null) return show(null);
     try {
       const query = await api.sqlCountQuery(sql, connection.driver);
       if (query === null) {
-        setCount(null);
+        show(null);
         return onError(t("This query cannot be counted."));
       }
       const value = await api.queryValue(sessionId, query);
-      setCount(value === null ? null : plural(Number(value), "{n} row", "{n} rows"));
+      show(value === null ? null : plural(Number(value), "{n} row", "{n} rows"));
     } catch (e) {
-      setCount(null);
+      show(null);
       onError(toCommandError(e).message);
     }
   }
@@ -1227,7 +1273,10 @@ export function QueryTab({
       onSaved: (undo) => {
         setUnsaved(false);
         setUndoScript(undo);
-        void run("statement", false, lastPlanned.current);
+        // The statement of the edited result runs again in its place, the other results stay;
+        // only a statement that reads runs unasked.
+        const again = memory.current.readOf(result.id);
+        if (again) void run("statement", false, [again], false, result.id);
       },
       onDirtyChange: setUnsaved,
     };
@@ -1266,9 +1315,10 @@ export function QueryTab({
   // nothing runs, asks or waits to be saved. The timer calls the latest render's `refresh`.
   const refresh = useRef(() => {});
   refresh.current = () => {
-    const again = lastPlanned.current;
-    if (running || guard || unsaved.current || again.length === 0) return;
-    if (again.some((p) => !p.readOnly)) {
+    const last = memory.current.last();
+    if (running || guard || unsaved.current || last.length === 0) return;
+    const again = memory.current.lastReads();
+    if (!again) {
       setRefreshEvery(null);
       onError(t("Auto-refresh stopped: the last statements change data."));
       return;
@@ -1436,7 +1486,7 @@ export function QueryTab({
             <>
               <button
                 className={tab.terminal ? "toggled" : ""}
-                onClick={() => onChange({ terminal: !tab.terminal })}
+                onClick={() => (tab.terminal ? onChange({ terminal: false }) : leavingEdits(() => onChange({ terminal: true })))}
                 title={t("Terminal mode: results as text, kept across runs")}
                 aria-label={t("Terminal")}
               >
@@ -1469,7 +1519,7 @@ export function QueryTab({
         {tab.table && (
           <div className="viewer-bar">
             <span className="spacer" />
-            {count && <span className="muted small">{count}</span>}
+            {shownCount && <span className="muted small">{shownCount}</span>}
             <button
               type="button"
               className="square"
@@ -1504,8 +1554,9 @@ export function QueryTab({
               onReloaded={(source) => {
                 onChange({ resultSource: source });
                 onNeedCatalog(true);
-                // The query shown runs again on the new rows.
-                if (lastPlanned.current.length > 0) void run("statement", false, lastPlanned.current);
+                // The last statements run again on the new rows, if they only read.
+                const again = memory.current.lastReads();
+                if (again) void run("statement", false, again);
               }}
             />
           )}
@@ -1522,7 +1573,7 @@ export function QueryTab({
                 <button
                   key={r.id}
                   className={`result-tab ${r.status.kind}${i === activeResult ? " active" : ""}`}
-                  onClick={() => setActiveResult(i)}
+                  onClick={() => i !== activeResult && leavingEdits(() => setActiveResult(i))}
                   onAuxClick={(e) => e.button === 1 && closeResult(r.id)}
                   title={r.sql}
                 >
@@ -1583,7 +1634,12 @@ export function QueryTab({
           {view && (
             <>
               <span>{describe(view)}</span>
-              {rowsResult && <ChartToggle chart={!!shownChart?.shown} onChange={(on) => setChart({ shown: on })} />}
+              {rowsResult && (
+                <ChartToggle
+                  chart={!!shownChart?.shown}
+                  onChange={(on) => (on ? leavingEdits(() => setChart({ shown: true })) : setChart({ shown: false }))}
+                />
+              )}
               {(view.status.kind === "rows" || view.status.kind === "affected") && (
                 <span className="muted">
                   {t(view.status.kind === "rows" && !view.status.finished ? "first rows in {time}" : "took {time}", {
@@ -1642,7 +1698,7 @@ export function QueryTab({
               {t("Changes saved.")}
               <button
                 className="link"
-                onClick={() => workbench().openTab("query", connection.id, { sql: undoScript })}
+                onClick={() => workbench().openTab("query", connection.id, { sql: undoScript, database: tab.database })}
                 title={t("Opens the SQL that puts the rows back as they were")}
               >
                 {t("Undo script")}

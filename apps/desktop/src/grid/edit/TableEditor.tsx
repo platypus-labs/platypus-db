@@ -113,6 +113,8 @@ export interface TableEditorHost {
   /** New rows, shown above the result's. */
   topRows: number;
   decorate?: (row: number, col: number) => CellDecoration | undefined;
+  /** A cell's change not saved yet, by grid row. */
+  pending: (row: number, col: number) => CellInput | undefined;
   overlay: ReactNode;
   onCellDoubleClick?: (cell: Cell) => void;
   onScroll: () => void;
@@ -128,6 +130,11 @@ interface Editing {
   original?: string | null;
   /** Rows of the table a foreign key points to, once loaded. */
   options?: [string, string | null][];
+}
+
+interface Opening {
+  /** What the editor starts with: the keys typed, or `undefined` for the cell's value. */
+  typed?: string;
 }
 
 // Translucent, so they read on light and dark grids alike.
@@ -175,6 +182,8 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
   const [labels, setLabels] = useState(0);
   const latest = useRef(target);
   latest.current = target;
+  /** An editor waiting for its row's values, and the keys typed meanwhile. */
+  const opening = useRef<Opening | null>(null);
 
   const reason = !target
     ? msg("not a table")
@@ -232,14 +241,22 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
     };
   }, [keys, preferred, picks]);
 
+  /** Makes `next` the pending changes; the selection follows its rows when new rows come or
+   *  go on top (an explicit `select` afterwards, e.g. of the added row, still wins). */
+  function setEdits(next: edits.EditState) {
+    const before = current.current.inserts.length;
+    current.current = next;
+    setState(next);
+    grid.current?.topRowsChanged(before, next.inserts.length);
+  }
+
   function apply(change: (s: edits.EditState) => edits.EditState) {
     const prev = current.current;
     const next = change(prev);
     if (next === prev) return;
     undoStack.current.push(prev);
     if (undoStack.current.length > UNDO_LIMIT) undoStack.current.shift();
-    current.current = next;
-    setState(next);
+    setEdits(next);
     setError(null);
   }
 
@@ -289,11 +306,17 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
     if ("row" in ref && s.deletes.has(ref.row)) return;
     let original: string | null | undefined;
     if ("row" in ref) {
+      // Keys typed while the row loads go into this editor, not into new ones.
+      const start: Opening = { typed };
+      opening.current = start;
       try {
         original = (await api.rowValues(jobId, ref.row, 1))[0]?.[cell.col];
       } catch (e) {
         return fail(e);
+      } finally {
+        if (opening.current === start) opening.current = null;
       }
+      typed = start.typed;
     }
     const pending = edits.cellEdit(s, cell.row, cell.col);
     const initial = pending
@@ -456,9 +479,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
     paste,
     undo: () => {
       const prev = undoStack.current.pop();
-      if (!prev) return;
-      current.current = prev;
-      setState(prev);
+      if (prev) setEdits(prev);
     },
     save: async (confirmed = false) => {
       if (!editable || !keys || edits.isEmpty(current.current)) return;
@@ -468,8 +489,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
       try {
         const saved = await api.saveChanges(jobId, changes(keys));
         undoStack.current = [];
-        current.current = edits.EMPTY;
-        setState(edits.EMPTY);
+        setEdits(edits.EMPTY);
         latest.current?.onSaved(saved.undo);
       } catch (e) {
         fail(e);
@@ -548,6 +568,13 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
   function onKeyDown(e: React.KeyboardEvent) {
     if (!editable || editing || e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
     if (!(e.target as HTMLElement).classList.contains("grid-scroll")) return;
+    const starting = opening.current;
+    if (starting) {
+      // The editor is on its way: the key joins what it starts with.
+      e.preventDefault();
+      starting.typed = (starting.typed ?? "") + e.key;
+      return;
+    }
     const focused = grid.current?.focused();
     if (!focused) return;
     e.preventDefault();
@@ -699,6 +726,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
     ),
     topRows: state.inserts.length,
     decorate: decorated ? decorate : undefined,
+    pending: (row, col) => edits.cellEdit(state, row, col),
     overlay: overlay || null,
     onCellDoubleClick: editable ? (cell) => void editCell(cell) : undefined,
     onScroll,

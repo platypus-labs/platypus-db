@@ -221,6 +221,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
               rowCount={total}
               topRows={editor.topRows}
               version={version}
+              pending={editor.pending}
               onMove={(row) => grid.current?.select({ row, col: focused?.col ?? 0 })}
               onClose={features.toggleRecordView}
             />

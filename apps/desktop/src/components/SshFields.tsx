@@ -22,7 +22,7 @@ export function SshFields({ ssh, onChange, secret, onSecret, saved }: Props) {
   const set = <K extends keyof SavedSsh>(key: K, value: SavedSsh[K]) => onChange({ ...ssh, [key]: value });
 
   async function browseKey() {
-    const path = await open({ multiple: false, title: "Private key" });
+    const path = await open({ multiple: false, title: t("Private key") });
     if (typeof path === "string") set("key_path", path);
   }
 

@@ -114,20 +114,21 @@ interface Props {
   onError: (message: string) => void;
 }
 
+/** The folders of a schema; labels are translated where they are shown. */
 const FOLDERS: { kind: ObjectKind; label: string }[] = [
-  { kind: "table", label: "Tables" },
-  { kind: "view", label: "Views" },
-  { kind: "materialized_view", label: "Materialized views" },
-  { kind: "foreign_table", label: "Foreign tables" },
-  { kind: "sequence", label: "Sequences" },
-  { kind: "function", label: "Functions" },
-  { kind: "procedure", label: "Procedures" },
-  { kind: "trigger", label: "Triggers" },
-  { kind: "type", label: "Types" },
-  { kind: "domain", label: "Domains" },
-  { kind: "extension", label: "Extensions" },
-  { kind: "event", label: "Events" },
-  { kind: "dictionary", label: "Dictionaries" },
+  { kind: "table", label: msg("Tables") },
+  { kind: "view", label: msg("Views") },
+  { kind: "materialized_view", label: msg("Materialized views") },
+  { kind: "foreign_table", label: msg("Foreign tables") },
+  { kind: "sequence", label: msg("Sequences") },
+  { kind: "function", label: msg("Functions") },
+  { kind: "procedure", label: msg("Procedures") },
+  { kind: "trigger", label: msg("Triggers") },
+  { kind: "type", label: msg("Types") },
+  { kind: "domain", label: msg("Domains") },
+  { kind: "extension", label: msg("Extensions") },
+  { kind: "event", label: msg("Events") },
+  { kind: "dictionary", label: msg("Dictionaries") },
 ];
 
 
@@ -201,6 +202,8 @@ export function Navigator(props: Props) {
     setOfflineVersion((v) => v + 1);
   };
   const saveTimers = useRef(new Map<string, number>());
+  /** Per connection id, bumped when it closes or refreshes: loads started before are stale. */
+  const generation = useRef(new Map<string, number>());
   const prefs = useNavigatorPrefs();
   const simple = useSetting(viewSetting) === "simple";
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -271,7 +274,12 @@ export function Navigator(props: Props) {
     const cached = entry?.state === "ok" && entry.cached ? (entry.data as T) : null;
     if (cached !== null && offline.current.has(c.id)) return cached;
     if (cached === null) setLoad(key, { state: "loading" });
+    // The connection closed, refreshed or changed target meanwhile: what this load brings is
+    // stale and must not refill the tree nor the disk cache.
+    const gen = generation.current.get(c.id) ?? 0;
+    const stale = () => (generation.current.get(c.id) ?? 0) !== gen;
     const sid = await session(c, db);
+    if (stale()) return null;
     if (sid === null) {
       if (cached !== null) {
         setOffline(c.id, true);
@@ -287,15 +295,19 @@ export function Navigator(props: Props) {
     }
     try {
       const data = await fetch(sid);
+      if (stale()) return null;
       setLoad(key, { state: "ok", data });
       setOffline(c.id, false);
       scheduleSave(c.id);
       return data;
     } catch (e) {
-      setLoad(key, { state: "error", message: toCommandError(e).message });
+      if (!stale()) setLoad(key, { state: "error", message: toCommandError(e).message });
       return null;
     }
   }
+
+  /** Makes the loads of `c` under way stale. */
+  const bumpGeneration = (c: SavedConnection) => generation.current.set(c.id, (generation.current.get(c.id) ?? 0) + 1);
 
   function loadSchemas(c: SavedConnection, db: string | null) {
     const base = baseKey(c, db);
@@ -344,6 +356,7 @@ export function Navigator(props: Props) {
   }
 
   function refreshConnection(c: SavedConnection) {
+    bumpGeneration(c);
     setOffline(c.id, false);
     refresh(c.id, () => {
       loadSchemas(c, null);
@@ -352,6 +365,7 @@ export function Navigator(props: Props) {
   }
 
   function closeConnection(c: SavedConnection) {
+    bumpGeneration(c);
     // A pending save would overwrite the disk cache with the emptied memory cache.
     clearTimeout(saveTimers.current.get(c.id));
     updateCache((m) => new Map([...m].filter(([k]) => !isUnder(k, c.id))));
@@ -658,7 +672,7 @@ export function Navigator(props: Props) {
         out.push({
           key: fkey,
           depth: depth + 1,
-          label: folder.label,
+          label: t(folder.label),
           detail: String(items.length),
           expanded: fOpen,
           // Tables start open; `!` remembers that the user closed them.

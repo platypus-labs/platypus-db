@@ -109,7 +109,9 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
     void (async () => {
       setError(null);
       const sid = await sideSession();
-      if (sid === null || cancelled) return;
+      if (cancelled) return;
+      // The password prompt was cancelled or the connection failed: say so, not "Loading…".
+      if (sid === null) return setError(t("Not connected."));
       try {
         const loaded = await api.tableDesign(sid, tab.schema, tab.table!);
         if (cancelled) return;

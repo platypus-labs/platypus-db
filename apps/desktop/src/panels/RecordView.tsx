@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type ColumnInfo, toCommandError } from "../api";
+import { api, type CellInput, type ColumnInfo, toCommandError } from "../api";
 import { t } from "../i18n";
 
 interface Props {
@@ -14,26 +14,35 @@ interface Props {
   topRows: number;
   /** Bumped when rows load. */
   version: number;
+  /** The data editor's change of a cell not saved yet, by grid row. */
+  pending?: (row: number, col: number) => CellInput | undefined;
   onMove: (row: number) => void;
   onClose: () => void;
 }
 
+/** A pending value as the record shows it. */
+function pendingText(input: CellInput): string | null {
+  return input.kind === "value" ? input.text : input.kind === "null" ? null : "DEFAULT";
+}
+
 /** One row of the grid, top to bottom, with the full values; moves through the rows. */
-export function RecordView({ jobId, columns, shown, row, rowCount, topRows, version, onMove, onClose }: Props) {
-  const [values, setValues] = useState<(string | null)[] | null>(null);
+export function RecordView({ jobId, columns, shown, row, rowCount, topRows, version, pending, onMove, onClose }: Props) {
+  const [loaded, setLoaded] = useState<{ row: number; values: (string | null)[] | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const dataRow = row - topRows;
+  // Another row's values never show under this row's number while it loads.
+  const values = loaded?.row === dataRow ? loaded.values : null;
   const box = useRef<HTMLDivElement>(null);
   // The arrows move through the rows from the start.
   useEffect(() => box.current?.focus(), []);
 
   useEffect(() => {
-    if (dataRow < 0) return setValues(null);
+    if (dataRow < 0) return setLoaded(null);
     let live = true;
     api.rowValues(jobId, dataRow, 1).then(
       ([r]) => {
         if (!live) return;
-        setValues(r ?? null);
+        setLoaded({ row: dataRow, values: r ?? null });
         setError(null);
       },
       (e) => live && setError(toCommandError(e).message),
@@ -84,7 +93,9 @@ export function RecordView({ jobId, columns, shown, row, rowCount, topRows, vers
         <div className="record-fields">
           {shown.map((c) => {
             const column = columns[c]!;
-            const value = values?.[c];
+            // An edit not saved yet shows in place of the loaded value, as in the grid.
+            const change = pending?.(row, c);
+            const value = change ? pendingText(change) : values?.[c];
             return (
               <div key={c} className="record-field">
                 <div className="record-name" title={column.db_type}>
@@ -92,7 +103,7 @@ export function RecordView({ jobId, columns, shown, row, rowCount, topRows, vers
                   <span className="muted small"> {column.db_type}</span>
                 </div>
                 <div className={`record-value${value === null ? " null" : ""}`}>
-                  {values ? (value ?? "NULL") : "…"}
+                  {values || change ? (value ?? "NULL") : "…"}
                 </div>
               </div>
             );

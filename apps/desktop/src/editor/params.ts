@@ -4,44 +4,10 @@
  * `${name}` takes the text as typed, e.g. a table name. Values are the tab's variables,
  * which `@set name = value` also sets.
  */
-import type { DriverKind, ExportFormat, ParameterSpan } from "../api";
+import type { ExportFormat } from "../api";
 import { t } from "../i18n";
 
-/** A placeholder's key among the values: its name, or `?1`, `?2`… by position. */
-export function parameterKeys(spans: ParameterSpan[]): string[] {
-  let n = 0;
-  return spans.map((p) => (p.kind === "positional" ? `?${++n}` : p.name));
-}
-
-/** A value typed for `:name` or `?`, as SQL. */
-export function literal(value: string, driver: DriverKind): string {
-  const v = value.trim();
-  if (/^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(v) || /^(null|true|false)$/i.test(v) || v.startsWith("'")) {
-    return v;
-  }
-  const escaped = driver === "mysql" ? value.replaceAll("\\", "\\\\") : value;
-  // Transact-SQL's N'...' keeps text outside the database's code page.
-  const prefix = driver === "sqlserver" ? "N" : "";
-  return `${prefix}'${escaped.replaceAll("'", "''")}'`;
-}
-
-/** `sql` with its placeholders (offsets relative to `sql`) replaced by `values`. */
-export function substitute(
-  sql: string,
-  spans: ParameterSpan[],
-  values: Record<string, string>,
-  driver: DriverKind,
-): string {
-  const keys = parameterKeys(spans);
-  let out = "";
-  let pos = 0;
-  spans.forEach((p, i) => {
-    const value = values[keys[i]!] ?? "";
-    out += sql.slice(pos, p.start) + (p.kind === "variable" ? value : literal(value, driver));
-    pos = p.end;
-  });
-  return out + sql.slice(pos);
-}
+export { literal, parameterKeys, substitute } from "./literals";
 
 /** `${name}` in a client command's text, replaced as typed; unknown names stay. */
 export function expandVariables(text: string, values: Record<string, string>): string {

@@ -151,6 +151,11 @@ export function ResultPanel({ result, sort, onHeaderClick, headerHint, source, e
   return (
     <>
       {bar}
+      {cache.error && (
+        <div className="notice error small" role="alert">
+          {t("Rows could not be read: {message}", { message: cache.error })}
+        </div>
+      )}
       {chart && toolbar && <div className="edit-bar">{toolbar}</div>}
       {chart ? (
         <ChartView
