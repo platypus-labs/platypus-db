@@ -898,6 +898,41 @@ impl Dialect {
         }
     }
 
+    /// About how many rows `table` has, by [`Dialect::row_estimate_sql`]; `None` when
+    /// unknown, or when there is no such table. A PostgreSQL table never analyzed has its
+    /// rows counted, up to a million.
+    ///
+    /// # Errors
+    ///
+    /// When a query fails.
+    pub async fn estimate_rows(
+        self,
+        conn: &dyn platypus_core::Connection,
+        schema: Option<&str>,
+        table: &str,
+    ) -> platypus_core::Result<Option<u64>> {
+        let sql = self.row_estimate_sql(schema, table);
+        let first = |rows: Vec<platypus_core::TextRow>| {
+            rows.into_iter()
+                .next()
+                .map(|r| r.into_iter().next().flatten())
+        };
+        let estimate = match first(platypus_core::query_text(conn, &sql).await?) {
+            // No table of that name.
+            None => return Ok(None),
+            Some(Some(n)) => Some(n),
+            Some(None) if self == Self::Postgres => {
+                let count = format!(
+                    "SELECT count(*) FROM (SELECT 1 FROM {} LIMIT 1000000) s",
+                    self.qualified(schema, table)
+                );
+                first(platypus_core::query_text(conn, &count).await?).flatten()
+            }
+            Some(None) => None,
+        };
+        Ok(estimate.and_then(|n| n.parse().ok()))
+    }
+
     /// A query for about how many rows a table has, read from the statistics where the
     /// database keeps them (SQLite counts them). Its value is NULL when unknown.
     #[must_use]
@@ -908,17 +943,14 @@ impl Dialect {
                 "SELECT NULL".to_owned()
             }
             // A table never analyzed has no statistics (`reltuples` is -1, or 0 on 0 pages
-            // before PostgreSQL 14): its rows are counted, up to a million.
-            Self::Postgres => {
-                let name = self.qualified(schema, table);
-                format!(
-                    "SELECT CASE WHEN c.reltuples > 0 OR (c.reltuples = 0 AND c.relpages > 0) \
-                     THEN c.reltuples::bigint \
-                     ELSE (SELECT count(*) FROM (SELECT 1 FROM {name} LIMIT 1000000) s) END \
-                     FROM pg_class c WHERE c.oid = to_regclass({})",
-                    self.quote_literal(&name)
-                )
-            }
+            // before PostgreSQL 14; NULL on CockroachDB): NULL, for
+            // [`Dialect::estimate_rows`] to count them.
+            Self::Postgres => format!(
+                "SELECT CASE WHEN c.reltuples > 0 OR (c.reltuples = 0 AND c.relpages > 0) \
+                 THEN c.reltuples::bigint END \
+                 FROM pg_class c WHERE c.oid = to_regclass({})",
+                self.quote_literal(&self.qualified(schema, table))
+            ),
             Self::MySql => format!(
                 "SELECT TABLE_ROWS FROM information_schema.TABLES                  WHERE TABLE_SCHEMA = {} AND TABLE_NAME = {}",
                 schema.map_or_else(|| "DATABASE()".to_owned(), |s| self.quote_literal(s)),

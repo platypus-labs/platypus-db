@@ -141,12 +141,13 @@ pub async fn estimate_rows(
 ) -> CommandResult<Option<u64>> {
     let driver = state.session(session_id)?.config.driver;
     let conn = state.live(session_id).await?;
-    let sql = if driver == DriverKind::Mongo {
-        let collection = platypus_driver_mongo::generate::collection_ref(schema.as_deref(), &table);
-        format!("{collection}.estimatedDocumentCount()")
-    } else {
-        Dialect::from(driver).row_estimate_sql(schema.as_deref(), &table)
-    };
+    if driver != DriverKind::Mongo {
+        return Ok(Dialect::from(driver)
+            .estimate_rows(conn.as_ref(), schema.as_deref(), &table)
+            .await?);
+    }
+    let collection = platypus_driver_mongo::generate::collection_ref(schema.as_deref(), &table);
+    let sql = format!("{collection}.estimatedDocumentCount()");
     let rows = platypus_core::query_text(conn.as_ref(), &sql).await?;
     Ok(rows
         .into_iter()

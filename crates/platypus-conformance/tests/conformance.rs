@@ -2391,6 +2391,10 @@ async fn estimates_table_rows() {
             if let Some(Some(n)) = rows.first().and_then(|r| r.first()) {
                 assert!(n.parse::<i64>().is_ok(), "{}: {n}", b.name);
             }
+            // No table of that name in the current schema is no estimate, not an error.
+            d.estimate_rows(conn.as_ref(), schema, "customers")
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         }
     }
 }
@@ -3912,11 +3916,11 @@ async fn qa_fixsafe_estimates_rows_of_tables_never_analyzed() {
         run(&*conn, &format!("INSERT INTO {table} VALUES (1), (2), (3)"))
             .await
             .unwrap();
-        let sql =
-            platypus_sql::Dialect::Postgres.row_estimate_sql(Some(&b.schema), "qa_fixsafe_est");
-        let batches = collect(&b, &*conn, &sql).await;
+        let estimate = platypus_sql::Dialect::Postgres
+            .estimate_rows(&*conn, Some(&b.schema), "qa_fixsafe_est")
+            .await;
         run(&*conn, &format!("DROP TABLE {table}")).await.unwrap();
-        assert_eq!(cell(&batches[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
+        assert_eq!(estimate.unwrap(), Some(3), "{}", b.name);
     }
 }
 
