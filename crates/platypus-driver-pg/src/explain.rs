@@ -1,6 +1,12 @@
-//! `EXPLAIN (FORMAT JSON)` as a plan tree.
+//! `EXPLAIN (FORMAT JSON)` as a plan tree; and plans pasted or opened from a file, in JSON or
+//! as the text of a plain `EXPLAIN`.
 
-use platypus_core::{Error, Explain, ExplainFormat, FullScan, PlanNode, Result, explain_document};
+use std::cell::Cell;
+
+use platypus_core::{
+    Error, Explain, ExplainFormat, FullScan, PlanNode, Result, explain_document, plain_plan,
+    plan_from_text, step_figures,
+};
 use serde_json::{Map, Value};
 
 use crate::PgConnection;
@@ -41,13 +47,133 @@ pub async fn cockroach(conn: &PgConnection, sql: &str, analyze: bool) -> Result<
         "EXPLAIN"
     };
     let plan = explain_document(conn, &format!("{prefix} {sql}"), analyze).await?;
-    let mut root = platypus_core::plan_from_text(&plan, |line| {
+    let root = cockroach_tree(&plan);
+    Ok(Explain::new(ExplainFormat::Text, plan, root, analyze))
+}
+
+fn cockroach_tree(plan: &str) -> PlanNode {
+    let mut root = plan_from_text(plan, |line| {
         let at = line.find('•')?;
         let operation = line[at + '•'.len_utf8()..].trim().to_owned();
         Some((line[..at].chars().count(), operation))
     });
     cockroach_figures(&mut root);
-    Ok(Explain::new(ExplainFormat::Text, plan, root, analyze))
+    root
+}
+
+/// A plan pasted or opened from a file: the document of `EXPLAIN (FORMAT JSON)`, the text
+/// of a plain `EXPLAIN` as psql or the server's log prints it, or CockroachDB's tree.
+///
+/// # Errors
+/// When the text is none of these.
+pub fn read_plan(document: &str) -> Result<Explain> {
+    let plan = plain_plan(document);
+    let start = plan.trim_start();
+    if start.starts_with('[') || start.starts_with('{') {
+        // One statement's plan, without the list around it.
+        let list = if start.starts_with('{') {
+            format!("[{plan}]")
+        } else {
+            plan.clone()
+        };
+        let root = parse(&list)?;
+        return Ok(Explain::read(ExplainFormat::Json, plan, root));
+    }
+    let root = if plan.contains('•') {
+        cockroach_tree(&plan)
+    } else {
+        text_plan(&plan)?
+    };
+    Ok(Explain::read(ExplainFormat::Text, plan, root))
+}
+
+/// The text of `EXPLAIN [ANALYZE]`: the first line is the top step, the others `->  step`,
+/// nested by indentation, with their properties (`Filter: …`) below them.
+fn text_plan(plan: &str) -> Result<PlanNode> {
+    let first = Cell::new(true);
+    let mut root = plan_from_text(plan, |line| {
+        let at = line.find(|c: char| !c.is_whitespace())?;
+        let rest = &line[at..];
+        let step = match rest.strip_prefix("->") {
+            Some(step) => step.trim(),
+            None if first.get() => rest.trim(),
+            None => return None,
+        };
+        first.set(false);
+        Some((at, step.to_owned()))
+    });
+    if first.get() {
+        return Err(Error::Other("no plan in the text".to_owned()));
+    }
+    text_step(&mut root);
+    // The statement's times end the plan, after the deepest step's properties.
+    let mut whole = Vec::new();
+    take_statement_times(&mut root, &mut whole);
+    root.properties.extend(whole);
+    Ok(root)
+}
+
+/// The figures, operation and target of a step read as text, and of its children.
+fn text_step(node: &mut PlanNode) {
+    let text = std::mem::take(&mut node.operation);
+    let (description, figures) = step_figures(&text);
+    let cut = [" using ", " on "]
+        .iter()
+        .filter_map(|p| description.find(p))
+        .min();
+    let (operation, detail) = match cut {
+        Some(at) => (&description[..at], Some(description[at + 1..].to_owned())),
+        None => (description, None),
+    };
+    node.operation = operation.to_owned();
+    node.detail = detail;
+    node.cost = figures.cost;
+    node.rows = figures.rows;
+    node.actual_ms = figures.actual_ms;
+    node.actual_rows = figures.actual_rows;
+    node.loops = figures.loops;
+    node.full_scan = text_full_scan(node);
+    for child in &mut node.children {
+        text_step(child);
+    }
+}
+
+/// As [`full_scan`], from the properties of a step read as text.
+fn text_full_scan(node: &PlanNode) -> Option<FullScan> {
+    if !node.operation.ends_with("Seq Scan") {
+        return None;
+    }
+    let property = |key: &str| {
+        node.properties
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    };
+    let table = node.detail.as_deref()?.strip_prefix("on ")?;
+    Some(FullScan {
+        table: table.split_whitespace().next()?.to_owned(),
+        filter: property("Filter")?.to_owned(),
+        rows_read: node.actual_rows.map(|kept| {
+            let removed = property("Rows Removed by Filter").and_then(|r| r.parse().ok());
+            (kept + removed.unwrap_or(0.0)) * node.loops.unwrap_or(1.0)
+        }),
+    })
+}
+
+/// Moves `Planning Time`, `Execution Time` and the like from the steps to `out`.
+fn take_statement_times(node: &mut PlanNode, out: &mut Vec<(String, String)>) {
+    let (whole, own): (Vec<_>, Vec<_>) = std::mem::take(&mut node.properties)
+        .into_iter()
+        .partition(|(k, _)| {
+            ["Planning", "Execution", "JIT", "Trigger"]
+                .iter()
+                .any(|p| k.starts_with(p))
+        });
+    node.properties = own;
+    out.extend(whole);
+    for child in &mut node.children {
+        take_statement_times(child, out);
+    }
 }
 
 /// The table and the row counts of a CockroachDB step, from its detail lines.
@@ -163,6 +289,76 @@ fn text(v: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TEXT: &str = " Hash Join  (cost=1.09..2.19 rows=4 width=40) (actual time=0.040..0.045 rows=4 loops=1)
+   Hash Cond: (o.customer_id = c.id)
+   ->  Seq Scan on orders o  (cost=0.00..1.06 rows=6 width=12) (actual time=0.008..0.009 rows=5 loops=1)
+         Filter: (status = 'paid'::text)
+         Rows Removed by Filter: 20000
+   ->  Hash  (cost=1.04..1.04 rows=4 width=36) (never executed)
+         ->  Index Scan using customers_pkey on customers c  (cost=0.15..8.17 rows=1 width=36)
+ Planning Time: 0.120 ms
+ Execution Time: 0.081 ms";
+
+    #[test]
+    fn reads_the_text_of_a_plan() {
+        let explain = read_plan(TEXT).unwrap();
+        assert_eq!(explain.format, ExplainFormat::Text);
+        assert!(explain.analyzed);
+        let root = &explain.root;
+        assert_eq!(
+            (root.operation.as_str(), root.detail.as_deref()),
+            ("Hash Join", None)
+        );
+        assert_eq!((root.cost, root.actual_ms), (Some(2.19), Some(0.045)));
+        assert_eq!(
+            root.properties,
+            [
+                ("Hash Cond".to_owned(), "(o.customer_id = c.id)".to_owned()),
+                ("Planning Time".to_owned(), "0.120 ms".to_owned()),
+                ("Execution Time".to_owned(), "0.081 ms".to_owned()),
+            ]
+        );
+        let [scan, hash] = &root.children[..] else {
+            panic!("{:?}", root.children)
+        };
+        assert_eq!(
+            (scan.operation.as_str(), scan.detail.as_deref()),
+            ("Seq Scan", Some("on orders o"))
+        );
+        let full = scan.full_scan.as_ref().unwrap();
+        assert_eq!(
+            (full.table.as_str(), full.filter.as_str(), full.rows_read),
+            ("orders", "(status = 'paid'::text)", Some(20005.0))
+        );
+        assert_eq!(explain.suggestions.len(), 1);
+        assert_eq!(hash.loops, Some(0.0));
+        let index = &hash.children[0];
+        assert_eq!(
+            (index.operation.as_str(), index.detail.as_deref()),
+            ("Index Scan", Some("using customers_pkey on customers c"))
+        );
+    }
+
+    #[test]
+    fn reads_pasted_json_and_cockroach_plans() {
+        let json = r#"{"Plan": {"Node Type": "Seq Scan", "Relation Name": "t", "Total Cost": 3}}"#;
+        let explain = read_plan(json).unwrap();
+        assert_eq!(
+            (explain.format, explain.analyzed),
+            (ExplainFormat::Json, false)
+        );
+        assert_eq!(explain.root.cost, Some(3.0));
+        let cockroach = "distribution: local\n• scan\n  estimated row count: 5\n  table: t@t_pkey";
+        let explain = read_plan(cockroach).unwrap();
+        assert_eq!(explain.root.operation, "scan");
+        assert_eq!(explain.root.detail.as_deref(), Some("t@t_pkey"));
+        // A plan without costs is still a plan.
+        let bare = read_plan("Seq Scan on t\n  Filter: (a > 1)").unwrap();
+        assert_eq!(bare.root.operation, "Seq Scan");
+        assert!(read_plan("").is_err());
+        assert!(read_plan("{ not json").is_err());
+    }
 
     #[test]
     fn reads_an_analyzed_plan() {

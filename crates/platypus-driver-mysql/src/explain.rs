@@ -3,6 +3,7 @@
 
 use platypus_core::{
     Connection, Error, Explain, ExplainFormat, FullScan, PlanNode, Result, explain_document,
+    plain_plan, step_figures,
 };
 use serde_json::{Map, Value};
 
@@ -23,6 +24,24 @@ pub async fn explain(conn: &MySqlConnection, sql: &str, analyze: bool) -> Result
         (ExplainFormat::Text, tree_plan(&plan))
     };
     Ok(Explain::new(format, plan, root, analyze))
+}
+
+/// A plan pasted or opened from a file: MySQL's tree (`EXPLAIN FORMAT=TREE` or
+/// `EXPLAIN ANALYZE`, as the client prints it) or MariaDB's JSON.
+///
+/// # Errors
+/// When the text is neither.
+pub fn read_plan(document: &str) -> Result<Explain> {
+    let plan = plain_plan(document);
+    if plan.trim_start().starts_with('{') {
+        let root = json_plan(&plan)?;
+        return Ok(Explain::read(ExplainFormat::Json, plan, root));
+    }
+    if !plan.lines().any(|l| l.trim_start().starts_with("-> ")) {
+        return Err(Error::Other("no plan in the text".to_owned()));
+    }
+    let root = tree_plan(&plan);
+    Ok(Explain::read(ExplainFormat::Text, plan, root))
 }
 
 /// Reads the `-> step  (cost=… rows=…) (actual time=…..… rows=… loops=…)` lines, nested
@@ -89,40 +108,18 @@ fn rows_read(actual: Option<f64>, loops: Option<f64>, estimate: Option<f64>) -> 
 }
 
 fn tree_step(step: &str) -> PlanNode {
-    let cut = ["(cost=", "(actual ", "(never executed)"]
-        .iter()
-        .filter_map(|p| step.find(p))
-        .min()
-        .unwrap_or(step.len());
-    let (description, figures) = step.split_at(cut);
-    let description = description.trim();
-    let mut node = match description.split_once(": ") {
+    let (description, figures) = step_figures(step);
+    match description.split_once(": ") {
         Some((operation, detail)) => PlanNode {
+            operation: operation.to_owned(),
             detail: Some(detail.to_owned()),
-            ..PlanNode::new(operation)
+            ..figures
         },
-        None => PlanNode::new(description),
-    };
-    for group in figures.split(')') {
-        let group = group.trim().trim_start_matches('(');
-        if group == "never executed" {
-            node.loops = Some(0.0);
-        }
-        let actual = group.starts_with("actual");
-        for (key, value) in group.split_whitespace().filter_map(|t| t.split_once('=')) {
-            // `time=first..last`: the time to the last row.
-            let value = value.rsplit("..").next().and_then(|v| v.parse().ok());
-            match (actual, key) {
-                (false, "cost") => node.cost = value,
-                (false, "rows") => node.rows = value,
-                (true, "time") => node.actual_ms = value,
-                (true, "rows") => node.actual_rows = value,
-                (true, "loops") => node.loops = value,
-                _ => {}
-            }
-        }
+        None => PlanNode {
+            operation: description.to_owned(),
+            ..figures
+        },
     }
-    node
 }
 
 /// Reads MariaDB's JSON plan: objects nest as steps, lists of steps (`nested_loop`,
@@ -251,6 +248,20 @@ fn single_root(mut roots: Vec<PlanNode>) -> PlanNode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_pasted_plans() {
+        let client = "+----------+\n| EXPLAIN |\n+----------+\n| -> Filter: (t.a = 1)  (cost=1.25 rows=1) (actual time=0.03..0.04 rows=1 loops=1)\n    -> Table scan on t  (cost=1.25 rows=10) (actual time=0.02..0.03 rows=10 loops=1)\n |\n+----------+";
+        let explain = read_plan(client).unwrap();
+        assert!(explain.analyzed);
+        assert_eq!(explain.root.operation, "Filter");
+        assert_eq!(explain.root.children[0].operation, "Table scan on t");
+        assert_eq!(explain.root.children[0].actual_rows, Some(10.0));
+        let mariadb = r#"{"query_block": {"select_id": 1, "table": {"table_name": "t", "access_type": "ALL", "rows": 10}}}"#;
+        let explain = read_plan(mariadb).unwrap();
+        assert_eq!(explain.format, ExplainFormat::Json);
+        assert!(read_plan("SELECT 1").is_err());
+    }
 
     #[test]
     fn reads_an_analyzed_tree() {
