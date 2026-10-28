@@ -1680,6 +1680,12 @@ const it: Record<string, string> = {
   "Variables file (.env)": "File di variabili (.env)",
   "None: the environment's variables only": "Nessuno: solo le variabili d'ambiente",
   "Any field, the password too, can read {example}: from the environment, then from this file.": "Ogni campo, anche la password, può leggere {example}: dall'ambiente, poi da questo file.",
+  "Connection pooler": "Pooler di connessioni",
+  "In transaction mode each transaction may get another server session: statements run unnamed, as PgBouncer, Supavisor and Neon's pooler need.": "In transaction mode ogni transazione può avere un'altra sessione del server: le istruzioni girano senza nome, come serve a PgBouncer, Supavisor e al pooler di Neon.",
+  "None or session mode": "Nessuno o session mode",
+  "Transaction mode (PgBouncer, Supavisor, Neon)": "Transaction mode (PgBouncer, Supavisor, Neon)",
+  "This is {service}'s pooler in transaction mode.": "Questo è il pooler di {service} in transaction mode.",
+  "Use transaction mode": "Usa la transaction mode",
 };
 
 export default it;
