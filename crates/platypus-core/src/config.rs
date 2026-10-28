@@ -465,8 +465,9 @@ impl ConnectionConfig {
                     };
                     ssl_given = true;
                 }
-                k if sqlserver && k.eq_ignore_ascii_case("database")
-                    || sqlserver && k.eq_ignore_ascii_case("databaseName") =>
+                k if sqlserver
+                    && (k.eq_ignore_ascii_case("database")
+                        || k.eq_ignore_ascii_case("databaseName")) =>
                 {
                     self.database = value.into_owned();
                 }
