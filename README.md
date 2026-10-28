@@ -206,6 +206,11 @@ and shows the ODBC drivers and data sources of the system.
 - Editable snippets (`sel` then `Tab`), query history, `.sql` files.
 - `Ctrl+\` runs into a new result tab; a terminal mode shows results as text; a script can run
   with the local `psql`, `mysql`, `sqlcmd` or `sqlite3`.
+- **Run on connections** (editor menu): the script, or the selection, runs on each connection
+  chosen (e.g. one database per customer), four at a time, with each connection's outcome;
+  the last result with rows of each comes together in a new tab, with a `connection` column.
+  Changes are asked once, then by each connection's Safety checks; read-only connections are
+  skipped.
 - A **linter** marks unknown columns, joins without a condition and `SELECT *` on production;
   comments are spell checked.
 - **Saved scripts**: `.sql` files per project in the Scripts panel, with folders, drag to move,

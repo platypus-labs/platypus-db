@@ -222,7 +222,7 @@ della griglia leggono le colonne per indice dal backend.
 **Area:** `apps/desktop/src/editor/`, `platypus-sql` (formatter, parser), `apps/desktop/src/scripts/`
 **Dipende da:** 0.2, 0.5
 
-**Stato: P1 e P3 completate, P2 in parte** (da fare: esecuzione su più connessioni). Il formatter lavora sui token (`platypus-sql/src/format.rs`): cambia solo spazi e maiuscole delle parole chiave, e lascia com'è il corpo di funzioni, procedure e trigger. Le opzioni sono il case delle parole chiave e l'indentazione. I comandi dell'editor sono azioni dello scope `editor`. L'autocomplete dei JOIN usa le FK del catalogo (`Connection::catalog_foreign_keys`). Parametri (`:id`, `?`) e variabili (`${nome}`) passano dal dialog dei valori e dal pannello Variabili, sostituiti prima dell'esecuzione; i comandi client (`@set`, `@echo`, `@include`, `@export`) sono righe che iniziano con `@` all'inizio di uno statement e non arrivano al database. Gli script salvati sono file `.sql` in `scripts/<progetto>` nella cartella dati, con i link alle connessioni in `.links.json`. Il linter usa i fatti di `platypus_sql::lint` e il catalogo dell'autocomplete; l'esecuzione con `psql`, `mysql` o `sqlite3` usa le impostazioni della sessione e il suo tunnel SSH, e Cancel lo interrompe.
+**Stato: completato.** Esecuzione su più connessioni: `editor/MultiRunDialog.tsx` apre una sessione per connessione col flusso delle schede (`workbench().openSession`, in autocommit anche in produzione), passa i controlli di Sicurezza di ogni connessione (`guards/check`), legge ogni riga dei risultati e copia l'ultimo con righe di ognuna in un DuckDB in memoria (come "Query with SQL"); una scheda nuova li unisce con `UNION ALL BY NAME` e la colonna della connessione (`editor/multiRun.ts`). Il formatter lavora sui token (`platypus-sql/src/format.rs`): cambia solo spazi e maiuscole delle parole chiave, e lascia com'è il corpo di funzioni, procedure e trigger. Le opzioni sono il case delle parole chiave e l'indentazione. I comandi dell'editor sono azioni dello scope `editor`. L'autocomplete dei JOIN usa le FK del catalogo (`Connection::catalog_foreign_keys`). Parametri (`:id`, `?`) e variabili (`${nome}`) passano dal dialog dei valori e dal pannello Variabili, sostituiti prima dell'esecuzione; i comandi client (`@set`, `@echo`, `@include`, `@export`) sono righe che iniziano con `@` all'inizio di uno statement e non arrivano al database. Gli script salvati sono file `.sql` in `scripts/<progetto>` nella cartella dati, con i link alle connessioni in `.links.json`. Il linter usa i fatti di `platypus_sql::lint` e il catalogo dell'autocomplete; l'esecuzione con `psql`, `mysql` o `sqlite3` usa le impostazioni della sessione e il suo tunnel SSH, e Cancel lo interrompe.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
@@ -241,7 +241,7 @@ della griglia leggono le colonne per indice dal backend.
 | ✅ Esecuzione dello statement in un nuovo tab di risultati (Ctrl+\\) | P2 | D |
 | ✅ Controllo ortografico di commenti e stringhe | P3 | D |
 | ✅ Linter SQL: colonna inesistente, `SELECT *` in produzione, JOIN senza condizione | P3 | N |
-| 🆕 **Esecuzione su più connessioni**: lo stesso script su N connessioni scelte (es. un database per cliente), risultati uniti con una colonna della connessione ed esito per connessione | P2 | D |
+| ✅ **Esecuzione su più connessioni**: lo stesso script su N connessioni scelte (es. un database per cliente), risultati uniti con una colonna della connessione ed esito per connessione | P2 | D |
 
 ---
 
