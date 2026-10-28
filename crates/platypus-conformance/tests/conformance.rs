@@ -3819,9 +3819,7 @@ async fn migrates_tables_between_databases() {
             assert_eq!(done.rows, 4, "{pair}");
             // Only MySQL sources have the view.
             let same = sd == td && sd == Dialect::MySql;
-            // MySQL before 8.0.16 ignores the CHECK: there is none to copy.
-            let checked = !mysql_before(&*source, MYSQL_CHECKS);
-            check_migrated(to, &*target, &pair, &done.skipped, same, checked).await;
+            check_migrated(to, &*source, &*target, &pair, &done.skipped, same).await;
             let _ = run(&*target, &format!("DROP VIEW {tview}")).await;
             drop_tables(&*target, td, &to.schema, &tables).await;
             let copied = td.qualified(Some(&to.schema), "conf_mig_parent_id_seq");
@@ -3834,15 +3832,14 @@ async fn migrates_tables_between_databases() {
 }
 
 /// What [`migrates_tables_between_databases`] expects of the copy in `to`; `same` says whether
-/// both databases are of one kind, which copies the view, `checked` whether the source kept
-/// the CHECK.
+/// both databases are of one kind, which copies the view.
 async fn check_migrated(
     to: &Backend,
+    source: &dyn Connection,
     target: &dyn Connection,
     pair: &str,
     skipped: &[String],
     same: bool,
-    checked: bool,
 ) {
     use platypus_sql::Dialect;
 
@@ -3897,8 +3894,9 @@ async fn check_migrated(
     ] {
         assert!(run(target, &sql).await.is_err(), "{pair}: {what}");
     }
-    // MySQL before 8.0.16 parses a CHECK and ignores it.
-    if checked && !files && !mysql_before(target, MYSQL_CHECKS) {
+    // MySQL before 8.0.16 parses a CHECK and ignores it: on either side there is none.
+    let checked = !mysql_before(source, MYSQL_CHECKS) && !mysql_before(target, MYSQL_CHECKS);
+    if checked && !files {
         let sql = format!("INSERT INTO {tparent} (name, code, qty) VALUES ('e', 'z', -1)");
         assert!(run(target, &sql).await.is_err(), "{pair}: check");
     }

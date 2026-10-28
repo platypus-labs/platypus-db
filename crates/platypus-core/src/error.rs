@@ -45,45 +45,19 @@ impl Error {
     /// reason that depends on the version says which. Cancels, closed connections, missing
     /// drivers and messages that name the version already stay as they are.
     #[must_use]
-    pub fn with_server(self, server: &crate::ServerInfo) -> Self {
+    pub fn with_server(mut self, server: &crate::ServerInfo) -> Self {
         let version = server
             .version_number()
             .map_or_else(|| server.version.trim().to_owned(), |v| v.to_string());
-        if version.is_empty() {
-            return self;
-        }
-        let tag = |message: &mut String| {
-            if !message.contains(&version) {
-                *message = format!("{message} ({} {version})", server.product);
-            }
+        let message = match &mut self {
+            Self::Database(db) => &mut db.message,
+            Self::Unsupported(m) | Self::Other(m) | Self::Decode { message: m, .. } => m,
+            _ => return self,
         };
-        match self {
-            Self::Database(mut db) => {
-                tag(&mut db.message);
-                Self::Database(db)
-            }
-            Self::Unsupported(mut m) => {
-                tag(&mut m);
-                Self::Unsupported(m)
-            }
-            Self::Other(mut m) => {
-                tag(&mut m);
-                Self::Other(m)
-            }
-            Self::Decode {
-                column,
-                db_type,
-                mut message,
-            } => {
-                tag(&mut message);
-                Self::Decode {
-                    column,
-                    db_type,
-                    message,
-                }
-            }
-            other => other,
+        if !version.is_empty() && !message.contains(&version) {
+            *message = format!("{message} ({} {version})", server.product);
         }
+        self
     }
 }
 

@@ -1224,7 +1224,7 @@ fn mysql_default(value: &str, data_type: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::mysql_default;
+    use super::*;
 
     #[test]
     fn mysql_defaults_take_parentheses_only_when_needed() {
@@ -1239,8 +1239,6 @@ mod tests {
         assert_eq!(mysql_default("('new')", "varchar(20)"), "'new'");
         assert_eq!(mysql_default("(1) + (2)", "int"), "((1) + (2))");
     }
-
-    use super::*;
 
     #[test]
     fn foreign_keys_point_at_the_target_schema() {
