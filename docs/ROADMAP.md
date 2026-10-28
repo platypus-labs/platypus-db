@@ -530,9 +530,11 @@ solo i lock coinvolti in un'attesa.
 
 ---
 
-### Gruppo K — Shell dell'applicazione ed ergonomia — ✅ P1 fatti, P2 in parte
+### Gruppo K — Shell dell'applicazione ed ergonomia — ✅ P1 e P2 fatti
 
-**Stato: P1 completati, P2 in parte** (da fare: import ed export dei temi) (rotella sui tab, command palette con ricerca fuzzy su azioni,
+**Stato: P1 e P2 completati** (import ed export dei temi come file JSON in Impostazioni →
+Temi, con anteprima, elenco di ciò che il file salta e un tema importato chiaro, scuro o che
+segue il sistema) (rotella sui tab, command palette con ricerca fuzzy su azioni,
 connessioni, tabelle e query recenti, riapertura del tab chiuso, pagina Impostazioni con
 sezioni, scorciatoie personalizzabili, barra degli strumenti configurabile).
 Fatta anche la **nuova grafica**: temi Platypus Dark e Light, font Inter e JetBrains Mono
@@ -590,7 +592,7 @@ gap della colonna, avvisi, azioni a destra con la principale per ultima) e i tok
 | ✅ Notifica di sistema alla fine di una query lunga, quando la finestra non è in primo piano | P2 | D |
 | ✅ Zoom dell'interfaccia e dimensione del font di editor e griglia (Ctrl+= / Ctrl+-) | P2 | D |
 | 🆕 Tab staccato in una finestra separata (secondo monitor) | P3 | D |
-| 🆕 **Import ed export dei temi** come file JSON (colori dell'app e dell'editor, chiaro e scuro), con anteprima prima di applicarli; primo passo verso i mod | P2 | N |
+| ✅ **Import ed export dei temi** come file JSON (colori dell'app e dell'editor, chiaro e scuro), con anteprima prima di applicarli; primo passo verso i mod | P2 | N |
 | 🆕 **Database di esempio** nella schermata di benvenuto: un clic apre un SQLite o DuckDB incluso, con dati realistici, tabelle collegate da FK e qualche script salvato, per provare l'app senza un server | P3 | N |
 | 🆕 Altre lingue dell'interfaccia (spagnolo, tedesco, francese, portoghese, cinese), con le stringhe di `i18n.ts` aperte ai contributi | P3 | D |
 
