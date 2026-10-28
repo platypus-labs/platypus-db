@@ -1,4 +1,4 @@
-// QA3 MCP protocol: platypus-mcp (what the Agents page registers) driven over stdio as an
+// QA3 MCP protocol: `platypus-db --mcp` (what the Agents page registers) driven over stdio as an
 // MCP client would, while the app is open on the same profile and SQLite file. Checks the
 // handshake, tools/list and its input schemas, every tool with valid input, invalid and
 // missing arguments, an unknown tool and method, concurrent requests, stdout carrying only
@@ -6,7 +6,7 @@
 //
 // BUG QA3-MCP-04: a line that is not JSON gets no answer. JSON-RPC 2.0 wants a Parse error
 // (-32700, id null); the client waits for nothing and cannot tell its request was lost.
-// BUG QA3-MCP-05: an unknown command-line argument (`platypus-mcp --bogus`) is taken as
+// BUG QA3-MCP-05: an unknown command-line argument (`--mcp --bogus`) is taken as
 // "serve": the server starts and waits on stdin instead of printing the usage and exiting
 // with an error, so a mistyped agent config looks like a hung server.
 import assert from "node:assert/strict";
@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { mcpExe, noMcp, sqliteToml, startClient, startRaw } from "../qa3-mcp-client.mjs";
+import { mcpArgs, mcpExe, noMcp, sqliteToml, startClient, startRaw } from "../qa3-mcp-client.mjs";
 
 export const skip = noMcp;
 
@@ -178,15 +178,15 @@ export default async function (_page, { dir }) {
   }
 
   // Asking the version prints it and exits; a mistyped option is an error.
-  const version = spawnSync(mcpExe, ["--version"], { encoding: "utf8", input: "", timeout: 15_000 });
+  const version = spawnSync(mcpExe, [...mcpArgs, "--version"], { encoding: "utf8", input: "", timeout: 15_000 });
   assert.equal(version.status, 0);
-  assert.match(version.stdout, /^platypus-mcp \d+\.\d+\.\d+/);
+  assert.match(version.stdout, /^platypus-db --mcp \d+\.\d+\.\d+/);
   const bogus = startRaw(dir, { args: ["--bogus"] });
   const exited = await Promise.race([bogus.exited, new Promise((r) => setTimeout(() => r(null), 5_000))]);
   bogus.kill();
   if (exited === null || exited.code === 0 || !/bogus|usage|unknown/i.test(bogus.stderr.join(""))) {
     problems.push(
-      `QA3-MCP-05: \`platypus-mcp --bogus\` should exit with an error naming the option; exit ${JSON.stringify(exited)}, stderr ${JSON.stringify(bogus.stderr.join(""))}`,
+      `QA3-MCP-05: \`platypus-db --mcp --bogus\` should exit with an error naming the option; exit ${JSON.stringify(exited)}, stderr ${JSON.stringify(bogus.stderr.join(""))}`,
     );
   }
   assert.deepEqual(problems, []);

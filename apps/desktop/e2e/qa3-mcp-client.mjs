@@ -1,15 +1,15 @@
 // A raw MCP client for the qa3-mcp scenarios: starts the MCP server the Agents page
-// registers (platypus-mcp next to the app) on a profile folder and keeps every line it
+// registers (the app with `--mcp`) on a profile folder and keeps every line it
 // writes, so scenarios can check the protocol itself: malformed input, notifications,
 // concurrent requests, stdout cleanliness, the exit code when stdin closes.
 import { spawn } from "node:child_process";
-import { mcpExe, noMcp } from "./mcp.mjs";
+import { mcpArgs, mcpExe, noMcp } from "./mcp.mjs";
 
-export { mcpExe, noMcp };
+export { mcpArgs, mcpExe, noMcp };
 
-/** Starts the server on the profile `dir` (not initialized). */
-export function startRaw(dir, { exe = mcpExe, args = [], env = {} } = {}) {
-  const child = spawn(exe, args, {
+/** Starts the server on the profile `dir` (not initialized). Without `exe`, `args` follow `--mcp`. */
+export function startRaw(dir, { exe, args = [], env = {} } = {}) {
+  const child = spawn(exe ?? mcpExe, exe ? args : [...mcpArgs, ...args], {
     env: { ...process.env, ...env, PLATYPUS_DATA_DIR: dir },
     stdio: ["pipe", "pipe", "pipe"],
   });
