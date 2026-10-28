@@ -817,7 +817,9 @@ impl ConnectionStore {
                 "connection name is required".to_owned(),
             ));
         }
-        if !connection.driver.is_embedded() {
+        // A host from the environment (`${env:DB_HOST}`) is checked once it is read, when
+        // the connection opens.
+        if !connection.driver.is_embedded() && !connection.host.contains("${") {
             connection
                 .config(None)
                 .check_host()
@@ -1102,6 +1104,19 @@ mod tests {
         assert!(projects.iter().all(|p| p.connections == [shared.id]));
         assert_eq!(projects[0].initials, "CR");
         assert_eq!(projects[1].initials, "IN");
+    }
+
+    #[test]
+    fn a_host_from_the_environment_is_saved_as_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        let mut from_env = sample();
+        from_env.host = "${env:DB_HOST}".to_owned();
+        s.save(from_env.clone(), PasswordUpdate::Keep).unwrap();
+        assert_eq!(s.get(from_env.id).unwrap().host, "${env:DB_HOST}");
+        let mut login = sample();
+        login.host = "root:secret@db".to_owned();
+        assert!(s.save(login, PasswordUpdate::Keep).is_err());
     }
 
     #[test]

@@ -354,7 +354,9 @@ pub async fn test_connection(
             })?,
         },
     };
-    let config = state.with_store(|s| Ok(config_of(s, &connection, secret, &ssh)))?;
+    let config = state
+        .with_store(|s| Ok(config_of(s, &connection, secret, &ssh)))?
+        .with_env()?;
     if !config.driver.is_embedded() {
         config.check_host()?;
     }
@@ -422,7 +424,9 @@ pub async fn open_session(
         && saved.password_command.is_none()
         && !saved.pgpass;
     let production = saved.connection_type == Some(ConnectionType::Prod) && side != Some(true);
-    let mut config = state.with_store(|s| Ok(config_of(s, &saved, secret, &SshSecrets::new())))?;
+    let mut config = state
+        .with_store(|s| Ok(config_of(s, &saved, secret, &SshSecrets::new())))?
+        .with_env()?;
     let label = match &database {
         Some(database) => format!("{} · {database}", saved.name),
         None => saved.name.clone(),
