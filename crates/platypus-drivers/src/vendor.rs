@@ -46,6 +46,9 @@ pub struct VendorPackage {
     pub archives: Vec<Archive>,
     /// The library, relative to the package's folder.
     pub library: String,
+    /// Keeps only the library: the archives also hold what building against it takes
+    /// (headers, import libraries), which the app does not use.
+    pub library_only: bool,
     /// Registers an ODBC driver with the system, as administrator; `None` for a library
     /// the app loads itself.
     pub register: Option<Program>,
@@ -129,6 +132,7 @@ fn oracle() -> Option<VendorPackage> {
             .to_owned(),
         archives: vec![archive],
         library: format!("instantclient_23_26/{library}"),
+        library_only: false,
         register: None,
         unregister: None,
     })
@@ -153,6 +157,7 @@ fn db2() -> Option<VendorPackage> {
             26_859_193,
         )],
         library: "clidriver/bin/db2app64.dll".to_owned(),
+        library_only: false,
         register: Some(program("clidriver/bin/db2cli.exe", &["install", "-setup"])),
         unregister: Some(program(
             "clidriver/bin/db2cli.exe",
@@ -212,6 +217,7 @@ fn duckdb() -> Option<VendorPackage> {
             size,
         )],
         library: library.to_owned(),
+        library_only: true,
         register: None,
         unregister: None,
     })
@@ -280,11 +286,15 @@ pub async fn install_vendor(
         license: package.license.clone(),
         library: PathBuf::from(&package.library),
     };
+    let library_only = package.library_only;
     tokio::task::spawn_blocking(move || {
         let result = downloaded
             .iter()
             .try_for_each(|(bytes, unpack)| unpack(bytes, &tmp))
             .and_then(|()| {
+                if library_only {
+                    keep_only(&tmp, &record.library)?;
+                }
                 if tmp.join(&record.library).is_file() {
                     crate::install::place(&tmp, &target, record)
                 } else {
@@ -299,6 +309,27 @@ pub async fn install_vendor(
     })
     .await
     .map_err(|e| DriverError::Format(e.to_string()))?
+}
+
+/// Removes from `dir` everything but `library` (the folder at the top that holds it).
+fn keep_only(dir: &Path, library: &Path) -> Result<(), DriverError> {
+    let Some(kept) = library.components().next() else {
+        return Ok(());
+    };
+    let kept = dir.join(kept);
+    for entry in std::fs::read_dir(dir).map_err(io_error(dir))? {
+        let path = entry.map_err(io_error(dir))?.path();
+        if path == kept {
+            continue;
+        }
+        if path.is_dir() {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        }
+        .map_err(io_error(&path))?;
+    }
+    Ok(())
 }
 
 /// `link`'s target inside `dir`, or `None` when it points outside.
@@ -548,6 +579,7 @@ mod tests {
                 })
                 .collect(),
             library: "ic/libclntsh.so".to_owned(),
+            library_only: false,
             register: register.then(|| program("ic/install.exe", &[])),
             unregister: None,
         }
@@ -674,14 +706,32 @@ mod tests {
         let url = crate::tests::serve(vec![("/libs.tar.gz", body.clone())]).await;
         let mut pkg = package(&[(&format!("{url}/libs.tar.gz"), &body)], false);
         pkg.library = "libduckdb.so".to_owned();
+        pkg.library_only = true;
         let dir = tempfile::tempdir().unwrap();
         let installed = install_vendor(dir.path(), &pkg, |_, _| {}, &CancellationToken::new())
             .await
             .unwrap();
         assert_eq!(std::fs::read(&installed.library).unwrap(), b"duck");
+        // The header is left out: only the library is kept.
+        let folder = installed.library.parent().unwrap();
+        assert!(!folder.join("duckdb.h").exists());
         assert_eq!(
             installed_vendor(dir.path(), "oracle").map(|i| i.library),
             Some(installed.library)
+        );
+    }
+
+    #[tokio::test]
+    async fn an_offline_download_says_the_download_failed() {
+        // Nothing listens there.
+        let pkg = package(&[("http://127.0.0.1:9/libs.tar.gz", b"x")], false);
+        let dir = tempfile::tempdir().unwrap();
+        let err = install_vendor(dir.path(), &pkg, |_, _| {}, &CancellationToken::new()).await;
+        assert!(matches!(&err, Err(DriverError::Download(_))), "{err:?}");
+        assert!(
+            err.unwrap_err()
+                .to_string()
+                .starts_with("the download failed")
         );
     }
 
