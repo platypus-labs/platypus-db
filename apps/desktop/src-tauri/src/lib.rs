@@ -196,6 +196,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::diagnostics::log_error,
         commands::diagnostics::save_diagnostics,
         commands::connections::list_connections,
+        commands::sample::open_sample_database,
         commands::connections::default_connection,
         commands::connections::parse_connection_url,
         commands::connections::connection_url,

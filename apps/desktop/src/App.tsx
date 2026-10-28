@@ -42,6 +42,7 @@ import { registerAddToProject } from "./projects/actions";
 import { registerMoveToFolder } from "./projects/folders";
 import { withDriver } from "./drivers/DriverPopup";
 import { ScriptsPanel } from "./scripts/ScriptsPanel";
+import { scriptsChanged } from "./scripts/scripts";
 import { ContextMenu, type MenuState } from "./components/ContextMenu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -368,6 +369,16 @@ export function App() {
     const name = path.split(/[\\/]/).pop() ?? path;
     const active = shell.current.activeProject;
     setDialog({ kind: "connection", connection: { ...connection, name, database: path }, existing: false, memberOf: active ? [active] : [], driverChosen: true });
+  }
+
+  /** The sample database: its connection saved (in the active project too), its scripts
+   *  listed, and the first one opened. */
+  async function openSample() {
+    const sample = await api.openSampleDatabase(shell.current.activeProject);
+    setWorkspace(sample.workspace);
+    scriptsChanged();
+    const sql = await api.readTextFile(sample.script);
+    workbench().openTab("query", sample.connection, { sql, filePath: sample.script });
   }
 
   /** A script dropped on the window opens in a new SQL editor of the shown tab's connection. */
@@ -1031,6 +1042,7 @@ export function App() {
             onNew={() => void newConnection()}
             onImport={() => setDialog({ kind: "import" })}
             onOpenFile={(path) => void openDroppedFile(path).catch((e: unknown) => setToast(toCommandError(e).message))}
+            onSample={openSample}
             onError={setToast}
           />
         )}

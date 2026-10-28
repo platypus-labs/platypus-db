@@ -25,6 +25,7 @@ pub mod objects;
 pub mod projects;
 pub mod query;
 pub mod querylog;
+pub mod sample;
 pub mod schema;
 pub mod scripts;
 pub mod search;

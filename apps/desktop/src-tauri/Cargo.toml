@@ -47,6 +47,7 @@ platypus-net.workspace = true
 platypus-schema.workspace = true
 platypus-sql.workspace = true
 platypus-store.workspace = true
+rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = [] }

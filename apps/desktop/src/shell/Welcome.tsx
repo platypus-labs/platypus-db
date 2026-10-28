@@ -14,6 +14,8 @@ interface Props {
   onImport: () => void;
   /** Opens a data file as a DuckDB database. */
   onOpenFile: (path: string) => void;
+  /** Opens the sample database, made at the first click. */
+  onSample: () => Promise<void>;
   onError: (message: string) => void;
 }
 
@@ -27,7 +29,7 @@ export async function pickDataFile(): Promise<string | null> {
 }
 
 /** What the workspace shows with no tab open. */
-export function Welcome({ empty, version, onNew, onImport, onOpenFile, onError }: Props) {
+export function Welcome({ empty, version, onNew, onImport, onOpenFile, onSample, onError }: Props) {
   async function pickFile() {
     const path = await pickDataFile();
     if (path !== null) onOpenFile(path);
@@ -62,6 +64,13 @@ export function Welcome({ empty, version, onNew, onImport, onOpenFile, onError }
           <span>
             <strong>{t("Open a data file")}</strong>
             <span className="muted">{t("CSV, Parquet, JSON or a spreadsheet, queried with DuckDB. You can also drop it on the window.")}</span>
+          </span>
+        </button>
+        <button type="button" className="welcome-card" onClick={() => onSample().catch((e: unknown) => onError(toCommandError(e).message))}>
+          <Icon name="database" size={18} />
+          <span>
+            <strong>{t("Try the sample database")}</strong>
+            <span className="muted">{t("A SQLite field survey of platypuses: linked tables, a view and a few saved scripts, no server needed.")}</span>
           </span>
         </button>
         <button type="button" className="welcome-card" onClick={onImport}>

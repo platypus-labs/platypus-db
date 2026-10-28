@@ -333,6 +333,9 @@ const it: Record<string, string> = {
   "CSV, Parquet, JSON or a spreadsheet, queried with DuckDB. You can also drop it on the window.": "CSV, Parquet, JSON o un foglio di calcolo, interrogati con DuckDB. Puoi anche trascinarlo sulla finestra.",
   "Import connections": "Importa le connessioni",
   "From DBeaver, DataGrip or pgAdmin.": "Da DBeaver, DataGrip o pgAdmin.",
+  "Try the sample database": "Prova il database di esempio",
+  "A SQLite field survey of platypuses: linked tables, a view and a few saved scripts, no server needed.":
+    "Un censimento di ornitorinchi in SQLite: tabelle collegate, una vista e qualche script salvato, senza un server.",
   "OK": "OK",
   "Name": "Nome",
   "Save": "Salva",
