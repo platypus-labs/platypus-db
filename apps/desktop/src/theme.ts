@@ -5,7 +5,7 @@
  * variables are cached so the next start paints in the right colors before they load.
  */
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { defineSetting, getSetting, onSettingsChanged, setSetting } from "./settings";
+import { defineSetting, getSetting, getStored, onSettingsChanged, setSetting } from "./settings";
 import { msg } from "./i18n";
 
 /** Fired on `window` when the theme changes, for code that caches colors (the grid). */
@@ -66,6 +66,21 @@ type ExtraPalette = Record<
 >;
 
 type Palette = BasePalette & ExtraPalette;
+
+/** The colors of one variant of a theme file: any of the palette's, the rest from the
+ *  Platypus theme of the same lightness. */
+export type ThemeColors = Partial<Palette>;
+
+/** A theme imported from a file (see `themes/file.ts`): a light variant, a dark one or both. */
+export interface CustomTheme {
+  name: string;
+  light?: ThemeColors;
+  dark?: ThemeColors;
+}
+
+/** The theme setting's value for the imported theme, kept under `CUSTOM_THEME_KEY`. */
+export const CUSTOM = "custom";
+export const CUSTOM_THEME_KEY = "appearance.custom_theme";
 
 interface Preset {
   label: string;
@@ -393,7 +408,10 @@ export const PRESETS = {
 } satisfies Record<string, Preset>;
 
 export type PresetName = keyof typeof PRESETS;
-export type ThemeName = "system" | PresetName;
+export type ThemeName = "system" | typeof CUSTOM | PresetName;
+
+/** Every color a theme sets, as its variable is named without `--`. */
+export const PALETTE_KEYS = Object.keys(paletteOf(PRESETS.platypus_dark)) as (keyof Palette)[];
 
 const SECTION = msg("Appearance");
 
@@ -532,17 +550,76 @@ function readableOn(hex: string): string {
 const systemDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
 
 /** The preset the "System" theme stands for right now. */
-const systemPreset = (): PresetName => (systemDark() ? "platypus_dark" : "platypus_light");
+const systemPreset = (dark = systemDark()): PresetName => (dark ? "platypus_dark" : "platypus_light");
+
+/** The imported theme, if any. */
+export function customTheme(): CustomTheme | null {
+  const stored = getStored(CUSTOM_THEME_KEY);
+  if (typeof stored !== "string") return null;
+  try {
+    const theme = JSON.parse(stored) as CustomTheme;
+    return theme.light || theme.dark ? theme : null;
+  } catch {
+    return null;
+  }
+}
 
 export function themeName(): ThemeName {
   const name = getSetting(themeSetting);
+  if (name === CUSTOM) return customTheme() ? CUSTOM : "system";
   return name === "system" || name in PRESETS ? (name as ThemeName) : "system";
 }
 
-/** The variables of the current settings: the preset, then the custom colors over it. */
-function variables(): { dark: boolean; vars: Record<string, string> } {
+/** A variant of `theme` as a preset: its colors over the Platypus theme of its lightness.
+ *  With both variants, `dark` (else the system's mode) picks one. */
+export function customPreset(theme: CustomTheme, dark = systemDark()): Preset {
+  const variantDark = theme.light && theme.dark ? dark : !!theme.dark;
+  const colors = (variantDark ? theme.dark : theme.light) ?? {};
+  return { label: theme.name, dark: variantDark, colors: { ...PRESETS[systemPreset(variantDark)].colors, ...colors } };
+}
+
+/** A theme shown in place of the chosen one, before applying it. */
+let preview: CustomTheme | null = null;
+
+/** Shows `theme` without saving it; `null` goes back to the settings' theme. */
+export function previewTheme(theme: CustomTheme | null) {
+  preview = theme;
+  applyAppearance();
+}
+
+/** The preset of the theme shown: the previewed one, else the setting's. `dark` forces the
+ *  variant of themes that follow the system. */
+function shownPreset(dark?: boolean): Preset {
+  if (preview) return customPreset(preview, dark);
   const name = themeName();
-  const preset: Preset = PRESETS[name === "system" ? systemPreset() : name];
+  if (name === CUSTOM) return customPreset(customTheme()!, dark);
+  return PRESETS[name === "system" ? systemPreset(dark) : name];
+}
+
+/** The name of the theme in use, as the Settings list it (an imported one by its own). */
+export function themeLabel(): string {
+  const name = themeName();
+  if (name === "system") return "System";
+  return name === CUSTOM ? customTheme()!.name : PRESETS[name].label;
+}
+
+/** The colors of the theme in use, with the custom colors over them, as a theme file holds
+ *  them: both variants when it follows the system, else the one it has. */
+export function currentThemeColors(): CustomTheme {
+  const name = themeName();
+  const label = themeLabel();
+  const both = name === "system" || (name === CUSTOM && !!customTheme()!.light && !!customTheme()!.dark);
+  const colorsOf = (dark?: boolean) => {
+    const { vars } = variables(dark);
+    return Object.fromEntries(PALETTE_KEYS.map((k) => [k, vars[`--${k}`]!])) as ThemeColors;
+  };
+  if (both) return { name: label, light: colorsOf(false), dark: colorsOf(true) };
+  return shownPreset().dark ? { name: label, dark: colorsOf() } : { name: label, light: colorsOf() };
+}
+
+/** The variables of the current settings: the preset, then the custom colors over it. */
+function variables(dark?: boolean): { dark: boolean; vars: Record<string, string> } {
+  const preset: Preset = shownPreset(dark);
   const vars: Palette = paletteOf(preset);
   const custom = (def: typeof accentSetting) => {
     const v = getSetting(def);
@@ -629,6 +706,8 @@ export function applyAppearance() {
   if (signature === painted) return;
   painted = signature;
   paint(dark, vars);
+  // A preview is not kept for the next start.
+  if (preview) return;
   try {
     localStorage.setItem(CACHE, JSON.stringify({ dark, vars }));
   } catch {
@@ -667,7 +746,8 @@ export function startAppearance() {
   applyAppearance();
   onSettingsChanged(applyAppearance);
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-    if (themeName() === "system") applyAppearance();
+    const name = themeName();
+    if (name === "system" || name === CUSTOM || preview) applyAppearance();
   });
 }
 

@@ -5,7 +5,7 @@ import type { Project, SavedConnection } from "../api";
 import mark from "../assets/brand/platypus-mark.png";
 import { CONNECTION_TYPES } from "../connections";
 import { useSetting } from "../settings";
-import { PRESETS, cycleTheme, themeName, themeSetting, titleBarSetting } from "../theme";
+import { cycleTheme, themeLabel, themeSetting, titleBarSetting } from "../theme";
 import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
 import { useActivity } from "./activity";
@@ -143,8 +143,7 @@ function ActivityButton() {
 /** Cycles system, Platypus Light and Platypus Dark; the other themes are in the Settings. */
 function ThemeButton() {
   useSetting(themeSetting);
-  const name = themeName();
-  const label = t(name === "system" ? "System" : PRESETS[name].label);
+  const label = t(themeLabel());
   return (
     <button
       type="button"
