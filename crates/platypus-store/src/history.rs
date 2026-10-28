@@ -33,7 +33,7 @@ pub enum HistoryStatus {
 }
 
 impl HistoryStatus {
-    const fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::Ok => "ok",
             Self::Error => "error",
@@ -41,7 +41,7 @@ impl HistoryStatus {
         }
     }
 
-    fn parse(s: &str) -> Self {
+    pub(crate) fn parse(s: &str) -> Self {
         match s {
             "ok" => Self::Ok,
             "cancelled" => Self::Cancelled,
