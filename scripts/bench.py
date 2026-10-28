@@ -28,6 +28,8 @@ ROOT = Path(__file__).resolve().parent.parent
 THRESHOLDS = json.loads((ROOT / "scripts" / "bench-thresholds.json").read_text())
 # Rows each decode benchmark decodes per iteration (`ROWS` in benches/decode.rs).
 DECODE_ROWS = 100_000
+# Starts of the app timed; the median counts.
+START_RUNS = 5
 
 
 def decode():
@@ -124,11 +126,12 @@ def app_bench(exe):
             "save_password = false\n"
         )
         starts = []
-        for run in range(5):
+        for run in range(START_RUNS):
             app, ready = launch(exe, profile)
             starts.append(ready * 1000)
-            print(f"start {run + 1}: {ready * 1000:.0f} ms")
-            if run < 4:
+            print(f"start {run + 1}: {starts[-1]:.0f} ms")
+            # The last run stays open for the memory.
+            if run < START_RUNS - 1:
                 stop(app)
                 time.sleep(1)
         # Expands the connection, the first row of the navigator: it connects.

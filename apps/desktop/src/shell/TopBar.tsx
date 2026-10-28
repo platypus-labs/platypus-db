@@ -39,8 +39,9 @@ export function TopBar({ project, connection }: Props) {
   // each element that is not a control); on Linux its own handlers do (windowDrag.ts).
   const drag = !ownTitleBar ? {} : LINUX ? { [DRAG_ATTR]: true } : { "data-tauri-drag-region": true };
   const [linuxDrag] = useState(() => dragHandlers(getCurrentWindow(), (e) => console.warn("window drag", e)));
+  const barHandlers = ownTitleBar && LINUX ? linuxDrag : {};
   return (
-    <header className={`topbar${ownTitleBar ? " own-title-bar" : ""}`} {...drag} {...(ownTitleBar && LINUX ? linuxDrag : {})}>
+    <header className={`topbar${ownTitleBar ? " own-title-bar" : ""}`} {...drag} {...barHandlers}>
       <img className="topbar-mark" src={mark} alt="PlatypusDB" width={26} height={26} {...drag} />
       <button
         type="button"

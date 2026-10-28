@@ -970,14 +970,14 @@ export function Navigator(props: Props) {
 
   const { from, to } = rowWindow(step, rows.length);
   /** The row taking the Tab stop: the current one, else the first rendered. */
-  const at = current === null ? -1 : rows.findIndex((r) => r.key === current);
-  const tabStop = at >= from && at < to ? current : rows[from]?.key;
+  const currentIndex = current === null ? -1 : rows.findIndex((r) => r.key === current);
+  const tabStop = currentIndex >= from && currentIndex < to ? current : rows[from]?.key;
 
   /** The tree from the keyboard: arrows move and open or close, Enter opens, the menu key
    *  shows the row's menu, as in a file explorer. */
   function onTreeKey(e: React.KeyboardEvent<HTMLUListElement>) {
     if (!(e.target instanceof HTMLLIElement) || rows.length === 0) return;
-    const at = Math.max(0, rows.findIndex((r) => r.key === current));
+    const at = Math.max(0, currentIndex);
     const row = rows[at]!;
     // The row's own shortcuts first, e.g. Alt+Up to move a connection.
     if (row.menu && dispatchKey(row.menu.scope, row.menu.arg, e.nativeEvent, (err) => onError(toCommandError(err).message))) {

@@ -7,7 +7,7 @@
 //! they catch a query that grows quadratically, not a slow laptop. Run with
 //! `-- --nocapture` to see the timings.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use arrow_array::cast::AsArray;
@@ -190,6 +190,11 @@ async fn server_config(env: &str, default: &str, name: &str) -> Option<Connectio
     }
 }
 
+/// Tables of the large schema: `PLATYPUS_SCALE_TABLES`, else `default`.
+fn table_count(default: usize) -> usize {
+    std::env::var("PLATYPUS_SCALE_TABLES").map_or(default, |n| n.parse().unwrap())
+}
+
 /// A temporary SQLite or DuckDB file.
 fn local(kind: DriverKind, name: &'static str, file: &str) -> Target {
     let dir = tempfile::tempdir().unwrap();
@@ -199,15 +204,12 @@ fn local(kind: DriverKind, name: &'static str, file: &str) -> Target {
         name,
         config,
         schema: "main",
-        tables: TABLES,
+        tables: table_count(TABLES),
         _dir: Some(dir),
     }
 }
 
 async fn targets() -> Vec<Target> {
-    let tables = |default: usize| {
-        std::env::var("PLATYPUS_SCALE_TABLES").map_or(default, |n| n.parse().unwrap())
-    };
     let servers = [
         (
             "postgres",
@@ -245,20 +247,17 @@ async fn targets() -> Vec<Target> {
                 name,
                 config,
                 schema,
-                tables: tables(count),
+                tables: table_count(count),
                 _dir: None,
             });
         }
     }
-    let mut sqlite = local(DriverKind::Sqlite, "sqlite", "scale.db");
+    let sqlite = local(DriverKind::Sqlite, "sqlite", "scale.db");
     std::fs::File::create(&sqlite.config.database).unwrap();
-    sqlite.tables = tables(TABLES);
     all.push(sqlite);
     platypus_driver_duckdb::testing::load();
     // DuckDB creates the file; an empty one is not a database.
-    let mut duckdb = local(DriverKind::DuckDb, "duckdb", "scale.duckdb");
-    duckdb.tables = tables(TABLES);
-    all.push(duckdb);
+    all.push(local(DriverKind::DuckDb, "duckdb", "scale.duckdb"));
     all
 }
 
@@ -327,11 +326,10 @@ async fn lists_ten_thousand_tables() {
     for t in targets().await {
         let conn = t.connect().await;
         drop_scale_tables(&t, conn.as_ref()).await;
-        let mut create: Vec<String> = Vec::with_capacity(t.tables + 1);
         if t.schema == "scale_10k" {
             run(&t, conn.as_ref(), "CREATE SCHEMA scale_10k").await;
         }
-        create.extend((1..=t.tables).map(|i| t.create_table(i)));
+        let create: Vec<String> = (1..=t.tables).map(|i| t.create_table(i)).collect();
         timed(
             &t,
             &format!("create {} tables", t.tables),
@@ -396,6 +394,11 @@ async fn check_large_schema(
     checks
 }
 
+/// The file `Files` writes in `dir` for `format`.
+fn export_path(dir: &Path, format: Format) -> PathBuf {
+    dir.join(format!("export.{}", format.extension()))
+}
+
 /// The CSV, NDJSON and Parquet files of a result, written as the batches arrive.
 struct Files {
     exporters: Vec<(Format, Exporter)>,
@@ -406,7 +409,7 @@ impl Files {
         let exporters = formats
             .iter()
             .map(|&format| {
-                let path = dir.join(format!("export.{}", format.extension()));
+                let path = export_path(dir, format);
                 let options = ExportOptions {
                     format,
                     ..ExportOptions::default()
@@ -492,7 +495,7 @@ async fn streams_a_million_rows_to_files() {
         for (format, rows) in written {
             assert_eq!(rows, SERIES_ROWS as u64, "{}: {format:?}", t.name);
         }
-        let csv = std::fs::read_to_string(dir.path().join("export.csv")).unwrap();
+        let csv = std::fs::read_to_string(export_path(dir.path(), Format::Csv)).unwrap();
         assert_eq!(
             csv.lines().count(),
             SERIES_ROWS + 1,
@@ -572,7 +575,7 @@ async fn reads_and_exports_cells_of_tens_of_megabytes() {
         );
 
         let size = |format: Format| {
-            std::fs::metadata(dir.path().join(format!("export.{}", format.extension())))
+            std::fs::metadata(export_path(dir.path(), format))
                 .unwrap()
                 .len()
         };
@@ -583,7 +586,7 @@ async fn reads_and_exports_cells_of_tens_of_megabytes() {
         // Excel cuts a cell at 32,767 characters: the file stays small.
         assert!(size(Format::Xlsx) < 1 << 20, "{}: XLSX", t.name);
         assert!(size(Format::Parquet) > 0, "{}: Parquet", t.name);
-        let csv = std::fs::read_to_string(dir.path().join("export.csv")).unwrap();
+        let csv = std::fs::read_to_string(export_path(dir.path(), Format::Csv)).unwrap();
         assert!(
             csv.contains(std::str::from_utf8(text).unwrap()),
             "{}: the CSV holds the text whole",

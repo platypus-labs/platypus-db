@@ -33,8 +33,7 @@ function size(path) {
 /** When `path`, or the newest file under it, was last read or written. */
 function lastUsed(path) {
   const stat = statSync(path);
-  const own = Math.max(stat.atimeMs, stat.mtimeMs);
-  if (!stat.isDirectory()) return own;
+  if (!stat.isDirectory()) return Math.max(stat.atimeMs, stat.mtimeMs);
   return readdirSync(path).reduce((latest, name) => Math.max(latest, lastUsed(join(path, name))), stat.mtimeMs);
 }
 
