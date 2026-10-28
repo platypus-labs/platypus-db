@@ -459,6 +459,10 @@ numbers after the largest `_id`, lists of words for arrays, small documents for 
   Dracula, Solarized Light and high contrast; your own accent, background, sidebar and text
   colors, interface size, row density, corner radius and editor font size. Inter and
   JetBrains Mono are bundled, so the app looks the same everywhere and works offline.
+- **Theme files** (Settings → Themes): Export saves the theme in use, with your custom colors,
+  as JSON (`{"platypus_theme": 1, "name", "light": {…}, "dark": {…}}`, both variants for
+  System); Import previews a file's theme, lists the keys and colors it skips, and applies it
+  or goes back. An imported theme with both variants follows the system's light or dark mode.
 - **Italian or English** (Settings › Appearance › Language; System follows Windows).
   `Ctrl+=` / `Ctrl+-` / `Ctrl+0` change the interface size; the editor and the result grid
   have their own font size.
