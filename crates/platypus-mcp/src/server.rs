@@ -8,6 +8,7 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
 use rmcp::{ErrorData, Peer, RoleServer, ServerHandler, tool, tool_handler, tool_router};
 use serde::Deserialize;
+use tokio_util::sync::CancellationToken;
 
 /// What agents read first: how to use the tools.
 const INSTRUCTIONS: &str = "PlatypusDB gives access to the database connections the user saved \
@@ -204,6 +205,7 @@ impl PlatypusServer {
         &self,
         Parameters(args): Parameters<QueryArgs>,
         peer: Peer<RoleServer>,
+        cancelled: CancellationToken,
     ) -> Result<CallToolResult, ErrorData> {
         // The history trims and caps the name, and calls a client without one `agent`.
         let origin = peer
@@ -213,7 +215,8 @@ impl PlatypusServer {
         let format = args.format.unwrap_or_default();
         let result = self
             .agent
-            .run_query(&args, &origin)
+            // `notifications/cancelled` for this request cancels the statement.
+            .run_query_until(&args, &origin, cancelled.cancelled_owned())
             .await
             .map(|r| r.render(format));
         reply(result)

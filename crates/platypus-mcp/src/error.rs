@@ -40,6 +40,10 @@ pub enum AgentError {
     #[error("cancelled after {0:?}: raise timeout_seconds or narrow the query")]
     Timeout(Duration),
 
+    /// The client cancelled the request, and the statement with it.
+    #[error("cancelled by the client")]
+    Cancelled,
+
     /// The profile's files cannot be read.
     #[error("{0}")]
     Store(String),
@@ -47,7 +51,7 @@ pub enum AgentError {
 
 impl AgentError {
     /// A stable code for scripts: `not_found`, `denied`, `locked`, `invalid`, `connect`,
-    /// `database`, `timeout` or `store`.
+    /// `database`, `timeout`, `cancelled` or `store`.
     #[must_use]
     pub const fn kind(&self) -> &'static str {
         match self {
@@ -58,6 +62,7 @@ impl AgentError {
             Self::Connect { .. } => "connect",
             Self::Database(_) => "database",
             Self::Timeout(_) => "timeout",
+            Self::Cancelled => "cancelled",
             Self::Store(_) => "store",
         }
     }

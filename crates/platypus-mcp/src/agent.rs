@@ -396,6 +396,18 @@ impl Agent {
     /// records it in the query history with `origin`, the agent's name (see
     /// [`origin_name`]).
     pub async fn run_query(&self, args: &QueryArgs, origin: &str) -> Result<QueryResult> {
+        self.run_query_until(args, origin, std::future::pending())
+            .await
+    }
+
+    /// [`run_query`](Self::run_query), cancelling the statement when `stop` completes
+    /// first: the client cancelled the request.
+    pub async fn run_query_until(
+        &self,
+        args: &QueryArgs,
+        origin: &str,
+        stop: impl Future<Output = ()>,
+    ) -> Result<QueryResult> {
         let limits = Limits::new(args.max_rows, args.max_bytes, args.timeout_seconds)?;
         let (store, saved) = self.find(&args.connection)?;
         let access = saved.effective_agent_access();
@@ -411,7 +423,7 @@ impl Agent {
         let result = match checked {
             Ok(statement) => {
                 let read_only = (access == AgentAccess::ReadOnly).then_some(saved.driver);
-                self.execute(&store, &saved, statement, read_only, &limits)
+                self.execute(&store, &saved, statement, read_only, &limits, stop)
                     .await
             }
             Err(e) => Err(e),
@@ -439,14 +451,19 @@ impl Agent {
         statement: &str,
         read_only: Option<DriverKind>,
         limits: &Limits,
+        stop: impl Future<Output = ()>,
     ) -> Result<query::Outcome> {
         let lease = self.lease(store, saved).await?;
-        match query::run(lease.conn(), statement, read_only, limits).await {
+        match query::run_until(lease.conn(), statement, read_only, limits, stop).await {
             Ok(outcome) => Ok(outcome),
             Err(RunError::Database(e)) => Err(lease.error(&e)),
             Err(RunError::Timeout) => {
                 lease.discard();
                 Err(AgentError::Timeout(limits.timeout))
+            }
+            Err(RunError::Cancelled) => {
+                lease.discard();
+                Err(AgentError::Cancelled)
             }
         }
     }
@@ -470,7 +487,9 @@ impl Agent {
                 HistoryStatus::Ok,
                 None,
             ),
-            Err(AgentError::Timeout(_)) => (None, HistoryStatus::Cancelled, None),
+            Err(AgentError::Timeout(_) | AgentError::Cancelled) => {
+                (None, HistoryStatus::Cancelled, None)
+            }
             Err(e) => (None, HistoryStatus::Error, Some(e.to_string())),
         };
         let entry = NewHistoryEntry {
