@@ -394,6 +394,24 @@ impl Connection for Logged {
         self.track(LogKind::Metadata, text, self.inner.search_metadata(needle))
             .await
     }
+
+    // Read every few seconds while the tab is open: not logged.
+    async fn server_sessions(&self) -> Result<Vec<platypus_core::ServerSession>> {
+        self.inner.server_sessions().await
+    }
+
+    async fn server_locks(&self) -> Result<Vec<platypus_core::ServerLock>> {
+        self.inner.server_locks().await
+    }
+
+    async fn end_server_session(&self, id: &str, how: platypus_core::EndSession) -> Result<()> {
+        let text = match how {
+            platypus_core::EndSession::Cancel => format!("cancel the statement of session {id}"),
+            platypus_core::EndSession::Terminate => format!("end session {id}"),
+        };
+        self.track(LogKind::Query, text, self.inner.end_server_session(id, how))
+            .await
+    }
 }
 
 /// Rows passing through to the reader, counted into the log entry batch by batch.

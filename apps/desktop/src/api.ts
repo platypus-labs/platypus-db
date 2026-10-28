@@ -173,7 +173,38 @@ export interface Capabilities {
   object_ddl: boolean;
   multiple_databases: boolean;
   metadata_search: boolean;
+  server_sessions: boolean;
+  cancel_server_queries: boolean;
 }
+
+/** A session of the server; see `platypus_core::ServerSession`. */
+export interface ServerSession {
+  id: string;
+  user: string | null;
+  database: string | null;
+  client: string | null;
+  application: string | null;
+  state: string | null;
+  started: string | null;
+  query: string | null;
+  /** Seconds the statement has run; `null` when none runs. */
+  query_seconds: number | null;
+  wait: string | null;
+  blocked_by: string[];
+  /** The session that asked (the navigator's). */
+  current: boolean;
+}
+
+/** A lock held or waited for; see `platypus_core::ServerLock`. */
+export interface ServerLock {
+  session: string;
+  kind: string;
+  object: string | null;
+  mode: string;
+  granted: boolean;
+}
+
+export type EndSession = "cancel" | "terminate";
 
 /** One step of a query plan; see `platypus_core::PlanNode`. Rows and times are per loop. */
 export interface PlanNode {
@@ -1622,6 +1653,10 @@ export const api = {
   clearQueryLog: () => invoke<void>("clear_query_log"),
   /** With `analyze` the statement runs, and its changes are rolled back. */
   explain: (sessionId: number, sql: string, analyze: boolean) => invoke<Explain>("explain", { sessionId, sql, analyze }),
+  serverSessions: (sessionId: number) => invoke<ServerSession[]>("server_sessions", { sessionId }),
+  serverLocks: (sessionId: number) => invoke<ServerLock[]>("server_locks", { sessionId }),
+  endServerSession: (sessionId: number, id: string, how: EndSession) =>
+    invoke<void>("end_server_session", { sessionId, id, how }),
   objectDdl: (sessionId: number, object: ObjectTarget) => invoke<string>("object_ddl", { sessionId, object }),
   objectProperties: (sessionId: number, object: ObjectTarget) =>
     invoke<Property[]>("object_properties", { sessionId, object }),

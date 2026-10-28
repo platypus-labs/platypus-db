@@ -335,6 +335,22 @@ then run the SELECT or open it in the editor.
 - Statements slower than a threshold (5 s by default) are marked in the status bar and listed
   apart.
 
+### Server activity
+
+- **Server activity…** on a PostgreSQL, MySQL, MariaDB or SQL Server connection lists the
+  server's sessions: user, database, client, application, state, the statement running and
+  for how long, what it waits for and which sessions it waits for. It refreshes every few
+  seconds (or on demand), filters by any field, and opens a statement in the editor.
+- **Cancel statement** stops the statement of another session and keeps the session
+  (PostgreSQL, MySQL, MariaDB); **End session** closes it, rolling back its transaction.
+  Both ask first, are refused on read-only connections, and are written to the query
+  manager. The app's own session cannot be ended from there.
+- **Locks** shows the waiting chains (who blocks whom, a deadlock cycle once) and the locks
+  held or waited for, with their table where the server tells it. Seeing other users'
+  sessions and locks needs the server's rights: `pg_read_all_stats` or superuser,
+  MySQL's `PROCESS` and `SELECT` on `performance_schema`, SQL Server's
+  `VIEW SERVER STATE`.
+
 ### Import, export and transfer
 
 - **Export** to CSV, JSON, NDJSON, Parquet, Excel, SQL `INSERT`, Markdown, HTML or XML,

@@ -1327,6 +1327,17 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       run: ({ connection }) => workbench().openTab("search", connection.id, { mode: "metadata" }),
     }),
     registerAction({
+      id: "connection.server_activity",
+      scope: "navigator.connection",
+      title: "Server activity…",
+      group: "open",
+      order: 25,
+      // The databases whose drivers list sessions and locks (not CockroachDB nor
+      // YugabyteDB, which the tab tells once connected).
+      when: ({ connection }) => ["postgres", "mysql", "sqlserver"].includes(connection.driver),
+      run: ({ connection }) => workbench().openTab("admin", connection.id, {}),
+    }),
+    registerAction({
       id: "connection.export_docs",
       scope: "navigator.connection",
       title: "Export documentation…",

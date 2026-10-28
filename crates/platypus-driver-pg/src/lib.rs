@@ -6,6 +6,7 @@
 //!
 //! TLS follows libpq `sslmode` semantics, see [`tls`].
 
+mod admin;
 #[doc(hidden)]
 pub mod columns;
 mod cursor;
@@ -410,6 +411,21 @@ impl Connection for PgConnection {
         meta::search_metadata(self, needle).await
     }
 
+    async fn server_sessions(&self) -> Result<Vec<platypus_core::ServerSession>> {
+        self.server_admin()?;
+        admin::sessions(self).await
+    }
+
+    async fn server_locks(&self) -> Result<Vec<platypus_core::ServerLock>> {
+        self.server_admin()?;
+        admin::locks(self).await
+    }
+
+    async fn end_server_session(&self, id: &str, how: platypus_core::EndSession) -> Result<()> {
+        self.server_admin()?;
+        admin::end(self, id, how).await
+    }
+
     fn transaction(&self) -> TransactionState {
         self.tx.state()
     }
@@ -437,11 +453,28 @@ impl Connection for PgConnection {
             object_ddl: true,
             metadata_search: true,
             multiple_databases: true,
+            server_sessions: self.has_server_admin(),
+            cancel_server_queries: self.has_server_admin(),
         }
     }
 }
 
 impl PgConnection {
+    /// Whether the server lists its sessions and locks as PostgreSQL does: CockroachDB has
+    /// no `pg_blocking_pids` nor `pg_terminate_backend`, YugabyteDB keeps its locks
+    /// elsewhere.
+    fn has_server_admin(&self) -> bool {
+        !is_cockroach(self) && !is_yugabyte(self)
+    }
+
+    fn server_admin(&self) -> Result<()> {
+        if self.has_server_admin() {
+            Ok(())
+        } else {
+            Err(platypus_core::unsupported("server sessions"))
+        }
+    }
+
     /// Whether `standard_conforming_strings` is on: backslashes in plain literals are
     /// themselves. Called with the session's lock held.
     async fn conforming_strings(&self) -> bool {

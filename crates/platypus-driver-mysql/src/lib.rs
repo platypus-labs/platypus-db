@@ -4,6 +4,7 @@
 //! batches through a one-slot channel, so rows are read from the socket only as fast as
 //! they are consumed. Queries are cancelled with `KILL QUERY` from a second connection.
 
+mod admin;
 #[doc(hidden)]
 pub mod columns;
 mod explain;
@@ -342,6 +343,18 @@ impl Connection for MySqlConnection {
         meta::search_metadata(self, needle).await
     }
 
+    async fn server_sessions(&self) -> Result<Vec<platypus_core::ServerSession>> {
+        admin::sessions(self).await
+    }
+
+    async fn server_locks(&self) -> Result<Vec<platypus_core::ServerLock>> {
+        admin::locks(self).await
+    }
+
+    async fn end_server_session(&self, id: &str, how: platypus_core::EndSession) -> Result<()> {
+        admin::end(self, id, how).await
+    }
+
     fn transaction(&self) -> TransactionState {
         self.tx.state()
     }
@@ -378,6 +391,8 @@ impl Connection for MySqlConnection {
             explain: true,
             object_ddl: true,
             metadata_search: true,
+            server_sessions: true,
+            cancel_server_queries: true,
             ..Default::default()
         }
     }
