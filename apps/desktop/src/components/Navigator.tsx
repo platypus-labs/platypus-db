@@ -1,4 +1,4 @@
-import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   api,
   type Capabilities,
@@ -14,6 +14,7 @@ import {
 import { defineSetting, getSetting, useSetting } from "../settings";
 import { dropCached, loadCached, pruneCached, saveCached } from "../navigator/diskCache";
 import { FilterDialog } from "../navigator/FilterDialog";
+import { ROW_HEIGHT, rowWindow, scrollToRow, stepAt } from "../navigator/rowWindow";
 import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
 import { onNavigatorRefresh, onRevealConnection } from "../navigatorEvents";
 import { toggleSidebar, toggleSidebarTitle } from "../shell/sidebar";
@@ -159,7 +160,8 @@ interface Row {
   detail?: string;
   /** A compact number at the end of the row, muted; it gives way before the label does. */
   count?: string;
-  title?: string;
+  /** The tooltip; a function builds it for the rows rendered only. */
+  title?: string | (() => string);
   /** Has a local note or tags: a discreet mark after the label. */
   marked?: boolean;
   muted?: boolean;
@@ -218,6 +220,8 @@ export function Navigator(props: Props) {
   /** The connection or folder being dragged, and the row and zone it would land in. */
   const dragging = useRef<DragItem | null>(null);
   const [dropAt, setDropAt] = useState<{ key: string; zone: DropZone } | null>(null);
+  /** The step of rows the tree is scrolled to: see rowWindow.ts. */
+  const [step, setStep] = useState(0);
 
   // Forget what was loaded through a connection whose target changed.
   useEffect(() => {
@@ -811,8 +815,8 @@ export function Navigator(props: Props) {
         label: object.name,
         icon,
         count: rowCount(object),
-        // The full name first: a long one is cut in the row.
-        title: [object.name, title, sizeDetail(object)].filter(Boolean).join("\n"),
+        // The full name first: a long one is cut in the row. Built for the rows rendered only.
+        title: () => [object.name, title, sizeDetail(object)].filter(Boolean).join("\n"),
         marked,
         expanded: open,
         onToggle: () => toggle(okey, () => void loadDetails(c, db, schema.name, object.name)),
@@ -955,6 +959,20 @@ export function Navigator(props: Props) {
     [],
   );
 
+  /** A row reached from the keyboard outside the rendered ones: focused once rendered. */
+  const focusing = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (focusing.current === null) return;
+    const index = rows.findIndex((r) => r.key === focusing.current);
+    focusing.current = null;
+    treeRef.current?.querySelector<HTMLElement>(`[data-row="${index}"]`)?.focus();
+  });
+
+  const { from, to } = rowWindow(step, rows.length);
+  /** The row taking the Tab stop: the current one, else the first rendered. */
+  const at = current === null ? -1 : rows.findIndex((r) => r.key === current);
+  const tabStop = at >= from && at < to ? current : rows[from]?.key;
+
   /** The tree from the keyboard: arrows move and open or close, Enter opens, the menu key
    *  shows the row's menu, as in a file explorer. */
   function onTreeKey(e: React.KeyboardEvent<HTMLUListElement>) {
@@ -971,8 +989,16 @@ export function Navigator(props: Props) {
       anchor.current = rows[index]!.key;
       setSelected(new Set([rows[index]!.key]));
       const li = e.currentTarget.querySelector<HTMLElement>(`[data-row="${index}"]`);
-      li?.focus();
-      li?.scrollIntoView({ block: "nearest" });
+      if (li) {
+        li.focus();
+        li.scrollIntoView({ block: "nearest" });
+        return;
+      }
+      // Outside the rendered rows (End in a long tree): scrolled to, focused once rendered.
+      const tree = e.currentTarget;
+      tree.scrollTop = scrollToRow(index, tree.scrollTop, tree.clientHeight);
+      setStep(stepAt(tree.scrollTop));
+      focusing.current = rows[index]!.key;
     };
     const parent = () => {
       for (let i = at - 1; i >= 0; i--) if (rows[i]!.depth < row.depth) return i;
@@ -1089,9 +1115,10 @@ export function Navigator(props: Props) {
         aria-label={t("Connections")}
         aria-multiselectable="true"
         onKeyDown={onTreeKey}
+        onScroll={(e) => setStep(stepAt(e.currentTarget.scrollTop))}
         // Below the rows: the list's menu.
         onContextMenu={(e) => {
-          if (e.defaultPrevented || (e.target as HTMLElement).closest("li")) return;
+          if (e.defaultPrevented || (e.target as HTMLElement).closest(".tree-row")) return;
           e.preventDefault();
           setMenu({ x: e.clientX, y: e.clientY, target: { scope: "navigator.list", arg: { project } } });
         }}
@@ -1110,16 +1137,17 @@ export function Navigator(props: Props) {
           arrange(listDrop());
         }}
       >
-        {rows.map((row, i) => (
+        {/* The rows not rendered keep their place, so the scrollbar spans the whole tree. */}
+        {from > 0 && <li role="none" style={{ height: from * ROW_HEIGHT }} />}
+        {rows.slice(from, to).map((row, i) => (
           <li
             key={row.key}
-            data-row={i}
+            data-row={from + i}
             role="treeitem"
             aria-expanded={row.expanded}
             aria-level={row.depth + 1}
             aria-selected={selected.has(row.key)}
-            // One row takes the Tab stop: the current one, else the first.
-            tabIndex={row.key === (current ?? rows[0]?.key) ? 0 : -1}
+            tabIndex={row.key === tabStop ? 0 : -1}
             className={`tree-row${row.muted ? " muted" : ""}${row.status === "error" ? " failed" : ""}${selected.has(row.key) ? " selected" : ""}${dropAt?.key === row.key ? ` drop-${dropAt.zone}` : ""}`}
             style={{ paddingLeft: 6 + row.depth * 16 }}
             draggable={!!row.item || !!row.sql}
@@ -1145,7 +1173,8 @@ export function Navigator(props: Props) {
             title={
               row.status === "error"
                 ? (row.detail ?? row.label)
-                : (row.title ?? (row.detail ? `${row.label}  ${row.detail}` : undefined))
+                : ((typeof row.title === "function" ? row.title() : row.title) ??
+                  (row.detail ? `${row.label}  ${row.detail}` : undefined))
             }
             onClick={(e) => select(row.key, e)}
             onDoubleClick={(e) => {
@@ -1194,6 +1223,7 @@ export function Navigator(props: Props) {
             )}
           </li>
         ))}
+        {to < rows.length && <li role="none" style={{ height: (rows.length - to) * ROW_HEIGHT }} />}
       </ul>
       {menu && (
         <ContextMenu menu={menu} onClose={closeMenu} onError={(e) => onError(toCommandError(e).message)} />
