@@ -17,6 +17,10 @@ use platypus_driver_mongo::MongoDriver;
 const DEFAULT_URL: &str = "mongodb://platypus:platypus@localhost:57017/platypus?authSource=admin";
 
 async fn connect() -> Option<Box<dyn Connection>> {
+    // Another database alone (`PLATYPUS_TEST_ONLY`): not this one.
+    if std::env::var("PLATYPUS_TEST_ONLY").is_ok_and(|only| only != "mongo") {
+        return None;
+    }
     let (url, required) = match std::env::var("PLATYPUS_TEST_MONGO") {
         Ok(url) => (url, true),
         Err(_) => (DEFAULT_URL.to_owned(), false),

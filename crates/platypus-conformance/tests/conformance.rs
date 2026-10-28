@@ -6,7 +6,8 @@
 //! `PLATYPUS_TEST_MYSQL_URL`, `PLATYPUS_TEST_MARIADB_URL`, `PLATYPUS_TEST_MSSQL_URL`,
 //! `PLATYPUS_TEST_CLICKHOUSE_URL` or `PLATYPUS_TEST_LIBSQL_URL` makes that database required
 //! (CI does); otherwise an unreachable default database is skipped. SQLite and DuckDB always
-//! run, on temporary files.
+//! run, on temporary files. `PLATYPUS_TEST_ONLY` (a backend's name, e.g. `mysql`) leaves out
+//! the others.
 
 use std::time::Duration;
 
@@ -525,8 +526,13 @@ async fn pg_wire_backends() -> Vec<Backend> {
 }
 
 async fn backends() -> Vec<Backend> {
+    // `PLATYPUS_TEST_ONLY=mysql` runs on that database alone, as the run on each older
+    // version does (scripts/conformance-versions.mjs).
+    let only = std::env::var("PLATYPUS_TEST_ONLY").ok();
+    let wanted = |name: &str| only.as_deref().is_none_or(|o| o == name);
     let mut all = Vec::new();
-    if let Some(config) = server_config(
+    if !wanted("postgres") {
+    } else if let Some(config) = server_config(
         "PLATYPUS_TEST_PG_URL",
         "postgres://platypus:platypus@localhost:55432/platypus?sslmode=disable",
         "PostgreSQL",
@@ -560,6 +566,9 @@ async fn backends() -> Vec<Backend> {
             "mysql://platypus:platypus@localhost:53307/platypus",
         ),
     ] {
+        if !wanted(name) {
+            continue;
+        }
         if let Some(config) = server_config(env, default, product).await {
             all.push(Backend {
                 name,
@@ -573,12 +582,24 @@ async fn backends() -> Vec<Backend> {
             });
         }
     }
-    all.extend(pg_wire_backends().await);
-    all.extend(mssql_backend().await);
-    all.extend(clickhouse_backend().await);
-    all.push(sqlite_backend().await);
-    all.push(duckdb_backend().await);
-    all.extend(libsql_backend().await);
+    if only.is_none() {
+        all.extend(pg_wire_backends().await);
+    }
+    if wanted("sqlserver") {
+        all.extend(mssql_backend().await);
+    }
+    if wanted("clickhouse") {
+        all.extend(clickhouse_backend().await);
+    }
+    if wanted("sqlite") {
+        all.push(sqlite_backend().await);
+    }
+    if wanted("duckdb") {
+        all.push(duckdb_backend().await);
+    }
+    if wanted("libsql") {
+        all.extend(libsql_backend().await);
+    }
     all
 }
 
