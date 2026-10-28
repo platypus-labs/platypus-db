@@ -3,7 +3,7 @@
 
 use platypus_core::{
     Connection, EndSession, Error, ExecOptions, Result, ServerLock, ServerSession, TextRowExt,
-    query_text, session_number,
+    query_locks, query_text, session_number,
 };
 
 /// The user sessions, the one asking first. An idle session shows its last statement, as
@@ -61,17 +61,7 @@ pub(crate) async fn sessions(conn: &dyn Connection) -> Result<Vec<ServerSession>
 }
 
 pub(crate) async fn locks(conn: &dyn Connection) -> Result<Vec<ServerLock>> {
-    Ok(query_text(conn, LOCKS)
-        .await?
-        .into_iter()
-        .map(|r| ServerLock {
-            session: r.text(0),
-            kind: r.text(1),
-            object: r.opt(2),
-            mode: r.text(3),
-            granted: r.flag(4),
-        })
-        .collect())
+    query_locks(conn, LOCKS).await
 }
 
 /// `KILL`: SQL Server cannot cancel the statement of another session and keep it.

@@ -39,7 +39,6 @@ export async function lockFlow(page, db, name) {
     await page.waitFor(`${rowWith("e2e_holder")} === undefined`, 30_000);
     assert.match(await holder.exited, /ERROR/);
     assert.equal(sh(db, "SELECT v FROM e2e_admin_lock WHERE id = 1"), "0", "the holder's update was rolled back");
-
   } finally {
     holder.child.kill();
     waiter.child.kill();

@@ -4,18 +4,16 @@
 // the app end its own. Skipped when the server is not running.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { adminButton, adminTab, confirmDanger, showSection } from "../admin.mjs";
 
 export { setup, skip } from "./dev-postgres.mjs";
 
 const NAME = "E2E PG";
 const TABLE = "demo.e2e_admin_lock";
-const adminTab = `[...document.querySelectorAll('.admin-tab')].find(t => t.style.display !== 'none')`;
 const row = `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(NAME)})`;
 /** The row of the session whose application is `app`. */
 const sessionRow = (app) =>
   `[...(${adminTab}?.querySelectorAll('tr.admin-session') ?? [])].find(r => r.children[4]?.textContent === ${JSON.stringify(app)})`;
-const button = (label) =>
-  `[...${adminTab}.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)})`;
 
 function psql(sql) {
   const r = spawnSync("docker", ["exec", "-i", "platypus-db-postgres-1", "psql", "-v", "ON_ERROR_STOP=1", "-q", "-U", "platypus", "-d", "platypus"], {
@@ -35,12 +33,6 @@ function background(app, sql) {
   const exited = new Promise((resolve) => child.on("exit", () => resolve(stderr)));
   child.stdin.end(`SET application_name = '${app}';\n${sql}\n`);
   return { child, exited };
-}
-
-async function confirm(page) {
-  await page.waitFor(`document.querySelector('.modal.confirm') !== null`);
-  await page.eval(`document.querySelector('.modal.confirm button.danger').click()`);
-  await page.waitFor(`document.querySelector('.modal.confirm') === null`);
 }
 
 export default async function (page) {
@@ -89,7 +81,7 @@ export default async function (page) {
     await page.waitFor(`${adminTab}.querySelectorAll('tr.admin-session').length > 2`);
 
     // Locks: the chain from the holder to the waiter, and the lock waited for.
-    await page.eval(`[...${adminTab}.querySelectorAll('.object-sections button')].find(b => b.textContent.startsWith('Locks')).click()`);
+    await showSection(page, "Locks");
     await page.waitFor(`${adminTab}.querySelector('.admin-chains') !== null`, 10_000);
     assert.equal(await page.eval(`${adminTab}.querySelector('.admin-chains > li > button .admin-blocker').textContent`), holderId);
     assert.equal(await page.eval(`${adminTab}.querySelector('.admin-chains > li > ul .admin-waiter').textContent`), waiterId);
@@ -106,14 +98,14 @@ export default async function (page) {
 
     // Cancelling the waiting statement ends it with PostgreSQL's cancel error.
     assert.match(await page.eval(`${adminTab}.querySelector('.admin-statement').textContent`), /SET v = 2/);
-    await page.eval(`${button("Cancel statement")}.click()`);
-    await confirm(page);
+    await page.eval(`${adminButton("Cancel statement")}.click()`);
+    await confirmDanger(page);
     assert.match(await waiter.exited, /canceling statement due to user request/);
     await page.waitFor(`${sessionRow("e2e-waiter")} === undefined`, 20_000);
 
     // Asking to end a session and cancelling the question leaves it.
     await page.eval(`${sessionRow("e2e-holder")}.click()`);
-    await page.eval(`${button("End session")}.click()`);
+    await page.eval(`${adminButton("End session")}.click()`);
     await page.waitFor(`document.querySelector('.modal.confirm') !== null`);
     assert.match(await page.eval(`document.querySelector('.modal.confirm p').textContent`), new RegExp(`End session ${holderId} of platypus`));
     await page.eval(`[...document.querySelectorAll('.modal.confirm button')].find(b => b.textContent === 'Cancel').click()`);
@@ -121,15 +113,15 @@ export default async function (page) {
     assert.notEqual(await page.eval(`${sessionRow("e2e-holder")}`), undefined);
 
     // Ending it closes the holder's psql and rolls back its update.
-    await page.eval(`${button("End session")}.click()`);
-    await confirm(page);
+    await page.eval(`${adminButton("End session")}.click()`);
+    await confirmDanger(page);
     assert.match(await holder.exited, /terminat/);
     await page.waitFor(`${sessionRow("e2e-holder")} === undefined`, 20_000);
 
     // The app's own session cannot be ended, nor its statement cancelled.
     await page.eval(`${adminTab}.querySelector('tr.admin-session.current').click()`);
-    assert.equal(await page.eval(`${button("End session")}.disabled`), true);
-    assert.equal(await page.eval(`${button("Cancel statement")}.disabled`), true);
+    assert.equal(await page.eval(`${adminButton("End session")}.disabled`), true);
+    assert.equal(await page.eval(`${adminButton("Cancel statement")}.disabled`), true);
 
     // Manual refresh: the list stays as it was until asked.
     await page.eval(`(() => {

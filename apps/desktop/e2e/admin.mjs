@@ -12,6 +12,10 @@ export const rowWith = (text) =>
 export const adminButton = (label) =>
   `[...${adminTab}.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)})`;
 
+/** Shows the `label` section of the admin tab: `Sessions` or `Locks`. */
+export const showSection = (page, label) =>
+  page.eval(`[...${adminTab}.querySelectorAll('.object-sections button')].find(b => b.textContent.startsWith(${JSON.stringify(label)})).click()`);
+
 /** Connects `name` and opens Server activity on it. */
 export async function openAdmin(page, name, db) {
   await expand(page, name, db);
@@ -48,7 +52,7 @@ export async function waitBlocked(page, text, blocker) {
 
 /** Opens the Locks view and checks the chain from `holder` to `waiter`. */
 export async function checkChain(page, holder, waiter) {
-  await page.eval(`[...${adminTab}.querySelectorAll('.object-sections button')].find(b => b.textContent.startsWith('Locks')).click()`);
+  await showSection(page, "Locks");
   await page.waitFor(`${adminTab}.querySelector('.admin-chains') !== null`, 15_000);
   assert.equal(await page.eval(`${adminTab}.querySelector('.admin-chains > li > button .admin-blocker').textContent`), holder);
   assert.equal(await page.eval(`${adminTab}.querySelector('.admin-chains > li > ul .admin-waiter').textContent`), waiter);
@@ -56,6 +60,6 @@ export async function checkChain(page, holder, waiter) {
     `[...${adminTab}.querySelectorAll('table.admin-table tbody tr.blocked')].some(r => r.children[0].textContent === ${JSON.stringify(waiter)})`,
     15_000,
   );
-  await page.eval(`[...${adminTab}.querySelectorAll('.object-sections button')].find(b => b.textContent.startsWith('Sessions')).click()`);
+  await showSection(page, "Sessions");
   await page.waitFor(`${adminTab}.querySelector('input[type=search]') !== null`);
 }

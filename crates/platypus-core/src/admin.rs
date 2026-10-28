@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, Result};
+use crate::{Connection, Error, Result, TextRowExt, query_text};
 
 /// A session of the server, with the statement it runs, if any.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -68,6 +68,24 @@ pub enum EndSession {
     Cancel,
     /// Closes the session, rolling back its transaction.
     Terminate,
+}
+
+/// The locks `sql` reads, one a row: session id, kind, object, mode, and whether held.
+///
+/// # Errors
+/// When the query fails.
+pub async fn query_locks(conn: &dyn Connection, sql: &str) -> Result<Vec<ServerLock>> {
+    Ok(query_text(conn, sql)
+        .await?
+        .into_iter()
+        .map(|r| ServerLock {
+            session: r.text(0),
+            kind: r.text(1),
+            object: r.opt(2),
+            mode: r.text(3),
+            granted: r.flag(4),
+        })
+        .collect())
 }
 
 /// `id` as the number every server's ids are, refused otherwise: it goes into the SQL.

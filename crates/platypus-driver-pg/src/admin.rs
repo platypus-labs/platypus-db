@@ -1,8 +1,8 @@
 //! The sessions of the server and their locks, from `pg_stat_activity` and `pg_locks`.
 
 use platypus_core::{
-    Connection, EndSession, Error, Result, ServerLock, ServerSession, TextRowExt, query_text,
-    session_number,
+    Connection, EndSession, Error, Result, ServerLock, ServerSession, TextRowExt, query_locks,
+    query_text, session_number,
 };
 
 /// The client sessions, the one asking first; background workers left out.
@@ -50,17 +50,7 @@ pub(crate) async fn sessions(conn: &dyn Connection) -> Result<Vec<ServerSession>
 }
 
 pub(crate) async fn locks(conn: &dyn Connection) -> Result<Vec<ServerLock>> {
-    Ok(query_text(conn, LOCKS)
-        .await?
-        .into_iter()
-        .map(|r| ServerLock {
-            session: r.text(0),
-            kind: r.text(1),
-            object: r.opt(2),
-            mode: r.text(3),
-            granted: r.flag(4),
-        })
-        .collect())
+    query_locks(conn, LOCKS).await
 }
 
 pub(crate) async fn end(conn: &dyn Connection, id: &str, how: EndSession) -> Result<()> {

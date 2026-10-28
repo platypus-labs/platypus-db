@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 
 use platypus_core::{
-    Connection, EndSession, ExecOptions, Result, ServerLock, ServerSession, TextRowExt, query_text,
-    session_number,
+    Connection, EndSession, ExecOptions, Result, ServerLock, ServerSession, TextRowExt,
+    query_locks, query_text, session_number,
 };
 
 /// The client sessions, the one asking first; the server's own threads left out.
@@ -94,17 +94,7 @@ pub(crate) async fn locks(conn: &dyn Connection) -> Result<Vec<ServerLock>> {
     } else {
         MYSQL_LOCKS
     };
-    let mut locks: Vec<ServerLock> = query_text(conn, sql)
-        .await?
-        .into_iter()
-        .map(|r| ServerLock {
-            session: r.text(0),
-            kind: r.text(1),
-            object: r.opt(2),
-            mode: r.text(3),
-            granted: r.flag(4),
-        })
-        .collect();
+    let mut locks = query_locks(conn, sql).await?;
     locks.sort_by(|a, b| (a.granted, &a.session).cmp(&(b.granted, &b.session)));
     Ok(locks)
 }
