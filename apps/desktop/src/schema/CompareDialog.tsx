@@ -31,6 +31,9 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
     // The schemas of a target left before they came must not replace the new target's.
     let current = true;
     setSchemas([]);
+    // Nor its schema or error stay: Compare waits for a schema of this target.
+    setTargetSchema("");
+    setError(null);
     setSame(false);
     workbench()
       .sideSession(target, targetDatabase)

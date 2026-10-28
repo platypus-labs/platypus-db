@@ -1,7 +1,8 @@
 // Regression guard (passes): Compare with… when the target connection picked does not answer:
 // the connection error is shown (as a notice of the window), Schema stays empty, Compare is
 // disabled and Close is not; picking a working connection again lists its schemas, with no
-// error left in the dialog, and compares ("nothing to change").
+// error left in the dialog, and compares ("nothing to change"); leaving it for the one down
+// again, its schema does not stay and Compare is disabled.
 import assert from "node:assert/strict";
 import { DST, ENGINES, SRC, buttonIn, compareDialog, needsEngines, openPath, rowMenu, saveEngines } from "../qa3-schema.mjs";
 
@@ -50,6 +51,11 @@ export default async function (page) {
     await page.eval(`${buttonIn(compareDialog, "Compare")}.click()`);
     await page.waitFor(`${compareDialog}.querySelector('.notice') !== null`, 20_000);
     assert.match(await page.eval(`${compareDialog}.querySelector('.notice').textContent`), /nothing to change/);
+    // Leaving a target whose schema was chosen: the schema does not stay, Compare waits.
+    await pickConnection(page, "QA3 PG down");
+    await page.waitFor(`${compareDialog}.querySelector('.notice.error')?.textContent.includes('QA3 PG down') ?? false`, 30_000);
+    assert.equal(await page.eval(`${compareDialog}.querySelectorAll('select')[1].value`), "", "the other connection's schema stays");
+    assert.equal(await page.eval(`${buttonIn(compareDialog, "Compare")}.disabled`), true, "Compare enabled on a schema never chosen");
   } finally {
     ENGINES.pg.drop(SRC);
     ENGINES.pg.drop(DST);
