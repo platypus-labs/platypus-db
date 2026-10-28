@@ -25,6 +25,8 @@ const READ_ERRORS = [
   msg("The theme has neither light nor dark colors."),
 ];
 
+const JSON_FILTERS = [{ name: "JSON", extensions: ["json"] }];
+
 const isColor = (value: string) => CSS.supports("color", value);
 
 function variantsLabel(theme: CustomTheme): string {
@@ -47,7 +49,7 @@ export function ThemesPanel() {
   const exportTheme = async () => {
     try {
       const theme = currentThemeColors();
-      const path = await save({ filters: [{ name: "JSON", extensions: ["json"] }], defaultPath: themeFileName(theme) });
+      const path = await save({ filters: JSON_FILTERS, defaultPath: themeFileName(theme) });
       if (!path) return;
       await api.writeTextFile(path, themeFileText(theme));
       setError(null);
@@ -59,7 +61,7 @@ export function ThemesPanel() {
 
   const importTheme = async () => {
     try {
-      const path = await open({ multiple: false, filters: [{ name: "JSON", extensions: ["json"] }] });
+      const path = await open({ multiple: false, filters: JSON_FILTERS });
       if (typeof path !== "string") return;
       const result = readThemeFile(await api.readTextFile(path), PALETTE_KEYS, isColor);
       setError(null);

@@ -608,7 +608,8 @@ export function themeLabel(): string {
 export function currentThemeColors(): CustomTheme {
   const name = themeName();
   const label = themeLabel();
-  const both = name === "system" || (name === CUSTOM && !!customTheme()!.light && !!customTheme()!.dark);
+  const custom = name === CUSTOM ? customTheme()! : null;
+  const both = name === "system" || (!!custom?.light && !!custom.dark);
   const colorsOf = (dark?: boolean) => {
     const { vars } = variables(dark);
     return Object.fromEntries(PALETTE_KEYS.map((k) => [k, vars[`--${k}`]!])) as ThemeColors;

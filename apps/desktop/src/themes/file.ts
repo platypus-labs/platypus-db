@@ -27,6 +27,9 @@ export interface ReadTheme {
   skipped: string[];
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 /** The file's text for `theme`, with the format's version first. */
 export function themeFileText(theme: ThemeVariants): string {
   const doc: Record<string, unknown> = { platypus_theme: THEME_FORMAT, name: theme.name };
@@ -56,8 +59,8 @@ export function readThemeFile(text: string, keys: readonly string[], isColor: (v
   } catch {
     throw new Error("The file is not JSON.");
   }
-  if (typeof doc !== "object" || doc === null || Array.isArray(doc)) throw new Error("The file is not a theme.");
-  const root = doc as Record<string, unknown>;
+  if (!isRecord(doc)) throw new Error("The file is not a theme.");
+  const root = doc;
   const version = root.platypus_theme;
   if (typeof version !== "number") throw new Error("The file is not a PlatypusDB theme: platypus_theme is missing.");
   if (version > THEME_FORMAT) throw new Error("The theme is from a newer PlatypusDB.");
@@ -69,12 +72,12 @@ export function readThemeFile(text: string, keys: readonly string[], isColor: (v
   const variant = (which: "light" | "dark") => {
     const value = root[which];
     if (value === undefined) return undefined;
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    if (!isRecord(value)) {
       skipped.push(`${which}: not a set of colors`);
       return undefined;
     }
     const colors: Record<string, string> = {};
-    for (const [key, color] of Object.entries(value as Record<string, unknown>)) {
+    for (const [key, color] of Object.entries(value)) {
       if (!known.has(key)) skipped.push(`${which}.${key}: unknown`);
       else if (typeof color !== "string" || !isColor(color.trim())) skipped.push(`${which}.${key}: not a color`);
       else colors[key] = color.trim();
