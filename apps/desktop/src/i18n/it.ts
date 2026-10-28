@@ -1622,6 +1622,9 @@ const it: Record<string, string> = {
   "By hand, in {path}": "A mano, in {path}",
   "Setup": "Configurazione",
   "Security": "Sicurezza",
+  "Proposed by {agent}: review it, then run it yourself.": "Proposto da {agent}: controllalo, poi eseguilo tu.",
+  "{agent} proposed SQL on a connection that is no longer saved.": "{agent} ha proposto SQL su una connessione che non è più salvata.",
+  "Proposed by {agent}": "Proposto da {agent}",
 };
 
 export default it;

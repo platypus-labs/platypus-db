@@ -8,8 +8,8 @@ use std::path::PathBuf;
 use platypus_mcp::AgentBlocker;
 use platypus_mcp::profile::AGENT_CALLS_FILE;
 use platypus_store::{
-    AGENT_CALLS_LIMIT, AgentCall, AgentCallQuery, AgentCallStore, AgentSession, agent_calls_csv,
-    toml,
+    AGENT_CALLS_LIMIT, AgentCall, AgentCallQuery, AgentCallStore, AgentProposal, AgentSession,
+    agent_calls_csv, toml,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -282,6 +282,13 @@ pub fn agent_calls_export(app: AppHandle, mut query: AgentCallQuery) -> CommandR
     query.limit = AGENT_CALLS_LIMIT;
     query.before_id = None;
     Ok(agent_calls_csv(&agent_calls_store(&app)?.search(&query)?))
+}
+
+/// The SQL agents proposed with `propose_sql` that no window opened yet; each is handed out
+/// once.
+#[tauri::command]
+pub fn take_agent_proposals(app: AppHandle) -> CommandResult<Vec<AgentProposal>> {
+    Ok(agent_calls_store(&app)?.take_proposals()?)
 }
 
 /// Empties the call log.

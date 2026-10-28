@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::{Instant, SystemTime};
 
-use crate::{Agent, AgentError, ExplainArgs, QueryArgs, SampleArgs, origin_name};
+use crate::{Agent, AgentError, ExplainArgs, ProposeArgs, QueryArgs, SampleArgs, origin_name};
 use platypus_store::{HistoryStatus, NewAgentCall};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -16,8 +16,10 @@ use tokio_util::sync::CancellationToken;
 /// What agents read first: how to use the tools.
 const INSTRUCTIONS: &str = "PlatypusDB gives access to the database connections the user saved \
 in the PlatypusDB app. Start with list_connections, then explore with list_schemas, \
-list_objects, describe_table, get_ddl and search_objects, and query with run_query: one \
-statement per call, with a row limit, a byte limit and a timeout. Each connection has an \
+list_objects, describe_table, get_ddl and search_objects, look at a table's first rows with \
+sample_rows, query with run_query and read a statement's plan with explain: one statement per \
+call, with a row limit, a byte limit and a timeout. To hand the user SQL to review and run by \
+hand (a change the access does not allow, a long script), use propose_sql. Each connection has an \
 agent access set by the user: read_only connections run only statements that change nothing, \
 inside a read-only transaction; read_write connections also accept changes, which commit at \
 once. Production connections are always read-only. Passwords never reach you.";
@@ -338,6 +340,23 @@ impl PlatypusServer {
             .explain_until(&args, cancelled.cancelled_owned())
             .await
             .map(|r| r.render(format));
+        self.answer(call, result)
+    }
+
+    #[tool(
+        description = "Proposes SQL to the user: PlatypusDB opens it in a new editor tab on the \
+        connection (now if the app is open, else when it starts), where the user reviews, edits \
+        and runs it by hand. Nothing runs here, whatever the connection's agent access: use it \
+        for changes the user should check, or that read_only access does not allow. title names \
+        the tab."
+    )]
+    async fn propose_sql(
+        &self,
+        Parameters(args): Parameters<ProposeArgs>,
+        peer: Peer<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("propose_sql", &peer, &args);
+        let result = self.agent.propose_sql(&args, &call.agent);
         self.answer(call, result)
     }
 }

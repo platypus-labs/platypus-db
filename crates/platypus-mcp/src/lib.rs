@@ -25,8 +25,8 @@ pub mod stdio;
 
 pub use access::AgentAccess;
 pub use agent::{
-    Agent, ConnectionInfo, ExplainArgs, QueryArgs, SAMPLE_ROWS, SEARCH_RESULTS, SampleArgs,
-    origin_name,
+    Agent, ConnectionInfo, ExplainArgs, MAX_PROPOSAL_BYTES, ProposeArgs, QueryArgs, SAMPLE_ROWS,
+    SEARCH_RESULTS, SampleArgs, origin_name,
 };
 pub use connect::{AgentBlocker, agent_blocker, connect};
 pub use error::{AgentError, Result};

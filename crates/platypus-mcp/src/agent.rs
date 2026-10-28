@@ -154,6 +154,23 @@ pub struct SampleArgs {
     pub format: Option<crate::output::Format>,
 }
 
+/// The arguments of `propose_sql`.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ProposeArgs {
+    /// The connection's name, as `list_connections` shows it.
+    pub connection: String,
+    /// The SQL to open in the editor: one statement or a script.
+    pub sql: String,
+    /// The editor tab's title, e.g. what the SQL does.
+    pub title: Option<String>,
+}
+
+/// Bytes of SQL `propose_sql` takes at most.
+pub const MAX_PROPOSAL_BYTES: usize = 1024 * 1024;
+
+/// Characters of a proposal's title kept.
+const TITLE_CHARS: usize = 80;
+
 /// Rows `sample_rows` returns by default.
 pub const SAMPLE_ROWS: u64 = 20;
 
@@ -655,6 +672,44 @@ impl Agent {
             format: args.format,
         };
         self.run_query_until(&query, origin, stop).await
+    }
+
+    /// Keeps `args.sql` for PlatypusDB to open in an editor tab on the connection, where the
+    /// user reviews and runs it: nothing runs here. `origin` is the agent's name.
+    pub fn propose_sql(&self, args: &ProposeArgs, origin: &str) -> Result<String> {
+        let sql = args.sql.trim();
+        if sql.is_empty() {
+            return Err(AgentError::Invalid("there is no SQL to propose".to_owned()));
+        }
+        if sql.len() > MAX_PROPOSAL_BYTES {
+            return Err(AgentError::Invalid(format!(
+                "the SQL is longer than {MAX_PROPOSAL_BYTES} bytes"
+            )));
+        }
+        let (_, saved) = self.find(&args.connection)?;
+        let title: Option<String> = args
+            .title
+            .as_deref()
+            .map(|t| {
+                t.trim()
+                    .chars()
+                    .filter(|c| !c.is_control())
+                    .take(TITLE_CHARS)
+                    .collect()
+            })
+            .filter(|t: &String| !t.is_empty());
+        let store = self.profile.agent_calls()?;
+        store.propose(
+            &origin_name(origin),
+            &saved.id.to_string(),
+            title.as_deref(),
+            sql,
+        )?;
+        Ok(format!(
+            "Proposed on `{}`: PlatypusDB opens it in a new editor tab, now if the app is open \
+             or when it starts (within 24 hours). Nothing ran: the user reviews and runs it.",
+            saved.name
+        ))
     }
 
     /// Adds a tool call to the agents' call log; the log is best effort.

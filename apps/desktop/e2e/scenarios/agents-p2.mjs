@@ -2,7 +2,8 @@
 // call in the call log, which Settings > Agents > Activity shows by session, filters and
 // exports as CSV; Setup lists the MCP clients with their configuration file and installs
 // the server in one after a confirmation, with a backup of the file and its other content
-// kept; a file that does not parse is left alone; Security shows each connection's access.
+// kept; a file that does not parse is left alone; Security shows each connection's access;
+// SQL proposed with propose_sql opens in a new editor tab of the open app, unrun.
 // The app runs with a home folder of its own, so no real client configuration is touched.
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -252,6 +253,40 @@ async function clearLog(page) {
   assert.equal(await page.eval(`document.querySelector('[data-action="export-calls"]').disabled`), true);
 }
 
+/** An agent proposes a change on the read-only connection: the open app shows it in a new
+ *  editor tab, titled as asked, and nothing ran. */
+async function proposal(page, dir, shots) {
+  await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);
+  await page.waitFor(`document.querySelector('.modal.settings') === null`);
+  const mcp = await startMcp(dir, "e2e-agent");
+  try {
+    const r = await mcp.call("propose_sql", {
+      connection: "Shop",
+      sql: "UPDATE orders SET status = 'closed' WHERE id = 1",
+      title: "Close order 1",
+    });
+    assert.ok(!r.error && /Nothing ran/.test(r.text), r.text);
+    const empty = await mcp.call("propose_sql", { connection: "Shop", sql: "" });
+    assert.ok(empty.error, empty.text);
+  } finally {
+    mcp.close();
+  }
+  const visible = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
+  await page.waitFor(
+    `${visible}?.querySelector('.cm-content')?.textContent.includes("UPDATE orders SET status = 'closed' WHERE id = 1")`,
+    20_000,
+  );
+  assert.match(await page.eval(`${visible}.querySelector('.cm-content').textContent`), /Proposed by e2e-agent/);
+  assert.ok(
+    await page.eval(`[...document.querySelectorAll('[role="tab"]')].some(t => t.textContent.includes('Close order 1'))`),
+    "the tab has the proposed title",
+  );
+  if (shots) await page.screenshot(join(shots, "agents-proposal.png"));
+  const db = new DatabaseSync(join(dir, "p2.db"));
+  assert.equal(db.prepare("SELECT status FROM orders WHERE id = 1").get().status, "open");
+  db.close();
+}
+
 export default async function (page, { dir, shots }) {
   await agentCalls(dir);
   await openAgents(page);
@@ -259,4 +294,5 @@ export default async function (page, { dir, shots }) {
   await clients(page, dir, shots);
   await security(page);
   await clearLog(page);
+  await proposal(page, dir, shots);
 }

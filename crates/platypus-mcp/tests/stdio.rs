@@ -175,6 +175,7 @@ fn lists_tools_and_connections_without_secrets(client: &mut Client) {
         "run_query",
         "sample_rows",
         "explain",
+        "propose_sql",
     ] {
         assert!(names.contains(&tool), "{tool} missing from {names:?}");
     }
@@ -478,6 +479,49 @@ fn samples_rows_and_explains_statements() {
         "{small}"
     );
     assert_eq!(count(&dir.path().join("scratch.db")), 2);
+}
+
+/// `propose_sql` keeps the SQL for the app to open, whatever the access, and runs nothing.
+#[test]
+fn proposes_sql_for_the_app_to_open() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let mut client = initialized(dir.path());
+    let (done, error) = client.call(
+        "propose_sql",
+        &json!({ "connection": "App db", "sql": " DELETE FROM t WHERE id = 1 ", "title": "Remove Ada\n" }),
+    );
+    assert!(!error && done.contains("Nothing ran"), "{done}");
+    assert_eq!(count(&dir.path().join("app.db")), 2);
+    let (empty, error) = client.call(
+        "propose_sql",
+        &json!({ "connection": "App db", "sql": "  " }),
+    );
+    assert!(error && empty.contains("no SQL"), "{empty}");
+    let (hidden, error) = client.call(
+        "propose_sql",
+        &json!({ "connection": "Hidden", "sql": "SELECT 1" }),
+    );
+    assert!(error && hidden.contains("no connection named"), "{hidden}");
+    drop(client);
+
+    let log = rusqlite::Connection::open(dir.path().join("agent-calls.db")).unwrap();
+    let proposals: Vec<(String, String, Option<String>, String)> = log
+        .prepare("SELECT agent, connection_id, title, sql FROM proposals")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(
+        proposals,
+        [(
+            "test-agent".to_owned(),
+            "00000000-0000-4000-8000-000000000001".to_owned(),
+            Some("Remove Ada".to_owned()),
+            "DELETE FROM t WHERE id = 1".to_owned()
+        )]
+    );
 }
 
 /// `notifications/cancelled` cancels the running statement, which frees the connection.
