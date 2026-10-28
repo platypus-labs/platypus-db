@@ -5,7 +5,7 @@ Measured on 23 October 2026 with the release build of PlatypusDB 0.1.0.
 **Machine:** AMD Ryzen 7 9700X, 32 GB RAM, Windows 11 Pro, WebView2 155. Databases run
 locally in Docker (`docker/compose.yml`): PostgreSQL 17, MySQL 8.4, MariaDB 11.4.
 
-macOS and Linux have not been measured yet.
+Linux was measured on 28 October 2026 (below); macOS has not been measured yet.
 
 ## Against the MVP targets
 
@@ -43,6 +43,61 @@ the Parquet file is 45 MB, the CSV 374 MB.
 
 The GPU runs inside the WebView2 browser process (`--in-process-gpu`): one process fewer and
 about 55 MB less at rest, with the same scrolling performance as a separate GPU process.
+
+## Linux
+
+Release build of 28 October 2026 on Ubuntu 24.04 (WebKitGTK 2.52), in a 4-vCPU cloud
+container: an X server with no GPU (Xvfb, software rendering) and the dev databases running
+beside it. It shows that the app builds, starts and works on Linux; a desktop with a GPU will
+do better, and has yet to be measured.
+
+| Metric | Target | Measured |
+|---|---|---|
+| Start to interactive window | < 500 ms | 1.3–1.5 s (first paint 0.7 s) |
+| Memory at rest, 1 connection open | < 150 MB | 300 MB private (app 65 MB, web process 230 MB) |
+| Scrolling 1M rows | 60 fps, no freezes | Scrolls and loads rows as it goes, no freeze; frame rate not meaningful without a GPU |
+
+Most of the web process's memory is the software renderer's buffers: with
+`WEBKIT_DISABLE_COMPOSITING_MODE=1` the total falls to 180 MB, at no cost to the start.
+Checked by hand with a window manager (openbox): the app's own title bar moves, maximizes
+(also with a double-click, fixed for Linux), restores, minimizes and closes the window, and
+the edges resize it.
+
+`scripts/bench.py` takes these numbers (start: five runs, until the screen settles;
+memory: the private memory of the app and its WebKit processes) and the CI job `bench`
+compares them with `scripts/bench-thresholds.json`.
+
+## Scale
+
+`crates/platypus-conformance/tests/scale.rs`, against the dev databases, prints its
+timings with `cargo test -p platypus-conformance --test scale -- --nocapture`:
+
+Debug build of the tests, same container as above:
+
+| | PostgreSQL | MySQL | MariaDB | SQL Server | SQLite | DuckDB |
+|---|---|---|---|---|---|---|
+| Tables in the schema | 10,000 | 2,000 | 2,000 | 10,000 | 10,000 | 10,000 |
+| Navigator: list the objects | 0.22 s | 0.04 s ¹ | 0.09 s | 0.78 s | 0.04 s | 0.10 s |
+| Completion: every column | 0.13 s | 0.05 s | 0.05 s | 0.59 s | 0.28 s | 0.18 s |
+| One table's details | 0.02 s | 0.01 s | 0.19 s | 0.35 s | 0.06 s | 0.25 s |
+| Metadata search | 0.12 s | 0.04 s | 0.04 s | 0.89 s | 0.09 s | 0.08 s |
+| 1M rows to CSV, NDJSON and Parquet at once | 14 s | 17 s | 17 s | 17 s | 11 s | 11 s |
+| 32 MB text + 16 MB binary cell: read | 0.44 s | 0.37 s | 0.30 s | 0.84 s ² | 0.38 s | 0.32 s |
+
+MySQL and MariaDB get 2,000 tables because creating one takes them ~5 ms
+(`PLATYPUS_SCALE_TABLES` sets the count for every database). Exporting the large cells to
+CSV, JSON, SQL, XLSX and Parquet takes 14–15 s on every database in the debug build.
+
+¹ After the first listing: MySQL computes the statistics (rows, size) of new tables when
+they are first listed, about 0.5 ms a table (2.1 s for these 2,000), and keeps them for a
+day (`information_schema_stats_expiry`).
+² 10.5 s before tiberius read `max` values a chunk at a time and copied packets whole,
+which also speeds up every SQL Server result.
+
+In the app, the navigator renders only the rows around its view: with 10,000 tables
+expanding the connection took 0.2 s instead of 3.7 s and selecting a row 0.07 s instead of
+0.5 s (Chromium, the app's frontend on a fake backend); completion lists the tables among
+10,000 in about 0.1 s.
 
 ## DBeaver
 
