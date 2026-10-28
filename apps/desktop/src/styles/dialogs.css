@@ -827,6 +827,35 @@ button.primary.danger:hover:not(:disabled) {
   border-bottom: 1px solid var(--border);
 }
 
+.agents-connections tr.selected td {
+  background: var(--active);
+}
+
+.agent-client-path code,
+.agent-call-args {
+  word-break: break-all;
+}
+
+.agent-activity,
+.agent-clients {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agent-activity-filters input[type="search"] {
+  flex: 1;
+  min-width: 160px;
+}
+
+.agent-calls tr {
+  cursor: pointer;
+}
+
+.agent-calls .agent-call-failed {
+  color: var(--error);
+}
+
 /* The connection's bootstrap statements. */
 .field textarea.init-script {
   background: var(--bg-input);
