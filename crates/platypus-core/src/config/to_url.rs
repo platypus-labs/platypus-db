@@ -64,6 +64,14 @@ impl ConnectionConfig {
                 params.push(format!("{key}={}", encode_path(path)));
             }
         }
+        if self.driver == DriverKind::Postgres
+            && self
+                .options
+                .get(super::POOLER)
+                .is_some_and(|m| m == "transaction")
+        {
+            params.push("pgbouncer=true".to_owned());
+        }
         if !params.is_empty() {
             let _ = write!(url, "?{}", params.join("&"));
         }

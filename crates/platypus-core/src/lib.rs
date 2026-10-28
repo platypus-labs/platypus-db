@@ -22,8 +22,8 @@ pub use admin::{
 };
 pub use capabilities::{Capabilities, ObjectRef, unsupported};
 pub use config::{
-    Bridge, ConnectionConfig, DriverKind, JdbcUrl, ParseNote, ParsedConnection, Secret, SshAuth,
-    SshConfig, SslMode,
+    Bridge, ConnectionConfig, DriverKind, JdbcUrl, POOLER, ParseNote, ParsedConnection, Secret,
+    SshAuth, SshConfig, SslMode,
 };
 pub use connection::{
     CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, Executed, NextResult,

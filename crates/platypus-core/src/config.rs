@@ -294,6 +294,10 @@ pub struct ConnectionConfig {
     pub options: BTreeMap<String, String>,
 }
 
+/// The option that says a pooler stands between the app and a PostgreSQL server, and its
+/// mode: `transaction` (statements run unnamed: see the driver) or `session`.
+pub const POOLER: &str = "pooler";
+
 impl ConnectionConfig {
     #[must_use]
     pub fn new(driver: DriverKind) -> Self {
@@ -443,6 +447,13 @@ impl ConnectionConfig {
                 "sslcert" => self.ssl_client_cert = Some(PathBuf::from(&*value)),
                 "sslkey" => self.ssl_client_key = Some(PathBuf::from(&*value)),
                 "application_name" => self.application_name = Some(value.into_owned()),
+                // Prisma's and Supabase's flag for a pooler in transaction mode.
+                "pgbouncer" if self.driver == DriverKind::Postgres => {
+                    if matches!(value.to_ascii_lowercase().as_str(), "true" | "1" | "yes") {
+                        self.options
+                            .insert(POOLER.to_owned(), "transaction".to_owned());
+                    }
+                }
                 // The query parameter of Turso's URLs.
                 "authToken" => self.password = Some(Secret::new(value)),
                 "connect_timeout" => {
@@ -880,6 +891,21 @@ mod tests {
         assert_eq!(c.password, Some(Secret::new("p:ss")));
         assert_eq!(c.ssl_mode, SslMode::Require);
         assert_eq!(c.application_name.as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn reads_and_writes_the_pooler_flag() {
+        let url =
+            "postgres://postgres.abc@aws-0-eu.pooler.supabase.com:6543/postgres?pgbouncer=true";
+        let c = ConnectionConfig::from_url(url).unwrap();
+        assert_eq!(
+            c.options.get(POOLER).map(String::as_str),
+            Some("transaction")
+        );
+        assert_eq!(c.to_url().as_deref(), Some(url));
+        let c = ConnectionConfig::from_url("postgres://h/db?pgbouncer=false").unwrap();
+        assert_eq!(c.options.get(POOLER), None);
+        assert!(ConnectionConfig::from_url("mysql://h/db?pgbouncer=true").is_err());
     }
 
     #[test]
