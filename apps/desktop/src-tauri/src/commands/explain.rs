@@ -1,6 +1,7 @@
 //! Query plans for the explain tab: asked of a session, or read from a pasted document.
 
 use platypus_core::{Explain, plain_plan};
+use platypus_driver_sqlite::meta::is_plan_step;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -35,27 +36,9 @@ pub enum PlanSource {
     Sqlserver,
 }
 
-/// The first words of SQLite's steps, which no other database writes in capitals.
-const SQLITE_STEPS: &[&str] = &[
-    "SCAN ",
-    "SEARCH ",
-    "USE TEMP B-TREE",
-    "CO-ROUTINE",
-    "MATERIALIZE",
-    "COMPOUND",
-    "CORRELATED ",
-    "SCALAR SUBQUERY",
-    "LIST SUBQUERY",
-    "MULTI-INDEX",
-    "BLOOM FILTER",
-    "LEFT-MOST",
-    "MERGE ",
-    "UNION ",
-];
-
 /// Whose plan `document` looks like: JSON is PostgreSQL's unless it is MariaDB's
-/// (`query_block`); a tree of steps in capitals is SQLite's, one drawn with `|--` otherwise
-/// SQL Server's; a first step `-> …` is MySQL's tree; anything else PostgreSQL's text.
+/// (`query_block`); steps in SQLite's capitals are SQLite's, others drawn with `|--` SQL
+/// Server's; a first step `-> …` is MySQL's tree; anything else PostgreSQL's text.
 fn guess(document: &str) -> PlanSource {
     let plan = plain_plan(document);
     let start = plan.trim_start();
@@ -66,17 +49,29 @@ fn guess(document: &str) -> PlanSource {
             PlanSource::Postgres
         };
     }
-    let steps = plan
+    // Steps drawn `|--Step`: SQLite's in capitals, SQL Server's otherwise; undrawn, a plan
+    // of SQLite's steps only (as the app writes it).
+    let drawn: Vec<&str> = plan
         .lines()
-        .map(|l| l.trim_start_matches(|c: char| c.is_whitespace() || matches!(c, '|' | '`' | '-')));
-    if steps
-        .clone()
-        .any(|s| SQLITE_STEPS.iter().any(|w| s.starts_with(w)))
-    {
-        return PlanSource::Sqlite;
+        .filter_map(|l| {
+            let at = l.find("|--").or_else(|| l.find("`--"))?;
+            Some(l[at + 3..].trim())
+        })
+        .collect();
+    if !drawn.is_empty() {
+        return if drawn.iter().any(|s| is_plan_step(s)) {
+            PlanSource::Sqlite
+        } else {
+            PlanSource::Sqlserver
+        };
     }
-    if plan.contains("|--") {
-        return PlanSource::Sqlserver;
+    let mut lines = plan
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .peekable();
+    if lines.peek().is_some() && lines.all(is_plan_step) {
+        return PlanSource::Sqlite;
     }
     if start.starts_with("->") {
         PlanSource::Mysql
@@ -137,6 +132,15 @@ mod tests {
             PlanSource::Sqlserver
         );
         assert_eq!(guess("• scan\n  table: t@t_pkey"), PlanSource::Postgres);
+        // SQL Server repeats the statement, which may start like a step of SQLite's.
+        assert_eq!(
+            guess("MERGE INTO t USING s ON t.id = s.id\n  |--Clustered Index Merge(OBJECT:([t]))"),
+            PlanSource::Sqlserver
+        );
+        assert_eq!(
+            guess("SCAN a\nSEARCH b USING INDEX i (x=?)"),
+            PlanSource::Sqlite
+        );
     }
 
     #[test]

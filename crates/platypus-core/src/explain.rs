@@ -233,7 +233,12 @@ pub fn step_figures(step: &str) -> (&str, PlanNode) {
 /// the `\n` its batch mode writes for line breaks. The plan's own indentation stays.
 #[must_use]
 pub fn plain_plan(text: &str) -> String {
-    let rule = |l: &str| !l.is_empty() && l.chars().all(|c| matches!(c, '-' | '+' | '='));
+    // Rules under headers, and the `*** 1. row ***` of vertical output.
+    let rule = |l: &str| {
+        !l.is_empty()
+            && (l.chars().all(|c| matches!(c, '-' | '+' | '='))
+                || (l.starts_with("***") && l.ends_with("***")))
+    };
     let footer = |l: &str| {
         l.strip_prefix('(')
             .and_then(|l| l.strip_suffix(" rows)").or_else(|| l.strip_suffix(" row)")))
@@ -256,7 +261,7 @@ pub fn plain_plan(text: &str) -> String {
         .count()
         * 2
         > filled.count();
-    let mut lines = Vec::new();
+    let mut lines: Vec<std::borrow::Cow<'_, str>> = Vec::new();
     for line in text.lines() {
         let trimmed = line.trim();
         if header(trimmed) || rule(trimmed) || footer(trimmed) {
@@ -272,11 +277,13 @@ pub fn plain_plan(text: &str) -> String {
         let line = line.strip_suffix(" |").map_or(line, str::trim_end);
         let line = line.strip_prefix("| ").unwrap_or(line);
         let line = line.trim_start_matches("EXPLAIN: ");
-        // `mysql -e` writes the plan on one line, its breaks as `\n`.
-        if line.trim_start().starts_with(['-', '{']) && line.contains("\\n") {
-            lines.extend(line.split("\\n"));
+        // `mysql -e` writes the plan on one line, its breaks as `\n` and its backslashes
+        // doubled: a tree's steps, or a JSON document that starts `{\n`.
+        let start = line.trim_start();
+        if (start.starts_with("->") || start.starts_with("{\\n")) && line.contains("\\n") {
+            lines.extend(batch_unescape(line).lines().map(|l| l.to_owned().into()));
         } else {
-            lines.push(line);
+            lines.push(line.into());
         }
     }
     // psql and the MySQL client put one space before every line.
@@ -293,6 +300,29 @@ pub fn plain_plan(text: &str) -> String {
         .join("\n")
         .trim_matches('\n')
         .to_owned()
+}
+
+/// A value as the MySQL client's batch mode escapes it: `\n`, `\t` and `\\` back to what they
+/// stand for.
+fn batch_unescape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('n') => out.push('\n'),
+            Some('t') => out.push('\t'),
+            Some('\\') | None => out.push('\\'),
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+        }
+    }
+    out
 }
 
 /// Runs a plan request and returns the plan document: the first column of its rows, one
@@ -395,6 +425,20 @@ mod tests {
             plain_plan("| EXPLAIN        |\n| -> Filter  |"),
             "-> Filter"
         );
+        // Vertical output's row header goes.
+        assert_eq!(
+            plain_plan(
+                "****** 1. row ******\nEXPLAIN: -> Filter: (t.a = 1)\n    -> Table scan on t"
+            ),
+            "-> Filter: (t.a = 1)\n    -> Table scan on t"
+        );
+        // Batch mode's JSON: breaks back, a backslash of the plan kept.
+        assert_eq!(
+            plain_plan(r#"{\n  "a": "x\\\\y"\n}"#),
+            "{\n  \"a\": \"x\\\\y\"\n}"
+        );
+        // A JSON plan on one line keeps its own escapes.
+        assert_eq!(plain_plan(r#"{"Filter": "a\nb"}"#), r#"{"Filter": "a\nb"}"#);
         // SQL Server's steps keep their bars.
         assert_eq!(
             plain_plan("  |--Clustered Index Scan(t)"),

@@ -499,6 +499,30 @@ pub async fn explain(conn: &dyn Connection, sql: &str) -> Result<Explain> {
     ))
 }
 
+/// The first words of SQLite's plan steps, which no other database writes in capitals.
+const PLAN_STEPS: &[&str] = &[
+    "SCAN ",
+    "SEARCH ",
+    "USE TEMP B-TREE",
+    "CO-ROUTINE",
+    "MATERIALIZE",
+    "COMPOUND",
+    "CORRELATED ",
+    "SCALAR SUBQUERY",
+    "LIST SUBQUERY",
+    "MULTI-INDEX",
+    "BLOOM FILTER",
+    "LEFT-MOST",
+    "MERGE ",
+    "UNION ",
+];
+
+/// Whether `text` is a step of SQLite's plans.
+#[must_use]
+pub fn is_plan_step(text: &str) -> bool {
+    PLAN_STEPS.iter().any(|w| text.starts_with(w))
+}
+
 /// A plan pasted or opened from a file: `EXPLAIN QUERY PLAN` as the sqlite3 shell draws it
 /// (`|--SCAN a`, `` `--SEARCH b ``) or indented, as the app writes it.
 ///
@@ -519,7 +543,10 @@ pub fn read_plan(document: &str) -> Result<Explain> {
     } else {
         vec![root]
     };
-    if steps.is_empty() {
+    // Text of another database is no plan of SQLite's, though any line could be a step.
+    let mut all = Vec::new();
+    steps.iter().for_each(|s| collect_steps(s, &mut all));
+    if !all.iter().any(|s| is_plan_step(s)) {
         return Err(Error::Other("no plan in the text".to_owned()));
     }
     let root = PlanNode {
@@ -531,6 +558,11 @@ pub fn read_plan(document: &str) -> Result<Explain> {
         format!("QUERY PLAN\n{plan}"),
         root,
     ))
+}
+
+fn collect_steps<'a>(node: &'a PlanNode, out: &mut Vec<&'a str>) {
+    out.push(&node.operation);
+    node.children.iter().for_each(|c| collect_steps(c, out));
 }
 
 /// The steps under `parent`, also written to `text` indented by `depth`.
@@ -592,6 +624,7 @@ mod tests {
         let indented = read_plan("QUERY PLAN\n  SCAN a\n  SEARCH b").unwrap();
         assert_eq!(indented.root.children.len(), 2);
         assert!(read_plan("QUERY PLAN").is_err());
+        assert!(read_plan("hello\nSeq Scan on t  (cost=0.00..1.00 rows=1 width=4)").is_err());
     }
 
     #[test]

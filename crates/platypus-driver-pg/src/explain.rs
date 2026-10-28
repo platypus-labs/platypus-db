@@ -88,37 +88,69 @@ pub fn read_plan(document: &str) -> Result<Explain> {
 }
 
 /// The text of `EXPLAIN [ANALYZE]`: the first line is the top step, the others `->  step`,
-/// nested by indentation, with their properties (`Filter: …`) below them.
+/// nested by indentation, with their properties (`Filter: …`) below them. Back at the top
+/// step's column, the statement's own lines end the plan: `Planning Time: …`, or `Planning:`
+/// and `JIT:` with their lines below.
 fn text_plan(plan: &str) -> Result<PlanNode> {
-    // With costs, the top step has them too: a line before it (the tag of a command psql
-    // ran first) is not it.
-    let figures = |l: &str| l.contains("(cost=") || l.contains("(actual ");
-    let costed = plan.lines().any(figures);
+    let indent = |l: &str| l.len() - l.trim_start().len();
+    // A psql command tag before the plan (`SET`, `ANALYZE`) is no part of it.
+    let tag = |l: &str| l.trim().chars().all(|c| c.is_ascii_uppercase() || c == ' ');
+    let lines: Vec<&str> = plan.lines().skip_while(|l| tag(l)).collect();
+    let Some(top) = lines.first() else {
+        return Err(Error::Other("no plan in the text".to_owned()));
+    };
+    let column = indent(top);
+    let end = lines
+        .iter()
+        .skip(1)
+        .position(|l| !l.trim().is_empty() && indent(l) <= column)
+        .map_or(lines.len(), |at| at + 1);
     let first = Cell::new(true);
-    let mut root = plan_from_text(plan, |line| {
+    let mut root = plan_from_text(&lines[..end].join("\n"), |line| {
         let at = line.find(|c: char| !c.is_whitespace())?;
         let rest = &line[at..];
         let step = match rest.strip_prefix("->") {
             Some(step) => step.trim(),
-            None if first.get() && (!costed || figures(rest)) => rest.trim(),
+            None if first.get() => rest.trim(),
             None => return None,
         };
         first.set(false);
         Some((at, step.to_owned()))
     });
-    if first.get() {
-        return Err(Error::Other("no plan in the text".to_owned()));
-    }
-    // The tag of a command psql ran before (`ANALYZE`, `SET`) is no property of the plan.
-    root.properties.retain(|(key, value)| {
-        !(key.is_empty() && value.chars().all(|c| c.is_ascii_uppercase() || c == ' '))
-    });
     text_step(&mut root);
-    // The statement's times end the plan, after the deepest step's properties.
-    let mut whole = Vec::new();
-    take_statement_times(&mut root, &mut whole);
-    root.properties.extend(whole);
+    root.properties
+        .extend(statement_lines(&lines[end..], column, indent));
     Ok(root)
+}
+
+/// The statement's lines after the plan, as properties; those under a `Planning:` or `JIT:`
+/// header are named after it (`Planning Buffers`).
+fn statement_lines(
+    lines: &[&str],
+    column: usize,
+    indent: impl Fn(&str) -> usize,
+) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut header: Option<&str> = None;
+    for line in lines {
+        let text = line.trim();
+        if text.is_empty() {
+            continue;
+        }
+        let (key, value) = text.split_once(": ").unwrap_or((text, ""));
+        if indent(line) <= column {
+            header = None;
+            if let Some(name) = text.strip_suffix(':').filter(|_| value.is_empty()) {
+                header = Some(name);
+                continue;
+            }
+            out.push((key.to_owned(), value.to_owned()));
+        } else {
+            let key = header.map_or_else(|| key.to_owned(), |h| format!("{h} {key}"));
+            out.push((key, value.to_owned()));
+        }
+    }
+    out
 }
 
 /// The figures, operation and target of a step read as text, and of its children.
@@ -133,13 +165,13 @@ fn text_step(node: &mut PlanNode) {
         Some(at) => (&description[..at], Some(description[at + 1..].to_owned())),
         None => (description, None),
     };
-    node.operation = operation.to_owned();
-    node.detail = detail;
-    node.cost = figures.cost;
-    node.rows = figures.rows;
-    node.actual_ms = figures.actual_ms;
-    node.actual_rows = figures.actual_rows;
-    node.loops = figures.loops;
+    *node = PlanNode {
+        operation: operation.to_owned(),
+        detail,
+        properties: std::mem::take(&mut node.properties),
+        children: std::mem::take(&mut node.children),
+        ..figures
+    };
     node.full_scan = text_full_scan(node);
     for child in &mut node.children {
         text_step(child);
@@ -166,22 +198,6 @@ fn text_full_scan(node: &PlanNode) -> Option<FullScan> {
             (kept + removed.unwrap_or(0.0)) * node.loops.unwrap_or(1.0)
         }),
     })
-}
-
-/// Moves `Planning Time`, `Execution Time` and the like from the steps to `out`.
-fn take_statement_times(node: &mut PlanNode, out: &mut Vec<(String, String)>) {
-    let (whole, own): (Vec<_>, Vec<_>) = std::mem::take(&mut node.properties)
-        .into_iter()
-        .partition(|(k, _)| {
-            ["Planning", "Execution", "JIT", "Trigger"]
-                .iter()
-                .any(|p| k.starts_with(p))
-        });
-    node.properties = own;
-    out.extend(whole);
-    for child in &mut node.children {
-        take_statement_times(child, out);
-    }
 }
 
 /// The table and the row counts of a CockroachDB step, from its detail lines.
@@ -362,6 +378,22 @@ mod tests {
         assert_eq!(explain.root.operation, "scan");
         assert_eq!(explain.root.detail.as_deref(), Some("t@t_pkey"));
         // A plan without costs is still a plan.
+        let pg13 = read_plan(
+            " Seq Scan on t  (cost=0.00..1.00 rows=1 width=4) (actual time=0.01..0.02 rows=1 loops=1)\n   Buffers: shared hit=1\n Planning:\n   Buffers: shared hit=12\n Planning Time: 0.05 ms\n JIT:\n   Functions: 4\n Execution Time: 0.1 ms",
+        )
+        .unwrap();
+        assert_eq!(
+            pg13.root.properties,
+            [
+                ("Buffers".to_owned(), "shared hit=1".to_owned()),
+                ("Planning Buffers".to_owned(), "shared hit=12".to_owned()),
+                ("Planning Time".to_owned(), "0.05 ms".to_owned()),
+                ("JIT Functions".to_owned(), "4".to_owned()),
+                ("Execution Time".to_owned(), "0.1 ms".to_owned()),
+            ]
+        );
+        let untimed = read_plan("SET\n Seq Scan on t\n   Filter: (a > 1)").unwrap();
+        assert_eq!(untimed.root.operation, "Seq Scan");
         let tagged = read_plan(&format!("ANALYZE\n{TEXT}")).unwrap();
         assert_eq!(tagged.root.operation, "Hash Join");
         assert!(tagged.root.properties.iter().all(|(k, _)| !k.is_empty()));
