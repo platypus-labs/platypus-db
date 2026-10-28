@@ -473,15 +473,29 @@ impl PgConnection {
     /// pooler in transaction mode, a name prepared outside one may be gone (or on another
     /// server session) by the time it runs. Rolled back whatever happens.
     async fn describe(&self, sql: &str) -> Result<tokio_postgres::Statement> {
-        self.client
-            .batch_execute("BEGIN")
-            .await
-            .map_err(map_error)?;
-        let described = self.client.prepare(sql).await;
-        let ended = self.client.batch_execute("ROLLBACK").await;
-        let statement = described.map_err(map_error)?;
-        ended.map_err(map_error)?;
-        Ok(statement)
+        let mut retried = false;
+        loop {
+            self.client
+                .batch_execute("BEGIN")
+                .await
+                .map_err(map_error)?;
+            let described = self.client.prepare(sql).await;
+            let ended = self.client.batch_execute("ROLLBACK").await;
+            match described {
+                // The client looks types up with statements it prepared once, in an earlier
+                // transaction: on another server session, or a reset one, they are gone.
+                // Prepared again, in this one.
+                Err(e) if !retried && e.code() == Some(&SqlState::INVALID_SQL_STATEMENT_NAME) => {
+                    retried = true;
+                    self.client.clear_type_cache();
+                }
+                described => {
+                    let statement = described.map_err(map_error)?;
+                    ended.map_err(map_error)?;
+                    return Ok(statement);
+                }
+            }
+        }
     }
 
     /// Whether the server lists its sessions and locks as PostgreSQL does: CockroachDB has

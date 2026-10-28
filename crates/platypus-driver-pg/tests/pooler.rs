@@ -156,6 +156,23 @@ async fn runs_statements_through_a_transaction_pooler() {
             1
         );
     }
+    // Another type of the user's, once the client's lookups were prepared on another
+    // server session.
+    conn.execute("DROP TYPE IF EXISTS demo.pool_size", &options)
+        .await
+        .unwrap();
+    conn.execute("CREATE TYPE demo.pool_size AS ENUM ('s', 'm')", &options)
+        .await
+        .unwrap();
+    assert_eq!(
+        rows(&conn, "SELECT 'm'::demo.pool_size AS size", &options)
+            .await
+            .0,
+        1
+    );
+    conn.execute("DROP TYPE demo.pool_size", &options)
+        .await
+        .unwrap();
     conn.execute("DROP TYPE demo.pool_mood", &options)
         .await
         .unwrap();
