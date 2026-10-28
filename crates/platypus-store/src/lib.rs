@@ -20,8 +20,8 @@ mod sqlite;
 mod vault;
 
 pub use agent_calls::{
-    AGENT_CALLS_LIMIT, AgentCall, AgentCallQuery, AgentCallStore, AgentSession, NewAgentCall,
-    agent_calls_csv,
+    AGENT_CALLS_LIMIT, AgentCall, AgentCallQuery, AgentCallStore, AgentProposal, AgentSession,
+    NewAgentCall, PROPOSAL_LIFETIME, agent_calls_csv,
 };
 pub use auth::{
     command_password, external_password, external_password_quiet, pgpass_password, pgpass_path,

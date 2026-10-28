@@ -1,6 +1,7 @@
 //! The calls external agents made to the MCP server's tools, every tool and not only the
 //! queries: who called which tool, on which connection, with which arguments, how long it
-//! took and how it ended. Each start of the server is a session.
+//! took and how it ended. Each start of the server is a session. Beside them, the SQL agents
+//! proposed with `propose_sql`, which the app opens in an editor tab.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -12,7 +13,8 @@ use serde::{Deserialize, Serialize};
 use crate::{HistoryStatus, Result, StoreError};
 
 /// Schema migrations, applied in order and tracked with `PRAGMA user_version`.
-const MIGRATIONS: &[&str] = &["CREATE TABLE calls (
+const MIGRATIONS: &[&str] = &[
+    "CREATE TABLE calls (
         id          INTEGER PRIMARY KEY,
         session     TEXT    NOT NULL,
         agent       TEXT    NOT NULL,
@@ -24,7 +26,32 @@ const MIGRATIONS: &[&str] = &["CREATE TABLE calls (
         status      TEXT    NOT NULL,
         error       TEXT
     );
-    CREATE INDEX calls_session ON calls (session, id);"];
+    CREATE INDEX calls_session ON calls (session, id);",
+    "CREATE TABLE proposals (
+        id            INTEGER PRIMARY KEY,
+        agent         TEXT    NOT NULL,
+        connection_id TEXT    NOT NULL,
+        title         TEXT,
+        sql           TEXT    NOT NULL,
+        created_at    INTEGER NOT NULL, -- unix epoch milliseconds
+        opened        INTEGER NOT NULL DEFAULT 0
+    );",
+];
+
+/// Proposals older than this are not opened any more: the agent's session is long over.
+pub const PROPOSAL_LIFETIME: Duration = Duration::from_hours(24);
+
+/// SQL an agent proposed, for the user to review and run in the editor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AgentProposal {
+    pub id: i64,
+    pub agent: String,
+    pub connection_id: String,
+    pub title: Option<String>,
+    pub sql: String,
+    /// Unix epoch milliseconds.
+    pub created_at: i64,
+}
 
 /// Calls kept; older ones are removed when the app starts.
 pub const AGENT_CALLS_LIMIT: usize = 20_000;
@@ -262,6 +289,57 @@ impl AgentCallStore {
         rows.collect::<Result<_, _>>().map_err(db_error)
     }
 
+    /// Keeps SQL `agent` proposes on a connection, for the app to open; returns its id.
+    pub fn propose(
+        &self,
+        agent: &str,
+        connection_id: &str,
+        title: Option<&str>,
+        sql: &str,
+    ) -> Result<i64> {
+        self.db
+            .execute(
+                "INSERT INTO proposals (agent, connection_id, title, sql, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![agent, connection_id, title, sql, millis(SystemTime::now())],
+            )
+            .map_err(db_error)?;
+        Ok(self.db.last_insert_rowid())
+    }
+
+    /// The proposals not opened yet and younger than [`PROPOSAL_LIFETIME`], oldest first,
+    /// marked opened: each is handed out once.
+    pub fn take_proposals(&self) -> Result<Vec<AgentProposal>> {
+        let since = millis(SystemTime::now() - PROPOSAL_LIFETIME);
+        let tx = self.db.unchecked_transaction().map_err(db_error)?;
+        let proposals = {
+            let mut stmt = tx
+                .prepare_cached(
+                    "UPDATE proposals SET opened = 1
+                     WHERE opened = 0 AND created_at >= ?1
+                     RETURNING id, agent, connection_id, title, sql, created_at",
+                )
+                .map_err(db_error)?;
+            let rows = stmt
+                .query_map([since], |r| {
+                    Ok(AgentProposal {
+                        id: r.get(0)?,
+                        agent: r.get(1)?,
+                        connection_id: r.get(2)?,
+                        title: r.get(3)?,
+                        sql: r.get(4)?,
+                        created_at: r.get(5)?,
+                    })
+                })
+                .map_err(db_error)?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(db_error)?
+        };
+        tx.commit().map_err(db_error)?;
+        let mut proposals = proposals;
+        proposals.sort_by_key(|p| p.id);
+        Ok(proposals)
+    }
+
     /// Removes every call.
     pub fn clear(&self) -> Result<()> {
         self.db.execute("DELETE FROM calls", []).map_err(db_error)?;
@@ -468,6 +546,29 @@ mod tests {
         );
         assert_eq!(rfc3339(0), "1970-01-01T00:00:00.000Z");
         assert_eq!(rfc3339(951_782_400_000), "2000-02-29T00:00:00.000Z");
+    }
+
+    #[test]
+    fn proposals_are_handed_out_once() {
+        let s = AgentCallStore::open_in_memory().unwrap();
+        s.propose(
+            "codex",
+            "c1",
+            Some("Fix"),
+            "UPDATE t SET x = 1 WHERE id = 2",
+        )
+        .unwrap();
+        s.propose("codex", "c1", None, "SELECT 1").unwrap();
+        s.db.execute(
+            "INSERT INTO proposals (agent, connection_id, sql, created_at) VALUES ('old', 'c1', 'SELECT 0', 0)",
+            [],
+        )
+        .unwrap();
+        let taken = s.take_proposals().unwrap();
+        let sql: Vec<&str> = taken.iter().map(|p| p.sql.as_str()).collect();
+        assert_eq!(sql, ["UPDATE t SET x = 1 WHERE id = 2", "SELECT 1"]);
+        assert_eq!(taken[0].title.as_deref(), Some("Fix"));
+        assert!(s.take_proposals().unwrap().is_empty());
     }
 
     #[test]
