@@ -3650,7 +3650,7 @@ async fn redesign(
                 b.name,
                 e.statement,
                 e.error,
-                script.text()
+                script.text(d)
             )
         });
     platypus_schema::load(conn, d, &b.schema, &new.name)
@@ -4523,7 +4523,7 @@ async fn compares_and_lints_schemas() {
         });
         let script = platypus_schema::compare(d, &b.schema, &b.schema, &wanted, &current)
             .unwrap_or_else(|e| panic!("{}: {e}", b.name));
-        assert_eq!(script.statements.len(), 2, "{}: {}", b.name, script.text());
+        assert_eq!(script.statements.len(), 2, "{}: {}", b.name, script.text(d));
         apply_script(b, &*conn, &script).await;
 
         let read = platypus_schema::read_tables(&*conn, &b.schema, Some(&tables))
@@ -4542,7 +4542,7 @@ async fn compares_and_lints_schemas() {
         assert_eq!(same.statements, Vec::<String>::new(), "{}", b.name);
         let script = platypus_schema::compare(d, &b.schema, &b.schema, &current, &now)
             .unwrap_or_else(|e| panic!("{}: {e}", b.name));
-        assert_eq!(script.statements.len(), 2, "{}: {}", b.name, script.text());
+        assert_eq!(script.statements.len(), 2, "{}: {}", b.name, script.text(d));
         assert!(
             script.statements[0].contains("conf_cmp_child"),
             "{}",
@@ -4569,7 +4569,7 @@ async fn apply_script(b: &Backend, conn: &dyn Connection, script: &platypus_sche
                 b.name,
                 e.statement,
                 e.error,
-                script.text()
+                script.text(platypus_sql::Dialect::from(b.config.driver))
             )
         });
 }
@@ -4789,5 +4789,311 @@ async fn qa_fixdbs_yugabyte_sharding() {
         assert!(ddl.contains("SPLIT INTO 3 TABLETS"), "{ddl}");
         run(&*yb, "DROP TABLE qa_fixdbs_r").await.unwrap();
         run(&*yb, "DROP TABLE qa_fixdbs_h").await.unwrap();
+    }
+}
+
+/// The schemas a comparison round trip copies, `S.` standing for the schema: defaults, NOT
+/// NULL, a unique column, a check, a composite key and a foreign key on it, a self-reference,
+/// two tables referencing each other, odd names and a view.
+fn qa3_compare_base(driver: DriverKind) -> &'static str {
+    match driver {
+        DriverKind::Postgres => {
+            "CREATE TABLE S.customers (id serial PRIMARY KEY, email varchar(100) NOT NULL UNIQUE, name text DEFAULT 'anon', created timestamp DEFAULT now());
+CREATE TABLE S.orders (id bigint PRIMARY KEY, customer_id int NOT NULL REFERENCES S.customers(id) ON DELETE CASCADE, total numeric(10,2) DEFAULT 0, status varchar(20) CHECK (status IN ('new','paid')));
+CREATE INDEX orders_cust_status ON S.orders(customer_id, status);
+CREATE TABLE S.employees (id int PRIMARY KEY, manager_id int REFERENCES S.employees(id));
+CREATE TABLE S.parts (a int, b int, PRIMARY KEY (a, b));
+CREATE TABLE S.part_refs (id int PRIMARY KEY, a int, b int, FOREIGN KEY (a, b) REFERENCES S.parts(a, b));
+CREATE TABLE S.ca (id int PRIMARY KEY, cb_id int);
+CREATE TABLE S.cb (id int PRIMARY KEY, ca_id int REFERENCES S.ca(id));
+ALTER TABLE S.ca ADD CONSTRAINT ca_cb FOREIGN KEY (cb_id) REFERENCES S.cb(id);
+CREATE TABLE S.\"Odd Table\" (\"Weird Col\" int PRIMARY KEY, \"select\" text, \"Customer Id\" int REFERENCES S.customers(id));
+CREATE INDEX odd_customer ON S.\"Odd Table\" (\"Customer Id\");
+CREATE VIEW S.v_orders AS SELECT id, total FROM S.orders"
+        }
+        DriverKind::MySql => {
+            "CREATE TABLE S.customers (id int AUTO_INCREMENT PRIMARY KEY, email varchar(100) NOT NULL UNIQUE, name varchar(50) DEFAULT 'anon', created datetime DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE S.orders (id bigint PRIMARY KEY, customer_id int NOT NULL, total decimal(10,2) DEFAULT 0, status varchar(20), CONSTRAINT orders_status CHECK (status IN ('new','paid')), CONSTRAINT orders_customer FOREIGN KEY (customer_id) REFERENCES S.customers(id) ON DELETE CASCADE);
+CREATE INDEX orders_cust_status ON S.orders(customer_id, status);
+CREATE TABLE S.employees (id int PRIMARY KEY, manager_id int, CONSTRAINT employees_manager FOREIGN KEY (manager_id) REFERENCES S.employees(id));
+CREATE TABLE S.parts (a int, b int, PRIMARY KEY (a, b));
+CREATE TABLE S.part_refs (id int PRIMARY KEY, a int, b int, CONSTRAINT part_refs_ab FOREIGN KEY (a, b) REFERENCES S.parts(a, b));
+CREATE TABLE S.ca (id int PRIMARY KEY, cb_id int);
+CREATE TABLE S.cb (id int PRIMARY KEY, ca_id int, CONSTRAINT cb_ca FOREIGN KEY (ca_id) REFERENCES S.ca(id));
+ALTER TABLE S.ca ADD CONSTRAINT ca_cb FOREIGN KEY (cb_id) REFERENCES S.cb(id);
+CREATE TABLE S.`Odd Table` (`Weird Col` int PRIMARY KEY, `select` text, `è` int);
+CREATE VIEW S.v_orders AS SELECT id, total FROM S.orders"
+        }
+        _ => {
+            "CREATE TABLE S.customers (id int IDENTITY(1,1) PRIMARY KEY, email varchar(100) NOT NULL UNIQUE, name nvarchar(50) DEFAULT 'anon', created datetime2 DEFAULT sysdatetime());
+CREATE TABLE S.orders (id bigint PRIMARY KEY, customer_id int NOT NULL, total decimal(10,2) DEFAULT 0, status varchar(20), CONSTRAINT orders_status CHECK (status IN ('new','paid')), CONSTRAINT orders_customer FOREIGN KEY (customer_id) REFERENCES S.customers(id) ON DELETE CASCADE);
+CREATE INDEX orders_cust_status ON S.orders(customer_id, status);
+CREATE TABLE S.employees (id int PRIMARY KEY, manager_id int, CONSTRAINT employees_manager FOREIGN KEY (manager_id) REFERENCES S.employees(id));
+CREATE TABLE S.parts (a int, b int, PRIMARY KEY (a, b));
+CREATE TABLE S.part_refs (id int PRIMARY KEY, a int, b int, CONSTRAINT part_refs_ab FOREIGN KEY (a, b) REFERENCES S.parts(a, b));
+CREATE TABLE S.ca (id int PRIMARY KEY, cb_id int);
+CREATE TABLE S.cb (id int PRIMARY KEY, ca_id int, CONSTRAINT cb_ca FOREIGN KEY (ca_id) REFERENCES S.ca(id));
+ALTER TABLE S.ca ADD CONSTRAINT ca_cb FOREIGN KEY (cb_id) REFERENCES S.cb(id);
+CREATE TABLE S.[Odd Table] ([Weird Col] int PRIMARY KEY, [select] nvarchar(max), [è] int);
+CREATE VIEW S.v_orders AS SELECT id, total FROM S.orders"
+        }
+    }
+}
+
+/// The same tables changed: types, NULL, defaults, an index, a check gone, a column more, a
+/// table missing and two tables more (one referencing the other).
+fn qa3_compare_variant(driver: DriverKind) -> &'static str {
+    match driver {
+        DriverKind::Postgres => {
+            "CREATE TABLE S.customers (id serial PRIMARY KEY, email varchar(50), name text, legacy int);
+CREATE TABLE S.orders (id bigint PRIMARY KEY, customer_id int REFERENCES S.customers(id), total numeric(8,2), status varchar(20));
+CREATE INDEX orders_cust ON S.orders(customer_id);
+CREATE TABLE S.gone_parent (id int PRIMARY KEY);
+CREATE TABLE S.gone_child (id int PRIMARY KEY, p int REFERENCES S.gone_parent(id));
+CREATE TABLE S.parts (a int, b int, c int, PRIMARY KEY (a, b))"
+        }
+        DriverKind::MySql => {
+            "CREATE TABLE S.customers (id int AUTO_INCREMENT PRIMARY KEY, email varchar(50), name varchar(50), legacy int);
+CREATE TABLE S.orders (id bigint PRIMARY KEY, customer_id int, total decimal(8,2), status varchar(20), CONSTRAINT orders_customer FOREIGN KEY (customer_id) REFERENCES S.customers(id));
+CREATE INDEX orders_cust ON S.orders(customer_id);
+CREATE TABLE S.gone_parent (id int PRIMARY KEY);
+CREATE TABLE S.gone_child (id int PRIMARY KEY, p int, CONSTRAINT gone_child_p FOREIGN KEY (p) REFERENCES S.gone_parent(id));
+CREATE TABLE S.parts (a int, b int, c int, PRIMARY KEY (a, b))"
+        }
+        _ => {
+            "CREATE TABLE S.customers (id int IDENTITY(1,1) PRIMARY KEY, email varchar(50), name nvarchar(50), legacy int);
+CREATE TABLE S.orders (id bigint PRIMARY KEY, customer_id int, total decimal(8,2), status varchar(20), CONSTRAINT orders_customer FOREIGN KEY (customer_id) REFERENCES S.customers(id));
+CREATE INDEX orders_cust ON S.orders(customer_id);
+CREATE TABLE S.gone_parent (id int PRIMARY KEY);
+CREATE TABLE S.gone_child (id int PRIMARY KEY, p int, CONSTRAINT gone_child_p FOREIGN KEY (p) REFERENCES S.gone_parent(id));
+CREATE TABLE S.parts (a int, b int, c int, PRIMARY KEY (a, b))"
+        }
+    }
+}
+
+/// A new table referencing a column the comparison adds to a table that is there: the
+/// source and the target.
+fn qa3_compare_new_ref(driver: DriverKind) -> [&'static str; 2] {
+    match driver {
+        DriverKind::MySql => [
+            "CREATE TABLE S.accounts (id int PRIMARY KEY, code varchar(10) NOT NULL UNIQUE);
+CREATE TABLE S.vouchers (id int PRIMARY KEY, account_code varchar(10), CONSTRAINT vouchers_account FOREIGN KEY (account_code) REFERENCES S.accounts(code))",
+            "CREATE TABLE S.accounts (id int PRIMARY KEY)",
+        ],
+        _ => [
+            "CREATE TABLE S.accounts (id int PRIMARY KEY, code varchar(10) NOT NULL UNIQUE);
+CREATE TABLE S.vouchers (id int PRIMARY KEY, account_code varchar(10) REFERENCES S.accounts(code))",
+            "CREATE TABLE S.accounts (id int PRIMARY KEY)",
+        ],
+    }
+}
+
+/// Empties the schema `name` (a database on MySQL), creating it if needed, and runs `sql`
+/// in it.
+async fn qa3_compare_seed(conn: &dyn Connection, driver: DriverKind, name: &str, sql: &str) {
+    let reset = match driver {
+        DriverKind::Postgres => vec![
+            format!("DROP SCHEMA IF EXISTS {name} CASCADE"),
+            format!("CREATE SCHEMA {name}"),
+        ],
+        DriverKind::MySql => vec![
+            format!("DROP DATABASE IF EXISTS {name}"),
+            format!("CREATE DATABASE {name}"),
+        ],
+        _ => vec![
+            format!(
+                "IF SCHEMA_ID('{name}') IS NOT NULL BEGIN
+                 DECLARE @f nvarchar(max) = N'';
+                 SELECT @f += N'ALTER TABLE {name}.' + QUOTENAME(OBJECT_NAME(parent_object_id)) + N' DROP CONSTRAINT ' + QUOTENAME(name) + N';' FROM sys.foreign_keys WHERE schema_id = SCHEMA_ID('{name}');
+                 EXEC (@f);
+                 DECLARE @v nvarchar(max) = N'';
+                 SELECT @v += N'DROP VIEW {name}.' + QUOTENAME(name) + N';' FROM sys.views WHERE schema_id = SCHEMA_ID('{name}');
+                 EXEC (@v);
+                 DECLARE @t nvarchar(max) = N'';
+                 SELECT @t += N'DROP TABLE {name}.' + QUOTENAME(name) + N';' FROM sys.tables WHERE schema_id = SCHEMA_ID('{name}');
+                 EXEC (@t);
+                 DROP SCHEMA {name};
+                 END"
+            ),
+            format!("CREATE SCHEMA {name}"),
+        ],
+    };
+    for s in reset {
+        run(conn, &s)
+            .await
+            .unwrap_or_else(|e| panic!("{name}: {s}: {e}"));
+    }
+    for s in sql.split(";\n").filter(|s| !s.trim().is_empty()) {
+        let s = s.replace("S.", &format!("{name}."));
+        run(conn, &s)
+            .await
+            .unwrap_or_else(|e| panic!("{name}: {s}: {e}"));
+    }
+}
+
+/// The script that makes `dst` like `src` on `conn`.
+async fn qa3_compare(conn: &dyn Connection, driver: DriverKind) -> platypus_schema::Script {
+    let d = platypus_sql::Dialect::from(driver);
+    let src = platypus_schema::load_designs(conn, d, QA3_SRC)
+        .await
+        .unwrap();
+    let dst = platypus_schema::load_designs(conn, d, QA3_DST)
+        .await
+        .unwrap();
+    platypus_schema::compare(d, QA3_DST, QA3_SRC, &src, &dst).unwrap()
+}
+
+/// Runs `script` as the SQL editor does: its text, one statement after the other.
+async fn qa3_run_text(conn: &dyn Connection, driver: DriverKind, script: &platypus_schema::Script) {
+    let text = script.text(platypus_sql::Dialect::from(driver));
+    for s in text.split(";\n").filter(|s| !s.trim().is_empty()) {
+        run(conn, s)
+            .await
+            .unwrap_or_else(|e| panic!("{driver:?}: {s}: {e}\n{text}"));
+    }
+}
+
+const QA3_SRC: &str = "qa3c_src";
+const QA3_DST: &str = "qa3c_dst";
+
+/// Schema comparison round trips: identical schemas need nothing; the script that makes a
+/// changed copy like its source runs as the editor runs it (no `BEGIN;` for SQL Server),
+/// names nothing of the source, and a second comparison finds nothing (generated constraint
+/// names, serial columns, CHECKs the database prints its own way, keys to added columns).
+#[tokio::test]
+async fn qa3_schema_compare_round_trips() {
+    let _serial = SERIAL.lock().await;
+    for b in backends()
+        .await
+        .into_iter()
+        .filter(|b| matches!(b.name, "postgres" | "mysql" | "mariadb" | "sqlserver"))
+    {
+        let driver = b.config.driver;
+        let mut config = b.config.clone();
+        if driver == DriverKind::MySql {
+            // Creating databases takes more than the test user may do.
+            "root".clone_into(&mut config.user);
+            config.password = Some(platypus_core::Secret::new("platypus"));
+        }
+        let conn = self::driver(driver)
+            .connect(&config)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let conn = &*conn;
+        let base = qa3_compare_base(driver);
+        qa3_compare_seed(conn, driver, QA3_SRC, base).await;
+        qa3_compare_seed(conn, driver, QA3_DST, base).await;
+        let same = qa3_compare(conn, driver).await;
+        assert_eq!(
+            same.statements,
+            Vec::<String>::new(),
+            "{}: identical",
+            b.name
+        );
+
+        qa3_compare_seed(conn, driver, QA3_DST, qa3_compare_variant(driver)).await;
+        let script = qa3_compare(conn, driver).await;
+        let d = platypus_sql::Dialect::from(driver);
+        let text = script.text(d);
+        assert!(!text.contains(QA3_SRC), "{}: {text}", b.name);
+        assert!(!text.lines().any(|l| l == "BEGIN;") || driver != DriverKind::SqlServer);
+        qa3_run_text(conn, driver, &script).await;
+        let again = qa3_compare(conn, driver).await;
+        assert_eq!(
+            again.statements,
+            Vec::<String>::new(),
+            "{}: after\n{text}",
+            b.name
+        );
+
+        let [src, dst] = qa3_compare_new_ref(driver);
+        qa3_compare_seed(conn, driver, QA3_SRC, src).await;
+        qa3_compare_seed(conn, driver, QA3_DST, dst).await;
+        let script = qa3_compare(conn, driver).await;
+        qa3_run_text(conn, driver, &script).await;
+        let again = qa3_compare(conn, driver).await;
+        assert_eq!(
+            again.statements,
+            Vec::<String>::new(),
+            "{}: new ref",
+            b.name
+        );
+
+        for name in [QA3_SRC, QA3_DST] {
+            qa3_compare_seed(conn, driver, name, "").await;
+        }
+    }
+}
+
+/// The schema linter on PostgreSQL finds the indexes of quoted columns, and on MySQL a CHECK
+/// is read as MySQL takes it back.
+#[tokio::test]
+async fn qa3_schema_lint_and_checks_read_back() {
+    let _serial = SERIAL.lock().await;
+    for b in backends()
+        .await
+        .into_iter()
+        .filter(|b| matches!(b.name, "postgres" | "mysql"))
+    {
+        let conn = b.connect().await;
+        let d = platypus_sql::Dialect::from(b.config.driver);
+        let table = d.qualified(Some(&b.schema), "qa3_quoted");
+        let parent = d.qualified(Some(&b.schema), "qa3_quoted_parent");
+        let col = d.quote_ident("Customer Id");
+        let _ = run(&*conn, &format!("DROP TABLE IF EXISTS {table}")).await;
+        let _ = run(&*conn, &format!("DROP TABLE IF EXISTS {parent}")).await;
+        run(
+            &*conn,
+            &format!("CREATE TABLE {parent} (id int PRIMARY KEY)"),
+        )
+        .await
+        .unwrap();
+        run(
+            &*conn,
+            &format!(
+                "CREATE TABLE {table} (id int PRIMARY KEY, {col} int, status varchar(10),
+                 CONSTRAINT qa3_quoted_status CHECK (status IN ('new','it''s')),
+                 CONSTRAINT qa3_quoted_fk FOREIGN KEY ({col}) REFERENCES {parent}(id))"
+            ),
+        )
+        .await
+        .unwrap();
+        if d == platypus_sql::Dialect::Postgres {
+            run(
+                &*conn,
+                &format!("CREATE INDEX qa3_quoted_idx ON {table} ({col})"),
+            )
+            .await
+            .unwrap();
+        }
+        let only = ["qa3_quoted".to_owned(), "qa3_quoted_parent".to_owned()];
+        let read = platypus_schema::read_tables(&*conn, &b.schema, Some(&only))
+            .await
+            .unwrap();
+        let findings = platypus_schema::lint(d, &b.schema, &read);
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.kind == platypus_schema::LintKind::UnindexedForeignKey),
+            "{}: {findings:?}",
+            b.name
+        );
+        // The CHECK as read creates the table again.
+        let design = platypus_schema::load(&*conn, d, &b.schema, "qa3_quoted")
+            .await
+            .unwrap();
+        let check = &design
+            .constraints
+            .iter()
+            .find(|c| c.name == "qa3_quoted_status")
+            .unwrap()
+            .check;
+        // MySQL's CHECK_CLAUSE escapes every quote: `(_utf8mb4\'new\', ...)`.
+        assert!(!check.contains(r"4\'new"), "{}: {check}", b.name);
+        run(&*conn, &format!("DROP TABLE {table}")).await.unwrap();
+        let script = platypus_schema::script(d, &b.schema, None, &design).unwrap();
+        apply_script(&b, &*conn, &script).await;
+        run(&*conn, &format!("DROP TABLE {table}")).await.unwrap();
+        run(&*conn, &format!("DROP TABLE {parent}")).await.unwrap();
     }
 }
