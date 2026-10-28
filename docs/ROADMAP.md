@@ -19,7 +19,7 @@ Nella colonna **Origine**:
 
 Nella prima colonna delle tabelle:
 - ✅: fatto.
-- 🆕: aggiunto il 25 ottobre 2026, ancora da fare.
+- 🆕: aggiunto dal 25 ottobre 2026 in poi, ancora da fare.
 
 ---
 
@@ -568,6 +568,8 @@ gap della colonna, avvisi, azioni a destra con la principale per ultima) e i tok
 | ✅ Notifica di sistema alla fine di una query lunga, quando la finestra non è in primo piano | P2 | D |
 | ✅ Zoom dell'interfaccia e dimensione del font di editor e griglia (Ctrl+= / Ctrl+-) | P2 | D |
 | 🆕 Tab staccato in una finestra separata (secondo monitor) | P3 | D |
+| 🆕 **Database di esempio** nella schermata di benvenuto: un clic apre un SQLite o DuckDB incluso, con dati realistici, tabelle collegate da FK e qualche script salvato, per provare l'app senza un server | P3 | N |
+| 🆕 Altre lingue dell'interfaccia (spagnolo, tedesco, francese, portoghese, cinese), con le stringhe di `i18n.ts` aperte ai contributi | P3 | D |
 
 ---
 
@@ -728,6 +730,10 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | Sito e documentazione utente | P3 |
 | 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
 | 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
+| 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire | P2 |
+| 🆕 **Video o GIF di 20-30 secondi** in cima al README e al sito: avvio, scroll di milioni di righe, explain con la heatmap | P2 |
+| 🆕 **Confronto con DBeaver, DataGrip, TablePlus e Beekeeper Studio** nel README e nel sito (dimensione, avvio, memoria, licenza, MCP), con i numeri di `BENCHMARKS.md` aggiornati | P2 |
+| 🆕 Lancio quando il repository diventa pubblico: Show HN, r/programming, r/rust, r/PostgreSQL, Product Hunt | P3 |
 
 ---
 
