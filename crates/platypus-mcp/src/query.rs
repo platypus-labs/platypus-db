@@ -191,16 +191,35 @@ pub async fn run_until(
     limits: &Limits,
     stop: impl Future<Output = ()>,
 ) -> std::result::Result<Outcome, RunError> {
+    guarded(
+        conn,
+        read_only,
+        limits.timeout,
+        stop,
+        execute(conn, statement, limits),
+    )
+    .await
+}
+
+/// `work` (a request on `conn`), in `read_only`'s read-only transaction when given, within
+/// `timeout`, cancelled when `stop` completes first.
+pub async fn guarded<T>(
+    conn: &dyn Connection,
+    read_only: Option<DriverKind>,
+    timeout: Duration,
+    stop: impl Future<Output = ()>,
+    work: impl Future<Output = Result<T, Error>>,
+) -> std::result::Result<T, RunError> {
     let cancel = conn.cancel_handle();
     let (begin, end) = read_only.map_or((&[][..], &[][..]), read_only_statements);
     let work = async {
         for sql in begin {
             run_plain(conn, sql).await?;
         }
-        execute(conn, statement, limits).await
+        work.await
     };
     let outcome = tokio::select! {
-        timed = tokio::time::timeout(limits.timeout, work) => match timed {
+        timed = tokio::time::timeout(timeout, work) => match timed {
             Ok(outcome) => outcome.map_err(RunError::from),
             Err(_) => Err(RunError::Timeout),
         },

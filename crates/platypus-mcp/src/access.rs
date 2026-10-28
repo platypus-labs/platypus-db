@@ -334,7 +334,7 @@ pub fn check<'a>(
         [one] => one.text(sql),
         many => {
             return Err(AgentError::Invalid(format!(
-                "run_query runs one statement at a time and this SQL has {}: send them in separate calls",
+                "each call runs one statement at a time and this SQL has {}: send them in separate calls",
                 many.len()
             )));
         }
@@ -418,7 +418,7 @@ pub fn check_mongo<'a>(
         [one] => &sql[one.clone()],
         many => {
             return Err(AgentError::Invalid(format!(
-                "run_query runs one statement at a time and this script has {}: send them in separate calls",
+                "each call runs one statement at a time and this script has {}: send them in separate calls",
                 many.len()
             )));
         }

@@ -1,14 +1,21 @@
 //! Setting external agents up: the commands that register the app, started with `--mcp`, as
-//! an MCP server with Claude Code and Codex.
+//! an MCP server with Claude Code and Codex; and the log of the calls agents made to its
+//! tools.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use platypus_mcp::AgentBlocker;
-use platypus_store::toml;
+use platypus_mcp::profile::AGENT_CALLS_FILE;
+use platypus_store::{
+    AGENT_CALLS_LIMIT, AgentCall, AgentCallQuery, AgentCallStore, AgentProposal, AgentSession,
+    agent_calls_csv, toml,
+};
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
+
+mod clients;
 
 use super::{AppState, lock};
 use crate::MCP_FLAG;
@@ -17,6 +24,9 @@ use crate::error::{CommandError, CommandResult};
 /// The environment variable that moves the profile, passed on to the server when the app
 /// uses one.
 const DATA_DIR_ENV: &str = "PLATYPUS_DATA_DIR";
+
+/// The home folder the clients' files are looked up in, instead of the user's.
+const CLIENTS_HOME_ENV: &str = "PLATYPUS_CLIENTS_HOME";
 
 /// The MCP server earlier versions installed beside the app, before `--mcp`.
 const OLD_SERVER: &str = "platypus-mcp";
@@ -194,6 +204,139 @@ pub fn stale_agent_registrations() -> Vec<StaleRegistration> {
         stale.extend(codex_stale(&config));
     }
     stale
+}
+
+/// The server entry the clients get: this app with `--mcp`, and the profile's folder when
+/// the app uses one.
+fn server_entry() -> CommandResult<clients::ServerEntry> {
+    Ok(clients::ServerEntry {
+        command: app_path()?.display().to_string(),
+        args: vec![MCP_FLAG.to_owned()],
+        env: std::env::var(DATA_DIR_ENV)
+            .ok()
+            .map(|dir| (DATA_DIR_ENV.to_owned(), dir))
+            .into_iter()
+            .collect(),
+    })
+}
+
+/// The home folder and the OS's configuration folder, where the clients keep their files.
+fn client_dirs() -> CommandResult<(PathBuf, PathBuf)> {
+    // The end-to-end tests point the clients at a throwaway home folder: moving the real
+    // one would move the web view's too.
+    if let Some(home) = std::env::var_os(CLIENTS_HOME_ENV).map(PathBuf::from) {
+        let config = if cfg!(windows) {
+            home.join("AppData").join("Roaming")
+        } else {
+            home.join(".config")
+        };
+        return Ok((home, config));
+    }
+    let home = std::env::home_dir()
+        .ok_or_else(|| CommandError::new("other", "cannot find the home folder".to_owned()))?;
+    let config = if cfg!(windows) {
+        std::env::var_os("APPDATA")
+            .map_or_else(|| home.join("AppData").join("Roaming"), PathBuf::from)
+    } else {
+        std::env::var_os("XDG_CONFIG_HOME").map_or_else(|| home.join(".config"), PathBuf::from)
+    };
+    Ok((home, config))
+}
+
+/// The MCP clients PlatypusDB can be installed in, with their file and whether it is there.
+#[tauri::command]
+pub fn agent_clients() -> CommandResult<Vec<clients::AgentClient>> {
+    let (home, config) = client_dirs()?;
+    Ok(clients::list(&home, &config, &server_entry()?))
+}
+
+/// Writes the server in client `id`'s file, after a backup of it.
+#[tauri::command]
+pub async fn install_agent_client(id: String) -> CommandResult<clients::Installed> {
+    let (home, config) = client_dirs()?;
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let entry = server_entry()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        clients::install(&id, &home, &config, &entry, &stamp)
+    })
+    .await
+    .map_err(|e| CommandError::new("other", e.to_string()))?
+}
+
+/// Calls a page of the Activity view shows at most.
+const CALL_PAGE: usize = 500;
+
+/// The agents' call log the server writes, in the data folder (`PLATYPUS_DATA_DIR` when
+/// set): opened on first use, when its oldest calls beyond [`AGENT_CALLS_LIMIT`] are
+/// removed, then kept open.
+static AGENT_CALLS: std::sync::Mutex<Option<AgentCallStore>> = std::sync::Mutex::new(None);
+
+/// Runs `f` on the call log, off the main thread: the server may hold the file for a moment.
+async fn with_agent_calls<T: Send + 'static>(
+    app: AppHandle,
+    f: impl FnOnce(&AgentCallStore) -> Result<T, platypus_store::StoreError> + Send + 'static,
+) -> CommandResult<T> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut store = lock(&AGENT_CALLS);
+        if store.is_none() {
+            let dir = match std::env::var_os(DATA_DIR_ENV) {
+                Some(dir) => PathBuf::from(dir),
+                None => app
+                    .path()
+                    .app_data_dir()
+                    .map_err(|e| CommandError::new("other", e.to_string()))?,
+            };
+            let opened = AgentCallStore::open(&dir.join(AGENT_CALLS_FILE))?;
+            opened.prune(AGENT_CALLS_LIMIT)?;
+            *store = Some(opened);
+        }
+        let store = store
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("opened above"));
+        f(store).map_err(Into::into)
+    })
+    .await
+    .map_err(|e| CommandError::new("other", e.to_string()))?
+}
+
+/// The calls matching `query`, newest first, a page at a time.
+#[tauri::command]
+pub async fn agent_calls(
+    app: AppHandle,
+    mut query: AgentCallQuery,
+) -> CommandResult<Vec<AgentCall>> {
+    query.limit = query.limit.clamp(1, CALL_PAGE);
+    with_agent_calls(app, move |s| s.search(&query)).await
+}
+
+/// The latest runs of the server, newest first.
+#[tauri::command]
+pub async fn agent_sessions(app: AppHandle, limit: usize) -> CommandResult<Vec<AgentSession>> {
+    with_agent_calls(app, move |s| s.sessions(limit.clamp(1, CALL_PAGE))).await
+}
+
+/// Every call matching `query` (its limit ignored), as CSV.
+#[tauri::command]
+pub async fn agent_calls_export(
+    app: AppHandle,
+    mut query: AgentCallQuery,
+) -> CommandResult<String> {
+    query.limit = AGENT_CALLS_LIMIT;
+    query.before_id = None;
+    with_agent_calls(app, move |s| s.search(&query).map(|c| agent_calls_csv(&c))).await
+}
+
+/// The SQL agents proposed with `propose_sql` that no window opened yet; each is handed out
+/// once.
+#[tauri::command]
+pub async fn take_agent_proposals(app: AppHandle) -> CommandResult<Vec<AgentProposal>> {
+    with_agent_calls(app, AgentCallStore::take_proposals).await
+}
+
+/// Empties the call log.
+#[tauri::command]
+pub async fn clear_agent_calls(app: AppHandle) -> CommandResult<()> {
+    with_agent_calls(app, AgentCallStore::clear).await
 }
 
 #[cfg(test)]

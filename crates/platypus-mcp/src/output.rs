@@ -5,12 +5,14 @@
 use std::fmt::Write as _;
 use std::time::Duration;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::query::{Cell, Cut, Limits, MAX_VALUE_CHARS, Outcome, Table};
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Format {
     /// An aligned table, compact for a model's context.
@@ -142,7 +144,12 @@ impl QueryResult {
 /// The rendering of the first `total` rows, or of as many as fit in `max` bytes; at least
 /// the one of none. Renderings grow with the rows, so the most that fit are found by
 /// halving.
-fn fit<T>(total: usize, max: usize, render: impl Fn(usize) -> T, size: impl Fn(&T) -> usize) -> T {
+pub(crate) fn fit<T>(
+    total: usize,
+    max: usize,
+    render: impl Fn(usize) -> T,
+    size: impl Fn(&T) -> usize,
+) -> T {
     let all = render(total);
     if size(&all) <= max {
         return all;

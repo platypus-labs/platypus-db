@@ -103,10 +103,10 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | H — Import, export e trasferimento | ✅ fatto (P1; P2 e P3 in parte) |
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
 | J — Amministrazione del server | ✅ fatto (P2 in parte) |
-| K — Shell ed ergonomia | ✅ fatto (P1; P2 in parte) |
+| K — Shell ed ergonomia | 🔒 Delfa · group-k-themes · 2026-10-28 |
 | L — Sicurezza operativa | ✅ fatto (P1, P2) |
 | M — Analisi dei dati | ✅ fatto (P2 in parte) |
-| N — Accesso per agenti (MCP) | 🔒 Delfa · group-n-agents-p2 · 2026-10-28 |
+| N — Accesso per agenti (MCP) | ✅ fatto (P1; P2 in parte) |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | 🔒 Delfa · group-p-platform · 2026-10-28 |
 | Q — Documentazione e catalogo dei dati | ✅ fatto (P2) |
@@ -693,7 +693,16 @@ nella cronologia con l'agente come origine (colonna `origin`) e un filtro nel pa
 Impostazioni "Agents" con i comandi per Claude Code e Codex e l'accesso di ogni connessione;
 selettore "Agent access" nel dialog di connessione. CLI `platypus --connection <nome>` con
 output JSON documentato nel README. Gli agenti avviano l'app stessa con `--mcp` (gruppo P):
-gli installer non hanno un secondo eseguibile. Restano P2 e P3.
+gli installer non hanno un secondo eseguibile. P2 in parte: tool `sample_rows` ed `explain`
+(albero del piano o JSON nel limite di byte, stesso controllo di `run_query`, `analyze` in sola
+lettura solo dove la transazione rifiuta le scritture); registro di ogni chiamata ai tool in
+`agent-calls.db` (sessione, agente, connessione, argomenti, durata, esito), con le pagine
+Setup, Attività e Sicurezza in Impostazioni → Agents: Setup elenca Claude Desktop, Claude
+Code, Codex, Cursor, Windsurf, Antigravity e Gemini CLI con il loro file e lo stato, e
+Installa scrive la voce dopo conferma e copia di backup (JSON e TOML con commenti
+conservati); Attività filtra per sessione, esito e testo ed esporta CSV; `propose_sql` salva
+la proposta e l'app aperta (o al prossimo avvio) la apre in un tab dell'editor. Restano il
+ponte con l'app aperta via HTTP, la conferma nell'app per le scritture e i P3.
 
 PlatypusDB non integra un proprio assistente AI. Diventa invece uno strumento che gli agenti già
 in uso (Claude Code, Codex, Cursor, altri client MCP) possono collegare: usano le connessioni
@@ -716,16 +725,16 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | ✅ Registro delle query degli agenti nella cronologia, con l'agente come origine e filtro dedicato | P1 | N |
 | ✅ Installazione guidata: pagina "Agenti" nelle Impostazioni con i comandi pronti (`claude mcp add platypus -- platypus-mcp`, voce `[mcp_servers.platypus]` per Codex) e un pulsante Copia | P1 | N |
 | ✅ CLI per agenti senza MCP: `platypus-cli --connection <nome>` dalle connessioni salvate, output JSON stabile e documentato | P1 | N |
-| `explain` e campione di righe (`sample_rows`) come tool dedicati, con i limiti di `run_query` | P2 | D+ |
+| ✅ `explain` e campione di righe (`sample_rows`) come tool dedicati, con i limiti di `run_query` | P2 | D+ |
 | **Ponte con l'app aperta** (MCP su HTTP locale con token): l'agente vede le sessioni aperte e l'indicatore "agente collegato" compare nella barra | P2 | N |
 | Conferma nell'app per le scritture: dialog con lo statement, le righe stimate e il piano EXPLAIN (riusa le guardie del gruppo L), con "consenti per questa sessione". Il server `--mcp` non ha finestra: serve il ponte con l'app aperta, o una finestra di conferma propria | P2 | N |
-| 🆕 **Configurazione degli agenti in un clic**: la pagina "Agents" scrive la voce del server nei file di Claude Desktop, Cursor, Windsurf e Codex (o lancia `claude mcp add`) e mostra in quali client è già presente | P2 | N |
-| 🆕 **Registro delle chiamate degli agenti**: ogni chiamata a un tool (non solo le query), con agente, connessione, argomenti, durata ed esito, raggruppata per sessione, con filtro ed export CSV | P2 | N |
-| Tool `propose_sql`: apre la query proposta dall'agente in un tab dell'editor, da rivedere ed eseguire a mano | P2 | N |
+| ✅ **Configurazione degli agenti in un clic**: la pagina "Agents" scrive la voce del server nei file di Claude Desktop, Cursor, Windsurf e Codex (o lancia `claude mcp add`) e mostra in quali client è già presente | P2 | N |
+| ✅ **Registro delle chiamate degli agenti**: ogni chiamata a un tool (non solo le query), con agente, connessione, argomenti, durata ed esito, raggruppata per sessione, con filtro ed export CSV | P2 | N |
+| ✅ Tool `propose_sql`: apre la query proposta dall'agente in un tab dell'editor, da rivedere ed eseguire a mano | P2 | N |
 | Contesto dell'utente su consenso: testo dell'editor, selezione, risultato corrente della griglia | P3 | N |
 | Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
 | Plugin pronti: plugin per Claude Code e configurazione per Codex con le istruzioni d'uso (quando usare quale tool, limiti) | P3 | N |
-| 🆕 **Tab Agenti come pannello di integrazione**: sotto-schede Setup, Attività e Sicurezza; in Setup l'elenco dei client (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, Antigravity, …) con il percorso del loro file di configurazione e un pulsante **Installa** che scrive la voce del server (con backup del file e conferma), accanto la configurazione da copiare a mano per il client scelto; Attività mostra le chiamate degli agenti, Sicurezza i permessi per connessione | P2 | N |
+| ✅ **Tab Agenti come pannello di integrazione**: sotto-schede Setup, Attività e Sicurezza; in Setup l'elenco dei client (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, Antigravity, …) con il percorso del loro file di configurazione e un pulsante **Installa** che scrive la voce del server (con backup del file e conferma), accanto la configurazione da copiare a mano per il client scelto; Attività mostra le chiamate degli agenti, Sicurezza i permessi per connessione | P2 | N |
 | 🆕 Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate | P3 | N |
 
 ---
