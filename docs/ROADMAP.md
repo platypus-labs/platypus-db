@@ -103,7 +103,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | H — Import, export e trasferimento | ✅ fatto (P1; P2 e P3 in parte) |
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
 | J — Amministrazione del server | ✅ fatto (P2 in parte) |
-| K — Shell ed ergonomia | 🔒 Delfa · group-k-themes · 2026-10-28 |
+| K — Shell ed ergonomia | ✅ fatto (P1, P2) |
 | L — Sicurezza operativa | ✅ fatto (P1, P2) |
 | M — Analisi dei dati | ✅ fatto (P2 in parte) |
 | N — Accesso per agenti (MCP) | ✅ fatto (P1; P2 in parte) |
