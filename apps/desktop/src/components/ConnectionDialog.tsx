@@ -30,7 +30,7 @@ import { basename } from "../workspace";
 import { DriverIcon, DriverPicker, driverName } from "./DriverPicker";
 import { NetworkFields, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 import { NetworkProfileDialog, newNetworkProfile } from "./NetworkProfileDialog";
-import { t, msg } from "../i18n";
+import { t, tNodes, msg } from "../i18n";
 
 interface Props {
   initial: SavedConnection;
@@ -150,6 +150,13 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     setConn((c) => ({ ...c, [key]: value }));
   const init = conn.init ?? EMPTY_INIT;
   const setInit = <K extends keyof SavedInit>(key: K, value: SavedInit[K]) => set("init", { ...init, [key]: value });
+  /** Sets a driver option; an empty value removes it. */
+  const setOption = (key: string, value: string) => {
+    const options = { ...conn.options };
+    if (value.trim()) options[key] = value;
+    else delete options[key];
+    set("options", options);
+  };
   const source = passwordSource(conn);
   const profile = profiles.find((p) => p.id === conn.network_profile) ?? null;
   const server = !isEmbedded(conn.driver);
@@ -726,6 +733,33 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                 </div>
               </>
             )}
+
+            <div className="field">
+              <span>{t("Variables file (.env)")}</span>
+              <div className="row tight">
+                <input
+                  className="grow"
+                  value={conn.options?.env_file ?? ""}
+                  onChange={(e) => setOption("env_file", e.target.value)}
+                  placeholder={t("None: the environment's variables only")}
+                  data-field="env_file"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const path = await open({ multiple: false, directory: false });
+                    if (typeof path === "string") setOption("env_file", path);
+                  }}
+                >
+                  {t("Browse…")}
+                </button>
+              </div>
+              <small className="muted">
+                {tNodes("Any field, the password too, can read {example}: from the environment, then from this file.", {
+                  example: <code key="example">{"${env:NAME}"}</code>,
+                })}
+              </small>
+            </div>
 
             <label className="check">
               <input type="checkbox" checked={conn.read_only} onChange={(e) => set("read_only", e.target.checked)} />

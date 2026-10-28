@@ -1677,6 +1677,9 @@ const it: Record<string, string> = {
   "Open query plan…": "Apri piano di esecuzione…",
   "Paste the plan here": "Incolla qui il piano",
   "Fit": "Adatta",
+  "Variables file (.env)": "File di variabili (.env)",
+  "None: the environment's variables only": "Nessuno: solo le variabili d'ambiente",
+  "Any field, the password too, can read {example}: from the environment, then from this file.": "Ogni campo, anche la password, può leggere {example}: dall'ambiente, poi da questo file.",
 };
 
 export default it;
