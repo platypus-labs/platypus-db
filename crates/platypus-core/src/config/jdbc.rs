@@ -288,7 +288,10 @@ impl JdbcUrl {
                 )
             })
         };
-        if let Some(mode) = sqlserver_ssl(on("encrypt"), on("trustservercertificate")) {
+        let encrypt = jdbc
+            .property(&["encrypt"])
+            .and_then(|v| sqlserver_encrypt(&v));
+        if let Some(mode) = sqlserver_ssl(encrypt, on("trustservercertificate")) {
             jdbc.config.ssl_mode = mode;
         }
         jdbc
@@ -361,11 +364,20 @@ pub(super) fn strip_tcp(address: &str) -> &str {
     }
 }
 
-/// The TLS mode of SQL Server's `encrypt` and `trustServerCertificate`: `None` when the
-/// connection is not encrypted, so the driver's default stays.
-pub(super) fn sqlserver_ssl(encrypt: bool, trust: bool) -> Option<SslMode> {
-    match (encrypt, trust) {
-        (false, _) => None,
+/// SQL Server's `encrypt`: `true`, `false`, or `None` for a value it does not take.
+pub(super) fn sqlserver_encrypt(value: &str) -> Option<bool> {
+    match value.to_ascii_lowercase().as_str() {
+        "true" | "yes" | "1" | "strict" | "mandatory" => Some(true),
+        "false" | "no" | "0" | "optional" => Some(false),
+        _ => None,
+    }
+}
+
+/// The TLS mode of SQL Server's `encrypt` and `trustServerCertificate`: `None` when
+/// `encrypt` is not given, so the driver's default stays.
+pub(super) fn sqlserver_ssl(encrypt: Option<bool>, trust: bool) -> Option<SslMode> {
+    match (encrypt?, trust) {
+        (false, _) => Some(SslMode::Disable),
         (true, true) => Some(SslMode::Require),
         (true, false) => Some(SslMode::VerifyFull),
     }
@@ -488,7 +500,8 @@ mod tests {
             SslMode::Require
         );
         assert_eq!(tls("jdbc:sqlserver://h;encrypt=true"), SslMode::VerifyFull);
-        assert_eq!(tls("jdbc:sqlserver://h;encrypt=false"), SslMode::Prefer);
+        assert_eq!(tls("jdbc:sqlserver://h;encrypt=false"), SslMode::Disable);
+        assert_eq!(tls("jdbc:sqlserver://h"), SslMode::Prefer);
     }
 
     #[test]

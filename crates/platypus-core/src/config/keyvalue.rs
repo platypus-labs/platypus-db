@@ -17,7 +17,7 @@
 use std::time::Duration;
 
 use super::any::{ParseNote, ParsedConnection, login_note};
-use super::jdbc::{host_port, sqlserver_ssl, strip_tcp};
+use super::jdbc::{host_port, sqlserver_encrypt, sqlserver_ssl, strip_tcp};
 use super::{ConnectionConfig, DriverKind, JdbcUrl, Secret, SslMode, libpq, secret_key};
 use crate::{Error, Result};
 
@@ -177,7 +177,7 @@ fn value<'a>(text: &'a str, key: &str) -> Result<(String, &'a str)> {
 struct Native {
     instance: Option<String>,
     port_given: bool,
-    encrypt: bool,
+    encrypt: Option<bool>,
     trust: bool,
     ssl: Option<SslMode>,
     ignored: Vec<String>,
@@ -225,7 +225,7 @@ impl Native {
             "database" | "initialcatalog" | "dbname" => value.clone_into(&mut config.database),
             "userid" | "uid" | "user" | "username" => value.clone_into(&mut config.user),
             "password" | "pwd" => config.password = Some(Secret::new(value)),
-            "encrypt" => self.encrypt = on(),
+            "encrypt" => self.encrypt = sqlserver_encrypt(value.trim()),
             "trustservercertificate" => self.trust = on(),
             "sslmode" => self.ssl = Some(value.trim().parse()?),
             "applicationname" | "app" => config.application_name = Some(value.to_owned()),
@@ -372,6 +372,8 @@ mod tests {
         );
         let c = parse_ok("Data Source=db;Database=x;Encrypt=yes").config;
         assert_eq!(c.ssl_mode, SslMode::VerifyFull);
+        let c = parse_ok("Data Source=db;Database=x;Encrypt=False").config;
+        assert_eq!(c.ssl_mode, SslMode::Disable);
         assert_eq!(c.port, Some(1433));
         let c = parse_ok("Server=(local);Database=x").config;
         assert_eq!(c.host, "localhost");

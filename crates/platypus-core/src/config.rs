@@ -431,7 +431,7 @@ impl ConnectionConfig {
     fn read_query(&mut self, url: &Url) -> Result<Vec<String>> {
         let mut unknown = Vec::new();
         let mut ssl_given = false;
-        let (mut encrypt, mut trust) = (false, false);
+        let (mut encrypt, mut trust) = (None, false);
         let on = |v: &str| {
             matches!(
                 v.to_ascii_lowercase().as_str(),
@@ -471,7 +471,9 @@ impl ConnectionConfig {
                 {
                     self.database = value.into_owned();
                 }
-                k if sqlserver && k.eq_ignore_ascii_case("encrypt") => encrypt = on(&value),
+                k if sqlserver && k.eq_ignore_ascii_case("encrypt") => {
+                    encrypt = jdbc::sqlserver_encrypt(&value);
+                }
                 k if sqlserver && k.eq_ignore_ascii_case("trustServerCertificate") => {
                     trust = on(&value);
                 }
@@ -664,7 +666,7 @@ fn take_zone(input: &str) -> Result<(std::borrow::Cow<'_, str>, Option<String>)>
         return Ok((input.into(), None));
     };
     let raw = &host[percent + 1..close];
-    let zone = decode(raw.strip_prefix("25").unwrap_or(raw))?;
+    let zone = decode(rfc_zone(raw).unwrap_or(raw))?;
     if zone.is_empty() {
         return Err(Error::Config(
             "the IPv6 zone of the URL is empty".to_owned(),
@@ -678,6 +680,16 @@ fn take_zone(input: &str) -> Result<(std::borrow::Cow<'_, str>, Option<String>)>
         &rest[start + host.len()..]
     );
     Ok((out.into(), Some(zone)))
+}
+
+/// The zone after `%25`, RFC 6874's escaped `%`, when `raw` is one: not when what follows
+/// is no zone, empty or a number with a leading zero, so that the interfaces typed as
+/// they are named (`%25`, `%250`) keep their number.
+fn rfc_zone(raw: &str) -> Option<&str> {
+    raw.strip_prefix("25").filter(|zone| {
+        let leading_zero = zone.starts_with('0') && zone.bytes().all(|b| b.is_ascii_digit());
+        !(zone.is_empty() || leading_zero)
+    })
 }
 
 /// The file of a SQLite or DuckDB URL. `sqlite:///C:/data/app.db` has the path
@@ -889,6 +901,8 @@ mod tests {
             (ms.database.as_str(), ms.ssl_mode),
             ("x", SslMode::VerifyFull)
         );
+        let ms = ConnectionConfig::from_url("sqlserver://sa@h?encrypt=false").unwrap();
+        assert_eq!(ms.ssl_mode, SslMode::Disable);
         // An explicit mode wins over `encrypt`.
         let ms = ConnectionConfig::from_url("sqlserver://h?encrypt=true&sslmode=disable").unwrap();
         assert_eq!(ms.ssl_mode, SslMode::Disable);
@@ -922,7 +936,15 @@ mod tests {
         }
         let c = ConnectionConfig::from_url("mysql://[fe80::1%2512]/x").unwrap();
         assert_eq!(c.host, "fe80::1%12");
-        assert!(ConnectionConfig::from_url("postgres://[fe80::1%25]/db").is_err());
+        // Interfaces numbered as typed: no zone could follow an escaped `%`.
+        for (url, host) in [
+            ("postgres://[fe80::1%250]/db", "fe80::1%250"),
+            ("postgres://[fe80::1%25]/db", "fe80::1%25"),
+            ("postgres://[fe80::1%2501]/db", "fe80::1%2501"),
+        ] {
+            assert_eq!(ConnectionConfig::from_url(url).unwrap().host, host, "{url}");
+        }
+        assert!(ConnectionConfig::from_url("postgres://[fe80::1%]/db").is_err());
         assert!(ConnectionConfig::from_url("postgres://u@db.example:5432x/shop").is_err());
     }
 
