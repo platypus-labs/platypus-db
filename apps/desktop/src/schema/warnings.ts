@@ -12,6 +12,7 @@ const TEMPLATES = [
   msg("SQLite has no table comments: it is not saved."),
   msg("SQLite has no column comments: they are not saved."),
   msg("Drops the table {table}: its rows are lost."),
+  msg("Creates the sequence {sequence}, which starts at 1: if its columns have values already, move it past them (setval)."),
 ];
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

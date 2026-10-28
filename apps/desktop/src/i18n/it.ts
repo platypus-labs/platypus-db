@@ -1587,6 +1587,8 @@ const it: Record<string, string> = {
   "SQLite has no table comments: it is not saved.": "SQLite non ha commenti sulle tabelle: non viene salvato.",
   "SQLite has no column comments: they are not saved.": "SQLite non ha commenti sulle colonne: non vengono salvati.",
   "Drops the table {table}: its rows are lost.": "Elimina la tabella {table}: le sue righe vanno perse.",
+  "Creates the sequence {sequence}, which starts at 1: if its columns have values already, move it past them (setval).":
+    "Crea la sequenza {sequence}, che parte da 1: se le sue colonne hanno già dei valori, va portata oltre (setval).",
   "Choose a schema": "Scegli uno schema",
 };
 

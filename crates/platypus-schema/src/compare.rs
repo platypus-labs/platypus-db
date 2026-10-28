@@ -61,8 +61,9 @@ pub fn compare(
         &mut sequences,
     )?;
     // First, for the tables created and the defaults set to take their values.
-    out.statements
-        .splice(0..0, missing_sequences(schema, sequences, current));
+    let created = missing_sequences(schema, sequences, wanted, current);
+    out.statements.splice(0..0, created.statements);
+    out.warnings.extend(created.warnings);
     add(&mut out, altered);
     out.statements.extend(later);
     out.statements.append(&mut keys.added);
@@ -304,26 +305,36 @@ fn pg_sequence_default(
 fn missing_sequences(
     schema: &str,
     mut sequences: Vec<String>,
+    wanted: &[TableDesign],
     current: &[TableDesign],
-) -> Vec<String> {
+) -> Script {
+    // Only the columns the script keeps: dropping a column drops the sequence it owns. A
+    // sequence named without its schema may be of another one on the search path.
+    let kept = |t: &TableDesign, c: &ColumnDesign| {
+        find(wanted, &t.name).is_some_and(|w| w.columns.iter().any(|w| w.name == c.name))
+    };
     let there: Vec<Sequence> = current
         .iter()
-        .flat_map(|t| &t.columns)
+        .flat_map(|t| t.columns.iter().filter(move |c| kept(t, c)))
         .filter_map(|c| c.default.as_deref().and_then(nextval))
-        .filter(|s| s.schema.as_deref().is_none_or(|of| of == schema))
+        .filter(|s| s.schema.as_deref() == Some(schema))
         .collect();
     sequences.sort();
     sequences.dedup();
-    sequences
-        .into_iter()
-        .filter(|name| !there.iter().any(|s| s.name == *name))
-        .map(|name| {
-            format!(
-                "CREATE SEQUENCE IF NOT EXISTS {}",
-                Dialect::Postgres.qualified(Some(schema), &name)
-            )
-        })
-        .collect()
+    let mut out = Script::default();
+    for name in sequences {
+        if there.iter().any(|s| s.name == name) {
+            continue;
+        }
+        let sequence = Dialect::Postgres.qualified(Some(schema), &name);
+        out.statements
+            .push(format!("CREATE SEQUENCE IF NOT EXISTS {sequence}"));
+        out.warnings.push(format!(
+            "Creates the sequence {sequence}, which starts at 1: if its columns have values \
+             already, move it past them (setval)."
+        ));
+    }
+    out
 }
 
 /// The sequence a `nextval('..'::regclass)` default takes its values from.
@@ -848,6 +859,12 @@ mod tests {
                 "ALTER TABLE dst.customers ALTER COLUMN id SET DEFAULT nextval('dst.shared_seq'::regclass)",
             ]
         );
+        assert!(
+            script.warnings[0]
+                .starts_with("Creates the sequence dst.shared_seq, which starts at 1"),
+            "{:?}",
+            script.warnings
+        );
         // Another table there takes its values from it already.
         let mut there = plain.to_vec();
         there.push(table(
@@ -859,6 +876,12 @@ mod tests {
             &[],
             "dst",
         ));
+        // Dropped by the script, that table takes the sequence it owns with it.
+        let script = compare(Dialect::Postgres, "dst", "src", &wanted, &there).unwrap();
+        assert_eq!(
+            script.statements[0],
+            "CREATE SEQUENCE IF NOT EXISTS dst.shared_seq"
+        );
         let mut wanted = wanted.to_vec();
         wanted.push(there[1].clone());
         let script = compare(Dialect::Postgres, "dst", "src", &wanted, &there).unwrap();
