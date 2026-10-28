@@ -42,7 +42,8 @@ import { registerAddToProject } from "./projects/actions";
 import { registerMoveToFolder } from "./projects/folders";
 import { withDriver } from "./drivers/DriverPopup";
 import { ScriptsPanel } from "./scripts/ScriptsPanel";
-import { scriptsChanged } from "./scripts/scripts";
+import { openScriptFile, scriptsChanged } from "./scripts/scripts";
+import { vimTakes } from "./editor/vim";
 import { ContextMenu, type MenuState } from "./components/ContextMenu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -172,7 +173,7 @@ export function App() {
     );
     api.listProjectFolders().then(setProjectFolders, () => setProjectFolders([]));
     api.appInfo().then((i) => {
-      setVersion([i.version, i.build, i.portable && t("portable")].filter(Boolean).join(" · "));
+      setVersion(i.build ? `${i.version} · ${i.build}` : i.version);
       setPortable(i.portable);
       // The end-to-end tests drive what has no button yet through these.
       if (i.devtools) {
@@ -383,8 +384,7 @@ export function App() {
     const sample = await api.openSampleDatabase(shell.current.activeProject);
     setWorkspace(sample.workspace);
     scriptsChanged();
-    const sql = await api.readTextFile(sample.script);
-    workbench().openTab("query", sample.connection, { sql, filePath: sample.script });
+    await openScriptFile(sample.script, sample.connection);
   }
 
   /** A script dropped on the window opens in a new SQL editor of the shown tab's connection. */
@@ -896,7 +896,8 @@ export function App() {
   useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // A dialog or the palette takes the keyboard: nothing acts behind it.
-      if (isAsking() || layerOpen()) return;
+      // A Vim editor's own Ctrl keys (Ctrl+W deletes a word there).
+      if (isAsking() || layerOpen() || vimTakes(e)) return;
       dispatchKey("global", undefined, e, (err) => setToast(toCommandError(err).message));
     };
     window.addEventListener("keydown", onKey, true);
@@ -1044,7 +1045,8 @@ export function App() {
         {visibleTabs.length === 0 && (
           <Welcome
             empty={connections?.length === 0}
-            version={version}
+            // Translated at each render, so it follows a change of language.
+            version={portable ? `${version} · ${t("portable")}` : version}
             onNew={() => void newConnection()}
             onImport={() => setDialog({ kind: "import" })}
             onOpenFile={(path) => void openDroppedFile(path).catch((e: unknown) => setToast(toCommandError(e).message))}

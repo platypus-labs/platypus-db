@@ -2,6 +2,7 @@
 //! field survey, built into the app's data folder at the first click, with a connection
 //! and a few saved scripts on it.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use platypus_core::DriverKind;
@@ -67,8 +68,9 @@ fn build(path: &Path) -> CommandResult<()> {
 
 /// Builds the sample database if needed, saves its connection (in `project` too) unless
 /// one opens it already, and adds its scripts to the project's.
+/// Async, so building the database runs off the main thread: the window keeps answering.
 #[tauri::command]
-pub fn open_sample_database(
+pub async fn open_sample_database(
     state: State<'_, AppState>,
     project: Option<Uuid>,
 ) -> CommandResult<SampleDatabase> {
@@ -78,9 +80,12 @@ pub fn open_sample_database(
         .as_ref()
         .map_err(|e| CommandError::new("io", e.clone()))?;
     let path = scripts_dir.with_file_name("samples").join("wildlife.db");
-    build(&path)?;
+    let built = path.clone();
+    tauri::async_runtime::spawn_blocking(move || build(&built))
+        .await
+        .map_err(|e| CommandError::new("other", e.to_string()))??;
     let database = path.to_string_lossy().into_owned();
-    let (connection, workspace) = state.with_store(|s| {
+    let (connection, saved, workspace) = state.with_store(|s| {
         let found = s
             .list()
             .iter()
@@ -100,14 +105,16 @@ pub fn open_sample_database(
         if let Some(project) = project {
             s.add_to_project(project, &[id])?;
         }
-        Ok((id, Workspace::of(s)))
+        let saved: HashSet<Uuid> = s.list().iter().map(|c| c.id).collect();
+        Ok((id, saved, Workspace::of(s)))
     })?;
     let root = scripts::root(&state, project)?;
-    let paths = scripts::add_linked(&root, FOLDER, SCRIPTS, connection)?;
+    let paths = scripts::add_linked(&root, FOLDER, SCRIPTS, connection, |c| saved.contains(&c))?;
     Ok(SampleDatabase {
         workspace,
         connection,
-        script: root.join(&paths[0]),
+        // With the system's separators, as the Scripts panel opens it.
+        script: paths[0].split('/').fold(root, |path, part| path.join(part)),
     })
 }
 
@@ -152,19 +159,39 @@ mod tests {
     fn adds_the_scripts_once_and_keeps_changes() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
+        let read = |path: &str| std::fs::read_to_string(root.join(path)).unwrap();
         let connection = Uuid::new_v4();
-        let paths = scripts::add_linked(root, FOLDER, SCRIPTS, connection).unwrap();
+        let paths = scripts::add_linked(root, FOLDER, SCRIPTS, connection, |_| true).unwrap();
         assert_eq!(paths[0], "Sample/Sightings per river.sql");
         std::fs::write(root.join(&paths[0]), "-- mine").unwrap();
-        scripts::add_linked(root, FOLDER, SCRIPTS, connection).unwrap();
-        assert_eq!(
-            std::fs::read_to_string(root.join(&paths[0])).unwrap(),
-            "-- mine"
-        );
-        let links = std::fs::read_to_string(root.join(".links.json")).unwrap();
+        scripts::add_linked(root, FOLDER, SCRIPTS, connection, |_| true).unwrap();
+        assert_eq!(read(&paths[0]), "-- mine");
+        let links = read(".links.json");
         assert_eq!(
             links.matches(&connection.to_string()).count(),
             SCRIPTS.len()
         );
+
+        // The connection deleted and made again: the scripts follow the new one and keep
+        // the user's text.
+        let again = Uuid::new_v4();
+        scripts::add_linked(root, FOLDER, SCRIPTS, again, |c| c == again).unwrap();
+        let links = read(".links.json");
+        assert_eq!(links.matches(&again.to_string()).count(), SCRIPTS.len());
+        assert!(!links.contains(&connection.to_string()));
+        assert_eq!(read(&paths[0]), "-- mine");
+
+        // A script the user linked to another saved connection keeps that link.
+        let other = Uuid::new_v4();
+        let mut map: std::collections::BTreeMap<String, Uuid> =
+            serde_json::from_str(&links).unwrap();
+        map.insert(paths[1].clone(), other);
+        std::fs::write(
+            root.join(".links.json"),
+            serde_json::to_string(&map).unwrap(),
+        )
+        .unwrap();
+        scripts::add_linked(root, FOLDER, SCRIPTS, again, |c| c == again || c == other).unwrap();
+        assert!(read(".links.json").contains(&other.to_string()));
     }
 }

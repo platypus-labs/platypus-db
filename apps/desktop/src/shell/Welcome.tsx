@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { shortcutLabel, useActions } from "../actions";
 import { DATA_FILE_EXTENSIONS, toCommandError } from "../api";
@@ -30,6 +31,7 @@ export async function pickDataFile(): Promise<string | null> {
 
 /** What the workspace shows with no tab open. */
 export function Welcome({ empty, version, onNew, onImport, onOpenFile, onSample, onError }: Props) {
+  const [sampleBusy, setSampleBusy] = useState(false);
   async function pickFile() {
     const path = await pickDataFile();
     if (path !== null) onOpenFile(path);
@@ -66,7 +68,19 @@ export function Welcome({ empty, version, onNew, onImport, onOpenFile, onSample,
             <span className="muted">{t("CSV, Parquet, JSON or a spreadsheet, queried with DuckDB. You can also drop it on the window.")}</span>
           </span>
         </button>
-        <button type="button" className="welcome-card" onClick={() => onSample().catch((e: unknown) => onError(toCommandError(e).message))}>
+        <button
+          type="button"
+          className="welcome-card"
+          // The first click builds the database: a second one meanwhile would open it twice.
+          disabled={sampleBusy}
+          aria-busy={sampleBusy}
+          onClick={() => {
+            setSampleBusy(true);
+            onSample()
+              .catch((e: unknown) => onError(toCommandError(e).message))
+              .finally(() => setSampleBusy(false));
+          }}
+        >
           <Icon name="database" size={18} />
           <span>
             <strong>{t("Try the sample database")}</strong>

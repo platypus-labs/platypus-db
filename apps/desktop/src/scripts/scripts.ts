@@ -33,10 +33,14 @@ export function nameOf(path: string): string {
 }
 
 /** Opens a script in a SQL editor on `connection`. */
-export async function openScript(root: string, entry: ScriptEntry, connection: SavedConnection) {
-  const filePath = scriptFile(root, entry.path);
+export function openScript(root: string, entry: ScriptEntry, connection: SavedConnection) {
+  return openScriptFile(scriptFile(root, entry.path), connection.id);
+}
+
+/** Opens the script file `filePath` in a SQL editor on the connection `connectionId`. */
+export async function openScriptFile(filePath: string, connectionId: string) {
   const sql = await api.readTextFile(filePath);
-  workbench().openTab("query", connection.id, { sql, filePath });
+  workbench().openTab("query", connectionId, { sql, filePath });
 }
 
 /** The connection a script opens on: its link if that connection is listed, else the first. */
