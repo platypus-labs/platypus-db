@@ -48,24 +48,24 @@ const COLOR_LABELS: Record<ColorName, string> = {
 
 /** A rule as one line: `amount between 10 and 20`. */
 function describe(rule: FormatRule): string {
-  const c = rule.condition;
+  const { column, condition: c } = rule;
   switch (c.kind) {
     case "equals":
-      return t("{column} = {value}", { column: rule.column, value: c.value });
+      return t("{column} = {value}", { column, value: c.value });
     case "not_equals":
-      return t("{column} ≠ {value}", { column: rule.column, value: c.value });
+      return t("{column} ≠ {value}", { column, value: c.value });
     case "contains":
-      return t("{column} contains {value}", { column: rule.column, value: c.value });
+      return t("{column} contains {value}", { column, value: c.value });
     case "between":
-      if (c.min.trim() === "") return t("{column} ≤ {value}", { column: rule.column, value: c.max });
-      if (c.max.trim() === "") return t("{column} ≥ {value}", { column: rule.column, value: c.min });
-      return t("{column} between {min} and {max}", { column: rule.column, min: c.min, max: c.max });
+      if (c.min.trim() === "") return t("{column} ≤ {value}", { column, value: c.max });
+      if (c.max.trim() === "") return t("{column} ≥ {value}", { column, value: c.min });
+      return t("{column} between {min} and {max}", { column, min: c.min, max: c.max });
     case "null":
-      return t("{column} is NULL", { column: rule.column });
+      return t("{column} is NULL", { column });
     case "not_null":
-      return t("{column} is not NULL", { column: rule.column });
+      return t("{column} is not NULL", { column });
     case "scale":
-      return t("{column}: color scale", { column: rule.column });
+      return t("{column}: color scale", { column });
   }
 }
 
@@ -85,15 +85,17 @@ export function FormattingDialog({ columns, rules, column, saved, onChange, onCl
   const ready = draft.column !== "" && complete(draft.condition);
   const setCondition = (condition: Condition) => setDraft({ ...draft, condition });
   const numeric = columns.find((c) => c.name === draft.column)?.numeric ?? false;
+  // A fresh rule on the column just used.
+  const reset = () => setDraft(newRule(draft.column));
 
   const save = () => {
     if (!ready) return;
     onChange(editing ? rules.map((r) => (r.id === draft.id ? draft : r)) : [...rules, draft]);
-    setDraft(newRule(draft.column));
+    reset();
   };
   const remove = (id: string) => {
     onChange(rules.filter((r) => r.id !== id));
-    if (id === draft.id) setDraft(newRule(draft.column));
+    if (id === draft.id) reset();
   };
 
   return (
@@ -188,7 +190,7 @@ export function FormattingDialog({ columns, rules, column, saved, onChange, onCl
         </div>
         <div className="actions">
           {editing && (
-            <button type="button" onClick={() => setDraft(newRule(draft.column))}>
+            <button type="button" onClick={reset}>
               {t("New rule")}
             </button>
           )}

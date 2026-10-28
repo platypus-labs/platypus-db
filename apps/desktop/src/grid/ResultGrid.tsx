@@ -341,9 +341,10 @@ function useFormatting(
       (profiles) => {
         if (!live) return;
         const next: Ranges = new Map();
+        const bound = (text: string | null) => (text === null ? null : parseNumber(plainNumber(text)));
         for (const [c, p] of profiles) {
-          const low = p.min === null ? null : parseNumber(plainNumber(p.min));
-          const high = p.max === null ? null : parseNumber(plainNumber(p.max));
+          const low = bound(p.min);
+          const high = bound(p.max);
           if (low !== null && high !== null) next.set(c, [low, high]);
         }
         setRanges(next);
