@@ -82,7 +82,8 @@ url = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+# `deny`, not `forbid`: the desktop app needs one call into Win32 (see its `main.rs`).
+unsafe_code = "deny"
 missing_debug_implementations = "warn"
 
 [workspace.lints.clippy]
