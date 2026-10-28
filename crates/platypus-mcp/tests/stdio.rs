@@ -368,23 +368,27 @@ fn a_cancelled_request_cancels_its_statement() {
     );
 }
 
-/// A line that is not JSON gets JSON-RPC's Parse error, and the server goes on.
+/// A line that is not JSON is skipped without an answer, as the official MCP SDKs do (an
+/// answer to garbage can start a storm of errors with a peer that echoes it,
+/// modelcontextprotocol/rust-sdk#938), and the server goes on.
 #[test]
-fn a_line_that_is_not_json_gets_a_parse_error() {
+fn a_line_that_is_not_json_is_skipped() {
     let dir = tempfile::tempdir().unwrap();
     profile(dir.path());
     let mut client = initialized(dir.path());
     writeln!(client.stdin, "{{this is not json").unwrap();
     client.stdin.flush().unwrap();
+    client.send(&json!({ "jsonrpc": "2.0", "id": 900, "method": "ping" }));
     let line = client
         .lines
         .recv_timeout(Duration::from_secs(10))
-        .expect("no answer to a line that is not JSON");
+        .expect("no answer to the ping after a line that is not JSON");
     let answer: Value = serde_json::from_str(&line).unwrap();
-    assert_eq!(answer.get("id"), Some(&Value::Null), "{answer}");
-    assert_eq!(answer["error"]["code"], -32700, "{answer}");
-    let ping = client.request("ping", &json!({}));
-    assert!(ping["result"].is_object(), "{ping}");
+    assert_eq!(
+        answer["id"], 900,
+        "the first line out answers the ping: {answer}"
+    );
+    assert!(answer["result"].is_object(), "{answer}");
 }
 
 /// An argument the server does not take fails with the usage, instead of serving.

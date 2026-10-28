@@ -21,7 +21,6 @@ pub mod query;
 mod redact;
 mod server;
 pub mod stdio;
-mod transport;
 
 pub use access::AgentAccess;
 pub use agent::{Agent, ConnectionInfo, QueryArgs, SEARCH_RESULTS, origin_name};
