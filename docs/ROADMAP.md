@@ -260,9 +260,20 @@ colonne virtuali calcolate, JSON riconosciuto nelle colonne di testo.
 
 ---
 
-### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 fatti, P2 in parte
+### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 e P2 fatti
 
-**Stato: P1 completati, P2 in parte** (da fare: variabili d'ambiente nei campi, modalità pooler) (tunnel SSH con password, chiave, agent e jump host; tipi
+**Stato: P1 e P2 completati** (restano i P3). Variabili d'ambiente: `platypus-core/src/env.rs`
+sostituisce `${env:NOME}` (`$${` per scriverlo) in host, database, utente, password,
+opzioni, certificati e tunnel SSH, cercando prima nell'ambiente del processo e poi nel file
+`.env` dell'opzione `env_file`; si applica alla connessione (app, server MCP, CLI), mentre lo
+store e *Copia come URL* tengono il riferimento; un host `${env:…}` si controlla dopo la
+sostituzione. Modalità pooler: opzione `pooler` = `transaction` (o `?pgbouncer=true`
+nell'URL); in autocommit il driver PostgreSQL descrive lo statement in una transazione sua
+(`BEGIN`/`ROLLBACK`) e lo esegue senza nome (`query_typed_raw`, `execute_typed`), e i nomi
+dei tipi si leggono con `query_typed`; in una transazione aperta resta tutto com'era. Il
+dialogo propone la modalità per il pooler di Supabase sulla 6543 e per gli host `-pooler` di
+Neon. `docker/compose.yml` ha PgBouncer (profilo `pooler`, porta 56432) in transaction mode
+con `DISCARD ALL` dopo ogni transazione. Prima: (tunnel SSH con password, chiave, agent e jump host; tipi
 Dev/Test/Prod con colore e commit manuale in Prod; import da DBeaver, DataGrip, pgAdmin e
 `pg_service.conf`, con cartelle e progetti da un export `.dbp` di DBeaver; cartelle di
 connessioni nei progetti e cartelle di progetti nella barra; profili di rete; schema, fuso orario e query di bootstrap dopo ogni
@@ -293,10 +304,10 @@ prima di scrivere in Prod è nel gruppo L. Restano i P2 nuovi e i P3.
 | ✅ Import di progetti DBeaver (`.dbp`) con cartelle; cartelle di connessioni nei progetti e cartelle di progetti nella barra | P2 | D |
 | Kubernetes port-forward, AWS SSM | P3 | D+ |
 | ✅ Connessione da URL incollato (`postgres://…`, `mysql://…`, `Server=…;Database=…`): i campi si compilano da soli | P2 | D |
-| 🆕 Variabili d'ambiente e file `.env` nei campi della connessione (`${env:DB_PASSWORD}`) | P2 | D |
+| ✅ Variabili d'ambiente e file `.env` nei campi della connessione (`${env:DB_PASSWORD}`) | P2 | D |
 | 🆕 Credenziali da gestori esterni: 1Password CLI, Bitwarden, HashiCorp Vault, AWS Secrets Manager | P3 | D+ |
 | 🆕 Test di tutte le connessioni di un progetto in una volta, con l'esito per ognuna | P3 | N |
-| 🆕 **Modalità pooler** per PostgreSQL (PgBouncer, Supavisor, pooler di Neon) in transaction o session mode: in transaction mode niente prepared statement con nome, che il pooler rompe; proposta di default nei profili Supabase e Neon | P2 | N |
+| ✅ **Modalità pooler** per PostgreSQL (PgBouncer, Supavisor, pooler di Neon) in transaction o session mode: in transaction mode niente prepared statement con nome, che il pooler rompe; proposta di default nei profili Supabase e Neon | P2 | N |
 
 ---
 
