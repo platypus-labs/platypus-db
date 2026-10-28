@@ -51,12 +51,23 @@ const boxWidth = (t: SchemaTable) => {
   return Math.min(340, Math.max(140, 16 + CHAR * longest));
 };
 
-const box = (t: SchemaTable): Box => ({
+/** Whether `fk` references a table of `schema`, the diagram's: a table of another schema is
+ *  not drawn, even with the name of one here. */
+const local = (fk: { ref_schema: string }, schema: string) => !fk.ref_schema || fk.ref_schema === schema;
+
+const box = (t: SchemaTable, schema: string): Box => ({
   name: t.name,
   width: boxWidth(t),
   height: HEAD + ROW * t.details.columns.length + 6,
-  refs: t.details.foreign_keys.map((f) => f.ref_table).filter((r) => r !== t.name),
+  refs: t.details.foreign_keys
+    .filter((f) => local(f, schema))
+    .map((f) => f.ref_table)
+    .filter((r) => r !== t.name),
 });
+
+/** Two presses this close on the same thing are a double click. The pointer is captured on
+ *  each press, so the browser's own dblclick goes to the canvas, not to the table. */
+const DOUBLE_CLICK_MS = 500;
 
 /** A note's text cut in lines of about `NOTE_CHARS` characters. */
 function noteLines(text: string): string[] {
@@ -87,6 +98,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
   const [movedNotes, setMovedNotes] = useState<Record<number, Point>>({});
   const [editing, setEditing] = useState<number | null>(null);
   const drag = useRef<Dragging | null>(null);
+  const lastPress = useRef<{ what: string; at: number } | null>(null);
   const svg = useRef<SVGSVGElement>(null);
   const colors = useChartColors();
   const id = (what: string) => `erd-${tab.key}-${what}`;
@@ -120,7 +132,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
     };
   }, [tab.schema, tab.tables?.join("\n"), version]);
 
-  const boxes = useMemo(() => (tables ?? []).map(box), [tables]);
+  const boxes = useMemo(() => (tables ?? []).map((t) => box(t, tab.schema)), [tables, tab.schema]);
   const placed = useMemo(() => ({ ...autoLayout(boxes), ...tab.positions, ...moved }), [boxes, tab.positions, moved]);
   const pos = (name: string): Point => placed[name] ?? { x: PAD, y: PAD };
   const notes = useMemo(() => tab.notes.map((n) => ({ ...n, ...movedNotes[n.id] })), [tab.notes, movedNotes]);
@@ -144,14 +156,31 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
     const rect = svg.current!.getBoundingClientRect();
     return { x: (e.clientX - rect.left) / tab.zoom, y: (e.clientY - rect.top) / tab.zoom };
   };
+  /** Whether this press on `what` makes a double click with the one before. */
+  const double = (e: PointerEvent, what: string) => {
+    const last = lastPress.current;
+    const yes = last !== null && last.what === what && e.timeStamp - last.at < DOUBLE_CLICK_MS;
+    lastPress.current = yes ? null : { what, at: e.timeStamp };
+    return yes;
+  };
   const startTable = (e: PointerEvent, name: string) => {
     if (e.button !== 0) return;
+    if (double(e, `table:${name}`)) {
+      drag.current = null;
+      openTable(name);
+      return;
+    }
     const p = at(e);
     drag.current = { what: "table", name, dx: p.x - pos(name).x, dy: p.y - pos(name).y };
     svg.current!.setPointerCapture(e.pointerId);
   };
   const startNote = (e: PointerEvent, n: ErdNote) => {
     if (e.button !== 0) return;
+    if (double(e, `note:${n.id}`)) {
+      drag.current = null;
+      setEditing(n.id);
+      return;
+    }
     const p = at(e);
     drag.current = { what: "note", id: n.id, dx: p.x - n.x, dy: p.y - n.y };
     svg.current!.setPointerCapture(e.pointerId);
@@ -268,6 +297,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
           <rect width={size.w} height={size.h} fill={colors.background} />
           {(tables ?? []).map((table, i) =>
             table.details.foreign_keys.map((fk) => {
+              if (!local(fk, tab.schema)) return null;
               const j = tables!.findIndex((o) => o.name === fk.ref_table);
               if (j < 0) return null;
               const target = tables![j]!;
@@ -288,10 +318,10 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
             }),
           )}
           {(tables ?? []).map((table, i) => (
-            <TableBox key={table.name} table={table} box={boxes[i]!} at={pos(table.name)} colors={colors} onPointerDown={(e) => startTable(e, table.name)} onOpen={() => openTable(table.name)} />
+            <TableBox key={table.name} table={table} box={boxes[i]!} at={pos(table.name)} colors={colors} onPointerDown={(e) => startTable(e, table.name)} />
           ))}
           {notes.map((n) => (
-            <g key={n.id} transform={`translate(${n.x},${n.y})`} className="erd-note" onPointerDown={(e) => startNote(e, n)} onDoubleClick={() => setEditing(n.id)}>
+            <g key={n.id} transform={`translate(${n.x},${n.y})`} className="erd-note" onPointerDown={(e) => startNote(e, n)}>
               <rect width={NOTE_WIDTH} height={noteHeight(n)} rx={4} fill={colors.series[7]} fillOpacity={0.18} stroke={colors.series[7]} />
               {noteLines(n.text).map((line, i) => (
                 <text key={i} x={8} y={20 + i * 16} fill={colors.text}>
@@ -322,10 +352,10 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
   );
 }
 
-function TableBox({ table, box: b, at, colors, onPointerDown, onOpen }: { table: SchemaTable; box: Box; at: Point; colors: ChartColors; onPointerDown: (e: PointerEvent) => void; onOpen: () => void }) {
+function TableBox({ table, box: b, at, colors, onPointerDown }: { table: SchemaTable; box: Box; at: Point; colors: ChartColors; onPointerDown: (e: PointerEvent) => void }) {
   const keys = new Set(table.details.foreign_keys.flatMap((f) => f.columns));
   return (
-    <g transform={`translate(${at.x},${at.y})`} className="erd-table" onPointerDown={onPointerDown} onDoubleClick={onOpen}>
+    <g transform={`translate(${at.x},${at.y})`} className="erd-table" onPointerDown={onPointerDown}>
       <title>{table.comment ?? table.name}</title>
       <rect width={b.width} height={b.height} rx={4} fill={colors.background} stroke={colors.grid} />
       <rect width={b.width} height={HEAD} rx={4} fill={colors.series[0]} fillOpacity={0.2} />
