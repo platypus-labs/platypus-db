@@ -91,6 +91,8 @@ pub fn open_sample_database(
         } else {
             let mut connection = SavedConnection::new(NAME, DriverKind::Sqlite);
             connection.database.clone_from(&database);
+            // No password: the keychain is never asked.
+            connection.save_password = false;
             let id = connection.id;
             s.save(connection, PasswordUpdate::Keep)?;
             id
