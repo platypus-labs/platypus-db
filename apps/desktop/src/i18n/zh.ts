@@ -63,8 +63,8 @@ const zh: Record<string, string> = {
   "Unknown columns, SELECT * on production connections, joins without a condition.": "未知的列、生产连接上的 SELECT *、没有条件的连接。",
   "Spell check": "拼写检查",
   "Vim mode": "Vim 模式",
-  "Vim's keys in the SQL editor: Esc for normal mode, :w saves the script.":
-    "在 SQL 编辑器中使用 Vim 键位：Esc 进入普通模式，:w 保存脚本。",
+  "Vim's keys in the SQL editor: Esc for normal mode, :w saves the script. While the editor has the focus, Ctrl+W, Ctrl+O, Ctrl+F and Vim's other Ctrl keys are Vim's.":
+    "在 SQL 编辑器中使用 Vim 的按键：Esc 进入普通模式，:w 保存脚本。编辑器获得焦点时，Ctrl+W、Ctrl+O、Ctrl+F 及 Vim 的其他 Ctrl 键交给 Vim。",
   "Off": "关闭",
   "Comments": "注释",
   "Comments and strings": "注释和字符串",

@@ -68,6 +68,18 @@ export default async function (page, { dir }) {
   await keys(page, "u");
   await page.waitFor(`${text} === ${JSON.stringify("SELECT name FROM t ORDER BY id;\nSELECT 'second';")}`);
 
+  // Ctrl+W in insert mode deletes a word, as in Vim: the tab stays open.
+  await keys(page, "Go");
+  await page.waitFor(`${mode}.includes('INSERT')`);
+  await page.type("x y");
+  await page.waitFor(`${text}.endsWith("\\nx y")`);
+  await page.key("w", "KeyW", 87, CTRL);
+  await page.waitFor(`${text}.endsWith("\\nx ")`);
+  assert.equal(await page.eval(`document.querySelectorAll('.tab').length`), 1, "Ctrl+W is Vim's");
+  await page.key("Escape", "Escape", 27);
+  await keys(page, "dd");
+  await page.waitFor(`${text} === ${JSON.stringify("SELECT name FROM t ORDER BY id;\nSELECT 'second';")}`);
+
   // Ctrl+Enter runs the statement under the cursor, as without Vim.
   await keys(page, "gg");
   await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);

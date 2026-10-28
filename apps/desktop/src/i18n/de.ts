@@ -63,8 +63,8 @@ const de: Record<string, string> = {
   "Unknown columns, SELECT * on production connections, joins without a condition.": "Unbekannte Spalten, SELECT * auf Produktionsverbindungen, Joins ohne Bedingung.",
   "Spell check": "Rechtschreibprüfung",
   "Vim mode": "Vim-Modus",
-  "Vim's keys in the SQL editor: Esc for normal mode, :w saves the script.":
-    "Vim-Tasten im SQL-Editor: Esc für den Normalmodus, :w speichert das Skript.",
+  "Vim's keys in the SQL editor: Esc for normal mode, :w saves the script. While the editor has the focus, Ctrl+W, Ctrl+O, Ctrl+F and Vim's other Ctrl keys are Vim's.":
+    "Die Tasten von Vim im SQL-Editor: Esc für den Normalmodus, :w speichert das Skript. Solange der Editor den Fokus hat, gehören Ctrl+W, Ctrl+O, Ctrl+F und die anderen Ctrl-Tasten von Vim zu Vim.",
   "Off": "Aus",
   "Comments": "Kommentare",
   "Comments and strings": "Kommentare und Zeichenketten",

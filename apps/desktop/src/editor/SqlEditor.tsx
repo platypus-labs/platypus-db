@@ -43,7 +43,7 @@ import { type CompletionCatalog, type DriverKind, isMongo, toCommandError } from
 import { annotation, catalogEntry, catalogKey } from "../catalog/catalog";
 import { ContextMenu, type MenuState } from "../components/ContextMenu";
 import { useSetting } from "../settings";
-import { onVimWrite, vimMode, vimSetting } from "./vim";
+import { onVimWrite, vimMode, vimSetting, vimTakes } from "./vim";
 import { workbench } from "../workbench";
 import { SQL_DRAG, type SqlDrag } from "../sqlNames";
 import "./actions";
@@ -355,7 +355,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         // Registered editor actions take their shortcuts before the keymaps below.
         Prec.highest(
           EditorView.domEventHandlers({
-            keydown: (e, view) => dispatchKey("editor", target(view), e, reportError),
+            keydown: (e, view) => !vimTakes(e) && dispatchKey("editor", target(view), e, reportError),
             // Ctrl+click on a name opens its object; elsewhere it adds a cursor as usual.
             mousedown: (e, view) => {
               const open = callbacks.current.host?.openObject;

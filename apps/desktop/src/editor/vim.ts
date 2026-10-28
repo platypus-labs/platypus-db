@@ -9,10 +9,29 @@ export const vimSetting = defineSetting<boolean>({
   key: "editor.vim",
   section: "SQL editor",
   label: "Vim mode",
-  description: "Vim's keys in the SQL editor: Esc for normal mode, :w saves the script.",
+  description:
+    "Vim's keys in the SQL editor: Esc for normal mode, :w saves the script. While the editor has the focus, Ctrl+W, Ctrl+O, Ctrl+F and Vim's other Ctrl keys are Vim's.",
   default: false,
   control: { type: "boolean" },
 });
+
+/** The Ctrl keys Vim uses: in an editor in Vim mode they are Vim's, not the app's shortcuts
+ *  (Ctrl+W deletes a word instead of closing the tab). */
+const VIM_CTRL_KEYS = new Set(["b", "d", "e", "f", "o", "r", "u", "v", "w", "y", "["]);
+
+/** Whether `e` is a Ctrl key that Vim takes, in an editor in Vim mode. */
+export function vimTakes(e: KeyboardEvent): boolean {
+  return (
+    e.ctrlKey &&
+    !e.altKey &&
+    !e.metaKey &&
+    !e.shiftKey &&
+    VIM_CTRL_KEYS.has(e.key.toLowerCase()) &&
+    e.target instanceof Element &&
+    // The mode line under the text: there in every mode, unlike `.cm-vimMode`.
+    e.target.closest(".cm-editor")?.querySelector(".cm-vim-panel") != null
+  );
+}
 
 /** What `:w` does in each editor. */
 const saves = new WeakMap<EditorView, () => void>();
