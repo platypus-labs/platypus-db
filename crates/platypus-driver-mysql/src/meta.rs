@@ -308,6 +308,22 @@ pub async fn table_details(
     })
 }
 
+/// `text` with the backslash escapes of a string literal undone: `\'` gives `'`, `\\` gives `\`.
+fn unescape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        match (c, chars.clone().next()) {
+            ('\\', Some(next @ ('\'' | '\\' | '"'))) => {
+                out.push(next);
+                chars.next();
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// Primary key, unique, check and exclusion constraints.
 async fn constraints(
     conn: &MySqlConnection,
@@ -336,6 +352,8 @@ async fn constraints(
         ),
     )
     .await?;
+    // MySQL escapes the quotes of CHECK_CLAUSE as in a string literal; MariaDB does not.
+    let escaped = platypus_core::Connection::server_info(conn).product != "MariaDB";
     let mut constraints = group_sorted(
         rows.iter().map(|r| {
             let kind = match r.text(1).as_str() {
@@ -349,7 +367,13 @@ async fn constraints(
                     name: r.text(0),
                     kind,
                     columns: r.opt(2).into_iter().collect(),
-                    definition: r.opt(3).map(|c| format!("CHECK ({c})")).unwrap_or_default(),
+                    definition: r
+                        .opt(3)
+                        .map(|c| {
+                            let c = if escaped { unescape(&c) } else { c };
+                            format!("CHECK ({c})")
+                        })
+                        .unwrap_or_default(),
                 },
             )
         }),
@@ -586,5 +610,14 @@ mod tests {
         assert_eq!(enum_values("enum('a','it''s','x,y')"), ["a", "it's", "x,y"]);
         assert_eq!(enum_values("varchar(10)"), Vec::<String>::new());
         assert_eq!(enum_values("enum('')"), [""]);
+    }
+
+    #[test]
+    fn check_clauses_lose_their_escapes() {
+        assert_eq!(
+            unescape(r"(`status` in (_utf8mb4\'new\',_utf8mb4\'it\\\'s\'))"),
+            r"(`status` in (_utf8mb4'new',_utf8mb4'it\'s'))"
+        );
+        assert_eq!(unescape("a > 0"), "a > 0");
     }
 }
