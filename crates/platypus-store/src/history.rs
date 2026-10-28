@@ -119,23 +119,44 @@ fn clamp_i64(n: u64) -> i64 {
     i64::try_from(n).unwrap_or(i64::MAX)
 }
 
+/// `time` as unix epoch milliseconds.
+pub(crate) fn millis(time: SystemTime) -> i64 {
+    time.duration_since(UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
+
+/// `%text%` for `LIKE … ESCAPE '\'`, the wildcards typed by the user escaped.
+pub(crate) fn like_pattern(text: &str) -> String {
+    format!(
+        "%{}%",
+        text.replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_")
+    )
+}
+
+/// The log's SQLite file at `path`, its folder made when missing, in WAL mode.
+pub(crate) fn open_log(path: &Path) -> Result<Connection> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|source| StoreError::Io {
+            path: dir.to_owned(),
+            source,
+        })?;
+    }
+    let db = Connection::open(path).map_err(db_error)?;
+    db.pragma_update(None, "journal_mode", "WAL")
+        .map_err(db_error)?;
+    // An entry per statement run: a script of a thousand statements must not wait for a
+    // thousand disk flushes. With WAL the file stays consistent; a power cut may lose the
+    // last entries only.
+    db.pragma_update(None, "synchronous", "NORMAL")
+        .map_err(db_error)?;
+    Ok(db)
+}
+
 impl HistoryStore {
     pub fn open(path: &Path) -> Result<Self> {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(|source| StoreError::Io {
-                path: dir.to_owned(),
-                source,
-            })?;
-        }
-        let db = Connection::open(path).map_err(db_error)?;
-        db.pragma_update(None, "journal_mode", "WAL")
-            .map_err(db_error)?;
-        // An entry per statement run: a script of a thousand statements must not wait for a
-        // thousand disk flushes. With WAL the file stays consistent; a power cut may lose the
-        // last entries only.
-        db.pragma_update(None, "synchronous", "NORMAL")
-            .map_err(db_error)?;
-        Self::init(db)
+        Self::init(open_log(path)?)
     }
 
     pub fn open_in_memory() -> Result<Self> {
@@ -148,10 +169,6 @@ impl HistoryStore {
     }
 
     pub fn record(&self, entry: &NewHistoryEntry) -> Result<i64> {
-        let started_at = entry
-            .started_at
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
         self.db
             .execute(
                 "INSERT INTO history (connection_id, sql, started_at, duration_ms, rows, status, error, origin)
@@ -159,7 +176,7 @@ impl HistoryStore {
                 params![
                     entry.connection_id.to_string(),
                     entry.sql,
-                    started_at,
+                    millis(entry.started_at),
                     clamp_i64(u64::try_from(entry.duration.as_millis()).unwrap_or(u64::MAX)),
                     entry.rows.map(clamp_i64),
                     entry.status.as_str(),
@@ -179,15 +196,11 @@ impl HistoryStore {
             Some(ids) => Some(serde_json::to_string(ids).unwrap_or_default()),
             None => None,
         };
-        // `\` escapes LIKE wildcards typed by the user.
-        let pattern = query.text.as_ref().filter(|t| !t.is_empty()).map(|t| {
-            format!(
-                "%{}%",
-                t.replace('\\', "\\\\")
-                    .replace('%', "\\%")
-                    .replace('_', "\\_")
-            )
-        });
+        let pattern = query
+            .text
+            .as_deref()
+            .filter(|t| !t.is_empty())
+            .map(like_pattern);
         let mut stmt = self
             .db
             .prepare_cached(

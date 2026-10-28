@@ -183,21 +183,14 @@ pub struct AgentClient {
     pub snippet: String,
 }
 
-/// The entry `kind`'s file would hold, as text to paste.
+/// The entry a file in `format` would hold, as text to paste.
 fn snippet(format: ConfigFormat, entry: &ServerEntry) -> String {
     match format {
         ConfigFormat::Json => {
             let doc = json!({ "mcpServers": { SERVER_NAME: entry.json() } });
             serde_json::to_string_pretty(&doc).unwrap_or_default()
         }
-        ConfigFormat::Toml => {
-            let mut doc = toml_edit::DocumentMut::new();
-            let mut servers = toml_edit::Table::new();
-            servers.set_implicit(true);
-            servers.insert(SERVER_NAME, toml_edit::Item::Table(entry.toml()));
-            doc.insert("mcp_servers", toml_edit::Item::Table(servers));
-            doc.to_string()
-        }
+        ConfigFormat::Toml => with_entry(format, "", entry).unwrap_or_default(),
     }
 }
 
@@ -349,18 +342,15 @@ pub fn install(
             ),
         )
     })?;
-    let backup = match &old {
-        Some(_) => {
-            let backup = backup_path(&path, stamp);
-            std::fs::copy(&path, &backup).map_err(|e| io_error(&backup, &e))?;
-            Some(backup.display().to_string())
+    let backup = if old.is_some() {
+        let backup = backup_path(&path, stamp);
+        std::fs::copy(&path, &backup).map_err(|e| io_error(&backup, &e))?;
+        Some(backup.display().to_string())
+    } else {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| io_error(dir, &e))?;
         }
-        None => {
-            if let Some(dir) = path.parent() {
-                std::fs::create_dir_all(dir).map_err(|e| io_error(dir, &e))?;
-            }
-            None
-        }
+        None
     };
     // Written beside the file, then moved over it: a crash leaves the old file or the new.
     let temp = backup_path(&path, "tmp");

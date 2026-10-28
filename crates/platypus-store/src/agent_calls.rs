@@ -5,11 +5,12 @@
 
 use std::fmt::Write as _;
 use std::path::Path;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
+use crate::history::{like_pattern, millis, open_log};
 use crate::{HistoryStatus, Result, StoreError};
 
 /// Schema migrations, applied in order and tracked with `PRAGMA user_version`.
@@ -135,11 +136,6 @@ fn db_error(e: rusqlite::Error) -> StoreError {
     StoreError::History(e.to_string())
 }
 
-fn millis(time: SystemTime) -> i64 {
-    time.duration_since(UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
-}
-
 /// `text` up to `max` characters, with `…` when it was longer.
 fn capped(text: &str, max: usize) -> String {
     match text.char_indices().nth(max) {
@@ -148,29 +144,9 @@ fn capped(text: &str, max: usize) -> String {
     }
 }
 
-/// `%text%` for `LIKE … ESCAPE '\'`, the wildcards typed by the user escaped.
-fn like_pattern(text: &str) -> String {
-    format!(
-        "%{}%",
-        text.replace('\\', "\\\\")
-            .replace('%', "\\%")
-            .replace('_', "\\_")
-    )
-}
-
 impl AgentCallStore {
     pub fn open(path: &Path) -> Result<Self> {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(|source| StoreError::Io {
-                path: dir.to_owned(),
-                source,
-            })?;
-        }
-        let db = Connection::open(path).map_err(db_error)?;
-        db.pragma_update(None, "journal_mode", "WAL")
-            .map_err(db_error)?;
-        db.pragma_update(None, "synchronous", "NORMAL")
-            .map_err(db_error)?;
+        let db = open_log(path)?;
         // The server writes while the app reads.
         db.busy_timeout(Duration::from_secs(2)).map_err(db_error)?;
         Self::init(db)
@@ -312,7 +288,7 @@ impl AgentCallStore {
     pub fn take_proposals(&self) -> Result<Vec<AgentProposal>> {
         let since = millis(SystemTime::now() - PROPOSAL_LIFETIME);
         let tx = self.db.unchecked_transaction().map_err(db_error)?;
-        let proposals = {
+        let mut proposals = {
             let mut stmt = tx
                 .prepare_cached(
                     "UPDATE proposals SET opened = 1
@@ -335,7 +311,6 @@ impl AgentCallStore {
             rows.collect::<Result<Vec<_>, _>>().map_err(db_error)?
         };
         tx.commit().map_err(db_error)?;
-        let mut proposals = proposals;
         proposals.sort_by_key(|p| p.id);
         Ok(proposals)
     }
@@ -427,6 +402,8 @@ fn rfc3339(millis: i64) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::time::UNIX_EPOCH;
+
     use super::*;
 
     fn call(session: &str, tool: &str, status: HistoryStatus) -> NewAgentCall {
@@ -501,7 +478,7 @@ mod tests {
         assert_eq!(s.prune(1).unwrap(), 2);
         assert_eq!(search(AgentCallQuery::default()), ["explain"]);
         s.clear().unwrap();
-        assert!(search(AgentCallQuery::default()).is_empty());
+        assert_eq!(search(AgentCallQuery::default()), Vec::<String>::new());
     }
 
     #[test]
@@ -568,7 +545,7 @@ mod tests {
         let sql: Vec<&str> = taken.iter().map(|p| p.sql.as_str()).collect();
         assert_eq!(sql, ["UPDATE t SET x = 1 WHERE id = 2", "SELECT 1"]);
         assert_eq!(taken[0].title.as_deref(), Some("Fix"));
-        assert!(s.take_proposals().unwrap().is_empty());
+        assert_eq!(s.take_proposals().unwrap(), Vec::new());
     }
 
     #[test]

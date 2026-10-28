@@ -306,7 +306,10 @@ impl PlatypusServer {
     }
 
     #[tool(
-        description = "Returns the first rows of a table, view or MongoDB collection (default         20 rows), as run_query returns them: an aligned text table, or JSON with format=json.         max_rows, max_bytes and timeout_seconds work as in run_query. The rows come in the         order the database reads them: no order is implied."
+        description = "Returns the first rows of a table, view or MongoDB collection (default \
+        20 rows), as run_query returns them: an aligned text table, or JSON with format=json. \
+        max_rows, max_bytes and timeout_seconds work as in run_query. The rows come in the \
+        order the database reads them: no order is implied."
     )]
     async fn sample_rows(
         &self,
@@ -325,7 +328,13 @@ impl PlatypusServer {
     }
 
     #[tool(
-        description = "Returns the plan of one SQL statement: its steps as an indented tree         with cost, estimated rows and, with analyze=true, actual rows and times (or JSON with         format=json), then index suggestions for filtered full scans of large tables. Without         analyze the statement does not run. With analyze it runs and what it changes is         rolled back; on read_only connections only statements that change nothing are         explained, and analyze needs PostgreSQL, MySQL, MariaDB or SQLite. max_bytes         (default 32768) and timeout_seconds (default 30) work as in run_query."
+        description = "Returns the plan of one SQL statement: its steps as an indented tree \
+        with cost, estimated rows and, with analyze=true, actual rows and times (or JSON with \
+        format=json), then index suggestions for filtered full scans of large tables. Without \
+        analyze the statement does not run. With analyze it runs and what it changes is \
+        rolled back; on read_only connections only statements that change nothing are \
+        explained, and analyze needs PostgreSQL, MySQL, MariaDB or SQLite. max_bytes \
+        (default 32768) and timeout_seconds (default 30) work as in run_query."
     )]
     async fn explain(
         &self,
