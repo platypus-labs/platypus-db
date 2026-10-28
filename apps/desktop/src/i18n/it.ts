@@ -62,6 +62,9 @@ const it: Record<string, string> = {
   "Check the SQL while typing": "Controlla l'SQL mentre scrivi",
   "Unknown columns, SELECT * on production connections, joins without a condition.": "Colonne sconosciute, SELECT * sulle connessioni di produzione, join senza condizione.",
   "Spell check": "Controllo ortografico",
+  "Vim mode": "Modalità Vim",
+  "Vim's keys in the SQL editor: Esc for normal mode, :w saves the script.":
+    "I tasti di Vim nell'editor SQL: Esc per la modalità normale, :w salva lo script.",
   "Off": "Disattivato",
   "Comments": "Commenti",
   "Comments and strings": "Commenti e stringhe",
@@ -334,6 +337,8 @@ const it: Record<string, string> = {
   "Import connections": "Importa le connessioni",
   "From DBeaver, DataGrip or pgAdmin.": "Da DBeaver, DataGrip o pgAdmin.",
   "Try the sample database": "Prova il database di esempio",
+  "portable": "portable",
+  "Replace this portable copy's executable with the new one.": "Sostituisci l'eseguibile di questa copia portable con quello nuovo.",
   "A SQLite field survey of platypuses: linked tables, a view and a few saved scripts, no server needed.":
     "Un censimento di ornitorinchi in SQLite: tabelle collegate, una vista e qualche script salvato, senza un server.",
   "OK": "OK",

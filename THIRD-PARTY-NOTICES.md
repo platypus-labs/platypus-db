@@ -22,6 +22,7 @@ The desktop app bundles these JavaScript packages, among others:
 | [Lucide](https://lucide.dev) icons (`lucide-react`) | interface icons | ISC |
 | [Simple Icons](https://simpleicons.org) (`simple-icons`) | database logos in the driver picker | CC0-1.0; the logos remain trademarks of their owners |
 | [CodeMirror](https://codemirror.net) | SQL editor | MIT |
+| [codemirror-vim](https://github.com/replit/codemirror-vim) (`@replit/codemirror-vim`) | Vim mode of the SQL editor | MIT |
 | [React](https://react.dev) | interface | MIT |
 | [Apache Arrow](https://arrow.apache.org) (`apache-arrow`) | result batches | Apache-2.0 |
 | [Tauri](https://tauri.app) API and plugins | desktop shell | Apache-2.0 or MIT |
