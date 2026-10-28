@@ -1,24 +1,39 @@
 //! Plans as trees: MySQL's `EXPLAIN FORMAT=TREE` text (8.0.16+, and `EXPLAIN ANALYZE`,
-//! which has no JSON form before 8.3), MariaDB's `EXPLAIN`/`ANALYZE FORMAT=JSON`.
+//! which has no JSON form before 8.3), MariaDB's `EXPLAIN`/`ANALYZE FORMAT=JSON` and older
+//! MySQL's `EXPLAIN FORMAT=JSON`, close enough to MariaDB's to read alike.
 
 use platypus_core::{
-    Connection, Error, Explain, ExplainFormat, FullScan, PlanNode, Result, explain_document,
-    plain_plan, step_figures,
+    Connection, Error, Explain, ExplainFormat, FullScan, PlanNode, Result, ServerVersion,
+    explain_document, plain_plan, step_figures,
 };
 use serde_json::{Map, Value};
 
 use crate::MySqlConnection;
 
+/// MySQL's first versions with `EXPLAIN FORMAT=TREE` and `EXPLAIN ANALYZE`.
+const TREE: ServerVersion = ServerVersion::new(8, 0, 16);
+const ANALYZE: ServerVersion = ServerVersion::new(8, 0, 18);
+
 pub async fn explain(conn: &MySqlConnection, sql: &str, analyze: bool) -> Result<Explain> {
-    let mariadb = conn.server_info().product == "MariaDB";
+    let info = conn.server_info();
+    let mariadb = info.product == "MariaDB";
+    if !mariadb && analyze && !info.at_least(ANALYZE) {
+        return Err(Error::Unsupported(format!(
+            "EXPLAIN ANALYZE needs MySQL {ANALYZE} or later; this server is {}",
+            info.version
+        )));
+    }
+    // Before the tree, MySQL writes its plans in JSON only, much like MariaDB.
+    let json = mariadb || !info.at_least(TREE);
     let prefix = match (mariadb, analyze) {
+        (false, false) if json => "EXPLAIN FORMAT=JSON",
         (false, false) => "EXPLAIN FORMAT=TREE",
         (false, true) => "EXPLAIN ANALYZE",
         (true, false) => "EXPLAIN FORMAT=JSON",
         (true, true) => "ANALYZE FORMAT=JSON",
     };
     let plan = explain_document(conn, &format!("{prefix} {sql}"), analyze).await?;
-    let (format, root) = if mariadb {
+    let (format, root) = if json {
         (ExplainFormat::Json, json_plan(&plan)?)
     } else {
         (ExplainFormat::Text, tree_plan(&plan))

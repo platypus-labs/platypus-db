@@ -156,10 +156,12 @@ impl MySqlConnection {
         let timeout = config.connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT);
         let mut opts = opts(config, ssl_opts(config)?);
         let mut conn = match open(opts.clone(), timeout).await {
-            // `prefer` falls back to plaintext when the server has no TLS.
+            // `prefer` falls back to plaintext when the server has no TLS, or only TLS this
+            // client refuses (MySQL 5.7's images offer old versions and ciphers).
             Err(Error::Connect(message))
                 if config.ssl_mode == SslMode::Prefer
-                    && message == DriverError::NoClientSslFlagFromServer.to_string() =>
+                    && (message.contains(&DriverError::NoClientSslFlagFromServer.to_string())
+                        || tls_refused(&message)) =>
             {
                 opts = self::opts(config, None);
                 open(opts.clone(), timeout).await?
@@ -212,6 +214,19 @@ impl MySqlConnection {
         };
         format!("'{}'", s.replace('\'', "''"))
     }
+}
+
+/// Whether a connection failed in the TLS handshake, as rustls words it.
+fn tls_refused(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    [
+        "handshakefailure",
+        "protocolversion",
+        "received fatal alert",
+        "peer is incompatible",
+    ]
+    .iter()
+    .any(|m| lower.contains(m))
 }
 
 /// The warnings of the statements run, until `take_messages`.
@@ -765,6 +780,15 @@ fn error_position(sql: &str, message: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tells_tls_refusals_from_other_errors() {
+        assert!(tls_refused(
+            "Input/output error: received fatal alert: HandshakeFailure"
+        ));
+        assert!(tls_refused("peer is incompatible: ProtocolVersion"));
+        assert!(!tls_refused("Access denied for user 'x'@'%'"));
+    }
 
     #[test]
     fn client_certificate_needs_cert_and_key() {
