@@ -15,6 +15,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
 
+mod clients;
+
 use super::{AppState, lock};
 use crate::MCP_FLAG;
 use crate::error::{CommandError, CommandResult};
@@ -199,6 +201,48 @@ pub fn stale_agent_registrations() -> Vec<StaleRegistration> {
         stale.extend(codex_stale(&config));
     }
     stale
+}
+
+/// The server entry the clients get: this app with `--mcp`, and the profile's folder when
+/// the app uses one.
+fn server_entry() -> CommandResult<clients::ServerEntry> {
+    Ok(clients::ServerEntry {
+        command: app_path()?.display().to_string(),
+        args: vec![MCP_FLAG.to_owned()],
+        env: std::env::var(DATA_DIR_ENV)
+            .ok()
+            .map(|dir| (DATA_DIR_ENV.to_owned(), dir))
+            .into_iter()
+            .collect(),
+    })
+}
+
+/// The home folder and the OS's configuration folder, where the clients keep their files.
+fn client_dirs() -> CommandResult<(PathBuf, PathBuf)> {
+    let home = std::env::home_dir()
+        .ok_or_else(|| CommandError::new("other", "cannot find the home folder".to_owned()))?;
+    let config = if cfg!(windows) {
+        std::env::var_os("APPDATA")
+            .map_or_else(|| home.join("AppData").join("Roaming"), PathBuf::from)
+    } else {
+        std::env::var_os("XDG_CONFIG_HOME").map_or_else(|| home.join(".config"), PathBuf::from)
+    };
+    Ok((home, config))
+}
+
+/// The MCP clients PlatypusDB can be installed in, with their file and whether it is there.
+#[tauri::command]
+pub fn agent_clients() -> CommandResult<Vec<clients::AgentClient>> {
+    let (home, config) = client_dirs()?;
+    Ok(clients::list(&home, &config, &server_entry()?))
+}
+
+/// Writes the server in client `id`'s file, after a backup of it.
+#[tauri::command]
+pub fn install_agent_client(id: String) -> CommandResult<clients::Installed> {
+    let (home, config) = client_dirs()?;
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    clients::install(&id, &home, &config, &server_entry()?, &stamp)
 }
 
 /// Calls a page of the Activity view shows at most.
