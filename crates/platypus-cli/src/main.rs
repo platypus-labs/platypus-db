@@ -40,6 +40,12 @@ enum Command {
     Objects {
         #[arg(long)]
         schema: String,
+        /// Objects to skip: the `next_offset` of the previous page.
+        #[arg(long)]
+        offset: Option<u64>,
+        /// Objects returned at most (500 by default, up to 2000).
+        #[arg(long)]
+        limit: Option<u64>,
     },
     /// Describe a table or view of `--connection`: columns, keys, indexes (JSON).
     Table {

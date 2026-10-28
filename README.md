@@ -476,7 +476,10 @@ Tools: `list_connections`, `list_schemas`, `list_objects`, `describe_table`, `ge
 `search_objects` and `run_query`. `run_query` runs one statement and returns 100 rows,
 32 KB and 30 s at most by default (`max_rows` up to 10,000, `max_bytes` up to 1 MB,
 `timeout_seconds` up to 300), as an aligned text table or JSON, saying when rows or values
-longer than 1,000 characters were left out.
+longer than 1,000 characters were left out. In the text table SQL `NULL` reads `NULL` and a
+text `NULL` reads `'NULL'`. `list_objects` returns 500 objects at most (`limit` up to 2,000);
+a larger schema comes in pages (`truncated`, `total`, `next_offset`, then `offset`). The
+client's `notifications/cancelled` cancels the running statement.
 
 On read-only connections only statements that change nothing run, inside the database's
 read-only transaction (PostgreSQL, MySQL and MariaDB `READ ONLY`, SQLite `query_only`; DuckDB

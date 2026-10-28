@@ -64,7 +64,7 @@ impl QueryResult {
         let cells: Vec<Vec<String>> = table
             .rows
             .iter()
-            .map(|row| row.iter().map(|c| one_line(c.text())).collect())
+            .map(|row| row.iter().map(|c| one_line(&text_cell(c))).collect())
             .collect();
         let render = |shown: usize| {
             let rows = &cells[..shown];
@@ -194,6 +194,21 @@ fn width(s: &str) -> usize {
     s.chars().count()
 }
 
+/// A value as the text table shows it. SQL `NULL` is `NULL`; a text that would read the
+/// same (`NULL` in any case), or that is quoted already, shows as a SQL string literal,
+/// `'NULL'`, so the two cannot be confused.
+fn text_cell(cell: &Cell) -> std::borrow::Cow<'_, str> {
+    match cell {
+        Cell::Text(s)
+            if s.eq_ignore_ascii_case("null")
+                || (s.len() >= 2 && s.starts_with('\'') && s.ends_with('\'')) =>
+        {
+            format!("'{}'", s.replace('\'', "''")).into()
+        }
+        other => other.text().into(),
+    }
+}
+
 /// Keeps each row on one line.
 fn one_line(s: &str) -> String {
     if s.contains(['\n', '\r', '\t']) {
@@ -300,6 +315,16 @@ mod tests {
             limits,
         };
         assert_eq!(affected.text(), "1 row affected.");
+    }
+
+    #[test]
+    fn text_tables_tell_null_from_the_text_null() {
+        assert_eq!(text_cell(&Cell::Null), "NULL");
+        assert_eq!(text_cell(&Cell::Text("NULL".to_owned())), "'NULL'");
+        assert_eq!(text_cell(&Cell::Text("null".to_owned())), "'null'");
+        assert_eq!(text_cell(&Cell::Text("'NULL'".to_owned())), "'''NULL'''");
+        assert_eq!(text_cell(&Cell::Text("it's".to_owned())), "it's");
+        assert_eq!(text_cell(&Cell::Text("'".to_owned())), "'");
     }
 
     #[test]
