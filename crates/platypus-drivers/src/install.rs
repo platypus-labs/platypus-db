@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     DriverError, Installed, Package, REMOVED_MARK, Registry, adbc_dir, drivers_dir, io_error,
-    is_plain_name, network_error,
+    is_plain_name,
 };
 
 /// Names of the folders a download unpacks into before it is moved in place.
@@ -74,6 +74,10 @@ impl Registry {
     }
 }
 
+fn download_error(e: impl std::fmt::Display) -> DriverError {
+    DriverError::Download(e.to_string())
+}
+
 /// Downloads `url` whole; `progress` gets the bytes received and the total when known.
 pub(crate) async fn download(
     client: &reqwest::Client,
@@ -89,7 +93,7 @@ pub(crate) async fn download(
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(network_error)?;
+        .map_err(download_error)?;
     let total = response.content_length();
     let mut bytes = Vec::with_capacity(usize::try_from(total.unwrap_or(0)).unwrap_or(0));
     let mut stream = response.bytes_stream();
@@ -99,7 +103,7 @@ pub(crate) async fn download(
             chunk = stream.next() => chunk,
         };
         let Some(chunk) = chunk else { break };
-        bytes.extend_from_slice(&chunk.map_err(network_error)?);
+        bytes.extend_from_slice(&chunk.map_err(download_error)?);
         if bytes.len() as u64 > MAX_FILE {
             return Err(DriverError::TooLarge);
         }
@@ -126,8 +130,9 @@ pub(crate) fn hex(bytes: &[u8]) -> String {
     })
 }
 
-/// Unpacks the `.tar.gz` into `dir`; returns the library's file name from `MANIFEST`.
-fn unpack(bytes: &[u8], dir: &Path) -> Result<String, DriverError> {
+/// Unpacks the files at the top of a `.tar.gz` into `dir`; folders and links are skipped,
+/// files larger than [`MAX_FILE`] fail the archive.
+pub(crate) fn untar(bytes: &[u8], dir: &Path) -> Result<(), DriverError> {
     std::fs::create_dir_all(dir).map_err(io_error(dir))?;
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
     let format = |e: std::io::Error| DriverError::Format(e.to_string());
@@ -156,6 +161,12 @@ fn unpack(bytes: &[u8], dir: &Path) -> Result<String, DriverError> {
         let out = dir.join(name);
         std::fs::write(&out, data).map_err(io_error(&out))?;
     }
+    Ok(())
+}
+
+/// Unpacks the `.tar.gz` into `dir`; returns the library's file name from `MANIFEST`.
+fn unpack(bytes: &[u8], dir: &Path) -> Result<String, DriverError> {
+    untar(bytes, dir)?;
     let manifest = dir.join("MANIFEST");
     let text = std::fs::read_to_string(&manifest)
         .map_err(|_| DriverError::Format("the package has no MANIFEST".to_owned()))?;

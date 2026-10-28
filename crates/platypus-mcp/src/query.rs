@@ -130,6 +130,8 @@ pub enum RunError {
     Database(Error),
     /// The timeout ran out; the statement was cancelled.
     Timeout,
+    /// The client cancelled the request; so was the statement.
+    Cancelled,
 }
 
 impl From<Error> for RunError {
@@ -177,6 +179,18 @@ pub async fn run(
     read_only: Option<DriverKind>,
     limits: &Limits,
 ) -> std::result::Result<Outcome, RunError> {
+    run_until(conn, statement, read_only, limits, std::future::pending()).await
+}
+
+/// [`run`], cancelling the statement when `stop` completes first (the client cancelled
+/// the request).
+pub async fn run_until(
+    conn: &dyn Connection,
+    statement: &str,
+    read_only: Option<DriverKind>,
+    limits: &Limits,
+    stop: impl Future<Output = ()>,
+) -> std::result::Result<Outcome, RunError> {
     let cancel = conn.cancel_handle();
     let (begin, end) = read_only.map_or((&[][..], &[][..]), read_only_statements);
     let work = async {
@@ -185,12 +199,16 @@ pub async fn run(
         }
         execute(conn, statement, limits).await
     };
-    let outcome = if let Ok(outcome) = tokio::time::timeout(limits.timeout, work).await {
-        outcome.map_err(RunError::from)
-    } else {
-        let _ = cancel.cancel().await;
-        Err(RunError::Timeout)
+    let outcome = tokio::select! {
+        timed = tokio::time::timeout(limits.timeout, work) => match timed {
+            Ok(outcome) => outcome.map_err(RunError::from),
+            Err(_) => Err(RunError::Timeout),
+        },
+        () = stop => Err(RunError::Cancelled),
     };
+    if matches!(outcome, Err(RunError::Timeout | RunError::Cancelled)) {
+        let _ = cancel.cancel().await;
+    }
     // Rolled back whatever happened; a failure here leaves a transaction open, which
     // makes the next call open a new connection.
     for sql in end {

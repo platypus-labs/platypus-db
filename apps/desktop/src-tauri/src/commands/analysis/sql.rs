@@ -270,6 +270,7 @@ mod tests {
 
     #[test]
     fn a_closed_result_cannot_be_copied() {
+        platypus_driver_duckdb::testing::load();
         let state = AppState::for_tests();
         let missing = [ResultTable {
             job_id: 7,
@@ -287,6 +288,7 @@ mod tests {
 
     #[test]
     fn a_partial_table_tells_why() {
+        platypus_driver_duckdb::testing::load();
         let mut sources = vec![source("a", &[1]), source("b", &[2])];
         assert_eq!(partial(&sources), None);
         sources[0].ending = Ending::RowLimit;
@@ -297,6 +299,7 @@ mod tests {
 
     #[test]
     fn a_whole_fetch_ends_with_its_job() {
+        platypus_driver_duckdb::testing::load();
         assert!(whole_fetched(Ending::Complete).unwrap());
         assert!(!whole_fetched(Ending::MemoryLimit).unwrap());
         assert!(!whole_fetched(Ending::Stopped).unwrap());
@@ -312,6 +315,7 @@ mod tests {
 
     #[test]
     fn fills_and_reloads_the_tables() {
+        platypus_driver_duckdb::testing::load();
         let memory = format!("tests-{}", Uuid::new_v4());
         let all = [
             source("result", &[1, 2, 3]),
@@ -330,6 +334,7 @@ mod tests {
 
     #[test]
     fn a_temporary_connection_opens_its_database() {
+        platypus_driver_duckdb::testing::load();
         let state = AppState::for_tests();
         let memory = format!("tests-{}", Uuid::new_v4());
         let database = fill(&memory, &[], &[source("result", &[1])]).unwrap();

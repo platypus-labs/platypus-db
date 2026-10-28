@@ -382,6 +382,19 @@ pub async fn table_details(
     })
 }
 
+/// A key part of an index as `pg_get_indexdef` prints it, with a column's name unquoted
+/// (`"Customer Id"` gives `Customer Id`); an expression stays as it is.
+fn index_column(part: String) -> String {
+    let inner = part
+        .strip_prefix('"')
+        .and_then(|p| p.strip_suffix('"'))
+        .filter(|i| !i.replace("\"\"", "").contains('"'));
+    match inner {
+        Some(name) => name.replace("\"\"", "\""),
+        None => part,
+    }
+}
+
 async fn indexes(conn: &dyn Connection, relation: &str) -> Result<Vec<IndexMeta>> {
     let size = if crate::is_cockroach(conn) {
         "NULL::bigint"
@@ -408,7 +421,7 @@ async fn indexes(conn: &dyn Connection, relation: &str) -> Result<Vec<IndexMeta>
         unique: r.flag(1),
         primary: r.flag(2),
         partial: r.flag(5),
-        columns: list(r.opt(3)),
+        columns: list(r.opt(3)).into_iter().map(index_column).collect(),
         size: r.number(4),
     })
     .collect())
@@ -493,6 +506,15 @@ pub async fn referencing_keys(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn index_columns_are_unquoted() {
+        assert_eq!(index_column(r#""Customer Id""#.to_owned()), "Customer Id");
+        assert_eq!(index_column(r#""user""#.to_owned()), "user");
+        assert_eq!(index_column(r#""a""b""#.to_owned()), r#"a"b"#);
+        assert_eq!(index_column("lower(email)".to_owned()), "lower(email)");
+        assert_eq!(index_column(r#""a" || "b""#.to_owned()), r#""a" || "b""#);
+    }
 
     #[test]
     fn escapes_literals() {

@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::fmt;
+use std::fmt::{self, Write as _};
 use std::net::{Ipv6Addr, SocketAddr};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -144,13 +144,14 @@ impl DriverKind {
     }
 
     /// The name of the vendor's client library the app downloads for this database:
-    /// Oracle's Instant Client, IBM's ODBC driver. `None` for the generic ODBC driver,
-    /// which uses what the system has.
+    /// Oracle's Instant Client, IBM's ODBC driver, DuckDB's library. `None` for the generic
+    /// ODBC driver, which uses what the system has.
     #[must_use]
     pub const fn vendor_package(self) -> Option<&'static str> {
         match self {
             Self::Oracle => Some("oracle"),
             Self::Db2 => Some("db2"),
+            Self::DuckDb => Some("duckdb"),
             _ => None,
         }
     }
@@ -362,6 +363,8 @@ impl ConnectionConfig {
         }
         // libpq's failover list (`h1:5432,h2:5433`), which `Url` refuses: the first host.
         let (input, other_hosts) = first_host(input);
+        // An IPv6 zone (`[fe80::1%25eth0]`, RFC 6874), which `Url` refuses: put back after.
+        let (input, zone) = take_zone(&input)?;
         let url = Url::parse(&input).map_err(|e| Error::Config(format!("invalid URL: {e}")))?;
         let driver = match url.scheme() {
             "postgres" | "postgresql" => DriverKind::Postgres,
@@ -395,6 +398,9 @@ impl ConnectionConfig {
 
         if let Some(host) = url.host_str() {
             config.host = url_host(host)?;
+            if let Some(zone) = zone {
+                let _ = write!(config.host, "%{zone}");
+            }
         }
         if let Some(port) = url.port() {
             config.port = Some(port);
@@ -403,25 +409,7 @@ impl ConnectionConfig {
         config.user = decode(url.username())?;
         config.password = url.password().map(decode).transpose()?.map(Secret::new);
 
-        let mut unknown = Vec::new();
-        for (key, value) in url.query_pairs() {
-            match &*key {
-                "sslmode" | "ssl-mode" => config.ssl_mode = value.parse()?,
-                "sslrootcert" => config.ssl_root_cert = Some(PathBuf::from(&*value)),
-                "sslcert" => config.ssl_client_cert = Some(PathBuf::from(&*value)),
-                "sslkey" => config.ssl_client_key = Some(PathBuf::from(&*value)),
-                "application_name" => config.application_name = Some(value.into_owned()),
-                // The query parameter of Turso's URLs.
-                "authToken" => config.password = Some(Secret::new(value)),
-                "connect_timeout" => {
-                    let secs = value
-                        .parse()
-                        .map_err(|_| Error::Config(format!("invalid connect_timeout `{value}`")))?;
-                    config.connect_timeout = Some(Duration::from_secs(secs));
-                }
-                other => unknown.push(other.to_owned()),
-            }
-        }
+        let unknown = config.read_query(&url)?;
         // ClickHouse serves HTTPS on another port than HTTP.
         if driver == DriverKind::ClickHouse
             && url.port().is_none()
@@ -435,6 +423,65 @@ impl ConnectionConfig {
             unknown,
             other_hosts,
         })
+    }
+
+    /// The query parameters of a URL into the settings; the names of those it does not know.
+    /// SQL Server takes `database`, `encrypt` and `trustServerCertificate` as its JDBC and
+    /// ADO.NET strings do, libSQL `tls=0`/`tls=1` as its clients do, MySQL `sslMode`.
+    fn read_query(&mut self, url: &Url) -> Result<Vec<String>> {
+        let mut unknown = Vec::new();
+        let mut ssl_given = false;
+        let (mut encrypt, mut trust) = (false, false);
+        let on = |v: &str| {
+            matches!(
+                v.to_ascii_lowercase().as_str(),
+                "true" | "yes" | "1" | "strict" | "mandatory"
+            )
+        };
+        let sqlserver = self.driver == DriverKind::SqlServer;
+        for (key, value) in url.query_pairs() {
+            match &*key {
+                "sslmode" | "ssl-mode" | "sslMode" | "ssl_mode" => {
+                    self.ssl_mode = value.parse()?;
+                    ssl_given = true;
+                }
+                "sslrootcert" => self.ssl_root_cert = Some(PathBuf::from(&*value)),
+                "sslcert" => self.ssl_client_cert = Some(PathBuf::from(&*value)),
+                "sslkey" => self.ssl_client_key = Some(PathBuf::from(&*value)),
+                "application_name" => self.application_name = Some(value.into_owned()),
+                // The query parameter of Turso's URLs.
+                "authToken" => self.password = Some(Secret::new(value)),
+                "connect_timeout" => {
+                    let secs = value
+                        .parse()
+                        .map_err(|_| Error::Config(format!("invalid connect_timeout `{value}`")))?;
+                    self.connect_timeout = Some(Duration::from_secs(secs));
+                }
+                "tls" if self.driver == DriverKind::Libsql => {
+                    self.ssl_mode = match value.to_ascii_lowercase().as_str() {
+                        "0" | "false" | "no" => SslMode::Disable,
+                        "1" | "true" | "yes" => SslMode::VerifyFull,
+                        _ => return Err(Error::Config(format!("invalid tls `{value}`"))),
+                    };
+                    ssl_given = true;
+                }
+                k if sqlserver
+                    && (k.eq_ignore_ascii_case("database")
+                        || k.eq_ignore_ascii_case("databaseName")) =>
+                {
+                    self.database = value.into_owned();
+                }
+                k if sqlserver && k.eq_ignore_ascii_case("encrypt") => encrypt = on(&value),
+                k if sqlserver && k.eq_ignore_ascii_case("trustServerCertificate") => {
+                    trust = on(&value);
+                }
+                other => unknown.push(other.to_owned()),
+            }
+        }
+        if !ssl_given && let Some(mode) = jdbc::sqlserver_ssl(encrypt, trust) {
+            self.ssl_mode = mode;
+        }
+        Ok(unknown)
     }
 
     /// A MongoDB connection string after its scheme. It can list several hosts, which
@@ -464,12 +511,13 @@ impl ConnectionConfig {
             .and_then(|(host, port)| Some((host, port.parse::<u16>().ok()?)));
         match single_port {
             Some((host, port)) => {
-                host.trim_matches(['[', ']']).clone_into(&mut config.host);
+                // An IPv6 zone's `%` is written `%25`.
+                config.host = decode(host.trim_matches(['[', ']']))?;
                 config.port = Some(port);
             }
             // A seed list keeps the brackets of its IPv6 hosts.
             None if hosts.contains(',') => hosts.clone_into(&mut config.host),
-            None => hosts.trim_matches(['[', ']']).clone_into(&mut config.host),
+            None => config.host = decode(hosts.trim_matches(['[', ']']))?,
         }
         let database = decode(path)?;
         let mut options: Vec<String> = Vec::new();
@@ -597,6 +645,39 @@ fn first_host(input: &str) -> (std::borrow::Cow<'_, str>, Vec<String>) {
     }
     let login = login.map(|l| format!("{l}@")).unwrap_or_default();
     (format!("{scheme}://{login}{first}{tail}").into(), others)
+}
+
+/// The URL without the zone of its IPv6 host (`[fe80::1%25eth0]`, or `%eth0` as typed), and
+/// the zone, decoded.
+fn take_zone(input: &str) -> Result<(std::borrow::Cow<'_, str>, Option<String>)> {
+    let Some((scheme, rest)) = input.split_once("://") else {
+        return Ok((input.into(), None));
+    };
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let authority = &rest[..end];
+    let start = authority.rfind('@').map_or(0, |at| at + 1);
+    let host = &authority[start..];
+    let Some(close) = host.find(']').filter(|_| host.starts_with('[')) else {
+        return Ok((input.into(), None));
+    };
+    let Some(percent) = host[..close].find('%') else {
+        return Ok((input.into(), None));
+    };
+    let raw = &host[percent + 1..close];
+    let zone = decode(raw.strip_prefix("25").unwrap_or(raw))?;
+    if zone.is_empty() {
+        return Err(Error::Config(
+            "the IPv6 zone of the URL is empty".to_owned(),
+        ));
+    }
+    let cut = scheme.len() + 3 + start;
+    let out = format!(
+        "{}{}{}",
+        &input[..cut + percent],
+        &host[close..],
+        &rest[start + host.len()..]
+    );
+    Ok((out.into(), Some(zone)))
 }
 
 /// The file of a SQLite or DuckDB URL. `sqlite:///C:/data/app.db` has the path
@@ -764,6 +845,7 @@ mod tests {
         assert_eq!(DriverKind::Oracle.bridge(), None);
         assert_eq!(DriverKind::Oracle.vendor_package(), Some("oracle"));
         assert_eq!(DriverKind::Db2.vendor_package(), Some("db2"));
+        assert_eq!(DriverKind::DuckDb.vendor_package(), Some("duckdb"));
         assert_eq!(DriverKind::Odbc.vendor_package(), None);
         assert_eq!(DriverKind::Snowflake.vendor_package(), None);
         assert_eq!(DriverKind::Oracle.default_port(), Some(1521));
@@ -792,6 +874,56 @@ mod tests {
         assert_eq!(c.password, Some(Secret::new("p:ss")));
         assert_eq!(c.ssl_mode, SslMode::Require);
         assert_eq!(c.application_name.as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn reads_the_query_keys_of_each_engine() {
+        let ms = ConnectionConfig::from_url(
+            "sqlserver://sa@localhost:51433?database=master&encrypt=true&trustServerCertificate=true",
+        )
+        .unwrap();
+        assert_eq!(ms.database, "master");
+        assert_eq!(ms.ssl_mode, SslMode::Require);
+        let ms = ConnectionConfig::from_url("sqlserver://sa@h?databaseName=x&Encrypt=yes").unwrap();
+        assert_eq!(
+            (ms.database.as_str(), ms.ssl_mode),
+            ("x", SslMode::VerifyFull)
+        );
+        // An explicit mode wins over `encrypt`.
+        let ms = ConnectionConfig::from_url("sqlserver://h?encrypt=true&sslmode=disable").unwrap();
+        assert_eq!(ms.ssl_mode, SslMode::Disable);
+        // Other engines do not take SQL Server's keys.
+        assert!(ConnectionConfig::from_url("postgres://h/d?database=x").is_err());
+
+        let my = ConnectionConfig::from_url("mysql://app@h:3306/shop?sslMode=REQUIRED").unwrap();
+        assert_eq!(my.ssl_mode, SslMode::Require);
+
+        let lib = ConnectionConfig::from_url("libsql://localhost:58080?tls=0&authToken=t").unwrap();
+        assert_eq!(lib.ssl_mode, SslMode::Disable);
+        assert_eq!(lib.password, Some(Secret::new("t")));
+        let lib = ConnectionConfig::from_url("libsql://h?tls=1").unwrap();
+        assert_eq!(lib.ssl_mode, SslMode::VerifyFull);
+        assert!(ConnectionConfig::from_url("libsql://h?tls=maybe").is_err());
+        assert!(ConnectionConfig::from_url("postgres://h/d?tls=0").is_err());
+    }
+
+    #[test]
+    fn reads_ipv6_zones() {
+        for url in [
+            "postgres://u@[fe80::1%25eth0]:5432/db",
+            "postgres://u@[fe80::1%eth0]:5432/db",
+        ] {
+            let c = ConnectionConfig::from_url(url).unwrap();
+            assert_eq!(c.host, "fe80::1%eth0", "{url}");
+            assert_eq!(
+                (c.port, c.database.as_str(), c.user.as_str()),
+                (Some(5432), "db", "u")
+            );
+        }
+        let c = ConnectionConfig::from_url("mysql://[fe80::1%2512]/x").unwrap();
+        assert_eq!(c.host, "fe80::1%12");
+        assert!(ConnectionConfig::from_url("postgres://[fe80::1%25]/db").is_err());
+        assert!(ConnectionConfig::from_url("postgres://u@db.example:5432x/shop").is_err());
     }
 
     #[test]

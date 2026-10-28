@@ -24,9 +24,9 @@ pub use catalog::{
     CatalogEntry, CatalogKey, CatalogStore, DisplayColumn, TagCount, normalize_tags,
 };
 pub use connections::{
-    AgentAccess, ConnectionFolder, ConnectionStore, ConnectionType, ImportInto, ImportRequest,
-    ImportTarget, NetworkProfile, PasswordUpdate, Project, ProjectFolder, SavedConnection,
-    SavedInit, SavedSsh, SshAuthKind, VirtualKey, initials_of,
+    AgentAccess, ConnectBy, ConnectionFolder, ConnectionStore, ConnectionType, ImportInto,
+    ImportRequest, ImportTarget, NetworkProfile, PasswordUpdate, Project, ProjectFolder,
+    SavedConnection, SavedInit, SavedSsh, SshAuthKind, VirtualKey, initials_of,
 };
 pub use history::{
     HistoryEntry, HistoryOrigin, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry,

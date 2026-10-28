@@ -40,6 +40,12 @@ enum Command {
     Objects {
         #[arg(long)]
         schema: String,
+        /// Objects to skip: the `next_offset` of the previous page.
+        #[arg(long)]
+        offset: Option<u64>,
+        /// Objects returned at most (500 by default, up to 2000).
+        #[arg(long)]
+        limit: Option<u64>,
     },
     /// Describe a table or view of `--connection`: columns, keys, indexes (JSON).
     Table {
@@ -194,6 +200,9 @@ async fn query(args: QueryArgs) -> Result<(), Error> {
         Error::Config("give --url, or --connection for a saved connection".to_owned())
     })?;
     let config = ConnectionConfig::from_url(&url)?;
+    // Finding the app's profile points the drivers at the libraries it downloaded (DuckDB,
+    // ADBC drivers, Instant Client); without one, a URL that needs them reports it.
+    let _ = platypus_mcp::Profile::from_env();
     let conn = platypus_mcp::connect(&config).await?;
 
     // Ctrl+C and --timeout both cancel server-side, so the error path is exercised for real.

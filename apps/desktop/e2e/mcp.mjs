@@ -1,22 +1,25 @@
-// A minimal MCP client for scenarios: starts `platypus-mcp` (next to the app's executable)
-// on a profile folder and calls its tools over JSON-RPC on stdio.
+// A minimal MCP client for scenarios: starts the MCP server agents register, the app itself
+// with `--mcp` (the shipped path: a separate build could go stale), on a profile folder and
+// calls its tools over JSON-RPC on stdio.
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const exe = process.env.PLATYPUS_E2E_EXE ?? resolve(here, "../../../target/release/platypus-db.exe");
-export const mcpExe = join(dirname(exe), "platypus-mcp.exe");
+export const mcpExe = exe;
+/** The arguments that start the app as an MCP server. */
+export const mcpArgs = ["--mcp"];
 
 /** Why MCP scenarios cannot run, or null. */
 export function noMcp() {
-  return existsSync(mcpExe) ? null : `no platypus-mcp.exe next to ${exe}`;
+  return existsSync(mcpExe) ? null : `no app at ${exe}`;
 }
 
 /** Starts the server on the profile `dir`, initialized. */
 export async function startMcp(dir, clientName = "qa-client") {
-  const child = spawn(mcpExe, [], {
+  const child = spawn(mcpExe, mcpArgs, {
     env: { ...process.env, PLATYPUS_DATA_DIR: dir },
     stdio: ["pipe", "pipe", "pipe"],
   });

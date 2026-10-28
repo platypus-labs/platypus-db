@@ -1,0 +1,39 @@
+version = 7
+network_profiles = []
+
+[[projects]]
+id = "bc67f97a-c5b9-4b1e-875c-c2d5c9512f3f"
+name = "QA Project"
+color = "#3b82f6"
+initials = "QP"
+connections = [
+    "00000000-0000-4000-8000-0000000000a1",
+    "4e1e9d59-2781-4677-80be-4945de3c4e1d",
+]
+
+[[connections]]
+id = "00000000-0000-4000-8000-0000000000a1"
+name = "Vault Postgres"
+driver = "postgres"
+host = "127.0.0.1"
+port = 55432
+database = "platypus"
+user = "platypus"
+ssl_mode = "disable"
+save_password = true
+pgpass = false
+read_only = false
+agent_access = "read_only"
+
+[[connections]]
+id = "4e1e9d59-2781-4677-80be-4945de3c4e1d"
+name = "QA SQLite"
+driver = "sqlite"
+host = ""
+database = '{DIR}\qa.sqlite'
+user = ""
+ssl_mode = "prefer"
+save_password = false
+pgpass = false
+read_only = false
+agent_access = "read_only"

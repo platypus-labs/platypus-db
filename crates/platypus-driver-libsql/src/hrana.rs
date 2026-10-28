@@ -217,6 +217,26 @@ impl HranaError {
     }
 }
 
+/// The statement error in the body of an HTTP error, when the server could not parse the
+/// statement: sqld answers 500 with an `error` field, "Internal Error: " and the message
+/// between backticks ("SQL string could not be parsed: …"), instead of a stream error.
+pub fn parse_failure(body: &str) -> Option<HranaError> {
+    #[derive(Deserialize)]
+    struct Body {
+        error: String,
+    }
+    let message = serde_json::from_str::<Body>(body).ok()?.error;
+    let message = message.strip_prefix("Internal Error: ").unwrap_or(&message);
+    let message = message
+        .strip_prefix('`')
+        .and_then(|m| m.strip_suffix('`'))
+        .unwrap_or(message);
+    message.contains("could not be parsed").then(|| HranaError {
+        message: message.to_owned(),
+        code: Some("SQL_PARSE_ERROR".to_owned()),
+    })
+}
+
 /// The 1-based character position of an error in `sql`. SQLite's errors end with
 /// `(at offset N)` (bytes); the server's own parser gives the line and column after the
 /// token, ``around L1:15: `FROMM` ``, or `at (line, column)` at the end of the input.
@@ -296,6 +316,25 @@ mod tests {
         );
         assert_eq!(at("no such table: t"), None);
         assert_eq!(at("(at offset 999)"), None);
+    }
+
+    #[test]
+    fn reads_parse_errors_from_http_errors() {
+        let body = r#"{"error":"Internal Error: `SQL string could not be parsed: syntax error around L1:15: `FROMM``"}"#;
+        let error = parse_failure(body).unwrap();
+        assert_eq!(
+            error.message,
+            "SQL string could not be parsed: syntax error around L1:15: `FROMM`"
+        );
+        match error.into_error("SELECT * FROMM t") {
+            Error::Database(e) => {
+                assert_eq!(e.position, Some(10));
+                assert_eq!(e.code.as_deref(), Some("SQL_PARSE_ERROR"));
+            }
+            other => panic!("expected a database error, got {other:?}"),
+        }
+        assert!(parse_failure(r#"{"error":"Internal Error: database is locked"}"#).is_none());
+        assert!(parse_failure("Unauthorized").is_none());
     }
 
     #[test]

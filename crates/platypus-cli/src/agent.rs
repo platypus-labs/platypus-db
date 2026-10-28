@@ -43,7 +43,11 @@ async fn run(cli: Cli) -> Result<Output, AgentError> {
     Ok(match cli.command {
         Command::Connections => json(json!(agent.list_connections()?)),
         Command::Schemas => json(agent.list_schemas(named?).await?),
-        Command::Objects { schema } => json(agent.list_objects(named?, &schema).await?),
+        Command::Objects {
+            schema,
+            offset,
+            limit,
+        } => json(agent.list_objects(named?, &schema, offset, limit).await?),
         Command::Table { schema, table } => {
             json(agent.describe_table(named?, &schema, &table).await?)
         }

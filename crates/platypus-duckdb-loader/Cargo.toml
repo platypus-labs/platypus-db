@@ -1,0 +1,25 @@
+[package]
+name = "platypus-duckdb-loader"
+description = "Loads DuckDB's shared library at run time for the duckdb crate; the workspace's only unsafe code"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+duckdb.workspace = true
+libloading = "0.8"
+
+# The workspace's lints, but `unsafe` is denied instead of forbidden: the blocks of this
+# crate allow it one by one, each with its SAFETY note.
+[lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+undocumented_unsafe_blocks = "warn"

@@ -41,6 +41,7 @@ platypus-driver-mssql.workspace = true
 platypus-driver-mysql.workspace = true
 platypus-driver-pg.workspace = true
 platypus-driver-sqlite.workspace = true
+platypus-mcp.workspace = true
 platypus-transfer.workspace = true
 platypus-net.workspace = true
 platypus-schema.workspace = true
@@ -56,9 +57,11 @@ tauri-plugin-updater = "2"
 tokio = { workspace = true, features = ["fs", "io-util", "process", "sync", "time"] }
 tokio-util.workspace = true
 uuid.workspace = true
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
+platypus-driver-duckdb = { workspace = true, features = ["testing"] }
 tempfile.workspace = true

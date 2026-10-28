@@ -1,5 +1,6 @@
 //! Tauri shell for PlatypusDB: exposes the core crates to the web UI as commands.
 
+mod applog;
 mod commands;
 mod copy;
 mod display;
@@ -18,6 +19,9 @@ use platypus_store::{
 use tauri::Manager;
 
 use crate::commands::AppState;
+
+/// The argument that makes the app an MCP server for agents instead of opening its window.
+pub const MCP_FLAG: &str = "--mcp";
 
 /// History entries kept across restarts.
 const HISTORY_LIMIT: usize = 50_000;
@@ -145,6 +149,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(state);
     // Downloaded drivers live with the data; removals that Windows refused are finished.
     if let Ok(data) = dir(app, false) {
+        applog::init(&data);
         platypus_drivers::set_data_dir(&data);
         platypus_drivers::purge_removed(&data);
     }
@@ -158,6 +163,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// Panics if the Tauri runtime fails to start (e.g. missing WebView2 on Windows).
 pub fn run() {
+    applog::install_panic_hook();
     migrate_legacy_dirs();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -176,6 +182,12 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         commands::app_info,
         commands::agents::agent_setup,
+        commands::agents::agent_blockers,
+        commands::agents::stale_agent_registrations,
+        commands::diagnostics::diagnostics_info,
+        commands::diagnostics::dismiss_crash,
+        commands::diagnostics::log_error,
+        commands::diagnostics::save_diagnostics,
         commands::connections::list_connections,
         commands::connections::default_connection,
         commands::connections::parse_connection_url,

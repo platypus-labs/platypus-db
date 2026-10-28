@@ -77,7 +77,7 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | SQL Server, Azure SQL | TDS | `TOP (n)`, `[names]`, several result sets |
 | ClickHouse | HTTP interface (8123, or 8443 with TLS), Arrow results | Browsed, queried and designed; no data editing in the grid |
 | SQLite | embedded | |
-| DuckDB | embedded, Arrow results | Also opens CSV, JSON, Parquet and Excel files as databases |
+| DuckDB | embedded, Arrow results; DuckDB's library downloaded on first use | Also opens CSV, JSON, Parquet and Excel files as databases |
 | libSQL / Turso | Hrana over HTTP | Token in the password or in `authToken` |
 | MongoDB | official driver | mongosh syntax; no transactions, explain or data editing |
 | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | PostgreSQL driver | Profiles with their default port, user, database and SSL |
@@ -430,34 +430,43 @@ numbers after the largest `_id`, lists of words for arrays, small documents for 
   have their own font size.
 - Every shortcut can be changed; the toolbars show icons (each says what it does on hover),
   and the SQL editor's buttons can be hidden or given their words back.
+- **Logs and bug reports**: the app logs its starts, errors and crashes to `logs/` in its data
+  folder (three files of 1 MB at most); nothing is sent anywhere. After a crash it offers a
+  diagnostic package, also in Settings › Diagnostics: a zip with the version, the system, the
+  settings without passwords, connection counts by database and the logs, to attach to a bug
+  report. Error messages in the logs may name a server or a table: look before sharing.
 
 ## Agents (MCP) and the CLI
 
 Claude Code, Codex, Cursor and other MCP clients use your saved connections through
-`platypus-mcp`, an MCP server they start themselves (the app need not be open).
+PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start themselves
+(no window opens, and the app need not be open).
 
 - Each connection gives agents **no access**, **read only** (the default) or **read and
   write**; production and read-only connections are never more than read only.
 - Passwords stay in the keychain and no answer shows a host, a user or a secret.
 - Agents' queries are in the history with the agent's name.
 
-Settings → Agents shows the commands that register the server, with Copy buttons:
+Settings → Agents shows the commands that register the server, with Copy buttons. Agents
+registered with `platypus-mcp.exe` by version 0.2 need registering again with these commands:
+the installers no longer ship that second executable.
 
 ```bash
-claude mcp add platypus -- "C:\Program Files\PlatypusDB\platypus-mcp.exe"
+claude mcp add platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp
 ```
 
 and for Codex, in `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.platypus]
-command = 'C:\Program Files\PlatypusDB\platypus-mcp.exe'
+args = ["--mcp"]
+command = 'C:\Program Files\PlatypusDB\platypus-db.exe'
 ```
 
 <details>
 <summary>How the MCP server works</summary>
 
-`platypus-mcp` sits next to the app's executable. It reads the connections of the app's
+`platypus-db --mcp` talks MCP over stdin and stdout. It reads the connections of the app's
 profile, or of `PLATYPUS_DATA_DIR` when set. With a master password the saved passwords stay
 locked to agents: such connections answer with an error saying so, and work with a password
 command or `.pgpass` instead. A connection that asks for its password every time is not
@@ -467,7 +476,10 @@ Tools: `list_connections`, `list_schemas`, `list_objects`, `describe_table`, `ge
 `search_objects` and `run_query`. `run_query` runs one statement and returns 100 rows,
 32 KB and 30 s at most by default (`max_rows` up to 10,000, `max_bytes` up to 1 MB,
 `timeout_seconds` up to 300), as an aligned text table or JSON, saying when rows or values
-longer than 1,000 characters were left out.
+longer than 1,000 characters were left out. In the text table SQL `NULL` reads `NULL` and a
+text `NULL` reads `'NULL'`. `list_objects` returns 500 objects at most (`limit` up to 2,000);
+a larger schema comes in pages (`truncated`, `total`, `next_offset`, then `offset`). The
+client's `notifications/cancelled` cancels the running statement.
 
 On read-only connections only statements that change nothing run, inside the database's
 read-only transaction (PostgreSQL, MySQL and MariaDB `READ ONLY`, SQLite `query_only`; DuckDB
@@ -581,14 +593,15 @@ crates/
   platypus-driver-mysql/   MySQL / MariaDB (mysql_async)
   platypus-driver-mssql/   SQL Server / Azure SQL (tiberius, vendored with patches in vendor/)
   platypus-driver-sqlite/  SQLite (rusqlite)
-  platypus-driver-duckdb/  DuckDB (duckdb, bundled; Arrow results as they come)
+  platypus-driver-duckdb/  DuckDB (duckdb, library downloaded on first use; Arrow results as they come)
+  platypus-duckdb-loader/  loads DuckDB's library for the duckdb crate (the only unsafe code)
   platypus-driver-clickhouse/ ClickHouse over HTTP (reqwest; ArrowStream results decoded as they arrive)
   platypus-driver-libsql/  libSQL servers and Turso (Hrana over HTTP; SQLite's catalog code)
   platypus-driver-mongo/   MongoDB (official driver, rustls); mongosh parser, documents to Arrow
   platypus-driver-oracle/  Oracle (oracle crate on Oracle Instant Client)
   platypus-driver-adbc/    Snowflake, BigQuery, Databricks, Trino and any ADBC driver, loaded at run time
   platypus-driver-odbc/    Db2 and any ODBC driver or DSN, through the system's driver manager (Windows)
-  platypus-drivers/        drivers downloaded on first use: the dbc registry, Instant Client, IBM's ODBC driver
+  platypus-drivers/        drivers downloaded on first use: the dbc registry, Instant Client, IBM's ODBC driver, DuckDB
   platypus-tls/            rustls client configuration with libpq `sslmode` semantics
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
   platypus-schema/         table designs, the DDL between them, schema linter and comparison
@@ -642,8 +655,7 @@ cargo run -p platypus-cli -- query -u duckdb:///C:/data/app.duckdb "select * fro
 cargo run -p platypus-cli -- query -u clickhouse://platypus:platypus@localhost:58123/platypus "select * from system.tables"
 cargo run -p platypus-cli -- query -u "libsql://my-db-acme.turso.io?authToken=$TURSO_TOKEN" "select * from sqlite_master"
 
-# MCP server for agents; the installers ship it next to the app (tauri build with
-# --config src-tauri/tauri.mcp.conf.json, as scripts/build-windows.ps1 and the release do)
+# MCP server for agents on its own, for development (the app serves it with --mcp)
 cargo build --release -p platypus-mcp
 
 # end-to-end tests (Windows): drive the release build on a throwaway profile

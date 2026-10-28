@@ -55,6 +55,8 @@ export interface SavedConnection {
   /** What external agents (MCP, the CLI) may do; production and read-only connections
    *  never let them write. */
   agent_access?: AgentAccess;
+  /** How the form enters the address, as it was left: the host fields or one URL. */
+  connect_by?: "host" | "url";
   /** The SSH server the connection goes through. */
   ssh?: SavedSsh | null;
   /** Logical keys set by the user for tables without a primary key. */
@@ -67,15 +69,33 @@ export type ConnectionType = "dev" | "test" | "prod";
 
 export type AgentAccess = "off" | "read_only" | "read_write";
 
-/** Where `platypus-mcp` is and the commands that register it with agents. */
+/** Where the logs are, and the report of the crash that ended the last run. */
+export interface DiagnosticsInfo {
+  log_dir: string | null;
+  crash: string | null;
+}
+
+/** The app's executable, which agents start with `--mcp`, and the commands that register it. */
 export interface AgentSetup {
   mcp_path: string;
-  /** It is next to the app; a build from source may not have it. */
-  mcp_found: boolean;
   /** `claude mcp add …` for Claude Code. */
   claude_command: string;
   /** The `[mcp_servers.platypus]` table of Codex's `config.toml`. */
   codex_config: string;
+}
+
+/** Why agents cannot open a connection their access lets them use: it asks for its password
+ *  at each connection, or its password is behind the master password. */
+export type AgentBlocker = "asks_password" | "locked";
+
+/** An agent registration that still starts `platypus-mcp`, the server earlier versions
+ *  installed beside the app. */
+export interface StaleRegistration {
+  agent: "Claude Code" | "Codex";
+  name: string;
+  command: string;
+  /** The project folder of a Claude Code registration local to a project. */
+  project: string | null;
 }
 
 export interface SavedInit {
@@ -252,8 +272,8 @@ export type DriverInstallEvent = { kind: "progress"; done: number; total: number
 /** The databases whose driver is downloaded when needed (ADBC). */
 export const DOWNLOADED_DRIVERS: readonly DriverKind[] = ["snowflake", "bigquery", "databricks", "trino"];
 
-/** The databases whose vendor client the app installs: Oracle Instant Client, IBM's ODBC driver. */
-export const VENDOR_DRIVERS: readonly DriverKind[] = ["oracle", "db2"];
+/** The databases whose vendor library the app installs: Oracle Instant Client, IBM's ODBC driver, DuckDB. */
+export const VENDOR_DRIVERS: readonly DriverKind[] = ["oracle", "db2", "duckdb"];
 
 /** A vendor's client library, as the app would download it here. */
 export interface VendorPackage {
@@ -1170,7 +1190,13 @@ export interface Diff {
 
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
+  diagnosticsInfo: () => invoke<DiagnosticsInfo>("diagnostics_info"),
+  dismissCrash: () => invoke<void>("dismiss_crash"),
+  logError: (message: string) => invoke<void>("log_error", { message }),
+  saveDiagnostics: (path: string) => invoke<void>("save_diagnostics", { path }),
   agentSetup: () => invoke<AgentSetup>("agent_setup"),
+  agentBlockers: () => invoke<Record<string, AgentBlocker>>("agent_blockers"),
+  staleAgentRegistrations: () => invoke<StaleRegistration[]>("stale_agent_registrations"),
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
   defaultConnection: (driver: DriverKind) =>
     invoke<SavedConnection>("default_connection", { driver }),

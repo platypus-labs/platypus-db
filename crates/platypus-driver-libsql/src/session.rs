@@ -144,10 +144,12 @@ impl Session {
         }
     }
 
-    /// Sends `body` to `endpoint` of the stream's server; the text of the answer.
+    /// Sends `body`, which runs `sql`, to `endpoint` of the stream's server; the text of the
+    /// answer.
     async fn post(
         &self,
         endpoint: &str,
+        sql: &str,
         body: &impl serde::Serialize,
     ) -> std::result::Result<String, Result<Transport>> {
         let mut request = self
@@ -167,6 +169,10 @@ impl Session {
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
+            // Some servers answer a statement they cannot parse with an HTTP error.
+            if let Some(error) = crate::hrana::parse_failure(&text) {
+                return Err(Err(error.into_error(sql)));
+            }
             return Err(Ok(Transport {
                 message: format!("HTTP {status}: {text}"),
                 answered: true,
@@ -196,7 +202,7 @@ impl Session {
                 }],
             },
         };
-        let text = self.post("cursor", &body).await?;
+        let text = self.post("cursor", sql, &body).await?;
         let (head, result) = crate::hrana::cursor_result(&text).map_err(Err)?;
         self.follow(head.baton, head.base_url);
         result.map_err(|error| Err(error.into_error(sql)))
@@ -216,7 +222,7 @@ impl Session {
                 StreamRequest::GetAutocommit,
             ],
         };
-        let text = self.post("pipeline", &body).await?;
+        let text = self.post("pipeline", sql, &body).await?;
         let response: PipelineResponse = serde_json::from_str(&text)
             .map_err(|e| Err(Error::Other(format!("unexpected libSQL response: {e}"))))?;
         self.follow(response.baton, response.base_url);

@@ -17,5 +17,8 @@ platypus-core.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+platypus-driver-duckdb = { workspace = true, features = ["testing"] }
+
 [lints]
 workspace = true

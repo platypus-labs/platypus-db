@@ -22,10 +22,60 @@ pub fn script(
     original: Option<&TableDesign>,
     design: &TableDesign,
 ) -> Result<Script, String> {
+    let mut script = phased(dialect, schema, original, design, None)?;
+    warn_one_by_one(dialect, &mut script);
+    Ok(script)
+}
+
+/// Whether the database runs DDL in a transaction: MySQL and Oracle commit each DDL
+/// statement, ClickHouse has no transactions.
+pub(crate) fn transactional(dialect: Dialect) -> bool {
+    !matches!(
+        dialect,
+        Dialect::MySql | Dialect::ClickHouse | Dialect::Oracle
+    )
+}
+
+/// Warns, once, that `script` runs one statement at a time when it cannot run in one
+/// transaction and has more than one statement.
+pub(crate) fn warn_one_by_one(dialect: Dialect, script: &mut Script) {
+    if script.transactional || script.statements.len() <= 1 {
+        return;
+    }
+    let database = match dialect {
+        Dialect::MySql => "MySQL",
+        Dialect::Oracle => "Oracle",
+        _ => "ClickHouse",
+    };
+    let warning = format!(
+        "{database} runs each statement by itself: if one fails, the ones before it stay applied."
+    );
+    if !script.warnings.contains(&warning) {
+        script.warnings.push(warning);
+    }
+}
+
+/// The foreign keys an `ALTER TABLE` script drops and adds, kept apart by [`phased`]: a
+/// schema comparison drops those of every table first and adds them last, once the
+/// columns and tables they reference are there.
+#[derive(Default)]
+pub(crate) struct Keys {
+    pub dropped: Vec<String>,
+    pub added: Vec<String>,
+}
+
+/// Like [`script`], with the foreign keys an `ALTER TABLE` drops and adds in `keys`, when
+/// given, instead of in the script (a table created again keeps them in its script).
+pub(crate) fn phased(
+    dialect: Dialect,
+    schema: &str,
+    original: Option<&TableDesign>,
+    design: &TableDesign,
+    keys: Option<&mut Keys>,
+) -> Result<Script, String> {
     validate(dialect, design)?;
     let mut script = Script {
-        // MySQL commits each DDL statement, ClickHouse has no DDL transactions.
-        transactional: !matches!(dialect, Dialect::MySql | Dialect::ClickHouse),
+        transactional: transactional(dialect),
         ..Script::default()
     };
     let ddl = Ddl { d: dialect, schema };
@@ -41,7 +91,7 @@ pub fn script(
             if diff.needs_rebuild(dialect) {
                 ddl.rebuild(old, design, &diff, &mut script);
             } else {
-                ddl.alter(old, design, &diff, &mut script);
+                ddl.alter(old, design, &diff, &mut script, keys);
                 if text(old.comment.as_ref()) != text(design.comment.as_ref()) {
                     ddl.push_table_comment(
                         design,
@@ -52,17 +102,22 @@ pub fn script(
             }
         }
     }
-    if !script.transactional && script.statements.len() > 1 {
-        let database = if dialect == Dialect::MySql {
-            "MySQL commits"
-        } else {
-            "ClickHouse applies"
-        };
-        script.warnings.push(format!(
-            "{database} each statement by itself: if one fails, the ones before it stay applied."
-        ));
-    }
     Ok(script)
+}
+
+/// `ALTER TABLE .. ADD` of the foreign key `fk` of `schema.table`.
+pub(crate) fn add_foreign_key(
+    dialect: Dialect,
+    schema: &str,
+    table: &str,
+    fk: &ForeignKeyDesign,
+) -> String {
+    let ddl = Ddl { d: dialect, schema };
+    format!(
+        "ALTER TABLE {} ADD {}",
+        ddl.table(table),
+        ddl.foreign_key(fk)
+    )
 }
 
 /// `CREATE INDEX` of `index` on `schema.table`.
@@ -255,7 +310,7 @@ impl<'a> Diff<'a> {
                     o.name == n.name
                         && o.kind == n.kind
                         && map(&o.columns) == n.columns
-                        && o.check.trim() == n.check.trim()
+                        && same_check(&o.check, &n.check)
                 },
             ),
             kept_columns,
@@ -282,6 +337,154 @@ impl<'a> Diff<'a> {
                         || text(c.default.as_ref()).is_some_and(|d| !constant(d))
                 }))
     }
+}
+
+/// Whether two CHECK conditions are the same, as the database prints them: PostgreSQL
+/// prints a condition it was given in its own words another way (`'a'::character varying`
+/// becomes `('a'::character varying)::text`), so casts and parentheses around a single
+/// term are left out, and so are case and spaces outside quotes.
+pub(crate) fn same_check(a: &str, b: &str) -> bool {
+    a.trim() == b.trim() || check_key(a) == check_key(b)
+}
+
+/// The words a type name of more than one word goes on with: `character varying`,
+/// `timestamp without time zone`, `double precision`.
+const TYPE_WORDS: [&str; 6] = ["varying", "precision", "without", "with", "time", "zone"];
+
+/// The tokens of a CHECK condition as [`same_check`] compares them.
+fn check_key(text: &str) -> Vec<String> {
+    let mut tokens = check_tokens(text);
+    loop {
+        let pairs = matching_parens(&tokens);
+        let removable = pairs.iter().find(|&&(open, close)| {
+            close == open + 2
+                || (tokens[open + 1] == "(" && pairs.contains(&(open + 1, close - 1)))
+                || (open == 0 && close == tokens.len() - 1)
+        });
+        match removable {
+            Some(&(open, close)) => {
+                tokens.remove(close);
+                tokens.remove(open);
+            }
+            None => return tokens,
+        }
+    }
+}
+
+/// The pairs of matching parentheses of `tokens`, by position.
+fn matching_parens(tokens: &[String]) -> Vec<(usize, usize)> {
+    let mut open = Vec::new();
+    let mut pairs = Vec::new();
+    for (i, t) in tokens.iter().enumerate() {
+        match t.as_str() {
+            "(" => open.push(i),
+            ")" => {
+                if let Some(o) = open.pop() {
+                    pairs.push((o, i));
+                }
+            }
+            _ => {}
+        }
+    }
+    pairs
+}
+
+fn is_word_char(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '_' | '$' | '#' | '.')
+}
+
+/// The tokens of `text` without its casts, words in lower case.
+fn check_tokens(text: &str) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut tokens: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        let start = i;
+        i += 1;
+        let close = match c {
+            '\'' | '"' | '`' => Some(c),
+            // `[name]` in Transact-SQL; `ARRAY[..]` in PostgreSQL.
+            '[' if tokens.last().is_none_or(|t| t != "array") => Some(']'),
+            _ => None,
+        };
+        if let Some(close) = close {
+            // A quoted text, its doubled quotes included.
+            while i < chars.len() {
+                if chars[i] == close {
+                    if chars.get(i + 1) == Some(&close) && close != ']' {
+                        i += 2;
+                        continue;
+                    }
+                    i += 1;
+                    break;
+                }
+                i += 1;
+            }
+            tokens.push(chars[start..i].iter().collect());
+        } else if is_word_char(c) {
+            while i < chars.len() && is_word_char(chars[i]) {
+                i += 1;
+            }
+            tokens.push(chars[start..i].iter().collect::<String>().to_lowercase());
+        } else if c == ':' && chars.get(i) == Some(&':') {
+            i = skip_cast_type(&chars, i + 1);
+        } else if !c.is_whitespace() {
+            tokens.push(c.to_string());
+        }
+    }
+    tokens
+}
+
+/// Where the type of a cast that starts at `i` ends: its words, its `(..)` and its `[]`.
+fn skip_cast_type(chars: &[char], mut i: usize) -> usize {
+    let blank = |mut j: usize| {
+        while j < chars.len() && chars[j].is_whitespace() {
+            j += 1;
+        }
+        j
+    };
+    // The word at `i` (after spaces): where it ends, and the word in lower case.
+    let word_at = |i: usize| -> (usize, String) {
+        let start = blank(i);
+        let mut j = start;
+        if chars.get(j) == Some(&'"') {
+            j += 1;
+            while j < chars.len() && chars[j] != '"' {
+                j += 1;
+            }
+            let end = (j + 1).min(chars.len());
+            return (end, chars[start..end].iter().collect());
+        }
+        while j < chars.len() && (chars[j].is_alphanumeric() || matches!(chars[j], '_' | '.')) {
+            j += 1;
+        }
+        (j, chars[start..j].iter().collect::<String>().to_lowercase())
+    };
+    i = word_at(i).0;
+    loop {
+        let (end, word) = word_at(i);
+        if !TYPE_WORDS.contains(&word.as_str()) {
+            break;
+        }
+        i = end;
+    }
+    let past = |i: usize, open: char, close: char| -> Option<usize> {
+        let j = blank(i);
+        (chars.get(j) == Some(&open)).then(|| {
+            chars[j..]
+                .iter()
+                .position(|&c| c == close)
+                .map_or(chars.len(), |p| j + p + 1)
+        })
+    };
+    if let Some(end) = past(i, '(', ')') {
+        i = end;
+    }
+    while let Some(end) = past(i, '[', ']') {
+        i = end;
+    }
+    i
 }
 
 /// Whether `default` is a literal, the only kind of default SQLite's `ADD COLUMN` takes.
@@ -400,29 +603,40 @@ impl Ddl<'_> {
         if self.d == Dialect::Sqlite && extra == Some("AUTOINCREMENT") {
             def.push_str(" PRIMARY KEY AUTOINCREMENT");
         }
+        // Oracle's identity: `GENERATED BY DEFAULT AS IDENTITY`.
+        if let (Dialect::Oracle, Some(extra)) = (self.d, extra) {
+            def.push(' ');
+            def.push_str(extra);
+        }
         let generated = text(c.generated.as_ref());
         if let Some(clause) = generated {
             def.push(' ');
             def.push_str(clause);
         }
-        if !c.nullable && !clickhouse {
-            def.push_str(" NOT NULL");
+        let null = if !c.nullable && !clickhouse {
+            " NOT NULL"
         } else if self.d == Dialect::SqlServer {
-            def.push_str(" NULL");
-        }
-        match text(c.default.as_ref()) {
+            " NULL"
+        } else {
+            ""
+        };
+        let default = match text(c.default.as_ref()) {
             // A generated column takes no default.
-            Some(_) if generated.is_some() => {}
+            Some(_) if generated.is_some() => String::new(),
             // ClickHouse's other kinds of default are their own keyword.
             Some(default) if clickhouse && clickhouse_default_kind(default) => {
-                def.push(' ');
-                def.push_str(default);
+                format!(" {default}")
             }
-            Some(default) => {
-                def.push_str(" DEFAULT ");
-                def.push_str(default);
-            }
-            None => {}
+            Some(default) => format!(" DEFAULT {default}"),
+            None => String::new(),
+        };
+        // Oracle wants the default before NOT NULL.
+        if self.d == Dialect::Oracle {
+            def.push_str(&default);
+            def.push_str(null);
+        } else {
+            def.push_str(null);
+            def.push_str(&default);
         }
         if self.d == Dialect::MySql {
             if let Some(extra) = extra {
@@ -730,7 +944,16 @@ impl Ddl<'_> {
         format!("EXEC({})", d.quote_string(&inner))
     }
 
-    fn alter(&self, old: &TableDesign, new: &TableDesign, diff: &Diff<'_>, script: &mut Script) {
+    fn alter(
+        &self,
+        old: &TableDesign,
+        new: &TableDesign,
+        diff: &Diff<'_>,
+        script: &mut Script,
+        keys: Option<&mut Keys>,
+    ) {
+        // A renamed table's keys stay in its script, after the rename.
+        let mut keys = keys.filter(|_| new.name == old.name);
         let out = &mut script.statements;
         let mut name = old.name.as_str();
         if new.name != old.name {
@@ -740,10 +963,13 @@ impl Ddl<'_> {
         let t = self.table(name);
         for f in &diff.foreign_keys.dropped {
             let original = self.q(f.original.as_deref().unwrap_or(&f.name));
-            out.push(match self.d {
+            let drop = match self.d {
                 Dialect::MySql => format!("ALTER TABLE {t} DROP FOREIGN KEY {original}"),
                 _ => format!("ALTER TABLE {t} DROP CONSTRAINT {original}"),
-            });
+            };
+            keys.as_deref_mut()
+                .map_or(&mut *out, |k| &mut k.dropped)
+                .push(drop);
         }
         for c in &diff.constraints.dropped {
             let original = c.original.as_deref().unwrap_or(&c.name);
@@ -779,6 +1005,10 @@ impl Ddl<'_> {
             self.alter_column(name, o, n, out);
         }
         for c in &diff.added_columns {
+            if self.d == Dialect::Oracle {
+                out.push(format!("ALTER TABLE {t} ADD ({})", self.column(c)));
+                continue;
+            }
             let add = if self.d == Dialect::SqlServer {
                 "ADD"
             } else {
@@ -803,7 +1033,10 @@ impl Ddl<'_> {
             out.push(format!("ALTER TABLE {t} ADD {}", self.constraint(c)));
         }
         for f in &diff.foreign_keys.added {
-            out.push(format!("ALTER TABLE {t} ADD {}", self.foreign_key(f)));
+            let add = format!("ALTER TABLE {t} ADD {}", self.foreign_key(f));
+            keys.as_deref_mut()
+                .map_or(&mut *out, |k| &mut k.added)
+                .push(add);
         }
         for i in &diff.indexes.added {
             out.push(self.create_index(name, i));
@@ -872,6 +1105,10 @@ impl Ddl<'_> {
             Self::alter_clickhouse_column(&t, &c, o, n, out);
             return;
         }
+        if self.d == Dialect::Oracle {
+            Self::alter_oracle_column(&t, &c, o, n, out);
+            return;
+        }
         // PostgreSQL; SQLite and DuckDB rebuild instead.
         if type_changed(o, n) {
             out.push(format!(
@@ -887,6 +1124,34 @@ impl Ddl<'_> {
                 Some(default) => format!("ALTER TABLE {t} ALTER COLUMN {c} SET DEFAULT {default}"),
                 None => format!("ALTER TABLE {t} ALTER COLUMN {c} DROP DEFAULT"),
             });
+        }
+    }
+
+    /// Oracle's `MODIFY`, one change at a time: setting a column to the nullability it has
+    /// already is an error there.
+    fn alter_oracle_column(
+        table: &str,
+        column: &str,
+        old: &ColumnDesign,
+        new: &ColumnDesign,
+        out: &mut Vec<String>,
+    ) {
+        let modify = |what: &str| format!("ALTER TABLE {table} MODIFY ({column} {what})");
+        if text(old.extra.as_ref()).is_some() && old.extra != new.extra {
+            out.push(modify("DROP IDENTITY"));
+        }
+        if type_changed(old, new) {
+            out.push(modify(new.data_type.trim()));
+        }
+        if default_changed(old, new) {
+            let default = text(new.default.as_ref()).unwrap_or("NULL");
+            out.push(modify(&format!("DEFAULT {default}")));
+        }
+        if old.nullable != new.nullable {
+            out.push(modify(if new.nullable { "NULL" } else { "NOT NULL" }));
+        }
+        if let Some(identity) = text(new.extra.as_ref()).filter(|_| old.extra != new.extra) {
+            out.push(modify(identity));
         }
     }
 
@@ -1391,7 +1656,7 @@ mod tests {
         );
         assert!(!s.transactional);
         assert!(
-            s.warnings[0].starts_with("ClickHouse applies each statement"),
+            s.warnings[0].starts_with("ClickHouse runs each statement"),
             "{s:?}"
         );
 
@@ -1711,7 +1976,7 @@ mod tests {
             (Dialect::SqlServer, r"N'it''s a\b'"),
         ];
         for (d, literal) in cases {
-            let text = script(*d, "public", None, &new).unwrap().text();
+            let text = script(*d, "public", None, &new).unwrap().text(*d);
             assert!(text.matches(literal).count() >= 2, "{d:?}: {text}");
         }
     }
@@ -1724,6 +1989,27 @@ mod tests {
             s.warnings.iter().any(|w| w.contains("table comments")),
             "{s:?}"
         );
-        assert!(!s.text().contains("All orders"), "{s:?}");
+        assert!(!s.text(Dialect::Sqlite).contains("All orders"), "{s:?}");
+    }
+
+    #[test]
+    fn checks_postgresql_prints_another_way_are_the_same() {
+        let given = "((status)::text = ANY ((ARRAY['new'::character varying, \
+                     'paid'::character varying])::text[]))";
+        let printed = "((status)::text = ANY (ARRAY[('new'::character varying)::text, \
+                       ('paid'::character varying)::text]))";
+        assert!(same_check(given, printed));
+        assert!(same_check("(total >= 0)", "total>=0"));
+        assert!(same_check(
+            "(created > '2020-01-01'::timestamp without time zone)",
+            "created > '2020-01-01'"
+        ));
+        assert!(!same_check(given, &given.replace("paid", "sent")));
+        assert!(!same_check("a = 'X'", "a = 'x'"));
+        assert!(!same_check("total >= 0", "total > 0"));
+        assert!(same_check(
+            "([status]='new' OR [status]='paid')",
+            "[status] = 'new' or [status] = 'paid'"
+        ));
     }
 }

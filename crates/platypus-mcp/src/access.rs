@@ -7,6 +7,7 @@ pub use platypus_store::AgentAccess;
 use platypus_store::SettingsStore;
 
 use crate::error::{AgentError, Result};
+use crate::ident;
 
 /// What the user's Safety setting for `UPDATE` or `DELETE` without `WHERE` (and `TRUNCATE`)
 /// means for agents, who cannot answer the app's confirmation.
@@ -45,7 +46,7 @@ struct Outside {
 }
 
 /// PostgreSQL functions that act outside the transaction (other sessions, the server's
-/// configuration and files, replication, notifications, session locks), which a `READ
+/// configuration, files and statistics, replication, notifications, session locks), which a `READ
 /// ONLY` transaction lets run, or run a query given as text (`query_to_xml`, `ts_stat`).
 /// Families: `dblink_exec`, `pg_advisory_lock`, adminpack's `pg_file_write`…
 const POSTGRES_OUTSIDE: Outside = Outside {
@@ -75,6 +76,11 @@ const POSTGRES_OUTSIDE: Outside = Outside {
         "pg_start_backup",
         "pg_stop_backup",
         "pg_log_backend_memory_contexts",
+        "pg_log_standby_snapshot",
+        "pg_wal_replay_*",
+        "pg_sync_replication_slots",
+        "pg_stat_reset*",
+        "pg_stat_statements_reset",
         "query_to_xml*",
         "ts_stat",
     ],
@@ -277,9 +283,9 @@ fn duckdb_file_scan(src: &str, tokens: &[Token]) -> Option<usize> {
     })
 }
 
-/// The first word of `statement` naming something that reaches outside a read-only
-/// transaction in `dialect`, as written, however the server reads the statement.
-fn outside_effect(statement: &str, dialect: Dialect) -> Option<&str> {
+/// The first name in `statement` that reaches outside a read-only transaction in
+/// `dialect`, however the server reads the statement and decodes its quoted names.
+fn outside_effect(statement: &str, dialect: Dialect) -> Option<String> {
     let outside = Outside::of(dialect);
     Lexer::readings(statement, dialect)
         .into_iter()
@@ -290,20 +296,26 @@ fn outside_effect(statement: &str, dialect: Dialect) -> Option<&str> {
             if dialect == Dialect::DuckDb
                 && let Some(i) = duckdb_file_scan(statement, &tokens)
             {
-                return Some(tokens[i].text(statement));
+                return Some(tokens[i].text(statement).to_owned());
             }
             tokens.iter().enumerate().find_map(|(i, t)| {
-                let name = match t.kind {
-                    TokenKind::Word => t.text(statement),
-                    TokenKind::QuotedIdent => t.text(statement).trim_matches(['"', '`', '[', ']']),
+                let (names, last) = match t.kind {
+                    TokenKind::Word => (vec![t.text(statement).to_owned()], i),
+                    TokenKind::QuotedIdent => {
+                        let decoded = ident::decode(statement, &tokens, i, dialect);
+                        if decoded.undecodable {
+                            return Some(t.text(statement).to_owned());
+                        }
+                        (decoded.names, decoded.last)
+                    }
                     _ => return None,
                 };
                 let call = tokens
-                    .get(i + 1)
+                    .get(last + 1)
                     .is_some_and(|n| n.kind == TokenKind::Symbol && n.text(statement) == "(");
-                outside
-                    .reaches(&name.to_ascii_lowercase(), call)
-                    .then_some(name)
+                names
+                    .into_iter()
+                    .find(|name| outside.reaches(&name.to_ascii_lowercase(), call))
             })
         })
 }
@@ -609,6 +621,27 @@ mod tests {
             (Postgres, "select pg_read_file('/etc/passwd')"),
             (Postgres, "select * from pg_ls_dir('.')"),
             (Postgres, "select pg_create_restore_point('x')"),
+            // Names hidden behind PostgreSQL's Unicode escapes.
+            (Postgres, r#"SELECT U&"\0070g_advisory_lock"(4243)"#),
+            (Postgres, r#"SELECT u&"\0070g_read_file"('PG_VERSION')"#),
+            (Postgres, r#"SELECT U&"!0070g_ls_dir" UESCAPE '!' ('.')"#),
+            (
+                Postgres,
+                r#"SELECT U&"!0070g_ls_dir" /* c */ uescape '!' ('.')"#,
+            ),
+            (Postgres, r#"SELECT U&"\+000070g_terminate_backend"(1)"#),
+            (
+                Postgres,
+                r#"SELECT pg_catalog.U&"lo\005fexport"(1, '/tmp/x')"#,
+            ),
+            (Postgres, r#"SELECT U&"\zzzz"(1)"#),
+            (Postgres, "select pg_stat_reset()"),
+            (Postgres, "select pg_stat_reset_shared('bgwriter')"),
+            (Postgres, "select pg_stat_statements_reset()"),
+            // And behind ClickHouse's and BigQuery's backslash escapes.
+            (ClickHouse, r"SELECT * FROM `fi\x6ce`('x.csv')"),
+            (ClickHouse, r#"SELECT * FROM "\x75rl"('http://x', CSV)"#),
+            (BigQuery, r"SELECT * FROM `external\x5fquery`('c', 'x')"),
             (Postgres, "select 1 -- x\r; select pg_reload_conf()"),
             (Postgres, r"select 'x\''; delete from t; --'"),
             (Postgres, "copy (select 1) to program 'id'"),
@@ -695,6 +728,7 @@ mod tests {
             (DuckDb, "SELECT query FROM t WHERE a = 'x.csv'"),
             (DuckDb, "SELECT 'x.csv' AS f, read FROM t"),
             (Oracle, "select dbms_lob.substr(c, 10, 1) from t"),
+            (Postgres, r#"SELECT U&"\0061" FROM t"#),
             (Ansi, "SELECT query FROM system.runtime.queries"),
         ];
         for &(dialect, sql) in queries {

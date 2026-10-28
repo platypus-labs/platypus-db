@@ -44,8 +44,10 @@ export default async function (page) {
   await page.eval(`document.querySelector('.project-square[title="Cliente Rossi"]').click()`);
   await page.waitFor(`${treeRow("rossi-prod")} !== undefined`);
   await page.eval(`${treeRow("rossi-prod")}.querySelector('.twisty').click()`);
-  // Either the schema (the database was opened) or an error row shows.
-  await page.waitFor(`${treeRow("main")} !== undefined || document.querySelector('.tree-row.failed') !== null`, 15_000);
+  // Either the schema (the database was opened), an error row, or the notice of a failed
+  // connect (the connection then folds again) shows.
+  const refused = `[...document.querySelectorAll('.notice')].some(n => n.textContent.includes('rossi-prod.db not found'))`;
+  await page.waitFor(`${treeRow("main")} !== undefined || document.querySelector('.tree-row.failed') !== null || ${refused}`, 15_000);
   assert.equal(existsSync(stray), false, `an empty database was created at ${stray}`);
   assert.equal(await page.eval(`${treeRow("main")} === undefined`), true, "an empty database is shown for the imported production connection");
 }

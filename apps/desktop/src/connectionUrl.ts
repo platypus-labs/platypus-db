@@ -87,8 +87,9 @@ export type ConnectBy = "host" | "url";
 export const urlModeDriver = (driver: DriverKind) => hasUrl(driver) && driver !== "sqlite" && driver !== "duckdb";
 
 /** The URL typed in the form read as its settings: the connection with the URL's host,
- *  port, database, user and options, but the name as it was (a half-typed URL must not
- *  name the connection). A password in the URL goes to the password field (`password`,
+ *  port, database, user, TLS files and options, but the name as it was (a half-typed URL
+ *  must not name the connection). The URL says all of the address: a TLS file it leaves out
+ *  is removed. A password in the URL goes to the password field (`password`,
  *  the typed one when the URL has none) and `draft` is then dropped: the field shows the
  *  URL printed from the settings, which has none. */
 export function applyUrlEdit(
@@ -97,7 +98,14 @@ export function applyUrlEdit(
   typed: string,
   parsed: ParsedConnection,
 ): { conn: SavedConnection; password: string; draft: string | null } {
-  const next = { ...withParsed(conn, parsed), name: conn.name, driver: conn.driver };
+  const next = {
+    ...withParsed(conn, parsed),
+    name: conn.name,
+    driver: conn.driver,
+    ssl_root_cert: parsed.ssl_root_cert ?? null,
+    ssl_client_cert: parsed.ssl_client_cert ?? null,
+    ssl_client_key: parsed.ssl_client_key ?? null,
+  };
   const hasPassword = parsed.password != null;
   return { conn: next, password: hasPassword ? parsed.password! : password, draft: hasPassword ? null : typed };
 }

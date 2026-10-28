@@ -333,3 +333,75 @@ fn serves_the_tools_over_stdio() {
     assert_eq!(recorded[2].0, "DELETE FROM t WHERE id = 1");
     assert_eq!(recorded[2].1, "error");
 }
+
+/// `notifications/cancelled` cancels the running statement, which frees the connection.
+#[test]
+fn a_cancelled_request_cancels_its_statement() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let mut client = initialized(dir.path());
+    let id = client.next_id;
+    client.next_id += 1;
+    client.send(&json!({
+        "jsonrpc": "2.0", "id": id, "method": "tools/call",
+        "params": { "name": "run_query", "arguments": {
+            "connection": "App db",
+            "sql": "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT count(*) FROM c",
+            "timeout_seconds": 60,
+        }},
+    }));
+    std::thread::sleep(Duration::from_secs(1));
+    client.send(&json!({
+        "jsonrpc": "2.0", "method": "notifications/cancelled",
+        "params": { "requestId": id, "reason": "interrupted" },
+    }));
+    let start = std::time::Instant::now();
+    let (rows, error) = client.call(
+        "run_query",
+        &json!({ "connection": "App db", "sql": "SELECT 2 AS two" }),
+    );
+    assert!(!error && rows.contains('2'), "{rows}");
+    assert!(
+        start.elapsed() < Duration::from_secs(20),
+        "the cancelled statement held the connection for {:?}",
+        start.elapsed()
+    );
+}
+
+/// A line that is not JSON gets JSON-RPC's Parse error, and the server goes on.
+#[test]
+fn a_line_that_is_not_json_gets_a_parse_error() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let mut client = initialized(dir.path());
+    writeln!(client.stdin, "{{this is not json").unwrap();
+    client.stdin.flush().unwrap();
+    let line = client
+        .lines
+        .recv_timeout(Duration::from_secs(10))
+        .expect("no answer to a line that is not JSON");
+    let answer: Value = serde_json::from_str(&line).unwrap();
+    assert_eq!(answer.get("id"), Some(&Value::Null), "{answer}");
+    assert_eq!(answer["error"]["code"], -32700, "{answer}");
+    let ping = client.request("ping", &json!({}));
+    assert!(ping["result"].is_object(), "{ping}");
+}
+
+/// An argument the server does not take fails with the usage, instead of serving.
+#[test]
+fn an_unknown_argument_prints_the_usage_and_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_platypus-mcp"))
+        .arg("--bogus")
+        .env("PLATYPUS_DATA_DIR", dir.path())
+        .stdin(Stdio::piped())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--bogus") && stderr.contains("Usage"),
+        "{stderr}"
+    );
+    assert_eq!(output.stdout, b"");
+}

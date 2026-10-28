@@ -20,6 +20,7 @@ import { sessionSettingsChanged } from "./connectionEdit";
 import { Navigator } from "./components/Navigator";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { CrashBanner } from "./diagnostics/Diagnostics";
 import { CommandPalette } from "./shell/CommandPalette";
 import "./tabs";
 import "./objects/actions";
@@ -954,6 +955,7 @@ export function App() {
         <SidebarResizer width={sidebarWidth} onResize={setSidebarWidth} />
       </div>
       <main className="workspace">
+        <CrashBanner />
         <UpdateBanner />
         {visibleTabs.length > 0 && (
           <TabBar

@@ -29,6 +29,46 @@ use crate::redact::Redactor;
 /// Search hits returned at most.
 pub const SEARCH_RESULTS: usize = 200;
 
+/// Objects `list_objects` returns by default, and at most.
+pub const OBJECT_PAGE: usize = 500;
+pub const MAX_OBJECT_PAGE: usize = 2000;
+
+/// The page of `objects` from `offset`, of `limit` objects (default [`OBJECT_PAGE`], at most
+/// [`MAX_OBJECT_PAGE`]): the list itself when it holds them all, else
+/// `{objects, truncated, total, offset, next_offset}`.
+fn object_page(objects: &[ObjectMeta], offset: Option<u64>, limit: Option<u64>) -> Result<Value> {
+    let limit = match limit {
+        None => OBJECT_PAGE,
+        Some(0) => {
+            return Err(AgentError::Invalid(
+                "limit must be greater than 0".to_owned(),
+            ));
+        }
+        Some(n) => usize::try_from(n)
+            .unwrap_or(usize::MAX)
+            .min(MAX_OBJECT_PAGE),
+    };
+    let start = offset.map_or(0, |o| usize::try_from(o).unwrap_or(usize::MAX));
+    let page: Vec<ObjectInfo> = objects
+        .iter()
+        .skip(start)
+        .take(limit)
+        .map(ObjectInfo::from)
+        .collect();
+    if start == 0 && page.len() == objects.len() {
+        return Ok(json!(page));
+    }
+    let end = start.saturating_add(page.len());
+    let truncated = end < objects.len();
+    Ok(json!({
+        "objects": page,
+        "truncated": truncated,
+        "total": objects.len(),
+        "offset": start,
+        "next_offset": truncated.then_some(end),
+    }))
+}
+
 /// Characters of an agent's name the history keeps.
 const ORIGIN_CHARS: usize = 64;
 
@@ -313,8 +353,15 @@ impl Agent {
         lease.settle(schemas).map(|s| json!(s))
     }
 
-    /// The tables, views, routines and other objects of a schema.
-    pub async fn list_objects(&self, connection: &str, schema: &str) -> Result<Value> {
+    /// The tables, views, routines and other objects of a schema, a page at a time (see
+    /// [`object_page`]).
+    pub async fn list_objects(
+        &self,
+        connection: &str,
+        schema: &str,
+        offset: Option<u64>,
+        limit: Option<u64>,
+    ) -> Result<Value> {
         let lease = self.open(connection).await?;
         let conn = lease.conn();
         // No objects may also mean no such schema: say so, rather than an empty list.
@@ -328,9 +375,7 @@ impl Agent {
         let objects = lease.settle(objects)?.ok_or_else(|| {
             AgentError::NotFound(format!("`{connection}` has no schema `{schema}`"))
         })?;
-        Ok(json!(
-            objects.iter().map(ObjectInfo::from).collect::<Vec<_>>()
-        ))
+        object_page(&objects, offset, limit)
     }
 
     /// Columns, keys, foreign keys (both ways), indexes and constraints of a table or view.
@@ -396,6 +441,18 @@ impl Agent {
     /// records it in the query history with `origin`, the agent's name (see
     /// [`origin_name`]).
     pub async fn run_query(&self, args: &QueryArgs, origin: &str) -> Result<QueryResult> {
+        self.run_query_until(args, origin, std::future::pending())
+            .await
+    }
+
+    /// [`run_query`](Self::run_query), cancelling the statement when `stop` completes
+    /// first: the client cancelled the request.
+    pub async fn run_query_until(
+        &self,
+        args: &QueryArgs,
+        origin: &str,
+        stop: impl Future<Output = ()>,
+    ) -> Result<QueryResult> {
         let limits = Limits::new(args.max_rows, args.max_bytes, args.timeout_seconds)?;
         let (store, saved) = self.find(&args.connection)?;
         let access = saved.effective_agent_access();
@@ -411,7 +468,7 @@ impl Agent {
         let result = match checked {
             Ok(statement) => {
                 let read_only = (access == AgentAccess::ReadOnly).then_some(saved.driver);
-                self.execute(&store, &saved, statement, read_only, &limits)
+                self.execute(&store, &saved, statement, read_only, &limits, stop)
                     .await
             }
             Err(e) => Err(e),
@@ -439,14 +496,19 @@ impl Agent {
         statement: &str,
         read_only: Option<DriverKind>,
         limits: &Limits,
+        stop: impl Future<Output = ()>,
     ) -> Result<query::Outcome> {
         let lease = self.lease(store, saved).await?;
-        match query::run(lease.conn(), statement, read_only, limits).await {
+        match query::run_until(lease.conn(), statement, read_only, limits, stop).await {
             Ok(outcome) => Ok(outcome),
             Err(RunError::Database(e)) => Err(lease.error(&e)),
             Err(RunError::Timeout) => {
                 lease.discard();
                 Err(AgentError::Timeout(limits.timeout))
+            }
+            Err(RunError::Cancelled) => {
+                lease.discard();
+                Err(AgentError::Cancelled)
             }
         }
     }
@@ -470,7 +532,9 @@ impl Agent {
                 HistoryStatus::Ok,
                 None,
             ),
-            Err(AgentError::Timeout(_)) => (None, HistoryStatus::Cancelled, None),
+            Err(AgentError::Timeout(_) | AgentError::Cancelled) => {
+                (None, HistoryStatus::Cancelled, None)
+            }
             Err(e) => (None, HistoryStatus::Error, Some(e.to_string())),
         };
         let entry = NewHistoryEntry {
@@ -571,6 +635,26 @@ mod tests {
         assert_eq!(origin_name(&"é".repeat(100)).chars().count(), ORIGIN_CHARS);
     }
 
+    #[test]
+    fn objects_come_a_page_at_a_time() {
+        let objects: Vec<ObjectMeta> = (0..1200)
+            .map(|i| ObjectMeta::new(format!("t{i}"), ObjectKind::Table, None))
+            .collect();
+        let small = object_page(&objects[..3], None, None).unwrap();
+        assert_eq!(small.as_array().map(Vec::len), Some(3));
+        let first = object_page(&objects, None, None).unwrap();
+        assert_eq!(first["objects"].as_array().unwrap().len(), OBJECT_PAGE);
+        assert_eq!(first["truncated"], true);
+        assert_eq!(first["total"], 1200);
+        assert_eq!(first["next_offset"], 500);
+        let last = object_page(&objects, Some(1000), Some(5000)).unwrap();
+        assert_eq!(last["objects"].as_array().unwrap().len(), 200);
+        assert_eq!(last["objects"][0]["name"], "t1000");
+        assert_eq!(last["truncated"], false);
+        assert_eq!(last["next_offset"], Value::Null);
+        assert!(object_page(&objects, None, Some(0)).is_err());
+    }
+
     fn sqlite(path: &Path, rows: u32) {
         let db = rusqlite::Connection::open(path).unwrap();
         db.execute_batch("CREATE TABLE t (id INTEGER)").unwrap();
@@ -619,6 +703,7 @@ mod tests {
 
     #[tokio::test]
     async fn duckdb_files_are_free_between_calls() {
+        platypus_driver_duckdb::testing::load();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("data.duckdb");
         duckdb::Connection::open(&path)

@@ -16,8 +16,8 @@ mod vendor;
 pub use registry::{Package, Registry};
 pub use tokio_util::sync::CancellationToken;
 pub use vendor::{
-    Archive, Program, VendorPackage, install_vendor, installed_vendor, register, remove_vendor,
-    unregister, vendor_package,
+    Archive, Program, VENDOR_PACKAGES, VendorPackage, install_vendor, installed_vendor, register,
+    remove_vendor, unregister, vendor_package,
 };
 
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -40,6 +40,10 @@ pub const PUBLIC_REGISTRY: &str = "https://dbc-cdn.columnar.tech";
 pub enum DriverError {
     #[error("cannot reach the driver registry: {0}")]
     Network(String),
+    /// Downloading a driver or a vendor's library failed: no connection, or the server
+    /// refused.
+    #[error("the download failed (check the internet connection): {0}")]
+    Download(String),
     #[error("no {name} driver for this platform ({platform})")]
     NoPackage { name: String, platform: String },
     #[error("the driver's license ({0}) does not allow downloading it here")]

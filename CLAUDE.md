@@ -83,9 +83,12 @@ sono molto più lenti che in locale: un test che passa in locale può fallire l�
    cargo clippy --workspace --all-targets
    cargo test --workspace --exclude platypus-desktop
    ```
-   Se si tocca la UI: `npm --prefix apps/desktop run tauri build -- --no-bundle`, poi
-   `npm --prefix apps/desktop run e2e` (gli scenari guidano l'eseguibile di release, non il dev
-   server: senza ricompilare si testa la versione vecchia). Se si toccano i driver:
+   Se si tocca la UI: `npm --prefix apps/desktop run tauri build -- --no-bundle`, poi gli E2E
+   (gli scenari guidano l'eseguibile di release, non il dev server: senza ricompilare si testa la
+   versione vecchia). **Non si lanciano tutti gli E2E** a fine sviluppo: solo gli scenari del
+   gruppo e quelli delle aree toccate (`npm --prefix apps/desktop run e2e -- <filtro>`).
+   Gli scenari del gruppo devono essere corposi e provare tutte le sue funzionalità, compresi
+   i casi limite e gli errori, non un solo percorso felice. Se si toccano i driver:
    `docker compose -f docker/compose.yml up -d --wait`, poi `cargo test -p platypus-conformance`.
    La conformance salta senza errori i database che non raggiunge (stampa `skipping ...` con
    `-- --nocapture`): controllare che li abbia provati tutti. Dopo una modifica a
@@ -105,7 +108,8 @@ sono molto più lenti che in locale: un test che passa in locale può fallire l�
    Se il push viene rifiutato perché `main` è avanzato, ripetere da `git fetch`. Mai `--force`.
 6. **Niente CI automatica** (vedi "GitHub Actions"): la verifica in locale del punto 2 è l'unico
    controllo. Prima di unire in `main` si fanno sempre tutti i passi, anche se il gruppo non tocca
-   UI o driver: build di release ed E2E, e conformance con i container Docker avviati.
+   UI o driver: build di release, gli E2E del gruppo e delle aree toccate, e conformance con i
+   container Docker avviati.
 
 ## GitHub Actions
 

@@ -43,10 +43,12 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "io-std"] }
+tokio-util.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
 duckdb.workspace = true
+platypus-driver-duckdb = { workspace = true, features = ["testing"] }
 rusqlite.workspace = true
 tempfile.workspace = true
 

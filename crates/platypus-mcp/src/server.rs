@@ -2,12 +2,13 @@
 
 use std::sync::Arc;
 
-use platypus_mcp::{Agent, AgentError, QueryArgs};
+use crate::{Agent, AgentError, QueryArgs};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
 use rmcp::{ErrorData, Peer, RoleServer, ServerHandler, tool, tool_handler, tool_router};
 use serde::Deserialize;
+use tokio_util::sync::CancellationToken;
 
 /// What agents read first: how to use the tools.
 const INSTRUCTIONS: &str = "PlatypusDB gives access to the database connections the user saved \
@@ -25,11 +26,15 @@ struct ConnectionArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct SchemaArgs {
+struct ObjectsArgs {
     /// The connection's name, as `list_connections` shows it.
     connection: String,
     /// The schema (a database in MySQL, `main` in SQLite and DuckDB).
     schema: String,
+    /// Objects to skip: the `next_offset` of the previous page.
+    offset: Option<u64>,
+    /// Objects returned at most: 500 by default, up to 2000.
+    limit: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -127,15 +132,18 @@ impl PlatypusServer {
 
     #[tool(
         description = "Lists the tables, views, sequences, functions, procedures, triggers \
-        and types of a schema, with their kind, comment and estimated rows."
+        and types of a schema, with their kind, comment and estimated rows: a list of up to \
+        500 objects (limit raises it to 2000). A schema with more returns \
+        {objects, truncated: true, total, offset, next_offset}: call again with \
+        offset=next_offset for the next page, or use search_objects to find names."
     )]
     async fn list_objects(
         &self,
-        Parameters(args): Parameters<SchemaArgs>,
+        Parameters(args): Parameters<ObjectsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         json_reply(
             self.agent
-                .list_objects(&args.connection, &args.schema)
+                .list_objects(&args.connection, &args.schema, args.offset, args.limit)
                 .await,
         )
     }
@@ -194,7 +202,8 @@ impl PlatypusServer {
     #[tool(
         description = "Runs one SQL statement on a connection and returns its rows as an \
         aligned text table (or JSON with format=json, where integers beyond 2^53 are strings \
-        so that no JSON parser rounds them), saying when rows or long values were left out. Defaults: 100 rows, 32768 bytes, 30 s timeout; max_rows, max_bytes and \
+        so that no JSON parser rounds them), saying when rows or long values were left out. In \
+        the text table SQL NULL is NULL, and a text that reads NULL shows quoted, 'NULL'. Defaults: 100 rows, 32768 bytes, 30 s timeout; max_rows, max_bytes and \
         timeout_seconds raise them up to 10000 rows, 1048576 bytes and 300 s. On read_only \
         connections only statements that change nothing run, in a read-only transaction; on \
         read_write connections changes commit at once, and UPDATE or DELETE without WHERE is \
@@ -204,6 +213,7 @@ impl PlatypusServer {
         &self,
         Parameters(args): Parameters<QueryArgs>,
         peer: Peer<RoleServer>,
+        cancelled: CancellationToken,
     ) -> Result<CallToolResult, ErrorData> {
         // The history trims and caps the name, and calls a client without one `agent`.
         let origin = peer
@@ -213,7 +223,8 @@ impl PlatypusServer {
         let format = args.format.unwrap_or_default();
         let result = self
             .agent
-            .run_query(&args, &origin)
+            // `notifications/cancelled` for this request cancels the statement.
+            .run_query_until(&args, &origin, cancelled.cancelled_owned())
             .await
             .map(|r| r.render(format));
         reply(result)

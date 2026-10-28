@@ -7,7 +7,7 @@
 // Actual: `/data/x.db`.
 // Suspected: crates/platypus-core/src/config.rs `read_url` (embedded drivers ignore the host).
 import assert from "node:assert/strict";
-import { dialog, formField, openPicker, paste, seedSqlite, urlField } from "../conn-helpers.mjs";
+import { formField, newFromUrl, seedSqlite } from "../conn-helpers.mjs";
 
 export function setup({ dir }) {
   seedSqlite(dir);

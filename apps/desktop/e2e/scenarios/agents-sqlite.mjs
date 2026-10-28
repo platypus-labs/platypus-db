@@ -1,10 +1,12 @@
 // Agents: the history filters the statements agents ran; the Agents page of the Settings
-// shows the commands that register platypus-mcp with Claude Code and Codex, with Copy
-// buttons, and the agent access of each connection; the connection dialog sets that access,
-// read-only at most on production.
+// shows the commands that register the app (started with --mcp) with Claude Code and Codex,
+// with Copy buttons, and the agent access of each connection; the app started that way
+// answers MCP on stdio; the connection dialog sets that access, read-only at most on
+// production.
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { spawn } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
 
@@ -83,9 +85,11 @@ async function agentsPage(page, shots) {
   await page.waitFor(`document.querySelector('.agents-panel [data-field="claude_command"]') !== null`);
   const claude = await page.eval(`document.querySelector('[data-field="claude_command"]').textContent`);
   // The app runs on a profile folder of its own, which the server is given too.
-  assert.match(claude, /^claude mcp add platypus -e "PLATYPUS_DATA_DIR=.+" -- ".+platypus-mcp\.exe"$/);
+  assert.match(claude, /^claude mcp add platypus -e "PLATYPUS_DATA_DIR=.+" -- ".+platypus-db\.exe" --mcp$/);
   const codex = await page.eval(`document.querySelector('[data-field="codex_config"]').textContent`);
-  assert.match(codex, /^\[mcp_servers\.platypus\]\ncommand = .+platypus-mcp\.exe/m);
+  assert.match(codex, /^\[mcp_servers\.platypus\]$/m);
+  assert.match(codex, /^command = .+platypus-db\.exe/m);
+  assert.match(codex, /^args = \["--mcp"\]$/m);
   assert.match(codex, /PLATYPUS_DATA_DIR = /);
 
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
@@ -125,8 +129,54 @@ async function connectionDialog(page, dir, shots) {
   assert.match(dev, /agent_access = "read_only"/);
 }
 
+/** Starts the app as the agent would, from the Claude Code command, and asks its MCP server
+ *  for the connections over stdio: one window-less process answering JSON-RPC lines. */
+async function mcpServer(claude, dir) {
+  const exe = /-- "(.+)" --mcp$/.exec(claude)[1];
+  const server = spawn(exe, ["--mcp"], {
+    env: { ...process.env, PLATYPUS_DATA_DIR: dir },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const answers = new Map();
+  let buffered = "";
+  server.stdout.on("data", (d) => {
+    buffered += d;
+    let end;
+    while ((end = buffered.indexOf("\n")) >= 0) {
+      const message = JSON.parse(buffered.slice(0, end));
+      buffered = buffered.slice(end + 1);
+      if (message.id !== undefined) answers.set(message.id, message);
+    }
+  });
+  const send = (message) => server.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
+  const answer = async (id) => {
+    const until = Date.now() + 30_000;
+    while (!answers.has(id)) {
+      assert.ok(Date.now() < until, `no answer ${id} from platypus-db --mcp`);
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return answers.get(id);
+  };
+  try {
+    send({
+      id: 1,
+      method: "initialize",
+      params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "e2e", version: "1" } },
+    });
+    assert.equal((await answer(1)).result.serverInfo.name, "platypus-mcp");
+    send({ method: "notifications/initialized" });
+    send({ id: 2, method: "tools/call", params: { name: "list_connections", arguments: {} } });
+    const listed = (await answer(2)).result.content.map((c) => c.text).join("\n");
+    assert.match(listed, /Dev db/);
+    assert.doesNotMatch(listed, /Hidden db/);
+  } finally {
+    server.kill();
+  }
+}
+
 export default async function (page, { dir, shots }) {
   await history(page);
   await agentsPage(page, shots);
+  await mcpServer(await page.eval(`window.__copied`), dir);
   await connectionDialog(page, dir, shots);
 }
