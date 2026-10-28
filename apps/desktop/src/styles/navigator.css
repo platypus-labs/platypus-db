@@ -96,6 +96,12 @@
   flex: 1;
 }
 
+/* The tree holds the focus only while its current row is scrolled out of the rendered ones:
+   that row keeps its selection color, the tree no ring. */
+.tree:focus {
+  outline: none;
+}
+
 .tree-row {
   display: flex;
   align-items: center;

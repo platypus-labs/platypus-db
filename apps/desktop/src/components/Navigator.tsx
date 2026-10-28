@@ -947,7 +947,9 @@ export function Navigator(props: Props) {
     if (index < 0 && Date.now() - at <= 2000) return;
     moved.current = null;
     if (Date.now() - at > 2000) return;
-    treeRef.current?.querySelector<HTMLElement>(`[data-row="${index}"]`)?.focus();
+    const li = treeRef.current?.querySelector<HTMLElement>(`[data-row="${index}"]`);
+    if (li) li.focus();
+    else reveal(index);
   });
   useEffect(
     () =>
@@ -959,24 +961,40 @@ export function Navigator(props: Props) {
     [],
   );
 
-  /** A row reached from the keyboard outside the rendered ones: focused once rendered. */
+  /** A row reached outside the rendered ones: focused once rendered. */
   const focusing = useRef<string | null>(null);
+  /** Scrolls to row `index`, which is not rendered, and focuses it once it is. */
+  function reveal(index: number) {
+    const tree = treeRef.current;
+    if (!tree || !rows[index]) return;
+    tree.scrollTop = scrollToRow(index, tree.scrollTop, tree.clientHeight);
+    setStep(stepAt(tree.scrollTop));
+    focusing.current = rows[index].key;
+  }
+  /** A row has the focus: when scrolling takes it out of the rendered rows, the tree keeps
+   *  the focus, so the keys still move from the current row. */
+  const rowFocused = useRef(false);
   useLayoutEffect(() => {
-    if (focusing.current === null) return;
-    const index = rows.findIndex((r) => r.key === focusing.current);
-    focusing.current = null;
-    treeRef.current?.querySelector<HTMLElement>(`[data-row="${index}"]`)?.focus();
+    if (focusing.current !== null) {
+      const index = rows.findIndex((r) => r.key === focusing.current);
+      focusing.current = null;
+      treeRef.current?.querySelector<HTMLElement>(`[data-row="${index}"]`)?.focus();
+    } else if (rowFocused.current && document.activeElement === document.body) {
+      treeRef.current?.focus({ preventScroll: true });
+    }
   });
 
   const { from, to } = rowWindow(step, rows.length);
-  /** The row taking the Tab stop: the current one, else the first rendered. */
+  /** The Tab stop: the current row; the tree itself when that row is not rendered, so the
+   *  keys move from it; the first row rendered when there is none. */
   const currentIndex = current === null ? -1 : rows.findIndex((r) => r.key === current);
-  const tabStop = currentIndex >= from && currentIndex < to ? current : rows[from]?.key;
+  const currentHidden = currentIndex >= 0 && (currentIndex < from || currentIndex >= to);
+  const tabStop = currentHidden ? null : (current ?? rows[from]?.key);
 
   /** The tree from the keyboard: arrows move and open or close, Enter opens, the menu key
    *  shows the row's menu, as in a file explorer. */
   function onTreeKey(e: React.KeyboardEvent<HTMLUListElement>) {
-    if (!(e.target instanceof HTMLLIElement) || rows.length === 0) return;
+    if (!(e.target instanceof HTMLLIElement || e.target === e.currentTarget) || rows.length === 0) return;
     const at = Math.max(0, currentIndex);
     const row = rows[at]!;
     // The row's own shortcuts first, e.g. Alt+Up to move a connection.
@@ -994,11 +1012,8 @@ export function Navigator(props: Props) {
         li.scrollIntoView({ block: "nearest" });
         return;
       }
-      // Outside the rendered rows (End in a long tree): scrolled to, focused once rendered.
-      const tree = e.currentTarget;
-      tree.scrollTop = scrollToRow(index, tree.scrollTop, tree.clientHeight);
-      setStep(stepAt(tree.scrollTop));
-      focusing.current = rows[index]!.key;
+      // Outside the rendered rows, e.g. End in a long tree.
+      reveal(index);
     };
     const parent = () => {
       for (let i = at - 1; i >= 0; i--) if (rows[i]!.depth < row.depth) return i;
@@ -1019,7 +1034,7 @@ export function Navigator(props: Props) {
       else row.onToggle?.();
     } else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
       const target = menuOf(row);
-      const r = e.target.getBoundingClientRect();
+      const r = (e.target as HTMLElement).getBoundingClientRect();
       if (target) setMenu({ x: r.left + 24, y: r.bottom, target });
     } else return;
     e.preventDefault();
@@ -1114,7 +1129,13 @@ export function Navigator(props: Props) {
         role="tree"
         aria-label={t("Connections")}
         aria-multiselectable="true"
+        tabIndex={currentHidden ? 0 : -1}
         onKeyDown={onTreeKey}
+        onFocus={(e) => (rowFocused.current = e.target instanceof HTMLLIElement)}
+        onBlur={(e) => {
+          // A row that scrolling unmounts leaves without one.
+          if (e.relatedTarget) rowFocused.current = false;
+        }}
         onScroll={(e) => setStep(stepAt(e.currentTarget.scrollTop))}
         // Below the rows: the list's menu.
         onContextMenu={(e) => {

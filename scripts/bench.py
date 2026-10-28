@@ -49,16 +49,19 @@ def decode():
 
 
 def grab():
+    """The screen, in grey and a quarter of its size: enough to tell frames apart, and
+    seconds of them fit in a few MB."""
     from PIL import ImageGrab
 
-    return ImageGrab.grab(xdisplay=os.environ.get("DISPLAY"))
+    screen = ImageGrab.grab(xdisplay=os.environ.get("DISPLAY"))
+    return screen.convert("L").reduce(4)
 
 
 def same(a, b):
     """Whether two screens differ by fewer than 0.1% of their pixels."""
     from PIL import ImageChops
 
-    diff = ImageChops.difference(a.convert("L"), b.convert("L")).point(lambda v: 255 if v > 16 else 0)
+    diff = ImageChops.difference(a, b).point(lambda v: 255 if v > 16 else 0)
     return diff.histogram()[255] <= 0.001 * a.width * a.height
 
 
@@ -90,8 +93,13 @@ def private_mb(pid):
     return total // 1024
 
 
+class NoWindow(Exception):
+    pass
+
+
 def launch(exe, profile):
-    """Starts the app; returns it and the seconds until the screen settled."""
+    """Starts the app; returns it and the seconds until the screen settled. Raises
+    `NoWindow` when the app exits or draws nothing."""
     t0 = time.perf_counter()
     app = subprocess.Popen(
         [exe],
@@ -99,12 +107,16 @@ def launch(exe, profile):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    blank = grab()
     frames = []
     while time.perf_counter() - t0 < 8:
         frames.append((time.perf_counter() - t0, grab()))
         # Leaves the X server and the app the CPU between grabs.
         time.sleep(0.02)
     final = frames[-1][1]
+    if app.poll() is not None or same(final, blank):
+        stop(app)
+        raise NoWindow(f"{exe} exited or showed no window (exit code {app.returncode})")
     return app, next(t for t, frame in frames if same(frame, final))
 
 
@@ -136,7 +148,11 @@ def app_bench(exe):
                 time.sleep(1)
         # Expands the connection, the first row of the navigator: it connects.
         window = subprocess.run(
-            ["xdotool", "search", "--sync", "--pid", str(app.pid)], capture_output=True, text=True, check=True
+            ["xdotool", "search", "--sync", "--pid", str(app.pid)],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
         ).stdout.split()[-1]
         subprocess.run(["xdotool", "mousemove", "--window", window, "67", "124", "click", "1"], check=True)
         time.sleep(3)
@@ -157,7 +173,10 @@ def app_bench(exe):
 def main():
     if len(sys.argv) < 2 or sys.argv[1] not in ("decode", "app") or (sys.argv[1] == "app" and len(sys.argv) < 3):
         sys.exit(__doc__)
-    failed = decode() if sys.argv[1] == "decode" else app_bench(sys.argv[2])
+    try:
+        failed = decode() if sys.argv[1] == "decode" else app_bench(sys.argv[2])
+    except NoWindow as e:
+        failed = [str(e)]
     for line in failed:
         print(f"FAIL {line}", file=sys.stderr)
     sys.exit(1 if failed else 0)

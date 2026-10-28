@@ -95,19 +95,26 @@ export default async function (page) {
 
   // Shift+click selects the range, also the rows between that were never rendered.
   await clickRow(page, table(2));
-  await page.eval(`${tree}.scrollTop = 290 * 28`);
-  await page.waitFor(`${row(table(300))} !== undefined`);
-  await clickRow(page, table(300), SHIFT);
-  await page.waitFor(`${row(table(300))}.classList.contains('selected')`);
+  await page.waitFor(`${row(table(2))}.classList.contains('selected')`);
+  await page.eval(`${tree}.scrollTop = 5000 * 28`);
+  await page.waitFor(`${row(table(5000))} !== undefined`);
+  await clickRow(page, table(5000), SHIFT);
+  await page.waitFor(`${row(table(5000))}.classList.contains('selected')`);
   await page.eval(`${tree}.scrollTop = 0`);
-  await page.waitFor(`${row(table(2))} !== undefined && ${row(table(2))}.classList.contains('selected')`);
+  await page.waitFor(`${row(table(2))} !== undefined`);
   assert.equal(await page.eval(`${row(table(150))}.classList.contains('selected')`), true, "the range holds the rows between");
   assert.equal(await page.eval(`${row(table(1))}.classList.contains('selected')`), false, "the row before the range is not selected");
 
+  // A focused row scrolled out of the rendered ones leaves the focus in the tree: the keys
+  // still move from it.
+  await clickRow(page, table(1));
+  await page.waitFor(`${row(table(1))}.classList.contains('selected') && ${focused} === ${JSON.stringify(table(1))}`);
+  await page.eval(`${tree}.scrollTop = 7000 * 28`);
+  await page.waitFor(`${row(table(1))} === undefined && document.activeElement === ${tree}`);
+  await page.key("ArrowDown", "ArrowDown", 40);
+  await page.waitFor(`${focused} === ${JSON.stringify(table(2))}`, 5000);
+
   // End reaches the last table, rendered and focused; Up moves from there; Home goes back.
-  await clickRow(page, table(3));
-  await page.waitFor(`${focused} === ${JSON.stringify(table(3))} || ${row(table(3))}.classList.contains('selected')`);
-  await page.eval(`${row(table(3))}.focus()`);
   await page.key("End", "End", 35);
   await page.waitFor(`${focused} === ${JSON.stringify(LAST)}`, 5000);
   assert.ok(await page.eval(`${row(LAST)}.classList.contains('selected')`), "End selects the last table");

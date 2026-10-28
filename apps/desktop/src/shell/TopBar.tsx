@@ -42,7 +42,8 @@ export function TopBar({ project, connection }: Props) {
   const barHandlers = ownTitleBar && LINUX ? linuxDrag : {};
   return (
     <header className={`topbar${ownTitleBar ? " own-title-bar" : ""}`} {...drag} {...barHandlers}>
-      <img className="topbar-mark" src={mark} alt="PlatypusDB" width={26} height={26} {...drag} />
+      {/* Not draggable: on Linux the bar moves the window once the pointer moves (windowDrag.ts). */}
+      <img className="topbar-mark" src={mark} alt="PlatypusDB" width={26} height={26} draggable={false} {...drag} />
       <button
         type="button"
         id={SIDEBAR_TOGGLE_ID}
