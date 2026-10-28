@@ -20,7 +20,7 @@ Nella colonna **Origine**:
 
 Nella prima colonna delle tabelle:
 - ✅: fatto.
-- 🆕: aggiunto il 25 o il 28 ottobre 2026, ancora da fare.
+- 🆕: aggiunto dal 25 ottobre 2026 in poi, ancora da fare.
 
 ---
 
@@ -109,6 +109,8 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
 | Q — Documentazione e catalogo dei dati | ✅ fatto (P2) |
+| R — Revisione grafica | ⏸ in attesa: si prende quando tutti gli altri gruppi sono completati |
+| S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
 
 ### Gruppo A — Modifica dei dati
@@ -477,6 +479,7 @@ indici parziali né le colonne INCLUDE, e lo dice nel messaggio; i diagrammi viv
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | ✅ Diagramma ER in sola lettura dalle FK, layout automatico, export PNG/SVG | P2 | D |
+| 🆕 Diagramma ER a schermo intero e pulsante **Aggiorna** che rilegge lo schema (tabelle nuove, colonne e FK cambiate) tenendo le posizioni già scelte | P3 | N |
 | ✅ Diagrammi personalizzati: si scelgono le tabelle, con note | P3 | D |
 | ERD in modifica: si disegna lo schema e si genera il DDL | P3 | D+ |
 | ✅ **Editor tabella grafico**: crea e modifica colonne, indici, vincoli e FK, con anteprima dell'ALTER | P1 | D |
@@ -572,6 +575,8 @@ gap della colonna, avvisi, azioni a destra con la principale per ultima) e i tok
 | ✅ Zoom dell'interfaccia e dimensione del font di editor e griglia (Ctrl+= / Ctrl+-) | P2 | D |
 | 🆕 Tab staccato in una finestra separata (secondo monitor) | P3 | D |
 | 🆕 **Import ed export dei temi** come file JSON (colori dell'app e dell'editor, chiaro e scuro), con anteprima prima di applicarli; primo passo verso i mod | P2 | N |
+| 🆕 **Database di esempio** nella schermata di benvenuto: un clic apre un SQLite o DuckDB incluso, con dati realistici, tabelle collegate da FK e qualche script salvato, per provare l'app senza un server | P3 | N |
+| 🆕 Altre lingue dell'interfaccia (spagnolo, tedesco, francese, portoghese, cinese), con le stringhe di `i18n.ts` aperte ai contributi | P3 | D |
 
 ---
 
@@ -693,6 +698,7 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | Contesto dell'utente su consenso: testo dell'editor, selezione, risultato corrente della griglia | P3 | N |
 | Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
 | Plugin pronti: plugin per Claude Code e configurazione per Codex con le istruzioni d'uso (quando usare quale tool, limiti) | P3 | N |
+| 🆕 **Tab Agenti come pannello di integrazione**: sotto-schede Setup, Attività e Sicurezza; in Setup l'elenco dei client (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, Antigravity, …) con il percorso del loro file di configurazione e un pulsante **Installa** che scrive la voce del server (con backup del file e conferma), accanto la configurazione da copiare a mano per il client scelto; Attività mostra le chiamate degli agenti, Sicurezza i permessi per connessione | P2 | N |
 | 🆕 Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate | P3 | N |
 
 ---
@@ -741,6 +747,10 @@ reale dell'auto-update, la firma, i benchmark, i test di scala e la distribuzion
 | Sito e documentazione utente | P3 |
 | 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
 | ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
+| 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire | P2 |
+| 🆕 **Video o GIF di 20-30 secondi** in cima al README e al sito: avvio, scroll di milioni di righe, explain con la heatmap | P2 |
+| 🆕 **Confronto con DBeaver, DataGrip, TablePlus e Beekeeper Studio** nel README e nel sito (dimensione, avvio, memoria, licenza, MCP), con i numeri di `BENCHMARKS.md` aggiornati | P2 |
+| 🆕 Lancio quando il repository diventa pubblico: Show HN, r/programming, r/rust, r/PostgreSQL, Product Hunt | P3 |
 
 ---
 
@@ -784,6 +794,68 @@ rispettate da tutta l'app.
 
 ---
 
+### Gruppo R — Revisione grafica
+
+**Stato: in attesa.** Si prende solo quando tutti gli altri gruppi sono `✅ completato`: rivede
+l'aspetto dell'app finita, non quello di funzionalità ancora in movimento.
+
+Una passata unica su tutta l'interfaccia perché sembri un prodotto solo, fatto con cura: oggi ogni
+gruppo ha aggiunto le sue schermate con lo stile del momento. Si parte dall'inventario di tutte le
+schermate (screenshot di ognuna, in tema chiaro e scuro, in italiano e in inglese) e si correggono
+le differenze, senza cambiare il comportamento. Restano le scelte di fondo già prese: colori
+attuali, rail dei progetti in stile Discord, tab in alto, interfaccia minimale che non sembri
+generata.
+
+**Area:** `apps/desktop/src/styles/`, i componenti di tutte le aree (solo CSS, markup e testi),
+`apps/desktop/src/assets/`; nessuna modifica a backend, driver o formati dei file
+**Dipende da:** tutti gli altri gruppi completati
+
+| Funzionalità | Prio | Origine |
+|---|---|---|
+| 🆕 **Inventario visivo**: una scheda per schermata e dialog con screenshot (chiaro/scuro, it/en) e i problemi trovati | P1 | N |
+| 🆕 **Design token unici**: spaziature, raggi, ombre, dimensioni dei font e dei controlli da una scala sola; via i valori scritti a mano nei singoli componenti | P1 | N |
+| 🆕 Dialog, menu, tooltip, notifiche e pannelli con la stessa struttura (titolo, corpo, pulsanti, focus, Esc/Invio) | P1 | N |
+| 🆕 Stati vuoti, di caricamento e di errore uguali in tutta l'app, con testo e azione utile | P1 | N |
+| 🆕 **Finestra di connessione riordinata**: oggi i controlli sono messi senza un ordine (Tipo e Colore accanto al Nome, "Connetti con" isolato, Sola lettura e Accesso degli agenti in fondo al tab Generale). Raggrupparli in sezioni con titolo: *Connessione* (Host/URL, host, porta, database), *Autenticazione* (utente, provenienza della password, password), *Aspetto e sicurezza* (tipo di ambiente, colore, sola lettura, accesso degli agenti); allineamento su una griglia sola | P1 | N |
+| 🆕 Griglia, editor e navigator allineati: altezze di riga, icone, colori di selezione e di modifica | P1 | N |
+| 🆕 Contrasto e accessibilità di tutti i temi (WCAG AA), focus visibile, uso da sola tastiera | P1 | N |
+| 🆕 Testi rivisti in italiano e inglese: tono, lunghezza, etichette tagliate nelle finestre piccole | P2 | N |
+| 🆕 Set di icone coerente (una sola famiglia, stesse dimensioni e tratto) e icone dei driver | P2 | N |
+| 🆕 Nel navigator l'icona del driver di ogni connessione al posto del pallino colorato; il colore della connessione e lo stato (connessa, errore) restano come piccolo segno sull'icona | P2 | N |
+| 🆕 Impostazioni come pagine con intestazione (icona, titolo, sottotitolo, descrizione) e sotto-schede, sul modello del tab Agenti del gruppo N: liste di schede con azione a destra, pannello di dettaglio a fianco | P2 | N |
+| 🆕 Posizione degli elementi personalizzabile e set di icone a scelta | P3 | N |
+| 🆕 Micro-animazioni misurate (apertura pannelli, transizioni dei tab), disattivabili | P3 | N |
+
+---
+
+### Gruppo S — Collaudo finale
+
+**Stato: in attesa.** Si prende dopo il gruppo R, sull'app finita e ridisegnata: è il collaudo
+prima della v1.0, fatto con calma e con metodo, non una passata veloce.
+
+Verificare che tutto funzioni su tutti i database e i sistemi, come lo usa una persona vera, e
+lasciare ogni controllo come test automatico che resti nel tempo. Si lavora come nella campagna
+di test di ottobre 2026: un tester per area con l'app compilata, uno scenario E2E per ogni bug,
+poi le correzioni e un secondo giro con occhi nuovi; un agente o una persona alla volta.
+
+**Area:** `apps/desktop/e2e/`, `crates/platypus-conformance/`, `docs/BENCHMARKS.md`; le correzioni
+nei file delle aree toccate, in commit piccoli e separati
+**Dipende da:** gruppo R completato
+
+| Funzionalità | Prio | Origine |
+|---|---|---|
+| 🆕 **Inventario delle funzionalità** con, per ognuna, lo scenario E2E o il test di conformance che la copre; i buchi diventano test | P1 | N |
+| 🆕 **Giro per aree** con un tester ciascuna (connessioni, navigator, editor, griglia e modifica, analisi, import/export, impostazioni e tab, sicurezza e MCP, schema, amministrazione) sui casi normali, i casi limite e gli errori | P1 | N |
+| 🆕 **Tutti i database** con tutte le funzioni che li riguardano: PostgreSQL e varianti, MySQL, MariaDB, SQL Server, Oracle, ClickHouse, SQLite, DuckDB, libSQL, MongoDB, Trino, ODBC/ADBC | P1 | N |
+| 🆕 **Percorsi completi da utente** (primo avvio, import da DBeaver, giornata di lavoro, analisi, sviluppo, agenti) con riavvio dell'app nel mezzo, in italiano e in inglese, anche da sola tastiera | P1 | N |
+| 🆕 **Installer e aggiornamento** da ogni versione pubblicata, con i dati dell'utente (connessioni, password, script, impostazioni) che restano | P1 | N |
+| 🆕 **macOS e Linux**: gli scenari E2E anche fuori da Windows, o un collaudo a mano con una lista scritta | P2 | N |
+| 🆕 **Prestazioni e memoria**: tabelle da milioni di righe, schemi con migliaia di oggetti, una sessione di ore senza che la memoria cresca, database remoto lento; i numeri in BENCHMARKS.md | P2 | N |
+| 🆕 **Revisione di sicurezza** del codice: credenziali, MCP, sola lettura, SQL generato, file letti e scritti | P2 | N |
+| 🆕 Secondo giro con tester nuovi che non hanno visto i rapporti del primo, poi la verifica completa (fmt, clippy, test, E2E, conformance) tutta verde prima della v1.0 | P1 | N |
+
+---
+
 ## 3. Mappa dei conflitti
 
 Le "x" indicano i gruppi che toccano la stessa area. Dove c'è conflitto si serve il contratto
@@ -814,6 +886,8 @@ dell'ondata.
 | **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte; E: completato; H: completato |
 | **3** | **I**, **J**, **M**, **N**, **Q**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 | Da fare |
 | **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | Da fare |
+| **5** | **R** | Revisione grafica di tutta l'app, a funzionalità finite | v1.0 | In attesa |
+| **6** | **S** | Collaudo finale di tutta l'app, dopo la revisione grafica | v1.0 | In attesa |
 
 Per ogni gruppo, la Definition of Done segue quella dell'MVP:
 - test di conformance o E2E per ciò che è stato aggiunto;
