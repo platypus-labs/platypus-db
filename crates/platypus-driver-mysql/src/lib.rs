@@ -216,17 +216,24 @@ impl MySqlConnection {
     }
 }
 
-/// Whether a connection failed in the TLS handshake, as rustls words it.
+/// Whether the server offers no TLS this client takes (versions, ciphers), as rustls words
+/// it; not a certificate the server asks for or refuses, which plaintext would only hide.
 fn tls_refused(message: &str) -> bool {
     let lower = message.to_lowercase();
     [
         "handshakefailure",
         "protocolversion",
-        "received fatal alert",
+        "insufficientsecurity",
         "peer is incompatible",
     ]
     .iter()
     .any(|m| lower.contains(m))
+}
+
+/// Whether the server has what MySQL added in `version`: MariaDB and `TiDB` number their
+/// versions apart (`TiDB` reports an old MySQL, `8.0.11-TiDB-v7.5.0`) and have it.
+pub(crate) fn mysql_has(info: &ServerInfo, version: platypus_core::ServerVersion) -> bool {
+    info.product == "MariaDB" || info.version.contains("TiDB") || info.at_least(version)
 }
 
 /// The warnings of the statements run, until `take_messages`.
@@ -788,6 +795,21 @@ mod tests {
         ));
         assert!(tls_refused("peer is incompatible: ProtocolVersion"));
         assert!(!tls_refused("Access denied for user 'x'@'%'"));
+        assert!(!tls_refused("received fatal alert: CertificateRequired"));
+    }
+
+    #[test]
+    fn tidb_and_mariadb_have_what_mysql_added_later() {
+        let info = |product: &str, version: &str| ServerInfo {
+            product: product.to_owned(),
+            version: version.to_owned(),
+            encrypted: false,
+        };
+        let v = platypus_core::ServerVersion::new(8, 0, 16);
+        assert!(!mysql_has(&info("MySQL", "5.7.44-log"), v));
+        assert!(mysql_has(&info("MySQL", "8.0.36"), v));
+        assert!(mysql_has(&info("MySQL", "8.0.11-TiDB-v7.5.0"), v));
+        assert!(mysql_has(&info("MariaDB", "10.6.21-MariaDB"), v));
     }
 
     #[test]

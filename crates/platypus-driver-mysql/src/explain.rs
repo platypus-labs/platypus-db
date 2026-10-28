@@ -17,14 +17,14 @@ const ANALYZE: ServerVersion = ServerVersion::new(8, 0, 18);
 pub async fn explain(conn: &MySqlConnection, sql: &str, analyze: bool) -> Result<Explain> {
     let info = conn.server_info();
     let mariadb = info.product == "MariaDB";
-    if !mariadb && analyze && !info.at_least(ANALYZE) {
+    if analyze && !crate::mysql_has(info, ANALYZE) {
         return Err(Error::Unsupported(format!(
             "EXPLAIN ANALYZE needs MySQL {ANALYZE} or later; this server is {}",
             info.version
         )));
     }
     // Before the tree, MySQL writes its plans in JSON only, much like MariaDB.
-    let json = mariadb || !info.at_least(TREE);
+    let json = mariadb || !crate::mysql_has(info, TREE);
     let prefix = match (mariadb, analyze) {
         (false, false) if json => "EXPLAIN FORMAT=JSON",
         (false, false) => "EXPLAIN FORMAT=TREE",
@@ -152,11 +152,37 @@ const SHOWN: &[&str] = &[
     "table_name",
     "cost",
     "query_cost",
+    "cost_info",
     "rows",
+    "rows_examined_per_scan",
     "r_rows",
     "r_loops",
     "r_total_time_ms",
 ];
+
+/// A number, as MariaDB writes it or as MySQL does in a string (`"51.93"`).
+fn number(v: &Value) -> Option<f64> {
+    v.as_f64().or_else(|| v.as_str()?.parse().ok())
+}
+
+/// The rows a step reads: MariaDB's `rows`, MySQL's `rows_examined_per_scan`.
+fn step_rows(map: &Map<String, Value>) -> Option<f64> {
+    map.get("rows")
+        .or_else(|| map.get("rows_examined_per_scan"))
+        .and_then(number)
+}
+
+/// The cost of a step: MariaDB's `cost` or `query_cost`, MySQL's in `cost_info` (the
+/// query's, else the step's with those before it).
+fn step_cost(map: &Map<String, Value>) -> Option<f64> {
+    let num = |m: &Map<String, Value>, k: &str| m.get(k).and_then(number);
+    num(map, "cost")
+        .or_else(|| num(map, "query_cost"))
+        .or_else(|| {
+            let info = map.get("cost_info")?.as_object()?;
+            num(info, "query_cost").or_else(|| num(info, "prefix_cost"))
+        })
+}
 
 fn json_step(key: &str, map: &Map<String, Value>) -> PlanNode {
     let num = |k: &str| map.get(k).and_then(Value::as_f64);
@@ -166,8 +192,8 @@ fn json_step(key: &str, map: &Map<String, Value>) -> PlanNode {
         // A table's access type (`ALL`, `ref`, `range`) is what its step does.
         operation: s("access_type").map_or_else(|| key.replace('_', " "), str::to_owned),
         detail: s("table_name").map(str::to_owned),
-        cost: num("cost").or(num("query_cost")),
-        rows: num("rows"),
+        cost: step_cost(map),
+        rows: step_rows(map),
         actual_rows: num("r_rows"),
         // MariaDB reports the time of all loops; a table's as reading plus checking rows.
         actual_ms: num("r_total_time_ms")
@@ -195,7 +221,7 @@ fn full_scan(map: &Map<String, Value>) -> Option<FullScan> {
     Some(FullScan {
         table: s("table_name")?.to_owned(),
         filter: s("attached_condition")?.to_owned(),
-        rows_read: rows_read(num("r_rows"), num("r_loops"), num("rows")),
+        rows_read: rows_read(num("r_rows"), num("r_loops"), step_rows(map)),
     })
 }
 
@@ -226,10 +252,10 @@ fn single_entry(map: &Map<String, Value>) -> Option<(&String, &Value)> {
     entries.next().is_none().then_some(first)
 }
 
-/// Objects and lists of objects are steps, except ANALYZE's statistics (`r_engine_stats`);
-/// anything else is a property.
+/// Objects and lists of objects are steps, except ANALYZE's statistics (`r_engine_stats`)
+/// and MySQL's costs (`cost_info`); anything else is a property.
 fn is_step(key: &str, v: &Value) -> bool {
-    if key.starts_with("r_") {
+    if key.starts_with("r_") || key == "cost_info" {
         return false;
     }
     match v {
@@ -274,6 +300,39 @@ mod tests {
         let explain = read_plan(mariadb).unwrap();
         assert_eq!(explain.format, ExplainFormat::Json);
         assert!(read_plan("SELECT 1").is_err());
+    }
+
+    #[test]
+    fn reads_a_mysql_json_plan() {
+        // MySQL 5.7's EXPLAIN FORMAT=JSON: costs in `cost_info`, as strings.
+        let plan = r#"{"query_block": {"select_id": 1, "cost_info": {"query_cost": "51.93"},
+            "nested_loop": [
+              {"table": {"table_name": "c", "access_type": "ALL", "rows_examined_per_scan": 2,
+                "rows_produced_per_join": 2, "filtered": "100.00",
+                "cost_info": {"read_cost": "1.00", "eval_cost": "0.40", "prefix_cost": "1.40"},
+                "used_columns": ["id", "email"], "attached_condition": "(`c`.`id` > 1)"}},
+              {"table": {"table_name": "o", "access_type": "ref", "key": "orders_customer_id_idx",
+                "rows_examined_per_scan": 21,
+                "cost_info": {"read_cost": "42.11", "prefix_cost": "51.93"}}}]}}"#;
+        let root = read_plan(plan).unwrap().root;
+        assert_eq!(root.operation, "query block");
+        assert_eq!(root.cost, Some(51.93));
+        let [loop_] = &root.children[..] else {
+            panic!(
+                "only the nested loop, no cost info step: {:?}",
+                root.children
+            )
+        };
+        let [c, o] = &loop_.children[..] else {
+            panic!("{:?}", loop_.children)
+        };
+        assert_eq!(
+            (c.operation.as_str(), c.rows, c.cost),
+            ("ALL", Some(2.0), Some(1.4))
+        );
+        assert_eq!((o.detail.as_deref(), o.rows), (Some("o"), Some(21.0)));
+        let scan = c.full_scan.as_ref().unwrap();
+        assert_eq!((scan.table.as_str(), scan.rows_read), ("c", Some(2.0)));
     }
 
     #[test]

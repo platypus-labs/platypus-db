@@ -336,8 +336,10 @@ async fn constraints(
     // One row per constraint column; checks have no columns. MySQL 8.0.16+ and MariaDB
     // 10.2+ have CHECK_CONSTRAINTS; check names are unique per schema there. MySQL 5.7 has
     // no checks (it parses CHECK and ignores it), nor the table.
-    let info = platypus_core::Connection::server_info(conn);
-    let checks = info.product == "MariaDB" || info.at_least(CHECK_CONSTRAINTS);
+    let checks = crate::mysql_has(
+        platypus_core::Connection::server_info(conn),
+        CHECK_CONSTRAINTS,
+    );
     let (check_clause, check_join) = if checks {
         (
             "cc.CHECK_CLAUSE",
