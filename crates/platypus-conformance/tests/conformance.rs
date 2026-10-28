@@ -406,6 +406,7 @@ async fn libsql_backend() -> Option<Backend> {
 }
 
 async fn duckdb_backend() -> Backend {
+    platypus_driver_duckdb::testing::load();
     let dir = tempfile::tempdir().unwrap();
     // DuckDB creates the file; an empty one is not a database.
     let path = dir.path().join("conformance.duckdb");
@@ -2939,6 +2940,7 @@ async fn imports_data_files() {
     use platypus_sql::Dialect;
     use platypus_transfer::import::{ImportColumn, ImportMode, ImportPlan, import};
 
+    platypus_driver_duckdb::testing::load();
     let _serial = SERIAL.lock().await;
 
     let dir = tempfile::tempdir().unwrap();

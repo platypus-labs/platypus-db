@@ -42,8 +42,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
     }
 
-    # The overlay builds platypus-mcp, the MCP server for agents, and ships it next to the app.
-    $arguments = @("run", "tauri", "build", "--", "--config", "src-tauri/tauri.mcp.conf.json")
+    $arguments = @("run", "tauri", "build", "--")
     if ($ExeOnly) {
         $arguments += "--no-bundle"
     } elseif (-not $env:TAURI_SIGNING_PRIVATE_KEY) {

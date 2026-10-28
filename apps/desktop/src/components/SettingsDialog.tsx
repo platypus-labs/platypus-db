@@ -7,6 +7,7 @@ import { ShortcutsPanel, actionMatches } from "../shell/ShortcutsPanel";
 import { Icon } from "../ui/Icon";
 import { fold, startsWord } from "../ui/textSearch";
 import { DriversPanel } from "../drivers/DriversPanel";
+import { DiagnosticsPanel } from "../diagnostics/Diagnostics";
 import { MasterPasswordPanel } from "./MasterPassword";
 import { msg, t } from "../i18n";
 import { settingNumber } from "./settingValue";
@@ -25,6 +26,7 @@ const PANELS: {
   { title: msg("Master password"), keywords: "password encryption credentials keyring", render: () => <MasterPasswordPanel /> },
   { title: msg("Agents"), keywords: "MCP AI assistant", render: () => <AgentsPanel /> },
   { title: msg("Drivers"), keywords: "ODBC ADBC Oracle Instant Client download", render: () => <DriversPanel /> },
+  { title: msg("Diagnostics"), keywords: "log logs crash report bug support zip", render: () => <DiagnosticsPanel /> },
   {
     title: msg("Keyboard shortcuts"),
     keywords: "keys keyboard",

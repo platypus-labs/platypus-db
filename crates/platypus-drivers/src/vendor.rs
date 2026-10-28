@@ -1,9 +1,9 @@
 //! Client libraries the app installs from their vendors' sites: Oracle's Instant Client, which
-//! the native Oracle driver loads, and IBM's Data Server Driver for ODBC and CLI. The archives
-//! are checked against the SHA-256 recorded here and unpacked under
-//! `<data>/drivers/vendor/<name>/<version>/`; IBM's driver is then registered with the
-//! system's ODBC driver manager by IBM's own program, which on Windows needs administrator
-//! rights.
+//! the native Oracle driver loads, IBM's Data Server Driver for ODBC and CLI, and DuckDB's
+//! shared library, which the DuckDB driver loads. The archives (zip, or `.tar.gz`) are checked
+//! against the SHA-256 recorded here and unpacked under
+//! `<data>/drivers/vendor/<name>/<version>/`; IBM's driver is then registered with the system's
+//! ODBC driver manager by IBM's own program, which on Windows needs administrator rights.
 
 use std::io::Read as _;
 use std::path::{Component, Path, PathBuf};
@@ -11,7 +11,7 @@ use std::path::{Component, Path, PathBuf};
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
-use crate::install::{MAX_FILE, TMP_PREFIX, check, download};
+use crate::install::{MAX_FILE, TMP_PREFIX, check, download, untar};
 use crate::registry::client;
 use crate::{DriverError, Installed, drivers_dir, io_error, platform};
 
@@ -34,7 +34,7 @@ pub struct Program {
 /// A vendor's client library for this platform.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct VendorPackage {
-    /// `oracle` or `db2` (`DriverKind::vendor_package`).
+    /// `oracle`, `db2` or `duckdb` (`DriverKind::vendor_package`).
     pub name: String,
     pub title: String,
     pub version: String,
@@ -161,12 +161,72 @@ fn db2() -> Option<VendorPackage> {
     })
 }
 
+/// DuckDB's shared library, from DuckDB's release on GitHub: the version the `duckdb` crate's
+/// bindings were made from (`platypus-duckdb-loader`). macOS gets one library for both
+/// processors.
+fn duckdb() -> Option<VendorPackage> {
+    const BASE: &str = "https://github.com/duckdb/duckdb/releases/download/v2.0.0";
+    let (file, sha256, size, library) = match platform() {
+        "windows_amd64" => (
+            "windows-amd64",
+            "2b83169128239de5f45fe21de80f99bf436e53aa4bb24020dd951a1ba8d4b95f",
+            19_833_650,
+            "duckdb.dll",
+        ),
+        "windows_arm64" => (
+            "windows-arm64",
+            "159ce60eb587112b8c5f290b8beea56af5f13be4d13679de127ad9bfaafb7447",
+            18_389_170,
+            "duckdb.dll",
+        ),
+        "linux_amd64" => (
+            "linux-amd64",
+            "993ad89e7dfca66cd6da994c2cad090c2fc160ddf9f550498a098ab4bb13cfb1",
+            27_841_656,
+            "libduckdb.so",
+        ),
+        "linux_arm64" => (
+            "linux-arm64",
+            "c60eecf91143ca6bbac55c4f4d40dc22520488b0ac257c86e0fe9a2b451cf2b7",
+            25_735_927,
+            "libduckdb.so",
+        ),
+        "macos_arm64" | "macos_amd64" => (
+            "osx-universal",
+            "14cd63180614cfd961f7959146ecd9087527ff20b67311efdc3fa1c29c18204d",
+            40_361_654,
+            "libduckdb.dylib",
+        ),
+        _ => return None,
+    };
+    Some(VendorPackage {
+        name: "duckdb".to_owned(),
+        title: "DuckDB".to_owned(),
+        version: "2.0.0".to_owned(),
+        license: "MIT".to_owned(),
+        license_url: "https://github.com/duckdb/duckdb/blob/main/LICENSE".to_owned(),
+        vendor_url: "https://duckdb.org".to_owned(),
+        archives: vec![archive(
+            format!("{BASE}/duckdb-shared-libs-{file}.tar.gz"),
+            sha256,
+            size,
+        )],
+        library: library.to_owned(),
+        register: None,
+        unregister: None,
+    })
+}
+
+/// Every vendor package the app knows, by name.
+pub const VENDOR_PACKAGES: &[&str] = &["oracle", "db2", "duckdb"];
+
 /// The package `name` for this platform; `None` where the app does not install it.
 #[must_use]
 pub fn vendor_package(name: &str) -> Option<VendorPackage> {
     match name {
         "oracle" => oracle(),
         "db2" => db2(),
+        "duckdb" => duckdb(),
         _ => None,
     }
 }
@@ -203,7 +263,13 @@ pub async fn install_vendor(
         .await?;
         check(&bytes, &archive.sha256)?;
         done += bytes.len() as u64;
-        downloaded.push(bytes);
+        let unpack: fn(&[u8], &Path) -> Result<(), DriverError> =
+            if archive.url.ends_with(".tar.gz") {
+                untar
+            } else {
+                unzip
+            };
+        downloaded.push((bytes, unpack));
     }
     let tmp = drivers_dir(data_dir).join(format!("{TMP_PREFIX}{}", uuid::Uuid::new_v4()));
     let target = vendor_dir(data_dir).join(&package.name);
@@ -217,7 +283,7 @@ pub async fn install_vendor(
     tokio::task::spawn_blocking(move || {
         let result = downloaded
             .iter()
-            .try_for_each(|bytes| unzip(bytes, &tmp))
+            .try_for_each(|(bytes, unpack)| unpack(bytes, &tmp))
             .and_then(|()| {
                 if tmp.join(&record.library).is_file() {
                     crate::install::place(&tmp, &target, record)
@@ -511,7 +577,13 @@ mod tests {
             }
             _ => assert!(vendor_package("oracle").is_none()),
         }
-        for p in ["oracle", "db2"].into_iter().filter_map(vendor_package) {
+        let duckdb = vendor_package("duckdb").unwrap();
+        assert!(duckdb.archives[0].url.ends_with(".tar.gz"));
+        assert!(duckdb.register.is_none());
+        for p in VENDOR_PACKAGES
+            .iter()
+            .filter_map(|name| vendor_package(name))
+        {
             assert!(
                 p.archives
                     .iter()
@@ -579,6 +651,38 @@ mod tests {
         remove_vendor(dir.path(), "oracle").unwrap();
         assert_eq!(installed_vendor(dir.path(), "oracle"), None);
         assert!(!removed_marker(dir.path(), "oracle").exists());
+    }
+
+    fn tar_gz(files: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut out = tar::Builder::new(flate2::write::GzEncoder::new(
+            Vec::new(),
+            flate2::Compression::fast(),
+        ));
+        for (name, data) in files {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(data.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            out.append_data(&mut header, name, *data).unwrap();
+        }
+        out.into_inner().unwrap().finish().unwrap()
+    }
+
+    #[tokio::test]
+    async fn installs_a_tarball() {
+        let body = tar_gz(&[("libduckdb.so", b"duck"), ("duckdb.h", b"/* api */")]);
+        let url = crate::tests::serve(vec![("/libs.tar.gz", body.clone())]).await;
+        let mut pkg = package(&[(&format!("{url}/libs.tar.gz"), &body)], false);
+        pkg.library = "libduckdb.so".to_owned();
+        let dir = tempfile::tempdir().unwrap();
+        let installed = install_vendor(dir.path(), &pkg, |_, _| {}, &CancellationToken::new())
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&installed.library).unwrap(), b"duck");
+        assert_eq!(
+            installed_vendor(dir.path(), "oracle").map(|i| i.library),
+            Some(installed.library)
+        );
     }
 
     #[tokio::test]

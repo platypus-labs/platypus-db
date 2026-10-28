@@ -906,8 +906,7 @@ const it: Record<string, string> = {
   "Production connections are read-only for agents.": "Le connessioni di produzione sono in sola lettura per gli agenti.",
   "Read-only connections are read-only for agents too.": "Le connessioni in sola lettura lo sono anche per gli agenti.",
   "Copied": "Copiato",
-  "Agents such as Claude Code, Codex or Cursor can use your saved connections through PlatypusDB's MCP server, {mcp}. The agent starts it by itself: PlatypusDB does not need to be open. Agents read the schema and run queries with the access each connection gives them; passwords stay in the keychain and never reach them. Their queries are in the history, with the agent's name.": "Agenti come Claude Code, Codex o Cursor possono usare le tue connessioni salvate attraverso il server MCP di PlatypusDB, {mcp}. L'agente lo avvia da solo: PlatypusDB non deve essere aperto. Gli agenti leggono lo schema ed eseguono query con l'accesso che dà ogni connessione; le password restano nel portachiavi e non arrivano mai a loro. Le loro query sono nella cronologia, con il nome dell'agente.",
-  "{mcp} is not next to the app. Build it with {build} and copy it to {path}.": "{mcp} non è accanto all'app. Compilalo con {build} e copialo in {path}.",
+  "Agents such as Claude Code, Codex or Cursor can use your saved connections through PlatypusDB's MCP server: the app itself, started with {mcp}. The agent starts it by itself, without a window: PlatypusDB does not need to be open. Agents read the schema and run queries with the access each connection gives them; passwords stay in the keychain and never reach them. Their queries are in the history, with the agent's name.": "Agenti come Claude Code, Codex o Cursor possono usare le tue connessioni salvate attraverso il server MCP di PlatypusDB: l'app stessa, avviata con {mcp}. L'agente lo avvia da solo, senza finestra: PlatypusDB non deve essere aperto. Gli agenti leggono lo schema ed eseguono query con l'accesso che dà ogni connessione; le password restano nel portachiavi e non arrivano mai a loro. Le loro query sono nella cronologia, con il nome dell'agente.",
   "production": "produzione",
   "No saved connections yet.": "Ancora nessuna connessione salvata.",
   "Change a connection's access in its settings, under Agent access. Read only is the default; production and read-only connections are never more than read only.": "Cambia l'accesso di una connessione nelle sue impostazioni, in Accesso degli agenti. Sola lettura è il predefinito; le connessioni di produzione e in sola lettura non vanno mai oltre la sola lettura.",
@@ -1213,6 +1212,9 @@ const it: Record<string, string> = {
   "Data source (DSN)": "Origine dati (DSN)",
   "or driver": "o driver",
   "Connection string (with the driver: the rest of it)": "Stringa di connessione (con il driver: il resto)",
+  "DuckDB's library, downloaded once for DuckDB databases and for reading CSV, Parquet, JSON and Excel files.": "La libreria di DuckDB, scaricata una volta per i database DuckDB e per leggere file CSV, Parquet, JSON ed Excel.",
+  "PlatypusDB downloads DuckDB on Windows, macOS and Linux, on x64 and ARM processors; not on this system.": "PlatypusDB scarica DuckDB su Windows, macOS e Linux, con processori x64 e ARM; non su questo sistema.",
+  "Download DuckDB?": "Scaricare DuckDB?",
   "Oracle's client library, downloaded once for all Oracle connections.": "La libreria client di Oracle, scaricata una volta per tutte le connessioni Oracle.",
   "IBM's ODBC driver, downloaded once and registered with the Windows ODBC driver manager.": "Il driver ODBC di IBM, scaricato una volta e registrato nel gestore dei driver ODBC di Windows.",
   "PlatypusDB downloads Oracle Instant Client on Windows and Linux. Here, install Instant Client from Oracle and add its folder to the library path, then try again.": "PlatypusDB scarica Oracle Instant Client su Windows e Linux. Qui installa Instant Client da Oracle e aggiungi la sua cartella al percorso delle librerie, poi riprova.",
@@ -1234,7 +1236,7 @@ const it: Record<string, string> = {
   "Client: {name} (installed in the system)": "Client: {name} (installato nel sistema)",
   "Client: not installed": "Client: non installato",
   "Install": "Installa",
-  "Oracle connects through Oracle Instant Client, and IBM Db2 through IBM's ODBC driver: both installed from their vendors the first time a connection needs them.": "Oracle si connette con Oracle Instant Client, e IBM Db2 con il driver ODBC di IBM: entrambi installati dai produttori la prima volta che una connessione ne ha bisogno.",
+  "Oracle connects through Oracle Instant Client, IBM Db2 through IBM's ODBC driver, and DuckDB databases and data files through DuckDB's library: each installed from its vendor the first time it is needed.": "Oracle si collega con Oracle Instant Client, IBM Db2 con il driver ODBC di IBM, e i database e i file di dati DuckDB con la libreria di DuckDB: ognuno installato dal suo produttore la prima volta che serve.",
   "ODBC drivers of the system ({drivers}) and data sources ({sources})": "Driver ODBC del sistema ({drivers}) e origini dati ({sources})",
   // Connection list menu, database search, settings search, navigator width
   "New connection…": "Nuova connessione…",
@@ -1272,6 +1274,13 @@ const it: Record<string, string> = {
   "Documentation written to {path}": "Documentazione scritta in {path}",
   // Data viewer: header sort of a statement the editor no longer holds as it ran
   "This query cannot be sorted from the header: the editor does not hold it as it ran (it was edited since, its variables were filled in, or it comes from @include).": "Questa query non si ordina dall'intestazione: l'editor non la contiene così come è stata eseguita (è stata modificata, ha variabili sostituite o viene da un @include).",
+  // Diagnostics: the log, crashes and the diagnostic package
+  "Diagnostics": "Diagnostica",
+  "PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report: it holds the version, the system, the settings without passwords, how many connections of each database you have, and the logs. Error messages in the logs may name a server or a table: look at them before sharing the package.": "PlatypusDB tiene su questo computer un log di avvii, errori e crash; non invia niente. Per segnalare un problema, salva il pacchetto diagnostico e allegalo alla segnalazione: contiene versione, sistema, impostazioni senza password, quante connessioni hai per ogni database e i log. I messaggi di errore nei log possono nominare un server o una tabella: controllali prima di condividere il pacchetto.",
+  "Logs": "Log",
+  "Save diagnostic package…": "Salva pacchetto diagnostico…",
+  "Saved to {path}": "Salvato in {path}",
+  "PlatypusDB closed unexpectedly last time. A diagnostic package helps report the problem.": "L'ultima volta PlatypusDB si è chiuso inaspettatamente. Un pacchetto diagnostico aiuta a segnalare il problema.",
 
   // Analysis (group M): column statistics
   "NULL values": "Valori NULL",

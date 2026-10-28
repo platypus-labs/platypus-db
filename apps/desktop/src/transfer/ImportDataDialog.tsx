@@ -20,6 +20,7 @@ import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { omitsSchema } from "../sqlNames";
 import { workbench } from "../workbench";
+import { withDriver } from "../drivers/DriverPopup";
 import { t, plural, msg } from "../i18n";
 
 /** A table of a connection: where rows come from or go to. */
@@ -216,7 +217,8 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
     setStatus({ state: "idle" });
     setFileOptions(options);
     try {
-      const p = await api.previewImport(sid, file, sheet, options);
+      // DuckDB reads the file: downloaded first if it is not yet.
+      const p = await withDriver(() => api.previewImport(sid, file, sheet, options));
       if (token !== previewToken.current) return;
       show(p);
       setLoaded(file);

@@ -1,11 +1,12 @@
-//! Setting external agents up: where `platypus-mcp` is, and the commands that register it
-//! with Claude Code and Codex.
+//! Setting external agents up: the commands that register the app, started with `--mcp`, as
+//! an MCP server with Claude Code and Codex.
 
-use std::path::Path;
+use std::path::PathBuf;
 
 use platypus_store::toml;
 use serde::Serialize;
 
+use crate::MCP_FLAG;
 use crate::error::{CommandError, CommandResult};
 
 /// The environment variable that moves the profile, passed on to the server when the app
@@ -14,28 +15,28 @@ const DATA_DIR_ENV: &str = "PLATYPUS_DATA_DIR";
 
 #[derive(Debug, Serialize)]
 pub struct AgentSetup {
-    /// `platypus-mcp` next to the app's executable.
+    /// The app's executable, which agents start with `--mcp`.
     mcp_path: String,
-    /// Whether it is there: a build from source has it only after `cargo build -p platypus-mcp`.
-    mcp_found: bool,
     /// `claude mcp add …`, for Claude Code.
     claude_command: String,
     /// The `[mcp_servers.platypus]` table of Codex's `config.toml`.
     codex_config: String,
 }
 
-/// `claude mcp add platypus -- "<path>"`, with the profile's folder when the app uses one.
+/// `claude mcp add platypus -- "<path>" --mcp`, with the profile's folder when the app uses
+/// one.
 fn claude_command(path: &str, data_dir: Option<&str>) -> String {
     let env = data_dir
         .map(|dir| format!("-e \"{DATA_DIR_ENV}={dir}\" "))
         .unwrap_or_default();
-    format!("claude mcp add platypus {env}-- \"{path}\"")
+    format!("claude mcp add platypus {env}-- \"{path}\" {MCP_FLAG}")
 }
 
 /// The Codex table for the server, as TOML.
 fn codex_config(path: &str, data_dir: Option<&str>) -> String {
     let mut server = toml::Table::new();
     server.insert("command".to_owned(), path.into());
+    server.insert("args".to_owned(), vec![MCP_FLAG].into());
     if let Some(dir) = data_dir {
         let mut env = toml::Table::new();
         env.insert(DATA_DIR_ENV.to_owned(), dir.into());
@@ -48,22 +49,30 @@ fn codex_config(path: &str, data_dir: Option<&str>) -> String {
     toml::to_string(&root).unwrap_or_default()
 }
 
-fn setup(mcp: &Path, data_dir: Option<&str>) -> AgentSetup {
-    let path = mcp.display().to_string();
+fn setup(path: &str, data_dir: Option<&str>) -> AgentSetup {
     AgentSetup {
-        mcp_found: mcp.is_file(),
-        claude_command: claude_command(&path, data_dir),
-        codex_config: codex_config(&path, data_dir),
-        mcp_path: path,
+        claude_command: claude_command(path, data_dir),
+        codex_config: codex_config(path, data_dir),
+        mcp_path: path.to_owned(),
     }
+}
+
+/// The executable agents start. An `AppImage` runs from a folder mounted anew at each start:
+/// the `AppImage` file itself stays put.
+fn app_path() -> CommandResult<PathBuf> {
+    if let Some(image) = std::env::var_os("APPIMAGE") {
+        return Ok(image.into());
+    }
+    std::env::current_exe().map_err(|e| CommandError::new("other", e.to_string()))
 }
 
 #[tauri::command]
 pub fn agent_setup() -> CommandResult<AgentSetup> {
-    let exe = std::env::current_exe().map_err(|e| CommandError::new("other", e.to_string()))?;
-    let mcp = exe.with_file_name(format!("platypus-mcp{}", std::env::consts::EXE_SUFFIX));
     let data_dir = std::env::var(DATA_DIR_ENV).ok();
-    Ok(setup(&mcp, data_dir.as_deref()))
+    Ok(setup(
+        &app_path()?.display().to_string(),
+        data_dir.as_deref(),
+    ))
 }
 
 #[cfg(test)]
@@ -72,26 +81,31 @@ mod tests {
 
     #[test]
     fn commands_for_claude_code_and_codex() {
-        let path = r"C:\Program Files\PlatypusDB\platypus-mcp.exe";
+        let path = r"C:\Program Files\PlatypusDB\platypus-db.exe";
         assert_eq!(
             claude_command(path, None),
-            r#"claude mcp add platypus -- "C:\Program Files\PlatypusDB\platypus-mcp.exe""#
+            r#"claude mcp add platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp"#
         );
         assert_eq!(
-            claude_command("/opt/p/platypus-mcp", Some("/tmp/profile")),
-            r#"claude mcp add platypus -e "PLATYPUS_DATA_DIR=/tmp/profile" -- "/opt/p/platypus-mcp""#
+            claude_command("/opt/p/platypus-db", Some("/tmp/profile")),
+            r#"claude mcp add platypus -e "PLATYPUS_DATA_DIR=/tmp/profile" -- "/opt/p/platypus-db" --mcp"#
         );
-        let codex = codex_config(path, Some(r"D:\profile"));
-        let parsed: toml::Table = toml::from_str(&codex).unwrap();
+        let setup = setup(path, Some(r"D:\profile"));
+        let parsed: toml::Table = toml::from_str(&setup.codex_config).unwrap();
+        let server = &parsed["mcp_servers"]["platypus"];
+        assert_eq!(server["command"].as_str(), Some(path));
         assert_eq!(
-            parsed["mcp_servers"]["platypus"]["command"].as_str(),
-            Some(path)
+            server["args"].as_array().unwrap()[0].as_str(),
+            Some("--mcp")
         );
         assert_eq!(
-            parsed["mcp_servers"]["platypus"]["env"]["PLATYPUS_DATA_DIR"].as_str(),
+            server["env"]["PLATYPUS_DATA_DIR"].as_str(),
             Some(r"D:\profile")
         );
-        assert!(codex.starts_with("[mcp_servers.platypus]"), "{codex}");
-        assert!(!setup(Path::new("/no/such/platypus-mcp"), None).mcp_found);
+        assert!(
+            setup.codex_config.starts_with("[mcp_servers.platypus]"),
+            "{}",
+            setup.codex_config
+        );
     }
 }

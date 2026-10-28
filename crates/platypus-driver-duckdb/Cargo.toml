@@ -16,11 +16,17 @@ calamine.workspace = true
 csv = "1"
 duckdb.workspace = true
 encoding_rs = "0.8"
+platypus-duckdb-loader.workspace = true
 futures.workspace = true
 platypus-core.workspace = true
+platypus-drivers.workspace = true
 platypus-sql.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["sync"] }
+
+[features]
+# `testing`: DuckDB downloaded once for the tests of the workspace.
+testing = ["tokio/rt"]
 
 [dev-dependencies]
 tempfile.workspace = true

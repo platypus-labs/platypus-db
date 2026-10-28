@@ -197,16 +197,17 @@ downloads instead of building in:
 Conformance: `crates/platypus-conformance/tests/bridges.rs` runs Trino (`--profile trino`)
 through the bridge, downloading its driver to `target/conformance-drivers`.
 
-### Vendor client libraries: Oracle and ODBC
+### Vendor client libraries: Oracle, ODBC and DuckDB
 
-Oracle, IBM Db2 and any ODBC driver need a client library that the vendor publishes and the
+Oracle, IBM Db2, DuckDB and any ODBC driver need a library that the vendor publishes and the
 app installs, or that the system has:
 - `DriverKind::vendor_package()` names it (`oracle`: Oracle Instant Client, `db2`: IBM's
-  Data Server Driver for ODBC and CLI). `platypus_drivers::vendor_package` describes it per
-  platform: archive URLs with the SHA-256 the vendor publishes (or computed once for IBM's
-  versioned archive), the library, and for an ODBC driver the program that registers it with
-  the system. `install_vendor` downloads, checks and unpacks to
-  `<data>/drivers/vendor/<name>/<version>/` (folders and symbolic links kept);
+  Data Server Driver for ODBC and CLI, `duckdb`: DuckDB's shared library).
+  `platypus_drivers::vendor_package` describes it per platform: archive URLs with the
+  SHA-256 the vendor publishes (or computed once for versioned archives), the library, and
+  for an ODBC driver the program that registers it with the system. `install_vendor`
+  downloads, checks and unpacks to `<data>/drivers/vendor/<name>/<version>/` (zip archives
+  with their folders and symbolic links; `.tar.gz` ones flat);
   `register` runs the vendor's program as administrator through PowerShell `-Verb RunAs`
   (Windows shows the UAC prompt; a declined prompt is `DriverError::ElevationDeclined`).
   A new version means new URLs and hashes in `vendor.rs`.
@@ -225,7 +226,20 @@ app installs, or that the system has:
   system's drivers; generic: a DSN, a driver and a connection string). `SQLCancel` needs
   unsafe code, which the workspace forbids: a statement still waiting to start is given up
   with its session, as with ADBC.
-- Both run a bare `BEGIN`, `COMMIT` or `ROLLBACK` through their client API
+- DuckDB: the `duckdb` crate is built with `loadable-extension`, as for a DuckDB extension:
+  it calls DuckDB through a table of function pointers instead of linking it, so the app
+  carries no DuckDB. `platypus-duckdb-loader`, the only crate where `unsafe` is allowed
+  (`deny`, each block with its SAFETY note), loads `libduckdb` and fills that table by
+  name (`api_functions.rs`, generated from libduckdb-sys's loadable bindings; a missing or
+  unknown name fails the build). `platypus_driver_duckdb::library::load` finds the library
+  under `<data>/drivers/vendor/duckdb/…` before a database or data file opens, else
+  `Error::DriverMissing`. The library must be the DuckDB version of the bindings: updating
+  the `duckdb` crate (pinned with `=`) means regenerating `api_functions.rs` and new URLs and
+  hashes in `vendor.rs`. Tests call `platypus_driver_duckdb::testing::load()` (feature
+  `testing`), which downloads the library once into `target/test-drivers` for the whole
+  workspace, or loads `PLATYPUS_DUCKDB_LIBRARY` offline; the E2E runner links that copy into
+  each profile unless a scenario sets `duckdb = false`.
+- Oracle and ODBC run a bare `BEGIN`, `COMMIT` or `ROLLBACK` through their client API
   (`platypus_core::TxControl`): Oracle reads `BEGIN` as a PL/SQL block, and ODBC drivers take
   it differently.
 - Desktop: `commands/vendor.rs` (`vendor_driver_status`, `install_vendor_driver` with
@@ -273,8 +287,10 @@ read each file into `ImportedProject`s (a DBeaver `.dbp` gives one per project),
 ### Agents (MCP)
 
 `crates/platypus-mcp` lets external agents use the saved connections. Its library is the
-`Agent` (`agent.rs`), with one method per tool; the binary `platypus-mcp` serves them over
-stdio with `rmcp` (`server.rs`), and the `platypus` CLI calls the same methods for
+`Agent` (`agent.rs`), with one method per tool; `stdio::main` serves them over stdio with
+`rmcp` (`server.rs`). The app does so when started with `--mcp` (`main.rs` of the desktop
+crate, before Tauri starts: no window), and so does the `platypus-mcp` binary, kept for
+development and the stdio tests; and the `platypus` CLI calls the same methods for
 `--connection` (`crates/platypus-cli/src/agent.rs`). The pieces:
 - `Profile` finds the app's folders the way Tauri does (`dirs::config_dir()` and
   `dirs::data_dir()` with the bundle identifier), or `PLATYPUS_DATA_DIR`. It reopens
@@ -317,10 +333,9 @@ Every `run_query` is recorded in the query history with `origin`, the MCP client
 (`clientInfo.name`, trimmed to 64 characters, `agent` when empty) or `platypus-cli`; `HistoryQuery::origin` filters the app's entries
 (`NULL`) or the agents'. A new tool is a method on `Agent`, a `#[tool]` in `server.rs` and,
 for the CLI, a subcommand. `commands/agents.rs` gives the Settings' Agents page
-(`apps/desktop/src/agents/`) the server's path and the commands for Claude Code and Codex.
-The installers ship `platypus-mcp` as a Tauri external binary: `tauri build --config
-src-tauri/tauri.mcp.conf.json` runs `scripts/stage-mcp.mjs`, which builds it into
-`src-tauri/binaries/`; plain builds and `cargo` commands do not need it.
+(`apps/desktop/src/agents/`) the app's path (the AppImage's on Linux) and the commands
+for Claude Code and Codex, which start it with `--mcp`. The installers hold one executable:
+the server is in the app, with the drivers it already has.
 
 ### Settings storage
 

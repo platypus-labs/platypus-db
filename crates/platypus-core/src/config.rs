@@ -144,13 +144,14 @@ impl DriverKind {
     }
 
     /// The name of the vendor's client library the app downloads for this database:
-    /// Oracle's Instant Client, IBM's ODBC driver. `None` for the generic ODBC driver,
-    /// which uses what the system has.
+    /// Oracle's Instant Client, IBM's ODBC driver, DuckDB's library. `None` for the generic
+    /// ODBC driver, which uses what the system has.
     #[must_use]
     pub const fn vendor_package(self) -> Option<&'static str> {
         match self {
             Self::Oracle => Some("oracle"),
             Self::Db2 => Some("db2"),
+            Self::DuckDb => Some("duckdb"),
             _ => None,
         }
     }
@@ -764,6 +765,7 @@ mod tests {
         assert_eq!(DriverKind::Oracle.bridge(), None);
         assert_eq!(DriverKind::Oracle.vendor_package(), Some("oracle"));
         assert_eq!(DriverKind::Db2.vendor_package(), Some("db2"));
+        assert_eq!(DriverKind::DuckDb.vendor_package(), Some("duckdb"));
         assert_eq!(DriverKind::Odbc.vendor_package(), None);
         assert_eq!(DriverKind::Snowflake.vendor_package(), None);
         assert_eq!(DriverKind::Oracle.default_port(), Some(1521));

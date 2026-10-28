@@ -7,9 +7,11 @@ import { translateAppMessages } from "./api";
 import { loadSettings } from "./settings";
 import { appMessage } from "./storeErrors";
 import { startModalA11y } from "./ui/modalA11y";
+import { startErrorLog } from "./diagnostics/Diagnostics";
 import "./styles/index.css";
 
 paintCached();
+startErrorLog();
 startModalA11y();
 translateAppMessages(appMessage);
 

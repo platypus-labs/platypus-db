@@ -48,20 +48,11 @@ export function AgentsPanel() {
     <div className="agents-panel">
       <p className="muted small">
         {tNodes(
-          "Agents such as Claude Code, Codex or Cursor can use your saved connections through PlatypusDB's MCP server, {mcp}. The agent starts it by itself: PlatypusDB does not need to be open. Agents read the schema and run queries with the access each connection gives them; passwords stay in the keychain and never reach them. Their queries are in the history, with the agent's name.",
-          { mcp: <code>platypus-mcp</code> },
+          "Agents such as Claude Code, Codex or Cursor can use your saved connections through PlatypusDB's MCP server: the app itself, started with {mcp}. The agent starts it by itself, without a window: PlatypusDB does not need to be open. Agents read the schema and run queries with the access each connection gives them; passwords stay in the keychain and never reach them. Their queries are in the history, with the agent's name.",
+          { mcp: <code>--mcp</code> },
         )}
       </p>
       {error && <div className="notice error small">{error}</div>}
-      {setup && !setup.mcp_found && (
-        <div className="notice warn small">
-          {tNodes("{mcp} is not next to the app. Build it with {build} and copy it to {path}.", {
-            mcp: <code>platypus-mcp</code>,
-            build: <code>cargo build --release -p platypus-mcp</code>,
-            path: setup.mcp_path,
-          })}
-        </div>
-      )}
       {setup && (
         <>
           <CopyBlock label="Claude Code" text={setup.claude_command} field="claude_command" />

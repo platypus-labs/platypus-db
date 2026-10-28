@@ -8,6 +8,7 @@ import { api, isMongo, type ResultTable, type SavedConnection, toCommandError } 
 import { fmt } from "../components/ResultPanel";
 import { msg, t } from "../i18n";
 import { workbench } from "../workbench";
+import { withDriver } from "../drivers/DriverPopup";
 import { type ResultHost, type ResultSource, hostOfJob, hostOfTab, initialSql, resultTables, shownHost } from "./resultHosts";
 
 /** Loads every row of the results, showing how many with Cancel; false when cancelled or
@@ -78,7 +79,8 @@ export async function queryWithSql(host: ResultHost, jobId?: number, sql?: strin
   const tables = resultTables(host.results(), jobId ?? host.activeJob());
   if (tables.length === 0) return workbench().showError(t("This tab has no result with rows."));
   if (!(await loadAll(tables.map((x) => x.job_id)))) return;
-  const opened = await api.openResultDb(t("Results of {name}", { name: host.connection.name }), tables);
+  // DuckDB holds the results: downloaded first if it is not yet.
+  const opened = await withDriver(() => api.openResultDb(t("Results of {name}", { name: host.connection.name }), tables));
   const source: ResultSource = { tabKey: host.tabKey, tables: tableNames(tables), partial: opened.partial };
   workbench().openTemporaryTab(
     "query",

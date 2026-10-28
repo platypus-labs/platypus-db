@@ -49,6 +49,7 @@ async fn decoded(conn: &DuckDbConnection, sql: &str) -> Vec<(DataType, String, S
 
 #[tokio::test]
 async fn decodes_scalar_types() {
+    crate::testing::load();
     let conn = memory().await;
     let got = decoded(
         &conn,
@@ -122,6 +123,7 @@ async fn unions_are_the_value_of_their_member() {
 
 #[tokio::test]
 async fn decodes_nested_types_and_enums() {
+    crate::testing::load();
     let conn = memory().await;
     conn.execute(
         "CREATE TYPE mood AS ENUM ('sad', 'happy')",
@@ -159,6 +161,7 @@ async fn decodes_nested_types_and_enums() {
 
 #[tokio::test]
 async fn tells_row_counts_from_results() {
+    crate::testing::load();
     let conn = memory().await;
     let opts = ExecOptions::default();
     let affected = |r: ExecResult| match r {
@@ -197,6 +200,7 @@ async fn tells_row_counts_from_results() {
 
 #[tokio::test]
 async fn reports_errors_raised_while_fetching() {
+    crate::testing::load();
     let conn = memory().await;
     let result = conn
         .execute("SELECT 'x'::INTEGER", &ExecOptions::default())
@@ -213,6 +217,7 @@ async fn reports_errors_raised_while_fetching() {
 
 #[tokio::test]
 async fn opens_files_and_refuses_missing_folders() {
+    crate::testing::load();
     let dir = tempfile::tempdir().unwrap();
     let mut config = ConnectionConfig::new(DriverKind::DuckDb);
     config.database = dir.path().join("new.duckdb").to_string_lossy().into_owned();
@@ -264,6 +269,7 @@ async fn value(conn: &dyn Connection, sql: &str) -> String {
 
 #[tokio::test]
 async fn opens_data_files_as_views() {
+    crate::testing::load();
     let dir = tempfile::tempdir().unwrap();
     let csv = dir.path().join("sales.csv");
     std::fs::write(&csv, "id,item\n1,pen\n2,ink\n").unwrap();
@@ -342,6 +348,7 @@ fn write_xlsx(path: &std::path::Path, alan_age: u32) {
 
 #[tokio::test]
 async fn opens_workbook_sheets_as_tables() {
+    crate::testing::load();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("book.xlsx");
     write_xlsx(&path, 41);
@@ -367,6 +374,7 @@ async fn opens_workbook_sheets_as_tables() {
 
 #[tokio::test]
 async fn named_memory_databases_are_their_own() {
+    crate::testing::load();
     let (_database, conn) = crate::memory_database("tests-named").unwrap();
     conn.execute_batch("CREATE TABLE kept AS SELECT 42 AS n")
         .unwrap();
@@ -393,6 +401,7 @@ async fn named_memory_databases_are_their_own() {
 
 #[tokio::test]
 async fn a_memory_database_named_like_a_file_is_not_read() {
+    crate::testing::load();
     let (_database, conn) = crate::memory_database("tests-named.csv").unwrap();
     conn.execute_batch("CREATE TABLE kept AS SELECT 7 AS n")
         .unwrap();

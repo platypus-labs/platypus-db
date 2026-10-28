@@ -47,6 +47,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 duckdb.workspace = true
+platypus-driver-duckdb = { workspace = true, features = ["testing"] }
 rusqlite.workspace = true
 tempfile.workspace = true
 

@@ -18,6 +18,7 @@ platypus-driver-odbc = { path = "crates/platypus-driver-odbc" }
 platypus-driver-oracle = { path = "crates/platypus-driver-oracle" }
 platypus-driver-clickhouse = { path = "crates/platypus-driver-clickhouse" }
 platypus-driver-duckdb = { path = "crates/platypus-driver-duckdb" }
+platypus-duckdb-loader = { path = "crates/platypus-duckdb-loader" }
 platypus-driver-libsql = { path = "crates/platypus-driver-libsql" }
 platypus-driver-pg = { path = "crates/platypus-driver-pg" }
 platypus-driver-mysql = { path = "crates/platypus-driver-mysql" }
@@ -49,7 +50,9 @@ cbc = { version = "=0.2.1", features = ["alloc"] }
 calamine = { version = "0.37", default-features = false }
 clap = { version = "4", features = ["derive", "env"] }
 criterion = "0.8"
-duckdb = { version = "1.20000", features = ["bundled", "json", "parquet"] }
+# Built as for a loadable extension: the library is downloaded at first use, not linked
+# (platypus-duckdb-loader). The DuckDB version is pinned with it.
+duckdb = { version = "=1.20000.0", default-features = false, features = ["loadable-extension"] }
 fallible-iterator = "0.2"
 futures = "0.3"
 keyring = "4"

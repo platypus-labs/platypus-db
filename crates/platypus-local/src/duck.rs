@@ -423,6 +423,7 @@ mod tests {
 
     #[test]
     fn loads_batches_as_a_table() {
+        platypus_driver_duckdb::testing::load();
         let conn = duckdb::Connection::open_in_memory().unwrap();
         let (schema, first) = people(&[1, 2]);
         let (_, second) = people(&[3]);
@@ -439,6 +440,7 @@ mod tests {
 
     #[test]
     fn loading_again_replaces_the_table() {
+        platypus_driver_duckdb::testing::load();
         let conn = duckdb::Connection::open_in_memory().unwrap();
         let (schema, batch) = people(&[1, 2, 3]);
         load(&conn, "result", &schema, &[batch]).unwrap();
@@ -457,6 +459,7 @@ mod tests {
 
     #[test]
     fn an_empty_result_is_an_empty_table() {
+        platypus_driver_duckdb::testing::load();
         let conn = duckdb::Connection::open_in_memory().unwrap();
         let (schema, _) = people(&[]);
         assert_eq!(load(&conn, "r1", &schema, &[]).unwrap(), 0);
@@ -465,6 +468,7 @@ mod tests {
 
     #[test]
     fn names_and_types_duckdb_cannot_take() {
+        platypus_driver_duckdb::testing::load();
         let conn = duckdb::Connection::open_in_memory().unwrap();
         let schema: SchemaRef = Arc::new(Schema::new(vec![
             Field::new("id", DataType::Int32, false),
@@ -819,6 +823,7 @@ mod tests {
 
     #[test]
     fn unique_names_ignore_case() {
+        platypus_driver_duckdb::testing::load();
         let names = ["a", "A", "a", ""].map(String::from);
         assert_eq!(unique_names(&names), ["a", "A_2", "a_3", "column4"]);
         assert_eq!(quote("we\"ird"), "\"we\"\"ird\"");

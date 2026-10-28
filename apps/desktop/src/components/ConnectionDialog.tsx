@@ -19,6 +19,7 @@ import {
   type SavedConnection,
   type SavedInit,
   type ServerInfo,
+  VENDOR_DRIVERS,
 } from "../api";
 import { AgentAccessField, withEffectiveAgentAccess } from "../agents/access";
 import { CONNECTION_TYPES, noteText } from "../connections";
@@ -617,7 +618,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   )}
                 </div>
                 )}
-                {conn.driver === "oracle" || conn.driver === "db2" ? <VendorDriverState driver={conn.driver} /> : null}
+                {VENDOR_DRIVERS.includes(conn.driver) ? <VendorDriverState driver={conn.driver} /> : null}
 
                 <div className="field-grid">
                   <label className="field">

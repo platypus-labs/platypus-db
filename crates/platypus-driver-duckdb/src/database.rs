@@ -20,9 +20,26 @@ use crate::{files, lock};
 
 /// An open DuckDB instance. New connections are cloned from `root`.
 pub struct Database {
-    root: Mutex<duckdb::Connection>,
+    /// `None` only while it is dropped.
+    root: Mutex<Option<duckdb::Connection>>,
     /// When the data file it reads was last changed, as it was loaded; `None` otherwise.
     loaded: Mutex<Option<SystemTime>>,
+}
+
+impl Database {
+    fn root(&self) -> std::sync::MutexGuard<'_, Option<duckdb::Connection>> {
+        lock(&self.root)
+    }
+}
+
+impl Drop for Database {
+    /// Closes the instance while holding the list of open ones: a connect that no longer
+    /// finds it there waits until DuckDB has released the file, instead of failing to open
+    /// it meanwhile.
+    fn drop(&mut self) {
+        let _open = lock(&OPEN);
+        drop(self.root().take());
+    }
 }
 
 /// The open instances, by path and by how a data file is read.
@@ -69,6 +86,7 @@ pub fn connect(
     if path.is_empty() {
         return Err(Error::Config("no database file given".to_owned()));
     }
+    crate::library::load()?;
     let key = key(path)?;
     let mut open = lock(&OPEN);
     open.retain(|(_, _, db)| db.strong_count() > 0);
@@ -88,7 +106,7 @@ pub fn connect(
         }
         .map_err(|e| Error::Connect(format!("cannot open {path}: {e}")))?;
         let database = Arc::new(Database {
-            root: Mutex::new(root),
+            root: Mutex::new(Some(root)),
             loaded: Mutex::new(None),
         });
         open.push((key, options.clone(), Arc::downgrade(&database)));
@@ -99,11 +117,16 @@ pub fn connect(
         let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok();
         let mut loaded = lock(&database.loaded);
         if loaded.is_none() || *loaded != modified {
-            files::load(&lock(&database.root), path, options)?;
+            if let Some(root) = &*database.root() {
+                files::load(root, path, options)?;
+            }
             *loaded = modified;
         }
     }
-    let conn = lock(&database.root)
+    let conn = database
+        .root()
+        .as_ref()
+        .ok_or(Error::Closed)?
         .try_clone()
         .map_err(|e| Error::Connect(format!("cannot connect to {path}: {e}")))?;
     Ok((database, conn))
