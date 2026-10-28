@@ -1,7 +1,7 @@
 // Unit tests of running a script on several connections (src/editor/multiRun.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { connectionColumn, mergedSql, planScript, pool, quoteIdent, quoteText, tableOf } from "../src/editor/multiRun.ts";
+import { connectionColumn, mergedSql, planScript, pool, quoteText, tableOf } from "../src/editor/multiRun.ts";
 
 const span = (start, end, extra = {}) => ({ start, end, read_only: true, kind: "query", unfiltered: [], parameters: [], ...extra });
 
@@ -27,7 +27,6 @@ test("the connection's column takes a free name", () => {
   assert.equal(connectionColumn([["id"], ["name"]]), "connection");
   assert.equal(connectionColumn([["Connection"], []]), "connection_2");
   assert.equal(connectionColumn([["connection", "connection_2"]]), "connection_3");
-  assert.equal(quoteIdent('a"b'), '"a""b"');
   assert.equal(quoteText("it's"), "'it''s'");
 });
 

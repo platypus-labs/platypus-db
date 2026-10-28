@@ -4,6 +4,8 @@
  *  queries them together (see `multiRun.ts`). */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type QueryEvent, type ResultTable, type SavedConnection, toCommandError } from "../api";
+import { type CheckedStatement, check } from "../guards/guards";
+import { GuardDialog } from "../guards/GuardDialog";
 import { typeBadge } from "../connections";
 import { withDriver } from "../drivers/DriverPopup";
 import { DRIVER_NAMES } from "../drivers/names";
@@ -26,9 +28,17 @@ interface Props {
 /** What a statement left: its results with rows (a statement can have several), the rows it
  *  changed, or why it failed. */
 interface Ran {
-  results: { jobId: number; columns: string[]; rows: number }[];
+  results: Loaded[];
   affected: number;
-  error: string | null;
+  error: { message: string; cancelled: boolean } | null;
+}
+
+/** A result with rows, read in full or up to the memory limit (`partial`). */
+interface Loaded {
+  jobId: number;
+  columns: string[];
+  rows: number;
+  partial: boolean;
 }
 
 const PROBLEMS: Record<ScriptProblem, string> = {
@@ -40,19 +50,33 @@ const PROBLEMS: Record<ScriptProblem, string> = {
 /** "3 connections", as the confirmation and the merged tab's title say it. */
 const connectionCount = (n: number) => plural(n, "{n} connection", "{n} connections");
 
-/** Runs `sql` on the session and waits for its end; its jobs stay open. */
+/** Runs `sql` on the session and waits for its end, every row of its results read (a job
+ *  otherwise stops after its first rows and waits for a grid to ask for more); its jobs stay
+ *  open. */
 function runStatement(sessionId: number, sql: string, onJob: (jobId: number) => void): Promise<Ran> {
   return new Promise((resolve) => {
     const ran: Ran = { results: [], affected: 0, error: null };
     /** The job the next events are about; the first one's id comes with the answer. */
     let current: { jobId: number | null; columns: string[] | null; rows: number } = { jobId: null, columns: null, rows: 0 };
     const all = [current];
+    /** Whether each job read all its rows. */
+    const whole = new Map<number, Promise<boolean>>();
     let ended = false;
     let known = false;
+    const job = (jobId: number) => {
+      onJob(jobId);
+      whole.set(jobId, api.fetchWhole(jobId, () => undefined).catch(() => false));
+    };
     const settle = () => {
       if (!ended || !known) return;
-      for (const r of all) if (r.jobId !== null && r.columns !== null) ran.results.push({ jobId: r.jobId, columns: r.columns, rows: r.rows });
-      resolve(ran);
+      void (async () => {
+        for (const r of all) {
+          if (r.jobId === null || r.columns === null) continue;
+          const complete = await (whole.get(r.jobId) ?? Promise.resolve(true));
+          ran.results.push({ jobId: r.jobId, columns: r.columns, rows: r.rows, partial: !complete });
+        }
+        resolve(ran);
+      })();
     };
     const onEvent = (e: QueryEvent) => {
       switch (e.type) {
@@ -68,13 +92,13 @@ function runStatement(sessionId: number, sql: string, onJob: (jobId: number) => 
           ended = true;
           break;
         case "failed":
-          ran.error = e.error.message;
+          ran.error = { message: e.error.message, cancelled: e.error.kind === "cancelled" };
           ended = true;
           break;
         case "next":
           current = { jobId: e.job_id, columns: null, rows: 0 };
           all.push(current);
-          onJob(e.job_id);
+          job(e.job_id);
           break;
         default:
           return;
@@ -84,12 +108,13 @@ function runStatement(sessionId: number, sql: string, onJob: (jobId: number) => 
     api.runQuery(sessionId, sql, null, onEvent).then(
       (jobId) => {
         all[0]!.jobId = jobId;
-        onJob(jobId);
+        job(jobId);
         known = true;
         settle();
       },
       (e: unknown) => {
-        ran.error = toCommandError(e).message;
+        const error = toCommandError(e);
+        ran.error = { message: error.message, cancelled: error.kind === "cancelled" };
         ended = known = true;
         settle();
       },
@@ -102,21 +127,24 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
   const [chosen, setChosen] = useState<Set<string>>(() => new Set([origin.id]));
   const [filter, setFilter] = useState("");
   const [outcomes, setOutcomes] = useState<Map<string, Outcome> | null>(null);
-  const [phase, setPhase] = useState<"choose" | "running" | "merging" | "done">("choose");
+  const [phase, setPhase] = useState<"choose" | "starting" | "running" | "merging" | "done">("choose");
+  const [stopping, setStopping] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [summary, setSummary] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string[]>([]);
   const stopped = useRef(false);
   /** The job each connection runs now, to cancel it. */
   const running = useRef(new Map<string, number>());
   /** Sessions and jobs still open, freed when the dialog goes. */
   const sessions = useRef(new Set<number>());
   const jobs = useRef(new Set<number>());
+  /** The checks before changes ask one connection at a time. */
+  const guardTurn = useRef<Promise<unknown>>(Promise.resolve());
 
   useEffect(
     () => () => {
       stopped.current = true;
       for (const j of jobs.current) void api.closeQuery(j).catch(() => undefined);
-      for (const s of sessions.current) void api.closeSession(s).catch(() => undefined);
+      for (const s of sessions.current) workbench().closeSession(s);
     },
     [],
   );
@@ -140,22 +168,24 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
   };
 
   async function start() {
+    // Until the run starts: a second click does not start another.
+    setPhase("starting");
     setProblem(null);
-    const checked = planScript(script, await api.analyzeSql(script, origin.driver, 0));
-    if (typeof checked === "string") return setProblem(t(PROBLEMS[checked]));
-    if (checked.writes) {
-      const prod = targets.filter((c) => c.connection_type === "prod").map((c) => c.name);
-      const message =
-        t("This script may change data on {count}.", { count: connectionCount(targets.length) }) +
-        (prod.length ? ` ${t("Production: {names}.", { names: prod.join(", ") })}` : "");
-      if (!(await ask(message, { confirm: t("Run"), danger: prod.length > 0 }))) return;
+    try {
+      const checked = planScript(script, await api.analyzeSql(script, origin.driver, 0));
+      if (typeof checked === "string") throw new Error(t(PROBLEMS[checked]));
+      const question = t("This script may change data on {count}.", { count: connectionCount(targets.length) });
+      if (checked.writes && !(await ask(question, { confirm: t("Run") }))) return setPhase("choose");
+    } catch (e) {
+      setProblem(toCommandError(e).message);
+      return setPhase("choose");
     }
     stopped.current = false;
     setOutcomes(new Map(targets.map((c) => [c.id, { state: "queued" }])));
     setPhase("running");
-    const kept = new Map<string, { jobId: number; columns: string[] }>();
+    const kept = new Map<string, Loaded>();
     await pool(targets, PARALLEL, async (c) => {
-      const result = await runOn(c, checked.writes);
+      const result = await runOn(c);
       if (result) kept.set(c.id, result);
     }, () => stopped.current);
     if (stopped.current) {
@@ -168,28 +198,60 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
     await merge(targets.filter((c) => kept.has(c.id)).map((c) => ({ c, ...kept.get(c.id)! })));
   }
 
-  /** Runs the script on `c`; its last result with rows, loaded in full. */
-  async function runOn(c: SavedConnection, writes: boolean): Promise<{ jobId: number; columns: string[] } | null> {
-    if (writes && c.read_only) {
-      setOutcome(c.id, { state: "skipped", reason: t("Read-only connection") });
-      return null;
-    }
+  /** The checks of a normal run (UPDATE or DELETE without WHERE, production), asked on
+   *  `c`'s own; false when declined or not allowed. */
+  async function guarded(c: SavedConnection, sessionId: number, statements: CheckedStatement[]): Promise<boolean | string> {
+    const request = await check(c, statements, () => Promise.resolve(sessionId));
+    if (!request) return true;
+    if (request.blocked) return t("UPDATE or DELETE without WHERE is not allowed by the Safety settings");
+    const answer = guardTurn.current.then(
+      () =>
+        new Promise<boolean>((resolve) =>
+          workbench().openDialog((close) => (
+            <GuardDialog
+              request={request}
+              named
+              onAnswer={(run) => {
+                close();
+                resolve(run);
+              }}
+            />
+          )),
+        ),
+    );
+    guardTurn.current = answer;
+    return answer;
+  }
+
+  /** Runs the script on `c`; its last result with rows, read in full. */
+  async function runOn(c: SavedConnection): Promise<Loaded | null> {
     setOutcome(c.id, { state: "running", statement: 0 });
-    let sessionId: number;
-    try {
-      sessionId = (await api.openSession(c.id)).session_id;
-    } catch (e) {
-      setOutcome(c.id, { state: "failed", statement: 0, message: toCommandError(e).message });
+    // As a tab opens it: the password asked, the driver offered. A session of the side kind
+    // stays in autocommit on production too: nothing is left to commit when it closes.
+    const sessionId = await workbench().openSession(c, true);
+    if (sessionId === null) {
+      setOutcome(c.id, { state: "failed", statement: 0, message: t("Not connected") });
       return null;
     }
     sessions.current.add(sessionId);
-    let last: { jobId: number; columns: string[]; rows: number } | null = null;
+    let last: Loaded | null = null;
     /** Set once `last` is handed over to the merge, which frees it then. */
     let keep = false;
     try {
-      // Checked again in the connection's own dialect: batches and quoting differ.
-      const plan = planScript(script, await api.analyzeSql(script, c.driver, 0));
+      // Checked again in the connection's own dialect: batches, quoting and what writes differ.
+      const analysis = await api.analyzeSql(script, c.driver, 0);
+      const plan = planScript(script, analysis);
       if (typeof plan === "string") throw new Error(t(PROBLEMS[plan]));
+      if (plan.writes && c.read_only) {
+        setOutcome(c.id, { state: "skipped", reason: t("Read-only connection") });
+        return null;
+      }
+      const checks = analysis.statements.map((span) => ({ sql: script.slice(span.start, span.end), span }));
+      const allowed = await guarded(c, sessionId, checks);
+      if (allowed !== true) {
+        setOutcome(c.id, { state: "skipped", reason: allowed === false ? t("Not confirmed") : allowed });
+        return null;
+      }
       let affected = 0;
       for (const [i, sql] of plan.statements.entries()) {
         if (stopped.current) {
@@ -211,31 +273,33 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
           last = r;
         }
         for (const j of started) if (!ran.results.some((r) => r.jobId === j)) free(j);
-        if (ran.error !== null) {
-          setOutcome(c.id, { state: "failed", statement: i + 1, message: ran.error });
+        if (ran.error?.cancelled && stopped.current) {
+          setOutcome(c.id, { state: "skipped", reason: t("Stopped") });
           return null;
         }
-        setOutcome(c.id, { state: "done", statements: i + 1, rows: last?.rows ?? null, affected });
+        if (ran.error) {
+          setOutcome(c.id, { state: "failed", statement: i + 1, message: ran.error.message });
+          return null;
+        }
+        setOutcome(c.id, { state: "done", statements: i + 1, rows: last?.rows ?? null, affected, partial: last?.partial ?? false });
       }
       if (!last) return null;
-      // Every row, before the session goes: the copy reads what the job holds.
-      await api.fetchWhole(last.jobId, () => undefined);
       keep = true;
-      return { jobId: last.jobId, columns: last.columns };
+      return last;
     } catch (e) {
       setOutcome(c.id, { state: "failed", statement: 0, message: toCommandError(e).message });
       return null;
     } finally {
       if (last && !keep) free(last.jobId);
       sessions.current.delete(sessionId);
-      void api.closeSession(sessionId).catch(() => undefined);
+      workbench().closeSession(sessionId);
     }
   }
 
   /** Copies the kept results into an in-memory DuckDB and opens a tab on them together. */
-  async function merge(kept: { c: SavedConnection; jobId: number; columns: string[] }[]) {
+  async function merge(kept: ({ c: SavedConnection } & Loaded)[]) {
     if (kept.length === 0) {
-      setSummary(t("No connection returned rows."));
+      setSummary([t("No connection returned rows.")]);
       setPhase("done");
       return;
     }
@@ -243,6 +307,9 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
     const tables: ResultTable[] = kept.map((k, i) => ({ job_id: k.jobId, table: tableOf(i) }));
     const merged: Kept[] = kept.map((k, i) => ({ name: k.c.name, table: tableOf(i), columns: k.columns }));
     const title = t("Results of {count}", { count: connectionCount(kept.length) });
+    const notes: string[] = [];
+    const partial = kept.filter((k) => k.partial).map((k) => k.c.name);
+    if (partial.length) notes.push(t("Only part of the rows of {names}: the memory limit stopped the reading.", { names: partial.join(", ") }));
     try {
       const opened = await withDriver(() => api.openResultDb(title, tables));
       workbench().openTemporaryTab(
@@ -251,21 +318,23 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
         { sql: mergedSql(merged), title, autorun: true },
         () => void api.closeResultDb(opened.connection.id),
       );
-      setSummary(t("The results opened in a new tab."));
+      notes.unshift(t("The results opened in a new tab."));
     } catch (e) {
-      setSummary(toCommandError(e).message);
+      notes.unshift(toCommandError(e).message);
     } finally {
       for (const k of kept) free(k.jobId);
+      setSummary(notes);
       setPhase("done");
     }
   }
 
   function stop() {
     stopped.current = true;
+    setStopping(true);
     for (const jobId of running.current.values()) void api.cancelQuery(jobId).catch(() => undefined);
   }
 
-  const busy = phase === "running" || phase === "merging";
+  const busy = phase !== "choose" && phase !== "done";
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
       <div className="modal multi-run" onKeyDown={(e) => e.key === "Escape" && !busy && onClose()}>
@@ -312,17 +381,21 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
             ))}
           </div>
         )}
-        {summary && <p className="notice">{summary}</p>}
+        {summary.map((line) => (
+          <p key={line} className="notice">
+            {line}
+          </p>
+        ))}
         <div className="actions">
           {outcomes === null && <span className="muted small">{plural(chosen.size, "{n} connection chosen", "{n} connections chosen")}</span>}
           <span className="spacer" />
-          {phase === "choose" && (
-            <button type="button" className="primary" data-action="run" onClick={() => void start()} disabled={chosen.size === 0}>
+          {(phase === "choose" || phase === "starting") && (
+            <button type="button" className="primary" data-action="run" onClick={() => void start()} disabled={chosen.size === 0 || phase === "starting"}>
               {t("Run")}
             </button>
           )}
           {busy && (
-            <button type="button" data-action="stop" onClick={stop} disabled={phase === "merging" || stopped.current}>
+            <button type="button" data-action="stop" onClick={stop} disabled={phase !== "running" || stopping}>
               {t("Stop")}
             </button>
           )}
@@ -346,7 +419,7 @@ function OutcomeRow({ connection, outcome }: { connection: SavedConnection; outc
       break;
     case "done": {
       const parts = [plural(outcome.statements, "{n} statement", "{n} statements")];
-      if (outcome.rows !== null) parts.push(plural(outcome.rows, "{n} row", "{n} rows"));
+      if (outcome.rows !== null) parts.push(plural(outcome.rows, "{n} row", "{n} rows") + (outcome.partial ? ` ${t("(memory limit)")}` : ""));
       if (outcome.affected > 0) parts.push(t("{n} changed", { n: formatCount(outcome.affected) }));
       text = parts.join(" · ");
       break;

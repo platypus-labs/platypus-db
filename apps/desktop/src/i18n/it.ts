@@ -1779,7 +1779,6 @@ const it: Record<string, string> = {
   "This script may change data on {count}.": "Questo script può modificare i dati su {count}.",
   "{n} connection": "{n} connessione",
   "{n} connections": "{n} connessioni",
-  "Production: {names}.": "Produzione: {names}.",
   "Stopped": "Fermato",
   "Read-only connection": "Connessione in sola lettura",
   "No connection returned rows.": "Nessuna connessione ha restituito righe.",
@@ -1802,6 +1801,12 @@ const it: Record<string, string> = {
   "There is no statement to run.": "Non c'è nessuno statement da eseguire.",
   "Parameters (:name, ?, ${name}) are not filled in on several connections: write the values in the script.": "I parametri (:nome, ?, ${nome}) non si compilano su più connessioni: scrivi i valori nello script.",
   "Client commands (@set, @include, @export…) run only in the tab.": "I comandi client (@set, @include, @export…) si eseguono solo nella scheda.",
+  "UPDATE or DELETE without WHERE is not allowed by the Safety settings": "UPDATE o DELETE senza WHERE non è consentito dalle impostazioni di Sicurezza",
+  "Not connected": "Non connessa",
+  "Not confirmed": "Non confermato",
+  "Only part of the rows of {names}: the memory limit stopped the reading.": "Solo una parte delle righe di {names}: il limite di memoria ha fermato la lettura.",
+  "(memory limit)": "(limite di memoria)",
+  "Change every row on {name}?": "Modificare ogni riga su {name}?",
 };
 
 export default it;

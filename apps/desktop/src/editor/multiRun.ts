@@ -11,7 +11,8 @@ import type { SqlAnalysis } from "../api";
 export type Outcome =
   | { state: "queued" }
   | { state: "running"; statement: number }
-  | { state: "done"; statements: number; rows: number | null; affected: number }
+  /** `partial`: the memory limit stopped reading the rows. */
+  | { state: "done"; statements: number; rows: number | null; affected: number; partial: boolean }
   | { state: "failed"; statement: number; message: string }
   | { state: "skipped"; reason: string };
 
@@ -22,8 +23,9 @@ export interface Kept {
   columns: string[];
 }
 
-/** `"name"`, doubling the quotes inside. */
-export const quoteIdent = (name: string) => `"${name.replaceAll('"', '""')}"`;
+/** A name in DuckDB, the merged results' database, always quoted. Not `sqlIdent.ts`'s
+ *  `quoteIdent`: this module imports no values, so that its tests run in Node. */
+const duckIdent = (name: string) => `"${name.replaceAll('"', '""')}"`;
 /** `'text'`, doubling the quotes inside. */
 export const quoteText = (text: string) => `'${text.replaceAll("'", "''")}'`;
 
@@ -38,9 +40,9 @@ export function connectionColumn(columns: readonly (readonly string[])[]): strin
 
 /** The query that puts the kept results under each other, in the order given. */
 export function mergedSql(kept: readonly Kept[]): string {
-  const column = quoteIdent(connectionColumn(kept.map((k) => k.columns)));
+  const column = duckIdent(connectionColumn(kept.map((k) => k.columns)));
   const tables = kept.map((k) => `--   ${k.table}: ${k.name.replaceAll("\n", " ")}`).join("\n");
-  const selects = kept.map((k) => `SELECT ${quoteText(k.name)} AS ${column}, * FROM ${quoteIdent(k.table)}`);
+  const selects = kept.map((k) => `SELECT ${quoteText(k.name)} AS ${column}, * FROM ${duckIdent(k.table)}`);
   return `-- One result per connection:\n${tables}\n${selects.join("\nUNION ALL BY NAME\n")}`;
 }
 

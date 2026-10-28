@@ -1,8 +1,9 @@
 // Group D, running one script on several connections, on four throwaway SQLite databases:
 // a query on all of them comes together in a new tab, with the connection of each row and
 // the columns one of them lacks NULL; a connection without the table fails alone; a script
-// that changes data asks first, skips the read-only connection and changes the others;
-// parameters are refused before anything runs.
+// that changes data asks first, then each connection asks its own Safety question (UPDATE
+// without WHERE), the read-only one is skipped and the others changed; parameters are
+// refused before anything runs.
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -134,12 +135,24 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`${confirm} !== null`);
   assert.match(await page.eval(`${confirm}.textContent`), /may change data on 4 connections/);
   await page.eval(`${button(confirm, "Run")}.click()`);
+  // Without WHERE, each connection asks on its own, one at a time, naming itself: the broken
+  // one is declined. The read-only one is skipped before asking.
+  const guard = `document.querySelector('.modal.guard')`;
+  const asked = [];
+  for (let i = 0; i < 3; i++) {
+    await page.waitFor(`${guard} !== null`, 30_000);
+    const title = await page.eval(`${guard}.querySelector('h2').textContent`);
+    asked.push(title);
+    await page.eval(`${button(guard, title.includes(BROKEN) ? "Cancel" : "Run")}.click()`);
+    await page.waitFor(`${guard} === null || ${guard}.querySelector('h2').textContent !== ${JSON.stringify(title)}`);
+  }
+  assert.deepEqual(asked.sort(), [BROKEN, EU, US].map((n) => `Change every row on ${n}?`).sort());
   await page.waitFor(settled, 30_000);
   const wrote = await page.eval(outcomes);
   assert.equal(wrote[EU], "done: 1 statement · 2 changed");
   assert.equal(wrote[US], "done: 1 statement · 1 changed");
   assert.equal(wrote[RO], "skipped: Read-only connection");
-  assert.match(wrote[BROKEN], /^failed: /);
+  assert.equal(wrote[BROKEN], "skipped: Not confirmed");
   assert.match(await page.eval(`${dialog}.querySelector('.notice').textContent`), /No connection returned rows/);
   await page.eval(`${button(dialog, "Close")}.click()`);
   await page.waitFor(`${dialog} === null`);
