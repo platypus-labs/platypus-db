@@ -74,7 +74,7 @@ impl Registry {
     }
 }
 
-fn download_error(e: reqwest::Error) -> DriverError {
+fn download_error(e: impl std::fmt::Display) -> DriverError {
     DriverError::Download(e.to_string())
 }
 

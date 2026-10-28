@@ -1,6 +1,6 @@
 //! The names a quoted identifier stands for once the server decodes it: PostgreSQL's
 //! `U&"…"` with its Unicode escapes (and `UESCAPE`), the backslash escapes ClickHouse and
-//! BigQuery read in quoted names. The read-only check looks at each of them, so a name
+//! `BigQuery` read in quoted names. The read-only check looks at each of them, so a name
 //! cannot hide behind an encoding.
 
 use platypus_sql::{Dialect, Token, TokenKind};

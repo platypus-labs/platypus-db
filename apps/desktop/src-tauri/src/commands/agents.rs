@@ -254,6 +254,6 @@ mod tests {
         let stale = codex_stale(&codex);
         assert_eq!(stale.len(), 1);
         assert_eq!(stale[0].agent, "Codex");
-        assert!(claude_stale(&serde_json::json!({})).is_empty());
+        assert_eq!(claude_stale(&serde_json::json!({})), []);
     }
 }

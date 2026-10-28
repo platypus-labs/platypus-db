@@ -403,5 +403,5 @@ fn an_unknown_argument_prints_the_usage_and_fails() {
         stderr.contains("--bogus") && stderr.contains("Usage"),
         "{stderr}"
     );
-    assert!(output.stdout.is_empty());
+    assert_eq!(output.stdout, b"");
 }
