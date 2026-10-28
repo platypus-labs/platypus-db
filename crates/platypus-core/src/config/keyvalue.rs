@@ -17,7 +17,7 @@
 use std::time::Duration;
 
 use super::any::{ParseNote, ParsedConnection, login_note};
-use super::jdbc::{host_port, sqlserver_ssl, strip_tcp};
+use super::jdbc::{host_port, sqlserver_flag, sqlserver_ssl, strip_tcp};
 use super::{ConnectionConfig, DriverKind, JdbcUrl, Secret, SslMode, libpq, secret_key};
 use crate::{Error, Result};
 
@@ -177,7 +177,7 @@ fn value<'a>(text: &'a str, key: &str) -> Result<(String, &'a str)> {
 struct Native {
     instance: Option<String>,
     port_given: bool,
-    encrypt: bool,
+    encrypt: Option<bool>,
     trust: bool,
     ssl: Option<SslMode>,
     ignored: Vec<String>,
@@ -209,12 +209,6 @@ impl Native {
 
     fn apply(&mut self, config: &mut ConnectionConfig, pair: &Pair) -> Result<()> {
         let value = pair.value.as_str();
-        let on = || {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "true" | "yes" | "mandatory" | "strict"
-            )
-        };
         match pair.norm.as_str() {
             "server" | "servername" | "datasource" | "address" | "addr" | "networkaddress"
             | "host" | "hostname" => self.address(config, value)?,
@@ -225,8 +219,8 @@ impl Native {
             "database" | "initialcatalog" | "dbname" => value.clone_into(&mut config.database),
             "userid" | "uid" | "user" | "username" => value.clone_into(&mut config.user),
             "password" | "pwd" => config.password = Some(Secret::new(value)),
-            "encrypt" => self.encrypt = on(),
-            "trustservercertificate" => self.trust = on(),
+            "encrypt" => self.encrypt = sqlserver_flag(value),
+            "trustservercertificate" => self.trust = sqlserver_flag(value) == Some(true),
             "sslmode" => self.ssl = Some(value.trim().parse()?),
             "applicationname" | "app" => config.application_name = Some(value.to_owned()),
             "connecttimeout" | "connectiontimeout" | "timeout" => {
@@ -372,6 +366,8 @@ mod tests {
         );
         let c = parse_ok("Data Source=db;Database=x;Encrypt=yes").config;
         assert_eq!(c.ssl_mode, SslMode::VerifyFull);
+        let c = parse_ok("Data Source=db;Database=x;Encrypt=False").config;
+        assert_eq!(c.ssl_mode, SslMode::Disable);
         assert_eq!(c.port, Some(1433));
         let c = parse_ok("Server=(local);Database=x").config;
         assert_eq!(c.host, "localhost");

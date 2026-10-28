@@ -8,7 +8,6 @@ use std::sync::Arc;
 use rmcp::ServiceExt;
 
 use crate::server::PlatypusServer;
-use crate::transport::LineTransport;
 use crate::{Agent, Profile};
 
 /// What `--help` prints; `{command}` is how the agent starts the server.
@@ -83,7 +82,7 @@ pub fn main(command: &str, args: impl Iterator<Item = String>) -> ExitCode {
 async fn serve() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Arc::new(Agent::new(Profile::from_env()?));
     let service = PlatypusServer::new(agent)
-        .serve(LineTransport::new(tokio::io::stdin(), tokio::io::stdout()))
+        .serve(rmcp::transport::stdio())
         .await?;
     service.waiting().await?;
     Ok(())

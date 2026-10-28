@@ -4,8 +4,9 @@
 // missing arguments, an unknown tool and method, concurrent requests, stdout carrying only
 // JSON-RPC, the server surviving garbage, and a clean exit when stdin closes.
 //
-// BUG QA3-MCP-04: a line that is not JSON gets no answer. JSON-RPC 2.0 wants a Parse error
-// (-32700, id null); the client waits for nothing and cannot tell its request was lost.
+// QA3-MCP-04 (decided): a line that is not JSON gets no answer, as in the official MCP
+// SDKs: answering garbage can start a storm of errors with a peer that echoes it
+// (modelcontextprotocol/rust-sdk#938).
 // BUG QA3-MCP-05: an unknown command-line argument (`--mcp --bogus`) is taken as
 // "serve": the server starts and waits on stdin instead of printing the usage and exiting
 // with an error, so a mistyped agent config looks like a hung server.
@@ -137,8 +138,8 @@ async function garbage(mcp) {
   mcp.writeLine("{this is not json");
   // The server stays up and answers the next request.
   assert.ok((await mcp.request("ping", undefined, 10_000)).result !== undefined, "alive after garbage");
-  const parseError = mcp.lines.find((m) => m.id === null && m.error?.code === -32700);
-  assert.ok(parseError, `a line that is not JSON gets a Parse error (-32700, id null); got ${JSON.stringify(mcp.lines.filter((m) => m.id == null))}`);
+  const unasked = mcp.lines.filter((m) => m.id == null && m.error);
+  assert.deepEqual(unasked, [], "a line that is not JSON gets no answer");
 }
 
 export default async function (_page, { dir }) {

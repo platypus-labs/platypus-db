@@ -24,9 +24,16 @@ pub fn compare(
     let in_place = keys_in_place(dialect);
     let mut keys = Keys::default();
     let mut altered = Script::default();
+    let mut sequences = Vec::new();
     for old in current {
         if let Some(w) = find(wanted, &old.name) {
-            let design = matched(dialect, w, Some(old), schema, wanted_schema);
+            let design = matched(
+                dialect,
+                w,
+                Some(old),
+                (schema, wanted_schema),
+                &mut sequences,
+            );
             add(
                 &mut altered,
                 phased(dialect, schema, Some(old), &design, Some(&mut keys))?,
@@ -45,7 +52,18 @@ pub fn compare(
     } else {
         dropped
     };
-    let later = create_new(&mut out, dialect, schema, wanted_schema, wanted, current)?;
+    let later = create_new(
+        &mut out,
+        dialect,
+        (schema, wanted_schema),
+        wanted,
+        current,
+        &mut sequences,
+    )?;
+    // First, for the tables created and the defaults set to take their values.
+    let created = missing_sequences(schema, sequences, wanted, current);
+    out.statements.splice(0..0, created.statements);
+    out.warnings.extend(created.warnings);
     add(&mut out, altered);
     out.statements.extend(later);
     out.statements.append(&mut keys.added);
@@ -104,16 +122,16 @@ fn drop_gone(
 fn create_new(
     out: &mut Script,
     dialect: Dialect,
-    schema: &str,
-    wanted_schema: &str,
+    (schema, wanted_schema): (&str, &str),
     wanted: &[TableDesign],
     current: &[TableDesign],
+    sequences: &mut Vec<String>,
 ) -> Result<Vec<String>, String> {
     let in_place = keys_in_place(dialect);
     let mut later = Vec::new();
     let mut new = Vec::new();
     for w in wanted.iter().filter(|w| find(current, &w.name).is_none()) {
-        let mut t = matched(dialect, w, None, schema, wanted_schema);
+        let mut t = matched(dialect, w, None, (schema, wanted_schema), sequences);
         if in_place {
             let (now, after): (Vec<_>, Vec<_>) = std::mem::take(&mut t.foreign_keys)
                 .into_iter()
@@ -164,13 +182,14 @@ fn system_named(dialect: Dialect, name: &str) -> bool {
 /// `wanted` as a design of the table `old` of `schema`: its parts named like those of `old`
 /// keep them, and its foreign keys within `wanted_schema` point into `schema`. A part the
 /// database named matches the part of `old` that is the same; a new one gets no name, for
-/// the database to give it its own.
+/// the database to give it its own. The sequences its defaults take values from in `schema`
+/// are added to `sequences`.
 fn matched(
     dialect: Dialect,
     wanted: &TableDesign,
     old: Option<&TableDesign>,
-    schema: &str,
-    wanted_schema: &str,
+    (schema, wanted_schema): (&str, &str),
+    sequences: &mut Vec<String>,
 ) -> TableDesign {
     let system = |name: &str| system_named(dialect, name);
     let mut t = wanted.clone();
@@ -178,7 +197,13 @@ fn matched(
         let before = old.and_then(|o| o.columns.iter().find(|o| o.name == c.name));
         c.original = before.and_then(|o| o.original.clone());
         if dialect == Dialect::Postgres {
-            pg_sequence_default(c, &wanted.name, before, schema, wanted_schema);
+            sequences.extend(pg_sequence_default(
+                c,
+                &wanted.name,
+                before,
+                schema,
+                wanted_schema,
+            ));
         }
     }
     for i in &mut t.indexes {
@@ -229,23 +254,22 @@ fn matched(
 /// PostgreSQL's `nextval('schema.sequence'::regclass)` default of `column` of `table`, made
 /// to take its values in `schema`: the default of the column that is there already, the
 /// `serial` type of a new column whose sequence is its own (`<table>_<column>_seq`), or the
-/// sequence of the same name in `schema`.
+/// sequence of the same name in `schema`, returned as the one the default needs there. A
+/// sequence named without its schema is one of `wanted_schema` (the one read first).
 fn pg_sequence_default(
     column: &mut ColumnDesign,
     table: &str,
     before: Option<&ColumnDesign>,
     schema: &str,
     wanted_schema: &str,
-) {
-    let Some(sequence) = column.default.as_deref().and_then(nextval) else {
-        return;
-    };
+) -> Option<String> {
+    let sequence = column.default.as_deref().and_then(nextval)?;
     if let Some(default) = before
         .and_then(|b| b.default.as_ref())
         .filter(|d| nextval(d).is_some())
     {
         column.default = Some(default.clone());
-        return;
+        return None;
     }
     let serial = match column.data_type.trim() {
         "integer" => Some("serial"),
@@ -258,16 +282,59 @@ fn pg_sequence_default(
         Some(serial) if own && before.is_none() => {
             serial.clone_into(&mut column.data_type);
             column.default = None;
+            None
         }
-        _ if sequence.schema.as_deref() == Some(wanted_schema) => {
+        _ if sequence
+            .schema
+            .as_deref()
+            .is_none_or(|s| s == wanted_schema) =>
+        {
             let name = Dialect::Postgres.qualified(Some(schema), &sequence.name);
             column.default = Some(format!(
                 "nextval({}::regclass)",
                 Dialect::Postgres.quote_literal(&name)
             ));
+            Some(sequence.name)
         }
-        _ => {}
+        _ => None,
     }
+}
+
+/// `CREATE SEQUENCE` for the `sequences` of `schema` no default of the tables `current`
+/// takes values from, which may not be there.
+fn missing_sequences(
+    schema: &str,
+    mut sequences: Vec<String>,
+    wanted: &[TableDesign],
+    current: &[TableDesign],
+) -> Script {
+    // Only the columns the script keeps: dropping a column drops the sequence it owns. A
+    // sequence named without its schema may be of another one on the search path.
+    let kept = |t: &TableDesign, c: &ColumnDesign| {
+        find(wanted, &t.name).is_some_and(|w| w.columns.iter().any(|w| w.name == c.name))
+    };
+    let there: Vec<Sequence> = current
+        .iter()
+        .flat_map(|t| t.columns.iter().filter(move |c| kept(t, c)))
+        .filter_map(|c| c.default.as_deref().and_then(nextval))
+        .filter(|s| s.schema.as_deref() == Some(schema))
+        .collect();
+    sequences.sort();
+    sequences.dedup();
+    let mut out = Script::default();
+    for name in sequences {
+        if there.iter().any(|s| s.name == name) {
+            continue;
+        }
+        let sequence = Dialect::Postgres.qualified(Some(schema), &name);
+        out.statements
+            .push(format!("CREATE SEQUENCE IF NOT EXISTS {sequence}"));
+        out.warnings.push(format!(
+            "Creates the sequence {sequence}, which starts at 1: if its columns have values \
+             already, move it past them (setval)."
+        ));
+    }
+    out
 }
 
 /// The sequence a `nextval('..'::regclass)` default takes its values from.
@@ -757,9 +824,72 @@ mod tests {
         let mut other = wanted.clone();
         other[0].columns[0].default = Some("nextval('qa3s_src.shared_seq'::regclass)".to_owned());
         let moved = compare(Dialect::Postgres, "qa3s_dst", "qa3s_src", &other, &[]).unwrap();
+        assert_eq!(
+            moved.statements[0],
+            "CREATE SEQUENCE IF NOT EXISTS qa3s_dst.shared_seq"
+        );
         assert!(
-            moved.statements[0].contains("nextval('qa3s_dst.shared_seq'::regclass)"),
+            moved.statements[1].contains("nextval('qa3s_dst.shared_seq'::regclass)"),
             "{moved:?}"
+        );
+    }
+
+    #[test]
+    fn postgres_defaults_get_a_sequence_where_there_is_none() {
+        let with_default = |default: Option<&str>| {
+            table(
+                "customers",
+                vec![ColumnDesign {
+                    default: default.map(str::to_owned),
+                    nullable: false,
+                    ..column("id", "integer")
+                }],
+                &[],
+                "dst",
+            )
+        };
+        // An existing column without a default, the sequence not its own and unqualified.
+        let wanted = [with_default(Some("nextval('shared_seq'::regclass)"))];
+        let plain = [with_default(None)];
+        let script = compare(Dialect::Postgres, "dst", "src", &wanted, &plain).unwrap();
+        assert_eq!(
+            script.statements,
+            [
+                "CREATE SEQUENCE IF NOT EXISTS dst.shared_seq",
+                "ALTER TABLE dst.customers ALTER COLUMN id SET DEFAULT nextval('dst.shared_seq'::regclass)",
+            ]
+        );
+        assert!(
+            script.warnings[0]
+                .starts_with("Creates the sequence dst.shared_seq, which starts at 1"),
+            "{:?}",
+            script.warnings
+        );
+        // Another table there takes its values from it already.
+        let mut there = plain.to_vec();
+        there.push(table(
+            "orders",
+            vec![ColumnDesign {
+                default: Some("nextval('dst.shared_seq'::regclass)".to_owned()),
+                ..column("id", "integer")
+            }],
+            &[],
+            "dst",
+        ));
+        // Dropped by the script, that table takes the sequence it owns with it.
+        let script = compare(Dialect::Postgres, "dst", "src", &wanted, &there).unwrap();
+        assert_eq!(
+            script.statements[0],
+            "CREATE SEQUENCE IF NOT EXISTS dst.shared_seq"
+        );
+        let mut wanted = wanted.to_vec();
+        wanted.push(there[1].clone());
+        let script = compare(Dialect::Postgres, "dst", "src", &wanted, &there).unwrap();
+        assert_eq!(
+            script.statements,
+            [
+                "ALTER TABLE dst.customers ALTER COLUMN id SET DEFAULT nextval('dst.shared_seq'::regclass)"
+            ]
         );
     }
 
