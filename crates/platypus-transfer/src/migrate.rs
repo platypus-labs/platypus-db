@@ -1179,43 +1179,29 @@ fn requalify(ddl: &str, dialect: Dialect, from: &str, to: &str) -> String {
     out
 }
 
-/// Whether the parentheses of `text` close in order, outside its string literals.
-fn balanced(text: &str) -> bool {
-    let mut depth = 0i32;
-    let mut quoted = false;
-    for c in text.chars() {
-        match c {
-            '\'' => quoted = !quoted,
-            '(' if !quoted => depth += 1,
-            ')' if !quoted => {
-                depth -= 1;
-                if depth < 0 {
-                    return false;
-                }
-            }
-            _ => {}
-        }
-    }
-    depth == 0
-}
-
 /// A default as MySQL takes it: an expression in parentheses (8.0.13+), and a TEXT, BLOB or
-/// JSON column's only this way; a literal or `CURRENT_TIMESTAMP` bare, as MySQL 5.7 takes
-/// them too.
+/// JSON column's only this way; a literal or a time column's `CURRENT_TIMESTAMP` bare, as
+/// MySQL 5.7 takes them too. `value` comes from `portable_default`, without parentheses.
 fn mysql_default(value: &str, data_type: &str) -> String {
-    // A source may write its default in parentheses already: `('new')`.
-    let mut value = value.trim();
-    while let Some(inner) = value.strip_prefix('(').and_then(|v| v.strip_suffix(')')) {
-        if !balanced(inner) {
-            break;
-        }
-        value = inner.trim();
+    let lower = data_type.to_ascii_lowercase();
+    let large = ["text", "blob", "json"].iter().any(|t| lower.contains(t));
+    let literal = value.starts_with('\'')
+        || value.parse::<f64>().is_ok()
+        || value.eq_ignore_ascii_case("TRUE")
+        || value.eq_ignore_ascii_case("FALSE");
+    let time = lower.starts_with("datetime") || lower.starts_with("timestamp");
+    if time && value.eq_ignore_ascii_case("CURRENT_TIMESTAMP") {
+        // With the column's fraction digits: DATETIME(6) takes only CURRENT_TIMESTAMP(6).
+        let digits = lower
+            .split_once('(')
+            .and_then(|(_, rest)| rest.strip_suffix(')'))
+            .filter(|d| d.chars().all(|c| c.is_ascii_digit()) && *d != "0");
+        return digits.map_or_else(
+            || "CURRENT_TIMESTAMP".to_owned(),
+            |d| format!("CURRENT_TIMESTAMP({d})"),
+        );
     }
-    let upper = data_type.to_ascii_uppercase();
-    let large = ["TEXT", "BLOB", "JSON"].iter().any(|t| upper.contains(t));
-    let literal = value.starts_with('\'') || value.parse::<f64>().is_ok();
-    let now = value.to_ascii_uppercase().starts_with("CURRENT_TIMESTAMP");
-    if !large && (literal || now) {
+    if !large && literal {
         value.to_owned()
     } else {
         format!("({value})")
@@ -1236,8 +1222,16 @@ mod tests {
         );
         assert_eq!(mysql_default("'x'", "text"), "('x')");
         assert_eq!(mysql_default("uuid()", "varchar(36)"), "(uuid())");
-        assert_eq!(mysql_default("('new')", "varchar(20)"), "'new'");
-        assert_eq!(mysql_default("(1) + (2)", "int"), "((1) + (2))");
+        assert_eq!(
+            mysql_default("CURRENT_TIMESTAMP", "DATETIME(6)"),
+            "CURRENT_TIMESTAMP(6)"
+        );
+        assert_eq!(
+            mysql_default("CURRENT_TIMESTAMP", "date"),
+            "(CURRENT_TIMESTAMP)"
+        );
+        assert_eq!(mysql_default("FALSE", "tinyint(1)"), "FALSE");
+        assert_eq!(mysql_default("CURRENT_DATE", "date"), "(CURRENT_DATE)");
     }
 
     #[test]

@@ -628,6 +628,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_time_columns_current_timestamp_is_an_expression() {
+        assert!(current_time("CURRENT_TIMESTAMP", "datetime"));
+        assert!(current_time("current_timestamp(6)", "TIMESTAMP(6)"));
+        assert!(current_time("now()", "datetime"));
+        assert!(
+            !current_time("CURRENT_TIMESTAMP", "varchar(20)"),
+            "text, as written"
+        );
+        assert!(!current_time("2026-01-01 00:00:00", "datetime"));
+    }
+
+    #[test]
     fn check_conditions_lose_their_keyword_and_outer_parentheses() {
         assert_eq!(check_condition("CHECK ((total >= 0))"), "(total >= 0)");
         assert_eq!(check_condition("check (a > 0)"), "a > 0");
