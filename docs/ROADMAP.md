@@ -472,6 +472,7 @@ indici parziali né le colonne INCLUDE, e lo dice nel messaggio; i diagrammi viv
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | ✅ Diagramma ER in sola lettura dalle FK, layout automatico, export PNG/SVG | P2 | D |
+| 🆕 Diagramma ER a schermo intero e pulsante **Aggiorna** che rilegge lo schema (tabelle nuove, colonne e FK cambiate) tenendo le posizioni già scelte | P3 | N |
 | ✅ Diagrammi personalizzati: si scelgono le tabelle, con note | P3 | D |
 | ERD in modifica: si disegna lo schema e si genera il DDL | P3 | D+ |
 | ✅ **Editor tabella grafico**: crea e modifica colonne, indici, vincoli e FK, con anteprima dell'ALTER | P1 | D |
