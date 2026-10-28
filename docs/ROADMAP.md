@@ -5,7 +5,8 @@ possono portare avanti in parallelo. Ogni gruppo ha un'area di codice propria, c
 merge restano rari.
 
 Fonti: la documentazione e il confronto edizioni di DBeaver (Community, Lite, Enterprise, Ultimate),
-il backlog v0.2 di [MVP_PLAN.md](MVP_PLAN.md) e le idee che DBeaver non ha.
+il backlog v0.2 di [MVP_PLAN.md](MVP_PLAN.md), le idee che DBeaver non ha e, dal 28 ottobre 2026,
+il confronto con [Tabularis](https://tabularis.dev).
 
 **Priorità**
 - **P1**: serve per usare PlatypusDB al posto di DBeaver ogni giorno.
@@ -19,7 +20,7 @@ Nella colonna **Origine**:
 
 Nella prima colonna delle tabelle:
 - ✅: fatto.
-- 🆕: aggiunto il 25 ottobre 2026, ancora da fare.
+- 🆕: aggiunto il 25 o il 28 ottobre 2026, ancora da fare.
 
 ---
 
@@ -96,14 +97,14 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 | C — Navigator e oggetti | ✅ completato |
 | D — Editor SQL | ✅ fatto (P1, P3; P2 in parte) |
 | E — Explain e performance | ✅ fatto (P1; P2 e P3 in parte) |
-| F — Connettività e credenziali | ✅ fatto (P1, P2) |
-| G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
+| F — Connettività e credenziali | ✅ fatto (P1; P2 in parte) |
+| G — Nuovi driver | ✅ fatto (P1; P2 e P3 in parte) |
 | H — Import, export e trasferimento | ✅ fatto (P1; P2 e P3 in parte) |
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
 | J — Amministrazione del server | libero |
-| K — Shell ed ergonomia | ✅ fatto (P1, P2) |
+| K — Shell ed ergonomia | ✅ fatto (P1; P2 in parte) |
 | L — Sicurezza operativa | ✅ fatto (P1, P2) |
-| M — Analisi dei dati | ✅ fatto (P2) |
+| M — Analisi dei dati | ✅ fatto (P2 in parte) |
 | N — Accesso per agenti (MCP) | ✅ fatto (P1) |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
@@ -153,7 +154,7 @@ rapidi, vista record, layout delle colonne salvato per tabella, aggregati della 
 navigazione delle FK e pannello References, pannello Grouping, formati di visualizzazione,
 pannelli Metadata e Calc, confronto di due righe, refresh automatico fuori dalla cronologia,
 viewer GIS su piano cartesiano senza mappa di sfondo). Da fare: formattazione condizionale,
-colonne virtuali calcolate.
+colonne virtuali calcolate, JSON riconosciuto nelle colonne di testo.
 
 **Area:** `apps/desktop/src/grid/features/`, `apps/desktop/src/panels/`
 **Dipende da:** 0.4
@@ -177,6 +178,7 @@ colonne virtuali calcolate.
 | ✅ Confronto di due righe selezionate | P3 | N |
 | 🆕 **Formattazione condizionale**: colore di cella o riga da regole (valore, intervallo, NULL, scala di colore sui numeri), salvata per tabella | P2 | D |
 | 🆕 Colonne virtuali calcolate: espressione sulle colonne della riga, solo in visualizzazione | P3 | D |
+| 🆕 **JSON nelle colonne di testo**: un TEXT o VARCHAR che contiene JSON valido si apre formattato nel pannello valori, con un'opzione per connessione | P3 | D |
 
 ---
 
@@ -238,7 +240,7 @@ colonne virtuali calcolate.
 **Area:** `apps/desktop/src/explain/` (tab `explain`), `explain` in ogni driver, `commands/explain.rs`
 **Dipende da:** 0.3, 0.6
 
-**Stato: P1 completate, P2 e P3 in parte** (da fare: confronto di due piani, piani incollati). Ogni driver legge il proprio piano in un albero di `PlanNode` (`platypus-core/src/explain.rs`): PostgreSQL `EXPLAIN (FORMAT JSON)`, MySQL `FORMAT=TREE` ed `EXPLAIN ANALYZE` (il JSON di ANALYZE arriva solo con la 8.3), MariaDB `EXPLAIN`/`ANALYZE FORMAT=JSON`, SQLite `EXPLAIN QUERY PLAN` (senza costi né ANALYZE). Con ANALYZE lo statement gira in una transazione annullata (un savepoint dentro una transazione aperta), sulla sessione propria del tab `explain`. Il tab ha le viste albero, testo e tabella; si apre con `Ctrl+Shift+E` o con Explain analyze dal menu dell'editor, che applica i controlli di una normale esecuzione. `Explain::new` calcola per ogni passo costo e tempo propri, senza i figli (`self_cost`, `self_ms`): la heatmap colora i passi per la loro quota e segnala le stime di righe sbagliate di 10 volte o più. Il query manager (`Ctrl+Shift+M`) legge un log in memoria (`apps/desktop/src-tauri/src/querylog.rs`, le ultime 2000 richieste): ogni sessione ed export avvolge la connessione in `Logged`, che registra statement, richieste di metadati e comandi di transazione con durata, righe ed esito. P3: i driver segnano le scansioni complete con filtro (`PlanNode::full_scan`) e `Explain::new` suggerisce un indice per quelle che leggono almeno 10.000 righe (su PostgreSQL solo con ANALYZE: il piano semplice stima solo le righe tenute); ogni voce del log ha il tempo fino alla prima risposta e il round trip dell'ultimo keep-alive, che non entra più nel log; la soglia delle query lente è l'impostazione `performance.slow_query_seconds`.
+**Stato: P1 completate, P2 e P3 in parte** (da fare: confronto di due piani, piani incollati, vista a grafo). Ogni driver legge il proprio piano in un albero di `PlanNode` (`platypus-core/src/explain.rs`): PostgreSQL `EXPLAIN (FORMAT JSON)`, MySQL `FORMAT=TREE` ed `EXPLAIN ANALYZE` (il JSON di ANALYZE arriva solo con la 8.3), MariaDB `EXPLAIN`/`ANALYZE FORMAT=JSON`, SQLite `EXPLAIN QUERY PLAN` (senza costi né ANALYZE). Con ANALYZE lo statement gira in una transazione annullata (un savepoint dentro una transazione aperta), sulla sessione propria del tab `explain`. Il tab ha le viste albero, testo e tabella; si apre con `Ctrl+Shift+E` o con Explain analyze dal menu dell'editor, che applica i controlli di una normale esecuzione. `Explain::new` calcola per ogni passo costo e tempo propri, senza i figli (`self_cost`, `self_ms`): la heatmap colora i passi per la loro quota e segnala le stime di righe sbagliate di 10 volte o più. Il query manager (`Ctrl+Shift+M`) legge un log in memoria (`apps/desktop/src-tauri/src/querylog.rs`, le ultime 2000 richieste): ogni sessione ed export avvolge la connessione in `Logged`, che registra statement, richieste di metadati e comandi di transazione con durata, righe ed esito. P3: i driver segnano le scansioni complete con filtro (`PlanNode::full_scan`) e `Explain::new` suggerisce un indice per quelle che leggono almeno 10.000 righe (su PostgreSQL solo con ANALYZE: il piano semplice stima solo le righe tenute); ogni voce del log ha il tempo fino alla prima risposta e il round trip dell'ultimo keep-alive, che non entra più nel log; la soglia delle query lente è l'impostazione `performance.slow_query_seconds`.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
@@ -250,13 +252,14 @@ colonne virtuali calcolate.
 | ✅ **Query trace**: tempi di rete, server e fetch per ogni esecuzione | P3 | D+ |
 | ✅ Avviso per query lente, oltre una soglia configurabile | P3 | N |
 | 🆕 **Confronto di due piani** affiancati (prima e dopo un indice o una riscrittura), con le differenze di costo e tempo per nodo | P2 | N |
-| 🆕 Piano incollato da testo o JSON (es. da un log del server o da un collega), aperto nel tab `explain` senza connessione | P3 | N |
+| 🆕 Piano incollato da testo o JSON, o aperto da file (es. da un log del server o da un collega), nel tab `explain` senza connessione | P2 | N |
+| 🆕 **Vista a grafo** del piano: nodi collegati con costo, righe e tempo, la stessa heatmap delle altre viste | P2 | D+ |
 
 ---
 
 ### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 fatti, P2 in parte
 
-**Stato: P1 completati, P2 in parte** (da fare: variabili d'ambiente nei campi) (tunnel SSH con password, chiave, agent e jump host; tipi
+**Stato: P1 completati, P2 in parte** (da fare: variabili d'ambiente nei campi, modalità pooler) (tunnel SSH con password, chiave, agent e jump host; tipi
 Dev/Test/Prod con colore e commit manuale in Prod; import da DBeaver, DataGrip, pgAdmin e
 `pg_service.conf`, con cartelle e progetti da un export `.dbp` di DBeaver; cartelle di
 connessioni nei progetti e cartelle di progetti nella barra; profili di rete; schema, fuso orario e query di bootstrap dopo ogni
@@ -290,6 +293,7 @@ prima di scrivere in Prod è nel gruppo L. Restano i P2 nuovi e i P3.
 | 🆕 Variabili d'ambiente e file `.env` nei campi della connessione (`${env:DB_PASSWORD}`) | P2 | D |
 | 🆕 Credenziali da gestori esterni: 1Password CLI, Bitwarden, HashiCorp Vault, AWS Secrets Manager | P3 | D+ |
 | 🆕 Test di tutte le connessioni di un progetto in una volta, con l'esito per ognuna | P3 | N |
+| 🆕 **Modalità pooler** per PostgreSQL (PgBouncer, Supavisor, pooler di Neon) in transaction o session mode: in transaction mode niente prepared statement con nome, che il pooler rompe; proposta di default nei profili Supabase e Neon | P2 | N |
 
 ---
 
@@ -299,10 +303,10 @@ prima di scrivere in Prod è nel gruppo L. Restano i P2 nuovi e i P3.
 parallelizzabile: **una persona per driver**.
 **Dipende da:** 0.5, 0.6
 
-**Stato: P1 e P2 completate, P3 in parte** (P2: ClickHouse, i server con protocollo PostgreSQL,
+**Stato: P1 completate, P2 e P3 in parte** (P2: ClickHouse, i server con protocollo PostgreSQL,
 ADBC con Snowflake, BigQuery, Databricks e Trino, driver scaricati al primo uso, ODBC con Db2 e
 ODBC generico; P3: libSQL/Turso, MongoDB, Oracle nativo con Instant Client scaricato al primo uso.
-Da fare: aggiornamento automatico dei driver, Redis, Elasticsearch/OpenSearch, Cassandra/ScyllaDB). SQL Server usa `tiberius` copiato
+Da fare: Redis (P2), aggiornamento automatico dei driver, Elasticsearch/OpenSearch, Cassandra/ScyllaDB). SQL Server usa `tiberius` copiato
 in `vendor/` con le patch per la negoziazione della cifratura; il dialetto Transact-SQL scrive `TOP (n)` e `[nomi]`,
 e la transazione segue `@@TRANCOUNT`. DuckDB è incorporato come SQLite, con risultati Arrow nativi;
 senza l'estensione ICU non ha fuso orario di sessione. Una nuova connessione parte dalla scelta del
@@ -364,7 +368,8 @@ ADBC. Conformance ODBC su SQL Server col driver `SQL Server` di Windows; Db2 sen
 | ✅ ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | ADBC (Snowflake, BigQuery, Databricks, Trino, ADBC generico; driver scaricati dal registro dbc). Oracle con driver nativo (crate `oracle`, Instant Client scaricato da Oracle al primo uso, cancel con break, metadati da `ALL_*`). ODBC (`platypus-driver-odbc`, solo Windows): Db2 col driver IBM installato al primo uso (registrazione con UAC), ODBC generico con DSN o connection string |
 | Aggiornamento automatico dei driver di tutti i database (scaricati ADBC/ODBC e nativi), con verifica che i dialetti restino compatibili; scelta di versioni precedenti di un driver | P3 | Scaricati: registro con più versioni. Nativi: compilati nell'app, si aggiornano con l'app; versioni vecchie = più versioni dello stesso crate o driver caricabili a parte. Test di compatibilità per versione |
 | ✅ Oracle nativo | P3 | Crate `oracle` con Instant Client scaricato al primo uso (Oracle Free Use Terms) |
-| Redis, ✅ **MongoDB** | P3 | MongoDB: sintassi mongosh, griglia dei campi + albero del documento; Redis da fare |
+| ✅ **MongoDB** | P3 | Sintassi mongosh, griglia dei campi + albero del documento |
+| **Redis** | P2 | Il NoSQL più richiesto: chiavi per tipo (string, hash, list, set, zset, JSON) come tabelle virtuali, comandi nell'editor, modifica dei valori; stesso schema di MongoDB (griglia + albero) |
 | ✅ libSQL/Turso; Cloudflare D1 valutato, non fatto | P3 | Varianti di SQLite |
 | 🆕 Elasticsearch/OpenSearch, Cassandra/ScyllaDB | P3 | Query DSL e CQL; stesso schema di MongoDB (griglia + albero) |
 
@@ -432,6 +437,7 @@ schema copiato; nelle viste si riscrive ogni nome uguale allo schema seguito da 
 | ✅ Incolla CSV dagli appunti per creare subito una tabella | P2 | N |
 | 🆕 **Caricamento bulk nativo** per import e trasferimento: `COPY` in PostgreSQL, `LOAD DATA LOCAL` in MySQL, bulk copy in SQL Server, appender in DuckDB; INSERT a blocchi come ripiego | P2 | D |
 | 🆕 Profili di import, export e trasferimento salvati e riutilizzabili (anche dal task scheduler del gruppo J) | P3 | D |
+| 🆕 **Esegui file SQL** dal navigator (`.sql` o `.sql.gz`), con avanzamento, annullamento e una sola transazione dove il database annulla il DDL; **dump SQL** di uno schema o di un database in un solo file (DDL e dati), che si riapre con lo stesso comando | P2 | D |
 
 ---
 
@@ -497,7 +503,7 @@ indici parziali né le colonne INCLUDE, e lo dice nel messaggio; i diagrammi viv
 | Manutenzione: VACUUM, ANALYZE, REINDEX, OPTIMIZE e CHECK TABLE dal menu | P2 | D+ |
 | Utenti, ruoli e permessi (GRANT/REVOKE da form) | P3 | D |
 | Dashboard del server: connessioni, TPS, cache hit, dimensioni, replica | P3 | D+ |
-| **Task scheduler**: script, export e backup pianificati | P3 | D+ |
+| **Task scheduler**: script, export e backup pianificati. Ogni piano ha ora e fuso orario, cartella, copie da tenere e un nuovo tentativo se fallisce; si vedono l'ultima esecuzione, il suo esito e la prossima, con "Esegui ora". Il backup è il dump SQL del gruppo H, quindi vale per tutti i driver senza `pg_dump` | P2 | D+ |
 | Debugger PL/pgSQL | P3 | D+ |
 | 🆕 **Query più costose del server**: `pg_stat_statements`, `performance_schema`, Query Store di SQL Server, con apertura nell'editor e nel tab `explain` | P2 | N |
 | 🆕 Statistiche di tabelle e indici: indici mai usati, bloat, tabelle con molte scansioni complete, ultimo VACUUM/ANALYZE | P2 | N |
@@ -505,9 +511,9 @@ indici parziali né le colonne INCLUDE, e lo dice nel messaggio; i diagrammi viv
 
 ---
 
-### Gruppo K — Shell dell'applicazione ed ergonomia — ✅ P1 e P2 fatti
+### Gruppo K — Shell dell'applicazione ed ergonomia — ✅ P1 fatti, P2 in parte
 
-**Stato: P1 e P2 completati** (rotella sui tab, command palette con ricerca fuzzy su azioni,
+**Stato: P1 completati, P2 in parte** (da fare: import ed export dei temi) (rotella sui tab, command palette con ricerca fuzzy su azioni,
 connessioni, tabelle e query recenti, riapertura del tab chiuso, pagina Impostazioni con
 sezioni, scorciatoie personalizzabili, barra degli strumenti configurabile).
 Fatta anche la **nuova grafica**: temi Platypus Dark e Light, font Inter e JetBrains Mono
@@ -565,6 +571,7 @@ gap della colonna, avvisi, azioni a destra con la principale per ultima) e i tok
 | ✅ Notifica di sistema alla fine di una query lunga, quando la finestra non è in primo piano | P2 | D |
 | ✅ Zoom dell'interfaccia e dimensione del font di editor e griglia (Ctrl+= / Ctrl+-) | P2 | D |
 | 🆕 Tab staccato in una finestra separata (secondo monitor) | P3 | D |
+| 🆕 **Import ed export dei temi** come file JSON (colori dell'app e dell'editor, chiaro e scuro), con anteprima prima di applicarli; primo passo verso i mod | P2 | N |
 
 ---
 
@@ -603,7 +610,7 @@ statement com'è scritto e la barra di stato dice "LIMIT automatico". Restano i 
 
 ### Gruppo M — Analisi dei dati
 
-**Stato: P2 completate** (grafici dai risultati con export PNG e SVG e configurazione salvata
+**Stato: P2 in parte** (da fare: notebook) (grafici dai risultati con export PNG e SVG e configurazione salvata
 nel tab, statistiche della colonna al passaggio del mouse, SQL sui risultati con un DuckDB in
 memoria, diff con l'esecuzione precedente). Il calcolo è nel crate `platypus-local`, sulle
 righe Arrow del lavoro della query (`jobs.rs`); il grafico è un modulo SVG proprio
@@ -628,7 +635,7 @@ massimo 10.000 righe mostrate; MongoDB senza SQL sui risultati né diff. Le P3 r
 | ✅ Diff tra due result set (stessa query prima e dopo) | P2 | N |
 | Snapshot dei risultati salvati e consultabili offline | P3 | N |
 | Pivot dei risultati | P3 | N |
-| Notebook: celle SQL, markdown e grafici, esportabili | P3 | N |
+| **Notebook**: celle SQL e Markdown, grafici e piano per cella, parametri comuni, export HTML. Una cella legge i risultati già caricati delle altre dal DuckDB dell'SQL sui risultati (`c1`, `c2`, …), senza rieseguirle sul server | P2 | N |
 | Dashboard personalizzate dalle query salvate | P3 | D+ |
 | 🆕 Profilo di una tabella intera: per colonna distribuzione, distinti, pattern (email, date, numeri come testo), outlier | P3 | N |
 
@@ -679,7 +686,9 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | ✅ CLI per agenti senza MCP: `platypus-cli --connection <nome>` dalle connessioni salvate, output JSON stabile e documentato | P1 | N |
 | `explain` e campione di righe (`sample_rows`) come tool dedicati, con i limiti di `run_query` | P2 | D+ |
 | **Ponte con l'app aperta** (MCP su HTTP locale con token): l'agente vede le sessioni aperte e l'indicatore "agente collegato" compare nella barra | P2 | N |
-| Conferma nell'app per le scritture: dialog con lo statement e le righe stimate (riusa le guardie del gruppo L), con "consenti per questa sessione" | P2 | N |
+| Conferma nell'app per le scritture: dialog con lo statement, le righe stimate e il piano EXPLAIN (riusa le guardie del gruppo L), con "consenti per questa sessione". Il server `--mcp` non ha finestra: serve il ponte con l'app aperta, o una finestra di conferma propria | P2 | N |
+| 🆕 **Configurazione degli agenti in un clic**: la pagina "Agents" scrive la voce del server nei file di Claude Desktop, Cursor, Windsurf e Codex (o lancia `claude mcp add`) e mostra in quali client è già presente | P2 | N |
+| 🆕 **Registro delle chiamate degli agenti**: ogni chiamata a un tool (non solo le query), con agente, connessione, argomenti, durata ed esito, raggruppata per sessione, con filtro ed export CSV | P2 | N |
 | Tool `propose_sql`: apre la query proposta dall'agente in un tab dell'editor, da rivedere ed eseguire a mano | P2 | N |
 | Contesto dell'utente su consenso: testo dell'editor, selezione, risultato corrente della griglia | P3 | N |
 | Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
