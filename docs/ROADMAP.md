@@ -266,11 +266,15 @@ colonne virtuali calcolate, JSON riconosciuto nelle colonne di testo.
 sostituisce `${env:NOME}` (`$${` per scriverlo) in host, database, utente, password,
 opzioni, certificati e tunnel SSH, cercando prima nell'ambiente del processo e poi nel file
 `.env` dell'opzione `env_file`; si applica alla connessione (app, server MCP, CLI), mentre lo
-store e *Copia come URL* tengono il riferimento; un host `${env:…}` si controlla dopo la
-sostituzione. Modalità pooler: opzione `pooler` = `transaction` (o `?pgbouncer=true`
+store e *Copia come URL* tengono il riferimento; un host `${env:…}` si controlla al salvataggio
+con un segnaposto e di nuovo dopo la sostituzione. Una password si legge dall'ambiente solo
+se è tutta un riferimento (`${env:PW}`): altrimenti resta com'è scritta. Il file `.env` va
+indicato con un percorso assoluto o che inizia con `~`. Modalità pooler: opzione `pooler` = `transaction` (o `?pgbouncer=true`
 nell'URL); in autocommit il driver PostgreSQL descrive lo statement in una transazione sua
 (`BEGIN`/`ROLLBACK`) e lo esegue senza nome (`query_typed_raw`, `execute_typed`), e i nomi
-dei tipi si leggono con `query_typed`; in una transazione aperta resta tutto com'era. Il
+dei tipi si leggono con `query_typed`; in una transazione aperta resta tutto com'era.
+`vendor/tokio-postgres` (patch in `[patch.crates-io]`) svuota con la cache dei tipi anche gli
+statement con nome che li cercano, che il pooler perde. Il
 dialogo propone la modalità per il pooler di Supabase sulla 6543 e per gli host `-pooler` di
 Neon. `docker/compose.yml` ha PgBouncer (profilo `pooler`, porta 56432) in transaction mode
 con `DISCARD ALL` dopo ogni transazione. Prima: (tunnel SSH con password, chiave, agent e jump host; tipi
@@ -282,7 +286,7 @@ con file cifrato; certificati client; latenza, keep-alive e riconnessione; conne
 URL JDBC o stringa ADO.NET/ODBC incollata, con `ConnectionConfig::parse_any` in
 `platypus-core`, e *Copia come URL* senza password). Il driver di una connessione nuova si
 sceglie solo nel picker: il form non lo cambia. La conferma
-prima di scrivere in Prod è nel gruppo L. Restano i P2 nuovi e i P3.
+prima di scrivere in Prod è nel gruppo L. Restano i P3.
 
 **Area:** nuovo crate `platypus-net`, `platypus-store`, `apps/desktop/src/connections/` (`ConnectionDialog.tsx`)
 **Dipende da:** 0.7
