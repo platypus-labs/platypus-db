@@ -8,6 +8,7 @@ import { loadSettings } from "./settings";
 import { appMessage } from "./storeErrors";
 import { startModalA11y } from "./ui/modalA11y";
 import { startErrorLog } from "./diagnostics/Diagnostics";
+import { startAgentProposals } from "./agents/proposals";
 import "./styles/index.css";
 
 paintCached();
@@ -18,6 +19,7 @@ translateAppMessages(appMessage);
 // Settings are a local file read: waiting for them avoids rendering defaults first.
 void loadSettings().then(() => {
   startAppearance();
+  startAgentProposals();
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <App />

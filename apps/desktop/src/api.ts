@@ -456,6 +456,16 @@ export interface AgentClient {
   snippet: string;
 }
 
+/** SQL an agent proposed, to open in an editor tab. */
+export interface AgentProposal {
+  id: number;
+  agent: string;
+  connection_id: string;
+  title: string | null;
+  sql: string;
+  created_at: number;
+}
+
 export interface InstalledClient {
   path: string;
   backup: string | null;
@@ -1260,6 +1270,7 @@ export const api = {
   agentSessions: (limit: number) => invoke<AgentSession[]>("agent_sessions", { limit }),
   agentCallsExport: (query: AgentCallQuery) => invoke<string>("agent_calls_export", { query }),
   clearAgentCalls: () => invoke<void>("clear_agent_calls"),
+  takeAgentProposals: () => invoke<AgentProposal[]>("take_agent_proposals"),
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
   defaultConnection: (driver: DriverKind) =>
     invoke<SavedConnection>("default_connection", { driver }),
