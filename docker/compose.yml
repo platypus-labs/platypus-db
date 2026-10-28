@@ -28,6 +28,20 @@ services:
       timeout: 3s
       retries: 60
 
+  # The PostgreSQL above behind PgBouncer in transaction mode, on 56432: the driver's pooler
+  # mode (crates/platypus-driver-pg/tests/pooler.rs).
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.26.1-p0
+    profiles: [pooler]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "56432:5432"
+    volumes:
+      - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+
   mysql:
     image: mysql:8.4
     # Binary logging is on by default; without this only SUPER may create triggers and
