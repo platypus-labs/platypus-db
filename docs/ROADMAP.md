@@ -82,6 +82,25 @@ Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i
 
 ## 2. Gruppi di lavoro
 
+### Correzioni aperte
+
+Problemi trovati dalla code review del terzo giro di test (merge `53903bd`), non ancora corretti.
+Chi inizia un'attività li corregge prima di prendere un gruppo (branch `fix-review-qa3`), poi
+toglie da qui le righe fatte.
+
+| File | Problema |
+|------|----------|
+| `apps/desktop/src-tauri/src/commands/diagnostics.rs:57` | `without_secrets` non entra negli array di tabelle TOML (`[[profiles]]`): le password finiscono nel pacchetto di diagnostica |
+| `crates/platypus-schema/src/ddl.rs:1141` | Oracle, colonna identity che cambia tipo (ALWAYS → BY DEFAULT): lo script fa DROP IDENTITY e poi non può rimetterla (ORA-30673). Va cambiato il tipo con MODIFY, senza DROP |
+| `crates/platypus-schema/src/compare.rs:262` | PostgreSQL: `pg_sequence_default` punta `nextval` a `<schema destinazione>.<seq>` anche se lì non esiste (colonna esistente senza default, sequenza non propria); le sequenze senza schema restano quelle dell'origine |
+| `crates/platypus-mcp/src/transport.rs:99` | `read_until` legge tutta la riga in memoria prima del controllo `MAX_LINE`: una riga senza fine esaurisce la memoria |
+| `crates/platypus-mcp/src/transport.rs:109` | `LineTransport` copia il trasporto di rmcp per rispondere -32700 alle righe non JSON, che rmcp evita apposta (rust-sdk #938, cicli con peer che rimandano le risposte). Ridurlo a un piccolo wrapper |
+| `apps/desktop/src-tauri/src/main.rs:8` | Su Windows l'exe è a finestra: `platypus-db --mcp --help`, `--version` e l'errore sugli argomenti sconosciuti non stampano niente nel terminale (serve `AttachConsole`) |
+| `apps/desktop/src/schema/CompareDialog.tsx:33` | Cambiando connessione di destinazione restano `targetSchema` e l'errore della precedente: Compare resta attivo su uno schema mai scelto |
+| `crates/platypus-core/src/config.rs:481` | URL SQL Server: `encrypt=false` viene ignorato (`sqlserver_ssl(false, _)` dà `None`), il TLS resta attivo |
+| `crates/platypus-core/src/config.rs:667` | `take_zone` toglie sempre un `25` iniziale: la zona IPv6 grezza `%250` diventa `0` |
+| `apps/desktop/e2e/run.mjs:175` | `installDuckDb` sta tra il commento di `englishInterface` e la funzione: i commenti descrivono la funzione sbagliata |
+
 ### Lock dei gruppi
 
 Chi lavora su un gruppo lo segna qui e pusha su `main` prima di scrivere codice. Formato:

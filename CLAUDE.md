@@ -21,7 +21,8 @@ rispettate anche quelle.
    scrivere codice.
 2. **Aggiornare graphify** se non è stato fatto negli ultimi 7 giorni: `uv tool upgrade graphifyy`;
    se la versione è cambiata, rilanciare `graphify install --platform windows` per aggiornare la skill.
-3. **Controllare la roadmap.** Nella tabella "Lock dei gruppi" di [docs/ROADMAP.md](docs/ROADMAP.md)
+3. **Controllare la roadmap.** Se la sezione "Correzioni aperte" di [docs/ROADMAP.md](docs/ROADMAP.md)
+   ha delle righe, correggerle prima di tutto il resto. Poi, nella tabella "Lock dei gruppi" di [docs/ROADMAP.md](docs/ROADMAP.md)
    scegliere un gruppo libero, con le dipendenze pronte, seguendo le "Ondate consigliate".
    Un gruppo `✅ fatto (…)` si può prendere per le priorità che restano; uno `✅ completato` no.
    Un lock è scaduto se il branch indicato non ha commit da più di **3 giorni**
