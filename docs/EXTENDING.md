@@ -443,9 +443,10 @@ goes through `track(label, promise)` of `shell/activity.ts`, and shows in the Ac
 
 ### Interface language
 
-The interface speaks English and Italian (`i18n.ts`, setting `appearance.language`; "System"
-follows the system's language). Text is written in English and passed to `t`, which looks it
-up in `i18n/it.ts`, keyed by the English text:
+The interface speaks English, Italian, Spanish, German, French, Portuguese (Brazil) and
+Chinese (`i18n.ts`, setting `appearance.language`; "System" follows the system's language).
+Text is written in English and passed to `t`, which looks it up in the language's dictionary,
+`i18n/<code>.ts`, keyed by the English text:
 
 ```ts
 t("Delete the connection \"{name}\"?", { name: c.name });
@@ -457,8 +458,13 @@ Action titles and setting labels, sections and descriptions stay in English wher
 declared: the menus, the palette and the Settings translate them when they show them. Text
 declared at load time anywhere else (a table of labels, a helper's argument) is marked with
 `msg("…")`, which returns it as it is, and translated with `t` where it is shown.
-`npm run build` runs `scripts/i18n-check.mjs`, which fails on text without its Italian, or on
-an entry nothing uses; `node scripts/i18n-check.mjs --untranslated` lists the text left in
+Plurals follow the language's rules (`Intl.PluralRules`) and numbers its locale (`formatCount`,
+`locale()`). Italian is in the bundle; the other dictionaries load when their language is
+chosen (`loadLanguage`). A new language is a dictionary with every key of `it.ts`, its code in
+`Language`, `LOCALES`, `LOADERS` and the setting's options, and its keyboard's key names in
+`KEY_LABELS` (`actions.ts`).
+`npm run build` runs `scripts/i18n-check.mjs`, which fails on text missing from a dictionary,
+or on an entry nothing uses; `node scripts/i18n-check.mjs --untranslated` lists the text left in
 JSX without `t`. Messages from the databases and the backend stay as they come.
 
 ### Projects

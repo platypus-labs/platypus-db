@@ -68,6 +68,16 @@ Download the installer for your system from the
 [releases page](https://github.com/PaoloCisly/platypus-db/releases): `.exe`/`.msi` for
 Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates itself.
 
+No database at hand? **Try the sample database** on the welcome screen: a SQLite field survey
+of platypuses, with linked tables, a view and four saved scripts, made in the app's data folder
+at the first click.
+
+**Portable copy**: put the executable in a folder with an empty `data` folder beside it, as
+with VS Code. Connections, settings, history, scripts, logs and the web view's storage then
+live in `data`, and the folder can move to another machine or a USB stick. Saved passwords stay
+in the system's keychain unless a master password keeps them in the folder too. A portable
+copy updates by replacing its executable; the welcome screen says `portable` beside the version.
+
 ## Databases
 
 | Database | How it connects | Notes |
@@ -213,6 +223,9 @@ and shows the ODBC drivers and data sources of the system.
   the last result with rows of each comes together in a new tab, with a `connection` column.
   Changes are asked once, then by each connection's Safety checks; read-only connections are
   skipped.
+- **Vim mode** (Settings › SQL editor): normal, insert and visual modes, the mode shown under
+  the text, `:w` to save the script. Vim's Ctrl keys (`Ctrl+W`, `Ctrl+O`, `Ctrl+F`…) are Vim's
+  while the editor has the focus; the app's other shortcuts keep working.
 - A **linter** marks unknown columns, joins without a condition and `SELECT *` on production;
   comments are spell checked.
 - **Saved scripts**: `.sql` files per project in the Scripts panel, with folders, drag to move,
@@ -474,7 +487,11 @@ numbers after the largest `_id`, lists of words for arrays, small documents for 
   as JSON (`{"platypus_theme": 1, "name", "light": {…}, "dark": {…}}`, both variants for
   System); Import previews a file's theme, lists the keys and colors it skips, and applies it
   or goes back. An imported theme with both variants follows the system's light or dark mode.
-- **Italian or English** (Settings › Appearance › Language; System follows Windows).
+- **Seven languages**: English, Italian, Spanish, German, French, Portuguese (Brazil) and
+  Chinese (Settings › Appearance › Language; System follows the operating system's). Numbers
+  and shortcuts follow the language (`Strg` in German); messages from the databases stay in
+  theirs. The dictionaries are in `apps/desktop/src/i18n/`, keyed by the English text, and
+  open to corrections.
   `Ctrl+=` / `Ctrl+-` / `Ctrl+0` change the interface size; the editor and the result grid
   have their own font size.
 - Every shortcut can be changed; the toolbars show icons (each says what it does on hover),
@@ -754,7 +771,8 @@ tasks to start and stop the dev databases.
 `node scripts/sample-db.mjs` builds `samples/wildlife.db` from
 [samples/wildlife.sql](samples/wildlife.sql): a SQLite platypus field survey with regions,
 rivers, researchers, tagged animals, surveys, about 15,000 sightings and a `platypus_stats`
-view, with foreign keys between all of them. Open it with a new SQLite connection.
+view, with foreign keys between all of them. Open it with a new SQLite connection, or from the
+welcome screen, which builds it with the scripts in `samples/scripts/`.
 
 ### Dev databases
 
