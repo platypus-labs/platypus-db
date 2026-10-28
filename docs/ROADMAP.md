@@ -94,19 +94,19 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | Gruppo | Lock |
 |---|---|
 | A — Modifica dei dati | ✅ completato |
-| B — Griglia avanzata | ✅ fatto (P1; P2 e P3 in parte) |
+| B — Griglia avanzata | ✅ fatto (P1, P2; P3 in parte) |
 | C — Navigator e oggetti | ✅ completato |
-| D — Editor SQL | ✅ fatto (P1, P3; P2 in parte) |
-| E — Explain e performance | 🔒 Delfa · group-e-plans · 2026-10-28 |
-| F — Connettività e credenziali | ✅ fatto (P1; P2 in parte) |
+| D — Editor SQL | 🔒 Delfa · group-d-multi-run · 2026-10-28 |
+| E — Explain e performance | ✅ completato |
+| F — Connettività e credenziali | ✅ fatto (P1, P2) |
 | G — Nuovi driver | ✅ fatto (P1; P2 e P3 in parte) |
 | H — Import, export e trasferimento | ✅ fatto (P1; P2 e P3 in parte) |
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
 | J — Amministrazione del server | ✅ fatto (P2 in parte) |
-| K — Shell ed ergonomia | ✅ fatto (P1; P2 in parte) |
+| K — Shell ed ergonomia | ✅ fatto (P1, P2) |
 | L — Sicurezza operativa | ✅ fatto (P1, P2) |
 | M — Analisi dei dati | ✅ fatto (P2 in parte) |
-| N — Accesso per agenti (MCP) | 🔒 Delfa · group-n-agents-p2 · 2026-10-28 |
+| N — Accesso per agenti (MCP) | ✅ fatto (P1; P2 in parte) |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | 🔒 Delfa · group-p-platform · 2026-10-28 |
 | Q — Documentazione e catalogo dei dati | ✅ fatto (P2) |
@@ -152,12 +152,19 @@ conformance per la DML generata (quoting, NULL, binari, timestamp con fuso).
 
 ### Gruppo B — Griglia avanzata (sola lettura)
 
-**Stato: P1 completate, P2 e P3 in parte** (copia avanzata, ricerca Ctrl+F, pannello valori F7, filtri
+**Stato: P1 e P2 completate, P3 in parte** (copia avanzata, ricerca Ctrl+F, pannello valori F7, filtri
 rapidi, vista record, layout delle colonne salvato per tabella, aggregati della selezione,
 navigazione delle FK e pannello References, pannello Grouping, formati di visualizzazione,
 pannelli Metadata e Calc, confronto di due righe, refresh automatico fuori dalla cronologia,
-viewer GIS su piano cartesiano senza mappa di sfondo). Da fare: formattazione condizionale,
-colonne virtuali calcolate, JSON riconosciuto nelle colonne di testo.
+viewer GIS su piano cartesiano senza mappa di sfondo, formattazione condizionale, JSON nelle
+colonne di testo). Formattazione condizionale: `grid/formatting.ts` (regole, valutazione,
+salvataggio per tabella in `localStorage` come il layout delle colonne) e
+`grid/FormattingDialog.tsx`; i colori passano dal `decorate` della griglia, sotto le modifiche
+e la ricerca; la scala di colori usa minimo e massimo di `column_profile` sulle righe caricate.
+I numeri si leggono col formato della griglia solo nelle colonne numeriche. JSON nel testo: il
+campo `text_json` della connessione (`plain` per tenerlo com'è scritto). Da fare: colonne
+virtuali calcolate (P3), che chiedono colonne calcolate nel backend del risultato: le funzioni
+della griglia leggono le colonne per indice dal backend.
 
 **Area:** `apps/desktop/src/grid/features/`, `apps/desktop/src/panels/`
 **Dipende da:** 0.4
@@ -179,9 +186,9 @@ colonne virtuali calcolate, JSON riconosciuto nelle colonne di testo.
 | ✅ Refresh automatico ogni N secondi | P3 | D |
 | ✅ Viewer GIS: geometrie PostGIS e MySQL su mappa | P3 | D |
 | ✅ Confronto di due righe selezionate | P3 | N |
-| 🆕 **Formattazione condizionale**: colore di cella o riga da regole (valore, intervallo, NULL, scala di colore sui numeri), salvata per tabella | P2 | D |
+| ✅ **Formattazione condizionale**: colore di cella o riga da regole (valore, intervallo, NULL, scala di colore sui numeri), salvata per tabella | P2 | D |
 | 🆕 Colonne virtuali calcolate: espressione sulle colonne della riga, solo in visualizzazione | P3 | D |
-| 🆕 **JSON nelle colonne di testo**: un TEXT o VARCHAR che contiene JSON valido si apre formattato nel pannello valori, con un'opzione per connessione | P3 | D |
+| ✅ **JSON nelle colonne di testo**: un TEXT o VARCHAR che contiene JSON valido si apre formattato nel pannello valori, con un'opzione per connessione | P3 | D |
 
 ---
 
@@ -243,7 +250,7 @@ colonne virtuali calcolate, JSON riconosciuto nelle colonne di testo.
 **Area:** `apps/desktop/src/explain/` (tab `explain`), `explain` in ogni driver, `commands/explain.rs`
 **Dipende da:** 0.3, 0.6
 
-**Stato: P1 completate, P2 e P3 in parte** (da fare: confronto di due piani, piani incollati, vista a grafo). Ogni driver legge il proprio piano in un albero di `PlanNode` (`platypus-core/src/explain.rs`): PostgreSQL `EXPLAIN (FORMAT JSON)`, MySQL `FORMAT=TREE` ed `EXPLAIN ANALYZE` (il JSON di ANALYZE arriva solo con la 8.3), MariaDB `EXPLAIN`/`ANALYZE FORMAT=JSON`, SQLite `EXPLAIN QUERY PLAN` (senza costi né ANALYZE). Con ANALYZE lo statement gira in una transazione annullata (un savepoint dentro una transazione aperta), sulla sessione propria del tab `explain`. Il tab ha le viste albero, testo e tabella; si apre con `Ctrl+Shift+E` o con Explain analyze dal menu dell'editor, che applica i controlli di una normale esecuzione. `Explain::new` calcola per ogni passo costo e tempo propri, senza i figli (`self_cost`, `self_ms`): la heatmap colora i passi per la loro quota e segnala le stime di righe sbagliate di 10 volte o più. Il query manager (`Ctrl+Shift+M`) legge un log in memoria (`apps/desktop/src-tauri/src/querylog.rs`, le ultime 2000 richieste): ogni sessione ed export avvolge la connessione in `Logged`, che registra statement, richieste di metadati e comandi di transazione con durata, righe ed esito. P3: i driver segnano le scansioni complete con filtro (`PlanNode::full_scan`) e `Explain::new` suggerisce un indice per quelle che leggono almeno 10.000 righe (su PostgreSQL solo con ANALYZE: il piano semplice stima solo le righe tenute); ogni voce del log ha il tempo fino alla prima risposta e il round trip dell'ultimo keep-alive, che non entra più nel log; la soglia delle query lente è l'impostazione `performance.slow_query_seconds`.
+**Stato: completato.** Ogni driver legge il proprio piano in un albero di `PlanNode` (`platypus-core/src/explain.rs`): PostgreSQL `EXPLAIN (FORMAT JSON)`, MySQL `FORMAT=TREE` ed `EXPLAIN ANALYZE` (il JSON di ANALYZE arriva solo con la 8.3), MariaDB `EXPLAIN`/`ANALYZE FORMAT=JSON`, SQLite `EXPLAIN QUERY PLAN` (senza costi né ANALYZE). Con ANALYZE lo statement gira in una transazione annullata (un savepoint dentro una transazione aperta), sulla sessione propria del tab `explain`. Il tab ha le viste albero, testo e tabella; si apre con `Ctrl+Shift+E` o con Explain analyze dal menu dell'editor, che applica i controlli di una normale esecuzione. `Explain::new` calcola per ogni passo costo e tempo propri, senza i figli (`self_cost`, `self_ms`): la heatmap colora i passi per la loro quota e segnala le stime di righe sbagliate di 10 volte o più. Il query manager (`Ctrl+Shift+M`) legge un log in memoria (`apps/desktop/src-tauri/src/querylog.rs`, le ultime 2000 richieste): ogni sessione ed export avvolge la connessione in `Logged`, che registra statement, richieste di metadati e comandi di transazione con durata, righe ed esito. P3: i driver segnano le scansioni complete con filtro (`PlanNode::full_scan`) e `Explain::new` suggerisce un indice per quelle che leggono almeno 10.000 righe (su PostgreSQL solo con ANALYZE: il piano semplice stima solo le righe tenute); ogni voce del log ha il tempo fino alla prima risposta e il round trip dell'ultimo keep-alive, che non entra più nel log; la soglia delle query lente è l'impostazione `performance.slow_query_seconds`. Piani letti da un documento: ogni driver ha `read_plan` puro (PostgreSQL JSON e testo di `EXPLAIN` con le cifre lette da `step_figures`, CockroachDB, MySQL tree, MariaDB JSON, SQLite `QUERY PLAN`, SQL Server `SHOWPLAN_TEXT`); `plain_plan` toglie la cornice dei client (intestazione e `+` di psql, tabella e `\n` del client MySQL), e il comando `read_plan` riconosce il formato o usa quello scelto. *Open query plan…* (palette e menu della lista connessioni) apre il piano in un tab `explain` su una connessione temporanea, senza Refresh. *Compare…* allinea i passi con il piano dell'esecuzione precedente o con un altro piano (`explain/compare.ts`: stessi operazione e oggetto in ordine, gli altri affiancati), sul tempo proprio se entrambi i piani sono stati eseguiti, altrimenti sul costo. La vista Grafo (`explain/graph.ts`, SVG) mette le foglie in colonne e ogni passo sopra i figli, con la heatmap e linee spesse quanto le righe; *Adatta* lo riduce fino al 40% e porta in vista la radice.
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
@@ -254,15 +261,30 @@ colonne virtuali calcolate, JSON riconosciuto nelle colonne di testo.
 | ✅ **Query manager**: log di tutte le query eseguite dall'app (anche metadati), con durata ed esito | P2 | D |
 | ✅ **Query trace**: tempi di rete, server e fetch per ogni esecuzione | P3 | D+ |
 | ✅ Avviso per query lente, oltre una soglia configurabile | P3 | N |
-| 🆕 **Confronto di due piani** affiancati (prima e dopo un indice o una riscrittura), con le differenze di costo e tempo per nodo | P2 | N |
-| 🆕 Piano incollato da testo o JSON, o aperto da file (es. da un log del server o da un collega), nel tab `explain` senza connessione | P2 | N |
-| 🆕 **Vista a grafo** del piano: nodi collegati con costo, righe e tempo, la stessa heatmap delle altre viste | P2 | D+ |
+| ✅ **Confronto di due piani** affiancati (prima e dopo un indice o una riscrittura), con le differenze di costo e tempo per nodo | P2 | N |
+| ✅ Piano incollato da testo o JSON, o aperto da file (es. da un log del server o da un collega), nel tab `explain` senza connessione | P2 | N |
+| ✅ **Vista a grafo** del piano: nodi collegati con costo, righe e tempo, la stessa heatmap delle altre viste | P2 | D+ |
 
 ---
 
-### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 fatti, P2 in parte
+### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 e P2 fatti
 
-**Stato: P1 completati, P2 in parte** (da fare: variabili d'ambiente nei campi, modalità pooler) (tunnel SSH con password, chiave, agent e jump host; tipi
+**Stato: P1 e P2 completati** (restano i P3). Variabili d'ambiente: `platypus-core/src/env.rs`
+sostituisce `${env:NOME}` (`$${` per scriverlo) in host, database, utente, password,
+opzioni, certificati e tunnel SSH, cercando prima nell'ambiente del processo e poi nel file
+`.env` dell'opzione `env_file`; si applica alla connessione (app, server MCP, CLI), mentre lo
+store e *Copia come URL* tengono il riferimento; un host `${env:…}` si controlla al salvataggio
+con un segnaposto e di nuovo dopo la sostituzione. Una password si legge dall'ambiente solo
+se è tutta un riferimento (`${env:PW}`): altrimenti resta com'è scritta. Il file `.env` va
+indicato con un percorso assoluto o che inizia con `~`. Modalità pooler: opzione `pooler` = `transaction` (o `?pgbouncer=true`
+nell'URL); in autocommit il driver PostgreSQL descrive lo statement in una transazione sua
+(`BEGIN`/`ROLLBACK`) e lo esegue senza nome (`query_typed_raw`, `execute_typed`), e i nomi
+dei tipi si leggono con `query_typed`; in una transazione aperta resta tutto com'era.
+`vendor/tokio-postgres` (patch in `[patch.crates-io]`) svuota con la cache dei tipi anche gli
+statement con nome che li cercano, che il pooler perde. Il
+dialogo propone la modalità per il pooler di Supabase sulla 6543 e per gli host `-pooler` di
+Neon. `docker/compose.yml` ha PgBouncer (profilo `pooler`, porta 56432) in transaction mode
+con `DISCARD ALL` dopo ogni transazione. Prima: (tunnel SSH con password, chiave, agent e jump host; tipi
 Dev/Test/Prod con colore e commit manuale in Prod; import da DBeaver, DataGrip, pgAdmin e
 `pg_service.conf`, con cartelle e progetti da un export `.dbp` di DBeaver; cartelle di
 connessioni nei progetti e cartelle di progetti nella barra; profili di rete; schema, fuso orario e query di bootstrap dopo ogni
@@ -271,7 +293,7 @@ con file cifrato; certificati client; latenza, keep-alive e riconnessione; conne
 URL JDBC o stringa ADO.NET/ODBC incollata, con `ConnectionConfig::parse_any` in
 `platypus-core`, e *Copia come URL* senza password). Il driver di una connessione nuova si
 sceglie solo nel picker: il form non lo cambia. La conferma
-prima di scrivere in Prod è nel gruppo L. Restano i P2 nuovi e i P3.
+prima di scrivere in Prod è nel gruppo L. Restano i P3.
 
 **Area:** nuovo crate `platypus-net`, `platypus-store`, `apps/desktop/src/connections/` (`ConnectionDialog.tsx`)
 **Dipende da:** 0.7
@@ -293,10 +315,10 @@ prima di scrivere in Prod è nel gruppo L. Restano i P2 nuovi e i P3.
 | ✅ Import di progetti DBeaver (`.dbp`) con cartelle; cartelle di connessioni nei progetti e cartelle di progetti nella barra | P2 | D |
 | Kubernetes port-forward, AWS SSM | P3 | D+ |
 | ✅ Connessione da URL incollato (`postgres://…`, `mysql://…`, `Server=…;Database=…`): i campi si compilano da soli | P2 | D |
-| 🆕 Variabili d'ambiente e file `.env` nei campi della connessione (`${env:DB_PASSWORD}`) | P2 | D |
+| ✅ Variabili d'ambiente e file `.env` nei campi della connessione (`${env:DB_PASSWORD}`) | P2 | D |
 | 🆕 Credenziali da gestori esterni: 1Password CLI, Bitwarden, HashiCorp Vault, AWS Secrets Manager | P3 | D+ |
 | 🆕 Test di tutte le connessioni di un progetto in una volta, con l'esito per ognuna | P3 | N |
-| 🆕 **Modalità pooler** per PostgreSQL (PgBouncer, Supavisor, pooler di Neon) in transaction o session mode: in transaction mode niente prepared statement con nome, che il pooler rompe; proposta di default nei profili Supabase e Neon | P2 | N |
+| ✅ **Modalità pooler** per PostgreSQL (PgBouncer, Supavisor, pooler di Neon) in transaction o session mode: in transaction mode niente prepared statement con nome, che il pooler rompe; proposta di default nei profili Supabase e Neon | P2 | N |
 
 ---
 
@@ -369,6 +391,7 @@ ADBC. Conformance ODBC su SQL Server col driver `SQL Server` di Windows; Db2 sen
 | ✅ File come database: CSV, Parquet, JSON, XLSX (tramite DuckDB) | P2 | Fatto con il gruppo H: viste DuckDB sul file, un foglio XLSX per tabella (calamine); si aprono col trascinamento sulla finestra |
 | ✅ CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon; AlloyDB no | P2 | Wire PG: profili e test, non driver nuovi |
 | ✅ ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | ADBC (Snowflake, BigQuery, Databricks, Trino, ADBC generico; driver scaricati dal registro dbc). Oracle con driver nativo (crate `oracle`, Instant Client scaricato da Oracle al primo uso, cancel con break, metadati da `ALL_*`). ODBC (`platypus-driver-odbc`, solo Windows): Db2 col driver IBM installato al primo uso (registrazione con UAC), ODBC generico con DSN o connection string |
+| 🆕 **Versioni vecchie dei server**: versioni minime dichiarate per ogni database (es. PostgreSQL 12+, MySQL 5.7+, MariaDB 10.6+, SQL Server 2017+, MongoDB 5+), query di catalogo, admin e DDL adattate alla versione letta alla connessione (es. `prokind` da PG 11, `attgenerated` da PG 12), messaggio chiaro sotto la minima | P2 | Conformance su una matrice di versioni in `docker/compose.yml` (un profilo per le versioni vecchie, ad esempio `postgres:12`…`16`, `mysql:5.7`, `mysql:8.0`); oggi i test girano solo sull'ultima versione |
 | Aggiornamento automatico dei driver di tutti i database (scaricati ADBC/ODBC e nativi), con verifica che i dialetti restino compatibili; scelta di versioni precedenti di un driver | P3 | Scaricati: registro con più versioni. Nativi: compilati nell'app, si aggiornano con l'app; versioni vecchie = più versioni dello stesso crate o driver caricabili a parte. Test di compatibilità per versione |
 | ✅ Oracle nativo | P3 | Crate `oracle` con Instant Client scaricato al primo uso (Oracle Free Use Terms) |
 | ✅ **MongoDB** | P3 | Sintassi mongosh, griglia dei campi + albero del documento |
@@ -530,9 +553,11 @@ solo i lock coinvolti in un'attesa.
 
 ---
 
-### Gruppo K — Shell dell'applicazione ed ergonomia — ✅ P1 fatti, P2 in parte
+### Gruppo K — Shell dell'applicazione ed ergonomia — ✅ P1 e P2 fatti
 
-**Stato: P1 completati, P2 in parte** (da fare: import ed export dei temi) (rotella sui tab, command palette con ricerca fuzzy su azioni,
+**Stato: P1 e P2 completati** (import ed export dei temi come file JSON in Impostazioni →
+Temi, con anteprima, elenco di ciò che il file salta e un tema importato chiaro, scuro o che
+segue il sistema) (rotella sui tab, command palette con ricerca fuzzy su azioni,
 connessioni, tabelle e query recenti, riapertura del tab chiuso, pagina Impostazioni con
 sezioni, scorciatoie personalizzabili, barra degli strumenti configurabile).
 Fatta anche la **nuova grafica**: temi Platypus Dark e Light, font Inter e JetBrains Mono
@@ -590,7 +615,7 @@ gap della colonna, avvisi, azioni a destra con la principale per ultima) e i tok
 | ✅ Notifica di sistema alla fine di una query lunga, quando la finestra non è in primo piano | P2 | D |
 | ✅ Zoom dell'interfaccia e dimensione del font di editor e griglia (Ctrl+= / Ctrl+-) | P2 | D |
 | 🆕 Tab staccato in una finestra separata (secondo monitor) | P3 | D |
-| 🆕 **Import ed export dei temi** come file JSON (colori dell'app e dell'editor, chiaro e scuro), con anteprima prima di applicarli; primo passo verso i mod | P2 | N |
+| ✅ **Import ed export dei temi** come file JSON (colori dell'app e dell'editor, chiaro e scuro), con anteprima prima di applicarli; primo passo verso i mod | P2 | N |
 | 🆕 **Database di esempio** nella schermata di benvenuto: un clic apre un SQLite o DuckDB incluso, con dati realistici, tabelle collegate da FK e qualche script salvato, per provare l'app senza un server | P3 | N |
 | 🆕 Altre lingue dell'interfaccia (spagnolo, tedesco, francese, portoghese, cinese), con le stringhe di `i18n.ts` aperte ai contributi | P3 | D |
 
@@ -682,7 +707,16 @@ nella cronologia con l'agente come origine (colonna `origin`) e un filtro nel pa
 Impostazioni "Agents" con i comandi per Claude Code e Codex e l'accesso di ogni connessione;
 selettore "Agent access" nel dialog di connessione. CLI `platypus --connection <nome>` con
 output JSON documentato nel README. Gli agenti avviano l'app stessa con `--mcp` (gruppo P):
-gli installer non hanno un secondo eseguibile. Restano P2 e P3.
+gli installer non hanno un secondo eseguibile. P2 in parte: tool `sample_rows` ed `explain`
+(albero del piano o JSON nel limite di byte, stesso controllo di `run_query`, `analyze` in sola
+lettura solo dove la transazione rifiuta le scritture); registro di ogni chiamata ai tool in
+`agent-calls.db` (sessione, agente, connessione, argomenti, durata, esito), con le pagine
+Setup, Attività e Sicurezza in Impostazioni → Agents: Setup elenca Claude Desktop, Claude
+Code, Codex, Cursor, Windsurf, Antigravity e Gemini CLI con il loro file e lo stato, e
+Installa scrive la voce dopo conferma e copia di backup (JSON e TOML con commenti
+conservati); Attività filtra per sessione, esito e testo ed esporta CSV; `propose_sql` salva
+la proposta e l'app aperta (o al prossimo avvio) la apre in un tab dell'editor. Restano il
+ponte con l'app aperta via HTTP, la conferma nell'app per le scritture e i P3.
 
 PlatypusDB non integra un proprio assistente AI. Diventa invece uno strumento che gli agenti già
 in uso (Claude Code, Codex, Cursor, altri client MCP) possono collegare: usano le connessioni
@@ -705,16 +739,16 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | ✅ Registro delle query degli agenti nella cronologia, con l'agente come origine e filtro dedicato | P1 | N |
 | ✅ Installazione guidata: pagina "Agenti" nelle Impostazioni con i comandi pronti (`claude mcp add platypus -- platypus-mcp`, voce `[mcp_servers.platypus]` per Codex) e un pulsante Copia | P1 | N |
 | ✅ CLI per agenti senza MCP: `platypus-cli --connection <nome>` dalle connessioni salvate, output JSON stabile e documentato | P1 | N |
-| `explain` e campione di righe (`sample_rows`) come tool dedicati, con i limiti di `run_query` | P2 | D+ |
+| ✅ `explain` e campione di righe (`sample_rows`) come tool dedicati, con i limiti di `run_query` | P2 | D+ |
 | **Ponte con l'app aperta** (MCP su HTTP locale con token): l'agente vede le sessioni aperte e l'indicatore "agente collegato" compare nella barra | P2 | N |
 | Conferma nell'app per le scritture: dialog con lo statement, le righe stimate e il piano EXPLAIN (riusa le guardie del gruppo L), con "consenti per questa sessione". Il server `--mcp` non ha finestra: serve il ponte con l'app aperta, o una finestra di conferma propria | P2 | N |
-| 🆕 **Configurazione degli agenti in un clic**: la pagina "Agents" scrive la voce del server nei file di Claude Desktop, Cursor, Windsurf e Codex (o lancia `claude mcp add`) e mostra in quali client è già presente | P2 | N |
-| 🆕 **Registro delle chiamate degli agenti**: ogni chiamata a un tool (non solo le query), con agente, connessione, argomenti, durata ed esito, raggruppata per sessione, con filtro ed export CSV | P2 | N |
-| Tool `propose_sql`: apre la query proposta dall'agente in un tab dell'editor, da rivedere ed eseguire a mano | P2 | N |
+| ✅ **Configurazione degli agenti in un clic**: la pagina "Agents" scrive la voce del server nei file di Claude Desktop, Cursor, Windsurf e Codex (o lancia `claude mcp add`) e mostra in quali client è già presente | P2 | N |
+| ✅ **Registro delle chiamate degli agenti**: ogni chiamata a un tool (non solo le query), con agente, connessione, argomenti, durata ed esito, raggruppata per sessione, con filtro ed export CSV | P2 | N |
+| ✅ Tool `propose_sql`: apre la query proposta dall'agente in un tab dell'editor, da rivedere ed eseguire a mano | P2 | N |
 | Contesto dell'utente su consenso: testo dell'editor, selezione, risultato corrente della griglia | P3 | N |
 | Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
 | Plugin pronti: plugin per Claude Code e configurazione per Codex con le istruzioni d'uso (quando usare quale tool, limiti) | P3 | N |
-| 🆕 **Tab Agenti come pannello di integrazione**: sotto-schede Setup, Attività e Sicurezza; in Setup l'elenco dei client (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, Antigravity, …) con il percorso del loro file di configurazione e un pulsante **Installa** che scrive la voce del server (con backup del file e conferma), accanto la configurazione da copiare a mano per il client scelto; Attività mostra le chiamate degli agenti, Sicurezza i permessi per connessione | P2 | N |
+| ✅ **Tab Agenti come pannello di integrazione**: sotto-schede Setup, Attività e Sicurezza; in Setup l'elenco dei client (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, Antigravity, …) con il percorso del loro file di configurazione e un pulsante **Installa** che scrive la voce del server (con backup del file e conferma), accanto la configurazione da copiare a mano per il client scelto; Attività mostra le chiamate degli agenti, Sicurezza i permessi per connessione | P2 | N |
 | 🆕 Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate | P3 | N |
 
 ---

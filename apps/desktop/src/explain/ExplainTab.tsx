@@ -1,18 +1,32 @@
 import { Icon } from "../ui/Icon";
-import { type CSSProperties, useEffect, useState } from "react";
-import { api, type Explain, type PlanNode, toCommandError } from "../api";
+import { type CSSProperties, createElement, useEffect, useRef, useState } from "react";
+import { api, type Explain, type PlanNode, type PlanSource, type SavedConnection, toCommandError } from "../api";
 import type { TabBase, TabProps } from "../tabs/registry";
+import { workbench } from "../workbench";
+import { choose } from "../ui/ask";
 import { language, t, msg } from "../i18n";
+import { ComparePlans } from "./ComparePlans";
+import { stepName } from "./compare";
+import { PlanDialog } from "./PlanDialog";
+import { PlanGraph } from "./PlanGraph";
 
-export type ExplainView = "tree" | "text" | "table";
+export type ExplainView = "tree" | "graph" | "text" | "table" | "compare";
 
-/** The plan of one statement, as a tree, as text or as a table. */
+/** The plan of one statement, as a tree, a graph, text or a table; or a plan read from a
+ *  document. */
 export interface ExplainTabModel extends TabBase {
   kind: "explain";
   sql: string;
   /** The statement runs (its changes rolled back) for actual rows and times. */
   analyze: boolean;
   view?: ExplainView;
+  /** A plan pasted or opened from a file: shown as it is, nothing runs. */
+  plan?: Explain;
+  /** The pasted plan's name: its file's, or "Pasted plan". */
+  name?: string;
+  /** The plan this one is compared with, and its name. */
+  baseline?: Explain | null;
+  baselineName?: string;
 }
 
 declare module "../tabs/registry" {
@@ -23,9 +37,42 @@ declare module "../tabs/registry" {
 
 const VIEWS: [ExplainView, string][] = [
   ["tree", msg("Tree")],
+  ["graph", msg("Graph")],
   ["text", msg("Text")],
   ["table", msg("Table")],
 ];
+
+let plans = 0;
+
+/** Asks for a plan to paste or open, and hands it to `onRead`. */
+export function askPlan(title: string, onRead: (plan: Explain, name: string, source: PlanSource) => void) {
+  workbench().openDialog((close) =>
+    createElement(PlanDialog, { title, onClose: close, onRead: (read, name) => onRead(read.explain, name, read.source) }),
+  );
+}
+
+/** Opens a plan pasted or opened from a file in an explain tab of its own, on no
+ *  connection. */
+export function openPlan() {
+  askPlan(t("Open a query plan"), (plan, name, source) => {
+    const connection: SavedConnection = {
+      id: `plan:${++plans}`,
+      name,
+      // Each source is named as its driver.
+      driver: source,
+      host: "",
+      port: null,
+      database: "",
+      user: "",
+      ssl_mode: "disable",
+      ssl_root_cert: null,
+      save_password: false,
+      read_only: true,
+      color: null,
+    };
+    workbench().openTemporaryTab("explain", connection, { sql: "", analyze: false, plan, name }, () => {});
+  });
+}
 
 /** A node with its place in the tree; `path` is its child indexes from the root. */
 interface Step {
@@ -83,10 +130,6 @@ function Misestimate({ node }: { node: PlanNode }) {
 /** The step tinted by its share of the work. */
 const heat = (share: number) => ({ "--heat": `${Math.round(share * 100)}%` }) as CSSProperties;
 
-function title(node: PlanNode) {
-  return node.detail ? `${node.operation} ${node.detail}` : node.operation;
-}
-
 /** One line per step, indented, with the figures the database reported. */
 function planText(all: Step[]) {
   return all
@@ -101,7 +144,7 @@ function planText(all: Step[]) {
         const shown = parts.filter(Boolean);
         return shown.length ? `  (${prefix}${shown.join(" ")})` : "";
       };
-      return `${"   ".repeat(depth)}-> ${title(node)}${group(estimate)}${group(actual, "actual ")}`;
+      return `${"   ".repeat(depth)}-> ${stepName(node)}${group(estimate)}${group(actual, "actual ")}`;
     })
     .join("\n");
 }
@@ -122,9 +165,19 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
   const [version, setVersion] = useState(0);
   const [selected, setSelected] = useState("0");
   const [collapsed, setCollapsed] = useState(new Set<string>());
-  const view = tab.view ?? "tree";
+  /** The plan before the last refresh, to compare with. */
+  const [previous, setPrevious] = useState<Explain | null>(null);
+  const latest = useRef<Explain | null>(null);
+  /** What the plan is of: the pasted plan's name, or the statement. */
+  const subject = tab.plan ? tab.name : tab.sql;
+  const view = tab.view === "compare" && !tab.baseline ? "tree" : (tab.view ?? "tree");
 
   useEffect(() => {
+    // A plan read from a document: nothing to run.
+    if (tab.plan) {
+      setExplain(tab.plan);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       setError(null);
@@ -138,7 +191,10 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
         // transaction left open by an earlier plain explain.
         await api.setAutocommit(sid, true).catch(() => {});
         const plan = await api.explain(sid, tab.sql, tab.analyze);
-        if (!cancelled) setExplain(plan);
+        if (cancelled) return;
+        if (latest.current) setPrevious(latest.current);
+        latest.current = plan;
+        setExplain(plan);
       } catch (e) {
         if (!cancelled) setError(toCommandError(e).message);
       } finally {
@@ -156,6 +212,28 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
   const heated = [...share.values()].some((v) => v > 0);
   const own = t(explain?.analyzed ? "time" : "cost");
   const shareOf = (n: PlanNode) => share.get(n) ?? 0;
+  const graphFigures = (n: PlanNode) =>
+    [
+      n.actual_rows !== null
+        ? t("{n} rows", { n: num(n.actual_rows * (n.loops ?? 1)) })
+        : n.rows !== null && t("est {n}", { n: num(n.rows) }),
+      n.actual_ms !== null ? `${num(n.actual_ms)} ms` : n.cost !== null && t("cost {n}", { n: num(n.cost) }),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+  async function compare() {
+    const choice = await choose(t("Compare this plan with…"), [
+      ...(previous ? [{ label: t("The previous run"), value: "previous" as const, primary: true }] : []),
+      { label: t("Another plan…"), value: "other" as const },
+    ]);
+    if (choice === "previous" && previous) {
+      onChange({ baseline: previous, baselineName: t("Previous run"), view: "compare" });
+    } else if (choice === "other") {
+      askPlan(t("Plan to compare with"), (plan, name) => onChange({ baseline: plan, baselineName: name, view: "compare" }));
+    }
+  }
+
   const toggle = (path: string) =>
     setCollapsed((c) => {
       const next = new Set(c);
@@ -167,13 +245,18 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
     <div className="object-tab explain-tab" style={{ display: active ? "flex" : "none" }}>
       <header className="object-header">
         <div className="object-title">
-          <strong>{t(tab.analyze ? "Explain analyze" : "Explain")}</strong>
-          <code className="explain-sql muted small" title={tab.sql}>
-            {tab.sql}
+          <strong>{t(tab.plan ? "Query plan" : tab.analyze ? "Explain analyze" : "Explain")}</strong>
+          <code className="explain-sql muted small" title={subject}>
+            {subject}
           </code>
         </div>
         <span className="spacer" />
         {running && <span className="muted small">{t("Running…")}</span>}
+        {explain && (
+          <button onClick={() => void compare()} title={t("Compare this plan with the previous run or another plan")}>
+            {t("Compare…")}
+          </button>
+        )}
         {explain && (
           <button
             className="square"
@@ -184,15 +267,17 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
             <Icon name="copy" />
           </button>
         )}
-        <button
-          disabled={running}
-          onClick={() => setVersion((v) => v + 1)}
-          title={t(tab.analyze ? "Refresh: runs the statement again" : "Refresh: asks for the plan again")}
-          aria-label={t("Refresh")}
-          className="square"
-        >
-          <Icon name="refresh" />
-        </button>
+        {!tab.plan && (
+          <button
+            disabled={running}
+            onClick={() => setVersion((v) => v + 1)}
+            title={t(tab.analyze ? "Refresh: runs the statement again" : "Refresh: asks for the plan again")}
+            aria-label={t("Refresh")}
+            className="square"
+          >
+            <Icon name="refresh" />
+          </button>
+        )}
       </header>
       <nav className="object-sections">
         {VIEWS.map(([v, label]) => (
@@ -200,6 +285,11 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
             {t(label)}
           </button>
         ))}
+        {tab.baseline && (
+          <button className={view === "compare" ? "active" : ""} onClick={() => onChange({ view: "compare" })}>
+            {t("Comparison")}
+          </button>
+        )}
       </nav>
       <div className="object-body">
         {error && <div className="notice error">{error}</div>}
@@ -258,6 +348,33 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
             {node && <Properties node={node} />}
           </div>
         )}
+        {explain && view === "graph" && (
+          <div className="explain-split">
+            <PlanGraph root={explain.root} selected={selected} onSelect={setSelected} shareOf={shareOf} figures={graphFigures} />
+            {node && <Properties node={node} />}
+          </div>
+        )}
+        {explain && view === "compare" && tab.baseline && (
+          <>
+            <div className="explain-compare-head">
+              <span className="muted small">
+                {t("{before} against {after}", {
+                  before: tab.baselineName ?? "",
+                  after: tab.plan ? (tab.name ?? "") : t("this plan"),
+                })}
+              </span>
+              <span className="spacer" />
+              <button onClick={() => onChange({ baseline: null, view: "tree" })}>{t("Stop comparing")}</button>
+            </div>
+            <ComparePlans
+              before={tab.baseline}
+              after={explain}
+              beforeName={tab.baselineName ?? ""}
+              afterName={tab.plan ? (tab.name ?? "") : t("This plan")}
+              num={num}
+            />
+          </>
+        )}
         {explain && view === "text" && <pre className="explain-text">{planText(all)}</pre>}
         {explain && view === "table" && (
           <table className="meta-table explain-table">
@@ -275,7 +392,7 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
             <tbody>
               {all.map(({ node: n, depth, path }) => (
                 <tr key={path}>
-                  <td style={{ paddingLeft: depth * 16 }}>{title(n)}</td>
+                  <td style={{ paddingLeft: depth * 16 }}>{stepName(n)}</td>
                   <td>{num(n.cost)}</td>
                   <td>{num(n.rows)}</td>
                   <td>

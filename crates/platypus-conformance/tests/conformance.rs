@@ -1202,8 +1202,118 @@ fn plan_support(b: &Backend) -> PlanSupport {
     }
 }
 
+/// Through `PgBouncer` in transaction mode (`docker compose --profile pooler`), each
+/// transaction may land on another server session: the navigator's and the editor's
+/// requests still work with the connection's pooler mode set. Skipped when it is not running.
+#[tokio::test]
+async fn works_through_a_transaction_pooler() {
+    let _serial = SERIAL.lock().await;
+    let url = std::env::var("PLATYPUS_TEST_PGBOUNCER_URL").unwrap_or_else(|_| {
+        "postgres://platypus:platypus@localhost:56432/platypus?sslmode=disable".to_owned()
+    });
+    let mut config = ConnectionConfig::from_url(&url).unwrap();
+    config
+        .options
+        .insert(platypus_core::POOLER.to_owned(), "transaction".to_owned());
+    let conn = match driver(DriverKind::Postgres).connect(&config).await {
+        Ok(conn) => conn,
+        Err(e) => {
+            eprintln!("skipping PgBouncer: unreachable at {url}: {e}");
+            return;
+        }
+    };
+    let object = ObjectRef {
+        schema: "demo",
+        name: "customers",
+        kind: ObjectKind::Table,
+        parent: None,
+    };
+    assert!(
+        conn.object_ddl(&object)
+            .await
+            .unwrap()
+            .contains("CREATE TABLE")
+    );
+    assert_ne!(
+        conn.object_properties(&object).await.unwrap(),
+        [] as [platypus_core::Property; 0]
+    );
+    assert_ne!(
+        conn.search_metadata("customers").await.unwrap(),
+        [] as [platypus_core::MetadataMatch; 0]
+    );
+    assert_ne!(
+        conn.objects("demo").await.unwrap(),
+        [] as [platypus_core::ObjectMeta; 0]
+    );
+    let plan = conn
+        .explain("SELECT * FROM demo.customers WHERE id > 1", true)
+        .await
+        .unwrap();
+    assert!(plan.analyzed);
+    assert!(
+        conn.server_sessions()
+            .await
+            .unwrap()
+            .iter()
+            .any(|s| s.current)
+    );
+    let rows = run(&*conn, "SELECT count(*) FROM demo.orders").await;
+    assert!(rows.is_ok(), "{rows:?}");
+}
+
 /// Plans come back as a tree. With analyze the statement runs, and what it changes is
 /// rolled back, in autocommit and inside an open transaction alike.
+/// Steps in `node`'s tree.
+fn plan_steps(node: &PlanNode) -> usize {
+    1 + node.children.iter().map(plan_steps).sum::<usize>()
+}
+
+/// The plan document a driver returns reads back, pasted, as the same tree: the reader of
+/// pasted plans knows each database's own output.
+#[tokio::test]
+async fn explained_plans_read_back() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let read: fn(&str) -> platypus_core::Result<platypus_core::Explain> = match b.config.driver
+        {
+            DriverKind::Postgres => platypus_driver_pg::read_plan,
+            DriverKind::MySql => platypus_driver_mysql::read_plan,
+            DriverKind::Sqlite => platypus_driver_sqlite::meta::read_plan,
+            DriverKind::SqlServer => platypus_driver_mssql::read_plan,
+            _ => continue,
+        };
+        let conn = b.connect().await;
+        let sql = format!(
+            "SELECT c.id, o.id FROM {s}.customers c JOIN {s}.orders o ON o.customer_id = c.id WHERE c.id > 1",
+            s = b.schema
+        );
+        for analyze in [false, true] {
+            let plan = match conn.explain(&sql, analyze).await {
+                Ok(plan) => plan,
+                // SQL Server's plans are estimated only.
+                Err(Error::Unsupported(_)) if analyze => continue,
+                Err(e) => panic!("{}: explain: {e}", b.name),
+            };
+            let pasted = read(&plan.plan)
+                .unwrap_or_else(|e| panic!("{}: read back: {e}\n{}", b.name, plan.plan));
+            assert_eq!(pasted.root.operation, plan.root.operation, "{}", b.name);
+            assert_eq!(
+                plan_steps(&pasted.root),
+                plan_steps(&plan.root),
+                "{} (analyze {analyze})",
+                b.name
+            );
+            assert_eq!(
+                pasted.analyzed, plan.analyzed,
+                "{} (analyze {analyze})",
+                b.name
+            );
+        }
+    }
+}
+
 #[tokio::test]
 async fn explains_queries() {
     let _serial = SERIAL.lock().await;
@@ -3156,6 +3266,58 @@ async fn agents_read_in_read_only_transactions() {
         // Afterwards the session writes again (SQLite turns query_only off).
         assert_eq!(affected(&b, conn, &insert).await, 1, "{}", b.name);
         assert_eq!(agent_count(&b, conn, table).await, "1", "{}", b.name);
+        run(conn, &format!("DROP TABLE {table}")).await.unwrap();
+    }
+}
+
+/// An agent's `explain` with analyze runs in the read-only transaction where it refuses
+/// writes: the plan comes back analyzed, a write inside it fails or changes nothing, and
+/// no transaction is left open.
+#[tokio::test]
+async fn agents_explain_analyze_in_read_only_transactions() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        if !conn.capabilities().explain
+            || !platypus_mcp::query::refuses_writes_when_read_only(b.config.driver)
+        {
+            continue;
+        }
+        let table = "agent_explain_probe";
+        run(conn, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap();
+        run(conn, &format!("CREATE TABLE {table} (id INT)"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let guard = Some(b.config.driver);
+        let timeout = Limits::DEFAULT_TIMEOUT;
+        let select = format!("SELECT * FROM {table}");
+        let plan = platypus_mcp::query::guarded(
+            conn,
+            guard,
+            timeout,
+            std::future::pending(),
+            conn.explain(&select, true),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e:?}", b.name));
+        assert!(!plan.root.operation.is_empty(), "{}", b.name);
+        assert!(!conn.transaction().open, "{}: left a transaction", b.name);
+
+        let insert = format!("INSERT INTO {table} VALUES (1)");
+        let _ = platypus_mcp::query::guarded(
+            conn,
+            guard,
+            timeout,
+            std::future::pending(),
+            conn.explain(&insert, true),
+        )
+        .await;
+        assert!(!conn.transaction().open, "{}: left a transaction", b.name);
+        assert_eq!(agent_count(&b, conn, table).await, "0", "{}", b.name);
         run(conn, &format!("DROP TABLE {table}")).await.unwrap();
     }
 }

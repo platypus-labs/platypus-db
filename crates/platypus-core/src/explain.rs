@@ -83,6 +83,14 @@ impl Explain {
             suggestions,
         }
     }
+
+    /// A plan read from a document pasted or opened from a file: analyzed when its steps
+    /// have actual rows or times.
+    #[must_use]
+    pub fn read(format: ExplainFormat, plan: String, root: PlanNode) -> Self {
+        let analyzed = root.has_actuals();
+        Self::new(format, plan, root, analyzed)
+    }
 }
 
 impl PlanNode {
@@ -92,6 +100,12 @@ impl PlanNode {
             operation: operation.into(),
             ..Self::default()
         }
+    }
+
+    fn has_actuals(&self) -> bool {
+        self.actual_rows.is_some()
+            || self.actual_ms.is_some()
+            || self.children.iter().any(Self::has_actuals)
     }
 
     /// Milliseconds over all loops, children included.
@@ -179,6 +193,138 @@ pub fn plan_from_text(text: &str, step: impl Fn(&str) -> Option<(usize, String)>
     root
 }
 
+/// A step written as `description  (cost=… rows=…) (actual time=…..… rows=… loops=…)`, as
+/// PostgreSQL's text plans and MySQL's tree write them: the description, and a node with
+/// the figures (no operation yet). `never executed` is no loop.
+#[must_use]
+pub fn step_figures(step: &str) -> (&str, PlanNode) {
+    let cut = ["(cost=", "(actual ", "(never executed)"]
+        .iter()
+        .filter_map(|p| step.find(p))
+        .min()
+        .unwrap_or(step.len());
+    let (description, figures) = step.split_at(cut);
+    let mut node = PlanNode::default();
+    for group in figures.split(')') {
+        let group = group.trim().trim_start_matches('(');
+        if group == "never executed" {
+            node.loops = Some(0.0);
+        }
+        let actual = group.starts_with("actual");
+        for (key, value) in group.split_whitespace().filter_map(|t| t.split_once('=')) {
+            // `cost=first..last`, `time=first..last`: the cost and time to the last row.
+            let value = value.rsplit("..").next().and_then(|v| v.parse().ok());
+            match (actual, key) {
+                (false, "cost") => node.cost = value,
+                (false, "rows") => node.rows = value,
+                (true, "time") => node.actual_ms = value,
+                (true, "rows") => node.actual_rows = value,
+                (true, "loops") => node.loops = value,
+                _ => {}
+            }
+        }
+    }
+    (description.trim(), node)
+}
+
+/// A plan as a client printed it, without the client's frame: psql's `QUERY PLAN` header,
+/// its rule, its `(N rows)` footer and the `+` that ends its wrapped lines; the MySQL
+/// client's table borders, its `EXPLAIN` header, the `EXPLAIN: ` of its vertical output and
+/// the `\n` its batch mode writes for line breaks. The plan's own indentation stays.
+#[must_use]
+pub fn plain_plan(text: &str) -> String {
+    // Rules under headers, and the `*** 1. row ***` of vertical output.
+    let rule = |l: &str| {
+        !l.is_empty()
+            && (l.chars().all(|c| matches!(c, '-' | '+' | '='))
+                || (l.starts_with("***") && l.ends_with("***")))
+    };
+    let footer = |l: &str| {
+        l.strip_prefix('(')
+            .and_then(|l| l.strip_suffix(" rows)").or_else(|| l.strip_suffix(" row)")))
+            .is_some_and(|n| n.chars().all(|c| c.is_ascii_digit()))
+    };
+    // A header cell: `QUERY PLAN`, `| EXPLAIN    |`, or `EXPLAIN` alone in batch mode.
+    let header = |l: &str| {
+        let cell = l
+            .strip_prefix('|')
+            .and_then(|c| c.strip_suffix('|'))
+            .unwrap_or(l);
+        matches!(cell.trim(), "QUERY PLAN" | "EXPLAIN")
+    };
+    // psql writes a long value over several lines, each but the last ending in `+` (right
+    // after the text when it fills the column): most lines end so.
+    let filled = text.lines().filter(|l| !l.trim().is_empty());
+    let wrapped = filled
+        .clone()
+        .filter(|l| l.trim_end().ends_with('+'))
+        .count()
+        * 2
+        > filled.count();
+    let mut lines: Vec<std::borrow::Cow<'_, str>> = Vec::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if header(trimmed) || rule(trimmed) || footer(trimmed) {
+            continue;
+        }
+        let line = line.trim_end();
+        let line = match line.strip_suffix('+') {
+            Some(start) if wrapped => start.trim_end(),
+            _ => line,
+        };
+        // The MySQL client's table: `| -> Filter ...`, its cell going on over the lines
+        // below, closed by ` |`.
+        let line = line.strip_suffix(" |").map_or(line, str::trim_end);
+        let line = line.strip_prefix("| ").unwrap_or(line);
+        let line = line.trim_start_matches("EXPLAIN: ");
+        // `mysql -e` writes the plan on one line, its breaks as `\n` and its backslashes
+        // doubled: a tree's steps, or a JSON document that starts `{\n`.
+        let start = line.trim_start();
+        if (start.starts_with("->") || start.starts_with("{\\n")) && line.contains("\\n") {
+            lines.extend(batch_unescape(line).lines().map(|l| l.to_owned().into()));
+        } else {
+            lines.push(line.into());
+        }
+    }
+    // psql and the MySQL client put one space before every line.
+    let indent = lines
+        .iter()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.len() - l.trim_start().len())
+        .min()
+        .unwrap_or(0);
+    lines
+        .iter()
+        .map(|l| l.get(indent..).unwrap_or_else(|| l.trim_start()))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim_matches('\n')
+        .to_owned()
+}
+
+/// A value as the MySQL client's batch mode escapes it: `\n`, `\t` and `\\` back to what they
+/// stand for.
+fn batch_unescape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('n') => out.push('\n'),
+            Some('t') => out.push('\t'),
+            Some('\\') | None => out.push('\\'),
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+        }
+    }
+    out
+}
+
 /// Runs a plan request and returns the plan document: the first column of its rows, one
 /// line each. With `analyze` the request executes the statement, so it runs in a
 /// transaction rolled back afterwards (a savepoint inside an open one): what the statement
@@ -222,6 +368,99 @@ async fn run(conn: &dyn Connection, sql: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_step_figures() {
+        let (description, node) = step_figures(
+            "Seq Scan on orders o  (cost=0.00..1.06 rows=6 width=12) (actual time=0.008..0.009 rows=5 loops=2)",
+        );
+        assert_eq!(description, "Seq Scan on orders o");
+        assert_eq!((node.cost, node.rows), (Some(1.06), Some(6.0)));
+        assert_eq!(
+            (node.actual_ms, node.actual_rows, node.loops),
+            (Some(0.009), Some(5.0), Some(2.0))
+        );
+        let (description, node) =
+            step_figures("Hash  (cost=1.04..1.04 rows=4 width=36) (never executed)");
+        assert_eq!((description, node.loops), ("Hash", Some(0.0)));
+        let (description, node) = step_figures("Hash Join");
+        assert_eq!((description, node.cost), ("Hash Join", None));
+    }
+
+    #[test]
+    fn drops_the_frame_of_clients() {
+        let psql = "                         QUERY PLAN\n\
+                    ------------------------------------------------------------\n \
+                    Seq Scan on t  (cost=0.00..35.50 rows=2550 width=4)\n   \
+                    Filter: (a > 1)\n\
+                    (2 rows)\n";
+        assert_eq!(
+            plain_plan(psql),
+            "Seq Scan on t  (cost=0.00..35.50 rows=2550 width=4)\n  Filter: (a > 1)"
+        );
+        let json = " [                 +\n   {               +\n     \"Plan\": {\"a\": \"x\"}+\n   }               +\n ]";
+        assert_eq!(
+            plain_plan(json),
+            "[\n  {\n    \"Plan\": {\"a\": \"x\"}\n  }\n]"
+        );
+        // A step that ends in `+` is no wrapped line.
+        assert_eq!(
+            plain_plan("Result\n  Output: (1 +"),
+            "Result\n  Output: (1 +"
+        );
+        let mysql = "+------+\n| EXPLAIN |\n+------+\n| -> Filter: (t.a = 1)  (cost=0.35 rows=1)\n    -> Table scan on t  (cost=0.35 rows=1)\n |\n+------+";
+        assert_eq!(
+            plain_plan(mysql),
+            "-> Filter: (t.a = 1)  (cost=0.35 rows=1)\n    -> Table scan on t  (cost=0.35 rows=1)"
+        );
+        assert_eq!(
+            plain_plan("EXPLAIN: -> Rows fetched before execution"),
+            "-> Rows fetched before execution"
+        );
+        assert_eq!(
+            plain_plan("EXPLAIN\n-> Filter: (a = 1)\\n    -> Table scan on t\\n"),
+            "-> Filter: (a = 1)\n    -> Table scan on t"
+        );
+        assert_eq!(
+            plain_plan("| EXPLAIN        |\n| -> Filter  |"),
+            "-> Filter"
+        );
+        // Vertical output's row header goes.
+        assert_eq!(
+            plain_plan(
+                "****** 1. row ******\nEXPLAIN: -> Filter: (t.a = 1)\n    -> Table scan on t"
+            ),
+            "-> Filter: (t.a = 1)\n    -> Table scan on t"
+        );
+        // Batch mode's JSON: breaks back, a backslash of the plan kept.
+        assert_eq!(
+            plain_plan(r#"{\n  "a": "x\\\\y"\n}"#),
+            "{\n  \"a\": \"x\\\\y\"\n}"
+        );
+        // A JSON plan on one line keeps its own escapes.
+        assert_eq!(plain_plan(r#"{"Filter": "a\nb"}"#), r#"{"Filter": "a\nb"}"#);
+        // SQL Server's steps keep their bars.
+        assert_eq!(
+            plain_plan("  |--Clustered Index Scan(t)"),
+            "|--Clustered Index Scan(t)"
+        );
+    }
+
+    #[test]
+    fn a_read_plan_is_analyzed_when_its_steps_ran() {
+        let estimated = Explain::read(
+            ExplainFormat::Text,
+            String::new(),
+            step(1.0, None, 1.0, vec![]),
+        );
+        assert!(!estimated.analyzed);
+        let analyzed = Explain::read(
+            ExplainFormat::Text,
+            String::new(),
+            step(2.0, None, 1.0, vec![step(1.0, Some(0.5), 1.0, vec![])]),
+        );
+        assert!(analyzed.analyzed);
+    }
 
     fn step(cost: f64, ms: Option<f64>, loops: f64, children: Vec<PlanNode>) -> PlanNode {
         PlanNode {

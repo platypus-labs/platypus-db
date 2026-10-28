@@ -1,6 +1,7 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { allActions } from "../actions";
 import { AgentsPanel } from "../agents/AgentsPanel";
+import { ThemesPanel } from "../themes/ThemesPanel";
 import { toCommandError } from "../api";
 import { type SettingDef, getSetting, getStored, setSetting, setStored, settingDefs, useSettingsVersion } from "../settings";
 import { ShortcutsPanel, actionMatches } from "../shell/ShortcutsPanel";
@@ -23,6 +24,7 @@ const PANELS: {
   contains?: (needle: string) => boolean;
   render: (search: string) => ReactNode;
 }[] = [
+  { title: msg("Themes"), keywords: "theme import export JSON colors appearance file", render: () => <ThemesPanel /> },
   { title: msg("Master password"), keywords: "password encryption credentials keyring", render: () => <MasterPasswordPanel /> },
   { title: msg("Agents"), keywords: "MCP AI assistant", render: () => <AgentsPanel /> },
   { title: msg("Drivers"), keywords: "ODBC ADBC Oracle Instant Client download", render: () => <DriversPanel /> },

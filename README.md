@@ -109,6 +109,14 @@ and shows the ODBC drivers and data sources of the system.
   named instances without a port are pointed out. *Copy as URL* in a connection's menu copies
   its URL without the password; *Duplicate* (also in the command palette) saves a copy with its
   tunnel, init script and passwords, and opens it for editing.
+- **Environment variables**: any field of a connection, the password and the SSH tunnel's
+  included, can read `${env:NAME}`: from the app's environment, then from the connection's
+  `.env` file (*Variables file* in its dialog). The connection keeps the reference, not the
+  value; a variable that is not set says which. `$${` writes a plain `${`.
+- **Poolers**: a PostgreSQL connection behind PgBouncer, Supavisor or Neon's pooler in
+  *transaction mode* runs its statements unnamed, so that each one keeps to the server
+  session of its transaction. The dialog suggests the mode for Supabase's pooler on port
+  6543 and for Neon's `-pooler` hosts; `?pgbouncer=true` in a pasted URL sets it too.
 - **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`, with their
   folders. A DBeaver project export (`.dbp`) brings its projects too, optionally gathered in a
   folder of the project rail. From DBeaver (a `.dbp` or a workspace) the saved user names and
@@ -221,8 +229,12 @@ and shows the ODBC drivers and data sources of the system.
 - **Copy** with headers or as CSV, JSON, Markdown, HTML, SQL `INSERT` or an `IN` list.
 - **Find** in the loaded rows (`Ctrl+F`).
 - **Value panel** (`F7`): long text, JSON and XML formatted, hex and images from binary
-  columns, save to file.
+  columns, save to file. JSON in a text column opens indented too, unless the connection's
+  *Format JSON found in text columns* is off.
 - Columns hidden, pinned, moved and resized, with the layout kept per table.
+- **Conditional formatting** (grid menu): rules color a cell or the whole row when a column
+  is equal to a value, contains it, falls in a range or is NULL, or spread a color scale over
+  a number column; the first rule that matches wins. A table keeps its rules.
 - Totals of the selection (count, sum, average, minimum, maximum), a record view of one row
   at a time, counts by value, statistics of the selection, and two rows compared column by
   column.
@@ -328,6 +340,16 @@ then run the SELECT or open it in the editor.
   row estimates 10 times off or more.
 - A table read in full (10,000 rows or more) to keep the rows matching a condition gets a
   suggestion to index that condition's columns.
+- The **graph** view draws the plan as boxes joined by lines: each step tinted by its share
+  of the work, each line as thick as the rows it carries; Fit shrinks a large plan to the
+  view.
+- **Compare…** lines a plan up with its previous run (after Refresh, e.g. once an index is
+  added) or with another plan: the whole plan's time or cost before and after, and each
+  step's own, with the steps replaced, added or gone.
+- **Open query plan…** (command palette, or the connections list's menu) reads a plan pasted
+  or opened from a file, from a server log or a colleague, without a connection:
+  PostgreSQL's JSON or text (as psql prints it), CockroachDB's, MySQL's tree, MariaDB's JSON,
+  SQLite's `QUERY PLAN` and SQL Server's `SHOWPLAN_TEXT`, recognized or chosen.
 
 ![The query manager with the trace of a statement](docs/screenshots/query-manager.png)
 
@@ -443,6 +465,10 @@ numbers after the largest `_id`, lists of words for arrays, small documents for 
   Dracula, Solarized Light and high contrast; your own accent, background, sidebar and text
   colors, interface size, row density, corner radius and editor font size. Inter and
   JetBrains Mono are bundled, so the app looks the same everywhere and works offline.
+- **Theme files** (Settings → Themes): Export saves the theme in use, with your custom colors,
+  as JSON (`{"platypus_theme": 1, "name", "light": {…}, "dark": {…}}`, both variants for
+  System); Import previews a file's theme, lists the keys and colors it skips, and applies it
+  or goes back. An imported theme with both variants follows the system's light or dark mode.
 - **Italian or English** (Settings › Appearance › Language; System follows Windows).
   `Ctrl+=` / `Ctrl+-` / `Ctrl+0` change the interface size; the editor and the result grid
   have their own font size.
@@ -463,9 +489,17 @@ PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start 
 - Each connection gives agents **no access**, **read only** (the default) or **read and
   write**; production and read-only connections are never more than read only.
 - Passwords stay in the keychain and no answer shows a host, a user or a secret.
-- Agents' queries are in the history with the agent's name.
+- Agents' queries are in the history with the agent's name, and every tool call is in the
+  agents' call log (Settings → Agents → Activity), by session, with a filter and a CSV export.
+- An agent can propose SQL with `propose_sql`: it opens in a new editor tab, for you to
+  review and run.
 
-Settings → Agents shows the commands that register the server, with Copy buttons. Agents
+Settings → Agents → Setup lists Claude Desktop, Claude Code, Codex, Cursor, Windsurf,
+Antigravity and Gemini CLI with their configuration file and whether PlatypusDB is in it:
+**Install** writes the server there, after asking and after a copy of the file
+(`<file>.platypus-backup-<date>`), keeping the rest of the file as it was. The same entry is
+shown to copy by hand, and so are the commands that register the server. Security lists the
+access of each connection. Agents
 registered with `platypus-mcp.exe` by version 0.2 need registering again with these commands:
 the installers no longer ship that second executable.
 
@@ -491,13 +525,21 @@ command or `.pgpass` instead. A connection that asks for its password every time
 available to agents.
 
 Tools: `list_connections`, `list_schemas`, `list_objects`, `describe_table`, `get_ddl`,
-`search_objects` and `run_query`. `run_query` runs one statement and returns 100 rows,
+`search_objects`, `run_query`, `sample_rows`, `explain` and `propose_sql`. `run_query` runs one statement and returns 100 rows,
 32 KB and 30 s at most by default (`max_rows` up to 10,000, `max_bytes` up to 1 MB,
 `timeout_seconds` up to 300), as an aligned text table or JSON, saying when rows or values
 longer than 1,000 characters were left out. In the text table SQL `NULL` reads `NULL` and a
 text `NULL` reads `'NULL'`. `list_objects` returns 500 objects at most (`limit` up to 2,000);
 a larger schema comes in pages (`truncated`, `total`, `next_offset`, then `offset`). The
 client's `notifications/cancelled` cancels the running statement.
+
+`sample_rows` returns the first rows of a table, view or collection (20 by default) within
+the limits of `run_query`. `explain` returns a statement's plan as an indented tree (or JSON)
+with costs, rows and index suggestions, within the byte limit and the timeout; the statement
+is checked as `run_query` checks it, and runs only with `analyze`, rolled back: on read-only
+connections that needs a read-only transaction that refuses writes (PostgreSQL, MySQL,
+MariaDB, SQLite). `propose_sql` runs nothing: the app opens the SQL in an editor tab, at once
+if it is open, else when it starts (within 24 hours).
 
 On read-only connections only statements that change nothing run, inside the database's
 read-only transaction (PostgreSQL, MySQL and MariaDB `READ ONLY`, SQLite `query_only`; DuckDB

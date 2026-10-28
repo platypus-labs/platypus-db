@@ -86,5 +86,6 @@ export function plainNumber(text: string): string {
   const separators = SEPARATORS[getSetting(numberFormat)];
   if (!separators) return text;
   const [group, decimal] = separators;
-  return text.replaceAll(group, "").replace(decimal, ".");
+  const grouped = group === " " ? text.replace(/[ \u00a0\u202f]/g, "") : text.replaceAll(group, "");
+  return grouped.replace(decimal, ".");
 }

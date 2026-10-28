@@ -65,6 +65,7 @@ export interface SelectedCell {
 /** The writable column's rule, `undefined` for columns that are not the table's. */
 export type Rules = (col: number) => ColumnRule | undefined;
 
+// `JSON_TYPE` of jsonText.ts: this module imports no values, so that its tests run in Node.
 const JSON_TYPE = /json/i;
 const BOOL_TYPE = /^bool(ean)?$/i;
 const INTEGER_TYPE = /\b(tiny|small|medium|big)?int(eger)?\d*\b|\b(small|big)?serial\d*\b|\bu?int(8|16|32|64|128)\b/i;

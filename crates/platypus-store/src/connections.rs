@@ -66,6 +66,9 @@ pub struct SavedConnection {
     /// [`SavedConnection::effective_agent_access`].
     #[serde(default)]
     pub agent_access: AgentAccess,
+    /// Whether the value panel formats a text column holding JSON as it does a JSON column.
+    #[serde(default, skip_serializing_if = "TextJson::is_format")]
+    pub text_json: TextJson,
     /// How the form enters the address: host, port and database, or one URL. Only the
     /// form's: it opens again as it was left.
     #[serde(default, skip_serializing_if = "ConnectBy::is_host")]
@@ -83,6 +86,24 @@ pub struct SavedConnection {
     /// identify their rows. Last: TOML writes arrays of tables after plain values.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub virtual_keys: Vec<VirtualKey>,
+}
+
+/// What the value panel does with JSON found in a text column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TextJson {
+    /// Indented, as in a JSON column.
+    #[default]
+    Format,
+    /// As it is written.
+    Plain,
+}
+
+impl TextJson {
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn is_format(&self) -> bool {
+        *self == Self::Format
+    }
 }
 
 /// How the connection form enters the address.
@@ -404,6 +425,7 @@ impl SavedConnection {
             color: None,
             connection_type: None,
             agent_access: AgentAccess::default(),
+            text_json: TextJson::Format,
             connect_by: ConnectBy::Host,
             ssh: None,
             init: SavedInit::default(),
@@ -817,9 +839,12 @@ impl ConnectionStore {
                 "connection name is required".to_owned(),
             ));
         }
+        // A variable of the host (`${env:DB_HOST}`) stands for a plain name here, and is
+        // checked again once it is read, when the connection opens.
         if !connection.driver.is_embedded() {
-            connection
-                .config(None)
+            let mut config = connection.config(None);
+            config.host = platypus_core::without_references(&config.host);
+            config
                 .check_host()
                 .map_err(|_| StoreError::Invalid(HOST_WITH_LOGIN.to_owned()))?;
         }
@@ -1102,6 +1127,38 @@ mod tests {
         assert!(projects.iter().all(|p| p.connections == [shared.id]));
         assert_eq!(projects[0].initials, "CR");
         assert_eq!(projects[1].initials, "IN");
+    }
+
+    #[test]
+    fn json_in_text_columns_is_formatted_unless_turned_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        let mut c = sample();
+        s.save(c.clone(), PasswordUpdate::Keep).unwrap();
+        let file = || std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
+        assert!(!file().contains("text_json"), "the default is not written");
+        assert_eq!(s.get(c.id).unwrap().text_json, TextJson::Format);
+        c.text_json = TextJson::Plain;
+        s.save(c.clone(), PasswordUpdate::Keep).unwrap();
+        assert!(file().contains("text_json = \"plain\""), "{}", file());
+        let (again, _) = store(dir.path());
+        assert_eq!(again.get(c.id).unwrap().text_json, TextJson::Plain);
+    }
+
+    #[test]
+    fn a_host_from_the_environment_is_saved_as_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        let mut from_env = sample();
+        from_env.host = "${env:DB_HOST}".to_owned();
+        s.save(from_env.clone(), PasswordUpdate::Keep).unwrap();
+        assert_eq!(s.get(from_env.id).unwrap().host, "${env:DB_HOST}");
+        let mut login_from_env = sample();
+        login_from_env.host = "root:${env:PW}@db".to_owned();
+        assert!(s.save(login_from_env, PasswordUpdate::Keep).is_err());
+        let mut login = sample();
+        login.host = "root:secret@db".to_owned();
+        assert!(s.save(login, PasswordUpdate::Keep).is_err());
     }
 
     #[test]

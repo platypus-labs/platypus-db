@@ -8,6 +8,7 @@ mod admin;
 mod capabilities;
 mod config;
 mod connection;
+mod env;
 mod error;
 mod explain;
 pub mod geometry;
@@ -21,16 +22,18 @@ pub use admin::{
 };
 pub use capabilities::{Capabilities, ObjectRef, unsupported};
 pub use config::{
-    Bridge, ConnectionConfig, DriverKind, JdbcUrl, ParseNote, ParsedConnection, Secret, SshAuth,
-    SshConfig, SslMode,
+    Bridge, ConnectionConfig, DriverKind, JdbcUrl, POOLER, ParseNote, ParsedConnection, Secret,
+    SshAuth, SshConfig, SslMode,
 };
 pub use connection::{
     CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, Executed, NextResult,
     RecordBatchStream, ServerInfo, execute_each,
 };
+pub use env::{ENV_FILE, EnvVars, expand as expand_env, parse_dotenv, without_references};
 pub use error::{DbError, Error, Result, without_repeats};
 pub use explain::{
-    Explain, ExplainFormat, FullScan, LARGE_SCAN_ROWS, PlanNode, explain_document, plan_from_text,
+    Explain, ExplainFormat, FullScan, LARGE_SCAN_ROWS, PlanNode, explain_document, plain_plan,
+    plan_from_text, step_figures,
 };
 pub use init::{SessionInit, run_init};
 pub use metadata::{

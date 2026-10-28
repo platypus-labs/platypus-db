@@ -55,6 +55,8 @@ export interface SavedConnection {
   /** What external agents (MCP, the CLI) may do; production and read-only connections
    *  never let them write. */
   agent_access?: AgentAccess;
+  /** JSON in a text column: indented in the value panel (the default), or as written. */
+  text_json?: "format" | "plain";
   /** How the form enters the address, as it was left: the host fields or one URL. */
   connect_by?: "host" | "url";
   /** The SSH server the connection goes through. */
@@ -241,6 +243,15 @@ export interface Explain {
   analyzed: boolean;
   /** Filtered full scans of large tables, where an index may help. */
   suggestions: FullScan[];
+}
+
+/** Whose plan a pasted document is; see `commands/explain.rs`. */
+export type PlanSource = "postgres" | "mysql" | "sqlite" | "sqlserver";
+
+/** A plan read from a document, and whose it was taken to be. */
+export interface ReadPlan {
+  explain: Explain;
+  source: PlanSource;
 }
 
 /** A request the app sent to a database; see `querylog.rs`. */
@@ -435,6 +446,73 @@ export interface SqlAnalysis {
   batches: { first: number; end: number; repeat: number }[];
 }
 
+export type HistoryStatus = "ok" | "error" | "cancelled";
+
+/** A call an agent made to one of the MCP server's tools. */
+export interface AgentCall {
+  id: number;
+  /** The server's run it belongs to. */
+  session: string;
+  agent: string;
+  tool: string;
+  connection: string | null;
+  /** The arguments, as JSON text. */
+  arguments: string;
+  /** Unix epoch milliseconds. */
+  started_at: number;
+  duration_ms: number;
+  status: HistoryStatus;
+  error: string | null;
+}
+
+export interface AgentCallQuery {
+  text: string | null;
+  session: string | null;
+  status: HistoryStatus | null;
+  before_id: number | null;
+  limit: number;
+}
+
+/** A run of the MCP server, with how many calls it answered. */
+export interface AgentSession {
+  session: string;
+  agent: string;
+  first_at: number;
+  last_at: number;
+  calls: number;
+  errors: number;
+}
+
+export type AgentInstallState = "missing" | "installed" | "different" | "unreadable";
+
+/** An MCP client PlatypusDB can be installed in. */
+export interface AgentClient {
+  id: string;
+  name: string;
+  /** Its configuration file. */
+  path: string;
+  format: "json" | "toml";
+  exists: boolean;
+  state: AgentInstallState;
+  /** The entry to add by hand, in the file's format. */
+  snippet: string;
+}
+
+/** SQL an agent proposed, to open in an editor tab. */
+export interface AgentProposal {
+  id: number;
+  agent: string;
+  connection_id: string;
+  title: string | null;
+  sql: string;
+  created_at: number;
+}
+
+export interface InstalledClient {
+  path: string;
+  backup: string | null;
+}
+
 export interface HistoryEntry {
   id: number;
   connection_id: string;
@@ -443,7 +521,7 @@ export interface HistoryEntry {
   started_at: number;
   duration_ms: number;
   rows: number | null;
-  status: "ok" | "error" | "cancelled";
+  status: HistoryStatus;
   error: string | null;
   /** The agent that ran it, e.g. `claude-code`; `null` when run in the app. */
   origin: string | null;
@@ -1228,6 +1306,13 @@ export const api = {
   agentSetup: () => invoke<AgentSetup>("agent_setup"),
   agentBlockers: () => invoke<Record<string, AgentBlocker>>("agent_blockers"),
   staleAgentRegistrations: () => invoke<StaleRegistration[]>("stale_agent_registrations"),
+  agentClients: () => invoke<AgentClient[]>("agent_clients"),
+  installAgentClient: (id: string) => invoke<InstalledClient>("install_agent_client", { id }),
+  agentCalls: (query: AgentCallQuery) => invoke<AgentCall[]>("agent_calls", { query }),
+  agentSessions: (limit: number) => invoke<AgentSession[]>("agent_sessions", { limit }),
+  agentCallsExport: (query: AgentCallQuery) => invoke<string>("agent_calls_export", { query }),
+  clearAgentCalls: () => invoke<void>("clear_agent_calls"),
+  takeAgentProposals: () => invoke<AgentProposal[]>("take_agent_proposals"),
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
   defaultConnection: (driver: DriverKind) =>
     invoke<SavedConnection>("default_connection", { driver }),
@@ -1579,6 +1664,8 @@ export const api = {
   clearQueryLog: () => invoke<void>("clear_query_log"),
   /** With `analyze` the statement runs, and its changes are rolled back. */
   explain: (sessionId: number, sql: string, analyze: boolean) => invoke<Explain>("explain", { sessionId, sql, analyze }),
+  /** Reads a plan pasted or opened from a file; `source` `null` guesses whose it is. */
+  readPlan: (document: string, source: PlanSource | null) => invoke<ReadPlan>("read_plan", { document, source }),
   serverSessions: (sessionId: number) => invoke<ServerSession[]>("server_sessions", { sessionId }),
   serverLocks: (sessionId: number) => invoke<ServerLock[]>("server_locks", { sessionId }),
   endServerSession: (sessionId: number, id: string, how: EndSession) =>

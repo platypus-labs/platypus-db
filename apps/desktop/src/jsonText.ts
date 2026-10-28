@@ -6,6 +6,9 @@
 
 const isSpace = (ch: string | undefined) => ch === " " || ch === "\t" || ch === "\n" || ch === "\r";
 
+/** A column the database types as JSON (`json`, `jsonb`, MySQL's `JSON`). */
+export const JSON_TYPE = /json/i;
+
 /** Index just past the string literal that starts at `start` (on its opening quote). */
 function stringEnd(text: string, start: number): number {
   let i = start + 1;
