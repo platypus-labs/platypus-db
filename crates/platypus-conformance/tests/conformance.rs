@@ -2933,6 +2933,48 @@ async fn agents_read_in_read_only_transactions() {
     }
 }
 
+/// PostgreSQL decodes `U&"…"` names the way the agents' read-only check does, so a function
+/// spelled with Unicode escapes is the one the check refuses.
+#[tokio::test]
+async fn agents_read_only_check_decodes_postgres_unicode_names() {
+    use platypus_mcp::access::{AgentAccess, UnfilteredRule, check};
+    use platypus_sql::Dialect;
+
+    let _serial = SERIAL.lock().await;
+    for b in backends()
+        .await
+        .into_iter()
+        // CockroachDB has no `U&` names.
+        .filter(|b| b.config.driver == DriverKind::Postgres && b.name != "cockroach")
+    {
+        let conn = b.connect().await;
+        for sql in [
+            r#"SELECT U&"\0070g_backend_pid"() = pg_backend_pid()"#,
+            r#"SELECT U&"\+000070g_backend_pid"() = pg_backend_pid()"#,
+            r#"SELECT U&"!0070g_backend_pid" UESCAPE '!' () = pg_backend_pid()"#,
+        ] {
+            let same = collect(&b, &*conn, sql).await;
+            assert_eq!(cell(&same[0], 0, 0).as_deref(), Some("true"), "{sql}");
+        }
+        for sql in [
+            r#"SELECT U&"\0070g_advisory_lock"(4243)"#,
+            r#"SELECT U&"\0070g_read_file"('PG_VERSION')"#,
+            r#"SELECT U&"!0070g_ls_dir" UESCAPE '!' ('.')"#,
+            "SELECT pg_stat_reset()",
+            "SELECT pg_stat_reset_shared('bgwriter')",
+        ] {
+            let checked = check(
+                sql,
+                Dialect::Postgres,
+                AgentAccess::ReadOnly,
+                UnfilteredRule::Refuse,
+                "pg",
+            );
+            assert!(checked.is_err(), "{}: {sql} passed the check", b.name);
+        }
+    }
+}
+
 /// A CSV file imported into a table created from its inferred types, then a failed import
 /// that leaves that table as it was.
 #[tokio::test]

@@ -14,6 +14,7 @@ pub mod access;
 mod agent;
 mod connect;
 mod error;
+mod ident;
 pub mod output;
 pub mod profile;
 pub mod query;
