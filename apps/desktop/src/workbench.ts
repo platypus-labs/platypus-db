@@ -41,6 +41,12 @@ export interface Workbench {
   /** The navigator session of the connection (and database, `null` for the saved one),
    *  opened on first use; `null` if cancelled. */
   sideSession(connection: SavedConnection, database?: string | null): Promise<number | null>;
+  /** Opens a session of its own on `connection`, as a tab does: the password asked when not
+   *  saved, a driver not downloaded offered. A `side` session stays in autocommit mode on
+   *  production too. `null` when cancelled or failed (the error shows). */
+  openSession(connection: SavedConnection, side?: boolean): Promise<number | null>;
+  /** Closes a session opened with `openSession`. */
+  closeSession(sessionId: number): void;
   /** What an open session's driver supports. */
   capabilities(sessionId: number): Capabilities | undefined;
   showError(message: string): void;

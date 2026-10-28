@@ -821,6 +821,8 @@ export function App() {
       return tab !== undefined;
     },
     sideSession: (connection, database) => shell.current.navigatorSession(connection, database),
+    openSession: (connection, side = false) => connect(connection, null, side),
+    closeSession: (sessionId) => closeSession(sessionId),
     duplicateConnection: (connection) => duplicateConnection(connection),
     capabilities: (sessionId) => capabilities.current.get(sessionId),
     showError: setToast,
