@@ -40,6 +40,53 @@ pub enum Error {
     Other(String),
 }
 
+impl Error {
+    /// The error with the server it came from, `(MySQL 5.7.44)` after its message, so that a
+    /// reason that depends on the version says which. Cancels, closed connections, missing
+    /// drivers and messages that name the version already stay as they are.
+    #[must_use]
+    pub fn with_server(self, server: &crate::ServerInfo) -> Self {
+        let version = server
+            .version_number()
+            .map_or_else(|| server.version.trim().to_owned(), |v| v.to_string());
+        if version.is_empty() {
+            return self;
+        }
+        let tag = |message: &mut String| {
+            if !message.contains(&version) {
+                *message = format!("{message} ({} {version})", server.product);
+            }
+        };
+        match self {
+            Self::Database(mut db) => {
+                tag(&mut db.message);
+                Self::Database(db)
+            }
+            Self::Unsupported(mut m) => {
+                tag(&mut m);
+                Self::Unsupported(m)
+            }
+            Self::Other(mut m) => {
+                tag(&mut m);
+                Self::Other(m)
+            }
+            Self::Decode {
+                column,
+                db_type,
+                mut message,
+            } => {
+                tag(&mut message);
+                Self::Decode {
+                    column,
+                    db_type,
+                    message,
+                }
+            }
+            other => other,
+        }
+    }
+}
+
 /// An error reported by the database server, with the details editors need to point at it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DbError {
@@ -89,7 +136,45 @@ pub fn without_repeats(message: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::without_repeats;
+    use super::*;
+
+    #[test]
+    fn errors_name_the_server_they_came_from() {
+        let server = crate::ServerInfo {
+            product: "MySQL".to_owned(),
+            version: "5.7.44-log".to_owned(),
+            encrypted: false,
+        };
+        let db = Error::Database(DbError {
+            code: Some("1054".to_owned()),
+            message: "Unknown column 'x'".to_owned(),
+            position: Some(8),
+            ..DbError::default()
+        })
+        .with_server(&server);
+        let Error::Database(db) = db else { panic!() };
+        assert_eq!(db.message, "Unknown column 'x' (MySQL 5.7.44)");
+        assert_eq!(db.position, Some(8), "the rest stays");
+        let named = Error::Unsupported("needs 8.0.18; this server is 5.7.44".to_owned());
+        assert_eq!(
+            named.with_server(&server).to_string(),
+            "unsupported: needs 8.0.18; this server is 5.7.44",
+            "named once"
+        );
+        assert!(matches!(
+            Error::Cancelled.with_server(&server),
+            Error::Cancelled
+        ));
+        let pg = crate::ServerInfo {
+            product: "PostgreSQL".to_owned(),
+            version: "16.4 (Debian 16.4-1.pgdg120+2)".to_owned(),
+            encrypted: false,
+        };
+        assert_eq!(
+            Error::Other("boom".to_owned()).with_server(&pg).to_string(),
+            "boom (PostgreSQL 16.4)"
+        );
+    }
 
     #[test]
     fn drops_repeated_causes() {
