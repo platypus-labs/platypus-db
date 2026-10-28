@@ -61,32 +61,37 @@ export function scaleColor(from: ColorName, to: ColorName, t: number): string {
   return `rgba(${mix(0)}, ${mix(1)}, ${mix(2)}, ${ALPHA})`;
 }
 
-/** A number written as plain text (`-12.5`, `1e3`), else `null`. */
+const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+
+/** A decimal number written as plain text (`-12.5`, `1e3`), else `null`: not `0x10`. */
 export function parseNumber(text: string): number | null {
   const trimmed = text.trim();
-  if (trimmed === "") return null;
+  if (!DECIMAL.test(trimmed)) return null;
   const n = Number(trimmed);
   return Number.isFinite(n) ? n : null;
 }
+
+/** Reads a value of a column as a number, or `null`. */
+export type NumberOf = (text: string) => number | null;
 
 /** The lowest and highest number of a column, for its color scales. */
 export type Ranges = Map<number, [number, number]>;
 
 /** Whether a value meets a condition; scales always do, when the value is a number. */
-export function matches(condition: Condition, value: string | null, plain: (text: string) => string): boolean {
+export function matches(condition: Condition, value: string | null, number: NumberOf): boolean {
   switch (condition.kind) {
     case "null":
       return value === null;
     case "not_null":
       return value !== null;
     case "equals":
-      return value !== null && sameText(value, condition.value, plain);
+      return value !== null && sameText(value, condition.value, number);
     case "not_equals":
-      return value === null || !sameText(value, condition.value, plain);
+      return value === null || !sameText(value, condition.value, number);
     case "contains":
       return value !== null && value.toLowerCase().includes(condition.value.toLowerCase());
     case "between": {
-      const n = value === null ? null : parseNumber(plain(value));
+      const n = value === null ? null : number(value);
       if (n === null) return false;
       const min = parseNumber(condition.min);
       const max = parseNumber(condition.max);
@@ -94,29 +99,34 @@ export function matches(condition: Condition, value: string | null, plain: (text
       return (min === null || n >= min) && (max === null || n <= max);
     }
     case "scale":
-      return value !== null && parseNumber(plain(value)) !== null;
+      return value !== null && number(value) !== null;
   }
 }
 
 /** Equal as numbers when both are, else as text ignoring case: `1.50` is `1.5`. */
-function sameText(value: string, wanted: string, plain: (text: string) => string): boolean {
-  const a = parseNumber(plain(value));
+function sameText(value: string, wanted: string, number: NumberOf): boolean {
+  const a = number(value);
   const b = parseNumber(wanted);
   if (a !== null && b !== null) return a === b;
   return value.trim().toLowerCase() === wanted.trim().toLowerCase();
 }
 
-/** Rules resolved against a result: each with the result column it reads. */
+/** Rules resolved against a result: each with the result column it reads, and how. */
 export interface ResolvedRule {
   rule: FormatRule;
   col: number;
+  number: NumberOf;
 }
 
-export function resolveRules(rules: FormatRule[], columns: ColumnInfo[]): ResolvedRule[] {
+/** `plain` turns a number as the grid shows it (`1.234,5`) back to plain text: only number
+ *  columns are written that way, so text columns are read as they are. */
+export function resolveRules(rules: FormatRule[], columns: ColumnInfo[], plain: (text: string) => string): ResolvedRule[] {
   const out: ResolvedRule[] = [];
   for (const rule of rules) {
     const col = columns.findIndex((c) => c.name === rule.column);
-    if (col >= 0) out.push({ rule, col });
+    if (col < 0) continue;
+    const number: NumberOf = columns[col]!.numeric ? (text) => parseNumber(plain(text)) : parseNumber;
+    out.push({ rule, col, number });
   }
   return out;
 }
@@ -136,15 +146,14 @@ export function formatCell(
   col: number,
   value: (col: number) => string | null | undefined,
   ranges: Ranges,
-  plain: (text: string) => string,
 ): CellDecoration | undefined {
-  for (const { rule, col: read } of rules) {
+  for (const { rule, col: read, number } of rules) {
     if (!rule.row && read !== col) continue;
     const v = value(read);
-    if (v === undefined || !matches(rule.condition, v, plain)) continue;
+    if (v === undefined || !matches(rule.condition, v, number)) continue;
     if (rule.condition.kind === "scale") {
       const range = ranges.get(read);
-      const n = parseNumber(plain(v!));
+      const n = number(v!);
       if (!range || n === null) continue;
       const [low, high] = range;
       const t = high > low ? (n - low) / (high - low) : 0.5;
@@ -228,14 +237,27 @@ export function saveRules(key: string, rules: FormatRule[]) {
   }
 }
 
-/** A stored rule this version can read. */
-function valid(rule: FormatRule): boolean {
-  const kinds: ConditionKind[] = ["equals", "not_equals", "contains", "between", "null", "not_null", "scale"];
+/** A stored rule this version can read, every field of its condition included: the grid
+ *  reads them on each frame. */
+export function valid(rule: FormatRule): boolean {
+  if (typeof rule !== "object" || rule === null) return false;
   const color = (c: unknown) => (COLOR_NAMES as readonly unknown[]).includes(c);
-  return (
-    typeof rule?.column === "string" &&
-    color(rule.color) &&
-    kinds.includes(rule.condition?.kind) &&
-    (rule.condition.kind !== "scale" || color(rule.condition.to))
-  );
+  const text = (t: unknown) => typeof t === "string";
+  const c = rule.condition as Partial<Record<string, unknown>> | undefined;
+  if (!text(rule.id) || !text(rule.column) || !color(rule.color) || typeof rule.row !== "boolean" || !c) return false;
+  switch (c.kind) {
+    case "equals":
+    case "not_equals":
+    case "contains":
+      return text(c.value);
+    case "between":
+      return text(c.min) && text(c.max);
+    case "null":
+    case "not_null":
+      return true;
+    case "scale":
+      return color(c.to);
+    default:
+      return false;
+  }
 }

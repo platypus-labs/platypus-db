@@ -225,6 +225,11 @@ export default async function (page, { shots }) {
   await page.waitFor(`${dialog}.querySelectorAll('.formatting-rule').length === 0`);
   await set(page, "column", "amount");
   await set(page, "condition", "scale");
+  // On a text column a scale is not offered: the condition falls back to "Equal to".
+  await set(page, "column", "status");
+  await page.waitFor(`${field("condition")}.value === 'equals'`);
+  await set(page, "column", "amount");
+  await set(page, "condition", "scale");
   await color(page, "color", "red");
   await color(page, "to", "green");
   await addRule(page, 1);

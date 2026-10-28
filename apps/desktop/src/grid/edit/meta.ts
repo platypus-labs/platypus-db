@@ -1,6 +1,7 @@
 /** What the data editor needs to know about the table behind a result. */
 import type { ColumnInfo, ColumnMeta, Generated, GeneratedColumn, ObjectKind, SourceItem, TableDetails, VirtualKey } from "../../api";
 import { msg } from "../../i18n";
+import { JSON_TYPE } from "../../jsonText";
 
 /** The table a data viewer browses. */
 export interface TableRef {
@@ -134,7 +135,6 @@ export function editMeta(
   };
 }
 
-const JSON_TYPE = /json/i;
 const BOOL_TYPE = /^bool(ean)?$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** Longer values get the multi-line editor. */

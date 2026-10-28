@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { api, type ColumnInfo } from "../api";
+import { api, type CellInput, type ColumnInfo } from "../api";
 import { annotation, catalogEntry, catalogKey, useCatalogVersion } from "../catalog/catalog";
 import { CalcPanel } from "../panels/CalcPanel";
 import { CompareRows } from "../panels/CompareRows";
@@ -153,7 +153,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
     setLayout(next);
     if (layoutKey) saveLayout(layoutKey, next);
   };
-  const formatting = useFormatting(layoutKey, jobId, columns, rowCount, editor.topRows, cache);
+  const formatting = useFormatting(layoutKey, jobId, columns, rowCount, editor.topRows, cache, editor.edit?.pending);
   const decorate = useMemo(
     () => combine(underlay(formatting.decorate, editor.decorate), search.decorate),
     [formatting.decorate, editor.decorate, search.decorate],
@@ -316,8 +316,12 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   );
 }
 
+/** How long the rows loaded stay the same before the color scales span them again: a result
+ *  still fetching would otherwise profile its columns on every batch. */
+const RANGES_DELAY_MS = 400;
+
 /** The conditional formatting of a result: its rules, kept for a table, and the cells they
- *  color. Color scales span the numbers of the rows loaded. */
+ *  color, after the edits not saved yet. Color scales span the numbers of the rows loaded. */
 function useFormatting(
   key: string | null,
   jobId: number,
@@ -325,42 +329,54 @@ function useFormatting(
   rowCount: number,
   topRows: number,
   cache: RowCache,
+  pending: ((row: number, col: number) => CellInput | undefined) | undefined,
 ) {
+  // Read while painting: a ref, so that typing an edit does not rebuild the decoration.
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
   const [rules, setRules] = useState<FormatRule[]>(() => (key ? loadRules(key) : []));
   useEffect(() => setRules(key ? loadRules(key) : []), [key]);
   const [dialog, setDialog] = useState<{ column: string | null } | null>(null);
   const [ranges, setRanges] = useState<Ranges>(() => new Map());
-  const resolved = useMemo(() => resolveRules(rules, columns), [rules, columns]);
+  const resolved = useMemo(() => resolveRules(rules, columns, plainNumber), [rules, columns]);
   const scaled = scaledColumns(resolved).join(",");
 
   useEffect(() => {
     const cols = scaled ? scaled.split(",").map(Number) : [];
-    if (cols.length === 0 || rowCount === 0) return setRanges(new Map());
+    if (cols.length === 0 || rowCount === 0) return setRanges((r) => (r.size === 0 ? r : new Map()));
     let live = true;
-    Promise.all(cols.map((c) => api.columnProfile(jobId, c).then((p) => [c, p] as const))).then(
-      (profiles) => {
+    const timer = setTimeout(() => {
+      // Each column on its own: one that fails (a closed result) leaves the others colored.
+      void Promise.allSettled(cols.map((c) => api.columnProfile(jobId, c))).then((profiles) => {
         if (!live) return;
         const next: Ranges = new Map();
         const bound = (text: string | null) => (text === null ? null : parseNumber(plainNumber(text)));
-        for (const [c, p] of profiles) {
-          const low = bound(p.min);
-          const high = bound(p.max);
-          if (low !== null && high !== null) next.set(c, [low, high]);
-        }
+        profiles.forEach((p, i) => {
+          if (p.status !== "fulfilled") return;
+          const low = bound(p.value.min);
+          const high = bound(p.value.max);
+          if (low !== null && high !== null) next.set(cols[i]!, [low, high]);
+        });
         setRanges(next);
-      },
-      // A result closed meanwhile colors nothing.
-      () => undefined,
-    );
+      });
+    }, RANGES_DELAY_MS);
     return () => {
       live = false;
+      clearTimeout(timer);
     };
   }, [jobId, scaled, rowCount]);
 
   const decorate = useMemo(() => {
     if (resolved.length === 0) return undefined;
-    return (row: number, col: number) =>
-      row < topRows ? undefined : formatCell(resolved, col, (c) => cache.get(row - topRows, c), ranges, plainNumber);
+    const value = (row: number, c: number) => {
+      const edit = pendingRef.current?.(row, c);
+      if (edit?.kind === "value") return edit.text;
+      if (edit?.kind === "null") return null;
+      // A new row's DEFAULT is not known yet.
+      if (edit || row < topRows) return undefined;
+      return cache.get(row - topRows, c);
+    };
+    return (row: number, col: number) => formatCell(resolved, col, (c) => value(row, c), ranges);
   }, [resolved, ranges, topRows, cache]);
 
   const change = (next: FormatRule[]) => {

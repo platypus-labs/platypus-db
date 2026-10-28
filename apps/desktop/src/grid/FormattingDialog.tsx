@@ -82,9 +82,17 @@ export function FormattingDialog({ columns, rules, column, saved, onChange, onCl
   const first = column ?? columns[0]?.name ?? "";
   const [draft, setDraft] = useState<FormatRule>(() => newRule(first));
   const editing = rules.some((r) => r.id === draft.id);
-  const ready = draft.column !== "" && complete(draft.condition);
   const setCondition = (condition: Condition) => setDraft({ ...draft, condition });
-  const numeric = columns.find((c) => c.name === draft.column)?.numeric ?? false;
+  const isNumeric = (name: string) => columns.find((c) => c.name === name)?.numeric ?? false;
+  const numeric = isNumeric(draft.column);
+  const ready = draft.column !== "" && complete(draft.condition) && (draft.condition.kind !== "scale" || numeric);
+  /** A color scale needs numbers: on another column it becomes "Equal to". */
+  const changeColumn = (column: string) =>
+    setDraft({
+      ...draft,
+      column,
+      condition: draft.condition.kind === "scale" && !isNumeric(column) ? conditionOf("equals") : draft.condition,
+    });
   // A fresh rule on the column just used.
   const reset = () => setDraft(newRule(draft.column));
 
@@ -146,7 +154,7 @@ export function FormattingDialog({ columns, rules, column, saved, onChange, onCl
         <div className="formatting-form">
           <label className="field">
             <span>{t("Column")}</span>
-            <select data-field="column" value={draft.column} onChange={(e) => setDraft({ ...draft, column: e.target.value })}>
+            <select data-field="column" value={draft.column} onChange={(e) => changeColumn(e.target.value)}>
               {columns.map((c, i) => (
                 <option key={i} value={c.name}>
                   {c.name}
@@ -161,7 +169,7 @@ export function FormattingDialog({ columns, rules, column, saved, onChange, onCl
               value={draft.condition.kind}
               onChange={(e) => setCondition(conditionOf(e.target.value as ConditionKind, draft.condition))}
             >
-              {KINDS.filter((k) => !k.numeric || numeric || draft.condition.kind === k.kind).map((k) => (
+              {KINDS.filter((k) => !k.numeric || numeric).map((k) => (
                 <option key={k.kind} value={k.kind}>
                   {t(k.label)}
                 </option>

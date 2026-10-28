@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { api, type ColumnInfo, toCommandError } from "../api";
 import { formatCount, t, plural } from "../i18n";
-import { formatJson, isJsonDocument } from "../jsonText";
+import { JSON_TYPE, formatJson, isJsonDocument } from "../jsonText";
 
 /** The focused cell of a result. */
 export interface ValueTarget {
@@ -17,8 +17,7 @@ export interface ValueTarget {
   plainTextJson?: boolean;
 }
 
-/** A column the database types as JSON (`json`, `jsonb`, MySQL's `JSON`). */
-const jsonColumn = (column: ColumnInfo) => /json/i.test(column.db_type);
+const jsonColumn = (column: ColumnInfo) => JSON_TYPE.test(column.db_type);
 
 type Mode = "text" | "json" | "xml" | "hex" | "image";
 
