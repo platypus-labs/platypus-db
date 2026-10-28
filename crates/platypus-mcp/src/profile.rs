@@ -5,13 +5,17 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use platypus_store::{
-    ConnectionStore, HistoryStore, KeyringSecrets, SecretStore, SettingsStore, VaultSecrets,
+    AgentCallStore, ConnectionStore, HistoryStore, KeyringSecrets, SecretStore, SettingsStore,
+    VaultSecrets,
 };
 
 use crate::error::{AgentError, Result};
 
 /// The desktop app's bundle identifier, which names its folders.
 const APP_IDENTIFIER: &str = "dev.platypusdb.desktop";
+
+/// The file of the agents' tool calls, in the data folder.
+pub const AGENT_CALLS_FILE: &str = "agent-calls.db";
 
 /// The environment variable that puts the whole profile in one folder, as for the app.
 pub const DATA_DIR_ENV: &str = "PLATYPUS_DATA_DIR";
@@ -21,7 +25,7 @@ pub const DATA_DIR_ENV: &str = "PLATYPUS_DATA_DIR";
 pub struct Profile {
     /// `connections.toml`, `settings.toml` and the master password's `secrets.vault`.
     config_dir: PathBuf,
-    /// `history.db`.
+    /// `history.db` and `agent-calls.db`.
     data_dir: PathBuf,
 }
 
@@ -81,6 +85,11 @@ impl Profile {
 
     pub fn history(&self) -> Result<HistoryStore> {
         Ok(HistoryStore::open(&self.data_dir.join("history.db"))?)
+    }
+
+    /// The log of the agents' tool calls, which the app shows under Agents.
+    pub fn agent_calls(&self) -> Result<AgentCallStore> {
+        Ok(AgentCallStore::open(&self.data_dir.join(AGENT_CALLS_FILE))?)
     }
 }
 

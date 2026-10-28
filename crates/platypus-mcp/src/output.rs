@@ -5,12 +5,14 @@
 use std::fmt::Write as _;
 use std::time::Duration;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::query::{Cell, Cut, Limits, MAX_VALUE_CHARS, Outcome, Table};
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Format {
     /// An aligned table, compact for a model's context.

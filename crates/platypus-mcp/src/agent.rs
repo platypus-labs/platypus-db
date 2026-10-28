@@ -11,7 +11,8 @@ use std::time::{Instant, SystemTime};
 use platypus_core::{Connection, DriverKind, Error, ObjectKind, ObjectMeta, ObjectRef};
 use platypus_sql::Dialect;
 use platypus_store::{
-    AgentAccess, ConnectionStore, HistoryStatus, HistoryStore, NewHistoryEntry, SavedConnection,
+    AgentAccess, AgentCallStore, ConnectionStore, HistoryStatus, HistoryStore, NewAgentCall,
+    NewHistoryEntry, SavedConnection,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -100,7 +101,7 @@ fn fingerprint(effective: &SavedConnection) -> u64 {
 }
 
 /// The arguments of `run_query`.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct QueryArgs {
     /// The connection's name, as `list_connections` shows it.
     pub connection: String,
@@ -117,7 +118,7 @@ pub struct QueryArgs {
 }
 
 /// The arguments of `explain`.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ExplainArgs {
     /// The connection's name, as `list_connections` shows it.
     pub connection: String,
@@ -135,7 +136,7 @@ pub struct ExplainArgs {
 }
 
 /// The arguments of `sample_rows`.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SampleArgs {
     /// The connection's name, as `list_connections` shows it.
     pub connection: String,
@@ -308,6 +309,7 @@ pub struct Agent {
     profile: Profile,
     sessions: Mutex<HashMap<Uuid, Slot>>,
     history: Mutex<Option<HistoryStore>>,
+    calls: Mutex<Option<AgentCallStore>>,
 }
 
 impl std::fmt::Debug for Agent {
@@ -329,6 +331,7 @@ impl Agent {
             profile,
             sessions: Mutex::default(),
             history: Mutex::default(),
+            calls: Mutex::default(),
         }
     }
 
@@ -652,6 +655,17 @@ impl Agent {
             format: args.format,
         };
         self.run_query_until(&query, origin, stop).await
+    }
+
+    /// Adds a tool call to the agents' call log; the log is best effort.
+    pub fn record_call(&self, call: &NewAgentCall) {
+        let mut calls = locked(&self.calls);
+        if calls.is_none() {
+            *calls = self.profile.agent_calls().ok();
+        }
+        if let Some(c) = calls.as_ref() {
+            let _ = c.record(call);
+        }
     }
 
     /// Adds the statement to the query history; history is best effort.

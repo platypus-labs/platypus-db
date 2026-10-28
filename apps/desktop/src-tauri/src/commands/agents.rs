@@ -1,13 +1,18 @@
 //! Setting external agents up: the commands that register the app, started with `--mcp`, as
-//! an MCP server with Claude Code and Codex.
+//! an MCP server with Claude Code and Codex; and the log of the calls agents made to its
+//! tools.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use platypus_mcp::AgentBlocker;
-use platypus_store::toml;
+use platypus_mcp::profile::AGENT_CALLS_FILE;
+use platypus_store::{
+    AGENT_CALLS_LIMIT, AgentCall, AgentCallQuery, AgentCallStore, AgentSession, agent_calls_csv,
+    toml,
+};
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
 
 use super::{AppState, lock};
@@ -194,6 +199,51 @@ pub fn stale_agent_registrations() -> Vec<StaleRegistration> {
         stale.extend(codex_stale(&config));
     }
     stale
+}
+
+/// Calls a page of the Activity view shows at most.
+const CALL_PAGE: usize = 500;
+
+/// The agents' call log the server writes, in the data folder (`PLATYPUS_DATA_DIR` when
+/// set), its oldest calls beyond [`AGENT_CALLS_LIMIT`] removed.
+fn agent_calls_store(app: &AppHandle) -> CommandResult<AgentCallStore> {
+    let dir = match std::env::var_os(DATA_DIR_ENV) {
+        Some(dir) => PathBuf::from(dir),
+        None => app
+            .path()
+            .app_data_dir()
+            .map_err(|e| CommandError::new("other", e.to_string()))?,
+    };
+    let store = AgentCallStore::open(&dir.join(AGENT_CALLS_FILE))?;
+    store.prune(AGENT_CALLS_LIMIT)?;
+    Ok(store)
+}
+
+/// The calls matching `query`, newest first, a page at a time.
+#[tauri::command]
+pub fn agent_calls(app: AppHandle, mut query: AgentCallQuery) -> CommandResult<Vec<AgentCall>> {
+    query.limit = query.limit.clamp(1, CALL_PAGE);
+    Ok(agent_calls_store(&app)?.search(&query)?)
+}
+
+/// The latest runs of the server, newest first.
+#[tauri::command]
+pub fn agent_sessions(app: AppHandle, limit: usize) -> CommandResult<Vec<AgentSession>> {
+    Ok(agent_calls_store(&app)?.sessions(limit.clamp(1, CALL_PAGE))?)
+}
+
+/// Every call matching `query` (its limit ignored), as CSV.
+#[tauri::command]
+pub fn agent_calls_export(app: AppHandle, mut query: AgentCallQuery) -> CommandResult<String> {
+    query.limit = AGENT_CALLS_LIMIT;
+    query.before_id = None;
+    Ok(agent_calls_csv(&agent_calls_store(&app)?.search(&query)?))
+}
+
+/// Empties the call log.
+#[tauri::command]
+pub fn clear_agent_calls(app: AppHandle) -> CommandResult<()> {
+    Ok(agent_calls_store(&app)?.clear()?)
 }
 
 #[cfg(test)]

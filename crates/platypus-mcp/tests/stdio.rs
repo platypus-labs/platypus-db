@@ -334,6 +334,54 @@ fn serves_the_tools_over_stdio() {
     assert!(recorded.iter().all(|(_, _, origin)| origin == "test-agent"));
     assert_eq!(recorded[2].0, "DELETE FROM t WHERE id = 1");
     assert_eq!(recorded[2].1, "error");
+
+    // Every tool call is in the agents' call log, in one session, with its arguments.
+    let log = rusqlite::Connection::open(dir.path().join("agent-calls.db")).unwrap();
+    let calls: Vec<(String, String, Option<String>, String, String)> = log
+        .prepare("SELECT session, tool, connection, arguments, status FROM calls ORDER BY id")
+        .unwrap()
+        .query_map([], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+        })
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    let tools: Vec<&str> = calls.iter().map(|c| c.1.as_str()).collect();
+    assert_eq!(
+        tools,
+        [
+            "list_connections",
+            "run_query",
+            "run_query",
+            "run_query",
+            "run_query",
+            "run_query",
+            "run_query",
+            "describe_table",
+            "get_ddl",
+            "search_objects",
+            "describe_table",
+            "list_objects",
+        ]
+    );
+    assert!(calls.iter().all(|c| c.0 == calls[0].0), "one session");
+    assert_eq!(calls[0].2, None);
+    assert_eq!(calls[0].3, "{}");
+    assert_eq!(calls[1].2.as_deref(), Some("App db"));
+    assert_eq!(
+        calls[1].3,
+        r#"{"connection":"App db","sql":"SELECT id, name FROM t ORDER BY id"}"#
+    );
+    assert_eq!(calls[1].4, "ok");
+    assert_eq!(calls[3].4, "error", "the refused DELETE");
+    let agents: i64 = log
+        .query_row(
+            "SELECT count(*) FROM calls WHERE agent = 'test-agent'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(agents, 12);
 }
 
 /// `sample_rows` reads the first rows of a table within the limits; `explain` shows the
