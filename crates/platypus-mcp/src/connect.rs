@@ -2,7 +2,9 @@
 //! place of the connection's own, the password from its command, `.pgpass` or the
 //! keychain, the SSH secrets, and the bootstrap statements run after connecting.
 
-use platypus_core::{Connection, ConnectionConfig, Driver, DriverKind, Error, ExecOptions, Secret};
+use platypus_core::{
+    Connection, ConnectionConfig, Driver, DriverKind, Error, ExecOptions, Secret, SshAuth,
+};
 use platypus_driver_adbc::AdbcDriver;
 use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
@@ -176,11 +178,31 @@ pub async fn config_of(
         }));
     }
     // `${env:NAME}` in the fields, from the environment or the connection's `.env` file.
-    let mut config = config.with_env().map_err(|e| AgentError::Connect {
-        name: effective.name.clone(),
-        message: e.to_string(),
-    })?;
+    let mut config = config
+        .with_env()
+        .and_then(|config| {
+            if !config.driver.is_embedded() {
+                config.check_host()?;
+            }
+            Ok(config)
+        })
+        .map_err(|e| AgentError::Connect {
+            name: effective.name.clone(),
+            message: redactor.apply(&e.to_string()),
+        })?;
     redactor.add_secret(config.password.as_ref());
+    let mut ssh = config.ssh.as_ref();
+    while let Some(hop) = ssh {
+        match &hop.auth {
+            SshAuth::Password(secret)
+            | SshAuth::Key {
+                passphrase: Some(secret),
+                ..
+            } => redactor.add_secret(Some(secret)),
+            _ => {}
+        }
+        ssh = hop.jump.as_deref();
+    }
     let script = &effective.init.statements;
     config.init.statements = platypus_sql::split(script, Dialect::from(effective.driver))
         .iter()

@@ -68,7 +68,7 @@ impl ConnectionConfig {
             && self
                 .options
                 .get(super::POOLER)
-                .is_some_and(|m| m == "transaction")
+                .is_some_and(|m| m.trim().eq_ignore_ascii_case("transaction"))
         {
             params.push("pgbouncer=true".to_owned());
         }

@@ -427,6 +427,9 @@ pub async fn open_session(
     let mut config = state
         .with_store(|s| Ok(config_of(s, &saved, secret, &SshSecrets::new())))?
         .with_env()?;
+    if !config.driver.is_embedded() {
+        config.check_host()?;
+    }
     let label = match &database {
         Some(database) => format!("{} · {database}", saved.name),
         None => saved.name.clone(),

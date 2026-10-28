@@ -141,6 +141,28 @@ async fn runs_statements_through_a_transaction_pooler() {
     conn.rollback().await.unwrap();
     conn.set_autocommit(true).await.unwrap();
 
+    // The navigator's metadata.
+    assert!(
+        conn.schemas()
+            .await
+            .unwrap()
+            .iter()
+            .any(|s| s.name == "demo")
+    );
+    let details = conn.table_details("demo", "customers").await.unwrap();
+    assert!(details.columns.iter().any(|c| c.name == "id"));
+    assert_ne!(
+        conn.catalog_columns().await.unwrap(),
+        [] as [platypus_core::CatalogColumn; 0]
+    );
+}
+
+#[tokio::test]
+async fn reads_types_of_the_user_through_a_transaction_pooler() {
+    let Some(conn) = connect(Some("transaction")).await else {
+        return;
+    };
+    let options = ExecOptions::default();
     // A type of the user's: the client looks it up in the catalog, unnamed too.
     conn.execute("DROP TYPE IF EXISTS demo.pool_mood", &options)
         .await
@@ -176,19 +198,4 @@ async fn runs_statements_through_a_transaction_pooler() {
     conn.execute("DROP TYPE demo.pool_mood", &options)
         .await
         .unwrap();
-
-    // The navigator's metadata.
-    assert!(
-        conn.schemas()
-            .await
-            .unwrap()
-            .iter()
-            .any(|s| s.name == "demo")
-    );
-    let details = conn.table_details("demo", "customers").await.unwrap();
-    assert!(details.columns.iter().any(|c| c.name == "id"));
-    assert_ne!(
-        conn.catalog_columns().await.unwrap(),
-        [] as [platypus_core::CatalogColumn; 0]
-    );
 }

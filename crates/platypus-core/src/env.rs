@@ -20,15 +20,21 @@ pub struct EnvVars {
 }
 
 impl EnvVars {
-    /// The process's environment, and the variables of `file` when given (`~` is the home
-    /// folder).
+    /// The process's environment, and the variables of `file` when given: an absolute path,
+    /// or one starting with `~` for the home folder.
     ///
     /// # Errors
-    /// When the file cannot be read.
+    /// When the path is relative or the file cannot be read.
     pub fn load(file: Option<&str>) -> Result<Self> {
         let file = match file.map(str::trim).filter(|f| !f.is_empty()) {
             Some(path) => {
                 let path = home(path);
+                if path.is_relative() {
+                    return Err(Error::Config(format!(
+                        "the .env file {} must be an absolute path, or start with ~",
+                        path.display()
+                    )));
+                }
                 let text = std::fs::read_to_string(&path).map_err(|e| {
                     Error::Config(format!("cannot read the .env file {}: {e}", path.display()))
                 })?;
@@ -62,8 +68,13 @@ impl EnvVars {
 }
 
 fn home(path: &str) -> PathBuf {
+    let rest = if path == "~" {
+        Some("")
+    } else {
+        path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\"))
+    };
     match (
-        path.strip_prefix("~/"),
+        rest,
         std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")),
     ) {
         (Some(rest), Some(home)) => Path::new(&home).join(rest),
@@ -72,8 +83,8 @@ fn home(path: &str) -> PathBuf {
 }
 
 /// The variables of a `.env` file: `NAME=value` lines, `export` before them allowed,
-/// values in single quotes as they are, in double quotes with `\n` and `\"`, unquoted up to a
-/// ` #` comment. Other lines are skipped.
+/// values in single quotes as they are, in double quotes with `\n`, `\t`, `\"` and `\\`,
+/// unquoted up to a ` #` comment. Other lines are skipped.
 #[must_use]
 pub fn parse_dotenv(text: &str) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
@@ -91,15 +102,14 @@ pub fn parse_dotenv(text: &str) -> BTreeMap<String, String> {
             continue;
         }
         let value = value.trim();
-        let value = if let Some((inner, _)) =
-            value.strip_prefix('\'').and_then(|v| v.rsplit_once('\''))
+        let value = if let Some(inner) = value
+            .strip_prefix('\'')
+            .and_then(|v| v.split_once('\''))
+            .map(|(inner, _)| inner)
         {
             inner.to_owned()
-        } else if let Some((inner, _)) = value.strip_prefix('"').and_then(|v| v.rsplit_once('"')) {
+        } else if let Some(inner) = value.strip_prefix('"').and_then(double_quoted) {
             inner
-                .replace("\\n", "\n")
-                .replace("\\\"", "\"")
-                .replace("\\\\", "\\")
         } else {
             value
                 .split_once(" #")
@@ -110,6 +120,30 @@ pub fn parse_dotenv(text: &str) -> BTreeMap<String, String> {
         out.insert(name.to_owned(), value);
     }
     out
+}
+
+/// The value of a double-quoted string up to its closing quote, escapes resolved; `None`
+/// when it is not closed.
+fn double_quoted(text: &str) -> Option<String> {
+    let mut out = String::new();
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(out),
+            '\\' => match chars.next()? {
+                'n' => out.push('\n'),
+                't' => out.push('\t'),
+                'r' => out.push('\r'),
+                other @ ('"' | '\\') => out.push(other),
+                other => {
+                    out.push('\\');
+                    out.push(other);
+                }
+            },
+            c => out.push(c),
+        }
+    }
+    None
 }
 
 /// `text` with each `${env:NAME}` replaced by the variable's value; `$${` is a plain `${`.
@@ -132,14 +166,15 @@ pub fn expand(text: &str, vars: &EnvVars) -> Result<String> {
         }
         out.push_str(&rest[..at]);
         let inner = &rest[at + 2..];
+        // The messages name no part of the text: it may be a password.
         let end = inner
             .find('}')
-            .ok_or_else(|| Error::Config(format!("`{}` is not closed by `}}`", &rest[at..])))?;
+            .ok_or_else(|| Error::Config("a `${` is not closed by `}`".to_owned()))?;
         let reference = &inner[..end];
         let Some(name) = reference.strip_prefix("env:").map(str::trim) else {
-            return Err(Error::Config(format!(
-                "`${{{reference}}}`: only environment variables are read, as `${{env:NAME}}`"
-            )));
+            return Err(Error::Config(
+                "only environment variables are read, as `${env:NAME}`".to_owned(),
+            ));
         };
         let value = vars
             .get(name)
@@ -151,14 +186,30 @@ pub fn expand(text: &str, vars: &EnvVars) -> Result<String> {
     Ok(out)
 }
 
+/// `text` with each `${…}` reference replaced by `x`: a stand-in to check a field, such as
+/// the host, before its variables are read.
+#[must_use]
+pub fn without_references(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("${") {
+        out.push_str(&rest[..at]);
+        out.push('x');
+        rest = rest[at..].find('}').map_or("", |end| &rest[at + end + 1..]);
+    }
+    out.push_str(rest);
+    out
+}
+
 impl ConnectionConfig {
     /// The settings with the environment variables of their text fields, password and SSH
-    /// included, replaced. Reads the `.env` file of the `env_file` option.
+    /// included, replaced. Reads the `.env` file of the `env_file` option, and drops the
+    /// option: it is not a setting of the driver.
     ///
     /// # Errors
     /// When a variable is not set or the `.env` file cannot be read.
-    pub fn with_env(self) -> Result<Self> {
-        let vars = EnvVars::load(self.options.get(ENV_FILE).map(String::as_str))?;
+    pub fn with_env(mut self) -> Result<Self> {
+        let vars = EnvVars::load(self.options.remove(ENV_FILE).as_deref())?;
         self.with_variables(&vars)
     }
 
@@ -222,8 +273,21 @@ fn expand_text(text: &mut String, vars: &EnvVars) -> Result<()> {
     Ok(())
 }
 
+/// A secret is read from the environment only when it is a whole `${env:NAME}`: any other
+/// one, `${` or `$${` included, is the password as written.
 fn expand_secret(secret: &mut Secret, vars: &EnvVars) -> Result<()> {
-    *secret = Secret::new(expand(secret.expose(), vars)?);
+    let name = secret
+        .expose()
+        .strip_prefix("${env:")
+        .and_then(|rest| rest.strip_suffix('}'))
+        .filter(|name| !name.contains('}'))
+        .map(|name| name.trim().to_owned());
+    if let Some(name) = name {
+        let value = vars
+            .get(&name)
+            .ok_or_else(|| Error::Config(format!("the environment variable {name} is not set")))?;
+        *secret = Secret::new(value);
+    }
     Ok(())
 }
 
@@ -272,6 +336,45 @@ mod tests {
     }
 
     #[test]
+    fn references_are_replaced_by_a_stand_in() {
+        assert_eq!(without_references("${env:HOST}.example"), "x.example");
+        assert_eq!(without_references("a${env:A}b${env:B}"), "axbx");
+        assert_eq!(without_references("db@${env:H}"), "db@x");
+        assert_eq!(without_references("open${env"), "openx");
+        assert_eq!(without_references("plain"), "plain");
+    }
+
+    #[test]
+    fn errors_do_not_show_the_text() {
+        let v = vars(&[], &[]);
+        for text in ["pa${ss", "pa${secret}"] {
+            let error = expand(text, &v).unwrap_err().to_string();
+            assert!(
+                !error.contains("ss") && !error.contains("secret"),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_password_is_read_only_when_it_is_a_whole_reference() {
+        let v = vars(&[("PW", "s3cret")], &[]);
+        for (written, expected) in [
+            ("${env:PW}", "s3cret"),
+            ("a${b", "a${b"),
+            ("a$${env:PW}", "a$${env:PW}"),
+            ("x${env:PW}", "x${env:PW}"),
+            ("${env:PW}}", "${env:PW}}"),
+        ] {
+            let mut secret = Secret::new(written);
+            expand_secret(&mut secret, &v).unwrap();
+            assert_eq!(secret.expose(), expected, "{written}");
+        }
+        let mut missing = Secret::new("${env:NOPE}");
+        assert!(expand_secret(&mut missing, &v).is_err());
+    }
+
+    #[test]
     fn reads_dotenv_files() {
         let parsed = parse_dotenv(
             "# a comment\nexport DB_HOST=localhost\nDB_PASSWORD='p#ss w$rd'\nNOTE=\"two\\nlines\"\nPORT=5432 # the port\nnot a line\n=x\n",
@@ -284,6 +387,15 @@ mod tests {
         assert_eq!(parsed.get("NOTE").map(String::as_str), Some("two\nlines"));
         assert_eq!(parsed.get("PORT").map(String::as_str), Some("5432"));
         assert_eq!(parsed.len(), 4);
+    }
+
+    #[test]
+    fn reads_quoted_dotenv_values() {
+        let parsed =
+            parse_dotenv("A='one' # it's a comment\nB=\"a\\\\nb\\tc\\\"d\" # \"x\"\nC=\"open\n");
+        assert_eq!(parsed.get("A").map(String::as_str), Some("one"));
+        assert_eq!(parsed.get("B").map(String::as_str), Some("a\\nb\tc\"d"));
+        assert_eq!(parsed.get("C").map(String::as_str), Some("\"open"));
     }
 
     #[test]
@@ -331,5 +443,14 @@ mod tests {
             .to_string();
         assert!(error.contains("cannot read the .env file"), "{error}");
         assert!(EnvVars::load(Some("  ")).is_ok());
+        let error = EnvVars::load(Some("project/.env")).unwrap_err().to_string();
+        assert!(error.contains("absolute path"), "{error}");
+    }
+
+    #[test]
+    fn the_env_file_option_is_not_passed_on() {
+        let mut config = ConnectionConfig::new(DriverKind::Postgres);
+        config.options.insert(ENV_FILE.into(), String::new());
+        assert!(!config.with_env().unwrap().options.contains_key(ENV_FILE));
     }
 }
