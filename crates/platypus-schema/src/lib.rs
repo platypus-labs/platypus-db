@@ -136,13 +136,19 @@ pub struct Script {
 }
 
 impl Script {
-    /// The whole script as it runs in an autocommit session, one statement per line.
+    /// The whole script as it runs in an autocommit session of `dialect`, one statement per
+    /// line.
     #[must_use]
-    pub fn text(&self) -> String {
+    pub fn text(&self, dialect: Dialect) -> String {
         let tx = self.transactional && self.statements.len() > 1;
         let mut lines: Vec<&str> = self.before.iter().map(String::as_str).collect();
         if tx {
-            lines.push("BEGIN");
+            // Transact-SQL's `BEGIN` starts a block, not a transaction.
+            lines.push(if dialect == Dialect::SqlServer {
+                "BEGIN TRANSACTION"
+            } else {
+                "BEGIN"
+            });
         }
         lines.extend(self.statements.iter().map(String::as_str));
         if tx {
@@ -371,6 +377,19 @@ pub async fn load(
             design.options = None;
         }
         Dialect::Sqlite => sqlite_definitions(conn, &mut design, schema, &t).await?,
+        // An identity column reports the sequence Oracle made for it as its default.
+        Dialect::Oracle => {
+            let sql = format!(
+                "SELECT COLUMN_NAME, GENERATION_TYPE FROM ALL_TAB_IDENTITY_COLS
+                 WHERE OWNER = {s} AND TABLE_NAME = {t}"
+            );
+            for row in query_text(conn, &sql).await? {
+                if let Some(c) = design.columns.iter_mut().find(|c| c.name == row.text(0)) {
+                    c.default = None;
+                    c.extra = Some(format!("GENERATED {} AS IDENTITY", row.text(1)));
+                }
+            }
+        }
         Dialect::DuckDb => {
             let sql = format!(
                 "SELECT sql FROM duckdb_tables()
@@ -635,8 +654,17 @@ mod tests {
             warnings: Vec::new(),
         };
         assert_eq!(
-            script.text(),
+            script.text(Dialect::Sqlite),
             "PRAGMA foreign_keys = OFF;\nBEGIN;\nA;\nB;\nCOMMIT;\nPRAGMA foreign_keys = ON;\n"
+        );
+        let server = Script {
+            before: Vec::new(),
+            after: Vec::new(),
+            ..script
+        };
+        assert_eq!(
+            server.text(Dialect::SqlServer),
+            "BEGIN TRANSACTION;\nA;\nB;\nCOMMIT;\n"
         );
     }
 }

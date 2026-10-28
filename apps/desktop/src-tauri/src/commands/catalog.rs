@@ -84,7 +84,7 @@ pub async fn comment_sql(
     }
     let script = platypus_schema::script(dialect, &schema, Some(&old), &new)
         .map_err(|e| CommandError::new("invalid_design", e))?;
-    Ok(script.text())
+    Ok(script.text(dialect))
 }
 
 /// The display columns chosen on a connection, one per table.

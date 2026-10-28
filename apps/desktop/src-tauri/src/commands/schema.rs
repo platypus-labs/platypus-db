@@ -39,11 +39,11 @@ pub fn table_script(
     original: Option<TableDesign>,
     design: TableDesign,
 ) -> CommandResult<DesignScript> {
-    let script =
-        platypus_schema::script(Dialect::from(driver), &schema, original.as_ref(), &design)
-            .map_err(|e| CommandError::new("invalid_design", e))?;
+    let dialect = Dialect::from(driver);
+    let script = platypus_schema::script(dialect, &schema, original.as_ref(), &design)
+        .map_err(|e| CommandError::new("invalid_design", e))?;
     Ok(DesignScript {
-        sql: script.text(),
+        sql: script.text(dialect),
         script,
     })
 }
@@ -132,7 +132,7 @@ pub async fn compare_schemas(
         platypus_schema::compare(dialect, &target_schema, &source_schema, &wanted, &current)
             .map_err(|e| CommandError::new("invalid_design", e))?;
     Ok(DesignScript {
-        sql: script.text(),
+        sql: script.text(dialect),
         script,
     })
 }
