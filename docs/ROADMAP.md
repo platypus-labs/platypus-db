@@ -97,7 +97,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | B — Griglia avanzata | ✅ fatto (P1; P2 e P3 in parte) |
 | C — Navigator e oggetti | ✅ completato |
 | D — Editor SQL | ✅ fatto (P1, P3; P2 in parte) |
-| E — Explain e performance | ✅ fatto (P1; P2 e P3 in parte) |
+| E — Explain e performance | 🔒 Delfa · group-e-plans · 2026-10-28 |
 | F — Connettività e credenziali | ✅ fatto (P1; P2 in parte) |
 | G — Nuovi driver | ✅ fatto (P1; P2 e P3 in parte) |
 | H — Import, export e trasferimento | ✅ fatto (P1; P2 e P3 in parte) |
