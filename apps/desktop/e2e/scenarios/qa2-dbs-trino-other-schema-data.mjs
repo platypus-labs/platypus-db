@@ -14,7 +14,7 @@
 // src/meta.rs `schemas`, from the driver's CurrentSchema option, which does not follow the
 // `schema` option), and apps/desktop/src/sqlNames.ts `qualifiedName` then drops the schema.
 import assert from "node:assert/strict";
-import { conns, copyAll, idle, needsPorts, openPath, seedTrinoDriver, sh, shotter, stubClipboard, visibleTab } from "../qa-dbs.mjs";
+import { conns, copyAll, idle, needsPorts, openPath, rowIn, seedTrinoDriver, sh, shotter, stubClipboard, visibleTab } from "../qa-dbs.mjs";
 import { menu } from "../qa-xfer.mjs";
 
 export const skip = needsPorts(58085);
@@ -29,6 +29,13 @@ CREATE TABLE memory.default.qa_dbs_t (src varchar); INSERT INTO memory.default.q
 
 export default async function (page, { shots }) {
   try {
+    // The session's schema (the one the driver reports, qa_dbs here) opens by itself: expand
+    // "default" first, or its path would find the first "Tables" below it, qa_dbs's.
+    await openPath(page, ["QA Trino", "qa_dbs", "Tables"]);
+    const schemaRow = rowIn(["QA Trino"], "default");
+    await page.eval(`${schemaRow}.querySelector('.twisty').click()`);
+    const below = `(() => { const rows = [...document.querySelectorAll('.tree-row')]; return rows[rows.indexOf(${schemaRow}) + 1]?.querySelector('.tree-label')?.textContent; })()`;
+    await page.waitFor(`${below} === 'Tables'`, 15_000);
     await openPath(page, ["QA Trino", "default", "Tables", "qa_dbs_t"]);
     await stubClipboard(page);
     await menu(page, "qa_dbs_t", "Open data", null, ["QA Trino", "default", "Tables"]);

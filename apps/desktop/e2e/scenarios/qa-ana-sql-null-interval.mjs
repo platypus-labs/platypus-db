@@ -20,12 +20,12 @@ export default async function (page) {
   await newEditor(page, NAME);
   await runQuery(page, "SELECT * FROM (VALUES (1, INTERVAL 1 DAY), (2, NULL)) t(id, iv) ORDER BY id");
   assert.equal(await page.eval(status), "2 rows");
-  assert.equal(await gridTsv(page), "id\tiv\n1\t1 days\n2\t", "the result itself shows the NULL");
+  assert.equal(await gridTsv(page), "id\tiv\n1\t1 day\n2\t", "the result itself shows the NULL");
 
   const run = await inField(page, "SELECT count(*) FILTER (WHERE iv IS NULL) AS nulls, count(iv) AS filled FROM result");
   assert.equal(run.error, "");
   assert.equal(await gridTsv(page), "nulls\tfilled\n1\t1", "the copy keeps the NULL interval");
 
   await inField(page, "SELECT * FROM result ORDER BY id");
-  assert.equal(await gridTsv(page), "id\tiv\n1\t1 days\n2\t", "the SQL view shows NULL, not 0 secs");
+  assert.equal(await gridTsv(page), "id\tiv\n1\t1 day\n2\t", "the SQL view shows NULL, not 0 secs");
 }

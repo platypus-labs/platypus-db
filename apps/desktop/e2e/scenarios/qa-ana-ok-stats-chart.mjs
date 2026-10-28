@@ -42,7 +42,8 @@ export default async function (page) {
   await runQuery(page, "SELECT cat, v FROM many ORDER BY id");
   // The grid's first window asks for rows beyond it once the first page arrived: the count
   // is final when it stops growing.
-  const count = async () => Number((await page.eval(status)).match(/^(\d+) rows loaded/)?.[1] ?? 0);
+  // English groups thousands: "1,500 rows loaded".
+  const count = async () => Number((await page.eval(status)).match(/^([\d,]+) rows loaded/)?.[1].replaceAll(",", "") ?? 0);
   let loaded = await count();
   for (let i = 0; i < 20; i++) {
     await page.sleep(500);
