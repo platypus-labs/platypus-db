@@ -18,7 +18,8 @@ export function setup({ dir }) {
 export default async function (page, { dir }) {
   await newUrlForm(page, "PostgreSQL");
   await page.eval(fill(formField("Name"), "QA enter"));
-  await page.eval(`${url}.focus()`);
+  // The field shows the URL of the form's defaults: a paste replaces it, as selected.
+  await page.eval(`${url}.focus(); ${url}.select()`);
   await page.type("postgres://app@db.example:6543/shop");
   await press(page, "Enter", "Enter", 13);
   await page.waitFor(`${dialog} === null`, 15_000);

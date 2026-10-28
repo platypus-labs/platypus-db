@@ -2,7 +2,7 @@
 // fills the settings, its password goes to the (masked) Password field and never shows in the
 // URL field; Host and URL modes switch both ways without losing anything; Test connection
 // works in both modes; the saved connection keeps no password in connections.toml, opens in
-// the navigator, and its form shows the same URL when edited and switched to URL mode.
+// the navigator, and its form opens again in URL mode with the same URL.
 import assert from "node:assert/strict";
 import { dialog, editConnection, expand, formField, needsPort, saveForm, seedSqlite, testConnection, treeRow, fill } from "../conn-helpers.mjs";
 import { cancel, enterUrl, filesHolding, generalFields, newUrlForm, savedBlock, secretField, toHost, toUrl, url, urlError } from "../qa3-url.mjs";
@@ -57,12 +57,13 @@ export default async function (page, { dir }) {
   await expand(page, "QA url pg");
   await page.waitFor(`${treeRow("public")} !== undefined || ${treeRow("platypus")} !== undefined`, 20_000);
 
-  // Edited later: Host fields, then the same URL, and Test connection with the saved password.
+  // Edited later: the form opens by URL as it was saved, with the same URL, and Test
+  // connection works with the saved password; the Host fields hold the same settings.
   await editConnection(page, "QA url pg");
-  assert.equal((await generalFields(page)).Host, "localhost");
-  await toUrl(page);
-  assert.equal(await page.eval(`${url}.value`), printed);
+  await page.waitFor(`${url}?.value === ${JSON.stringify(printed)}`);
   assert.match(await testConnection(page), /^Connected/);
+  await toHost(page);
+  assert.equal((await generalFields(page)).Host, "localhost");
   await cancel(page);
   assert.equal(await page.eval(`${dialog} === null`), true);
 }

@@ -42,7 +42,9 @@ export default async function (page) {
     const other = await roundTrip(page, ["QA3 PG", "platypus"], SRC, "QA3 PG db2", DST);
     if (!other.sql) problems.push(`no script for another database: ${told(other)}`);
     else {
-      if (/qa3s_src/.test(other.sql)) problems.push(`the script for another database names the source schema:
+      // The "-- Makes … like QA3 PG · qa3s_src" heading names the source on purpose.
+      const statements = other.sql.replace(/^--.*$/gm, "");
+      if (/qa3s_src/.test(statements)) problems.push(`the script for another database names the source schema:
 ${other.sql}`);
       if (other.runError !== null) problems.push(`the script fails on another database: ${other.runError}`);
       else if (other.second.same !== true) problems.push(`a second comparison still finds changes: ${told(other)}`);
