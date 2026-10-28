@@ -172,11 +172,10 @@ function diagnose(exit, output) {
 console.log(`${passed} passed, ${failed} failed, ${scenarios.length - passed - failed} skipped`);
 process.exit(failed ? 1 : 0);
 
-/** Scenarios read the English interface whatever the language of the machine, unless one
- *  sets the language itself. */
 /** DuckDB as the app would have downloaded it, from the copy the Rust tests download into
- *  target/test-drivers (or $CARGO_TARGET_DIR/test-drivers) (`cargo test -p platypus-driver-duckdb`); hard links, as each profile
- *  gets one. A scenario that sets `export const duckdb = false` starts without it. */
+ *  target/test-drivers (or $CARGO_TARGET_DIR/test-drivers) (`cargo test -p platypus-driver-duckdb`);
+ *  hard links, as each profile gets one. A scenario that sets `export const duckdb = false`
+ *  starts without it. */
 function installDuckDb(dir) {
   const target = process.env.CARGO_TARGET_DIR ? resolve(process.env.CARGO_TARGET_DIR) : resolve(here, "../../../target");
   const from = join(target, "test-drivers", "drivers", "vendor", "duckdb");
@@ -200,6 +199,8 @@ function installDuckDb(dir) {
   copy(from, join(dir, "drivers", "vendor", "duckdb"));
 }
 
+/** Scenarios read the English interface whatever the language of the machine, unless one
+ *  sets the language itself. */
 function englishInterface(dir) {
   const file = join(dir, "settings.toml");
   const text = existsSync(file) ? readFileSync(file, "utf8") : "";
