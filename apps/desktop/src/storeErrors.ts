@@ -37,6 +37,12 @@ const APP_PATTERNS: [RegExp, string, string[]][] = [
     ["path"],
   ],
   [/^(.*) is read-only: nothing that may change it runs there$/s, msg("{name} is read-only: nothing that may change it runs there"), ["name"]],
+  [
+    /^the download failed \(check the internet connection\): (.*)$/s,
+    msg("the download failed (check the internet connection): {detail}"),
+    ["detail"],
+  ],
+  [/^cannot reach the driver registry: (.*)$/s, msg("cannot reach the driver registry: {detail}"), ["detail"]],
 ];
 
 function translate(message: string, fixed: Set<string>, patterns: [RegExp, string, string[]][]): string | null {

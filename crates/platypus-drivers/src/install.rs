@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     DriverError, Installed, Package, REMOVED_MARK, Registry, adbc_dir, drivers_dir, io_error,
-    is_plain_name, network_error,
+    is_plain_name,
 };
 
 /// Names of the folders a download unpacks into before it is moved in place.
@@ -74,6 +74,10 @@ impl Registry {
     }
 }
 
+fn download_error(e: reqwest::Error) -> DriverError {
+    DriverError::Download(e.to_string())
+}
+
 /// Downloads `url` whole; `progress` gets the bytes received and the total when known.
 pub(crate) async fn download(
     client: &reqwest::Client,
@@ -89,7 +93,7 @@ pub(crate) async fn download(
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(network_error)?;
+        .map_err(download_error)?;
     let total = response.content_length();
     let mut bytes = Vec::with_capacity(usize::try_from(total.unwrap_or(0)).unwrap_or(0));
     let mut stream = response.bytes_stream();
@@ -99,7 +103,7 @@ pub(crate) async fn download(
             chunk = stream.next() => chunk,
         };
         let Some(chunk) = chunk else { break };
-        bytes.extend_from_slice(&chunk.map_err(network_error)?);
+        bytes.extend_from_slice(&chunk.map_err(download_error)?);
         if bytes.len() as u64 > MAX_FILE {
             return Err(DriverError::TooLarge);
         }
