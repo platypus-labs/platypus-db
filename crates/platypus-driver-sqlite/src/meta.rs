@@ -545,7 +545,9 @@ pub fn read_plan(document: &str) -> Result<Explain> {
     };
     // Text of another database is no plan of SQLite's, though any line could be a step.
     let mut all = Vec::new();
-    steps.iter().for_each(|s| collect_steps(s, &mut all));
+    for step in &steps {
+        collect_steps(step, &mut all);
+    }
     if !all.iter().any(|s| is_plan_step(s)) {
         return Err(Error::Other("no plan in the text".to_owned()));
     }
@@ -562,7 +564,9 @@ pub fn read_plan(document: &str) -> Result<Explain> {
 
 fn collect_steps<'a>(node: &'a PlanNode, out: &mut Vec<&'a str>) {
     out.push(&node.operation);
-    node.children.iter().for_each(|c| collect_steps(c, out));
+    for child in &node.children {
+        collect_steps(child, out);
+    }
 }
 
 /// The steps under `parent`, also written to `text` indented by `depth`.
