@@ -129,6 +129,7 @@ export function App() {
   /** What each open session's driver supports. */
   const capabilities = useRef(new Map<number, Capabilities>());
   const [version, setVersion] = useState("");
+  const [portable, setPortable] = useState(false);
   /** Open sessions by tab key; opened on a tab's first run. */
   const sessions = useRef(new Map<number, Promise<number | null>>());
   /** Connections that are not saved (the DuckDB of "Query with SQL"), by id, with what to do
@@ -167,7 +168,8 @@ export function App() {
     );
     api.listProjectFolders().then(setProjectFolders, () => setProjectFolders([]));
     api.appInfo().then((i) => {
-      setVersion(i.build ? `${i.version} · ${i.build}` : i.version);
+      setVersion([i.version, i.build, i.portable && t("portable")].filter(Boolean).join(" · "));
+      setPortable(i.portable);
       // The end-to-end tests drive what has no button yet through these.
       if (i.devtools) {
         (window as unknown as { __platypus: object }).__platypus = {
@@ -969,7 +971,7 @@ export function App() {
       </div>
       <main className="workspace">
         <CrashBanner />
-        <UpdateBanner />
+        <UpdateBanner portable={portable} />
         {visibleTabs.length > 0 && (
           <TabBar
             ref={tabBar}

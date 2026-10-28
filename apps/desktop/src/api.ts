@@ -1193,6 +1193,9 @@ export interface AppInfo {
   build: string | null;
   /** Developer tools are open, as for the end-to-end tests: the page gets test hooks. */
   devtools: boolean;
+  /** A portable copy: its data is in the `data` folder next to it, and it updates by
+   *  replacing its executable. */
+  portable: boolean;
   os: string;
   arch: string;
 }
