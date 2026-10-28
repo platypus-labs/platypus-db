@@ -512,6 +512,8 @@ export function App() {
 
   /** The password asked for each connection, shared by every session waiting for it. */
   const passwordAsks = useRef(new Map<string, Promise<string | null>>());
+  /** Connections already told that their server is older than the oldest version tested. */
+  const outdatedShown = useRef(new Set<string>());
   /** The password dialog shows one connection at a time: the others wait their turn. */
   const passwordTurn = useRef<Promise<unknown>>(Promise.resolve());
 
@@ -560,6 +562,18 @@ export function App() {
         }
         capabilities.current.set(session.session_id, session.capabilities);
         setOpenSessions((m) => new Map(m).set(session.session_id, connection.id));
+        // Once per connection and run: each tab opens a session of its own.
+        if (session.minimum && !outdatedShown.current.has(connection.id)) {
+          outdatedShown.current.add(connection.id);
+          setToast(
+            t("{name}: {product} {version} is older than {minimum}, the oldest version tested: some features may not work.", {
+              name: connection.name,
+              product: session.server.product,
+              version: session.server.version,
+              minimum: session.minimum,
+            }),
+          );
+        }
         return session.session_id;
       } catch (e) {
         passwords.current.delete(connection.id);

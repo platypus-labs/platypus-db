@@ -1398,7 +1398,8 @@ export const api = {
   /** `database` opens another database of the same server instead of the saved one. A `side`
    *  session (the navigator's) stays in autocommit mode on production too. */
   openSession: (connectionId: string, password?: string, database?: string | null, side = false) =>
-    invoke<{ session_id: number; server: ServerInfo; capabilities: Capabilities }>("open_session", {
+    /** `minimum`: the oldest version tested, when the server is older. */
+    invoke<{ session_id: number; server: ServerInfo; capabilities: Capabilities; minimum: string | null }>("open_session", {
       connectionId,
       password: password ?? null,
       database: database ?? null,
