@@ -2933,6 +2933,58 @@ async fn agents_read_in_read_only_transactions() {
     }
 }
 
+/// An agent's `explain` with analyze runs in the read-only transaction where it refuses
+/// writes: the plan comes back analyzed, a write inside it fails or changes nothing, and
+/// no transaction is left open.
+#[tokio::test]
+async fn agents_explain_analyze_in_read_only_transactions() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        if !conn.capabilities().explain
+            || !platypus_mcp::query::refuses_writes_when_read_only(b.config.driver)
+        {
+            continue;
+        }
+        let table = "agent_explain_probe";
+        run(conn, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap();
+        run(conn, &format!("CREATE TABLE {table} (id INT)"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let guard = Some(b.config.driver);
+        let timeout = Limits::DEFAULT_TIMEOUT;
+        let select = format!("SELECT * FROM {table}");
+        let plan = platypus_mcp::query::guarded(
+            conn,
+            guard,
+            timeout,
+            std::future::pending(),
+            conn.explain(&select, true),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e:?}", b.name));
+        assert!(!plan.root.operation.is_empty(), "{}", b.name);
+        assert!(!conn.transaction().open, "{}: left a transaction", b.name);
+
+        let insert = format!("INSERT INTO {table} VALUES (1)");
+        let _ = platypus_mcp::query::guarded(
+            conn,
+            guard,
+            timeout,
+            std::future::pending(),
+            conn.explain(&insert, true),
+        )
+        .await;
+        assert!(!conn.transaction().open, "{}: left a transaction", b.name);
+        assert_eq!(agent_count(&b, conn, table).await, "0", "{}", b.name);
+        run(conn, &format!("DROP TABLE {table}")).await.unwrap();
+    }
+}
+
 /// PostgreSQL decodes `U&"…"` names the way the agents' read-only check does, so a function
 /// spelled with Unicode escapes is the one the check refuses.
 #[tokio::test]

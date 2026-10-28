@@ -22,6 +22,7 @@ use crate::access::{self, UnfilteredRule};
 use crate::connect;
 use crate::error::{AgentError, Result};
 use crate::output::QueryResult;
+use crate::plan::PlanResult;
 use crate::profile::Profile;
 use crate::query::{self, Limits, RunError};
 use crate::redact::Redactor;
@@ -115,6 +116,57 @@ pub struct QueryArgs {
     pub format: Option<crate::output::Format>,
 }
 
+/// The arguments of `explain`.
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+pub struct ExplainArgs {
+    /// The connection's name, as `list_connections` shows it.
+    pub connection: String,
+    /// One SQL statement.
+    pub sql: String,
+    /// Run the statement for real rows and times (`EXPLAIN ANALYZE`); what it changes is
+    /// rolled back. Default false: the planner's estimates, without running it.
+    pub analyze: Option<bool>,
+    /// Bytes of output at most (default 32768, up to 1048576).
+    pub max_bytes: Option<u64>,
+    /// Seconds the request may take before it is cancelled (default 30, up to 300).
+    pub timeout_seconds: Option<f64>,
+    /// `text` (an indented tree, the default) or `json`.
+    pub format: Option<crate::output::Format>,
+}
+
+/// The arguments of `sample_rows`.
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+pub struct SampleArgs {
+    /// The connection's name, as `list_connections` shows it.
+    pub connection: String,
+    /// The table's schema (a database in MySQL and MongoDB, `main` in SQLite and DuckDB).
+    pub schema: String,
+    /// The table, view or collection.
+    pub table: String,
+    /// Rows returned at most (default 20, up to 10000).
+    pub max_rows: Option<u64>,
+    /// Bytes of output at most (default 32768, up to 1048576).
+    pub max_bytes: Option<u64>,
+    /// Seconds the query may run before it is cancelled (default 30, up to 300).
+    pub timeout_seconds: Option<f64>,
+    /// `text` (an aligned table, the default) or `json`.
+    pub format: Option<crate::output::Format>,
+}
+
+/// Rows `sample_rows` returns by default.
+pub const SAMPLE_ROWS: u64 = 20;
+
+/// The statement reading the first `rows` rows of `schema.table` on `driver`.
+fn sample_sql(driver: DriverKind, schema: &str, table: &str, rows: u64) -> String {
+    if driver == DriverKind::Mongo {
+        let collection = platypus_driver_mongo::generate::collection_ref(Some(schema), table);
+        return format!("{collection}.find({{}}).limit({rows})");
+    }
+    let dialect = Dialect::from(driver);
+    let name = dialect.qualified(Some(schema), table);
+    dialect.limited(&format!("SELECT * FROM {name}"), rows)
+}
+
 /// A connection as agents see it: never its host, user, password or SSH settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ConnectionInfo {
@@ -198,6 +250,23 @@ impl Lease {
     /// Closes the connection: the next call opens a new one.
     fn discard(mut self) {
         *self.slot = None;
+    }
+
+    /// The result of a request made within [`query::guarded`]: after a timeout or a
+    /// cancellation the connection is closed, the request may still be running on it.
+    fn finish<T>(self, result: Result<T, RunError>, timeout: std::time::Duration) -> Result<T> {
+        match result {
+            Ok(value) => Ok(value),
+            Err(RunError::Database(e)) => Err(self.error(&e)),
+            Err(RunError::Timeout) => {
+                self.discard();
+                Err(AgentError::Timeout(timeout))
+            }
+            Err(RunError::Cancelled) => {
+                self.discard();
+                Err(AgentError::Cancelled)
+            }
+        }
     }
 
     /// The result of a request made within [`timed`].
@@ -499,18 +568,90 @@ impl Agent {
         stop: impl Future<Output = ()>,
     ) -> Result<query::Outcome> {
         let lease = self.lease(store, saved).await?;
-        match query::run_until(lease.conn(), statement, read_only, limits, stop).await {
-            Ok(outcome) => Ok(outcome),
-            Err(RunError::Database(e)) => Err(lease.error(&e)),
-            Err(RunError::Timeout) => {
-                lease.discard();
-                Err(AgentError::Timeout(limits.timeout))
-            }
-            Err(RunError::Cancelled) => {
-                lease.discard();
-                Err(AgentError::Cancelled)
-            }
+        let outcome = query::run_until(lease.conn(), statement, read_only, limits, stop).await;
+        lease.finish(outcome, limits.timeout)
+    }
+
+    /// The plan of one statement, within the connection's agent access and the limits:
+    /// the statement is checked as [`run_query`](Self::run_query) checks it. With
+    /// `analyze` it runs (and what it changes is rolled back), so on read-only connections
+    /// only in a read-only transaction that refuses writes; without, nothing runs, and
+    /// the Safety setting on `UPDATE` or `DELETE` without `WHERE` does not apply.
+    pub async fn explain_until(
+        &self,
+        args: &ExplainArgs,
+        stop: impl Future<Output = ()>,
+    ) -> Result<PlanResult> {
+        let limits = Limits::new(None, args.max_bytes, args.timeout_seconds)?;
+        let analyze = args.analyze.unwrap_or(false);
+        let (store, saved) = self.find(&args.connection)?;
+        if saved.driver == DriverKind::Mongo {
+            return Err(AgentError::Invalid(
+                "explain works on SQL databases: MongoDB has no query plans here".to_owned(),
+            ));
         }
+        let access = saved.effective_agent_access();
+        let unfiltered = if analyze {
+            UnfilteredRule::from_settings(self.profile.settings().as_ref())
+        } else {
+            UnfilteredRule::Allow
+        };
+        let dialect = Dialect::from(saved.driver);
+        let statement = access::check(&args.sql, dialect, access, unfiltered, &saved.name)?;
+        let read_only = access == AgentAccess::ReadOnly;
+        if analyze && read_only && !query::refuses_writes_when_read_only(saved.driver) {
+            return Err(AgentError::Denied(format!(
+                "`{}` is read-only for agents, and its database has no read-only transaction \
+                 that refuses writes, which analyze needs: explain without analyze",
+                saved.name
+            )));
+        }
+        let lease = self.lease(&store, &saved).await?;
+        if !lease.conn().capabilities().explain {
+            return Err(AgentError::Invalid(format!(
+                "`{}` has no query plans in PlatypusDB",
+                saved.name
+            )));
+        }
+        let start = Instant::now();
+        let guard = (analyze && read_only).then_some(saved.driver);
+        let work = lease.conn().explain(statement, analyze);
+        let explain = query::guarded(lease.conn(), guard, limits.timeout, stop, work).await;
+        let explain = lease.finish(explain, limits.timeout)?;
+        Ok(PlanResult {
+            explain,
+            elapsed: start.elapsed(),
+            max_bytes: limits.max_bytes,
+        })
+    }
+
+    /// The first rows of a table, view or collection, run and recorded as
+    /// [`run_query`](Self::run_query) runs a `SELECT *` of it.
+    pub async fn sample_rows_until(
+        &self,
+        args: &SampleArgs,
+        origin: &str,
+        stop: impl Future<Output = ()>,
+    ) -> Result<QueryResult> {
+        if args.schema.trim().is_empty() || args.table.trim().is_empty() {
+            return Err(AgentError::Invalid(
+                "schema and table are both needed".to_owned(),
+            ));
+        }
+        let max_rows = args.max_rows.unwrap_or(SAMPLE_ROWS);
+        let limits = Limits::new(Some(max_rows), args.max_bytes, args.timeout_seconds)?;
+        let (_, saved) = self.find(&args.connection)?;
+        let rows = u64::try_from(limits.max_rows).unwrap_or(u64::MAX);
+        let query = QueryArgs {
+            connection: saved.id.to_string(),
+            // One more row than wanted tells whether the table has more.
+            sql: sample_sql(saved.driver, &args.schema, &args.table, rows + 1),
+            max_rows: Some(rows),
+            max_bytes: args.max_bytes,
+            timeout_seconds: args.timeout_seconds,
+            format: args.format,
+        };
+        self.run_query_until(&query, origin, stop).await
     }
 
     /// Adds the statement to the query history; history is best effort.

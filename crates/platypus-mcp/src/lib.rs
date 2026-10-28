@@ -16,6 +16,7 @@ mod connect;
 mod error;
 mod ident;
 pub mod output;
+pub mod plan;
 pub mod profile;
 pub mod query;
 mod redact;
@@ -23,9 +24,13 @@ mod server;
 pub mod stdio;
 
 pub use access::AgentAccess;
-pub use agent::{Agent, ConnectionInfo, QueryArgs, SEARCH_RESULTS, origin_name};
+pub use agent::{
+    Agent, ConnectionInfo, ExplainArgs, QueryArgs, SAMPLE_ROWS, SEARCH_RESULTS, SampleArgs,
+    origin_name,
+};
 pub use connect::{AgentBlocker, agent_blocker, connect};
 pub use error::{AgentError, Result};
 pub use output::{Format, QueryResult};
+pub use plan::PlanResult;
 pub use profile::Profile;
 pub use query::Limits;

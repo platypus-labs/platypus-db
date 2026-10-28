@@ -173,6 +173,8 @@ fn lists_tools_and_connections_without_secrets(client: &mut Client) {
         "get_ddl",
         "search_objects",
         "run_query",
+        "sample_rows",
+        "explain",
     ] {
         assert!(names.contains(&tool), "{tool} missing from {names:?}");
     }
@@ -332,6 +334,102 @@ fn serves_the_tools_over_stdio() {
     assert!(recorded.iter().all(|(_, _, origin)| origin == "test-agent"));
     assert_eq!(recorded[2].0, "DELETE FROM t WHERE id = 1");
     assert_eq!(recorded[2].1, "error");
+}
+
+/// `sample_rows` reads the first rows of a table within the limits; `explain` shows the
+/// plan of a statement allowed by the access, running it only with analyze.
+#[test]
+fn samples_rows_and_explains_statements() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let mut client = initialized(dir.path());
+
+    let (rows, error) = client.call(
+        "sample_rows",
+        &json!({ "connection": "App db", "schema": "main", "table": "t" }),
+    );
+    assert!(!error && rows.starts_with("id | name\n"), "{rows}");
+    assert!(rows.contains("(2 rows"), "{rows}");
+    let (one, error) = client.call(
+        "sample_rows",
+        &json!({ "connection": "App db", "schema": "main", "table": "t", "max_rows": 1, "format": "json" }),
+    );
+    assert!(!error, "{one}");
+    let doc: Value = serde_json::from_str(&one).unwrap();
+    assert_eq!(doc["row_count"], 1, "{doc}");
+    assert_eq!(doc["truncated_by"], "max_rows", "{doc}");
+    // A name that needs quotes is quoted, not run as SQL.
+    let (missing, error) = client.call(
+        "sample_rows",
+        &json!({ "connection": "App db", "schema": "main", "table": "t; DROP TABLE t" }),
+    );
+    assert!(error && missing.contains("no such table"), "{missing}");
+    assert_eq!(count(&dir.path().join("app.db")), 2);
+    let (empty, error) = client.call(
+        "sample_rows",
+        &json!({ "connection": "App db", "schema": "main", "table": " " }),
+    );
+    assert!(error && empty.contains("needed"), "{empty}");
+    let (zero, error) = client.call(
+        "sample_rows",
+        &json!({ "connection": "App db", "schema": "main", "table": "t", "max_rows": 0 }),
+    );
+    assert!(error && zero.contains("max_rows"), "{zero}");
+
+    let (plan, error) = client.call(
+        "explain",
+        &json!({ "connection": "App db", "sql": "SELECT name FROM t WHERE id = 1" }),
+    );
+    assert!(!error && plan.starts_with("-> "), "{plan}");
+    assert!(plan.contains("Estimated plan"), "{plan}");
+    let (json_plan, error) = client.call(
+        "explain",
+        &json!({ "connection": "App db", "sql": "SELECT * FROM t", "format": "json" }),
+    );
+    assert!(!error, "{json_plan}");
+    let doc: Value = serde_json::from_str(&json_plan).unwrap();
+    assert!(doc["root"]["operation"].is_string(), "{doc}");
+    assert_eq!(doc["analyzed"], false);
+    // SQLite's analyze runs in the read-only transaction.
+    let (analyzed, error) = client.call(
+        "explain",
+        &json!({ "connection": "App db", "sql": "SELECT * FROM t", "analyze": true }),
+    );
+    assert!(!error, "{analyzed}");
+    // The access applies as in run_query.
+    let (refused, error) = client.call(
+        "explain",
+        &json!({ "connection": "App db", "sql": "DELETE FROM t WHERE id = 1" }),
+    );
+    assert!(
+        error && refused.contains("read-only for agents"),
+        "{refused}"
+    );
+    let (two, error) = client.call(
+        "explain",
+        &json!({ "connection": "App db", "sql": "SELECT 1; SELECT 2" }),
+    );
+    assert!(error && two.contains("one statement at a time"), "{two}");
+    // Without analyze nothing runs, so the Safety rule on every row does not apply.
+    let (every, error) = client.call(
+        "explain",
+        &json!({ "connection": "Scratch", "sql": "DELETE FROM t" }),
+    );
+    assert!(!error, "{every}");
+    let (every, error) = client.call(
+        "explain",
+        &json!({ "connection": "Scratch", "sql": "DELETE FROM t", "analyze": true }),
+    );
+    assert!(error && every.contains("every row"), "{every}");
+    let (small, error) = client.call(
+        "explain",
+        &json!({ "connection": "App db", "sql": "SELECT * FROM t", "max_bytes": 1 }),
+    );
+    assert!(
+        !error && small.contains("left out") && !small.contains("->"),
+        "{small}"
+    );
+    assert_eq!(count(&dir.path().join("scratch.db")), 2);
 }
 
 /// `notifications/cancelled` cancels the running statement, which frees the connection.

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use crate::{Agent, AgentError, QueryArgs};
+use crate::{Agent, AgentError, ExplainArgs, QueryArgs, SampleArgs};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
@@ -215,11 +215,7 @@ impl PlatypusServer {
         peer: Peer<RoleServer>,
         cancelled: CancellationToken,
     ) -> Result<CallToolResult, ErrorData> {
-        // The history trims and caps the name, and calls a client without one `agent`.
-        let origin = peer
-            .peer_info()
-            .map(|info| info.client_info.name.clone())
-            .unwrap_or_default();
+        let origin = client_name(&peer);
         let format = args.format.unwrap_or_default();
         let result = self
             .agent
@@ -229,6 +225,50 @@ impl PlatypusServer {
             .map(|r| r.render(format));
         reply(result)
     }
+
+    #[tool(
+        description = "Returns the first rows of a table, view or MongoDB collection (default         20 rows), as run_query returns them: an aligned text table, or JSON with format=json.         max_rows, max_bytes and timeout_seconds work as in run_query. The rows come in the         order the database reads them: no order is implied."
+    )]
+    async fn sample_rows(
+        &self,
+        Parameters(args): Parameters<SampleArgs>,
+        peer: Peer<RoleServer>,
+        cancelled: CancellationToken,
+    ) -> Result<CallToolResult, ErrorData> {
+        let origin = client_name(&peer);
+        let format = args.format.unwrap_or_default();
+        let result = self
+            .agent
+            .sample_rows_until(&args, &origin, cancelled.cancelled_owned())
+            .await
+            .map(|r| r.render(format));
+        reply(result)
+    }
+
+    #[tool(
+        description = "Returns the plan of one SQL statement: its steps as an indented tree         with cost, estimated rows and, with analyze=true, actual rows and times (or JSON with         format=json), then index suggestions for filtered full scans of large tables. Without         analyze the statement does not run. With analyze it runs and what it changes is         rolled back; on read_only connections only statements that change nothing are         explained, and analyze needs PostgreSQL, MySQL, MariaDB or SQLite. max_bytes         (default 32768) and timeout_seconds (default 30) work as in run_query."
+    )]
+    async fn explain(
+        &self,
+        Parameters(args): Parameters<ExplainArgs>,
+        cancelled: CancellationToken,
+    ) -> Result<CallToolResult, ErrorData> {
+        let format = args.format.unwrap_or_default();
+        let result = self
+            .agent
+            .explain_until(&args, cancelled.cancelled_owned())
+            .await
+            .map(|r| r.render(format));
+        reply(result)
+    }
+}
+
+/// The client's name, for the history: it trims and caps it, and calls a client without
+/// one `agent`.
+fn client_name(peer: &Peer<RoleServer>) -> String {
+    peer.peer_info()
+        .map(|info| info.client_info.name.clone())
+        .unwrap_or_default()
 }
 
 #[allow(

@@ -142,7 +142,12 @@ impl QueryResult {
 /// The rendering of the first `total` rows, or of as many as fit in `max` bytes; at least
 /// the one of none. Renderings grow with the rows, so the most that fit are found by
 /// halving.
-fn fit<T>(total: usize, max: usize, render: impl Fn(usize) -> T, size: impl Fn(&T) -> usize) -> T {
+pub(crate) fn fit<T>(
+    total: usize,
+    max: usize,
+    render: impl Fn(usize) -> T,
+    size: impl Fn(&T) -> usize,
+) -> T {
     let all = render(total);
     if size(&all) <= max {
         return all;
