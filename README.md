@@ -326,6 +326,16 @@ then run the SELECT or open it in the editor.
   row estimates 10 times off or more.
 - A table read in full (10,000 rows or more) to keep the rows matching a condition gets a
   suggestion to index that condition's columns.
+- The **graph** view draws the plan as boxes joined by lines: each step tinted by its share
+  of the work, each line as thick as the rows it carries; Fit shrinks a large plan to the
+  view.
+- **Compare…** lines a plan up with its previous run (after Refresh, e.g. once an index is
+  added) or with another plan: the whole plan's time or cost before and after, and each
+  step's own, with the steps replaced, added or gone.
+- **Open query plan…** (command palette, or the connections list's menu) reads a plan pasted
+  or opened from a file, from a server log or a colleague, without a connection:
+  PostgreSQL's JSON or text (as psql prints it), CockroachDB's, MySQL's tree, MariaDB's JSON,
+  SQLite's `QUERY PLAN` and SQL Server's `SHOWPLAN_TEXT`, recognized or chosen.
 
 ![The query manager with the trace of a statement](docs/screenshots/query-manager.png)
 
