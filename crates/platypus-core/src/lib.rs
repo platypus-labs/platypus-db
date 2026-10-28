@@ -4,6 +4,7 @@
 //! variant is a [`RecordBatchStream`] of Arrow record batches. Frontends never see
 //! driver-specific types.
 
+mod admin;
 mod capabilities;
 mod config;
 mod connection;
@@ -15,6 +16,7 @@ mod metadata;
 pub mod special;
 mod transaction;
 
+pub use admin::{EndSession, ServerLock, ServerSession, session_number};
 pub use capabilities::{Capabilities, ObjectRef, unsupported};
 pub use config::{
     Bridge, ConnectionConfig, DriverKind, JdbcUrl, ParseNote, ParsedConnection, Secret, SshAuth,
