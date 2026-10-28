@@ -104,6 +104,7 @@ async fn decodes_scalar_types() {
 
 #[tokio::test]
 async fn unions_are_the_value_of_their_member() {
+    crate::testing::load();
     let conn = memory().await;
     let batches = rows(
         &conn,
