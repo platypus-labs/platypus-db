@@ -16,6 +16,7 @@ mod init;
 mod metadata;
 pub mod special;
 mod transaction;
+mod version;
 
 pub use admin::{
     EndSession, ServerLock, ServerSession, query_locks, refuse_own_session, session_number,
@@ -47,9 +48,10 @@ pub use transaction::{
     open_transaction_error,
 };
 
-/// Re-exported so frontends use the same Arrow version as the drivers.
 pub use arrow_array;
 pub use arrow_schema;
+/// Re-exported so frontends use the same Arrow version as the drivers.
+pub use version::{ServerVersion, minimum_version};
 
 /// Version of the PlatypusDB core, shared by the CLI and the desktop app.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
