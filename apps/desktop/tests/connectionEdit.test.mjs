@@ -47,6 +47,7 @@ test("what only the app shows or checks is not", () => {
     { color: "#c92a2a" },
     { read_only: true },
     { agent_access: "off" },
+    { connect_by: "url" },
     { virtual_keys: [{ schema: "public", table: "t", columns: ["id"] }] },
   ]) {
     assert.equal(sessionSettingsChanged(saved(), saved(over)), false, JSON.stringify(over));

@@ -66,6 +66,10 @@ pub struct SavedConnection {
     /// [`SavedConnection::effective_agent_access`].
     #[serde(default)]
     pub agent_access: AgentAccess,
+    /// How the form enters the address: host, port and database, or one URL. Only the
+    /// form's: it opens again as it was left.
+    #[serde(default, skip_serializing_if = "ConnectBy::is_host")]
+    pub connect_by: ConnectBy,
     /// The SSH server the connection goes through. Before `virtual_keys`: TOML writes plain
     /// values first, then tables.
     pub ssh: Option<SavedSsh>,
@@ -79,6 +83,24 @@ pub struct SavedConnection {
     /// identify their rows. Last: TOML writes arrays of tables after plain values.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub virtual_keys: Vec<VirtualKey>,
+}
+
+/// How the connection form enters the address.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ConnectBy {
+    /// The host, port and database fields.
+    #[default]
+    Host,
+    /// One connection URL.
+    Url,
+}
+
+impl ConnectBy {
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn is_host(&self) -> bool {
+        *self == Self::Host
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -382,6 +404,7 @@ impl SavedConnection {
             color: None,
             connection_type: None,
             agent_access: AgentAccess::default(),
+            connect_by: ConnectBy::Host,
             ssh: None,
             init: SavedInit::default(),
             options: BTreeMap::new(),
@@ -1149,6 +1172,25 @@ mod tests {
         assert!(!text.contains("folder"), "{text}");
         // Older files leave agents to read only.
         assert!(text.contains("agent_access = \"read_only\""), "{text}");
+    }
+
+    #[test]
+    fn keeps_the_form_in_url_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("connections.toml");
+        let mut s = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap();
+        let host = SavedConnection::new("Host", DriverKind::Postgres);
+        let mut url = SavedConnection::new("Url", DriverKind::MySql);
+        url.connect_by = ConnectBy::Url;
+        s.save(host.clone(), PasswordUpdate::Keep).unwrap();
+        s.save(url.clone(), PasswordUpdate::Keep).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        // Host mode, the default, is not written: older files load as it.
+        assert_eq!(text.matches("connect_by").count(), 1, "{text}");
+        assert!(text.contains("connect_by = \"url\""), "{text}");
+        let s = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap();
+        assert_eq!(s.get(host.id).unwrap().connect_by, ConnectBy::Host);
+        assert_eq!(s.get(url.id).unwrap().connect_by, ConnectBy::Url);
     }
 
     fn profile(name: &str) -> NetworkProfile {
