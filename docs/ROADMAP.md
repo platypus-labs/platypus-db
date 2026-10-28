@@ -778,24 +778,31 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 resta per sviluppo e test), DuckDB scaricato al primo uso (crate `duckdb` in modalità
 `loadable-extension`, libreria caricata da `platypus-duckdb-loader`, l'unico crate con codice
 `unsafe`), log su file con rotazione, segnalazione dei crash su scelta dell'utente e pacchetto
-di diagnostica (Impostazioni › Diagnostics). Restano la verifica su macOS e Linux, il test
-reale dell'auto-update, la firma, i benchmark, i test di scala e la distribuzione.
+di diagnostica (Impostazioni › Diagnostics). Dal 28 ottobre 2026: verifica su Linux (build,
+avvio, memoria, scroll e controlli della finestra con un window manager; il doppio clic sulla
+barra del titolo ora massimizza anche su Linux; numeri in BENCHMARKS.md, misurati senza GPU),
+test di scala (`tests/scale.rs` nella conformance e lo scenario E2E `scale-sqlite`: 10.000
+tabelle, un milione di righe, celle da 32 MB; il navigator ora disegna solo le righe in vista
+e il driver SQL Server legge i valori `max` e i pacchetti in blocco, da 10,5 s a 0,8 s per 48
+MB), benchmark con soglie (`scripts/bench.py`, job `bench` della CI) e pulizia di `target`
+(`scripts/clean-target.mjs`). Restano la verifica su macOS e su un desktop Linux con GPU, il
+test reale dell'auto-update, la firma, il confronto con DBeaver e la distribuzione.
 
 | Attività | Prio |
 |---|---|
-| Verifica su macOS e Linux: build, avvio, memoria, scroll; correzioni di piattaforma | P1 |
+| Verifica su macOS e Linux: build, avvio, memoria, scroll; correzioni di piattaforma (Linux fatto senza GPU, vedi BENCHMARKS.md) | P1 |
 | ✅ Prima release su GitHub (v0.1.0, poi v0.2.0) | P1 |
 | Test reale dell'auto-update da una release pubblicata alla successiva | P1 |
 | Firma del codice: Windows (certificato o Azure Trusted Signing), macOS con notarizzazione | P2 |
 | Benchmark affiancato con DBeaver, aggiornando `BENCHMARKS.md` | P2 |
-| Benchmark in CI con soglie (avvio, memoria, decode) per bloccare le regressioni | P2 |
+| ✅ Benchmark in CI con soglie (avvio, memoria, decode) per bloccare le regressioni | P2 |
 | ✅ Crash report opt-in e log su file con rotazione | P2 |
 | ✅ **Un solo eseguibile anche per gli agenti**: l'app fa da server MCP con un'opzione (`platypus-db --mcp`) invece di un secondo binario `platypus-mcp` che ricontiene tutti i driver (circa 50-60 MB in meno nell'installer) | P2 |
 | ✅ **DuckDB scaricato al primo uso** invece che incluso nell'installer (circa 35 MB): chi non apre file CSV, Parquet o DuckDB non lo scarica mai | P2 |
-| Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
+| ✅ Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
 | Distribuzione: winget, Homebrew cask, Flatpak, AUR | P3 |
 | Sito e documentazione utente | P3 |
-| 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
+| ✅ 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
 | ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
 | 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire | P2 |
 | 🆕 **Video o GIF di 20-30 secondi** in cima al README e al sito: avvio, scroll di milioni di righe, explain con la heatmap | P2 |

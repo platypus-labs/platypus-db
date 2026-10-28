@@ -9,6 +9,7 @@ import { cycleTheme, themeLabel, themeSetting, titleBarSetting } from "../theme"
 import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
 import { useActivity } from "./activity";
+import { DRAG_ATTR, dragHandlers } from "./windowDrag";
 import { openActivity } from "./ActivityDialog";
 import { SIDEBAR_TOGGLE_ID, toggleSidebar, toggleSidebarTitle, useSidebarCollapsed } from "./sidebar";
 import { t, plural } from "../i18n";
@@ -35,11 +36,14 @@ export function TopBar({ project, connection }: Props) {
     getCurrentWindow().setDecorations(!ownTitleBar).catch((e: unknown) => console.warn("decorations", e));
   }, [ownTitleBar]);
   // The bar moves the window where nothing else takes the click (data-tauri-drag-region on
-  // each element that is not a control).
-  const drag = ownTitleBar ? { "data-tauri-drag-region": true } : {};
+  // each element that is not a control); on Linux its own handlers do (windowDrag.ts).
+  const drag = !ownTitleBar ? {} : LINUX ? { [DRAG_ATTR]: true } : { "data-tauri-drag-region": true };
+  const [linuxDrag] = useState(() => dragHandlers(getCurrentWindow(), (e) => console.warn("window drag", e)));
+  const barHandlers = ownTitleBar && LINUX ? linuxDrag : {};
   return (
-    <header className={`topbar${ownTitleBar ? " own-title-bar" : ""}`} {...drag}>
-      <img className="topbar-mark" src={mark} alt="PlatypusDB" width={26} height={26} {...drag} />
+    <header className={`topbar${ownTitleBar ? " own-title-bar" : ""}`} {...drag} {...barHandlers}>
+      {/* Not draggable: on Linux the bar moves the window once the pointer moves (windowDrag.ts). */}
+      <img className="topbar-mark" src={mark} alt="PlatypusDB" width={26} height={26} draggable={false} {...drag} />
       <button
         type="button"
         id={SIDEBAR_TOGGLE_ID}
@@ -87,6 +91,7 @@ export function TopBar({ project, connection }: Props) {
 }
 
 const MAC = navigator.userAgent.includes("Mac");
+const LINUX = navigator.userAgent.includes("Linux");
 
 /** Minimize, maximize or restore, and close, as the system's title bar has them. */
 function WindowControls() {
