@@ -795,6 +795,7 @@ generata.
 | Contrasto e accessibilità di tutti i temi (WCAG AA), focus visibile, uso da sola tastiera | P1 | N |
 | Testi rivisti in italiano e inglese: tono, lunghezza, etichette tagliate nelle finestre piccole | P2 | N |
 | Set di icone coerente (una sola famiglia, stesse dimensioni e tratto) e icone dei driver | P2 | N |
+| Nel navigator l'icona del driver di ogni connessione al posto del pallino colorato; il colore della connessione e lo stato (connessa, errore) restano come piccolo segno sull'icona | P2 | N |
 | Impostazioni come pagine con intestazione (icona, titolo, sottotitolo, descrizione) e sotto-schede, sul modello del tab Agenti del gruppo N: liste di schede con azione a destra, pannello di dettaglio a fianco | P2 | N |
 | Posizione degli elementi personalizzabile e set di icone a scelta | P3 | N |
 | Micro-animazioni misurate (apertura pannelli, transizioni dei tab), disattivabili | P3 | N |
