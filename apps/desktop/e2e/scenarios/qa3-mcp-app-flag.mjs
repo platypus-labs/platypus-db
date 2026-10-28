@@ -4,9 +4,8 @@
 // JSON-RPC and exits 0 when stdin closes; the app's normal start (this run's window) is
 // unaffected.
 //
-// QA3-MCP-00 (info): on this branch the app ignores `--mcp`: it opens its window and never
-// answers `initialize`. The feature lives on origin/group-p-platform (6f7b189, not merged).
-// This scenario fails until it is merged.
+// QA3-MCP-00 (resolved): the app ignored `--mcp` until group P was merged into this round.
+// qa3-mcp-app-mode.mjs drives the same mode further (PostgreSQL, read-only, no window).
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
