@@ -37,6 +37,9 @@ const PROBLEMS: Record<ScriptProblem, string> = {
   commands: msg("Client commands (@set, @include, @export…) run only in the tab."),
 };
 
+/** "3 connections", as the confirmation and the merged tab's title say it. */
+const connectionCount = (n: number) => plural(n, "{n} connection", "{n} connections");
+
 /** Runs `sql` on the session and waits for its end; its jobs stay open. */
 function runStatement(sessionId: number, sql: string, onJob: (jobId: number) => void): Promise<Ran> {
   return new Promise((resolve) => {
@@ -118,10 +121,10 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
     [],
   );
 
-  const shown = connections.filter((c) => {
-    const f = filter.trim().toLowerCase();
-    return !f || c.name.toLowerCase().includes(f) || c.host.toLowerCase().includes(f) || DRIVER_NAMES[c.driver].toLowerCase().includes(f);
-  });
+  const f = filter.trim().toLowerCase();
+  const shown = connections.filter(
+    (c) => !f || c.name.toLowerCase().includes(f) || c.host.toLowerCase().includes(f) || DRIVER_NAMES[c.driver].toLowerCase().includes(f),
+  );
   const sameDriver = shown.filter((c) => c.driver === origin.driver);
   const targets = connections.filter((c) => chosen.has(c.id));
   const toggle = (id: string) =>
@@ -143,7 +146,7 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
     if (checked.writes) {
       const prod = targets.filter((c) => c.connection_type === "prod").map((c) => c.name);
       const message =
-        t("This script may change data on {count}.", { count: plural(targets.length, "{n} connection", "{n} connections") }) +
+        t("This script may change data on {count}.", { count: connectionCount(targets.length) }) +
         (prod.length ? ` ${t("Production: {names}.", { names: prod.join(", ") })}` : "");
       if (!(await ask(message, { confirm: t("Run"), danger: prod.length > 0 }))) return;
     }
@@ -181,6 +184,8 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
     }
     sessions.current.add(sessionId);
     let last: { jobId: number; columns: string[]; rows: number } | null = null;
+    /** Set once `last` is handed over to the merge, which frees it then. */
+    let keep = false;
     try {
       // Checked again in the connection's own dialect: batches and quoting differ.
       const plan = planScript(script, await api.analyzeSql(script, c.driver, 0));
@@ -189,7 +194,6 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
       for (const [i, sql] of plan.statements.entries()) {
         if (stopped.current) {
           setOutcome(c.id, { state: "skipped", reason: t("Stopped") });
-          if (last) free(last.jobId);
           return null;
         }
         setOutcome(c.id, { state: "running", statement: i + 1 });
@@ -209,7 +213,6 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
         for (const j of started) if (!ran.results.some((r) => r.jobId === j)) free(j);
         if (ran.error !== null) {
           setOutcome(c.id, { state: "failed", statement: i + 1, message: ran.error });
-          if (last) free(last.jobId);
           return null;
         }
         setOutcome(c.id, { state: "done", statements: i + 1, rows: last?.rows ?? null, affected });
@@ -217,12 +220,13 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
       if (!last) return null;
       // Every row, before the session goes: the copy reads what the job holds.
       await api.fetchWhole(last.jobId, () => undefined);
+      keep = true;
       return { jobId: last.jobId, columns: last.columns };
     } catch (e) {
       setOutcome(c.id, { state: "failed", statement: 0, message: toCommandError(e).message });
-      if (last) free(last.jobId);
       return null;
     } finally {
+      if (last && !keep) free(last.jobId);
       sessions.current.delete(sessionId);
       void api.closeSession(sessionId).catch(() => undefined);
     }
@@ -238,14 +242,13 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
     setPhase("merging");
     const tables: ResultTable[] = kept.map((k, i) => ({ job_id: k.jobId, table: tableOf(i) }));
     const merged: Kept[] = kept.map((k, i) => ({ name: k.c.name, table: tableOf(i), columns: k.columns }));
+    const title = t("Results of {count}", { count: connectionCount(kept.length) });
     try {
-      const opened = await withDriver(() =>
-        api.openResultDb(t("Results of {count}", { count: plural(kept.length, "{n} connection", "{n} connections") }), tables),
-      );
+      const opened = await withDriver(() => api.openResultDb(title, tables));
       workbench().openTemporaryTab(
         "query",
         { ...opened.connection, read_only: true },
-        { sql: mergedSql(merged), title: t("Results of {count}", { count: plural(kept.length, "{n} connection", "{n} connections") }), autorun: true },
+        { sql: mergedSql(merged), title, autorun: true },
         () => void api.closeResultDb(opened.connection.id),
       );
       setSummary(t("The results opened in a new tab."));
