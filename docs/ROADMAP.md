@@ -337,6 +337,13 @@ e la transazione segue `@@TRANCOUNT`. DuckDB è incorporato come SQLite, con ris
 senza l'estensione ICU non ha fuso orario di sessione. Una nuova connessione parte dalla scelta del
 database in una griglia di loghi. Conformance su PostgreSQL, MySQL, MariaDB, SQL Server, SQLite e
 DuckDB (SQL Server dal profilo `sqlserver` di `docker/compose.yml`).
+Versioni vecchie dei server (P2): `platypus_core::ServerVersion` legge la versione dal testo
+del server e `minimum_version` dà la più vecchia provata (PostgreSQL 12, MySQL 5.7, MariaDB
+10.6, SQL Server 2017, MongoDB 5); sotto, la sessione si apre con un messaggio. Il driver MySQL
+ripiega in chiaro in `prefer` anche quando il TLS del server è troppo vecchio per rustls, legge i
+CHECK solo da 8.0.16 e i piani da `EXPLAIN FORMAT=JSON` prima di 8.0.16. Il profilo `versions` di
+`docker/compose.yml` avvia le versioni vecchie e `node scripts/conformance-versions.mjs` fa girare
+la conformance su ognuna.
 ClickHouse (P2) via HTTP (`platypus-driver-clickhouse`, `reqwest` + TLS condiviso
 in `platypus-tls`): una sessione HTTP per connessione (`SET`, `USE`, tabelle temporanee),
 risultati `ArrowStream` decodificati man mano, cancel con `KILL QUERY` per `query_id`. Le query
@@ -391,7 +398,7 @@ ADBC. Conformance ODBC su SQL Server col driver `SQL Server` di Windows; Db2 sen
 | ✅ File come database: CSV, Parquet, JSON, XLSX (tramite DuckDB) | P2 | Fatto con il gruppo H: viste DuckDB sul file, un foglio XLSX per tabella (calamine); si aprono col trascinamento sulla finestra |
 | ✅ CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon; AlloyDB no | P2 | Wire PG: profili e test, non driver nuovi |
 | ✅ ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | ADBC (Snowflake, BigQuery, Databricks, Trino, ADBC generico; driver scaricati dal registro dbc). Oracle con driver nativo (crate `oracle`, Instant Client scaricato da Oracle al primo uso, cancel con break, metadati da `ALL_*`). ODBC (`platypus-driver-odbc`, solo Windows): Db2 col driver IBM installato al primo uso (registrazione con UAC), ODBC generico con DSN o connection string |
-| 🆕 **Versioni vecchie dei server**: versioni minime dichiarate per ogni database (es. PostgreSQL 12+, MySQL 5.7+, MariaDB 10.6+, SQL Server 2017+, MongoDB 5+), query di catalogo, admin e DDL adattate alla versione letta alla connessione (es. `prokind` da PG 11, `attgenerated` da PG 12), messaggio chiaro sotto la minima | P2 | Conformance su una matrice di versioni in `docker/compose.yml` (un profilo per le versioni vecchie, ad esempio `postgres:12`…`16`, `mysql:5.7`, `mysql:8.0`); oggi i test girano solo sull'ultima versione |
+| ✅ **Versioni vecchie dei server**: versioni minime dichiarate per ogni database (es. PostgreSQL 12+, MySQL 5.7+, MariaDB 10.6+, SQL Server 2017+, MongoDB 5+), query di catalogo, admin e DDL adattate alla versione letta alla connessione (es. `prokind` da PG 11, `attgenerated` da PG 12), messaggio chiaro sotto la minima | P2 | Conformance su una matrice di versioni in `docker/compose.yml` (un profilo per le versioni vecchie, ad esempio `postgres:12`…`16`, `mysql:5.7`, `mysql:8.0`); oggi i test girano solo sull'ultima versione |
 | Aggiornamento automatico dei driver di tutti i database (scaricati ADBC/ODBC e nativi), con verifica che i dialetti restino compatibili; scelta di versioni precedenti di un driver | P3 | Scaricati: registro con più versioni. Nativi: compilati nell'app, si aggiornano con l'app; versioni vecchie = più versioni dello stesso crate o driver caricabili a parte. Test di compatibilità per versione |
 | ✅ Oracle nativo | P3 | Crate `oracle` con Instant Client scaricato al primo uso (Oracle Free Use Terms) |
 | ✅ **MongoDB** | P3 | Sintassi mongosh, griglia dei campi + albero del documento |
