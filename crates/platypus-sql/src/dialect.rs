@@ -390,7 +390,8 @@ const ORACLE_RESERVED: &[&str] = &[
 ];
 
 /// Further words that MySQL and MariaDB reserve (`information_schema.KEYWORDS` with
-/// `RESERVED = 1` on MySQL 8.4; the keywords MariaDB 11.4 rejects as bare table names).
+/// `RESERVED = 1` on MySQL 8.4, and 8.0's `MASTER_BIND`; the keywords MariaDB 11.4 rejects as
+/// bare table names).
 const MYSQL_RESERVED: &[&str] = &[
     "ACCESSIBLE",
     "ADD",
@@ -483,6 +484,7 @@ const MYSQL_RESERVED: &[&str] = &[
     "LONGTEXT",
     "LOOP",
     "LOW_PRIORITY",
+    "MASTER_BIND",
     "MASTER_DEMOTE_TO_REPLICA",
     "MASTER_DEMOTE_TO_SLAVE",
     "MASTER_SSL_VERIFY_SERVER_CERT",

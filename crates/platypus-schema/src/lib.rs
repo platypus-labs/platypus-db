@@ -472,6 +472,16 @@ fn action(text: &str) -> Option<String> {
     Some(action.to_owned())
 }
 
+/// A temporal column's `CURRENT_TIMESTAMP` default: an expression, though MySQL 5.7 does not
+/// mark it `DEFAULT_GENERATED` as 8.0 does.
+fn current_time(default: &str, data_type: &str) -> bool {
+    let upper = default.to_ascii_uppercase();
+    let temporal = ["datetime", "timestamp"]
+        .iter()
+        .any(|t| data_type.to_ascii_lowercase().starts_with(t));
+    temporal && (upper.starts_with("CURRENT_TIMESTAMP") || upper.starts_with("NOW("))
+}
+
 /// MySQL prints a literal default without its quotes and keeps `auto_increment` apart from
 /// the type; both must be written back when a column is redefined. MariaDB quotes literals.
 async fn mysql_columns(
@@ -512,7 +522,7 @@ async fn mysql_columns(
             if mariadb {
                 // MariaDB writes no default of a nullable column as `NULL`.
                 (d != "NULL").then_some(d)
-            } else if generated {
+            } else if generated || current_time(&d, &column.data_type) {
                 let upper = d.to_ascii_uppercase();
                 Some(
                     if upper.starts_with("CURRENT_TIMESTAMP") || upper.starts_with("NOW(") {

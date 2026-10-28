@@ -529,9 +529,9 @@ impl Migration<'_> {
         let c = self.target.quote_ident(&column.name);
         let sql = match self.target {
             Dialect::SqlServer => format!("ALTER TABLE {t} ADD DEFAULT {value} FOR {c}"),
-            // An expression default takes its parentheses, and a TEXT column only this way.
             Dialect::MySql => format!(
-                "ALTER TABLE {t} MODIFY {c} {data_type} DEFAULT ({value}){}",
+                "ALTER TABLE {t} MODIFY {c} {data_type} DEFAULT {}{}",
+                mysql_default(&value, data_type),
                 if column.nullable { "" } else { " NOT NULL" }
             ),
             Dialect::ClickHouse => format!("ALTER TABLE {t} MODIFY COLUMN {c} DEFAULT {value}"),
@@ -1179,8 +1179,67 @@ fn requalify(ddl: &str, dialect: Dialect, from: &str, to: &str) -> String {
     out
 }
 
+/// Whether the parentheses of `text` close in order, outside its string literals.
+fn balanced(text: &str) -> bool {
+    let mut depth = 0i32;
+    let mut quoted = false;
+    for c in text.chars() {
+        match c {
+            '\'' => quoted = !quoted,
+            '(' if !quoted => depth += 1,
+            ')' if !quoted => {
+                depth -= 1;
+                if depth < 0 {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    depth == 0
+}
+
+/// A default as MySQL takes it: an expression in parentheses (8.0.13+), and a TEXT, BLOB or
+/// JSON column's only this way; a literal or `CURRENT_TIMESTAMP` bare, as MySQL 5.7 takes
+/// them too.
+fn mysql_default(value: &str, data_type: &str) -> String {
+    // A source may write its default in parentheses already: `('new')`.
+    let mut value = value.trim();
+    while let Some(inner) = value.strip_prefix('(').and_then(|v| v.strip_suffix(')')) {
+        if !balanced(inner) {
+            break;
+        }
+        value = inner.trim();
+    }
+    let upper = data_type.to_ascii_uppercase();
+    let large = ["TEXT", "BLOB", "JSON"].iter().any(|t| upper.contains(t));
+    let literal = value.starts_with('\'') || value.parse::<f64>().is_ok();
+    let now = value.to_ascii_uppercase().starts_with("CURRENT_TIMESTAMP");
+    if !large && (literal || now) {
+        value.to_owned()
+    } else {
+        format!("({value})")
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::mysql_default;
+
+    #[test]
+    fn mysql_defaults_take_parentheses_only_when_needed() {
+        assert_eq!(mysql_default("'new'", "varchar(20)"), "'new'");
+        assert_eq!(mysql_default("1.5", "decimal(10,2)"), "1.5");
+        assert_eq!(
+            mysql_default("CURRENT_TIMESTAMP", "datetime"),
+            "CURRENT_TIMESTAMP"
+        );
+        assert_eq!(mysql_default("'x'", "text"), "('x')");
+        assert_eq!(mysql_default("uuid()", "varchar(36)"), "(uuid())");
+        assert_eq!(mysql_default("('new')", "varchar(20)"), "'new'");
+        assert_eq!(mysql_default("(1) + (2)", "int"), "((1) + (2))");
+    }
+
     use super::*;
 
     #[test]
