@@ -461,6 +461,7 @@ async fn mongo_later_documents_keep_their_values_and_fields() {
 
 #[tokio::test]
 async fn duckdb_special_values_and_bits() {
+    platypus_driver_duckdb::testing::load();
     let dir = tempfile::tempdir().unwrap();
     let conn = file_connection(
         &DuckDbDriver,

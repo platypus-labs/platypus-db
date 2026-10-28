@@ -413,6 +413,7 @@ async fn a_memory_database_named_like_a_file_is_not_read() {
 
 #[tokio::test]
 async fn attached_databases_are_listed_as_schemas() {
+    crate::testing::load();
     let dir = tempfile::tempdir().unwrap();
     let mut config = ConnectionConfig::new(DriverKind::DuckDb);
     config.database = dir

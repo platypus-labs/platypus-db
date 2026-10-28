@@ -585,6 +585,7 @@ mod tests {
             .map(|(n, a)| (n.as_str(), Arc::clone(a)))
             .collect();
         let (schema, batch) = table_of(named);
+        platypus_driver_duckdb::testing::load();
         let conn = duckdb::Connection::open_in_memory().unwrap();
         assert_eq!(load(&conn, "every", &schema, &[batch]).unwrap(), 2);
         for (name, _) in &columns {
@@ -706,6 +707,7 @@ mod tests {
             .collect();
         let schema: SchemaRef = Arc::new(Schema::new(fields));
         let batch = RecordBatch::try_new(Arc::clone(&schema), batch.columns().to_vec()).unwrap();
+        platypus_driver_duckdb::testing::load();
         let conn = duckdb::Connection::open_in_memory().unwrap();
         load(&conn, "wide", &schema, &[batch]).unwrap();
         assert_eq!(one(&conn, "SELECT sum(n)::BIGINT FROM wide"), 6);
@@ -797,6 +799,7 @@ mod tests {
             ])),
         ];
         let batch = RecordBatch::try_new(Arc::clone(&schema), columns).unwrap();
+        platypus_driver_duckdb::testing::load();
         let conn = duckdb::Connection::open_in_memory().unwrap();
         load(&conn, "n", &schema, &[batch]).unwrap();
         let type_of = |c: &str| text(&conn, &format!("SELECT typeof({c}) FROM n LIMIT 1"));

@@ -491,6 +491,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(name);
         std::fs::write(&path, bytes).unwrap();
+        crate::testing::load();
         let conn = duckdb::Connection::open_in_memory().unwrap();
         load(&conn, path.to_str().unwrap(), options)?;
         let table = Path::new(name).file_stem().unwrap().to_str().unwrap();
