@@ -109,6 +109,7 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 | P — Piattaforma, qualità e release | libero |
 | Q — Documentazione e catalogo dei dati | ✅ fatto (P2) |
 | R — Revisione grafica | ⏸ in attesa: si prende quando tutti gli altri gruppi sono completati |
+| S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
 
 ### Gruppo A — Modifica dei dati
@@ -804,6 +805,34 @@ generata.
 
 ---
 
+### Gruppo S — Collaudo finale
+
+**Stato: in attesa.** Si prende dopo il gruppo R, sull'app finita e ridisegnata: è il collaudo
+prima della v1.0, fatto con calma e con metodo, non una passata veloce.
+
+Verificare che tutto funzioni su tutti i database e i sistemi, come lo usa una persona vera, e
+lasciare ogni controllo come test automatico che resti nel tempo. Si lavora come nella campagna
+di test di ottobre 2026: un tester per area con l'app compilata, uno scenario E2E per ogni bug,
+poi le correzioni e un secondo giro con occhi nuovi; un agente o una persona alla volta.
+
+**Area:** `apps/desktop/e2e/`, `crates/platypus-conformance/`, `docs/BENCHMARKS.md`; le correzioni
+nei file delle aree toccate, in commit piccoli e separati
+**Dipende da:** gruppo R completato
+
+| Funzionalità | Prio | Origine |
+|---|---|---|
+| 🆕 **Inventario delle funzionalità** con, per ognuna, lo scenario E2E o il test di conformance che la copre; i buchi diventano test | P1 | N |
+| 🆕 **Giro per aree** con un tester ciascuna (connessioni, navigator, editor, griglia e modifica, analisi, import/export, impostazioni e tab, sicurezza e MCP, schema, amministrazione) sui casi normali, i casi limite e gli errori | P1 | N |
+| 🆕 **Tutti i database** con tutte le funzioni che li riguardano: PostgreSQL e varianti, MySQL, MariaDB, SQL Server, Oracle, ClickHouse, SQLite, DuckDB, libSQL, MongoDB, Trino, ODBC/ADBC | P1 | N |
+| 🆕 **Percorsi completi da utente** (primo avvio, import da DBeaver, giornata di lavoro, analisi, sviluppo, agenti) con riavvio dell'app nel mezzo, in italiano e in inglese, anche da sola tastiera | P1 | N |
+| 🆕 **Installer e aggiornamento** da ogni versione pubblicata, con i dati dell'utente (connessioni, password, script, impostazioni) che restano | P1 | N |
+| 🆕 **macOS e Linux**: gli scenari E2E anche fuori da Windows, o un collaudo a mano con una lista scritta | P2 | N |
+| 🆕 **Prestazioni e memoria**: tabelle da milioni di righe, schemi con migliaia di oggetti, una sessione di ore senza che la memoria cresca, database remoto lento; i numeri in BENCHMARKS.md | P2 | N |
+| 🆕 **Revisione di sicurezza** del codice: credenziali, MCP, sola lettura, SQL generato, file letti e scritti | P2 | N |
+| 🆕 Secondo giro con tester nuovi che non hanno visto i rapporti del primo, poi la verifica completa (fmt, clippy, test, E2E, conformance) tutta verde prima della v1.0 | P1 | N |
+
+---
+
 ## 3. Mappa dei conflitti
 
 Le "x" indicano i gruppi che toccano la stessa area. Dove c'è conflitto si serve il contratto
@@ -835,6 +864,7 @@ dell'ondata.
 | **3** | **I**, **J**, **M**, **N**, **Q**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 | Da fare |
 | **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | Da fare |
 | **5** | **R** | Revisione grafica di tutta l'app, a funzionalità finite | v1.0 | In attesa |
+| **6** | **S** | Collaudo finale di tutta l'app, dopo la revisione grafica | v1.0 | In attesa |
 
 Per ogni gruppo, la Definition of Done segue quella dell'MVP:
 - test di conformance o E2E per ciò che è stato aggiunto;
