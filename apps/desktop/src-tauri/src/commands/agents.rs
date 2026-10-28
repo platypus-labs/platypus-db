@@ -239,62 +239,91 @@ pub fn agent_clients() -> CommandResult<Vec<clients::AgentClient>> {
 
 /// Writes the server in client `id`'s file, after a backup of it.
 #[tauri::command]
-pub fn install_agent_client(id: String) -> CommandResult<clients::Installed> {
+pub async fn install_agent_client(id: String) -> CommandResult<clients::Installed> {
     let (home, config) = client_dirs()?;
     let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-    clients::install(&id, &home, &config, &server_entry()?, &stamp)
+    let entry = server_entry()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        clients::install(&id, &home, &config, &entry, &stamp)
+    })
+    .await
+    .map_err(|e| CommandError::new("other", e.to_string()))?
 }
 
 /// Calls a page of the Activity view shows at most.
 const CALL_PAGE: usize = 500;
 
 /// The agents' call log the server writes, in the data folder (`PLATYPUS_DATA_DIR` when
-/// set), its oldest calls beyond [`AGENT_CALLS_LIMIT`] removed.
-fn agent_calls_store(app: &AppHandle) -> CommandResult<AgentCallStore> {
-    let dir = match std::env::var_os(DATA_DIR_ENV) {
-        Some(dir) => PathBuf::from(dir),
-        None => app
-            .path()
-            .app_data_dir()
-            .map_err(|e| CommandError::new("other", e.to_string()))?,
-    };
-    let store = AgentCallStore::open(&dir.join(AGENT_CALLS_FILE))?;
-    store.prune(AGENT_CALLS_LIMIT)?;
-    Ok(store)
+/// set): opened on first use, when its oldest calls beyond [`AGENT_CALLS_LIMIT`] are
+/// removed, then kept open.
+static AGENT_CALLS: std::sync::Mutex<Option<AgentCallStore>> = std::sync::Mutex::new(None);
+
+/// Runs `f` on the call log, off the main thread: the server may hold the file for a moment.
+async fn with_agent_calls<T: Send + 'static>(
+    app: AppHandle,
+    f: impl FnOnce(&AgentCallStore) -> Result<T, platypus_store::StoreError> + Send + 'static,
+) -> CommandResult<T> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut store = lock(&AGENT_CALLS);
+        if store.is_none() {
+            let dir = match std::env::var_os(DATA_DIR_ENV) {
+                Some(dir) => PathBuf::from(dir),
+                None => app
+                    .path()
+                    .app_data_dir()
+                    .map_err(|e| CommandError::new("other", e.to_string()))?,
+            };
+            let opened = AgentCallStore::open(&dir.join(AGENT_CALLS_FILE))?;
+            opened.prune(AGENT_CALLS_LIMIT)?;
+            *store = Some(opened);
+        }
+        let store = store
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("opened above"));
+        f(store).map_err(Into::into)
+    })
+    .await
+    .map_err(|e| CommandError::new("other", e.to_string()))?
 }
 
 /// The calls matching `query`, newest first, a page at a time.
 #[tauri::command]
-pub fn agent_calls(app: AppHandle, mut query: AgentCallQuery) -> CommandResult<Vec<AgentCall>> {
+pub async fn agent_calls(
+    app: AppHandle,
+    mut query: AgentCallQuery,
+) -> CommandResult<Vec<AgentCall>> {
     query.limit = query.limit.clamp(1, CALL_PAGE);
-    Ok(agent_calls_store(&app)?.search(&query)?)
+    with_agent_calls(app, move |s| s.search(&query)).await
 }
 
 /// The latest runs of the server, newest first.
 #[tauri::command]
-pub fn agent_sessions(app: AppHandle, limit: usize) -> CommandResult<Vec<AgentSession>> {
-    Ok(agent_calls_store(&app)?.sessions(limit.clamp(1, CALL_PAGE))?)
+pub async fn agent_sessions(app: AppHandle, limit: usize) -> CommandResult<Vec<AgentSession>> {
+    with_agent_calls(app, move |s| s.sessions(limit.clamp(1, CALL_PAGE))).await
 }
 
 /// Every call matching `query` (its limit ignored), as CSV.
 #[tauri::command]
-pub fn agent_calls_export(app: AppHandle, mut query: AgentCallQuery) -> CommandResult<String> {
+pub async fn agent_calls_export(
+    app: AppHandle,
+    mut query: AgentCallQuery,
+) -> CommandResult<String> {
     query.limit = AGENT_CALLS_LIMIT;
     query.before_id = None;
-    Ok(agent_calls_csv(&agent_calls_store(&app)?.search(&query)?))
+    with_agent_calls(app, move |s| s.search(&query).map(|c| agent_calls_csv(&c))).await
 }
 
 /// The SQL agents proposed with `propose_sql` that no window opened yet; each is handed out
 /// once.
 #[tauri::command]
-pub fn take_agent_proposals(app: AppHandle) -> CommandResult<Vec<AgentProposal>> {
-    Ok(agent_calls_store(&app)?.take_proposals()?)
+pub async fn take_agent_proposals(app: AppHandle) -> CommandResult<Vec<AgentProposal>> {
+    with_agent_calls(app, AgentCallStore::take_proposals).await
 }
 
 /// Empties the call log.
 #[tauri::command]
-pub fn clear_agent_calls(app: AppHandle) -> CommandResult<()> {
-    Ok(agent_calls_store(&app)?.clear()?)
+pub async fn clear_agent_calls(app: AppHandle) -> CommandResult<()> {
+    with_agent_calls(app, AgentCallStore::clear).await
 }
 
 #[cfg(test)]

@@ -9,6 +9,9 @@ use serde_json::{Value, json};
 
 use crate::error::{CommandError, CommandResult};
 
+/// The variable that moves the profile, which an entry may pass the server.
+const DATA_DIR_ENV: &str = "PLATYPUS_DATA_DIR";
+
 /// The server's name in the clients' configuration.
 pub const SERVER_NAME: &str = "platypus";
 
@@ -142,13 +145,22 @@ impl ServerEntry {
                         .map(Value::as_str)
                         .eq(self.args.iter().map(|a| Some(a.as_str())))
                 });
-        let same_env = self.env.iter().all(|(k, v)| {
+        // The profile folder matters both ways: an entry with one the app does not use
+        // starts the server on other connections.
+        let env_of = |key: &str| {
             server
                 .get("env")
-                .and_then(|e| e.get(k))
+                .and_then(|e| e.get(key))
                 .and_then(Value::as_str)
-                == Some(v)
-        });
+        };
+        let ours = |key: &str| {
+            self.env
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v.as_str())
+        };
+        let same_env = self.env.iter().all(|(k, v)| env_of(k) == Some(v.as_str()))
+            && env_of(DATA_DIR_ENV) == ours(DATA_DIR_ENV);
         server.get("command").and_then(Value::as_str) == Some(self.command.as_str())
             && same_args
             && same_env
@@ -343,7 +355,13 @@ pub fn install(
         )
     })?;
     let backup = if old.is_some() {
-        let backup = backup_path(&path, stamp);
+        // Two installs within a second must not write over the first backup.
+        let mut backup = backup_path(&path, stamp);
+        let mut n = 1;
+        while backup.exists() {
+            n += 1;
+            backup = backup_path(&path, &format!("{stamp}-{n}"));
+        }
         std::fs::copy(&path, &backup).map_err(|e| io_error(&backup, &e))?;
         Some(backup.display().to_string())
     } else {
@@ -436,6 +454,11 @@ mod tests {
             state_of(ConfigFormat::Json, Some(&new), &with_env),
             InstallState::Installed
         );
+        // An entry on another profile is not this app's, even when the app uses none.
+        assert_eq!(
+            state_of(ConfigFormat::Json, Some(&new), &entry()),
+            InstallState::Different
+        );
         let plain = with_entry(ConfigFormat::Json, "{}", &entry()).unwrap();
         assert_eq!(
             state_of(ConfigFormat::Json, Some(&plain), &with_env),
@@ -454,6 +477,13 @@ mod tests {
         assert!(cursor.exists());
         let done = install("cursor", home.path(), &config, &entry(), "2").unwrap();
         let backup = PathBuf::from(done.backup.unwrap());
+        let again = install("cursor", home.path(), &config, &entry(), "2").unwrap();
+        assert!(
+            again
+                .backup
+                .unwrap()
+                .ends_with("mcp.json.platypus-backup-2-2")
+        );
         assert!(
             backup.ends_with("mcp.json.platypus-backup-2"),
             "{}",

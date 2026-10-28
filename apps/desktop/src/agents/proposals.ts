@@ -16,8 +16,12 @@ export function proposalSql(p: AgentProposal): string {
   return `-- ${note}\n${p.sql}\n`;
 }
 
-function open(proposals: AgentProposal[]) {
+async function open(proposals: AgentProposal[]) {
   const wb = workbench();
+  // A connection saved since this window last listed them: list them again before giving up.
+  if (proposals.some((p) => !wb.connections().some((c) => c.id === p.connection_id))) {
+    wb.setConnections(await api.listConnections());
+  }
   const connections = wb.connections();
   for (const p of proposals) {
     if (!connections.some((c) => c.id === p.connection_id)) {
@@ -41,7 +45,7 @@ export function startAgentProposals() {
       // Before the shell mounts and lists the connections, the proposals wait.
       if (workbench().connections().length === 0) return;
       const proposals = await api.takeAgentProposals();
-      if (proposals.length) open(proposals);
+      if (proposals.length) await open(proposals);
     } catch {
       // No workbench yet, or the log cannot be read: the next round tries again.
     } finally {

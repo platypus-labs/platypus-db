@@ -698,13 +698,14 @@ impl Agent {
                     .collect()
             })
             .filter(|t: &String| !t.is_empty());
-        let store = self.profile.agent_calls()?;
-        store.propose(
-            &origin_name(origin),
-            &saved.id.to_string(),
-            title.as_deref(),
-            sql,
-        )?;
+        self.with_calls(|store| {
+            Ok(store.propose(
+                &origin_name(origin),
+                &saved.id.to_string(),
+                title.as_deref(),
+                sql,
+            )?)
+        })?;
         Ok(format!(
             "Proposed on `{}`: PlatypusDB opens it in a new editor tab, now if the app is open \
              or when it starts (within 24 hours). Nothing ran: the user reviews and runs it.",
@@ -714,13 +715,19 @@ impl Agent {
 
     /// Adds a tool call to the agents' call log; the log is best effort.
     pub fn record_call(&self, call: &NewAgentCall) {
+        let _ = self.with_calls(|c| c.record(call).map_err(AgentError::from));
+    }
+
+    /// Runs `f` on the call log, opened on first use and kept open.
+    fn with_calls<T>(&self, f: impl FnOnce(&AgentCallStore) -> Result<T>) -> Result<T> {
         let mut calls = locked(&self.calls);
         if calls.is_none() {
-            *calls = self.profile.agent_calls().ok();
+            *calls = Some(self.profile.agent_calls()?);
         }
-        if let Some(c) = calls.as_ref() {
-            let _ = c.record(call);
-        }
+        let store = calls
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("opened above"));
+        f(store)
     }
 
     /// Adds the statement to the query history; history is best effort.

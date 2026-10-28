@@ -283,15 +283,15 @@ impl AgentCallStore {
         Ok(self.db.last_insert_rowid())
     }
 
-    /// The proposals not opened yet and younger than [`PROPOSAL_LIFETIME`], oldest first,
-    /// marked opened: each is handed out once.
+    /// The proposals younger than [`PROPOSAL_LIFETIME`], oldest first, removed: each is
+    /// handed out once. Older ones are removed unread.
     pub fn take_proposals(&self) -> Result<Vec<AgentProposal>> {
         let since = millis(SystemTime::now() - PROPOSAL_LIFETIME);
         let tx = self.db.unchecked_transaction().map_err(db_error)?;
         let mut proposals = {
             let mut stmt = tx
                 .prepare_cached(
-                    "UPDATE proposals SET opened = 1
+                    "DELETE FROM proposals
                      WHERE opened = 0 AND created_at >= ?1
                      RETURNING id, agent, connection_id, title, sql, created_at",
                 )
@@ -310,14 +310,17 @@ impl AgentCallStore {
                 .map_err(db_error)?;
             rows.collect::<Result<Vec<_>, _>>().map_err(db_error)?
         };
+        tx.execute("DELETE FROM proposals", []).map_err(db_error)?;
         tx.commit().map_err(db_error)?;
         proposals.sort_by_key(|p| p.id);
         Ok(proposals)
     }
 
-    /// Removes every call.
+    /// Removes every call, and the proposals not opened yet.
     pub fn clear(&self) -> Result<()> {
-        self.db.execute("DELETE FROM calls", []).map_err(db_error)?;
+        self.db
+            .execute_batch("DELETE FROM calls; DELETE FROM proposals;")
+            .map_err(db_error)?;
         Ok(())
     }
 
@@ -546,6 +549,10 @@ mod tests {
         assert_eq!(sql, ["UPDATE t SET x = 1 WHERE id = 2", "SELECT 1"]);
         assert_eq!(taken[0].title.as_deref(), Some("Fix"));
         assert_eq!(s.take_proposals().unwrap(), Vec::new());
+        let left: i64 =
+            s.db.query_row("SELECT count(*) FROM proposals", [], |r| r.get(0))
+                .unwrap();
+        assert_eq!(left, 0, "opened and expired proposals are removed");
     }
 
     #[test]

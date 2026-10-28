@@ -81,13 +81,21 @@ impl PlanResult {
                 return doc;
             }
         }
-        // The wrapper and the escapes of the text take room too: leave them some.
-        let text = PlanResult {
-            max_bytes: self.max_bytes.saturating_sub(64) * 3 / 4,
-            ..self.clone()
+        // The wrapper and the escapes of the text take room too: the text shrinks until the
+        // document fits, or is as short as it gets.
+        let mut budget = self.max_bytes;
+        loop {
+            let text = PlanResult {
+                max_bytes: budget,
+                ..self.clone()
+            }
+            .text();
+            let doc = json!({ "analyzed": self.explain.analyzed, "truncated": true, "plan": text });
+            if budget == 0 || doc.to_string().len() <= self.max_bytes {
+                return doc;
+            }
+            budget = budget.min(text.len()) * 3 / 4;
         }
-        .text();
-        json!({ "analyzed": self.explain.analyzed, "truncated": true, "plan": text })
     }
 }
 

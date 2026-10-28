@@ -148,19 +148,19 @@ impl PlatypusServer {
     }
 
     /// The answer to `call`, recorded in the agents' call log.
-    fn answer(
+    /// The write goes to a blocking thread: the app may hold the file for a moment.
+    async fn answer(
         &self,
         call: Call,
         result: Result<String, AgentError>,
     ) -> Result<CallToolResult, ErrorData> {
+        // A timeout is the call failing; only the client's own cancellation is not.
         let (status, error) = match &result {
             Ok(_) => (HistoryStatus::Ok, None),
-            Err(e @ (AgentError::Timeout(_) | AgentError::Cancelled)) => {
-                (HistoryStatus::Cancelled, Some(e.to_string()))
-            }
+            Err(e @ AgentError::Cancelled) => (HistoryStatus::Cancelled, Some(e.to_string())),
             Err(e) => (HistoryStatus::Error, Some(e.to_string())),
         };
-        self.agent.record_call(&NewAgentCall {
+        let entry = NewAgentCall {
             session: self.session.clone(),
             agent: call.agent,
             tool: call.tool.to_owned(),
@@ -170,7 +170,9 @@ impl PlatypusServer {
             duration: call.start.elapsed(),
             status,
             error,
-        });
+        };
+        let agent = Arc::clone(&self.agent);
+        let _ = tokio::task::spawn_blocking(move || agent.record_call(&entry)).await;
         reply(result)
     }
 
@@ -182,6 +184,7 @@ impl PlatypusServer {
     async fn list_connections(&self, peer: Peer<RoleServer>) -> Result<CallToolResult, ErrorData> {
         let call = Call::new("list_connections", &peer, &serde_json::json!({}));
         self.answer(call, json_text(self.agent.list_connections()))
+            .await
     }
 
     #[tool(
@@ -195,10 +198,8 @@ impl PlatypusServer {
         peer: Peer<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let call = Call::new("list_schemas", &peer, &args);
-        self.answer(
-            call,
-            json_text(self.agent.list_schemas(&args.connection).await),
-        )
+        let result = self.agent.list_schemas(&args.connection).await;
+        self.answer(call, json_text(result)).await
     }
 
     #[tool(
@@ -218,7 +219,7 @@ impl PlatypusServer {
             .agent
             .list_objects(&args.connection, &args.schema, args.offset, args.limit)
             .await;
-        self.answer(call, json_text(result))
+        self.answer(call, json_text(result)).await
     }
 
     #[tool(
@@ -236,7 +237,7 @@ impl PlatypusServer {
             .agent
             .describe_table(&args.connection, &args.schema, &args.table)
             .await;
-        self.answer(call, json_text(result))
+        self.answer(call, json_text(result)).await
     }
 
     #[tool(
@@ -257,7 +258,7 @@ impl PlatypusServer {
                 args.kind.as_deref(),
             )
             .await;
-        self.answer(call, result)
+        self.answer(call, result).await
     }
 
     #[tool(
@@ -275,7 +276,7 @@ impl PlatypusServer {
             .agent
             .search_objects(&args.connection, &args.text)
             .await;
-        self.answer(call, json_text(result))
+        self.answer(call, json_text(result)).await
     }
 
     #[tool(
@@ -302,7 +303,7 @@ impl PlatypusServer {
             .run_query_until(&args, &call.agent, cancelled.cancelled_owned())
             .await
             .map(|r| r.render(format));
-        self.answer(call, result)
+        self.answer(call, result).await
     }
 
     #[tool(
@@ -324,7 +325,7 @@ impl PlatypusServer {
             .sample_rows_until(&args, &call.agent, cancelled.cancelled_owned())
             .await
             .map(|r| r.render(format));
-        self.answer(call, result)
+        self.answer(call, result).await
     }
 
     #[tool(
@@ -349,7 +350,7 @@ impl PlatypusServer {
             .explain_until(&args, cancelled.cancelled_owned())
             .await
             .map(|r| r.render(format));
-        self.answer(call, result)
+        self.answer(call, result).await
     }
 
     #[tool(
@@ -365,8 +366,11 @@ impl PlatypusServer {
         peer: Peer<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let call = Call::new("propose_sql", &peer, &args);
-        let result = self.agent.propose_sql(&args, &call.agent);
-        self.answer(call, result)
+        let (agent, name) = (Arc::clone(&self.agent), call.agent.clone());
+        let result = tokio::task::spawn_blocking(move || agent.propose_sql(&args, &name))
+            .await
+            .unwrap_or_else(|e| Err(AgentError::Store(e.to_string())));
+        self.answer(call, result).await
     }
 }
 
