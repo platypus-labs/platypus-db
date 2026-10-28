@@ -1204,6 +1204,57 @@ fn plan_support(b: &Backend) -> PlanSupport {
 
 /// Plans come back as a tree. With analyze the statement runs, and what it changes is
 /// rolled back, in autocommit and inside an open transaction alike.
+/// Through PgBouncer in transaction mode (`docker compose --profile pooler`), each
+/// transaction may land on another server session: the navigator's and the editor's
+/// requests still work with the connection's pooler mode set. Skipped when it is not running.
+#[tokio::test]
+async fn works_through_a_transaction_pooler() {
+    let _serial = SERIAL.lock().await;
+    let url = std::env::var("PLATYPUS_TEST_PGBOUNCER_URL").unwrap_or_else(|_| {
+        "postgres://platypus:platypus@localhost:56432/platypus?sslmode=disable".to_owned()
+    });
+    let mut config = ConnectionConfig::from_url(&url).unwrap();
+    config
+        .options
+        .insert(platypus_core::POOLER.to_owned(), "transaction".to_owned());
+    let conn = match driver(DriverKind::Postgres).connect(&config).await {
+        Ok(conn) => conn,
+        Err(e) => {
+            eprintln!("skipping PgBouncer: unreachable at {url}: {e}");
+            return;
+        }
+    };
+    let object = ObjectRef {
+        schema: "demo",
+        name: "customers",
+        kind: ObjectKind::Table,
+        parent: None,
+    };
+    assert!(
+        conn.object_ddl(&object)
+            .await
+            .unwrap()
+            .contains("CREATE TABLE")
+    );
+    assert!(!conn.object_properties(&object).await.unwrap().is_empty());
+    assert!(!conn.search_metadata("customers").await.unwrap().is_empty());
+    assert!(!conn.objects("demo").await.unwrap().is_empty());
+    let plan = conn
+        .explain("SELECT * FROM demo.customers WHERE id > 1", true)
+        .await
+        .unwrap();
+    assert!(plan.analyzed);
+    assert!(
+        conn.server_sessions()
+            .await
+            .unwrap()
+            .iter()
+            .any(|s| s.current)
+    );
+    let rows = run(&*conn, "SELECT count(*) FROM demo.orders").await;
+    assert!(rows.is_ok(), "{rows:?}");
+}
+
 /// Steps in `node`'s tree.
 fn plan_steps(node: &PlanNode) -> usize {
     1 + node.children.iter().map(plan_steps).sum::<usize>()
