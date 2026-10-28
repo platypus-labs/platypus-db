@@ -250,6 +250,16 @@ registerAction({
 });
 
 registerAction({
+  id: "editor.run_on_connections",
+  scope: "editor",
+  title: "Run on connections…",
+  group: "run",
+  order: 4.5,
+  when: ({ host }) => !!host?.runOnConnections,
+  run: ({ host }) => host?.runOnConnections?.(),
+});
+
+registerAction({
   id: "editor.run_cli",
   scope: "editor",
   title: "Run script with the command-line client",

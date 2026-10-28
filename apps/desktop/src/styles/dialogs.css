@@ -1275,3 +1275,110 @@ button.primary.danger:hover:not(:disabled) {
   height: auto;
   min-height: 30px;
 }
+
+/* Run on connections (editor/MultiRunDialog.tsx): the connections to choose, then how the
+   run went on each, a dot for its state. */
+.modal.multi-run {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.multi-run-filter {
+  flex: 1;
+  min-width: 0;
+}
+
+.multi-run-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 45vh;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-input);
+}
+
+.multi-run-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+}
+
+label.multi-run-row:hover {
+  background: var(--hover);
+}
+
+.multi-run-row .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.multi-run-row .type-badge {
+  margin-left: 0;
+}
+
+.multi-run-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-strong);
+}
+
+.multi-run-row.outcome .multi-run-name {
+  flex: 0 1 40%;
+}
+
+.multi-run-outcome {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.multi-run-state {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+
+.multi-run-row.running .multi-run-state {
+  background: var(--accent);
+  animation: multi-run-pulse 1s ease-in-out infinite alternate;
+}
+
+.multi-run-row.done .multi-run-state {
+  background: var(--ok);
+}
+
+.multi-run-row.failed .multi-run-state {
+  background: var(--error);
+}
+
+.multi-run-row.failed .multi-run-outcome {
+  color: var(--error);
+}
+
+@keyframes multi-run-pulse {
+  to {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .multi-run-row.running .multi-run-state {
+    animation: none;
+  }
+}
