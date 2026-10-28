@@ -16,7 +16,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use platypus_core::{
-    CancelHandle, Capabilities, CatalogColumn, CatalogForeignKey, Connection, ExecOptions,
+    CancelHandle, Capabilities, CatalogColumn, CatalogForeignKey, Connection, Error, ExecOptions,
     ExecResult, Executed, Explain, MetadataMatch, ObjectMeta, ObjectRef, Property,
     RecordBatchStream, ReferencingKey, Result, SchemaMeta, ServerInfo, TableDetails,
     TransactionState,
@@ -196,6 +196,11 @@ impl Logged {
         })
     }
 
+    /// `e` with the server's product and version, which a reason may depend on.
+    fn tag(&self, e: Error) -> Error {
+        e.with_server(self.inner.server_info())
+    }
+
     /// Runs a request that answers all at once.
     async fn track<T>(
         &self,
@@ -205,7 +210,7 @@ impl Logged {
     ) -> Result<T> {
         let id = self.log.start(&self.connection, kind, text.into());
         let started = Instant::now();
-        let result = request.await;
+        let result = request.await.map_err(|e| self.tag(e));
         let error = result.as_ref().err().map(ToString::to_string);
         self.log.finish(id, started, error);
         result
@@ -237,6 +242,7 @@ impl Connection for Logged {
                 let next = stream.take_next();
                 let counted = Counted {
                     inner: stream,
+                    server: self.inner.server_info().clone(),
                     log: Arc::clone(&self.log),
                     id,
                     started,
@@ -248,6 +254,7 @@ impl Connection for Logged {
                 ))
             }
             Err(e) => {
+                let e = self.tag(e);
                 self.log.finish(id, started, Some(e.to_string()));
                 Err(e)
             }
@@ -260,7 +267,8 @@ impl Connection for Logged {
             .log
             .start(&self.connection, LogKind::Query, statements.join(";\n"));
         let started = Instant::now();
-        let executed = self.inner.execute_all(statements, expected).await;
+        let mut executed = self.inner.execute_all(statements, expected).await;
+        executed.error = executed.error.map(|e| self.tag(e));
         let rows = executed.rows.iter().sum();
         self.log.update(id, |e| e.rows = Some(rows));
         let error = executed.error.as_ref().map(ToString::to_string);
@@ -397,11 +405,11 @@ impl Connection for Logged {
 
     // Read every few seconds while the tab is open: not logged.
     async fn server_sessions(&self) -> Result<Vec<platypus_core::ServerSession>> {
-        self.inner.server_sessions().await
+        self.inner.server_sessions().await.map_err(|e| self.tag(e))
     }
 
     async fn server_locks(&self) -> Result<Vec<platypus_core::ServerLock>> {
-        self.inner.server_locks().await
+        self.inner.server_locks().await.map_err(|e| self.tag(e))
     }
 
     async fn end_server_session(&self, id: &str, how: platypus_core::EndSession) -> Result<()> {
@@ -417,6 +425,8 @@ impl Connection for Logged {
 /// Rows passing through to the reader, counted into the log entry batch by batch.
 struct Counted {
     inner: RecordBatchStream,
+    /// Named by the errors that come while reading.
+    server: ServerInfo,
     log: Arc<QueryLog>,
     id: u64,
     started: Instant,
@@ -428,8 +438,11 @@ impl Stream for Counted {
     type Item = Result<arrow_array::RecordBatch>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let next = self.inner.poll_next_unpin(cx);
         let this = &mut *self;
+        let next = match this.inner.poll_next_unpin(cx) {
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e.with_server(&this.server)))),
+            other => other,
+        };
         match &next {
             Poll::Ready(Some(Ok(batch))) => {
                 this.rows += batch.num_rows() as u64;
