@@ -280,18 +280,16 @@ impl JdbcUrl {
             database.to_owned()
         };
         jdbc.common_properties();
-        let on = |k: &str| {
-            jdbc.property(&[k]).is_some_and(|v| {
-                matches!(
-                    v.to_ascii_lowercase().as_str(),
-                    "true" | "strict" | "mandatory"
-                )
-            })
-        };
         let encrypt = jdbc
             .property(&["encrypt"])
             .and_then(|v| sqlserver_encrypt(&v));
-        if let Some(mode) = sqlserver_ssl(encrypt, on("trustservercertificate")) {
+        let trust = jdbc.property(&["trustservercertificate"]).is_some_and(|v| {
+            matches!(
+                v.to_ascii_lowercase().as_str(),
+                "true" | "strict" | "mandatory"
+            )
+        });
+        if let Some(mode) = sqlserver_ssl(encrypt, trust) {
             jdbc.config.ssl_mode = mode;
         }
         jdbc

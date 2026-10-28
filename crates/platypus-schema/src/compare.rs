@@ -306,22 +306,21 @@ fn missing_sequences(
     mut sequences: Vec<String>,
     current: &[TableDesign],
 ) -> Vec<String> {
-    let there = |name: &String| {
-        current
-            .iter()
-            .flat_map(|t| &t.columns)
-            .filter_map(|c| c.default.as_deref().and_then(nextval))
-            .any(|s| s.name == *name && s.schema.as_deref().is_none_or(|s| s == schema))
-    };
+    let there: Vec<Sequence> = current
+        .iter()
+        .flat_map(|t| &t.columns)
+        .filter_map(|c| c.default.as_deref().and_then(nextval))
+        .filter(|s| s.schema.as_deref().is_none_or(|of| of == schema))
+        .collect();
     sequences.sort();
     sequences.dedup();
-    sequences.retain(|name| !there(name));
     sequences
-        .iter()
+        .into_iter()
+        .filter(|name| !there.iter().any(|s| s.name == *name))
         .map(|name| {
             format!(
                 "CREATE SEQUENCE IF NOT EXISTS {}",
-                Dialect::Postgres.qualified(Some(schema), name)
+                Dialect::Postgres.qualified(Some(schema), &name)
             )
         })
         .collect()
