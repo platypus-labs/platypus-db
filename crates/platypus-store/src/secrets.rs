@@ -29,8 +29,14 @@ impl KeyringSecrets {
         }
     }
 
-    fn entry(&self, id: Uuid) -> Result<keyring::Entry> {
-        keyring::Entry::new(&self.service, &id.to_string()).map_err(keychain_error)
+    /// `None` when the system has no keychain, e.g. Linux without a Secret Service: it holds
+    /// no password then, and saving one is an error that says what to do instead.
+    fn entry(&self, id: Uuid) -> Result<Option<keyring::Entry>> {
+        match keyring::Entry::new(&self.service, &id.to_string()) {
+            Ok(entry) => Ok(Some(entry)),
+            Err(keyring::Error::NoDefaultStore) => Ok(None),
+            Err(e) => Err(keychain_error(e)),
+        }
     }
 }
 
@@ -39,6 +45,10 @@ impl Default for KeyringSecrets {
         Self::new("platypusdb")
     }
 }
+
+const NO_KEYCHAIN: &str = "the system has no keychain to save the password in (on Linux, a \
+     Secret Service such as GNOME Keyring or KWallet): set a master password to keep \
+     passwords in the app, or leave the password unsaved";
 
 #[expect(
     clippy::needless_pass_by_value,
@@ -50,7 +60,10 @@ fn keychain_error(e: keyring::Error) -> StoreError {
 
 impl SecretStore for KeyringSecrets {
     fn get(&self, id: Uuid) -> Result<Option<Secret>> {
-        match self.entry(id)?.get_password() {
+        let Some(entry) = self.entry(id)? else {
+            return Ok(None);
+        };
+        match entry.get_password() {
             Ok(password) => Ok(Some(Secret::new(password))),
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(e) => Err(keychain_error(e)),
@@ -58,13 +71,17 @@ impl SecretStore for KeyringSecrets {
     }
 
     fn set(&self, id: Uuid, secret: &Secret) -> Result<()> {
-        self.entry(id)?
-            .set_password(secret.expose())
-            .map_err(keychain_error)
+        let Some(entry) = self.entry(id)? else {
+            return Err(StoreError::Keychain(NO_KEYCHAIN.to_owned()));
+        };
+        entry.set_password(secret.expose()).map_err(keychain_error)
     }
 
     fn delete(&self, id: Uuid) -> Result<()> {
-        match self.entry(id)?.delete_credential() {
+        let Some(entry) = self.entry(id)? else {
+            return Ok(());
+        };
+        match entry.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(keychain_error(e)),
         }
@@ -117,5 +134,20 @@ mod tests {
         secrets.delete(id).unwrap();
         assert_eq!(secrets.get(id).unwrap(), None);
         secrets.delete(id).unwrap();
+    }
+
+    /// Where the system has no keychain (this machine, when `store_status` fails): nothing is
+    /// found and nothing to delete, and saving says what to do instead.
+    #[test]
+    fn without_a_keychain_nothing_is_stored() {
+        if keyring::Entry::store_status().is_ok() {
+            return;
+        }
+        let secrets = KeyringSecrets::new("platypusdb-test");
+        let id = Uuid::new_v4();
+        assert_eq!(secrets.get(id).unwrap(), None);
+        secrets.delete(id).unwrap();
+        let error = secrets.set(id, &Secret::new("s3cret")).unwrap_err();
+        assert!(error.to_string().contains("master password"), "{error}");
     }
 }
