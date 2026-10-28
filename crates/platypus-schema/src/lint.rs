@@ -103,7 +103,7 @@ pub fn lint(dialect: Dialect, schema: &str, tables: &[SchemaTable]) -> Vec<Findi
             {
                 let index = IndexDesign {
                     original: None,
-                    name: free_name(d, &format!("{}_{}_idx", table.name, fk.columns.join("_"))),
+                    name: free_name(d, &index_name(&table.name, &fk.columns)),
                     columns: fk.columns.clone(),
                     unique: false,
                     sql: None,
@@ -129,7 +129,7 @@ pub fn lint(dialect: Dialect, schema: &str, tables: &[SchemaTable]) -> Vec<Findi
                 ) else {
                     continue;
                 };
-                if !same_type(from, to) {
+                if !same_type(dialect, from, to) {
                     let text = Text::new(
                         "{column} is {type} but {referenced} is {referenced_type}.",
                         &[
@@ -187,14 +187,45 @@ fn type_of<'a>(details: &'a TableDetails, column: &str) -> Option<&'a str> {
         .map(|c| c.data_type.as_str())
 }
 
-/// Types that differ only in case or spaces are the same.
-fn same_type(a: &str, b: &str) -> bool {
+/// The name of the index on `columns` of `table`: `<table>_<columns>_idx`, its suffix in
+/// capitals when the rest has no small letters (Oracle's names), so it needs no quotes.
+fn index_name(table: &str, columns: &[String]) -> String {
+    let base = format!("{table}_{}", columns.join("_"));
+    let suffix = if base.chars().any(char::is_lowercase) {
+        "_idx"
+    } else {
+        "_IDX"
+    };
+    format!("{base}{suffix}")
+}
+
+/// Types that differ only in case or spaces are the same; in SQLite, types of the same
+/// affinity (`INT` and `INTEGER`).
+fn same_type(dialect: Dialect, a: &str, b: &str) -> bool {
     let norm = |t: &str| {
         t.split_whitespace()
             .collect::<String>()
             .to_ascii_lowercase()
     };
+    if dialect == Dialect::Sqlite {
+        return sqlite_affinity(&norm(a)) == sqlite_affinity(&norm(b));
+    }
     norm(a) == norm(b)
+}
+
+/// The affinity SQLite gives a column of the declared type `ty` (lowercase), by its rules.
+fn sqlite_affinity(ty: &str) -> &'static str {
+    if ty.contains("int") {
+        "integer"
+    } else if ["char", "clob", "text"].iter().any(|t| ty.contains(t)) {
+        "text"
+    } else if ty.is_empty() || ty.contains("blob") {
+        "blob"
+    } else if ["real", "floa", "doub"].iter().any(|t| ty.contains(t)) {
+        "real"
+    } else {
+        "numeric"
+    }
 }
 
 /// Whether the first columns of `index` are `columns`, in any order.
@@ -416,6 +447,30 @@ mod tests {
             &["a".to_owned(), "c".to_owned(), "b".to_owned()],
             &cols
         ));
-        assert!(same_type("double precision", "DOUBLE  PRECISION"));
+        assert!(same_type(
+            Dialect::Postgres,
+            "double precision",
+            "DOUBLE  PRECISION"
+        ));
+    }
+
+    #[test]
+    fn sqlite_types_of_the_same_affinity_are_the_same() {
+        assert!(same_type(Dialect::Sqlite, "INTEGER", "INT"));
+        assert!(same_type(Dialect::Sqlite, "varchar(10)", "TEXT"));
+        assert!(!same_type(Dialect::Sqlite, "INTEGER", "TEXT"));
+        assert!(!same_type(Dialect::Postgres, "INTEGER", "INT"));
+    }
+
+    #[test]
+    fn suggested_index_names_follow_the_case_of_the_table() {
+        assert_eq!(
+            index_name("ITEMS", &["USER_CODE".to_owned()]),
+            "ITEMS_USER_CODE_IDX"
+        );
+        assert_eq!(
+            index_name("items", &["user_code".to_owned()]),
+            "items_user_code_idx"
+        );
     }
 }
