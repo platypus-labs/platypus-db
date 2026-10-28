@@ -59,6 +59,9 @@ tokio-util.workspace = true
 uuid.workspace = true
 zip = { version = "9", default-features = false, features = ["deflate"] }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+
 [lints]
 workspace = true
 
