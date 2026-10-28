@@ -17,7 +17,7 @@
 use std::time::Duration;
 
 use super::any::{ParseNote, ParsedConnection, login_note};
-use super::jdbc::{host_port, sqlserver_encrypt, sqlserver_ssl, strip_tcp};
+use super::jdbc::{host_port, sqlserver_flag, sqlserver_ssl, strip_tcp};
 use super::{ConnectionConfig, DriverKind, JdbcUrl, Secret, SslMode, libpq, secret_key};
 use crate::{Error, Result};
 
@@ -209,12 +209,6 @@ impl Native {
 
     fn apply(&mut self, config: &mut ConnectionConfig, pair: &Pair) -> Result<()> {
         let value = pair.value.as_str();
-        let on = || {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "true" | "yes" | "mandatory" | "strict"
-            )
-        };
         match pair.norm.as_str() {
             "server" | "servername" | "datasource" | "address" | "addr" | "networkaddress"
             | "host" | "hostname" => self.address(config, value)?,
@@ -225,8 +219,8 @@ impl Native {
             "database" | "initialcatalog" | "dbname" => value.clone_into(&mut config.database),
             "userid" | "uid" | "user" | "username" => value.clone_into(&mut config.user),
             "password" | "pwd" => config.password = Some(Secret::new(value)),
-            "encrypt" => self.encrypt = sqlserver_encrypt(value.trim()),
-            "trustservercertificate" => self.trust = on(),
+            "encrypt" => self.encrypt = sqlserver_flag(value),
+            "trustservercertificate" => self.trust = sqlserver_flag(value) == Some(true),
             "sslmode" => self.ssl = Some(value.trim().parse()?),
             "applicationname" | "app" => config.application_name = Some(value.to_owned()),
             "connecttimeout" | "connectiontimeout" | "timeout" => {

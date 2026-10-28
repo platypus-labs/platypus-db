@@ -432,12 +432,6 @@ impl ConnectionConfig {
         let mut unknown = Vec::new();
         let mut ssl_given = false;
         let (mut encrypt, mut trust) = (None, false);
-        let on = |v: &str| {
-            matches!(
-                v.to_ascii_lowercase().as_str(),
-                "true" | "yes" | "1" | "strict" | "mandatory"
-            )
-        };
         let sqlserver = self.driver == DriverKind::SqlServer;
         for (key, value) in url.query_pairs() {
             match &*key {
@@ -472,10 +466,10 @@ impl ConnectionConfig {
                     self.database = value.into_owned();
                 }
                 k if sqlserver && k.eq_ignore_ascii_case("encrypt") => {
-                    encrypt = jdbc::sqlserver_encrypt(&value);
+                    encrypt = jdbc::sqlserver_flag(&value);
                 }
                 k if sqlserver && k.eq_ignore_ascii_case("trustServerCertificate") => {
-                    trust = on(&value);
+                    trust = jdbc::sqlserver_flag(&value) == Some(true);
                 }
                 other => unknown.push(other.to_owned()),
             }

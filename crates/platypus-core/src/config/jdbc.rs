@@ -280,15 +280,9 @@ impl JdbcUrl {
             database.to_owned()
         };
         jdbc.common_properties();
-        let encrypt = jdbc
-            .property(&["encrypt"])
-            .and_then(|v| sqlserver_encrypt(&v));
-        let trust = jdbc.property(&["trustservercertificate"]).is_some_and(|v| {
-            matches!(
-                v.to_ascii_lowercase().as_str(),
-                "true" | "strict" | "mandatory"
-            )
-        });
+        let flag = |key| jdbc.property(&[key]).and_then(|v| sqlserver_flag(&v));
+        let encrypt = flag("encrypt");
+        let trust = flag("trustservercertificate") == Some(true);
         if let Some(mode) = sqlserver_ssl(encrypt, trust) {
             jdbc.config.ssl_mode = mode;
         }
@@ -362,9 +356,10 @@ pub(super) fn strip_tcp(address: &str) -> &str {
     }
 }
 
-/// SQL Server's `encrypt`: `true`, `false`, or `None` for a value it does not take.
-pub(super) fn sqlserver_encrypt(value: &str) -> Option<bool> {
-    match value.to_ascii_lowercase().as_str() {
+/// SQL Server's `encrypt` or `trustServerCertificate`: `true`, `false`, or `None` for a
+/// value it does not take.
+pub(super) fn sqlserver_flag(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
         "true" | "yes" | "1" | "strict" | "mandatory" => Some(true),
         "false" | "no" | "0" | "optional" => Some(false),
         _ => None,
@@ -500,6 +495,10 @@ mod tests {
         assert_eq!(tls("jdbc:sqlserver://h;encrypt=true"), SslMode::VerifyFull);
         assert_eq!(tls("jdbc:sqlserver://h;encrypt=false"), SslMode::Disable);
         assert_eq!(tls("jdbc:sqlserver://h"), SslMode::Prefer);
+        assert_eq!(
+            tls("jdbc:sqlserver://h;encrypt= true ;trustServerCertificate=1"),
+            SslMode::Require
+        );
     }
 
     #[test]
