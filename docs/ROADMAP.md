@@ -108,6 +108,7 @@ priorità finite, e il resto del gruppo si può ancora prendere. Procedura compl
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
 | Q — Documentazione e catalogo dei dati | ✅ fatto (P2) |
+| R — Revisione grafica | ⏸ in attesa: si prende quando tutti gli altri gruppi sono completati |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
 
 ### Gruppo A — Modifica dei dati
@@ -767,6 +768,37 @@ rispettate da tutta l'app.
 
 ---
 
+### Gruppo R — Revisione grafica
+
+**Stato: in attesa.** Si prende solo quando tutti gli altri gruppi sono `✅ completato`: rivede
+l'aspetto dell'app finita, non quello di funzionalità ancora in movimento.
+
+Una passata unica su tutta l'interfaccia perché sembri un prodotto solo, fatto con cura: oggi ogni
+gruppo ha aggiunto le sue schermate con lo stile del momento. Si parte dall'inventario di tutte le
+schermate (screenshot di ognuna, in tema chiaro e scuro, in italiano e in inglese) e si correggono
+le differenze, senza cambiare il comportamento. Restano le scelte di fondo già prese: colori
+attuali, rail dei progetti in stile Discord, tab in alto, interfaccia minimale che non sembri
+generata.
+
+**Area:** `apps/desktop/src/styles/`, i componenti di tutte le aree (solo CSS, markup e testi),
+`apps/desktop/src/assets/`; nessuna modifica a backend, driver o formati dei file
+**Dipende da:** tutti gli altri gruppi completati
+
+| Funzionalità | Prio | Origine |
+|---|---|---|
+| **Inventario visivo**: una scheda per schermata e dialog con screenshot (chiaro/scuro, it/en) e i problemi trovati | P1 | N |
+| **Design token unici**: spaziature, raggi, ombre, dimensioni dei font e dei controlli da una scala sola; via i valori scritti a mano nei singoli componenti | P1 | N |
+| Dialog, menu, tooltip, notifiche e pannelli con la stessa struttura (titolo, corpo, pulsanti, focus, Esc/Invio) | P1 | N |
+| Stati vuoti, di caricamento e di errore uguali in tutta l'app, con testo e azione utile | P1 | N |
+| Griglia, editor e navigator allineati: altezze di riga, icone, colori di selezione e di modifica | P1 | N |
+| Contrasto e accessibilità di tutti i temi (WCAG AA), focus visibile, uso da sola tastiera | P1 | N |
+| Testi rivisti in italiano e inglese: tono, lunghezza, etichette tagliate nelle finestre piccole | P2 | N |
+| Set di icone coerente (una sola famiglia, stesse dimensioni e tratto) e icone dei driver | P2 | N |
+| Posizione degli elementi personalizzabile e set di icone a scelta | P3 | N |
+| Micro-animazioni misurate (apertura pannelli, transizioni dei tab), disattivabili | P3 | N |
+
+---
+
 ## 3. Mappa dei conflitti
 
 Le "x" indicano i gruppi che toccano la stessa area. Dove c'è conflitto si serve il contratto
@@ -797,6 +829,7 @@ dell'ondata.
 | **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte; E: completato; H: completato |
 | **3** | **I**, **J**, **M**, **N**, **Q**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 | Da fare |
 | **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | Da fare |
+| **5** | **R** | Revisione grafica di tutta l'app, a funzionalità finite | v1.0 | In attesa |
 
 Per ogni gruppo, la Definition of Done segue quella dell'MVP:
 - test di conformance o E2E per ciò che è stato aggiunto;
