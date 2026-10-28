@@ -421,7 +421,7 @@ pub fn app_info() -> AppInfo {
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
         devtools: std::env::var_os("PLATYPUS_DEVTOOLS_PORT").is_some(),
-        portable: crate::portable_dir().is_some(),
+        portable: platypus_mcp::profile::portable_dir().is_some(),
     }
 }
 

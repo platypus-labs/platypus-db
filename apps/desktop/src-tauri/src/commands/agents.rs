@@ -279,8 +279,11 @@ async fn with_agent_calls<T: Send + 'static>(
     tauri::async_runtime::spawn_blocking(move || {
         let mut store = lock(&AGENT_CALLS);
         if store.is_none() {
-            let dir = match std::env::var_os(DATA_DIR_ENV) {
-                Some(dir) => PathBuf::from(dir),
+            let dir = match std::env::var_os(DATA_DIR_ENV)
+                .map(PathBuf::from)
+                .or_else(platypus_mcp::profile::portable_dir)
+            {
+                Some(dir) => dir,
                 None => app
                     .path()
                     .app_data_dir()

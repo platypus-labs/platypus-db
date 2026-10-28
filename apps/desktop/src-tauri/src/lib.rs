@@ -48,21 +48,6 @@ fn migrate_legacy_dirs() {
     }
 }
 
-/// The folder of a portable copy: a `data` folder next to the executable, as VS Code has.
-/// Everything the app keeps goes there, the web view's storage too, so the copy moves with
-/// its folder (saved passwords stay in the system keychain, unless a master password keeps
-/// them in the folder's vault).
-#[must_use]
-pub fn portable_dir() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    portable_dir_of(&exe)
-}
-
-fn portable_dir_of(exe: &Path) -> Option<PathBuf> {
-    let data = exe.parent()?.join("data");
-    data.is_dir().then_some(data)
-}
-
 /// Where connections and settings (`config: true`) or history live. `PLATYPUS_DATA_DIR`
 /// puts everything in that one folder instead of the OS locations; the end-to-end tests
 /// use it to run against a throwaway profile. A portable copy keeps everything in its
@@ -71,7 +56,7 @@ fn dir(app: &tauri::App, config: bool) -> Result<PathBuf, String> {
     if let Some(dir) = std::env::var_os("PLATYPUS_DATA_DIR") {
         return Ok(PathBuf::from(dir));
     }
-    if let Some(dir) = portable_dir() {
+    if let Some(dir) = platypus_mcp::profile::portable_dir() {
         return Ok(dir);
     }
     let path = app.path();
@@ -144,7 +129,7 @@ fn open_main_window(app: &tauri::App, system_title_bar: bool) -> tauri::Result<(
     }
     let mut window = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?;
     if std::env::var_os("PLATYPUS_DATA_DIR").is_none()
-        && let Some(dir) = portable_dir()
+        && let Some(dir) = platypus_mcp::profile::portable_dir()
     {
         window = window.data_directory(dir.join("webview"));
     }
@@ -392,23 +377,4 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::schema::lint_schema,
         commands::schema::compare_schemas,
     ]
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_data_folder_next_to_the_executable_makes_a_portable_copy() {
-        let dir = tempfile::tempdir().unwrap();
-        let exe = dir.path().join("platypus-db.exe");
-        std::fs::write(&exe, "").unwrap();
-        assert_eq!(portable_dir_of(&exe), None);
-        // A file named `data` is not the folder.
-        std::fs::write(dir.path().join("data"), "").unwrap();
-        assert_eq!(portable_dir_of(&exe), None);
-        std::fs::remove_file(dir.path().join("data")).unwrap();
-        std::fs::create_dir(dir.path().join("data")).unwrap();
-        assert_eq!(portable_dir_of(&exe), Some(dir.path().join("data")));
-    }
 }
