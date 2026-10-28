@@ -163,7 +163,11 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
         </button>
         <button className={view === "locks" ? "active" : ""} onClick={() => onChange({ view: "locks" })}>
           {t("Locks")}
-          {blocked > 0 && <span className="count admin-blocked-count">{blocked}</span>}
+          {blocked > 0 && (
+            <span className="count admin-blocked-count" title={t("{n} waiting for a lock", { n: blocked })}>
+              {blocked}
+            </span>
+          )}
         </button>
       </nav>
       {unsupported && (
@@ -171,7 +175,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
       )}
       {error && <div className="notice error small">{error}</div>}
       {!unsupported && view === "sessions" && (
-        <>
+        <div className="object-body admin-body">
           <div className="admin-toolbar">
             <input
               type="search"
@@ -197,10 +201,11 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
               onOpen={() => chosen.query && workbench().openTab("query", connection.id, { sql: chosen.query })}
             />
           )}
-        </>
+        </div>
       )}
       {!unsupported && view === "locks" && (
-        <Locks
+        <div className="object-body admin-body">
+          <Locks
           sessions={sessions}
           locks={snapshot?.locks ?? null}
           locksError={snapshot?.locksError ?? null}
@@ -210,7 +215,8 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
             setSelected(id);
             onChange({ view: "sessions" });
           }}
-        />
+          />
+        </div>
       )}
     </div>
   );
@@ -230,13 +236,13 @@ function SessionTable({
       <table className="meta-table admin-table">
         <thead>
           <tr>
-            <th>{t("Id")}</th>
+            <th className="num">{t("Id")}</th>
             <th>{t("User")}</th>
             <th>{t("Database")}</th>
             <th>{t("Client")}</th>
             <th>{t("Application")}</th>
             <th>{t("State")}</th>
-            <th>{t("Running for")}</th>
+            <th className="num">{t("Running for")}</th>
             <th>{t("Waits for")}</th>
             <th>{t("Blocked by")}</th>
             <th>{t("Statement")}</th>
@@ -271,8 +277,8 @@ function SessionTable({
               <td>{s.application}</td>
               <td>{s.state}</td>
               <td className="num">{seconds(s.query_seconds)}</td>
-              <td>{s.wait}</td>
-              <td>{s.blocked_by.join(", ")}</td>
+              <td className="admin-wait">{s.wait}</td>
+              <td className="admin-wait">{s.blocked_by.join(", ")}</td>
               <td className="admin-query" title={s.query ?? undefined}>
                 {s.query}
               </td>
@@ -370,7 +376,7 @@ function Locks({
         <table className="meta-table admin-table">
           <thead>
             <tr>
-              <th>{t("Session")}</th>
+              <th className="num">{t("Session")}</th>
               <th>{t("Kind")}</th>
               <th>{t("Object")}</th>
               <th>{t("Mode")}</th>
@@ -388,7 +394,7 @@ function Locks({
                 <td>{l.kind}</td>
                 <td>{l.object}</td>
                 <td>{l.mode}</td>
-                <td>{t(l.granted ? "Held" : "Waiting")}</td>
+                <td className="admin-wait">{t(l.granted ? "Held" : "Waiting")}</td>
               </tr>
             ))}
           </tbody>
@@ -403,10 +409,16 @@ function ChainNode({ chain, onSelect }: { chain: Chain; onSelect: (id: string) =
   const s = chain.session;
   return (
     <li>
-      <button className="link admin-chain-session" onClick={() => onSelect(s.id)}>
-        <span className={chain.waiting.length > 0 ? "admin-blocker" : "admin-waiter"}>{s.id}</span>
+      <button className="admin-chain-session" onClick={() => onSelect(s.id)}>
+        <span
+          className={[chain.waiting.length > 0 && "admin-blocker", s.blocked_by.length > 0 && "admin-waiter"]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          {s.id}
+        </span>
         <span className="muted"> {[s.user, s.state, seconds(s.query_seconds)].filter(Boolean).join(" · ")}</span>
-        {s.query && <code className="admin-chain-query"> {s.query}</code>}
+        {s.query && <code className="admin-chain-query">{s.query}</code>}
       </button>
       {chain.waiting.length > 0 && (
         <ul>
