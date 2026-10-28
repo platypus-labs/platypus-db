@@ -114,7 +114,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   /** The picker's tile (MariaDB rather than MySQL), for the header's logo. */
   const [tile, setTile] = useState<string>();
   /** The address is entered as host, port and database, or as one URL. */
-  const [connectBy, setConnectBy] = useState<ConnectBy>("host");
+  const [connectBy, setConnectBy] = useState<ConnectBy>(initial.connect_by ?? "host");
   /** The URL as the form's settings print it, without the password. */
   const [printedUrl, setPrintedUrl] = useState("");
   /** The URL being typed, while it is: the field shows it as it is, not as printed. */
@@ -122,6 +122,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const [urlError, setUrlError] = useState<string | null>(null);
   /** Counts the URL edits, so that a slow answer for an old text is ignored. */
   const urlEdits = useRef(0);
+  /** The last URL edit is still being read: leaving the field keeps it as typed. */
+  const urlReading = useRef(false);
+  const urlInput = useRef<HTMLInputElement>(null);
   /** What a pasted URL could not carry over. */
   const [notes, setNotes] = useState<ParseNote[]>([]);
   /** A URL pasted in a new connection's form that is for another database. */
@@ -191,11 +194,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
 
   /** A login typed in the host field (`user:password@host:port`) moved to its fields, so
    *  that the password goes where passwords go, never into the saved host. */
-  function takeLogin(): { c: SavedConnection; typed: string } {
-    const login = server && !adbcProfile && conn.driver !== "mongo" ? splitLogin(conn.host) : null;
-    if (!login) return { c: { ...conn, host: conn.host.trim() }, typed: password };
-    const c = { ...conn, host: login.host, port: login.port ?? conn.port, user: login.user || conn.user };
-    const typed = login.password ?? password;
+  function takeLogin(base = conn, typedPassword = password): { c: SavedConnection; typed: string } {
+    const login = server && !adbcProfile && base.driver !== "mongo" ? splitLogin(base.host) : null;
+    if (!login) return { c: { ...base, host: base.host.trim() }, typed: typedPassword };
+    const c = { ...base, host: login.host, port: login.port ?? base.port, user: login.user || base.user };
+    const typed = login.password ?? typedPassword;
     setConn(c);
     setPassword(typed);
     return { c, typed };
@@ -204,8 +207,41 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   /** The form's problem that the server would answer less clearly, or `null`. */
   const formProblem = (c: SavedConnection) => (server && !validPort(c.port) ? t("The port must be a number from 1 to 65535.") : null);
 
+  /** The URL being typed read into the form, as Test and Save need it even when its answer
+   *  has not come yet (a paste then Enter); `null`, with the error under the field, when it
+   *  does not read: nothing goes ahead with the settings from before it. */
+  async function settleUrl(): Promise<{ c: SavedConnection; typed: string } | null> {
+    const text = urlDraft;
+    if (!urlMode || text === null || !text.trim()) return { c: conn, typed: password };
+    try {
+      const parsed = await api.parseConnectionUrl(text, conn.driver);
+      if (parsed.driver !== conn.driver) {
+        setUrlError(otherDriverError(parsed.driver));
+        return null;
+      }
+      const next = applyUrlEdit(conn, password, text, parsed);
+      setUrlError(null);
+      setConn(next.conn);
+      setPassword(next.password);
+      setUrlDraft(next.draft);
+      setNotes(parsed.notes);
+      return { c: next.conn, typed: next.password };
+    } catch (err) {
+      setUrlError(toCommandError(err).message);
+      return null;
+    }
+  }
+
+  /** The form as Test and Save send it: the URL read, the login out of the host field. */
+  async function formToSend(): Promise<{ c: SavedConnection; typed: string } | null> {
+    const url = await settleUrl();
+    return url && takeLogin(url.c, url.typed);
+  }
+
   async function test() {
-    const { c, typed } = takeLogin();
+    const form = await formToSend();
+    if (!form) return;
+    const { c, typed } = form;
     const problem = formProblem(c);
     if (problem) return setResult({ ok: false, message: problem });
     setBusy(true);
@@ -222,13 +258,16 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    const { c, typed } = takeLogin();
+    const form = await formToSend();
+    if (!form) return;
+    const { c, typed } = form;
     const problem = formProblem(c);
     if (problem) return setResult({ ok: false, message: problem });
     setBusy(true);
     try {
       // Saved as agents get it: a production connection keeps no read-write access for later.
-      const saved = withEffectiveAgentAccess(ownNetwork(c));
+      // The form opens again as it was left, by host or by URL.
+      const saved = withEffectiveAgentAccess(ownNetwork({ ...c, connect_by: urlMode ? "url" : "host" }));
       onSaved(await api.saveConnection(saved, passwordInput(typed), sshSecrets(), [...inProjects]));
     } catch (err) {
       setResult({ ok: false, message: toCommandError(err).message });
@@ -290,27 +329,54 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   function editUrl(text: string) {
     setUrlDraft(text);
     const edit = ++urlEdits.current;
+    urlReading.current = !!text.trim();
     if (!text.trim()) {
       setUrlError(null);
       return;
     }
+    const answered = () => {
+      if (edit !== urlEdits.current) return false;
+      urlReading.current = false;
+      return true;
+    };
     api.parseConnectionUrl(text, conn.driver).then(
       (parsed) => {
-        if (edit !== urlEdits.current) return;
+        if (!answered()) return;
         if (parsed.driver !== conn.driver) {
-          setUrlError(t("This URL is for {driver}: go back to choose it.", { driver: driverName(parsed.driver) }));
+          setUrlError(otherDriverError(parsed.driver));
           return;
         }
         const next = applyUrlEdit(conn, password, text, parsed);
         setUrlError(null);
         setConn(next.conn);
         setPassword(next.password);
-        setUrlDraft(next.draft);
+        // A field already left shows the URL as the settings print it.
+        setUrlDraft(document.activeElement === urlInput.current ? next.draft : null);
         setNotes(parsed.notes);
         setResult(null);
       },
-      (err) => edit === urlEdits.current && setUrlError(toCommandError(err).message),
+      (err) => answered() && setUrlError(toCommandError(err).message),
     );
+  }
+
+  const otherDriverError = (driver: DriverKind) => t("This URL is for {driver}: go back to choose it.", { driver: driverName(driver) });
+
+  function chooseConnectBy(mode: ConnectBy) {
+    setConnectBy(mode);
+    setUrlDraft(null);
+    setUrlError(null);
+  }
+
+  /** The Host/URL radio group's keys: an arrow checks and focuses the other option. */
+  function connectByKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    const keys: Record<string, ConnectBy> = { ArrowRight: "url", ArrowDown: "url", End: "url", ArrowLeft: "host", ArrowUp: "host", Home: "host" };
+    let mode: ConnectBy | undefined = keys[e.key];
+    if (!mode) return;
+    e.preventDefault();
+    // Two options: an arrow past the last one wraps to the first.
+    if (e.key.startsWith("Arrow") && mode === connectBy) mode = connectBy === "host" ? "url" : "host";
+    chooseConnectBy(mode);
+    e.currentTarget.querySelector<HTMLButtonElement>(`[data-field=connect_by_${mode}]`)?.focus();
   }
 
   /** Back to the choice of the database, with nothing of this form kept. */
@@ -479,7 +545,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
             ) : (
               <>
                 {server && urlModeDriver(conn.driver) && (
-                  <div className="connect-by" role="radiogroup" aria-label={t("Connect by")}>
+                  <div className="connect-by" role="radiogroup" aria-label={t("Connect by")} onKeyDown={connectByKey}>
                     <span>{t("Connect by")}</span>
                     <div className="connect-by-options">
                       {(["host", "url"] as const).map((mode) => (
@@ -488,12 +554,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                           role="radio"
                           key={mode}
                           aria-checked={connectBy === mode}
+                          tabIndex={connectBy === mode ? 0 : -1}
                           data-field={`connect_by_${mode}`}
-                          onClick={() => {
-                            setConnectBy(mode);
-                            setUrlDraft(null);
-                            setUrlError(null);
-                          }}
+                          onClick={() => chooseConnectBy(mode)}
                         >
                           {t(mode === "host" ? "Host" : "URL")}
                         </button>
@@ -504,14 +567,15 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
 
                 {urlMode && (
                   <div className="field">
-                    <span>{t("URL")}</span>
+                    <span id="conn-url-label">{t("URL")}</span>
                     <input
+                      ref={urlInput}
+                      aria-labelledby="conn-url-label"
                       value={urlDraft ?? printedUrl}
                       onChange={(e) => editUrl(e.target.value)}
                       onBlur={() => {
-                        urlEdits.current++;
-                        setUrlDraft(null);
-                        setUrlError(null);
+                        // A URL that does not read, or not yet, stays as typed with its error.
+                        if (urlError === null && !urlReading.current) setUrlDraft(null);
                       }}
                       spellCheck={false}
                       autoComplete="off"

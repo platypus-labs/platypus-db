@@ -133,3 +133,14 @@ test("a password in the URL goes to the password field and out of the URL text",
 test("a URL edit does not name an unnamed connection", () => {
   assert.equal(applyUrlEdit(form(), "", "x", parsed()).conn.name, "");
 });
+
+test("a URL edit without the TLS files removes them", () => {
+  const files = { ssl_root_cert: "C:/certs/ca.pem", ssl_client_cert: "C:/certs/c.pem", ssl_client_key: "C:/certs/c.key" };
+  const out = applyUrlEdit(form(files), "", "postgres://u@db.example/shop?sslmode=verify-ca", parsed({ password: null, ssl_mode: "verify-ca" }));
+  assert.equal(out.conn.ssl_root_cert, null);
+  assert.equal(out.conn.ssl_client_cert, null);
+  assert.equal(out.conn.ssl_client_key, null);
+  const kept = applyUrlEdit(form(), "", "x", parsed({ password: null, ...files }));
+  assert.equal(kept.conn.ssl_root_cert, "C:/certs/ca.pem");
+  assert.equal(kept.conn.ssl_client_key, "C:/certs/c.key");
+});
