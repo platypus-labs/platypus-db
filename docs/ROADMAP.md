@@ -792,6 +792,7 @@ generata.
 | **Design token unici**: spaziature, raggi, ombre, dimensioni dei font e dei controlli da una scala sola; via i valori scritti a mano nei singoli componenti | P1 | N |
 | Dialog, menu, tooltip, notifiche e pannelli con la stessa struttura (titolo, corpo, pulsanti, focus, Esc/Invio) | P1 | N |
 | Stati vuoti, di caricamento e di errore uguali in tutta l'app, con testo e azione utile | P1 | N |
+| **Finestra di connessione riordinata**: oggi i controlli sono messi senza un ordine (Tipo e Colore accanto al Nome, "Connetti con" isolato, Sola lettura e Accesso degli agenti in fondo al tab Generale). Raggrupparli in sezioni con titolo: *Connessione* (Host/URL, host, porta, database), *Autenticazione* (utente, provenienza della password, password), *Aspetto e sicurezza* (tipo di ambiente, colore, sola lettura, accesso degli agenti); allineamento su una griglia sola | P1 | N |
 | Griglia, editor e navigator allineati: altezze di riga, icone, colori di selezione e di modifica | P1 | N |
 | Contrasto e accessibilità di tutti i temi (WCAG AA), focus visibile, uso da sola tastiera | P1 | N |
 | Testi rivisti in italiano e inglese: tono, lunghezza, etichette tagliate nelle finestre piccole | P2 | N |
