@@ -70,14 +70,15 @@ impl ConnectionConfig {
         Some(url)
     }
 
-    /// `user@host:port`, the host in brackets when it is an IPv6 address.
+    /// `user@host:port`, the host in brackets when it is an IPv6 address, its zone's `%`
+    /// encoded (`[fe80::1%25eth0]`, RFC 6874).
     fn authority(&self, port: Option<u16>) -> String {
         let mut out = String::new();
         if !self.user.is_empty() {
             let _ = write!(out, "{}@", encode(&self.user));
         }
         if self.host.contains(':') && !self.host.contains(',') {
-            let _ = write!(out, "[{}]", self.host);
+            let _ = write!(out, "[{}]", self.host.replacen('%', "%25", 1));
         } else {
             out.push_str(&self.host);
         }
@@ -168,6 +169,10 @@ mod tests {
             "postgres://u@[::1]:5432/db"
         );
         assert_eq!(
+            round_trip("postgres://u@[fe80::1%25eth0]:5432/db"),
+            "postgres://u@[fe80::1%25eth0]:5432/db"
+        );
+        assert_eq!(
             round_trip("sqlite:///C:/data/my%20app.db"),
             "sqlite:///C:/data/my%20app.db"
         );
@@ -185,6 +190,38 @@ mod tests {
             round_trip("libsql://h?sslmode=prefer"),
             "libsql://h?sslmode=prefer"
         );
+    }
+
+    #[test]
+    fn ipv6_zones_print_encoded() {
+        let mut config = ConnectionConfig::new(DriverKind::Postgres);
+        config.host = "fe80::1%eth0".to_owned();
+        let url = config.to_url().unwrap();
+        assert_eq!(url, "postgres://[fe80::1%25eth0]:5432/");
+        assert_eq!(ConnectionConfig::from_url(&url).unwrap().host, config.host);
+        config.driver = DriverKind::Mongo;
+        config.port = Some(27017);
+        let url = config.to_url().unwrap();
+        assert_eq!(url, "mongodb://[fe80::1%25eth0]:27017/");
+        assert_eq!(ConnectionConfig::from_url(&url).unwrap().host, config.host);
+    }
+
+    #[test]
+    fn query_settings_print_as_sslmode() {
+        for (url, printed) in [
+            (
+                "sqlserver://sa@h:51433?database=master&encrypt=true&trustServerCertificate=true",
+                "sqlserver://sa@h:51433/master?sslmode=require",
+            ),
+            (
+                "mysql://app@h:3306/shop?sslMode=REQUIRED",
+                "mysql://app@h:3306/shop?sslmode=require",
+            ),
+            ("libsql://h:8080?tls=0", "libsql://h:8080?sslmode=disable"),
+        ] {
+            let config = ConnectionConfig::from_url(url).unwrap();
+            assert_eq!(config.to_url().unwrap(), printed);
+        }
     }
 
     #[test]
