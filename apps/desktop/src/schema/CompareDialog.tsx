@@ -28,19 +28,25 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
   const targetDatabase = sameConnection ? database : null;
 
   useEffect(() => {
+    // The schemas of a target left before they came must not replace the new target's.
+    let current = true;
     setSchemas([]);
     setSame(false);
     workbench()
       .sideSession(target, targetDatabase)
       .then(async (sid) => {
-        if (sid === null) return;
+        if (sid === null || !current) return;
         const all = (await api.listSchemas(sid)).filter((s) => !sameConnection || s.name !== schema);
+        if (!current) return;
         setSchemas(all);
         // On the same connection no schema is taken for the user: the current one would be
         // made like this one, its other tables dropped.
         setTargetSchema(sameConnection ? "" : ((all.find((s) => s.name === schema) ?? all.find((s) => s.current) ?? all[0])?.name ?? ""));
       })
-      .catch((e) => setError(toCommandError(e).message));
+      .catch((e) => current && setError(toCommandError(e).message));
+    return () => {
+      current = false;
+    };
   }, [target.id]);
 
   async function compare() {
