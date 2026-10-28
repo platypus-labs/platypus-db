@@ -68,6 +68,8 @@ export interface EditorHost {
   runCli?: () => void;
   /** Runs the statement into a new result tab, keeping the others. */
   runAppend?: () => void;
+  /** Runs the script, or the selection, on several connections. */
+  runOnConnections?: () => void;
   /** Opens the plan of the statement under the cursor; `analyze` runs it. */
   explain?: (analyze: boolean) => void;
 }

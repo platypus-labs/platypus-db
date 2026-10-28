@@ -21,13 +21,20 @@ function changeText(u: UnfilteredChange) {
   return t("without WHERE changes every row of");
 }
 
-/** Asks before risky statements run, or says why they will not. */
-export function GuardDialog({ request, onAnswer }: { request: GuardRequest; onAnswer: (run: boolean) => void }) {
+/** Asks before risky statements run, or says why they will not. `named` says on which
+ *  connection, for a run on several. */
+export function GuardDialog({ request, onAnswer, named = false }: { request: GuardRequest; onAnswer: (run: boolean) => void; named?: boolean }) {
   const { connection, unfiltered, production, blocked } = request;
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onAnswer(false)}>
       <div className="modal wide guard" onKeyDown={(e) => e.key === "Escape" && onAnswer(false)}>
-        <h2>{production.length ? t("Changes on {name} (production)", { name: connection.name }) : t("Change every row?")}</h2>
+        <h2>
+          {production.length
+            ? t("Changes on {name} (production)", { name: connection.name })
+            : named
+              ? t("Change every row on {name}?", { name: connection.name })
+              : t("Change every row?")}
+        </h2>
         {unfiltered.length > 0 && (
           <div className="notice warn small">
             {unfiltered.map((u, i) => (

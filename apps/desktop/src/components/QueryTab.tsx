@@ -28,6 +28,7 @@ import { ParamsDialog } from "../editor/ParamsDialog";
 import { type ExportTarget, expandVariables, parameterKeys, parseCommand, resolvePath, substitute } from "../editor/params";
 import { originalOffset, utf16Offset } from "../editor/literals";
 import { setsSchema, usedDatabase } from "../editor/context";
+import { MultiRunDialog } from "../editor/MultiRunDialog";
 import { type EditorHost, type RunMode, SqlEditor, type SqlEditorHandle } from "../editor/SqlEditor";
 import { TERMINAL_ROWS, type TerminalBlock, TerminalView, blockText } from "../editor/terminal";
 import { VariablesPanel } from "../editor/VariablesPanel";
@@ -1109,6 +1110,16 @@ export function QueryTab({
     openObject: (schema, name) => void openObject(schema, name),
     runCli: cliName(connection.driver) ? () => void runCli() : undefined,
     runAppend: () => void run("append"),
+    // Not on a temporary connection ("Query with SQL"), nor MongoDB's scripts.
+    runOnConnections:
+      tab.resultSource || isMongo(connection.driver) || !workbench().connections().some((c) => c.id === connection.id)
+        ? undefined
+        : () => {
+            const { from, to } = editor.current!.getSelection();
+            const text = editor.current!.getText();
+            const script = from === to ? text : text.slice(from, to);
+            workbench().openDialog((close) => <MultiRunDialog script={script} origin={connection} onClose={close} />);
+          },
     explain: isMongo(connection.driver) ? undefined : (analyze) => void explain(analyze),
   };
 
