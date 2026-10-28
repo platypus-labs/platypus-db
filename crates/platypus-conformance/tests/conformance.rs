@@ -16,8 +16,9 @@ use arrow_cast::display::array_value_to_string;
 use futures::{StreamExt, TryStreamExt};
 use platypus_core::geometry;
 use platypus_core::{
-    Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, Error, ExecOptions,
-    ExecResult, MatchKind, ObjectKind, ObjectRef, PlanNode, SessionInit,
+    Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, EndSession, Error,
+    ExecOptions, ExecResult, MatchKind, ObjectKind, ObjectRef, PlanNode, ServerSession,
+    SessionInit,
 };
 use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
@@ -1371,6 +1372,220 @@ async fn capabilities_match_optional_methods() {
             "{}: search_metadata vs capabilities.metadata_search: {search:?}",
             b.name
         );
+
+        let sessions = conn.server_sessions().await;
+        assert_eq!(
+            matches!(sessions, Err(Error::Unsupported(_))),
+            !caps.server_sessions,
+            "{}: server_sessions vs capabilities.server_sessions: {sessions:?}",
+            b.name
+        );
+        let locks = conn.server_locks().await;
+        assert_eq!(
+            matches!(locks, Err(Error::Unsupported(_))),
+            !caps.server_sessions,
+            "{}: server_locks vs capabilities.server_sessions: {locks:?}",
+            b.name
+        );
+        // No session has id 0: a supported cancel fails, but not as unsupported.
+        let cancel = conn.end_server_session("0", EndSession::Cancel).await;
+        assert_eq!(
+            matches!(cancel, Err(Error::Unsupported(_))),
+            !caps.cancel_server_queries,
+            "{}: cancelling vs capabilities.cancel_server_queries: {cancel:?}",
+            b.name
+        );
+        assert!(
+            !caps.cancel_server_queries || caps.server_sessions,
+            "{}",
+            b.name
+        );
+    }
+}
+
+/// Session `id` in the list of `admin` once `ready` holds for it, within 20 seconds.
+async fn server_session(
+    b: &Backend,
+    admin: &dyn Connection,
+    id: &str,
+    ready: impl Fn(&ServerSession) -> bool,
+) -> ServerSession {
+    for _ in 0..80 {
+        let sessions = admin
+            .server_sessions()
+            .await
+            .unwrap_or_else(|e| panic!("{}: server_sessions: {e}", b.name));
+        if let Some(session) = sessions.into_iter().find(|s| s.id == id && ready(s)) {
+            return session;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    panic!("{}: session {id} never got there", b.name)
+}
+
+/// The id of the session of `conn`, from its own list.
+async fn own_session(b: &Backend, conn: &dyn Connection) -> String {
+    let sessions = conn
+        .server_sessions()
+        .await
+        .unwrap_or_else(|e| panic!("{}: server_sessions: {e}", b.name));
+    let own: Vec<_> = sessions.iter().filter(|s| s.current).collect();
+    assert_eq!(
+        own.len(),
+        1,
+        "{}: one current session: {sessions:?}",
+        b.name
+    );
+    assert_eq!(sessions[0].id, own[0].id, "{}: listed first", b.name);
+    own[0].id.clone()
+}
+
+/// The session list shows another session running its statement, which is cancelled
+/// (where the server can) and then ended from the first.
+#[tokio::test]
+async fn lists_and_ends_server_sessions() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let admin = b.connect().await;
+        let caps = admin.capabilities();
+        if !caps.server_sessions {
+            continue;
+        }
+        let worker = b.connect().await;
+        let id = own_session(&b, &*worker).await;
+        assert_ne!(id, own_session(&b, &*admin).await, "{}", b.name);
+
+        let endless = b.endless_sql;
+        let start = |conn: Box<dyn Connection>| {
+            tokio::spawn(async move {
+                let result = run(&*conn, endless).await;
+                (conn, result)
+            })
+        };
+        let mut worker = worker;
+        if caps.cancel_server_queries {
+            let task = start(worker);
+            let running = server_session(&b, &*admin, &id, ServerSession::is_running).await;
+            assert!(!running.current, "{}: {running:?}", b.name);
+            assert!(running.query.is_some(), "{}: {running:?}", b.name);
+            admin
+                .end_server_session(&id, EndSession::Cancel)
+                .await
+                .unwrap_or_else(|e| panic!("{}: cancel: {e}", b.name));
+            let (conn, result) = tokio::time::timeout(Duration::from_secs(20), task)
+                .await
+                .unwrap_or_else(|_| panic!("{}: the cancel did not stop it", b.name))
+                .unwrap();
+            assert!(result.is_err(), "{}", b.name);
+            // The session stays.
+            let rows = collect(&b, &*conn, "SELECT 1").await;
+            assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("1"), "{}", b.name);
+            worker = conn;
+        }
+
+        let task = start(worker);
+        server_session(&b, &*admin, &id, ServerSession::is_running).await;
+        admin
+            .end_server_session(&id, EndSession::Terminate)
+            .await
+            .unwrap_or_else(|e| panic!("{}: terminate: {e}", b.name));
+        let (_, result) = tokio::time::timeout(Duration::from_secs(20), task)
+            .await
+            .unwrap_or_else(|_| panic!("{}: ending the session did not stop it", b.name))
+            .unwrap();
+        assert!(result.is_err(), "{}", b.name);
+        let mut gone = false;
+        for _ in 0..40 {
+            let sessions = admin.server_sessions().await.unwrap();
+            if sessions.iter().all(|s| s.id != id) {
+                gone = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        assert!(gone, "{}: session {id} is still listed", b.name);
+        assert!(
+            admin
+                .end_server_session("1; SELECT 1", EndSession::Terminate)
+                .await
+                .is_err(),
+            "{}",
+            b.name
+        );
+    }
+}
+
+/// A session waiting for a row another one updates shows whom it waits for, and both
+/// their locks are listed.
+#[tokio::test]
+async fn shows_blocking_chains() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let admin = b.connect().await;
+        if !admin.capabilities().server_sessions {
+            continue;
+        }
+        let table = format!("{}.conf_admin_lock", b.schema);
+        run(&*admin, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap();
+        run(
+            &*admin,
+            &format!("CREATE TABLE {table} (id INT PRIMARY KEY, v INT)"),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        run(&*admin, &format!("INSERT INTO {table} VALUES (1, 0)"))
+            .await
+            .unwrap();
+
+        let holder = b.connect().await;
+        let holder_id = own_session(&b, &*holder).await;
+        holder.set_autocommit(false).await.unwrap();
+        run(&*holder, &format!("UPDATE {table} SET v = 1 WHERE id = 1"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let waiter = b.connect().await;
+        let waiter_id = own_session(&b, &*waiter).await;
+        let update = format!("UPDATE {table} SET v = 2 WHERE id = 1");
+        let task = tokio::spawn(async move { run(&*waiter, &update).await });
+
+        let blocked = server_session(&b, &*admin, &waiter_id, |s| {
+            s.blocked_by.contains(&holder_id)
+        })
+        .await;
+        assert!(blocked.is_running(), "{}: {blocked:?}", b.name);
+        let locks = admin
+            .server_locks()
+            .await
+            .unwrap_or_else(|e| panic!("{}: server_locks: {e}", b.name));
+        assert!(
+            locks.iter().any(|l| l.session == waiter_id && !l.granted),
+            "{}: the waiter's lock: {locks:?}",
+            b.name
+        );
+        assert!(
+            locks.iter().any(|l| l.session == holder_id
+                && l.granted
+                && l.object
+                    .as_deref()
+                    .is_some_and(|o| o.to_lowercase().ends_with("conf_admin_lock"))),
+            "{}: the holder's lock on the table: {locks:?}",
+            b.name
+        );
+        let own = own_session(&b, &*admin).await;
+        assert!(locks.iter().all(|l| l.session != own), "{}", b.name);
+
+        holder.rollback().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(20), task)
+            .await
+            .unwrap_or_else(|_| panic!("{}: the waiter never got the row", b.name))
+            .unwrap()
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        drop(holder);
+        run(&*admin, &format!("DROP TABLE {table}")).await.unwrap();
     }
 }
 
