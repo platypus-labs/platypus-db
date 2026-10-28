@@ -53,7 +53,7 @@ pub fn log_error(message: String) {
     applog::write("ERROR", &format!("web view: {}", &message[..cut]));
 }
 
-/// `table` without the keys that look like secrets, at any depth.
+/// `table` without the keys that look like secrets, at any depth, arrays of tables included.
 fn without_secrets(table: &toml::Table) -> toml::Table {
     table
         .iter()
@@ -61,14 +61,18 @@ fn without_secrets(table: &toml::Table) -> toml::Table {
             let key = key.to_lowercase();
             !SECRET_WORDS.iter().any(|w| key.contains(w))
         })
-        .map(|(key, value)| {
-            let value = match value {
-                toml::Value::Table(inner) => toml::Value::Table(without_secrets(inner)),
-                other => other.clone(),
-            };
-            (key.clone(), value)
-        })
+        .map(|(key, value)| (key.clone(), value_without_secrets(value)))
         .collect()
+}
+
+fn value_without_secrets(value: &toml::Value) -> toml::Value {
+    match value {
+        toml::Value::Table(inner) => toml::Value::Table(without_secrets(inner)),
+        toml::Value::Array(items) => {
+            toml::Value::Array(items.iter().map(value_without_secrets).collect())
+        }
+        other => other.clone(),
+    }
 }
 
 /// What goes in the package besides the logs.
@@ -217,15 +221,22 @@ mod tests {
             Password = "hunter2"
             [cloud]
             api_token = "abc"
+            [[profiles]]
+            name = "work"
+            password = "s3cret"
+            [[profiles]]
+            nested = [{ secret = "deep" }]
             "#,
         )
         .unwrap();
         let text = toml::to_string(&without_secrets(&table)).unwrap();
         assert!(
-            text.contains("proxy.local") && text.contains("dark"),
+            text.contains("proxy.local") && text.contains("dark") && text.contains("work"),
             "{text}"
         );
-        assert!(!text.contains("hunter2") && !text.contains("abc"), "{text}");
+        for secret in ["hunter2", "abc", "s3cret", "deep"] {
+            assert!(!text.contains(secret), "{text}");
+        }
     }
 
     #[test]
