@@ -817,9 +817,12 @@ impl ConnectionStore {
                 "connection name is required".to_owned(),
             ));
         }
+        // A variable of the host (`${env:DB_HOST}`) stands for a plain name here, and is
+        // checked again once it is read, when the connection opens.
         if !connection.driver.is_embedded() {
-            connection
-                .config(None)
+            let mut config = connection.config(None);
+            config.host = platypus_core::without_references(&config.host);
+            config
                 .check_host()
                 .map_err(|_| StoreError::Invalid(HOST_WITH_LOGIN.to_owned()))?;
         }
@@ -1102,6 +1105,22 @@ mod tests {
         assert!(projects.iter().all(|p| p.connections == [shared.id]));
         assert_eq!(projects[0].initials, "CR");
         assert_eq!(projects[1].initials, "IN");
+    }
+
+    #[test]
+    fn a_host_from_the_environment_is_saved_as_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        let mut from_env = sample();
+        from_env.host = "${env:DB_HOST}".to_owned();
+        s.save(from_env.clone(), PasswordUpdate::Keep).unwrap();
+        assert_eq!(s.get(from_env.id).unwrap().host, "${env:DB_HOST}");
+        let mut login_from_env = sample();
+        login_from_env.host = "root:${env:PW}@db".to_owned();
+        assert!(s.save(login_from_env, PasswordUpdate::Keep).is_err());
+        let mut login = sample();
+        login.host = "root:secret@db".to_owned();
+        assert!(s.save(login, PasswordUpdate::Keep).is_err());
     }
 
     #[test]

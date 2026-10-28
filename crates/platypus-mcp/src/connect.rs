@@ -2,7 +2,9 @@
 //! place of the connection's own, the password from its command, `.pgpass` or the
 //! keychain, the SSH secrets, and the bootstrap statements run after connecting.
 
-use platypus_core::{Connection, ConnectionConfig, Driver, DriverKind, Error, ExecOptions, Secret};
+use platypus_core::{
+    Connection, ConnectionConfig, Driver, DriverKind, Error, ExecOptions, Secret, SshAuth,
+};
 use platypus_driver_adbc::AdbcDriver;
 use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
@@ -175,6 +177,32 @@ pub async fn config_of(
                 .and_then(|(_, secret)| secret.clone())
         }));
     }
+    // `${env:NAME}` in the fields, from the environment or the connection's `.env` file.
+    let mut config = config
+        .with_env()
+        .and_then(|config| {
+            if !config.driver.is_embedded() {
+                config.check_host()?;
+            }
+            Ok(config)
+        })
+        .map_err(|e| AgentError::Connect {
+            name: effective.name.clone(),
+            message: redactor.apply(&e.to_string()),
+        })?;
+    redactor.add_secret(config.password.as_ref());
+    let mut ssh = config.ssh.as_ref();
+    while let Some(hop) = ssh {
+        match &hop.auth {
+            SshAuth::Password(secret)
+            | SshAuth::Key {
+                passphrase: Some(secret),
+                ..
+            } => redactor.add_secret(Some(secret)),
+            _ => {}
+        }
+        ssh = hop.jump.as_deref();
+    }
     let script = &effective.init.statements;
     config.init.statements = platypus_sql::split(script, Dialect::from(effective.driver))
         .iter()
@@ -329,6 +357,40 @@ mod tests {
         assert_eq!(
             redactor.apply("bad db-secret / ssh-secret"),
             "bad *** / ***"
+        );
+    }
+
+    #[tokio::test]
+    async fn reads_variables_from_the_env_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = dir.path().join(".env");
+        std::fs::write(
+            &env,
+            "PLATYPUS_TEST_DB_HOST=db.from-env\nPLATYPUS_TEST_DB_PW=env-secret\n",
+        )
+        .unwrap();
+        let mut s = store(dir.path(), Arc::new(MemorySecrets::default()));
+        let mut saved = SavedConnection::new("PG", DriverKind::Postgres);
+        saved.host = "${env:PLATYPUS_TEST_DB_HOST}".to_owned();
+        saved.options.insert(
+            platypus_core::ENV_FILE.to_owned(),
+            env.display().to_string(),
+        );
+        s.save(
+            saved.clone(),
+            PasswordUpdate::Set(Secret::new("${env:PLATYPUS_TEST_DB_PW}")),
+        )
+        .unwrap();
+        let (config, redactor) = config_of(&s, &saved).await.unwrap();
+        assert_eq!(config.host, "db.from-env");
+        assert_eq!(config.password, Some(Secret::new("env-secret")));
+        assert_eq!(redactor.apply("bad env-secret"), "bad ***");
+
+        saved.user = "${env:PLATYPUS_TEST_NOT_SET}".to_owned();
+        let error = config_of(&s, &saved).await.unwrap_err().to_string();
+        assert!(
+            error.contains("PLATYPUS_TEST_NOT_SET is not set"),
+            "{error}"
         );
     }
 

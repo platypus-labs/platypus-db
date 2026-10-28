@@ -179,7 +179,8 @@ pub async fn load_names(client: &tokio_postgres::Client, builders: &mut [ColumnB
         let Some(sql) = builder.name_query() else {
             continue;
         };
-        if let Ok(rows) = client.query(&sql, &[]).await {
+        // Unnamed, in one round trip: a pooler in transaction mode may not keep a name.
+        if let Ok(rows) = client.query_typed(&sql, &[]).await {
             builder.set_names(
                 rows.iter()
                     .filter_map(|r| Some((r.try_get(0).ok()?, r.try_get(1).ok()?)))
