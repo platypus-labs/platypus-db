@@ -1,6 +1,7 @@
 import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
 import type { PlanNode } from "../api";
 import { t } from "../i18n";
+import { stepName } from "./compare";
 import { BOX, layoutPlan } from "./graph";
 
 const ZOOMS = [0.5, 0.75, 1, 1.25];
@@ -109,7 +110,7 @@ export function PlanGraph({
                 style={{ "--heat": `${Math.round(share * 100)}%` } as CSSProperties}
                 onClick={() => onSelect(path)}
               >
-                <title>{[node.operation, node.detail].filter(Boolean).join(" ")}</title>
+                <title>{stepName(node)}</title>
                 <rect width={BOX.width} height={BOX.height} rx={6} />
                 <text x={10} y={20} className="explain-box-op">
                   {cut(node.operation, 26)}

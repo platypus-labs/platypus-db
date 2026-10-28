@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { CTRL, SHIFT } from "../cdp.mjs";
 import { connections, editorText, needs, openEditor, visibleTab } from "../qa-grid.mjs";
-import { compareWith, explainTab, operations, showView } from "../plans.mjs";
+import { answer, askCompare, compareWith, explainTab, operations, showView } from "../plans.mjs";
 
 const DB = "pg";
 const NAME = "QA E PostgreSQL";
@@ -28,11 +28,8 @@ export default async function (page) {
   assert.ok(first.includes("Hash Join") || first.includes("Nested Loop"), `a join: ${first}`);
 
   // Before a refresh there is only another plan to compare with.
-  await page.eval(`[...${explainTab}.querySelectorAll('button')].find(b => b.textContent === 'Compare…').click()`);
-  await page.waitFor(`document.querySelector('.modal.confirm') !== null`);
-  const choices = await page.eval(`[...document.querySelectorAll('.modal.confirm button')].map(b => b.textContent)`);
-  assert.deepEqual(choices, ["Cancel", "Another plan…"]);
-  await page.eval(`[...document.querySelectorAll('.modal.confirm button')].find(b => b.textContent === 'Cancel').click()`);
+  assert.deepEqual(await askCompare(page), ["Cancel", "Another plan…"]);
+  await answer(page, "Cancel");
   await page.waitFor(`document.querySelector('.modal.confirm') === null`);
 
   // Refreshed, the plan compares with the run before: the same steps on both sides.

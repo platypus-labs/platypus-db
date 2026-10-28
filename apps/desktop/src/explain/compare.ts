@@ -7,6 +7,9 @@ export interface Pair {
   after: PlanNode | null;
 }
 
+/** A step's operation and, when it has one, its target: `Seq Scan on orders o`. */
+export const stepName = (n: PlanNode) => (n.detail ? `${n.operation} ${n.detail}` : n.operation);
+
 const key = (n: PlanNode) => `${n.operation}\u0000${n.detail ?? ""}`;
 
 /** The longest run of `a` and `b` with the same keys, as pairs of indexes. */

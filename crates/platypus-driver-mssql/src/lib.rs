@@ -464,19 +464,19 @@ impl MssqlConnection {
         let off = run_simple(&mut session, "SET SHOWPLAN_TEXT OFF", &self.closed).await;
         let sets = sets?;
         off?;
-        let rows: Vec<&str> = sets
-            .iter()
-            .flatten()
-            .filter_map(|row| row.get::<&str, _>(0))
-            .collect();
-        let plan = showplan_steps(rows.into_iter());
+        let plan = showplan_steps(
+            sets.iter()
+                .flatten()
+                .filter_map(|row| row.get::<&str, _>(0)),
+        );
         if plan.is_empty() {
             return Err(Error::Other("the database returned no plan".to_owned()));
         }
+        let root = showplan_tree(&plan);
         Ok(platypus_core::Explain::new(
             platypus_core::ExplainFormat::Text,
-            plan.clone(),
-            showplan_tree(&plan),
+            plan,
+            root,
             false,
         ))
     }

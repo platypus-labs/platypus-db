@@ -70,11 +70,21 @@ export async function showView(page, label) {
   await page.eval(`[...${explainTab}.querySelectorAll('.object-sections button')].find(b => b.textContent === ${JSON.stringify(label)}).click()`);
 }
 
-/** Answers the Compare… question with `choice`. */
-export async function compareWith(page, choice) {
+/** Asks Compare… and returns the choices it offers. */
+export async function askCompare(page) {
   await page.eval(`[...${explainTab}.querySelectorAll('button')].find(b => b.textContent === 'Compare…').click()`);
   await page.waitFor(`document.querySelector('.modal.confirm') !== null`);
-  const choices = await page.eval(`[...document.querySelectorAll('.modal.confirm button')].map(b => b.textContent)`);
+  return page.eval(`[...document.querySelectorAll('.modal.confirm button')].map(b => b.textContent)`);
+}
+
+/** Clicks the button `label` of the open question. */
+export async function answer(page, label) {
+  await page.eval(`[...document.querySelectorAll('.modal.confirm button')].find(b => b.textContent === ${JSON.stringify(label)}).click()`);
+}
+
+/** Answers the Compare… question with `choice`. */
+export async function compareWith(page, choice) {
+  const choices = await askCompare(page);
   assert.ok(choices.includes(choice), `${choice} in ${choices}`);
-  await page.eval(`[...document.querySelectorAll('.modal.confirm button')].find(b => b.textContent === ${JSON.stringify(choice)}).click()`);
+  await answer(page, choice);
 }

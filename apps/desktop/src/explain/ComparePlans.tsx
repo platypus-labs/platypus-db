@@ -1,6 +1,6 @@
 import type { Explain, PlanNode } from "../api";
 import { t } from "../i18n";
-import { alignPlans, change, type Measure, measureOf, own, total } from "./compare";
+import { alignPlans, change, type Measure, measureOf, own, stepName, total } from "./compare";
 
 /** A change as a signed percentage, green when it went down, red when up. */
 function Change({ value }: { value: number | null }) {
@@ -10,7 +10,7 @@ function Change({ value }: { value: number | null }) {
   return <span className={`explain-change ${kind}`}>{kind === "same" ? "=" : `${pct > 0 ? "+" : ""}${pct}%`}</span>;
 }
 
-const name = (n: PlanNode | null) => (n === null ? "" : [n.operation, n.detail].filter(Boolean).join(" "));
+const name = (n: PlanNode | null) => (n === null ? "" : stepName(n));
 
 /** Two plans of a statement side by side, before and after (an index, a rewrite): the
  *  whole plan's time or cost, then each step's own, and how it changed. */

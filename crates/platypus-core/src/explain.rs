@@ -83,9 +83,7 @@ impl Explain {
             suggestions,
         }
     }
-}
 
-impl Explain {
     /// A plan read from a document pasted or opened from a file: analyzed when its steps
     /// have actual rows or times.
     #[must_use]

@@ -109,16 +109,14 @@ fn rows_read(actual: Option<f64>, loops: Option<f64>, estimate: Option<f64>) -> 
 
 fn tree_step(step: &str) -> PlanNode {
     let (description, figures) = step_figures(step);
-    match description.split_once(": ") {
-        Some((operation, detail)) => PlanNode {
-            operation: operation.to_owned(),
-            detail: Some(detail.to_owned()),
-            ..figures
-        },
-        None => PlanNode {
-            operation: description.to_owned(),
-            ..figures
-        },
+    let (operation, detail) = match description.split_once(": ") {
+        Some((operation, detail)) => (operation, Some(detail.to_owned())),
+        None => (description, None),
+    };
+    PlanNode {
+        operation: operation.to_owned(),
+        detail,
+        ..figures
     }
 }
 

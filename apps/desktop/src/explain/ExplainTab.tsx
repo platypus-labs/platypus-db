@@ -6,6 +6,7 @@ import { workbench } from "../workbench";
 import { choose } from "../ui/ask";
 import { language, t, msg } from "../i18n";
 import { ComparePlans } from "./ComparePlans";
+import { stepName } from "./compare";
 import { PlanDialog } from "./PlanDialog";
 import { PlanGraph } from "./PlanGraph";
 
@@ -41,13 +42,6 @@ const VIEWS: [ExplainView, string][] = [
   ["table", msg("Table")],
 ];
 
-const DRIVERS: Record<PlanSource, SavedConnection["driver"]> = {
-  postgres: "postgres",
-  mysql: "mysql",
-  sqlite: "sqlite",
-  sqlserver: "sqlserver",
-};
-
 let plans = 0;
 
 /** Asks for a plan to paste or open, and hands it to `onRead`. */
@@ -64,7 +58,8 @@ export function openPlan() {
     const connection: SavedConnection = {
       id: `plan:${++plans}`,
       name,
-      driver: DRIVERS[source],
+      // Each source is named as its driver.
+      driver: source,
       host: "",
       port: null,
       database: "",
@@ -135,10 +130,6 @@ function Misestimate({ node }: { node: PlanNode }) {
 /** The step tinted by its share of the work. */
 const heat = (share: number) => ({ "--heat": `${Math.round(share * 100)}%` }) as CSSProperties;
 
-function title(node: PlanNode) {
-  return node.detail ? `${node.operation} ${node.detail}` : node.operation;
-}
-
 /** One line per step, indented, with the figures the database reported. */
 function planText(all: Step[]) {
   return all
@@ -153,7 +144,7 @@ function planText(all: Step[]) {
         const shown = parts.filter(Boolean);
         return shown.length ? `  (${prefix}${shown.join(" ")})` : "";
       };
-      return `${"   ".repeat(depth)}-> ${title(node)}${group(estimate)}${group(actual, "actual ")}`;
+      return `${"   ".repeat(depth)}-> ${stepName(node)}${group(estimate)}${group(actual, "actual ")}`;
     })
     .join("\n");
 }
@@ -177,6 +168,8 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
   /** The plan before the last refresh, to compare with. */
   const [previous, setPrevious] = useState<Explain | null>(null);
   const latest = useRef<Explain | null>(null);
+  /** What the plan is of: the pasted plan's name, or the statement. */
+  const subject = tab.plan ? tab.name : tab.sql;
   const view = tab.view === "compare" && !tab.baseline ? "tree" : (tab.view ?? "tree");
 
   useEffect(() => {
@@ -253,8 +246,8 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
       <header className="object-header">
         <div className="object-title">
           <strong>{t(tab.plan ? "Query plan" : tab.analyze ? "Explain analyze" : "Explain")}</strong>
-          <code className="explain-sql muted small" title={tab.plan ? tab.name : tab.sql}>
-            {tab.plan ? tab.name : tab.sql}
+          <code className="explain-sql muted small" title={subject}>
+            {subject}
           </code>
         </div>
         <span className="spacer" />
@@ -399,7 +392,7 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
             <tbody>
               {all.map(({ node: n, depth, path }) => (
                 <tr key={path}>
-                  <td style={{ paddingLeft: depth * 16 }}>{title(n)}</td>
+                  <td style={{ paddingLeft: depth * 16 }}>{stepName(n)}</td>
                   <td>{num(n.cost)}</td>
                   <td>{num(n.rows)}</td>
                   <td>
