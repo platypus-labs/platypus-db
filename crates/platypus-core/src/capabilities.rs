@@ -28,6 +28,15 @@ pub struct Capabilities {
     pub multiple_databases: bool,
     /// [`Connection::search_metadata`](crate::Connection::search_metadata).
     pub metadata_search: bool,
+    /// [`Connection::server_sessions`](crate::Connection::server_sessions),
+    /// [`server_locks`](crate::Connection::server_locks) and
+    /// [`end_server_session`](crate::Connection::end_server_session) with
+    /// [`EndSession::Terminate`](crate::EndSession::Terminate).
+    pub server_sessions: bool,
+    /// [`end_server_session`](crate::Connection::end_server_session) with
+    /// [`EndSession::Cancel`](crate::EndSession::Cancel): the statement of another
+    /// session can be cancelled without closing it (not on SQL Server).
+    pub cancel_server_queries: bool,
 }
 
 /// The error a `Connection` method returns when the driver does not implement it.

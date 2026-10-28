@@ -139,6 +139,28 @@ pub trait Connection: Send + Sync + fmt::Debug {
         Err(unsupported("listing databases"))
     }
 
+    /// The sessions of the server, the one asking included (marked
+    /// [`current`](crate::ServerSession::current)), with the statements they run; those of
+    /// other users only where the session may see them. Optional: see
+    /// [`Capabilities::server_sessions`].
+    async fn server_sessions(&self) -> Result<Vec<crate::ServerSession>> {
+        Err(unsupported("server sessions"))
+    }
+
+    /// The locks the sessions of the server hold or wait for, those of the session asking
+    /// left out. Optional: see [`Capabilities::server_sessions`].
+    async fn server_locks(&self) -> Result<Vec<crate::ServerLock>> {
+        Err(unsupported("server locks"))
+    }
+
+    /// Cancels the statement of session `id` of the server, or closes the session.
+    /// Optional: see [`Capabilities::server_sessions`] and
+    /// [`Capabilities::cancel_server_queries`].
+    async fn end_server_session(&self, id: &str, how: crate::EndSession) -> Result<()> {
+        let _ = (id, how);
+        Err(unsupported("ending server sessions"))
+    }
+
     /// Objects of the user schemas whose name, column names or source contain `needle`,
     /// ignoring case; at most [`SEARCH_LIMIT`](crate::SEARCH_LIMIT) of them.
     /// Optional: see [`Capabilities::metadata_search`].

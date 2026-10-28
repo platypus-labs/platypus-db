@@ -496,13 +496,28 @@ indici parziali né le colonne INCLUDE, e lo dice nel messaggio; i diagrammi viv
 
 ### Gruppo J — Amministrazione del server
 
+**Stato: P2 in parte** (fatti session manager e lock manager). Due capacità opzionali del trait
+`Connection` (`platypus-core/src/admin.rs`): `server_sessions` (`server_sessions`,
+`server_locks`, `end_server_session` con `Terminate`) e `cancel_server_queries`
+(`end_server_session` con `Cancel`, che SQL Server non ha). Driver: PostgreSQL
+(`pg_stat_activity`, `pg_blocking_pids`, `pg_locks`; non CockroachDB né YugabyteDB), MySQL
+(`PROCESSLIST`, `performance_schema.data_lock_waits`, `data_locks` e `metadata_locks`),
+MariaDB (`INNODB_LOCK_WAITS`, `INNODB_LOCKS`), SQL Server (`dm_exec_sessions`,
+`dm_exec_requests`, `dm_tran_locks`, `KILL`). Tab `admin` (*Server activity…* dal menu della
+connessione, `apps/desktop/src/admin/`) sulla sessione del navigator, in autocommit: elenco
+con refresh ogni 2–30 s o a mano, filtro, sessioni bloccate, catene di attesa, lock; annulla e
+chiudi con conferma, rifiutati sulle connessioni in sola lettura e scritti nel query manager.
+Limiti: Oracle non ancora; senza i diritti del server (`PROCESS`, `VIEW SERVER STATE`, …) si
+vedono solo le proprie sessioni, e i lock di MySQL danno l'errore del server; MariaDB mostra
+solo i lock coinvolti in un'attesa.
+
 **Area:** `apps/desktop/src/admin/` (tab `admin`), `commands/admin.rs`, query di sistema nei driver
 **Dipende da:** 0.3, 0.6
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| **Session manager**: sessioni attive, query in corso, kill e cancel | P2 | D |
-| **Lock manager**: blocchi e catene di attesa | P2 | D |
+| ✅ **Session manager**: sessioni attive, query in corso, kill e cancel | P2 | D |
+| ✅ **Lock manager**: blocchi e catene di attesa | P2 | D |
 | Backup e restore con `pg_dump`/`pg_restore` e `mysqldump`, con avanzamento | P2 | D |
 | Manutenzione: VACUUM, ANALYZE, REINDEX, OPTIMIZE e CHECK TABLE dal menu | P2 | D+ |
 | Utenti, ruoli e permessi (GRANT/REVOKE da form) | P3 | D |

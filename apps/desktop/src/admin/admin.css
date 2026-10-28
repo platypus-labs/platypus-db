@@ -1,0 +1,328 @@
+/* Admin tab: the server's sessions and locks. */
+
+.admin-interval {
+  font-size: 12px;
+}
+
+.admin-error {
+  margin: 8px 14px 0;
+}
+
+.admin-body {
+  gap: 10px;
+}
+
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-toolbar input[type="search"] {
+  width: 300px;
+}
+
+/* The counts by activity, which filter the list. */
+.admin-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.admin-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+}
+
+.admin-filter strong {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-filter.active {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.admin-filter:disabled {
+  opacity: 0.5;
+}
+
+/* What a session is doing: a dot and a word, in the theme's state colors. */
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  background: var(--bg-input);
+}
+
+.admin-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fg-muted);
+  flex: none;
+}
+
+.admin-badge.running {
+  color: var(--ok);
+  background: var(--ok-bg);
+}
+
+.admin-badge.transaction {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.admin-badge.waiting {
+  color: var(--error);
+  background: var(--error-bg);
+}
+
+.admin-badge.running .admin-dot,
+.admin-filter.running .admin-dot {
+  background: var(--ok);
+}
+
+.admin-badge.transaction .admin-dot,
+.admin-filter.transaction .admin-dot {
+  background: var(--warn);
+}
+
+.admin-badge.waiting .admin-dot,
+.admin-filter.waiting .admin-dot {
+  background: var(--error);
+}
+
+/* The list beside the selected session's details, as the explain tab's tree and properties. */
+.admin-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 14px;
+}
+
+.admin-list {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+.admin-table {
+  font-size: 12px;
+}
+
+.admin-table td {
+  white-space: nowrap;
+}
+
+.admin-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-session {
+  cursor: default;
+}
+
+.admin-session:hover {
+  background: var(--hover);
+}
+
+.admin-session.selected {
+  background: var(--grid-selection);
+}
+
+/* A session or lock that waits: a mark at the start of the row. */
+.admin-table tr.waiting td:first-child {
+  box-shadow: inset 2px 0 var(--error);
+}
+
+.admin-query {
+  font-family: var(--font-mono);
+  color: var(--fg-muted);
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-own {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.admin-empty {
+  margin: 8px 0;
+}
+
+.admin-details {
+  flex: none;
+  width: min(380px, 40%);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sidebar);
+  overflow: auto;
+}
+
+.admin-details.empty {
+  justify-content: center;
+  text-align: center;
+}
+
+.admin-details-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-fields {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.admin-fields > div {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+}
+
+.admin-fields dt {
+  color: var(--fg-muted);
+}
+
+.admin-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-blocked-by dd {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-statement {
+  flex: none;
+  min-height: 60px;
+  max-height: 260px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-end:not(:disabled) {
+  color: var(--error);
+}
+
+.admin-heading {
+  font-size: 13px;
+  margin: 0 0 6px;
+}
+
+/* Waiting chains: each session under the one it waits for, joined by lines. */
+.admin-chains,
+.admin-chains ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.admin-chains {
+  margin-bottom: 14px;
+}
+
+.admin-chains ul {
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--border-strong);
+}
+
+.admin-chains ul > li {
+  position: relative;
+}
+
+.admin-chains ul > li::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 14px;
+  width: 12px;
+  border-top: 1px solid var(--border-strong);
+}
+
+.admin-chain-session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0;
+  padding: 4px 8px;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sidebar);
+  color: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.admin-chain-session:hover {
+  background: var(--hover);
+}
+
+.admin-chain-id {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-chain-query {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-locks .admin-badge.held .admin-dot {
+  background: var(--fg-muted);
+}
+
+.object-sections .admin-blocked-count {
+  color: var(--error);
+  font-weight: 600;
+}

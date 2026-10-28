@@ -710,6 +710,7 @@ impl Connection for MongoConnection {
             object_ddl: true,
             multiple_databases: false,
             metadata_search: false,
+            ..Capabilities::default()
         }
     }
 
