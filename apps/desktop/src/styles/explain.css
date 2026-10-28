@@ -231,3 +231,191 @@
 .explain-suggestion code {
   font-family: var(--font-mono);
 }
+
+/* The plan as a graph: a box per step, tinted by its share of the work like the tree. */
+.explain-graph-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.explain-graph-zoom {
+  display: flex;
+  gap: 4px;
+}
+
+.explain-graph-zoom button {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.explain-graph-zoom button.active {
+  border-color: var(--accent);
+}
+
+.explain-graph {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sidebar);
+}
+
+.explain-edge {
+  fill: none;
+  stroke: var(--border-strong);
+}
+
+.explain-box {
+  cursor: default;
+}
+
+.explain-box rect {
+  fill: color-mix(in srgb, var(--error) calc(var(--heat, 0%) * 0.6), var(--bg));
+  stroke: var(--border-strong);
+}
+
+.explain-box:hover rect {
+  stroke: var(--fg-muted);
+}
+
+.explain-box.selected rect {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.explain-box text {
+  fill: var(--fg);
+  font-size: 12px;
+}
+
+.explain-box-op {
+  font-weight: 600;
+}
+
+.explain-box-detail,
+.explain-box-figures {
+  fill: var(--fg-muted) !important;
+  font-size: 11px !important;
+}
+
+.explain-box-detail {
+  font-family: var(--font-mono);
+}
+
+.explain-box-share {
+  font-size: 11px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Two plans side by side. */
+.explain-compare-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.explain-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.explain-compare-summary {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.explain-compare-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.explain-compare-summary strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.explain-compare-summary .explain-change {
+  align-self: flex-start;
+}
+
+.explain-compare-table {
+  font-size: 12px;
+}
+
+.explain-compare-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.explain-compare-table td:nth-child(-n + 2) {
+  max-width: 34vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explain-compare-table tr.changed td:nth-child(-n + 2) {
+  color: var(--warn);
+}
+
+.explain-compare-table tr.added td:nth-child(2),
+.explain-compare-table tr.removed td:nth-child(1) {
+  font-style: italic;
+}
+
+.explain-change {
+  display: inline-block;
+  min-width: 52px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-muted);
+  background: var(--bg-input);
+}
+
+.explain-change.better {
+  color: var(--ok);
+  background: var(--ok-bg);
+}
+
+.explain-change.worse {
+  color: var(--error);
+  background: var(--error-bg);
+}
+
+/* Paste or open a plan. */
+.modal.plan-dialog {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.plan-text {
+  width: 100%;
+  min-height: 260px;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre;
+}
+
+.plan-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explain-graph svg {
+  display: block;
+  margin: 0 auto;
+}
