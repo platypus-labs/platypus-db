@@ -191,11 +191,12 @@ pub(super) fn add_linked(
     let mut paths = Vec::with_capacity(files.len());
     for (name, text) in files {
         let path = dir.join(name);
+        let rel = relative(root, &path);
         if !path.exists() {
             fs::write(&path, text).map_err(|e| io(&path, &e))?;
-            links.insert(relative(root, &path), connection);
+            links.insert(rel.clone(), connection);
         }
-        paths.push(relative(root, &path));
+        paths.push(rel);
     }
     write_links(root, &links)?;
     Ok(paths)

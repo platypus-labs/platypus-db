@@ -21,8 +21,8 @@ export const ready = `${card} !== undefined`;
 
 /** Closes every tab, so the welcome screen shows again. */
 async function closeTabs(page) {
-  while (await page.eval(`document.querySelectorAll('.tab').length`) > 0) {
-    const before = await page.eval(`document.querySelectorAll('.tab').length`);
+  let before;
+  while ((before = await page.eval(`document.querySelectorAll('.tab').length`)) > 0) {
     await page.eval(`document.querySelector('.tab [aria-label="Close tab"]').click()`);
     // An edited script asks first: its changes are dropped.
     await page.waitFor(
@@ -32,6 +32,12 @@ async function closeTabs(page) {
     await page.waitFor(`document.querySelectorAll('.tab').length < ${before}`);
   }
   await page.waitFor(`${card} !== undefined`);
+}
+
+/** Clicks the welcome screen's card and waits for the first script's tab. */
+async function openSample(page) {
+  await page.eval(`${card}.click()`);
+  await page.waitFor(`${tabTitles}.some(t => t.startsWith('Sightings per river.sql'))`, 30_000);
 }
 
 export default async function (page, { dir }) {
@@ -49,8 +55,7 @@ export default async function (page, { dir }) {
   await page.eval(`document.querySelector('.toast')?.click()`);
 
   // The first click: database, connection, scripts, and the first script open.
-  await page.eval(`${card}.click()`);
-  await page.waitFor(`${tabTitles}.some(t => t.startsWith('Sightings per river.sql'))`, 30_000);
+  await openSample(page);
   await page.waitFor(`${connections} === 1`);
   await page.waitFor(`${visibleTab}?.querySelector('.cm-content')?.textContent.includes('Where the platypuses are seen')`);
   assert.ok(existsSync(db), "the database is in the profile");
@@ -73,16 +78,14 @@ export default async function (page, { dir }) {
   // A script the user changed is kept; a second click opens the same connection.
   writeFileSync(join(scripts, "Weight by sex.sql"), "-- mine");
   await closeTabs(page);
-  await page.eval(`${card}.click()`);
-  await page.waitFor(`${tabTitles}.some(t => t.startsWith('Sightings per river.sql'))`, 30_000);
+  await openSample(page);
   assert.equal(await page.eval(connections), 1, "one sample connection");
   assert.equal(readFileSync(join(scripts, "Weight by sex.sql"), "utf8"), "-- mine");
 
   // A script deleted by the user comes back with the next click; the others stay as they are.
   rmSync(join(scripts, "Surveys by researcher.sql"));
   await closeTabs(page);
-  await page.eval(`${card}.click()`);
-  await page.waitFor(`${tabTitles}.some(t => t.startsWith('Sightings per river.sql'))`, 30_000);
+  await openSample(page);
   assert.ok(existsSync(join(scripts, "Surveys by researcher.sql")));
   assert.equal(readFileSync(join(scripts, "Weight by sex.sql"), "utf8"), "-- mine");
 }

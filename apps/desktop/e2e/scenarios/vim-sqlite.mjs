@@ -33,6 +33,15 @@ async function keys(page, keys) {
   }
 }
 
+/** Types `command` on Vim's `:` command line and presses Enter. */
+async function exCommand(page, command) {
+  await page.eval(`${content}.focus()`);
+  await keys(page, ":");
+  await page.waitFor(`${visibleTab}.querySelector('.cm-vim-panel input') != null`);
+  await page.type(command);
+  await page.key("Enter", "Enter", 13);
+}
+
 export default async function (page, { dir }) {
   const row = `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(NAME)})`;
   await page.eval(`${row}.id = 'e2e-connection'`);
@@ -67,11 +76,7 @@ export default async function (page, { dir }) {
   assert.equal(await page.eval(status), "3 rows");
 
   // An unknown command: an error in the panel, the text unchanged.
-  await page.eval(`${content}.focus()`);
-  await keys(page, ":");
-  await page.waitFor(`${visibleTab}.querySelector('.cm-vim-panel input') != null`);
-  await page.type("nosuchcommand");
-  await page.key("Enter", "Enter", 13);
+  await exCommand(page, "nosuchcommand");
   await page.waitFor(`${visibleTab}.querySelector('.cm-vim-panel input') === null`);
   assert.match(await page.eval(mode), /Not an editor command/, "the panel says why");
   assert.equal(await page.eval(text), "SELECT name FROM t ORDER BY id;\nSELECT 'second';");
@@ -79,11 +84,7 @@ export default async function (page, { dir }) {
   // :w saves the script, as Ctrl+S: a new script asks where.
   const file = join(dir, "vim.sql");
   await answerSave(page, file);
-  await page.eval(`${content}.focus()`);
-  await keys(page, ":");
-  await page.waitFor(`${visibleTab}.querySelector('.cm-vim-panel input') != null`);
-  await page.type("w");
-  await page.key("Enter", "Enter", 13);
+  await exCommand(page, "w");
   await page.waitFor(`document.querySelector('.tab.active')?.textContent.startsWith('vim.sql')`, 10_000);
   assert.ok(existsSync(file));
   assert.equal(readFileSync(file, "utf8"), "SELECT name FROM t ORDER BY id;\nSELECT 'second';");
