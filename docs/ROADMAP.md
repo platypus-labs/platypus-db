@@ -96,7 +96,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | A — Modifica dei dati | ✅ completato |
 | B — Griglia avanzata | ✅ fatto (P1, P2; P3 in parte) |
 | C — Navigator e oggetti | ✅ completato |
-| D — Editor SQL | 🔒 Delfa · group-d-multi-run · 2026-10-28 |
+| D — Editor SQL | ✅ completato |
 | E — Explain e performance | ✅ completato |
 | F — Connettività e credenziali | ✅ fatto (P1, P2) |
 | G — Nuovi driver | ✅ fatto (P1; P2 e P3 in parte) |
