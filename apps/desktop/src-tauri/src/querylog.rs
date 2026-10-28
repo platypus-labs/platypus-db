@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use platypus_core::{
     CancelHandle, Capabilities, CatalogColumn, CatalogForeignKey, Connection, Error, ExecOptions,
-    ExecResult, Executed, Explain, MetadataMatch, ObjectMeta, ObjectRef, Property,
+    ExecResult, Executed, Explain, MetadataMatch, NextResult, ObjectMeta, ObjectRef, Property,
     RecordBatchStream, ReferencingKey, Result, SchemaMeta, ServerInfo, TableDetails,
     TransactionState,
 };
@@ -239,7 +239,7 @@ impl Connection for Logged {
                     e.rows = Some(0);
                 });
                 let schema = stream.schema();
-                let next = stream.take_next();
+                let next = tagged_next(stream.take_next(), self.inner.server_info().clone());
                 let counted = Counted {
                     inner: stream,
                     server: self.inner.server_info().clone(),
@@ -422,6 +422,26 @@ impl Connection for Logged {
     }
 }
 
+/// The results after the first of a statement, their errors naming the server as the first
+/// result's do.
+fn tagged_next(next: Option<NextResult>, server: ServerInfo) -> Option<NextResult> {
+    let next = next?;
+    Some(Box::pin(async move {
+        match next.await {
+            Err(e) => Err(e.with_server(&server)),
+            Ok(Some(ExecResult::Rows(mut stream))) => {
+                let schema = stream.schema();
+                let after = tagged_next(stream.take_next(), server.clone());
+                let rows = stream.map(move |batch| batch.map_err(|e| e.with_server(&server)));
+                Ok(Some(ExecResult::Rows(
+                    RecordBatchStream::new(schema, rows.boxed()).with_next(after),
+                )))
+            }
+            other => other,
+        }
+    }))
+}
+
 /// Rows passing through to the reader, counted into the log entry batch by batch.
 struct Counted {
     inner: RecordBatchStream,
@@ -505,6 +525,64 @@ mod tests {
                 .iter()
                 .all(|e| e.status != LogStatus::Failed)
         );
+    }
+
+    #[test]
+    fn errors_name_the_server() {
+        use platypus_core::{ConnectionConfig, Driver, DriverKind};
+
+        tauri::async_runtime::block_on(async {
+            let dir = tempfile::tempdir().unwrap();
+            let mut config = ConnectionConfig::new(DriverKind::Sqlite);
+            config.database = dir.path().join("e.db").to_string_lossy().into_owned();
+            let log = Arc::new(QueryLog::default());
+            let raw = platypus_driver_sqlite::SqliteDriver
+                .connect(&config)
+                .await
+                .unwrap();
+            let tag = format!("(SQLite {})", raw.server_info().version_number().unwrap());
+            let conn = Logged::wrap(Arc::from(raw), &log, "local");
+            let Err(e) = conn
+                .execute("SELECT * FROM missing", &ExecOptions::default())
+                .await
+            else {
+                panic!("no table");
+            };
+            assert!(e.to_string().ends_with(&tag), "{e}");
+            let executed = conn.execute_all(&["SELECT * FROM missing"], &[0]).await;
+            let error = executed.error.unwrap().to_string();
+            assert!(error.ends_with(&tag), "{error}");
+            let logged = log.page(0).entries.into_iter().last().unwrap();
+            assert!(logged.error.unwrap().ends_with(&tag), "the log says it too");
+        });
+    }
+
+    #[test]
+    fn later_results_name_the_server() {
+        use arrow_schema::Schema;
+        use futures::TryStreamExt;
+
+        tauri::async_runtime::block_on(async {
+            let server = ServerInfo {
+                product: "MySQL".to_owned(),
+                version: "8.0.36".to_owned(),
+                encrypted: false,
+            };
+            let failing: NextResult = Box::pin(async { Err(Error::Other("bad".to_owned())) });
+            let Err(e) = tagged_next(Some(failing), server.clone()).unwrap().await else {
+                panic!("an error");
+            };
+            assert_eq!(e.to_string(), "bad (MySQL 8.0.36)");
+            let rows = futures::stream::iter([Err(Error::Other("mid-read".to_owned()))]);
+            let stream = RecordBatchStream::new(Arc::new(Schema::empty()), rows.boxed());
+            let next: NextResult = Box::pin(async move { Ok(Some(ExecResult::Rows(stream))) });
+            let Ok(Some(ExecResult::Rows(stream))) = tagged_next(Some(next), server).unwrap().await
+            else {
+                panic!("rows");
+            };
+            let e = stream.try_collect::<Vec<_>>().await.unwrap_err();
+            assert_eq!(e.to_string(), "mid-read (MySQL 8.0.36)");
+        });
     }
 
     #[test]

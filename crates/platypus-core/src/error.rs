@@ -54,8 +54,12 @@ impl Error {
             Self::Unsupported(m) | Self::Other(m) | Self::Decode { message: m, .. } => m,
             _ => return self,
         };
-        if !version.is_empty() && !message.contains(&version) {
-            *message = format!("{message} ({} {version})", server.product);
+        let tag = format!("({} {version})", server.product);
+        // Named as the server writes it (`this server is 5.7.44-log`), or tagged before: the
+        // short version alone (`5.0`) could be any number of the message.
+        let named = server.version.trim();
+        if !version.is_empty() && !message.contains(&tag) && !message.contains(named) {
+            *message = format!("{message} {tag}");
         }
         self
     }
@@ -129,11 +133,27 @@ mod tests {
         let Error::Database(db) = db else { panic!() };
         assert_eq!(db.message, "Unknown column 'x' (MySQL 5.7.44)");
         assert_eq!(db.position, Some(8), "the rest stays");
-        let named = Error::Unsupported("needs 8.0.18; this server is 5.7.44".to_owned());
+        let named = Error::Unsupported("needs 8.0.18; this server is 5.7.44-log".to_owned());
         assert_eq!(
             named.with_server(&server).to_string(),
-            "unsupported: needs 8.0.18; this server is 5.7.44",
+            "unsupported: needs 8.0.18; this server is 5.7.44-log",
             "named once"
+        );
+        let twice = Error::Other("boom".to_owned())
+            .with_server(&server)
+            .with_server(&server);
+        assert_eq!(twice.to_string(), "boom (MySQL 5.7.44)", "tagged once");
+        let mongo = crate::ServerInfo {
+            product: "MongoDB".to_owned(),
+            version: "5.0.0".to_owned(),
+            encrypted: false,
+        };
+        assert_eq!(
+            Error::Other("value 5.0 is out of range".to_owned())
+                .with_server(&mongo)
+                .to_string(),
+            "value 5.0 is out of range (MongoDB 5.0)",
+            "a number of the message is not the version"
         );
         assert!(matches!(
             Error::Cancelled.with_server(&server),
