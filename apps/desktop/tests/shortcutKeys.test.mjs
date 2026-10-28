@@ -21,6 +21,10 @@ test("labels show the characters and translated key names", () => {
   assert.deepEqual(labelParts("Alt+ArrowUp"), ["Alt", "Up"]);
   const it = { Shift: "Maiusc", Enter: "Invio" };
   assert.equal(labelParts("Mod+Shift+Enter", (k) => it[k] ?? k).join("+"), "Ctrl+Maiusc+Invio");
+  // German keyboards write Ctrl as Strg, also for Mod.
+  const de = { Ctrl: "Strg", Shift: "Umschalt" };
+  assert.equal(labelParts("Mod+Shift+T", (k) => de[k] ?? k).join("+"), "Strg+Umschalt+T");
+  assert.equal(labelParts("Ctrl+Space", (k) => de[k] ?? k).join("+"), "Strg+Space");
 });
 
 test("a key that types a character needs Ctrl or Alt", () => {
