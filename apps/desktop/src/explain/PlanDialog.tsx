@@ -80,13 +80,20 @@ export function PlanDialog({
           onChange={(e) => {
             setText(e.target.value);
             setFile(null);
+            setError(null);
           }}
           aria-label={t("Query plan")}
         />
         <div className="row">
           <label className="field grow">
             <span>{t("Database")}</span>
-            <select value={source} onChange={(e) => setSource(e.target.value as PlanSource | "")}>
+            <select
+              value={source}
+              onChange={(e) => {
+                setSource(e.target.value as PlanSource | "");
+                setError(null);
+              }}
+            >
               {SOURCES.map(([value, label]) => (
                 <option key={value} value={value}>
                   {t(label)}

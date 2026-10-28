@@ -61,6 +61,8 @@ export async function pastePlan(page, text, source = "") {
   await page.waitFor(`document.querySelector('.plan-dialog textarea') !== null`);
   await setField(page, ".plan-dialog textarea", text);
   await setField(page, ".plan-dialog select", source);
+  // A new text clears the error of the last one: the next error is this one's.
+  await page.waitFor(`document.querySelector('.plan-dialog .notice.error') === null`);
   await page.waitFor(`!document.querySelector('.plan-dialog button[type=submit]').disabled`);
   await page.eval(`document.querySelector('.plan-dialog button[type=submit]').click()`);
 }

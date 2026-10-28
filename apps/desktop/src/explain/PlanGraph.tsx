@@ -1,4 +1,4 @@
-import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
+import { type CSSProperties, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PlanNode } from "../api";
 import { t } from "../i18n";
 import { stepName } from "./compare";
@@ -35,9 +35,15 @@ export function PlanGraph({
   const [zoom, setZoom] = useState<number | null>(null);
   const [fit, setFit] = useState(1);
   const view = useRef<HTMLDivElement>(null);
-  const layout = layoutPlan(root);
-  const at = new Map(layout.boxes.map((b) => [b.path, b]));
-  const most = Math.max(1, ...layout.boxes.map((b) => flow(b.node)));
+  // Laid out once a plan: a click or a resize does not walk it again.
+  const { layout, at, most } = useMemo(() => {
+    const layout = layoutPlan(root);
+    return {
+      layout,
+      at: new Map(layout.boxes.map((b) => [b.path, b])),
+      most: layout.boxes.reduce((m, b) => Math.max(m, flow(b.node)), 1),
+    };
+  }, [root]);
   const pad = 12;
   const scale = zoom ?? fit;
   const top = at.get("0");
