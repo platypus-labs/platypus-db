@@ -88,7 +88,9 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 | Any ODBC driver or DSN (Windows) | the system's ODBC driver manager | A DSN, or a driver and its connection string |
 
 The versions in the table are the oldest the conformance suite runs on; an older server still
-connects, with a message that some features may not work.
+connects, with a message that some features may not work. Errors name the server they come from,
+e.g. `Unknown column 'x' in 'field list' (MySQL 5.7.44)`, since the reason often depends on
+the version.
 
 The ADBC drivers come from the [dbc driver registry](https://docs.columnar.tech/dbc/) (Columnar):
 the first connection that needs one asks to download it, checks its SHA-256 and keeps it with
