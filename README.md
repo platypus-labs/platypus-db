@@ -227,8 +227,12 @@ and shows the ODBC drivers and data sources of the system.
 - **Copy** with headers or as CSV, JSON, Markdown, HTML, SQL `INSERT` or an `IN` list.
 - **Find** in the loaded rows (`Ctrl+F`).
 - **Value panel** (`F7`): long text, JSON and XML formatted, hex and images from binary
-  columns, save to file.
+  columns, save to file. JSON in a text column opens indented too, unless the connection's
+  *Format JSON found in text columns* is off.
 - Columns hidden, pinned, moved and resized, with the layout kept per table.
+- **Conditional formatting** (grid menu): rules color a cell or the whole row when a column
+  is equal to a value, contains it, falls in a range or is NULL, or spread a color scale over
+  a number column; the first rule that matches wins. A table keeps its rules.
 - Totals of the selection (count, sum, average, minimum, maximum), a record view of one row
   at a time, counts by value, statistics of the selection, and two rows compared column by
   column.
