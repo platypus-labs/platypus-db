@@ -82,6 +82,20 @@ export interface AgentSetup {
   codex_config: string;
 }
 
+/** Why agents cannot open a connection their access lets them use: it asks for its password
+ *  at each connection, or its password is behind the master password. */
+export type AgentBlocker = "asks_password" | "locked";
+
+/** An agent registration that still starts `platypus-mcp`, the server earlier versions
+ *  installed beside the app. */
+export interface StaleRegistration {
+  agent: "Claude Code" | "Codex";
+  name: string;
+  command: string;
+  /** The project folder of a Claude Code registration local to a project. */
+  project: string | null;
+}
+
 export interface SavedInit {
   schema: string | null;
   time_zone: string | null;
@@ -1179,6 +1193,8 @@ export const api = {
   logError: (message: string) => invoke<void>("log_error", { message }),
   saveDiagnostics: (path: string) => invoke<void>("save_diagnostics", { path }),
   agentSetup: () => invoke<AgentSetup>("agent_setup"),
+  agentBlockers: () => invoke<Record<string, AgentBlocker>>("agent_blockers"),
+  staleAgentRegistrations: () => invoke<StaleRegistration[]>("stale_agent_registrations"),
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
   defaultConnection: (driver: DriverKind) =>
     invoke<SavedConnection>("default_connection", { driver }),

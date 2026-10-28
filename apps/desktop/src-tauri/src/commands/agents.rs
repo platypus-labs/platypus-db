@@ -1,17 +1,25 @@
 //! Setting external agents up: the commands that register the app, started with `--mcp`, as
 //! an MCP server with Claude Code and Codex.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
+use platypus_mcp::AgentBlocker;
 use platypus_store::toml;
 use serde::Serialize;
+use tauri::State;
+use uuid::Uuid;
 
+use super::{AppState, lock};
 use crate::MCP_FLAG;
 use crate::error::{CommandError, CommandResult};
 
 /// The environment variable that moves the profile, passed on to the server when the app
 /// uses one.
 const DATA_DIR_ENV: &str = "PLATYPUS_DATA_DIR";
+
+/// The MCP server earlier versions installed beside the app, before `--mcp`.
+const OLD_SERVER: &str = "platypus-mcp";
 
 #[derive(Debug, Serialize)]
 pub struct AgentSetup {
@@ -75,6 +83,116 @@ pub fn agent_setup() -> CommandResult<AgentSetup> {
     ))
 }
 
+/// Why agents cannot open each connection that has a reason (see
+/// [`platypus_mcp::agent_blocker`]), by connection id.
+#[tauri::command]
+pub fn agent_blockers(state: State<'_, AppState>) -> CommandResult<HashMap<Uuid, AgentBlocker>> {
+    let vault = lock(&state.vault).is_some();
+    state.with_store(|store| {
+        Ok(store
+            .list()
+            .iter()
+            .filter_map(|saved| {
+                platypus_mcp::agent_blocker(&store.effective(saved), vault)
+                    .map(|blocker| (saved.id, blocker))
+            })
+            .collect())
+    })
+}
+
+/// An agent registration that still starts `platypus-mcp`, the server earlier versions
+/// installed beside the app: the installer removes it, so the registration is stale.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct StaleRegistration {
+    /// `Claude Code` or `Codex`.
+    agent: &'static str,
+    /// The server's name in the agent's configuration.
+    name: String,
+    /// The program it starts.
+    command: String,
+    /// The project folder of a Claude Code registration local to a project.
+    project: Option<String>,
+}
+
+/// Whether `command` is an old `platypus-mcp` server, a Windows or a Unix path.
+fn is_old_server(command: &str) -> bool {
+    let file = command.rsplit(['/', '\\']).next().unwrap_or(command);
+    let file = file.to_ascii_lowercase();
+    file.strip_suffix(".exe").unwrap_or(&file) == OLD_SERVER
+}
+
+/// The registrations in Claude Code's `~/.claude.json`: user ones at the top, local ones
+/// under each project.
+fn claude_stale(config: &serde_json::Value) -> Vec<StaleRegistration> {
+    let servers = |value: &serde_json::Value, project: Option<&str>| {
+        value
+            .get("mcpServers")
+            .and_then(serde_json::Value::as_object)
+            .into_iter()
+            .flatten()
+            .filter_map(move |(name, server)| {
+                let command = server.get("command")?.as_str()?;
+                is_old_server(command).then(|| StaleRegistration {
+                    agent: "Claude Code",
+                    name: name.clone(),
+                    command: command.to_owned(),
+                    project: project.map(str::to_owned),
+                })
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut stale = servers(config, None);
+    if let Some(projects) = config
+        .get("projects")
+        .and_then(serde_json::Value::as_object)
+    {
+        for (path, project) in projects {
+            stale.extend(servers(project, Some(path)));
+        }
+    }
+    stale
+}
+
+/// The registrations in Codex's `~/.codex/config.toml`.
+fn codex_stale(config: &toml::Table) -> Vec<StaleRegistration> {
+    config
+        .get("mcp_servers")
+        .and_then(toml::Value::as_table)
+        .into_iter()
+        .flatten()
+        .filter_map(|(name, server)| {
+            let command = server.get("command")?.as_str()?;
+            is_old_server(command).then(|| StaleRegistration {
+                agent: "Codex",
+                name: name.clone(),
+                command: command.to_owned(),
+                project: None,
+            })
+        })
+        .collect()
+}
+
+/// The agent registrations that still start the old `platypus-mcp`: they must be added
+/// again with the command the Agents page shows.
+#[tauri::command]
+pub fn stale_agent_registrations() -> Vec<StaleRegistration> {
+    let Some(home) = std::env::home_dir() else {
+        return Vec::new();
+    };
+    let mut stale = std::fs::read_to_string(home.join(".claude.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .map(|config| claude_stale(&config))
+        .unwrap_or_default();
+    if let Some(config) = std::fs::read_to_string(home.join(".codex").join("config.toml"))
+        .ok()
+        .and_then(|text| toml::from_str(&text).ok())
+    {
+        stale.extend(codex_stale(&config));
+    }
+    stale
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,5 +225,35 @@ mod tests {
             "{}",
             setup.codex_config
         );
+    }
+
+    #[test]
+    fn finds_registrations_of_the_old_server() {
+        let claude = serde_json::json!({
+            "mcpServers": {
+                "platypus": { "command": r"C:\Users\a\AppData\Local\PlatypusDB\platypus-mcp.exe" },
+                "other": { "command": "npx" },
+            },
+            "projects": {
+                r"D:\work": { "mcpServers": {
+                    "db": { "command": "/opt/platypus/platypus-mcp" },
+                    "new": { "command": "platypus-db", "args": ["--mcp"] },
+                }},
+            },
+        });
+        let stale = claude_stale(&claude);
+        assert_eq!(stale.len(), 2, "{stale:?}");
+        assert_eq!(stale[0].name, "platypus");
+        assert_eq!(stale[0].project, None);
+        assert_eq!(stale[1].project.as_deref(), Some(r"D:\work"));
+        let codex: toml::Table = toml::from_str(
+            "[mcp_servers.platypus]\ncommand = 'C:/PlatypusDB/platypus-mcp.exe'\n\
+             [mcp_servers.ok]\ncommand = 'C:/PlatypusDB/platypus-db.exe'\nargs = ['--mcp']\n",
+        )
+        .unwrap();
+        let stale = codex_stale(&codex);
+        assert_eq!(stale.len(), 1);
+        assert_eq!(stale[0].agent, "Codex");
+        assert!(claude_stale(&serde_json::json!({})).is_empty());
     }
 }

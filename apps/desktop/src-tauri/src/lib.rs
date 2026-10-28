@@ -182,6 +182,8 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         commands::app_info,
         commands::agents::agent_setup,
+        commands::agents::agent_blockers,
+        commands::agents::stale_agent_registrations,
         commands::diagnostics::diagnostics_info,
         commands::diagnostics::dismiss_crash,
         commands::diagnostics::log_error,

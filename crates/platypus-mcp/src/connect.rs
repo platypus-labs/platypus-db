@@ -48,6 +48,39 @@ pub async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, E
     .await
 }
 
+/// Why agents cannot open a saved connection, though their access lets them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentBlocker {
+    /// It asks for its password at each connection, which agents cannot type.
+    AsksPassword,
+    /// Its password (or an SSH password) is saved behind the master password.
+    Locked,
+}
+
+/// What stops agents from opening `effective` (the connection with its network profile in
+/// place), `vault` telling whether the master password is on: the same reasons
+/// [`open`] fails for.
+#[must_use]
+pub fn agent_blocker(effective: &SavedConnection, vault: bool) -> Option<AgentBlocker> {
+    if effective.driver.is_embedded() {
+        return None;
+    }
+    if effective.password_command.is_none() && !effective.pgpass {
+        if effective.asks_password() {
+            return Some(AgentBlocker::AsksPassword);
+        }
+        if vault {
+            return Some(AgentBlocker::Locked);
+        }
+    }
+    let ssh_password = effective
+        .ssh
+        .as_ref()
+        .is_some_and(|ssh| ssh.chain().any(|h| h.auth == SshAuthKind::Password));
+    (vault && ssh_password).then_some(AgentBlocker::Locked)
+}
+
 /// A store error about `name`'s secrets, with the locked vault said plainly.
 fn secret_error(name: &str, e: StoreError) -> AgentError {
     match e {
@@ -219,6 +252,34 @@ mod tests {
 
     fn store(dir: &std::path::Path, secrets: Arc<dyn SecretStore>) -> ConnectionStore {
         ConnectionStore::open(dir.join("connections.toml"), secrets).unwrap()
+    }
+
+    #[test]
+    fn says_why_agents_cannot_open_a_connection() {
+        let mut pg = SavedConnection::new("PG", DriverKind::Postgres);
+        pg.save_password = true;
+        assert_eq!(agent_blocker(&pg, false), None);
+        assert_eq!(agent_blocker(&pg, true), Some(AgentBlocker::Locked));
+        pg.password_command = Some("pass show pg".to_owned());
+        assert_eq!(agent_blocker(&pg, true), None);
+        pg.password_command = None;
+        pg.save_password = false;
+        assert_eq!(agent_blocker(&pg, false), Some(AgentBlocker::AsksPassword));
+        pg.pgpass = true;
+        assert_eq!(agent_blocker(&pg, true), None);
+        pg.ssh = Some(SavedSsh {
+            host: "bastion".into(),
+            port: 22,
+            user: "ops".into(),
+            auth: SshAuthKind::Password,
+            key_path: None,
+            secret_id: Uuid::new_v4(),
+            jump: None,
+        });
+        assert_eq!(agent_blocker(&pg, true), Some(AgentBlocker::Locked));
+        assert_eq!(agent_blocker(&pg, false), None);
+        let lite = SavedConnection::new("Lite", DriverKind::Sqlite);
+        assert_eq!(agent_blocker(&lite, true), None);
     }
 
     #[test]
