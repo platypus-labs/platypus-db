@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use platypus_core::{
     Connection, EndSession, ExecOptions, Result, ServerLock, ServerSession, TextRowExt,
-    query_locks, query_text, session_number,
+    query_locks, query_text, refuse_own_session, session_number,
 };
 
 /// The client sessions, the one asking first; the server's own threads left out.
@@ -56,14 +56,20 @@ fn mariadb(conn: &dyn Connection) -> bool {
 
 pub(crate) async fn sessions(conn: &dyn Connection) -> Result<Vec<ServerSession>> {
     let rows = query_text(conn, SESSIONS).await?;
-    // Seeing other sessions' locks needs the PROCESS privilege: without it, no waits.
-    let waits = if mariadb(conn) {
-        MARIADB_WAITS
+    // MySQL 5.7 has MariaDB's table, not `data_lock_waits`. Seeing other sessions' locks
+    // needs PROCESS (and `performance_schema`): without it the list has no waits, and the
+    // Locks view tells why.
+    let (first, second) = if mariadb(conn) {
+        (MARIADB_WAITS, MYSQL_WAITS)
     } else {
-        MYSQL_WAITS
+        (MYSQL_WAITS, MARIADB_WAITS)
+    };
+    let waits = match query_text(conn, first).await {
+        Ok(waits) => waits,
+        Err(_) => query_text(conn, second).await.unwrap_or_default(),
     };
     let mut blockers: HashMap<String, Vec<String>> = HashMap::new();
-    for wait in query_text(conn, waits).await.unwrap_or_default() {
+    for wait in waits {
         let blocking = blockers.entry(wait.text(0)).or_default();
         if !blocking.contains(&wait.text(1)) {
             blocking.push(wait.text(1));
@@ -89,18 +95,25 @@ pub(crate) async fn sessions(conn: &dyn Connection) -> Result<Vec<ServerSession>
 }
 
 pub(crate) async fn locks(conn: &dyn Connection) -> Result<Vec<ServerLock>> {
-    let sql = if mariadb(conn) {
-        MARIADB_LOCKS
+    let (first, second) = if mariadb(conn) {
+        (MARIADB_LOCKS, MYSQL_LOCKS)
     } else {
-        MYSQL_LOCKS
+        (MYSQL_LOCKS, MARIADB_LOCKS)
     };
-    let mut locks = query_locks(conn, sql).await?;
-    locks.sort_by(|a, b| (a.granted, &a.session).cmp(&(b.granted, &b.session)));
+    // MySQL 5.7 has MariaDB's tables; the error told is that of the server's own.
+    let mut locks = match query_locks(conn, first).await {
+        Ok(locks) => locks,
+        Err(e) => query_locks(conn, second).await.map_err(|_| e)?,
+    };
+    // By id as a number, as the other servers sort theirs.
+    let number = |l: &ServerLock| l.session.parse::<u64>().unwrap_or(u64::MAX);
+    locks.sort_by_key(|l| (l.granted, number(l)));
     Ok(locks)
 }
 
 pub(crate) async fn end(conn: &dyn Connection, id: &str, how: EndSession) -> Result<()> {
     let id = session_number(id)?;
+    refuse_own_session(conn, "SELECT CONNECTION_ID()", id).await?;
     let sql = match how {
         EndSession::Cancel => format!("KILL QUERY {id}"),
         EndSession::Terminate => format!("KILL CONNECTION {id}"),

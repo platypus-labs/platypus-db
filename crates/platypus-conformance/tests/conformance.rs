@@ -1513,6 +1513,18 @@ async fn lists_and_ends_server_sessions() {
             "{}",
             b.name
         );
+        // The session asking is refused, and stays.
+        let own = own_session(&b, &*admin).await;
+        assert!(
+            admin
+                .end_server_session(&own, EndSession::Terminate)
+                .await
+                .is_err(),
+            "{}: ended itself",
+            b.name
+        );
+        let rows = collect(&b, &*admin, "SELECT 1").await;
+        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("1"), "{}", b.name);
     }
 }
 

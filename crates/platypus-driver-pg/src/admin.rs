@@ -2,7 +2,7 @@
 
 use platypus_core::{
     Connection, EndSession, Error, Result, ServerLock, ServerSession, TextRowExt, query_locks,
-    query_text, session_number,
+    query_text, refuse_own_session, session_number,
 };
 
 /// The client sessions, the one asking first; background workers left out.
@@ -11,7 +11,7 @@ const SESSIONS: &str = "SELECT pid::text, usename, datname, \
      application_name, state, to_char(backend_start, 'YYYY-MM-DD HH24:MI:SS'), query, \
      CASE WHEN state = 'active' \
           THEN extract(epoch FROM clock_timestamp() - query_start)::float8 END, \
-     wait_event_type || ':' || wait_event, \
+     CASE WHEN state = 'active' THEN wait_event_type || ':' || wait_event END, \
      array_to_string(pg_blocking_pids(pid), ','), pid = pg_backend_pid() \
      FROM pg_stat_activity WHERE backend_type = 'client backend' \
      ORDER BY pid = pg_backend_pid() DESC, pid";
@@ -55,6 +55,7 @@ pub(crate) async fn locks(conn: &dyn Connection) -> Result<Vec<ServerLock>> {
 
 pub(crate) async fn end(conn: &dyn Connection, id: &str, how: EndSession) -> Result<()> {
     let pid = session_number(id)?;
+    refuse_own_session(conn, "SELECT pg_backend_pid()", pid).await?;
     let function = match how {
         EndSession::Cancel => "pg_cancel_backend",
         EndSession::Terminate => "pg_terminate_backend",

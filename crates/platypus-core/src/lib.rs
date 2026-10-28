@@ -16,7 +16,9 @@ mod metadata;
 pub mod special;
 mod transaction;
 
-pub use admin::{EndSession, ServerLock, ServerSession, query_locks, session_number};
+pub use admin::{
+    EndSession, ServerLock, ServerSession, query_locks, refuse_own_session, session_number,
+};
 pub use capabilities::{Capabilities, ObjectRef, unsupported};
 pub use config::{
     Bridge, ConnectionConfig, DriverKind, JdbcUrl, ParseNote, ParsedConnection, Secret, SshAuth,

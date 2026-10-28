@@ -88,6 +88,22 @@ pub async fn query_locks(conn: &dyn Connection, sql: &str) -> Result<Vec<ServerL
         .collect())
 }
 
+/// Refuses session `id` when it is the one asking, whose id `own` reads: ending it would
+/// close the connection that asks, or cancel the very statement.
+///
+/// # Errors
+/// When `id` is the session asking, or `own` fails.
+pub async fn refuse_own_session(conn: &dyn Connection, own: &str, id: u64) -> Result<()> {
+    let rows = query_text(conn, own).await?;
+    if rows.first().and_then(|r| r.number(0)) == Some(id) {
+        Err(Error::Other(format!(
+            "session {id} is the one asking: it cannot end itself"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
 /// `id` as the number every server's ids are, refused otherwise: it goes into the SQL.
 ///
 /// # Errors
