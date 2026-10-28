@@ -16,6 +16,7 @@ import type { TabBase, TabProps } from "../tabs/registry";
 import { Icon, objectIcon } from "../ui/Icon";
 import { workbench } from "../workbench";
 import { t, msg } from "../i18n";
+import { translateWarning } from "../schema/warnings";
 
 export type TableEditorSection = "columns" | "indexes" | "foreign_keys" | "constraints" | "sql";
 
@@ -448,7 +449,7 @@ function ScriptView({ preview }: { preview: Preview | null }) {
     <>
       {preview.script.warnings.map((w) => (
         <div key={w} className="notice warn small">
-          {w}
+          {translateWarning(w)}
         </div>
       ))}
       <pre className="sql-preview">{preview.sql || t("No changes.")}</pre>

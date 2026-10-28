@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type SavedConnection, type SchemaMeta, toCommandError } from "../api";
 import { workbench } from "../workbench";
 import { t } from "../i18n";
+import { translateWarning } from "./warnings";
 
 interface Props {
   connection: SavedConnection;
@@ -35,7 +36,9 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
         if (sid === null) return;
         const all = (await api.listSchemas(sid)).filter((s) => !sameConnection || s.name !== schema);
         setSchemas(all);
-        setTargetSchema((all.find((s) => s.name === schema) ?? all.find((s) => s.current) ?? all[0])?.name ?? "");
+        // On the same connection no schema is taken for the user: the current one would be
+        // made like this one, its other tables dropped.
+        setTargetSchema(sameConnection ? "" : ((all.find((s) => s.name === schema) ?? all.find((s) => s.current) ?? all[0])?.name ?? ""));
       })
       .catch((e) => setError(toCommandError(e).message));
   }, [target.id]);
@@ -43,13 +46,14 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
   async function compare() {
     setBusy(true);
     setError(null);
+    setSame(false);
     try {
       const source = await workbench().sideSession(connection, database);
       const to = await workbench().sideSession(target, targetDatabase);
       if (source === null || to === null) return;
       const { script, sql } = await api.compareSchemas(source, schema, to, targetSchema);
       if (script.statements.length === 0) return setSame(true);
-      const notes = script.warnings.map((w) => `-- ${w}\n`).join("");
+      const notes = script.warnings.map((w) => `-- ${translateWarning(w)}\n`).join("");
       const head = `-- ${t("Makes {target} like {source}", { target: `${target.name} · ${targetSchema}`, source: `${connection.name} · ${schema}` })}\n`;
       workbench().openTab("query", target.id, { sql: `${head}${notes}${sql}`, database: targetDatabase });
       onClose();
@@ -80,7 +84,19 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
           </label>
           <label className="field">
             <span>{t("Schema")}</span>
-            <select value={targetSchema} disabled={busy} onChange={(e) => setTargetSchema(e.target.value)}>
+            <select
+              value={targetSchema}
+              disabled={busy}
+              onChange={(e) => {
+                setTargetSchema(e.target.value);
+                setSame(false);
+              }}
+            >
+              {targetSchema === "" && schemas.length > 0 && (
+                <option value="" disabled>
+                  {t("Choose a schema")}
+                </option>
+              )}
               {schemas.map((s) => (
                 <option key={s.name}>{s.name}</option>
               ))}

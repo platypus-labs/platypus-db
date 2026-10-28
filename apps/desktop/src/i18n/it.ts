@@ -1542,6 +1542,16 @@ const it: Record<string, string> = {
   "Compare": "Confronta",
   "Could not be read": "Non leggibile",
   "Could not read {tables}: {error}": "Impossibile leggere {tables}: {error}",
+  "{database} runs each statement by itself: if one fails, the ones before it stay applied.": "{database} esegue ogni istruzione a sé: se una fallisce, quelle prima restano applicate.",
+  "{database} cannot make these changes in place: the table is created again and its rows copied.": "{database} non può fare queste modifiche sul posto: la tabella viene ricreata e le sue righe copiate.",
+  "Index {index} is on an expression: create it again by hand.": "L'indice {index} è su un'espressione: va ricreato a mano.",
+  "Its triggers are created again as they were: check those that use a renamed or dropped column.": "I suoi trigger vengono ricreati com'erano: controllare quelli che usano una colonna rinominata o eliminata.",
+  "Its triggers are created again.": "I suoi trigger vengono ricreati.",
+  "The primary key has no known name: drop it by hand.": "La chiave primaria non ha un nome noto: va eliminata a mano.",
+  "SQLite has no table comments: it is not saved.": "SQLite non ha commenti sulle tabelle: non viene salvato.",
+  "SQLite has no column comments: they are not saved.": "SQLite non ha commenti sulle colonne: non vengono salvati.",
+  "Drops the table {table}: its rows are lost.": "Elimina la tabella {table}: le sue righe vanno perse.",
+  "Choose a schema": "Scegli uno schema",
 };
 
 export default it;
