@@ -3,15 +3,15 @@
 import { Fragment, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { api, type ColumnInfo, type ColumnProfile } from "../api";
 import type { HeaderHover } from "../grid/DataGrid";
-import { language, t } from "../i18n";
+import { locale, t } from "../i18n";
 
 /** How long the mouse rests on a header before the box shows. */
 const DELAY_MS = 500;
 /** The box's width, to keep it inside the grid. */
 const WIDTH = 300;
 /** Counts and shares as the interface language writes them, not the system. */
-const count = (n: number) => n.toLocaleString(language());
-const percent = (n: number) => n.toLocaleString(language(), { style: "percent", maximumFractionDigits: 1 });
+const count = (n: number) => n.toLocaleString(locale());
+const percent = (n: number) => n.toLocaleString(locale(), { style: "percent", maximumFractionDigits: 1 });
 
 /** The profile of the column whose header the mouse rests on, cached by result, column and
  *  rows loaded: more rows compute it again. */
