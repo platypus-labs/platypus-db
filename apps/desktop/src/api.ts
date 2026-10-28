@@ -404,6 +404,63 @@ export interface SqlAnalysis {
   batches: { first: number; end: number; repeat: number }[];
 }
 
+export type HistoryStatus = "ok" | "error" | "cancelled";
+
+/** A call an agent made to one of the MCP server's tools. */
+export interface AgentCall {
+  id: number;
+  /** The server's run it belongs to. */
+  session: string;
+  agent: string;
+  tool: string;
+  connection: string | null;
+  /** The arguments, as JSON text. */
+  arguments: string;
+  /** Unix epoch milliseconds. */
+  started_at: number;
+  duration_ms: number;
+  status: HistoryStatus;
+  error: string | null;
+}
+
+export interface AgentCallQuery {
+  text: string | null;
+  session: string | null;
+  status: HistoryStatus | null;
+  before_id: number | null;
+  limit: number;
+}
+
+/** A run of the MCP server, with how many calls it answered. */
+export interface AgentSession {
+  session: string;
+  agent: string;
+  first_at: number;
+  last_at: number;
+  calls: number;
+  errors: number;
+}
+
+export type AgentInstallState = "missing" | "installed" | "different" | "unreadable";
+
+/** An MCP client PlatypusDB can be installed in. */
+export interface AgentClient {
+  id: string;
+  name: string;
+  /** Its configuration file. */
+  path: string;
+  format: "json" | "toml";
+  exists: boolean;
+  state: AgentInstallState;
+  /** The entry to add by hand, in the file's format. */
+  snippet: string;
+}
+
+export interface InstalledClient {
+  path: string;
+  backup: string | null;
+}
+
 export interface HistoryEntry {
   id: number;
   connection_id: string;
@@ -412,7 +469,7 @@ export interface HistoryEntry {
   started_at: number;
   duration_ms: number;
   rows: number | null;
-  status: "ok" | "error" | "cancelled";
+  status: HistoryStatus;
   error: string | null;
   /** The agent that ran it, e.g. `claude-code`; `null` when run in the app. */
   origin: string | null;
@@ -1197,6 +1254,12 @@ export const api = {
   agentSetup: () => invoke<AgentSetup>("agent_setup"),
   agentBlockers: () => invoke<Record<string, AgentBlocker>>("agent_blockers"),
   staleAgentRegistrations: () => invoke<StaleRegistration[]>("stale_agent_registrations"),
+  agentClients: () => invoke<AgentClient[]>("agent_clients"),
+  installAgentClient: (id: string) => invoke<InstalledClient>("install_agent_client", { id }),
+  agentCalls: (query: AgentCallQuery) => invoke<AgentCall[]>("agent_calls", { query }),
+  agentSessions: (limit: number) => invoke<AgentSession[]>("agent_sessions", { limit }),
+  agentCallsExport: (query: AgentCallQuery) => invoke<string>("agent_calls_export", { query }),
+  clearAgentCalls: () => invoke<void>("clear_agent_calls"),
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
   defaultConnection: (driver: DriverKind) =>
     invoke<SavedConnection>("default_connection", { driver }),
