@@ -53,7 +53,8 @@ where
     while let Some(packet) = stream.try_next().await? {
         let is_last = packet.is_last();
         let (_, payload) = packet.into_parts();
-        buf.extend(payload);
+        // PlatypusDB: a copy of the whole payload, not a byte at a time.
+        buf.extend_from_slice(&payload);
 
         if is_last {
             break;

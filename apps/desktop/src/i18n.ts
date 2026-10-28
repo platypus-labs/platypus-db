@@ -52,10 +52,17 @@ export function tNodes(text: string, nodes: Record<string, ReactNode>): ReactNod
     .map((part, i) => createElement(Fragment, { key: i }, i % 2 ? (nodes[part] ?? `{${part}}`) : part));
 }
 
+const countFormats = new Map<string, Intl.NumberFormat>();
+
 /** A count grouped as the interface's language writes it ("1,500" in English, "1500" and
  *  "100.000" in Italian), not as the operating system's does. */
 export function formatCount(n: number): string {
-  return n.toLocaleString(language() === "it" ? "it-IT" : "en-US");
+  const locale = language() === "it" ? "it-IT" : "en-US";
+  // One formatter per language: `toLocaleString` builds one at every call, ~40 µs, which a
+  // navigator of 10,000 tables pays at every render.
+  let format = countFormats.get(locale);
+  if (!format) countFormats.set(locale, (format = new Intl.NumberFormat(locale)));
+  return format.format(n);
 }
 
 /** `one` or `many` by `n`, translated, with `{n}` replaced: `plural(n, "{n} row", "{n} rows")`. */

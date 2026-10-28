@@ -11,7 +11,9 @@
 # - `QueryStream::rows_affected` sums the row counts of the statements without results;
 # - `Column::precision`, `Column::scale` and `Column::max_length` describe the column type;
 # - the encryption negotiation follows the table of [MS-TDS], with an error instead of a
-#   panic when client and server cannot agree.
+#   panic when client and server cannot agree;
+# - `max` values (`varchar(max)`, `varbinary(max)`) are read a chunk at a time, and packets
+#   copied whole, not a byte at a time.
 [package]
 edition = "2021"
 name = "tiberius"

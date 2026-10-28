@@ -156,6 +156,8 @@ and shows the ODBC drivers and data sources of the system.
 - Estimated rows and sizes of tables and indexes.
 - Bookmarks, per-connection filters that hide schemas or objects by name (`tmp_*`), and a
   Simple view with only tables and views.
+- Large schemas stay quick: with 10,000 tables the tree opens in a fraction of a second and
+  renders only the rows in view.
 - The tree is cached on disk: it shows at once on start, and offline. Nothing connects until
   you open it; a green dot marks the connections with an open session.
 - Generate SELECT, INSERT, UPDATE, DELETE, UPSERT or DDL; rename, truncate and drop with a
@@ -641,7 +643,8 @@ shortcuts.
 | 5M rows to Parquet | 3.2 s, 31 MB peak | streaming |
 | Installer | 5.4 MB | < 20 MB |
 
-Windows 11, Ryzen 7 9700X; details and method in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+Windows 11, Ryzen 7 9700X; details and method, the first Linux numbers and the scale tests
+(10,000 tables, a million rows, cells of tens of MB) in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Development
 
@@ -684,7 +687,8 @@ crates/
 apps/desktop/              Tauri app: React UI in src/, Rust shell in src-tauri/
 docker/                    dev databases with seed data
 samples/                   the SQLite sample database (wildlife.sql)
-scripts/                   build-windows.ps1 (installers; build-windows.cmd runs it), sample-db.mjs
+scripts/                   build-windows.ps1 (installers; build-windows.cmd runs it), sample-db.mjs,
+                           bench.py (benchmarks with thresholds), clean-target.mjs
 vendor/                    tiberius, patched for the SQL Server driver
 site/                      static presentation page
 ```
@@ -722,6 +726,16 @@ cargo run -p platypus-cli -- query -u sqlite:///C:/data/app.db "select * from sq
 cargo run -p platypus-cli -- query -u duckdb:///C:/data/app.duckdb "select * from duckdb_tables()"
 cargo run -p platypus-cli -- query -u clickhouse://platypus:platypus@localhost:58123/platypus "select * from system.tables"
 cargo run -p platypus-cli -- query -u "libsql://my-db-acme.turso.io?authToken=$TURSO_TOKEN" "select * from sqlite_master"
+
+# scale: 10,000 tables, a million rows to files, cells of tens of MB (prints the timings)
+cargo test -p platypus-conformance --test scale -- --nocapture
+
+# benchmarks with thresholds (scripts/bench-thresholds.json); `app` needs an X display on Linux
+cargo bench -p platypus-driver-pg --bench decode && python3 scripts/bench.py decode
+xvfb-run -a -s "-screen 0 1600x1000x24" python3 scripts/bench.py app target/release/platypus-db
+
+# frees the space `target` gathers: incremental caches, builds unused for 7 days (--days N)
+node scripts/clean-target.mjs
 
 # MCP server for agents on its own, for development (the app serves it with --mcp)
 cargo build --release -p platypus-mcp
