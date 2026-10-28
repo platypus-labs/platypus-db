@@ -30,7 +30,8 @@ pub use connection::{
 };
 pub use error::{DbError, Error, Result, without_repeats};
 pub use explain::{
-    Explain, ExplainFormat, FullScan, LARGE_SCAN_ROWS, PlanNode, explain_document, plan_from_text,
+    Explain, ExplainFormat, FullScan, LARGE_SCAN_ROWS, PlanNode, explain_document, plain_plan,
+    plan_from_text, step_figures,
 };
 pub use init::{SessionInit, run_init};
 pub use metadata::{
