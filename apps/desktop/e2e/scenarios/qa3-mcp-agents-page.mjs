@@ -1,9 +1,9 @@
 // QA3 MCP from the app's side: the user opens Settings > Agents, copies the Claude Code
-// command and the Codex table, and an MCP client started exactly as they say (path and
-// PLATYPUS_DATA_DIR taken from the copied text) sees the connections and the access the
-// page shows. The user then turns a connection's agent access off and later to read and
-// write in the connection dialog: the running server follows at the next call, the page
-// shows the new access, and a row the agent inserts is what the app's editor reads.
+// command and the Codex table, and an MCP client started exactly as they say (the app with
+// --mcp, path and PLATYPUS_DATA_DIR taken from the copied text) sees the connections and
+// the access the page shows. The user then turns a connection's agent access off and later
+// to read and write in the connection dialog: the running server follows at the next call,
+// the page shows the new access, and a row the agent inserts is what the app's editor reads.
 //
 // BUG QA3-MCP-08 (low): the Agents page lists as usable connections that agents cannot
 // use: one that asks for its password at each connection (no saved password, no command,
@@ -18,9 +18,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
 import { openEditor, runOrGuard } from "../qa-safe-db.mjs";
-import { noMcp, sqliteToml, startClient } from "../qa3-mcp-client.mjs";
-
-export const skip = noMcp;
+import { sqliteToml, startClient } from "../qa3-mcp-client.mjs";
 
 const LITE = "QA3 agent lite";
 const ASKS = "QA3 asks password";
@@ -68,11 +66,13 @@ async function closeSettings(page) {
   await page.waitFor(`document.querySelector('.modal.settings') === null`);
 }
 
-/** The server path and profile folder from the copied Claude Code command and Codex table. */
+/** The server path and profile folder from the copied Claude Code command and Codex table:
+ * the app itself, started with `--mcp`. */
 function parseCommands(claude, codex) {
-  const m = /^claude mcp add platypus -e "PLATYPUS_DATA_DIR=(.+?)" -- "(.+)"$/.exec(claude);
+  const m = /^claude mcp add platypus -e "PLATYPUS_DATA_DIR=(.+?)" -- "(.+)" --mcp$/.exec(claude);
   assert.ok(m, `unexpected Claude Code command: ${claude}`);
   const [, dataDir, exe] = m;
+  assert.match(codex, /^args = \["--mcp"\]$/m, "Codex starts the app with --mcp too");
   // The Codex table names the same program and folder (TOML strings: literal or basic).
   const value = (key) => {
     const line = codex.split("\n").find((l) => l.startsWith(`${key} = `));
@@ -112,7 +112,7 @@ export default async function (page, { dir }) {
   assert.equal(shown[LITE], "Read only");
   await closeSettings(page);
 
-  const mcp = await startClient(dataDir, "qa3-agents-page", { exe });
+  const mcp = await startClient(dataDir, "qa3-agents-page", { exe, args: ["--mcp"] });
   const problems = [];
   try {
     const list = JSON.parse((await mcp.call("list_connections")).text);
