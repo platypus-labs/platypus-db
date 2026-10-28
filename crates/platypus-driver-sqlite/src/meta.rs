@@ -499,6 +499,76 @@ pub async fn explain(conn: &dyn Connection, sql: &str) -> Result<Explain> {
     ))
 }
 
+/// The first words of SQLite's plan steps, which no other database writes in capitals.
+const PLAN_STEPS: &[&str] = &[
+    "SCAN ",
+    "SEARCH ",
+    "USE TEMP B-TREE",
+    "CO-ROUTINE",
+    "MATERIALIZE",
+    "COMPOUND",
+    "CORRELATED ",
+    "SCALAR SUBQUERY",
+    "LIST SUBQUERY",
+    "MULTI-INDEX",
+    "BLOOM FILTER",
+    "LEFT-MOST",
+    "MERGE ",
+    "UNION ",
+];
+
+/// Whether `text` is a step of SQLite's plans.
+#[must_use]
+pub fn is_plan_step(text: &str) -> bool {
+    PLAN_STEPS.iter().any(|w| text.starts_with(w))
+}
+
+/// A plan pasted or opened from a file: `EXPLAIN QUERY PLAN` as the sqlite3 shell draws it
+/// (`|--SCAN a`, `` `--SEARCH b ``) or indented, as the app writes it.
+///
+/// # Errors
+/// When the text has no step.
+pub fn read_plan(document: &str) -> Result<Explain> {
+    let plan = platypus_core::plain_plan(document);
+    let root = platypus_core::plan_from_text(&plan, |line| {
+        let tree = line.trim_start_matches(|c: char| c.is_whitespace() || matches!(c, '|' | '`'));
+        let at = line.len() - tree.len();
+        let step = tree.strip_prefix("--").unwrap_or(tree).trim();
+        (!step.is_empty()).then(|| (at, step.to_owned()))
+    });
+    let steps = if root.operation == "Plan" {
+        root.children
+    } else if root.operation.is_empty() {
+        Vec::new()
+    } else {
+        vec![root]
+    };
+    // Text of another database is no plan of SQLite's, though any line could be a step.
+    let mut all = Vec::new();
+    for step in &steps {
+        collect_steps(step, &mut all);
+    }
+    if !all.iter().any(|s| is_plan_step(s)) {
+        return Err(Error::Other("no plan in the text".to_owned()));
+    }
+    let root = PlanNode {
+        children: steps,
+        ..PlanNode::new("QUERY PLAN")
+    };
+    Ok(Explain::read(
+        ExplainFormat::Text,
+        format!("QUERY PLAN\n{plan}"),
+        root,
+    ))
+}
+
+fn collect_steps<'a>(node: &'a PlanNode, out: &mut Vec<&'a str>) {
+    out.push(&node.operation);
+    for child in &node.children {
+        collect_steps(child, out);
+    }
+}
+
 /// The steps under `parent`, also written to `text` indented by `depth`.
 fn plan_steps(
     steps: &[(Option<u64>, Option<u64>, String)],
@@ -538,6 +608,27 @@ mod tests {
                 ("positive".to_owned(), "CHECK (qty < 10)".to_owned()),
             ]
         );
+    }
+
+    #[test]
+    fn reads_pasted_query_plans() {
+        let shell = "QUERY PLAN\n|--SCAN a\n`--CORRELATED SCALAR SUBQUERY 1\n   `--SEARCH b USING INDEX i (x=?)";
+        let explain = read_plan(shell).unwrap();
+        let top: Vec<_> = explain
+            .root
+            .children
+            .iter()
+            .map(|c| c.operation.as_str())
+            .collect();
+        assert_eq!(top, ["SCAN a", "CORRELATED SCALAR SUBQUERY 1"]);
+        assert_eq!(
+            explain.root.children[1].children[0].operation,
+            "SEARCH b USING INDEX i (x=?)"
+        );
+        let indented = read_plan("QUERY PLAN\n  SCAN a\n  SEARCH b").unwrap();
+        assert_eq!(indented.root.children.len(), 2);
+        assert!(read_plan("QUERY PLAN").is_err());
+        assert!(read_plan("hello\nSeq Scan on t  (cost=0.00..1.00 rows=1 width=4)").is_err());
     }
 
     #[test]

@@ -417,6 +417,40 @@ impl Connection for MssqlConnection {
     }
 }
 
+/// The steps of `SHOWPLAN_TEXT`: each a line `|--Operation(...)`, indented by its depth; the
+/// other lines repeat the statement.
+fn showplan_steps<'a>(lines: impl Iterator<Item = &'a str>) -> String {
+    lines
+        .filter(|line| line.contains("|--"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn showplan_tree(plan: &str) -> platypus_core::PlanNode {
+    platypus_core::plan_from_text(plan, |line| {
+        let at = line.find("|--")?;
+        Some((line[..at].chars().count(), line[at + 3..].trim().to_owned()))
+    })
+}
+
+/// A plan pasted or opened from a file: the text of `SET SHOWPLAN_TEXT ON` (or
+/// `STATISTICS PROFILE`'s `StmtText` column), its steps drawn `|--Operation(...)`.
+///
+/// # Errors
+/// When the text has no step.
+pub fn read_plan(document: &str) -> Result<platypus_core::Explain> {
+    let plan = showplan_steps(platypus_core::plain_plan(document).lines());
+    if plan.is_empty() {
+        return Err(Error::Other("no plan in the text".to_owned()));
+    }
+    let root = showplan_tree(&plan);
+    Ok(platypus_core::Explain::read(
+        platypus_core::ExplainFormat::Text,
+        plan,
+        root,
+    ))
+}
+
 impl MssqlConnection {
     /// The estimated plan, from `SET SHOWPLAN_TEXT ON`: the statement is compiled, not run.
     async fn showplan(&self, sql: &str) -> Result<platypus_core::Explain> {
@@ -430,22 +464,15 @@ impl MssqlConnection {
         let off = run_simple(&mut session, "SET SHOWPLAN_TEXT OFF", &self.closed).await;
         let sets = sets?;
         off?;
-        // Each step is a line `|--Operation(...)`, indented by its depth; the other rows
-        // repeat the statement.
-        let plan = sets
-            .iter()
-            .flatten()
-            .filter_map(|row| row.get::<&str, _>(0))
-            .filter(|line| line.contains("|--"))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let plan = showplan_steps(
+            sets.iter()
+                .flatten()
+                .filter_map(|row| row.get::<&str, _>(0)),
+        );
         if plan.is_empty() {
             return Err(Error::Other("the database returned no plan".to_owned()));
         }
-        let root = platypus_core::plan_from_text(&plan, |line| {
-            let at = line.find("|--")?;
-            Some((line[..at].chars().count(), line[at + 3..].trim().to_owned()))
-        });
+        let root = showplan_tree(&plan);
         Ok(platypus_core::Explain::new(
             platypus_core::ExplainFormat::Text,
             plan,
@@ -853,5 +880,20 @@ fn map_error(e: tiberius::error::Error, sql: &str) -> Error {
             Error::Connect(platypus_core::without_repeats(&e.to_string()))
         }
         other => Error::Other(other.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_a_pasted_showplan() {
+        let text = "StmtText\n--------\nSELECT * FROM t WHERE a = 1\n  |--Clustered Index Scan(OBJECT:([db].[dbo].[t].[PK_t]), WHERE:([a]=(1)))\n       |--Index Seek(OBJECT:([db].[dbo].[t].[ix]))\n\n(2 rows affected)";
+        let explain = read_plan(text).unwrap();
+        assert!(!explain.analyzed);
+        assert!(explain.root.operation.starts_with("Clustered Index Scan("));
+        assert_eq!(explain.root.children.len(), 1);
+        assert!(read_plan("SELECT 1").is_err());
     }
 }

@@ -14,6 +14,7 @@ mod ddl;
 #[doc(hidden)]
 pub mod decode;
 mod explain;
+pub use explain::read_plan;
 mod meta;
 mod tls;
 

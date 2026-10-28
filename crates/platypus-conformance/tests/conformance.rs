@@ -1204,6 +1204,56 @@ fn plan_support(b: &Backend) -> PlanSupport {
 
 /// Plans come back as a tree. With analyze the statement runs, and what it changes is
 /// rolled back, in autocommit and inside an open transaction alike.
+/// Steps in `node`'s tree.
+fn plan_steps(node: &PlanNode) -> usize {
+    1 + node.children.iter().map(plan_steps).sum::<usize>()
+}
+
+/// The plan document a driver returns reads back, pasted, as the same tree: the reader of
+/// pasted plans knows each database's own output.
+#[tokio::test]
+async fn explained_plans_read_back() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let read: fn(&str) -> platypus_core::Result<platypus_core::Explain> = match b.config.driver
+        {
+            DriverKind::Postgres => platypus_driver_pg::read_plan,
+            DriverKind::MySql => platypus_driver_mysql::read_plan,
+            DriverKind::Sqlite => platypus_driver_sqlite::meta::read_plan,
+            DriverKind::SqlServer => platypus_driver_mssql::read_plan,
+            _ => continue,
+        };
+        let conn = b.connect().await;
+        let sql = format!(
+            "SELECT c.id, o.id FROM {s}.customers c JOIN {s}.orders o ON o.customer_id = c.id WHERE c.id > 1",
+            s = b.schema
+        );
+        for analyze in [false, true] {
+            let plan = match conn.explain(&sql, analyze).await {
+                Ok(plan) => plan,
+                // SQL Server's plans are estimated only.
+                Err(Error::Unsupported(_)) if analyze => continue,
+                Err(e) => panic!("{}: explain: {e}", b.name),
+            };
+            let pasted = read(&plan.plan)
+                .unwrap_or_else(|e| panic!("{}: read back: {e}\n{}", b.name, plan.plan));
+            assert_eq!(pasted.root.operation, plan.root.operation, "{}", b.name);
+            assert_eq!(
+                plan_steps(&pasted.root),
+                plan_steps(&plan.root),
+                "{} (analyze {analyze})",
+                b.name
+            );
+            assert_eq!(
+                pasted.analyzed, plan.analyzed,
+                "{} (analyze {analyze})",
+                b.name
+            );
+        }
+    }
+}
+
 #[tokio::test]
 async fn explains_queries() {
     let _serial = SERIAL.lock().await;

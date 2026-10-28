@@ -340,6 +340,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::settings::get_settings,
         commands::settings::set_setting,
         commands::explain::explain,
+        commands::explain::read_plan,
         commands::admin::server_sessions,
         commands::admin::server_locks,
         commands::admin::end_server_session,

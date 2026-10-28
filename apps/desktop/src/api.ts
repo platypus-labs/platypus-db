@@ -243,6 +243,15 @@ export interface Explain {
   suggestions: FullScan[];
 }
 
+/** Whose plan a pasted document is; see `commands/explain.rs`. */
+export type PlanSource = "postgres" | "mysql" | "sqlite" | "sqlserver";
+
+/** A plan read from a document, and whose it was taken to be. */
+export interface ReadPlan {
+  explain: Explain;
+  source: PlanSource;
+}
+
 /** A request the app sent to a database; see `querylog.rs`. */
 export interface LogEntry {
   id: number;
@@ -1579,6 +1588,8 @@ export const api = {
   clearQueryLog: () => invoke<void>("clear_query_log"),
   /** With `analyze` the statement runs, and its changes are rolled back. */
   explain: (sessionId: number, sql: string, analyze: boolean) => invoke<Explain>("explain", { sessionId, sql, analyze }),
+  /** Reads a plan pasted or opened from a file; `source` `null` guesses whose it is. */
+  readPlan: (document: string, source: PlanSource | null) => invoke<ReadPlan>("read_plan", { document, source }),
   serverSessions: (sessionId: number) => invoke<ServerSession[]>("server_sessions", { sessionId }),
   serverLocks: (sessionId: number) => invoke<ServerLock[]>("server_locks", { sessionId }),
   endServerSession: (sessionId: number, id: string, how: EndSession) =>

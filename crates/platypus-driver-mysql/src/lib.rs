@@ -8,6 +8,7 @@ mod admin;
 #[doc(hidden)]
 pub mod columns;
 mod explain;
+pub use explain::read_plan;
 mod meta;
 
 use std::sync::atomic::{AtomicBool, Ordering};
