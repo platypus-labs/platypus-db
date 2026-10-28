@@ -13,6 +13,7 @@
 //! results reports the rows its statements changed in total. `PRINT` and other
 //! informational messages are kept for [`Connection::take_messages`].
 
+mod admin;
 #[doc(hidden)]
 pub mod columns;
 mod ddl;
@@ -370,6 +371,18 @@ impl Connection for MssqlConnection {
         meta::search_metadata(self, needle).await
     }
 
+    async fn server_sessions(&self) -> Result<Vec<platypus_core::ServerSession>> {
+        admin::sessions(self).await
+    }
+
+    async fn server_locks(&self) -> Result<Vec<platypus_core::ServerLock>> {
+        admin::locks(self).await
+    }
+
+    async fn end_server_session(&self, id: &str, how: platypus_core::EndSession) -> Result<()> {
+        admin::end(self, id, how).await
+    }
+
     fn transaction(&self) -> TransactionState {
         self.tx.state()
     }
@@ -398,6 +411,8 @@ impl Connection for MssqlConnection {
             object_ddl: true,
             multiple_databases: true,
             metadata_search: true,
+            server_sessions: true,
+            cancel_server_queries: false,
         }
     }
 }
