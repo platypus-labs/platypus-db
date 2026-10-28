@@ -1204,7 +1204,7 @@ fn plan_support(b: &Backend) -> PlanSupport {
 
 /// Plans come back as a tree. With analyze the statement runs, and what it changes is
 /// rolled back, in autocommit and inside an open transaction alike.
-/// Through PgBouncer in transaction mode (`docker compose --profile pooler`), each
+/// Through `PgBouncer` in transaction mode (`docker compose --profile pooler`), each
 /// transaction may land on another server session: the navigator's and the editor's
 /// requests still work with the connection's pooler mode set. Skipped when it is not running.
 #[tokio::test]
@@ -1236,9 +1236,18 @@ async fn works_through_a_transaction_pooler() {
             .unwrap()
             .contains("CREATE TABLE")
     );
-    assert!(!conn.object_properties(&object).await.unwrap().is_empty());
-    assert!(!conn.search_metadata("customers").await.unwrap().is_empty());
-    assert!(!conn.objects("demo").await.unwrap().is_empty());
+    assert_ne!(
+        conn.object_properties(&object).await.unwrap(),
+        [] as [platypus_core::Property; 0]
+    );
+    assert_ne!(
+        conn.search_metadata("customers").await.unwrap(),
+        [] as [platypus_core::MetadataMatch; 0]
+    );
+    assert_ne!(
+        conn.objects("demo").await.unwrap(),
+        [] as [platypus_core::ObjectMeta; 0]
+    );
     let plan = conn
         .explain("SELECT * FROM demo.customers WHERE id > 1", true)
         .await

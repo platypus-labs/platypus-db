@@ -1,4 +1,4 @@
-//! Through PgBouncer in transaction mode, as `docker/pgbouncer` runs it: each transaction may
+//! Through `PgBouncer` in transaction mode, as `docker/pgbouncer` runs it: each transaction may
 //! get another server session, and the session is reset after it (`DISCARD ALL`), so a
 //! statement prepared with a name in one round trip is gone at the next.
 //!
@@ -46,7 +46,13 @@ async fn rows(conn: &PgConnection, sql: &str, options: &ExecOptions) -> (usize, 
                 .try_collect()
                 .await
                 .unwrap_or_else(|e| panic!("{sql}: {e}"));
-            (batches.iter().map(|b| b.num_rows()).sum(), columns)
+            (
+                batches
+                    .iter()
+                    .map(platypus_core::arrow_array::RecordBatch::num_rows)
+                    .sum(),
+                columns,
+            )
         }
         Ok(other) => panic!("{sql}: expected rows, got {other:?}"),
         Err(e) => panic!("{sql}: {e}"),
@@ -61,8 +67,7 @@ async fn named_statements_break_without_pooler_mode() {
     let error = conn
         .execute("SELECT 1", &ExecOptions::default())
         .await
-        .err()
-        .expect("PgBouncer resets the session between prepare and run");
+        .expect_err("PgBouncer resets the session between prepare and run");
     assert!(error.to_string().contains("prepared statement"), "{error}");
 }
 
@@ -107,7 +112,7 @@ async fn runs_statements_through_a_transaction_pooler() {
         .unwrap()
     {
         ExecResult::Affected { rows } => assert_eq!(rows, 0),
-        other => panic!("{other:?}"),
+        rows @ ExecResult::Rows(_) => panic!("{rows:?}"),
     }
     // Errors stay errors, and the session goes on.
     assert!(
@@ -165,5 +170,8 @@ async fn runs_statements_through_a_transaction_pooler() {
     );
     let details = conn.table_details("demo", "customers").await.unwrap();
     assert!(details.columns.iter().any(|c| c.name == "id"));
-    assert!(!conn.catalog_columns().await.unwrap().is_empty());
+    assert_ne!(
+        conn.catalog_columns().await.unwrap(),
+        [] as [platypus_core::CatalogColumn; 0]
+    );
 }

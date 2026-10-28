@@ -76,7 +76,7 @@ pub struct PgConnection {
     savepoint: AtomicBool,
     /// The notices the server sent, until `take_messages`.
     notices: Notices,
-    /// Behind a pooler in transaction mode (PgBouncer, Supavisor, Neon's), where each
+    /// Behind a pooler in transaction mode (`PgBouncer`, Supavisor, Neon's), where each
     /// transaction may get another server session: statements run unnamed, prepared and
     /// run in one round trip, outside a transaction of the session's own.
     unnamed_statements: bool,
