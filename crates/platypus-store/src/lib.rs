@@ -3,10 +3,12 @@
 //! Saved connections live in a human-editable `connections.toml`; passwords never touch
 //! that file and are kept in the OS keychain, or in a file encrypted with a master password
 //! ([`VaultSecrets`]), through a [`SecretStore`]. Executed statements
-//! are logged to a local SQLite database by [`HistoryStore`]. Notes and tags on tables and
+//! are logged to a local SQLite database by [`HistoryStore`], the calls of external agents
+//! by [`AgentCallStore`]. Notes and tags on tables and
 //! columns live in a local SQLite database, [`CatalogStore`]. Preferences live in
 //! `settings.toml` through [`SettingsStore`].
 
+mod agent_calls;
 mod auth;
 mod catalog;
 mod connections;
@@ -17,6 +19,10 @@ mod settings;
 mod sqlite;
 mod vault;
 
+pub use agent_calls::{
+    AGENT_CALLS_LIMIT, AgentCall, AgentCallQuery, AgentCallStore, AgentProposal, AgentSession,
+    NewAgentCall, PROPOSAL_LIFETIME, agent_calls_csv,
+};
 pub use auth::{
     command_password, external_password, external_password_quiet, pgpass_password, pgpass_path,
 };

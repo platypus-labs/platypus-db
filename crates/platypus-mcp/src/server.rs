@@ -1,31 +1,36 @@
 //! The MCP server: the [`Agent`] tools over JSON-RPC on stdio, with `rmcp`.
 
 use std::sync::Arc;
+use std::time::{Instant, SystemTime};
 
-use crate::{Agent, AgentError, QueryArgs};
+use crate::{Agent, AgentError, ExplainArgs, ProposeArgs, QueryArgs, SampleArgs, origin_name};
+use platypus_store::{HistoryStatus, NewAgentCall};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
 use rmcp::{ErrorData, Peer, RoleServer, ServerHandler, tool, tool_handler, tool_router};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 /// What agents read first: how to use the tools.
 const INSTRUCTIONS: &str = "PlatypusDB gives access to the database connections the user saved \
 in the PlatypusDB app. Start with list_connections, then explore with list_schemas, \
-list_objects, describe_table, get_ddl and search_objects, and query with run_query: one \
-statement per call, with a row limit, a byte limit and a timeout. Each connection has an \
+list_objects, describe_table, get_ddl and search_objects, look at a table's first rows with \
+sample_rows, query with run_query and read a statement's plan with explain: one statement per \
+call, with a row limit, a byte limit and a timeout. To hand the user SQL to review and run by \
+hand (a change the access does not allow, a long script), use propose_sql. Each connection has an \
 agent access set by the user: read_only connections run only statements that change nothing, \
 inside a read-only transaction; read_write connections also accept changes, which commit at \
 once. Production connections are always read-only. Passwords never reach you.";
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 struct ConnectionArgs {
     /// The connection's name, as `list_connections` shows it.
     connection: String,
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 struct ObjectsArgs {
     /// The connection's name, as `list_connections` shows it.
     connection: String,
@@ -37,7 +42,7 @@ struct ObjectsArgs {
     limit: Option<u64>,
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 struct TableArgs {
     /// The connection's name, as `list_connections` shows it.
     connection: String,
@@ -47,7 +52,7 @@ struct TableArgs {
     table: String,
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 struct DdlArgs {
     /// The connection's name, as `list_connections` shows it.
     connection: String,
@@ -60,7 +65,7 @@ struct DdlArgs {
     kind: Option<String>,
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 struct SearchArgs {
     /// The connection's name, as `list_connections` shows it.
     connection: String,
@@ -71,6 +76,8 @@ struct SearchArgs {
 #[derive(Clone)]
 pub struct PlatypusServer {
     agent: Arc<Agent>,
+    /// This run of the server, which groups its calls in the log.
+    session: String,
     tool_router: ToolRouter<Self>,
 }
 
@@ -94,10 +101,40 @@ fn reply(result: Result<String, AgentError>) -> Result<CallToolResult, ErrorData
     })
 }
 
-fn json_reply(
-    result: Result<impl serde::Serialize, AgentError>,
-) -> Result<CallToolResult, ErrorData> {
-    reply(result.map(|value| serde_json::to_string(&value).unwrap_or_default()))
+fn json_text(result: Result<impl Serialize, AgentError>) -> Result<String, AgentError> {
+    result.map(|value| serde_json::to_string(&value).unwrap_or_default())
+}
+
+/// A tool call being answered, as the call log records it.
+struct Call {
+    tool: &'static str,
+    agent: String,
+    connection: Option<String>,
+    /// The arguments given, as JSON text.
+    arguments: String,
+    started_at: SystemTime,
+    start: Instant,
+}
+
+impl Call {
+    fn new(tool: &'static str, peer: &Peer<RoleServer>, args: &impl Serialize) -> Self {
+        let mut arguments = serde_json::to_value(args).unwrap_or_default();
+        // Arguments left out serialize as null: the log keeps those given.
+        if let Value::Object(map) = &mut arguments {
+            map.retain(|_, v| !v.is_null());
+        }
+        Self {
+            tool,
+            agent: origin_name(&client_name(peer)),
+            connection: arguments
+                .get("connection")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            arguments: arguments.to_string(),
+            started_at: SystemTime::now(),
+            start: Instant::now(),
+        }
+    }
 }
 
 #[tool_router]
@@ -105,8 +142,38 @@ impl PlatypusServer {
     pub fn new(agent: Arc<Agent>) -> Self {
         Self {
             agent,
+            session: uuid::Uuid::new_v4().to_string(),
             tool_router: Self::tool_router(),
         }
+    }
+
+    /// The answer to `call`, recorded in the agents' call log.
+    /// The write goes to a blocking thread: the app may hold the file for a moment.
+    async fn answer(
+        &self,
+        call: Call,
+        result: Result<String, AgentError>,
+    ) -> Result<CallToolResult, ErrorData> {
+        // A timeout is the call failing; only the client's own cancellation is not.
+        let (status, error) = match &result {
+            Ok(_) => (HistoryStatus::Ok, None),
+            Err(e @ AgentError::Cancelled) => (HistoryStatus::Cancelled, Some(e.to_string())),
+            Err(e) => (HistoryStatus::Error, Some(e.to_string())),
+        };
+        let entry = NewAgentCall {
+            session: self.session.clone(),
+            agent: call.agent,
+            tool: call.tool.to_owned(),
+            connection: call.connection,
+            arguments: call.arguments,
+            started_at: call.started_at,
+            duration: call.start.elapsed(),
+            status,
+            error,
+        };
+        let agent = Arc::clone(&self.agent);
+        let _ = tokio::task::spawn_blocking(move || agent.record_call(&entry)).await;
+        reply(result)
     }
 
     #[tool(
@@ -114,8 +181,10 @@ impl PlatypusServer {
         name, id, driver, type (dev, test, prod), database and agent_access (read_only or \
         read_write). Never shows hosts, users or passwords."
     )]
-    async fn list_connections(&self) -> Result<CallToolResult, ErrorData> {
-        json_reply(self.agent.list_connections())
+    async fn list_connections(&self, peer: Peer<RoleServer>) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("list_connections", &peer, &serde_json::json!({}));
+        self.answer(call, json_text(self.agent.list_connections()))
+            .await
     }
 
     #[tool(
@@ -126,8 +195,11 @@ impl PlatypusServer {
     async fn list_schemas(
         &self,
         Parameters(args): Parameters<ConnectionArgs>,
+        peer: Peer<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        json_reply(self.agent.list_schemas(&args.connection).await)
+        let call = Call::new("list_schemas", &peer, &args);
+        let result = self.agent.list_schemas(&args.connection).await;
+        self.answer(call, json_text(result)).await
     }
 
     #[tool(
@@ -140,12 +212,14 @@ impl PlatypusServer {
     async fn list_objects(
         &self,
         Parameters(args): Parameters<ObjectsArgs>,
+        peer: Peer<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        json_reply(
-            self.agent
-                .list_objects(&args.connection, &args.schema, args.offset, args.limit)
-                .await,
-        )
+        let call = Call::new("list_objects", &peer, &args);
+        let result = self
+            .agent
+            .list_objects(&args.connection, &args.schema, args.offset, args.limit)
+            .await;
+        self.answer(call, json_text(result)).await
     }
 
     #[tool(
@@ -156,12 +230,14 @@ impl PlatypusServer {
     async fn describe_table(
         &self,
         Parameters(args): Parameters<TableArgs>,
+        peer: Peer<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        json_reply(
-            self.agent
-                .describe_table(&args.connection, &args.schema, &args.table)
-                .await,
-        )
+        let call = Call::new("describe_table", &peer, &args);
+        let result = self
+            .agent
+            .describe_table(&args.connection, &args.schema, &args.table)
+            .await;
+        self.answer(call, json_text(result)).await
     }
 
     #[tool(
@@ -170,17 +246,19 @@ impl PlatypusServer {
     async fn get_ddl(
         &self,
         Parameters(args): Parameters<DdlArgs>,
+        peer: Peer<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        reply(
-            self.agent
-                .object_ddl(
-                    &args.connection,
-                    &args.schema,
-                    &args.name,
-                    args.kind.as_deref(),
-                )
-                .await,
-        )
+        let call = Call::new("get_ddl", &peer, &args);
+        let result = self
+            .agent
+            .object_ddl(
+                &args.connection,
+                &args.schema,
+                &args.name,
+                args.kind.as_deref(),
+            )
+            .await;
+        self.answer(call, result).await
     }
 
     #[tool(
@@ -191,12 +269,14 @@ impl PlatypusServer {
     async fn search_objects(
         &self,
         Parameters(args): Parameters<SearchArgs>,
+        peer: Peer<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        json_reply(
-            self.agent
-                .search_objects(&args.connection, &args.text)
-                .await,
-        )
+        let call = Call::new("search_objects", &peer, &args);
+        let result = self
+            .agent
+            .search_objects(&args.connection, &args.text)
+            .await;
+        self.answer(call, json_text(result)).await
     }
 
     #[tool(
@@ -215,20 +295,91 @@ impl PlatypusServer {
         peer: Peer<RoleServer>,
         cancelled: CancellationToken,
     ) -> Result<CallToolResult, ErrorData> {
-        // The history trims and caps the name, and calls a client without one `agent`.
-        let origin = peer
-            .peer_info()
-            .map(|info| info.client_info.name.clone())
-            .unwrap_or_default();
+        let call = Call::new("run_query", &peer, &args);
         let format = args.format.unwrap_or_default();
         let result = self
             .agent
             // `notifications/cancelled` for this request cancels the statement.
-            .run_query_until(&args, &origin, cancelled.cancelled_owned())
+            .run_query_until(&args, &call.agent, cancelled.cancelled_owned())
             .await
             .map(|r| r.render(format));
-        reply(result)
+        self.answer(call, result).await
     }
+
+    #[tool(
+        description = "Returns the first rows of a table, view or MongoDB collection (default \
+        20 rows), as run_query returns them: an aligned text table, or JSON with format=json. \
+        max_rows, max_bytes and timeout_seconds work as in run_query. The rows come in the \
+        order the database reads them: no order is implied."
+    )]
+    async fn sample_rows(
+        &self,
+        Parameters(args): Parameters<SampleArgs>,
+        peer: Peer<RoleServer>,
+        cancelled: CancellationToken,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("sample_rows", &peer, &args);
+        let format = args.format.unwrap_or_default();
+        let result = self
+            .agent
+            .sample_rows_until(&args, &call.agent, cancelled.cancelled_owned())
+            .await
+            .map(|r| r.render(format));
+        self.answer(call, result).await
+    }
+
+    #[tool(
+        description = "Returns the plan of one SQL statement: its steps as an indented tree \
+        with cost, estimated rows and, with analyze=true, actual rows and times (or JSON with \
+        format=json), then index suggestions for filtered full scans of large tables. Without \
+        analyze the statement does not run. With analyze it runs and what it changes is \
+        rolled back; on read_only connections only statements that change nothing are \
+        explained, and analyze needs PostgreSQL, MySQL, MariaDB or SQLite. max_bytes \
+        (default 32768) and timeout_seconds (default 30) work as in run_query."
+    )]
+    async fn explain(
+        &self,
+        Parameters(args): Parameters<ExplainArgs>,
+        peer: Peer<RoleServer>,
+        cancelled: CancellationToken,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("explain", &peer, &args);
+        let format = args.format.unwrap_or_default();
+        let result = self
+            .agent
+            .explain_until(&args, cancelled.cancelled_owned())
+            .await
+            .map(|r| r.render(format));
+        self.answer(call, result).await
+    }
+
+    #[tool(
+        description = "Proposes SQL to the user: PlatypusDB opens it in a new editor tab on the \
+        connection (now if the app is open, else when it starts), where the user reviews, edits \
+        and runs it by hand. Nothing runs here, whatever the connection's agent access: use it \
+        for changes the user should check, or that read_only access does not allow. title names \
+        the tab."
+    )]
+    async fn propose_sql(
+        &self,
+        Parameters(args): Parameters<ProposeArgs>,
+        peer: Peer<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("propose_sql", &peer, &args);
+        let (agent, name) = (Arc::clone(&self.agent), call.agent.clone());
+        let result = tokio::task::spawn_blocking(move || agent.propose_sql(&args, &name))
+            .await
+            .unwrap_or_else(|e| Err(AgentError::Store(e.to_string())));
+        self.answer(call, result).await
+    }
+}
+
+/// The client's name as it introduced itself; [`origin_name`] trims and caps it, and calls
+/// a client without one `agent`.
+fn client_name(peer: &Peer<RoleServer>) -> String {
+    peer.peer_info()
+        .map(|info| info.client_info.name.clone())
+        .unwrap_or_default()
 }
 
 #[allow(
