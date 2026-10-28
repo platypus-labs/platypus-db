@@ -90,13 +90,17 @@ pub fn read_plan(document: &str) -> Result<Explain> {
 /// The text of `EXPLAIN [ANALYZE]`: the first line is the top step, the others `->  step`,
 /// nested by indentation, with their properties (`Filter: …`) below them.
 fn text_plan(plan: &str) -> Result<PlanNode> {
+    // With costs, the top step has them too: a line before it (the tag of a command psql
+    // ran first) is not it.
+    let figures = |l: &str| l.contains("(cost=") || l.contains("(actual ");
+    let costed = plan.lines().any(figures);
     let first = Cell::new(true);
     let mut root = plan_from_text(plan, |line| {
         let at = line.find(|c: char| !c.is_whitespace())?;
         let rest = &line[at..];
         let step = match rest.strip_prefix("->") {
             Some(step) => step.trim(),
-            None if first.get() => rest.trim(),
+            None if first.get() && (!costed || figures(rest)) => rest.trim(),
             None => return None,
         };
         first.set(false);
@@ -105,6 +109,10 @@ fn text_plan(plan: &str) -> Result<PlanNode> {
     if first.get() {
         return Err(Error::Other("no plan in the text".to_owned()));
     }
+    // The tag of a command psql ran before (`ANALYZE`, `SET`) is no property of the plan.
+    root.properties.retain(|(key, value)| {
+        !(key.is_empty() && value.chars().all(|c| c.is_ascii_uppercase() || c == ' '))
+    });
     text_step(&mut root);
     // The statement's times end the plan, after the deepest step's properties.
     let mut whole = Vec::new();
@@ -354,6 +362,9 @@ mod tests {
         assert_eq!(explain.root.operation, "scan");
         assert_eq!(explain.root.detail.as_deref(), Some("t@t_pkey"));
         // A plan without costs is still a plan.
+        let tagged = read_plan(&format!("ANALYZE\n{TEXT}")).unwrap();
+        assert_eq!(tagged.root.operation, "Hash Join");
+        assert!(tagged.root.properties.iter().all(|(k, _)| !k.is_empty()));
         let bare = read_plan("Seq Scan on t\n  Filter: (a > 1)").unwrap();
         assert_eq!(bare.root.operation, "Seq Scan");
         assert!(read_plan("").is_err());
