@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { translateAppMessages } from "./api";
 import { loadSettings } from "./settings";
+import { loadLanguage } from "./i18n";
 import { appMessage } from "./storeErrors";
 import { startModalA11y } from "./ui/modalA11y";
 import { startErrorLog } from "./diagnostics/Diagnostics";
@@ -17,12 +18,15 @@ startModalA11y();
 translateAppMessages(appMessage);
 
 // Settings are a local file read: waiting for them avoids rendering defaults first.
-void loadSettings().then(() => {
-  startAppearance();
-  startAgentProposals();
-  createRoot(document.getElementById("root")!).render(
-    <StrictMode>
-      <App />
-    </StrictMode>,
-  );
-});
+void loadSettings()
+  // Then the interface's language, when it is not one of the bundle.
+  .then(() => loadLanguage().catch(console.error))
+  .then(() => {
+    startAppearance();
+    startAgentProposals();
+    createRoot(document.getElementById("root")!).render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+  });

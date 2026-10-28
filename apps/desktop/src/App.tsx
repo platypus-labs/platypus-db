@@ -52,7 +52,7 @@ import { TabBar, barOrder, groupTabsSetting } from "./shell/TabBar";
 import { SidebarResizer, useSidebarWidth } from "./shell/SidebarResizer";
 import { settingsLoadError, useSetting } from "./settings";
 import { useSidebarCollapsed } from "./shell/sidebar";
-import { language, languageSetting, t, plural } from "./i18n";
+import { language, languageSetting, loadLanguage, t, plural } from "./i18n";
 import { stepZoom } from "./theme";
 import { logError, track } from "./shell/activity";
 import { openActivity } from "./shell/ActivityDialog";
@@ -109,8 +109,12 @@ export function App() {
   /** Connections whose group of tabs is folded. */
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const grouped = useSetting(groupTabsSetting);
-  // A new language shows at once: everything below renders again.
-  useSetting(languageSetting);
+  // A new language shows at once, once its dictionary is loaded: everything below renders again.
+  const chosenLanguage = useSetting(languageSetting);
+  const [, setLanguageLoaded] = useState(0);
+  useEffect(() => {
+    loadLanguage().then(() => setLanguageLoaded((n) => n + 1), console.error);
+  }, [chosenLanguage]);
   const [toast, showToast] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   /** Shows an error, and keeps it in the Activity log. */
