@@ -177,6 +177,19 @@ fn agent_session_setup(config: &ConnectionConfig) -> Vec<String> {
     setup
 }
 
+/// What agents read when connecting fails. A driver the app downloads on first use (DuckDB,
+/// Oracle's client) cannot be downloaded by an agent: the message says how the user gets it.
+fn connect_message(e: &Error) -> String {
+    match e {
+        Error::DriverMissing { .. } => format!(
+            "{e}: PlatypusDB downloads it the first time the user opens such a connection in \
+             the app (or from Settings > Drivers). Agents cannot download it: ask the user to \
+             open this connection in PlatypusDB once, then try again"
+        ),
+        other => other.to_string(),
+    }
+}
+
 /// Opens `saved` for agents; errors are redacted.
 pub async fn open(
     store: &ConnectionStore,
@@ -185,7 +198,7 @@ pub async fn open(
     let (config, redactor) = config_of(store, saved).await?;
     let failed = |e: Error| AgentError::Connect {
         name: saved.name.clone(),
-        message: redactor.apply(&e.to_string()),
+        message: redactor.apply(&connect_message(&e)),
     };
     let conn = connect(&config).await.map_err(failed)?;
     for sql in agent_session_setup(&config) {
@@ -206,6 +219,21 @@ mod tests {
 
     fn store(dir: &std::path::Path, secrets: Arc<dyn SecretStore>) -> ConnectionStore {
         ConnectionStore::open(dir.join("connections.toml"), secrets).unwrap()
+    }
+
+    #[test]
+    fn a_missing_driver_says_how_the_user_gets_it() {
+        let message = connect_message(&Error::DriverMissing {
+            driver: DriverKind::DuckDb,
+        });
+        assert!(
+            message.starts_with("the DuckDB driver is not installed"),
+            "{message}"
+        );
+        assert!(
+            message.contains("open this connection in PlatypusDB"),
+            "{message}"
+        );
     }
 
     #[tokio::test]
