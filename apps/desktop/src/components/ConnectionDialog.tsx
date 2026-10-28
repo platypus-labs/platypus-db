@@ -207,6 +207,21 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   /** The form's problem that the server would answer less clearly, or `null`. */
   const formProblem = (c: SavedConnection) => (server && !validPort(c.port) ? t("The port must be a number from 1 to 65535.") : null);
 
+  /** `parsed`, read from the URL `text`, into the form's settings; `null`, with the error
+   *  under the field, when the URL is for another database. */
+  function takeUrl(text: string, parsed: ParsedConnection) {
+    if (parsed.driver !== conn.driver) {
+      setUrlError(otherDriverError(parsed.driver));
+      return null;
+    }
+    const next = applyUrlEdit(conn, password, text, parsed);
+    setUrlError(null);
+    setConn(next.conn);
+    setPassword(next.password);
+    setNotes(parsed.notes);
+    return next;
+  }
+
   /** The URL being typed read into the form, as Test and Save need it even when its answer
    *  has not come yet (a paste then Enter); `null`, with the error under the field, when it
    *  does not read: nothing goes ahead with the settings from before it. */
@@ -214,17 +229,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     const text = urlDraft;
     if (!urlMode || text === null || !text.trim()) return { c: conn, typed: password };
     try {
-      const parsed = await api.parseConnectionUrl(text, conn.driver);
-      if (parsed.driver !== conn.driver) {
-        setUrlError(otherDriverError(parsed.driver));
-        return null;
-      }
-      const next = applyUrlEdit(conn, password, text, parsed);
-      setUrlError(null);
-      setConn(next.conn);
-      setPassword(next.password);
+      const next = takeUrl(text, await api.parseConnectionUrl(text, conn.driver));
+      if (!next) return null;
       setUrlDraft(next.draft);
-      setNotes(parsed.notes);
       return { c: next.conn, typed: next.password };
     } catch (err) {
       setUrlError(toCommandError(err).message);
@@ -342,17 +349,10 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     api.parseConnectionUrl(text, conn.driver).then(
       (parsed) => {
         if (!answered()) return;
-        if (parsed.driver !== conn.driver) {
-          setUrlError(otherDriverError(parsed.driver));
-          return;
-        }
-        const next = applyUrlEdit(conn, password, text, parsed);
-        setUrlError(null);
-        setConn(next.conn);
-        setPassword(next.password);
+        const next = takeUrl(text, parsed);
+        if (!next) return;
         // A field already left shows the URL as the settings print it.
         setUrlDraft(document.activeElement === urlInput.current ? next.draft : null);
-        setNotes(parsed.notes);
         setResult(null);
       },
       (err) => answered() && setUrlError(toCommandError(err).message),

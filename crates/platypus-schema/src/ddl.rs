@@ -23,9 +23,7 @@ pub fn script(
     design: &TableDesign,
 ) -> Result<Script, String> {
     let mut script = phased(dialect, schema, original, design, None)?;
-    if !script.transactional && script.statements.len() > 1 {
-        script.warnings.push(one_by_one(dialect));
-    }
+    warn_one_by_one(dialect, &mut script);
     Ok(script)
 }
 
@@ -38,16 +36,23 @@ pub(crate) fn transactional(dialect: Dialect) -> bool {
     )
 }
 
-/// The warning of a script that cannot run in one transaction.
-pub(crate) fn one_by_one(dialect: Dialect) -> String {
+/// Warns, once, that `script` runs one statement at a time when it cannot run in one
+/// transaction and has more than one statement.
+pub(crate) fn warn_one_by_one(dialect: Dialect, script: &mut Script) {
+    if script.transactional || script.statements.len() <= 1 {
+        return;
+    }
     let database = match dialect {
         Dialect::MySql => "MySQL",
         Dialect::Oracle => "Oracle",
         _ => "ClickHouse",
     };
-    format!(
+    let warning = format!(
         "{database} runs each statement by itself: if one fails, the ones before it stay applied."
-    )
+    );
+    if !script.warnings.contains(&warning) {
+        script.warnings.push(warning);
+    }
 }
 
 /// The foreign keys an `ALTER TABLE` script drops and adds, kept apart by [`phased`]: a

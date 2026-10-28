@@ -24,16 +24,13 @@ pub(crate) fn migrate(
         )));
     }
     for (i, migration) in migrations.iter().enumerate().skip(version) {
-        let tx = db.unchecked_transaction().map_err(failed)?;
+        let mut tx = db.unchecked_transaction().map_err(failed)?;
         if tx.execute_batch(migration).is_err() {
             // Earlier versions bumped `user_version` after the migration, not with it: a
             // start killed in between left it applied (in part) at the older version.
             tx.rollback().map_err(failed)?;
-            let tx = db.unchecked_transaction().map_err(failed)?;
+            tx = db.unchecked_transaction().map_err(failed)?;
             apply_again(&tx, migration).map_err(failed)?;
-            bump(&tx, i + 1).map_err(failed)?;
-            tx.commit().map_err(failed)?;
-            continue;
         }
         bump(&tx, i + 1).map_err(failed)?;
         tx.commit().map_err(failed)?;

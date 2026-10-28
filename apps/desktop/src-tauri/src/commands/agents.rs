@@ -121,6 +121,22 @@ fn is_old_server(command: &str) -> bool {
     file.strip_suffix(".exe").unwrap_or(&file) == OLD_SERVER
 }
 
+/// The registration `name` of `agent`, when the `command` it starts is the old server.
+fn stale(
+    agent: &'static str,
+    name: &str,
+    command: Option<&str>,
+    project: Option<&str>,
+) -> Option<StaleRegistration> {
+    let command = command.filter(|c| is_old_server(c))?;
+    Some(StaleRegistration {
+        agent,
+        name: name.to_owned(),
+        command: command.to_owned(),
+        project: project.map(str::to_owned),
+    })
+}
+
 /// The registrations in Claude Code's `~/.claude.json`: user ones at the top, local ones
 /// under each project.
 fn claude_stale(config: &serde_json::Value) -> Vec<StaleRegistration> {
@@ -131,13 +147,8 @@ fn claude_stale(config: &serde_json::Value) -> Vec<StaleRegistration> {
             .into_iter()
             .flatten()
             .filter_map(move |(name, server)| {
-                let command = server.get("command")?.as_str()?;
-                is_old_server(command).then(|| StaleRegistration {
-                    agent: "Claude Code",
-                    name: name.clone(),
-                    command: command.to_owned(),
-                    project: project.map(str::to_owned),
-                })
+                let command = server.get("command")?.as_str();
+                stale("Claude Code", name, command, project)
             })
             .collect::<Vec<_>>()
     };
@@ -160,15 +171,7 @@ fn codex_stale(config: &toml::Table) -> Vec<StaleRegistration> {
         .and_then(toml::Value::as_table)
         .into_iter()
         .flatten()
-        .filter_map(|(name, server)| {
-            let command = server.get("command")?.as_str()?;
-            is_old_server(command).then(|| StaleRegistration {
-                agent: "Codex",
-                name: name.clone(),
-                command: command.to_owned(),
-                project: None,
-            })
-        })
+        .filter_map(|(name, server)| stale("Codex", name, server.get("command")?.as_str(), None))
         .collect()
 }
 

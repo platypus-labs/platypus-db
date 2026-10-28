@@ -3,7 +3,7 @@
 
 use platypus_sql::Dialect;
 
-use crate::ddl::{Keys, add_foreign_key, one_by_one, phased, same_check, transactional};
+use crate::ddl::{Keys, add_foreign_key, phased, same_check, transactional, warn_one_by_one};
 use crate::{ColumnDesign, ConstraintDesign, ForeignKeyDesign, Script, TableDesign};
 
 /// The script that turns the tables `current` of `schema` into `wanted`, read from
@@ -21,8 +21,7 @@ pub fn compare(
     wanted: &[TableDesign],
     current: &[TableDesign],
 ) -> Result<Script, String> {
-    // SQLite and DuckDB create a table again to change its keys: they keep them inline.
-    let in_place = !matches!(dialect, Dialect::Sqlite | Dialect::DuckDb);
+    let in_place = keys_in_place(dialect);
     let mut keys = Keys::default();
     let mut altered = Script::default();
     for old in current {
@@ -51,13 +50,14 @@ pub fn compare(
     out.statements.extend(later);
     out.statements.append(&mut keys.added);
     add(&mut out, dropped);
-    if !out.transactional && out.statements.len() > 1 {
-        let warning = one_by_one(dialect);
-        if !out.warnings.contains(&warning) {
-            out.warnings.push(warning);
-        }
-    }
+    warn_one_by_one(dialect, &mut out);
     Ok(out)
+}
+
+/// Whether `dialect` adds and drops foreign keys with `ALTER TABLE`: SQLite and DuckDB
+/// create a table again to change its keys, which they keep inline.
+fn keys_in_place(dialect: Dialect) -> bool {
+    !matches!(dialect, Dialect::Sqlite | Dialect::DuckDb)
 }
 
 fn find<'a>(tables: &'a [TableDesign], name: &str) -> Option<&'a TableDesign> {
@@ -109,7 +109,7 @@ fn create_new(
     wanted: &[TableDesign],
     current: &[TableDesign],
 ) -> Result<Vec<String>, String> {
-    let in_place = !matches!(dialect, Dialect::Sqlite | Dialect::DuckDb);
+    let in_place = keys_in_place(dialect);
     let mut later = Vec::new();
     let mut new = Vec::new();
     for w in wanted.iter().filter(|w| find(current, &w.name).is_none()) {
