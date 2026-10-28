@@ -1,0 +1,11 @@
+{
+  "decode_mrows_per_s": {
+    "int8": 45,
+    "text": 15,
+    "timestamp": 45,
+    "numeric_to_decimal128": 7.5,
+    "timestamp_formatted": 1.3
+  },
+  "start_ms": 3000,
+  "memory_mb": 500
+}

@@ -91,6 +91,34 @@ jobs:
           path: ${{ runner.temp }}/e2e-shots
           if-no-files-found: ignore
 
+  # Thresholds in scripts/bench-thresholds.json: decoding, then the start and memory of the
+  # release build under a virtual display.
+  bench:
+    name: Benchmarks (thresholds)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev xvfb xdotool
+          python3 -m pip install pillow
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: cargo bench -p platypus-driver-pg --bench decode -- --noplot
+      - run: python3 scripts/bench.py decode
+      - run: npm ci
+        working-directory: apps/desktop
+      - run: npm run tauri build -- --no-bundle
+        working-directory: apps/desktop
+      - run: xvfb-run -a -s "-screen 0 1600x1000x24" python3 scripts/bench.py app target/release/platypus-db
+
   integration:
     name: Integration (dev databases)
     runs-on: ubuntu-latest
