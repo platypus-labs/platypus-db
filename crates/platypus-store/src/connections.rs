@@ -66,6 +66,9 @@ pub struct SavedConnection {
     /// [`SavedConnection::effective_agent_access`].
     #[serde(default)]
     pub agent_access: AgentAccess,
+    /// Whether the value panel formats a text column holding JSON as it does a JSON column.
+    #[serde(default, skip_serializing_if = "TextJson::is_format")]
+    pub text_json: TextJson,
     /// How the form enters the address: host, port and database, or one URL. Only the
     /// form's: it opens again as it was left.
     #[serde(default, skip_serializing_if = "ConnectBy::is_host")]
@@ -83,6 +86,24 @@ pub struct SavedConnection {
     /// identify their rows. Last: TOML writes arrays of tables after plain values.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub virtual_keys: Vec<VirtualKey>,
+}
+
+/// What the value panel does with JSON found in a text column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TextJson {
+    /// Indented, as in a JSON column.
+    #[default]
+    Format,
+    /// As it is written.
+    Plain,
+}
+
+impl TextJson {
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn is_format(&self) -> bool {
+        *self == Self::Format
+    }
 }
 
 /// How the connection form enters the address.
@@ -404,6 +425,7 @@ impl SavedConnection {
             color: None,
             connection_type: None,
             agent_access: AgentAccess::default(),
+            text_json: TextJson::Format,
             connect_by: ConnectBy::Host,
             ssh: None,
             init: SavedInit::default(),
@@ -1105,6 +1127,22 @@ mod tests {
         assert!(projects.iter().all(|p| p.connections == [shared.id]));
         assert_eq!(projects[0].initials, "CR");
         assert_eq!(projects[1].initials, "IN");
+    }
+
+    #[test]
+    fn json_in_text_columns_is_formatted_unless_turned_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        let mut c = sample();
+        s.save(c.clone(), PasswordUpdate::Keep).unwrap();
+        let file = || std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
+        assert!(!file().contains("text_json"), "the default is not written");
+        assert_eq!(s.get(c.id).unwrap().text_json, TextJson::Format);
+        c.text_json = TextJson::Plain;
+        s.save(c.clone(), PasswordUpdate::Keep).unwrap();
+        assert!(file().contains("text_json = \"plain\""), "{}", file());
+        let (again, _) = store(dir.path());
+        assert_eq!(again.get(c.id).unwrap().text_json, TextJson::Plain);
     }
 
     #[test]

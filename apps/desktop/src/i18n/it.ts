@@ -1756,6 +1756,7 @@ const it: Record<string, string> = {
   "Color scale": "Scala di colori",
   "Orange": "Arancione",
   "Yellow": "Giallo",
+  "Format JSON found in text columns in the value panel": "Formatta il JSON nelle colonne di testo nel pannello valori",
 };
 
 export default it;
