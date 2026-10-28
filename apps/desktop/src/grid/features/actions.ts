@@ -76,6 +76,19 @@ registerAction({
 });
 
 registerAction({
+  id: "grid.conditional_formatting",
+  scope: "grid",
+  title: "Conditional formatting…",
+  group: "view",
+  order: 67,
+  when: ({ source, grid }) => source?.features !== undefined && grid.columns().length > 0,
+  run: ({ source, grid }) => {
+    const focused = grid.focused();
+    source!.features!.openFormatting(focused ? (grid.columns()[focused.col]?.name ?? null) : null);
+  },
+});
+
+registerAction({
   id: "grid.compare_rows",
   scope: "grid",
   title: "Compare the two rows",

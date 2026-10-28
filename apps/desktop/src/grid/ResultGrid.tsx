@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import type { ColumnInfo } from "../api";
+import { api, type ColumnInfo } from "../api";
 import { annotation, catalogEntry, catalogKey, useCatalogVersion } from "../catalog/catalog";
 import { CalcPanel } from "../panels/CalcPanel";
 import { CompareRows } from "../panels/CompareRows";
@@ -12,6 +12,9 @@ import { ValuePanel, type ValueTarget } from "../panels/ValuePanel";
 import { defineSetting, setSetting, useSetting } from "../settings";
 import { workbench } from "../workbench";
 import { ColumnsDialog } from "./ColumnsDialog";
+import { FormattingDialog } from "./FormattingDialog";
+import { plainNumber } from "./formats";
+import { type FormatRule, type Ranges, formatCell, loadRules, parseNumber, resolveRules, saveRules, scaledColumns } from "./formatting";
 import { type Cell, type CellDecoration, DataGrid, type GridApi, type GridSource } from "./DataGrid";
 import { type TableEditTarget, useTableEditor } from "./edit/TableEditor";
 import "./features/actions";
@@ -50,6 +53,8 @@ export interface GridFeatures {
   toggleMap(): void;
   /** Shows two loaded rows side by side. */
   compareRows(rows: [number, number]): void;
+  /** Opens the conditional formatting rules, a new one on `column`. */
+  openFormatting(column: string | null): void;
 }
 
 declare module "./DataGrid" {
@@ -68,6 +73,17 @@ function combine(below: Decorate | undefined, above: Decorate | undefined): Deco
     if (!top) return below(row, col);
     const base = below(row, col);
     return base ? { ...base, background: top.background } : top;
+  };
+}
+
+/** Formatting colors underneath the other decorations, which keep their own background. */
+function underlay(colors: Decorate | undefined, above: Decorate | undefined): Decorate | undefined {
+  if (!colors || !above) return colors ?? above;
+  return (row, col) => {
+    const top = above(row, col);
+    const color = colors(row, col);
+    if (!top || !color) return top ?? color;
+    return { ...top, background: top.background ?? color.background };
   };
 }
 
@@ -127,9 +143,9 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   /** Bumped on every selection change while the calc or map panel is open. */
   const [selection, setSelection] = useState(0);
   const [compared, setCompared] = useState<[number, number] | null>(null);
-  const decorate = useMemo(() => combine(editor.decorate, search.decorate), [editor.decorate, search.decorate]);
 
-  // Data viewer tables keep their column layout; other results start from the query's.
+  // Data viewer tables keep their column layout and formatting rules; other results start
+  // from the query's.
   const layoutKey = source?.table ? `${source.connection.id}|${source.table}` : null;
   const [layout, setLayout] = useState<ColumnLayout>(() => (layoutKey ? loadLayout(layoutKey) : EMPTY_LAYOUT));
   useEffect(() => setLayout(layoutKey ? loadLayout(layoutKey) : EMPTY_LAYOUT), [layoutKey]);
@@ -137,6 +153,11 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
     setLayout(next);
     if (layoutKey) saveLayout(layoutKey, next);
   };
+  const formatting = useFormatting(layoutKey, jobId, columns, rowCount, editor.topRows, cache);
+  const decorate = useMemo(
+    () => combine(underlay(formatting.decorate, editor.decorate), search.decorate),
+    [formatting.decorate, editor.decorate, search.decorate],
+  );
 
   const dataRow = focused ? grid.current?.dataRow(focused.row) : null;
   const refs = useReferences({
@@ -162,6 +183,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
     toggleCalc: () => setCalcOpen(!calcOpen),
     toggleMap: () => setMapOpen(!mapOpen),
     compareRows: setCompared,
+    openFormatting: formatting.open,
   };
 
   const column = focused ? columns[focused.col] : undefined;
@@ -279,9 +301,77 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
       {stats.summary}
       {editor.dialog}
       {compared && <CompareRows jobId={jobId} columns={columns} rows={compared} onClose={() => setCompared(null)} />}
+      {formatting.dialog}
       {columnsOpen && (
         <ColumnsDialog columns={columns} layout={layout} onChange={changeLayout} onClose={() => setColumnsOpen(false)} />
       )}
     </div>
   );
+}
+
+/** The conditional formatting of a result: its rules, kept for a table, and the cells they
+ *  color. Color scales span the numbers of the rows loaded. */
+function useFormatting(
+  key: string | null,
+  jobId: number,
+  columns: ColumnInfo[],
+  rowCount: number,
+  topRows: number,
+  cache: RowCache,
+) {
+  const [rules, setRules] = useState<FormatRule[]>(() => (key ? loadRules(key) : []));
+  useEffect(() => setRules(key ? loadRules(key) : []), [key]);
+  const [dialog, setDialog] = useState<{ column: string | null } | null>(null);
+  const [ranges, setRanges] = useState<Ranges>(() => new Map());
+  const resolved = useMemo(() => resolveRules(rules, columns), [rules, columns]);
+  const scaled = scaledColumns(resolved).join(",");
+
+  useEffect(() => {
+    const cols = scaled ? scaled.split(",").map(Number) : [];
+    if (cols.length === 0 || rowCount === 0) return setRanges(new Map());
+    let live = true;
+    Promise.all(cols.map((c) => api.columnProfile(jobId, c).then((p) => [c, p] as const))).then(
+      (profiles) => {
+        if (!live) return;
+        const next: Ranges = new Map();
+        for (const [c, p] of profiles) {
+          const low = p.min === null ? null : parseNumber(plainNumber(p.min));
+          const high = p.max === null ? null : parseNumber(plainNumber(p.max));
+          if (low !== null && high !== null) next.set(c, [low, high]);
+        }
+        setRanges(next);
+      },
+      // A result closed meanwhile colors nothing.
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [jobId, scaled, rowCount]);
+
+  const decorate = useMemo(() => {
+    if (resolved.length === 0) return undefined;
+    return (row: number, col: number) =>
+      row < topRows ? undefined : formatCell(resolved, col, (c) => cache.get(row - topRows, c), ranges, plainNumber);
+  }, [resolved, ranges, topRows, cache]);
+
+  const change = (next: FormatRule[]) => {
+    setRules(next);
+    if (key) saveRules(key, next);
+  };
+
+  return {
+    decorate,
+    open: (column: string | null) => setDialog({ column }),
+    dialog: dialog && (
+      <FormattingDialog
+        columns={columns}
+        rules={rules}
+        column={dialog.column}
+        saved={key !== null}
+        onChange={change}
+        onClose={() => setDialog(null)}
+      />
+    ),
+  };
 }

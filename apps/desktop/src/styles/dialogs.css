@@ -1188,3 +1188,89 @@ button.primary.danger:hover:not(:disabled) {
 .modal .pooler-hint button {
   margin-left: auto;
 }
+
+/* Conditional formatting of the grid (grid/FormattingDialog.tsx): the rules, then one
+   rule's fields, two a row. */
+.modal.formatting-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.formatting-dialog h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-strong);
+  margin: 4px 0 0;
+}
+
+.formatting-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 30vh;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-input);
+}
+
+.formatting-empty {
+  padding: 6px;
+}
+
+.formatting-rule {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: var(--radius);
+}
+
+.formatting-rule.selected {
+  background: var(--hover);
+}
+
+.formatting-rule > button:not(.link) {
+  padding: 0 6px;
+}
+
+.formatting-sample {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.formatting-rule .formatting-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-strong);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: left;
+}
+
+.formatting-target {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: var(--radius);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  background: var(--hover);
+}
+
+.formatting-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.formatting-form .swatches {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: 30px;
+}
