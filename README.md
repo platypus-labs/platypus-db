@@ -445,9 +445,17 @@ PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start 
 - Each connection gives agents **no access**, **read only** (the default) or **read and
   write**; production and read-only connections are never more than read only.
 - Passwords stay in the keychain and no answer shows a host, a user or a secret.
-- Agents' queries are in the history with the agent's name.
+- Agents' queries are in the history with the agent's name, and every tool call is in the
+  agents' call log (Settings → Agents → Activity), by session, with a filter and a CSV export.
+- An agent can propose SQL with `propose_sql`: it opens in a new editor tab, for you to
+  review and run.
 
-Settings → Agents shows the commands that register the server, with Copy buttons. Agents
+Settings → Agents → Setup lists Claude Desktop, Claude Code, Codex, Cursor, Windsurf,
+Antigravity and Gemini CLI with their configuration file and whether PlatypusDB is in it:
+**Install** writes the server there, after asking and after a copy of the file
+(`<file>.platypus-backup-<date>`), keeping the rest of the file as it was. The same entry is
+shown to copy by hand, and so are the commands that register the server. Security lists the
+access of each connection. Agents
 registered with `platypus-mcp.exe` by version 0.2 need registering again with these commands:
 the installers no longer ship that second executable.
 
@@ -473,13 +481,21 @@ command or `.pgpass` instead. A connection that asks for its password every time
 available to agents.
 
 Tools: `list_connections`, `list_schemas`, `list_objects`, `describe_table`, `get_ddl`,
-`search_objects` and `run_query`. `run_query` runs one statement and returns 100 rows,
+`search_objects`, `run_query`, `sample_rows`, `explain` and `propose_sql`. `run_query` runs one statement and returns 100 rows,
 32 KB and 30 s at most by default (`max_rows` up to 10,000, `max_bytes` up to 1 MB,
 `timeout_seconds` up to 300), as an aligned text table or JSON, saying when rows or values
 longer than 1,000 characters were left out. In the text table SQL `NULL` reads `NULL` and a
 text `NULL` reads `'NULL'`. `list_objects` returns 500 objects at most (`limit` up to 2,000);
 a larger schema comes in pages (`truncated`, `total`, `next_offset`, then `offset`). The
 client's `notifications/cancelled` cancels the running statement.
+
+`sample_rows` returns the first rows of a table, view or collection (20 by default) within
+the limits of `run_query`. `explain` returns a statement's plan as an indented tree (or JSON)
+with costs, rows and index suggestions, within the byte limit and the timeout; the statement
+is checked as `run_query` checks it, and runs only with `analyze`, rolled back: on read-only
+connections that needs a read-only transaction that refuses writes (PostgreSQL, MySQL,
+MariaDB, SQLite). `propose_sql` runs nothing: the app opens the SQL in an editor tab, at once
+if it is open, else when it starts (within 24 hours).
 
 On read-only connections only statements that change nothing run, inside the database's
 read-only transaction (PostgreSQL, MySQL and MariaDB `READ ONLY`, SQLite `query_only`; DuckDB
