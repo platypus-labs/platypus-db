@@ -2,7 +2,7 @@
 // key lock, with the chain and the waited lock. SQL Server cannot cancel another session's
 // statement, so there is no Cancel statement; KILL ends the waiter, then the holder.
 import { assert, connections, needs, sh } from "../qa-grid.mjs";
-import { adminButton, adminTab, background, checkChain, confirmDanger, idOf, openAdmin, rowWith, waitBlocked } from "../admin.mjs";
+import { adminButton, background, checkChain, confirmDanger, field, idOf, openAdmin, rowOf, rowWith, select, waitBlocked } from "../admin.mjs";
 
 const DB = "mssql";
 const NAME = "QA J SQL Server";
@@ -23,17 +23,17 @@ export default async function (page) {
     const holderId = await idOf(page, "e2e_holder");
     await waitBlocked(page, "SET v = 2", holderId);
     const waiterId = await idOf(page, "SET v = 2");
-    await checkChain(page, holderId, waiterId);
     // The wait type of a waiting key lock.
-    assert.match(await page.eval(`${rowWith("SET v = 2")}.children[7].textContent`), /^LCK_M_/);
+    assert.match(await page.eval(field("wait")), /^LCK_M_/);
+    await checkChain(page, holderId, waiterId);
 
-    await page.eval(`${rowWith("SET v = 2")}.click()`);
+    await select(page, "SET v = 2");
     assert.equal(await page.eval(`${adminButton("Cancel statement")}`), undefined, "no Cancel statement on SQL Server");
     await page.eval(`${adminButton("End session")}.click()`);
     await confirmDanger(page);
-    await page.waitFor(`![...${adminTab}.querySelectorAll('tr.admin-session')].some(r => r.children[0].textContent.trim() === ${JSON.stringify(waiterId)})`, 30_000);
+    await page.waitFor(`${rowOf(waiterId)} === null`, 30_000);
 
-    await page.eval(`${rowWith("e2e_holder")}.click()`);
+    await select(page, "e2e_holder");
     await page.eval(`${adminButton("End session")}.click()`);
     await confirmDanger(page);
     await page.waitFor(`${rowWith("e2e_holder")} === undefined`, 30_000);

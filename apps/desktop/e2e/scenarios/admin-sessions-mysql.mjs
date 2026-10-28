@@ -2,7 +2,7 @@
 // shows a session waiting for another's row lock, with the chain and the waited lock;
 // KILL QUERY cancels the waiting statement, KILL ends the holder and rolls back its update.
 import { assert, connections, needs, sh } from "../qa-grid.mjs";
-import { adminButton, background, checkChain, confirmDanger, idOf, openAdmin, rowWith, waitBlocked } from "../admin.mjs";
+import { adminButton, background, checkChain, confirmDanger, idOf, openAdmin, rowWith, select, waitBlocked } from "../admin.mjs";
 
 const DB = "mysql";
 const NAME = "QA J MySQL";
@@ -26,14 +26,14 @@ export async function lockFlow(page, db, name) {
     await checkChain(page, holderId, waiterId);
 
     // KILL QUERY: the waiting update fails as interrupted.
-    await page.eval(`${rowWith("SET v = 2")}.click()`);
+    await select(page, "SET v = 2");
     await page.eval(`${adminButton("Cancel statement")}.click()`);
     await confirmDanger(page);
     assert.match(await waiter.exited, /interrupted/);
     await page.waitFor(`${rowWith("SET v = 2")} === undefined`, 30_000);
 
     // KILL: the holder's session goes, and its update with it.
-    await page.eval(`${rowWith("e2e_holder")}.click()`);
+    await select(page, "e2e_holder");
     await page.eval(`${adminButton("End session")}.click()`);
     await confirmDanger(page);
     await page.waitFor(`${rowWith("e2e_holder")} === undefined`, 30_000);

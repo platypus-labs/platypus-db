@@ -1,5 +1,6 @@
-// Helpers of the Server activity scenarios (group J): the admin tab, its session rows, and
-// sessions of the dev databases run in the background from a shell in their container.
+// Helpers of the Server activity scenarios (group J): the admin tab, its session rows and
+// details, and sessions of the dev databases run in the background from a shell in their
+// container.
 import { spawn } from "node:child_process";
 import { DBS, assert, expand, treeMenu } from "./qa-grid.mjs";
 
@@ -9,12 +10,14 @@ export const adminTab = `[...document.querySelectorAll('.admin-tab')].find(t => 
 export const rowWith = (text) =>
   `[...(${adminTab}?.querySelectorAll('tr.admin-session') ?? [])].find(r => r.querySelector('.admin-query')?.textContent.includes(${JSON.stringify(text)}))`;
 
+/** The session row of `id`. */
+export const rowOf = (id) => `${adminTab}?.querySelector('tr.admin-session[data-id="${id}"]')`;
+
 export const adminButton = (label) =>
   `[...${adminTab}.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)})`;
 
-/** Shows the `label` section of the admin tab: `Sessions` or `Locks`. */
-export const showSection = (page, label) =>
-  page.eval(`[...${adminTab}.querySelectorAll('.object-sections button')].find(b => b.textContent.startsWith(${JSON.stringify(label)})).click()`);
+/** A field of the selected session's details (`user`, `wait`, `blocked-by`, …). */
+export const field = (key) => `${adminTab}.querySelector('.admin-details [data-field="${key}"] dd')?.textContent ?? null`;
 
 /** Connects `name` and opens Server activity on it. */
 export async function openAdmin(page, name, db) {
@@ -42,22 +45,37 @@ export async function confirmDanger(page) {
 }
 
 /** The id of the session row whose statement contains `text`. */
-export const idOf = (page, text) => page.eval(`${rowWith(text)}.children[0].textContent.trim()`);
+export const idOf = (page, text) => page.eval(`${rowWith(text)}.dataset.id`);
 
-/** Waits for the session running `text` to be listed as waiting for `blocker`. */
-export async function waitBlocked(page, text, blocker) {
-  await page.waitFor(`${rowWith(text)}?.classList.contains('blocked') ?? false`, 30_000);
-  assert.equal(await page.eval(`${rowWith(text)}.children[8].textContent`), blocker);
+/** Selects the session row whose statement contains `text` and waits for its details. */
+export async function select(page, text) {
+  const id = await idOf(page, text);
+  await page.eval(`${rowWith(text)}.click()`);
+  await page.waitFor(`${adminTab}.querySelector('.admin-details-title strong')?.textContent === 'Session ${id}'`);
+  return id;
 }
 
-/** Opens the Locks view and checks the chain from `holder` to `waiter`. */
+/** Waits for the session running `text` to be listed as waiting for `blocker`, and selects it. */
+export async function waitBlocked(page, text, blocker) {
+  await page.waitFor(`${rowWith(text)}?.classList.contains('waiting') ?? false`, 30_000);
+  await select(page, text);
+  assert.equal(await page.eval(field("blocked-by")), blocker);
+}
+
+/** Switches the tab to its `Sessions` or `Locks` section. */
+export async function showSection(page, label) {
+  await page.eval(`[...${adminTab}.querySelectorAll('.object-sections button')].find(b => b.textContent.startsWith(${JSON.stringify(label)})).click()`);
+}
+
+/** Opens the Locks view and checks the chain from `holder` to `waiter` and the lock the
+ *  waiter waits for, then goes back to the sessions. */
 export async function checkChain(page, holder, waiter) {
   await showSection(page, "Locks");
   await page.waitFor(`${adminTab}.querySelector('.admin-chains') !== null`, 15_000);
-  assert.equal(await page.eval(`${adminTab}.querySelector('.admin-chains > li > button .admin-blocker').textContent`), holder);
-  assert.equal(await page.eval(`${adminTab}.querySelector('.admin-chains > li > ul .admin-waiter').textContent`), waiter);
+  assert.equal(await page.eval(`${adminTab}.querySelector('.admin-chains > li > button').dataset.id`), holder);
+  assert.equal(await page.eval(`${adminTab}.querySelector('.admin-chains > li > ul button').dataset.id`), waiter);
   await page.waitFor(
-    `[...${adminTab}.querySelectorAll('table.admin-table tbody tr.blocked')].some(r => r.children[0].textContent === ${JSON.stringify(waiter)})`,
+    `[...${adminTab}.querySelectorAll('table.admin-locks tbody tr.waiting')].some(r => r.children[0].textContent === ${JSON.stringify(waiter)})`,
     15_000,
   );
   await showSection(page, "Sessions");

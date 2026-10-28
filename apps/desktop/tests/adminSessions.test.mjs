@@ -1,7 +1,7 @@
 // Unit tests of the admin tab's waiting chains, filter and durations (src/admin/sessions.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { blockingChains, matches, seconds } from "../src/admin/sessions.ts";
+import { activity, blockingChains, matches, seconds } from "../src/admin/sessions.ts";
 
 const session = (id, blocked_by = [], extra = {}) => ({
   id,
@@ -64,4 +64,18 @@ test("durations read as seconds, minutes or hours", () => {
   assert.equal(seconds(12.4), "12 s");
   assert.equal(seconds(65), "1 min 05 s");
   assert.equal(seconds(7380), "2 h 03 min");
+});
+
+test("durations round before they choose their unit", () => {
+  assert.equal(seconds(9.96), "10 s");
+  assert.equal(seconds(59.7), "1 min 00 s");
+  assert.equal(seconds(3599.6), "1 h 00 min");
+});
+
+test("a session's activity: waiting first, then running, open transaction, idle", () => {
+  assert.equal(activity(session("1", ["2"])), "waiting");
+  assert.equal(activity(session("1")), "running");
+  assert.equal(activity(session("1", [], { query_seconds: null, state: "idle in transaction" })), "transaction");
+  assert.equal(activity(session("1", [], { query_seconds: null, state: "idle in transaction (aborted)" })), "transaction");
+  assert.equal(activity(session("1", [], { query_seconds: null, state: "Sleep" })), "idle");
 });

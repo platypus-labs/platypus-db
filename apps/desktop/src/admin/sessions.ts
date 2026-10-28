@@ -51,11 +51,25 @@ export function matches(session: ServerSession, filter: string): boolean {
     .some((field) => field?.toLowerCase().includes(needle));
 }
 
-/** `12.3 s`, `4 min 05 s`, `2 h 03 min`; empty for `null`. */
+/** What a session is doing, for its badge and the counts that filter the list. */
+export type Activity = "waiting" | "running" | "transaction" | "idle";
+
+/** Waiting for another session's lock; running a statement; idle with a transaction open
+ *  (PostgreSQL tells it); or idle. */
+export function activity(session: ServerSession): Activity {
+  if (session.blocked_by.length > 0) return "waiting";
+  if (session.query_seconds !== null) return "running";
+  if (session.state?.startsWith("idle in transaction")) return "transaction";
+  return "idle";
+}
+
+/** `12.3 s`, `4 min 05 s`, `2 h 03 min`; empty for `null`. Rounded first, so that 9.96
+ *  is `10 s` and 59.7 is `1 min 00 s`. */
 export function seconds(value: number | null): string {
   if (value === null) return "";
-  if (value < 60) return `${value.toFixed(value < 10 ? 1 : 0)} s`;
-  const whole = Math.floor(value);
+  if (Math.round(value * 10) / 10 < 10) return `${value.toFixed(1)} s`;
+  if (Math.round(value) < 60) return `${Math.round(value)} s`;
+  const whole = Math.round(value);
   if (whole < 3600) return `${Math.floor(whole / 60)} min ${String(whole % 60).padStart(2, "0")} s`;
   return `${Math.floor(whole / 3600)} h ${String(Math.floor((whole % 3600) / 60)).padStart(2, "0")} min`;
 }

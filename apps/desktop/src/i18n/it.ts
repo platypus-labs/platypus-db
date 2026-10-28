@@ -1608,9 +1608,6 @@ const it: Record<string, string> = {
   "Locks": "Lock",
   "This database does not list the sessions of its server.": "Questo database non elenca le sessioni del suo server.",
   "Filter by user, database, client or statement": "Filtra per utente, database, client o istruzione",
-  "Only running statements": "Solo istruzioni in esecuzione",
-  "{n} session": "{n} sessione",
-  "{n} sessions": "{n} sessioni",
   "{n} waiting for a lock": "{n} in attesa di un lock",
   "Id": "Id",
   "Client": "Client",
@@ -1623,7 +1620,6 @@ const it: Record<string, string> = {
   "this app": "questa app",
   "No sessions match.": "Nessuna sessione corrisponde.",
   "Session {id}": "Sessione {id}",
-  "since {time}": "dalle {time}",
   "It runs no statement": "Non sta eseguendo istruzioni",
   "This is the session of this app": "È la sessione di questa app",
   "No statement": "Nessuna istruzione",
@@ -1635,6 +1631,13 @@ const it: Record<string, string> = {
   "Status": "Stato",
   "Held": "Concesso",
   "No locks.": "Nessun lock.",
+  "waiting": "in attesa",
+  "running": "in esecuzione",
+  "idle in transaction": "inattiva in transazione",
+  "idle": "inattiva",
+  "all": "tutte",
+  "Select a session to see its statement and end it.": "Seleziona una sessione per vederne l'istruzione e chiuderla.",
+  "Since": "Dal",
 };
 
 export default it;
