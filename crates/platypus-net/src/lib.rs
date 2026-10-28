@@ -438,4 +438,16 @@ impl Connection for Tunneled {
     async fn search_metadata(&self, needle: &str) -> Result<Vec<MetadataMatch>> {
         self.inner.search_metadata(needle).await
     }
+
+    async fn server_sessions(&self) -> Result<Vec<platypus_core::ServerSession>> {
+        self.inner.server_sessions().await
+    }
+
+    async fn server_locks(&self) -> Result<Vec<platypus_core::ServerLock>> {
+        self.inner.server_locks().await
+    }
+
+    async fn end_server_session(&self, id: &str, how: platypus_core::EndSession) -> Result<()> {
+        self.inner.end_server_session(id, how).await
+    }
 }
