@@ -55,6 +55,8 @@ export interface SavedConnection {
   /** What external agents (MCP, the CLI) may do; production and read-only connections
    *  never let them write. */
   agent_access?: AgentAccess;
+  /** JSON in a text column: indented in the value panel (the default), or as written. */
+  text_json?: "format" | "plain";
   /** How the form enters the address, as it was left: the host fields or one URL. */
   connect_by?: "host" | "url";
   /** The SSH server the connection goes through. */

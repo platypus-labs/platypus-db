@@ -794,6 +794,16 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
               {t("Read-only (warn before modifying data)")}
             </label>
 
+            <label className="check">
+              <input
+                type="checkbox"
+                data-field="text_json"
+                checked={conn.text_json !== "plain"}
+                onChange={(e) => set("text_json", e.target.checked ? undefined : "plain")}
+              />
+              {t("Format JSON found in text columns in the value panel")}
+            </label>
+
             <AgentAccessField conn={conn} onChange={(access) => set("agent_access", access)} />
 
             {projects.length > 0 && (
