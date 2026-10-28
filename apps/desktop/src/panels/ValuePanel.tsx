@@ -13,7 +13,12 @@ export interface ValueTarget {
   column: ColumnInfo;
   /** SQL NULL, as the grid shows it. */
   isNull: boolean;
+  /** JSON in a text column is shown as written, not indented (the connection's choice). */
+  plainTextJson?: boolean;
 }
+
+/** A column the database types as JSON (`json`, `jsonb`, MySQL's `JSON`). */
+const jsonColumn = (column: ColumnInfo) => /json/i.test(column.db_type);
 
 type Mode = "text" | "json" | "xml" | "hex" | "image";
 
@@ -124,7 +129,10 @@ export function ValuePanel({ target, onClose }: { target: ValueTarget | null; on
     const xml = plain || json !== null || !text.trimStart().startsWith("<") ? null : prettyXml(text);
     return { json, xml };
   }, [text, binary]);
-  const auto: Mode = image ? "image" : binary ? "hex" : formatted.json !== null ? "json" : formatted.xml !== null ? "xml" : "text";
+  // JSON a text column holds opens indented, unless the connection keeps it as written: the
+  // JSON view is still a click away.
+  const openJson = formatted.json !== null && (!target?.plainTextJson || jsonColumn(target.column));
+  const auto: Mode = image ? "image" : binary ? "hex" : openJson ? "json" : formatted.xml !== null ? "xml" : "text";
   const shown = mode ?? auto;
   const modes: Mode[] = binary
     ? image

@@ -189,7 +189,14 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   const column = focused ? columns[focused.col] : undefined;
   const valueTarget: ValueTarget | null =
     focused && dataRow != null && column
-      ? { jobId, row: dataRow, col: focused.col, column, isNull: grid.current?.value(focused.row, focused.col) === null }
+      ? {
+          jobId,
+          row: dataRow,
+          col: focused.col,
+          column,
+          isNull: grid.current?.value(focused.row, focused.col) === null,
+          plainTextJson: source?.connection.text_json === "plain",
+        }
       : null;
   const total = rowCount + editor.topRows;
 
