@@ -4278,7 +4278,7 @@ async fn qa_fixnav_clickhouse_alters_columns() {
             script
                 .warnings
                 .iter()
-                .any(|w| w.starts_with("ClickHouse applies"))
+                .any(|w| w.starts_with("ClickHouse runs each statement"))
         );
         let err = platypus_schema::apply(&*conn, &script).await.unwrap_err();
         assert_eq!(err.applied.len(), 1, "{err:?}");
