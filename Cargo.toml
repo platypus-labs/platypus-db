@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "apps/desktop/src-tauri"]
-exclude = ["vendor/tiberius"]
+exclude = ["vendor/tiberius", "vendor/tokio-postgres"]
 
 [workspace.package]
 version = "0.2.0"
@@ -106,3 +106,7 @@ lto = "fat"
 opt-level = 3
 panic = "abort"
 strip = true
+
+# tokio-postgres-rustls and the PostgreSQL driver share the patched copy (see its Cargo.toml).
+[patch.crates-io]
+tokio-postgres = { path = "vendor/tokio-postgres" }

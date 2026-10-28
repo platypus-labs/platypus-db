@@ -109,6 +109,14 @@ and shows the ODBC drivers and data sources of the system.
   named instances without a port are pointed out. *Copy as URL* in a connection's menu copies
   its URL without the password; *Duplicate* (also in the command palette) saves a copy with its
   tunnel, init script and passwords, and opens it for editing.
+- **Environment variables**: any field of a connection, the password and the SSH tunnel's
+  included, can read `${env:NAME}`: from the app's environment, then from the connection's
+  `.env` file (*Variables file* in its dialog). The connection keeps the reference, not the
+  value; a variable that is not set says which. `$${` writes a plain `${`.
+- **Poolers**: a PostgreSQL connection behind PgBouncer, Supavisor or Neon's pooler in
+  *transaction mode* runs its statements unnamed, so that each one keeps to the server
+  session of its transaction. The dialog suggests the mode for Supabase's pooler on port
+  6543 and for Neon's `-pooler` hosts; `?pgbouncer=true` in a pasted URL sets it too.
 - **Import** connections from DBeaver, DataGrip, pgAdmin and `pg_service.conf`, with their
   folders. A DBeaver project export (`.dbp`) brings its projects too, optionally gathered in a
   folder of the project rail. From DBeaver (a `.dbp` or a workspace) the saved user names and

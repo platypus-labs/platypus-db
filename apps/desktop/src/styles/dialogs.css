@@ -1177,3 +1177,15 @@ button.primary.danger:hover:not(:disabled) {
   max-height: 120px;
   overflow: auto;
 }
+
+/* The pooler a PostgreSQL host is, with the mode to use. */
+.modal .pooler-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.modal .pooler-hint button {
+  margin-left: auto;
+}

@@ -30,7 +30,8 @@ import { basename } from "../workspace";
 import { DriverIcon, DriverPicker, driverName } from "./DriverPicker";
 import { NetworkFields, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 import { NetworkProfileDialog, newNetworkProfile } from "./NetworkProfileDialog";
-import { t, msg } from "../i18n";
+import { t, tNodes, msg } from "../i18n";
+import { suggestedPooler } from "./pooler";
 
 interface Props {
   initial: SavedConnection;
@@ -150,6 +151,16 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     setConn((c) => ({ ...c, [key]: value }));
   const init = conn.init ?? EMPTY_INIT;
   const setInit = <K extends keyof SavedInit>(key: K, value: SavedInit[K]) => set("init", { ...init, [key]: value });
+  // The pooler the host is, when its mode is not set to it yet.
+  const suggested = suggestedPooler(conn.host, conn.port);
+  const poolerHint = suggested?.mode === "transaction" && conn.options?.pooler !== "transaction" ? suggested : null;
+  /** Sets a driver option; an empty value removes it. */
+  const setOption = (key: string, value: string) => {
+    const options = { ...conn.options };
+    if (value.trim()) options[key] = value;
+    else delete options[key];
+    set("options", options);
+  };
   const source = passwordSource(conn);
   const profile = profiles.find((p) => p.id === conn.network_profile) ?? null;
   const server = !isEmbedded(conn.driver);
@@ -680,7 +691,31 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       </select>
                     </label>
                   )}
+                  {conn.driver === "postgres" && (
+                    <label className="field">
+                      <span>{t("Connection pooler")}</span>
+                      <select
+                        value={conn.options?.pooler ?? ""}
+                        onChange={(e) => setOption("pooler", e.target.value)}
+                        data-field="pooler"
+                        title={t("In transaction mode each transaction may get another server session: statements run unnamed, as PgBouncer, Supavisor and Neon's pooler need.")}
+                      >
+                        <option value="">{t("None or session mode")}</option>
+                        <option value="transaction">{t("Transaction mode (PgBouncer, Supavisor, Neon)")}</option>
+                      </select>
+                    </label>
+                  )}
                 </div>
+                )}
+                {conn.driver === "postgres" && poolerHint && (
+                  <div className="notice small pooler-hint" role="status">
+                    <span>
+                      {t("This is {service}'s pooler in transaction mode.", { service: poolerHint.service })}
+                    </span>
+                    <button type="button" onClick={() => setOption("pooler", "transaction")}>
+                      {t("Use transaction mode")}
+                    </button>
+                  </div>
                 )}
                 {VENDOR_DRIVERS.includes(conn.driver) ? <VendorDriverState driver={conn.driver} /> : null}
 
@@ -726,6 +761,33 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                 </div>
               </>
             )}
+
+            <div className="field">
+              <span>{t("Variables file (.env)")}</span>
+              <div className="row tight">
+                <input
+                  className="grow"
+                  value={conn.options?.env_file ?? ""}
+                  onChange={(e) => setOption("env_file", e.target.value)}
+                  placeholder={t("None: the environment's variables only")}
+                  data-field="env_file"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const path = await open({ multiple: false, directory: false });
+                    if (typeof path === "string") setOption("env_file", path);
+                  }}
+                >
+                  {t("Browse…")}
+                </button>
+              </div>
+              <small className="muted">
+                {tNodes("Any field, the password too, can read {example}: from the environment, then from this file.", {
+                  example: <code key="example">{"${env:NAME}"}</code>,
+                })}
+              </small>
+            </div>
 
             <label className="check">
               <input type="checkbox" checked={conn.read_only} onChange={(e) => set("read_only", e.target.checked)} />

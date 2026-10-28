@@ -76,6 +76,10 @@ pub struct PgConnection {
     savepoint: AtomicBool,
     /// The notices the server sent, until `take_messages`.
     notices: Notices,
+    /// Behind a pooler in transaction mode (`PgBouncer`, Supavisor, Neon's), where each
+    /// transaction may get another server session: statements run unnamed, prepared and
+    /// run in one round trip, outside a transaction of the session's own.
+    unnamed_statements: bool,
 }
 
 /// Whether `sql` is a `COPY` to or from the client (`STDOUT`, `STDIN`), a protocol of its own.
@@ -209,6 +213,10 @@ impl PgConnection {
             next_cursor: AtomicU64::new(1),
             savepoint: AtomicBool::new(false),
             notices,
+            unnamed_statements: config
+                .options
+                .get(platypus_core::POOLER)
+                .is_some_and(|mode| mode.eq_ignore_ascii_case("transaction")),
         })
     }
 }
@@ -461,6 +469,35 @@ impl Connection for PgConnection {
 }
 
 impl PgConnection {
+    /// The columns of `sql`, from a statement prepared in a transaction of its own: behind a
+    /// pooler in transaction mode, a name prepared outside one may be gone (or on another
+    /// server session) by the time it runs. Rolled back whatever happens.
+    async fn describe(&self, sql: &str) -> Result<tokio_postgres::Statement> {
+        let mut retried = false;
+        loop {
+            self.client
+                .batch_execute("BEGIN")
+                .await
+                .map_err(map_error)?;
+            let described = self.client.prepare(sql).await;
+            let ended = self.client.batch_execute("ROLLBACK").await;
+            match described {
+                // The client looks types up with statements it prepared once, in an earlier
+                // transaction: on another server session, or a reset one, they are gone.
+                // Prepared again, in this one.
+                Err(e) if !retried && e.code() == Some(&SqlState::INVALID_SQL_STATEMENT_NAME) => {
+                    retried = true;
+                    self.client.clear_type_cache();
+                }
+                described => {
+                    let statement = described.map_err(map_error)?;
+                    ended.map_err(map_error)?;
+                    return Ok(statement);
+                }
+            }
+        }
+    }
+
     /// Whether the server lists its sessions and locks as PostgreSQL does: CockroachDB has
     /// no `pg_blocking_pids` nor `pg_terminate_backend`, YugabyteDB keeps its locks
     /// elsewhere.
@@ -606,7 +643,14 @@ impl PgConnection {
                     .to_owned(),
             ));
         }
-        let statement = self.client.prepare(sql).await.map_err(map_error)?;
+        // A pooler in transaction mode keeps one server session for a transaction only: the
+        // statement is described in a transaction of its own, then run unnamed.
+        let unnamed = self.unnamed_statements && !open;
+        let statement = if unnamed {
+            self.describe(sql).await?
+        } else {
+            self.client.prepare(sql).await.map_err(map_error)?
+        };
 
         // `SELECT` without columns has rows all the same: no columns is no result only
         // for the other statements.
@@ -617,11 +661,12 @@ impl PgConnection {
             Some("SELECT" | "VALUES" | "TABLE")
         );
         if statement.columns().is_empty() && !query {
-            let rows = self
-                .client
-                .execute_raw(&statement, no_params())
-                .await
-                .map_err(map_error)?;
+            let rows = if unnamed {
+                self.client.execute_typed(sql, &[]).await
+            } else {
+                self.client.execute_raw(&statement, no_params()).await
+            }
+            .map_err(map_error)?;
             return Ok(ExecResult::Affected { rows });
         }
 
@@ -634,11 +679,12 @@ impl PgConnection {
             .unzip();
         columns::load_names(&self.client, &mut builders).await;
         let schema = Arc::new(Schema::new(fields));
-        let rows = self
-            .client
-            .query_raw(&statement, no_params())
-            .await
-            .map_err(map_error)?;
+        let rows = if unnamed {
+            self.client.query_typed_raw(sql, no_typed_params()).await
+        } else {
+            self.client.query_raw(&statement, no_params()).await
+        }
+        .map_err(map_error)?;
 
         let state = BatchState {
             rows: Some(Box::pin(rows)),
@@ -677,6 +723,10 @@ fn simple_groups(statements: &[&str]) -> Vec<std::ops::Range<usize>> {
 }
 
 fn no_params() -> std::iter::Empty<&'static (dyn ToSql + Sync)> {
+    std::iter::empty()
+}
+
+fn no_typed_params() -> std::iter::Empty<(&'static (dyn ToSql + Sync), Type)> {
     std::iter::empty()
 }
 
