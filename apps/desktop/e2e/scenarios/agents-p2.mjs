@@ -4,7 +4,7 @@
 // the server in one after a confirmation, with a backup of the file and its other content
 // kept; a file that does not parse is left alone; Security shows each connection's access;
 // SQL proposed with propose_sql opens in a new editor tab of the open app, unrun.
-// The app runs with a home folder of its own, so no real client configuration is touched.
+// The clients are looked up in a home folder of its own, so no real configuration is touched.
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -37,13 +37,8 @@ export function skip() {
 }
 
 export function env({ dir }) {
-  // The clients' files are looked up under the home folder (and %APPDATA% on Windows).
-  return {
-    USERPROFILE: home(dir),
-    HOME: home(dir),
-    APPDATA: join(home(dir), "AppData", "Roaming"),
-    XDG_CONFIG_HOME: join(home(dir), ".config"),
-  };
+  // The clients' files are looked up under this home folder instead of the user's.
+  return { PLATYPUS_CLIENTS_HOME: home(dir) };
 }
 
 export function setup({ dir }) {
@@ -134,7 +129,7 @@ const showPage = async (page, name) => {
 
 async function activity(page, dir, shots) {
   await showPage(page, "activity");
-  await page.waitFor(`${callTools}.length === 12`);
+  await page.waitFor(`${callTools}.length === 11`);
   const tools = await page.eval(callTools);
   assert.equal(tools[0], "explain", "newest first");
   assert.equal(tools.filter((t) => t === "sample_rows").length, 4);
@@ -144,7 +139,7 @@ async function activity(page, dir, shots) {
   // One session, with its counts.
   const sessions = await page.eval(`[...document.querySelector('[data-filter="session"]').options].map(o => o.textContent)`);
   assert.equal(sessions.length, 2, sessions.join(" | "));
-  assert.match(sessions[1], /e2e-agent · 12 calls · 5 errors/);
+  assert.match(sessions[1], /e2e-agent · 11 calls · 5 errors/);
 
   await page.eval(setValue(`document.querySelector('[data-filter="status"]')`, "error"));
   await page.waitFor(`${callTools}.length === 5`);
@@ -163,11 +158,11 @@ async function activity(page, dir, shots) {
     text: 'explain', session: null, status: null, before_id: null, limit: 1 } })`);
   const lines = csv.trim().split("\r\n");
   assert.equal(lines[0], "started_at,session,agent,tool,connection,arguments,duration_ms,status,error");
-  assert.equal(lines.length, 1 + 8, "every matching call, not one page");
+  assert.equal(lines.length, 1 + 7, "every matching call, not one page");
   assert.match(lines[1], /^\d{4}-\d\d-\d\dT[\d:.]+Z,[0-9a-f-]{36},e2e-agent,explain,Shop,"\{/);
 
   await page.eval(setValue(`document.querySelector('[data-filter="text"]')`, ""));
-  await page.waitFor(`${callTools}.length === 12`);
+  await page.waitFor(`${callTools}.length === 11`);
   assert.ok(existsSync(join(dir, "agent-calls.db")));
 }
 
@@ -245,7 +240,7 @@ async function security(page) {
 
 async function clearLog(page) {
   await showPage(page, "activity");
-  await page.waitFor(`${callTools}.length === 12`);
+  await page.waitFor(`${callTools}.length === 11`);
   await page.eval(`document.querySelector('[data-action="clear-calls"]').click()`);
   await page.waitFor(`document.querySelector('#confirm-message') !== null`);
   await page.eval(`[...document.querySelectorAll('.modal.confirm button')].find(b => b.textContent === 'Delete').click()`);

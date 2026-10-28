@@ -25,6 +25,9 @@ use crate::error::{CommandError, CommandResult};
 /// uses one.
 const DATA_DIR_ENV: &str = "PLATYPUS_DATA_DIR";
 
+/// The home folder the clients' files are looked up in, instead of the user's.
+const CLIENTS_HOME_ENV: &str = "PLATYPUS_CLIENTS_HOME";
+
 /// The MCP server earlier versions installed beside the app, before `--mcp`.
 const OLD_SERVER: &str = "platypus-mcp";
 
@@ -219,6 +222,16 @@ fn server_entry() -> CommandResult<clients::ServerEntry> {
 
 /// The home folder and the OS's configuration folder, where the clients keep their files.
 fn client_dirs() -> CommandResult<(PathBuf, PathBuf)> {
+    // The end-to-end tests point the clients at a throwaway home folder: moving the real
+    // one would move the web view's too.
+    if let Some(home) = std::env::var_os(CLIENTS_HOME_ENV).map(PathBuf::from) {
+        let config = if cfg!(windows) {
+            home.join("AppData").join("Roaming")
+        } else {
+            home.join(".config")
+        };
+        return Ok((home, config));
+    }
     let home = std::env::home_dir()
         .ok_or_else(|| CommandError::new("other", "cannot find the home folder".to_owned()))?;
     let config = if cfg!(windows) {
