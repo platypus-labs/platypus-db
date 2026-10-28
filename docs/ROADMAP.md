@@ -87,7 +87,8 @@ Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i
 Chi lavora su un gruppo lo segna qui e pusha su `main` prima di scrivere codice. Formato:
 `🔒 <nome> · <branch> · <AAAA-MM-GG>`. Un lock senza commit sul branch da più di 3 giorni è
 scaduto. `✅ completato` vuol dire che P1, P2 e P3 sono tutte fatte; `✅ fatto (…)` elenca le
-priorità finite, e il resto del gruppo si può ancora prendere. Procedura completa:
+priorità finite, e il resto del gruppo si può ancora prendere, come un gruppo libero. Non si
+prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 [CLAUDE.md](../CLAUDE.md).
 
 | Gruppo | Lock |
