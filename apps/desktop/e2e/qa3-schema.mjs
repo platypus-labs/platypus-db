@@ -352,11 +352,12 @@ export const resultError = `(${visibleQuery}?.querySelector('.result-error')?.te
 
 /** Runs the whole editor of the visible query tab as a script; resolves to the error shown or null. */
 export async function runEditorScript(page, timeout = 60_000) {
-  const texts = `[...document.querySelectorAll('.notice, .error, .result-tab, .result-error')].map(n => n.textContent)`;
-  await page.eval(`window.__qa3Before = ${texts}`);
+  // Shown nodes, not their texts: another tab's earlier run may read the same ("0 rows affected").
+  const shown = `[...document.querySelectorAll('.notice, .error, .result-tab, .result-error')]`;
+  await page.eval(`window.__qa3Before = new Set(${shown})`);
   await page.eval(`${buttonIn(visibleQuery, "Script")}.click()`);
   // The end of the run: something new in the results and Cancel disabled again.
-  const fresh = `${texts}.filter(t => !window.__qa3Before.includes(t) && !t.includes('Executing'))`;
+  const fresh = `${shown}.filter(n => !window.__qa3Before.has(n)).map(n => n.textContent).filter(t => !t.includes('Executing'))`;
   await page.waitFor(`${fresh}.length > 0 && ${cancelOf}?.disabled === true`, timeout);
   await page.sleep(500);
   await page.waitFor(`${cancelOf}?.disabled === true`, timeout);
