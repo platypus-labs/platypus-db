@@ -1202,8 +1202,6 @@ fn plan_support(b: &Backend) -> PlanSupport {
     }
 }
 
-/// Plans come back as a tree. With analyze the statement runs, and what it changes is
-/// rolled back, in autocommit and inside an open transaction alike.
 /// Through `PgBouncer` in transaction mode (`docker compose --profile pooler`), each
 /// transaction may land on another server session: the navigator's and the editor's
 /// requests still work with the connection's pooler mode set. Skipped when it is not running.
@@ -1264,6 +1262,8 @@ async fn works_through_a_transaction_pooler() {
     assert!(rows.is_ok(), "{rows:?}");
 }
 
+/// Plans come back as a tree. With analyze the statement runs, and what it changes is
+/// rolled back, in autocommit and inside an open transaction alike.
 /// Steps in `node`'s tree.
 fn plan_steps(node: &PlanNode) -> usize {
     1 + node.children.iter().map(plan_steps).sum::<usize>()

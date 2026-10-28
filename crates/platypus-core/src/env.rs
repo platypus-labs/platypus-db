@@ -91,20 +91,19 @@ pub fn parse_dotenv(text: &str) -> BTreeMap<String, String> {
             continue;
         }
         let value = value.trim();
-        let value = if let Some(inner) = value.strip_prefix('\'').and_then(|v| v.rsplit_once('\''))
+        let value = if let Some((inner, _)) =
+            value.strip_prefix('\'').and_then(|v| v.rsplit_once('\''))
         {
-            inner.0.to_owned()
-        } else if let Some(inner) = value.strip_prefix('"').and_then(|v| v.rsplit_once('"')) {
+            inner.to_owned()
+        } else if let Some((inner, _)) = value.strip_prefix('"').and_then(|v| v.rsplit_once('"')) {
             inner
-                .0
                 .replace("\\n", "\n")
                 .replace("\\\"", "\"")
                 .replace("\\\\", "\\")
         } else {
             value
-                .split(" #")
-                .next()
-                .unwrap_or(value)
+                .split_once(" #")
+                .map_or(value, |(value, _)| value)
                 .trim_end()
                 .to_owned()
         };
@@ -168,15 +167,11 @@ impl ConnectionConfig {
     /// # Errors
     /// When a variable is not set.
     pub fn with_variables(mut self, vars: &EnvVars) -> Result<Self> {
-        let text = |s: &mut String| -> Result<()> {
-            *s = expand(s, vars)?;
-            Ok(())
-        };
-        text(&mut self.host)?;
-        text(&mut self.database)?;
-        text(&mut self.user)?;
-        if let Some(password) = &self.password {
-            self.password = Some(Secret::new(expand(password.expose(), vars)?));
+        expand_text(&mut self.host, vars)?;
+        expand_text(&mut self.database, vars)?;
+        expand_text(&mut self.user, vars)?;
+        if let Some(password) = &mut self.password {
+            expand_secret(password, vars)?;
         }
         for path in [
             &mut self.ssl_root_cert,
@@ -186,15 +181,15 @@ impl ConnectionConfig {
         .into_iter()
         .flatten()
         {
-            *path = PathBuf::from(expand(&path.to_string_lossy(), vars)?);
+            expand_path(path, vars)?;
         }
         for (key, value) in &mut self.options {
             if key != ENV_FILE {
-                text(value)?;
+                expand_text(value, vars)?;
             }
         }
         if let Some(schema) = &mut self.init.schema {
-            text(schema)?;
+            expand_text(schema, vars)?;
         }
         if let Some(ssh) = &mut self.ssh {
             ssh_with_variables(ssh, vars)?;
@@ -204,14 +199,14 @@ impl ConnectionConfig {
 }
 
 fn ssh_with_variables(ssh: &mut SshConfig, vars: &EnvVars) -> Result<()> {
-    ssh.host = expand(&ssh.host, vars)?;
-    ssh.user = expand(&ssh.user, vars)?;
+    expand_text(&mut ssh.host, vars)?;
+    expand_text(&mut ssh.user, vars)?;
     match &mut ssh.auth {
-        SshAuth::Password(secret) => *secret = Secret::new(expand(secret.expose(), vars)?),
+        SshAuth::Password(secret) => expand_secret(secret, vars)?,
         SshAuth::Key { path, passphrase } => {
-            *path = PathBuf::from(expand(&path.to_string_lossy(), vars)?);
-            if let Some(p) = passphrase {
-                *p = Secret::new(expand(p.expose(), vars)?);
+            expand_path(path, vars)?;
+            if let Some(passphrase) = passphrase {
+                expand_secret(passphrase, vars)?;
             }
         }
         SshAuth::Agent => {}
@@ -219,6 +214,21 @@ fn ssh_with_variables(ssh: &mut SshConfig, vars: &EnvVars) -> Result<()> {
     if let Some(jump) = &mut ssh.jump {
         ssh_with_variables(jump, vars)?;
     }
+    Ok(())
+}
+
+fn expand_text(text: &mut String, vars: &EnvVars) -> Result<()> {
+    *text = expand(text, vars)?;
+    Ok(())
+}
+
+fn expand_secret(secret: &mut Secret, vars: &EnvVars) -> Result<()> {
+    *secret = Secret::new(expand(secret.expose(), vars)?);
+    Ok(())
+}
+
+fn expand_path(path: &mut PathBuf, vars: &EnvVars) -> Result<()> {
+    *path = PathBuf::from(expand(&path.to_string_lossy(), vars)?);
     Ok(())
 }
 
