@@ -50,6 +50,8 @@ services:
 
   mariadb:
     image: mariadb:11.4
+    # 64 MB as MySQL 8.4 (MariaDB's default is 16 MB): the scale tests read cells of 32 MB.
+    command: --max-allowed-packet=64M
     environment:
       MARIADB_USER: platypus
       MARIADB_PASSWORD: platypus
