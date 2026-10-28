@@ -94,7 +94,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | Gruppo | Lock |
 |---|---|
 | A — Modifica dei dati | ✅ completato |
-| B — Griglia avanzata | 🔒 Delfa · group-b-formatting · 2026-10-28 |
+| B — Griglia avanzata | ✅ fatto (P1, P2; P3 in parte) |
 | C — Navigator e oggetti | ✅ completato |
 | D — Editor SQL | ✅ fatto (P1, P3; P2 in parte) |
 | E — Explain e performance | ✅ completato |
