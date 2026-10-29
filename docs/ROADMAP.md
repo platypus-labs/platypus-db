@@ -269,8 +269,26 @@ della griglia leggono le colonne per indice dal backend.
 
 ### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 e P2 fatti, P3 in parte
 
-**Stato: P1 e P2 completati; dei P3 fatti proxy, comandi su eventi, gestori di credenziali e
-test di tutte le connessioni** (restano Kerberos/SSPI/Entra ID/IAM e Kubernetes/AWS SSM).
+**Stato: P1 e P2 completati; dei P3 fatti proxy, comandi su eventi, gestori di credenziali,
+test di tutte le connessioni, token IAM AWS e GCP ed Entra ID, accesso Windows (SSPI) a SQL
+Server, port forward Kubernetes e AWS SSM** (resta Kerberos/GSSAPI per PostgreSQL e MySQL, che
+i loro driver Rust non hanno). Accesso senza password: opzione `auth` (`platypus_core::Auth`):
+`aws_iam`, `gcp_iam` ed `entra_id` sono token che `platypus-net/src/token.rs` chiede a ogni
+connessione alla CLI (`aws rds generate-db-auth-token`, `gcloud sql generate-login-token`,
+`az account get-access-token`, con la risorsa di SQL Server o quella di PostgreSQL e MySQL di
+Azure) e mette come password, mai salvata; MySQL li manda con `mysql_clear_password`, SQL
+Server come token Entra ID (`AuthMethod::AADToken`). `windows` è l'accesso integrato di
+tiberius (feature `winauth`, solo su Windows). `sign_in` serve anche ai client CLI (`psql`,
+`mysql --enable-cleartext-plugin`, `sqlcmd -E`/`-G`). Import e stringhe incollate con login
+Windows o Entra ID tengono `auth`. Port forward: opzione `forward` = `kubernetes`
+(`kubectl port-forward --address 127.0.0.1 [--context] [--namespace] <k8s_target>
+<locale>:<porta del server>`) o `ssm` (`aws ssm start-session` col documento
+`AWS-StartPortForwardingSessionToRemoteHost` verso host e porta della connessione, dall'istanza
+`ssm_target`); `platypus-net/src/forward.rs` sceglie una porta locale libera, aspetta che
+ascolti (30 secondi al massimo, l'errore cita stderr) e chiude la CLI con la connessione. Non
+si combina con tunnel SSH o proxy. `aws_region` e `aws_profile` valgono per IAM e SSM. La
+conformance (`tests/cloud_cli.rs`) mette sul `PATH` un `aws` e un `kubectl` finti contro
+PostgreSQL e MySQL.
 Proxy: opzione `proxy` della connessione, un URL `socks5://` o `http://` con login facoltativo;
 `platypus-net/src/proxy.rs` fa l'handshake SOCKS5 (nome risolto dal proxy, login RFC 1929) o
 `CONNECT` HTTP con Basic. Senza tunnel la connessione passa da una porta locale inoltrata
@@ -324,13 +342,14 @@ prima di scrivere in Prod è nel gruppo L. Restano i P3.
 | ✅ Inizializzazione: schema e database di default, query di bootstrap, fuso orario | P2 | D |
 | ✅ Comandi shell su eventi (prima della connessione, dopo la disconnessione), ad esempio un VPN | P3 | D |
 | ✅ Autenticazione: `.pgpass`, password da comando shell, chiedi ogni volta | P2 | D |
-| Kerberos, SSPI, Entra ID, IAM AWS e GCP | P3 | D+ |
+| ✅ SSPI (Kerberos o NTLM) per SQL Server su Windows, Entra ID, IAM AWS e GCP | P3 | D+ |
+| Kerberos (GSSAPI) per PostgreSQL e MySQL | P3 | D+ |
 | ✅ **Master password** per le credenziali salvate (oltre al keychain) | P2 | D |
 | ✅ Gestione certificati SSL: CA personalizzate, certificato client | P2 | D |
 | ✅ Import delle connessioni da DBeaver (`data-sources.json`), DataGrip, pgAdmin, `~/.pg_service.conf` | P1 | D |
 | ✅ Indicatore di salute della connessione (latenza, keep-alive, riconnessione) | P2 | N |
 | ✅ Import di progetti DBeaver (`.dbp`) con cartelle; cartelle di connessioni nei progetti e cartelle di progetti nella barra | P2 | D |
-| Kubernetes port-forward, AWS SSM | P3 | D+ |
+| ✅ Kubernetes port-forward, AWS SSM | P3 | D+ |
 | ✅ Connessione da URL incollato (`postgres://…`, `mysql://…`, `Server=…;Database=…`): i campi si compilano da soli | P2 | D |
 | ✅ Variabili d'ambiente e file `.env` nei campi della connessione (`${env:DB_PASSWORD}`) | P2 | D |
 | ✅ 🆕 Credenziali da gestori esterni: 1Password CLI, Bitwarden, HashiCorp Vault, AWS Secrets Manager | P3 | D+ |
