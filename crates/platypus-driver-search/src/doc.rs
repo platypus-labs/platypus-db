@@ -173,31 +173,34 @@ impl Layout {
         Self::build(names, kinds, types, false)
     }
 
-    /// The columns of a result read page by page, fixed by `fields` (name and type, as the
-    /// mapping of the indices gives them) and by the first page `docs`, whose own fields
-    /// come after those. All of them are text. `overflow` adds the `_other` column, for the
-    /// pages to come.
+    /// The columns of a result read page by page: those of the first page `docs` in the order
+    /// the server wrote them, then the other `fields` (name and type, as the mapping of the
+    /// indices gives them; objects are `document`). All of them are text, typed by the
+    /// mapping where it says. `overflow` adds the `_other` column, for the pages to come.
     #[must_use]
     pub fn paged(docs: &[Doc], lead: &[&str], fields: &[(String, String)], overflow: bool) -> Self {
         let inferred = Self::infer(docs, lead);
-        let mut names: Vec<String> = lead.iter().map(|&n| n.to_owned()).collect();
-        let mut types: Vec<String> = vec![Kind::Text.name().to_owned(); names.len()];
+        let mapped = |name: &str| {
+            fields
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, t)| t.as_str())
+        };
+        let mut names = inferred.names.clone();
+        let mut types: Vec<String> = inferred
+            .names
+            .iter()
+            .zip(&inferred.kinds)
+            .map(|(name, kind)| match mapped(name) {
+                // Any field can hold an array: the first page says so.
+                Some(ty) if !matches!(kind, Kind::Array | Kind::Doc) => ty.to_owned(),
+                _ => kind.name().to_owned(),
+            })
+            .collect();
         for (name, ty) in fields {
             if !names.contains(name) {
                 names.push(name.clone());
-                // Any field can hold an array: the first page says so.
-                let seen = inferred.index.get(name).map(|&i| inferred.kinds[i]);
-                types.push(match seen {
-                    Some(kind @ (Kind::Array | Kind::Doc)) => kind.name().to_owned(),
-                    _ => ty.clone(),
-                });
-            }
-        }
-        // A field the mapping does not have is typed by the first page.
-        for (name, kind) in inferred.names.iter().zip(&inferred.kinds) {
-            if !names.contains(name) {
-                names.push(name.clone());
-                types.push(kind.name().to_owned());
+                types.push(ty.clone());
             }
         }
         if overflow {

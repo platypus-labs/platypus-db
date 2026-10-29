@@ -397,8 +397,8 @@ async fn searches_give_documents_and_page_past_one_page() {
 /// shown instead of dropped or refused.
 async fn later_pages_keep_the_columns(conn: &dyn Connection) {
     let mut docs: Vec<String> = (1..=30).map(|n| format!(r#"{{"n":{n}}}"#)).collect();
-    // `_source` is not coerced: a string in a long field, and a field nobody mapped.
-    docs.push(r#"{"n":"not a number","late":{"a":1}}"#.to_owned());
+    // An array in a long field does not fit a number column, and a field nobody mapped.
+    docs.push(r#"{"n":[7,8],"late":{"a":1}}"#.to_owned());
     fill(
         conn,
         "pdb_late",
@@ -407,15 +407,15 @@ async fn later_pages_keep_the_columns(conn: &dyn Connection) {
     )
     .await;
     let search = r#"GET /pdb_late/_search
-{"sort":[{"_id":"asc"}]}"#;
+{"sort":[{"n":"desc"}]}"#;
     let batches = run_paged(conn, search, 10).await;
     assert_eq!(rows(&batches), 31);
     assert_eq!(columns(&batches), ["_id", "n", "_other"]);
     let all = cells(&batches);
     let odd = all
         .iter()
-        .find(|r| r[1].as_deref() == Some("not a number"))
-        .expect("the value that is not a number");
+        .find(|r| r[1].as_deref() == Some("[7,8]"))
+        .expect("the value that is no number");
     assert_eq!(odd[2].as_deref(), Some(r#"{"late":{"a":1}}"#));
     assert_eq!(db_type(&batches[0], "n"), "long");
     // Without a usable mapping (all indices) the columns come from the first page.

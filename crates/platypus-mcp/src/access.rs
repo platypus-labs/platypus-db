@@ -533,7 +533,7 @@ pub fn check_redis<'a>(
     }
 }
 
-/// [`check`] for Elasticsearch and OpenSearch, whose statements are console requests and SQL,
+/// [`check`] for Elasticsearch and `OpenSearch`, whose statements are console requests and SQL,
 /// one at a time: checked with the editor's analysis of them
 /// ([`platypus_driver_search::command`]). There is no transaction to run them in, so
 /// read-only access lets only the requests that read run.
