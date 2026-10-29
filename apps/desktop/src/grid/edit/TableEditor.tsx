@@ -1,13 +1,5 @@
 import { Icon } from "../../ui/Icon";
-import {
-  type ReactNode,
-  type RefObject,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   type CellInput,
@@ -24,15 +16,7 @@ import { Dictionary, foreignKeyColumns } from "./dictionary";
 import { displayColumn, useCatalogVersion } from "../../catalog/catalog";
 import { DisplayColumnDialog } from "../../catalog/DisplayColumnDialog";
 import { workbench } from "../../workbench";
-import {
-  type EditMeta,
-  type EditSource,
-  type EditorKind,
-  editMeta,
-  editorKind,
-  isJson,
-  type ReadOnly,
-} from "./meta";
+import { type EditMeta, type EditSource, type EditorKind, editMeta, editorKind, isJson, type ReadOnly } from "./meta";
 import { plainNumber } from "../formats";
 import { isOwnCopy, mapFields, parseClipboard } from "./paste";
 import { needsProductionConfirm } from "../../guards/guards";
@@ -171,16 +155,8 @@ interface Opening {
 const CHANGED = "rgba(250, 176, 5, 0.24)";
 const INSERTED = "rgba(64, 192, 87, 0.2)";
 const MUTED = "#8b919a";
-const DELETED: CellDecoration = {
-  background: "rgba(250, 82, 82, 0.2)",
-  color: MUTED,
-  strike: true,
-};
-const INSERTED_DEFAULT: CellDecoration = {
-  background: INSERTED,
-  text: "DEFAULT",
-  color: MUTED,
-};
+const DELETED: CellDecoration = { background: "rgba(250, 82, 82, 0.2)", color: MUTED, strike: true };
+const INSERTED_DEFAULT: CellDecoration = { background: INSERTED, text: "DEFAULT", color: MUTED };
 const UNDO_LIMIT = 200;
 /** As in `display.rs`: the grid shows values on one line, cut. */
 const MAX_CELL_CHARS = 500;
@@ -194,40 +170,23 @@ function decoration(value: CellInput, background: string): CellDecoration {
     if (value.kind === "null") text = null;
     else if (value.kind === "default") text = "DEFAULT";
     else {
-      const cut =
-        value.text.length > MAX_CELL_CHARS
-          ? `${value.text.slice(0, MAX_CELL_CHARS)}…`
-          : value.text;
+      const cut = value.text.length > MAX_CELL_CHARS ? `${value.text.slice(0, MAX_CELL_CHARS)}…` : value.text;
       text = cut.replace(/[\n\r\t]/g, " ");
     }
     shownText.set(value, text);
   }
-  return {
-    background,
-    text,
-    color: value.kind === "default" ? MUTED : undefined,
-  };
+  return { background, text, color: value.kind === "default" ? MUTED : undefined };
 }
 
-const columnsOf = (meta: EditMeta) =>
-  meta.columns.flatMap((c, i) => (c ? [i] : []));
+const columnsOf = (meta: EditMeta) => meta.columns.flatMap((c, i) => (c ? [i] : []));
 
 /** The columns of the source's table the database fills by itself; none when they cannot be
  *  read, which leaves them editable as before. */
-async function generatedColumns(
-  target: TableEditTarget,
-  source: EditSource,
-): Promise<GeneratedColumn[]> {
+async function generatedColumns(target: TableEditTarget, source: EditSource): Promise<GeneratedColumn[]> {
   if (source.table.kind !== "table") return [];
   try {
     const session = await target.session();
-    return session === null
-      ? []
-      : await api.generatedColumns(
-          session,
-          source.table.schema,
-          source.table.name,
-        );
+    return session === null ? [] : await api.generatedColumns(session, source.table.schema, source.table.name);
   } catch {
     return [];
   }
@@ -235,20 +194,10 @@ async function generatedColumns(
 
 /** Columns the database fills that the editor never writes: computed ones, and identities
  *  that take no value. */
-const fixedByDatabase = (generated: Generated | undefined) =>
-  generated === "computed" || generated === "identity";
+const fixedByDatabase = (generated: Generated | undefined) => generated === "computed" || generated === "identity";
 
 /** Editing of a result of one table: inline editors, new and deleted rows, save. */
-export function useTableEditor({
-  target,
-  jobId,
-  columns,
-  cache,
-  version,
-  grid,
-  box,
-  extra,
-}: Options): TableEditorHost {
+export function useTableEditor({ target, jobId, columns, cache, version, grid, box, extra }: Options): TableEditorHost {
   const [meta, setMeta] = useState<EditMeta | ReadOnly | null>(null);
   const [state, setState] = useState(edits.EMPTY);
   const current = useRef(state);
@@ -285,21 +234,11 @@ export function useTableEditor({
     current.load().then(
       async (source) => {
         if (!live) return;
-        if (!source)
-          return setMeta({
-            reason: msg("the rows are not one table's"),
-            hidden: true,
-          });
+        if (!source) return setMeta({ reason: msg("the rows are not one table's"), hidden: true });
         const generated = await generatedColumns(current, source);
         if (live) setMeta(editMeta(source, columns, virtualKeys, generated));
       },
-      (e) =>
-        live &&
-        setMeta({
-          reason: t("its keys could not be read ({message})", {
-            message: toCommandError(e).message,
-          }),
-        }),
+      (e) => live && setMeta({ reason: t("its keys could not be read ({message})", { message: toCommandError(e).message }) }),
     );
     return () => {
       live = false;
@@ -319,26 +258,15 @@ export function useTableEditor({
   const connectionId = target?.connection.id;
   const database = target?.database;
   const preferred = useCallback(
-    (schema: string, table: string) =>
-      connectionId
-        ? displayColumn(connectionId, database, schema, table)
-        : undefined,
+    (schema: string, table: string) => (connectionId ? displayColumn(connectionId, database, schema, table) : undefined),
     [connectionId, database],
   );
   // Changes when a pick changes, not with every note saved in the catalog.
-  const picks = keys
-    ? foreignKeyColumns(keys)
-        .map(({ fk }) => preferred(fk.ref_schema, fk.ref_table) ?? "")
-        .join("\u0000")
-    : "";
+  const picks = keys ? foreignKeyColumns(keys).map(({ fk }) => preferred(fk.ref_schema, fk.ref_table) ?? "").join("\u0000") : "";
   useEffect(() => {
     const t = latest.current;
     if (!keys || !t) return;
-    const dict = new Dictionary(
-      t.session,
-      () => setLabels((n) => n + 1),
-      preferred,
-    );
+    const dict = new Dictionary(t.session, () => setLabels((n) => n + 1), preferred);
     dictionary.current = dict;
     void dict.init(keys);
     return () => {
@@ -375,17 +303,14 @@ export function useTableEditor({
   }
 
   /** Whether a result column is one of the table's, so it can be written. */
-  const writable = (col: number) =>
-    keys?.columns[col] !== undefined && !fixedByDatabase(keys.generated[col]);
+  const writable = (col: number) => keys?.columns[col] !== undefined && !fixedByDatabase(keys.generated[col]);
 
   /** What each result column takes, for mass edits and loading files. */
   const rules = useMemo(
     () =>
       columns.map((c, i) => {
         const columnMeta = keys?.columns[i];
-        return columnMeta && !fixedByDatabase(keys?.generated[i])
-          ? columnRule(c, columnMeta)
-          : undefined;
+        return columnMeta && !fixedByDatabase(keys?.generated[i]) ? columnRule(c, columnMeta) : undefined;
       }),
     [columns, keys],
   );
@@ -409,13 +334,8 @@ export function useTableEditor({
       const column = columns[cell.col]?.name ?? "?";
       setError(
         keys.columns[cell.col]
-          ? t("{column} is filled in by the database: it cannot be edited", {
-              column,
-            })
-          : t("{column} is not a column of {table}: it cannot be edited", {
-              column,
-              table: keys.table.name,
-            }),
+          ? t("{column} is filled in by the database: it cannot be edited", { column })
+          : t("{column} is not a column of {table}: it cannot be edited", { column, table: keys.table.name }),
       );
       return;
     }
@@ -448,32 +368,20 @@ export function useTableEditor({
     const column = columns[cell.col]!;
     const dict = dictionary.current;
     const lookup = dict?.has(cell.col) ?? false;
-    const kind = editorKind(
-      column,
-      keys.columns[cell.col],
-      typed ?? initial,
-      lookup,
-    );
+    const kind = editorKind(column, keys.columns[cell.col], typed ?? initial, lookup);
     setEditing({ cell, initial, typed, original, kind });
     if (lookup && dict) {
-      dict
-        .options(cell.col)
-        .then(
-          (options) =>
-            setEditing((e) => (e?.cell === cell ? { ...e, options } : e)),
-          fail,
-        );
+      dict.options(cell.col).then(
+        (options) => setEditing((e) => (e?.cell === cell ? { ...e, options } : e)),
+        fail,
+      );
     }
   }
 
   function commit(value: CellInput, move: Move) {
     const e = editing;
     if (!e) return;
-    apply((s) =>
-      edits.setCells(s, [
-        { gridRow: e.cell.row, col: e.cell.col, value, original: e.original },
-      ]),
-    );
+    apply((s) => edits.setCells(s, [{ gridRow: e.cell.row, col: e.cell.col, value, original: e.original }]));
     setEditing(null);
     const g = grid.current;
     if (!g) return;
@@ -517,8 +425,7 @@ export function useTableEditor({
         return col >= 0 && writable(col) ? [{ col, value }] : [];
       });
     // NULL comes from the grid's own copy only; other text has no NULL.
-    const input = (value: string | null): CellInput =>
-      value === null ? { kind: "null" } : { kind: "value", text: value };
+    const input = (value: string | null): CellInput => (value === null ? { kind: "null" } : { kind: "value", text: value });
     if (asRows) {
       // Empty fields of other text take the column's default.
       const added = rows.map(
@@ -530,23 +437,18 @@ export function useTableEditor({
           ),
       );
       apply((s) => edits.addRows(s, added));
-      grid.current?.select(
-        { row: 0, col: focused.col },
-        { row: added.length - 1, col: focused.col },
-      );
+      grid.current?.select({ row: 0, col: focused.col }, { row: added.length - 1, col: focused.col });
       return;
     }
     // Over the cells from the focused one; empty fields of other text are NULL.
     const total = grid.current?.rowCount() ?? 0;
-    const cells: edits.CellChange[] = rows
-      .slice(0, Math.max(0, total - focused.row))
-      .flatMap((row, r) =>
-        fields(row).map(({ col, value }) => ({
-          gridRow: focused.row + r,
-          col,
-          value: value === "" && !ownCopy ? { kind: "null" } : input(value),
-        })),
-      );
+    const cells: edits.CellChange[] = rows.slice(0, Math.max(0, total - focused.row)).flatMap((row, r) =>
+      fields(row).map(({ col, value }) => ({
+        gridRow: focused.row + r,
+        col,
+        value: value === "" && !ownCopy ? { kind: "null" } : input(value),
+      })),
+    );
     apply((s) => edits.setCells(s, cells));
   }
 
@@ -572,8 +474,7 @@ export function useTableEditor({
       if (!editable || !sel) return;
       const cells: edits.CellChange[] = [];
       for (let r = sel.r0; r <= sel.r1; r++) {
-        for (const c of sel.cols)
-          if (writable(c)) cells.push({ gridRow: r, col: c, value });
+        for (const c of sel.cols) if (writable(c)) cells.push({ gridRow: r, col: c, value });
       }
       apply((s) => edits.setCells(s, cells));
     },
@@ -584,8 +485,7 @@ export function useTableEditor({
     fillDown: async () => {
       if (editable) await selectionEdits.fillDown();
     },
-    loadFile: async (cell) =>
-      editable ? selectionEdits.loadFile(cell) : "failed",
+    loadFile: async (cell) => (editable ? selectionEdits.loadFile(cell) : "failed"),
     addRow: () => {
       if (!editable) return;
       apply((s) => edits.addRows(s, [new Map()]));
@@ -597,10 +497,7 @@ export function useTableEditor({
       // Numbered columns (serials, identities, auto-increments, rowids) and key columns with
       // a default get a fresh value; computed columns are left out (not writable).
       const generated = keys.columns.flatMap((meta, c) =>
-        keys.generated[c] === "numbered" ||
-        (keys.key.includes(c) && meta?.default != null)
-          ? [c]
-          : [],
+        keys.generated[c] === "numbered" || (keys.key.includes(c) && meta?.default != null) ? [c] : [],
       );
       try {
         const rows = await Promise.all(
@@ -613,16 +510,7 @@ export function useTableEditor({
               const [values = []] = await api.rowValues(jobId, ref.row, 1);
               cells = new Map<number, CellInput>(
                 values.flatMap((v, c) =>
-                  writable(c)
-                    ? [
-                        [
-                          c,
-                          v === null
-                            ? { kind: "null" }
-                            : { kind: "value", text: v },
-                        ] as const,
-                      ]
-                    : [],
+                  writable(c) ? [[c, v === null ? { kind: "null" } : { kind: "value", text: v }] as const] : [],
                 ),
               );
             }
@@ -650,8 +538,7 @@ export function useTableEditor({
     },
     save: async (confirmed = false) => {
       if (!editable || !keys || edits.isEmpty(current.current)) return;
-      if (!confirmed && target && needsProductionConfirm(target.connection))
-        return edit.preview();
+      if (!confirmed && target && needsProductionConfirm(target.connection)) return edit.preview();
       setBusy(true);
       setPreview(null);
       try {
@@ -734,15 +621,7 @@ export function useTableEditor({
 
   /** Typing on a cell starts editing it with that key. */
   function onKeyDown(e: React.KeyboardEvent) {
-    if (
-      !editable ||
-      editing ||
-      e.ctrlKey ||
-      e.metaKey ||
-      e.altKey ||
-      e.key.length !== 1
-    )
-      return;
+    if (!editable || editing || e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
     if (!(e.target as HTMLElement).classList.contains("grid-scroll")) return;
     const starting = opening.current;
     if (starting) {
@@ -761,23 +640,18 @@ export function useTableEditor({
   function onScroll() {
     if (!editing) return;
     const active = document.activeElement;
-    if (active instanceof HTMLElement && box.current?.contains(active))
-      active.blur();
+    if (active instanceof HTMLElement && box.current?.contains(active)) active.blur();
     setLayout((n) => n + 1);
   }
 
-  const rect =
-    editing && grid.current?.cellRect(editing.cell.row, editing.cell.col);
+  const rect = editing && grid.current?.cellRect(editing.cell.row, editing.cell.col);
   const column = editing ? columns[editing.cell.col] : undefined;
   const columnMeta = editing ? keys?.columns[editing.cell.col] : undefined;
   const overlay = editing && rect && column && (
     <CellEditor
       key={`${editing.cell.row}:${editing.cell.col}`}
       rect={rect}
-      bounds={{
-        width: box.current?.clientWidth ?? 0,
-        height: box.current?.clientHeight ?? 0,
-      }}
+      bounds={{ width: box.current?.clientWidth ?? 0, height: box.current?.clientHeight ?? 0 }}
       kind={editing.kind}
       initial={editing.initial}
       typed={editing.typed}
@@ -795,10 +669,7 @@ export function useTableEditor({
               setEditing(null);
               void edit.loadFile(was.cell).then((load) => {
                 // No file picked: the editor comes back with what was typed in it.
-                if (
-                  load === "cancelled" &&
-                  text !== (was.typed ?? was.initial ?? "")
-                ) {
+                if (load === "cancelled" && text !== (was.typed ?? was.initial ?? "")) {
                   setEditing((e) => e ?? { ...was, typed: text });
                 }
               });
@@ -811,22 +682,16 @@ export function useTableEditor({
   );
 
   const noKey = meta && "reason" in meta ? meta.noKey : undefined;
-  const showBar =
-    !target?.quiet || (meta !== null && !("hidden" in meta && meta.hidden));
+  const showBar = !target?.quiet || (meta !== null && !("hidden" in meta && meta.hidden));
   const keyTable = keys?.table ?? noKey?.table;
 
   const bar = (target || extra) && (
     <div className="edit-bar" hidden={!showBar && !extra}>
       {!target || !showBar ? null : readOnly !== null ? (
         <>
-          <span className="muted small">
-            {t("Read-only: {reason}.", { reason: t(readOnly) })}
-          </span>
+          <span className="muted small">{t("Read-only: {reason}.", { reason: t(readOnly) })}</span>
           {noKey && (
-            <button
-              onClick={() => setKeyDialog(true)}
-              title={t("Columns that tell the rows apart")}
-            >
+            <button onClick={() => setKeyDialog(true)} title={t("Columns that tell the rows apart")}>
               {t("Set a virtual key…")}
             </button>
           )}
@@ -835,13 +700,7 @@ export function useTableEditor({
         <span className="muted small">{t("Checking the table's keys…")}</span>
       ) : (
         <>
-          <button
-            className="square"
-            onClick={edit.addRow}
-            disabled={!editable}
-            title={t("Add a row (Insert)")}
-            aria-label={t("Add a row")}
-          >
+          <button className="square" onClick={edit.addRow} disabled={!editable} title={t("Add a row (Insert)")} aria-label={t("Add a row")}>
             <Icon name="plus" />
           </button>
           <button
@@ -856,62 +715,27 @@ export function useTableEditor({
           {dirty ? (
             <>
               <span className="edit-count">
-                {plural(
-                  edits.changedRows(state),
-                  "{n} row changed",
-                  "{n} rows changed",
-                )}
+                {plural(edits.changedRows(state), "{n} row changed", "{n} rows changed")}
               </span>
-              <button
-                className="primary"
-                onClick={() => void edit.save()}
-                disabled={!editable}
-                title={t("Save (Ctrl+S)")}
-              >
+              <button className="primary" onClick={() => void edit.save()} disabled={!editable} title={t("Save (Ctrl+S)")}>
                 {t(busy ? "Saving…" : "Save")}
               </button>
-              <button
-                className="square"
-                onClick={() => void edit.preview()}
-                disabled={busy}
-                title={t("Preview SQL")}
-                aria-label={t("Preview SQL")}
-              >
+              <button className="square" onClick={() => void edit.preview()} disabled={busy} title={t("Preview SQL")} aria-label={t("Preview SQL")}>
                 <Icon name="sql" />
               </button>
-              <button
-                className="square"
-                onClick={edit.undo}
-                disabled={busy || !edit.canUndo}
-                title={t("Undo (Ctrl+Z)")}
-                aria-label={t("Undo")}
-              >
+              <button className="square" onClick={edit.undo} disabled={busy || !edit.canUndo} title={t("Undo (Ctrl+Z)")} aria-label={t("Undo")}>
                 <Icon name="rollback" />
               </button>
-              <button
-                className="square"
-                onClick={edit.discard}
-                disabled={busy}
-                title={t("Discard the changes")}
-                aria-label={t("Discard")}
-              >
+              <button className="square" onClick={edit.discard} disabled={busy} title={t("Discard the changes")} aria-label={t("Discard")}>
                 <Icon name="discard" />
               </button>
             </>
           ) : (
-            <span className="muted small">
-              {t("Double-click, F2 or type to edit a cell")}
-            </span>
+            <span className="muted small">{t("Double-click, F2 or type to edit a cell")}</span>
           )}
           {keys?.virtualKey && (
-            <button
-              className="link small"
-              onClick={() => setKeyDialog(true)}
-              title={t("Change the virtual key")}
-            >
-              {t("Virtual key: {columns}", {
-                columns: keys.virtualKey.join(", "),
-              })}
+            <button className="link small" onClick={() => setKeyDialog(true)} title={t("Change the virtual key")}>
+              {t("Virtual key: {columns}", { columns: keys.virtualKey.join(", ") })}
             </button>
           )}
         </>
@@ -920,12 +744,7 @@ export function useTableEditor({
       {error && (
         <span className="error-text small edit-error" title={error}>
           {error}
-          <button
-            className="link"
-            onClick={() => setError(null)}
-            title={t("Dismiss")}
-            aria-label={t("Dismiss")}
-          >
+          <button className="link" onClick={() => setError(null)} title={t("Dismiss")} aria-label={t("Dismiss")}>
             ×
           </button>
         </span>
@@ -935,11 +754,7 @@ export function useTableEditor({
 
   return {
     edit: target ? edit : undefined,
-    catalog:
-      keys ??
-      (meta && "catalog" in meta && meta.catalog
-        ? { ...meta.catalog, key: [] }
-        : null),
+    catalog: keys ?? (meta && "catalog" in meta && meta.catalog ? { ...meta.catalog, key: [] } : null),
     bar,
     dialog: (
       <>
@@ -956,11 +771,7 @@ export function useTableEditor({
           <VirtualKeyDialog
             connection={target.connection}
             table={keyTable}
-            columns={
-              keys
-                ? keys.details.columns.map((c) => c.name)
-                : (noKey?.columns ?? [])
-            }
+            columns={keys ? keys.details.columns.map((c) => c.name) : (noKey?.columns ?? [])}
             current={keys?.virtualKey ?? null}
             onClose={() => setKeyDialog(false)}
           />
