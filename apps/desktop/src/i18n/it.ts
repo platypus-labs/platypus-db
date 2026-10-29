@@ -1829,6 +1829,9 @@ const it: Record<string, string> = {
   "Not tried: {n}": "Non provate: {n}",
   "Test again": "Testa di nuovo",
   "Asks for its password: not tried": "Chiede la password: non provata",
+  "Secret in {manager}": "Segreto in {manager}",
+  "Quotes, $, ` and % are left out: the command runs in the system's shell.": "Virgolette, $, ` e % vengono tolti: il comando gira nella shell del sistema.",
+  "Runs {command}: its CLI must be installed and signed in.": "Esegue {command}: la sua CLI deve essere installata e con l'accesso fatto.",
 };
 
 export default it;

@@ -1829,6 +1829,9 @@ const fr: Record<string, string> = {
   "Not tried: {n}": "Non essayées : {n}",
   "Test again": "Tester à nouveau",
   "Asks for its password: not tried": "Demande son mot de passe : non essayée",
+  "Secret in {manager}": "Secret dans {manager}",
+  "Quotes, $, ` and % are left out: the command runs in the system's shell.": "Les guillemets, $, ` et % sont retirés : la commande s'exécute dans le shell du système.",
+  "Runs {command}: its CLI must be installed and signed in.": "Exécute {command} : sa CLI doit être installée et connectée.",
 };
 
 export default fr;

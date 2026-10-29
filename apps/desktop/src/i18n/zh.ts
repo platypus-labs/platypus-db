@@ -1829,6 +1829,9 @@ const zh: Record<string, string> = {
   "Not tried: {n}": "未尝试：{n}",
   "Test again": "重新测试",
   "Asks for its password: not tried": "需要输入密码：未尝试",
+  "Secret in {manager}": "{manager} 中的密钥",
+  "Quotes, $, ` and % are left out: the command runs in the system's shell.": "引号、$、` 和 % 会被去掉：命令在系统 shell 中运行。",
+  "Runs {command}: its CLI must be installed and signed in.": "运行 {command}：需已安装其 CLI 并登录。",
 };
 
 export default zh;

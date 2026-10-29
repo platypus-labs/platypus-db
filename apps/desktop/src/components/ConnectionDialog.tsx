@@ -31,6 +31,7 @@ import { DriverIcon, DriverPicker, driverName } from "./DriverPicker";
 import { NetworkFields, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 import { NetworkProfileDialog, newNetworkProfile } from "./NetworkProfileDialog";
 import { t, tNodes, msg } from "../i18n";
+import { type ManagerId, MANAGERS, managerOf } from "../credentialManagers";
 import { suggestedPooler } from "./pooler";
 
 interface Props {
@@ -49,8 +50,9 @@ interface Props {
 
 type Page = "general" | "network" | "init";
 
-/** Where the password comes from; stored as `save_password`, `pgpass` and `password_command`. */
-type PasswordSource = "keychain" | "ask" | "pgpass" | "command";
+/** Where the password comes from; stored as `save_password`, `pgpass` and `password_command`,
+ *  which a password manager's source writes for its CLI. */
+type PasswordSource = "keychain" | "ask" | "pgpass" | "command" | ManagerId;
 
 const COLORS = ["", "#2f9e44", "#1c7ed6", "#f08c00", "#d6336c", "#c92a2a"];
 
@@ -89,17 +91,22 @@ const FILES: Record<"sqlite" | "duckdb", { name: string; extensions: string[]; e
 const EMPTY_INIT: SavedInit = { schema: null, time_zone: null, statements: "" };
 
 function passwordSource(c: SavedConnection): PasswordSource {
-  if (c.password_command != null) return "command";
+  if (c.password_command != null) return managerOf(c.password_command)?.manager.id ?? "command";
   if (c.pgpass) return "pgpass";
   return c.save_password ? "keychain" : "ask";
 }
 
 function withPasswordSource(c: SavedConnection, source: PasswordSource): SavedConnection {
+  const manager = MANAGERS.find((m) => m.id === source);
   return {
     ...c,
     save_password: source === "keychain",
     pgpass: source === "pgpass",
-    password_command: source === "command" ? (c.password_command ?? "") : null,
+    password_command: manager
+      ? manager.command(managerOf(c.password_command)?.reference ?? "")
+      : source === "command"
+        ? (c.password_command ?? "")
+        : null,
   };
 }
 
@@ -162,6 +169,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     set("options", options);
   };
   const source = passwordSource(conn);
+  const manager = MANAGERS.find((m) => m.id === source);
   const profile = profiles.find((p) => p.id === conn.network_profile) ?? null;
   const server = !isEmbedded(conn.driver);
   const file = FILES[conn.driver === "duckdb" ? "duckdb" : "sqlite"];
@@ -731,9 +739,26 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       <option value="ask">{t("Ask every time")}</option>
                       {conn.driver === "postgres" && <option value="pgpass">{t(".pgpass file")}</option>}
                       <option value="command">{t("Shell command")}</option>
+                      {MANAGERS.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
                     </select>
                   </label>
-                  {source === "command" ? (
+                  {manager ? (
+                    <label className="field">
+                      <span>{t("Secret in {manager}", { manager: manager.name })}</span>
+                      <input
+                        required
+                        value={managerOf(conn.password_command)?.reference ?? ""}
+                        onChange={(e) => set("password_command", manager.command(e.target.value))}
+                        placeholder={manager.example}
+                        title={t("Quotes, $, ` and % are left out: the command runs in the system's shell.")}
+                        data-field="secret_reference"
+                      />
+                    </label>
+                  ) : source === "command" ? (
                     <label className="field">
                       <span>{t("Command that prints the {secret}", { secret: secret.toLowerCase() })}</span>
                       <input
@@ -759,6 +784,13 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     )
                   )}
                 </div>
+                {manager && conn.password_command && (
+                  <p className="muted small manager-command">
+                    {tNodes("Runs {command}: its CLI must be installed and signed in.", {
+                      command: <code>{conn.password_command}</code>,
+                    })}
+                  </p>
+                )}
               </>
             )}
 
