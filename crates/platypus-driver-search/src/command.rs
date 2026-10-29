@@ -296,6 +296,32 @@ pub fn statement_at(src: &str, at: usize) -> Option<Range<usize>> {
         .last()
 }
 
+/// The statement that opens an index in the data viewer: all its documents.
+#[must_use]
+pub fn browse(index: &str) -> String {
+    format!(
+        "GET /{}/_search
+{{\"query\":{{\"match_all\":{{}}}}}}",
+        crate::meta::segment(index)
+    )
+}
+
+/// The index a statement reads whole, when it is a plain search of one index (what
+/// [`browse`] writes), so that the data viewer can load its columns from the mapping.
+#[must_use]
+pub fn source_index(text: &str) -> Option<String> {
+    let Ok(Command::Request(request)) = parse(text) else {
+        return None;
+    };
+    let parts: Vec<&str> = request.path.split('/').filter(|s| !s.is_empty()).collect();
+    match parts.as_slice() {
+        [index, "_search"] if !index.starts_with('_') && !index.contains([',', '*']) => {
+            Some((*index).to_owned())
+        }
+        _ => None,
+    }
+}
+
 /// Whether every statement of `src` parses and only reads.
 #[must_use]
 pub fn only_reads(src: &str) -> bool {
@@ -454,6 +480,20 @@ mod tests {
         assert_eq!(r.body, Body::Json("{\"a\": 1}".to_owned()));
         let r = request_of("// c\nHEAD /i");
         assert_eq!(r.method, "HEAD");
+    }
+
+    #[test]
+    fn writes_and_reads_the_browse_statement() {
+        let text = browse("orders");
+        assert_eq!(
+            text,
+            "GET /orders/_search
+{\"query\":{\"match_all\":{}}}"
+        );
+        assert_eq!(source_index(&text).as_deref(), Some("orders"));
+        assert_eq!(source_index("GET /a,b/_search"), None);
+        assert_eq!(source_index("GET /_search"), None);
+        assert_eq!(source_index("SELECT 1"), None);
     }
 
     #[test]

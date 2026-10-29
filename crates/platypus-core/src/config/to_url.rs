@@ -107,7 +107,9 @@ impl ConnectionConfig {
 
     /// Whether the connection was made from an `opensearch://` URL.
     fn is_opensearch(&self) -> bool {
-        self.options.get(super::FLAVOR).is_some_and(|f| f == "opensearch")
+        self.options
+            .get(super::FLAVOR)
+            .is_some_and(|f| f == "opensearch")
     }
 
     /// `user@host:port`, the host in brackets when it is an IPv6 address, its zone's `%`
@@ -301,10 +303,7 @@ mod tests {
             "elasticsearch://u@h:9200/logs-%2A"
         );
         assert_eq!(round_trip("opensearch://h:9201"), "opensearch://h:9201/");
-        assert_eq!(
-            round_trip("elasticsearchs://h"),
-            "elasticsearchs://h:9200/"
-        );
+        assert_eq!(round_trip("elasticsearchs://h"), "elasticsearchs://h:9200/");
         assert_eq!(
             round_trip("opensearchs://h/?sslmode=require"),
             "opensearchs://h:9200/?sslmode=require"

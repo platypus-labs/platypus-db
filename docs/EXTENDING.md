@@ -186,6 +186,17 @@ additions:
   session's `execute_all` runs them as one `MULTI`/`EXEC` on the database a leading
   `SELECT n` names.
 
+`platypus-driver-search` (Elasticsearch and OpenSearch, `DriverKind::Elasticsearch`) is the third:
+- the editor language (`command`) is Kibana's console form (`GET /index/_search` and a JSON body) plus
+  SQL for the product's SQL endpoint; `split`, `statement_at`, `parse` and `Command::kind` (`Query`,
+  `Dml`, `Ddl`, `Other`, from the method and the API called) feed the checks before running;
+- a cluster is one schema, its indices the tables (aliases and data streams views), the columns the
+  fields of the mapping; `browse` writes the statement that opens an index;
+- searches return documents as the MongoDB driver does (`doc`), and page with a point in time (a
+  scroll on OpenSearch) as the grid asks; SQL results page with the cursor;
+- `edit::script` turns the grid's changes into `_update`, `_create`, `_doc` and `DELETE` requests, run by
+  `execute_all` one by one, with the requests that undo them.
+
 The UI hides SQL-only features with `isNoSql` (MongoDB and Redis), and keeps MongoDB results
 out of the data editor with `isMongo`; `editor/redis.ts` is the Redis editor language.
 

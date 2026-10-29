@@ -152,7 +152,7 @@ async fn fill(conn: &dyn Connection, index: &str, mapping: &str, docs: &[String]
         else {
             panic!("bulk into {index} failed");
         };
-        assert_eq!(rows as usize, chunk.len());
+        assert_eq!(rows, u64::try_from(chunk.len()).unwrap());
     }
 }
 
@@ -346,8 +346,8 @@ async fn searches_give_documents_and_page_past_one_page() {
     assert_eq!(first[0][3].as_deref(), Some(r#"["a","b"]"#));
     assert_eq!(first[0][4].as_deref(), Some(r#"{"id":1,"city":"Rome"}"#));
     // A `size` above a page is the most hits read; below, one plain request.
-    let sized = run_paged(conn, "GET /pdb_docs/_search\n{\"size\":1500}", 1000).await;
-    assert_eq!(rows(&sized), 1500);
+    let capped = run_paged(conn, "GET /pdb_docs/_search\n{\"size\":1500}", 1000).await;
+    assert_eq!(rows(&capped), 1500);
     let small = run_paged(conn, "GET /pdb_docs/_search\n{\"size\":3}", 1000).await;
     assert_eq!(rows(&small), 3);
     // The server's own default, with a `from`, is not paged.
@@ -383,7 +383,11 @@ async fn searches_give_documents_and_page_past_one_page() {
     let buckets: Vec<RecordBatch> = buckets.try_collect().await.unwrap();
     assert_eq!(columns(&buckets), ["key", "doc_count"]);
     assert_eq!(rows(&buckets), 2);
-    // Several indices add `_index`; `_mget` and a single document are documents too.
+    documents_of_several_indices(conn).await;
+}
+
+/// Several indices add `_index`; `_mget`, a single document and `_msearch` are documents too.
+async fn documents_of_several_indices(conn: &dyn Connection) {
     fill(
         conn,
         "pdb_docs_b",
@@ -500,7 +504,7 @@ async fn reads_the_catalog_and_the_mappings() {
     let _ = conn
         .execute("DELETE /pdb_meta", &ExecOptions::default())
         .await;
-    affected_or_rows(conn, &ddl.replace("PUT /pdb_meta", "PUT /pdb_meta")).await;
+    affected_or_rows(conn, &ddl).await;
     assert_eq!(
         conn.table_details(&cluster, "pdb_meta")
             .await
@@ -606,6 +610,33 @@ async fn read_edit(conn: &dyn Connection) -> (Vec<String>, Vec<Vec<Option<String
     (columns(&batches), cells(&batches))
 }
 
+/// A document with an `_id` that exists is refused, and the run stops there.
+async fn refuses_an_existing_id(conn: &dyn Connection, edits: &Edits<'_>) {
+    let again = edit::script(&Edits {
+        inserts: vec![vec![
+            (0, Some("fixed".to_owned())),
+            (1, Some("dup".to_owned())),
+        ]],
+        updates: Vec::new(),
+        deletes: Vec::new(),
+        ..edits.clone()
+    })
+    .unwrap();
+    let commands: Vec<&str> = again.commands.iter().map(String::as_str).collect();
+    let ran = conn.execute_all(&commands, &[]).await;
+    assert_eq!(ran.rows.len(), 0);
+    match ran.error {
+        Some(Error::Database(e)) => {
+            assert_eq!(
+                e.code.as_deref(),
+                Some("version_conflict_engine_exception"),
+                "{e:?}"
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn saves_the_grids_changes_and_undoes_them() {
     let Some(conn) = connect().await else { return };
@@ -682,31 +713,14 @@ async fn saves_the_grids_changes_and_undoes_them() {
     assert!(by_name(&after, "generated").is_some());
     assert!(by_name(&after, "c").is_none(), "the delete");
     assert_eq!(after.len(), 4);
-    // A document with an `_id` that exists is refused, and the run stops there.
-    let again = edit::script(&Edits {
-        inserts: vec![vec![
-            (0, Some("fixed".to_owned())),
-            (1, Some("dup".to_owned())),
-        ]],
-        updates: Vec::new(),
-        deletes: Vec::new(),
-        ..edits.clone()
-    })
-    .unwrap();
-    let commands: Vec<&str> = again.commands.iter().map(String::as_str).collect();
-    let ran = conn.execute_all(&commands, &[]).await;
-    assert!(ran.rows.is_empty());
-    match ran.error {
-        Some(Error::Database(e)) => {
-            assert_eq!(
-                e.code.as_deref(),
-                Some("version_conflict_engine_exception"),
-                "{e:?}"
-            );
-        }
-        other => panic!("{other:?}"),
-    }
-    // Undoing them: the update and the insert with an `_id` and the delete.
+    refuses_an_existing_id(conn, &edits).await;
+    undoes_the_changes(conn, &script).await;
+    // Deleting a document that is not there changes nothing.
+    assert_eq!(affected(conn, "DELETE /pdb_edit/_doc/nope").await, 0);
+}
+
+/// The requests that undo the changes: the update, the insert with an `_id` and the delete.
+async fn undoes_the_changes(conn: &dyn Connection, script: &edit::Script) {
     let undo: Vec<&str> = script
         .undo
         .iter()
@@ -735,8 +749,6 @@ async fn saves_the_grids_changes_and_undoes_them() {
     // The old object comes back whole with the replacing script.
     assert_eq!(kept[0][4].as_deref(), Some(r#"{"x":1}"#));
     assert_eq!(kept[2][1].as_deref(), Some("c"));
-    // Deleting a document that is not there changes nothing.
-    assert_eq!(affected(conn, "DELETE /pdb_edit/_doc/nope").await, 0);
 }
 
 #[tokio::test]
