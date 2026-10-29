@@ -14,6 +14,7 @@ mod catalog;
 mod connections;
 mod history;
 mod import;
+mod scripts;
 mod secrets;
 mod settings;
 mod sqlite;
@@ -41,6 +42,10 @@ pub use history::{
 pub use import::{
     ImportFile, ImportNote, ImportSource, ImportedProject, ImportedSecrets, ProjectNote,
     SkippedConnection, detect as detect_imports, import as import_connections,
+};
+pub use scripts::{
+    LINKS_FILE, ScriptEntry, ScriptText, list_scripts, read_links as read_script_links,
+    read_script, relative as script_relative, resolve as resolve_script,
 };
 pub use secrets::{KeyringSecrets, MemorySecrets, SecretStore};
 pub use settings::SettingsStore;
