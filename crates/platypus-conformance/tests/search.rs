@@ -332,8 +332,10 @@ async fn searches_give_documents_and_page_past_one_page() {
     };
     let schema = stream.schema();
     let names: Vec<_> = schema.fields().iter().map(|f| f.name().as_str()).collect();
-    assert_eq!(names, ["_id", "n", "name", "tags", "owner"]);
-    assert_eq!(schema.field(1).data_type(), &DataType::Int64);
+    // The columns are the same on every page: text, typed by the mapping, plus `_other`.
+    assert_eq!(names, ["_id", "n", "name", "tags", "owner", "_other"]);
+    assert_eq!(schema.field(1).data_type(), &DataType::Utf8);
+    assert_eq!(schema.field(1).metadata()[META_DB_TYPE], "long");
     assert_eq!(schema.field(3).metadata()[META_DB_TYPE], "array");
     assert_eq!(schema.field(4).metadata()[META_DB_TYPE], "document");
     let mut sizes = Vec::new();
@@ -388,6 +390,43 @@ async fn searches_give_documents_and_page_past_one_page() {
     assert_eq!(columns(&buckets), ["key", "doc_count"]);
     assert_eq!(rows(&buckets), 2);
     documents_of_several_indices(conn).await;
+    later_pages_keep_the_columns(conn).await;
+}
+
+/// A field that first appears on a later page, or a value that does not fit its mapping, is
+/// shown instead of dropped or refused.
+async fn later_pages_keep_the_columns(conn: &dyn Connection) {
+    let mut docs: Vec<String> = (1..=30).map(|n| format!(r#"{{"n":{n}}}"#)).collect();
+    // `_source` is not coerced: a string in a long field, and a field nobody mapped.
+    docs.push(r#"{"n":"not a number","late":{"a":1}}"#.to_owned());
+    fill(
+        conn,
+        "pdb_late",
+        r#"{"dynamic":false,"properties":{"n":{"type":"long"}}}"#,
+        &docs,
+    )
+    .await;
+    let search = r#"GET /pdb_late/_search
+{"sort":[{"_id":"asc"}]}"#;
+    let batches = run_paged(conn, search, 10).await;
+    assert_eq!(rows(&batches), 31);
+    assert_eq!(columns(&batches), ["_id", "n", "_other"]);
+    let all = cells(&batches);
+    let odd = all
+        .iter()
+        .find(|r| r[1].as_deref() == Some("not a number"))
+        .expect("the value that is not a number");
+    assert_eq!(odd[2].as_deref(), Some(r#"{"late":{"a":1}}"#));
+    assert_eq!(db_type(&batches[0], "n"), "long");
+    // Without a usable mapping (all indices) the columns come from the first page.
+    let none = run_paged(
+        conn,
+        "GET /_search
+{\"size\":50}",
+        10,
+    )
+    .await;
+    assert!(rows(&none) > 0);
 }
 
 /// Several indices add `_index`; `_mget`, a single document and `_msearch` are documents too.

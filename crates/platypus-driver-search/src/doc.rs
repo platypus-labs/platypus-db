@@ -4,6 +4,12 @@
 //! and arrays stay JSON text, and fields of mixed types text too. The column's
 //! [`META_DB_TYPE`] says what it holds (`boolean`, `long`, `double`, `string`, `document`,
 //! `array`, `mixed`), so the UI can show objects and arrays as a tree.
+//!
+//! A result read page by page cannot let a later page change the columns, so its layout is
+//! [`Layout::paged`]: every column is text (a value that does not fit a number is shown as
+//! the JSON it was, never an error, as `_source` is not coerced to its mapping), the
+//! [`META_DB_TYPE`] keeps the type, and the fields the columns do not have go together into a
+//! last `_other` column holding a JSON object.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -130,7 +136,13 @@ pub struct Layout {
     names: Vec<String>,
     kinds: Vec<Kind>,
     schema: SchemaRef,
+    /// Whether the last column, `_other`, holds the fields the others do not.
+    other: bool,
+    index: HashMap<String, usize>,
 }
+
+/// The column that gathers the fields a paged result has no column for.
+pub const OTHER: &str = "_other";
 
 impl Layout {
     /// The columns of `docs`; those of `lead` come first, whether the documents have them or
@@ -157,22 +169,68 @@ impl Layout {
             }
         }
         let kinds: Vec<Kind> = kinds.into_iter().map(|k| k.unwrap_or(Kind::Text)).collect();
+        let types = kinds.iter().map(|k| k.name().to_owned()).collect();
+        Self::build(names, kinds, types, false)
+    }
+
+    /// The columns of a result read page by page, fixed by `fields` (name and type, as the
+    /// mapping of the indices gives them) and by the first page `docs`, whose own fields
+    /// come after those. All of them are text. `overflow` adds the `_other` column, for the
+    /// pages to come.
+    #[must_use]
+    pub fn paged(docs: &[Doc], lead: &[&str], fields: &[(String, String)], overflow: bool) -> Self {
+        let inferred = Self::infer(docs, lead);
+        let mut names: Vec<String> = lead.iter().map(|&n| n.to_owned()).collect();
+        let mut types: Vec<String> = vec![Kind::Text.name().to_owned(); names.len()];
+        for (name, ty) in fields {
+            if !names.contains(name) {
+                names.push(name.clone());
+                // Any field can hold an array: the first page says so.
+                let seen = inferred.index.get(name).map(|&i| inferred.kinds[i]);
+                types.push(match seen {
+                    Some(kind @ (Kind::Array | Kind::Doc)) => kind.name().to_owned(),
+                    _ => ty.clone(),
+                });
+            }
+        }
+        // A field the mapping does not have is typed by the first page.
+        for (name, kind) in inferred.names.iter().zip(&inferred.kinds) {
+            if !names.contains(name) {
+                names.push(name.clone());
+                types.push(kind.name().to_owned());
+            }
+        }
+        if overflow {
+            names.push(OTHER.to_owned());
+            types.push(Kind::Doc.name().to_owned());
+        }
+        let kinds = vec![Kind::Text; names.len()];
+        Self::build(names, kinds, types, overflow)
+    }
+
+    fn build(names: Vec<String>, kinds: Vec<Kind>, types: Vec<String>, other: bool) -> Self {
         let schema = Arc::new(Schema::new(
             names
                 .iter()
                 .zip(&kinds)
-                .map(|(name, kind)| {
-                    Field::new(name, kind.data_type(), true).with_metadata(HashMap::from([(
-                        META_DB_TYPE.to_owned(),
-                        kind.name().to_owned(),
-                    )]))
+                .zip(types)
+                .map(|((name, kind), ty)| {
+                    Field::new(name, kind.data_type(), true)
+                        .with_metadata(HashMap::from([(META_DB_TYPE.to_owned(), ty)]))
                 })
                 .collect::<Vec<_>>(),
         ));
+        let index = names
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.clone(), i))
+            .collect();
         Self {
             names,
             kinds,
             schema,
+            other,
+            index,
         }
     }
 
@@ -193,7 +251,29 @@ impl Layout {
         )?)
     }
 
+    /// The `_other` cell of a document: the fields no column has, as a JSON object.
+    fn leftovers(&self, doc: &Doc) -> Option<String> {
+        let mut out = String::new();
+        for (name, value) in doc {
+            if self.index.contains_key(name) || value.get() == "null" {
+                continue;
+            }
+            out.push(if out.is_empty() { '{' } else { ',' });
+            out.push_str(&serde_json::to_string(name).ok()?);
+            out.push(':');
+            out.push_str(value.get());
+        }
+        (!out.is_empty()).then(|| out + "}")
+    }
+
     fn column(&self, c: usize, docs: &[Doc]) -> Result<ArrayRef> {
+        if self.other && c + 1 == self.names.len() {
+            return Ok(Arc::new(
+                docs.iter()
+                    .map(|doc| self.leftovers(doc))
+                    .collect::<StringArray>(),
+            ));
+        }
         let name = &self.names[c];
         let cells = docs.iter().map(|doc| {
             // Documents mostly list their fields in the same order.
@@ -385,6 +465,46 @@ mod tests {
         let layout = Layout::infer(&first, &[]);
         let later = docs(r#"[{"n":"x"}]"#);
         assert!(matches!(layout.batch(&later), Err(Error::Decode { .. })));
+    }
+
+    #[test]
+    fn a_paged_layout_takes_any_later_value() {
+        let first = docs(r#"[{"_id":"1","n":1,"title":"a"}]"#);
+        let fields = [("n".to_owned(), "long".to_owned())];
+        let layout = Layout::paged(&first, &["_id"], &fields, true);
+        let names: Vec<_> = db_types(&layout);
+        assert_eq!(
+            names[..2],
+            [
+                ("_id".to_owned(), "string".to_owned()),
+                ("n".to_owned(), "long".to_owned())
+            ]
+        );
+        assert_eq!(names.last().unwrap().0, OTHER);
+        let later = docs(r#"[{"_id":"2","n":"x","late":{"a":1},"title":null,"z":[1]}]"#);
+        let batch = layout.batch(&later).unwrap();
+        let text = |c: usize| {
+            batch
+                .column(c)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .clone()
+        };
+        assert_eq!(
+            text(1).value(0),
+            "x",
+            "a value of the wrong type stays text"
+        );
+        assert!(text(2).is_null(0));
+        assert_eq!(text(3).value(0), r#"{"late":{"a":1},"z":[1]}"#);
+        let single = Layout::paged(&first, &["_id"], &[], false);
+        assert_eq!(single.schema().fields().len(), 3);
+        assert_eq!(
+            db_types(&single)[1].1,
+            "long",
+            "no mapping: the first page's type"
+        );
     }
 
     #[test]

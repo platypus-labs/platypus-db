@@ -206,6 +206,31 @@ pub fn mapped_fields(reply: &Value) -> Vec<Field> {
     fields
 }
 
+/// The top-level fields of every index in a `_mapping` reply as `(name, type)`, the first
+/// of a name winning. Objects are `document`, nested fields `array`, as the grid shows
+/// them; `_id` and `_index` are not among them.
+#[must_use]
+pub fn top_level_fields(reply: &Value) -> Vec<(String, String)> {
+    let mut fields: Vec<(String, String)> = Vec::new();
+    for mapping in reply.as_object().into_iter().flat_map(Map::values) {
+        let Some(Value::Object(properties)) = mapping.pointer("/mappings/properties") else {
+            continue;
+        };
+        for (name, def) in properties {
+            if fields.iter().any(|(n, _)| n == name) {
+                continue;
+            }
+            let ty = match def.get("type").and_then(Value::as_str) {
+                None | Some("object" | "flattened") => "document",
+                Some("nested") => "array",
+                Some(other) => other,
+            };
+            fields.push((name.clone(), ty.to_owned()));
+        }
+    }
+    fields
+}
+
 pub async fn table_details(shared: &Shared, table: &str) -> Result<TableDetails> {
     let reply = get(shared, &format!("/{}/_mapping", segment(table))).await?;
     let mut columns = vec![ColumnMeta {
@@ -394,6 +419,26 @@ mod tests {
             ("extra", "date"),
         ];
         assert_eq!(fields, want.map(|(n, t)| (n.to_owned(), t.to_owned())));
+    }
+
+    #[test]
+    fn lists_the_top_level_fields() {
+        let reply: Value = serde_json::from_str(
+            r#"{"a":{"mappings":{"properties":{"id":{"type":"keyword"},"owner":{"properties":{"x":{"type":"long"}}},"items":{"type":"nested"}}}},
+                "b":{"mappings":{"properties":{"id":{"type":"long"},"late":{"type":"date"}}}},
+                "c":{"mappings":{}}}"#,
+        )
+        .unwrap();
+        let want = [
+            ("id", "keyword"),
+            ("items", "array"),
+            ("owner", "document"),
+            ("late", "date"),
+        ];
+        assert_eq!(
+            top_level_fields(&reply),
+            want.map(|(n, t)| (n.to_owned(), t.to_owned()))
+        );
     }
 
     #[test]

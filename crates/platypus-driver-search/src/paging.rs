@@ -22,6 +22,7 @@ use serde_json::{Map, Value, json};
 use crate::command::{Body, Request};
 use crate::doc::Layout;
 use crate::http::Payload;
+use crate::meta::top_level_fields;
 use crate::reply::{Hit, Hits, hit_docs, lead, several_indices};
 use crate::session::{Flavor, Shared};
 
@@ -256,6 +257,21 @@ async fn open(shared: &Arc<Shared>, plan: &Plan) -> Result<Mode> {
     }
 }
 
+/// The top-level fields of the mappings of the indices `index` names, none when it names all
+/// of them or the server will not tell.
+async fn mapped_fields(shared: &Shared, index: &str) -> Vec<(String, String)> {
+    if index.is_empty() || index == "_all" {
+        return Vec::new();
+    }
+    let target = format!("/{index}/_mapping?expand_wildcards=open");
+    match shared.call("GET", &target, Payload::None, None).await {
+        Ok(reply) => serde_json::from_str(&reply.body)
+            .map(|v: Value| top_level_fields(&v))
+            .unwrap_or_default(),
+        Err(_) => Vec::new(),
+    }
+}
+
 /// Runs the search and returns its first page; the others follow as the result is read.
 pub async fn run(shared: &Arc<Shared>, plan: Plan) -> Result<ExecResult> {
     let mode = open(shared, &plan).await?;
@@ -274,7 +290,10 @@ pub async fn run(shared: &Arc<Shared>, plan: Plan) -> Result<ExecResult> {
     let hits = pager.fetch().await?;
     pager.with_index = multiple || several_indices(&hits);
     let docs = hit_docs(hits, pager.with_index)?;
-    pager.layout = Layout::infer(&docs, lead(pager.with_index));
+    // The columns stay the same on every page: the mapping's fields, those of the first
+    // page, and `_other` for what only later pages have.
+    let fields = mapped_fields(shared, &pager.plan.index).await;
+    pager.layout = Layout::paged(&docs, lead(pager.with_index), &fields, !pager.done);
     let schema = pager.layout.schema();
     if !docs.is_empty() {
         pager.first = Some(pager.layout.batch(&docs)?);
