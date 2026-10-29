@@ -14,6 +14,7 @@
 //! informational messages are kept for [`Connection::take_messages`].
 
 mod admin;
+mod bulk;
 #[doc(hidden)]
 pub mod columns;
 mod ddl;
@@ -449,9 +450,26 @@ impl Connection for MssqlConnection {
             cancel_server_queries: false,
             server_statistics: true,
             maintenance: admin::MAINTENANCE,
-            // Imports send their rows through OPENJSON (`platypus-transfer`), not a bulk copy.
-            bulk_load: false,
+            bulk_load: true,
         }
+    }
+
+    /// A bulk copy (`INSERT BULK`), in the session's transaction (one opened in manual-commit
+    /// mode, as a statement would). A table with a column the bulk copy cannot write answers
+    /// [`Error::Unsupported`], with nothing written.
+    async fn bulk_load(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
+        let mut session = self.session.lock().await;
+        if !self.tx.state().autocommit {
+            let open = trancount(&mut session, &self.closed).await? > 0;
+            self.tx.set_open(open);
+        }
+        if self.tx.needs_begin(platypus_core::TxEffect::None) {
+            run_simple(&mut session, "BEGIN TRANSACTION", &self.closed).await?;
+            self.tx.set_open(true);
+        }
+        bulk::load(&mut session, rows)
+            .await
+            .map_err(|e| lost(e, &self.closed))
     }
 }
 
