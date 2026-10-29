@@ -1499,39 +1499,7 @@ async fn dumps_and_runs_sql_files() {
         };
         clean().await;
         let name = "it's \"q\"\nline 2";
-        // SQLite names no schema in a key's REFERENCES.
-        let (to_parent, to_child) = if d == Dialect::Sqlite {
-            ("conf_dump_parent".to_owned(), "conf_dump_child".to_owned())
-        } else {
-            (parent.clone(), child.clone())
-        };
-        let statements = [
-            format!("CREATE TABLE {parent} (id {identity}, name {text})"),
-            format!(
-                "CREATE TABLE {child} (id int PRIMARY KEY, parent_id int REFERENCES {to_parent} (id), \
-                 boss int REFERENCES {to_child} (id), amount decimal(10, 2))"
-            ),
-            // DuckDB numbers no key by itself.
-            if d == Dialect::DuckDb {
-                format!(
-                    "INSERT INTO {parent} VALUES (1, {}), (2, NULL)",
-                    d.quote_literal(name)
-                )
-            } else {
-                format!(
-                    "INSERT INTO {parent} (name) VALUES ({})",
-                    d.quote_literal(name)
-                )
-            },
-            if d == Dialect::DuckDb {
-                "SELECT 1".to_owned()
-            } else {
-                format!("INSERT INTO {parent} (name) VALUES (NULL)")
-            },
-            format!("INSERT INTO {child} (id, parent_id, boss, amount) VALUES (1, 1, NULL, 1.5)"),
-            format!("INSERT INTO {child} (id, parent_id, boss, amount) VALUES (2, 2, 1, -3.25)"),
-            format!("CREATE VIEW {view} AS SELECT id, name FROM {parent}"),
-        ];
+        let statements = dump_fixture(d, (&parent, &child, &view), (identity, text), name);
         for sql in &statements {
             run(conn, sql)
                 .await
@@ -1603,6 +1571,51 @@ async fn dumps_and_runs_sql_files() {
         clean().await;
         failing_file(&b, conn, d, dir.path()).await;
     }
+}
+
+/// The tables, rows and view [`dumps_and_runs_sql_files`] dumps: a parent with numbered ids
+/// and `name` in a row, a child with keys to it and to itself, and a view of the parent.
+fn dump_fixture(
+    d: platypus_sql::Dialect,
+    (parent, child, view): (&str, &str, &str),
+    (identity, text): (&str, &str),
+    name: &str,
+) -> [String; 7] {
+    use platypus_sql::Dialect;
+
+    // SQLite names no schema in a key's REFERENCES.
+    let (to_parent, to_child) = if d == Dialect::Sqlite {
+        ("conf_dump_parent", "conf_dump_child")
+    } else {
+        (parent, child)
+    };
+    [
+        format!("CREATE TABLE {parent} (id {identity}, name {text})"),
+        format!(
+            "CREATE TABLE {child} (id int PRIMARY KEY, parent_id int REFERENCES {to_parent} (id), \
+             boss int REFERENCES {to_child} (id), amount decimal(10, 2))"
+        ),
+        // DuckDB numbers no key by itself.
+        if d == Dialect::DuckDb {
+            format!(
+                "INSERT INTO {parent} VALUES (1, {}), (2, NULL)",
+                d.quote_literal(name)
+            )
+        } else {
+            format!(
+                "INSERT INTO {parent} (name) VALUES ({})",
+                d.quote_literal(name)
+            )
+        },
+        if d == Dialect::DuckDb {
+            "SELECT 1".to_owned()
+        } else {
+            format!("INSERT INTO {parent} (name) VALUES (NULL)")
+        },
+        format!("INSERT INTO {child} (id, parent_id, boss, amount) VALUES (1, 1, NULL, 1.5)"),
+        format!("INSERT INTO {child} (id, parent_id, boss, amount) VALUES (2, 2, 1, -3.25)"),
+        format!("CREATE VIEW {view} AS SELECT id, name FROM {parent}"),
+    ]
 }
 
 /// A file whose statement fails: its number and line are told; in one transaction what ran

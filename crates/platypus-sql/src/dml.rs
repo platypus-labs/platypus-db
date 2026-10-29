@@ -275,7 +275,6 @@ impl Column<'_> {
         }
     }
 
-    /// `text` as a literal of the column's type; `None` is NULL.
     /// `text` as a bulk load reads it (PostgreSQL's `COPY`, MySQL's `LOAD DATA`): the value
     /// of [`literal`](Self::literal) without its quotes, checked as it does; bytes as hex.
     ///
@@ -319,6 +318,7 @@ impl Column<'_> {
         })
     }
 
+    /// `text` as a literal of the column's type; `None` is NULL.
     pub fn literal(&self, dialect: Dialect, text: Option<&str>) -> Result<String> {
         let Some(text) = text else {
             return Ok("NULL".to_owned());

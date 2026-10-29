@@ -420,10 +420,11 @@ pub fn run_sql_file(
             watch.abort();
             ran.map_err(|e| match e {
                 ScriptError::Database(e) => e.into(),
-                ScriptError::Statement {
-                    error: platypus_core::Error::Cancelled,
-                    ..
-                } => platypus_core::Error::Cancelled.into(),
+                ScriptError::Statement { error, .. }
+                    if matches!(*error, platypus_core::Error::Cancelled) =>
+                {
+                    platypus_core::Error::Cancelled.into()
+                }
                 e => CommandError::new("script", e.to_string()),
             })
         },
@@ -460,16 +461,18 @@ pub fn dump_sql(
                 },
             )
             .await;
+            let finished = out
+                .finish()
+                .map_err(|e| CommandError::new("export", e.to_string()));
             // A failed or stopped dump leaves no half a file behind.
-            let dumped = match (dumped, out.finish()) {
-                (Ok(dumped), Ok(())) => dumped,
-                (Err(e), _) => {
+            let dumped = match dumped
+                .map_err(import_error)
+                .and_then(|d| finished.map(|()| d))
+            {
+                Ok(dumped) => dumped,
+                Err(e) => {
                     let _ = std::fs::remove_file(&path);
-                    return Err(import_error(e));
-                }
-                (Ok(_), Err(e)) => {
-                    let _ = std::fs::remove_file(&path);
-                    return Err(CommandError::new("export", e.to_string()));
+                    return Err(e);
                 }
             };
             for warning in dumped.skipped {

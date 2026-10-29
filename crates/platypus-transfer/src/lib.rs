@@ -91,6 +91,21 @@ impl Compression {
             Self::Zstd => ".zst",
         }
     }
+
+    /// The compression a file's extension names (`.gz`, `.zst`, in any case).
+    pub(crate) fn of_path(path: &Path) -> Self {
+        let is = |ext: &str| {
+            path.extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case(ext))
+        };
+        if is("gz") {
+            Self::Gzip
+        } else if is("zst") {
+            Self::Zstd
+        } else {
+            Self::None
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

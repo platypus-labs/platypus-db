@@ -15,6 +15,7 @@ use platypus_sql::Dialect;
 use platypus_sql::dml::{Column, Value, ValueKind, restore_inserts};
 use platypus_sql::generated::{Generated, generated_columns};
 
+use crate::Compression;
 use crate::import::{ImportError, query_rows, rows_text};
 use crate::migrate::End;
 
@@ -82,29 +83,8 @@ pub async fn dump(
         tables.push((o.name.clone(), details));
     }
     let tables = ordered(tables);
-    let mut keys = Vec::new();
-    for (name, _) in &tables {
-        let object = ObjectRef {
-            schema,
-            name,
-            kind: ObjectKind::Table,
-            parent: None,
-        };
-        let ddl = conn.object_ddl(&object).await?;
-        let (ddl, foreign) = if adds_foreign_keys(dialect) {
-            without_foreign_keys(&ddl)
-        } else {
-            (ddl, Vec::new())
-        };
-        w.ddl(&ddl)?;
-        let table = dialect.qualified(Some(schema), name);
-        keys.extend(
-            foreign
-                .into_iter()
-                .map(|k| format!("ALTER TABLE {table} ADD {k}")),
-        );
-        dumped.tables += 1;
-    }
+    let keys = create_tables(conn, &mut w, schema, &tables).await?;
+    dumped.tables = tables.len();
 
     if data {
         for (name, details) in &tables {
@@ -115,7 +95,7 @@ pub async fn dump(
             let numbered = rows(
                 conn,
                 &mut w,
-                (schema, name, one_by_one),
+                (schema, name, details, one_by_one),
                 &mut dumped.rows,
                 &mut progress,
             )
@@ -158,16 +138,50 @@ pub async fn dump(
     if dialect == Dialect::MySql {
         w.statement("SET FOREIGN_KEY_CHECKS = 1")?;
     }
-    w.out.flush().map_err(write_error)?;
+    w.out.flush().map_err(|e| write_error(&e))?;
     Ok(dumped)
 }
 
-/// The rows of `schema.table` as `INSERT`s; the columns the database numbers, which take the
-/// rows' values with an override and count on from the largest after.
+/// The DDL of `tables`; the foreign keys taken out of it, as the `ALTER TABLE`s that add them
+/// after the rows.
+async fn create_tables(
+    conn: &dyn Connection,
+    w: &mut Writer<'_>,
+    schema: &str,
+    tables: &[(String, TableDetails)],
+) -> Result<Vec<String>, ImportError> {
+    let dialect = w.dialect;
+    let mut keys = Vec::new();
+    for (name, _) in tables {
+        let object = ObjectRef {
+            schema,
+            name,
+            kind: ObjectKind::Table,
+            parent: None,
+        };
+        let ddl = conn.object_ddl(&object).await?;
+        let (ddl, foreign) = if adds_foreign_keys(dialect) {
+            without_foreign_keys(&ddl)
+        } else {
+            (ddl, Vec::new())
+        };
+        w.ddl(&ddl)?;
+        let table = dialect.qualified(Some(schema), name);
+        keys.extend(
+            foreign
+                .into_iter()
+                .map(|k| format!("ALTER TABLE {table} ADD {k}")),
+        );
+    }
+    Ok(keys)
+}
+
+/// The rows of `schema.table`, described by `details`, as `INSERT`s; the columns the database
+/// numbers, which take the rows' values with an override and count on from the largest after.
 async fn rows(
     conn: &dyn Connection,
     w: &mut Writer<'_>,
-    (schema, table, one_by_one): (&str, &str, bool),
+    (schema, table, details, one_by_one): (&str, &str, &TableDetails, bool),
     written: &mut u64,
     progress: &mut impl FnMut(u64) -> bool,
 ) -> Result<Vec<String>, ImportError> {
@@ -181,7 +195,6 @@ async fn rows(
             .find(|g| g.name == name)
             .map(|g| g.generated)
     };
-    let details: TableDetails = conn.table_details(schema, table).await?;
     // A computed column is never written: the database works it out again.
     let names: Vec<&str> = details
         .columns
@@ -341,11 +354,11 @@ fn without_foreign_keys(ddl: &str) -> (String, Vec<String>) {
             continue;
         }
         // The table's closing parenthesis: the line before it ends without a comma.
-        if trimmed.starts_with(')') {
-            if let Some(last) = lines.last_mut() {
-                let kept = last.trim_end().trim_end_matches(',').to_owned();
-                *last = kept;
-            }
+        if trimmed.starts_with(')')
+            && let Some(last) = lines.last_mut()
+        {
+            let kept = last.trim_end().trim_end_matches(',').to_owned();
+            *last = kept;
         }
         lines.push(line.to_owned());
     }
@@ -360,18 +373,18 @@ struct Writer<'a> {
 
 impl Writer<'_> {
     fn line(&mut self, text: &str) -> Result<(), ImportError> {
-        writeln!(self.out, "{text}").map_err(write_error)
+        writeln!(self.out, "{text}").map_err(|e| write_error(&e))
     }
 
     /// A statement, with `;` (and `GO` in Transact-SQL, which runs routines alone).
     fn statement(&mut self, sql: &str) -> Result<(), ImportError> {
         let sql = sql.trim_end();
         if self.dialect == Dialect::SqlServer {
-            writeln!(self.out, "{sql};\nGO").map_err(write_error)
+            writeln!(self.out, "{sql};\nGO").map_err(|e| write_error(&e))
         } else if sql.ends_with(';') {
-            writeln!(self.out, "{sql}").map_err(write_error)
+            self.line(sql)
         } else {
-            writeln!(self.out, "{sql};").map_err(write_error)
+            writeln!(self.out, "{sql};").map_err(|e| write_error(&e))
         }
     }
 
@@ -407,7 +420,7 @@ impl Writer<'_> {
     }
 }
 
-fn write_error(e: std::io::Error) -> ImportError {
+fn write_error(e: &std::io::Error) -> ImportError {
     ImportError::Plan(format!("cannot write the dump: {e}"))
 }
 
@@ -425,16 +438,13 @@ impl DumpFile {
     /// When it cannot be created.
     pub fn create(path: &std::path::Path) -> std::io::Result<Self> {
         let out = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(path)?);
-        let name = path.to_string_lossy().to_ascii_lowercase();
-        Ok(if name.ends_with(".gz") {
-            Self::Gzip(flate2::write::GzEncoder::new(
+        Ok(match Compression::of_path(path) {
+            Compression::Gzip => Self::Gzip(flate2::write::GzEncoder::new(
                 out,
                 flate2::Compression::default(),
-            ))
-        } else if name.ends_with(".zst") {
-            Self::Zstd(zstd::Encoder::new(out, 3)?)
-        } else {
-            Self::Plain(out)
+            )),
+            Compression::Zstd => Self::Zstd(zstd::Encoder::new(out, 3)?),
+            Compression::None => Self::Plain(out),
         })
     }
 
@@ -512,17 +522,19 @@ mod tests {
     #[test]
     fn tables_come_after_those_they_refer_to() {
         let table = |name: &str, refs: &[&str]| {
-            let mut details = TableDetails::default();
-            details.foreign_keys = refs
-                .iter()
-                .map(|r| platypus_core::ForeignKeyMeta {
-                    name: format!("{name}_{r}"),
-                    columns: vec![],
-                    ref_schema: String::new(),
-                    ref_table: (*r).to_owned(),
-                    ref_columns: vec![],
-                })
-                .collect();
+            let details = TableDetails {
+                foreign_keys: refs
+                    .iter()
+                    .map(|r| platypus_core::ForeignKeyMeta {
+                        name: format!("{name}_{r}"),
+                        columns: vec![],
+                        ref_schema: String::new(),
+                        ref_table: (*r).to_owned(),
+                        ref_columns: vec![],
+                    })
+                    .collect(),
+                ..TableDetails::default()
+            };
             (name.to_owned(), details)
         };
         let order: Vec<_> = ordered(vec![

@@ -13,6 +13,8 @@ use futures::StreamExt;
 use platypus_core::{Connection, ExecOptions, ExecResult};
 use platypus_sql::Dialect;
 
+use crate::Compression;
+
 /// How much of the file is read at a time.
 const CHUNK: usize = 4 << 20;
 /// How much of a failed statement the error shows.
@@ -38,7 +40,7 @@ pub enum ScriptError {
         number: u64,
         line: u64,
         sql: String,
-        error: platypus_core::Error,
+        error: Box<platypus_core::Error>,
     },
     #[error("{0}")]
     Database(#[from] platypus_core::Error),
@@ -107,7 +109,7 @@ async fn run_all(
                         number,
                         line: at,
                         sql: shown(sql),
-                        error,
+                        error: Box::new(error),
                     });
                 }
             }
@@ -192,8 +194,9 @@ struct Source {
 
 impl Source {
     fn open(path: &Path) -> Result<Self, ScriptError> {
+        let display = path.display().to_string();
         let failed = |e: std::io::Error| ScriptError::Read {
-            path: path.display().to_string(),
+            path: display.clone(),
             message: e.to_string(),
         };
         let file = File::open(path).map_err(failed)?;
@@ -203,19 +206,18 @@ impl Source {
             inner: file,
             read: Arc::clone(&read),
         };
-        let name = path.to_string_lossy().to_ascii_lowercase();
-        let reader: Box<dyn Read + Send> = if name.ends_with(".gz") {
-            Box::new(flate2::read::MultiGzDecoder::new(BufReader::new(counted)))
-        } else if name.ends_with(".zst") {
-            Box::new(zstd::Decoder::new(counted).map_err(failed)?)
-        } else {
-            Box::new(BufReader::new(counted))
+        let reader: Box<dyn Read + Send> = match Compression::of_path(path) {
+            Compression::Gzip => {
+                Box::new(flate2::read::MultiGzDecoder::new(BufReader::new(counted)))
+            }
+            Compression::Zstd => Box::new(zstd::Decoder::new(counted).map_err(failed)?),
+            Compression::None => Box::new(BufReader::new(counted)),
         };
         Ok(Self {
             reader,
             read,
             total,
-            path: path.display().to_string(),
+            path: display,
             pending: Vec::new(),
         })
     }

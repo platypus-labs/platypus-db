@@ -984,20 +984,22 @@ pub async fn import_rows(
         }
         let mut schema = rows.schema();
         // The database's own bulk loading where it has it and allows it: an empty load tells.
-        let native = plan.mode() != ImportMode::Upsert
+        let batched = plan.mode() != ImportMode::Upsert;
+        let native = batched
             && target.capabilities().bulk_load
             && match plan.load((target, dialect), &schema, &[]).await {
                 Ok(_) => true,
                 Err(ImportError::Database(Error::Unsupported(_))) => false,
                 Err(e) => return Err(e),
             };
-        let bulk = !native && plan.mode() != ImportMode::Upsert && bulk(target, dialect).await;
+        // Rows go in chunks: natively, or each chunk in one `OPENJSON` insert.
+        let chunked = native || (batched && bulk(target, dialect).await);
         let chunk = if native { NATIVE_ROWS } else { BULK_ROWS };
         let mut pending: Vec<Vec<Option<String>>> = Vec::new();
         let mut written = 0;
         while let Some(batch) = rows.next().await {
             let batch = batch?;
-            if native || bulk {
+            if chunked {
                 schema = batch.schema();
                 pending.extend(rows_text(&batch)?);
                 if pending.len() >= chunk {
