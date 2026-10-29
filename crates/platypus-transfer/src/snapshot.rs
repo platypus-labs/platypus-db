@@ -188,23 +188,21 @@ fn updates(
     if set.is_empty() {
         return Ok(Vec::new());
     }
-    let literal = |row: &[Option<String>], i: usize| {
-        columns[i].literal(dialect, row.get(i).and_then(Option::as_deref))
+    // `column = value` for each of `at`, with the row's values.
+    let equals = |row: &[Option<String>], at: &[usize]| {
+        at.iter()
+            .map(|&i| {
+                let value = columns[i].literal(dialect, row.get(i).and_then(Option::as_deref))?;
+                Ok(format!("{} = {value}", quoted[i]))
+            })
+            .collect::<Result<Vec<_>, ImportError>>()
     };
     rows.iter()
         .map(|row| {
-            let assignments = set
-                .iter()
-                .map(|&i| Ok(format!("{} = {}", quoted[i], literal(row, i)?)))
-                .collect::<Result<Vec<_>, ImportError>>()?;
-            let found = key
-                .iter()
-                .map(|&i| Ok(format!("{} = {}", quoted[i], literal(row, i)?)))
-                .collect::<Result<Vec<_>, ImportError>>()?;
             Ok(format!(
                 "UPDATE {table} SET {} WHERE {}",
-                assignments.join(", "),
-                found.join(" AND ")
+                equals(row, &set)?.join(", "),
+                equals(row, key)?.join(" AND ")
             ))
         })
         .collect()

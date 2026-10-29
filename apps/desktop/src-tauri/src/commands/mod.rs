@@ -321,29 +321,39 @@ impl AppState {
         self.name_if(session_id, |c| c.read_only)
     }
 
+    /// Fails, saying `why` after the connection's name, when `restricted` says so of the
+    /// session's connection.
+    fn unrestricted(
+        &self,
+        session_id: u64,
+        restricted: impl Fn(&platypus_store::Restrictions) -> bool,
+        why: &str,
+    ) -> CommandResult<()> {
+        match self.name_if(session_id, |c| restricted(&c.restrictions))? {
+            Some(name) => Err(CommandError::new("restricted", format!("{name} {why}"))),
+            None => Ok(()),
+        }
+    }
+
     /// Fails when the session's connection keeps its data in: every command that writes
     /// it to a file or another database checks it here.
     fn exportable(&self, session_id: u64) -> CommandResult<()> {
-        match self.name_if(session_id, |c| c.restrictions.no_export)? {
-            Some(name) => Err(CommandError::new(
-                "restricted",
-                format!("{name} does not let its data be exported"),
-            )),
-            None => Ok(()),
-        }
+        self.unrestricted(
+            session_id,
+            |r| r.no_export,
+            "does not let its data be exported",
+        )
     }
 
     /// Fails when the session's connection changes its rows only by SQL: the data editor,
     /// imports and generated rows check it here, with `writable`.
     fn editable(&self, session_id: u64) -> CommandResult<()> {
         self.writable(session_id)?;
-        match self.name_if(session_id, |c| c.restrictions.no_data_editing)? {
-            Some(name) => Err(CommandError::new(
-                "restricted",
-                format!("{name} changes its rows only by SQL"),
-            )),
-            None => Ok(()),
-        }
+        self.unrestricted(
+            session_id,
+            |r| r.no_data_editing,
+            "changes its rows only by SQL",
+        )
     }
 
     /// Fails when the session's connection is read-only: every command that writes checks

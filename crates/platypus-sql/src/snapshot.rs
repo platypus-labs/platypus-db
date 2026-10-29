@@ -57,15 +57,11 @@ pub fn touched_rows(sql: &str, dialect: Dialect) -> Option<Touched> {
     while w.is(i, MODIFIERS) {
         i += 1;
     }
-    let source_start = if verb == "DELETE" {
-        // `DELETE FROM t`, or Transact-SQL's `DELETE t`.
-        if w.is(i, &["FROM"]) {
-            i += 1;
-        }
-        i
-    } else {
-        i
-    };
+    // `DELETE FROM t`, or Transact-SQL's `DELETE t`.
+    if verb == "DELETE" && w.is(i, &["FROM"]) {
+        i += 1;
+    }
+    let source_start = i;
     while w.is(i, &["ONLY"]) {
         i += 1;
     }

@@ -36,6 +36,7 @@ export function GroupingPanel({ jobId, cols, columns, rows, onClose }: Props) {
   }, [jobId, key, rows]);
 
   const names = cols.map((c) => columns[c]?.name ?? "?");
+  const hidden = cols.map((c) => !!columns[c] && !!mask?.(columns[c]));
   const max = counts?.groups[0]?.count ?? 1;
   return (
     <aside className="value-panel grouping-panel">
@@ -66,7 +67,7 @@ export function GroupingPanel({ jobId, cols, columns, rows, onClose }: Props) {
                 <tr key={i}>
                   {g.values.map((v, j) => (
                     <td key={j} className={v === null ? "null" : undefined}>
-                      {masked(v, !!columns[cols[j]!] && !!mask?.(columns[cols[j]!]!)) ?? "NULL"}
+                      {masked(v, !!hidden[j]) ?? "NULL"}
                     </td>
                   ))}
                   <td className="num">

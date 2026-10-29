@@ -113,14 +113,15 @@ pub async fn take_snapshot(
         rows: snapshot.rows,
         taken_at,
     };
-    let path = file(&state, &meta.id)?;
+    let dir = folder(&state)?;
+    let path = dir.join(format!("{}.json", meta.id));
     let text = serde_json::to_string(&SnapshotFile {
         meta: meta.clone(),
         restore: snapshot.restore,
     })
     .map_err(|e| CommandError::new("snapshot", e.to_string()))?;
     fs::write(&path, text).map_err(|e| io(&path, &e))?;
-    prune(&folder(&state)?);
+    prune(&dir);
     Ok(SnapshotOutcome::Taken { snapshot: meta })
 }
 
@@ -155,7 +156,7 @@ pub fn list_snapshots(state: State<'_, AppState>) -> CommandResult<Vec<SnapshotM
         .filter_map(|text| serde_json::from_str::<SnapshotFile>(&text).ok())
         .map(|f| f.meta)
         .collect();
-    all.sort_by(|a, b| b.taken_at.cmp(&a.taken_at));
+    all.sort_by_key(|m| std::cmp::Reverse(m.taken_at));
     Ok(all)
 }
 

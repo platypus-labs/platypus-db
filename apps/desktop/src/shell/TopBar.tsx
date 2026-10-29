@@ -126,7 +126,6 @@ function WindowControls() {
   );
 }
 
-/** Opens the Activity log; it counts the errors not seen yet and shows when work runs. */
 /** While sensitive data is masked, says so; a click shows it again. */
 function MaskedButton() {
   const on = useSetting(maskSetting);
@@ -144,6 +143,7 @@ function MaskedButton() {
   );
 }
 
+/** Opens the Activity log; it counts the errors not seen yet and shows when work runs. */
 function ActivityButton() {
   const { entries, unseen } = useActivity();
   const running = entries.filter((e) => e.status === "running").length;
