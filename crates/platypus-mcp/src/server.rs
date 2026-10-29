@@ -360,7 +360,7 @@ impl PlatypusServer {
     }
 
     #[tool(
-        description = "Returns the first rows of a table, view or MongoDB collection (default \
+        description = "Returns the first rows of a table, view, MongoDB collection or search index (default \
         20 rows), as run_query returns them: an aligned text table, or JSON with format=json. \
         max_rows, max_bytes and timeout_seconds work as in run_query. The rows come in the \
         order the database reads them: no order is implied."

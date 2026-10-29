@@ -332,6 +332,10 @@ pub fn changes(statement: &str, driver: DriverKind) -> bool {
         use platypus_driver_redis::command::{self, Kind};
         return command::parse(statement).map_or(true, |c| c.kind() != Kind::Query);
     }
+    if driver == DriverKind::Elasticsearch {
+        use platypus_driver_search::command::{self, Kind};
+        return command::parse(statement).map_or(true, |c| c.kind() != Kind::Query);
+    }
     platypus_sql::analyze(statement, Dialect::from(driver)).kind != StatementKind::Query
 }
 
@@ -529,6 +533,56 @@ pub fn check_redis<'a>(
     }
 }
 
+/// [`check`] for Elasticsearch and OpenSearch, whose statements are console requests and SQL,
+/// one at a time: checked with the editor's analysis of them
+/// ([`platypus_driver_search::command`]). There is no transaction to run them in, so
+/// read-only access lets only the requests that read run.
+pub fn check_search<'a>(
+    sql: &'a str,
+    access: AgentAccess,
+    unfiltered: UnfilteredRule,
+    connection: &str,
+) -> Result<&'a str> {
+    use platypus_driver_search::command::{self, Kind};
+
+    let statement = match command::split(sql).as_slice() {
+        [] => return Err(AgentError::Invalid("there is no request to run".to_owned())),
+        [one] => &sql[one.clone()],
+        many => {
+            return Err(AgentError::Invalid(format!(
+                "each call runs one request at a time and this script has {}: send them in separate calls",
+                many.len()
+            )));
+        }
+    };
+    if access == AgentAccess::Off {
+        return Err(AgentError::NotFound(format!(
+            "`{connection}` is not available to agents"
+        )));
+    }
+    let parsed = command::parse(statement).map_err(AgentError::Invalid)?;
+    match (access, parsed.kind()) {
+        (AgentAccess::ReadOnly, Kind::Query) => Ok(statement),
+        (AgentAccess::ReadOnly, kind) => Err(AgentError::Denied(format!(
+            "`{connection}` is read-only for agents: only requests that change nothing may run,              and this one {}. The user can allow agents to write in PlatypusDB's connection              settings (Agent access), except on production and read-only connections",
+            match kind {
+                Kind::Dml => "changes documents",
+                Kind::Ddl => "changes indices, mappings or aliases",
+                Kind::Other | Kind::Query => "changes the server or is not known to only read",
+            }
+        ))),
+        _ => match parsed.unfiltered() {
+            Some(every) if unfiltered == UnfilteredRule::Refuse => {
+                Err(AgentError::Denied(format!(
+                    "{} on `{}` changes every document or index it reaches: PlatypusDB's Safety                      settings ask before such changes, and agents cannot answer",
+                    every.verb, every.index
+                )))
+            }
+            _ => Ok(statement),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -576,6 +630,62 @@ mod tests {
         assert!(matches!(rw("SELECT 1"), Err(AgentError::Invalid(_))));
         assert!(changes("DEL a", DriverKind::Redis));
         assert!(!changes("HGETALL h", DriverKind::Redis));
+    }
+
+    #[test]
+    fn checks_search_requests() {
+        let ro = |sql| check_search(sql, AgentAccess::ReadOnly, UnfilteredRule::Refuse, "s");
+        assert_eq!(ro(" GET /a/_search ").unwrap(), "GET /a/_search");
+        assert_eq!(ro("SELECT 1").unwrap(), "SELECT 1");
+        assert_eq!(
+            ro("POST /a/_search
+{\"query\":{\"match_all\":{}}}")
+            .unwrap(),
+            "POST /a/_search
+{\"query\":{\"match_all\":{}}}"
+        );
+        assert!(
+            denied(ro("POST /a/_doc
+{}"))
+            .contains("changes documents")
+        );
+        assert!(denied(ro("DELETE /a")).contains("changes indices"));
+        assert!(
+            denied(ro("PUT /_cluster/settings
+{}"))
+            .contains("changes the server")
+        );
+        assert!(matches!(
+            ro("GET /a/_search
+
+GET /b/_search"),
+            Err(AgentError::Invalid(_))
+        ));
+        assert!(matches!(ro(""), Err(AgentError::Invalid(_))));
+        let rw = |sql| check_search(sql, AgentAccess::ReadWrite, UnfilteredRule::Refuse, "s");
+        assert!(
+            rw("POST /a/_doc
+{\"x\":1}")
+            .is_ok()
+        );
+        assert!(
+            rw("POST /a/_delete_by_query
+{\"query\":{\"term\":{\"x\":1}}}")
+            .is_ok()
+        );
+        assert!(denied(rw("POST /a/_delete_by_query")).contains("cannot answer"));
+        assert!(denied(rw("DELETE /_all")).contains("every document or index"));
+        let allow = |sql| check_search(sql, AgentAccess::ReadWrite, UnfilteredRule::Allow, "s");
+        assert!(allow("POST /a/_delete_by_query").is_ok());
+        let off = check_search(
+            "GET /a/_search",
+            AgentAccess::Off,
+            UnfilteredRule::Allow,
+            "s",
+        );
+        assert!(matches!(off, Err(AgentError::NotFound(_))));
+        assert!(changes("DELETE /a", DriverKind::Elasticsearch));
+        assert!(!changes("GET /a/_search", DriverKind::Elasticsearch));
     }
 
     #[test]
