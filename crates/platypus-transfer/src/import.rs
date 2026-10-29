@@ -930,10 +930,27 @@ pub async fn import(
     import_rows(rows, target, plan, progress).await
 }
 
-/// Writes `pending` rows with the database's own loading while `native`, else in an
-/// `OPENJSON` insert. A load the database refuses for this table (SQL Server's bulk copy
-/// into a `money` column) writes nothing: with `json`, these rows and the next go in
-/// `OPENJSON` inserts, and `native` turns off.
+/// Whether the rows of `plan` go in with the database's own bulk loading: where it has it,
+/// and where an empty load, which checks the table, is not refused (SQL Server's bulk copy
+/// into a `money` column).
+async fn loads_natively(
+    plan: &ImportPlan,
+    (target, dialect): (&dyn Connection, Dialect),
+    schema: &Schema,
+) -> Result<bool, ImportError> {
+    if plan.mode() == ImportMode::Upsert || !target.capabilities().bulk_load {
+        return Ok(false);
+    }
+    match plan.load((target, dialect), schema, &[]).await {
+        Err(ImportError::Database(platypus_core::Error::Unsupported(_))) => Ok(false),
+        checked => checked.map(|_| true),
+    }
+}
+
+/// Writes `pending` rows with the database's own loading while `native`, else in `OPENJSON`
+/// inserts. A load the database refuses for these rows (a value SQL Server's bulk copy does
+/// not read) writes nothing: with `json`, these rows and the next go in `OPENJSON` inserts,
+/// where the server converts the values, and `native` turns off.
 async fn flush(
     plan: &ImportPlan,
     (target, dialect): (&dyn Connection, Dialect),
@@ -952,7 +969,9 @@ async fn flush(
             }
         }
     }
-    exec(target, &plan.bulk_insert(dialect, schema, pending)?).await?;
+    for rows in pending.chunks(BULK_ROWS) {
+        exec(target, &plan.bulk_insert(dialect, schema, rows)?).await?;
+    }
     Ok(())
 }
 
@@ -999,10 +1018,8 @@ pub async fn import_rows(
             exec(target, &sql).await?;
         }
         let mut schema = rows.schema();
-        // The database's own bulk loading where it has it and allows it.
-        let batched = plan.mode() != ImportMode::Upsert;
-        let mut native = batched && target.capabilities().bulk_load;
-        let json = batched && bulk(target, dialect).await;
+        let mut native = loads_natively(plan, (target, dialect), &schema).await?;
+        let json = plan.mode() != ImportMode::Upsert && bulk(target, dialect).await;
         // Rows go in chunks: natively, or each chunk in one `OPENJSON` insert.
         let chunked = native || json;
         let mut pending: Vec<Vec<Option<String>>> = Vec::new();

@@ -156,8 +156,9 @@ pub trait Connection: Send + Sync + fmt::Debug {
     /// Writes `rows` into a table with the database's own bulk loading (PostgreSQL's `COPY`,
     /// MySQL's `LOAD DATA LOCAL`), in the session's transaction; the rows written. Optional:
     /// see [`Capabilities::bulk_load`]. A server that refuses it (MySQL without
-    /// `local_infile`), or a table it cannot load this way (SQL Server's bulk copy into a
-    /// `money` column), answers [`Error::Unsupported`], and nothing was written.
+    /// `local_infile`), or rows it cannot load this way (SQL Server's bulk copy into a
+    /// `money` column), answers [`Error::Unsupported`], and nothing was written. No rows only
+    /// check the table.
     async fn bulk_load(&self, rows: &BulkRows<'_>) -> Result<u64> {
         let _ = rows;
         Err(unsupported("bulk loading"))
