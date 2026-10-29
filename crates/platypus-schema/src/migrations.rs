@@ -1668,6 +1668,53 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn status_reads_the_history_tables_of_a_sqlite_database() {
+        use platypus_core::{ConnectionConfig, DriverKind, ExecOptions};
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "db/V1__a.sql", "CREATE TABLE a (id int);");
+        write(dir.path(), "db/V2__b.sql", "CREATE TABLE b (id int);");
+        write(dir.path(), "db/migrate/20260101000000_x.rb", "");
+        let mut config = ConnectionConfig::new(DriverKind::Sqlite);
+        config.database = dir.path().join("app.db").to_string_lossy().into_owned();
+        let conn = platypus_driver_sqlite::SqliteConnection::connect(&config)
+            .await
+            .unwrap();
+        let sum = flyway_checksum(b"CREATE TABLE a (id int);");
+        let seed = format!(
+            "CREATE TABLE FLYWAY_SCHEMA_HISTORY (installed_rank INTEGER, version TEXT, description TEXT, type TEXT, \
+               script TEXT, checksum INTEGER, installed_on TEXT, success INTEGER);
+             INSERT INTO FLYWAY_SCHEMA_HISTORY VALUES (1, '1', 'a', 'SQL', 'V1__a.sql', {sum}, 't', 1);
+             CREATE TABLE schema_migrations (version TEXT)"
+        );
+        for sql in seed.split(';') {
+            conn.execute(sql, &ExecOptions::default()).await.unwrap();
+        }
+        let found = status(&conn, Dialect::Sqlite, "main", dir.path())
+            .await
+            .unwrap();
+        let tools: Vec<_> = found.iter().map(|f| f.tool).collect();
+        assert_eq!(tools, [Tool::Flyway, Tool::Rails]);
+        assert_eq!(
+            found[0].history_table.as_deref(),
+            Some("FLYWAY_SCHEMA_HISTORY")
+        );
+        assert_eq!(
+            statuses(&found[0].migrations),
+            [("1", Status::Applied), ("2", Status::Pending)]
+        );
+        // An empty history table: the file is pending.
+        assert_eq!(
+            statuses(&found[1].migrations),
+            [("20260101000000", Status::Pending)]
+        );
+        assert!(
+            status(&conn, Dialect::Sqlite, "main", &dir.path().join("nope"))
+                .await
+                .is_err()
+        );
+    }
+
     #[test]
     fn python_values_are_read_without_running_python() {
         assert_eq!(quoted("None"), Vec::<String>::new());

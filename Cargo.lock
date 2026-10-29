@@ -6079,12 +6079,14 @@ dependencies = [
  "crc32fast",
  "futures",
  "platypus-core",
+ "platypus-driver-sqlite",
  "platypus-sql",
  "quick-xml",
  "regex",
  "serde",
  "sha2 0.11.1",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]
