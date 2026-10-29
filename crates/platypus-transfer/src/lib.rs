@@ -5,11 +5,13 @@
 //! exporter dropped before that (cancelled or failed export) deletes the partial file.
 //! [`import`] goes the other way: rows of a data file into a table.
 
+pub mod dump;
 pub mod fake;
 pub mod import;
 mod json;
 pub mod migrate;
 pub mod s3;
+pub mod script;
 mod text;
 
 use std::fs::File;
