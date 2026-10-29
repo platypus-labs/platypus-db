@@ -1,13 +1,13 @@
 // Unit tests of the scheduled tasks dialog's defaults, choices and order (src/admin/schedules.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cleaned, newSchedule, repeatOf, sortSchedules, taskKinds, taskOf, taskOnConnection, writesFiles } from "../src/admin/schedules.ts";
+import { cleaned, newProfileSchedule, newSchedule, repeatOf, sortSchedules, taskKinds, taskOf, taskOnConnection, writesFiles } from "../src/admin/schedules.ts";
 
 test("backups with the database's tools, or as a SQL dump", () => {
-  assert.deepEqual(taskKinds("postgres"), ["script", "export", "backup"]);
-  assert.deepEqual(taskKinds("mysql"), ["script", "export", "backup"]);
-  assert.deepEqual(taskKinds("sqlite"), ["script", "export", "backup"]);
-  assert.deepEqual(taskKinds("mongo"), ["script", "export"]);
+  assert.deepEqual(taskKinds("postgres"), ["script", "export", "backup", "profile"]);
+  assert.deepEqual(taskKinds("mysql"), ["script", "export", "backup", "profile"]);
+  assert.deepEqual(taskKinds("sqlite"), ["script", "export", "backup", "profile"]);
+  assert.deepEqual(taskKinds("mongo"), ["script", "export", "profile"]);
   assert.deepEqual(taskOf("backup", "postgres"), { kind: "backup", format: "custom", schema: null });
   assert.deepEqual(taskOf("backup", "mysql").format, "plain");
   assert.ok(writesFiles(taskOf("export", "sqlite")));
@@ -58,4 +58,21 @@ test("a task moved to another database", () => {
   assert.deepEqual(taskOnConnection(backup, "postgres", "mongo"), { kind: "script", path: "" }, "no backup there");
   const exp = { kind: "export", sql: "SELECT 1", format: "csv" };
   assert.deepEqual(taskOnConnection(exp, "postgres", "sqlite"), exp);
+});
+
+test("a profile runs on any database, and a new task takes its name and first connection", () => {
+  for (const driver of ["postgres", "sqlite", "mongo", "redis"]) assert.ok(taskKinds(driver).includes("profile"), driver);
+  assert.deepEqual(taskOf("profile", "mongo"), { kind: "profile", profile_id: "" });
+  assert.ok(writesFiles(taskOf("profile", "sqlite")), "a scheduled export is sent to the task's folder");
+  const profile = { id: "p1", name: "Orders", task: { kind: "migrate" } };
+  const s = newProfileSchedule(profile, "c1", "id1");
+  assert.deepEqual(s.task, { kind: "profile", profile_id: "p1" });
+  assert.equal(s.name, "Orders");
+  assert.equal(s.connection_id, "c1");
+  assert.deepEqual(s.repeat, { every: "day" });
+});
+
+test("a profile task stays when its connection changes to a driver that runs it", () => {
+  const task = { kind: "profile", profile_id: "p1" };
+  assert.equal(taskOnConnection(task, "postgres", "mongo"), task);
 });
