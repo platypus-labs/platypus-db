@@ -284,9 +284,14 @@ Windows o Entra ID tengono `auth`. Port forward: opzione `forward` = `kubernetes
 (`kubectl port-forward --address 127.0.0.1 [--context] [--namespace] <k8s_target>
 <locale>:<porta del server>`) o `ssm` (`aws ssm start-session` col documento
 `AWS-StartPortForwardingSessionToRemoteHost` verso host e porta della connessione, dall'istanza
-`ssm_target`); `platypus-net/src/forward.rs` sceglie una porta locale libera, aspetta che
-ascolti (30 secondi al massimo, l'errore cita stderr) e chiude la CLI con la connessione. Non
-si combina con tunnel SSH o proxy. `aws_region` e `aws_profile` valgono per IAM e SSM. La
+`ssm_target`); `platypus-net/src/forward.rs` sceglie una porta locale libera, aspetta che la
+CLI scriva che ascolta (`Forwarding from`, `Waiting for connections`: provare la porta
+aprirebbe una connessione al database; 30 secondi al massimo, l'errore cita stderr) e con la
+connessione chiude la CLI e i processi che avvia, come il plugin di SSM (gruppo di processi
+su Unix, `taskkill /T` su Windows). Non si combina con tunnel SSH o proxy. Un modo di accesso
+che il database non accetta (`Auth::fits`) è un errore. Limite noto: annullare una query
+MySQL con un token scaduto non riesce, perché il `KILL QUERY` apre una connessione nuova col
+token iniziale. `aws_region` e `aws_profile` valgono per IAM e SSM. La
 conformance (`tests/cloud_cli.rs`) mette sul `PATH` un `aws` e un `kubectl` finti contro
 PostgreSQL e MySQL.
 Proxy: opzione `proxy` della connessione, un URL `socks5://` o `http://` con login facoltativo;
