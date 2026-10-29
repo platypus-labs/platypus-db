@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, isMongo, type ColumnMeta, type ForeignKeyMeta, type SavedConnection, type TableDetails } from "../api";
+import { api, isMongo, type ColumnMeta, type ForeignKeyMeta, type SavedConnection, type TableDetails, takesNoRows } from "../api";
 import { GuardDialog } from "../guards/GuardDialog";
 import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { requestNavigatorRefresh } from "../navigatorEvents";
@@ -178,13 +178,19 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
             />
           ))}
         </div>
-        {connection.read_only && <div className="notice warn small">{t("{name} is read-only: nothing is written there.", { name: connection.name })}</div>}
+        {takesNoRows(connection) && (
+          <div className="notice warn small">
+            {connection.read_only
+              ? t("{name} is read-only: nothing is written there.", { name: connection.name })
+              : t("{name} changes its rows only by SQL: nothing is written there.", { name: connection.name })}
+          </div>
+        )}
         <JobFooter status={status} messages={[msg("Adding… {n} rows"), msg("Added {n} rows.")]} 
           failed={failed}
           stopped={mongo ? msg("Stopped after {n} documents.") : msg("Stopped: nothing was added.")}
           onClose={onClose}
         >
-          <button type="button" className="primary" disabled={running || sid === null || filled.length === 0 || connection.read_only} onClick={request}>
+          <button type="button" className="primary" disabled={running || sid === null || filled.length === 0 || takesNoRows(connection)} onClick={request}>
             {t("Generate")}
           </button>
         </JobFooter>

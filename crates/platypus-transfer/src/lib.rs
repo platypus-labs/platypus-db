@@ -12,6 +12,7 @@ mod json;
 pub mod migrate;
 pub mod s3;
 pub mod script;
+pub mod snapshot;
 mod text;
 
 use std::fs::File;

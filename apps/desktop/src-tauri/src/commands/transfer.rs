@@ -211,6 +211,7 @@ pub fn import_file(
     options: Option<FileOptions>,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
+    state.editable(session_id)?;
     let source = async move {
         let file = open_file(&path, &options.unwrap_or_default()).await?;
         Ok((file, DriverKind::DuckDb))
@@ -228,6 +229,8 @@ pub fn transfer_table(
     plan: ImportPlan,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
+    state.exportable(source_session_id)?;
+    state.editable(target_session_id)?;
     let config = state.session(source_session_id)?.config;
     let source = async move { Ok((super::connect(&config).await?, config.driver)) };
     start(&state, target_session_id, source, plan, on_event)
@@ -282,6 +285,8 @@ pub fn migrate_tables(
     objects: bool,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
+    state.exportable(source_session_id)?;
+    state.editable(target_session_id)?;
     let source = state.session(source_session_id)?;
     spawn_job(
         &state,
@@ -321,6 +326,7 @@ pub fn fake_rows(
     columns: Vec<FakeColumn>,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
+    state.editable(session_id)?;
     // MongoDB takes mongosh: documents go in with `insertMany`, `schema` is the database.
     let mongo = state.session(session_id)?.config.driver == DriverKind::Mongo;
     spawn_job(
@@ -449,6 +455,7 @@ pub fn dump_sql(
     tables: Option<Vec<String>>,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
+    state.exportable(session_id)?;
     spawn_reading_job(
         &state,
         session_id,

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { api, type ColumnInfo, toCommandError } from "../api";
 import { formatCount, t, plural } from "../i18n";
+import { MASK, useMask } from "../guards/mask";
 import { JSON_TYPE, formatJson, isJsonDocument } from "../jsonText";
 
 /** The focused cell of a result. */
@@ -100,6 +101,7 @@ export function ValuePanel({ target, onClose }: { target: ValueTarget | null; on
   /** Characters of text shown, a multiple of `TEXT_PAGE`. */
   const [limit, setLimit] = useState(TEXT_PAGE);
   const binary = target?.column.binary ?? false;
+  const mask = useMask();
 
   useEffect(() => {
     setBytes(null);
@@ -155,6 +157,7 @@ export function ValuePanel({ target, onClose }: { target: ValueTarget | null; on
     if (error) return <div className="error-text small value-empty">{error}</div>;
     if (!bytes) return <div className="muted small value-empty">{t("Loading…")}</div>;
     if (target.isNull) return <div className="muted small value-empty">NULL</div>;
+    if (mask?.(target.column)) return <div className="muted small value-empty">{t("{dots} Masked while the screen may be shared.", { dots: MASK })}</div>;
     if (bytes.length === 0) return <div className="muted small value-empty">{t("Empty")}</div>;
     switch (shown) {
       case "image":

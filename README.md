@@ -462,6 +462,17 @@ numbers after the largest `_id`, lists of words for arrays, small documents for 
 - The lock button makes one editor tab read-only without changing the saved connection.
 - Settings › Safety can add a `LIMIT` (`TOP` on SQL Server) to queries run from the editor that
   have no row cap of their own; off by default.
+- The **transaction log** (toolbar) lists what the tab ran, gathered by transaction with how each
+  ended.
+- Before an `UPDATE` or `DELETE` of one table runs from the editor, the rows it changes (up to
+  10,000) are kept as the statements that put them back: **Restore…** in the transaction log, or
+  *Snapshots before changes…* in the palette, opens that script. On by default.
+- A connection can forbid **exports** (no file, other database or agent gets its data) and
+  **data editing** (rows change only by SQL: no grid edits, imports or generated rows).
+- **Mask sensitive data** (Ctrl+Alt+M) shows the columns named in Settings › Safety (emails,
+  phones, passwords… by name or type) as dots while the screen is shared; copies keep the values.
+- With a master password, the app can **lock** after some idle minutes, closing the production
+  connections; *Lock PlatypusDB* in the palette locks it at once.
 
 ### Workspace
 

@@ -210,6 +210,8 @@ fn sources(state: &AppState, tables: &[ResultTable]) -> CommandResult<Vec<Source
         .iter()
         .map(|t| {
             let job = state.job(t.job_id).map_err(|_| gone())?;
+            // Another database, even a temporary one, is where a restricted result does not go.
+            state.exportable(job.session_id)?;
             let (schema, batches) = job.snapshot().ok_or_else(gone)?;
             Ok(Source {
                 table: t.table.clone(),

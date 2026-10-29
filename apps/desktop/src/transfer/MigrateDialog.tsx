@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, isMongo, opensDataFile, type SavedConnection, type SchemaMeta } from "../api";
+import { api, isMongo, opensDataFile, type SavedConnection, type SchemaMeta, takesNoRows } from "../api";
 import { GuardDialog } from "../guards/GuardDialog";
 import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { requestNavigatorRefresh } from "../navigatorEvents";
@@ -23,8 +23,9 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, on
   const candidates = workbench()
     .connections()
     .filter((c) => c.id !== connection.id && !opensDataFile(c) && !isMongo(c.driver));
-  // Read-only connections are listed, but take no tables.
-  const targets = candidates.filter((c) => !c.read_only);
+  // Read-only connections, and those whose rows change only by SQL, are listed but take
+  // no tables.
+  const targets = candidates.filter((c) => !takesNoRows(c));
   const [tables, setTables] = useState<string[] | null>(chosen);
   const [target, setTarget] = useState<SavedConnection | null>(targets[0] ?? null);
   const [schemas, setSchemas] = useState<SchemaMeta[]>([]);
@@ -106,8 +107,12 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, on
                 onChange={(e) => setTarget(targets.find((c) => c.id === e.target.value) ?? null)}
               >
                 {candidates.map((c) => (
-                  <option key={c.id} value={c.id} disabled={c.read_only}>
-                    {c.read_only ? t("{name} (read-only)", { name: c.name }) : c.name}
+                  <option key={c.id} value={c.id} disabled={takesNoRows(c)}>
+                    {c.read_only
+                      ? t("{name} (read-only)", { name: c.name })
+                      : takesNoRows(c)
+                        ? t("{name} (rows by SQL only)", { name: c.name })
+                        : c.name}
                   </option>
                 ))}
               </select>
@@ -126,7 +131,7 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, on
           <button
             type="button"
             className="primary"
-            disabled={running || status.state === "done" || !sids || !targetSchema || count === 0 || !!target?.read_only}
+            disabled={running || status.state === "done" || !sids || !targetSchema || count === 0 || (!!target && takesNoRows(target))}
             onClick={request}
           >
             {t("Copy")}

@@ -848,6 +848,26 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
             <label className="check">
               <input
                 type="checkbox"
+                data-field="no_export"
+                checked={!!conn.restrictions?.no_export}
+                onChange={(e) => set("restrictions", { ...conn.restrictions, no_export: e.target.checked })}
+              />
+              {t("No exports: its data goes to no file, other database or agent")}
+            </label>
+
+            <label className="check">
+              <input
+                type="checkbox"
+                data-field="no_data_editing"
+                checked={!!conn.restrictions?.no_data_editing}
+                onChange={(e) => set("restrictions", { ...conn.restrictions, no_data_editing: e.target.checked })}
+              />
+              {t("No data editing: rows change only by SQL, not in the grid, imports or generated data")}
+            </label>
+
+            <label className="check">
+              <input
+                type="checkbox"
                 data-field="text_json"
                 checked={conn.text_json !== "plain"}
                 onChange={(e) => set("text_json", e.target.checked ? undefined : "plain")}

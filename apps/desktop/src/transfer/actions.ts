@@ -2,7 +2,7 @@
 // database, tables to files.
 import { createElement } from "react";
 import { registerAction } from "../actions";
-import { api, isMongo, opensDataFile, type SavedConnection, type SchemaMeta, toCommandError } from "../api";
+import { api, isMongo, keepsDataIn, opensDataFile, type SavedConnection, type SchemaMeta, takesNoRows, toCommandError } from "../api";
 import { isRelation } from "../components/Navigator";
 import { omitsSchema, schemaRef } from "../sqlNames";
 import { answerFor } from "../testAnswers";
@@ -34,13 +34,13 @@ registerAction({
   title: "Copy to a database…",
   group: "manage",
   order: 72,
-  when: ({ object }) => isRelation(object.kind),
+  when: ({ connection, object }) => isRelation(object.kind) && !keepsDataIn(connection),
   run: ({ connection, database, schema, object }) => {
     // Another connection by default, in its current schema; else a copy next to the table.
     // MongoDB takes no SQL tables, and a collection is copied to a SQL database.
     const other = workbench()
       .connections()
-      .find((c) => c.id !== connection.id && !opensDataFile(c) && !isMongo(c.driver));
+      .find((c) => c.id !== connection.id && !opensDataFile(c) && !isMongo(c.driver) && !takesNoRows(c));
     if (!other && isMongo(connection.driver)) return workbench().showError(t("Save a SQL connection to copy the collection to."));
     const target: TableAt = other
       ? { connection: other, database: null, schema: "", currentSchema: true, table: null }
@@ -63,7 +63,7 @@ registerAction({
   group: "manage",
   order: 70,
   // MongoDB's collections take documents, not the rows of an import.
-  when: ({ connection, object }) => object.kind === "table" && !isMongo(connection.driver),
+  when: ({ connection, object }) => object.kind === "table" && !isMongo(connection.driver) && !takesNoRows(connection),
   run: ({ connection, database, schema, object }) => openImport(connection, database, schema, object.name),
 });
 
@@ -73,7 +73,7 @@ registerAction({
   title: "Import data into a new table…",
   group: "open",
   order: 30,
-  when: ({ connection }) => !isMongo(connection.driver),
+  when: ({ connection }) => !isMongo(connection.driver) && !takesNoRows(connection),
   run: ({ connection, database, schema }) => openImport(connection, database, schema, null),
 });
 
@@ -102,7 +102,8 @@ registerAction({
   group: "manage",
   order: 71,
   multiple: true,
-  when: ({ object, selection }) => (selection ?? [{ object }]).every((s) => s.object.kind === "table"),
+  when: ({ connection, object, selection }) =>
+    !keepsDataIn(connection) && (selection ?? [{ object }]).every((s) => s.object.kind === "table"),
   run: ({ connection, database, schema, object, selection }) =>
     openExport(connection, database, schema, (selection ?? [{ schema, object }]).map((s) => ({ schema: schemaRef(connection.driver, s.schema), name: s.object.name }))),
 });
@@ -113,6 +114,7 @@ registerAction({
   title: "Export all tables…",
   group: "open",
   order: 31,
+  when: ({ connection }) => !keepsDataIn(connection),
   run: ({ connection, database, schema }) => openExport(connection, database, schema, null),
 });
 
@@ -122,7 +124,7 @@ registerAction({
   title: "Paste CSV as a new table…",
   group: "open",
   order: 32,
-  when: ({ connection }) => !isMongo(connection.driver),
+  when: ({ connection }) => !isMongo(connection.driver) && !takesNoRows(connection),
   run: async ({ connection, database, schema }) => {
     let path: string;
     try {
@@ -157,6 +159,7 @@ registerAction({
   // One table has "Copy to a database…", with its columns to map.
   when: ({ connection, schema, selection }) =>
     !isMongo(connection.driver) &&
+    !keepsDataIn(connection) &&
     (selection?.length ?? 0) > 1 &&
     selection!.every((s) => s.object.kind === "table" && s.schema.name === schema.name),
   run: ({ connection, database, schema, selection }) =>
@@ -170,7 +173,7 @@ registerAction({
   group: "open",
   order: 33,
   // A schema copy reads the tables' definitions, which a collection has not.
-  when: ({ connection }) => !isMongo(connection.driver),
+  when: ({ connection }) => !isMongo(connection.driver) && !keepsDataIn(connection),
   run: ({ connection, database, schema }) => openMigrate(connection, database, schema.name, null),
 });
 
@@ -180,7 +183,7 @@ registerAction({
   title: "Generate data…",
   group: "manage",
   order: 74,
-  when: ({ object }) => object.kind === "table",
+  when: ({ connection, object }) => object.kind === "table" && !takesNoRows(connection),
   run: ({ connection, database, schema, object }) =>
     workbench().openDialog((close) =>
       createElement(GenerateDataDialog, {
@@ -231,7 +234,7 @@ registerAction({
   title: "Dump to SQL file…",
   group: "open",
   order: 34,
-  when: ({ connection }) => !isMongo(connection.driver),
+  when: ({ connection }) => !isMongo(connection.driver) && !keepsDataIn(connection),
   run: ({ connection, database, schema }) => openDump(connection, database, schema.name, null),
 });
 
@@ -245,6 +248,7 @@ registerAction({
   // The objects of one schema, which the dump orders by their references.
   when: ({ connection, schema, object, selection }) =>
     !isMongo(connection.driver) &&
+    !keepsDataIn(connection) &&
     (selection ?? [{ schema, object }]).every((s) => s.schema.name === schema.name && DUMPED.has(s.object.kind)),
   run: ({ connection, database, schema, object, selection }) =>
     openDump(connection, database, schema.name, (selection ?? [{ object }]).map((s) => s.object.name)),
