@@ -974,7 +974,7 @@ export interface Bucket {
 export type Compression = "none" | "gzip" | "zstd";
 
 export type ExportEvent =
-  | { type: "progress"; rows: number }
+  | { type: "progress"; rows: number; /** Bytes of a file read, and its size. */ bytes?: [number, number] }
   | { type: "done"; rows: number; elapsed_ms: number; warnings?: string[] }
   | { type: "failed"; error: CommandError }
   | { type: "cancelled" };
@@ -1507,6 +1507,20 @@ export const api = {
     const channel = new Channel<ExportEvent>();
     channel.onmessage = onEvent;
     return invoke<number>("export_tables", { sessionId, tables, dir, options, onEvent: channel });
+  },
+  /** Runs the SQL file at `path` (`.gz`, `.zst` too) on a connection of its own, with
+   *  `transaction` all in one; progress counts statements. Cancelled with `cancelExport`. */
+  runSqlFile: (sessionId: number, path: string, transaction: boolean, onEvent: (e: ExportEvent) => void) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("run_sql_file", { sessionId, path, transaction, onEvent: channel });
+  },
+  /** Writes `schema`'s DDL, with `data` its rows too, to an SQL file at `path` (gzip or
+   *  zstd by its extension); with `tables`, those objects alone. Cancelled with `cancelExport`. */
+  dumpSql: (sessionId: number, schema: string, path: string, data: boolean, tables: string[] | null, onEvent: (e: ExportEvent) => void) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("dump_sql", { sessionId, schema, path, data, tables, onEvent: channel });
   },
   /** The tables of a data file and the first rows of `table`, with the column types they
    *  would take in the session's database. */
