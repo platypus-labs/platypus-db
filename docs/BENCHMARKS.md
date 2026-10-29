@@ -122,4 +122,9 @@ DataGrip's size is the one JetBrains' release service gives for the Linux archiv
 PlatypusDB's numbers are the Linux ones above (software rendering, no GPU); on Windows it
 starts in under 0.5 s and keeps about 130 MB. The plan's reference values for DBeaver (5–15 s
 start, 500 MB–1 GB at rest) come from its typical footprint as a JVM application and are
-indicative only, until it is measured with `scripts/bench.py`'s method.
+indicative only, until it is measured with `scripts/bench.py`'s method:
+`python3 scripts/bench.py other <name> <command>` starts a client five times, with a profile
+in a temporary HOME, until the screen settles (watched for up to 60 s), and reads its private
+memory at rest, without a connection. On 29 October 2026 the cloud container could not
+download DBeaver, DataGrip, TablePlus or Beekeeper Studio (their hosts are outside its
+network policy), so the rows above are still blank.
