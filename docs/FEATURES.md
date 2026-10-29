@@ -211,6 +211,17 @@ copy updates by replacing its executable; the welcome screen says `portable` bes
 - **Conditional formatting** (grid menu): rules color a cell or the whole row when a column
   is equal to a value, contains it, falls in a range or is NULL, or spread a color scale over
   a number column; the first rule that matches wins. A table keeps its rules.
+- **Computed columns** (grid menu, *Columns › Computed columns…*): a name and an expression on
+  the other columns of the same row, such as `price * qty` or
+  `upper(customer) || ' ' || coalesce(city, '?')`, shown after the result's columns. The
+  expressions take numbers, `'text'`, NULL, `+ - * / %`, `||`, comparisons, AND, OR, NOT,
+  `IS NULL` and the functions upper, lower, trim, length, substr, replace, abs, round, floor,
+  ceil, coalesce, nullif, concat and if; NULL in an operation gives NULL, as in SQL. They are
+  only on screen: `Ctrl+C` copies them with the rest of the selection, but *Copy as*, totals,
+  search, sorting and editing work on the result's own columns. They follow the edits not
+  saved yet, read numbers with the digit grouping of the settings and show as dots when they
+  read a masked column. They work on the text the grid holds, so a text longer than 500
+  characters counts only that much. A table keeps its computed columns.
 - Totals of the selection (count, sum, average, minimum, maximum), a record view of one row
   at a time, counts by value, statistics of the selection, and two rows compared column by
   column.

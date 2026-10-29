@@ -2125,6 +2125,24 @@ const zh: Record<string, string> = {
   "An empty notebook: add a SQL or a text cell.": "空笔记本：添加一个 SQL 或文本单元格。",
   "New notebook": "新建笔记本",
   "Open notebook…": "打开笔记本…",
+  // Computed columns
+  "The expression is not valid.": "表达式无效。",
+  "No column named {name}.": "没有名为 {name} 的列。",
+  "No function named {name}.": "没有名为 {name} 的函数。",
+  "Wrong number of values for {name}.": "{name} 的参数个数不对。",
+  "The expression is not valid near: {text}": "表达式在此处无效：{text}",
+  "The expression is incomplete.": "表达式不完整。",
+  "A column named {name} already exists.": "已存在名为 {name} 的列。",
+  "Computed columns": "计算列",
+  "Columns worked out from the others of the same row, only on screen. They are kept for this table.": "由同一行其他列计算得出的列，仅在屏幕上显示。为此表保留。",
+  "Columns worked out from the others of the same row, only on screen. They last while this result is open.": "由同一行其他列计算得出的列，仅在屏幕上显示。在此结果打开期间有效。",
+  "No computed columns yet.": "还没有计算列。",
+  "New computed column": "新建计算列",
+  "Edit computed column": "编辑计算列",
+  "Expression": "表达式",
+  "Columns by name, quoted with \"…\" when they have spaces; + - * / %, || to join text, comparisons, AND, OR, NOT; functions: {list}.": "按名称引用列，含空格时用 \"…\" 括起；+ - * / %，|| 连接文本，比较，AND、OR、NOT；函数：{list}。",
+  "Update column": "更新列",
+  "Computed columns…": "计算列…",
 };
 
 export default zh;

@@ -2125,6 +2125,24 @@ const it: Record<string, string> = {
   "An empty notebook: add a SQL or a text cell.": "Un notebook vuoto: aggiungi una cella SQL o di testo.",
   "New notebook": "Nuovo notebook",
   "Open notebook…": "Apri notebook…",
+  // Computed columns
+  "The expression is not valid.": "L'espressione non è valida.",
+  "No column named {name}.": "Nessuna colonna di nome {name}.",
+  "No function named {name}.": "Nessuna funzione di nome {name}.",
+  "Wrong number of values for {name}.": "Numero di valori sbagliato per {name}.",
+  "The expression is not valid near: {text}": "L'espressione non è valida vicino a: {text}",
+  "The expression is incomplete.": "L'espressione è incompleta.",
+  "A column named {name} already exists.": "Esiste già una colonna di nome {name}.",
+  "Computed columns": "Colonne calcolate",
+  "Columns worked out from the others of the same row, only on screen. They are kept for this table.": "Colonne ricavate dalle altre della stessa riga, solo a schermo. Restano per questa tabella.",
+  "Columns worked out from the others of the same row, only on screen. They last while this result is open.": "Colonne ricavate dalle altre della stessa riga, solo a schermo. Durano finché questo risultato resta aperto.",
+  "No computed columns yet.": "Ancora nessuna colonna calcolata.",
+  "New computed column": "Nuova colonna calcolata",
+  "Edit computed column": "Modifica la colonna calcolata",
+  "Expression": "Espressione",
+  "Columns by name, quoted with \"…\" when they have spaces; + - * / %, || to join text, comparisons, AND, OR, NOT; functions: {list}.": "Colonne per nome, tra \"…\" se hanno spazi; + - * / %, || per unire testo, confronti, AND, OR, NOT; funzioni: {list}.",
+  "Update column": "Aggiorna la colonna",
+  "Computed columns…": "Colonne calcolate…",
 };
 
 export default it;

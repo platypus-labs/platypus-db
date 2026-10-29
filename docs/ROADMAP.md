@@ -82,6 +82,15 @@ Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i
 
 ## 2. Gruppi di lavoro
 
+### Correzioni aperte
+
+Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (vedi
+[CLAUDE.md](../CLAUDE.md)). Chi ne corregge uno toglie la sua riga.
+
+| Problema | Trovato |
+|---|---|
+| E2E `grid-text-json-sqlite` fallisce già all'apertura: con due connessioni SQLite il clic sul triangolo della prima (`E2E text json`) espande anche la seconda (`… plain`, resta "loading…") e la riga `docs` non si trova sotto la prima. Il navigator ora disegna solo le righe in vista (test di scala del gruppo P): forse le righe riusate tengono il click o lo stato di un'altra. Fallisce anche con l'eseguibile di `main` | 2026-10-29, gruppo B |
+
 ### Lock dei gruppi
 
 Chi lavora su un gruppo lo segna qui e pusha su `main` prima di scrivere codice. Formato:
@@ -150,9 +159,9 @@ conformance per la DML generata (quoting, NULL, binari, timestamp con fuso).
 
 ---
 
-### Gruppo B — Griglia avanzata (sola lettura)
+### Gruppo B — Griglia avanzata (sola lettura) — ✅ completato
 
-**Stato: P1 e P2 completate, P3 in parte** (copia avanzata, ricerca Ctrl+F, pannello valori F7, filtri
+**Stato: completato** (copia avanzata, ricerca Ctrl+F, pannello valori F7, filtri
 rapidi, vista record, layout delle colonne salvato per tabella, aggregati della selezione,
 navigazione delle FK e pannello References, pannello Grouping, formati di visualizzazione,
 pannelli Metadata e Calc, confronto di due righe, refresh automatico fuori dalla cronologia,
@@ -162,9 +171,13 @@ salvataggio per tabella in `localStorage` come il layout delle colonne) e
 `grid/FormattingDialog.tsx`; i colori passano dal `decorate` della griglia, sotto le modifiche
 e la ricerca; la scala di colori usa minimo e massimo di `column_profile` sulle righe caricate.
 I numeri si leggono col formato della griglia solo nelle colonne numeriche. JSON nel testo: il
-campo `text_json` della connessione (`plain` per tenerlo com'è scritto). Da fare: colonne
-virtuali calcolate (P3), che chiedono colonne calcolate nel backend del risultato: le funzioni
-della griglia leggono le colonne per indice dal backend.
+campo `text_json` della connessione (`plain` per tenerlo com'è scritto). Colonne calcolate
+(P3): `grid/computed.ts` (linguaggio di espressioni simile a SQL, valutato senza `eval`,
+salvato per tabella in `localStorage`) e `grid/ComputedDialog.tsx`; restano nel frontend: la
+griglia le mostra dopo le colonne del risultato (`resultColumns` di `DataGrid`) e
+`GridSelection.cols` le lascia fuori, così le funzioni che leggono il risultato sul backend
+(copia come, totali, ricerca, modifica, ordinamento) lavorano solo sulle colonne vere; `Ctrl+C`
+le copia da `GridSelection.shown`, coi valori calcolati sulle righe caricate.
 
 **Area:** `apps/desktop/src/grid/features/`, `apps/desktop/src/panels/`
 **Dipende da:** 0.4
@@ -187,7 +200,7 @@ della griglia leggono le colonne per indice dal backend.
 | ✅ Viewer GIS: geometrie PostGIS e MySQL su mappa | P3 | D |
 | ✅ Confronto di due righe selezionate | P3 | N |
 | ✅ **Formattazione condizionale**: colore di cella o riga da regole (valore, intervallo, NULL, scala di colore sui numeri), salvata per tabella | P2 | D |
-| 🆕 Colonne virtuali calcolate: espressione sulle colonne della riga, solo in visualizzazione | P3 | D |
+| ✅ 🆕 Colonne virtuali calcolate: espressione sulle colonne della riga, solo in visualizzazione | P3 | D |
 | ✅ **JSON nelle colonne di testo**: un TEXT o VARCHAR che contiene JSON valido si apre formattato nel pannello valori, con un'opzione per connessione | P3 | D |
 
 ---

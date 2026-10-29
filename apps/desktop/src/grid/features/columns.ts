@@ -1,4 +1,5 @@
-// Arranging the grid's columns from its menu: hide, pin, the Columns dialog and a reset.
+// Arranging the grid's columns from its menu: hide, pin, the Columns dialog, the computed
+// columns and a reset.
 // Headers also drag to move columns, and their borders to resize them (see DataGrid).
 import { registerAction } from "../../actions";
 import type { GridActionContext } from "../DataGrid";
@@ -24,7 +25,7 @@ registerAction({
   submenu: "Columns",
   group: "columns",
   order: 80,
-  when: (ctx) => target(ctx) !== null && ctx.grid.visibleColumns().length > 1,
+  when: (ctx) => target(ctx) !== null && ctx.grid.visibleColumns(true).length > 1,
   run: ({ grid }) => {
     const t = target({ grid, source: null })!;
     grid.setLayout(hideColumn(t.layout, t.name));
@@ -68,6 +69,17 @@ registerAction({
   order: 82,
   when: ({ grid, source }) => grid.layout() !== null && source?.features !== undefined,
   run: ({ source }) => source!.features!.openColumns(),
+});
+
+registerAction({
+  id: "grid.computed_columns",
+  scope: "grid",
+  title: "Computed columns…",
+  submenu: "Columns",
+  group: "columns",
+  order: 82.5,
+  when: ({ source }) => source?.features !== undefined,
+  run: ({ source }) => source!.features!.openComputed(),
 });
 
 registerAction({

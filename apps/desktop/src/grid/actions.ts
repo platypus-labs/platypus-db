@@ -12,7 +12,7 @@ registerAction({
   shortcut: "Mod+C",
   group: "copy",
   order: 10,
-  when: ({ grid }) => grid.selection() !== null,
+  when: ({ grid }) => grid.selection(true) !== null,
   run: async (ctx) => {
     const rows = await selectedValues(ctx);
     const text = clipboardText(rows);
@@ -23,19 +23,22 @@ registerAction({
 });
 
 /** The whole values of the selected cells (`null` is NULL), pending edits included. The grid
- *  holds only the rows it has drawn, cut for display: the result's rows come from the backend. */
+ *  holds only the rows it has drawn, cut for display: the result's rows come from the backend.
+ *  Computed columns are not on the backend: theirs are the values the grid works out. */
 async function selectedValues({ grid, source }: GridActionContext): Promise<(string | null)[][]> {
-  const sel = grid.selection()!;
+  const sel = grid.selection(true)!;
   // The new rows of the data editor come first, then the result's rows in order.
   const last = grid.dataRow(sel.r1);
   const first = grid.dataRow(sel.r0) ?? 0;
   const loaded =
-    source?.jobId != null && last !== null ? await api.rowValues(source.jobId, first, last - first + 1, sel.cols) : null;
+    source?.jobId != null && last !== null && sel.cols.length ? await api.rowValues(source.jobId, first, last - first + 1, sel.cols) : null;
   const rows: (string | null)[][] = [];
   for (let r = sel.r0; r <= sel.r1; r++) {
     const row = grid.dataRow(r);
     rows.push(
-      sel.cols.map((c, j) => {
+      sel.shown.map((c) => {
+        const j = sel.cols.indexOf(c);
+        if (j < 0) return grid.value(r, c) ?? null;
         const edit = source?.edit?.pending(r, c);
         if (edit?.kind === "value") return edit.text;
         if (edit?.kind === "null") return null;

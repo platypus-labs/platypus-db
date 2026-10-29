@@ -1280,6 +1280,18 @@ button.primary.danger:hover:not(:disabled) {
   min-height: 30px;
 }
 
+/* Computed columns (grid/ComputedDialog.tsx): the list and form of the formatting dialog,
+   a name beside a wider expression. */
+.computed-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 10px;
+}
+
+.computed-form .mono {
+  font-family: var(--font-mono);
+}
+
 /* Run on connections (editor/MultiRunDialog.tsx): the connections to choose, then how the
    run went on each, a dot for its state. */
 .modal.multi-run {
