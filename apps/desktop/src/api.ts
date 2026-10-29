@@ -1486,7 +1486,8 @@ export const api = {
   regenerateAgentToken: () => invoke<BridgeStatus>("regenerate_agent_token"),
   /** Answers a change an agent asked for; `false` when it no longer waits. */
   answerAgentWrite: (id: string, verdict: Verdict) => invoke<boolean>("answer_agent_write", { id, verdict }),
-  agentWritesWaiting: () => invoke<WriteRequest[]>("agent_writes_waiting"),
+  /** The changes waiting for an answer, the oldest first, with how long each has waited. */
+  agentWritesWaiting: () => invoke<{ request: WriteRequest; waited_ms: number }[]>("agent_writes_waiting"),
   connectedAgents: () => invoke<ConnectedAgent[]>("connected_agents"),
   staleAgentRegistrations: () => invoke<StaleRegistration[]>("stale_agent_registrations"),
   agentClients: () => invoke<AgentClient[]>("agent_clients"),

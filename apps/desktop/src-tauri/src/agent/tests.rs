@@ -63,7 +63,7 @@ async fn eventually<T>(mut ready: impl FnMut() -> Option<T>) -> Option<T> {
 }
 
 /// Waits until the bridge has a change waiting.
-async fn asked(bridge: &Bridge) -> Vec<WriteRequest> {
+async fn asked(bridge: &Bridge) -> Vec<WaitingWrite> {
     eventually(|| Some(bridge.link().waiting()).filter(|w| !w.is_empty()))
         .await
         .expect("nothing asked")
@@ -93,7 +93,7 @@ async fn agents_ask_the_user_through_the_bridge() {
     // A change waits for the user's answer, then is gone.
     let asking = tokio::spawn(async move { link.confirm(change("c1")).await });
     let waiting = asked(&bridge).await;
-    assert_eq!(waiting[0].statement, "DELETE FROM t WHERE id = 1");
+    assert_eq!(waiting[0].request.statement, "DELETE FROM t WHERE id = 1");
     assert_eq!(told(WRITE_REQUEST_EVENT), 1);
     assert!(bridge.link().answer("c1", Verdict::Session));
     assert_eq!(asking.await.unwrap().unwrap(), Verdict::Session);
@@ -103,6 +103,25 @@ async fn agents_ask_the_user_through_the_bridge() {
         !bridge.link().answer("c1", Verdict::Once),
         "answered already"
     );
+
+    // Changes wait in the order they came, however their ids sort.
+    let (first, second) = (HttpLink::new(dir.path()), HttpLink::new(dir.path()));
+    let one = tokio::spawn(async move { first.confirm(change("zz")).await });
+    asked(&bridge).await;
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    let two = tokio::spawn(async move { second.confirm(change("aa")).await });
+    let waiting = eventually(|| Some(bridge.link().waiting()).filter(|w| w.len() == 2))
+        .await
+        .expect("two asked");
+    assert_eq!(waiting[0].request.id, "zz");
+    assert!(
+        waiting[0].waited_ms >= waiting[1].waited_ms + 20,
+        "{waiting:?}"
+    );
+    assert!(bridge.link().answer("zz", Verdict::Once));
+    assert!(bridge.link().answer("aa", Verdict::Once));
+    one.await.unwrap().unwrap();
+    two.await.unwrap().unwrap();
 
     // An agent that goes away takes its change with it.
     let link = HttpLink::new(dir.path());
@@ -209,6 +228,8 @@ async fn a_port_in_use_is_reported() {
         Arc::new(Link::new(FakeHost::default())),
         Some(dir.path().to_owned()),
     );
+    // A file left by a run that crashed goes, though this start fails.
+    std::fs::write(BridgeFile::path(dir.path()), r#"{"port":1,"token":"old"}"#).unwrap();
     let agent = Arc::new(Agent::new(Profile::at(dir.path())));
     bridge.start(true, port, Ok(agent)).await;
     let status = bridge.status(true, port);

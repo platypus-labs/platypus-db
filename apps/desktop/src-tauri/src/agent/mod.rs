@@ -58,11 +58,26 @@ pub struct ConnectedAgent {
     pub agent: String,
 }
 
+/// A change waiting for the user.
+struct Pending {
+    request: WriteRequest,
+    since: Instant,
+    answer: oneshot::Sender<Verdict>,
+}
+
+/// A change waiting for the user, as the page gets it when it starts.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct WaitingWrite {
+    pub request: WriteRequest,
+    /// How long it has waited, so that the page counts down from there.
+    pub waited_ms: u64,
+}
+
 /// What the bridge shares between its requests, the app's endpoint and the commands.
 pub struct Link {
     host: Box<dyn Host>,
-    /// The changes waiting for the user, by id, with how to answer them.
-    pending: Mutex<HashMap<String, (WriteRequest, oneshot::Sender<Verdict>)>>,
+    /// The changes waiting for the user, by id, with when they came and how to answer them.
+    pending: Mutex<HashMap<String, Pending>>,
     /// The agents connected, by session, with when they last said hello.
     agents: Mutex<HashMap<String, (String, Instant)>>,
 }
@@ -86,18 +101,23 @@ impl Link {
     pub fn answer(&self, id: &str, verdict: Verdict) -> bool {
         lock(&self.pending)
             .remove(id)
-            .is_some_and(|(_, answer)| answer.send(verdict).is_ok())
+            .is_some_and(|pending| pending.answer.send(verdict).is_ok())
     }
 
     /// The changes waiting for the user, the oldest first.
-    pub fn waiting(&self) -> Vec<WriteRequest> {
-        let mut waiting: Vec<WriteRequest> = lock(&self.pending)
+    pub fn waiting(&self) -> Vec<WaitingWrite> {
+        let mut waiting: Vec<(Instant, WriteRequest)> = lock(&self.pending)
             .values()
-            .map(|(request, _)| request.clone())
+            .map(|p| (p.since, p.request.clone()))
             .collect();
-        // Ids are not ordered: the agents' sessions are, and so is each one's queue.
-        waiting.sort_by(|a, b| a.session.cmp(&b.session).then(a.id.cmp(&b.id)));
+        waiting.sort_by_key(|(since, _)| *since);
         waiting
+            .into_iter()
+            .map(|(since, request)| WaitingWrite {
+                request,
+                waited_ms: u64::try_from(since.elapsed().as_millis()).unwrap_or(u64::MAX),
+            })
+            .collect()
     }
 
     /// The agents connected, by name.
@@ -160,7 +180,15 @@ impl AppLink for Link {
         let (answer, answered) = oneshot::channel();
         let id = request.id.clone();
         let payload = serde_json::to_value(&request).map_err(|e| e.to_string())?;
-        lock(&self.pending).insert(id.clone(), (request, answer));
+        let since = Instant::now();
+        lock(&self.pending).insert(
+            id.clone(),
+            Pending {
+                request,
+                since,
+                answer,
+            },
+        );
         let _waiting = Waiting { link: self, id };
         self.host.notify(WRITE_REQUEST_EVENT, payload);
         Ok(match tokio::time::timeout(ANSWER_TIMEOUT, answered).await {
@@ -208,6 +236,8 @@ pub struct Bridge {
     link: Arc<Link>,
     data_dir: Option<PathBuf>,
     running: Mutex<Option<Running>>,
+    /// Held while the bridge starts: two starts at once would both bind, or race.
+    starting: tokio::sync::Mutex<()>,
     /// Why the last start failed.
     error: Mutex<Option<String>>,
 }
@@ -220,6 +250,7 @@ impl Bridge {
             link,
             data_dir,
             running: Mutex::default(),
+            starting: tokio::sync::Mutex::default(),
             error: Mutex::default(),
         }
     }
@@ -252,7 +283,13 @@ impl Bridge {
         port: u16,
         agent: Result<Arc<platypus_mcp::Agent>, String>,
     ) {
+        let _starting = self.starting.lock().await;
         self.stop();
+        // One left by a run that did not exit (a crash): agents would ask whoever holds its
+        // port now.
+        if let Some(dir) = &self.data_dir {
+            let _ = std::fs::remove_file(BridgeFile::path(dir));
+        }
         let started = match agent {
             Ok(agent) if enabled => self.serve(port, agent).await,
             Ok(_) => Ok(()),

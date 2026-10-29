@@ -6,7 +6,7 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::{Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use platypus_core::{Connection, DriverKind, Error, ObjectKind, ObjectMeta, ObjectRef};
 use platypus_sql::Dialect;
@@ -337,6 +337,19 @@ pub struct Agent {
     session: String,
 }
 
+/// Whether the database refused `message`'s statement for writing in a read-only
+/// transaction (PostgreSQL, MySQL and MariaDB) or with `query_only` (SQLite).
+fn refused_write(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    [
+        "read-only transaction",
+        "read only transaction",
+        "readonly database",
+    ]
+    .iter()
+    .any(|refusal| message.contains(refusal))
+}
+
 /// Bytes of a plan shown to the user beside a change.
 const PLAN_BYTES: usize = 16 * 1024;
 
@@ -398,6 +411,17 @@ impl Agent {
         if !self.confirms_changes() || !access::changes(statement, saved.driver) {
             return Ok(());
         }
+        self.ask((store, saved), statement, (origin, session)).await
+    }
+
+    /// Asks the user, in the open app, to let `statement` change `saved` for `origin`,
+    /// unless they allowed the changes of `session` there already.
+    async fn ask(
+        &self,
+        (store, saved): (&ConnectionStore, &SavedConnection),
+        statement: &str,
+        (origin, session): (&str, &str),
+    ) -> Result<()> {
         let key = (session.to_owned(), saved.id);
         if locked(&self.allowed).contains(&key) {
             return Ok(());
@@ -409,7 +433,8 @@ impl Agent {
                  (Agents)"
             ))
         };
-        let Some(link) = &self.link else {
+        // Nothing to plan for a question nobody can answer.
+        let Some(link) = self.link.as_ref().filter(|link| link.reachable()) else {
             return Err(cannot_ask(CLOSED));
         };
         let (estimated_rows, plan) = self.estimate(store, saved, statement).await;
@@ -452,8 +477,9 @@ impl Agent {
         if !lease.conn().capabilities().explain {
             return (None, None);
         }
+        // A plan that timed out leaves the session mid-request: `settle` drops it.
         let explained = timed(lease.conn().explain(statement, false)).await;
-        let Some(Ok(explain)) = explained else {
+        let Ok(explain) = lease.settle(explained) else {
             return (None, None);
         };
         // A change's root (PostgreSQL's ModifyTable) estimates no rows: the rows it reads do.
@@ -673,15 +699,49 @@ impl Agent {
             let dialect = Dialect::from(saved.driver);
             access::check(&args.sql, dialect, access, unfiltered, &saved.name)
         };
+        // The time the user took to answer is not the statement's.
+        let mut waited = Duration::ZERO;
+        let mut stop = std::pin::pin!(stop);
         let result = async {
             let statement = checked?;
-            self.allow_change((&store, &saved), statement, (origin, session))
-                .await?;
-            let read_only = (access == AgentAccess::ReadOnly).then_some(saved.driver);
-            self.execute(&store, &saved, statement, read_only, &limits, stop)
-                .await
+            let asked = Instant::now();
+            // The client's cancellation withdraws the question too.
+            tokio::select! {
+                allowed = self.allow_change((&store, &saved), statement, (origin, session)) => allowed?,
+                () = stop.as_mut() => return Err(AgentError::Cancelled),
+            }
+            waited = asked.elapsed();
+            if access == AgentAccess::ReadOnly {
+                return self
+                    .execute(&store, &saved, statement, Some(saved.driver), &limits, stop)
+                    .await;
+            }
+            // A query may still write through a function: where the database refuses writes
+            // in a read-only transaction, it runs in one, and asks when it is refused.
+            if !self.watches_queries(&saved, statement, session) {
+                return self
+                    .execute(&store, &saved, statement, None, &limits, stop)
+                    .await;
+            }
+            let first = self
+                .execute(&store, &saved, statement, Some(saved.driver), &limits, stop.as_mut())
+                .await;
+            match first {
+                Err(AgentError::Database(message)) if refused_write(&message) => {
+                    let asked = Instant::now();
+                    tokio::select! {
+                        allowed = self.ask((&store, &saved), statement, (origin, session)) => allowed?,
+                        () = stop.as_mut() => return Err(AgentError::Cancelled),
+                    }
+                    waited += asked.elapsed();
+                    self.execute(&store, &saved, statement, None, &limits, stop)
+                        .await
+                }
+                other => other,
+            }
         }
         .await;
+        let (started_at, start) = (started_at + waited, start + waited);
         let result = result.map(|outcome| QueryResult {
             outcome,
             elapsed: start.elapsed(),
@@ -696,6 +756,16 @@ impl Agent {
             &origin_name(origin),
         );
         result
+    }
+
+    /// Whether `statement`, which reads, runs in a read-only transaction on `saved` so that
+    /// a write it makes through a function is asked about: changes are asked about, the
+    /// user did not allow those of `session`, and the database refuses writes there.
+    fn watches_queries(&self, saved: &SavedConnection, statement: &str, session: &str) -> bool {
+        query::refuses_writes_when_read_only(saved.driver)
+            && self.confirms_changes()
+            && !access::changes(statement, saved.driver)
+            && !locked(&self.allowed).contains(&(session.to_owned(), saved.id))
     }
 
     async fn execute(

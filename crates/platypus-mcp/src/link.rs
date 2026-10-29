@@ -93,6 +93,11 @@ pub trait AppLink: Send + Sync + std::fmt::Debug {
 
     /// Tells the app that the agent `agent` is connected, as session `session`.
     async fn hello(&self, session: &str, agent: &str) -> Result<(), String>;
+
+    /// Whether the app may answer at all: a quick look, before work for a question.
+    fn reachable(&self) -> bool {
+        true
+    }
 }
 
 /// The bridge of an app open on another process, over HTTP on its local port.
@@ -215,6 +220,10 @@ impl AppLink for HttpLink {
             )
             .await?;
         serde_json::from_str(&answer).map_err(|e| e.to_string())
+    }
+
+    fn reachable(&self) -> bool {
+        BridgeFile::read(&self.data_dir).is_some()
     }
 
     async fn hello(&self, session: &str, agent: &str) -> Result<(), String> {

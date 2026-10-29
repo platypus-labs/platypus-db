@@ -12,6 +12,8 @@ export function AgentWriteDialog() {
   const first = waiting[0];
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // An answer on its way: a second click would answer again.
+  const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!first) return;
@@ -23,13 +25,20 @@ export function AgentWriteDialog() {
   useEffect(() => {
     setReason("");
     setError(null);
+    setBusy(false);
   }, [id]);
   if (!first) return null;
   const { request, since } = first;
   const rows = estimatedRows(request.estimated_rows);
-  const answer = (verdict: Verdict) =>
-    answerWrite(request.id, verdict).catch((e: unknown) => setError(toCommandError(e).message));
-  const deny = () => void answer(denial(reason));
+  const answer = (verdict: Verdict) => {
+    if (busy) return;
+    setBusy(true);
+    answerWrite(request.id, verdict).catch((e: unknown) => {
+      setError(toCommandError(e).message);
+      setBusy(false);
+    });
+  };
+  const deny = () => answer(denial(reason));
   return (
     <div className="modal-backdrop">
       <div
@@ -66,18 +75,19 @@ export function AgentWriteDialog() {
             {waiting.length > 1 && ` · ${plural(waiting.length - 1, "{n} more waiting", "{n} more waiting")}`}
           </span>
           <span className="spacer" />
-          <button type="button" onClick={deny} autoFocus data-answer="deny">
+          <button type="button" onClick={deny} disabled={busy} autoFocus data-answer="deny">
             {t("Refuse")}
           </button>
           <button
             type="button"
-            onClick={() => void answer({ answer: "session" })}
+            onClick={() => answer({ answer: "session" })}
+            disabled={busy}
             title={t("This change, and the next ones of this agent on {name} until it stops", { name: request.connection })}
             data-answer="session"
           >
             {t("Allow for this session")}
           </button>
-          <button type="button" className="primary danger" onClick={() => void answer({ answer: "once" })} data-answer="once">
+          <button type="button" className="primary danger" onClick={() => answer({ answer: "once" })} disabled={busy} data-answer="once">
             {t("Allow once")}
           </button>
         </div>

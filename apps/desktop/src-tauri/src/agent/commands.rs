@@ -7,10 +7,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use platypus_mcp::{Agent, OpenSession, Profile, Verdict, WriteRequest};
+use platypus_mcp::{Agent, OpenSession, Profile, Verdict};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use super::{Bridge, BridgeStatus, ConnectedAgent, DEFAULT_PORT, Host, Link};
+use super::{Bridge, BridgeStatus, ConnectedAgent, DEFAULT_PORT, Host, Link, WaitingWrite};
 use crate::commands::AppState;
 
 /// The settings of the bridge (`agents.ts` in the page).
@@ -96,7 +96,7 @@ pub fn answer_agent_write(bridge: State<'_, Bridge>, id: String, verdict: Verdic
 
 /// The changes waiting for an answer: the page asks at its start.
 #[tauri::command]
-pub fn agent_writes_waiting(bridge: State<'_, Bridge>) -> Vec<WriteRequest> {
+pub fn agent_writes_waiting(bridge: State<'_, Bridge>) -> Vec<WaitingWrite> {
     bridge.link().waiting()
 }
 

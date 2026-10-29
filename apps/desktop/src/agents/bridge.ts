@@ -50,10 +50,11 @@ export function useConnectedAgents(): ConnectedAgent[] {
   return useSyncExternalStore(subscribe, () => state.agents);
 }
 
-/** Answers `id`: it leaves the queue whether or not the agent still waits. */
+/** Answers `id`; it leaves the queue once the answer reached the app, whether or not the
+ *  agent still waited. A failure keeps it there, to answer again. */
 export async function answerWrite(id: string, verdict: Verdict) {
-  update({ waiting: settle(state.waiting, id) });
   await api.answerAgentWrite(id, verdict);
+  update({ waiting: settle(state.waiting, id) });
 }
 
 /** Follows the bridge's events, from the app's start. */
@@ -65,7 +66,10 @@ export function startAgentBridge() {
   void listen<ConnectedAgent[]>("agents-connected", ({ payload }) => update({ agents: payload }));
   // What came before the page listened: a reload, or a request at the start.
   api.agentWritesWaiting().then(
-    (requests) => update({ waiting: requests.reduce((queue, r) => enqueue(queue, r, Date.now()), state.waiting) }),
+    (waiting) =>
+      update({
+        waiting: waiting.reduce((queue, w) => enqueue(queue, w.request, Date.now() - w.waited_ms), state.waiting),
+      }),
     () => {},
   );
   api.connectedAgents().then((agents) => update({ agents }), () => {});

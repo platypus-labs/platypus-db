@@ -5620,6 +5620,7 @@ dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
  "arrow-schema 60.0.0",
+ "async-trait",
  "futures",
  "platypus-core",
  "platypus-driver-adbc",
