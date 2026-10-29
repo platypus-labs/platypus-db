@@ -9,6 +9,7 @@ pub mod browse;
 pub mod command;
 pub mod edit;
 mod error;
+mod guard;
 pub mod meta;
 mod net;
 pub mod value;
@@ -74,7 +75,7 @@ impl Driver for RedisDriver {
             current: AtomicI64::new(db),
             closed: Arc::new(AtomicBool::new(false)),
             cancel: Arc::new(watch::channel(0u64).0),
-            ids: Arc::new(Mutex::new(Vec::new())),
+            ids: Arc::new(Mutex::new(HashMap::new())),
             queue: Mutex::new(None),
         };
         session.adopt(db, conn).await;
@@ -104,8 +105,8 @@ pub struct RedisConnection {
     closed: Arc<AtomicBool>,
     /// Bumped by the cancel handle; running commands watch it.
     cancel: Arc<watch::Sender<u64>>,
-    /// The `CLIENT ID`s of the connections, which the cancel handle unblocks.
-    ids: Arc<Mutex<Vec<i64>>>,
+    /// The `CLIENT ID` of the connection to each database, which the cancel handle unblocks.
+    ids: Arc<Mutex<HashMap<i64, i64>>>,
     /// The commands queued since `MULTI`.
     queue: Mutex<Option<Vec<Vec<Vec<u8>>>>>,
 }
@@ -157,7 +158,7 @@ impl RedisConnection {
             .query_async::<i64>(&mut conn)
             .await
         {
-            lock(&self.ids).push(id);
+            lock(&self.ids).insert(db, id);
         }
         self.conns.lock().await.insert(db, conn);
     }
@@ -182,6 +183,7 @@ impl RedisConnection {
             self.closed.store(true, Ordering::Relaxed);
             if let Ok(mut conns) = self.conns.try_lock() {
                 conns.remove(&db);
+                lock(&self.ids).remove(&db);
             }
         }
         error::map(e)
@@ -285,11 +287,44 @@ impl RedisConnection {
                 }
             }
         }
+        // The statements before the commands: the `SELECT`.
+        let offset = statements.len() - commands.len();
+        if let Some((i, target)) = self.conflict(db, &commands).await? {
+            rows.resize(offset + i, 0);
+            return Err(Error::Other(target.conflict()));
+        }
         for reply in self.transaction(db, &commands).await? {
             error::reply(reply)?;
             rows.push(1);
         }
         Ok(())
+    }
+
+    /// The first command of `commands` that would create what exists ([`guard`]), by index.
+    async fn conflict(
+        &self,
+        db: i64,
+        commands: &[Vec<Vec<u8>>],
+    ) -> Result<Option<(usize, guard::Target)>> {
+        let checks = match guard::checks(commands) {
+            Ok(checks) if checks.is_empty() => return Ok(None),
+            Ok(checks) => checks,
+            Err(conflict) => return Ok(Some(conflict)),
+        };
+        let mut pipe = redis::pipe();
+        for (_, target) in &checks {
+            pipe.add_command(target.check());
+        }
+        let mut conn = self.conn(db).await?;
+        let replies: Vec<Value> = pipe
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| self.failed(db, &e))?;
+        Ok(checks
+            .into_iter()
+            .zip(&replies)
+            .find(|(_, reply)| guard::Target::exists(reply))
+            .map(|(check, _)| check))
     }
 
     /// The keys of `db` by type, when a scan of at most [`meta::COUNT_CAP`] keys sees them
@@ -351,7 +386,7 @@ impl RedisConnection {
 struct RedisCanceller {
     opener: Arc<Opener>,
     cancel: Arc<watch::Sender<u64>>,
-    ids: Arc<Mutex<Vec<i64>>>,
+    ids: Arc<Mutex<HashMap<i64, i64>>>,
 }
 
 #[async_trait]
@@ -360,7 +395,7 @@ impl Canceller for RedisCanceller {
         self.cancel.send_modify(|n| *n += 1);
         // A blocking command (`BLPOP`, `XREAD BLOCK`, `WAIT`) holds its connection on the
         // server: unblock it from another one.
-        let ids = lock(&self.ids).clone();
+        let ids: Vec<i64> = lock(&self.ids).values().copied().collect();
         if let Ok(mut conn) = self.opener.open(0).await {
             for id in ids {
                 let _ = redis::cmd("CLIENT")
@@ -393,7 +428,9 @@ impl Connection for RedisConnection {
 
     /// Runs `statements` as one `MULTI`/`EXEC` on the database a first `SELECT n` names
     /// (the session's otherwise, which stays). Each counts one row; a command the server
-    /// refuses stops the count there (those after it ran: `EXEC` does not roll back).
+    /// refuses stops the count there (those after it ran: `EXEC` does not roll back). A
+    /// command that would create a key, field or member that exists stops the batch before
+    /// anything runs ([`guard`]).
     async fn execute_all(&self, statements: &[&str], _expected: &[u64]) -> Executed {
         let mut rows = Vec::new();
         let error = self.batch(statements, &mut rows).await.err();

@@ -3,7 +3,8 @@
 //! `execute_all` takes as the database of the batch, and run as one `MULTI`/`EXEC`.
 //!
 //! A row of a string or JSON table is a key: changing its `key` renames it. A row of the
-//! other tables is an item of a key, which stays: its `key` cannot change.
+//! other tables is an item of a key, which stays: its `key` cannot change. A new or renamed
+//! key, field or member never replaces one that exists: the batch refuses it.
 
 use crate::command::{KeyType, cell_bytes, line};
 
@@ -267,7 +268,7 @@ fn update_field(key: &[u8], old: &Row<'_>, new: &Row<'_>, out: &mut Script) -> R
         Some(Some(to)) if cell_bytes(to) != field => {
             let to = cell_bytes(to);
             out.commands.push(cmd!("HDEL", key, &field));
-            out.commands.push(cmd!("HSET", key, &to, &value));
+            out.commands.push(cmd!("HSETNX", key, &to, &value));
             out.undo.push(cmd!("HDEL", key, &to));
             out.undo.push(cmd!("HSET", key, &field, &old_value));
         }
@@ -293,7 +294,7 @@ fn update_member(key: &[u8], old: &Row<'_>, new: &Row<'_>, out: &mut Script) -> 
             let to = cell_bytes(to);
             out.commands.push(cmd!("ZREM", key, &member));
             out.commands
-                .push(cmd!("ZADD", key, new_score.as_bytes(), &to));
+                .push(cmd!("ZADD", key, "NX", new_score.as_bytes(), &to));
             out.undo.push(cmd!("ZREM", key, &to));
             out.undo
                 .push(cmd!("ZADD", key, old_score.as_bytes(), &member));
@@ -319,7 +320,8 @@ fn update(kind: KeyType, old: &Row<'_>, new: &Row<'_>, out: &mut Script) -> Resu
     let key = match (&renamed, kind) {
         (None, _) => old_key.clone(),
         (Some(to), KeyType::String | KeyType::Json) => {
-            out.commands.push(cmd!("RENAME", &old_key, to));
+            // NX: a key that exists is not overwritten (the batch refuses it).
+            out.commands.push(cmd!("RENAMENX", &old_key, to));
             to.clone()
         }
         (Some(_), _) => {
@@ -342,6 +344,10 @@ fn update(kind: KeyType, old: &Row<'_>, new: &Row<'_>, out: &mut Script) -> Resu
         KeyType::List => {
             if changed("index") && new.get("index") != old.get("index") {
                 return Err("the index of a list item cannot change".to_owned());
+            }
+            // Only the value of an item changes.
+            if !changed("value") {
+                return Ok(());
             }
             let index = old.get("index").flatten().unwrap_or_default();
             let value = new.bytes("value").unwrap_or_default();
@@ -390,7 +396,7 @@ fn insert(kind: KeyType, row: &Row<'_>, out: &mut Script) -> Result<(), String> 
         KeyType::Hash => {
             let field = row.required("field")?;
             let value = row.bytes("value").unwrap_or_default();
-            out.commands.push(cmd!("HSET", key, &field, &value));
+            out.commands.push(cmd!("HSETNX", key, &field, &value));
             out.undo.push(cmd!("HDEL", key, &field));
         }
         KeyType::List => {
@@ -491,7 +497,7 @@ mod tests {
             [
                 "SELECT 2",
                 "DEL gone",
-                "RENAME a b",
+                "RENAMENX a b",
                 "SET b \"two words\" KEEPTTL",
                 "EXPIRE b 60",
                 "SET new v NX",
@@ -521,7 +527,7 @@ mod tests {
             set: vec![(1, Some("g".into()))],
         });
         let s = script(&e).unwrap();
-        assert_eq!(s.commands[1..], ["HDEL h f", "HSET h g v"]);
+        assert_eq!(s.commands[1..], ["HDEL h f", "HSETNX h g v"]);
         e.updates[0].set = vec![(0, Some("other".into()))];
         assert!(script(&e).unwrap_err().contains("RENAME"));
         e.updates[0].set = vec![(2, None)];
@@ -546,6 +552,13 @@ mod tests {
         assert!(s.commands[4].starts_with("LREM l 0 __platypus_deleted_"));
         assert_eq!(s.commands[5], "RPUSH l z");
         assert_eq!(s.commands.len(), 6);
+        // An index typed again as it was changes nothing: the item keeps its value.
+        let mut e = edits(KeyType::List, &columns);
+        e.updates.push(Update {
+            loaded: some(&["l", "1", "b"]),
+            set: vec![(1, Some("1".into()))],
+        });
+        assert_eq!(script(&e).unwrap().commands, ["SELECT 2"]);
     }
 
     #[test]

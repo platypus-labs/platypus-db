@@ -702,3 +702,78 @@ async fn reopens_a_lost_connection() {
     assert!(ok, "the session did not reconnect");
     assert!(!conn.is_closed());
 }
+
+/// The error of saving `edits`, which must fail.
+async fn refused(conn: &dyn Connection, edits: &Edits<'_>) -> (String, usize) {
+    let script = edit::script(edits).unwrap();
+    let statements: Vec<&str> = script.commands.iter().map(String::as_str).collect();
+    let ran = conn.execute_all(&statements, &[]).await;
+    (
+        ran.error.expect("the save must fail").to_string(),
+        ran.rows.len(),
+    )
+}
+
+#[tokio::test]
+async fn refuses_edits_onto_existing_keys() {
+    let Some(conn) = connect(12).await else {
+        return;
+    };
+    let c = &*conn;
+    run(c, "SET a 1").await;
+    run(c, "SET b 2").await;
+    run(c, "HSET h f 1 g 2").await;
+    let cols = columns(KeyType::String);
+    let rows = loaded(c, "BROWSE db12.string").await;
+    // A key renamed onto another: refused before anything runs.
+    let edits = Edits {
+        db: 12,
+        kind: KeyType::String,
+        columns: &cols,
+        updates: vec![Update {
+            loaded: rows[0].clone(),
+            set: vec![(0, Some("b".into())), (1, Some("changed".into()))],
+        }],
+        inserts: Vec::new(),
+        deletes: Vec::new(),
+    };
+    let (error, ran) = refused(c, &edits).await;
+    assert!(error.contains("the key `b` already exists"), "{error}");
+    // `SELECT`, then the command refused: the second.
+    assert_eq!(ran, 1);
+    let strings = [["a", "1", "NULL"], ["b", "2", "NULL"]];
+    assert_eq!(text(&rows_of(c, "BROWSE string").await), strings);
+    // A new row with the key of one that exists: its TTL stays as it was.
+    let edits = Edits {
+        updates: Vec::new(),
+        inserts: vec![vec![
+            (0, Some("a".into())),
+            (1, Some("x".into())),
+            (2, Some("10".into())),
+        ]],
+        ..edits
+    };
+    assert!(refused(c, &edits).await.0.contains("the key `a`"));
+    assert_eq!(text(&rows_of(c, "BROWSE string").await), strings);
+
+    // A field renamed onto another is refused, unless the same save deletes that one.
+    let cols = columns(KeyType::Hash);
+    let rows = loaded(c, "BROWSE hash").await;
+    let mut edits = Edits {
+        db: 12,
+        kind: KeyType::Hash,
+        columns: &cols,
+        updates: vec![Update {
+            loaded: rows[0].clone(),
+            set: vec![(1, Some("g".into()))],
+        }],
+        inserts: Vec::new(),
+        deletes: Vec::new(),
+    };
+    assert!(refused(c, &edits).await.0.contains("the field `g` of `h`"));
+    edits.deletes.push(rows[1].clone());
+    save(c, &edits).await;
+    assert_eq!(text(&rows_of(c, "BROWSE hash").await), [["h", "g", "1"]]);
+    // The E2E scenario `redis-browse` reads this database as empty.
+    run(c, "FLUSHDB").await;
+}

@@ -384,7 +384,7 @@ impl Command {
     }
 }
 
-fn upper(arg: &[u8]) -> String {
+pub(crate) fn upper(arg: &[u8]) -> String {
     String::from_utf8_lossy(arg).to_ascii_uppercase()
 }
 
@@ -581,18 +581,30 @@ fn escaped(arg: &[u8]) -> String {
     out
 }
 
+/// Whether [`display`] quotes `value`: it is not UTF-8, has control bytes other than tabs and
+/// line breaks, or its text would read as quoted.
+fn shown_quoted(value: &[u8]) -> bool {
+    let control = |b: &u8| b.is_ascii_control() && !matches!(b, b'\t' | b'\n' | b'\r');
+    std::str::from_utf8(value).map_or(true, |text| {
+        value.iter().any(control)
+            || (text.len() >= 2 && text.starts_with('"') && text.ends_with('"'))
+    })
+}
+
 /// A value as the grid shows it: its text when it is UTF-8, else quoted with escapes as
-/// [`quote`] writes it (`"\xff\x00"`), which [`cell_bytes`] reads back.
+/// [`quote`] writes it (`"\xff\x00"`), which [`cell_bytes`] reads back. Text with control
+/// bytes, or that starts and ends with `"`, is quoted too, so that it reads back as it was.
 #[must_use]
 pub fn display(value: &[u8]) -> String {
-    match std::str::from_utf8(value) {
-        Ok(text) => text.to_owned(),
-        Err(_) => escaped(value),
+    if shown_quoted(value) {
+        escaped(value)
+    } else {
+        String::from_utf8_lossy(value).into_owned()
     }
 }
 
-/// The bytes of a cell's text: what [`display`] shows for a value that is not UTF-8 is read
-/// back to its bytes, other text is its UTF-8.
+/// The bytes of a cell's text: what [`display`] quotes is read back to its bytes, other text
+/// is its UTF-8.
 #[must_use]
 pub fn cell_bytes(text: &str) -> Vec<u8> {
     if text.len() >= 2
@@ -601,7 +613,7 @@ pub fn cell_bytes(text: &str) -> Vec<u8> {
         && let Ok(mut args) = tokenize(text)
         && args.len() == 1
         && let Some(bytes) = args.pop()
-        && std::str::from_utf8(&bytes).is_err()
+        && shown_quoted(&bytes)
     {
         return bytes;
     }
@@ -615,7 +627,9 @@ pub fn parse(line: &str) -> Result<Command, String> {
         return Err("empty command".to_owned());
     };
     let name = upper(first);
-    if REFUSED.contains(&name.as_str()) {
+    // `CLIENT REPLY OFF` and `SKIP` stop the replies the connection waits for.
+    let no_reply = name == "CLIENT" && args.get(1).is_some_and(|a| upper(a) == "REPLY");
+    if REFUSED.contains(&name.as_str()) || no_reply {
         return Err(format!(
             "{name} is not available in the editor: it would take over the connection"
         ));
@@ -767,6 +781,16 @@ mod tests {
         // Quoted text that is UTF-8 stays text.
         assert_eq!(cell_bytes(r#""quoted""#), br#""quoted""#);
         assert_eq!(cell_bytes("a\\x41"), b"a\\x41");
+        // Text that looks quoted is shown quoted, and reads back as it was.
+        let looks_quoted = br#""\xff""#;
+        let shown = display(looks_quoted);
+        assert_eq!(shown, r#""\"\\xff\"""#);
+        assert_eq!(cell_bytes(&shown), looks_quoted);
+        assert_eq!(display(b"\x01\x02"), r#""\x01\x02""#);
+        assert_eq!(cell_bytes(r#""\x01\x02""#), b"\x01\x02");
+        assert_eq!(display(b"two\nlines"), "two\nlines");
+        assert!(parse("client reply off").is_err());
+        assert!(parse("CLIENT LIST").is_ok());
     }
 
     #[test]
