@@ -14,6 +14,9 @@ services:
       - ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
       - -c
       - ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+      # The costliest statements of the admin tab (CREATE EXTENSION pg_stat_statements).
+      - -c
+      - shared_preload_libraries=pg_stat_statements
     environment:
       POSTGRES_USER: platypus
       POSTGRES_PASSWORD: platypus
@@ -65,7 +68,8 @@ services:
   mariadb:
     image: mariadb:11.4
     # 64 MB as MySQL 8.4 (MariaDB's default is 16 MB): the scale tests read cells of 32 MB.
-    command: --max-allowed-packet=64M
+    # performance_schema, off by default in MariaDB: the costliest statements of the admin tab.
+    command: --max-allowed-packet=64M --performance-schema=ON
     environment:
       MARIADB_USER: platypus
       MARIADB_PASSWORD: platypus
