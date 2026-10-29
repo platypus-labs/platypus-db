@@ -18,6 +18,14 @@ export function taskOf(kind: ScheduleTask["kind"], driver: DriverKind): Schedule
   return { kind, format: driver === "postgres" ? "custom" : "plain", schema: null };
 }
 
+/** `task` moved from a connection on `from` to one on `to`: a backup starts again with the
+ *  new database's format, and a task the new one cannot run becomes a script. */
+export function taskOnConnection(task: ScheduleTask, from: DriverKind | undefined, to: DriverKind): ScheduleTask {
+  if (from === to) return task;
+  if (!taskKinds(to).includes(task.kind)) return taskOf("script", to);
+  return task.kind === "backup" ? taskOf("backup", to) : task;
+}
+
 /** A new task on `connectionId`: a script every day at 7, in the system's time zone. */
 export function newSchedule(connectionId: string, id: string): Schedule {
   return {

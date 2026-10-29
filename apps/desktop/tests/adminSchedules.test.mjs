@@ -1,7 +1,7 @@
 // Unit tests of the scheduled tasks dialog's defaults, choices and order (src/admin/schedules.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cleaned, newSchedule, repeatOf, sortSchedules, taskKinds, taskOf, writesFiles } from "../src/admin/schedules.ts";
+import { cleaned, newSchedule, repeatOf, sortSchedules, taskKinds, taskOf, taskOnConnection, writesFiles } from "../src/admin/schedules.ts";
 
 test("backups only where the database's tools are", () => {
   assert.deepEqual(taskKinds("postgres"), ["script", "export", "backup"]);
@@ -47,4 +47,13 @@ test("saved without the fields it does not use", () => {
   assert.equal(cleaned(s).database, null);
   const e = { ...s, task: taskOf("export", "sqlite") };
   assert.equal(cleaned(e).folder, "/out");
+});
+
+test("a task moved to another database", () => {
+  const backup = { kind: "backup", format: "custom", schema: "sales" };
+  assert.deepEqual(taskOnConnection(backup, "postgres", "postgres"), backup, "same database: kept");
+  assert.deepEqual(taskOnConnection(backup, "postgres", "mysql"), { kind: "backup", format: "plain", schema: null });
+  assert.deepEqual(taskOnConnection(backup, "postgres", "sqlite"), { kind: "script", path: "" }, "no tools there");
+  const exp = { kind: "export", sql: "SELECT 1", format: "csv" };
+  assert.deepEqual(taskOnConnection(exp, "postgres", "sqlite"), exp);
 });

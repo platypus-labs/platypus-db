@@ -17,7 +17,7 @@ import { locale, msg, t } from "../i18n";
 import { answerFor } from "../testAnswers";
 import { ask } from "../ui/ask";
 import { workbench } from "../workbench";
-import { cleaned, newSchedule, repeatOf, sortSchedules, taskKinds, taskOf, writesFiles } from "./schedules";
+import { cleaned, newSchedule, repeatOf, sortSchedules, taskKinds, taskOf, taskOnConnection, writesFiles } from "./schedules";
 
 const KINDS: Record<ScheduleTask["kind"], string> = {
   script: msg("Run a SQL script"),
@@ -340,10 +340,9 @@ function ScheduleForm({
             data-field="connection"
             onChange={(e) => {
               const next = connections.find((c) => c.id === e.target.value);
-              const allowed = next ? taskKinds(next.driver) : [];
               set({
                 connection_id: e.target.value,
-                task: allowed.includes(s.task.kind) || !next ? s.task : taskOf("script", next.driver),
+                task: next ? taskOnConnection(s.task, connection?.driver, next.driver) : s.task,
               });
             }}
           >
