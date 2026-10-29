@@ -58,6 +58,7 @@ async function editorGif(page, out) {
   await gif.hold(800);
   await typeSlowly(page, "\nGROUP BY c.city\nORDER BY revenue DESC");
   await page.key("Escape", "Escape", 27);
+  await page.waitFor(`${editorText}.endsWith('ORDER BY revenue DESC')`);
   await gif.hold(400);
   await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
   await page.key("Enter", "Enter", 13, CTRL);
