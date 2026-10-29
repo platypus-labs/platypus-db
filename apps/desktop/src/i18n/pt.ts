@@ -2188,6 +2188,9 @@ const pt: Record<string, string> = {
   "Output": "Saída",
   "Flyway migration…": "Migração do Flyway…",
   "Liquibase changelog…": "Changelog do Liquibase…",
+  // Group I: ER diagram full screen
+  "Full screen": "Tela cheia",
+  "Exit full screen": "Sair da tela cheia",
 };
 
 export default pt;

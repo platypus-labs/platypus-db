@@ -2188,6 +2188,9 @@ const de: Record<string, string> = {
   "Output": "Ausgabe",
   "Flyway migration…": "Flyway-Migration…",
   "Liquibase changelog…": "Liquibase-Changelog…",
+  // Group I: ER diagram full screen
+  "Full screen": "Vollbild",
+  "Exit full screen": "Vollbild beenden",
 };
 
 export default de;

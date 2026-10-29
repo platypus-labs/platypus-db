@@ -6,7 +6,7 @@ import type { TabBase, TabProps } from "../tabs/registry";
 import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
 import { t, plural } from "../i18n";
-import { type Box, type Point, autoLayout } from "./layout";
+import { type Box, type Point, placeTables } from "./layout";
 import { TablesDialog } from "./TablesDialog";
 
 export interface ErdNote {
@@ -97,6 +97,8 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
   const [moved, setMoved] = useState<Record<string, Point>>({});
   const [movedNotes, setMovedNotes] = useState<Record<number, Point>>({});
   const [editing, setEditing] = useState<number | null>(null);
+  // Not kept with the tab: a diagram always opens in its place among the others.
+  const [full, setFull] = useState(false);
   const drag = useRef<Dragging | null>(null);
   const lastPress = useRef<{ what: string; at: number } | null>(null);
   const svg = useRef<SVGSVGElement>(null);
@@ -132,8 +134,24 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
     };
   }, [tab.schema, tab.tables?.join("\n"), version]);
 
+  useEffect(() => {
+    if (!active) setFull(false);
+  }, [active]);
+  useEffect(() => {
+    if (!full) return;
+    // In the capture phase, before a dialog's own handler closes it: Escape in a dialog closes
+    // only the dialog.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || document.querySelector(".modal-backdrop, .context-menu, .palette-backdrop")) return;
+      setFull(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [full]);
+
   const boxes = useMemo(() => (tables ?? []).map((t) => box(t, tab.schema)), [tables, tab.schema]);
-  const placed = useMemo(() => ({ ...autoLayout(boxes), ...tab.positions, ...moved }), [boxes, tab.positions, moved]);
+  // The tables the user has placed stay; the others go below them, never on top of them.
+  const placed = useMemo(() => ({ ...placeTables(boxes, tab.positions), ...moved }), [boxes, tab.positions, moved]);
   const pos = (name: string): Point => placed[name] ?? { x: PAD, y: PAD };
   const notes = useMemo(() => tab.notes.map((n) => ({ ...n, ...movedNotes[n.id] })), [tab.notes, movedNotes]);
   const unreadable = (tables ?? []).filter((t) => t.error !== null);
@@ -197,7 +215,9 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
     const d = drag.current;
     drag.current = null;
     if (!d) return;
-    if (d.what === "table" && moved[d.name]) onChange({ positions: { ...tab.positions, ...moved } });
+    // Every table is kept where it is, not only the one moved: the others were laid out
+    // automatically, and must not jump when the next table appears or is moved.
+    if (d.what === "table" && moved[d.name]) onChange({ positions: { ...tab.positions, ...placed } });
     if (d.what === "note" && movedNotes[d.id]) onChange({ notes: tab.notes.map((n) => ({ ...n, ...movedNotes[n.id] })) });
     setMoved({});
     setMovedNotes({});
@@ -225,11 +245,17 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
       onError(e instanceof Error ? e.message : toCommandError(e).message),
     );
   };
+  /** Reads the tables again, every one of them staying where it is now: the tables laid out
+   *  automatically are frozen first, so nothing jumps when one appears or goes. */
+  const refresh = () => {
+    if (boxes.length > 0) onChange({ positions: { ...tab.positions, ...placed } });
+    setVersion((v) => v + 1);
+  };
   const zoom = (by: number) => onChange({ zoom: Math.min(2, Math.max(0.25, Math.round((tab.zoom + by) * 100) / 100)) });
   const note = editing === null ? undefined : tab.notes.find((n) => n.id === editing);
 
   return (
-    <div className="object-tab erd" style={{ display: active ? "flex" : "none" }}>
+    <div className={`object-tab erd${full ? " erd-full" : ""}`} style={{ display: active ? "flex" : "none" }}>
       <header className="object-header">
         <span className="object-icon" data-kind="schema">
           <Icon name="schema" size={16} />
@@ -263,7 +289,10 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
         <button type="button" onClick={() => save("png")}>
           PNG…
         </button>
-        <button className="square" type="button" onClick={() => setVersion((v) => v + 1)} aria-label={t("Refresh")} title={t("Refresh")}>
+        <button type="button" onClick={() => setFull(!full)} aria-pressed={full}>
+          {full ? t("Exit full screen") : t("Full screen")}
+        </button>
+        <button className="square" type="button" onClick={refresh} aria-label={t("Refresh")} title={t("Refresh")}>
           <Icon name="refresh" />
         </button>
       </header>
