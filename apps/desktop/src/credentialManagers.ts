@@ -20,7 +20,7 @@ export interface CredentialManager {
 const UNSAFE = /["`$%]/g;
 
 /** `text` between double quotes, which `cmd` and `sh` both read as one argument, without the
- *  characters they would change (the form refuses such a reference before). */
+ *  characters they would change: the form shows the reference as it was kept. */
 const quoted = (text: string) => `"${text.replace(UNSAFE, "")}"`;
 
 const match = (pattern: RegExp) => (command: string) => pattern.exec(command.trim())?.[1] ?? null;
@@ -81,6 +81,3 @@ export function managerOf(command: string | null | undefined): { manager: Creden
   return null;
 }
 
-/** Whether `reference` goes into a command as it is: no quote, `$`, backtick or `%`, which
- *  the shells would change. */
-export const usableReference = (reference: string) => !reference.match(UNSAFE);

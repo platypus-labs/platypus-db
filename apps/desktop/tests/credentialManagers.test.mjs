@@ -1,7 +1,7 @@
 // Unit tests of the password managers' commands (src/credentialManagers.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MANAGERS, managerOf, usableReference } from "../src/credentialManagers.ts";
+import { MANAGERS, managerOf } from "../src/credentialManagers.ts";
 
 const byId = Object.fromEntries(MANAGERS.map((m) => [m.id, m]));
 
@@ -35,9 +35,10 @@ test("other commands are not a manager's", () => {
   assert.equal(managerOf("op read op://a/b/c"), null, "unquoted: written by hand");
 });
 
-test("references the shells would change are refused, and never reach a command", () => {
-  assert.equal(usableReference("op://Work/db/password"), true);
-  for (const bad of ['a"b', "a$b", "a`b", "a%PATH%"]) assert.equal(usableReference(bad), false, bad);
+test("what the shells would change never reaches a command", () => {
+  for (const bad of ['a"b', "a$b", "a`b", "a%PATH%"]) {
+    assert.equal(managerOf(byId.bitwarden.command(bad))?.reference, bad.replace(/["`$%]/g, ""), bad);
+  }
   // A field or path written to run another command stays one quoted argument.
   assert.equal(byId.vault.command('x#password" ; rm -rf ~ ; "'), 'vault kv get -field="password ; rm -rf ~ ; " "x"');
   assert.equal(byId["1password"].command('a"; echo $HOME'), 'op read "a; echo HOME"');
