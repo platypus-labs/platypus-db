@@ -2,7 +2,7 @@
 //! that script (see `platypus-schema`).
 
 use platypus_core::DriverKind;
-use platypus_schema::{ChangelogFormat, Finding, SchemaTable, Script, TableDesign};
+use platypus_schema::{ChangelogFormat, Finding, ObjectForm, SchemaTable, Script, TableDesign};
 use platypus_sql::Dialect;
 use serde::Serialize;
 use tauri::State;
@@ -74,6 +74,18 @@ pub fn schema_changelog(
 #[must_use]
 pub fn flyway_file_name(version: &str, description: &str) -> String {
     platypus_schema::flyway_file_name(version, description)
+}
+
+/// The statements that create the view, sequence, function or trigger `form` describes, to
+/// be reviewed and run one by one; the error is what the database cannot do, for the dialog.
+#[tauri::command]
+pub fn object_form_sql(
+    driver: DriverKind,
+    schema: String,
+    form: ObjectForm,
+) -> CommandResult<Vec<String>> {
+    platypus_schema::create_object(Dialect::from(driver), &schema, &form)
+        .map_err(|e| CommandError::new("invalid_form", e))
 }
 
 /// Runs a script from [`table_script`] on the session and commits it (see [`one_off`]).

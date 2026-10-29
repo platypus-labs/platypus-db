@@ -2191,6 +2191,37 @@ const zh: Record<string, string> = {
   // Group I: ER diagram full screen
   "Full screen": "全屏",
   "Exit full screen": "退出全屏",
+
+  // Group I: create views, triggers, functions and sequences
+  "Create view": "创建视图",
+  "Create sequence": "创建序列",
+  "Create function": "创建函数",
+  "Create trigger": "创建触发器",
+  "Create trigger…": "创建触发器…",
+  "View…": "视图…",
+  "Function…": "函数…",
+  "Trigger…": "触发器…",
+  "Sequence…": "序列…",
+  "Sequence options must be whole numbers.": "序列选项必须是整数。",
+  "The first {count} statements ran and stay applied.": "前 {count} 条语句已执行并保持生效。",
+  "In {schema}. The statements below run on the connection and commit at once.": "位于 {schema}。下面的语句将在该连接上执行并立即提交。",
+  "Replace a view of this name": "替换同名视图",
+  "Sequences need MariaDB 10.3 or later.": "序列需要 MariaDB 10.3 或更高版本。",
+  "Increment": "步长",
+  "Cache": "缓存",
+  "Start over at the limit (cycle)": "到达上限后循环",
+  "Parameter name": "参数名称",
+  "Parameter type": "参数类型",
+  "Parameter mode": "参数模式",
+  "Remove parameter": "移除参数",
+  "Add parameter": "添加参数",
+  "Returns": "返回类型",
+  "Body": "主体",
+  "Replace a function of this name": "替换同名函数",
+  "Timing": "触发时机",
+  "For each row": "对每一行",
+  "Only when (condition)": "仅当（条件）",
+  "Replace a trigger of this name": "替换同名触发器",
 };
 
 export default zh;

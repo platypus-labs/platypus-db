@@ -409,6 +409,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::objects::dialect_support,
         commands::schema::table_design,
         commands::schema::table_script,
+        commands::schema::object_form_sql,
         commands::schema::apply_table_script,
         commands::schema::schema_tables,
         commands::schema::lint_schema,

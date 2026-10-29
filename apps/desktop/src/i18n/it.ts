@@ -2191,6 +2191,37 @@ const it: Record<string, string> = {
   // Group I: ER diagram full screen
   "Full screen": "Schermo intero",
   "Exit full screen": "Esci da schermo intero",
+
+  // Group I: create views, triggers, functions and sequences
+  "Create view": "Crea vista",
+  "Create sequence": "Crea sequenza",
+  "Create function": "Crea funzione",
+  "Create trigger": "Crea trigger",
+  "Create trigger…": "Crea trigger…",
+  "View…": "Vista…",
+  "Function…": "Funzione…",
+  "Trigger…": "Trigger…",
+  "Sequence…": "Sequenza…",
+  "Sequence options must be whole numbers.": "Le opzioni della sequenza devono essere numeri interi.",
+  "The first {count} statements ran and stay applied.": "Le prime {count} istruzioni sono state eseguite e restano applicate.",
+  "In {schema}. The statements below run on the connection and commit at once.": "In {schema}. Le istruzioni qui sotto vengono eseguite sulla connessione e confermate subito.",
+  "Replace a view of this name": "Sostituisci una vista con questo nome",
+  "Sequences need MariaDB 10.3 or later.": "Le sequenze richiedono MariaDB 10.3 o successivo.",
+  "Increment": "Incremento",
+  "Cache": "Cache",
+  "Start over at the limit (cycle)": "Riparti dal limite (ciclico)",
+  "Parameter name": "Nome del parametro",
+  "Parameter type": "Tipo del parametro",
+  "Parameter mode": "Modo del parametro",
+  "Remove parameter": "Rimuovi parametro",
+  "Add parameter": "Aggiungi parametro",
+  "Returns": "Restituisce",
+  "Body": "Corpo",
+  "Replace a function of this name": "Sostituisci una funzione con questo nome",
+  "Timing": "Momento",
+  "For each row": "Per ogni riga",
+  "Only when (condition)": "Solo quando (condizione)",
+  "Replace a trigger of this name": "Sostituisci un trigger con questo nome",
 };
 
 export default it;
