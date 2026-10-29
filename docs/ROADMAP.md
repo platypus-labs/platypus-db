@@ -938,7 +938,10 @@ scenari E2E `gifs-*` (`e2e/gif.mjs`: fotogrammi dalla pagina, codificati con `gi
 non aveva ancora le GIF. Dal 29 ottobre anche: le GIF nel sito (in cima e nelle schede di
 Screenshots, con la PNG al loro posto per chi ha chiesto meno animazioni), DataGrip 2026.2.6 e
 TablePlus 2.2.0 nel confronto delle dimensioni (BENCHMARKS.md, README e una tabella nella
-sezione Performance del sito); il piano di pubblicazione è in RELEASING.md. Restano la verifica su macOS e su un desktop Linux con GPU, il test reale
+sezione Performance del sito); il piano di pubblicazione è in RELEASING.md. Il sito (`site/`) è stato ridisegnato: solo scuro,
+l'ornitorinco con i database intorno, una finestra dell'app disegnata in HTML dove una query si
+scrive da sola, il tour con le GIF, una griglia di funzionalità, i loghi dei database, le
+prestazioni e il confronto. Restano la verifica su macOS e su un desktop Linux con GPU, il test reale
 dell'auto-update, la firma, avvio e memoria di DBeaver accanto ai nostri e la distribuzione.
 
 | Attività | Prio |
