@@ -56,18 +56,16 @@ export function PanelResizer({ storeKey, size, fallback, min, max, direction, af
       last = clamp(size + (after ? -moved : moved));
       (onDrag ?? onResize)(last);
     };
+    // Released, cancelled by the system, or the capture lost (e.g. the window left).
+    const ends = ["pointerup", "pointercancel", "lostpointercapture"] as const;
     const onEnd = () => {
       handle.removeEventListener("pointermove", onMove);
-      handle.removeEventListener("pointerup", onEnd);
-      handle.removeEventListener("pointercancel", onEnd);
-      handle.removeEventListener("lostpointercapture", onEnd);
+      for (const end of ends) handle.removeEventListener(end, onEnd);
       setDragging(false);
       if (last !== size) set(last);
     };
     handle.addEventListener("pointermove", onMove);
-    handle.addEventListener("pointerup", onEnd);
-    handle.addEventListener("pointercancel", onEnd);
-    handle.addEventListener("lostpointercapture", onEnd);
+    for (const end of ends) handle.addEventListener(end, onEnd);
     setDragging(true);
   }
 

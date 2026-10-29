@@ -733,6 +733,12 @@ export function App() {
     }
   }
 
+  /** Keeps `saved` for Ctrl+Shift+T, the oldest dropped past `CLOSED_TABS`. */
+  function keepClosed(saved: PersistedTab) {
+    closedTabs.current.push(saved);
+    if (closedTabs.current.length > CLOSED_TABS) closedTabs.current.shift();
+  }
+
   /** Closes `tab`, asking first unless `confirmed`; kept to reopen unless `moved` to another
    *  window. */
   function closeTab(tab: TabModel, confirmed = false, moved = false) {
@@ -743,9 +749,8 @@ export function App() {
     // A temporary connection's tab cannot be reopened: its connection goes with its last tab.
     const saved = temporary.current.has(tab.connectionId) || moved ? null : persistTab(tab);
     if (saved) {
-      closedTabs.current.push(saved);
+      keepClosed(saved);
       closedAt.set(saved, tabs.findIndex((t) => t.key === tab.key));
-      if (closedTabs.current.length > CLOSED_TABS) closedTabs.current.shift();
     }
     // The tab next to it in the bar is shown next, as browsers do.
     const bar = visibleTabs.findIndex((t) => t.key === tab.key);
@@ -818,21 +823,14 @@ export function App() {
     }
   }
   // What the other windows send: tabs to open here, a tab moved back, a closed window's tab.
-  const restoreTab = (saved: PersistedTab) => {
-    const kind = tabKind(saved.kind ?? "query");
-    if (!kind || !connectionById(saved.connectionId)) return null;
-    return { ...createTab(kind.kind, saved.connectionId, kind.restore(saved)), project: activeProject };
-  };
   useWindowEvents({
     openTab: ({ kind, connectionId, init }) => connectionById(connectionId) && addTab({ ...createTab(kind, connectionId, init ?? {}), project: activeProject }),
     attach: (saved) => {
-      const tab = restoreTab(saved);
-      if (tab) addTab(tab);
+      const kind = tabKind(saved.kind ?? "query");
+      if (!kind || !connectionById(saved.connectionId)) return;
+      addTab({ ...createTab(kind.kind, saved.connectionId, kind.restore(saved)), project: activeProject });
     },
-    closed: (saved) => {
-      closedTabs.current.push(saved);
-      if (closedTabs.current.length > CLOSED_TABS) closedTabs.current.shift();
-    },
+    closed: keepClosed,
   });
   useTray();
   /** Locks the app behind the master password, closing the production sessions; without a

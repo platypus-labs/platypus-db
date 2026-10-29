@@ -40,6 +40,19 @@ pub fn window_config(app: &AppHandle, label: &str) -> Option<tauri::utils::confi
     Some(config)
 }
 
+/// Builds the window `config` describes, with the web view's data in the portable folder when
+/// the app runs from one (and no `PLATYPUS_DATA_DIR` is set).
+pub fn build(app: &AppHandle, config: &tauri::utils::config::WindowConfig) -> tauri::Result<()> {
+    let mut window = WebviewWindowBuilder::from_config(app, config)?;
+    if std::env::var_os("PLATYPUS_DATA_DIR").is_none()
+        && let Some(dir) = platypus_mcp::profile::portable_dir()
+    {
+        window = window.data_directory(dir.join("webview"));
+    }
+    window.build()?;
+    Ok(())
+}
+
 /// Opens another window of the app, with the system's title bar.
 fn open(
     app: &AppHandle,
@@ -48,7 +61,6 @@ fn open(
     (width, height): (f64, f64),
     on_top: bool,
 ) -> CommandResult<()> {
-    let failed = |e: tauri::Error| CommandError::new("window", e.to_string());
     let Some(mut config) = window_config(app, label) else {
         return Err(CommandError::new("window", "no window is configured"));
     };
@@ -59,14 +71,7 @@ fn open(
     config.min_height = Some(320.0);
     config.decorations = true;
     config.always_on_top = on_top;
-    let mut window = WebviewWindowBuilder::from_config(app, &config).map_err(failed)?;
-    if std::env::var_os("PLATYPUS_DATA_DIR").is_none()
-        && let Some(dir) = platypus_mcp::profile::portable_dir()
-    {
-        window = window.data_directory(dir.join("webview"));
-    }
-    window.build().map_err(failed)?;
-    Ok(())
+    build(app, &config).map_err(|e| CommandError::new("window", e.to_string()))
 }
 
 /// Opens a window for `tab` (saved by the web view as JSON), titled `title`; its label.
@@ -95,9 +100,7 @@ pub fn take_window_tab(detached: State<'_, Detached>, label: String) -> Option<S
 /// Shows the quick query window, opening it if it is not open.
 pub fn open_quick(app: &AppHandle, title: &str) -> CommandResult<()> {
     if let Some(window) = app.get_webview_window(QUICK) {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+        reveal(&window);
         return Ok(());
     }
     open(app, QUICK, title, (760.0, 480.0), true)
@@ -113,11 +116,10 @@ pub fn open_quick_window(app: AppHandle, title: String) -> CommandResult<()> {
 /// `AppIndicator`) is an error, not a crash.
 #[tauri::command]
 pub fn set_tray(app: AppHandle, labels: Option<[String; 4]>) -> CommandResult<()> {
+    let _ = app.remove_tray_by_id(TRAY);
     let Some(labels) = labels else {
-        let _ = app.remove_tray_by_id(TRAY);
         return Ok(());
     };
-    let _ = app.remove_tray_by_id(TRAY);
     let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tray(&app, &labels)));
     match built {
         Ok(result) => result
@@ -171,10 +173,15 @@ fn tray(app: &AppHandle, labels: &[String; 4]) -> tauri::Result<TrayIcon> {
 
 fn show_main(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+        reveal(&window);
     }
+}
+
+/// Brings `window` to the front, minimized or hidden as it may be.
+fn reveal(window: &tauri::WebviewWindow) {
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {

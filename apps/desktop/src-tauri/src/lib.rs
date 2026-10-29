@@ -121,14 +121,7 @@ fn open_main_window(app: &tauri::App, system_title_bar: bool) -> tauri::Result<(
         return Ok(());
     };
     config.decorations = system_title_bar || cfg!(target_os = "macos");
-    let mut window = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?;
-    if std::env::var_os("PLATYPUS_DATA_DIR").is_none()
-        && let Some(dir) = platypus_mcp::profile::portable_dir()
-    {
-        window = window.data_directory(dir.join("webview"));
-    }
-    window.build()?;
-    Ok(())
+    windows::build(app.handle(), &config)
 }
 
 /// Opens the stores and the window.
