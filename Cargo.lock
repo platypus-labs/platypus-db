@@ -5645,6 +5645,7 @@ dependencies = [
  "platypus-driver-sqlite",
  "platypus-drivers",
  "platypus-mcp",
+ "platypus-net",
  "platypus-schema",
  "platypus-sql",
  "platypus-transfer",

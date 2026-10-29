@@ -32,6 +32,7 @@ import { NetworkFields, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 import { NetworkProfileDialog, newNetworkProfile } from "./NetworkProfileDialog";
 import { t, tNodes, msg } from "../i18n";
 import { type ManagerId, MANAGERS, managerById, managerOf } from "../credentialManagers";
+import { SIGN_INS, type SignInId, signInOf, signInsFor, withSignIn } from "../signIn";
 import { suggestedPooler } from "./pooler";
 
 interface Props {
@@ -52,7 +53,7 @@ type Page = "general" | "network" | "init";
 
 /** Where the password comes from; stored as `save_password`, `pgpass` and `password_command`,
  *  which a password manager's source writes for its CLI. */
-type PasswordSource = "keychain" | "ask" | "pgpass" | "command" | ManagerId;
+type PasswordSource = "keychain" | "ask" | "pgpass" | "command" | ManagerId | SignInId;
 
 const COLORS = ["", "#2f9e44", "#1c7ed6", "#f08c00", "#d6336c", "#c92a2a"];
 
@@ -93,6 +94,8 @@ const WINDOWS = navigator.userAgent.includes("Windows");
 const EMPTY_INIT: SavedInit = { schema: null, time_zone: null, statements: "" };
 
 function passwordSource(c: SavedConnection): PasswordSource {
+  const signIn = signInOf(c);
+  if (signIn) return signIn.id;
   if (c.password_command != null) return managerOf(c.password_command)?.manager.id ?? "command";
   if (c.pgpass) return "pgpass";
   return c.save_password ? "keychain" : "ask";
@@ -103,8 +106,9 @@ const secretReference = (c: SavedConnection) => managerOf(c.password_command)?.r
 
 function withPasswordSource(c: SavedConnection, source: PasswordSource): SavedConnection {
   const manager = managerById(source);
+  const signIn = SIGN_INS.find((s) => s.id === source);
   return {
-    ...c,
+    ...withSignIn(c, signIn?.id ?? null),
     save_password: source === "keychain",
     pgpass: source === "pgpass",
     password_command: manager
@@ -113,6 +117,78 @@ function withPasswordSource(c: SavedConnection, source: PasswordSource): SavedCo
         ? (c.password_command ?? "")
         : null,
   };
+}
+
+/** The port a cloud's CLI forwards to the server: `kubectl port-forward` or an AWS SSM
+ *  session, run by `platypus-net` on a free local port while the connection is open. */
+function PortForwardFields({
+  conn,
+  tunnel,
+  setOption,
+}: {
+  conn: SavedConnection;
+  /** It has an SSH tunnel, its own or its network profile's. */
+  tunnel: boolean;
+  setOption: (key: string, value: string) => void;
+}) {
+  const option = (key: string) => conn.options?.[key] ?? "";
+  const field = (key: string, label: string, placeholder: string, required = false) => (
+    <label className="field">
+      <span>{label}</span>
+      <input
+        required={required}
+        value={option(key)}
+        onChange={(e) => setOption(key, e.target.value)}
+        placeholder={placeholder}
+        spellCheck={false}
+        data-field={key}
+      />
+    </label>
+  );
+  const kind = option("forward");
+  const alongside = kind && (tunnel || option("proxy"));
+  return (
+    <>
+      <label className="field">
+        <span>{t("Port forward")}</span>
+        <select value={kind} onChange={(e) => setOption("forward", e.target.value)} data-field="forward">
+          <option value="">{t("None")}</option>
+          <option value="kubernetes">{t("Kubernetes (kubectl port-forward)")}</option>
+          <option value="ssm">{t("AWS Systems Manager session")}</option>
+        </select>
+      </label>
+      {kind === "kubernetes" && (
+        <div className="field-grid three">
+          {field("k8s_target", t("Service or pod"), "svc/postgres", true)}
+          {field("k8s_namespace", t("Namespace"), "default")}
+          {field("k8s_context", t("Context"), t("The current one"))}
+        </div>
+      )}
+      {kind === "ssm" && (
+        <div className="field-grid three">
+          {field("ssm_target", t("EC2 instance"), "i-0123456789abcdef0", true)}
+          {field("aws_region", t("AWS region"), t("The profile's"))}
+          {field("aws_profile", t("AWS profile"), "default")}
+        </div>
+      )}
+      {kind && (
+        <p className="muted small" data-field="forward_note">
+          {kind === "kubernetes"
+            ? tNodes("Runs {command} on a free local port while the connection is open: kubectl must be installed and reach the cluster. The port is the server's.", {
+                command: <code>kubectl port-forward</code>,
+              })
+            : tNodes("Runs {command} to the host and port above, as the instance sees them: the AWS CLI and its Session Manager plugin must be installed and signed in.", {
+                command: <code>aws ssm start-session</code>,
+              })}
+        </p>
+      )}
+      {alongside && (
+        <div className="notice small warn" role="alert" data-field="forward_alone">
+          {t("A port forward goes alone: remove the SSH tunnel or the proxy.")}
+        </div>
+      )}
+    </>
+  );
 }
 
 export function ConnectionDialog({ initial, existing, projects, memberOf, driverChosen, onSaved, onClose }: Props) {
@@ -179,6 +255,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   // recognized as the manager's again.
   const source = handWritten && conn.password_command != null ? "command" : passwordSource(conn);
   const manager = managerById(source);
+  const signIn = signInOf(conn);
   const profile = profiles.find((p) => p.id === conn.network_profile) ?? null;
   const server = !isEmbedded(conn.driver);
   const file = FILES[conn.driver === "duckdb" ? "duckdb" : "sqlite"];
@@ -763,9 +840,39 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                           {m.name}
                         </option>
                       ))}
+                      {signInsFor(conn.driver, signIn?.id).map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.id === "windows" ? t("Windows sign-in (SSPI, Kerberos)") : t("{service} token", { service: s.name })}
+                        </option>
+                      ))}
                     </select>
                   </label>
-                  {manager ? (
+                  {signIn ? (
+                    signIn.id === "aws_iam" && (
+                      <>
+                        <label className="field">
+                          <span>{t("AWS region")}</span>
+                          <input
+                            value={conn.options?.aws_region ?? ""}
+                            onChange={(e) => setOption("aws_region", e.target.value)}
+                            placeholder={t("The profile's")}
+                            spellCheck={false}
+                            data-field="aws_region"
+                          />
+                        </label>
+                        <label className="field">
+                          <span>{t("AWS profile")}</span>
+                          <input
+                            value={conn.options?.aws_profile ?? ""}
+                            onChange={(e) => setOption("aws_profile", e.target.value)}
+                            placeholder="default"
+                            spellCheck={false}
+                            data-field="aws_profile"
+                          />
+                        </label>
+                      </>
+                    )
+                  ) : manager ? (
                     <label className="field">
                       <span>{t("Secret in {manager}", { manager: manager.name })}</span>
                       <input
@@ -803,6 +910,18 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     )
                   )}
                 </div>
+                {signIn && (
+                  <p className="muted small sign-in-note" data-field="sign_in_note">
+                    {signIn.command
+                      ? tNodes("Runs {command} at each connection: its CLI must be installed and signed in. Tokens last minutes and are never saved.", {
+                          command: <code>{signIn.command(conn)}</code>,
+                        })
+                      : WINDOWS
+                        ? t("Signs in as the Windows user running PlatypusDB, through SSPI (Kerberos or NTLM).")
+                        : t("Only PlatypusDB on Windows can sign in this way.")}
+                    {conn.driver === "mysql" && signIn.command && ` ${t("The token goes in clear text: use TLS.")}`}
+                  </p>
+                )}
                 {manager && conn.password_command && (
                   <p className="muted small manager-command">
                     {tNodes("Runs {command}: its CLI must be installed and signed in.", {
@@ -945,6 +1064,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   saved={savedSsh}
                 />
               )}
+              <PortForwardFields conn={conn} tunnel={!!(profile ? profile.ssh : conn.ssh)} setOption={setOption} />
               <label className="field">
                 <span>{t("Proxy")}</span>
                 <input
