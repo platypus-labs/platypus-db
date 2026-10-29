@@ -6,13 +6,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use platypus_store::{
-    AgentAccess, HistoryOrigin, HistoryQuery, HistoryStatus, Project, StoreError, list_scripts,
-    read_script, read_script_links, resolve_script, rfc3339, script_relative,
+    HistoryOrigin, HistoryQuery, HistoryStatus, Project, StoreError, list_scripts, read_script,
+    read_script_links, resolve_script, rfc3339, script_relative,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::agent::Agent;
+use crate::agent::{Agent, may_use};
 use crate::error::{AgentError, Result};
 use crate::redact::Redactor;
 
@@ -148,7 +148,7 @@ impl Agent {
             store
                 .list()
                 .iter()
-                .filter(|c| c.effective_agent_access() != AgentAccess::Off)
+                .filter(|c| may_use(c))
                 .map(|c| (c.id, c.name.clone()))
                 .collect(),
         ))
@@ -208,20 +208,27 @@ impl Agent {
                 args.path
             ))
         })?;
-        // The link by the path as the app keeps it, ignoring case: file systems that do
-        // would otherwise serve a linked script under another spelling.
+        // The links of this file: by the path as the app keeps it (ignoring case), and by the
+        // file itself, so another spelling, a symlink or a short name of a linked file does
+        // not get past the check.
         let rel = script_relative(&root, &path);
         let visible = self.visible()?;
-        let links = read_script_links(&root);
-        let linked = links
-            .iter()
-            .filter(|(p, _)| p.eq_ignore_ascii_case(&rel))
-            .map(|(_, id)| *id);
+        let opened = std::fs::canonicalize(&path).ok();
+        let linked: Vec<Uuid> = read_script_links(&root)
+            .into_iter()
+            .filter(|(key, _)| {
+                key.eq_ignore_ascii_case(&rel)
+                    || opened.as_ref().is_some_and(|o| {
+                        std::fs::canonicalize(root.join(key)).ok().as_ref() == Some(o)
+                    })
+            })
+            .map(|(_, id)| id)
+            .collect();
         // A script linked to a connection that is off reads as missing, as in the list.
-        if !linked.clone().all(|id| visible.allows(Some(id))) {
+        if !linked.iter().all(|id| visible.allows(Some(*id))) {
             return Err(missing());
         }
-        let connection = visible.name(linked.clone().next());
+        let connection = visible.name(linked.first().copied());
         let read = read_script(&root, &rel, SCRIPT_BYTES).map_err(|e| match e {
             StoreError::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
                 missing()
@@ -266,21 +273,30 @@ impl Agent {
             limit,
         };
         let entries = self.profile().history()?.search(&query)?;
+        // Per connection, not per entry: the name and what to mask.
+        let mut known: HashMap<Uuid, Option<(String, Redactor)>> = HashMap::new();
         Ok(entries
             .into_iter()
             .filter_map(|e| {
-                let saved = store.get(e.connection_id)?;
-                // Only what needs no secret lookup: a URL's password, and a password command
-                // that an error may echo.
-                let mut redactor = Redactor::default();
-                if let Some(command) = &store.effective(saved).password_command {
-                    redactor.add(command);
-                }
+                let (name, redactor) = known
+                    .entry(e.connection_id)
+                    .or_insert_with(|| {
+                        let saved = store.get(e.connection_id)?;
+                        // Only what needs no secret lookup: a URL's password, and a password
+                        // command that an error may echo.
+                        let mut redactor = Redactor::default();
+                        if let Some(command) = &store.effective(saved).password_command {
+                            redactor.add(command);
+                        }
+                        Some((saved.name.clone(), redactor))
+                    })
+                    .as_ref()?;
                 // Group Q's sensitive columns, once they exist, would be masked in `e.sql`
                 // and in the error here.
                 Some(HistoryItem {
-                    connection: saved.name.clone(),
-                    sql: e.sql,
+                    connection: name.clone(),
+                    // A statement may carry a password too, e.g. `CREATE USER ... PASSWORD`.
+                    sql: redactor.apply(&e.sql),
                     started_at: rfc3339(e.started_at),
                     duration_ms: e.duration_ms,
                     rows: e.rows,

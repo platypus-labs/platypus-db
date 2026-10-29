@@ -368,6 +368,11 @@ pub(crate) fn locked<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// The one rule of which connections agents see: those whose agent access is not off.
+pub(crate) fn may_use(c: &SavedConnection) -> bool {
+    c.effective_agent_access() != AgentAccess::Off
+}
+
 impl Agent {
     #[must_use]
     pub fn new(profile: Profile) -> Self {
@@ -505,7 +510,7 @@ impl Agent {
         Ok(store
             .list()
             .iter()
-            .filter(|c| c.effective_agent_access() != AgentAccess::Off)
+            .filter(|c| may_use(c))
             .map(|c| ConnectionInfo {
                 name: c.name.clone(),
                 id: c.id,
@@ -524,12 +529,7 @@ impl Agent {
     /// The connection named `name` (or with that id), if agents may use it.
     pub(crate) fn find(&self, name: &str) -> Result<(ConnectionStore, SavedConnection)> {
         let store = self.profile.connections()?;
-        let visible = || {
-            store
-                .list()
-                .iter()
-                .filter(|c| c.effective_agent_access() != AgentAccess::Off)
-        };
+        let visible = || store.list().iter().filter(|c| may_use(c));
         let id = Uuid::parse_str(name.trim()).ok();
         let exact: Vec<&SavedConnection> = visible()
             .filter(|c| Some(c.id) == id || c.name == name)

@@ -913,6 +913,129 @@ fn resource_reads_are_logged(dir: &Path) {
     assert_eq!(calls[5].3, "error");
 }
 
+/// Connections that share a name get their id in the resource uri; one name stays a name.
+#[test]
+fn resources_of_connections_with_the_same_name_use_the_id() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    sqlite(
+        &dir.path().join("dup.db"),
+        "CREATE TABLE only_in_dup (id INTEGER PRIMARY KEY);",
+    );
+    let toml = dir.path().join("connections.toml");
+    let mut text = std::fs::read_to_string(&toml).unwrap();
+    text.push_str(&format!(
+        "\n[[connections]]\nid = \"00000000-0000-4000-8000-000000000005\"\nname = \"Scratch\"\n\
+         driver = \"sqlite\"\ndatabase = '{}'\n",
+        dir.path().join("dup.db").display()
+    ));
+    std::fs::write(&toml, text).unwrap();
+    let mut client = initialized(dir.path());
+
+    let list = client.request("resources/list", &json!({}));
+    let uris: Vec<&str> = list["result"]["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["uri"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        uris,
+        [
+            "platypus://App%20db",
+            "platypus://00000000-0000-4000-8000-000000000002",
+            "platypus://Remote%20PG",
+            "platypus://00000000-0000-4000-8000-000000000005",
+        ],
+        "{list}"
+    );
+    let mut read = |uri: &str| {
+        let response = client.request("resources/read", &json!({ "uri": uri }));
+        response["result"]["contents"][0]["text"]
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| response["error"]["message"].as_str().unwrap().to_owned())
+    };
+    let first = read(uris[1]).unwrap();
+    let second = read(uris[3]).unwrap();
+    assert!(first.contains("main") && second.contains("main"));
+    let tables = read(&format!("{}/main", uris[3])).unwrap();
+    assert!(tables.contains("only_in_dup"), "{tables}");
+    let tables = read(&format!("{}/main", uris[1])).unwrap();
+    assert!(!tables.contains("only_in_dup"), "{tables}");
+    let by_name = read("platypus://Scratch").unwrap_err();
+    assert!(by_name.contains("several"), "{by_name}");
+}
+
+/// A linked script is as hidden under any alias of its file as under its own path.
+#[cfg(unix)]
+#[test]
+fn a_symlink_to_a_hidden_script_does_not_read() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    scripts(dir.path());
+    let all = dir.path().join("scripts/all");
+    let link =
+        |target: &str, name: &str| std::os::unix::fs::symlink(target, all.join(name)).unwrap();
+    link("hidden.sql", "alias.sql");
+    link("private", "dirlink");
+    link(".", "self");
+    link("top.sql", "visible-alias.sql");
+    let mut client = initialized(dir.path());
+    for path in [
+        "alias.sql",
+        "dirlink/secret.sql",
+        "self/hidden.sql",
+        "self/self/hidden.sql",
+    ] {
+        let (refused, error) = client.call("read_script", &json!({ "path": path }));
+        assert!(error, "{path}: {refused}");
+        assert!(
+            !refused.contains("SELECT 'hidden'") && !refused.contains("SELECT 'secret'"),
+            "{path}"
+        );
+    }
+    // The alias of a script agents may read still reads, with its connection.
+    let (read, error) = client.call("read_script", &json!({ "path": "visible-alias.sql" }));
+    assert!(!error, "{read}");
+    let read: Value = serde_json::from_str(&read).unwrap();
+    assert_eq!(read["text"], "SELECT * FROM t");
+    assert_eq!(read["connection"], "App db");
+}
+
+/// The statements are redacted like the errors are.
+#[test]
+fn history_sql_is_redacted() {
+    use platypus_store::{HistoryStatus, HistoryStore, NewHistoryEntry};
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let history = HistoryStore::open(&dir.path().join("history.db")).unwrap();
+    for sql in ["SELECT 'echo hunter2'", "SELECT 2"] {
+        history
+            .record(&NewHistoryEntry {
+                connection_id: uuid::Uuid::parse_str("00000000-0000-4000-8000-000000000004")
+                    .unwrap(),
+                sql: sql.to_owned(),
+                started_at: std::time::UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+                duration: Duration::from_millis(1),
+                rows: Some(1),
+                status: HistoryStatus::Ok,
+                error: None,
+                origin: None,
+            })
+            .unwrap();
+    }
+    drop(history);
+    let mut client = initialized(dir.path());
+    let (text, error) = client.call("search_history", &json!({}));
+    assert!(!error, "{text}");
+    assert!(!text.contains("echo hunter2"), "{text}");
+    assert!(
+        text.contains("SELECT '***'") && text.contains("SELECT 2"),
+        "{text}"
+    );
+}
+
 const SALES: &str = "00000000-0000-4000-8000-0000000000a1";
 
 /// The saved scripts of the profile: All connections has scripts on every kind of

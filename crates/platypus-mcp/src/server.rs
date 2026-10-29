@@ -4,7 +4,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
-use crate::agent::locked;
+use crate::agent::{MAX_OBJECT_PAGE, locked};
 use crate::link::CLOSED;
 use crate::resource::{self, Target};
 use crate::{
@@ -249,9 +249,11 @@ impl PlatypusServer {
     async fn resource_json(&self, target: &Target) -> Result<String, AgentError> {
         match target {
             Target::Connection(c) => json_text(self.agent.list_schemas(c).await),
-            Target::Schema(c, s) => {
-                json_text(self.agent.list_objects(c, s, None, Some(2000)).await)
-            }
+            Target::Schema(c, s) => json_text(
+                self.agent
+                    .list_objects(c, s, None, u64::try_from(MAX_OBJECT_PAGE).ok())
+                    .await,
+            ),
             Target::Table(c, s, t) => json_text(self.agent.describe_table(c, s, t).await),
         }
     }
@@ -614,14 +616,22 @@ impl ServerHandler for PlatypusServer {
             .agent
             .list_connections()
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        // Two connections may share a name: those get their id in the URI, which `find`
+        // accepts as it does a name.
+        let shared = |name: &str| connections.iter().filter(|c| c.name == name).count() > 1;
         let resources = connections
-            .into_iter()
+            .iter()
             .map(|c| {
                 let driver = serde_json::to_value(c.driver)
                     .ok()
                     .and_then(|v| v.as_str().map(str::to_owned))
                     .unwrap_or_default();
-                Resource::new(resource::connection_uri(&c.name), c.name)
+                let key = if shared(&c.name) {
+                    c.id.to_string()
+                } else {
+                    c.name.clone()
+                };
+                Resource::new(resource::connection_uri(&key), c.name.clone())
                     .with_description(format!(
                         "The schemas of this {driver} connection, as list_schemas returns them."
                     ))
@@ -638,10 +648,10 @@ impl ServerHandler for PlatypusServer {
     ) -> Result<ListResourceTemplatesResult, ErrorData> {
         Ok(ListResourceTemplatesResult::with_all_items(vec![
             ResourceTemplate::new("platypus://{connection}/{schema}", "schema")
-                .with_description(
+                .with_description(format!(
                     "The objects of a schema (tables, views, functions, ...), as list_objects \
-                     returns them, up to 2000.",
-                )
+                     returns them, up to {MAX_OBJECT_PAGE}."
+                ))
                 .with_mime_type(JSON),
             ResourceTemplate::new("platypus://{connection}/{schema}/{table}", "table")
                 .with_description(
