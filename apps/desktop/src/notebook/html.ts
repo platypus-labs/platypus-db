@@ -146,7 +146,7 @@ export function parseInline(text: string): Inline[] {
   return out;
 }
 
-export const escapeHtml = (text: string) =>
+const escapeHtml = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 function inlineHtml(nodes: Inline[]): string {
@@ -191,6 +191,9 @@ function blockHtml(block: Block): string {
 export function markdownHtml(text: string): string {
   return parseMarkdown(text).map(blockHtml).join("\n");
 }
+
+/** A parameter as written: `:name`, or `?1` for the first `?`. */
+export const writtenParam = (key: string) => (key.startsWith("?") ? key : `:${key}`);
 
 /** A cell as the export writes it. */
 export type ExportCell =
@@ -251,7 +254,7 @@ function cellHtml(cell: ExportCell): string {
 /** The notebook as a standalone HTML page, with the values its `params` had. */
 export function notebookHtml(title: string, cells: readonly ExportCell[], params: Readonly<Record<string, string>> = {}): string {
   const values = Object.entries(params)
-    .map(([key, value]) => `<code>${escapeHtml(key.startsWith("?") ? key : `:${key}`)}</code> = ${escapeHtml(value)}`)
+    .map(([key, value]) => `<code>${escapeHtml(writtenParam(key))}</code> = ${escapeHtml(value)}`)
     .join(", ");
   return `<!doctype html>
 <html>

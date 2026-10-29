@@ -5,7 +5,7 @@
  * with SQL", without running them again on the server. The file format and the plan as
  * lines are here too (the export to HTML is in `html.ts`). Pure: the unit tests import it.
  */
-import type { PlanNode } from "../api";
+import type { PlanNode, ResultTable } from "../api";
 
 export interface NotebookCell {
   id: string;
@@ -27,7 +27,7 @@ export interface NotebookContent {
 }
 
 let next = 0;
-export const newCellId = () => `${Date.now().toString(36)}-${(next++).toString(36)}`;
+const newCellId = () => `${Date.now().toString(36)}-${(next++).toString(36)}`;
 
 export const newCell = (kind: NotebookCell["kind"], text = ""): NotebookCell => ({
   id: newCellId(),
@@ -51,7 +51,7 @@ export function resultTables(
   cells: readonly NotebookCell[],
   jobs: ReadonlyMap<string, number>,
   except: string,
-): { job_id: number; table: string }[] {
+): ResultTable[] {
   const names = cellNames(cells);
   return cells.flatMap((cell) => {
     const job = jobs.get(cell.id);

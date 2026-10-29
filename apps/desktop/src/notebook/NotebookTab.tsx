@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   api,
   type CompletionCatalog,
-  type QueryEvent,
   type ResultPartial,
+  type ResultTable,
   type SavedConnection,
   type StatementSpan,
   toCommandError,
@@ -12,7 +12,7 @@ import {
 import { parseConfig } from "../analysis/chartConfig";
 import { svgText } from "../analysis/chartExport";
 import { loadAll } from "../analysis/QueryWithSql";
-import { resultCatalog, staleCopy, withEvent } from "../analysis/sqlField";
+import { resultCatalog, settled, staleCopy, withEvent } from "../analysis/sqlField";
 import { describe, type Result } from "../components/ResultPanel";
 import { withDriver } from "../drivers/DriverPopup";
 import { parameterKeys, substitute } from "../editor/params";
@@ -23,7 +23,7 @@ import { GuardDialog } from "../guards/GuardDialog";
 import { t } from "../i18n";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
-import { type ExportCell, notebookHtml } from "./html";
+import { type ExportCell, notebookHtml, writtenParam } from "./html";
 import { type CellRun, idle, NotebookCellView } from "./NotebookCell";
 import {
   cellNames,
@@ -58,7 +58,7 @@ const EXPORT_ROWS = 500;
 interface Copy {
   connection: SavedConnection;
   sessionId: number;
-  tables: { job_id: number; table: string }[];
+  tables: ResultTable[];
   partial: ResultPartial | null;
 }
 
@@ -67,15 +67,14 @@ let nextResult = -1_000_000;
 /** What went wrong, as the cell says it: the notebook's own errors without "Error:". */
 const reason = (e: unknown) => (e instanceof Error ? e.message : toCommandError(e).message);
 
-/** A parameter as written: `:name`, or `?1` for the first `?`. */
-const written = (key: string) => (key.startsWith("?") ? key : `:${key}`);
-
 /** A cell's statement, ready to run: placeholders relative to its text. */
 const statementOf = (text: string, s: StatementSpan) => ({
   sql: text.slice(s.start, s.end),
   span: s,
   params: s.parameters.map((p) => ({ ...p, start: p.start - s.start, end: p.end - s.start })),
 });
+
+type Statement = ReturnType<typeof statementOf>;
 
 /** Asks before risky statements (UPDATE without WHERE, production changes), as the editor does. */
 function confirmed(request: Parameters<typeof GuardDialog>[0]["request"]): Promise<boolean> {
@@ -94,14 +93,14 @@ function confirmed(request: Parameters<typeof GuardDialog>[0]["request"]): Promi
 
 const fileName = (path: string) => path.split(/[\\/]/).pop()!.replace(/\.pnb$/i, "");
 
-export const readNotebook = (text: string) => parseNotebookFile(text, parseConfig);
+const pnbFilters = () => [{ name: t("Notebook"), extensions: ["pnb"] }];
 
 /** Opens a `.pnb` file in a notebook on `connection`. */
 export async function openNotebook(connection: SavedConnection) {
-  const path = await answerFor("file", () => open({ filters: [{ name: t("Notebook"), extensions: ["pnb"] }] }));
+  const path = await answerFor("file", () => open({ filters: pnbFilters() }));
   if (typeof path !== "string") return;
   try {
-    const content = readNotebook(await api.readTextFile(path));
+    const content = parseNotebookFile(await api.readTextFile(path), parseConfig);
     workbench().openTab("notebook", connection.id, { ...content, file: path, title: fileName(path) });
   } catch (e) {
     workbench().showError(t("{path} is not a notebook: {error}", { path, error: toCommandError(e).message }));
@@ -190,55 +189,39 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
   function runStatement(cell: string, sid: number, sql: string): Promise<Result> {
     return new Promise((resolve) => {
       let result: Result = { id: nextResult--, sql, offset: 0, jobId: null, columns: null, rows: 0, fetching: false, status: { kind: "running" }, limit: null };
-      let done = false;
-      const show = () => setRun(cell, () => ({ result }));
-      // Started, failed or ended, with its job known; a run refused before it had one ends too.
-      const settle = () => {
-        if (!done && result.status.kind !== "running" && (result.jobId !== null || result.status.kind === "error")) {
-          done = true;
-          resolve(result);
-        }
+      // Shown, and settled once started, failed or ended with its job known; a run refused
+      // before it had one ends too. The promise keeps the first.
+      const update = (next: Result) => {
+        result = next;
+        setRun(cell, () => ({ result }));
+        if (settled(result) || result.status.kind === "error") resolve(result);
       };
-      show();
-      const onEvent = (event: QueryEvent) => {
-        result = withEvent(result, event);
-        show();
-        settle();
-      };
-      api.runQuery(sid, sql, null, onEvent, true).then(
-        (jobId) => {
-          result = { ...result, jobId };
-          show();
-          settle();
-        },
-        (e: unknown) => {
-          result = { ...result, status: { kind: "error", error: toCommandError(e) } };
-          show();
-          settle();
-        },
+      update(result);
+      api.runQuery(sid, sql, null, (event) => update(withEvent(result, event)), true).then(
+        (jobId) => update({ ...result, jobId }),
+        (e: unknown) => update({ ...result, status: { kind: "error", error: toCommandError(e) } }),
       );
     });
   }
 
   /** The statements of `cell` with the parameters filled in; `null` (and the reason shown)
    *  when one has no value. */
-  async function prepared(cell: NotebookCell) {
+  async function prepared(cell: NotebookCell): Promise<Statement[]> {
     const driver = cell.onResults ? "duckdb" : connection.driver;
-    const text = cell.text;
-    const statements = (await api.analyzeSql(text, driver, 0)).statements.map((s) => statementOf(text, s));
+    const statements = (await api.analyzeSql(cell.text, driver, 0)).statements.map((s) => statementOf(cell.text, s));
     if (statements.some((s) => s.span.kind === "command")) throw new Error(t("Client commands (@set, @include…) do not run in a notebook."));
     const keys = [...new Set(statements.flatMap((s) => parameterKeys(s.params)))];
     const params = tabNow.current.params;
     const missing = missingParams(keys, params);
     if (missing.length) {
       edit({ params: { ...Object.fromEntries(missing.map((k) => [k, ""])), ...params } });
-      throw new Error(t("Give a value to {names} above.", { names: missing.map(written).join(", ") }));
+      throw new Error(t("Give a value to {names} above.", { names: missing.map(writtenParam).join(", ") }));
     }
     return statements.map((s) => ({ ...s, sql: s.params.length ? substitute(s.sql, s.params, params, driver) : s.sql }));
   }
 
   /** The session `cell` runs on, after the checks of its statements; `null` when cancelled. */
-  async function sessionFor(cell: NotebookCell, statements: Awaited<ReturnType<typeof prepared>>): Promise<number | null> {
+  async function sessionFor(cell: NotebookCell, statements: Statement[]): Promise<number | null> {
     if (cell.onResults) return resultsSession(cell);
     if (connection.read_only && statements.some((s) => !s.span.read_only)) {
       throw new Error(t("{name} is read-only: this cell may change data.", { name: connection.name }));
@@ -280,7 +263,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
   }
 
   /** The plan of `cell`'s last statement; nothing runs. */
-  async function loadPlan(cell: NotebookCell, statements?: Awaited<ReturnType<typeof prepared>>, sid?: number | null) {
+  async function loadPlan(cell: NotebookCell, statements?: Statement[], sid?: number | null) {
     try {
       const planned = statements ?? (await prepared(cell));
       const last = planned.at(-1);
@@ -341,7 +324,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
     const path =
       tab.file ??
       (await answerFor("file", () =>
-        save({ filters: [{ name: t("Notebook"), extensions: ["pnb"] }], defaultPath: datedFileName(t("Notebook"), "pnb") }),
+        save({ filters: pnbFilters(), defaultPath: datedFileName(t("Notebook"), "pnb") }),
       ));
     if (!path) return;
     try {
@@ -436,7 +419,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
           <span className="muted small">{t("Parameters")}</span>
           {paramKeys.map((key) => (
             <label key={key} className="notebook-param">
-              <code>{written(key)}</code>
+              <code>{writtenParam(key)}</code>
               <input
                 value={tab.params[key] ?? ""}
                 data-param={key}
