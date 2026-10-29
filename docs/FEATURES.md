@@ -304,13 +304,22 @@ script first and runs it in one transaction where the database can roll DDL back
 commits each statement). SQLite and DuckDB, which alter little in place, get the table
 created again with its rows copied.
 
-## ER diagrams, schema check and schema comparison
+## ER diagrams, schema check, comparison and history
 
 - **ER diagram**: right-click a schema, *ER diagram*, or some selected tables, *Show in ER
   diagram*. Tables are laid out from their foreign keys, right of the tables they reference;
   drag them where you want them, choose the tables with *Tables…*, add notes. The diagram is
   kept with its tab and exports to SVG or PNG. A schema of more than 100 tables asks which
-  ones to show first.
+  ones to show first. *Full screen* gives the diagram the whole window (Esc leaves it);
+  *Refresh* reads the schema again and keeps every table where it is, new tables below.
+- **Draw the schema**: *Edit* on the diagram (not on read-only connections) adds tables,
+  changes or drops existing ones in the table editor's form, and draws a foreign key by
+  dragging the small circle of a column onto another table (to its primary key). The edits
+  stay with the tab until discarded; *Generate DDL* opens the script that makes them, tables
+  in the order their foreign keys need, in the SQL editor.
+- **Create view, function, trigger or sequence**: right-click a schema, *Create*, or a table,
+  *Create trigger…*: a form for the object with the SQL previewed as you type, then *Open in
+  editor* or *Create*. PostgreSQL triggers get their trigger function written too.
 - **Check schema…**: tables without a primary key, foreign keys without an index, duplicate
   indexes and indexes that another one starts with, foreign keys of another type than the
   column they reference. The `CREATE INDEX` or `DROP INDEX` that fixes a finding opens in the
@@ -319,6 +328,21 @@ created again with its rows copied.
   another one: the script that makes it like this one (tables created, altered and dropped,
   in an order the foreign keys allow) opens in the SQL editor of that connection. Tables and
   their parts are matched by name, so a renamed column is a dropped column and a new one.
+  *Output* can also save the script as a Flyway migration (`V<timestamp>__<description>.sql`)
+  or a Liquibase changelog in formatted SQL, one changeset per statement.
+- **Compare data with…**: right-click a table and pick a table of another database of the
+  same kind (or of this one): rows are matched by primary key, optionally filtered with a
+  `WHERE` condition, and counted as same, only in the source, changed or only in the target,
+  with the first 200 differences shown cell by cell. *Open script* gives the `INSERT`,
+  `UPDATE` (changed columns only) and, if asked, `DELETE` statements that make the target
+  like the source. Up to 500,000 rows per table.
+- **Schema history**: snapshots of a schema's tables, taken by hand or by a scheduled task
+  (only when something changed); tick two, or one and *Now*, to see what changed by table
+  and open the script between them.
+- **Migration status…**: point it at a project folder and see which Flyway, Liquibase,
+  Prisma, Alembic or Rails migrations the database has applied, which are pending, which
+  were changed after being applied (Flyway and Prisma checksums), failed, or exist only in
+  the database.
 
 ## Visual query builder
 

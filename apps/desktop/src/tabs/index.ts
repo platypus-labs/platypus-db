@@ -7,5 +7,6 @@ import "./explain";
 import "./tableEditor";
 import "./diff";
 import "./erd";
+import "./schemaHistory";
 import "./admin";
 import "./notebook";

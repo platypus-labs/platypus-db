@@ -6095,10 +6095,18 @@ dependencies = [
 name = "platypus-schema"
 version = "0.2.1"
 dependencies = [
+ "crc32fast",
  "futures",
  "platypus-core",
+ "platypus-driver-sqlite",
  "platypus-sql",
+ "quick-xml",
+ "regex",
  "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -6115,6 +6123,7 @@ dependencies = [
  "aes",
  "argon2",
  "cbc",
+ "chrono",
  "keyring",
  "platypus-core",
  "ring",

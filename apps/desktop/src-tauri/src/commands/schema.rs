@@ -2,8 +2,9 @@
 //! that script (see `platypus-schema`).
 
 use platypus_core::DriverKind;
-use platypus_schema::{Finding, SchemaTable, Script, TableDesign};
+use platypus_schema::{ChangelogFormat, Finding, ObjectForm, SchemaTable, Script, TableDesign};
 use platypus_sql::Dialect;
+use platypus_transfer::compare::{CompareOptions, DataDiff, TableRef, compare_data};
 use serde::Serialize;
 use tauri::State;
 
@@ -30,6 +31,33 @@ pub struct DesignScript {
     sql: String,
 }
 
+impl DesignScript {
+    /// `script` with its text in `dialect`.
+    fn new(dialect: Dialect, script: Script) -> Self {
+        Self {
+            sql: script.text(dialect),
+            script,
+        }
+    }
+}
+
+/// The dialect shared by two sessions, or `different_databases` with `message` when they are
+/// databases of different kinds: schemas and tables are compared only between the same kind.
+fn shared_dialect(
+    state: &AppState,
+    source_session: u64,
+    target_session: u64,
+    message: &str,
+) -> CommandResult<Dialect> {
+    let source = Dialect::from(state.session(source_session)?.config.driver);
+    let target = Dialect::from(state.session(target_session)?.config.driver);
+    if source == target {
+        Ok(target)
+    } else {
+        Err(CommandError::new("different_databases", message))
+    }
+}
+
 /// The script that turns `original` into `design` in `schema`, or creates `design` when
 /// there is no `original`.
 #[tauri::command]
@@ -42,10 +70,47 @@ pub fn table_script(
     let dialect = Dialect::from(driver);
     let script = platypus_schema::script(dialect, &schema, original.as_ref(), &design)
         .map_err(|e| CommandError::new("invalid_design", e))?;
-    Ok(DesignScript {
-        sql: script.text(dialect),
-        script,
-    })
+    Ok(DesignScript::new(dialect, script))
+}
+
+/// A script from [`compare_schemas`] as the text of a Flyway migration or a Liquibase changelog.
+#[tauri::command]
+#[must_use]
+pub fn schema_changelog(
+    driver: DriverKind,
+    script: Script,
+    format: ChangelogFormat,
+    description: String,
+    author: String,
+    id: String,
+) -> String {
+    platypus_schema::changelog(
+        format,
+        Dialect::from(driver),
+        &script,
+        &description,
+        &author,
+        &id,
+    )
+}
+
+/// The file name Flyway expects for a migration with this `version` and `description`.
+#[tauri::command]
+#[must_use]
+pub fn flyway_file_name(version: &str, description: &str) -> String {
+    platypus_schema::flyway_file_name(version, description)
+}
+
+/// The statements that create the view, sequence, function or trigger `form` describes, to
+/// be reviewed and run one by one; the error is what the database cannot do, for the dialog.
+#[tauri::command]
+pub fn object_form_sql(
+    driver: DriverKind,
+    schema: String,
+    form: ObjectForm,
+) -> CommandResult<Vec<String>> {
+    platypus_schema::create_object(Dialect::from(driver), &schema, &form)
+        .map_err(|e| CommandError::new("invalid_form", e))
 }
 
 /// Runs a script from [`table_script`] on the session and commits it (see [`one_off`]).
@@ -116,14 +181,12 @@ pub async fn compare_schemas(
     target_session: u64,
     target_schema: String,
 ) -> CommandResult<DesignScript> {
-    let source_dialect = Dialect::from(state.session(source_session)?.config.driver);
-    let dialect = Dialect::from(state.session(target_session)?.config.driver);
-    if source_dialect != dialect {
-        return Err(CommandError::new(
-            "different_databases",
-            "Schemas can be compared only between databases of the same kind.",
-        ));
-    }
+    let dialect = shared_dialect(
+        &state,
+        source_session,
+        target_session,
+        "Schemas can be compared only between databases of the same kind.",
+    )?;
     let source = state.live(source_session).await?;
     let target = state.live(target_session).await?;
     let wanted = platypus_schema::load_designs(source.as_ref(), dialect, &source_schema).await?;
@@ -131,8 +194,77 @@ pub async fn compare_schemas(
     let script =
         platypus_schema::compare(dialect, &target_schema, &source_schema, &wanted, &current)
             .map_err(|e| CommandError::new("invalid_design", e))?;
-    Ok(DesignScript {
-        sql: script.text(dialect),
-        script,
-    })
+    Ok(DesignScript::new(dialect, script))
+}
+
+/// The script for the edits made on an ER diagram of `schema`: the wanted design of each
+/// table created or changed, and the tables dropped, against the tables as they are now.
+#[tauri::command]
+pub async fn erd_script(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: String,
+    designs: Vec<TableDesign>,
+    dropped: Vec<String>,
+) -> CommandResult<DesignScript> {
+    let dialect = Dialect::from(state.session(session_id)?.config.driver);
+    let live = state.live(session_id).await?;
+    let current = platypus_schema::load_designs(live.as_ref(), dialect, &schema).await?;
+    let script = platypus_schema::edited_script(dialect, &schema, &current, &designs, &dropped)
+        .map_err(|e| CommandError::new("invalid_design", e))?;
+    Ok(DesignScript::new(dialect, script))
+}
+
+/// Which migrations of the project in `folder` (Flyway, Liquibase, Prisma, Alembic, Rails) are
+/// applied to the database, which are pending, and which differ from what was applied.
+#[tauri::command]
+pub async fn migration_status(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: String,
+    folder: String,
+) -> CommandResult<Vec<platypus_schema::ToolStatus>> {
+    let path = std::path::PathBuf::from(&folder);
+    if !path.is_dir() {
+        return Err(CommandError::new(
+            "folder_not_found",
+            format!("The folder {folder} does not exist."),
+        ));
+    }
+    let dialect = Dialect::from(state.session(session_id)?.config.driver);
+    let conn = state.live(session_id).await?;
+    // A large project folder takes a while to walk: not on the async threads.
+    let found = tokio::task::spawn_blocking(move || platypus_schema::detect(&path))
+        .await
+        .map_err(|e| CommandError::new("migrations", e.to_string()))?;
+    Ok(platypus_schema::migration_status(conn.as_ref(), dialect, &schema, found).await?)
+}
+
+/// The rows that differ between `source` on the source session and `target` on the target
+/// session, and the statements that make the target's rows like the source's.
+#[tauri::command]
+pub async fn compare_table_data(
+    state: State<'_, AppState>,
+    source_session: u64,
+    source: TableRef,
+    target_session: u64,
+    target: TableRef,
+    options: CompareOptions,
+) -> CommandResult<DataDiff> {
+    let dialect = shared_dialect(
+        &state,
+        source_session,
+        target_session,
+        "Tables can be compared only between databases of the same kind.",
+    )?;
+    let from = state.live(source_session).await?;
+    let to = state.live(target_session).await?;
+    Ok(compare_data(
+        from.as_ref(),
+        to.as_ref(),
+        dialect,
+        (&source, &target),
+        &options,
+    )
+    .await?)
 }

@@ -3,11 +3,15 @@
 //! `CREATE TABLE` for a new table. [`apply`] runs that script. A whole schema is read with
 //! [`read_tables`] for the ER diagram and [`lint`].
 
+mod changelog;
 mod compare;
 mod create;
 mod ddl;
+mod diff;
 mod lint;
+mod migrations;
 mod model;
+mod objects;
 
 use std::fmt::Write;
 
@@ -17,10 +21,17 @@ use platypus_core::{
 use platypus_sql::Dialect;
 use serde::{Deserialize, Serialize};
 
-pub use compare::compare;
+pub use changelog::{ChangelogFormat, changelog, flyway_file_name};
+pub use compare::{compare, edited_script};
 pub use ddl::script;
+pub use diff::{ChangeKind, SchemaChange, summary};
 pub use lint::{Finding, LintKind, lint};
+pub use migrations::{
+    Applied, AppliedState, Found, Local, Migration, Status, Tool, ToolStatus, detect, evaluate,
+    flyway_checksum, prisma_checksum, status as migration_status,
+};
 pub use model::{SchemaTable, load_designs, read_tables, tables_of};
+pub use objects::{Event, ObjectForm, Param, Timing, create_object};
 
 /// A table as the editor shows it. Each part keeps its name in the database (`original`) so
 /// the script can tell a renamed or changed part from a new one.
