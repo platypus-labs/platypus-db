@@ -12,6 +12,7 @@ import { appMessage } from "./storeErrors";
 import { startModalA11y } from "./ui/modalA11y";
 import { startErrorLog } from "./diagnostics/Diagnostics";
 import { startAgentProposals } from "./agents/proposals";
+import { startAgentBridge } from "./agents/bridge";
 import "./styles/index.css";
 
 paintCached();
@@ -27,6 +28,7 @@ void loadSettings()
   .then(() => {
     startAppearance();
     startAgentProposals();
+    startAgentBridge();
     createRoot(document.getElementById("root")!).render(
       <StrictMode>
         {/* The other windows show one tab: one moved there, or the quick query. */}
