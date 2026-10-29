@@ -108,7 +108,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | M — Analisi dei dati | ✅ fatto (P2) |
 | N — Accesso per agenti (MCP) | ✅ fatto (P1, P2) |
 | O — Collaborazione e sync | libero |
-| P — Piattaforma, qualità e release | 🔒 Delfa · group-p-readme · 2026-10-29 |
+| P — Piattaforma, qualità e release | ✅ fatto (P2 in parte) |
 | Q — Documentazione e catalogo dei dati | ✅ fatto (P2) |
 | R — Revisione grafica | ⏸ in attesa: si prende quando tutti gli altri gruppi sono completati |
 | S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
