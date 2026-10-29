@@ -10,6 +10,9 @@ interface Block {
   columns: (string | null)[][];
 }
 
+/** What the grid reads of a result's rows: a `RowCache`, or one with computed columns. */
+export type Rows = Pick<RowCache, "get" | "ensure">;
+
 /**
  * Client-side window over a query result. Rows are fetched in blocks as the grid scrolls;
  * a block fetched while the query was still running is refetched once more rows exist.

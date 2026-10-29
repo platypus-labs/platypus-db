@@ -23,7 +23,8 @@ registerAction({
 });
 
 /** The whole values of the selected cells (`null` is NULL), pending edits included. The grid
- *  holds only the rows it has drawn, cut for display: the result's rows come from the backend. */
+ *  holds only the rows it has drawn, cut for display: the result's rows come from the backend.
+ *  Computed columns are not on the backend: theirs are the values the grid works out. */
 async function selectedValues({ grid, source }: GridActionContext): Promise<(string | null)[][]> {
   const sel = grid.selection()!;
   // The new rows of the data editor come first, then the result's rows in order.
@@ -35,7 +36,9 @@ async function selectedValues({ grid, source }: GridActionContext): Promise<(str
   for (let r = sel.r0; r <= sel.r1; r++) {
     const row = grid.dataRow(r);
     rows.push(
-      sel.cols.map((c, j) => {
+      sel.shown.map((c) => {
+        const j = sel.cols.indexOf(c);
+        if (j < 0) return grid.value(r, c) ?? null;
         const edit = source?.edit?.pending(r, c);
         if (edit?.kind === "value") return edit.text;
         if (edit?.kind === "null") return null;

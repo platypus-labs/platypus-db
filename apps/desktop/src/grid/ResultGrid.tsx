@@ -15,6 +15,8 @@ import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
 import { t } from "../i18n";
 import { workbench } from "../workbench";
 import { ColumnsDialog } from "./ColumnsDialog";
+import { ComputedDialog } from "./ComputedDialog";
+import { type ComputedColumn, compileAll, computedInfo, loadComputed, saveComputed } from "./computed";
 import { FormattingDialog } from "./FormattingDialog";
 import { plainNumber } from "./formats";
 import { type FormatRule, type Ranges, formatCell, loadRules, parseNumber, resolveRules, saveRules, scaledColumns } from "./formatting";
@@ -29,7 +31,7 @@ import { useGridSearch } from "./features/search";
 import { useSelectionStats } from "./features/stats";
 import { useColumnProfile } from "../analysis/ColumnProfile";
 import { type ColumnLayout, EMPTY_LAYOUT, loadLayout, saveLayout } from "./layout";
-import type { RowCache } from "./RowCache";
+import type { RowCache, Rows } from "./RowCache";
 
 export const valuePanelSetting = defineSetting({
   key: "grid.value_panel",
@@ -47,6 +49,8 @@ export interface GridFeatures {
   valuePanelOpen: boolean;
   toggleValuePanel(): void;
   openColumns(): void;
+  /** Opens the computed columns. */
+  openComputed(): void;
   recordView: boolean;
   toggleRecordView(): void;
   /** Opens the grouping panel on these result columns. */
@@ -169,6 +173,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
     if (layoutKey) saveLayout(layoutKey, next);
   };
   const formatting = useFormatting(layoutKey, jobId, columns, rowCount, editor.topRows, cache, editor.edit?.pending);
+  const computed = useComputed(layoutKey, columns, cache);
   // While the screen may be shared, the values of sensitive columns show as dots.
   const mask = useMask();
   const masked = useMemo(() => columns.map((c) => !!mask?.(c)), [columns, mask]);
@@ -195,6 +200,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
     valuePanelOpen: panelOpen,
     toggleValuePanel: () => (mongo ? setDocumentOpen(!documentOpen) : void setSetting(valuePanelSetting, !panelOpen)),
     openColumns: () => setColumnsOpen(true),
+    openComputed: computed.open,
     recordView,
     toggleRecordView: () => {
       setRecordView(!recordView);
@@ -234,7 +240,8 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
         <div className="result-grid-main" ref={box} onKeyDown={editor.onKeyDown}>
           <DataGrid
             ref={grid}
-            columns={columns}
+            columns={computed.columns}
+            resultColumns={columns.length}
             headerTitle={
               notes || headerHint
                 ? (col) => [notes ? annotation(noteOf(col)) : undefined, headerHint].filter(Boolean).join("\n") || undefined
@@ -242,13 +249,13 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
             }
             headerVersion={notesVersion}
             headerMarked={notes ? (col) => { const e = noteOf(col); return !!(e?.note || e?.tags.length); } : undefined}
-            onHeaderHover={profile.onHeaderHover}
+            onHeaderHover={(hover) => profile.onHeaderHover(hover && hover.col < columns.length ? hover : null)}
             rowCount={rowCount}
             topRows={editor.topRows}
-            cache={cache}
+            cache={computed.rows}
             version={version}
             sort={sort}
-            onHeaderClick={onHeaderClick}
+            onHeaderClick={onHeaderClick && ((col) => col < columns.length && onHeaderClick(col))}
             source={source ? { ...source, edit: editor.edit, features, references: refs.references } : null}
             decorate={decorate}
             overlay={
@@ -257,7 +264,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
                 {profile.popover}
               </>
             }
-            onCellDoubleClick={editor.onCellDoubleClick}
+            onCellDoubleClick={editor.onCellDoubleClick && ((cell) => cell.col < columns.length && editor.onCellDoubleClick!(cell))}
             onScroll={editor.onScroll}
             onFocusChange={setFocused}
             onSelectionChange={() => {
@@ -350,11 +357,48 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
       {editor.dialog}
       {compared && <CompareRows jobId={jobId} columns={columns} rows={compared} onClose={() => setCompared(null)} />}
       {formatting.dialog}
+      {computed.dialog}
       {columnsOpen && (
-        <ColumnsDialog columns={columns} layout={layout} onChange={changeLayout} onClose={() => setColumnsOpen(false)} />
+        <ColumnsDialog columns={computed.columns} layout={layout} onChange={changeLayout} onClose={() => setColumnsOpen(false)} />
       )}
     </div>
   );
+}
+
+/** The computed columns of a result (see `computed.ts`), kept for a table: the grid shows
+ *  them after the result's columns, with their values worked out from the rows loaded. */
+function useComputed(key: string | null, columns: ColumnInfo[], cache: RowCache) {
+  const [list, setList] = useState<ComputedColumn[]>(() => (key ? loadComputed(key) : []));
+  useEffect(() => setList(key ? loadComputed(key) : []), [key]);
+  const [open, setOpen] = useState(false);
+  // Those that no longer compile (a column gone from the query) are left out of the grid.
+  const usable = useMemo(
+    () => compileAll(list, columns).flatMap((c) => (c.evaluate ? [{ info: computedInfo(c.column), evaluate: c.evaluate }] : [])),
+    [list, columns],
+  );
+  const all = useMemo(() => (usable.length ? [...columns, ...usable.map((c) => c.info)] : columns), [columns, usable]);
+  const rows: Rows = useMemo(() => {
+    if (!usable.length) return cache;
+    const n = columns.length;
+    return {
+      get: (row, col) => (col < n ? cache.get(row, col) : usable[col - n]?.evaluate((c) => cache.get(row, c))),
+      ensure: (first, last, available) => cache.ensure(first, last, available),
+    };
+  }, [cache, columns.length, usable]);
+
+  const change = (next: ComputedColumn[]) => {
+    setList(next);
+    if (key) saveComputed(key, next);
+  };
+
+  return {
+    columns: all,
+    rows,
+    open: () => setOpen(true),
+    dialog: open && (
+      <ComputedDialog columns={columns} computed={list} saved={key !== null} onChange={change} onClose={() => setOpen(false)} />
+    ),
+  };
 }
 
 /** How long the rows loaded stay the same before the color scales span them again: a result

@@ -2125,6 +2125,24 @@ const fr: Record<string, string> = {
   "An empty notebook: add a SQL or a text cell.": "Un notebook vide : ajoutez une cellule SQL ou texte.",
   "New notebook": "Nouveau notebook",
   "Open notebook…": "Ouvrir un notebook…",
+  // Computed columns
+  "The expression is not valid.": "L'expression n'est pas valide.",
+  "No column named {name}.": "Aucune colonne nommée {name}.",
+  "No function named {name}.": "Aucune fonction nommée {name}.",
+  "Wrong number of values for {name}.": "Nombre de valeurs incorrect pour {name}.",
+  "The expression is not valid near: {text}": "L'expression n'est pas valide près de : {text}",
+  "The expression is incomplete.": "L'expression est incomplète.",
+  "A column named {name} already exists.": "Une colonne nommée {name} existe déjà.",
+  "Computed columns": "Colonnes calculées",
+  "Columns worked out from the others of the same row, only on screen. They are kept for this table.": "Colonnes calculées à partir des autres de la même ligne, uniquement à l'écran. Elles sont conservées pour cette table.",
+  "Columns worked out from the others of the same row, only on screen. They last while this result is open.": "Colonnes calculées à partir des autres de la même ligne, uniquement à l'écran. Elles durent tant que ce résultat est ouvert.",
+  "No computed columns yet.": "Aucune colonne calculée pour l'instant.",
+  "New computed column": "Nouvelle colonne calculée",
+  "Edit computed column": "Modifier la colonne calculée",
+  "Expression": "Expression",
+  "Columns by name, quoted with \"…\" when they have spaces; + - * / %, || to join text, comparisons, AND, OR, NOT; functions: {list}.": "Colonnes par nom, entre \"…\" si elles contiennent des espaces ; + - * / %, || pour joindre du texte, comparaisons, AND, OR, NOT ; fonctions : {list}.",
+  "Update column": "Mettre à jour la colonne",
+  "Computed columns…": "Colonnes calculées…",
 };
 
 export default fr;

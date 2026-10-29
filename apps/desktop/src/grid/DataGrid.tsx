@@ -15,7 +15,7 @@ import { ContextMenu, type MenuState } from "../components/ContextMenu";
 import { THEME_EVENT } from "../theme";
 import { workbench } from "../workbench";
 import { type ColumnLayout, EMPTY_LAYOUT, moveColumn, resolveLayout } from "./layout";
-import type { RowCache } from "./RowCache";
+import type { Rows } from "./RowCache";
 import { shiftSelection } from "./selectionShift";
 import "./actions";
 
@@ -51,6 +51,8 @@ export interface GridSelection {
   r1: number;
   /** Selected result columns, left to right as shown; hidden ones are left out. */
   cols: number[];
+  /** Every selected column as shown, the computed ones too (see `resultColumns`). */
+  shown: number[];
 }
 
 /** How a feature changes a cell's look, e.g. an edited value or a search match. */
@@ -133,7 +135,11 @@ interface Props {
   columns: ColumnInfo[];
   /** Rows of the result, in `cache`. */
   rowCount: number;
-  cache: RowCache;
+  cache: Rows;
+  /** How many of `columns` are the result's; the ones after them are computed by the grid
+   *  (see `computed.ts`) and left out of `selection()` and `visibleColumns()`, which features
+   *  use to read the result on the backend. All of them when not given. */
+  resultColumns?: number;
   /** Rows drawn above the result's rows, e.g. new rows of the data editor; their cells
    *  come from `decorate`. Row indices of the grid count them first. */
   topRows?: number;
@@ -219,6 +225,7 @@ export function DataGrid({
   columns,
   rowCount,
   cache,
+  resultColumns,
   topRows = 0,
   version,
   sort = null,
@@ -259,6 +266,7 @@ export function DataGrid({
   // Latest props for the imperative draw loop.
   const latest = {
     columns,
+    resultColumns,
     rowCount,
     topRows,
     cache,
@@ -634,13 +642,18 @@ export function DataGrid({
     if (!frame.current) frame.current = requestAnimationFrame(draw);
   }, [draw]);
 
+  const inResult = (col: number) => col < (props.current.resultColumns ?? props.current.columns.length);
   const api: GridApi = {
     columns: () => props.current.columns,
     rowCount: total,
     value: (row, col) => cellText(row, col, props.current.decorate?.(row, col)),
     selection: () => {
       const s = selectionRect();
-      return s && { r0: s.r0, r1: s.r1, cols: props.current.resolved.view.slice(s.d0, s.d1 + 1) };
+      if (!s) return null;
+      const shown = props.current.resolved.view.slice(s.d0, s.d1 + 1);
+      const cols = shown.filter(inResult);
+      // Features read the selected result columns on the backend: with none, nothing is selected.
+      return cols.length ? { r0: s.r0, r1: s.r1, cols, shown } : null;
     },
     focused: () => focus.current,
     dataRow: (row) => (row < props.current.topRows ? null : row - props.current.topRows),
@@ -666,7 +679,7 @@ export function DataGrid({
       anchor.current = { row: 0, col: view[0]! };
       setFocus({ row: total() - 1, col: view.at(-1)! }, true);
     },
-    visibleColumns: () => props.current.resolved.view,
+    visibleColumns: () => props.current.resolved.view.filter(inResult),
     layout: () => (props.current.onLayoutChange ? props.current.layout : null),
     setLayout: (l) => props.current.onLayoutChange?.(l),
     cellRect: (row, col) => {

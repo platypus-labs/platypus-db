@@ -2125,6 +2125,24 @@ const de: Record<string, string> = {
   "An empty notebook: add a SQL or a text cell.": "Ein leeres Notizbuch: Fügen Sie eine SQL- oder Textzelle hinzu.",
   "New notebook": "Neues Notizbuch",
   "Open notebook…": "Notizbuch öffnen…",
+  // Computed columns
+  "The expression is not valid.": "Der Ausdruck ist ungültig.",
+  "No column named {name}.": "Keine Spalte namens {name}.",
+  "No function named {name}.": "Keine Funktion namens {name}.",
+  "Wrong number of values for {name}.": "Falsche Anzahl von Werten für {name}.",
+  "The expression is not valid near: {text}": "Der Ausdruck ist ungültig bei: {text}",
+  "The expression is incomplete.": "Der Ausdruck ist unvollständig.",
+  "A column named {name} already exists.": "Eine Spalte namens {name} gibt es bereits.",
+  "Computed columns": "Berechnete Spalten",
+  "Columns worked out from the others of the same row, only on screen. They are kept for this table.": "Spalten, die aus den anderen derselben Zeile berechnet werden, nur auf dem Bildschirm. Sie bleiben für diese Tabelle erhalten.",
+  "Columns worked out from the others of the same row, only on screen. They last while this result is open.": "Spalten, die aus den anderen derselben Zeile berechnet werden, nur auf dem Bildschirm. Sie gelten, solange dieses Ergebnis offen ist.",
+  "No computed columns yet.": "Noch keine berechneten Spalten.",
+  "New computed column": "Neue berechnete Spalte",
+  "Edit computed column": "Berechnete Spalte bearbeiten",
+  "Expression": "Ausdruck",
+  "Columns by name, quoted with \"…\" when they have spaces; + - * / %, || to join text, comparisons, AND, OR, NOT; functions: {list}.": "Spalten nach Namen, in \"…\" bei Leerzeichen; + - * / %, || zum Verbinden von Text, Vergleiche, AND, OR, NOT; Funktionen: {list}.",
+  "Update column": "Spalte aktualisieren",
+  "Computed columns…": "Berechnete Spalten…",
 };
 
 export default de;
