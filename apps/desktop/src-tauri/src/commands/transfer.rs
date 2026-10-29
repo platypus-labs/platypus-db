@@ -186,7 +186,7 @@ pub async fn preview_transfer(
         target,
     )
     .await?;
-    if config.driver != DriverKind::Mongo {
+    if !matches!(config.driver, DriverKind::Mongo | DriverKind::Redis) {
         let at = (schema.as_deref(), table.as_str());
         let source = (&*source, Dialect::from(config.driver));
         // Without them the copy still works, as a plain table.
@@ -256,8 +256,8 @@ fn start(
                 !job.stopping()
             };
             let target = (&*target, dialect);
-            // MongoDB reads its collection with `find`, not SQL.
-            if driver == DriverKind::Mongo {
+            // MongoDB reads its collection with `find`, Redis a key type with `BROWSE`.
+            if matches!(driver, DriverKind::Mongo | DriverKind::Redis) {
                 let at = (plan.source_schema.as_deref(), plan.source_table.as_str());
                 let query = select_all(driver, at, None);
                 import_query(&*source, &query, target, &plan, progress).await

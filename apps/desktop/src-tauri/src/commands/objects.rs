@@ -123,6 +123,17 @@ pub fn generate_sql(
     if driver == DriverKind::Mongo {
         return mongo_statement(&target, request);
     }
+    // A key type's virtual table is only read; its keys change in the grid or the editor.
+    if driver == DriverKind::Redis {
+        return match request {
+            GenerateRequest::Select { limit } => Some(platypus_transfer::import::select_all(
+                driver,
+                (target.schema.as_deref(), &target.name),
+                limit,
+            )),
+            _ => None,
+        };
+    }
     let d = Dialect::from(driver);
     let name = ObjectName {
         schema: target.schema.as_deref(),
@@ -199,6 +210,13 @@ pub fn dialect_support(driver: DriverKind) -> DialectSupport {
             cascade: false,
             droppable: vec![ObjectKind::Table, ObjectKind::View],
             renamable: vec![ObjectKind::Table],
+        };
+    }
+    if driver == DriverKind::Redis {
+        return DialectSupport {
+            cascade: false,
+            droppable: Vec::new(),
+            renamable: Vec::new(),
         };
     }
     let d = Dialect::from(driver);

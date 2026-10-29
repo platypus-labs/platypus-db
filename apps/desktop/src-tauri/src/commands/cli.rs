@@ -34,6 +34,7 @@ fn program(driver: DriverKind) -> CommandResult<&'static str> {
         DriverKind::MySql => Ok("mysql"),
         DriverKind::Sqlite => Ok("sqlite3"),
         DriverKind::SqlServer => Ok("sqlcmd"),
+        DriverKind::Redis => Ok("redis-cli"),
         // DuckDB locks the file for the process that opens it, and the session holds it.
         DriverKind::DuckDb => Err(CommandError::new(
             "cli",
@@ -153,6 +154,31 @@ pub(super) fn mysql_connection(
     (args, env)
 }
 
+/// `redis-cli`'s arguments for `config` at `host:port`: database, user and TLS.
+fn redis_cli_args(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Vec<String> {
+    let mut args = vec!["-h".to_owned(), host.to_owned()];
+    if let Some(port) = port {
+        args.extend(["-p".to_owned(), port.to_string()]);
+    }
+    let db = config.database.trim().trim_start_matches("db");
+    if !db.is_empty() {
+        args.extend(["-n".to_owned(), db.to_owned()]);
+    }
+    if !config.user.is_empty() {
+        args.extend(["--user".to_owned(), config.user.clone()]);
+    }
+    if config.redis_tls() {
+        args.push("--tls".to_owned());
+        if !matches!(config.ssl_mode, SslMode::VerifyCa | SslMode::VerifyFull) {
+            args.push("--insecure".to_owned());
+        }
+        if let Some(cert) = &config.ssl_root_cert {
+            args.extend(["--cacert".to_owned(), cert.display().to_string()]);
+        }
+    }
+    args
+}
+
 /// The client's arguments and environment for `config`, reached at `host:port`.
 fn invocation(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Invocation {
     let mut args: Vec<String> = Vec::new();
@@ -185,6 +211,11 @@ fn invocation(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Invoc
             if matches!(config.auth(), Ok(Auth::Password)) {
                 env.extend(password.map(|p| ("SQLCMDPASSWORD", p)));
             }
+        }
+        DriverKind::Redis => {
+            args = redis_cli_args(config, host, port);
+            // The password goes in the environment, not on the command line.
+            env.extend(password.map(|p| ("REDISCLI_AUTH", p)));
         }
         // No client: `program` refuses them.
         DriverKind::ClickHouse
@@ -445,5 +476,17 @@ mod tests {
         assert!(program(DriverKind::ClickHouse).is_err());
         assert!(program(DriverKind::Libsql).is_err());
         assert!(program(DriverKind::Mongo).is_err());
+    }
+
+    #[test]
+    fn redis_cli_takes_the_password_from_the_environment() {
+        let config = ConnectionConfig::from_url("rediss://app:s3cret@h:6380/2").unwrap();
+        let (args, env) = invocation(&config, "h", Some(6380));
+        assert_eq!(
+            args,
+            ["-h", "h", "-p", "6380", "-n", "2", "--user", "app", "--tls"]
+        );
+        assert_eq!(env, [("REDISCLI_AUTH", "s3cret".to_owned())]);
+        assert!(!args.iter().any(|a| a.contains("s3cret")));
     }
 }

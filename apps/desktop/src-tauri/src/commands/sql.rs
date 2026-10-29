@@ -113,6 +113,9 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
     if driver == DriverKind::Mongo {
         return analyze_mongo(&sql, &map, cursor);
     }
+    if driver == DriverKind::Redis {
+        return analyze_redis(&sql, &map, cursor);
+    }
     let dialect = Dialect::from(driver);
     let statements = platypus_sql::split(&sql, dialect);
     let at = platypus_sql::statement_at(&sql, dialect, map.to_byte(cursor));
@@ -193,6 +196,12 @@ pub(crate) fn only_reads(sql: &str, driver: DriverKind) -> bool {
             shell::parse(&sql[range.clone()]).is_ok_and(|c| shell::kind(&c) == Kind::Query)
         });
     }
+    if driver == DriverKind::Redis {
+        use platypus_driver_redis::command;
+        return command::split(sql).iter().all(|range| {
+            command::parse(&sql[range.clone()]).is_ok_and(|c| c.kind() == command::Kind::Query)
+        });
+    }
     let dialect = Dialect::from(driver);
     platypus_sql::split(sql, dialect)
         .iter()
@@ -249,6 +258,41 @@ fn analyze_mongo(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
     }
 }
 
+/// [`analyze_sql`] for Redis commands, one per line, which have no parameters.
+fn analyze_redis(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
+    use platypus_driver_redis::command::{self, Kind};
+    let statements = command::split(src);
+    let at = command::statement_at(src, map.to_byte(cursor));
+    SqlAnalysis {
+        at_cursor: at.and_then(|at| statements.iter().position(|s| *s == at)),
+        batches: Vec::new(),
+        statements: statements
+            .iter()
+            .map(|range| {
+                let kind = command::parse(&src[range.clone()]).map_or(Kind::Other, |c| c.kind());
+                StatementSpan {
+                    start: map.to_utf16(range.start),
+                    end: map.to_utf16(range.end),
+                    read_only: kind == Kind::Query,
+                    kind: match kind {
+                        Kind::Query => "query",
+                        Kind::Dml => "dml",
+                        Kind::Ddl => "ddl",
+                        Kind::Other => "other",
+                    },
+                    unfiltered: Vec::new(),
+                    parameters: Vec::new(),
+                }
+            })
+            .collect(),
+    }
+}
+
+/// Whether the editor's text is SQL: not mongosh nor Redis commands.
+const fn speaks_sql(driver: DriverKind) -> bool {
+    !matches!(driver, DriverKind::Mongo | DriverKind::Redis)
+}
+
 /// A problem the linter found by itself; offsets in UTF-16 units of the whole text.
 #[derive(Debug, Serialize)]
 pub struct LintIssueSpan {
@@ -297,8 +341,8 @@ pub fn lint_sql(sql: String, driver: DriverKind) -> SqlLint {
         issues: Vec::new(),
         statements: Vec::new(),
     };
-    // The linter checks SQL; mongosh has none of its issues.
-    if driver == DriverKind::Mongo {
+    // The linter checks SQL; mongosh and Redis commands have none of its issues.
+    if !speaks_sql(driver) {
         return out;
     }
     for s in platypus_sql::split(&sql, dialect) {
@@ -359,7 +403,7 @@ pub struct FormatSettings {
 /// Formats `sql` for the editor; only whitespace and the case of keywords change.
 #[tauri::command]
 pub fn format_sql(sql: String, driver: DriverKind, settings: FormatSettings) -> String {
-    if driver == DriverKind::Mongo {
+    if !speaks_sql(driver) {
         return sql;
     }
     let keyword_case = match settings.keyword_case.as_str() {
@@ -398,6 +442,18 @@ pub struct QuerySource {
 /// and anything but a plain `SELECT`.
 #[tauri::command]
 pub fn query_source(sql: String, driver: DriverKind) -> Option<QuerySource> {
+    if driver == DriverKind::Redis {
+        use platypus_driver_redis::command::{self, Command};
+        // `BROWSE` reads the rows of a key type's virtual table.
+        let Ok(Command::Browse(browse)) = command::parse(sql.trim()) else {
+            return None;
+        };
+        return Some(QuerySource {
+            schema: browse.db.map(platypus_driver_redis::meta::schema_name),
+            name: browse.kind.table().to_owned(),
+            items: vec![SourceItem::All],
+        });
+    }
     if driver == DriverKind::Mongo {
         return None;
     }
@@ -497,6 +553,42 @@ mod tests {
     }
 
     #[test]
+    fn analyzes_redis_commands() {
+        let src = "GET a
+# note
+SET b 1
+BROWSE db2.hash"
+            .to_owned();
+        let a = analyze_sql(src.clone(), DriverKind::Redis, 7);
+        let kinds: Vec<_> = a.statements.iter().map(|s| (s.kind, s.read_only)).collect();
+        assert_eq!(kinds, [("query", true), ("dml", false), ("query", true)]);
+        assert_eq!(a.at_cursor, Some(0));
+        assert!(only_reads(
+            "GET a
+HGETALL h",
+            DriverKind::Redis
+        ));
+        assert!(!only_reads(
+            "GET a
+DEL a",
+            DriverKind::Redis
+        ));
+        assert!(!only_reads("GET \"a", DriverKind::Redis));
+        let source = query_source("BROWSE db2.hash".to_owned(), DriverKind::Redis).unwrap();
+        assert_eq!(
+            (source.schema.as_deref(), source.name.as_str()),
+            (Some("db2"), "hash")
+        );
+        assert!(query_source("GET a".to_owned(), DriverKind::Redis).is_none());
+        assert!(sql_count_query("BROWSE hash".to_owned(), DriverKind::Redis).is_none());
+        assert!(
+            lint_sql("SELECT * FROM t".to_owned(), DriverKind::Redis)
+                .issues
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn splits_mongosh_scripts() {
         let src = "db.a.find()\ndb.b.deleteMany({})\nshow dbs".to_owned();
         let a = analyze_sql(src.clone(), DriverKind::Mongo, src.len());
@@ -516,8 +608,11 @@ mod tests {
 /// Whether the data viewer may rewrite `sql`: a single read-only query whose top level it can
 /// place changes in with certainty. The rewrites below return `None` for anything else.
 fn rewritable(sql: &str, driver: DriverKind) -> bool {
-    driver == DriverKind::Mongo
-        || platypus_sql::analyze(sql, Dialect::from(driver)).kind == StatementKind::Query
+    match driver {
+        DriverKind::Mongo => true,
+        DriverKind::Redis => false,
+        _ => platypus_sql::analyze(sql, Dialect::from(driver)).kind == StatementKind::Query,
+    }
 }
 
 /// `sql` sorted by `column` (descending when `desc`) or, with no column, without the
