@@ -301,7 +301,9 @@ impl Drop for Cursor {
 
 struct State {
     columns: Arc<Columns>,
+    /// The rows of the page read last, of which those from `next` on are still to give.
     rows: Vec<Vec<Value>>,
+    next: usize,
     cursor: Cursor,
     size: usize,
 }
@@ -329,6 +331,7 @@ pub async fn run(shared: &Arc<Shared>, sql: &str, options: &ExecOptions) -> Resu
     let state = State {
         columns,
         rows: reply.rows(),
+        next: 0,
         cursor: Cursor {
             shared: Arc::clone(shared),
             cursor: reply.cursor,
@@ -341,10 +344,10 @@ pub async fn run(shared: &Arc<Shared>, sql: &str, options: &ExecOptions) -> Resu
 
 async fn next_batch(mut state: State) -> Result<Option<(RecordBatch, State)>> {
     loop {
-        if !state.rows.is_empty() {
-            let take = state.size.min(state.rows.len());
-            let chunk: Vec<Vec<Value>> = state.rows.drain(..take).collect();
-            let batch = state.columns.batch(&chunk)?;
+        if state.next < state.rows.len() {
+            let end = state.rows.len().min(state.next + state.size);
+            let batch = state.columns.batch(&state.rows[state.next..end])?;
+            state.next = end;
             return Ok(Some((batch, state)));
         }
         let Some(cursor) = state.cursor.cursor.clone() else {
@@ -358,6 +361,7 @@ async fn next_batch(mut state: State) -> Result<Option<(RecordBatch, State)>> {
             .await?;
         let mut reply = SqlReply::parse(&reply.body)?;
         state.rows = reply.rows();
+        state.next = 0;
         state.cursor.cursor = reply.cursor;
     }
 }
