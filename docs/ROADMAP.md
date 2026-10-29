@@ -89,6 +89,7 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
+| Tab oggetto di una tabella (`objects/ObjectTab.tsx`): ci sono "Apri i dati" e "Modifica il DDL nell'editor", ma nessun pulsante porta all'editor grafico della tabella (colonne, indici, chiavi, vincoli), che si apre solo dal menu del navigator ("Modifica tabella…", F4): aggiungere "Modifica tabella" accanto agli altri, e dal tab dei dati un modo per passare alla struttura e all'editor | utente, 2026-10-29 |
 
 ### Lock dei gruppi
 
@@ -1107,6 +1108,7 @@ generata.
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | 🆕 **Inventario visivo**: una scheda per schermata e dialog con screenshot (chiaro/scuro, it/en) e i problemi trovati | P1 | N |
+| 🆕 **Tutto a portata di mano e comprensibile**: ogni pagina studiata perché l'utente capisca da sola cosa può fare lì; le azioni principali visibili sulla pagina stessa (pulsanti, intestazioni, stati vuoti con l'azione utile), non solo nei menu contestuali o nelle scorciatoie; dalla pagina di un oggetto si arriva a tutto ciò che lo riguarda (dati, struttura, editor grafico, DDL, diagramma). Esempio: l'editor grafico della tabella oggi si apre solo dal menu del navigator o con F4 | P1 | N |
 | 🆕 **Design token unici**: spaziature, raggi, ombre, dimensioni dei font e dei controlli da una scala sola; via i valori scritti a mano nei singoli componenti | P1 | N |
 | 🆕 Dialog, menu, tooltip, notifiche e pannelli con la stessa struttura (titolo, corpo, pulsanti, focus, Esc/Invio) | P1 | N |
 | 🆕 Stati vuoti, di caricamento e di errore uguali in tutta l'app, con testo e azione utile | P1 | N |
