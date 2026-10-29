@@ -228,12 +228,15 @@ impl Bridge {
         &self.link
     }
 
+    fn data_dir(&self) -> Result<&Path, String> {
+        self.data_dir
+            .as_deref()
+            .ok_or_else(|| "the app's data folder is unknown".to_owned())
+    }
+
     /// The token agents give, made the first time.
     pub fn token(&self) -> Result<String, String> {
-        let dir = self
-            .data_dir
-            .as_deref()
-            .ok_or("the app's data folder is unknown")?;
+        let dir = self.data_dir()?;
         let path = dir.join(TOKEN_FILE);
         match std::fs::read_to_string(&path) {
             Ok(token) if !token.trim().is_empty() => Ok(token.trim().to_owned()),
@@ -259,10 +262,7 @@ impl Bridge {
     }
 
     async fn serve(&self, port: u16, agent: Arc<platypus_mcp::Agent>) -> Result<(), String> {
-        let dir = self
-            .data_dir
-            .as_deref()
-            .ok_or("the app's data folder is unknown")?;
+        let dir = self.data_dir()?;
         let token = self.token()?;
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
             .await
@@ -313,11 +313,7 @@ impl Bridge {
 
     /// Makes a new token: clients set up with the old one are refused.
     pub fn regenerate(&self) -> Result<(), String> {
-        let dir = self
-            .data_dir
-            .as_deref()
-            .ok_or("the app's data folder is unknown")?;
-        new_token(dir).map(drop)
+        new_token(self.data_dir()?).map(drop)
     }
 
     pub fn status(&self, enabled: bool, port: u16) -> BridgeStatus {

@@ -30,18 +30,24 @@ export function AgentBridge() {
     api.agentBridge().then(shown, (e: unknown) => setError(toCommandError(e).message));
   }, []);
 
-  /** Stores `key` and starts the bridge again with it. */
-  const change = async (key: string, value: boolean | number | null) => {
+  /** Shows the status `work` ends with, the controls disabled meanwhile. */
+  const busyWhile = async (work: () => Promise<BridgeStatus>) => {
     setBusy(true);
-    setError(null);
     try {
-      await setStored(key, value);
-      shown(await api.restartAgentBridge());
+      shown(await work());
     } catch (e) {
       setError(toCommandError(e).message);
     } finally {
       setBusy(false);
     }
+  };
+  /** Stores `key` and starts the bridge again with it. */
+  const change = (key: string, value: boolean | number | null) => {
+    setError(null);
+    return busyWhile(async () => {
+      await setStored(key, value);
+      return api.restartAgentBridge();
+    });
   };
   const applyPort = () => {
     const n = Number(port);
@@ -54,14 +60,7 @@ export function AgentBridge() {
   };
   const regenerate = async () => {
     if (!(await ask(t("Make a new token? Clients set up with the current one stop working until you set them up again."), { confirm: t("New token") }))) return;
-    setBusy(true);
-    try {
-      shown(await api.regenerateAgentToken());
-    } catch (e) {
-      setError(toCommandError(e).message);
-    } finally {
-      setBusy(false);
-    }
+    await busyWhile(api.regenerateAgentToken);
   };
 
   const enabled = status?.enabled ?? true;

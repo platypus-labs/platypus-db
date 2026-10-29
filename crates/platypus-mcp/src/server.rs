@@ -4,6 +4,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
+use crate::agent::locked;
+use crate::link::CLOSED;
 use crate::{Agent, AgentError, ExplainArgs, ProposeArgs, QueryArgs, SampleArgs, origin_name};
 use platypus_store::{HistoryStatus, NewAgentCall};
 use rmcp::handler::server::router::tool::ToolRouter;
@@ -164,10 +166,7 @@ impl PlatypusServer {
             return;
         };
         {
-            let mut greeted = self
-                .greeted
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut greeted = locked(&self.greeted);
             if greeted.is_some_and(|at| at.elapsed() < HELLO_EVERY) {
                 return;
             }
@@ -178,9 +177,7 @@ impl PlatypusServer {
         tokio::spawn(async move {
             // An app that opens later is told at the next call.
             if link.hello(&session, &agent).await.is_err() {
-                *greeted
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+                *locked(&greeted) = None;
             }
         });
     }
@@ -427,7 +424,7 @@ impl PlatypusServer {
                 .sessions()
                 .await
                 .map_err(|e| AgentError::Store(format!("cannot list the app's sessions: {e}"))),
-            None => Err(AgentError::Store("PlatypusDB is not open".to_owned())),
+            None => Err(AgentError::Store(CLOSED.to_owned())),
         };
         self.answer(call, json_text(result)).await
     }

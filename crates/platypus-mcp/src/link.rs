@@ -102,7 +102,7 @@ pub struct HttpLink {
 }
 
 /// The app is not open, or does not answer.
-const CLOSED: &str = "PlatypusDB is not open";
+pub(crate) const CLOSED: &str = "PlatypusDB is not open";
 
 impl HttpLink {
     /// The bridge of the app on the profile at `data_dir`, read again at each call: the app

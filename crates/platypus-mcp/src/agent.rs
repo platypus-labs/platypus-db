@@ -22,7 +22,7 @@ use uuid::Uuid;
 use crate::access::{self, UnfilteredRule};
 use crate::connect;
 use crate::error::{AgentError, Result};
-use crate::link::{AppLink, Verdict, WriteRequest};
+use crate::link::{AppLink, CLOSED, Verdict, WriteRequest};
 use crate::output::QueryResult;
 use crate::plan::PlanResult;
 use crate::profile::Profile;
@@ -348,7 +348,7 @@ impl std::fmt::Debug for Agent {
     }
 }
 
-fn locked<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(crate) fn locked<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
@@ -410,7 +410,7 @@ impl Agent {
             ))
         };
         let Some(link) = &self.link else {
-            return Err(cannot_ask("PlatypusDB is not open"));
+            return Err(cannot_ask(CLOSED));
         };
         let (estimated_rows, plan) = self.estimate(store, saved, statement).await;
         let request = WriteRequest {
@@ -673,22 +673,15 @@ impl Agent {
             let dialect = Dialect::from(saved.driver);
             access::check(&args.sql, dialect, access, unfiltered, &saved.name)
         };
-        let result = match checked {
-            Ok(statement) => {
-                let read_only = (access == AgentAccess::ReadOnly).then_some(saved.driver);
-                match self
-                    .allow_change((&store, &saved), statement, (origin, session))
-                    .await
-                {
-                    Ok(()) => {
-                        self.execute(&store, &saved, statement, read_only, &limits, stop)
-                            .await
-                    }
-                    Err(e) => Err(e),
-                }
-            }
-            Err(e) => Err(e),
-        };
+        let result = async {
+            let statement = checked?;
+            self.allow_change((&store, &saved), statement, (origin, session))
+                .await?;
+            let read_only = (access == AgentAccess::ReadOnly).then_some(saved.driver);
+            self.execute(&store, &saved, statement, read_only, &limits, stop)
+                .await
+        }
+        .await;
         let result = result.map(|outcome| QueryResult {
             outcome,
             elapsed: start.elapsed(),

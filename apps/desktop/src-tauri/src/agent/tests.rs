@@ -4,10 +4,12 @@ use platypus_mcp::{Agent, HttpLink, Profile};
 
 use super::*;
 
+type Events = Arc<Mutex<Vec<(String, serde_json::Value)>>>;
+
 /// A host with one session, keeping the events it was given.
 #[derive(Default)]
 struct FakeHost {
-    events: Arc<Mutex<Vec<(String, serde_json::Value)>>>,
+    events: Events,
 }
 
 impl Host for FakeHost {
@@ -25,8 +27,6 @@ impl Host for FakeHost {
         lock(&self.events).push((event.to_owned(), payload));
     }
 }
-
-type Events = Arc<Mutex<Vec<(String, serde_json::Value)>>>;
 
 /// A bridge serving on a free port, with its files in `dir`.
 async fn bridge(dir: &Path) -> (Bridge, Events) {
@@ -51,16 +51,22 @@ fn change(id: &str) -> WriteRequest {
     }
 }
 
-/// Waits until the bridge has a change waiting.
-async fn asked(bridge: &Bridge) -> Vec<WriteRequest> {
+/// What `ready` gives once it gives something, within two seconds.
+async fn eventually<T>(mut ready: impl FnMut() -> Option<T>) -> Option<T> {
     for _ in 0..200 {
-        let waiting = bridge.link().waiting();
-        if !waiting.is_empty() {
-            return waiting;
+        if let Some(value) = ready() {
+            return Some(value);
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    panic!("nothing asked");
+    None
+}
+
+/// Waits until the bridge has a change waiting.
+async fn asked(bridge: &Bridge) -> Vec<WriteRequest> {
+    eventually(|| Some(bridge.link().waiting()).filter(|w| !w.is_empty()))
+        .await
+        .expect("nothing asked")
 }
 
 #[tokio::test]
@@ -103,14 +109,10 @@ async fn agents_ask_the_user_through_the_bridge() {
     let asking = tokio::spawn(async move { link.confirm(change("c2")).await });
     asked(&bridge).await;
     asking.abort();
-    for _ in 0..200 {
-        if bridge.link().waiting().is_empty() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
     assert!(
-        bridge.link().waiting().is_empty(),
+        eventually(|| bridge.link().waiting().is_empty().then_some(()))
+            .await
+            .is_some(),
         "the change went with it"
     );
 
