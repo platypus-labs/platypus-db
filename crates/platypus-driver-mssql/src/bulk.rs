@@ -4,14 +4,14 @@
 //!
 //! The bulk copy takes values already of their column's type, so the text of each value is
 //! converted here, for the types of the columns `SELECT TOP 0` describes. All the rows are
-//! converted before the copy starts: a value that does not convert fails the load with
-//! nothing written. A column of a type the bulk copy cannot write (`money`, `xml`, `text`,
-//! `image`, `sql_variant`, CLR types) makes the whole load [`Error::Unsupported`], and the
-//! import writes those rows its other way.
+//! converted before the copy starts. A column of a type the bulk copy cannot write (`money`,
+//! `xml`, `text`, `image`, `sql_variant`, CLR types), or a value this conversion does not
+//! read, makes the whole load [`Error::Unsupported`] with nothing written: the import then
+//! writes those rows its other way, where SQL Server converts the text itself.
 
 use std::borrow::Cow;
 
-use platypus_core::{BulkRows, DbError, Error, Result};
+use platypus_core::{BulkRows, Error, Result};
 use tiberius::numeric::Numeric;
 use tiberius::time::{Date, DateTime, DateTime2, DateTimeOffset, SmallDateTime, Time};
 use tiberius::{
@@ -22,6 +22,8 @@ use crate::{Session, map_error};
 
 /// Days from 1 January of year 1 to 1 January 1900, where `datetime` counts from.
 const DAYS_TO_1900: u32 = 693_595;
+/// 1 January 1753, the first day of `datetime`, in its days since 1900.
+const DATETIME_FIRST_DAY: i32 = -53_690;
 
 /// What a column's values are converted to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,8 +118,13 @@ impl Kind {
             Self::Int => ColumnData::I32(Some(i32::try_from(int()?).ok()?)),
             Self::BigInt => ColumnData::I64(Some(int()?)),
             Self::Bit => ColumnData::Bit(Some(bit(text.trim())?)),
-            Self::Real => ColumnData::F32(Some(text.trim().parse().ok()?)),
-            Self::Float => ColumnData::F64(Some(text.trim().parse().ok()?)),
+            // Out of range parses as an infinity, which SQL Server has not.
+            Self::Real => ColumnData::F32(Some(
+                text.trim().parse().ok().filter(|f: &f32| f.is_finite())?,
+            )),
+            Self::Float => ColumnData::F64(Some(
+                text.trim().parse().ok().filter(|f: &f64| f.is_finite())?,
+            )),
             Self::Numeric { precision, scale } => {
                 ColumnData::Numeric(Some(numeric(text.trim(), precision, scale)?))
             }
@@ -125,10 +132,14 @@ impl Kind {
             Self::Text => ColumnData::String(Some(Cow::Borrowed(text))),
             Self::Binary if hex => ColumnData::Binary(Some(Cow::Owned(unhex(text)?))),
             Self::Binary => ColumnData::Binary(Some(Cow::Borrowed(text.as_bytes()))),
-            Self::Date => ColumnData::Date(Some(Date::new(date(text.trim())?))),
+            // As SQL Server casts them: the date or the time of a date and time.
+            Self::Date => ColumnData::Date(Some(local(text, 0)?.0)),
+            Self::Time(scale) if text.contains('-') => {
+                ColumnData::Time(Some(local(text, scale)?.1))
+            }
             Self::Time(scale) => ColumnData::Time(Some(time(text.trim(), scale)?)),
             Self::DateTime2(scale) => {
-                let (date, time, _) = datetime(text.trim(), scale)?;
+                let (date, time) = local(text, scale)?;
                 ColumnData::DateTime2(Some(DateTime2::new(date, time)))
             }
             Self::DateTimeOffset(scale) => ColumnData::DateTimeOffset(Some(offset(text, scale)?)),
@@ -167,6 +178,10 @@ pub(crate) async fn load(session: &mut Session, rows: &BulkRows<'_>) -> Result<u
             })
         })
         .collect::<Result<Vec<_>>>()?;
+    // No rows: the load only checks that the table takes a bulk copy.
+    if rows.rows.is_empty() {
+        return Ok(0);
+    }
     let data = rows
         .rows
         .iter()
@@ -197,13 +212,13 @@ fn token_row<'a>(
     for (((value, &hex), column), &kind) in row.iter().zip(hex).zip(columns).zip(kinds) {
         let data = match value {
             Some(text) => kind.value(text, hex).ok_or_else(|| {
-                invalid(format!(
+                refused(&format!(
                     "'{text}' is not a value of column {}",
                     column.col_name
                 ))
             })?,
             None if !column.base.flags.contains(ColumnFlag::Nullable) => {
-                return Err(invalid(format!(
+                return Err(refused(&format!(
                     "column {} does not allow NULL",
                     column.col_name
                 )));
@@ -215,11 +230,10 @@ fn token_row<'a>(
     Ok(out)
 }
 
-fn invalid(message: String) -> Error {
-    Error::Database(DbError {
-        message,
-        ..DbError::default()
-    })
+/// A value the bulk copy does not take: the import writes the rows its other way, and SQL
+/// Server tells whether the value converts.
+fn refused(message: &str) -> Error {
+    Error::Unsupported(format!("bulk copy: {message}"))
 }
 
 /// The NULL of a kind.
@@ -245,11 +259,12 @@ fn null(kind: Kind) -> ColumnData<'static> {
     }
 }
 
+/// `true`, `false` or a whole number, any but 0 true, as SQL Server reads a `bit`.
 fn bit(text: &str) -> Option<bool> {
     match text.to_ascii_lowercase().as_str() {
-        "1" | "true" => Some(true),
-        "0" | "false" => Some(false),
-        _ => None,
+        "true" => Some(true),
+        "false" => Some(false),
+        number => number.parse::<i64>().ok().map(|n| n != 0),
     }
 }
 
@@ -400,31 +415,7 @@ fn datetime(text: &str, scale: u8) -> Option<(Date, Time, &str)> {
 /// the offset in minutes, as `datetimeoffset` stores them.
 fn offset(text: &str, scale: u8) -> Option<DateTimeOffset> {
     let (date, time, tail) = datetime(text.trim(), scale)?;
-    let minutes: i64 = match tail {
-        "" | "Z" | "z" => 0,
-        _ => {
-            let sign = match tail.as_bytes()[0] {
-                b'+' => 1,
-                b'-' => -1,
-                _ => return None,
-            };
-            let digits: String = tail[1..].chars().filter(|c| *c != ':').collect();
-            if digits.len() != 2 && digits.len() != 4 || !digits.bytes().all(|b| b.is_ascii_digit())
-            {
-                return None;
-            }
-            let hours: i64 = digits[..2].parse().ok()?;
-            let mins: i64 = if digits.len() == 4 {
-                digits[2..].parse().ok()?
-            } else {
-                0
-            };
-            sign * (hours * 60 + mins)
-        }
-    };
-    if minutes.abs() > 14 * 60 {
-        return None;
-    }
+    let minutes = offset_minutes(tail)?;
     let unit = 10_i64.pow(u32::from(scale));
     let day = 86_400 * unit;
     let at =
@@ -439,16 +430,48 @@ fn offset(text: &str, scale: u8) -> Option<DateTimeOffset> {
     Some(DateTimeOffset::new(utc, i16::try_from(minutes).ok()?))
 }
 
+/// An offset (`+01:00`, `-0530`, `-05`, `Z`; none is UTC) in minutes.
+fn offset_minutes(tail: &str) -> Option<i64> {
+    if matches!(tail, "" | "Z" | "z") {
+        return Some(0);
+    }
+    let sign = match tail.as_bytes()[0] {
+        b'+' => 1,
+        b'-' => -1,
+        _ => return None,
+    };
+    let digits: String = tail[1..].chars().filter(|c| *c != ':').collect();
+    if !matches!(digits.len(), 2 | 4) || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let hours: i64 = digits[..2].parse().ok()?;
+    let minutes: i64 = if digits.len() == 4 {
+        digits[2..].parse().ok()?
+    } else {
+        0
+    };
+    let total = sign * (hours * 60 + minutes);
+    (total.abs() <= 14 * 60).then_some(total)
+}
+
+/// The date and time of a date and time, an offset after them ignored, as SQL Server
+/// casts one to a type without offset.
+fn local(text: &str, scale: u8) -> Option<(Date, Time)> {
+    let (date, time, tail) = datetime(text.trim(), scale)?;
+    offset_minutes(tail)?;
+    Some((date, time))
+}
+
 /// Days since 1 January 1900 and the time of day: in 1/`per_second` of a second, or in
 /// minutes (rounded to the nearest) when `per_second` is 0, for `datetime` and
 /// `smalldatetime`.
 fn since_1900(text: &str, per_second: u64) -> Option<(i32, u64)> {
     // Milliseconds: `datetime` keeps 1/300 of a second.
-    let (date, time, tail) = datetime(text, 3)?;
-    if !tail.is_empty() {
-        return None;
-    }
-    let days = i32::try_from(i64::from(date.days()) - i64::from(DAYS_TO_1900)).ok()?;
+    let (date, time) = local(text, 3)?;
+    // `datetime` starts in 1753.
+    let days = i32::try_from(i64::from(date.days()) - i64::from(DAYS_TO_1900))
+        .ok()
+        .filter(|&d| d >= DATETIME_FIRST_DAY)?;
     let ms = time.increments();
     let (ticks, per_day) = if per_second == 0 {
         ((ms + 30_000) / 60_000, 1440)
@@ -521,7 +544,35 @@ mod tests {
     }
 
     #[test]
+    fn dates_and_times_come_from_date_times_as_sql_server_casts() {
+        let date_of = |t| match Kind::Date.value(t, false) {
+            Some(ColumnData::Date(Some(d))) => Some(d.days()),
+            _ => None,
+        };
+        assert_eq!(date_of("2024-01-02 03:04:05"), date("2024-01-02"));
+        assert_eq!(date_of("2024-01-02T23:30:00-05:00"), date("2024-01-02"));
+        assert_eq!(date_of("2024-01-02 junk"), None);
+        assert!(matches!(
+            Kind::Time(0).value("2024-01-02 03:04:05", false),
+            Some(ColumnData::Time(Some(t))) if t.increments() == 3 * 3600 + 4 * 60 + 5
+        ));
+        assert!(
+            Kind::DateTime2(0)
+                .value("2024-01-02 03:04 nope", false)
+                .is_none()
+        );
+        assert!(Kind::DateTime.value("1752-12-31", false).is_none());
+        assert!(Kind::DateTime.value("1753-01-01", false).is_some());
+    }
+
+    #[test]
     fn values_convert_or_fail() {
+        assert!(matches!(
+            Kind::Bit.value("2", false),
+            Some(ColumnData::Bit(Some(true)))
+        ));
+        assert!(Kind::Real.value("3.5e38", false).is_none());
+        assert!(Kind::Float.value("1e309", false).is_none());
         assert!(Kind::TinyInt.value("256", false).is_none());
         assert!(matches!(
             Kind::Bit.value("TRUE", false),
