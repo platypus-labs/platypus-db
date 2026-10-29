@@ -343,17 +343,26 @@ impl Tunnel {
         })
     }
 
-    /// A local port forwarded to `host:port` through `proxy`. The proxy is tried once here,
-    /// so that a wrong address or login is said at once rather than as a lost connection.
+    /// A local port forwarded to `host:port` through `proxy`. The proxy is tried here, so
+    /// that a wrong address or login is said at once rather than as a lost connection, and
+    /// the stream it gives carries the first connection to the port.
     pub async fn through_proxy(proxy: &Proxy, host: &str, port: u16) -> Result<Self> {
-        drop(proxy.dial(host, port).await?);
+        let checked = Arc::new(std::sync::Mutex::new(Some(proxy.dial(host, port).await?)));
         let proxy = proxy.clone();
         let target = host.to_owned();
         let (local, accept) = listen("proxy", move |mut socket, _| {
+            let ready = checked
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take();
             let proxy = proxy.clone();
             let target = target.clone();
             async move {
-                if let Ok(mut stream) = proxy.dial(&target, port).await {
+                let stream = match ready {
+                    Some(stream) => Ok(stream),
+                    None => proxy.dial(&target, port).await,
+                };
+                if let Ok(mut stream) = stream {
                     let _ = tokio::io::copy_bidirectional(&mut socket, &mut stream).await;
                 }
             }
@@ -417,26 +426,19 @@ where
     Fut: Future<Output = Result<Box<dyn Connection>>>,
 {
     let mut config = config.clone();
-    let (before, after) = hooks::take(&mut config);
     // Read before the commands run: a wrong proxy is said without running them.
     Proxy::of(&config)?;
-    if let Some(command) = &before {
-        hooks::before(command).await?;
+    // On a failure below, the use goes, and the command after runs if it was the last.
+    let hooks = hooks::acquire(&mut config).await?;
+    let (inner, tunnel) = connect_direct(config, known_hosts, driver).await?;
+    if tunnel.is_none() && hooks.is_none() {
+        return Ok(inner);
     }
-    match connect_direct(config, known_hosts, driver).await {
-        Ok((inner, tunnel)) if tunnel.is_some() || after.is_some() => Ok(Box::new(Held {
-            inner,
-            tunnel,
-            after,
-        })),
-        Ok((inner, _)) => Ok(inner),
-        Err(e) => {
-            if let Some(command) = &after {
-                hooks::after(command);
-            }
-            Err(e)
-        }
-    }
+    Ok(Box::new(Held {
+        inner,
+        tunnel,
+        _hooks: hooks,
+    }))
 }
 
 /// The driver's connection, through the SSH tunnel or proxy when there is one.
@@ -460,26 +462,19 @@ where
     Ok((driver(config).await?, Some(tunnel)))
 }
 
-/// A connection with what lives as long as it: its SSH tunnel or proxy, and its command after
-/// disconnecting, run when it goes.
+/// A connection with what lives as long as it: its SSH tunnel or proxy, and its use of its
+/// commands, whose command after disconnecting runs when the last use goes. Dropped in this
+/// order: the connection closes before the command after runs.
 #[derive(Debug)]
 struct Held {
     inner: Box<dyn Connection>,
     tunnel: Option<Tunnel>,
-    after: Option<String>,
+    _hooks: Option<hooks::Use>,
 }
 
 impl Held {
     fn tunnel_closed(&self) -> bool {
         self.tunnel.as_ref().is_some_and(Tunnel::is_closed)
-    }
-}
-
-impl Drop for Held {
-    fn drop(&mut self) {
-        if let Some(command) = &self.after {
-            hooks::after(command);
-        }
     }
 }
 

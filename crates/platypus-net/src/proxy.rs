@@ -55,12 +55,6 @@ impl fmt::Display for Proxy {
     }
 }
 
-fn decode(text: &str) -> String {
-    percent_encoding::percent_decode_str(text)
-        .decode_utf8_lossy()
-        .into_owned()
-}
-
 impl Proxy {
     /// The proxy of `config`, if it has one; a blank option is none.
     pub fn of(config: &ConnectionConfig) -> Result<Option<Self>> {
@@ -86,7 +80,9 @@ impl Proxy {
         let (login, address) = match rest.rsplit_once('@') {
             Some((login, address)) => {
                 let (user, password) = login.split_once(':').unwrap_or((login, ""));
-                (Some((decode(user), decode(password))), address)
+                // As written, not percent-decoded: a password from `${env:…}` is the
+                // variable's value, and only the last `@` ends the login.
+                (Some((user.to_owned(), password.to_owned())), address)
             }
             None => (None, rest),
         };
@@ -281,12 +277,12 @@ mod tests {
 
     #[test]
     fn reads_the_urls() {
-        let socks = Proxy::parse("socks5://ada:p%40ss@proxy.lan:1081").unwrap();
+        let socks = Proxy::parse("socks5://ada:p@ss%41@proxy.lan:1081").unwrap();
         assert_eq!(socks.kind, Kind::Socks5);
         assert_eq!((socks.host.as_str(), socks.port), ("proxy.lan", 1081));
-        assert_eq!(socks.login, Some(("ada".to_owned(), "p@ss".to_owned())));
+        assert_eq!(socks.login, Some(("ada".to_owned(), "p@ss%41".to_owned())));
         assert!(
-            !format!("{socks:?}").contains("p@ss"),
+            !format!("{socks:?}").contains("p@ss%41"),
             "no password in logs"
         );
 

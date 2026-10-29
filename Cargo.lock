@@ -5998,7 +5998,6 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "futures",
- "percent-encoding",
  "platypus-core",
  "platypus-driver-mysql",
  "platypus-driver-pg",

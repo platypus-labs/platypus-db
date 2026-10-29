@@ -327,8 +327,8 @@ async fn forwards_through_a_proxy_alone() {
     let tunnel = Tunnel::of(&config, None).await.unwrap().unwrap();
     round_trip(&tunnel).await;
     round_trip(&tunnel).await;
-    // The first was the check made on opening.
-    assert_eq!(carried.load(Ordering::SeqCst), 3);
+    // The stream of the check made on opening carried the first.
+    assert_eq!(carried.load(Ordering::SeqCst), 2);
 
     config.options.clear();
     assert!(
