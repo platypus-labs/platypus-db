@@ -983,16 +983,18 @@ TablePlus 2.2.0 nel confronto delle dimensioni (BENCHMARKS.md, README e una tabe
 sezione Performance del sito); il piano di pubblicazione è in RELEASING.md. Il sito (`site/`) è stato ridisegnato: solo scuro,
 l'ornitorinco con i database intorno, una finestra dell'app disegnata in HTML dove una query si
 scrive da sola, il tour con le GIF, una griglia di funzionalità, i loghi dei database, le
-prestazioni e il confronto. Restano la verifica su macOS e su un desktop Linux con GPU, il test reale
-dell'auto-update, la firma, avvio e memoria di DBeaver accanto ai nostri e la distribuzione.
+prestazioni e il confronto. Restano la verifica su un desktop Linux con GPU, il test reale
+dell'auto-update, la firma Windows, avvio e memoria di DBeaver accanto ai nostri e la distribuzione;
+la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Program).
 
 | Attività | Prio |
 |---|---|
-| Verifica su macOS e Linux: build, avvio, memoria, scroll; correzioni di piattaforma (Linux fatto senza GPU, vedi BENCHMARKS.md) | P1 |
+| Verifica su Linux: build, avvio, memoria, scroll; correzioni di piattaforma (fatta senza GPU, vedi BENCHMARKS.md; resta un desktop con GPU) | P1 |
+| Verifica su macOS: build, avvio, memoria, scroll; correzioni di piattaforma (serve un Mac) | P3 |
 | ✅ Prima release su GitHub (v0.1.0, poi v0.2.0; v0.2.1 solo Windows, compilata in locale perché i minuti di Actions erano finiti) | P1 |
 | Test reale dell'auto-update da una release pubblicata alla successiva | P1 |
 | Firma del codice Windows (Authenticode), per l'avviso di SmartScreen: certificato **Certum Open Source Code Signing** (~30-60 €/anno, anche per singoli nell'UE, chiave su smart card o cloud SimplySign, firma con `bundle.windows.signCommand` di Tauri); alternative SignPath Foundation (gratis per l'open source, firma in CI) o Azure Trusted Signing (verificare se disponibile in Italia). La reputazione di SmartScreen cresce con i download anche con la firma. Piano in [RELEASING.md](RELEASING.md) | P2 |
-| Firma e notarizzazione macOS (Apple Developer Program, 99 $/anno) | P2 |
+| Firma e notarizzazione macOS (Apple Developer Program, 99 $/anno) | P3 |
 | ✅ 🆕 **Piano di pubblicazione** di ogni versione, anche senza CI: build Windows in locale, release bozza con `latest.json`, macOS e Linux aggiunti dal workflow quando ci sono i minuti; passi in [RELEASING.md](RELEASING.md) | P1 |
 | Benchmark affiancato con DBeaver, aggiornando `BENCHMARKS.md` | P2 |
 | ✅ Benchmark in CI con soglie (avvio, memoria, decode) per bloccare le regressioni | P2 |
