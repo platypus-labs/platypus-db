@@ -45,7 +45,7 @@
         <h1 id="hero-title">Small app.<br><span class="gradient">Every database.</span></h1>
         <p class="lead">PlatypusDB queries, browses and edits PostgreSQL, MySQL, SQL Server, Oracle, SQLite, DuckDB and a dozen more, from a window that opens in half a second.</p>
         <div class="actions">
-          <a class="button primary large" href="#download">Download for free</a>
+          <a class="button primary large" id="download-os" href="#download">Download for free</a>
           <a class="button ghost large" href="https://github.com/PaoloCisly/platypus-db">
             <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>Star on GitHub</span>
           </a>
@@ -69,7 +69,7 @@
 
     <!-- The app, drawn in HTML: a query types itself and its result appears. -->
     <section class="demo" aria-label="A query run in PlatypusDB">
-      <div class="app" role="img" aria-label="The PlatypusDB window: the navigator of a Shop database on the left, a query of the revenue by city typed in the SQL editor, and its rows in the result grid.">
+      <div class="app play" role="img" aria-label="The PlatypusDB window: the navigator of a Shop database on the left, a query of the revenue by city typed in the SQL editor, and its rows in the result grid.">
         <div class="app-bar">
           <span class="crumb"><b>Shop</b> / <i class="dot"></i>Shop dev <span class="muted">Development</span></span>
           <span class="search"><svg class="icon" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>Search tables, queries, commands<kbd>Ctrl+K</kbd></span>
@@ -143,16 +143,16 @@
         </div>
         <div class="screens">
           <figure class="panel" id="shot-rows" role="tabpanel" aria-labelledby="tab-rows">
-            <picture><source srcset="img/screenshots/hero.gif" media="(prefers-reduced-motion: no-preference)"><img src="img/screenshots/data-viewer.png" width="1600" height="960" loading="lazy" alt="A table opened from the navigator in the result grid and sorted from its header; in the animation it has a million rows."></picture>
+            <img src="img/screenshots/hero.gif" width="1600" height="960" loading="lazy" alt="A table opened from the navigator in the result grid and sorted from its header; in the animation it has a million rows.">
           </figure>
           <figure class="panel" id="shot-editor" role="tabpanel" aria-labelledby="tab-editor">
-            <picture><source srcset="img/screenshots/editor.gif" media="(prefers-reduced-motion: no-preference)"><img src="img/screenshots/autocomplete.png" width="1600" height="960" loading="lazy" alt="The SQL editor completing a JOIN from the foreign keys, with the alias and ON condition; in the animation the query then runs and its result is drawn as a chart."></picture>
+            <img src="img/screenshots/editor.gif" width="1600" height="960" loading="lazy" alt="The SQL editor completing a JOIN from the foreign keys, with the alias and ON condition; in the animation the query then runs and its result is drawn as a chart.">
           </figure>
           <figure class="panel" id="shot-edit" role="tabpanel" aria-labelledby="tab-edit">
-            <picture><source srcset="img/screenshots/data-editor.gif" media="(prefers-reduced-motion: no-preference)"><img src="img/screenshots/data-editor.png" width="1600" height="960" loading="lazy" alt="The result grid with edited cells and a new row highlighted, the SQL previewed before saving."></picture>
+            <img src="img/screenshots/data-editor.gif" width="1600" height="960" loading="lazy" alt="The result grid with edited cells and a new row highlighted, the SQL previewed before saving.">
           </figure>
           <figure class="panel" id="shot-explain" role="tabpanel" aria-labelledby="tab-explain">
-            <picture><source srcset="img/screenshots/explain.gif" media="(prefers-reduced-motion: no-preference)"><img src="img/screenshots/explain.png" width="1600" height="960" loading="lazy" alt="An explain analyze plan as a tree, each step tinted by its share of the time, with an index suggestion."></picture>
+            <img src="img/screenshots/explain.gif" width="1600" height="960" loading="lazy" alt="An explain analyze plan as a tree, each step tinted by its share of the time, with an index suggestion.">
           </figure>
           <figure class="panel" id="shot-docs" role="tabpanel" aria-labelledby="tab-docs">
             <img src="img/screenshots/catalog.png" width="1600" height="960" loading="lazy" alt="The object tab of a table with its database comment, a local note and tags, and the same for each column.">

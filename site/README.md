@@ -25,9 +25,8 @@ python -m http.server -d site 8000   # then http://localhost:8000
 ```
 
 The page is dark only. The window at the top is drawn in HTML and CSS: its query types itself
-and the result appears, all in CSS animations. The GIFs show only when the system does not ask
-for less motion; otherwise the PNG of the same screen shows, and the query is
-already typed.
+and the result appears, all in CSS animations. When the system asks for less motion the query is
+already typed; the GIFs of the tour play anyway, since they are what the tour shows.
 
 ## Update
 
