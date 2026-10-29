@@ -15,9 +15,8 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 use uuid::Uuid;
 
-use super::sql::{Source, contents, fill, register, set_tables};
+use super::sql::{Source, contents, fill_new, refill};
 use crate::commands::AppState;
-use crate::commands::summary::blocking;
 use crate::error::{CommandError, CommandResult};
 use crate::jobs::{Ending, MEMORY_LIMIT_BYTES};
 
@@ -186,11 +185,7 @@ pub async fn open_across_db(
 ) -> CommandResult<OpenedAcross> {
     let read = read_all(&state, &sources).await?;
     let tables = describe(&read);
-    let names: Vec<String> = read.iter().map(|s| s.table.clone()).collect();
-    let memory = format!("platypus-across-{}", Uuid::new_v4());
-    let filled = memory.clone();
-    let database = blocking(move || fill(&filled, &[], &read)).await?;
-    let connection = register(&state, &name, memory, names, database);
+    let connection = fill_new(&state, &name, read).await?;
     Ok(OpenedAcross { connection, tables })
 }
 
@@ -202,12 +197,11 @@ pub async fn reload_across_db(
     connection_id: Uuid,
     sources: Vec<AcrossSource>,
 ) -> CommandResult<Vec<AcrossTable>> {
-    let (memory, before) = contents(&state, connection_id)?;
+    // Fails before reading anything when the database is gone.
+    contents(&state, connection_id)?;
     let read = read_all(&state, &sources).await?;
     let tables = describe(&read);
-    let names: Vec<String> = read.iter().map(|s| s.table.clone()).collect();
-    blocking(move || fill(&memory, &before, &read).map(drop)).await?;
-    set_tables(&state, connection_id, names);
+    refill(&state, connection_id, read).await?;
     Ok(tables)
 }
 

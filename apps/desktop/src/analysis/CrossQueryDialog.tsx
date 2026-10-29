@@ -9,6 +9,7 @@ import { msg, plural, t } from "../i18n";
 import { DRIVER_NAMES } from "../drivers/names";
 import { withDriver } from "../drivers/DriverPopup";
 import { workbench } from "../workbench";
+import { openTemporaryQuery, ReloadBar } from "./QueryWithSql";
 import {
   type AcrossLoaded,
   type AcrossOrigin,
@@ -48,7 +49,7 @@ const sqlConnections = () => workbench().connections().filter((c) => !isNoSql(c.
 
 /** The session of each source and how errors name it; `null` when a password prompt was
  *  cancelled or a connection is gone. */
-export async function acrossSources(refs: AcrossSourceRef[]): Promise<AcrossSource[] | null> {
+async function acrossSources(refs: AcrossSourceRef[]): Promise<AcrossSource[] | null> {
   const request: AcrossSource[] = [];
   for (const r of refs) {
     const connection = workbench().connections().find((c) => c.id === r.connectionId);
@@ -71,7 +72,7 @@ export async function acrossSources(refs: AcrossSourceRef[]): Promise<AcrossSour
 }
 
 /** Opens the dialog; `start` are the tables chosen at first (else one empty source). */
-export function queryAcross(start: AcrossStart[] = []) {
+function queryAcross(start: AcrossStart[] = []) {
   workbench().openDialog((close) => createElement(CrossQueryDialog, { start, onClose: close }));
 }
 
@@ -124,12 +125,7 @@ function CrossQueryDialog({ start, onClose }: { start: AcrossStart[]; onClose: (
       const title = connectionTitle(refs.map((r) => r.name));
       const opened = await withDriver(() => api.openAcrossDb(title, request));
       onClose();
-      workbench().openTemporaryTab(
-        "query",
-        opened.connection,
-        { sql: initialSql(opened.tables), title: t("Across databases"), across: originOf(refs, opened.tables) },
-        () => void api.closeResultDb(opened.connection.id),
-      );
+      openTemporaryQuery(opened.connection, { sql: initialSql(opened.tables), title: t("Across databases"), across: originOf(refs, opened.tables) });
     } catch (e) {
       // The message starts with the source that failed.
       setError(toCommandError(e).message);
@@ -348,27 +344,19 @@ export function AcrossBar({
   connection: SavedConnection;
   onReloaded: (origin: AcrossOrigin) => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const go = async () => {
-    setBusy(true);
-    try {
-      const next = await reload(origin, connection);
-      if (next) onReloaded(next);
-    } catch (e) {
-      workbench().showError(toCommandError(e).message);
-    } finally {
-      setBusy(false);
-    }
-  };
   const list = origin.sources.map((s) => `${s.name} ← ${s.connectionName} · ${s.schema === "" ? s.table : `${s.schema}.${s.table}`}${s.filter.trim() ? ` (${s.filter.trim()})` : ""}`);
   return (
-    <div className={`notice ${origin.cut.length > 0 ? "warn" : "muted"} result-source across-bar`}>
+    <ReloadBar
+      warn={origin.cut.length > 0}
+      className="across-bar"
+      label={t("Reload sources")}
+      action="reload-sources"
+      reload={() => reload(origin, connection)}
+      onReloaded={onReloaded}
+    >
       <span>{t("Copies of tables of other databases: {tables}", { tables: list.join("; ") })}</span>
       {origin.cut.length > 0 && <strong>{t("Partial: the memory limit stopped the reading of {tables}.", { tables: origin.cut.join(", ") })}</strong>}
-      <button type="button" data-action="reload-sources" disabled={busy} onClick={() => void go()}>
-        {t("Reload sources")}
-      </button>
-    </div>
+    </ReloadBar>
   );
 }
 

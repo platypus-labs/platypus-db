@@ -34,7 +34,7 @@ export interface PivotColumn {
 export const MAX_PIVOT_COLUMNS = 200;
 
 /** The label of a NULL in the column field, which `PIVOT` would drop. */
-export const NULL_LABEL = "NULL";
+const NULL_LABEL = "NULL";
 
 /** Stands for the totals in the query's own rows and columns, so that a real value named
  *  "Total" is not mistaken for them. */

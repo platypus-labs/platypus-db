@@ -12,7 +12,7 @@ import { Icon } from "../ui/Icon";
 import { ask } from "../ui/ask";
 import { askName } from "../ui/NameDialog";
 import { workbench } from "../workbench";
-import { loadAll } from "./QueryWithSql";
+import { loadAll, openTemporaryQuery } from "./QueryWithSql";
 import { type ResultHost, hostOfJob } from "./resultHosts";
 import { defaultName, filterSaved } from "./savedResultsModel";
 
@@ -24,7 +24,7 @@ function savedResultsChanged() {
 }
 
 /** When a result was saved, as the interface's language writes it. */
-export const savedTime = (iso: string) => new Date(iso).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" });
+const savedTime = (iso: string) => new Date(iso).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" });
 
 /** Saves the rows of result `jobId` of `host`, after asking a name: the rows are loaded in
  *  full first, up to the memory limit (the file is marked partial when they stop there). */
@@ -49,12 +49,7 @@ export async function openSavedResult(saved: SavedResult) {
   try {
     // DuckDB holds the rows: downloaded first if it is not yet.
     const opened = await withDriver(() => api.openSavedResult(saved.id, t("Saved result: {name}", { name: saved.name })));
-    workbench().openTemporaryTab(
-      "query",
-      opened.connection,
-      { sql: "SELECT * FROM result", title: saved.name, autorun: true, savedResult: opened.result },
-      () => void api.closeResultDb(opened.connection.id),
-    );
+    openTemporaryQuery(opened.connection, { sql: "SELECT * FROM result", title: saved.name, autorun: true, savedResult: opened.result });
   } catch (e) {
     workbench().showError(toCommandError(e).message);
   }

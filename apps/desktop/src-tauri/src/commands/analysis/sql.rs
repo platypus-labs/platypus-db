@@ -154,7 +154,7 @@ pub(in crate::commands) async fn open_rows(
 }
 
 /// Fills a new in-memory database with `sources` and keeps it for a temporary connection.
-async fn fill_new(
+pub(super) async fn fill_new(
     state: &AppState,
     name: &str,
     sources: Vec<Source>,
@@ -168,7 +168,7 @@ async fn fill_new(
 
 /// Registers the temporary connection `name` to the in-memory database `memory`, which holds
 /// `tables`, and returns it. The database lives until `close_result_db`.
-pub(super) fn register(
+fn register(
     state: &AppState,
     name: &str,
     memory: String,
@@ -197,11 +197,15 @@ pub(super) fn contents(state: &AppState, id: Uuid) -> CommandResult<(String, Vec
         .ok_or_else(|| CommandError::not_found("result database", id))
 }
 
-/// Remembers the tables the database of temporary connection `id` holds now.
-pub(super) fn set_tables(state: &AppState, id: Uuid, tables: Vec<String>) {
+/// Loads `sources` again into the database of temporary connection `id`, replacing its tables.
+pub(super) async fn refill(state: &AppState, id: Uuid, sources: Vec<Source>) -> CommandResult<()> {
+    let (memory, before) = contents(state, id)?;
+    let names: Vec<String> = sources.iter().map(|s| s.table.clone()).collect();
+    blocking(move || fill(&memory, &before, &sources).map(drop)).await?;
     if let Some(db) = lock(&state.result_dbs).get_mut(&id) {
-        db.tables = tables;
+        db.tables = names;
     }
+    Ok(())
 }
 
 /// Copies the results again into the database of temporary connection `connection_id`;
@@ -212,12 +216,11 @@ pub async fn reload_result_db(
     connection_id: Uuid,
     tables: Vec<ResultTable>,
 ) -> CommandResult<Option<Partial>> {
-    let (memory, before) = contents(&state, connection_id)?;
+    // Fails before reading anything when the database is gone.
+    contents(&state, connection_id)?;
     let sources = sources(&state, &tables)?;
     let partial = partial(&sources);
-    let names: Vec<String> = sources.iter().map(|s| s.table.clone()).collect();
-    blocking(move || fill(&memory, &before, &sources).map(drop)).await?;
-    set_tables(&state, connection_id, names);
+    refill(&state, connection_id, sources).await?;
     Ok(partial)
 }
 
@@ -278,11 +281,7 @@ fn sources(state: &AppState, tables: &[ResultTable]) -> CommandResult<Vec<Source
 
 /// Loads `sources` into the in-memory database `memory`, after dropping the tables of
 /// `before` they no longer have.
-pub(super) fn fill(
-    memory: &str,
-    before: &[String],
-    sources: &[Source],
-) -> CommandResult<MemoryDatabase> {
+fn fill(memory: &str, before: &[String], sources: &[Source]) -> CommandResult<MemoryDatabase> {
     let (database, conn) = platypus_driver_duckdb::memory_database(memory)?;
     for table in before
         .iter()

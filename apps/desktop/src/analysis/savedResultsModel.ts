@@ -8,7 +8,7 @@ interface SavedLike {
 }
 
 /** Longest default name, in characters. */
-export const NAME_LIMIT = 60;
+const NAME_LIMIT = 60;
 
 /** The name offered for a result of `sql`: its first line that is not empty or a comment, cut
  *  with an ellipsis; `fallback` for a statement without text. */
