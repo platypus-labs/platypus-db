@@ -5996,7 +5996,9 @@ name = "platypus-net"
 version = "0.2.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "futures",
+ "percent-encoding",
  "platypus-core",
  "platypus-driver-mysql",
  "platypus-driver-pg",

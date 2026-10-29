@@ -1,5 +1,6 @@
 //! SSH tunnels against an in-process SSH server that forwards to a local echo server:
-//! password and key logins, a jump host, and a server whose key changed.
+//! password and key logins, a jump host, a server whose key changed, and a SOCKS5 proxy in
+//! front of the SSH server or of the database.
 // The test server's handlers keep the shape of russh's async trait.
 #![allow(clippy::unused_async_trait_impl)]
 
@@ -142,6 +143,48 @@ async fn round_trip(tunnel: &Tunnel) {
     assert_eq!(&buf, b"SELECT 1");
 }
 
+/// A SOCKS5 proxy without login that counts the connections it carries; returns its URL.
+async fn socks5_proxy(carried: Arc<std::sync::atomic::AtomicUsize>) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let carried = Arc::clone(&carried);
+            tokio::spawn(async move {
+                let mut hello = [0u8; 2];
+                socket.read_exact(&mut hello).await.unwrap();
+                let mut methods = vec![0u8; usize::from(hello[1])];
+                socket.read_exact(&mut methods).await.unwrap();
+                socket.write_all(&[5, 0]).await.unwrap();
+                let mut request = [0u8; 4];
+                socket.read_exact(&mut request).await.unwrap();
+                let host = match request[3] {
+                    1 => {
+                        let mut ip = [0u8; 4];
+                        socket.read_exact(&mut ip).await.unwrap();
+                        std::net::Ipv4Addr::from(ip).to_string()
+                    }
+                    3 => {
+                        let mut name = vec![0u8; usize::from(socket.read_u8().await.unwrap())];
+                        socket.read_exact(&mut name).await.unwrap();
+                        String::from_utf8(name).unwrap()
+                    }
+                    other => panic!("address type {other}"),
+                };
+                let port = socket.read_u16().await.unwrap();
+                let mut target = TcpStream::connect((host.as_str(), port)).await.unwrap();
+                socket
+                    .write_all(&[5, 0, 0, 1, 0, 0, 0, 0, 0, 0])
+                    .await
+                    .unwrap();
+                carried.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let _ = tokio::io::copy_bidirectional(&mut socket, &mut target).await;
+            });
+        }
+    });
+    format!("socks5://127.0.0.1:{port}")
+}
+
 async fn open(
     config: &SshConfig,
     target: u16,
@@ -229,20 +272,102 @@ async fn refuses_a_changed_server_key() {
     assert!(err.to_string().to_lowercase().contains("changed"), "{err}");
 }
 
-/// The servers of the conformance tests, reached through the tunnel instead of directly:
-/// the driver connects to the tunnel's local port and still names the server for TLS.
+#[tokio::test]
+async fn reaches_the_ssh_server_through_a_proxy() {
+    let dir = tempfile::tempdir().unwrap();
+    let known_hosts = dir.path().join("known_hosts");
+    let any = random_key().public_key().clone();
+    let target = echo_server().await;
+    let jump = ssh_server(random_key(), any.clone()).await;
+    let inner = ssh_server(random_key(), any).await;
+    let carried = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let proxy = platypus_net::Proxy::parse(&socks5_proxy(Arc::clone(&carried)).await).unwrap();
+
+    let tunnel = Tunnel::open_via(
+        &server(inner, password()),
+        "127.0.0.1",
+        target,
+        Some(&known_hosts),
+        Some(&proxy),
+    )
+    .await
+    .unwrap();
+    round_trip(&tunnel).await;
+    round_trip(&tunnel).await;
+    assert_eq!(
+        carried.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "one SSH session"
+    );
+
+    // With a jump host, only the first hop goes through the proxy.
+    let mut config = server(inner, password());
+    config.jump = Some(Box::new(server(jump, password())));
+    let tunnel = Tunnel::open_via(
+        &config,
+        "127.0.0.1",
+        target,
+        Some(&known_hosts),
+        Some(&proxy),
+    )
+    .await
+    .unwrap();
+    round_trip(&tunnel).await;
+    assert_eq!(carried.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn forwards_through_a_proxy_alone() {
+    let target = echo_server().await;
+    let carried = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut config = ConnectionConfig::new(DriverKind::Postgres);
+    config.host = "127.0.0.1".to_owned();
+    config.port = Some(target);
+    config.options.insert(
+        platypus_net::proxy::PROXY.to_owned(),
+        socks5_proxy(Arc::clone(&carried)).await,
+    );
+    let tunnel = Tunnel::of(&config, None).await.unwrap().unwrap();
+    round_trip(&tunnel).await;
+    round_trip(&tunnel).await;
+    // The first was the check made on opening.
+    assert_eq!(carried.load(std::sync::atomic::Ordering::SeqCst), 3);
+
+    config.options.clear();
+    assert!(
+        Tunnel::of(&config, None).await.unwrap().is_none(),
+        "no path needed"
+    );
+}
+
+/// The servers of the conformance tests, reached through the tunnel or a proxy instead of
+/// directly: the driver connects to the local port and still names the server for TLS.
 #[tokio::test]
 async fn connects_databases_through_the_tunnel() {
     let dir = tempfile::tempdir().unwrap();
     let known_hosts = dir.path().join("known_hosts");
     let port = ssh_server(random_key(), random_key().public_key().clone()).await;
-    for env in ["PLATYPUS_TEST_PG_URL", "PLATYPUS_TEST_MYSQL_URL"] {
+    let carried = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let proxy = socks5_proxy(Arc::clone(&carried)).await;
+    for (env, through_proxy) in [
+        ("PLATYPUS_TEST_PG_URL", false),
+        ("PLATYPUS_TEST_MYSQL_URL", false),
+        ("PLATYPUS_TEST_PG_URL", true),
+        ("PLATYPUS_TEST_MYSQL_URL", true),
+    ] {
         let Ok(url) = std::env::var(env) else {
             eprintln!("skipping {env}: not set");
             continue;
         };
         let mut config = ConnectionConfig::from_url(&url).unwrap();
-        config.ssh = Some(server(port, password()));
+        if through_proxy {
+            config
+                .options
+                .insert(platypus_net::proxy::PROXY.to_owned(), proxy.clone());
+        } else {
+            config.ssh = Some(server(port, password()));
+        }
+        let before = carried.load(std::sync::atomic::Ordering::SeqCst);
         let conn = platypus_net::connect(&config, Some(&known_hosts), |c| async move {
             match c.driver {
                 DriverKind::Postgres => platypus_driver_pg::PgDriver.connect(&c).await,
@@ -268,6 +393,12 @@ async fn connects_databases_through_the_tunnel() {
             "{env}"
         );
         assert!(!conn.is_closed(), "{env}");
+        if through_proxy {
+            assert!(
+                carried.load(std::sync::atomic::Ordering::SeqCst) > before,
+                "{env}: proxied"
+            );
+        }
     }
 }
 
