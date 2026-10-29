@@ -4274,9 +4274,15 @@ async fn agents_ask_before_a_query_that_writes() {
         let conn = b.connect().await;
         let conn = &*conn;
         let table = "agent_purge_probe";
-        run(conn, "DROP FUNCTION IF EXISTS agent_purge()")
+        // MySQL names a function without its arguments.
+        let drop = if driver == "postgres" {
+            "DROP FUNCTION IF EXISTS agent_purge()"
+        } else {
+            "DROP FUNCTION IF EXISTS agent_purge"
+        };
+        run(conn, drop)
             .await
-            .ok();
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         run(conn, &format!("DROP TABLE IF EXISTS {table}"))
             .await
             .unwrap();
@@ -4363,7 +4369,9 @@ async fn agents_ask_before_a_query_that_writes() {
             .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         assert_eq!(left().await.as_deref(), Some("0"), "{}", b.name);
 
-        run(conn, "DROP FUNCTION agent_purge()").await.ok();
+        run(conn, drop)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         run(conn, &format!("DROP TABLE {table}")).await.unwrap();
     }
 }
