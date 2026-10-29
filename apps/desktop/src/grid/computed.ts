@@ -20,7 +20,10 @@ export interface ComputedColumn {
 type Value = string | number | boolean | null;
 
 /** Works out a row's value from its cells' text; `undefined` while a cell is not loaded. */
-export type Evaluate = (cell: (col: number) => string | null | undefined) => string | null | undefined;
+export type Evaluate = ((cell: (col: number) => string | null | undefined) => string | null | undefined) & {
+  /** The result columns the expression reads. */
+  uses: number[];
+};
 
 /** Why an expression cannot be used, with the text it is about. */
 export class ExpressionError extends Error {
@@ -461,11 +464,17 @@ export function compile(expression: string, columns: ColumnInfo[]): Evaluate {
     const folded = columns.flatMap((c, i) => (c.name.toLowerCase() === name.toLowerCase() ? [i] : []));
     return folded.length === 1 ? folded[0] : undefined;
   };
-  const node = new Parser(tokenize(expression), column).parse();
-  return (cell) => {
+  const uses = new Set<number>();
+  const node = new Parser(tokenize(expression), (name, quoted) => {
+    const col = column(name, quoted);
+    if (col !== undefined) uses.add(col);
+    return col;
+  }).parse();
+  const evaluate = (cell: (col: number) => string | null | undefined) => {
     const v = node(cell);
     return v === undefined ? undefined : toText(v);
   };
+  return Object.assign(evaluate, { uses: [...uses].sort((a, b) => a - b) });
 }
 
 /** The computed columns that compile over `columns`, with the error of the others. */

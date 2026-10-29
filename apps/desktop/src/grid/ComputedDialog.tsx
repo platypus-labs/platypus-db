@@ -67,6 +67,8 @@ export function ComputedDialog({ columns, computed, saved, onChange, onClose }: 
   const remove = (i: number) => {
     onChange(computed.filter((_, j) => j !== i));
     if (i === editing) reset();
+    // The one being edited moves up when one before it goes.
+    else if (editing !== null && i < editing) setEditing(editing - 1);
   };
   const enter = (e: React.KeyboardEvent) => e.key === "Enter" && save();
 

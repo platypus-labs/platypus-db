@@ -25,7 +25,7 @@ registerAction({
   submenu: "Columns",
   group: "columns",
   order: 80,
-  when: (ctx) => target(ctx) !== null && ctx.grid.visibleColumns().length > 1,
+  when: (ctx) => target(ctx) !== null && ctx.grid.visibleColumns(true).length > 1,
   run: ({ grid }) => {
     const t = target({ grid, source: null })!;
     grid.setLayout(hideColumn(t.layout, t.name));

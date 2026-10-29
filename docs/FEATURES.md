@@ -218,8 +218,10 @@ copy updates by replacing its executable; the welcome screen says `portable` bes
   `IS NULL` and the functions upper, lower, trim, length, substr, replace, abs, round, floor,
   ceil, coalesce, nullif, concat and if; NULL in an operation gives NULL, as in SQL. They are
   only on screen: `Ctrl+C` copies them with the rest of the selection, but *Copy as*, totals,
-  search, sorting and editing work on the result's own columns. A table keeps its computed
-  columns.
+  search, sorting and editing work on the result's own columns. They follow the edits not
+  saved yet, read numbers with the digit grouping of the settings and show as dots when they
+  read a masked column. They work on the text the grid holds, so a text longer than 500
+  characters counts only that much. A table keeps its computed columns.
 - Totals of the selection (count, sum, average, minimum, maximum), a record view of one row
   at a time, counts by value, statistics of the selection, and two rows compared column by
   column.

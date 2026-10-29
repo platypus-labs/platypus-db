@@ -110,3 +110,8 @@ test("compileAll keeps the columns that compile and the error of the others", ()
   assert.equal(out[1].evaluate, null);
   assert.equal(out[1].error.reason, "column");
 });
+
+test("an expression knows the columns it reads, for masking", () => {
+  assert.deepEqual(compile("upper(\"Last Name\") || first_name || first_name", columns).uses, [2, 3]);
+  assert.deepEqual(compile("1 + 2", columns).uses, []);
+});

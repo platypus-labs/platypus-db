@@ -414,11 +414,14 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
     }
     const focused = grid.current?.focused() ?? { row: 0, col: 0 };
     const shown = grid.current?.visibleColumns() ?? columns.map((_, i) => i);
+    // A computed column (after the result's) takes no paste.
+    if (focused.col >= columns.length) return;
+    const start = Math.max(0, shown.indexOf(focused.col));
     const ownCopy = isOwnCopy(text);
     const { targets, rows } = mapFields(
       parseClipboard(text),
       columns.map((c) => c.name),
-      shown.slice(Math.max(0, shown.indexOf(focused.col))),
+      shown.slice(start),
     );
     const fields = (row: (string | null)[]) =>
       row.flatMap((value, i) => {

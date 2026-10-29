@@ -89,7 +89,8 @@ export interface GridApi {
   /** The text of a cell as shown, decorations included: `null` for SQL NULL, `undefined`
    *  while not loaded. */
   value(row: number, col: number): string | null | undefined;
-  selection(): GridSelection | null;
+  /** With `computed`, also a selection of computed columns only (its `cols` then empty). */
+  selection(computed?: boolean): GridSelection | null;
   focused(): Cell | null;
   /** The result row shown at a grid row; `null` for the `topRows`. */
   dataRow(row: number): number | null;
@@ -98,8 +99,8 @@ export interface GridApi {
    *  selection moves with its rows, or clears when a new row it was on is gone. */
   topRowsChanged(before: number, after: number): void;
   selectAll(): void;
-  /** The result columns shown, left to right. */
-  visibleColumns(): number[];
+  /** The result columns shown, left to right; with `computed`, the computed ones too. */
+  visibleColumns(computed?: boolean): number[];
   /** The column layout, or `null` when this grid's columns cannot be arranged. */
   layout(): ColumnLayout | null;
   setLayout(layout: ColumnLayout): void;
@@ -297,7 +298,26 @@ export function DataGrid({
   }, []);
 
   // Header-based widths until the first rows arrive, then sized to fit them (see `draw`).
+  const previousColumns = useRef<ColumnInfo[]>([]);
   useLayoutEffect(() => {
+    const before = previousColumns.current;
+    previousColumns.current = columns;
+    // The same result columns, only the computed ones after them changed: the result's keep
+    // their widths, the focus and the selection.
+    const result = props.current.resultColumns ?? columns.length;
+    const same = before.length >= result && columns.slice(0, result).every((c, i) => before[i] === c);
+    if (before.length > 0 && result < Math.max(before.length, columns.length) && same) {
+      widths.current = columns.map((c, i) =>
+        i < result ? widths.current[i]! : (props.current.layout.widths[c.name] ?? headerWidth(c)),
+      );
+      // A selection on a computed column that is gone goes with it.
+      if ([anchor.current, focus.current].some((cell) => cell && cell.col >= columns.length)) {
+        anchor.current = focus.current = null;
+        props.current.onFocusChange?.(null);
+        props.current.onSelectionChange?.();
+      }
+      return;
+    }
     widths.current = columns.map((c) => props.current.layout.widths[c.name] ?? headerWidth(c));
     sizedToData.current = false;
     anchor.current = focus.current = null;
@@ -647,13 +667,13 @@ export function DataGrid({
     columns: () => props.current.columns,
     rowCount: total,
     value: (row, col) => cellText(row, col, props.current.decorate?.(row, col)),
-    selection: () => {
+    selection: (computed = false) => {
       const s = selectionRect();
       if (!s) return null;
       const shown = props.current.resolved.view.slice(s.d0, s.d1 + 1);
       const cols = shown.filter(inResult);
       // Features read the selected result columns on the backend: with none, nothing is selected.
-      return cols.length ? { r0: s.r0, r1: s.r1, cols, shown } : null;
+      return cols.length || computed ? { r0: s.r0, r1: s.r1, cols, shown } : null;
     },
     focused: () => focus.current,
     dataRow: (row) => (row < props.current.topRows ? null : row - props.current.topRows),
@@ -679,7 +699,7 @@ export function DataGrid({
       anchor.current = { row: 0, col: view[0]! };
       setFocus({ row: total() - 1, col: view.at(-1)! }, true);
     },
-    visibleColumns: () => props.current.resolved.view.filter(inResult),
+    visibleColumns: (computed = false) => (computed ? props.current.resolved.view : props.current.resolved.view.filter(inResult)),
     layout: () => (props.current.onLayoutChange ? props.current.layout : null),
     setLayout: (l) => props.current.onLayoutChange?.(l),
     cellRect: (row, col) => {

@@ -6,7 +6,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { assert, CTRL, SHIFT, copied, focusCell, grid, gridMenu, rows, shotter, status, stubClipboard, treeRow, visibleTab } from "../qa-grid.mjs";
+import { assert, CTRL, SHIFT, copied, editCell, focusCell, grid, gridMenu, rows, shotter, status, stubClipboard, treeRow, visibleTab } from "../qa-grid.mjs";
 
 const NAME = "E2E grid computed";
 const dialog = `document.querySelector('.computed-dialog')`;
@@ -168,6 +168,18 @@ export default async function (page, { shots }) {
   for (let i = 0; i < 5; i++) await page.key("ArrowRight", "ArrowRight", 39, SHIFT);
   const mixed = await copied(page, () => page.key("c", "KeyC", 67, CTRL));
   assert.equal(mixed, "Bob\t0.1\t2\t\t0.2\tBOB x2");
+
+  // An edit not saved yet counts: Ada's quantity 3 → 5 makes her total 62.5 and her label
+  // ADA x5 at once; discarding it brings them back.
+  await focusCell(page, 0, 3);
+  await editCell(page, "5");
+  await focusCell(page, 0, 0);
+  for (let i = 0; i < 7; i++) await page.key("ArrowRight", "ArrowRight", 39, SHIFT);
+  const edited = await copied(page, () => page.key("c", "KeyC", 67, CTRL));
+  assert.deepEqual(edited.split("	").slice(3), ["5", "gift", "62.5", "ADA x5", "bulk"]);
+  await page.eval(`${visibleTab}.querySelector('.edit-bar button[aria-label="Discard"]').click()`);
+  await page.waitFor(`${visibleTab}.querySelector('.edit-bar button[aria-label="Discard"]') === null || ${visibleTab}.querySelector('.edit-bar button[aria-label="Discard"]').disabled`);
+  assert.deepEqual((await rows(page))[0], [...plain[0], "37.5", "ADA x3", "bulk", "4.17"]);
 
   // Kept for the table: closed and opened again, the same columns and values.
   await page.key("w", "KeyW", 87, CTRL);

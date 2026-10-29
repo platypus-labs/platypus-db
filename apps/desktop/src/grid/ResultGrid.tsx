@@ -173,10 +173,14 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
     if (layoutKey) saveLayout(layoutKey, next);
   };
   const formatting = useFormatting(layoutKey, jobId, columns, rowCount, editor.topRows, cache, editor.edit?.pending);
-  const computed = useComputed(layoutKey, columns, cache);
+  const computed = useComputed(layoutKey, columns, cache, editor.topRows, editor.edit?.pending);
   // While the screen may be shared, the values of sensitive columns show as dots.
   const mask = useMask();
-  const masked = useMemo(() => columns.map((c) => !!mask?.(c)), [columns, mask]);
+  const masked = useMemo(() => {
+    const own = columns.map((c) => !!mask?.(c));
+    // A computed column shows dots when it reads a masked one.
+    return [...own, ...computed.uses.map((cols) => cols.some((c) => own[c]))];
+  }, [columns, mask, computed.uses]);
   const topRows = editor.topRows;
   const decorate = useMemo(
     () =>
@@ -366,25 +370,44 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
 }
 
 /** The computed columns of a result (see `computed.ts`), kept for a table: the grid shows
- *  them after the result's columns, with their values worked out from the rows loaded. */
-function useComputed(key: string | null, columns: ColumnInfo[], cache: RowCache) {
+ *  them after the result's columns, with their values worked out from the rows loaded and the
+ *  edits not saved yet. Numbers are read as the grid writes them (digit grouping). */
+function useComputed(
+  key: string | null,
+  columns: ColumnInfo[],
+  cache: RowCache,
+  topRows: number,
+  pending: ((row: number, col: number) => CellInput | undefined) | undefined,
+) {
+  // Read while painting: a ref, so that typing an edit does not rebuild the rows.
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
   const [list, setList] = useState<ComputedColumn[]>(() => (key ? loadComputed(key) : []));
   useEffect(() => setList(key ? loadComputed(key) : []), [key]);
   const [open, setOpen] = useState(false);
   // Those that no longer compile (a column gone from the query) are left out of the grid.
   const usable = useMemo(
-    () => compileAll(list, columns).flatMap((c) => (c.evaluate ? [{ info: computedInfo(c.column), evaluate: c.evaluate }] : [])),
+    () =>
+      compileAll(list, columns).flatMap((c) =>
+        c.evaluate ? [{ info: computedInfo(c.column), evaluate: c.evaluate, uses: c.evaluate.uses }] : [],
+      ),
     [list, columns],
   );
   const all = useMemo(() => (usable.length ? [...columns, ...usable.map((c) => c.info)] : columns), [columns, usable]);
   const rows: Rows = useMemo(() => {
     if (!usable.length) return cache;
     const n = columns.length;
+    const cell = (row: number, c: number) => {
+      const edit = pendingRef.current?.(row + topRows, c);
+      // A DEFAULT is not known until saved.
+      const text = edit ? (edit.kind === "value" ? edit.text : edit.kind === "null" ? null : undefined) : cache.get(row, c);
+      return text && columns[c]!.numeric ? plainNumber(text) : text;
+    };
     return {
-      get: (row, col) => (col < n ? cache.get(row, col) : usable[col - n]?.evaluate((c) => cache.get(row, c))),
+      get: (row, col) => (col < n ? cache.get(row, col) : usable[col - n]?.evaluate((c) => cell(row, c))),
       ensure: (first, last, available) => cache.ensure(first, last, available),
     };
-  }, [cache, columns.length, usable]);
+  }, [cache, columns, usable, topRows]);
 
   const change = (next: ComputedColumn[]) => {
     setList(next);
@@ -394,6 +417,8 @@ function useComputed(key: string | null, columns: ColumnInfo[], cache: RowCache)
   return {
     columns: all,
     rows,
+    /** The result columns each computed one reads. */
+    uses: useMemo(() => usable.map((c) => c.uses), [usable]),
     open: () => setOpen(true),
     dialog: open && (
       <ComputedDialog columns={columns} computed={list} saved={key !== null} onChange={change} onClose={() => setOpen(false)} />
