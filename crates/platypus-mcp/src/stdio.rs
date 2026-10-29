@@ -8,7 +8,7 @@ use std::sync::Arc;
 use rmcp::ServiceExt;
 
 use crate::server::PlatypusServer;
-use crate::{Agent, Profile};
+use crate::{Agent, HttpLink, Profile};
 
 /// What `--help` prints; `{command}` is how the agent starts the server.
 const HELP: &str = "{command}: PlatypusDB's MCP server, for agents such as Claude Code or Codex.
@@ -80,11 +80,14 @@ pub fn main(command: &str, args: impl Iterator<Item = String>) -> ExitCode {
 }
 
 async fn serve() -> Result<(), Box<dyn std::error::Error>> {
-    let agent = Arc::new(Agent::new(Profile::from_env()?));
-    let service = PlatypusServer::new(agent)
-        .serve(rmcp::transport::stdio())
-        .await?;
+    let profile = Profile::from_env()?;
+    // The open app lists its sessions and asks the user before a change.
+    let link = Arc::new(HttpLink::new(profile.data_dir()));
+    let server = PlatypusServer::new(Arc::new(Agent::new(profile).with_link(link)));
+    let service = server.clone().serve(rmcp::transport::stdio()).await?;
+    let greeting = server.keep_greeting(service.peer().clone());
     service.waiting().await?;
+    greeting.abort();
     Ok(())
 }
 

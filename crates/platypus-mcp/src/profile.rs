@@ -82,6 +82,12 @@ impl Profile {
         &self.config_dir
     }
 
+    /// Where the open app writes its bridge ([`BRIDGE_FILE`](crate::link::BRIDGE_FILE)).
+    #[must_use]
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+
     /// The saved connections, read again at each call so changes made in the app apply
     /// at once. With a master password their secrets stay locked: agents never enter it.
     pub fn connections(&self) -> Result<ConnectionStore> {

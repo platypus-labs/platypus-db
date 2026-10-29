@@ -1,7 +1,8 @@
-//! The MCP server: the [`Agent`] tools over JSON-RPC on stdio, with `rmcp`.
+//! The MCP server: the [`Agent`] tools over JSON-RPC, with `rmcp`, on stdio or (with the
+//! `http` feature, in the app) on the bridge's local port.
 
-use std::sync::Arc;
-use std::time::{Instant, SystemTime};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::{Agent, AgentError, ExplainArgs, ProposeArgs, QueryArgs, SampleArgs, origin_name};
 use platypus_store::{HistoryStatus, NewAgentCall};
@@ -22,7 +23,13 @@ call, with a row limit, a byte limit and a timeout. To hand the user SQL to revi
 hand (a change the access does not allow, a long script), use propose_sql. Each connection has an \
 agent access set by the user: read_only connections run only statements that change nothing, \
 inside a read-only transaction; read_write connections also accept changes, which commit at \
-once. Production connections are always read-only. Passwords never reach you.";
+once. Production connections are always read-only. Passwords never reach you. While the \
+PlatypusDB app is open, list_open_sessions shows what the user has open there, and changes may \
+wait for the user to allow them in the app.";
+
+/// How often the server tells the open app it is still connected; the app forgets an agent
+/// after three times as long.
+pub const HELLO_EVERY: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 struct ConnectionArgs {
@@ -78,6 +85,8 @@ pub struct PlatypusServer {
     agent: Arc<Agent>,
     /// This run of the server, which groups its calls in the log.
     session: String,
+    /// When the open app was last told this server is connected.
+    greeted: Arc<Mutex<Option<Instant>>>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -143,8 +152,50 @@ impl PlatypusServer {
         Self {
             agent,
             session: uuid::Uuid::new_v4().to_string(),
+            greeted: Arc::default(),
             tool_router: Self::tool_router(),
         }
+    }
+
+    /// Tells the open app that the agent `agent` is connected, unless it was told less than
+    /// [`HELLO_EVERY`] ago. Nothing waits for it: an app that is closed is not told.
+    pub fn greet(&self, agent: &str) {
+        let Some(link) = self.agent.link() else {
+            return;
+        };
+        {
+            let mut greeted = self
+                .greeted
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if greeted.is_some_and(|at| at.elapsed() < HELLO_EVERY) {
+                return;
+            }
+            *greeted = Some(Instant::now());
+        }
+        let (link, session, agent) = (Arc::clone(link), self.session.clone(), agent.to_owned());
+        let greeted = Arc::clone(&self.greeted);
+        tokio::spawn(async move {
+            // An app that opens later is told at the next call.
+            if link.hello(&session, &agent).await.is_err() {
+                *greeted
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+            }
+        });
+    }
+
+    /// Greets the open app every [`HELLO_EVERY`] for the client of `peer`, so that it shows
+    /// the agent connected while the server runs.
+    #[must_use]
+    pub fn keep_greeting(&self, peer: Peer<RoleServer>) -> tokio::task::JoinHandle<()> {
+        let server = self.clone();
+        tokio::spawn(async move {
+            loop {
+                server.greet(&origin_name(&client_name(&peer)));
+                tokio::time::sleep(HELLO_EVERY).await;
+            }
+        })
     }
 
     /// The answer to `call`, recorded in the agents' call log.
@@ -171,6 +222,7 @@ impl PlatypusServer {
             status,
             error,
         };
+        self.greet(&entry.agent);
         let agent = Arc::clone(&self.agent);
         let _ = tokio::task::spawn_blocking(move || agent.record_call(&entry)).await;
         reply(result)
@@ -300,7 +352,11 @@ impl PlatypusServer {
         let result = self
             .agent
             // `notifications/cancelled` for this request cancels the statement.
-            .run_query_until(&args, &call.agent, cancelled.cancelled_owned())
+            .run_query_until(
+                &args,
+                (&call.agent, &self.session),
+                cancelled.cancelled_owned(),
+            )
             .await
             .map(|r| r.render(format));
         self.answer(call, result).await
@@ -354,6 +410,29 @@ impl PlatypusServer {
     }
 
     #[tool(
+        description = "Lists the sessions open in the PlatypusDB app, when it is open: their \
+        connection, the database when it is not the connection's own, purpose (`main` for the \
+        session the connection's editor tabs and navigator share, `side` for one a dialog \
+        opened), whether it runs in manual-commit mode and whether a transaction is open in it. \
+        Your statements run on sessions of your own, never on these: use it to know what the \
+        user is working on."
+    )]
+    async fn list_open_sessions(
+        &self,
+        peer: Peer<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("list_open_sessions", &peer, &serde_json::json!({}));
+        let result = match self.agent.link() {
+            Some(link) => link
+                .sessions()
+                .await
+                .map_err(|e| AgentError::Store(format!("cannot list the app's sessions: {e}"))),
+            None => Err(AgentError::Store("PlatypusDB is not open".to_owned())),
+        };
+        self.answer(call, json_text(result)).await
+    }
+
+    #[tool(
         description = "Proposes SQL to the user: PlatypusDB opens it in a new editor tab on the \
         connection (now if the app is open, else when it starts), where the user reviews, edits \
         and runs it by hand. Nothing runs here, whatever the connection's agent access: use it \
@@ -380,6 +459,28 @@ fn client_name(peer: &Peer<RoleServer>) -> String {
     peer.peer_info()
         .map(|info| info.client_info.name.clone())
         .unwrap_or_default()
+}
+
+/// The server on HTTP, for the app's bridge: each MCP session of a client is a run of the
+/// server over `agent`, until `stop` is cancelled.
+#[cfg(feature = "http")]
+pub fn http_service(
+    agent: Arc<Agent>,
+    stop: CancellationToken,
+) -> rmcp::transport::streamable_http_server::StreamableHttpService<
+    PlatypusServer,
+    rmcp::transport::streamable_http_server::session::local::LocalSessionManager,
+> {
+    use rmcp::transport::streamable_http_server::{
+        StreamableHttpServerConfig, StreamableHttpService,
+    };
+    let mut config = StreamableHttpServerConfig::default();
+    config.cancellation_token = stop;
+    StreamableHttpService::new(
+        move || Ok(PlatypusServer::new(Arc::clone(&agent))),
+        Arc::default(),
+        config,
+    )
 }
 
 #[allow(

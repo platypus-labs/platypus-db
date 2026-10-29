@@ -3,7 +3,7 @@
 //! applies at once; open connections are kept between calls and reopened when their
 //! settings change, except DuckDB's, closed after each call.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Instant, SystemTime};
@@ -22,6 +22,7 @@ use uuid::Uuid;
 use crate::access::{self, UnfilteredRule};
 use crate::connect;
 use crate::error::{AgentError, Result};
+use crate::link::{AppLink, Verdict, WriteRequest};
 use crate::output::QueryResult;
 use crate::plan::PlanResult;
 use crate::profile::Profile;
@@ -327,7 +328,17 @@ pub struct Agent {
     sessions: Mutex<HashMap<Uuid, Slot>>,
     history: Mutex<Option<HistoryStore>>,
     calls: Mutex<Option<AgentCallStore>>,
+    /// The open app, which shows its sessions and asks the user before a change.
+    link: Option<Arc<dyn AppLink>>,
+    /// The connections whose changes the user allowed for a run of an agent's server:
+    /// `(session, connection id)`.
+    allowed: Mutex<HashSet<(String, Uuid)>>,
+    /// The session of calls that bring none (the CLI's).
+    session: String,
 }
+
+/// Bytes of a plan shown to the user beside a change.
+const PLAN_BYTES: usize = 16 * 1024;
 
 impl std::fmt::Debug for Agent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -349,7 +360,114 @@ impl Agent {
             sessions: Mutex::default(),
             history: Mutex::default(),
             calls: Mutex::default(),
+            link: None,
+            allowed: Mutex::default(),
+            session: Uuid::new_v4().to_string(),
         }
+    }
+
+    /// The agent, reaching the open app through `link`.
+    #[must_use]
+    pub fn with_link(mut self, link: Arc<dyn AppLink>) -> Self {
+        self.link = Some(link);
+        self
+    }
+
+    /// The open app, if the agent reaches it.
+    #[must_use]
+    pub fn link(&self) -> Option<&Arc<dyn AppLink>> {
+        self.link.as_ref()
+    }
+
+    /// Whether agents' changes wait for the user's yes in the app (Settings › Safety).
+    fn confirms_changes(&self) -> bool {
+        self.profile
+            .settings()
+            .and_then(|s| s.get::<bool>("agents.confirm_writes"))
+            .unwrap_or(true)
+    }
+
+    /// Asks the user, in the open app, to let `statement` change `saved` for `origin`, unless
+    /// they allowed the changes of `session` there already or need not be asked.
+    async fn allow_change(
+        &self,
+        (store, saved): (&ConnectionStore, &SavedConnection),
+        statement: &str,
+        (origin, session): (&str, &str),
+    ) -> Result<()> {
+        if !self.confirms_changes() || !access::changes(statement, saved.driver) {
+            return Ok(());
+        }
+        let key = (session.to_owned(), saved.id);
+        if locked(&self.allowed).contains(&key) {
+            return Ok(());
+        }
+        let cannot_ask = |why: &str| {
+            AgentError::Denied(format!(
+                "PlatypusDB asks the user before an agent changes data, and cannot ask: {why}. \
+                 Open PlatypusDB, or let agents change data without asking in its Settings \
+                 (Agents)"
+            ))
+        };
+        let Some(link) = &self.link else {
+            return Err(cannot_ask("PlatypusDB is not open"));
+        };
+        let (estimated_rows, plan) = self.estimate(store, saved, statement).await;
+        let request = WriteRequest {
+            id: Uuid::new_v4().to_string(),
+            agent: origin_name(origin),
+            session: session.to_owned(),
+            connection: saved.name.clone(),
+            statement: statement.trim().to_owned(),
+            estimated_rows,
+            plan,
+        };
+        match link.confirm(request).await {
+            Ok(Verdict::Once) => Ok(()),
+            Ok(Verdict::Session) => {
+                locked(&self.allowed).insert(key);
+                Ok(())
+            }
+            Ok(Verdict::Deny { reason }) => Err(AgentError::Denied(match reason {
+                Some(reason) if !reason.trim().is_empty() => {
+                    format!("the user refused this change: {}", reason.trim())
+                }
+                _ => "the user refused this change".to_owned(),
+            })),
+            Err(why) => Err(cannot_ask(&why)),
+        }
+    }
+
+    /// The rows `statement` is expected to change and its plan, from the database's plan
+    /// where it has one; nothing runs.
+    async fn estimate(
+        &self,
+        store: &ConnectionStore,
+        saved: &SavedConnection,
+        statement: &str,
+    ) -> (Option<f64>, Option<String>) {
+        let Ok(lease) = self.lease(store, saved).await else {
+            return (None, None);
+        };
+        if !lease.conn().capabilities().explain {
+            return (None, None);
+        }
+        let explained = timed(lease.conn().explain(statement, false)).await;
+        let Some(Ok(explain)) = explained else {
+            return (None, None);
+        };
+        // A change's root (PostgreSQL's ModifyTable) estimates no rows: the rows it reads do.
+        let rows = std::iter::once(&explain.root)
+            .chain(explain.root.children.first())
+            .find_map(|n| n.rows.filter(|r| *r > 0.0))
+            .or(explain.root.rows);
+        let plan = PlanResult {
+            explain,
+            elapsed: std::time::Duration::ZERO,
+            max_bytes: PLAN_BYTES,
+        }
+        .text();
+        (rows, Some(plan))
     }
 
     /// The connections agents may use, in the order the app lists them.
@@ -530,16 +648,17 @@ impl Agent {
     /// records it in the query history with `origin`, the agent's name (see
     /// [`origin_name`]).
     pub async fn run_query(&self, args: &QueryArgs, origin: &str) -> Result<QueryResult> {
-        self.run_query_until(args, origin, std::future::pending())
+        self.run_query_until(args, (origin, &self.session), std::future::pending())
             .await
     }
 
-    /// [`run_query`](Self::run_query), cancelling the statement when `stop` completes
-    /// first: the client cancelled the request.
+    /// [`run_query`](Self::run_query) for the agent `origin` in session `session` of its
+    /// server, cancelling the statement when `stop` completes first: the client cancelled the
+    /// request. A change waits for the user's yes in the open app, where Settings ask for it.
     pub async fn run_query_until(
         &self,
         args: &QueryArgs,
-        origin: &str,
+        (origin, session): (&str, &str),
         stop: impl Future<Output = ()>,
     ) -> Result<QueryResult> {
         let limits = Limits::new(args.max_rows, args.max_bytes, args.timeout_seconds)?;
@@ -557,8 +676,16 @@ impl Agent {
         let result = match checked {
             Ok(statement) => {
                 let read_only = (access == AgentAccess::ReadOnly).then_some(saved.driver);
-                self.execute(&store, &saved, statement, read_only, &limits, stop)
+                match self
+                    .allow_change((&store, &saved), statement, (origin, session))
                     .await
+                {
+                    Ok(()) => {
+                        self.execute(&store, &saved, statement, read_only, &limits, stop)
+                            .await
+                    }
+                    Err(e) => Err(e),
+                }
             }
             Err(e) => Err(e),
         };
@@ -671,7 +798,8 @@ impl Agent {
             timeout_seconds: args.timeout_seconds,
             format: args.format,
         };
-        self.run_query_until(&query, origin, stop).await
+        self.run_query_until(&query, (origin, &self.session), stop)
+            .await
     }
 
     /// Keeps `args.sql` for PlatypusDB to open in an editor tab on the connection, where the
@@ -903,6 +1031,126 @@ mod tests {
         };
         let result = agent.run_query(&args, "test").await.unwrap();
         result.json()["rows"][0][0].to_string()
+    }
+
+    /// An app that answers every change with `verdict` and keeps what it was asked.
+    #[derive(Debug)]
+    struct FakeApp {
+        verdict: Verdict,
+        asked: Mutex<Vec<WriteRequest>>,
+    }
+
+    #[async_trait::async_trait]
+    impl AppLink for FakeApp {
+        async fn sessions(&self) -> std::result::Result<Vec<crate::OpenSession>, String> {
+            Ok(Vec::new())
+        }
+        async fn confirm(&self, request: WriteRequest) -> std::result::Result<Verdict, String> {
+            locked(&self.asked).push(request);
+            Ok(self.verdict.clone())
+        }
+        async fn hello(&self, _: &str, _: &str) -> std::result::Result<(), String> {
+            Ok(())
+        }
+    }
+
+    fn change(sql: &str) -> QueryArgs {
+        QueryArgs {
+            connection: "Db".to_owned(),
+            sql: sql.to_owned(),
+            max_rows: None,
+            max_bytes: None,
+            timeout_seconds: None,
+            format: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn changes_wait_for_the_user_unless_settings_say_otherwise() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("db.sqlite");
+        sqlite(&db, 3);
+        save_connection(dir.path(), "sqlite", &db);
+        let toml = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
+        std::fs::write(
+            dir.path().join("connections.toml"),
+            toml + "agent_access = \"read_write\"\n",
+        )
+        .unwrap();
+        let delete = change("DELETE FROM t WHERE id > 0");
+
+        // No app to ask: refused, and nothing changed.
+        let alone = Agent::new(Profile::at(dir.path()));
+        let refused = alone.run_query(&delete, "test").await.unwrap_err();
+        assert!(refused.to_string().contains("cannot ask"), "{refused}");
+        assert_eq!(count(&alone).await, "3");
+
+        // Allowed once: it runs, and the next change asks again.
+        let app = Arc::new(FakeApp {
+            verdict: Verdict::Once,
+            asked: Mutex::default(),
+        });
+        let agent = Agent::new(Profile::at(dir.path())).with_link(app.clone());
+        agent.run_query(&delete, "claude").await.unwrap();
+        assert_eq!(count(&agent).await, "1", "queries are not asked");
+        agent
+            .run_query(&change("UPDATE t SET id = 5 WHERE id = 0"), "claude")
+            .await
+            .unwrap();
+        {
+            let asked = locked(&app.asked);
+            assert_eq!(asked.len(), 2);
+            assert_eq!(asked[0].agent, "claude");
+            assert_eq!(asked[0].connection, "Db");
+            assert_eq!(asked[0].statement, "DELETE FROM t WHERE id > 0");
+            assert!(asked[0].plan.is_some());
+        }
+
+        // Turned off in the settings: changes run without asking.
+        std::fs::write(
+            dir.path().join("settings.toml"),
+            "[agents]\nconfirm_writes = false\n",
+        )
+        .unwrap();
+        alone
+            .run_query(&change("DELETE FROM t"), "test")
+            .await
+            .unwrap_err();
+        alone
+            .run_query(&change("DELETE FROM t WHERE id = 5"), "test")
+            .await
+            .unwrap();
+        assert_eq!(count(&alone).await, "0");
+    }
+
+    #[tokio::test]
+    async fn a_refusal_carries_the_users_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("db.sqlite");
+        sqlite(&db, 2);
+        save_connection(dir.path(), "sqlite", &db);
+        let toml = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
+        std::fs::write(
+            dir.path().join("connections.toml"),
+            toml + "agent_access = \"read_write\"\n",
+        )
+        .unwrap();
+        let app = Arc::new(FakeApp {
+            verdict: Verdict::Deny {
+                reason: Some(" wrong table ".to_owned()),
+            },
+            asked: Mutex::default(),
+        });
+        let agent = Agent::new(Profile::at(dir.path())).with_link(app);
+        let refused = agent
+            .run_query(&change("DELETE FROM t WHERE id = 1"), "claude")
+            .await
+            .unwrap_err();
+        assert_eq!(
+            refused.to_string(),
+            "the user refused this change: wrong table"
+        );
+        assert_eq!(count(&agent).await, "2");
     }
 
     #[tokio::test]
