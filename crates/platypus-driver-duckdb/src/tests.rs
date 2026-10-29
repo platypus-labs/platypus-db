@@ -454,3 +454,118 @@ async fn attached_databases_are_listed_as_schemas() {
         ["t"]
     );
 }
+
+/// A connection to an in-memory database of its own, `name`, not the shared `:memory:`.
+async fn own_memory(name: &str) -> DuckDbConnection {
+    let mut config = ConnectionConfig::new(DriverKind::DuckDb);
+    config.database = memory_path(name);
+    DuckDbConnection::connect(&config).await.unwrap()
+}
+
+/// Runs a statement that returns no rows.
+async fn run(conn: &dyn Connection, sql: &str) {
+    conn.execute(sql, &ExecOptions::default())
+        .await
+        .unwrap_or_else(|e| panic!("{sql}: {e}"));
+}
+
+/// The appender casts text to each column's type, leaves the columns not named to their
+/// default, and finds a table by its quoted, qualified name.
+#[tokio::test]
+async fn bulk_load_casts_text_and_names_columns() {
+    crate::testing::load();
+    let conn = own_memory("bulk_casts").await;
+    run(&conn, "CREATE SCHEMA \"my s\"").await;
+    run(
+        &conn,
+        "CREATE TABLE \"my s\".\"t\"\"x\" (id INTEGER PRIMARY KEY, amount DECIMAL(10, 2), \
+         day DATE, stamp TIMESTAMPTZ, ok BOOLEAN, note VARCHAR DEFAULT 'none', raw BLOB)",
+    )
+    .await;
+    let columns = ["id", "amount", "day", "stamp", "ok", "raw"].map(|c| format!("\"{c}\""));
+    let row = |values: [Option<&str>; 6]| values.map(|v| v.map(str::to_owned)).to_vec();
+    let loaded = conn
+        .bulk_load(&platypus_core::BulkRows {
+            table: "\"my s\".\"t\"\"x\"",
+            columns: &columns,
+            hex: &[false, false, false, false, false, true],
+            rows: &[
+                row([
+                    Some("1"),
+                    Some("12.345"),
+                    Some("2024-02-29"),
+                    Some("2024-03-01 10:00:00+02:00"),
+                    Some("true"),
+                    Some("00ff"),
+                ]),
+                row([Some("2"), None, None, None, Some("false"), Some("")]),
+            ],
+        })
+        .await
+        .unwrap();
+    assert_eq!(loaded, 2);
+    let got = decoded(
+        &conn,
+        "SELECT amount, day, stamp = '2024-03-01 10:00:00+02:00'::TIMESTAMPTZ, ok, note, hex(raw) FROM \"my s\".\"t\"\"x\" \
+         WHERE id = 1",
+    )
+    .await;
+    let texts: Vec<_> = got.into_iter().map(|(_, _, text)| text).collect();
+    assert_eq!(
+        texts,
+        ["12.35", "2024-02-29", "true", "true", "none", "00FF"]
+    );
+}
+
+/// A failed row leaves no rows, also past the 2048 rows the appender writes at a time, in
+/// autocommit mode; in a transaction the rollback undoes the load.
+#[tokio::test]
+async fn bulk_load_is_all_or_nothing() {
+    crate::testing::load();
+    let conn = own_memory("bulk_atomic").await;
+    run(&conn, "CREATE TABLE t (id INTEGER PRIMARY KEY)").await;
+    let columns = ["id".to_owned()];
+    let ids: Vec<Vec<Option<String>>> = (0..5000).map(|i| vec![Some(i.to_string())]).collect();
+    let mut failing = ids.clone();
+    failing.push(vec![Some("not a number".to_owned())]);
+    let bulk = |rows| platypus_core::BulkRows {
+        table: "t",
+        columns: &columns,
+        hex: &[false],
+        rows,
+    };
+    let count =
+        async |conn: &DuckDbConnection| decoded(conn, "SELECT COUNT(*) FROM t").await[0].2.clone();
+    assert!(conn.bulk_load(&bulk(&failing)).await.is_err());
+    assert_eq!(count(&conn).await, "0");
+
+    conn.set_autocommit(false).await.unwrap();
+    assert_eq!(conn.bulk_load(&bulk(&ids)).await.unwrap(), 5000);
+    conn.rollback().await.unwrap();
+    assert_eq!(count(&conn).await, "0");
+    assert_eq!(conn.bulk_load(&bulk(&ids)).await.unwrap(), 5000);
+    conn.commit().await.unwrap();
+    assert_eq!(count(&conn).await, "5000");
+}
+
+/// A bare table name is the one the session's search path finds, as for its statements.
+#[tokio::test]
+async fn bulk_load_follows_the_search_path() {
+    crate::testing::load();
+    let conn = own_memory("bulk_search_path").await;
+    run(&conn, "CREATE SCHEMA sales").await;
+    run(&conn, "SET search_path = 'sales'").await;
+    run(&conn, "CREATE TABLE t (id INTEGER)").await;
+    let columns = ["id".to_owned()];
+    let loaded = conn
+        .bulk_load(&platypus_core::BulkRows {
+            table: "t",
+            columns: &columns,
+            hex: &[false],
+            rows: &[vec![Some("7".to_owned())]],
+        })
+        .await
+        .unwrap();
+    assert_eq!(loaded, 1);
+    assert_eq!(decoded(&conn, "SELECT id FROM sales.t").await[0].2, "7");
+}
