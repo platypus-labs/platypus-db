@@ -241,8 +241,13 @@ async fn targets() -> Vec<Target> {
             TABLES,
         ),
     ];
+    // `PLATYPUS_TEST_ONLY`, as in the conformance suite: that database alone.
+    let only = std::env::var("PLATYPUS_TEST_ONLY").ok();
     let mut all = Vec::new();
     for (name, env, default, schema, count) in servers {
+        if only.as_deref().is_some_and(|o| o != name) {
+            continue;
+        }
         if let Some(config) = server_config(env, default, name).await {
             all.push(Target {
                 name,
@@ -253,12 +258,16 @@ async fn targets() -> Vec<Target> {
             });
         }
     }
-    let sqlite = local(DriverKind::Sqlite, "sqlite", "scale.db");
-    std::fs::File::create(&sqlite.config.database).unwrap();
-    all.push(sqlite);
-    platypus_driver_duckdb::testing::load();
-    // DuckDB creates the file; an empty one is not a database.
-    all.push(local(DriverKind::DuckDb, "duckdb", "scale.duckdb"));
+    if only.as_deref().is_none_or(|o| o == "sqlite") {
+        let sqlite = local(DriverKind::Sqlite, "sqlite", "scale.db");
+        std::fs::File::create(&sqlite.config.database).unwrap();
+        all.push(sqlite);
+    }
+    if only.as_deref().is_none_or(|o| o == "duckdb") {
+        platypus_driver_duckdb::testing::load();
+        // DuckDB creates the file; an empty one is not a database.
+        all.push(local(DriverKind::DuckDb, "duckdb", "scale.duckdb"));
+    }
     all
 }
 

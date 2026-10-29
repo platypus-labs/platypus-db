@@ -156,10 +156,12 @@ impl MySqlConnection {
         let timeout = config.connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT);
         let mut opts = opts(config, ssl_opts(config)?);
         let mut conn = match open(opts.clone(), timeout).await {
-            // `prefer` falls back to plaintext when the server has no TLS.
+            // `prefer` falls back to plaintext when the server has no TLS, or only TLS this
+            // client refuses (MySQL 5.7's images offer old versions and ciphers).
             Err(Error::Connect(message))
                 if config.ssl_mode == SslMode::Prefer
-                    && message == DriverError::NoClientSslFlagFromServer.to_string() =>
+                    && (message.contains(&DriverError::NoClientSslFlagFromServer.to_string())
+                        || tls_refused(&message)) =>
             {
                 opts = self::opts(config, None);
                 open(opts.clone(), timeout).await?
@@ -212,6 +214,26 @@ impl MySqlConnection {
         };
         format!("'{}'", s.replace('\'', "''"))
     }
+}
+
+/// Whether the server offers no TLS this client takes (versions, ciphers), as rustls words
+/// it; not a certificate the server asks for or refuses, which plaintext would only hide.
+fn tls_refused(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    [
+        "handshakefailure",
+        "protocolversion",
+        "insufficientsecurity",
+        "peer is incompatible",
+    ]
+    .iter()
+    .any(|m| lower.contains(m))
+}
+
+/// Whether the server has what MySQL added in `version`: MariaDB and `TiDB` number their
+/// versions apart (`TiDB` reports an old MySQL, `8.0.11-TiDB-v7.5.0`) and have it.
+pub(crate) fn mysql_has(info: &ServerInfo, version: platypus_core::ServerVersion) -> bool {
+    info.product == "MariaDB" || info.version.contains("TiDB") || info.at_least(version)
 }
 
 /// The warnings of the statements run, until `take_messages`.
@@ -765,6 +787,30 @@ fn error_position(sql: &str, message: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tells_tls_refusals_from_other_errors() {
+        assert!(tls_refused(
+            "Input/output error: received fatal alert: HandshakeFailure"
+        ));
+        assert!(tls_refused("peer is incompatible: ProtocolVersion"));
+        assert!(!tls_refused("Access denied for user 'x'@'%'"));
+        assert!(!tls_refused("received fatal alert: CertificateRequired"));
+    }
+
+    #[test]
+    fn tidb_and_mariadb_have_what_mysql_added_later() {
+        let info = |product: &str, version: &str| ServerInfo {
+            product: product.to_owned(),
+            version: version.to_owned(),
+            encrypted: false,
+        };
+        let v = platypus_core::ServerVersion::new(8, 0, 16);
+        assert!(!mysql_has(&info("MySQL", "5.7.44-log"), v));
+        assert!(mysql_has(&info("MySQL", "8.0.36"), v));
+        assert!(mysql_has(&info("MySQL", "8.0.11-TiDB-v7.5.0"), v));
+        assert!(mysql_has(&info("MariaDB", "10.6.21-MariaDB"), v));
+    }
 
     #[test]
     fn client_certificate_needs_cert_and_key() {

@@ -3,8 +3,8 @@
 use platypus_core::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, ConstraintKind, ConstraintMeta,
     Error, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch, ObjectKind, ObjectMeta, ObjectRef,
-    Property, ReferencingKey, Result, SEARCH_LIMIT, SchemaMeta, TableDetails, TextRow, TextRowExt,
-    group_sorted, query_catalog, query_text, unsupported,
+    Property, ReferencingKey, Result, SEARCH_LIMIT, SchemaMeta, ServerVersion, TableDetails,
+    TextRow, TextRowExt, group_sorted, query_catalog, query_text, unsupported,
 };
 use platypus_sql::{Dialect, contains_pattern};
 
@@ -324,6 +324,9 @@ fn unescape(text: &str) -> String {
     out
 }
 
+/// MySQL's first version with `information_schema.CHECK_CONSTRAINTS`.
+const CHECK_CONSTRAINTS: ServerVersion = ServerVersion::new(8, 0, 16);
+
 /// Primary key, unique, check and exclusion constraints.
 async fn constraints(
     conn: &MySqlConnection,
@@ -331,18 +334,31 @@ async fn constraints(
     table: &str,
 ) -> Result<Vec<ConstraintMeta>> {
     // One row per constraint column; checks have no columns. MySQL 8.0.16+ and MariaDB
-    // 10.2+ have CHECK_CONSTRAINTS; check names are unique per schema there.
+    // 10.2+ have CHECK_CONSTRAINTS; check names are unique per schema there. MySQL 5.7 has
+    // no checks (it parses CHECK and ignores it), nor the table.
+    let checks = crate::mysql_has(
+        platypus_core::Connection::server_info(conn),
+        CHECK_CONSTRAINTS,
+    );
+    let (check_clause, check_join) = if checks {
+        (
+            "cc.CHECK_CLAUSE",
+            "LEFT JOIN information_schema.CHECK_CONSTRAINTS cc
+               ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+              AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND tc.CONSTRAINT_TYPE = 'CHECK'",
+        )
+    } else {
+        ("NULL", "")
+    };
     let rows = query_text(
         conn,
         &format!(
-            "SELECT tc.CONSTRAINT_NAME, tc.CONSTRAINT_TYPE, k.COLUMN_NAME, cc.CHECK_CLAUSE
+            "SELECT tc.CONSTRAINT_NAME, tc.CONSTRAINT_TYPE, k.COLUMN_NAME, {check_clause}
              FROM information_schema.TABLE_CONSTRAINTS tc
              LEFT JOIN information_schema.KEY_COLUMN_USAGE k
                ON k.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND k.TABLE_NAME = tc.TABLE_NAME
               AND k.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
-             LEFT JOIN information_schema.CHECK_CONSTRAINTS cc
-               ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
-              AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND tc.CONSTRAINT_TYPE = 'CHECK'
+             {check_join}
              WHERE tc.TABLE_SCHEMA = {} AND tc.TABLE_NAME = {}
                AND tc.CONSTRAINT_TYPE IN ('PRIMARY KEY', 'UNIQUE', 'CHECK')
              ORDER BY tc.CONSTRAINT_TYPE = 'PRIMARY KEY' DESC, tc.CONSTRAINT_NAME,

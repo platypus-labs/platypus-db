@@ -143,6 +143,131 @@ services:
       retries: 90
       start_period: 5s
 
+  # Older versions of the databases, not started by default:
+  # `docker compose --profile versions up -d --wait`, then `node scripts/conformance-versions.mjs`
+  # runs the conformance suite on each. The oldest of each is the minimum the app supports
+  # (`platypus_core::minimum_version`). The images run the same seeds as the newest ones.
+  postgres-12:
+    image: postgres:12-alpine
+    profiles: [versions]
+    environment: &postgres-env
+      POSTGRES_USER: platypus
+      POSTGRES_PASSWORD: platypus
+      POSTGRES_DB: platypus
+    ports:
+      - "55412:5432"
+    volumes: &postgres-seed
+      - ./postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck: &postgres-health
+      test: ["CMD-SHELL", "pg_isready -U platypus -d platypus"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  postgres-14:
+    image: postgres:14-alpine
+    profiles: [versions]
+    environment: *postgres-env
+    ports:
+      - "55414:5432"
+    volumes: *postgres-seed
+    healthcheck: *postgres-health
+
+  postgres-16:
+    image: postgres:16-alpine
+    profiles: [versions]
+    environment: *postgres-env
+    ports:
+      - "55416:5432"
+    volumes: *postgres-seed
+    healthcheck: *postgres-health
+
+  mysql-5.7:
+    image: mysql:5.7
+    profiles: [versions]
+    # 64M as from 8.0 (5.7 allows 4M): the scale tests read cells of tens of megabytes.
+    command: --log-bin-trust-function-creators=1 --max-allowed-packet=64M
+    environment: &mysql-env
+      MYSQL_USER: platypus
+      MYSQL_PASSWORD: platypus
+      MYSQL_DATABASE: platypus
+      MYSQL_ROOT_PASSWORD: platypus
+    ports:
+      - "53357:3306"
+    volumes: &mysql-seed
+      - ./mysql:/docker-entrypoint-initdb.d:ro
+    healthcheck: &mysql-health
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uplatypus", "-pplatypus"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
+
+  mysql-8.0:
+    image: mysql:8.0
+    profiles: [versions]
+    command: --log-bin-trust-function-creators=1
+    environment: *mysql-env
+    ports:
+      - "53380:3306"
+    volumes: *mysql-seed
+    healthcheck: *mysql-health
+
+  mariadb-10.6:
+    image: mariadb:10.6
+    profiles: [versions]
+    # 64M as from 10.6's successors (10.6 allows 16M), for the scale tests' large cells.
+    command: --max-allowed-packet=64M
+    environment:
+      MARIADB_USER: platypus
+      MARIADB_PASSWORD: platypus
+      MARIADB_DATABASE: platypus
+      MARIADB_ROOT_PASSWORD: platypus
+    ports:
+      - "53406:3306"
+    volumes: *mysql-seed
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
+
+  sqlserver-2017:
+    image: mcr.microsoft.com/mssql/server:2017-latest
+    profiles: [versions]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: Platypus-2026
+    ports:
+      - "51417:1433"
+    healthcheck:
+      # 2017's tools are in mssql-tools, without the -C of 18.
+      test:
+        - CMD-SHELL
+        - >-
+          /opt/mssql-tools/bin/sqlcmd -b -S localhost -U sa -P "$$MSSQL_SA_PASSWORD"
+          -Q "IF DB_ID('platypus') IS NULL CREATE DATABASE platypus"
+      interval: 2s
+      timeout: 10s
+      retries: 90
+      start_period: 10s
+
+  mongo-5:
+    image: mongo:5.0
+    profiles: [versions]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: platypus
+      MONGO_INITDB_ROOT_PASSWORD: platypus
+    ports:
+      - "57005:27017"
+    volumes:
+      - ./mongo:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mongo", "--quiet", "-u", "platypus", "-p", "platypus", "--eval", "if (!db.getSiblingDB('platypus').getCollectionNames().includes('customer_totals')) quit(1)"]
+      interval: 2s
+      timeout: 10s
+      retries: 90
+      start_period: 5s
+
   # PostgreSQL-compatible servers, not started by default:
   # `docker compose --profile pgwire up -d --wait`. TimescaleDB runs the PostgreSQL seed;
   # CockroachDB and YugabyteDB run none, and the conformance tests seed them.

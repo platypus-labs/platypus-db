@@ -82,20 +82,25 @@ copy updates by replacing its executable; the welcome screen says `portable` bes
 
 | Database | How it connects | Notes |
 |---|---|---|
-| PostgreSQL | native protocol | Several databases per connection, partitions, PostGIS, arrays and composite types |
-| MySQL, MariaDB | native protocol | |
-| SQL Server, Azure SQL | TDS | `TOP (n)`, `[names]`, several result sets |
+| PostgreSQL 12+ | native protocol | Several databases per connection, partitions, PostGIS, arrays and composite types |
+| MySQL 5.7+, MariaDB 10.6+ | native protocol | On MySQL before 8.0.16 plans are read from `EXPLAIN FORMAT=JSON`; `EXPLAIN ANALYZE` needs 8.0.18 |
+| SQL Server 2017+, Azure SQL | TDS | `TOP (n)`, `[names]`, several result sets |
 | ClickHouse | HTTP interface (8123, or 8443 with TLS), Arrow results | Browsed, queried and designed; no data editing in the grid |
 | SQLite | embedded | |
 | DuckDB | embedded, Arrow results; DuckDB's library downloaded on first use | Also opens CSV, JSON, Parquet and Excel files as databases |
 | libSQL / Turso | Hrana over HTTP | Token in the password or in `authToken` |
-| MongoDB | official driver | mongosh syntax; no transactions, explain or data editing |
+| MongoDB 5+ | official driver | mongosh syntax; no transactions, explain or data editing |
 | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | PostgreSQL driver | Profiles with their default port, user, database and SSL |
 | Snowflake, BigQuery, Databricks, Trino | ADBC driver, downloaded on first use | Queries, results, navigator and autocompletion; no data editing, explain or manual commit yet |
 | Any database with an ADBC driver | ADBC driver library you choose | Its URI and options as the driver documents them |
 | Oracle | native driver with Oracle Instant Client, downloaded on first use | PL/SQL blocks (end them with a `/` line in scripts), real cancel, navigator, DDL; Windows needs the Visual C++ Redistributable, Linux `libaio` |
 | IBM Db2 | IBM's ODBC driver, installed on first use (Windows) | Registering the driver asks for administrator rights (UAC) |
 | Any ODBC driver or DSN (Windows) | the system's ODBC driver manager | A DSN, or a driver and its connection string |
+
+The versions in the table are the oldest the conformance suite runs on; an older server still
+connects, with a message that some features may not work. Errors name the server they come from,
+e.g. `Unknown column 'x' in 'field list' (MySQL 5.7.44)`, since the reason often depends on
+the version.
 
 The ADBC drivers come from the [dbc driver registry](https://docs.columnar.tech/dbc/) (Columnar):
 the first connection that needs one asks to download it, checks its SHA-256 and keeps it with
@@ -782,6 +787,10 @@ docker compose -f docker/compose.yml up -d --wait
 docker compose -f docker/compose.yml --profile sqlserver up -d --wait
 docker compose -f docker/compose.yml --profile libsql up -d --wait
 docker compose -f docker/compose.yml --profile mongo up -d --wait
+# Older versions (PostgreSQL 12/14/16, MySQL 5.7/8.0, MariaDB 10.6, SQL Server 2017, MongoDB 5),
+# then the conformance suite on each
+docker compose -f docker/compose.yml --profile versions up -d --wait
+node scripts/conformance-versions.mjs
 ```
 
 | Database   | Host port | User / password / db           |

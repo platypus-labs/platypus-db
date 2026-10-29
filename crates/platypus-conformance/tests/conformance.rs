@@ -6,7 +6,8 @@
 //! `PLATYPUS_TEST_MYSQL_URL`, `PLATYPUS_TEST_MARIADB_URL`, `PLATYPUS_TEST_MSSQL_URL`,
 //! `PLATYPUS_TEST_CLICKHOUSE_URL` or `PLATYPUS_TEST_LIBSQL_URL` makes that database required
 //! (CI does); otherwise an unreachable default database is skipped. SQLite and DuckDB always
-//! run, on temporary files.
+//! run, on temporary files. `PLATYPUS_TEST_ONLY` (a backend's name, e.g. `mysql`) leaves out
+//! the others.
 
 use std::time::Duration;
 
@@ -18,7 +19,7 @@ use platypus_core::geometry;
 use platypus_core::{
     Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, EndSession, Error,
     ExecOptions, ExecResult, MatchKind, ObjectKind, ObjectRef, PlanNode, ServerSession,
-    SessionInit,
+    ServerVersion, SessionInit,
 };
 use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
@@ -525,8 +526,13 @@ async fn pg_wire_backends() -> Vec<Backend> {
 }
 
 async fn backends() -> Vec<Backend> {
+    // `PLATYPUS_TEST_ONLY=mysql` runs on that database alone, as the run on each older
+    // version does (scripts/conformance-versions.mjs).
+    let only = std::env::var("PLATYPUS_TEST_ONLY").ok();
+    let wanted = |name: &str| only.as_deref().is_none_or(|o| o == name);
     let mut all = Vec::new();
-    if let Some(config) = server_config(
+    if !wanted("postgres") {
+    } else if let Some(config) = server_config(
         "PLATYPUS_TEST_PG_URL",
         "postgres://platypus:platypus@localhost:55432/platypus?sslmode=disable",
         "PostgreSQL",
@@ -560,6 +566,9 @@ async fn backends() -> Vec<Backend> {
             "mysql://platypus:platypus@localhost:53307/platypus",
         ),
     ] {
+        if !wanted(name) {
+            continue;
+        }
         if let Some(config) = server_config(env, default, product).await {
             all.push(Backend {
                 name,
@@ -573,12 +582,24 @@ async fn backends() -> Vec<Backend> {
             });
         }
     }
-    all.extend(pg_wire_backends().await);
-    all.extend(mssql_backend().await);
-    all.extend(clickhouse_backend().await);
-    all.push(sqlite_backend().await);
-    all.push(duckdb_backend().await);
-    all.extend(libsql_backend().await);
+    if only.is_none() {
+        all.extend(pg_wire_backends().await);
+    }
+    if wanted("sqlserver") {
+        all.extend(mssql_backend().await);
+    }
+    if wanted("clickhouse") {
+        all.extend(clickhouse_backend().await);
+    }
+    if wanted("sqlite") {
+        all.push(sqlite_backend().await);
+    }
+    if wanted("duckdb") {
+        all.push(duckdb_backend().await);
+    }
+    if wanted("libsql") {
+        all.extend(libsql_backend().await);
+    }
     all
 }
 
@@ -1191,10 +1212,21 @@ fn plans_suggest(b: &Backend) -> bool {
         && b.product != "CockroachDB"
 }
 
-fn plan_support(b: &Backend) -> PlanSupport {
+/// A MySQL server older than `version`; MariaDB numbers its versions apart.
+fn mysql_before(conn: &dyn Connection, version: ServerVersion) -> bool {
+    let info = conn.server_info();
+    info.product == "MySQL" && !info.at_least(version)
+}
+
+/// MySQL's first versions with `CHECK` constraints and with `EXPLAIN ANALYZE`.
+const MYSQL_CHECKS: ServerVersion = ServerVersion::new(8, 0, 16);
+const MYSQL_ANALYZE: ServerVersion = ServerVersion::new(8, 0, 18);
+
+fn plan_support(b: &Backend, conn: &dyn Connection) -> PlanSupport {
     let driver = b.config.driver;
-    let analyzes =
-        !b.speaks_sqlite() && !matches!(driver, DriverKind::ClickHouse | DriverKind::SqlServer);
+    let analyzes = !b.speaks_sqlite()
+        && !matches!(driver, DriverKind::ClickHouse | DriverKind::SqlServer)
+        && !mysql_before(conn, MYSQL_ANALYZE);
     PlanSupport {
         names_tables: driver != DriverKind::ClickHouse,
         analyzes,
@@ -1325,7 +1357,7 @@ async fn explains_queries() {
         if !conn.capabilities().explain {
             continue;
         }
-        let support = plan_support(&b);
+        let support = plan_support(&b, conn);
         let table = b.temp("conf_plan");
         run(conn, &b.create_temp("conf_plan", "id INT"))
             .await
@@ -1406,7 +1438,7 @@ async fn suggests_indexes_for_large_scans() {
         let conn = b.connect().await;
         let conn = &*conn;
         // Plans are optional: `capabilities_match_optional_methods` checks the others.
-        if !conn.capabilities().explain || !plan_support(&b).analyzes {
+        if !conn.capabilities().explain || !plan_support(&b, conn).analyzes {
             continue;
         }
         run(
@@ -1830,8 +1862,8 @@ async fn check_probe(b: &Backend, conn: &dyn Connection, table: &str, trigger: &
         b.name,
         details.constraints
     );
-    // SQLite keeps checks only in the table's SQL.
-    if !b.speaks_sqlite() {
+    // SQLite keeps checks only in the table's SQL; MySQL before 8.0.16 ignores them.
+    if !b.speaks_sqlite() && !mysql_before(conn, MYSQL_CHECKS) {
         let check = details
             .constraints
             .iter()
@@ -3282,6 +3314,7 @@ async fn agents_explain_analyze_in_read_only_transactions() {
         let conn = &*conn;
         if !conn.capabilities().explain
             || !platypus_mcp::query::refuses_writes_when_read_only(b.config.driver)
+            || mysql_before(conn, MYSQL_ANALYZE)
         {
             continue;
         }
@@ -3807,7 +3840,7 @@ async fn migrates_tables_between_databases() {
             assert_eq!(done.rows, 4, "{pair}");
             // Only MySQL sources have the view.
             let same = sd == td && sd == Dialect::MySql;
-            check_migrated(to, &*target, &pair, &done.skipped, same).await;
+            check_migrated(to, &*source, &*target, &pair, &done.skipped, same).await;
             let _ = run(&*target, &format!("DROP VIEW {tview}")).await;
             drop_tables(&*target, td, &to.schema, &tables).await;
             let copied = td.qualified(Some(&to.schema), "conf_mig_parent_id_seq");
@@ -3823,6 +3856,7 @@ async fn migrates_tables_between_databases() {
 /// both databases are of one kind, which copies the view.
 async fn check_migrated(
     to: &Backend,
+    source: &dyn Connection,
     target: &dyn Connection,
     pair: &str,
     skipped: &[String],
@@ -3834,12 +3868,15 @@ async fn check_migrated(
     let tparent = td.qualified(Some(&to.schema), "conf_mig_parent");
     let tchild = td.qualified(Some(&to.schema), "conf_mig_child");
     let files = to.speaks_sqlite() || to.config.driver == DriverKind::DuckDb;
-    // Only a CHECK written for another database may stay behind, in SQLite and DuckDB, and the
-    // view between databases of different kinds (the schema's other objects are not ours).
+    // Only a CHECK written for another database may stay behind, in SQLite and DuckDB, the
+    // view between databases of different kinds (the schema's other objects are not ours),
+    // and on MySQL before 8.0.13 the default of a TEXT column, which it cannot have.
+    let old_mysql = mysql_before(target, ServerVersion::new(8, 0, 13));
     let unexpected: Vec<_> = skipped
         .iter()
         .filter(|w| w.contains("conf_mig"))
         .filter(|w| (!files || !w.contains("CHECK")) && (same || !w.contains("are not copied to")))
+        .filter(|w| !(old_mysql && w.contains(": default:")))
         .collect();
     assert!(unexpected.is_empty(), "{pair}: {unexpected:?}");
     // Identity and defaults: a new row is numbered after the copied ones.
@@ -3854,11 +3891,14 @@ async fn check_migrated(
     );
     let batches = collect(to, target, &check).await;
     let values: Vec<_> = (0..3).map(|c| cell(&batches[0], c, 0)).collect();
+    let code_default = skipped
+        .iter()
+        .any(|w| w.contains("conf_mig_parent.code: default:"));
     assert_eq!(
         values,
         [
             Some("3".to_owned()),
-            Some("new".to_owned()),
+            (!code_default).then(|| "new".to_owned()),
             Some("0".to_owned())
         ],
         "{pair}: identity and defaults"
@@ -3875,7 +3915,9 @@ async fn check_migrated(
     ] {
         assert!(run(target, &sql).await.is_err(), "{pair}: {what}");
     }
-    if !files {
+    // MySQL before 8.0.16 parses a CHECK and ignores it: on either side there is none.
+    let checked = !mysql_before(source, MYSQL_CHECKS) && !mysql_before(target, MYSQL_CHECKS);
+    if checked && !files {
         let sql = format!("INSERT INTO {tparent} (name, code, qty) VALUES ('e', 'z', -1)");
         assert!(run(target, &sql).await.is_err(), "{pair}: check");
     }
@@ -4133,7 +4175,18 @@ async fn edits_table_designs() {
         );
         assert!(created.columns[0].primary_key, "{}", b.name);
         assert_eq!(created.indexes.len(), 1, "{}: {created:?}", b.name);
-        assert_eq!(created.constraints.len(), 2, "{}: {created:?}", b.name);
+        // The primary key and the CHECK, which MySQL before 8.0.16 ignores.
+        let constraints = if mysql_before(&*conn, MYSQL_CHECKS) {
+            1
+        } else {
+            2
+        };
+        assert_eq!(
+            created.constraints.len(),
+            constraints,
+            "{}: {created:?}",
+            b.name
+        );
         if comments {
             assert_eq!(
                 created.columns[3].comment.as_deref(),
@@ -4271,7 +4324,8 @@ async fn edit_child_design(b: &Backend, conn: &dyn Connection) {
     assert_eq!(column_names(&read), ["id", "owner_id"], "{}", b.name);
     assert_eq!(read.foreign_keys[0].on_delete, None, "{}", b.name);
     assert_eq!(read.foreign_keys[0].columns, ["owner_id"], "{}", b.name);
-    assert_eq!(read.constraints.len(), 1, "{}: {read:?}", b.name);
+    let checks = usize::from(!mysql_before(conn, MYSQL_CHECKS));
+    assert_eq!(read.constraints.len(), checks, "{}: {read:?}", b.name);
     let rows = collect(b, conn, &format!("SELECT owner_id FROM {table}")).await;
     assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("1"), "{}", b.name);
     run(conn, &format!("DROP TABLE {table}")).await.unwrap();
@@ -4375,6 +4429,8 @@ const SQLITE_KEYWORDS: &str = "ABORT ACTION ADD AFTER ALL ALTER ALWAYS ANALYZE A
 async fn keywords(b: &Backend, conn: &dyn Connection) -> Vec<String> {
     let sql = match b.name {
         "postgres" => "SELECT word FROM pg_get_keywords()",
+        // MySQL lists its keywords from 8.0.
+        "mysql" if mysql_before(conn, ServerVersion::new(8, 0, 0)) => return Vec::new(),
         "mysql" | "mariadb" => "SELECT WORD FROM information_schema.KEYWORDS",
         "duckdb" => "SELECT keyword_name FROM duckdb_keywords()",
         "sqlite" | "libsql" => {
@@ -5467,6 +5523,11 @@ async fn qa3_schema_lint_and_checks_read_back() {
             "{}: {findings:?}",
             b.name
         );
+        if mysql_before(&*conn, MYSQL_CHECKS) {
+            run(&*conn, &format!("DROP TABLE {table}")).await.unwrap();
+            run(&*conn, &format!("DROP TABLE {parent}")).await.unwrap();
+            continue;
+        }
         // The CHECK as read creates the table again.
         let design = platypus_schema::load(&*conn, d, &b.schema, "qa3_quoted")
             .await
