@@ -146,6 +146,18 @@ impl ProfileTask {
         }
     }
 
+    /// Whether each run creates tables: an import or a copy into a new table, or a migration.
+    /// The second run of such a task fails, as the tables are there.
+    pub fn creates_tables(&self) -> bool {
+        match self {
+            Self::ImportFile { plan, .. } | Self::TransferTable { plan, .. } => {
+                import_plan(plan).is_ok_and(|p| p.create)
+            }
+            Self::Migrate { .. } => true,
+            Self::ExportQuery { .. } | Self::ExportTables { .. } => false,
+        }
+    }
+
     /// The first connection and its database: what a scheduled task keeps as its own.
     pub fn first_connection(&self) -> (Uuid, Option<String>) {
         match self {
@@ -358,6 +370,13 @@ fn url_id(profile: Uuid) -> Uuid {
     Uuid::from_u128(profile.as_u128() ^ 0x7369_676e_6564_2d75_726c_0000_0000_0000)
 }
 
+/// Puts the secrets `before` back, as they were.
+fn restore(keys: &dyn KeyStore, before: &[(Uuid, Option<Secret>)]) {
+    for (id, old) in before {
+        let _ = keys.set(*id, old.as_ref());
+    }
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Saved {
     profiles: Vec<TransferProfile>,
@@ -510,18 +529,33 @@ impl Profiles {
                 return Err((*problem).to_owned());
             }
         }
-        for (id, new, used, _) in wanted {
-            match new {
-                Some(secret) => keys.set(id, Some(&Secret::new(secret)))?,
-                None if !used => keys.set(id, None)?,
-                None => {}
-            }
-        }
-        match saved.profiles.iter_mut().find(|p| p.id == profile.id) {
+        // The file is written from a copy first: a failed write changes neither the list nor
+        // the secrets (those set before it are put back).
+        let mut profiles = saved.profiles.clone();
+        match profiles.iter_mut().find(|p| p.id == profile.id) {
             Some(old) => *old = profile.clone(),
-            None => saved.profiles.push(profile.clone()),
+            None => profiles.push(profile.clone()),
         }
-        self.write(&saved)?;
+        let mut before = Vec::new();
+        for (id, new, used, _) in wanted {
+            let secret = match new {
+                Some(secret) => Some(Secret::new(secret)),
+                None if !used => None,
+                None => continue,
+            };
+            let old = keys.get(id)?;
+            if let Err(e) = keys.set(id, secret.as_ref()) {
+                restore(keys, &before);
+                return Err(e);
+            }
+            before.push((id, old));
+        }
+        let updated = Saved { profiles };
+        if let Err(e) = self.write(&updated) {
+            restore(keys, &before);
+            return Err(e);
+        }
+        *saved = updated;
         Ok(profile)
     }
 
@@ -541,6 +575,12 @@ impl Profiles {
         let profile = self
             .get(profile_id)
             .ok_or("the profile of the task is gone: choose another")?;
+        if profile.task.creates_tables() {
+            return Err(format!(
+                "{} creates its tables: it can run only once; save a profile that fills the                  existing table to schedule it",
+                profile.name
+            ));
+        }
         (schedule.connection_id, schedule.database) = profile.task.first_connection();
         Ok(())
     }
@@ -1026,13 +1066,46 @@ mod tests {
                 .unwrap_err()
                 .contains("gone")
         );
-        let task = all_kinds().remove(3);
+        let mut task = all_kinds().remove(3);
+        let creating = profile("New table", task.clone());
+        let ProfileTask::TransferTable { plan, .. } = &mut task else {
+            panic!("a copy");
+        };
+        plan["create"] = false.into();
         let (source, database) = task.first_connection();
         let p = profiles
             .put(profile("Copy", task), everything, &keys)
             .unwrap();
         profiles.follow(&mut s, p.id).unwrap();
-        assert_eq!((s.connection_id, s.database), (source, database));
+        assert_eq!((s.connection_id, s.database.clone()), (source, database));
+
+        // A task that creates its tables fails from its second run: refused when saved.
+        let creating = profiles.put(creating, everything, &keys).unwrap();
+        let refused = profiles.follow(&mut s, creating.id).unwrap_err();
+        assert!(refused.contains("can run only once"), "{refused}");
+        for task in all_kinds() {
+            let creates = matches!(
+                task,
+                ProfileTask::ImportFile { .. }
+                    | ProfileTask::TransferTable { .. }
+                    | ProfileTask::Migrate { .. }
+            );
+            assert_eq!(task.creates_tables(), creates);
+        }
+    }
+
+    #[test]
+    fn a_failed_write_changes_neither_the_list_nor_the_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        // The file cannot be written: its path is a folder.
+        let path = dir.path().join("transfer-profiles.json");
+        std::fs::create_dir(&path).unwrap();
+        let profiles = Profiles::open(Some(path));
+        let keys = Keys::default();
+        let p = profile("Backups", query(with_bucket("s3cret")));
+        assert!(profiles.put(p.clone(), everything, &keys).is_err());
+        assert_eq!(profiles.list().len(), 0);
+        assert!(keys.get(key_id(p.id)).unwrap().is_none());
     }
 
     #[test]

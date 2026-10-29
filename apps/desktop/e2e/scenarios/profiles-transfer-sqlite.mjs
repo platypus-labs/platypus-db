@@ -127,6 +127,17 @@ export default async function (page, { dir }) {
     { id: 3, name: "cap", price: 10 },
   ]);
 
+  // The same table copied again, now into the table that is there: the plan keeps it as an
+  // existing table, not as one to create.
+  await showTable(page, SRC, "main", "items");
+  await menu(page, "items", "Copy to a database", importDialog, SRC);
+  assert.equal(await copyTarget(page, DST), null);
+  assert.equal(await saveProfile(page, importDialog, "Save as profile…", "Items into existing"), null);
+  await closeModal(page, importDialog);
+  const into = savedProfiles(dir)["Items into existing"].task;
+  assert.equal(into.plan.create, false, "a copy into an existing table does not create it");
+  assert.equal(into.plan.table, "items");
+
   // The whole schema, saved as "all tables".
   await menu(page, "main", "Copy schema to a database", migrateDialog, SRC);
   await page.waitFor(`${migrateDialog}.querySelector('select')?.selectedOptions[0]?.textContent === ${JSON.stringify(MIG)}`, 15_000);

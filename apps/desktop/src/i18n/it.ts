@@ -2178,6 +2178,7 @@ const it: Record<string, string> = {
   "Transfer profiles of {name}": "Profili di trasferimento di {name}",
   "Transfer profiles": "Profili di trasferimento",
   "Save a profile from the export, import, copy and migration dialogs.": "Salva un profilo dalle finestre di esportazione, importazione, copia e migrazione.",
+  "{name} creates its tables: it can run only once; save a profile that fills the existing table to schedule it": "{name} crea le sue tabelle: può essere eseguito una sola volta; salva un profilo che riempie la tabella esistente per pianificarlo",
   "No profiles saved yet.": "Nessun profilo salvato.",
   "Running… {n} rows": "In corso… {n} righe",
   "Done: {n} rows.": "Fatto: {n} righe.",

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   changedKeys,
+  createsTables,
+  existingTable,
   exportsFiles,
   mappingFor,
   missingColumns,
@@ -96,4 +98,19 @@ test("a changed primary key is noticed for an upsert only", () => {
 test("tables that are gone are split from those found", () => {
   const tables = [{ name: "a" }, { name: "b" }, { name: "c" }];
   assert.deepEqual(splitTables(tables, ["a", "c", "z"]), { kept: [{ name: "a" }, { name: "c" }], gone: [{ name: "b" }] });
+});
+
+test("a plan into an existing table names it; one that creates its table names none", () => {
+  assert.equal(existingTable(importFile.plan), "t");
+  assert.equal(existingTable({ ...importFile.plan, create: true }), null);
+});
+
+test("an import or copy into a new table, and a migration, create tables on each run", () => {
+  const creating = { ...importFile.plan, create: true };
+  assert.equal(createsTables(importFile), false);
+  assert.equal(createsTables({ ...importFile, plan: creating }), true);
+  assert.equal(createsTables({ ...transfer, plan: creating }), true);
+  assert.equal(createsTables(migrate), true);
+  assert.equal(createsTables(exportQuery), false);
+  assert.equal(createsTables(exportTables), false);
 });

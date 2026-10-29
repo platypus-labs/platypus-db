@@ -19,7 +19,7 @@ import { locale, msg, t } from "../i18n";
 import { answerFor } from "../testAnswers";
 import { ask } from "../ui/ask";
 import { workbench } from "../workbench";
-import { exportsFiles, profileConnections, profilesOf } from "../transfer/profiles";
+import { createsTables, exportsFiles, profileConnections, profilesOf } from "../transfer/profiles";
 import { cleaned, newProfileSchedule, newSchedule, repeatOf, sortSchedules, taskKinds, taskOf, taskOnConnection, writesFiles } from "./schedules";
 
 const KINDS: Record<ScheduleTask["kind"], string> = {
@@ -95,7 +95,8 @@ export function SchedulesDialog({ connectionId, profileId, onClose }: { connecti
     if (profileId) {
       api.listTransferProfiles().then((all) => {
         const profile = all.find((p) => p.id === profileId);
-        if (profile) setEditing(newProfileSchedule(profile, profileConnections(profile.task)[0] ?? "", crypto.randomUUID()));
+        if (profile && createsTables(profile.task)) setError(t("{name} creates its tables: it can run only once; save a profile that fills the existing table to schedule it", { name: profile.name }));
+        else if (profile) setEditing(newProfileSchedule(profile, profileConnections(profile.task)[0] ?? "", crypto.randomUUID()));
       }, (e) => setError(toCommandError(e).message));
     }
     return () => void off.then((unlisten) => unlisten());
@@ -312,7 +313,7 @@ function ScheduleForm({
 
   useEffect(() => {
     api.timeZones().then(setZones, () => setZones([]));
-    api.listTransferProfiles().then((all) => setProfiles(profilesOf(all)), () => setProfiles([]));
+    api.listTransferProfiles().then((all) => setProfiles(profilesOf(all).filter((p) => !createsTables(p.task))), () => setProfiles([]));
   }, []);
 
   async function choose(what: "script" | "folder") {

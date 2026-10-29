@@ -81,7 +81,7 @@ const MODES: { value: ImportMode; label: string }[] = [
 ];
 
 /** Whether `path` is a workbook, whose sheet is a table of its own. */
-const isWorkbook = (path: string) => /.(xlsx|xlsm|xls|ods)$/i.test(path.trim());
+const isWorkbook = (path: string) => /\.(xlsx|xlsm|xls|ods)$/i.test(path.trim());
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 const failure = (e: unknown) => toCommandError(e).message;
@@ -647,7 +647,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
 }
 
 /** What the import changes, as statements, for the production confirmation. */
-function changes(p: ImportPlan): string[] {
+export function changes(p: ImportPlan): string[] {
   const table = p.schema ? `${p.schema}.${p.table}` : p.table;
   const columns = p.columns.map((c) => c.target).join(", ");
   const rows = `VALUES ... -- ${t("every row of {table}", { table: p.source_table })}`;

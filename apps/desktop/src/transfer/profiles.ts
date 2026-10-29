@@ -9,6 +9,14 @@ export const KEPT_URL = "(saved apart)";
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
+/** The existing table a plan fills, or `null` when it creates its table. */
+export const existingTable = (plan: ImportPlan) => (plan.create ? null : plan.table);
+
+/** Whether each run of `task` creates tables, so that it can run only once: an import or a
+ *  copy into a new table, or a migration. Such a task cannot be scheduled. */
+export const createsTables = (task: ProfileTask) =>
+  task.kind === "migrate" || ((task.kind === "import_file" || task.kind === "transfer_table") && task.plan.create);
+
 /** The connections a task uses, the first being where its data is read or written. */
 export function profileConnections(task: ProfileTask): string[] {
   return task.kind === "transfer_table" || task.kind === "migrate"

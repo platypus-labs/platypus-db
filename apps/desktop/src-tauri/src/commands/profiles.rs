@@ -11,7 +11,7 @@ use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 use super::connections::SavedConfig;
-use super::schedules::unattended;
+use super::schedules::with_saved_password;
 use super::{AppState, export, read_only_error, sql, transfer};
 use crate::error::{CommandError, CommandResult};
 use crate::export::ExportEvent;
@@ -24,12 +24,12 @@ const SCHEDULES_CHANGED: &str = "schedules-changed";
 /// The bucket keys of the profiles live beside the connections' passwords.
 impl KeyStore for AppState {
     fn get(&self, id: Uuid) -> Result<Option<Secret>, String> {
-        self.with_store(|s| s.ssh_secret(id))
+        self.with_store(|s| s.secret(id))
             .map_err(|e| e.message().to_owned())
     }
 
     fn set(&self, id: Uuid, key: Option<&Secret>) -> Result<(), String> {
-        self.with_store(|s| s.set_ssh_secret(id, key))
+        self.with_store(|s| s.set_secret(id, key))
             .map_err(|e| e.message().to_owned())
     }
 }
@@ -40,8 +40,9 @@ async fn source(
     state: &AppState,
     id: Uuid,
     database: Option<String>,
+    scheduled: bool,
 ) -> CommandResult<SavedConfig> {
-    let saved = unattended(state, id, database).await?;
+    let saved = with_saved_password(state, id, database, scheduled).await?;
     if saved.restrictions.no_export {
         return Err(CommandError::new(
             "restricted",
@@ -57,8 +58,9 @@ async fn target(
     state: &AppState,
     id: Uuid,
     database: Option<String>,
+    scheduled: bool,
 ) -> CommandResult<SavedConfig> {
-    let saved = unattended(state, id, database).await?;
+    let saved = with_saved_password(state, id, database, scheduled).await?;
     if saved.read_only {
         return Err(read_only_error(&saved.label));
     }
@@ -77,11 +79,13 @@ fn log_label(saved: &SavedConfig, profile: &TransferProfile) -> String {
 }
 
 /// Starts `profile` with its connections' checks; returns the id `cancel_export` takes.
-/// `redirect` replaces the file (or folder) an export writes, for a scheduled run.
+/// `redirect` replaces the file (or folder) an export writes, for a scheduled run;
+/// `scheduled` says a task runs it, which only changes what a missing password says.
 pub(crate) async fn start(
     state: &AppState,
     profile: &TransferProfile,
     redirect: Option<PathBuf>,
+    scheduled: bool,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
     let label = |saved: &SavedConfig| log_label(saved, profile);
@@ -93,7 +97,7 @@ pub(crate) async fn start(
             path,
             ..
         } => {
-            let saved = source(state, *connection_id, database.clone()).await?;
+            let saved = source(state, *connection_id, database.clone(), scheduled).await?;
             if saved.read_only && !sql::only_reads(sql, saved.config.driver) {
                 return Err(read_only_error(&saved.label));
             }
@@ -114,7 +118,7 @@ pub(crate) async fn start(
             dir,
             ..
         } => {
-            let saved = source(state, *connection_id, database.clone()).await?;
+            let saved = source(state, *connection_id, database.clone(), scheduled).await?;
             let options = exporting(profile, saved.config.driver)?;
             let dir = redirect.unwrap_or_else(|| dir.clone());
             let name = label(&saved);
@@ -125,7 +129,7 @@ pub(crate) async fn start(
                 on_event,
             ))
         }
-        _ => start_into(state, profile, on_event).await,
+        _ => start_into(state, profile, scheduled, on_event).await,
     }
 }
 
@@ -133,6 +137,7 @@ pub(crate) async fn start(
 async fn start_into(
     state: &AppState,
     profile: &TransferProfile,
+    scheduled: bool,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
     let label = |saved: &SavedConfig| log_label(saved, profile);
@@ -145,7 +150,7 @@ async fn start_into(
             plan,
             options,
         } => {
-            let saved = target(state, *connection_id, database.clone()).await?;
+            let saved = target(state, *connection_id, database.clone(), scheduled).await?;
             let plan = import_plan(plan).map_err(invalid)?;
             let name = label(&saved);
             Ok(transfer::start_file(
@@ -162,8 +167,20 @@ async fn start_into(
             target_database,
             plan,
         } => {
-            let from = source(state, *source_connection_id, source_database.clone()).await?;
-            let to = target(state, *target_connection_id, target_database.clone()).await?;
+            let from = source(
+                state,
+                *source_connection_id,
+                source_database.clone(),
+                scheduled,
+            )
+            .await?;
+            let to = target(
+                state,
+                *target_connection_id,
+                target_database.clone(),
+                scheduled,
+            )
+            .await?;
             let plan = import_plan(plan).map_err(invalid)?;
             let name = label(&to);
             Ok(transfer::start_copy(
@@ -184,8 +201,20 @@ async fn start_into(
             tables,
             objects,
         } => {
-            let from = source(state, *source_connection_id, source_database.clone()).await?;
-            let to = target(state, *target_connection_id, target_database.clone()).await?;
+            let from = source(
+                state,
+                *source_connection_id,
+                source_database.clone(),
+                scheduled,
+            )
+            .await?;
+            let to = target(
+                state,
+                *target_connection_id,
+                target_database.clone(),
+                scheduled,
+            )
+            .await?;
             let name = label(&to);
             Ok(transfer::start_migrate(
                 state,
@@ -293,7 +322,7 @@ pub async fn run_transfer_profile(
     let profile = profiles
         .restored(id, &*state)
         .map_err(|e| CommandError::new("not_found", e))?;
-    start(&state, &profile, None, on_event).await
+    start(&state, &profile, None, false, on_event).await
 }
 
 #[cfg(test)]

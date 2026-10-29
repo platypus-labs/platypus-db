@@ -2178,6 +2178,7 @@ const zh: Record<string, string> = {
   "Transfer profiles of {name}": "{name} 的传输配置",
   "Transfer profiles": "传输配置",
   "Save a profile from the export, import, copy and migration dialogs.": "可在导出、导入、复制和迁移对话框中保存配置。",
+  "{name} creates its tables: it can run only once; save a profile that fills the existing table to schedule it": "{name} 会创建其表：只能运行一次；请保存一个填充现有表的配置文件以便计划运行",
   "No profiles saved yet.": "尚未保存任何配置。",
   "Running… {n} rows": "进行中… {n} 行",
   "Done: {n} rows.": "完成：{n} 行。",

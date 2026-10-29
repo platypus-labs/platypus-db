@@ -979,17 +979,28 @@ impl ConnectionStore {
         Ok(())
     }
 
-    /// Sets (`Some`) or removes (`None`) an SSH password or passphrase by its `secret_id`.
-    pub fn set_ssh_secret(&self, secret_id: Uuid, secret: Option<&Secret>) -> Result<()> {
+    /// Sets (`Some`) or removes (`None`) a secret kept beside the passwords (an SSH password
+    /// or passphrase, a profile's key) under `secret_id`.
+    pub fn set_secret(&self, secret_id: Uuid, secret: Option<&Secret>) -> Result<()> {
         match secret {
             Some(secret) => self.secrets.set(secret_id, secret),
             None => self.secrets.delete(secret_id),
         }
     }
 
+    /// A secret kept beside the passwords under `secret_id`.
+    pub fn secret(&self, secret_id: Uuid) -> Result<Option<Secret>> {
+        self.secrets.get(secret_id)
+    }
+
+    /// Sets (`Some`) or removes (`None`) an SSH password or passphrase by its `secret_id`.
+    pub fn set_ssh_secret(&self, secret_id: Uuid, secret: Option<&Secret>) -> Result<()> {
+        self.set_secret(secret_id, secret)
+    }
+
     /// A saved SSH password or passphrase.
     pub fn ssh_secret(&self, secret_id: Uuid) -> Result<Option<Secret>> {
-        self.secrets.get(secret_id)
+        self.secret(secret_id)
     }
 
     /// Saves a copy of a connection, named "… (copy)", next to it in the list and in the
@@ -1383,6 +1394,18 @@ SET b = 2;"
             s.ssh_secret(ssh.secret_id).unwrap().unwrap().expose(),
             "ssh"
         );
+    }
+
+    #[test]
+    fn keeps_a_secret_under_its_own_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let (s, _) = store(dir.path());
+        let id = Uuid::new_v4();
+        s.set_secret(id, Some(&Secret::new("key"))).unwrap();
+        assert_eq!(s.secret(id).unwrap().unwrap().expose(), "key");
+        assert_eq!(s.ssh_secret(id).unwrap().unwrap().expose(), "key");
+        s.set_secret(id, None).unwrap();
+        assert_eq!(s.secret(id).unwrap(), None);
     }
 
     #[test]

@@ -8,7 +8,7 @@ import { workbench } from "../workbench";
 import { ExportTablesDialog } from "./ExportTablesDialog";
 import { ImportDataDialog, type TableAt } from "./ImportDataDialog";
 import { MigrateDialog } from "./MigrateDialog";
-import { missingConnections, profileConnections } from "./profiles";
+import { existingTable, missingConnections, profileConnections } from "./profiles";
 import { runTracked } from "./ProfileSave";
 
 type Plan = Extract<ProfileTask, { kind: "import_file" | "transfer_table" }>["plan"];
@@ -65,7 +65,7 @@ export function openProfile(profile: TransferProfile): string | null {
       case "import_file": {
         const plan: Plan = task.plan;
         return createElement(ImportDataDialog, {
-          target: at(first!, task.database, plan.schema, plan.create ? null : plan.table),
+          target: at(first!, task.database, plan.schema, existingTable(plan)),
           profile,
           onClose: close,
         });
@@ -73,7 +73,7 @@ export function openProfile(profile: TransferProfile): string | null {
       case "transfer_table":
         return createElement(ImportDataDialog, {
           source: { ...at(first!, task.source_database, task.plan.source_schema ?? null, task.plan.source_table), table: task.plan.source_table },
-          target: at(second!, task.target_database, task.plan.schema, null),
+          target: at(second!, task.target_database, task.plan.schema, existingTable(task.plan)),
           newTable: task.plan.table,
           profile,
           onClose: close,

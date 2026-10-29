@@ -145,15 +145,34 @@ pub(crate) async fn unattended(
     connection_id: Uuid,
     database: Option<String>,
 ) -> CommandResult<SavedConfig> {
+    with_saved_password(state, connection_id, database, true).await
+}
+
+/// [`unattended`] for a run of a profile started by hand (`scheduled` false) or by a task.
+pub(crate) async fn with_saved_password(
+    state: &AppState,
+    connection_id: Uuid,
+    database: Option<String>,
+    scheduled: bool,
+) -> CommandResult<SavedConfig> {
     let saved = saved_config(state, connection_id, None, database).await?;
     if saved.none_saved {
-        return Err(CommandError::new(
-            "auth",
-            "the password of the connection is not saved: a scheduled task needs a saved \
-             password, a password command or .pgpass",
-        ));
+        return Err(password_missing(&saved.label, scheduled));
     }
     Ok(saved)
+}
+
+/// The refusal of a run that has no saved password to open `label` with.
+fn password_missing(label: &str, scheduled: bool) -> CommandError {
+    let message = if scheduled {
+        "the password of the connection is not saved: a scheduled task needs a saved          password, a password command or .pgpass"
+            .to_owned()
+    } else {
+        format!(
+            "the password of {label} is not saved: open the profile in its dialog to run it,              or save the password"
+        )
+    };
+    CommandError::new("auth", message)
 }
 
 /// Runs the profile `profile_id` for `schedule`: an export goes to the task's folder when it
@@ -179,7 +198,7 @@ async fn run_profile(
         }
     }
     let (rows, warnings) = finished(state, |events| {
-        start_profile(state, &profile, output.clone(), events)
+        start_profile(state, &profile, output.clone(), true, events)
     })
     .await?;
     if let Some(output) = &output
@@ -493,6 +512,22 @@ pub fn time_zones() -> Vec<&'static str> {
 mod tests {
     use super::*;
     use crate::scheduler::plan::{ExportFormat, Repeat};
+
+    #[test]
+    fn a_manual_run_without_a_password_does_not_talk_of_tasks() {
+        let manual = password_missing("Shop", false);
+        assert!(manual.message().contains("Shop"), "{}", manual.message());
+        assert!(
+            !manual.message().contains("scheduled"),
+            "{}",
+            manual.message()
+        );
+        assert!(
+            password_missing("Shop", true)
+                .message()
+                .contains("scheduled task")
+        );
+    }
 
     fn schedule(task: Task, folder: Option<PathBuf>) -> Schedule {
         Schedule {
