@@ -9,6 +9,7 @@ mod export;
 mod formats;
 mod jobs;
 mod querylog;
+mod scheduler;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -163,6 +164,11 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         platypus_drivers::set_data_dir(&data);
         platypus_drivers::purge_removed(&data);
     }
+    // After the log and the drivers' folder: a task due at the start may run at once.
+    app.manage(scheduler::Scheduler::open(
+        dir(app, false).ok().map(|d| d.join("schedules.json")),
+    ));
+    commands::schedules::start(app.handle().clone());
     open_main_window(app, system_title_bar)?;
     Ok(())
 }
@@ -368,6 +374,16 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::admin::server_sessions,
         commands::admin::server_locks,
         commands::admin::end_server_session,
+        commands::admin::top_queries,
+        commands::admin::object_statistics,
+        commands::admin::maintain_table,
+        commands::backup::backup_database,
+        commands::backup::restore_database,
+        commands::schedules::list_schedules,
+        commands::schedules::save_schedule,
+        commands::schedules::delete_schedule,
+        commands::schedules::run_schedule_now,
+        commands::schedules::time_zones,
         commands::querylog::query_log,
         commands::querylog::clear_query_log,
         commands::objects::object_ddl,

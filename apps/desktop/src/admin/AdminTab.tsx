@@ -1,15 +1,30 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { api, type Capabilities, type EndSession, type ServerLock, type ServerSession, toCommandError } from "../api";
+import {
+  api,
+  type Capabilities,
+  type EndSession,
+  type Maintenance,
+  type ObjectStatistics,
+  type ServerLock,
+  type ServerQuery,
+  type ServerSession,
+  toCommandError,
+} from "../api";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { ask } from "../ui/ask";
 import { Icon } from "../ui/Icon";
 import { msg, t } from "../i18n";
 import { type Activity, activity, blockingChains, type Chain, matches, seconds } from "./sessions";
+import { ObjectsView, TopQueries } from "./Statistics";
 
-export type AdminView = "sessions" | "locks";
+export type AdminView = "sessions" | "locks" | "statements" | "objects";
 
-/** The server's sessions and locks, read again every few seconds. */
+/** Views read on demand, not every few seconds: the server sums their numbers over hours. */
+const ON_DEMAND = new Set<AdminView>(["statements", "objects"]);
+
+/** The server's sessions and locks, read again every few seconds; its costliest statements
+ *  and the use of its tables and indexes. */
 export interface AdminTabModel extends TabBase {
   kind: "admin";
   view?: AdminView;
@@ -49,6 +64,13 @@ interface Snapshot {
   at: Date;
 }
 
+/** The statements or the tables and indexes, as last read, or why they could not be. */
+interface Statistics {
+  queries: ServerQuery[] | null;
+  objects: ObjectStatistics[] | null;
+  error: string | null;
+}
+
 export function AdminTab({ tab, connection, active, sideSession, onChange }: TabProps<AdminTabModel>) {
   const view = tab.view ?? "sessions";
   const interval = tab.interval ?? 5;
@@ -61,6 +83,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
   const [only, setOnly] = useState<Activity | null>(null);
   const [onlyWaiting, setOnlyWaiting] = useState(false);
   const [version, setVersion] = useState(0);
+  const [statistics, setStatistics] = useState<Statistics>({ queries: null, objects: null, error: null });
   const busy = useRef(false);
   /** A load asked while one ran: it runs once that one ends, with the view then shown. */
   const again = useRef(false);
@@ -83,6 +106,10 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
         if (sid === null) return;
         const capabilities = workbench().capabilities(sid) ?? null;
         setCaps(capabilities);
+        if (ON_DEMAND.has(viewNow.current)) {
+          await loadStatistics(sid, viewNow.current, capabilities);
+          continue;
+        }
         if (!capabilities?.server_sessions) return;
         const sessions = await api.serverSessions(sid);
         let locks: ServerLock[] | null = null;
@@ -105,10 +132,36 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
     }
   }
 
+  /** Reads the statements or the objects of `view`; an error is the view's, not the tab's. */
+  async function loadStatistics(sid: number, view: AdminView, capabilities: Capabilities | null) {
+    if (!capabilities?.server_statistics) return;
+    try {
+      if (view === "statements") {
+        const queries = await api.topQueries(sid);
+        setStatistics((s) => ({ ...s, queries, error: null }));
+      } else {
+        const objects = await api.objectStatistics(sid);
+        setStatistics((s) => ({ ...s, objects, error: null }));
+      }
+      setSnapshot((s) => s && { ...s, at: new Date() });
+    } catch (e) {
+      setStatistics((s) => ({ ...s, error: toCommandError(e).message }));
+    }
+  }
+
+  async function maintain(schema: string, table: string, operation: Maintenance): Promise<string[]> {
+    const sid = await sideSession();
+    if (sid === null) return [];
+    const lines = await api.maintainTable(sid, schema, table, operation);
+    // The numbers changed: read them again.
+    setVersion((v) => v + 1);
+    return lines;
+  }
+
   useEffect(() => {
     if (!active) return;
     void load();
-    if (interval <= 0) return;
+    if (interval <= 0 || ON_DEMAND.has(view)) return;
     const timer = window.setInterval(() => void load(), interval * 1000);
     return () => window.clearInterval(timer);
   }, [active, interval, view, version]);
@@ -195,6 +248,16 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
             </span>
           )}
         </button>
+        {caps?.server_statistics && (
+          <>
+            <button className={view === "statements" ? "active" : ""} onClick={() => onChange({ view: "statements" })}>
+              {t("Costliest statements")}
+            </button>
+            <button className={view === "objects" ? "active" : ""} onClick={() => onChange({ view: "objects" })}>
+              {t("Tables and indexes")}
+            </button>
+          </>
+        )}
       </nav>
       {unsupported && (
         <div className="object-body">
@@ -240,6 +303,31 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
               onOpen={(sql) => workbench().openTab("query", connection.id, { sql })}
             />
           </div>
+        </div>
+      )}
+      {ON_DEMAND.has(view) && (
+        <div className="object-body admin-body">
+          {statistics.error && <div className="notice error small" data-field="statistics-error">{statistics.error}</div>}
+          {view === "statements" && statistics.queries && (
+            <TopQueries
+              queries={statistics.queries}
+              onOpen={(sql) => workbench().openTab("query", connection.id, { sql })}
+              onExplain={
+                caps?.explain ? (sql) => workbench().openTab("explain", connection.id, { sql, analyze: false }) : null
+              }
+            />
+          )}
+          {view === "objects" && statistics.objects && (
+            <ObjectsView
+              objects={statistics.objects}
+              maintenance={caps?.maintenance ?? []}
+              readOnly={connection.read_only}
+              onMaintain={maintain}
+            />
+          )}
+          {!statistics.error && (view === "statements" ? !statistics.queries : !statistics.objects) && (
+            <p className="muted small">{loading ? t("Reading the statistics…") : ""}</p>
+          )}
         </div>
       )}
       {!unsupported && view === "locks" && (

@@ -561,7 +561,21 @@ indici parziali né le colonne INCLUDE, e lo dice nel messaggio; i diagrammi viv
 
 ### Gruppo J — Amministrazione del server
 
-**Stato: P2 in parte** (fatti session manager e lock manager). Due capacità opzionali del trait
+**Stato: P2 completati** (restano i P3: utenti e ruoli, dashboard, debugger PL/pgSQL,
+parametri del server). Dal 29 ottobre 2026: query più costose e statistiche di tabelle e
+indici (`top_queries` e `object_statistics`, capacità `server_statistics`; PostgreSQL da
+`pg_stat_statements` e `pg_stat_user_tables/indexes`, MySQL e MariaDB da `performance_schema`
+e `information_schema`, SQL Server da `dm_exec_query_stats`, `dm_db_partition_stats` e
+`dm_db_index_usage_stats`); manutenzione (`maintain`, capacità `maintenance` con le operazioni
+del database) dal tab e dal menu del navigator; backup e restore con gli strumenti del
+database (`commands/backup.rs`: `pg_dump`, `pg_restore`, `psql`, `mysqldump`, `mysql`,
+avanzamento per tabella o per byte, clausole `DEFINER` tolte da un restore MySQL); task
+pianificati (`scheduler/` e `commands/schedules.rs`: script, export e backup con ora, fuso
+orario IANA, cartella, copie tenute e nuovi tentativi; `schedules.json` nella cartella dei
+dati; girano ad app aperta, un orario perso si recupera all'avvio; il backup pianificato
+degli altri driver, MongoDB escluso, è il dump SQL dello schema del gruppo H). `docker/compose.yml`
+precarica `pg_stat_statements` e accende `performance_schema` in MariaDB. Prima: session manager e
+lock manager. Due capacità opzionali del trait
 `Connection` (`platypus-core/src/admin.rs`): `server_sessions` (`server_sessions`,
 `server_locks`, `end_server_session` con `Terminate`) e `cancel_server_queries`
 (`end_server_session` con `Cancel`, che SQL Server non ha). Driver: PostgreSQL
@@ -583,14 +597,14 @@ solo i lock coinvolti in un'attesa.
 |---|---|---|
 | ✅ **Session manager**: sessioni attive, query in corso, kill e cancel | P2 | D |
 | ✅ **Lock manager**: blocchi e catene di attesa | P2 | D |
-| Backup e restore con `pg_dump`/`pg_restore` e `mysqldump`, con avanzamento | P2 | D |
-| Manutenzione: VACUUM, ANALYZE, REINDEX, OPTIMIZE e CHECK TABLE dal menu | P2 | D+ |
+| ✅ Backup e restore con `pg_dump`/`pg_restore` e `mysqldump`, con avanzamento | P2 | D |
+| ✅ Manutenzione: VACUUM, ANALYZE, REINDEX, OPTIMIZE e CHECK TABLE dal menu | P2 | D+ |
 | Utenti, ruoli e permessi (GRANT/REVOKE da form) | P3 | D |
 | Dashboard del server: connessioni, TPS, cache hit, dimensioni, replica | P3 | D+ |
-| **Task scheduler**: script, export e backup pianificati. Ogni piano ha ora e fuso orario, cartella, copie da tenere e un nuovo tentativo se fallisce; si vedono l'ultima esecuzione, il suo esito e la prossima, con "Esegui ora". Il backup è il dump SQL del gruppo H, quindi vale per tutti i driver senza `pg_dump` | P2 | D+ |
+| ✅ **Task scheduler**: script, export e backup pianificati. Ogni piano ha ora e fuso orario, cartella, copie da tenere e un nuovo tentativo se fallisce; si vedono l'ultima esecuzione, il suo esito e la prossima, con "Esegui ora". Il backup è il dump SQL del gruppo H, quindi vale per tutti i driver senza `pg_dump` | P2 | D+ |
 | Debugger PL/pgSQL | P3 | D+ |
-| 🆕 **Query più costose del server**: `pg_stat_statements`, `performance_schema`, Query Store di SQL Server, con apertura nell'editor e nel tab `explain` | P2 | N |
-| 🆕 Statistiche di tabelle e indici: indici mai usati, bloat, tabelle con molte scansioni complete, ultimo VACUUM/ANALYZE | P2 | N |
+| ✅ 🆕 **Query più costose del server**: `pg_stat_statements`, `performance_schema`, Query Store di SQL Server, con apertura nell'editor e nel tab `explain` | P2 | N |
+| ✅ 🆕 Statistiche di tabelle e indici: indici mai usati, bloat, tabelle con molte scansioni complete, ultimo VACUUM/ANALYZE | P2 | N |
 | 🆕 Parametri del server (`pg_settings`, `SHOW VARIABLES`) con ricerca e differenze dai valori di default | P3 | N |
 
 ---

@@ -212,6 +212,10 @@ export interface Capabilities {
   metadata_search: boolean;
   server_sessions: boolean;
   cancel_server_queries: boolean;
+  /** The costliest statements and the use of tables and indexes of the admin tab. */
+  server_statistics: boolean;
+  /** What "Maintenance" runs on a table; empty for none. */
+  maintenance: Maintenance[];
   /** The driver loads rows natively (PostgreSQL `COPY`, MySQL `LOAD DATA LOCAL`). */
   bulk_load: boolean;
 }
@@ -244,6 +248,112 @@ export interface ServerLock {
 }
 
 export type EndSession = "cancel" | "terminate";
+
+/** A statement the server has run, summed over its runs; see `platypus_core::ServerQuery`. */
+export interface ServerQuery {
+  query: string;
+  /** One run with its values (MySQL 8), which can be explained as it is. */
+  sample: string | null;
+  database: string | null;
+  user: string | null;
+  calls: number;
+  total_seconds: number;
+  mean_seconds: number;
+  max_seconds: number | null;
+  rows: number | null;
+}
+
+/** How a table or an index has been used; see `platypus_core::ObjectStatistics`. */
+export interface ObjectStatistics {
+  schema: string;
+  name: string;
+  kind: "table" | "index";
+  /** The table of an index. */
+  table: string | null;
+  size_bytes: number | null;
+  rows: number | null;
+  dead_rows: number | null;
+  free_bytes: number | null;
+  full_scans: number | null;
+  index_scans: number | null;
+  last_vacuum: string | null;
+  last_analyze: string | null;
+  /** A unique or primary key index. */
+  unique: boolean;
+}
+
+/** A backup's or restore's progress and outcome; see `commands::backup::BackupEvent`. */
+export type BackupEvent =
+  | { kind: "progress"; step: string; done: number; total: number | null; bytes: boolean }
+  | { kind: "finished"; bytes: number; elapsed_ms: number; output: string }
+  | { kind: "failed"; message: string; output: string };
+
+/** PostgreSQL's custom archive or SQL; MySQL writes SQL either way. */
+export type BackupFormat = "custom" | "plain";
+
+export interface BackupRequest {
+  path: string;
+  format: BackupFormat;
+  schema?: string | null;
+  structure_only: boolean;
+}
+
+export interface RestoreRequest {
+  path: string;
+  /** Drops the archive's objects before creating them again (`pg_restore --clean`). */
+  clean: boolean;
+}
+
+/** The formats of a scheduled export. */
+export type ScheduleExportFormat = "csv" | "json" | "parquet" | "xlsx";
+
+/** What a scheduled task does; see `scheduler::plan::Task`. */
+export type ScheduleTask =
+  | { kind: "script"; path: string }
+  | { kind: "export"; sql: string; format: ScheduleExportFormat }
+  | { kind: "backup"; format: BackupFormat; schema?: string | null };
+
+/** How often a task runs; days of the week are 1 (Monday) to 7. */
+export type ScheduleRepeat = { every: "hour" } | { every: "day" } | { every: "week"; days: number[] } | { every: "month"; day: number };
+
+/** A scheduled task; see `scheduler::plan::Schedule`. */
+export interface Schedule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  connection_id: string;
+  database: string | null;
+  task: ScheduleTask;
+  repeat: ScheduleRepeat;
+  /** `HH:MM`, in `timezone` (empty: the system's). */
+  time: string;
+  timezone: string;
+  folder: string | null;
+  /** Files kept in the folder, the newest; 0 keeps all. */
+  keep: number;
+  retries: number;
+  retry_minutes: number;
+}
+
+export interface ScheduleRun {
+  started: string;
+  finished: string;
+  ok: boolean;
+  message: string;
+  file: string | null;
+  attempt: number;
+  manual: boolean;
+}
+
+/** A task with when it runs next and its last runs, the newest first. */
+export interface ScheduleView extends Schedule {
+  next: string | null;
+  runs: ScheduleRun[];
+  running: boolean;
+}
+
+/** The upkeep of a table; see `platypus_core::Maintenance`. */
+export type Maintenance = "vacuum" | "analyze" | "reindex" | "optimize" | "check";
 
 /** One step of a query plan; see `platypus_core::PlanNode`. Rows and times are per loop. */
 export interface PlanNode {
@@ -1697,6 +1807,25 @@ export const api = {
   runCli: (sessionId: number, runId: number, script: string) =>
     invoke<CliOutput>("run_cli", { sessionId, runId, script }),
   cancelCli: (runId: number) => invoke<void>("cancel_cli", { runId }),
+  /** Backs the session's database up with `pg_dump` or `mysqldump`; `cancelCli(runId)` stops it. */
+  backupDatabase: (sessionId: number, runId: number, request: BackupRequest, onEvent: (e: BackupEvent) => void) => {
+    const channel = new Channel<BackupEvent>();
+    channel.onmessage = onEvent;
+    return invoke<void>("backup_database", { sessionId, runId, request, onEvent: channel });
+  },
+  /** Restores a backup into the session's database; `cancelCli(runId)` stops it. */
+  restoreDatabase: (sessionId: number, runId: number, request: RestoreRequest, onEvent: (e: BackupEvent) => void) => {
+    const channel = new Channel<BackupEvent>();
+    channel.onmessage = onEvent;
+    return invoke<void>("restore_database", { sessionId, runId, request, onEvent: channel });
+  },
+  listSchedules: () => invoke<ScheduleView[]>("list_schedules"),
+  /** Saves a task, new or changed; returns them all. */
+  saveSchedule: (schedule: Schedule) => invoke<ScheduleView[]>("save_schedule", { schedule }),
+  deleteSchedule: (id: string) => invoke<ScheduleView[]>("delete_schedule", { id }),
+  /** Runs a task now; the list hears when it starts and ends (`schedules-changed`). */
+  runScheduleNow: (id: string) => invoke<void>("run_schedule_now", { id }),
+  timeZones: () => invoke<string[]>("time_zones"),
   /** `connectionIds` limits the entries to those connections, e.g. a project's. */
   searchHistory: (query: {
     connectionIds?: string[];
@@ -1741,6 +1870,11 @@ export const api = {
   readPlan: (document: string, source: PlanSource | null) => invoke<ReadPlan>("read_plan", { document, source }),
   serverSessions: (sessionId: number) => invoke<ServerSession[]>("server_sessions", { sessionId }),
   serverLocks: (sessionId: number) => invoke<ServerLock[]>("server_locks", { sessionId }),
+  topQueries: (sessionId: number) => invoke<ServerQuery[]>("top_queries", { sessionId }),
+  objectStatistics: (sessionId: number) => invoke<ObjectStatistics[]>("object_statistics", { sessionId }),
+  /** Runs `operation` on table `schema.table`; returns what the server said, a line each. */
+  maintainTable: (sessionId: number, schema: string, table: string, operation: Maintenance) =>
+    invoke<string[]>("maintain_table", { sessionId, schema, table, operation }),
   endServerSession: (sessionId: number, id: string, how: EndSession) =>
     invoke<void>("end_server_session", { sessionId, id, how }),
   objectDdl: (sessionId: number, object: ObjectTarget) => invoke<string>("object_ddl", { sessionId, object }),

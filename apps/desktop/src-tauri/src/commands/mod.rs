@@ -7,6 +7,7 @@
 pub mod admin;
 pub mod agents;
 pub mod analysis;
+pub mod backup;
 pub mod catalog;
 pub mod cli;
 pub mod connections;
@@ -26,6 +27,7 @@ pub mod projects;
 pub mod query;
 pub mod querylog;
 pub mod sample;
+pub mod schedules;
 pub mod schema;
 pub mod scripts;
 pub mod search;
