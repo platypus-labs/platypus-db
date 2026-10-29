@@ -87,6 +87,8 @@ export default async function (page, { dir }) {
   assert.match(await page.eval(last("Broken")), /^failed/);
   assert.match(await page.eval(`${row("Broken")}.querySelector('[data-field="last"] .admin-badge').title`), /statement 2: .*no_such_table/);
   assert.notEqual(await page.eval(`${row("Broken")}.querySelector('[data-field="next"]').textContent`), "running");
+  // The statements run one at a time, as Run SQL file runs them: the one before the failure stays.
+  assert.deepEqual(values(), [0, 12, 13]);
 
   // An export into a folder made for it; with one file kept, a second run leaves one.
   const folder = join(dir, "exports");
@@ -101,12 +103,21 @@ export default async function (page, { dir }) {
   let files = readdirSync(folder);
   assert.equal(files.length, 1, `${files}`);
   assert.match(files[0], /^Values-\d{8}-\d{6}\.csv$/);
-  assert.match(readFileSync(join(folder, files[0]), "utf8"), /^id,v\r?\n1,12/);
-  // A second later: another stamp, and the first file goes.
+  assert.match(readFileSync(join(folder, files[0]), "utf8"), /^id,v\r?\n1,0\r?\n2,12/);
+  // A second later: another stamp, and the first file goes. The last run reads the same to the
+  // minute: the new file in the folder says the run ended.
+  const first = files[0];
   await page.sleep(1100);
-  await runNow(page, "Values");
+  await page.eval(`${button(row("Values"), "Run now")}.click()`);
+  const replaced = () => {
+    const now = readdirSync(folder);
+    return now.length === 1 && now[0] !== first;
+  };
+  for (let i = 0; i < 300 && !replaced(); i++) await page.sleep(100);
+  await page.waitFor(`!${row("Values")}.querySelector('[data-field="next"] .admin-badge.running')`, 30_000);
   files = readdirSync(folder);
   assert.equal(files.length, 1, `one kept: ${files}`);
+  assert.notEqual(files[0], first);
 
   // Disabled: no next run. Deleted after asking.
   await page.eval(`${row("Broken")}.querySelector('input[type=checkbox]').click()`);
@@ -115,7 +126,7 @@ export default async function (page, { dir }) {
   await page.waitFor(`document.querySelector('.modal.confirm') !== null`);
   await page.eval(`document.querySelector('.modal.confirm button.danger').click()`);
   await page.waitFor(`${row("Broken")} === undefined`);
-  assert.notEqual(await page.eval(`${row("Bump")}`), undefined);
+  assert.ok(await page.eval(`${row("Bump")} !== undefined`), "Bump stays");
 
   // Kept in the data folder for the next start.
   const saved = JSON.parse(readFileSync(join(dir, "schedules.json"), "utf8"));
