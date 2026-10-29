@@ -103,7 +103,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | Gruppo | Lock |
 |---|---|
 | A — Modifica dei dati | ✅ completato |
-| B — Griglia avanzata | 🔒 Delfa · group-b-virtual-columns · 2026-10-29 |
+| B — Griglia avanzata | ✅ completato |
 | C — Navigator e oggetti | ✅ completato |
 | D — Editor SQL | ✅ completato |
 | E — Explain e performance | ✅ completato |
