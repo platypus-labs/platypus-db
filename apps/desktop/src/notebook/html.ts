@@ -23,7 +23,7 @@ export type Block =
   | { kind: "rule" };
 
 const FENCE = /^\s*(```|~~~)\s*([\w+-]*)\s*$/;
-const HEADING = /^\s*(#{1,6})\s+(.*?)\s*#*\s*$/;
+const HEADING = /^\s*(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
 const RULE = /^\s*([-*_])(\s*\1){2,}\s*$/;
 const BULLET = /^\s*[-*+]\s+(.*)$/;
 const NUMBERED = /^\s*\d+[.)]\s+(.*)$/;
@@ -47,7 +47,8 @@ export function parseMarkdown(text: string): Block[] {
     if (fence) {
       const body: string[] = [];
       i++;
-      while (i < lines.length && !lines[i]!.trim().startsWith(fence[1]!)) body.push(lines[i++]!);
+      // Closed by the same fence alone on its line: ```sql inside opens nothing.
+      while (i < lines.length && lines[i]!.trim() !== fence[1]) body.push(lines[i++]!);
       i++;
       blocks.push({ kind: "code", lang: fence[2] ?? "", text: body.join("\n") });
       continue;
@@ -124,7 +125,8 @@ export function parseInline(text: string): Inline[] {
       i += em[0].length;
       continue;
     }
-    const link = /^\[([^\]]+)\]\(([^)\s]+)\)/.exec(rest);
+    // One level of parentheses in the address, as in Foo_(bar).
+    const link = /^\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/.exec(rest);
     if (link) {
       flush();
       const children = parseInline(link[1]!);

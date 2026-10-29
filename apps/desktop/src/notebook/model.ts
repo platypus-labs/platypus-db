@@ -46,11 +46,11 @@ export function cellNames(cells: readonly NotebookCell[]): Map<string, string> {
 }
 
 /** The tables a cell on the results reads: every other SQL cell whose rows are loaded, by
- *  its name. `jobs` holds the job of each cell with rows. */
+ *  its name (all of them without `except`). `jobs` holds the job of each cell with rows. */
 export function resultTables(
   cells: readonly NotebookCell[],
   jobs: ReadonlyMap<string, number>,
-  except: string,
+  except?: string,
 ): ResultTable[] {
   const names = cellNames(cells);
   return cells.flatMap((cell) => {
@@ -58,6 +58,11 @@ export function resultTables(
     const table = names.get(cell.id);
     return cell.id !== except && job !== undefined && table ? [{ job_id: job, table }] : [];
   });
+}
+
+/** Whether a copy of `loaded` has every table of `wanted`, with the same rows. */
+export function copyHolds(loaded: readonly ResultTable[], wanted: readonly ResultTable[]): boolean {
+  return wanted.every((w) => loaded.some((l) => l.table === w.table && l.job_id === w.job_id));
 }
 
 const FORMAT = "platypus-notebook";

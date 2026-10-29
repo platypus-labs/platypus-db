@@ -49,16 +49,39 @@ async function typeIn(page, name, sql) {
   await page.key("Escape", "Escape", 27);
 }
 
-/** Runs `action` and waits until the cell `name` has a new result or an error, and no longer
- *  runs: its result's id changes at each run. */
+const resultOf = (name) => `(${cell(name)}?.querySelector('[data-field=status]')?.dataset.result ?? '')`;
+
+/** Runs `action` and waits until the cell `name` has a new result or another error, and no
+ *  longer runs: its result's id changes at each run. An error already shown does not count. */
 async function ran(page, name, action) {
-  const before = await page.eval(`${cell(name)}.querySelector('[data-field=status]')?.dataset.result ?? ''`);
+  const before = await page.eval(resultOf(name));
+  const error = await page.eval(errorOf(name));
   await action();
   await page.waitFor(
-    `(() => { const c = ${cell(name)}; const s = c.querySelector('[data-field=status]'); return !c.classList.contains('running') && ((s && s.dataset.result !== ${JSON.stringify(before)}) || c.querySelector('[data-field=error]') !== null); })()`,
+    `(() => { const e = ${errorOf(name)}; return !${cell(name)}.classList.contains('running') && (${resultOf(name)} !== ${JSON.stringify(before)} || (e !== '' && e !== ${JSON.stringify(error)})); })()`,
     30_000,
   );
 }
+
+/** Waits until `file` is written whole, as `done` tells from its text, and returns the text. */
+async function written(page, file, done) {
+  let text = "";
+  for (let i = 0; i < 100; i++) {
+    text = existsSync(file) ? readFileSync(file, "utf8") : "";
+    if (done(text)) return text;
+    await page.sleep(100);
+  }
+  throw new Error(`${file} not written: ${text.length} characters`);
+}
+
+const isJson = (text) => {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const run = (page, name) => ran(page, name, () => page.eval(click(cell(name), "run")));
 
@@ -121,8 +144,10 @@ async function paramsErrorsAndGuards(page, dir) {
   assert.match(await page.eval(`${cell(c4)}.textContent`), /nope/);
   // Run all stops at the failing cell: the one after it keeps no result.
   const c5 = await addSql(page, "SELECT 1 AS one");
+  // Run all ends at c4, the last cell it runs: its result is a new one.
+  const c4Before = await page.eval(resultOf(c4));
   await page.eval(click(tab, "run_all"));
-  await page.waitFor(`!${tab}.querySelector('[data-action=run_all]').disabled`, 30_000);
+  await page.waitFor(`${resultOf(c4)} !== ${JSON.stringify(c4Before)} && !${tab}.querySelector('[data-action=run_all]').disabled`, 30_000);
   assert.equal(await page.eval(statusOf(c5)), "");
 
   // A change without WHERE asks first; Cancel leaves the rows.
@@ -153,8 +178,7 @@ async function filesAndExport(page, dir) {
   const file = join(dir, "sales.pnb");
   await page.eval(`window.__platypus.answer('file', ${JSON.stringify(file)})`);
   await page.eval(click(tab, "save"));
-  for (let i = 0; i < 50 && !existsSync(file); i++) await page.sleep(100);
-  const saved = JSON.parse(readFileSync(file, "utf8"));
+  const saved = JSON.parse(await written(page, file, isJson));
   assert.equal(saved.format, "platypus-notebook");
   assert.equal(saved.cells.length, 5);
   assert.deepEqual(saved.params, { min: "1000" });
@@ -163,8 +187,7 @@ async function filesAndExport(page, dir) {
   const html = join(dir, "sales.html");
   await page.eval(`window.__platypus.answer('file', ${JSON.stringify(html)})`);
   await page.eval(click(tab, "export_html"));
-  for (let i = 0; i < 50 && !existsSync(html); i++) await page.sleep(100);
-  const page_ = readFileSync(html, "utf8");
+  const page_ = await written(page, html, (text) => text.includes("</html>"));
   assert.match(page_, /<h1>Sales<\/h1>/);
   assert.match(page_, /&lt;script&gt;/, "the text escaped");
   assert.match(page_, /<svg/, "c1's chart");

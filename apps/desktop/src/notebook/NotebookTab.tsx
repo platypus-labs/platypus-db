@@ -12,7 +12,7 @@ import {
 import { parseConfig } from "../analysis/chartConfig";
 import { svgText } from "../analysis/chartExport";
 import { loadAll } from "../analysis/QueryWithSql";
-import { resultCatalog, settled, staleCopy, withEvent } from "../analysis/sqlField";
+import { resultCatalog, settled, withEvent } from "../analysis/sqlField";
 import { describe, type Result } from "../components/ResultPanel";
 import { withDriver } from "../drivers/DriverPopup";
 import { parameterKeys, substitute } from "../editor/params";
@@ -27,6 +27,7 @@ import { type ExportCell, notebookHtml, writtenParam } from "./html";
 import { type CellRun, idle, NotebookCellView } from "./NotebookCell";
 import {
   cellNames,
+  copyHolds,
   missingParams,
   type NotebookCell,
   newCell,
@@ -114,6 +115,8 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
   const [editing, setEditing] = useState<ReadonlySet<string>>(() => new Set(tab.cells.filter((c) => c.kind === "markdown" && !c.text.trim()).map((c) => c.id)));
   const [runningAll, setRunningAll] = useState(false);
   const copy = useRef<Copy | null>(null);
+  // The copy is made or loaded again by one cell at a time.
+  const copying = useRef<Promise<unknown>>(Promise.resolve());
   const session = useRef<number | null>(null);
   // What the runs are now, ahead of the render: "Run all" reads a cell's rows right after it.
   const runsNow = useRef<Record<string, CellRun>>({});
@@ -164,11 +167,20 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
 
   /** The session on the copy of the other cells' rows `cell` reads, made or loaded again when
    *  they changed; `null` when cancelled. */
-  async function resultsSession(cell: NotebookCell): Promise<number | null> {
-    const tables = resultTables(tabNow.current.cells, loadedJobs(), cell.id);
-    if (tables.length === 0) throw new Error(t("No other cell has rows yet: run one first."));
+  function resultsSession(cell: NotebookCell): Promise<number | null> {
+    const next = copying.current.then(() => copyFor(cell));
+    copying.current = next.catch(() => undefined);
+    return next;
+  }
+
+  async function copyFor(cell: NotebookCell): Promise<number | null> {
+    const jobs = loadedJobs();
+    const wanted = resultTables(tabNow.current.cells, jobs, cell.id);
+    if (wanted.length === 0) throw new Error(t("No other cell has rows yet: run one first."));
     const had = copy.current;
-    if (had && !staleCopy(had.tables, tables)) return had.sessionId;
+    if (had && copyHolds(had.tables, wanted)) return had.sessionId;
+    // Every cell's rows, so that the next cell on the results finds its own too.
+    const tables = resultTables(tabNow.current.cells, jobs);
     if (!(await loadAll(tables.map((x) => x.job_id)))) return null;
     if (had) {
       had.partial = await api.reloadResultDb(had.connection.id, tables);
@@ -215,7 +227,14 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
     const missing = missingParams(keys, params);
     if (missing.length) {
       edit({ params: { ...Object.fromEntries(missing.map((k) => [k, ""])), ...params } });
-      throw new Error(t("Give a value to {names} above.", { names: missing.map(writtenParam).join(", ") }));
+      // As the cell writes them: `${name}` is the same value as `:name`, put in as text.
+      const written = new Map(
+        statements.flatMap((s) => {
+          const names = parameterKeys(s.params);
+          return s.params.map((p, i) => [names[i]!, p.kind === "variable" ? `\${${names[i]!}}` : writtenParam(names[i]!)] as [string, string]);
+        }),
+      );
+      throw new Error(t("Give a value to {names} above.", { names: missing.map((k) => written.get(k) ?? writtenParam(k)).join(", ") }));
     }
     return statements.map((s) => ({ ...s, sql: s.params.length ? substitute(s.sql, s.params, params, driver) : s.sql }));
   }
@@ -268,12 +287,13 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
       const planned = statements ?? (await prepared(cell));
       const last = planned.at(-1);
       if (!last) return;
-      const on = sid ?? (await sessionFor(cell, [last]));
+      // Only explained, not run: no guard to pass.
+      const on = sid ?? (cell.onResults ? await resultsSession(cell) : await serverSession());
       if (on === null) return;
       const plan = await api.explain(on, last.sql, false);
-      setRun(cell.id, () => ({ plan, error: null }));
+      setRun(cell.id, () => ({ plan, planError: null }));
     } catch (e) {
-      setRun(cell.id, () => ({ plan: null, error: t("No plan: {error}", { error: reason(e) }) }));
+      setRun(cell.id, () => ({ plan: null, planError: t("No plan: {error}", { error: reason(e) }) }));
     }
   }
 
@@ -361,7 +381,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
           summary: run.error ?? (result ? describe(result) : t("Not run")),
           failed: !!run.error || result?.status.kind === "error",
           chart: svg ? svgText(svg) : null,
-          plan: cell.plan && run.plan ? planLines(run.plan.root) : null,
+          plan: !cell.plan ? null : run.plan ? planLines(run.plan.root) : run.planError ? [{ depth: 0, operation: run.planError, detail: null, rows: null, cost: null }] : null,
         };
       }),
     );

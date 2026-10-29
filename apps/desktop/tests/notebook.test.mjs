@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { markdownHtml, notebookHtml, parseInline, parseMarkdown } from "../src/notebook/html.ts";
 import {
   cellNames,
+  copyHolds,
   missingParams,
   newCell,
   notebookFile,
@@ -35,6 +36,27 @@ test("a cell on the results reads the other cells that have rows, by name", () =
     { job_id: 11, table: "c1" },
     { job_id: 33, table: "c3" },
   ]);
+});
+
+test("a copy of the results serves a cell while it has the tables it reads, with the same rows", () => {
+  const all = [
+    { job_id: 11, table: "c1" },
+    { job_id: 22, table: "c2" },
+  ];
+  assert.equal(copyHolds(all, [{ job_id: 11, table: "c1" }]), true);
+  assert.equal(copyHolds(all, all), true);
+  assert.equal(copyHolds(all, [{ job_id: 12, table: "c1" }]), false);
+  assert.equal(copyHolds(all, [{ job_id: 33, table: "c3" }]), false);
+  assert.equal(copyHolds([], []), true);
+});
+
+test("Markdown keeps a heading's own #, a fence's ```sql line and a link's parentheses", () => {
+  assert.match(markdownHtml("# Notes on C#"), /<h1>Notes on C#<\/h1>/);
+  assert.match(markdownHtml("## Done ##"), /<h2>Done<\/h2>/);
+  const code = markdownHtml("```md\n```sql\nSELECT 1\n```\nafter");
+  assert.match(code, /```sql\nSELECT 1/);
+  assert.match(code, /<p>after<\/p>/);
+  assert.match(markdownHtml("[wiki](https://en.wikipedia.org/wiki/Foo_(bar))"), /href="https:\/\/en\.wikipedia\.org\/wiki\/Foo_\(bar\)"/);
 });
 
 test("a notebook file goes and comes back; another file is refused", () => {
@@ -113,7 +135,7 @@ test("Markdown inline: code, bold, italic, links; snake_case stays text", () => 
     { kind: "link", href: "https://example.com", children: [{ kind: "text", text: "docs" }] },
   ]);
   // A link to anything but the web or mail is its text.
-  assert.deepEqual(parseInline("[x](javascript:alert(1))"), [{ kind: "text", text: "x" }, { kind: "text", text: ")" }]);
+  assert.deepEqual(parseInline("[x](javascript:alert(1))"), [{ kind: "text", text: "x" }]);
 });
 
 test("no text becomes markup in the HTML", () => {

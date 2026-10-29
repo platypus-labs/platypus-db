@@ -13,12 +13,14 @@ import { type NotebookCell as Cell, planLines } from "./model";
 export interface CellRun {
   result: Result | null;
   plan: Explain | null;
-  /** Why the cell or its plan did not run (a parameter without value, a refusal). */
+  /** Why the cell did not run (a parameter without value, a refusal). */
   error: string | null;
+  /** Why its plan could not be had: the run may still have gone. */
+  planError: string | null;
   running: boolean;
 }
 
-export const idle: CellRun = { result: null, plan: null, error: null, running: false };
+export const idle: CellRun = { result: null, plan: null, error: null, planError: null, running: false };
 
 interface Props {
   cell: Cell;
@@ -97,7 +99,7 @@ function SqlOutput({ cell, run, onChange }: Pick<Props, "cell" | "run" | "onChan
   const chart = cell.chart;
   return (
     <>
-      {run.error && <div className="notice error small" data-field="error">{run.error}</div>}
+      {(run.error ?? run.planError) && <div className="notice error small" data-field="error">{run.error ?? run.planError}</div>}
       {result && (
         <>
           <div className="notebook-status small muted" data-field="status" data-result={result.id}>
