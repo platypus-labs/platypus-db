@@ -47,7 +47,10 @@ impl From<DriverKind> for Dialect {
             // MongoDB and Redis speak no SQL: the app never builds SQL for them (the editor,
             // data viewer and navigator write mongosh or Redis commands instead), so any
             // dialect would do here.
-            DriverKind::Postgres | DriverKind::Mongo | DriverKind::Redis => Self::Postgres,
+            DriverKind::Postgres
+            | DriverKind::Mongo
+            | DriverKind::Redis
+            | DriverKind::Elasticsearch => Self::Postgres,
             DriverKind::Snowflake => Self::Snowflake,
             DriverKind::Trino | DriverKind::Adbc | DriverKind::Odbc => Self::Ansi,
             DriverKind::Oracle => Self::Oracle,

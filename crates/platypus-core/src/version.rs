@@ -65,6 +65,9 @@ pub fn minimum_version(product: &str) -> Option<ServerVersion> {
         "MongoDB" => ServerVersion::new(5, 0, 0),
         // `SCAN … TYPE`, ACL users and RESP3.
         "Redis" => ServerVersion::new(6, 0, 0),
+        // The SQL endpoint, `_search` with PIT and the cancellable tasks API.
+        "Elasticsearch" => ServerVersion::new(7, 10, 0),
+        "OpenSearch" => ServerVersion::new(1, 0, 0),
         _ => return None,
     })
 }
