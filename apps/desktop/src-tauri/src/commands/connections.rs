@@ -438,6 +438,8 @@ pub(crate) struct SavedConfig {
     pub production: bool,
     /// Nothing that may change data runs on it.
     pub read_only: bool,
+    /// Its data leaves it neither to files nor to other databases.
+    pub no_export: bool,
 }
 
 /// The settings of saved connection `connection_id`, on `database` when given, with
@@ -486,6 +488,7 @@ pub(crate) async fn saved_config(
         none_saved,
         production: saved.connection_type == Some(ConnectionType::Prod),
         read_only: saved.read_only,
+        no_export: saved.restrictions.no_export,
     })
 }
 

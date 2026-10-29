@@ -479,6 +479,7 @@ pub async fn backup_database(
     request: BackupRequest,
     on_event: Channel<BackupEvent>,
 ) -> CommandResult<()> {
+    state.exportable(session_id)?;
     let config = state.session(session_id)?.config;
     let conn = state.live(session_id).await?;
     let total = table_count(conn.as_ref(), &config, request.schema.as_deref()).await;

@@ -94,6 +94,9 @@ async fn execute(
         );
     }
     let label = format!("{} · {}", saved.label, schedule.name);
+    if saved.no_export && !matches!(schedule.task, Task::Script { .. }) {
+        return Err(format!("{} does not let its data be exported", saved.label));
+    }
     match &schedule.task {
         Task::Script { path } => run_script(state, &saved, &label, path)
             .await

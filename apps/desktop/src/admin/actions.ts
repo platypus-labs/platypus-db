@@ -3,7 +3,7 @@
 // said), "Back up…" and "Restore…" of a database or schema, and the scheduled tasks.
 import { createElement } from "react";
 import { registerAction } from "../actions";
-import type { DriverKind, Maintenance, SavedConnection } from "../api";
+import { type DriverKind, keepsDataIn, type Maintenance, type SavedConnection } from "../api";
 import { msg } from "../i18n";
 import { workbench } from "../workbench";
 import { BackupDialog, type BackupMode } from "./BackupDialog";
@@ -54,6 +54,10 @@ const TITLES: Record<Maintenance, string> = {
 const openBackup = (mode: BackupMode, connection: SavedConnection, database: string | null, schema: string | null = null) =>
   workbench().openDialog((close) => createElement(BackupDialog, { mode, connection, database, schema, onClose: close }));
 
+/** Whether `mode` is offered on `connection`: a backup takes its data out, a restore writes. */
+const offers = (mode: BackupMode, connection: SavedConnection) =>
+  backsUp(connection.driver) && (mode === "backup" ? !keepsDataIn(connection) : !connection.read_only);
+
 for (const [mode, title, order] of [
   ["backup", msg("Back up…"), 26],
   ["restore", msg("Restore…"), 27],
@@ -64,7 +68,7 @@ for (const [mode, title, order] of [
     title,
     group: "open",
     order,
-    when: ({ connection }) => backsUp(connection.driver),
+    when: ({ connection }) => offers(mode, connection),
     run: ({ connection }) => openBackup(mode, connection, null),
   });
   registerAction({
@@ -73,7 +77,7 @@ for (const [mode, title, order] of [
     title,
     group: "open",
     order,
-    when: ({ connection }) => backsUp(connection.driver),
+    when: ({ connection }) => offers(mode, connection),
     run: ({ connection, database }) => openBackup(mode, connection, database),
   });
 }
@@ -85,7 +89,7 @@ registerAction({
   group: "open",
   order: 26,
   // MySQL's schemas are databases: the connection's own is backed up from its menu.
-  when: ({ connection, schema }) => connection.driver === "postgres" && !schema.system,
+  when: ({ connection, schema }) => connection.driver === "postgres" && !schema.system && offers("backup", connection),
   run: ({ connection, database, schema }) => openBackup("backup", connection, database, schema.name),
 });
 

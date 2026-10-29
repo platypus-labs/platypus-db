@@ -11,6 +11,7 @@ import {
   type ScheduleRepeat,
   type ScheduleTask,
   type ScheduleView,
+  keepsDataIn,
   toCommandError,
 } from "../api";
 import { locale, msg, t } from "../i18n";
@@ -287,7 +288,8 @@ function ScheduleForm({
   const [saving, setSaving] = useState(false);
   const connections = workbench().connections();
   const connection = connections.find((c) => c.id === s.connection_id);
-  const kinds = connection ? taskKinds(connection.driver) : (["script", "export"] as const);
+  // A connection that keeps its data in runs scripts only.
+  const kinds = !connection ? (["script"] as const) : keepsDataIn(connection) ? (["script"] as const) : taskKinds(connection.driver);
   const set = (patch: Partial<Schedule>) => setS((old) => ({ ...old, ...patch }));
   const setTask = (task: ScheduleTask) => set({ task });
   const days = useMemo(weekdays, []);
@@ -342,7 +344,7 @@ function ScheduleForm({
               const next = connections.find((c) => c.id === e.target.value);
               set({
                 connection_id: e.target.value,
-                task: next ? taskOnConnection(s.task, connection?.driver, next.driver) : s.task,
+                task: !next ? s.task : keepsDataIn(next) ? taskOf("script", next.driver) : taskOnConnection(s.task, connection?.driver, next.driver),
               });
             }}
           >
