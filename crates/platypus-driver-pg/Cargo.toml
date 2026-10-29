@@ -11,6 +11,7 @@ publish.workspace = true
 arrow-array.workspace = true
 arrow-schema.workspace = true
 async-trait.workspace = true
+bytes.workspace = true
 fallible-iterator.workspace = true
 futures.workspace = true
 platypus-core.workspace = true

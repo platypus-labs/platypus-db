@@ -413,3 +413,85 @@ async fn paged_reads_return_once_the_query_has_run() {
     assert!(conn.execute("SELECT 1 / 0", &paged).await.is_err());
     assert!(!in_transaction(&conn).await);
 }
+
+#[tokio::test]
+async fn bulk_loads_rows_with_copy() {
+    let Some(conn) = connect().await else { return };
+    let options = ExecOptions::default();
+    conn.execute("DROP TABLE IF EXISTS pg_bulk", &options)
+        .await
+        .unwrap();
+    conn.execute(
+        "CREATE TABLE pg_bulk (id int, note text, raw bytea, ok boolean)",
+        &options,
+    )
+    .await
+    .unwrap();
+    let columns = ["id", "note", "raw", "ok"].map(str::to_owned);
+    let rows = vec![
+        vec![
+            Some("1".to_owned()),
+            Some("a \"quoted\", line\nbreak \\ tab\t".to_owned()),
+            Some("dead00".to_owned()),
+            Some("true".to_owned()),
+        ],
+        vec![Some("2".to_owned()), Some(String::new()), None, None],
+    ];
+    let bulk = platypus_core::BulkRows {
+        table: "pg_bulk",
+        columns: &columns,
+        hex: &[false, false, true, false],
+        rows: &rows,
+    };
+    // In manual commit, as a production connection: the load joins its transaction.
+    conn.set_autocommit(false).await.unwrap();
+    conn.execute("BEGIN", &options).await.unwrap();
+    conn.execute("SELECT 1", &options).await.unwrap();
+    assert_eq!(conn.bulk_load(&bulk).await.unwrap(), 2);
+    conn.commit().await.unwrap();
+    let empty = platypus_core::BulkRows { rows: &[], ..bulk };
+    assert_eq!(conn.bulk_load(&empty).await.unwrap(), 0);
+    let batches = collect(
+        &conn,
+        "SELECT id, note, encode(raw, 'hex'), ok, note IS NULL FROM pg_bulk ORDER BY id",
+    )
+    .await;
+    let cell = |c: usize, r: usize| array_value_to_string(batches[0].column(c), r).unwrap();
+    assert_eq!(cell(1, 0), "a \"quoted\", line\nbreak \\ tab\t");
+    assert_eq!(
+        (cell(2, 0), cell(3, 0)),
+        ("dead00".to_owned(), "true".to_owned())
+    );
+    assert_eq!(
+        (cell(1, 1), cell(4, 1)),
+        (String::new(), "false".to_owned()),
+        "empty, not NULL"
+    );
+    // A load that fails leaves the session usable.
+    let wrong = ["id", "missing"].map(str::to_owned);
+    let failing = platypus_core::BulkRows {
+        columns: &wrong,
+        hex: &[false, false],
+        ..empty
+    };
+    assert!(conn.bulk_load(&failing).await.is_err());
+    conn.rollback().await.unwrap();
+    // Refused rows undo the load alone: what the transaction did before stays.
+    conn.execute("INSERT INTO pg_bulk (id) VALUES (3)", &options)
+        .await
+        .unwrap();
+    let bad = vec![vec![Some("x".to_owned()), None, None, None]];
+    assert!(
+        conn.bulk_load(&platypus_core::BulkRows { rows: &bad, ..bulk })
+            .await
+            .is_err()
+    );
+    conn.commit().await.unwrap();
+    let ids = collect(
+        &conn,
+        "SELECT string_agg(id::text, ',' ORDER BY id) FROM pg_bulk",
+    )
+    .await;
+    assert_eq!(array_value_to_string(ids[0].column(0), 0).unwrap(), "1,2,3");
+    conn.execute("DROP TABLE pg_bulk", &options).await.unwrap();
+}

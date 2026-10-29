@@ -9,18 +9,20 @@ use futures::TryStreamExt;
 use platypus_core::{Connection, ConnectionConfig, DriverKind, ExecOptions, ExecResult};
 use platypus_driver_duckdb::files::{BAD_LINES, ReadOptions, is_data_file};
 use platypus_sql::Dialect;
+use platypus_transfer::dump::{DumpFile, dump};
 use platypus_transfer::fake::{FakeColumn, fill, fill_collection};
 use platypus_transfer::import::{
     ImportError, ImportPlan, import, import_query, rows_text, select_all, target_type,
 };
 use platypus_transfer::migrate::{ColumnTraits, column_traits, migrate};
+use platypus_transfer::script::{ScriptError, run_file};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use tauri::ipc::Channel;
 
 use super::{AppState, lock};
 use crate::error::{CommandError, CommandResult};
-use crate::export::{Export, ExportEvent};
+use crate::export::{Export, ExportEvent, PROGRESS_INTERVAL};
 use crate::querylog::Logged;
 
 /// Rows the preview shows.
@@ -352,8 +354,21 @@ fn spawn_job<F>(
 where
     F: Future<Output = CommandResult<u64>> + Send + 'static,
 {
-    // Every job here writes into the session's database.
+    // The jobs here write into the session's database, but a dump.
     state.writable(session_id)?;
+    spawn_reading_job(state, session_id, on_event, work)
+}
+
+/// [`spawn_job`] for a job that only reads, which a read-only connection runs too.
+fn spawn_reading_job<F>(
+    state: &AppState,
+    session_id: u64,
+    on_event: Channel<ExportEvent>,
+    work: impl FnOnce(Arc<Export>, Arc<dyn Connection>, Dialect) -> F + Send + 'static,
+) -> CommandResult<u64>
+where
+    F: Future<Output = CommandResult<u64>> + Send + 'static,
+{
     let session = state.session(session_id)?;
     let log = Arc::clone(&state.query_log);
     let job = Export::spawn(on_event, true, move |job| async move {
@@ -368,6 +383,105 @@ where
     let id = state.next_id();
     lock(&state.exports).insert(id, job);
     Ok(id)
+}
+
+/// Runs the SQL file at `path` (`.gz` and `.zst` too) in the session's database, on a
+/// connection of its own; with `transaction`, all in one, which a failure rolls back.
+/// Progress counts statements and the bytes of the file read; cancelling stops the running
+/// statement too. Returns an id for `cancel_export`.
+#[tauri::command]
+pub fn run_sql_file(
+    state: State<'_, AppState>,
+    session_id: u64,
+    path: PathBuf,
+    transaction: bool,
+    on_event: Channel<ExportEvent>,
+) -> CommandResult<u64> {
+    spawn_job(
+        &state,
+        session_id,
+        on_event,
+        move |job, conn, dialect| async move {
+            // Cancel stops the statement that runs, not only those after it.
+            let watch = {
+                let (job, cancel) = (Arc::clone(&job), conn.cancel_handle());
+                tauri::async_runtime::spawn(async move {
+                    while !job.stopping() {
+                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    }
+                    let _ = cancel.cancel().await;
+                })
+            };
+            // A file of small statements reports a few times a second, not after each.
+            let mut reported: Option<std::time::Instant> = None;
+            let ran = run_file(&*conn, dialect, &path, transaction, |p| {
+                if reported.is_none_or(|at| at.elapsed() >= PROGRESS_INTERVAL) {
+                    job.progress_bytes(p.statements, p.read, p.total);
+                    reported = Some(std::time::Instant::now());
+                }
+                !job.stopping()
+            })
+            .await;
+            watch.abort();
+            ran.map_err(|e| match e {
+                ScriptError::Database(e) => e.into(),
+                ScriptError::Statement { error, .. }
+                    if matches!(*error, platypus_core::Error::Cancelled) =>
+                {
+                    platypus_core::Error::Cancelled.into()
+                }
+                e => CommandError::new("script", e.to_string()),
+            })
+        },
+    )
+}
+
+/// Writes `schema` of the session's database to an SQL file at `path` (gzip or zstd by its
+/// extension): its DDL, and with `data` its rows; with `tables`, those objects alone. What
+/// the database cannot describe arrives as warnings. Returns an id for `cancel_export`.
+#[tauri::command]
+pub fn dump_sql(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: String,
+    path: PathBuf,
+    data: bool,
+    tables: Option<Vec<String>>,
+    on_event: Channel<ExportEvent>,
+) -> CommandResult<u64> {
+    spawn_reading_job(
+        &state,
+        session_id,
+        on_event,
+        move |job, conn, dialect| async move {
+            let mut out = DumpFile::create(&path)
+                .map_err(|e| CommandError::new("export", format!("{}: {e}", path.display())))?;
+            let dumped = dump(
+                (&*conn, dialect, &schema),
+                &mut out,
+                (data, tables.as_deref()),
+                |rows| {
+                    job.progress(rows);
+                    !job.stopping()
+                },
+            )
+            .await;
+            // A failed or stopped dump leaves the file it would have replaced as it was.
+            let dumped = match dumped {
+                Ok(dumped) => dumped,
+                Err(e) => {
+                    out.discard();
+                    return Err(import_error(e));
+                }
+            };
+            out.finish()
+                .map_err(|e| CommandError::new("export", format!("{}: {e}", path.display())))?;
+            for warning in dumped.skipped {
+                job.warn(warning);
+            }
+            Ok(dumped.rows)
+        },
+    )
 }
 
 fn import_error(e: ImportError) -> CommandError {

@@ -12,6 +12,7 @@ import { ExportTablesDialog } from "./ExportTablesDialog";
 import { GenerateDataDialog } from "./GenerateDataDialog";
 import { ImportDataDialog, type TableAt } from "./ImportDataDialog";
 import { MigrateDialog } from "./MigrateDialog";
+import { DumpSqlDialog, RunSqlFileDialog } from "./SqlFileDialogs";
 
 const at = (connection: SavedConnection, database: string | null, schema: SchemaMeta, table: string | null): TableAt => ({
   connection,
@@ -191,4 +192,60 @@ registerAction({
         onClose: close,
       }),
     ),
+});
+
+function openRunFile(connection: SavedConnection, database: string | null) {
+  workbench().openDialog((close) => createElement(RunSqlFileDialog, { connection, database, onClose: close }));
+}
+
+registerAction({
+  id: "connection.run_sql_file",
+  scope: "navigator.connection",
+  title: "Run SQL file…",
+  group: "open",
+  order: 12,
+  when: ({ connection }) => !isMongo(connection.driver) && !connection.read_only,
+  run: ({ connection }) => openRunFile(connection, null),
+});
+
+registerAction({
+  id: "database.run_sql_file",
+  scope: "navigator.database",
+  title: "Run SQL file…",
+  group: "open",
+  order: 12,
+  when: ({ connection }) => !isMongo(connection.driver) && !connection.read_only,
+  run: ({ connection, database }) => openRunFile(connection, database),
+});
+
+/** The kinds of object a dump writes. */
+const DUMPED = new Set(["table", "sequence", "view", "materialized_view", "function", "procedure"]);
+
+function openDump(connection: SavedConnection, database: string | null, schema: string, objects: string[] | null) {
+  workbench().openDialog((close) => createElement(DumpSqlDialog, { connection, database, schema, objects, onClose: close }));
+}
+
+registerAction({
+  id: "schema.dump_sql",
+  scope: "navigator.schema",
+  title: "Dump to SQL file…",
+  group: "open",
+  order: 34,
+  when: ({ connection }) => !isMongo(connection.driver),
+  run: ({ connection, database, schema }) => openDump(connection, database, schema.name, null),
+});
+
+registerAction({
+  id: "object.dump_sql",
+  scope: "navigator.object",
+  title: "Dump to SQL file…",
+  group: "manage",
+  order: 75,
+  multiple: true,
+  // The objects of one schema, which the dump orders by their references.
+  when: ({ connection, schema, object, selection }) =>
+    !isMongo(connection.driver) &&
+    (selection ?? [{ schema, object }]).every((s) => s.schema.name === schema.name && DUMPED.has(s.object.kind)),
+  run: ({ connection, database, schema, object, selection }) =>
+    openDump(connection, database, schema.name, (selection ?? [{ object }]).map((s) => s.object.name)),
 });

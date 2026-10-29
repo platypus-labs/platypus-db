@@ -37,6 +37,9 @@ pub struct Capabilities {
     /// [`EndSession::Cancel`](crate::EndSession::Cancel): the statement of another
     /// session can be cancelled without closing it (not on SQL Server).
     pub cancel_server_queries: bool,
+    /// [`Connection::bulk_load`](crate::Connection::bulk_load): rows go in with the
+    /// database's own bulk loading instead of INSERT statements.
+    pub bulk_load: bool,
 }
 
 /// The error a `Connection` method returns when the driver does not implement it.

@@ -5,6 +5,7 @@
 //! they are consumed. Queries are cancelled with `KILL QUERY` from a second connection.
 
 mod admin;
+mod bulk;
 #[doc(hidden)]
 pub mod columns;
 mod explain;
@@ -62,6 +63,8 @@ pub struct MySqlConnection {
     server: ServerInfo,
     /// With `NO_BACKSLASH_ESCAPES`, `\` is an ordinary character in string literals.
     no_backslash_escapes: bool,
+    /// The server takes `LOAD DATA LOCAL`, for bulk loads.
+    local_infile: bool,
     /// Manual mode is `SET autocommit = 0`; the server opens transactions by itself.
     tx: TxTracker,
     /// Set once an error shows the server connection is gone.
@@ -178,6 +181,13 @@ impl MySqlConnection {
             .query_first("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
             .await
             .map_err(map_error)?;
+        // A server without it (or that cannot say) refuses `LOAD DATA LOCAL`.
+        let local_infile = conn
+            .query_first::<i64, _>("SELECT @@GLOBAL.local_infile")
+            .await
+            .ok()
+            .flatten()
+            == Some(1);
         let product = if version.contains("MariaDB") {
             "MariaDB"
         } else {
@@ -198,6 +208,7 @@ impl MySqlConnection {
                 encrypted: cipher.is_some_and(|(_, c)| !c.is_empty()),
             },
             no_backslash_escapes: sql_mode.contains("NO_BACKSLASH_ESCAPES"),
+            local_infile,
             tx: TxTracker::default(),
             closed: Arc::new(AtomicBool::new(false)),
             messages: Messages::default(),
@@ -416,8 +427,13 @@ impl Connection for MySqlConnection {
             metadata_search: true,
             server_sessions: true,
             cancel_server_queries: true,
+            bulk_load: self.local_infile,
             ..Default::default()
         }
+    }
+
+    async fn bulk_load(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
+        bulk::load(self, rows).await
     }
 }
 

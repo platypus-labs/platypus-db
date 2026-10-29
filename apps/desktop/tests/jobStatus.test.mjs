@@ -18,3 +18,9 @@ test("a failed or stopped job keeps the rows written before", () => {
   assert.deepEqual(afterEvent(busy, { type: "cancelled" }), { state: "cancelled", rows: 500 });
   assert.deepEqual(afterEvent(running, { type: "cancelled" }), { state: "cancelled", rows: 0 });
 });
+
+test("a file's progress keeps the bytes read", () => {
+  const reading = afterEvent(running, { type: "progress", rows: 2, bytes: [10, 40] });
+  assert.deepEqual(reading, { ...running, rows: 2, bytes: [10, 40] });
+  assert.deepEqual(afterEvent(reading, { type: "done", rows: 8, elapsed_ms: 1 }), { state: "done", rows: 8, warnings: [] });
+});

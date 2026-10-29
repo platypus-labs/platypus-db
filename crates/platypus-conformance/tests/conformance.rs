@@ -17,7 +17,7 @@ use arrow_cast::display::array_value_to_string;
 use futures::{StreamExt, TryStreamExt};
 use platypus_core::geometry;
 use platypus_core::{
-    Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, EndSession, Error,
+    BulkRows, Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, EndSession, Error,
     ExecOptions, ExecResult, MatchKind, ObjectKind, ObjectRef, PlanNode, ServerSession,
     ServerVersion, SessionInit,
 };
@@ -1461,6 +1461,586 @@ async fn suggests_indexes_for_large_scans() {
         assert_eq!(tables, expected, "{}: {:#?}", b.name, plan.root);
     }
 }
+/// A schema dumped to an SQL file runs again where it came from: tables in the order of
+/// their keys (a key to a row further down too), rows with their own numbers and numbering
+/// going on after them, text exactly, and the views.
+#[tokio::test]
+async fn dumps_and_runs_sql_files() {
+    use platypus_sql::Dialect;
+    use platypus_transfer::{dump::dump, script::run_file};
+
+    let _serial = SERIAL.lock().await;
+    let dir = tempfile::tempdir().unwrap();
+
+    for b in backends().await {
+        let d = Dialect::from(b.config.driver);
+        let (identity, text) = match d {
+            Dialect::Postgres if b.name == "postgres" => {
+                ("int GENERATED ALWAYS AS IDENTITY PRIMARY KEY", "text")
+            }
+            Dialect::MySql => ("int AUTO_INCREMENT PRIMARY KEY", "text"),
+            Dialect::SqlServer => ("int IDENTITY PRIMARY KEY", "nvarchar(200)"),
+            Dialect::Sqlite if b.name == "sqlite" => ("INTEGER PRIMARY KEY", "text"),
+            Dialect::DuckDb => ("INTEGER PRIMARY KEY", "varchar"),
+            _ => continue,
+        };
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let q = |name: &str| d.qualified(Some(&b.schema), name);
+        let (parent, child, view) = (
+            q("conf_dump_parent"),
+            q("conf_dump_child"),
+            q("conf_dump_view"),
+        );
+        let clean = || async {
+            let _ = run(conn, &format!("DROP VIEW {view}")).await;
+            let _ = run(conn, &format!("DROP TABLE {child}")).await;
+            let _ = run(conn, &format!("DROP TABLE {parent}")).await;
+        };
+        clean().await;
+        let name = "it's \"q\"\nline 2";
+        let statements = dump_fixture(d, (&parent, &child, &view), (identity, text), name);
+        for sql in &statements {
+            run(conn, sql)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name));
+        }
+        // A key to a row that comes after it; DuckDB checks keys as rows go in, in order.
+        let forward = d != Dialect::DuckDb;
+        if forward {
+            run(conn, &format!("UPDATE {child} SET boss = 2 WHERE id = 1"))
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        }
+
+        let file = dir.path().join(format!("{}.sql", b.name));
+        let only = ["conf_dump_parent", "conf_dump_child", "conf_dump_view"].map(str::to_owned);
+        let mut out = std::fs::File::create(&file).unwrap();
+        let dumped = dump((conn, d, &b.schema), &mut out, (true, Some(&only)), |_| {
+            true
+        })
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        drop(out);
+        assert_eq!(
+            (dumped.tables, dumped.rows),
+            (2, 4),
+            "{}: {:?}",
+            b.name,
+            dumped.skipped
+        );
+        let script = std::fs::read_to_string(&file).unwrap();
+
+        clean().await;
+        let ran = run_file(conn, d, &file, true, |_| true)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}\n{script}", b.name));
+        assert!(ran >= 5, "{}: {ran} statements", b.name);
+
+        let names = collect(
+            &b,
+            conn,
+            &format!("SELECT id, name FROM {view} ORDER BY id"),
+        )
+        .await;
+        assert_eq!(cell(&names[0], 1, 0).as_deref(), Some(name), "{}", b.name);
+        assert_eq!(cell(&names[0], 1, 1), None, "{}", b.name);
+        let rows = collect(
+            &b,
+            conn,
+            &format!("SELECT boss, amount FROM {child} ORDER BY id"),
+        )
+        .await;
+        let boss = forward.then(|| "2".to_owned());
+        assert_eq!(cell(&rows[0], 0, 0), boss, "{}", b.name);
+        let amount: f64 = cell(&rows[0], 1, 1).unwrap().parse().unwrap();
+        assert!((amount + 3.25).abs() < 1e-9, "{}: {amount}", b.name);
+        // The numbering goes on after the rows put back; DuckDB's key numbers nothing.
+        if d != Dialect::DuckDb {
+            run(conn, &format!("INSERT INTO {parent} (name) VALUES ('new')"))
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}\n{script}", b.name));
+            let id = collect(&b, conn, &format!("SELECT MAX(id) FROM {parent}")).await;
+            assert_eq!(
+                cell(&id[0], 0, 0).as_deref(),
+                Some("3"),
+                "{}\n{script}",
+                b.name
+            );
+        }
+        clean().await;
+        failing_file(&b, conn, d, dir.path()).await;
+    }
+}
+
+/// The tables, rows and view [`dumps_and_runs_sql_files`] dumps: a parent with numbered ids
+/// and `name` in a row, a child with keys to it and to itself, and a view of the parent.
+fn dump_fixture(
+    d: platypus_sql::Dialect,
+    (parent, child, view): (&str, &str, &str),
+    (identity, text): (&str, &str),
+    name: &str,
+) -> [String; 7] {
+    use platypus_sql::Dialect;
+
+    // SQLite names no schema in a key's REFERENCES.
+    let (to_parent, to_child) = if d == Dialect::Sqlite {
+        ("conf_dump_parent", "conf_dump_child")
+    } else {
+        (parent, child)
+    };
+    [
+        format!("CREATE TABLE {parent} (id {identity}, name {text})"),
+        format!(
+            "CREATE TABLE {child} (id int PRIMARY KEY, parent_id int REFERENCES {to_parent} (id), \
+             boss int REFERENCES {to_child} (id), amount decimal(10, 2))"
+        ),
+        // DuckDB numbers no key by itself.
+        if d == Dialect::DuckDb {
+            format!(
+                "INSERT INTO {parent} VALUES (1, {}), (2, NULL)",
+                d.quote_literal(name)
+            )
+        } else {
+            format!(
+                "INSERT INTO {parent} (name) VALUES ({})",
+                d.quote_literal(name)
+            )
+        },
+        if d == Dialect::DuckDb {
+            "SELECT 1".to_owned()
+        } else {
+            format!("INSERT INTO {parent} (name) VALUES (NULL)")
+        },
+        format!("INSERT INTO {child} (id, parent_id, boss, amount) VALUES (1, 1, NULL, 1.5)"),
+        format!("INSERT INTO {child} (id, parent_id, boss, amount) VALUES (2, 2, 1, -3.25)"),
+        format!("CREATE VIEW {view} AS SELECT id, name FROM {parent}"),
+    ]
+}
+
+/// What a dumped table needs and a routine's body come back: a PostgreSQL enum, `serial`
+/// sequence and partitioned table (whose rows are written once), a MySQL procedure and
+/// trigger with `;` in their body, a SQL Server or MariaDB sequence's position.
+#[tokio::test]
+async fn dumps_types_routines_and_sequences() {
+    use platypus_sql::Dialect;
+
+    let _serial = SERIAL.lock().await;
+    let dir = tempfile::tempdir().unwrap();
+    for b in backends().await {
+        let d = Dialect::from(b.config.driver);
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let q = |name: &str| d.qualified(Some(&b.schema), name);
+        let mariadb = d == Dialect::MySql && conn.server_info().product == "MariaDB";
+        let (setup, drop, checks): DumpCase = match d {
+            Dialect::Postgres if b.name == "postgres" => (
+                vec![
+                    format!("CREATE TYPE {} AS ENUM ('a', 'b')", q("conf_dump2_mood")),
+                    format!(
+                        "CREATE TABLE {} (id serial PRIMARY KEY, m {})",
+                        q("conf_dump2_t"),
+                        q("conf_dump2_mood")
+                    ),
+                    format!("INSERT INTO {} (m) VALUES ('a'), ('b')", q("conf_dump2_t")),
+                    format!(
+                        "CREATE TABLE {} (at int) PARTITION BY RANGE (at)",
+                        q("conf_dump2_p")
+                    ),
+                    format!(
+                        "CREATE TABLE {} PARTITION OF {} FOR VALUES FROM (0) TO (100)",
+                        q("conf_dump2_p1"),
+                        q("conf_dump2_p")
+                    ),
+                    format!("INSERT INTO {} VALUES (1), (2)", q("conf_dump2_p")),
+                    format!(
+                        "CREATE FUNCTION {}() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 1; END $$",
+                        q("conf_dump2_f")
+                    ),
+                ],
+                vec![
+                    format!("DROP FUNCTION {}()", q("conf_dump2_f")),
+                    format!("DROP TABLE {}", q("conf_dump2_p")),
+                    format!("DROP TABLE {}", q("conf_dump2_t")),
+                    format!("DROP TYPE {}", q("conf_dump2_mood")),
+                    format!("DROP SEQUENCE IF EXISTS {}", q("conf_dump2_t_id_seq")),
+                    format!("DROP SEQUENCE IF EXISTS {}", q("conf_dump2_t_id_seq1")),
+                ],
+                vec![
+                    (format!("SELECT COUNT(*) FROM {}", q("conf_dump2_p")), "2"),
+                    (format!("SELECT {}()", q("conf_dump2_f")), "1"),
+                    (
+                        format!(
+                            "INSERT INTO {} (m) VALUES ('b') RETURNING id",
+                            q("conf_dump2_t")
+                        ),
+                        "3",
+                    ),
+                ],
+            ),
+            Dialect::MySql => mysql_dump_case(&q, mariadb),
+            Dialect::SqlServer => (
+                vec![
+                    format!("CREATE SEQUENCE {} AS int START WITH 1", q("conf_dump2_s")),
+                    format!("SELECT NEXT VALUE FOR {}", q("conf_dump2_s")),
+                    format!("SELECT NEXT VALUE FOR {}", q("conf_dump2_s")),
+                ],
+                vec![format!("DROP SEQUENCE {}", q("conf_dump2_s"))],
+                vec![(format!("SELECT NEXT VALUE FOR {}", q("conf_dump2_s")), "3")],
+            ),
+            _ => continue,
+        };
+        dump_round_trip(&b, conn, d, dir.path(), (&setup, &drop, &checks)).await;
+        if d == Dialect::MySql {
+            delimiter_across_chunks(&b, conn, dir.path()).await;
+        }
+    }
+}
+
+/// MySQL's case of [`dumps_types_routines_and_sequences`]: a procedure and a trigger with
+/// `;` in their body, and on MariaDB a sequence.
+fn mysql_dump_case(q: &dyn Fn(&str) -> String, mariadb: bool) -> DumpCase {
+    let mut setup = vec![
+        format!(
+            "CREATE TABLE {} (id int PRIMARY KEY, n int)",
+            q("conf_dump2_t")
+        ),
+        format!(
+            "CREATE PROCEDURE {}() BEGIN DECLARE x int; SET x = 1; SELECT x; END",
+            q("conf_dump2_f")
+        ),
+        format!(
+            "CREATE TRIGGER {} BEFORE INSERT ON {} FOR EACH ROW BEGIN SET NEW.n = 7; SET NEW.n = NEW.n + 1; END",
+            q("conf_dump2_tr"),
+            q("conf_dump2_t")
+        ),
+    ];
+    let mut drop = vec![
+        format!("DROP PROCEDURE {}", q("conf_dump2_f")),
+        format!("DROP TABLE {}", q("conf_dump2_t")),
+    ];
+    let mut checks = vec![
+        (format!("CALL {}()", q("conf_dump2_f")), "1"),
+        (
+            format!("INSERT INTO {} (id) VALUES (1)", q("conf_dump2_t")),
+            "",
+        ),
+        (format!("SELECT n FROM {}", q("conf_dump2_t")), "8"),
+    ];
+    if mariadb {
+        setup.push(format!("CREATE SEQUENCE {}", q("conf_dump2_s")));
+        setup.push(format!(
+            "SELECT NEXTVAL({0}), NEXTVAL({0})",
+            q("conf_dump2_s")
+        ));
+        drop.push(format!("DROP SEQUENCE {}", q("conf_dump2_s")));
+        checks.push((format!("SELECT NEXTVAL({}) > 2", q("conf_dump2_s")), "1"));
+    }
+    (setup, drop, checks)
+}
+
+/// What a dump round trip runs first, drops, and checks after.
+type DumpCase = (Vec<String>, Vec<String>, Vec<(String, &'static str)>);
+
+/// A MySQL `DELIMITER` holds in the pieces of a file read after it: a procedure 4 MB on,
+/// which the first piece cuts, keeps its body whole.
+async fn delimiter_across_chunks(
+    b: &Backend,
+    conn: &dyn platypus_core::Connection,
+    dir: &std::path::Path,
+) {
+    let p = platypus_sql::Dialect::MySql.qualified(Some(&b.schema), "conf_script_p");
+    let file = dir.join("delimiter.sql");
+    let head = format!("DROP PROCEDURE IF EXISTS {p};\nDELIMITER $$\n-- ");
+    // The 4 MB piece ends inside the procedure's body, between its two statements.
+    let body = format!(
+        "\nCREATE PROCEDURE {p}() BEGIN SELECT 1; SELECT 2; END$$\nDELIMITER ;\nCALL {p}();\n"
+    );
+    let cut = body.find("SELECT 2").unwrap();
+    let filler = "x".repeat((4 << 20) - head.len() - cut);
+    std::fs::write(&file, format!("{head}{filler}{body}")).unwrap();
+    let ran = platypus_transfer::script::run_file(
+        conn,
+        platypus_sql::Dialect::MySql,
+        &file,
+        false,
+        |_| true,
+    )
+    .await
+    .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+    assert_eq!(ran, 3, "{}", b.name);
+    let _ = run(conn, &format!("DROP PROCEDURE {p}")).await;
+}
+
+/// Runs `setup`, dumps the `conf_dump2_` objects, runs `drop` and the dump, then each check
+/// gives its first value (any value for an empty one).
+async fn dump_round_trip(
+    b: &Backend,
+    conn: &dyn platypus_core::Connection,
+    d: platypus_sql::Dialect,
+    dir: &std::path::Path,
+    (setup, drop, checks): (&[String], &[String], &[(String, &str)]),
+) {
+    use platypus_transfer::{dump::dump, script::run_file};
+
+    for sql in drop {
+        let _ = run(conn, sql).await;
+    }
+    for sql in setup {
+        run(conn, sql)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name));
+    }
+    let only: Vec<String> = conn
+        .objects(&b.schema)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|o| o.name.starts_with("conf_dump2_"))
+        .map(|o| o.name)
+        .collect();
+    let file = dir.join(format!("{}-2.sql", b.name));
+    let mut out = std::fs::File::create(&file).unwrap();
+    let dumped = dump((conn, d, &b.schema), &mut out, (true, Some(&only)), |_| {
+        true
+    })
+    .await
+    .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+    drop_all(conn, drop).await;
+    let script = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        dumped.skipped.is_empty(),
+        "{}: {:?}",
+        b.name,
+        dumped.skipped
+    );
+    run_file(conn, d, &file, false, |_| true)
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}\n{script}", b.name));
+    for (sql, want) in checks {
+        if want.is_empty() {
+            run(conn, sql)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {sql}: {e}\n{script}", b.name));
+            continue;
+        }
+        let rows = collect(b, conn, sql).await;
+        let got = rows.first().and_then(|r| cell(r, 0, 0));
+        assert_eq!(got.as_deref(), Some(*want), "{}: {sql}\n{script}", b.name);
+    }
+    drop_all(conn, drop).await;
+}
+
+async fn drop_all(conn: &dyn platypus_core::Connection, drop: &[String]) {
+    for sql in drop {
+        let _ = run(conn, sql).await;
+    }
+}
+
+/// A file whose statement fails: its number and line are told; in one transaction what ran
+/// before is rolled back, without one it stays.
+async fn failing_file(
+    b: &Backend,
+    conn: &dyn platypus_core::Connection,
+    d: platypus_sql::Dialect,
+    dir: &std::path::Path,
+) {
+    use platypus_transfer::script::{ScriptError, run_file};
+
+    let extra = d.qualified(Some(&b.schema), "conf_script_extra");
+    let _ = run(conn, &format!("DROP TABLE {extra}")).await;
+    run(conn, &format!("CREATE TABLE {extra} (id int)"))
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+    let file = dir.join("failing.sql");
+    let missing = d.qualified(Some(&b.schema), "conf_script_missing");
+    std::fs::write(
+        &file,
+        format!("INSERT INTO {extra} VALUES (1);\n\nINSERT INTO {missing} VALUES (1);\n"),
+    )
+    .unwrap();
+    // Transact-SQL runs the two as one batch.
+    let at = if d == platypus_sql::Dialect::SqlServer {
+        (1, 1)
+    } else {
+        (2, 3)
+    };
+    let count = || async {
+        let rows = collect(b, conn, &format!("SELECT COUNT(*) FROM {extra}")).await;
+        cell(&rows[0], 0, 0)
+    };
+    for (transaction, kept) in [(true, "0"), (false, "1")] {
+        match run_file(conn, d, &file, transaction, |_| true).await {
+            Err(ScriptError::Statement { number, line, .. }) => {
+                assert_eq!((number, line), at, "{}", b.name);
+            }
+            other => panic!("{}: {other:?}", b.name),
+        }
+        assert_eq!(
+            count().await.as_deref(),
+            Some(kept),
+            "{} {transaction}",
+            b.name
+        );
+    }
+    if d == platypus_sql::Dialect::MySql {
+        ddl_commits(b, conn, &file, (&extra, &missing)).await;
+    }
+    let _ = run(conn, &format!("DROP TABLE {extra}")).await;
+}
+
+/// DDL commits on its own in MySQL: in a transaction, what ran before it stays, and the
+/// error says so.
+async fn ddl_commits(
+    b: &Backend,
+    conn: &dyn platypus_core::Connection,
+    file: &std::path::Path,
+    (extra, missing): (&str, &str),
+) {
+    use platypus_transfer::script::{ScriptError, run_file};
+
+    let d = platypus_sql::Dialect::MySql;
+    let made = d.qualified(Some(&b.schema), "conf_script_made");
+    let _ = run(conn, &format!("DROP TABLE {made}")).await;
+    run(conn, &format!("DELETE FROM {extra}")).await.unwrap();
+    std::fs::write(
+        file,
+        format!(
+            "INSERT INTO {extra} VALUES (1);\nCREATE TABLE {made} (id int);\n\
+             INSERT INTO {extra} VALUES (2);\nINSERT INTO {missing} VALUES (1);\n"
+        ),
+    )
+    .unwrap();
+    let error = run_file(conn, d, file, true, |_| true).await.unwrap_err();
+    assert!(
+        matches!(
+            error,
+            ScriptError::Statement {
+                number: 4,
+                committed: 2,
+                ..
+            }
+        ),
+        "{}: {error:?}",
+        b.name
+    );
+    assert!(
+        error.to_string().contains("Statements 1 to 2 stay"),
+        "{error}"
+    );
+    let rows = collect(b, conn, &format!("SELECT COUNT(*) FROM {extra}")).await;
+    assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("1"), "{}", b.name);
+    let _ = run(conn, &format!("DROP TABLE {made}")).await;
+}
+
+/// A bulk load writes text exactly (quotes, tabs, line breaks, backslashes, empty text apart
+/// from NULL, bytes), in the session's transaction; refused rows fail it and leave the session
+/// usable. MySQL without `local_infile` refuses the load itself, as `Unsupported`.
+#[tokio::test]
+async fn bulk_loads_rows() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        if !conn.capabilities().bulk_load {
+            continue;
+        }
+        let d = platypus_sql::Dialect::from(b.config.driver);
+        let table = d.qualified(Some(&b.schema), "conf_bulk");
+        let _ = run(conn, &format!("DROP TABLE {table}")).await;
+        let bytes = if d == platypus_sql::Dialect::Postgres {
+            "bytea"
+        } else {
+            "blob"
+        };
+        run(
+            conn,
+            &format!("CREATE TABLE {table} (id int PRIMARY KEY, note text, raw {bytes})"),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let columns = ["id", "note", "raw"].map(|c| d.quote_ident(c).into_owned());
+        let tricky = "a \"q\", 'x'\tb\nc\\d\r";
+        let rows = vec![
+            vec![
+                Some("1".to_owned()),
+                Some(tricky.to_owned()),
+                Some("00ff".to_owned()),
+            ],
+            vec![Some("2".to_owned()), Some(String::new()), None],
+            vec![Some("3".to_owned()), None, Some(String::new())],
+        ];
+        let bulk = BulkRows {
+            table: &table,
+            columns: &columns,
+            hex: &[false, false, true],
+            rows: &rows,
+        };
+        run(conn, "BEGIN").await.unwrap();
+        match conn.bulk_load(&bulk).await {
+            Err(Error::Unsupported(why)) if b.name == "mysql" => {
+                eprintln!("{}: {why}", b.name);
+                run(conn, "ROLLBACK").await.unwrap();
+                run(conn, &format!("DROP TABLE {table}")).await.unwrap();
+                continue;
+            }
+            loaded => assert_eq!(
+                loaded.unwrap_or_else(|e| panic!("{}: {e}", b.name)),
+                3,
+                "{}",
+                b.name
+            ),
+        }
+        conn.commit().await.unwrap();
+        let other = b.connect().await;
+        let hex = if d == platypus_sql::Dialect::Postgres {
+            "encode(raw, 'hex')"
+        } else {
+            "LOWER(HEX(raw))"
+        };
+        let batches = collect(
+            &b,
+            &*other,
+            &format!("SELECT id, note, {hex}, note IS NULL FROM {table} ORDER BY id"),
+        )
+        .await;
+        let row = |r: usize| -> Vec<_> { (0..4).map(|c| cell(&batches[0], c, r)).collect() };
+        assert_eq!(row(0)[1].as_deref(), Some(tricky), "{}", b.name);
+        assert_eq!(row(0)[2].as_deref(), Some("00ff"), "{}", b.name);
+        assert_eq!(
+            row(1)[1].as_deref(),
+            Some(""),
+            "{}: empty, not NULL",
+            b.name
+        );
+        assert_eq!(row(1)[2], None, "{}", b.name);
+        assert_eq!(
+            row(2)[3].as_deref().map(|t| t == "true" || t == "1"),
+            Some(true),
+            "{}: NULL",
+            b.name
+        );
+        assert_eq!(row(2)[2].as_deref(), Some(""), "{}: no bytes", b.name);
+
+        // A duplicate key fails the load, and the session goes on.
+        let again = BulkRows {
+            rows: &rows[..1],
+            ..bulk
+        };
+        run(conn, "BEGIN").await.unwrap();
+        assert!(
+            conn.bulk_load(&again).await.is_err(),
+            "{}: duplicate key",
+            b.name
+        );
+        conn.rollback().await.unwrap();
+        let count = collect(&b, conn, &format!("SELECT COUNT(*) FROM {table}")).await;
+        assert_eq!(cell(&count[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
+        run(conn, &format!("DROP TABLE {table}")).await.unwrap();
+    }
+}
+
 /// Every optional method agrees with its capability flag: unsupported ones fail with
 /// `Error::Unsupported`, supported ones never do.
 #[tokio::test]
@@ -1529,6 +2109,25 @@ async fn capabilities_match_optional_methods() {
             "{}: server_locks vs capabilities.server_sessions: {locks:?}",
             b.name
         );
+        // No such table: a supported load fails, but not as unsupported.
+        let missing = platypus_sql::Dialect::from(b.config.driver)
+            .qualified(Some(&b.schema), "conf_no_such_bulk");
+        let columns = ["id".to_owned()];
+        let load = conn
+            .bulk_load(&platypus_core::BulkRows {
+                table: &missing,
+                columns: &columns,
+                hex: &[false],
+                rows: &[vec![Some("1".to_owned())]],
+            })
+            .await;
+        assert_eq!(
+            matches!(load, Err(Error::Unsupported(_))),
+            !caps.bulk_load,
+            "{}: bulk_load vs capabilities.bulk_load: {load:?}",
+            b.name
+        );
+
         // No session has id 0: a supported cancel fails, but not as unsupported.
         let cancel = conn.end_server_session("0", EndSession::Cancel).await;
         assert_eq!(

@@ -14,7 +14,8 @@ use arrow_cast::display::FormatOptions;
 use arrow_schema::{ArrowError, DataType, Field, Schema, TimeUnit};
 use futures::StreamExt;
 use platypus_core::{
-    Connection, DriverKind, ExecOptions, ExecResult, META_DB_TYPE, RecordBatchStream, special,
+    BulkRows, Connection, DriverKind, ExecOptions, ExecResult, META_DB_TYPE, RecordBatchStream,
+    special,
 };
 use platypus_sql::Dialect;
 use platypus_sql::dml::{Column, InvalidValue, ValueKind};
@@ -25,6 +26,8 @@ const ROWS_PER_INSERT: usize = 500;
 
 /// Rows per statement of a bulk insert (see [`bulk`]).
 const BULK_ROWS: usize = 5000;
+/// Rows a native bulk load (`COPY`, `LOAD DATA`) sends at a time.
+const NATIVE_ROWS: usize = 50_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ImportColumn {
@@ -321,6 +324,47 @@ impl ImportPlan {
                 default: None,
             })
             .collect()
+    }
+
+    /// Writes `rows`, whose values are of `schema`, with the target's own bulk loading.
+    async fn load(
+        &self,
+        (target, dialect): (&dyn Connection, Dialect),
+        schema: &Schema,
+        rows: &[Vec<Option<String>>],
+    ) -> Result<u64, ImportError> {
+        let columns = self.target_columns(schema);
+        let names: Vec<String> = columns
+            .iter()
+            .map(|c| dialect.quote_ident(c.name).into_owned())
+            .collect();
+        let hex: Vec<_> = columns
+            .iter()
+            .map(|c| c.kind == ValueKind::Binary)
+            .collect();
+        let text = rows
+            .iter()
+            .map(|row| {
+                columns
+                    .iter()
+                    .zip(row)
+                    .map(|(column, value)| {
+                        value
+                            .as_deref()
+                            .map(|v| column.bulk_text(dialect, v))
+                            .transpose()
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let table = self.table(dialect);
+        let bulk = BulkRows {
+            table: &table,
+            columns: &names,
+            hex: &hex,
+            rows: &text,
+        };
+        Ok(target.bulk_load(&bulk).await?)
     }
 
     /// The `INSERT … SELECT … FROM OPENJSON(…)` of `rows` (see [`bulk`]), whose values are of
@@ -880,6 +924,22 @@ pub async fn import(
     import_rows(rows, target, plan, progress).await
 }
 
+/// Writes `pending` rows with the database's own loading, else in an `OPENJSON` insert.
+async fn flush(
+    plan: &ImportPlan,
+    (target, dialect): (&dyn Connection, Dialect),
+    native: bool,
+    schema: &Schema,
+    pending: &[Vec<Option<String>>],
+) -> Result<(), ImportError> {
+    if native {
+        plan.load((target, dialect), schema, pending).await?;
+    } else {
+        exec(target, &plan.bulk_insert(dialect, schema, pending)?).await?;
+    }
+    Ok(())
+}
+
 /// Writes `rows`, whose columns are the plan's sources in order, as [`import`] does.
 pub async fn import_rows(
     mut rows: RecordBatchStream,
@@ -922,18 +982,22 @@ pub async fn import_rows(
         if let Some(sql) = plan.identity_insert(dialect, true) {
             exec(target, &sql).await?;
         }
-        let bulk = plan.mode() != ImportMode::Upsert && bulk(target, dialect).await;
-        let mut pending: Vec<Vec<Option<String>>> = Vec::new();
         let mut schema = rows.schema();
+        // The database's own bulk loading where it has it and allows it.
+        let batched = plan.mode() != ImportMode::Upsert;
+        let native = batched && target.capabilities().bulk_load;
+        // Rows go in chunks: natively, or each chunk in one `OPENJSON` insert.
+        let chunked = native || (batched && bulk(target, dialect).await);
+        let chunk = if native { NATIVE_ROWS } else { BULK_ROWS };
+        let mut pending: Vec<Vec<Option<String>>> = Vec::new();
         let mut written = 0;
         while let Some(batch) = rows.next().await {
             let batch = batch?;
-            if bulk {
+            if chunked {
                 schema = batch.schema();
                 pending.extend(rows_text(&batch)?);
-                if pending.len() >= BULK_ROWS {
-                    let sql = plan.bulk_insert(dialect, &schema, &pending)?;
-                    exec(target, &sql).await?;
+                if pending.len() >= chunk {
+                    flush(plan, (target, dialect), native, &schema, &pending).await?;
                     pending.clear();
                 }
             } else {
@@ -947,8 +1011,7 @@ pub async fn import_rows(
             }
         }
         if !pending.is_empty() {
-            let sql = plan.bulk_insert(dialect, &schema, &pending)?;
-            exec(target, &sql).await?;
+            flush(plan, (target, dialect), native, &schema, &pending).await?;
         }
         if let Some(staging) = plan.staging(dialect) {
             exec(target, &format!("DROP TEMPORARY TABLE {staging}")).await?;

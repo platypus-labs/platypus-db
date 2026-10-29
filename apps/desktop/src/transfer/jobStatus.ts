@@ -4,7 +4,7 @@ import type { ExportEvent } from "../api";
 /** A job as its dialog shows it. A failed or stopped job keeps the rows written before. */
 export type JobStatus =
   | { state: "idle" }
-  | { state: "running"; id: number | null; rows: number }
+  | { state: "running"; id: number | null; rows: number; /** Of a file read: read and size. */ bytes?: [number, number] }
   | { state: "done"; rows: number; warnings: string[] }
   | { state: "failed"; message: string; rows: number }
   | { state: "cancelled"; rows: number };
@@ -14,7 +14,8 @@ export function afterEvent(status: JobStatus, event: ExportEvent): JobStatus {
   const rows = status.state === "running" ? status.rows : 0;
   switch (event.type) {
     case "progress":
-      return status.state === "running" ? { ...status, rows: event.rows } : status;
+      if (status.state !== "running") return status;
+      return event.bytes ? { ...status, rows: event.rows, bytes: event.bytes } : { ...status, rows: event.rows };
     case "failed":
       return { state: "failed", message: event.error.message, rows };
     case "cancelled":

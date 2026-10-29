@@ -583,4 +583,8 @@ impl Connection for Held {
     async fn end_server_session(&self, id: &str, how: platypus_core::EndSession) -> Result<()> {
         self.inner.end_server_session(id, how).await
     }
+
+    async fn bulk_load(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
+        self.inner.bulk_load(rows).await
+    }
 }

@@ -413,6 +413,8 @@ impl Connection for MssqlConnection {
             metadata_search: true,
             server_sessions: true,
             cancel_server_queries: false,
+            // Imports send their rows through OPENJSON (`platypus-transfer`), not a bulk copy.
+            bulk_load: false,
         }
     }
 }

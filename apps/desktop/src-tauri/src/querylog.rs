@@ -420,6 +420,12 @@ impl Connection for Logged {
         self.track(LogKind::Query, text, self.inner.end_server_session(id, how))
             .await
     }
+
+    async fn bulk_load(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
+        let text = format!("bulk load of {} rows into {}", rows.rows.len(), rows.table);
+        self.track(LogKind::Query, text, self.inner.bulk_load(rows))
+            .await
+    }
 }
 
 /// The results after the first of a statement, their errors naming the server as the first

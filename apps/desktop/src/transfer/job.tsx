@@ -49,7 +49,12 @@ export function JobFooter(props: {
   const notice = status.state === "cancelled" && stopped !== undefined;
   return (
     <>
-      {status.state === "running" && <div className="notice small">{t(messages[0], { n: status.rows.toLocaleString() })}</div>}
+      {status.state === "running" && (
+        <div className="notice small">
+          {t(messages[0], { n: status.rows.toLocaleString() })}
+          {status.bytes && <progress className="job-progress" max={status.bytes[1] || 1} value={status.bytes[0]} />}
+        </div>
+      )}
       {status.state === "done" && (
         <div className={`notice small${status.warnings.length ? " warn" : ""}`}>
           {t(messages[1], { n: status.rows.toLocaleString() })}
