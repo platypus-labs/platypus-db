@@ -154,8 +154,6 @@ fn listening(stdout: Option<impl AsyncRead + Unpin + Send + 'static>) -> oneshot
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
-
     use super::*;
     use platypus_core::{AWS_PROFILE, DriverKind};
 
@@ -233,8 +231,10 @@ mod tests {
         running.abort();
         let _ = running.await;
         // Aborted, the run ended the CLI and the process it started: the port is closed.
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while tokio::net::TcpStream::connect(local).await.is_ok() && Instant::now() < deadline {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while tokio::net::TcpStream::connect(local).await.is_ok()
+            && std::time::Instant::now() < deadline
+        {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         assert!(tokio::net::TcpStream::connect(local).await.is_err());
