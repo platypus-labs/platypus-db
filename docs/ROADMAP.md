@@ -1113,6 +1113,12 @@ lasciare ogni controllo come test automatico che resti nel tempo. Si lavora come
 di test di ottobre 2026: un tester per area con l'app compilata, uno scenario E2E per ogni bug,
 poi le correzioni e un secondo giro con occhi nuovi; un agente o una persona alla volta.
 
+**Non in una sessione cloud.** Il collaudo finale (e in generale i test finali prima di un
+rilascio) è meglio non farlo in una sessione di un agente in cloud: lì gli E2E non girano (solo
+Windows, WebView2), non c'è GPU né macOS, i download dei driver e degli altri client sono
+bloccati dalla rete del container, e il disco è un'allowance fissa che i database di test
+riempiono. Va fatto su macchine vere: Windows, poi macOS e un desktop Linux.
+
 **Area:** `apps/desktop/e2e/`, `crates/platypus-conformance/`, `docs/BENCHMARKS.md`; le correzioni
 nei file delle aree toccate, in commit piccoli e separati
 **Dipende da:** gruppo R completato
