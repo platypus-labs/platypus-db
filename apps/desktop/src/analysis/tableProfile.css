@@ -1,0 +1,82 @@
+/* "Profile data": the tab with one card per column of a table. */
+.table-profile-tab .tp-filter {
+  width: 180px;
+}
+.tp-body {
+  overflow: auto;
+}
+.tp-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.tp-card {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  font-size: 12px;
+}
+.tp-card dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 0;
+}
+.tp-card dt {
+  color: var(--fg-muted);
+}
+.tp-card dd {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+.tp-kind {
+  margin-left: auto;
+}
+.tp-top {
+  grid-template-columns: 1fr auto;
+}
+.tp-card button.link {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.tp-pattern-list {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.tp-pattern {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tp-dominant {
+  font-weight: 600;
+}
+.tp-exceptions-label,
+.tp-outlier-summary {
+  margin-top: 4px;
+}
+.tp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin-top: 2px;
+}
+.tp-outliers,
+.tp-patterns {
+  margin-top: 4px;
+}
+.tp-none {
+  padding: 12px 0;
+}

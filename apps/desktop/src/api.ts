@@ -1609,6 +1609,60 @@ export interface ColumnProfile {
   complete: boolean;
 }
 
+/** What a text value looks like (see `crates/platypus-local/src/patterns.rs`): the first eight
+ *  are formats, the last two properties on top of them. */
+export type ValuePattern =
+  | "email"
+  | "url"
+  | "uuid"
+  | "iso_date"
+  | "date_like"
+  | "integer"
+  | "decimal"
+  | "phone"
+  | "spaces"
+  | "mixed_case";
+
+/** One column of a table profile: the hover statistics plus what a full read tells. */
+export interface TableColumnProfile {
+  name: string;
+  data_type: string;
+  /** The type the database reported, when the driver told it. */
+  db_type: string | null;
+  kind: "number" | "time" | "text" | "other";
+  rows: number;
+  nulls: number;
+  distinct: number;
+  min: string | null;
+  max: string | null;
+  histogram: { from: string; to: string; count: number }[];
+  top: { value: string; count: number }[];
+  /** Text: values that are the empty string. */
+  empty: number;
+  numbers: { mean: number; stddev: number | null; q1: number; median: number; q3: number } | null;
+  /** Text: length in characters. */
+  lengths: { min: number; avg: number; max: number } | null;
+  patterns: {
+    /** Values looked at: not NULL and not empty. */
+    checked: number;
+    /** The format at least half of the values have. */
+    dominant: ValuePattern | null;
+    shares: { pattern: ValuePattern; count: number; share: number }[];
+    /** Values that break the format a column mostly has. */
+    exceptions: string[];
+  } | null;
+  /** Numbers past the IQR fences; `null` when there are none. */
+  outliers: { count: number; share: number; low_fence: number; high_fence: number; examples: string[] } | null;
+}
+
+export interface TableProfile {
+  /** Rows read. */
+  rows: number;
+  columns: TableColumnProfile[];
+  /** Why not every row was read: the row budget or the memory limit. */
+  cut: "rows" | "memory" | null;
+}
+
 // Analysis (group M): charts
 /** What a chart draws, columns by position (`analysis/chartConfig.ts` makes it). */
 export interface ChartRequest {
@@ -2277,6 +2331,9 @@ export const api = {
   // Analysis (group M): column statistics
   /** The profile of `column` over the rows the result has loaded. */
   columnProfile: (jobId: number, column: number) => invoke<ColumnProfile>("column_profile", { jobId, column }),
+  /** Profiles the first `maxRows` rows (all with `null`) of a table or view on a session. */
+  tableProfile: (sessionId: number, schema: string, table: string, maxRows: number | null) =>
+    invoke<TableProfile>("table_profile", { sessionId, schema, table, maxRows }),
 
   // Analysis (group M): charts
   /** What `request` draws from the rows the result has loaded. */
