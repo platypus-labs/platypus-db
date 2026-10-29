@@ -577,7 +577,7 @@ numbers after the largest `_id`, lists of words for arrays, small documents for 
 
 Claude Code, Codex, Cursor and other MCP clients use your saved connections through
 PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start themselves
-(no window opens, and the app need not be open).
+(no window opens, and the app need not be open for reading).
 
 - Each connection gives agents **no access**, **read only** (the default) or **read and
   write**; production and read-only connections are never more than read only.
@@ -586,6 +586,19 @@ PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start 
   agents' call log (Settings → Agents → Activity), by session, with a filter and a CSV export.
 - An agent can propose SQL with `propose_sql`: it opens in a new editor tab, for you to
   review and run.
+- **Changes wait for you**: on read-write connections each change an agent wants to run opens
+  a dialog in the app with the statement, the rows the database expects it to change and its
+  plan. Refuse it (with a reason the agent reads), allow it once, or allow that agent's changes
+  on the connection for the rest of its session; after five minutes without an answer it is
+  refused. With the app closed, agents' changes are refused. A query that writes through a
+  function counts too: where the database refuses writes in a read-only transaction
+  (PostgreSQL, MySQL, MariaDB, SQLite) queries run in one first, and the write is asked about.
+  Settings → Safety → "Ask before agents change data" turns the questions off.
+- While the app is open, agents reach it through a **bridge** on a local port with a token:
+  the top bar shows the agents connected, and the `list_open_sessions` tool shows them the
+  sessions open in the app (connection, database, manual commit, open transaction).
+  Settings → Agents → Setup turns the bridge off, changes its port (47337 by default), shows
+  its address and token for MCP clients over HTTP and makes a new token.
 
 Settings → Agents → Setup lists Claude Desktop, Claude Code, Codex, Cursor, Windsurf,
 Antigravity and Gemini CLI with their configuration file and whether PlatypusDB is in it:
@@ -598,6 +611,12 @@ the installers no longer ship that second executable.
 
 ```bash
 claude mcp add platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp
+```
+
+or, with the app open, over HTTP (address and token from Settings → Agents):
+
+```bash
+claude mcp add --transport http platypus http://127.0.0.1:47337/mcp --header "Authorization: Bearer <token>"
 ```
 
 and for Codex, in `~/.codex/config.toml`:
@@ -618,7 +637,8 @@ command or `.pgpass` instead. A connection that asks for its password every time
 available to agents.
 
 Tools: `list_connections`, `list_schemas`, `list_objects`, `describe_table`, `get_ddl`,
-`search_objects`, `run_query`, `sample_rows`, `explain` and `propose_sql`. `run_query` runs one statement and returns 100 rows,
+`search_objects`, `run_query`, `sample_rows`, `explain`, `propose_sql` and
+`list_open_sessions`. `run_query` runs one statement and returns 100 rows,
 32 KB and 30 s at most by default (`max_rows` up to 10,000, `max_bytes` up to 1 MB,
 `timeout_seconds` up to 300), as an aligned text table or JSON, saying when rows or values
 longer than 1,000 characters were left out. In the text table SQL `NULL` reads `NULL` and a
@@ -641,14 +661,24 @@ and SQL Server roll the transaction back), and functions that act outside it
 cannot read or write other files nor load extensions, and close after each call so the app
 can open the file.
 
-On read-write connections changes commit at once; `BEGIN`, `COMMIT` and `ROLLBACK` are
-refused, and so are `UPDATE` or `DELETE` without `WHERE` and `TRUNCATE` unless Settings →
-Safety runs them without asking.
+On read-write connections changes commit at once, once allowed in the app (see above);
+`BEGIN`, `COMMIT` and `ROLLBACK` are refused, and so are `UPDATE` or `DELETE` without `WHERE`
+and `TRUNCATE` unless Settings → Safety runs them without asking.
+
+The bridge: while it runs, the app writes its port and token to `agent-bridge.json` in its
+data folder (readable only by the user) and removes it on exit; the token is kept in
+`agent-token` until a new one is made. `--mcp` and the CLI read that file at each call, so
+they find the app whenever it opens. Routes, all with `Authorization: Bearer <token>`:
+`GET /v1/sessions`, `POST /v1/confirm` (a change to ask about; the answer is
+`{"answer": "once" | "session" | "deny", "reason"}`), `POST /v1/hello` (an agent says it is
+connected; forgotten after 90 s without one) and `/mcp` (MCP over streamable HTTP, the same
+tools as `--mcp`).
 
 </details>
 
 Agents without MCP use the `platypus` CLI (crate `platypus-cli`) with `--connection`, which
-follows the same access and prints one JSON document:
+follows the same access, asks the open app before a change as `--mcp` does, and prints one
+JSON document:
 
 ```bash
 platypus connections                                  # [{"name", "id", "driver", "type", "database", "agent_access"}]

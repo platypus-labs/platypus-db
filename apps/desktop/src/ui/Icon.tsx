@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Bookmark,
+  Bot,
   Braces,
   Check,
   ChevronDown,
@@ -132,6 +133,7 @@ const ICONS = {
   lock: Lock,
   "tx-log": ScrollText,
   masked: EyeOff,
+  agent: Bot,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

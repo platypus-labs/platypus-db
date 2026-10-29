@@ -115,6 +115,8 @@ struct Session {
     raw: Arc<dyn Connection>,
     /// When the session was last given work, shared by the clones of the session.
     last_used: Arc<Mutex<Instant>>,
+    /// A dialog's own session, beside the one the connection's tabs and navigator share.
+    side: bool,
 }
 
 impl Session {
@@ -132,6 +134,7 @@ impl Session {
             label,
             raw,
             last_used: Arc::new(Mutex::new(Instant::now())),
+            side: false,
         }
     }
 
@@ -241,6 +244,31 @@ impl AppState {
             Ok(settings) => f(settings).map_err(Into::into),
             Err(e) => Err(CommandError::new("store", e.clone())),
         }
+    }
+
+    /// The setting `key`, if it is set and readable.
+    pub(crate) fn setting<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
+        lock(&self.settings).as_ref().ok()?.get(key)
+    }
+
+    /// The sessions open, as agents see them through the bridge.
+    pub(crate) fn open_sessions(&self) -> Vec<platypus_mcp::OpenSession> {
+        let mut sessions: Vec<(u64, platypus_mcp::OpenSession)> = lock(&self.sessions)
+            .iter()
+            .map(|(id, s)| {
+                let transaction = s.conn.transaction();
+                let session = platypus_mcp::OpenSession {
+                    connection: s.label.clone(),
+                    database: Some(s.config.database.clone()).filter(|d| !d.is_empty()),
+                    purpose: if s.side { "side" } else { "main" }.to_owned(),
+                    manual_commit: !transaction.autocommit,
+                    transaction_open: transaction.open,
+                };
+                (*id, session)
+            })
+            .collect();
+        sessions.sort_by_key(|(id, _)| *id);
+        sessions.into_iter().map(|(_, s)| s).collect()
     }
 
     fn next_id(&self) -> u64 {

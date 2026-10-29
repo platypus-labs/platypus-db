@@ -786,7 +786,7 @@ massimo 10.000 righe mostrate; MongoDB senza SQL sui risultati né diff. Le P3 r
 
 ### Gruppo N — Accesso per agenti esterni (MCP)
 
-**Stato: P1 completate.** Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
+**Stato: P1 e P2 completate** (restano i P3). Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
 il binario `platypus-mcp`, server MCP su stdio con `rmcp`: legge il profilo dell'app (o
 `PLATYPUS_DATA_DIR`) e apre le connessioni come l'app (profili di rete, tunnel SSH, password
 da keychain, comando o `.pgpass`); con la master password i segreti restano bloccati e la
@@ -812,8 +812,21 @@ Setup, Attività e Sicurezza in Impostazioni → Agents: Setup elenca Claude Des
 Code, Codex, Cursor, Windsurf, Antigravity e Gemini CLI con il loro file e lo stato, e
 Installa scrive la voce dopo conferma e copia di backup (JSON e TOML con commenti
 conservati); Attività filtra per sessione, esito e testo ed esporta CSV; `propose_sql` salva
-la proposta e l'app aperta (o al prossimo avvio) la apre in un tab dell'editor. Restano il
-ponte con l'app aperta via HTTP, la conferma nell'app per le scritture e i P3.
+la proposta e l'app aperta (o al prossimo avvio) la apre in un tab dell'editor. Ponte con
+l'app aperta (`apps/desktop/src-tauri/src/agent/`): server hyper su `127.0.0.1` (porta 47337,
+impostazione `agents.bridge_port`; `agents.bridge` lo spegne) con token persistente
+(`agent-token`); mentre gira porta e token stanno in `agent-bridge.json`, letto a ogni
+chiamata dal server `--mcp` e dalla CLI (`platypus_mcp::HttpLink`, trait `AppLink`). Rotte
+`/v1/sessions`, `/v1/confirm`, `/v1/hello` e `/mcp` (rmcp streamable HTTP, feature `http` di
+`platypus-mcp`, gli stessi tool). Tool `list_open_sessions`; il server saluta l'app ogni 30 s e
+la barra in alto mostra gli agenti collegati (dimenticati dopo 90 s). Conferma delle scritture:
+con `agents.confirm_writes` (Impostazioni → Safety, attiva di default) ogni modifica su una
+connessione read-write (`access::changes`) aspetta la risposta nell'app, con statement, righe
+stimate e piano da `Connection::explain`; Rifiuta (con un motivo che l'agente legge), Consenti
+una volta, Consenti per questa sessione (per sessione del server e connessione); 5 minuti
+senza risposta o app chiusa = rifiutata. Una query che scrive tramite una funzione passa
+dalla transazione di sola lettura dove il database la rifiuta, e al rifiuto chiede. Gli E2E danno a ogni scenario una porta libera e
+`confirm_writes = false` se lo scenario non li imposta.
 
 PlatypusDB non integra un proprio assistente AI. Diventa invece uno strumento che gli agenti già
 in uso (Claude Code, Codex, Cursor, altri client MCP) possono collegare: usano le connessioni
@@ -837,8 +850,8 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | ✅ Installazione guidata: pagina "Agenti" nelle Impostazioni con i comandi pronti (`claude mcp add platypus -- platypus-mcp`, voce `[mcp_servers.platypus]` per Codex) e un pulsante Copia | P1 | N |
 | ✅ CLI per agenti senza MCP: `platypus-cli --connection <nome>` dalle connessioni salvate, output JSON stabile e documentato | P1 | N |
 | ✅ `explain` e campione di righe (`sample_rows`) come tool dedicati, con i limiti di `run_query` | P2 | D+ |
-| **Ponte con l'app aperta** (MCP su HTTP locale con token): l'agente vede le sessioni aperte e l'indicatore "agente collegato" compare nella barra | P2 | N |
-| Conferma nell'app per le scritture: dialog con lo statement, le righe stimate e il piano EXPLAIN (riusa le guardie del gruppo L), con "consenti per questa sessione". Il server `--mcp` non ha finestra: serve il ponte con l'app aperta, o una finestra di conferma propria | P2 | N |
+| ✅ **Ponte con l'app aperta** (MCP su HTTP locale con token): l'agente vede le sessioni aperte e l'indicatore "agente collegato" compare nella barra | P2 | N |
+| ✅ Conferma nell'app per le scritture: dialog con lo statement, le righe stimate e il piano EXPLAIN (riusa le guardie del gruppo L), con "consenti per questa sessione". Il server `--mcp` non ha finestra: serve il ponte con l'app aperta, o una finestra di conferma propria | P2 | N |
 | ✅ **Configurazione degli agenti in un clic**: la pagina "Agents" scrive la voce del server nei file di Claude Desktop, Cursor, Windsurf e Codex (o lancia `claude mcp add`) e mostra in quali client è già presente | P2 | N |
 | ✅ **Registro delle chiamate degli agenti**: ogni chiamata a un tool (non solo le query), con agente, connessione, argomenti, durata ed esito, raggruppata per sessione, con filtro ed export CSV | P2 | N |
 | ✅ Tool `propose_sql`: apre la query proposta dall'agente in un tab dell'editor, da rivedere ed eseguire a mano | P2 | N |

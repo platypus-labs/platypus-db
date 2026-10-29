@@ -1,7 +1,7 @@
 //! What agents may run: the connection's agent access, then the statement itself, checked
 //! with the same analysis the app runs before a statement (`platypus_sql::analyze`).
 
-use platypus_core::{TxEffect, classify};
+use platypus_core::{DriverKind, TxEffect, classify};
 use platypus_sql::{Dialect, Lexer, StatementKind, Token, TokenKind};
 pub use platypus_store::AgentAccess;
 use platypus_store::SettingsStore;
@@ -318,6 +318,17 @@ fn outside_effect(statement: &str, dialect: Dialect) -> Option<String> {
                     .find(|name| outside.reaches(&name.to_ascii_lowercase(), call))
             })
         })
+}
+
+/// Whether `statement`, one statement as [`check`] or [`check_mongo`] returned it, may change
+/// something: what the user is asked before it runs.
+#[must_use]
+pub fn changes(statement: &str, driver: DriverKind) -> bool {
+    if driver == DriverKind::Mongo {
+        use platypus_driver_mongo::shell::{self, StatementKind};
+        return shell::parse(statement).is_ok_and(|c| shell::kind(&c) != StatementKind::Query);
+    }
+    platypus_sql::analyze(statement, Dialect::from(driver)).kind != StatementKind::Query
 }
 
 /// The single statement of `sql`, if agents may run it on `connection` with `access`.

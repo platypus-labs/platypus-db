@@ -20,6 +20,7 @@ import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSyn
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createServer } from "node:net";
 import { connect } from "./cdp.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -63,6 +64,7 @@ for (const file of scenarios) {
   if (ctx.shots) mkdirSync(ctx.shots, { recursive: true });
   await scenario.setup?.(ctx);
   englishInterface(dir);
+  await agentDefaults(dir);
   if (scenario.duckdb !== false) installDuckDb(dir);
   const app = spawn(exe, [], {
     env: {
@@ -198,6 +200,31 @@ function installDuckDb(dir) {
     }
   };
   copy(from, join(dir, "drivers", "vendor", "duckdb"));
+}
+
+/** A port free on this machine now. */
+function freePort() {
+  return new Promise((resolvePort, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port: free } = server.address();
+      server.close(() => resolvePort(free));
+    });
+  });
+}
+
+/** The agents' bridge on a port of its own, away from an app the user has open, and agents'
+ *  changes run without asking, as before the bridge, unless the scenario sets the keys. */
+async function agentDefaults(dir) {
+  const file = join(dir, "settings.toml");
+  let text = existsSync(file) ? readFileSync(file, "utf8") : "";
+  const lines = [];
+  if (!/^bridge_port\s*=/m.test(text)) lines.push(`bridge_port = ${await freePort()}`);
+  if (!/^confirm_writes\s*=/m.test(text)) lines.push("confirm_writes = false");
+  if (lines.length === 0) return;
+  text = text.includes("[agents]") ? text.replace("[agents]", `[agents]\n${lines.join("\n")}`) : `${text}\n[agents]\n${lines.join("\n")}\n`;
+  writeFileSync(file, text);
 }
 
 /** Scenarios read the English interface whatever the language of the machine, unless one

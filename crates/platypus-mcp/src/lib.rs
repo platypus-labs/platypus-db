@@ -15,12 +15,16 @@ mod agent;
 mod connect;
 mod error;
 mod ident;
+pub mod link;
 pub mod output;
 pub mod plan;
 pub mod profile;
 pub mod query;
 mod redact;
 mod server;
+#[cfg(feature = "http")]
+pub use server::http_service;
+pub use server::{HELLO_EVERY, PlatypusServer};
 pub mod stdio;
 
 pub use access::AgentAccess;
@@ -30,6 +34,7 @@ pub use agent::{
 };
 pub use connect::{AgentBlocker, agent_blocker, connect};
 pub use error::{AgentError, Result};
+pub use link::{ANSWER_TIMEOUT, AppLink, BridgeFile, HttpLink, OpenSession, Verdict, WriteRequest};
 pub use output::{Format, QueryResult};
 pub use plan::PlanResult;
 pub use profile::Profile;

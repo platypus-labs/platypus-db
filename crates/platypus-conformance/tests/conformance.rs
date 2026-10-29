@@ -4214,6 +4214,173 @@ async fn agents_explain_analyze_in_read_only_transactions() {
     }
 }
 
+/// The open app as an agent sees it: it answers every change with `verdict`, and counts.
+#[derive(Debug)]
+struct AnsweringApp {
+    verdict: platypus_mcp::Verdict,
+    asked: std::sync::atomic::AtomicUsize,
+}
+
+#[async_trait::async_trait]
+impl platypus_mcp::AppLink for AnsweringApp {
+    async fn sessions(&self) -> Result<Vec<platypus_mcp::OpenSession>, String> {
+        Ok(Vec::new())
+    }
+    async fn confirm(
+        &self,
+        _: platypus_mcp::WriteRequest,
+    ) -> Result<platypus_mcp::Verdict, String> {
+        self.asked
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Ok(self.verdict.clone())
+    }
+    async fn hello(&self, _: &str, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+/// A function that deletes every row of `table`, in `driver`'s SQL.
+fn purge_function(driver: &str, table: &str) -> String {
+    if driver == "postgres" {
+        format!(
+            "CREATE FUNCTION agent_purge() RETURNS int LANGUAGE plpgsql AS $$ BEGIN DELETE FROM {table}; RETURN 1; END $$"
+        )
+    } else {
+        format!(
+            "CREATE FUNCTION agent_purge() RETURNS INT MODIFIES SQL DATA BEGIN DELETE FROM {table}; RETURN 1; END"
+        )
+    }
+}
+
+/// Saves `b` in the profile at `dir` as the connection `Db`, read-write for agents.
+fn save_agent_connection(dir: &std::path::Path, b: &Backend, driver: &str) {
+    let password = b.config.password.as_ref().map_or("", |p| p.expose());
+    std::fs::write(
+        dir.join("connections.toml"),
+        format!(
+            "version = 4\n\n[[connections]]\nid = \"00000000-0000-4000-8000-000000000001\"\n\
+             name = \"Db\"\ndriver = \"{driver}\"\nhost = \"{}\"\nport = {}\ndatabase = \"{}\"\n\
+             user = \"{}\"\npassword_command = \"echo {password}\"\nssl_mode = \"disable\"\n\
+             agent_access = \"read_write\"\n",
+            b.config.host,
+            b.config.port.unwrap_or_default(),
+            b.config.database,
+            b.config.user,
+        ),
+    )
+    .unwrap();
+}
+
+/// On a read-write connection a query that writes through a function is asked about like
+/// any change: it runs first in the read-only transaction, which refuses the write.
+#[tokio::test]
+async fn agents_ask_before_a_query_that_writes() {
+    use platypus_mcp::{Agent, Profile, QueryArgs, Verdict};
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let driver = match b.config.driver {
+            DriverKind::Postgres if b.name != "cockroach" => "postgres",
+            DriverKind::MySql => "mysql",
+            _ => continue,
+        };
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let table = "agent_purge_probe";
+        // MySQL names a function without its arguments.
+        let drop = if driver == "postgres" {
+            "DROP FUNCTION IF EXISTS agent_purge()"
+        } else {
+            "DROP FUNCTION IF EXISTS agent_purge"
+        };
+        run(conn, drop)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        run(conn, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap();
+        run(conn, &format!("CREATE TABLE {table} (id INT)"))
+            .await
+            .unwrap();
+        run(conn, &format!("INSERT INTO {table} VALUES (1), (2)"))
+            .await
+            .unwrap();
+        let function = purge_function(driver, table);
+        // MySQL with binary logging wants SUPER or log_bin_trust_function_creators.
+        if let Err(e) = run(conn, &function).await {
+            eprintln!("skipping {}: cannot create the function: {e}", b.name);
+            continue;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        save_agent_connection(dir.path(), &b, driver);
+        let query = |sql: &str| QueryArgs {
+            connection: "Db".to_owned(),
+            sql: sql.to_owned(),
+            max_rows: None,
+            max_bytes: None,
+            timeout_seconds: None,
+            format: None,
+        };
+        let agent = |verdict| {
+            let app = std::sync::Arc::new(AnsweringApp {
+                verdict,
+                asked: std::sync::atomic::AtomicUsize::default(),
+            });
+            (
+                Agent::new(Profile::at(dir.path())).with_link(app.clone()),
+                app,
+            )
+        };
+        let left = || async {
+            let rows = collect(&b, conn, &format!("SELECT count(*) FROM {table}")).await;
+            cell(&rows[0], 0, 0)
+        };
+
+        // Refused: nothing deleted; a plain query is not asked about.
+        let (refusing, app) = agent(Verdict::Deny { reason: None });
+        refusing
+            .run_query(&query(&format!("SELECT count(*) FROM {table}")), "test")
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(
+            app.asked.load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "{}",
+            b.name
+        );
+        let refused = refusing
+            .run_query(&query("SELECT agent_purge()"), "test")
+            .await
+            .unwrap_err();
+        assert!(
+            refused.to_string().contains("refused"),
+            "{}: {refused}",
+            b.name
+        );
+        assert_eq!(
+            app.asked.load(std::sync::atomic::Ordering::Relaxed),
+            1,
+            "{}",
+            b.name
+        );
+        assert_eq!(left().await.as_deref(), Some("2"), "{}", b.name);
+
+        // Allowed: it runs again, writing.
+        let (allowing, _) = agent(Verdict::Once);
+        allowing
+            .run_query(&query("SELECT agent_purge()"), "test")
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(left().await.as_deref(), Some("0"), "{}", b.name);
+
+        run(conn, drop)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        run(conn, &format!("DROP TABLE {table}")).await.unwrap();
+    }
+}
+
 /// PostgreSQL decodes `U&"…"` names the way the agents' read-only check does, so a function
 /// spelled with Unicode escapes is the one the check refuses.
 #[tokio::test]

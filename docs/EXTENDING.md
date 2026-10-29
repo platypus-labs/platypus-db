@@ -335,6 +335,14 @@ development and the stdio tests; and the `platypus` CLI calls the same methods f
 - `redact.rs` masks the connection's password, SSH secrets, password command and the
   password of any URL in every error an agent reads. Tools never return the host, the user
   or SSH settings.
+- `link.rs` is the way to the open app: the `AppLink` trait (`sessions`, `confirm`,
+  `hello`). `HttpLink` reaches the app's bridge from another process through
+  `agent-bridge.json`; the app's own `/mcp` endpoint uses the bridge's `Link`
+  (`apps/desktop/src-tauri/src/agent/`) directly. `Agent::with_link` gives one to the agent:
+  with `agents.confirm_writes` on (the default), a statement `access::changes` sees as a
+  change asks `confirm` before it runs, with the plan's estimate, and is refused without a
+  link or a yes. A new client of the app (another process) speaks the bridge's routes,
+  documented in the README.
 
 Every `run_query` is recorded in the query history with `origin`, the MCP client's name
 (`clientInfo.name`, trimmed to 64 characters, `agent` when empty) or `platypus-cli`; `HistoryQuery::origin` filters the app's entries

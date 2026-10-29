@@ -1,10 +1,12 @@
 //! Drives the `platypus-mcp` binary over stdio as an MCP client would, against a profile
 //! with SQLite databases.
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpListener;
 use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{Receiver, channel};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -97,6 +99,63 @@ fn sqlite(path: &Path, sql: &str) {
         .unwrap();
 }
 
+/// What the fake app got: each request's path and body.
+type Received = Arc<Mutex<Vec<(String, String)>>>;
+
+/// Plays the open app on the bridge of the profile at `dir`: answers `/v1/confirm` with
+/// `verdicts` in turn, `/v1/sessions` with one session.
+fn fake_app(dir: &Path, verdicts: Vec<&'static str>) -> Received {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::fs::write(
+        dir.join("agent-bridge.json"),
+        json!({ "port": port, "token": "t0ken" }).to_string(),
+    )
+    .unwrap();
+    let received = Received::default();
+    let (got, mut verdicts) = (Arc::clone(&received), verdicts.into_iter());
+    std::thread::spawn(move || {
+        for socket in listener.incoming() {
+            let mut socket = socket.unwrap();
+            let mut reader = BufReader::new(socket.try_clone().unwrap());
+            let (mut head, mut line) = (String::new(), String::new());
+            while reader.read_line(&mut line).unwrap() > 2 {
+                head.push_str(&line);
+                line.clear();
+            }
+            let length = head
+                .lines()
+                .find_map(|l| l.strip_prefix("Content-Length: "))
+                .map_or(0, |n| n.trim().parse().unwrap());
+            let mut body = vec![0; length];
+            reader.read_exact(&mut body).unwrap();
+            let path = head.split_whitespace().nth(1).unwrap().to_owned();
+            let (status, answer) = if head.contains("Authorization: Bearer t0ken") {
+                match path.as_str() {
+                    "/v1/confirm" => (200, verdicts.next().unwrap().to_owned()),
+                    "/v1/sessions" => (
+                        200,
+                        r#"[{"connection":"Scratch","database":null,"purpose":"main","manual_commit":true,"transaction_open":false}]"#
+                            .to_owned(),
+                    ),
+                    _ => (200, "{}".to_owned()),
+                }
+            } else {
+                (401, String::new())
+            };
+            got.lock()
+                .unwrap()
+                .push((path, String::from_utf8(body).unwrap()));
+            let _ = write!(
+                socket,
+                "HTTP/1.1 {status} X\r\nContent-Length: {}\r\n\r\n{answer}",
+                answer.len()
+            );
+        }
+    });
+    received
+}
+
 fn count(path: &Path) -> i64 {
     rusqlite::Connection::open(path)
         .unwrap()
@@ -176,6 +235,7 @@ fn lists_tools_and_connections_without_secrets(client: &mut Client) {
         "sample_rows",
         "explain",
         "propose_sql",
+        "list_open_sessions",
     ] {
         assert!(names.contains(&tool), "{tool} missing from {names:?}");
     }
@@ -252,12 +312,8 @@ fn runs_queries_within_the_access(client: &mut Client, dir: &Path) {
     );
     assert_eq!(count(&dir.join("app.db")), 2);
 
-    // Read-write: changes run, but not one that hits every row.
-    let (inserted, error) = client.call(
-        "run_query",
-        &json!({ "connection": "Scratch", "sql": "INSERT INTO t VALUES (3, 'Cy')" }),
-    );
-    assert!(!error && inserted == "1 row affected.", "{inserted}");
+    asks_the_app_before_changes(client, dir);
+
     let (every, error) = client.call(
         "run_query",
         &json!({ "connection": "Scratch", "sql": "DELETE FROM t" }),
@@ -272,6 +328,69 @@ fn runs_queries_within_the_access(client: &mut Client, dir: &Path) {
     assert!(
         error && hidden.contains("no connection named `Hidden`"),
         "{hidden}"
+    );
+}
+
+/// On a read-write connection a change waits for the user's yes in the open app; with the
+/// app closed it is refused.
+fn asks_the_app_before_changes(client: &mut Client, dir: &Path) {
+    let insert = json!({ "connection": "Scratch", "sql": "INSERT INTO t VALUES (3, 'Cy')" });
+    let (closed, error) = client.call("run_query", &insert);
+    assert!(
+        error && closed.contains("cannot ask: PlatypusDB is not open"),
+        "{closed}"
+    );
+    let (sessions, error) = client.call("list_open_sessions", &json!({}));
+    assert!(error && sessions.contains("not open"), "{sessions}");
+    let app = fake_app(
+        dir,
+        vec![
+            r#"{"answer":"deny","reason":"not now"}"#,
+            r#"{"answer":"session"}"#,
+        ],
+    );
+    let (denied, error) = client.call("run_query", &insert);
+    assert!(
+        error && denied.contains("the user refused this change: not now"),
+        "{denied}"
+    );
+    assert_eq!(count(&dir.join("scratch.db")), 2);
+    let (inserted, error) = client.call("run_query", &insert);
+    assert!(!error && inserted == "1 row affected.", "{inserted}");
+    // Allowed for the session: the next change on the connection runs without asking.
+    let (again, error) = client.call(
+        "run_query",
+        &json!({ "connection": "Scratch", "sql": "UPDATE t SET name = 'Cyd' WHERE id = 3" }),
+    );
+    assert!(!error && again == "1 row affected.", "{again}");
+    let asked: Vec<Value> = app
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(path, _)| path == "/v1/confirm")
+        .map(|(_, body)| serde_json::from_str(body).unwrap())
+        .collect();
+    assert_eq!(asked.len(), 2, "{asked:?}");
+    assert_eq!(asked[0]["agent"], "test-agent");
+    assert_eq!(asked[0]["connection"], "Scratch");
+    assert_eq!(asked[0]["statement"], "INSERT INTO t VALUES (3, 'Cy')");
+    assert!(
+        asked[0]["plan"].is_string(),
+        "SQLite explains it: {}",
+        asked[0]
+    );
+    assert_eq!(asked[0]["session"], asked[1]["session"]);
+    let (sessions, error) = client.call("list_open_sessions", &json!({}));
+    assert!(!error, "{sessions}");
+    let sessions: Value = serde_json::from_str(&sessions).unwrap();
+    assert_eq!(sessions[0]["connection"], "Scratch");
+    assert_eq!(sessions[0]["manual_commit"], true);
+    // The server told the app it is connected.
+    assert!(
+        app.lock()
+            .unwrap()
+            .iter()
+            .any(|(path, body)| path == "/v1/hello" && body.contains("test-agent"))
     );
 }
 
@@ -331,7 +450,7 @@ fn serves_the_tools_over_stdio() {
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
-    assert_eq!(recorded.len(), 5, "{recorded:?}");
+    assert_eq!(recorded.len(), 8, "{recorded:?}");
     assert!(recorded.iter().all(|(_, _, origin)| origin == "test-agent"));
     assert_eq!(recorded[2].0, "DELETE FROM t WHERE id = 1");
     assert_eq!(recorded[2].1, "error");
@@ -356,6 +475,11 @@ fn serves_the_tools_over_stdio() {
             "run_query",
             "run_query",
             "run_query",
+            "list_open_sessions",
+            "run_query",
+            "run_query",
+            "run_query",
+            "list_open_sessions",
             "run_query",
             "run_query",
             "describe_table",
@@ -382,7 +506,7 @@ fn serves_the_tools_over_stdio() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(agents, 12);
+    assert_eq!(agents, 17);
 }
 
 /// `sample_rows` reads the first rows of a table within the limits; `explain` shows the

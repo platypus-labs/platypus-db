@@ -3,8 +3,9 @@
 //! A failure prints `{"error": {"kind": …, "message": …}}` and exits with 1.
 
 use std::process::ExitCode;
+use std::sync::Arc;
 
-use platypus_mcp::{Agent, AgentError, Format, Profile, QueryArgs as AgentQuery};
+use platypus_mcp::{Agent, AgentError, Format, HttpLink, Profile, QueryArgs as AgentQuery};
 use serde_json::{Value, json};
 
 use crate::{Cli, Command, OutputFormat, QueryArgs};
@@ -35,7 +36,10 @@ pub async fn main(cli: Cli) -> ExitCode {
 }
 
 async fn run(cli: Cli) -> Result<Output, AgentError> {
-    let agent = Agent::new(Profile::from_env()?);
+    let profile = Profile::from_env()?;
+    // The open app asks the user before a change.
+    let link = Arc::new(HttpLink::new(profile.data_dir()));
+    let agent = Agent::new(profile).with_link(link);
     let named = cli.connection.as_deref().ok_or_else(|| {
         AgentError::Invalid("--connection names the saved connection to use".to_owned())
     });

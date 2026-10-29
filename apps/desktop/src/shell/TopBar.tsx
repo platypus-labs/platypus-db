@@ -4,8 +4,9 @@ import { runAction, shortcutLabel, titleWithKeys, useActions } from "../actions"
 import type { Project, SavedConnection } from "../api";
 import mark from "../assets/brand/platypus-mark.png";
 import { CONNECTION_TYPES } from "../connections";
-import { setSetting, useSetting } from "../settings";
+import { setSetting, setStored, useSetting } from "../settings";
 import { maskSetting } from "../guards/mask";
+import { useConnectedAgents } from "../agents/bridge";
 import { cycleTheme, themeLabel, themeSetting, titleBarSetting } from "../theme";
 import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
@@ -82,6 +83,7 @@ export function TopBar({ project, connection }: Props) {
         {keys && <kbd>{keys}</kbd>}
       </button>
       <MaskedButton />
+      <AgentsButton />
       <ActivityButton />
       <ThemeButton />
       <button type="button" className="icon" title={titleWithKeys(t("Settings"), "app.settings")} aria-label={t("Settings")} onClick={() => workbench().openSettings()}>
@@ -139,6 +141,30 @@ function MaskedButton() {
     >
       <Icon name="masked" />
       {t("Masked")}
+    </button>
+  );
+}
+
+/** While agents are connected to the open app, says which; a click opens Settings › Agents. */
+function AgentsButton() {
+  const agents = useConnectedAgents();
+  if (agents.length === 0) return null;
+  const names = [...new Set(agents.map((a) => a.agent))];
+  return (
+    <button
+      type="button"
+      className="topbar-agents"
+      title={t("Connected to PlatypusDB: {agents}", { agents: names.join(", ") })}
+      data-agents={agents.length}
+      onClick={() => {
+        // The Settings open on the page they were left on: this one.
+        void setStored("ui.settings_section", "Agents")
+          .catch(() => {})
+          .then(() => workbench().openSettings());
+      }}
+    >
+      <Icon name="agent" />
+      {names.length === 1 ? names[0] : plural(agents.length, "{n} agent", "{n} agents")}
     </button>
   );
 }

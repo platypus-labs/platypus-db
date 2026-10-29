@@ -3344,6 +3344,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
+name = "httpdate"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
+
+[[package]]
 name = "hybrid-array"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3367,6 +3373,7 @@ dependencies = [
  "http",
  "http-body",
  "httparse",
+ "httpdate",
  "itoa",
  "pin-project-lite",
  "smallvec",
@@ -5613,6 +5620,7 @@ dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
  "arrow-schema 60.0.0",
+ "async-trait",
  "futures",
  "platypus-core",
  "platypus-driver-adbc",
@@ -5662,9 +5670,13 @@ dependencies = [
  "arrow-ipc 60.0.0",
  "arrow-schema 60.0.0",
  "async-trait",
+ "bytes",
  "chrono",
  "chrono-tz",
  "futures",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "platypus-core",
  "platypus-docs",
  "platypus-driver-adbc",
@@ -5686,6 +5698,7 @@ dependencies = [
  "platypus-sql",
  "platypus-store",
  "platypus-transfer",
+ "rmcp",
  "rusqlite",
  "serde",
  "serde_json",
@@ -5699,6 +5712,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml_edit 0.25.17+spec-1.1.0",
+ "tower-service",
  "uuid",
  "windows-sys 0.61.2",
  "zip 9.1.0",
@@ -5963,6 +5977,7 @@ dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
  "arrow-schema 60.0.0",
+ "async-trait",
  "dirs",
  "duckdb",
  "futures",
@@ -6671,19 +6686,29 @@ version = "3.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ece64e19631fc38758181e637c15509a2c2709ee53bfde1e1d58f9dc991f919e"
 dependencies = [
+ "async-trait",
+ "base64 0.23.1",
+ "bytes",
  "chrono",
  "futures",
+ "http",
+ "http-body",
+ "http-body-util",
  "indexmap 2.14.2",
  "libc",
  "pastey",
  "pin-project-lite",
+ "rand 0.10.3",
  "rmcp-macros",
  "schemars 1.2.3",
  "serde",
  "serde_json",
+ "sse-stream",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-stream",
  "tokio-util",
+ "tower-service",
  "tracing",
  "uuid",
 ]
@@ -7710,6 +7735,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sse-stream"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c25ac7aff0abd1dbc474536e40416e1102c7dd9bfba0b9861c6d357f835dcfb4"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "http-body",
+ "http-body-util",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "ssh-cipher"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8650,6 +8688,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c9cc2678c2cdd569ef8215e2afd7954ada2ae20b4fdd2c5fe6139a3b02d105db"
 dependencies = [
  "rustls 0.23.46",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-stream"
+version = "0.1.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3d06f0b082ba57c26b79407372e57cf2a1e28124f78e9479fe80322cf53420b"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
  "tokio",
 ]
 

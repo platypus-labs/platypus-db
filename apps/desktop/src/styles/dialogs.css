@@ -1534,3 +1534,38 @@ label.multi-run-row:hover {
   width: 48px;
   height: 48px;
 }
+
+/* An agent's change waiting for the user's answer. */
+.agent-write-plan summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.agent-write-plan pre {
+  margin-top: 6px;
+}
+
+.agent-bridge {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.agent-bridge h3 {
+  margin: 0;
+}
+
+.agent-bridge-port {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-bridge-port input {
+  width: 90px;
+}
