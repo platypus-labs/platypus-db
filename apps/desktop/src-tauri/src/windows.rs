@@ -75,8 +75,10 @@ fn open(
 }
 
 /// Opens a window for `tab` (saved by the web view as JSON), titled `title`; its label.
+/// Asynchronous, as every command that makes a window: on Windows a synchronous one waits on
+/// WebView2 forever.
 #[tauri::command]
-pub fn open_tab_window(
+pub async fn open_tab_window(
     app: AppHandle,
     detached: State<'_, Detached>,
     tab: String,
@@ -107,8 +109,44 @@ pub fn open_quick(app: &AppHandle, title: &str) -> CommandResult<()> {
 }
 
 #[tauri::command]
-pub fn open_quick_window(app: AppHandle, title: String) -> CommandResult<()> {
+pub async fn open_quick_window(app: AppHandle, title: String) -> CommandResult<()> {
     open_quick(&app, &title)
+}
+
+/// Opens the quick query from an event handler, which must not make the window itself (it
+/// would wait on WebView2 forever on Windows).
+fn open_quick_later(app: &AppHandle, title: &str) {
+    let (app, title) = (app.clone(), title.to_owned());
+    tauri::async_runtime::spawn(async move {
+        let _ = open_quick(&app, &title);
+    });
+}
+
+/// Whether the system has a tray: on Linux, an `AppIndicator` library to load, without which
+/// the tray crate panics (and a release build, which aborts on a panic, would end).
+fn has_tray() -> bool {
+    if !cfg!(target_os = "linux") {
+        return true;
+    }
+    let names = ["libayatana-appindicator3.so.1", "libappindicator3.so.1"];
+    let mut dirs: Vec<std::path::PathBuf> = std::env::var_os("LD_LIBRARY_PATH")
+        .map(|p| std::env::split_paths(&p).collect())
+        .unwrap_or_default();
+    for dir in [
+        "/usr/lib",
+        "/usr/lib64",
+        "/lib",
+        "/lib64",
+        "/usr/local/lib",
+        "/app/lib",
+    ] {
+        dirs.push(dir.into());
+    }
+    let multiarch = format!("{}-linux-gnu", std::env::consts::ARCH);
+    dirs.push(std::path::Path::new("/usr/lib").join(&multiarch));
+    dirs.push(std::path::Path::new("/lib").join(multiarch));
+    dirs.iter()
+        .any(|dir| names.iter().any(|name| dir.join(name).exists()))
 }
 
 /// Shows the tray icon with the menu `labels` (quick query, show, quit, then the quick
@@ -120,6 +158,12 @@ pub fn set_tray(app: AppHandle, labels: Option<[String; 4]>) -> CommandResult<()
     let Some(labels) = labels else {
         return Ok(());
     };
+    if !has_tray() {
+        return Err(CommandError::new(
+            "tray",
+            "this system has no tray for the icon (install AppIndicator)",
+        ));
+    }
     let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tray(&app, &labels)));
     match built {
         Ok(result) => result
@@ -145,9 +189,7 @@ fn tray(app: &AppHandle, labels: &[String; 4]) -> tauri::Result<TrayIcon> {
         .show_menu_on_left_click(false)
         .on_menu_event(
             move |app: &AppHandle, event: MenuEvent| match event.id().as_ref() {
-                "quick" => {
-                    let _ = open_quick(app, &title);
-                }
+                "quick" => open_quick_later(app, &title),
                 "show" => show_main(app),
                 "quit" => app.exit(0),
                 _ => {}
@@ -162,7 +204,7 @@ fn tray(app: &AppHandle, labels: &[String; 4]) -> tauri::Result<TrayIcon> {
             ..
         } = event
         {
-            let _ = open_quick(icon.app_handle(), &quick_title);
+            open_quick_later(icon.app_handle(), &quick_title);
         }
     });
     if let Some(icon) = app.default_window_icon() {
