@@ -108,7 +108,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | E — Explain e performance | ✅ completato |
 | F — Connettività e credenziali | ✅ fatto (P1, P2; P3 in parte) |
 | G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
-| H — Import, export e trasferimento | ✅ fatto (P1, P2; P3 in parte) |
+| H — Import, export e trasferimento | 🔒 Delfa · group-h-bulk-profiles · 2026-10-29 |
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
 | J — Amministrazione del server | ✅ fatto (P2) |
 | K — Shell ed ergonomia | ✅ completato |
