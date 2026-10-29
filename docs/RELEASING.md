@@ -21,6 +21,7 @@ in-app updater reads.
 2. **Code signing (optional, recommended).** Without it Windows SmartScreen and macOS
    Gatekeeper warn on first launch.
    - Windows: `WINDOWS_CERTIFICATE` (the `.pfx`, base64) and `WINDOWS_CERTIFICATE_PASSWORD`.
+     See "Windows code signing plan" below for which certificate to get.
    - macOS: `APPLE_CERTIFICATE` (the `.p12`, base64), `APPLE_CERTIFICATE_PASSWORD`,
      `APPLE_SIGNING_IDENTITY`, and for notarization `APPLE_ID`, `APPLE_PASSWORD`
      (an app-specific password) and `APPLE_TEAM_ID`.
@@ -39,6 +40,74 @@ in-app updater reads.
 3. Wait for the workflow, check the draft release (installers and `latest.json` for every
    platform), write the release notes and publish it. The updater only sees published
    releases: `releases/latest/download/latest.json` resolves to the newest non-draft one.
+
+## Publishing plan
+
+Every version goes through the same steps, with or without GitHub Actions:
+
+1. **Version and tag.** Bump the three version fields (see above), commit `chore: version
+   X.Y.Z` on `main`, tag `vX.Y.Z` (annotated, `PlatypusDB X.Y.Z`) and push both. The tag push
+   starts the Release workflow.
+2. **Installers.**
+   - Actions available: the workflow builds every platform into a draft release.
+   - No Actions minutes (or the workflow fails): build Windows locally (see "Building
+     installers locally") and create the draft by hand, see "Local Windows release" below.
+     macOS and Linux are added later by running the workflow on the same tag.
+3. **Check the draft.** Installers for each platform, a `.sig` next to each, `latest.json`
+   listing every platform present. Install the new version over the previous one and check
+   that connections, passwords, scripts and settings are kept.
+4. **Publish** with release notes (what changed for the user, grouped by area). Publishing
+   is what makes the updater see the version.
+5. **Check the auto-update** from the previous published version: it must offer the new
+   one, download it and restart into it.
+6. **Announce** (README badge, site, discussions) once the repository is public.
+
+### Local Windows release
+
+```bash
+cd apps/desktop
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/platypusdb.key)"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+npm run tauri build
+```
+
+The build writes `target/release/bundle/nsis/PlatypusDB_X.Y.Z_x64-setup.exe` and
+`bundle/msi/PlatypusDB_X.Y.Z_x64_en-US.msi`, each with a `.sig`. Write `latest.json` with
+the signatures (the contents of the `.sig` files) and the download URLs
+`https://github.com/PaoloCisly/platypus-db/releases/download/vX.Y.Z/<file>`, under the keys
+`windows-x86_64` (NSIS), `windows-x86_64-nsis` and `windows-x86_64-msi`, plus `version`,
+`notes` and `pub_date`. Then:
+
+```bash
+gh release create vX.Y.Z --draft --verify-tag --title "PlatypusDB vX.Y.Z"   --notes "..." <the two installers, their .sig files and latest.json>
+```
+
+When the workflow later runs on the same tag, `tauri-action` finds the release by tag and
+adds the macOS and Linux assets, merging them into `latest.json`; check that it did not
+create a second draft.
+
+## Windows code signing plan
+
+Unsigned installers make SmartScreen show "Windows protected your PC" and the publisher as
+unknown. A self-signed certificate does not help. Options, in order of preference:
+
+1. **Certum Open Source Code Signing** (about 30-60 EUR a year): issued to individual
+   developers in the EU for open-source projects. The key lives on a smart card or in the
+   SimplySign cloud, so there is no `.pfx`: sign with Tauri's `bundle.windows.signCommand`
+   (a command that receives the file path) instead of the `WINDOWS_CERTIFICATE` secrets,
+   locally and, with the cloud key, in the workflow.
+2. **SignPath Foundation**: free signing for open-source projects, done in their CI
+   pipeline after approval. Needs working GitHub Actions.
+3. **Azure Trusted Signing** (about 10 USD a month): cheap and CI-friendly, but open to
+   individuals only in some countries; check availability in Italy first.
+4. A classic OV/EV certificate (Sectigo, DigiCert, 200-500 EUR a year): since 2023 the key
+   must be on a hardware token.
+
+Even signed, a new publisher builds SmartScreen reputation with downloads (EV certificates
+no longer skip this since 2024), but the warning names the publisher and fades much sooner.
+After getting the certificate: configure signing, rebuild, replace the installers and
+their `.sig` files in the draft, and regenerate `latest.json` (the signatures change with
+the file).
 
 ## Building installers locally
 
