@@ -1691,6 +1691,9 @@ async fn dumps_types_routines_and_sequences() {
             _ => continue,
         };
         dump_round_trip(&b, conn, d, dir.path(), (&setup, &drop, &checks)).await;
+        if d == Dialect::MySql {
+            delimiter_across_chunks(&b, conn, dir.path()).await;
+        }
     }
 }
 
@@ -1738,6 +1741,36 @@ fn mysql_dump_case(q: &dyn Fn(&str) -> String, mariadb: bool) -> DumpCase {
 
 /// What a dump round trip runs first, drops, and checks after.
 type DumpCase = (Vec<String>, Vec<String>, Vec<(String, &'static str)>);
+
+/// A MySQL `DELIMITER` holds in the pieces of a file read after it: a procedure 4 MB on,
+/// which the first piece cuts, keeps its body whole.
+async fn delimiter_across_chunks(
+    b: &Backend,
+    conn: &dyn platypus_core::Connection,
+    dir: &std::path::Path,
+) {
+    let p = platypus_sql::Dialect::MySql.qualified(Some(&b.schema), "conf_script_p");
+    let file = dir.join("delimiter.sql");
+    let head = format!("DROP PROCEDURE IF EXISTS {p};\nDELIMITER $$\n-- ");
+    // The 4 MB piece ends inside the procedure's body, between its two statements.
+    let body = format!(
+        "\nCREATE PROCEDURE {p}() BEGIN SELECT 1; SELECT 2; END$$\nDELIMITER ;\nCALL {p}();\n"
+    );
+    let cut = body.find("SELECT 2").unwrap();
+    let filler = "x".repeat((4 << 20) - head.len() - cut);
+    std::fs::write(&file, format!("{head}{filler}{body}")).unwrap();
+    let ran = platypus_transfer::script::run_file(
+        conn,
+        platypus_sql::Dialect::MySql,
+        &file,
+        false,
+        |_| true,
+    )
+    .await
+    .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+    assert_eq!(ran, 3, "{}", b.name);
+    let _ = run(conn, &format!("DROP PROCEDURE {p}")).await;
+}
 
 /// Runs `setup`, dumps the `conf_dump2_` objects, runs `drop` and the dump, then each check
 /// gives its first value (any value for an empty one).
@@ -1850,7 +1883,54 @@ async fn failing_file(
             b.name
         );
     }
+    if d == platypus_sql::Dialect::MySql {
+        ddl_commits(b, conn, &file, (&extra, &missing)).await;
+    }
     let _ = run(conn, &format!("DROP TABLE {extra}")).await;
+}
+
+/// DDL commits on its own in MySQL: in a transaction, what ran before it stays, and the
+/// error says so.
+async fn ddl_commits(
+    b: &Backend,
+    conn: &dyn platypus_core::Connection,
+    file: &std::path::Path,
+    (extra, missing): (&str, &str),
+) {
+    use platypus_transfer::script::{ScriptError, run_file};
+
+    let d = platypus_sql::Dialect::MySql;
+    let made = d.qualified(Some(&b.schema), "conf_script_made");
+    let _ = run(conn, &format!("DROP TABLE {made}")).await;
+    run(conn, &format!("DELETE FROM {extra}")).await.unwrap();
+    std::fs::write(
+        file,
+        format!(
+            "INSERT INTO {extra} VALUES (1);\nCREATE TABLE {made} (id int);\n\
+             INSERT INTO {extra} VALUES (2);\nINSERT INTO {missing} VALUES (1);\n"
+        ),
+    )
+    .unwrap();
+    let error = run_file(conn, d, file, true, |_| true).await.unwrap_err();
+    assert!(
+        matches!(
+            error,
+            ScriptError::Statement {
+                number: 4,
+                committed: 2,
+                ..
+            }
+        ),
+        "{}: {error:?}",
+        b.name
+    );
+    assert!(
+        error.to_string().contains("Statements 1 to 2 stay"),
+        "{error}"
+    );
+    let rows = collect(b, conn, &format!("SELECT COUNT(*) FROM {extra}")).await;
+    assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("1"), "{}", b.name);
+    let _ = run(conn, &format!("DROP TABLE {made}")).await;
 }
 
 /// A bulk load writes text exactly (quotes, tabs, line breaks, backslashes, empty text apart

@@ -34,13 +34,16 @@ pub struct ScriptProgress {
 pub enum ScriptError {
     #[error("cannot read {path}: {message}")]
     Read { path: String, message: String },
-    /// A statement failed: its number, its line in the file and its start.
-    #[error("Statement {number} (line {line}) failed: {error}\n{sql}")]
+    /// A statement failed: its number, its line in the file and its start; in a transaction,
+    /// the statements up to `committed` stay all the same, as DDL committed them (MySQL,
+    /// Oracle).
+    #[error("Statement {number} (line {line}) failed: {error}\n{sql}{}", committed_note(*committed))]
     Statement {
         number: u64,
         line: u64,
         sql: String,
         error: Box<platypus_core::Error>,
+        committed: u64,
     },
     #[error("{0}")]
     Database(#[from] platypus_core::Error),
@@ -48,8 +51,17 @@ pub enum ScriptError {
     Cancelled,
 }
 
+fn committed_note(committed: u64) -> String {
+    if committed == 0 {
+        String::new()
+    } else {
+        format!("\nStatements 1 to {committed} stay: the database committed them with its DDL.")
+    }
+}
+
 /// Runs the file at `path` on `conn`. With `transaction` (and a database that has them) it
-/// all runs in one, which a failure or a stop rolls back; else what ran before stays.
+/// all runs in one, which a failure or a stop rolls back; else what ran before stays. Where
+/// DDL commits on its own, the rest runs in a new transaction.
 /// `progress` is told after each statement and returns false to stop. Returns how many
 /// statements ran.
 ///
@@ -67,7 +79,7 @@ pub async fn run_file(
     if transaction {
         run(conn, "BEGIN").await?;
     }
-    let ran = run_all(conn, dialect, &mut source, &mut progress).await;
+    let ran = run_all(conn, (dialect, transaction), &mut source, &mut progress).await;
     if transaction {
         match &ran {
             Ok(_) => conn.commit().await?,
@@ -82,7 +94,7 @@ pub async fn run_file(
 
 async fn run_all(
     conn: &dyn Connection,
-    dialect: Dialect,
+    (dialect, transaction): (Dialect, bool),
     source: &mut Source,
     progress: &mut impl FnMut(ScriptProgress) -> bool,
 ) -> Result<u64, ScriptError> {
@@ -90,6 +102,11 @@ async fn run_all(
     // Lines before the start of `buffer`.
     let mut line = 0u64;
     let mut number = 0u64;
+    // A transaction the session tracks, which DDL may commit; the statements it committed.
+    let tracked = transaction && conn.transaction().open;
+    let mut committed = 0;
+    // The MySQL `DELIMITER` in force at the end of what was run.
+    let mut delimiter: Option<String> = None;
     loop {
         let eof = source.read_into(&mut buffer)?;
         let units = units(&buffer, dialect);
@@ -110,8 +127,13 @@ async fn run_all(
                         line: at,
                         sql: shown(sql),
                         error: Box::new(error),
+                        committed,
                     });
                 }
+            }
+            if tracked && !conn.transaction().open {
+                committed = number;
+                run(conn, "BEGIN").await?;
             }
             let now = ScriptProgress {
                 read: source.read(),
@@ -127,8 +149,35 @@ async fn run_all(
         }
         let consumed = units.get(ready).map_or(buffer.len(), |u| u.start);
         line += buffer[..consumed].matches('\n').count() as u64;
+        if dialect == Dialect::MySql {
+            let mut end = 0;
+            for unit in &units[..ready] {
+                delimiter = delimiter_in(&buffer[end..unit.start]).or(delimiter);
+                end = unit.end;
+            }
+            delimiter = delimiter_in(&buffer[end..consumed]).or(delimiter);
+        }
         buffer.drain(..consumed);
+        // What is left is split again from its start: under the delimiter in force, which a
+        // line put back before it gives.
+        if let Some(d) = delimiter.as_deref().filter(|d| *d != ";") {
+            buffer.insert_str(0, &format!("DELIMITER {d}\n"));
+            line = line.saturating_sub(1);
+        }
     }
+}
+
+/// The delimiter the last MySQL `DELIMITER` line of `gap`, text between statements, sets.
+fn delimiter_in(gap: &str) -> Option<String> {
+    gap.lines()
+        .rev()
+        .find_map(|l| {
+            let mut words = l.split_whitespace();
+            let first = words.next()?;
+            first
+                .eq_ignore_ascii_case("delimiter")
+                .then(|| words.next().map(str::to_owned))?
+        })
 }
 
 /// A statement, or a Transact-SQL batch run `repeat` times, by its range in the text.

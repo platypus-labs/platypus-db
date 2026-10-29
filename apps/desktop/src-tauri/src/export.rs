@@ -22,7 +22,7 @@ use crate::error::CommandError;
 use crate::querylog::{Logged, QueryLog};
 
 const BATCH_SIZE: usize = 8192;
-const PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
+pub(crate) const PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

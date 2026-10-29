@@ -22,7 +22,7 @@ use tauri::ipc::Channel;
 
 use super::{AppState, lock};
 use crate::error::{CommandError, CommandResult};
-use crate::export::{Export, ExportEvent};
+use crate::export::{Export, ExportEvent, PROGRESS_INTERVAL};
 use crate::querylog::Logged;
 
 /// Rows the preview shows.
@@ -412,8 +412,13 @@ pub fn run_sql_file(
                     let _ = cancel.cancel().await;
                 })
             };
+            // A file of small statements reports a few times a second, not after each.
+            let mut reported: Option<std::time::Instant> = None;
             let ran = run_file(&*conn, dialect, &path, transaction, |p| {
-                job.progress_bytes(p.statements, p.read, p.total);
+                if reported.is_none_or(|at| at.elapsed() >= PROGRESS_INTERVAL) {
+                    job.progress_bytes(p.statements, p.read, p.total);
+                    reported = Some(std::time::Instant::now());
+                }
                 !job.stopping()
             })
             .await;
