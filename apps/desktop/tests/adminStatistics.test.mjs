@@ -1,9 +1,9 @@
 // Unit tests of the admin tab's statistics: the order of the costliest statements, the issues
-// of tables and indexes, and which objects show (src/admin/statistics.ts).
+// of tables and indexes, and which objects show (src/admin/statisticsOrder.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { duration } from "../src/admin/sessions.ts";
-import { deadShare, issues, queryMatches, shownObjects, sortQueries, tableOf } from "../src/admin/statistics.ts";
+import { deadShare, issues, queryMatches, shownObjects, sortQueries, tableOf } from "../src/admin/statisticsOrder.ts";
 
 const query = (q, total, mean, calls) => ({
   query: q,
