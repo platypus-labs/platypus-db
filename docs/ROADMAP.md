@@ -810,7 +810,8 @@ con `agents.confirm_writes` (Impostazioni → Safety, attiva di default) ogni mo
 connessione read-write (`access::changes`) aspetta la risposta nell'app, con statement, righe
 stimate e piano da `Connection::explain`; Rifiuta (con un motivo che l'agente legge), Consenti
 una volta, Consenti per questa sessione (per sessione del server e connessione); 5 minuti
-senza risposta o app chiusa = rifiutata. Gli E2E danno a ogni scenario una porta libera e
+senza risposta o app chiusa = rifiutata. Una query che scrive tramite una funzione passa
+dalla transazione di sola lettura dove il database la rifiuta, e al rifiuto chiede. Gli E2E danno a ogni scenario una porta libera e
 `confirm_writes = false` se lo scenario non li imposta.
 
 PlatypusDB non integra un proprio assistente AI. Diventa invece uno strumento che gli agenti già

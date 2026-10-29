@@ -581,8 +581,10 @@ PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start 
   a dialog in the app with the statement, the rows the database expects it to change and its
   plan. Refuse it (with a reason the agent reads), allow it once, or allow that agent's changes
   on the connection for the rest of its session; after five minutes without an answer it is
-  refused. With the app closed, agents' changes are refused. Settings → Safety → "Ask before
-  agents change data" turns the questions off.
+  refused. With the app closed, agents' changes are refused. A query that writes through a
+  function counts too: where the database refuses writes in a read-only transaction
+  (PostgreSQL, MySQL, MariaDB, SQLite) queries run in one first, and the write is asked about.
+  Settings → Safety → "Ask before agents change data" turns the questions off.
 - While the app is open, agents reach it through a **bridge** on a local port with a token:
   the top bar shows the agents connected, and the `list_open_sessions` tool shows them the
   sessions open in the app (connection, database, manual commit, open transaction).
