@@ -575,7 +575,7 @@ cartella del task, se ce l ha. E2E `profiles-export-sqlite`, `profiles-transfer-
 
 ### Gruppo I — Strumenti di schema
 
-**Stato: P1 e P2 completate, P3 in parte.** Editor tabella grafico (P1): il crate `platypus-schema` legge il design di
+**Stato: completato**. Editor tabella grafico (P1): il crate `platypus-schema` legge il design di
 una tabella (`load`: dettagli del driver più le azioni delle FK, gli `auto_increment` e i default
 letterali di MySQL, l'`AUTOINCREMENT` di SQLite) e genera lo script da un design all'altro
 (`script`): le parti cambiate si eliminano e si ricreano, le colonne si rinominano e si
@@ -603,23 +603,56 @@ confrontano; le tabelle in più si eliminano dopo le modifiche alle altre (cambi
 tabella ancora referenziata da una che sparisce fallisce); il linter non vede il WHERE degli
 indici parziali né le colonne INCLUDE, e lo dice nel messaggio; i diagrammi vivono nel tab (chiuso il tab, il diagramma si perde).
 
+P3 del 29–30 ottobre 2026. **Diagramma ER**: pulsante *Full screen* (il tab copre la finestra, Esc
+esce); *Refresh* fissa prima le posizioni di tutte le tabelle e mette quelle nuove sotto
+(`placeTables` in `erd/layout.ts`). **Modalità modifica** (*Edit*, non sulle connessioni in sola
+lettura): tabelle nuove, modificate (dialog `DesignDialog` con il `DesignForm` estratto dal
+table editor) ed eliminate, FK trascinando il cerchietto di una colonna su un'altra tabella (verso
+la sua PK di una colonna); le modifiche restano con il tab (`edits`) e *Generate DDL* apre nell'editor
+lo script di `platypus_schema::edited_script` (il design voluto passato a `compare`). Limiti: dopo
+l'esecuzione le modifiche restano finché non si scartano; le tabelle esistenti non si rinominano;
+eliminare una tabella non tocca le FK di tabelle non modificate che la puntano. **Form per oggetti**
+(`platypus_schema::create_object`, `ObjectFormDialog`, sottomenu *Create* dello schema e *Create
+trigger…* della tabella): viste (anche materializzate in PostgreSQL e Oracle), sequenze, funzioni
+(macro in DuckDB) e trigger (in PostgreSQL la funzione `<trigger>_fn` più il trigger) per
+PostgreSQL, MySQL/MariaDB, SQLite, SQL Server, Oracle e DuckDB, con anteprima e Create che esegue
+gli statement uno a uno. Limiti: le sequenze si offrono su ogni connessione MySQL (solo MariaDB le
+ha, il dialog lo dice); `CREATE OR REPLACE TRIGGER` di PostgreSQL vuole la 14. **Confronto dati**
+(`platypus_transfer::compare`, *Compare data with…* della tabella): righe abbinate per PK (o chiave
+unica di colonne NOT NULL) tra database dello stesso tipo, confrontate come testo, con filtro
+WHERE comune; INSERT (identità con override), UPDATE delle sole colonne cambiate, DELETE delle righe
+in più solo se richiesto. Limiti: 500.000 righe per lato in memoria, 200 differenze mostrate (lo
+script le copre tutte), colonne calcolate escluse. **Changelog Flyway e Liquibase** dal confronto
+schemi (scelta *Output* in `CompareDialog`): file `V<data>__<descrizione>.sql` senza BEGIN/COMMIT, o
+Liquibase "formatted SQL" con un changeset per statement (`runInTransaction:false` per i PRAGMA di
+SQLite). **Timeline dello schema** (tab *Schema history*, `schema-history.db` in `platypus-store`):
+istantanee a mano o pianificate (task `snapshot` dello scheduler), una nuova solo se lo schema è
+cambiato; tra due istantanee, o tra una e lo schema di adesso, le modifiche per tabella
+(`platypus_schema::summary`) e lo script. Limiti: solo ciò che legge `load_designs` (non viste,
+routine, sequenze); parti abbinate per nome; nessuna pulizia automatica. **Stato delle migrazioni**
+(*Migration status…* dello schema, `platypus_schema::migrations`): Flyway (checksum CRC32 come
+Flyway, `R__` ripetibili, fuori ordine, baseline), Liquibase (XML, YAML a blocchi, formatted SQL;
+senza MD5), Prisma (SHA-256), Alembic (grafo delle revisioni) e Rails, contro le tabelle di
+storico; stati applicata, pendente, divergente, fallita, mancante. Gli scenari E2E di queste P3
+(`erd-*`, `schema-*`) sono scritti ma non ancora eseguiti (runner Windows).
+
 **Area:** `apps/desktop/src/erd/` (tab `erd`), `apps/desktop/src/schema/` (linter e confronto), `apps/desktop/src/table-editor/`, nuovo crate `platypus-schema` (modello di schema, diff, DDL)
 **Dipende da:** 0.3, 0.5; per il DDL completo serve il gruppo C
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | ✅ Diagramma ER in sola lettura dalle FK, layout automatico, export PNG/SVG | P2 | D |
-| 🆕 Diagramma ER a schermo intero e pulsante **Aggiorna** che rilegge lo schema (tabelle nuove, colonne e FK cambiate) tenendo le posizioni già scelte | P3 | N |
+| ✅ 🆕 Diagramma ER a schermo intero e pulsante **Aggiorna** che rilegge lo schema (tabelle nuove, colonne e FK cambiate) tenendo le posizioni già scelte | P3 | N |
 | ✅ Diagrammi personalizzati: si scelgono le tabelle, con note | P3 | D |
-| ERD in modifica: si disegna lo schema e si genera il DDL | P3 | D+ |
+| ✅ ERD in modifica: si disegna lo schema e si genera il DDL | P3 | D+ |
 | ✅ **Editor tabella grafico**: crea e modifica colonne, indici, vincoli e FK, con anteprima dell'ALTER | P1 | D |
-| Creazione di viste, trigger, funzioni e sequenze da form | P3 | D |
+| ✅ Creazione di viste, trigger, funzioni e sequenze da form | P3 | D |
 | ✅ **Confronto schemi** con script di migrazione | P3 | D+ |
-| **Confronto dati** tra due tabelle, con script di sincronizzazione | P3 | D+ |
-| Changelog Liquibase/Flyway generati dal confronto | P3 | D+ |
-| Timeline delle modifiche di schema (snapshot periodici e diff) | P3 | N |
+| ✅ **Confronto dati** tra due tabelle, con script di sincronizzazione | P3 | D+ |
+| ✅ Changelog Liquibase/Flyway generati dal confronto | P3 | D+ |
+| ✅ Timeline delle modifiche di schema (snapshot periodici e diff) | P3 | N |
 | ✅ **Linter dello schema**: tabelle senza PK, FK senza indice, indici duplicati o contenuti in altri, tipi diversi tra FK e colonna referenziata | P2 | N |
-| 🆕 Stato delle migrazioni di un progetto (Flyway, Liquibase, Prisma, Alembic, Rails): applicate, pendenti, divergenti | P3 | N |
+| ✅ 🆕 Stato delle migrazioni di un progetto (Flyway, Liquibase, Prisma, Alembic, Rails): applicate, pendenti, divergenti | P3 | N |
 
 ---
 
