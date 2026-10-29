@@ -54,6 +54,23 @@ args = ["--mcp"]
 command = 'C:\Program Files\PlatypusDB\platypus-db.exe'
 ```
 
+### Ready-made plugin
+
+The repository is also a plugin marketplace for Claude Code: the `platypus-db` plugin adds the
+MCP server and a skill that tells the agent how to use the tools (explore first, the limits of
+`run_query`, read-only access, `propose_sql` for changes):
+
+```bash
+claude plugin marketplace add PaoloCisly/platypus-db
+claude plugin install platypus-db@platypus-db
+```
+
+The plugin starts `platypus-db --mcp`. Where the app is not on `PATH` (Windows and macOS; the
+Linux packages put it there), set `PLATYPUS_DB` to its full path, e.g.
+`C:\Program Files\PlatypusDB\platypus-db.exe`, before starting Claude Code. For Codex,
+[`plugins/codex`](../plugins/codex) has the `config.toml` entry and the same instructions as an
+`AGENTS.md` to copy into `~/.codex/AGENTS.md` or a project's `AGENTS.md`.
+
 <details>
 <summary>How the MCP server works</summary>
 
@@ -72,6 +89,13 @@ longer than 1,000 characters were left out. In the text table SQL `NULL` reads `
 text `NULL` reads `'NULL'`. `list_objects` returns 500 objects at most (`limit` up to 2,000);
 a larger schema comes in pages (`truncated`, `total`, `next_offset`, then `offset`). The
 client's `notifications/cancelled` cancels the running statement.
+
+Clients that read MCP resources find the schema there too: `resources/list` has one resource
+per connection agents may use (`platypus://<connection>`, its schemas), and two templates,
+`platypus://<connection>/<schema>` (the schema's objects, up to 2,000) and
+`platypus://<connection>/<schema>/<table>` (the table described as `describe_table` does).
+Names are percent-encoded (`platypus://App%20db/main/my%20table%2Fx`). Each read is in the
+call log as `read_resource`, and follows the connection's access as the tools do.
 
 `sample_rows` returns the first rows of a table, view or collection (20 by default) within
 the limits of `run_query`. `explain` returns a statement's plan as an indented tree (or JSON)
