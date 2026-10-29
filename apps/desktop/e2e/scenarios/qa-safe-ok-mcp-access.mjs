@@ -47,7 +47,7 @@ export default async function (_page, { dir }) {
   };
   try {
     const tools = (await mcp.request("tools/list", {})).result.tools.map((t) => t.name).sort();
-    assert.deepEqual(tools, ["describe_table", "get_ddl", "list_connections", "list_objects", "list_schemas", "run_query", "search_objects"]);
+    assert.deepEqual(tools, ["describe_table", "explain", "get_ddl", "list_connections", "list_objects", "list_open_sessions", "list_schemas", "list_scripts", "propose_sql", "read_script", "run_query", "sample_rows", "search_history", "search_objects"]);
 
     const list = JSON.parse((await mcp.call("list_connections")).text);
     assert.deepEqual(

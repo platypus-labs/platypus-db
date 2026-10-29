@@ -20,7 +20,7 @@ import { mcpArgs, mcpExe, noMcp, sqliteToml, startClient, startRaw } from "../qa
 export const skip = noMcp;
 
 const RO = "00000000-0000-4000-8000-000000000301";
-const TOOLS = ["describe_table", "get_ddl", "list_connections", "list_objects", "list_schemas", "run_query", "search_objects"];
+const TOOLS = ["describe_table", "explain", "get_ddl", "list_connections", "list_objects", "list_open_sessions", "list_schemas", "list_scripts", "propose_sql", "read_script", "run_query", "sample_rows", "search_history", "search_objects"];
 
 export function setup({ dir }) {
   const file = join(dir, "qa3.db");
@@ -47,6 +47,7 @@ async function handshakeAndTools(mcp) {
   const init = mcp.init.result;
   assert.equal(init.serverInfo.name, "platypus-mcp");
   assert.ok(init.capabilities.tools, "the server announces tools");
+  assert.ok(init.capabilities.resources, "the server announces the schema as resources");
   assert.match(init.instructions, /list_connections/);
   const listed = (await mcp.request("tools/list", {})).result.tools;
   assert.deepEqual(listed.map((t) => t.name).sort(), TOOLS);
