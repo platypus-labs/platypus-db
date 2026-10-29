@@ -25,6 +25,8 @@ export interface ContextResult {
   rows: (string | null)[][];
   /** The result has more rows than these. */
   truncated: boolean;
+  /** How many rows the whole result has; left out while that is not known (still fetching). */
+  total_rows?: number;
 }
 
 /** What is shared (`platypus_mcp::UserContext`): a part not asked for, or that the tab lacks,
@@ -54,6 +56,8 @@ export interface TabSnapshot {
   /** The selected part of `editor`; empty when nothing is selected. */
   selection: string;
   result: ContextResult | null;
+  /** The tab's connection is closed to agents: none of its content may be shared. */
+  closedToAgents?: boolean;
 }
 
 /** A tab whose work can be shared: the SQL editors register themselves. */
@@ -99,16 +103,19 @@ export function selectionText(text: string, from: number, to: number): string {
 }
 
 /** The first `RESULT_ROWS` rows of a result read column by column, as rows. `total` is how
- *  many rows the result has loaded, `more` whether the server has more. */
+ *  many rows the result has loaded, `more` whether the server has more (then the size of the
+ *  whole result is not known, and is left out). */
 export function resultRows(names: readonly string[], columns: readonly (readonly (string | null)[])[], total: number, more: boolean): ContextResult {
   const count = Math.min(total, RESULT_ROWS, columns[0]?.length ?? 0);
   const rows = Array.from({ length: count }, (_, r) => columns.map((c) => c[r] ?? null));
-  return { columns: [...names], rows, truncated: more || total > count };
+  return { columns: [...names], rows, truncated: more || total > count, ...(more ? {} : { total_rows: total }) };
 }
 
 /** What goes to the agent: the parts asked for, of `snapshot` (all empty without one). */
 export function buildContext(parts: readonly ContextPart[], snapshot: TabSnapshot | null): UserContext {
-  const asked = (part: ContextPart) => parts.includes(part);
+  // A connection closed to agents shares nothing: the server refuses it too, but the content
+  // must not even leave the page.
+  const asked = (part: ContextPart) => parts.includes(part) && !snapshot?.closedToAgents;
   const text = (value: string) => value.slice(0, SENT_CHARS);
   return {
     connection: snapshot?.connection ?? null,
@@ -126,7 +133,10 @@ export interface ContextItem {
   present: boolean;
   /** Characters of the editor text or the selection. */
   chars: number;
+  /** The rows of the whole result when known, else those the page has read. */
   rows: number;
+  /** `rows` is the size of the whole result, not a lower bound (still fetching, or capped). */
+  exact: boolean;
   columns: number;
   /** The agent gets less than this: the text beyond `AGENT_TEXT_BYTES`, the rows beyond the first. */
   cut: boolean;
@@ -138,6 +148,8 @@ export interface ContextSummary {
   tab: boolean;
   title: string | null;
   connection: string | null;
+  /** The tab is on a connection closed to agents: nothing of it can be shared. */
+  closed: boolean;
   items: ContextItem[];
 }
 
@@ -146,15 +158,27 @@ export function summarize(parts: readonly ContextPart[], snapshot: TabSnapshot |
   const context = buildContext(parts, snapshot);
   const bytes = (text: string) => new TextEncoder().encode(text).length;
   const items = ([...new Set(parts)] as ContextPart[]).map((part): ContextItem => {
-    const item = { part, present: false, chars: 0, rows: 0, columns: 0, cut: false };
+    const item = { part, present: false, chars: 0, rows: 0, exact: true, columns: 0, cut: false };
     if (part === "result") {
       const r = context.result;
-      return r ? { ...item, present: true, rows: r.rows.length, columns: r.columns.length, cut: r.truncated } : item;
+      if (!r) return item;
+      const exact = r.total_rows !== undefined || !r.truncated;
+      return { ...item, present: true, rows: r.total_rows ?? r.rows.length, exact, columns: r.columns.length, cut: r.truncated };
     }
     const text = context[part];
     return text === null ? item : { ...item, present: true, chars: text.length, cut: bytes(text) > AGENT_TEXT_BYTES };
   });
-  return { tab: snapshot !== null, title: context.tab, connection: context.connection, items };
+  return { tab: snapshot !== null, title: context.tab, connection: context.connection, closed: snapshot?.closedToAgents === true, items };
+}
+
+/** Why a tab on a connection closed to agents is refused; the agent reads it. */
+export const CLOSED_REASON = "the active tab is on a connection closed to agents";
+
+/** The answer that shares `snapshot` (what the user was shown, or the tab as it is now): a
+ *  refusal for a tab on a connection closed to agents, whatever was allowed before. */
+export function verdictFor(parts: readonly ContextPart[], snapshot: TabSnapshot | null, how: "once" | "session"): ContextVerdict {
+  if (snapshot?.closedToAgents) return { answer: "deny", reason: CLOSED_REASON };
+  return { answer: how, context: buildContext(parts, snapshot) };
 }
 
 /** Reads the active tab and builds what goes to the agent. */

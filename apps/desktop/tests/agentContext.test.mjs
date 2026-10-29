@@ -15,6 +15,7 @@ import {
   selectionText,
   shareContext,
   summarize,
+  verdictFor,
 } from "../src/agents/context.ts";
 import { enqueue, settle } from "../src/agents/writes.ts";
 
@@ -80,10 +81,12 @@ test("a result keeps its first rows and says when there are more", () => {
   assert.equal(long.rows.length, RESULT_ROWS);
   assert.deepEqual(long.rows[1], ["1", null]);
   assert.equal(long.truncated, true);
+  assert.equal(long.total_rows, 150, "the real size travels with the cut rows");
   const short = resultRows(names, [["x"], ["y"]], 1, false);
   assert.deepEqual(short.rows, [["x", "y"]]);
   assert.equal(short.truncated, false);
   assert.equal(resultRows(names, [["x"], ["y"]], 1, true).truncated, true, "the server has more");
+  assert.equal("total_rows" in resultRows(names, [["x"], ["y"]], 1, true), false, "the size is not known while fetching");
   assert.deepEqual(resultRows([], [], 0, false).rows, []);
 });
 
@@ -109,6 +112,49 @@ test("the dialog lists what would be shared, with its sizes", () => {
   const big = summarize(["editor"], snapshot({ editor: "é".repeat(AGENT_TEXT_BYTES / 2 + 1) }));
   assert.equal(big.items[0].cut, true);
   assert.equal(summarize(["editor"], snapshot({ editor: "é".repeat(AGENT_TEXT_BYTES / 2) })).items[0].cut, false);
+});
+
+test("the dialog tells the real size of the result, not the rows cut to 100", () => {
+  const rows = Array.from({ length: RESULT_ROWS }, (_, i) => [String(i)]);
+  const cut = { columns: ["n"], rows, truncated: true, total_rows: 150 };
+  const known = summarize(["result"], snapshot({ result: cut })).items[0];
+  assert.deepEqual([known.rows, known.exact, known.cut], [150, true, true]);
+  // Still fetching: only a lower bound is honest.
+  const fetching = summarize(["result"], snapshot({ result: { columns: ["n"], rows, truncated: true } })).items[0];
+  assert.deepEqual([fetching.rows, fetching.exact, fetching.cut], [100, false, true]);
+  const small = summarize(["result"], snapshot()).items[0];
+  assert.deepEqual([small.rows, small.exact, small.cut], [1, true, false]);
+});
+
+test("a tab on a connection closed to agents shares nothing and is refused", () => {
+  const closed = snapshot({ closedToAgents: true });
+  const context = buildContext(["editor", "selection", "result"], closed);
+  assert.deepEqual([context.editor, context.selection, context.result], [null, null, null]);
+  assert.equal(context.connection_id, "00000000-0000-4000-8000-000000000001");
+  const summary = summarize(["editor", "result"], closed);
+  assert.equal(summary.closed, true);
+  assert.deepEqual(
+    summary.items.map((i) => i.present),
+    [false, false],
+  );
+  assert.equal(summarize(["editor"], snapshot()).closed, false);
+  // Even a session already allowed is refused, not answered with an empty context.
+  for (const how of ["once", "session"]) {
+    const verdict = verdictFor(["editor"], closed, how);
+    assert.equal(verdict.answer, "deny");
+    assert.match(verdict.reason, /closed to agents/);
+  }
+});
+
+test("the answer carries the snapshot it is given, not a new reading", async () => {
+  followActiveTab(9);
+  const off = provideContext({ tabKey: 9, snapshot: async () => snapshot({ editor: "SELECT 'changed'" }) });
+  const shown = snapshot({ editor: "SELECT 'shown'" });
+  const verdict = verdictFor(["editor"], shown, "once");
+  assert.equal(verdict.answer, "once");
+  assert.equal(verdict.context.editor, "SELECT 'shown'");
+  assert.equal(verdictFor(["editor"], null, "session").context.editor, null, "no SQL tab: empty context");
+  off();
 });
 
 test("the active tab is the one read, as it is at that moment", async () => {

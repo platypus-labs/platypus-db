@@ -8,7 +8,7 @@ import { useSyncExternalStore } from "react";
 import { api, type ConnectedAgent } from "../api";
 import { msg } from "../i18n";
 import { defineSetting } from "../settings";
-import { type ContextRequest, type ContextVerdict, type Grants, grant, granted, noGrants, shareContext } from "./context";
+import { type ContextRequest, type ContextVerdict, type Grants, type TabSnapshot, grant, granted, noGrants, readActive, verdictFor } from "./context";
 import { enqueue, settle, type Verdict, type Waiting, type WriteRequest } from "./writes";
 
 /** Read by the `--mcp` server and the CLI (`Agent::confirms_changes`). */
@@ -76,11 +76,12 @@ export async function answerContext(id: string, verdict: ContextVerdict) {
   update({ contexts: settle(state.contexts, id) });
 }
 
-/** Shares the active tab's `request.parts` as they are now, once or for the agent's session. */
-export async function shareWith(request: ContextRequest, how: "once" | "session") {
-  const context = await shareContext(request.parts);
-  await answerContext(request.id, { answer: how, context });
-  if (how === "session") grants = grant(grants, request.session);
+/** Shares `snapshot`, the tab as the dialog showed it, once or for the agent's session: not
+ *  a second reading, which could differ from what the user agreed to. */
+export async function shareWith(request: ContextRequest, how: "once" | "session", snapshot: TabSnapshot | null) {
+  const verdict = verdictFor(request.parts, snapshot, how);
+  await answerContext(request.id, verdict);
+  if (verdict.answer === "session") grants = grant(grants, request.session);
 }
 
 /** A request from a session the user let see their work: shared at once, else it waits for
@@ -88,8 +89,9 @@ export async function shareWith(request: ContextRequest, how: "once" | "session"
 function receiveContext(request: ContextRequest, since = Date.now()) {
   const wait = () => update({ contexts: enqueue(state.contexts, request, since) });
   if (!granted(grants, request.session)) return wait();
-  shareContext(request.parts)
-    .then((context) => api.answerAgentContext(request.id, { answer: "session", context }))
+  // Read now (there is no dialog); a tab on a connection closed to agents is refused.
+  readActive()
+    .then((snapshot) => api.answerAgentContext(request.id, verdictFor(request.parts, snapshot, "session")))
     .catch(wait);
 }
 

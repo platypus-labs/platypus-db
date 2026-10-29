@@ -5,6 +5,7 @@
 import { api, type SavedConnection } from "../api";
 import type { Result } from "../components/ResultPanel";
 import type { SqlEditorHandle } from "../editor/SqlEditor";
+import { effectiveAgentAccess } from "./access";
 import { resultRows, selectionText, RESULT_ROWS, type ContextResult, type TabSnapshot } from "./context";
 
 /** The first rows of the result on screen; `null` when it has none to show (or they were
@@ -34,6 +35,7 @@ export interface TabParts {
 }
 
 export async function tabSnapshot({ connection, title, editor, result }: TabParts): Promise<TabSnapshot> {
+  const closedToAgents = effectiveAgentAccess(connection) === "off";
   const text = editor?.getText() ?? "";
   const { from, to } = editor?.getSelection() ?? { from: 0, to: 0 };
   return {
@@ -42,6 +44,8 @@ export async function tabSnapshot({ connection, title, editor, result }: TabPart
     title,
     editor: text,
     selection: selectionText(text, from, to),
-    result: await shownRows(result),
+    // Nothing is read for a tab that cannot be shared.
+    result: closedToAgents ? null : await shownRows(result),
+    closedToAgents,
   };
 }

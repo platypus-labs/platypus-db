@@ -91,7 +91,7 @@ async function shareOnce(page, mcp) {
   assert.match(await page.eval(item("editor")), /The editor's text: 39 characters/);
   assert.match(await page.eval(item("selection")), /The selection: 6 characters/);
   assert.match(await page.eval(item("result")), /The result: 150 rows, 2 columns/);
-  assert.match(await page.eval(item("result")), /the agent gets the first 100/);
+  assert.match(await page.eval(item("result")), /the agent gets at most 100 \(fewer when the values are long\)/);
   await page.eval(answer("once"));
   const r = await result;
   assert.equal(r.error, false, r.text);
@@ -106,6 +106,11 @@ async function shareOnce(page, mcp) {
   assert.deepEqual(context.result.rows[0], ["1", "note 1"]);
   assert.deepEqual(context.result.rows[1], ["2", null]);
   assert.equal(context.result.truncated, true);
+  assert.equal(context.result.total_rows, 150);
+  assert.ok(
+    context.notes.some((n) => /cut to 100 of its 150 rows/.test(n)),
+    r.text,
+  );
 }
 
 /** A refusal carries the reason typed; asking only for some parts shows only those. */
@@ -164,13 +169,30 @@ async function shareSession(page, dir, mcp) {
 }
 
 /** A tab on a connection closed to agents is not returned, though the session is allowed. */
-async function closedConnection(page, mcp) {
+async function closedConnection(page, dir, mcp) {
   await openTab(page, "Secret");
   await runQuery(page, "SELECT 'classified' AS secret");
+  // The page refuses by itself: no dialog, and the reason says why.
   const r = await mcp.call("get_user_context");
-  assert.ok(r.error && /not open to agents/.test(r.text), r.text);
+  assert.ok(r.error && /closed to agents/.test(r.text), r.text);
   assert.ok(!r.text.includes("classified"), r.text);
   assert.equal(await page.eval(`${dialog} === null`), true);
+
+  // An agent not yet allowed is asked, but the dialog only offers to refuse.
+  const other = await startMcp(dir, "e2e-closed");
+  try {
+    const result = await asked(page, other);
+    assert.match(await page.eval(field("tab")), /closed to agents/);
+    assert.equal(await page.eval(`${dialog}.querySelector('[data-answer=once]') === null`), true, "no Share once");
+    assert.equal(await page.eval(`${dialog}.querySelector('[data-answer=session]') === null`), true, "no Share for this session");
+    assert.equal(await page.eval(`${dialog}.querySelector('[data-field=items]') === null`), true, "nothing listed");
+    await page.eval(answer("deny"));
+    const denied = await result;
+    assert.ok(denied.error && !denied.text.includes("classified"), denied.text);
+    await page.waitFor(`${dialog} === null`);
+  } finally {
+    other.close();
+  }
 }
 
 export default async function (page, { dir }) {
@@ -184,7 +206,7 @@ export default async function (page, { dir }) {
     await shareOnce(page, mcp);
     await refuse(page, mcp);
     await shareSession(page, dir, mcp);
-    await closedConnection(page, mcp);
+    await closedConnection(page, dir, mcp);
   } finally {
     mcp.close();
   }

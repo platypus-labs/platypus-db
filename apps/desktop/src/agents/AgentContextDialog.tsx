@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { toCommandError } from "../api";
 import { plural, t } from "../i18n";
 import { answerContext, shareWith, useWaitingContexts } from "./bridge";
-import { type ContextItem, type ContextSummary, readActive, summarize } from "./context";
+import { RESULT_ROWS, type ContextItem, type ContextSummary, type TabSnapshot, readActive, summarize } from "./context";
 import { denial, timeLeft } from "./writes";
 
 /** What the agent would get of one part, in words. */
@@ -16,7 +16,8 @@ function line(item: ContextItem): string {
     case "result":
       return item.present
         ? t("The result: {rows}, {columns}", {
-            rows: plural(item.rows, "{n} row", "{n} rows"),
+            // The size of the whole result; "or more" while it is still being read.
+            rows: item.exact ? plural(item.rows, "{n} row", "{n} rows") : plural(item.rows, "{n} or more row", "{n} or more rows"),
             columns: plural(item.columns, "{n} column", "{n} columns"),
           })
         : t("The result: none in this tab");
@@ -26,7 +27,7 @@ function line(item: ContextItem): string {
 /** The note under a part the agent gets only the start of. */
 function cutNote(item: ContextItem): string {
   return item.part === "result"
-    ? t("The result has more rows: the agent gets the first {n}.", { n: item.rows })
+    ? t("The result has more rows: the agent gets at most {n} (fewer when the values are long).", { n: RESULT_ROWS })
     : t("Only the first 64 KiB goes to the agent.");
 }
 
@@ -42,7 +43,9 @@ export function AgentContextDialog() {
   // An answer on its way: a second click would answer again.
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  const [summary, setSummary] = useState<ContextSummary | null>(null);
+  // The tab as shown to the user: what Share sends, not a second reading.
+  const [shown, setShown] = useState<{ summary: ContextSummary; snapshot: TabSnapshot | null } | null>(null);
+  const summary = shown?.summary ?? null;
   const open = first !== undefined;
   useEffect(() => {
     if (!open) return;
@@ -56,12 +59,12 @@ export function AgentContextDialog() {
     setReason("");
     setError(null);
     setBusy(false);
-    setSummary(null);
+    setShown(null);
     if (!parts) return;
     let live = true;
     readActive().then(
-      (snapshot) => live && setSummary(summarize(parts, snapshot)),
-      () => live && setSummary(summarize(parts, null)),
+      (snapshot) => live && setShown({ summary: summarize(parts, snapshot), snapshot }),
+      () => live && setShown({ summary: summarize(parts, null), snapshot: null }),
     );
     return () => {
       live = false;
@@ -78,7 +81,7 @@ export function AgentContextDialog() {
     });
   };
   const deny = () => run(() => answerContext(request.id, denial(reason)));
-  const share = (how: "once" | "session") => run(() => shareWith(request, how));
+  const share = (how: "once" | "session") => run(() => shareWith(request, how, shown?.snapshot ?? null));
   return (
     <div className="modal-backdrop">
       <div
@@ -93,11 +96,13 @@ export function AgentContextDialog() {
             ? t("Reading the active tab…")
             : !summary.tab
               ? t("The active tab is not an SQL editor, so there is nothing of it to share.")
-              : summary.title
+              : summary.closed
+                ? t("The active tab is on a connection closed to agents, so nothing of it can be shared.")
+                : summary.title
                 ? t("Active tab: {tab}, on {name}", { tab: summary.title, name: summary.connection ?? "" })
                 : t("Active tab, on {name}", { name: summary.connection ?? "" })}
         </div>
-        {summary?.tab && (
+        {summary?.tab && !summary.closed && (
           <ul className="agent-context-items" data-field="items">
             {summary.items.map((item) => (
               <li key={item.part} data-part={item.part} data-present={item.present && (item.chars > 0 || item.part === "result")}>
@@ -121,18 +126,22 @@ export function AgentContextDialog() {
           <button type="button" onClick={deny} disabled={busy} autoFocus data-answer="deny">
             {t("Refuse")}
           </button>
-          <button
-            type="button"
-            onClick={() => share("session")}
-            disabled={busy || summary === null}
-            title={t("This request, and the next ones of this agent until it stops: the tab is read again each time")}
-            data-answer="session"
-          >
-            {t("Share for this session")}
-          </button>
-          <button type="button" className="primary" onClick={() => share("once")} disabled={busy || summary === null} data-answer="once">
-            {t("Share once")}
-          </button>
+          {!summary?.closed && (
+            <>
+            <button
+              type="button"
+              onClick={() => share("session")}
+              disabled={busy || summary === null}
+              title={t("This request, and the next ones of this agent until it stops: the tab is read again each time")}
+              data-answer="session"
+            >
+              {t("Share for this session")}
+            </button>
+            <button type="button" className="primary" onClick={() => share("once")} disabled={busy || summary === null} data-answer="once">
+              {t("Share once")}
+            </button>
+            </>
+          )}
         </div>
       </div>
     </div>
