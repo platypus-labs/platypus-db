@@ -11,6 +11,8 @@ export interface LogEntry {
   failed: boolean;
   /** The transaction it ran in; `null` when it committed on its own. */
   tx: number | null;
+  /** The snapshot of the rows it changed, taken before it ran. */
+  snapshot?: string | null;
 }
 
 export interface TxRecord {
@@ -46,7 +48,7 @@ function close(log: TxLog, end: "commit" | "rollback", at: number): TxLog {
 
 /** The log after `sql` ran; `openAfter` is whether a transaction is open after it, `null`
  *  when unknown (a query, which changes nothing: it stays as it was). */
-export function noteStatement(log: TxLog, entry: { at: number; sql: string; kind: LogKind; failed: boolean }, openAfter: boolean | null): TxLog {
+export function noteStatement(log: TxLog, entry: Omit<LogEntry, "tx">, openAfter: boolean | null): TxLog {
   let next = log;
   let tx = log.open;
   if (openAfter === true && log.open === null) {

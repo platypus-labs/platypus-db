@@ -1464,3 +1464,49 @@ label.multi-run-row:hover {
   color: var(--error);
   font-weight: 600;
 }
+
+.tx-log-restore {
+  flex: none;
+}
+
+/* Snapshots before changes: one block each, its restore script a click away. */
+
+.snapshot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 55vh;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.snapshot-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  font-size: 12px;
+}
+
+.snapshot-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+
+.snapshot-list code {
+  font-family: var(--font-mono);
+  color: var(--fg-muted);
+  word-break: break-word;
+}
+
+.snapshot-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

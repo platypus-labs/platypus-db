@@ -52,6 +52,7 @@ import {
 import { GuardDialog } from "../guards/GuardDialog";
 import { PendingDialog } from "../guards/PendingDialog";
 import { TransactionLogDialog } from "../guards/TransactionLogDialog";
+import { openRestore, snapshotBefore } from "../guards/SnapshotsDialog";
 import { emptyLog, noteEnd, noteStatement } from "../guards/txLog";
 import { ExportDialog, type ExportSource } from "./ExportDialog";
 import { HealthBadge, useSessionHealth } from "./health";
@@ -914,6 +915,8 @@ export function QueryTab({
       let status: ResultStatus;
       let sql = p.sql;
       let values: Record<string, string> = variables;
+      /** The snapshot taken of the rows the statement changes. */
+      let snapshot: string | null = null;
       if (p.kind === "command") {
         status = await command(p, i);
       } else {
@@ -938,6 +941,8 @@ export function QueryTab({
           if (target) {
             status = await exportTo(sessionId, sql, target);
           } else {
+            // The rows an UPDATE or DELETE changes, kept before it runs so that they can be put back.
+            if (p.kind === "dml" && !isMongo(connection.driver)) snapshot = await snapshotBefore(sessionId, tab.database ?? null, sql);
             // `GO 3` runs the batch three times, until one fails, each to its end.
             const repeat = p.repeat ?? 1;
             const each = repeat > 1 && ran.limit === null ? { ...ran, limit: getSetting(scriptRowLimit) } : ran;
@@ -968,7 +973,7 @@ export function QueryTab({
         open = (await api.transactionState(sessionId).catch(() => null))?.open ?? null;
       }
       if (p.kind !== "command" && status.kind !== "skipped") {
-        const entry = { at: Date.now(), sql, kind: p.kind, failed: status.kind === "error" };
+        const entry = { at: Date.now(), sql, kind: p.kind, failed: status.kind === "error", snapshot };
         setTxLog((log) => noteStatement(log, entry, open));
       }
       if (tab.terminal) await logTerminal(last, sql, status, seen);
@@ -2008,7 +2013,17 @@ export function QueryTab({
           onCancel={() => asking.resolve(null)}
         />
       )}
-      {logOpen && <TransactionLogDialog log={txLog} onClear={() => setTxLog(emptyLog())} onClose={() => setLogOpen(false)} />}
+      {logOpen && (
+        <TransactionLogDialog
+          log={txLog}
+          onRestore={(id) => {
+            setLogOpen(false);
+            void openRestore(connection.id, tab.database ?? null, id);
+          }}
+          onClear={() => setTxLog(emptyLog())}
+          onClose={() => setLogOpen(false)}
+        />
+      )}
       {pendingOpen && (
         <PendingDialog
           statements={uncommitted}

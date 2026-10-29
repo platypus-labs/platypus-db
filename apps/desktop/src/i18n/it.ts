@@ -1891,6 +1891,16 @@ const it: Record<string, string> = {
   "{dots} Masked while the screen may be shared.": "{dots} Mascherato mentre lo schermo può essere condiviso.",
   "Sensitive data is masked: click to show it": "I dati sensibili sono mascherati: clicca per mostrarli",
   "Masked": "Mascherati",
+  "Keep the rows an UPDATE or DELETE changes, to put them back": "Conserva le righe che un UPDATE o DELETE modifica, per rimetterle",
+  "Read before the statement runs from the editor, up to 10,000 rows; Snapshots… lists them with their restore script.": "Lette prima che l'istruzione parta dall'editor, fino a 10.000 righe; Snapshot… le elenca con il loro script di ripristino.",
+  "Puts back the rows of snapshot {id}: look them over, then run them.": "Rimette le righe dello snapshot {id}: controllale, poi eseguile.",
+  "Snapshots before changes": "Snapshot prima delle modifiche",
+  "The rows each UPDATE or DELETE run from the editor was about to change, as the statements that put them back.": "Le righe che ogni UPDATE o DELETE eseguito dall'editor stava per modificare, come istruzioni che le rimettono.",
+  "No snapshot yet.": "Ancora nessuno snapshot.",
+  "Open restore script": "Apri lo script di ripristino",
+  "Snapshots before changes…": "Snapshot prima delle modifiche…",
+  "Open the statements that put back the rows it changed": "Apri le istruzioni che rimettono le righe modificate",
+  "Restore…": "Ripristina…",
 };
 
 export default it;

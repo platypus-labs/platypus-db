@@ -1891,6 +1891,16 @@ const pt: Record<string, string> = {
   "{dots} Masked while the screen may be shared.": "{dots} Mascarado enquanto a tela pode estar compartilhada.",
   "Sensitive data is masked: click to show it": "Dados sensíveis estão mascarados: clique para mostrá-los",
   "Masked": "Mascarado",
+  "Keep the rows an UPDATE or DELETE changes, to put them back": "Guardar as linhas que um UPDATE ou DELETE altera, para restaurá-las",
+  "Read before the statement runs from the editor, up to 10,000 rows; Snapshots… lists them with their restore script.": "Lidas antes de a instrução rodar a partir do editor, até 10.000 linhas; Snapshots… as lista com o script de restauração.",
+  "Puts back the rows of snapshot {id}: look them over, then run them.": "Restaura as linhas do snapshot {id}: revise-as e depois execute-as.",
+  "Snapshots before changes": "Snapshots antes de alterações",
+  "The rows each UPDATE or DELETE run from the editor was about to change, as the statements that put them back.": "As linhas que cada UPDATE ou DELETE executado do editor ia alterar, como as instruções que as restauram.",
+  "No snapshot yet.": "Nenhum snapshot ainda.",
+  "Open restore script": "Abrir script de restauração",
+  "Snapshots before changes…": "Snapshots antes de alterações…",
+  "Open the statements that put back the rows it changed": "Abrir as instruções que restauram as linhas alteradas",
+  "Restore…": "Restaurar…",
 };
 
 export default pt;

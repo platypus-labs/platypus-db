@@ -1891,6 +1891,16 @@ const zh: Record<string, string> = {
   "{dots} Masked while the screen may be shared.": "{dots} 屏幕可能被共享时已遮蔽。",
   "Sensitive data is masked: click to show it": "敏感数据已遮蔽：点击以显示",
   "Masked": "已遮蔽",
+  "Keep the rows an UPDATE or DELETE changes, to put them back": "保留 UPDATE 或 DELETE 将要修改的行，以便恢复",
+  "Read before the statement runs from the editor, up to 10,000 rows; Snapshots… lists them with their restore script.": "在编辑器中运行语句之前读取，最多 10,000 行；“变更前快照…”会列出它们及其恢复脚本。",
+  "Puts back the rows of snapshot {id}: look them over, then run them.": "恢复快照 {id} 中的行：请先检查，然后运行。",
+  "Snapshots before changes": "变更前快照",
+  "The rows each UPDATE or DELETE run from the editor was about to change, as the statements that put them back.": "从编辑器运行的每个 UPDATE 或 DELETE 将要修改的行，以恢复它们的语句形式保存。",
+  "No snapshot yet.": "还没有快照。",
+  "Open restore script": "打开恢复脚本",
+  "Snapshots before changes…": "变更前快照…",
+  "Open the statements that put back the rows it changed": "打开恢复被修改行的语句",
+  "Restore…": "恢复…",
 };
 
 export default zh;

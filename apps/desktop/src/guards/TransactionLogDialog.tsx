@@ -13,7 +13,18 @@ function ended(tx: TxRecord) {
 
 /** The statements the tab ran in its session, newest first, gathered by transaction with how
  *  each ended; those that committed on their own stand alone. */
-export function TransactionLogDialog({ log, onClear, onClose }: { log: TxLog; onClear: () => void; onClose: () => void }) {
+export function TransactionLogDialog({
+  log,
+  onRestore,
+  onClear,
+  onClose,
+}: {
+  log: TxLog;
+  /** Opens the restore script of a statement's snapshot. */
+  onRestore: (snapshot: string) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
   const all = groups(log);
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -46,6 +57,11 @@ export function TransactionLogDialog({ log, onClear, onClose }: { log: TxLog; on
                         <span className="tx-log-time">{time(e.at)}</span>
                         <code>{preview(e.sql)}</code>
                         {e.failed && <span className="tx-log-failed">{t("Failed")}</span>}
+                        {e.snapshot && (
+                          <button type="button" className="link tx-log-restore" onClick={() => onRestore(e.snapshot!)} title={t("Open the statements that put back the rows it changed")}>
+                            {t("Restore…")}
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ol>
