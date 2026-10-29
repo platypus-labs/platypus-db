@@ -430,7 +430,8 @@ then run the SELECT or open it in the editor.
   `psql` in one transaction, or through `mysql`, where views, triggers and routines are made
   by the connection's user instead of their original definer.
 - **Scheduled tasks** (command palette, or *Schedule a task…* in a connection's menu): run a
-  SQL script, export a query to CSV, JSON, Parquet or Excel, or back up the database every
+  SQL script, export a query to CSV, JSON, Parquet or Excel, or back up the database (with
+  its tools for PostgreSQL and MySQL, as the SQL dump of a schema for the others) every
   hour, day, week or month at a time in a time zone. Exports and backups go to a folder that
   keeps the newest files; a failed run is tried again a few minutes later if asked. The list
   shows each task's next run and its last runs, with *Run now*. Tasks run while the app is

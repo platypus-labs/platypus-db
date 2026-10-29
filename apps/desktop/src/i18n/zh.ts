@@ -1993,6 +1993,8 @@ const zh: Record<string, string> = {
   "Dump": "转储",
   "Run SQL file…": "运行 SQL 文件…",
   "Dump to SQL file…": "转储到 SQL 文件…",
+  "Written as a SQL dump of the schema, which Run SQL file runs again.": "写为该模式的 SQL 转储，可用“运行 SQL 文件”重新执行。",
+  "The connection's own": "连接自身的模式",
 };
 
 export default zh;

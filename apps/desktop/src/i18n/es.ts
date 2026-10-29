@@ -1993,6 +1993,8 @@ const es: Record<string, string> = {
   "Dump": "Volcar",
   "Run SQL file…": "Ejecutar archivo SQL…",
   "Dump to SQL file…": "Volcar a un archivo SQL…",
+  "Written as a SQL dump of the schema, which Run SQL file runs again.": "Se escribe como volcado SQL del esquema, que Ejecutar archivo SQL vuelve a ejecutar.",
+  "The connection's own": "El de la conexión",
 };
 
 export default es;

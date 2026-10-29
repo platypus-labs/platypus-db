@@ -1993,6 +1993,8 @@ const it: Record<string, string> = {
   "Dump": "Esegui il dump",
   "Run SQL file…": "Esegui file SQL…",
   "Dump to SQL file…": "Dump in un file SQL…",
+  "Written as a SQL dump of the schema, which Run SQL file runs again.": "Scritto come dump SQL dello schema, che Esegui file SQL riesegue.",
+  "The connection's own": "Quello della connessione",
 };
 
 export default it;

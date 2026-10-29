@@ -6,9 +6,10 @@ import type { DriverKind, Schedule, ScheduleRepeat, ScheduleTask, ScheduleView }
 /** Whether the database's own tools back it up and restore it (`commands::backup`). */
 export const backsUp = (driver: DriverKind) => driver === "postgres" || driver === "mysql";
 
-/** The tasks a connection's database can run: backups need its own tools. */
+/** The tasks a connection's database can run: a backup with the database's own tools, or
+ *  else as the SQL dump of a schema, which MongoDB has not. */
 export function taskKinds(driver: DriverKind): ScheduleTask["kind"][] {
-  return backsUp(driver) ? ["script", "export", "backup"] : ["script", "export"];
+  return driver === "mongo" ? ["script", "export"] : ["script", "export", "backup"];
 }
 
 /** A task's own fields for `kind`, as a new one starts. */

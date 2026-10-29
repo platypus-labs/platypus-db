@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { cleaned, newSchedule, repeatOf, sortSchedules, taskKinds, taskOf, taskOnConnection, writesFiles } from "../src/admin/schedules.ts";
 
-test("backups only where the database's tools are", () => {
+test("backups with the database's tools, or as a SQL dump", () => {
   assert.deepEqual(taskKinds("postgres"), ["script", "export", "backup"]);
   assert.deepEqual(taskKinds("mysql"), ["script", "export", "backup"]);
-  assert.deepEqual(taskKinds("sqlite"), ["script", "export"]);
+  assert.deepEqual(taskKinds("sqlite"), ["script", "export", "backup"]);
+  assert.deepEqual(taskKinds("mongo"), ["script", "export"]);
   assert.deepEqual(taskOf("backup", "postgres"), { kind: "backup", format: "custom", schema: null });
   assert.deepEqual(taskOf("backup", "mysql").format, "plain");
   assert.ok(writesFiles(taskOf("export", "sqlite")));
@@ -53,7 +54,8 @@ test("a task moved to another database", () => {
   const backup = { kind: "backup", format: "custom", schema: "sales" };
   assert.deepEqual(taskOnConnection(backup, "postgres", "postgres"), backup, "same database: kept");
   assert.deepEqual(taskOnConnection(backup, "postgres", "mysql"), { kind: "backup", format: "plain", schema: null });
-  assert.deepEqual(taskOnConnection(backup, "postgres", "sqlite"), { kind: "script", path: "" }, "no tools there");
+  assert.deepEqual(taskOnConnection(backup, "postgres", "sqlite"), { kind: "backup", format: "plain", schema: null });
+  assert.deepEqual(taskOnConnection(backup, "postgres", "mongo"), { kind: "script", path: "" }, "no backup there");
   const exp = { kind: "export", sql: "SELECT 1", format: "csv" };
   assert.deepEqual(taskOnConnection(exp, "postgres", "sqlite"), exp);
 });

@@ -414,24 +414,28 @@ function ScheduleForm({
           </label>
         </div>
       )}
-      {s.task.kind === "backup" && connection?.driver === "postgres" && (
+      {s.task.kind === "backup" && connection && connection.driver !== "mysql" && (
         <div className="field-grid">
+          {connection.driver === "postgres" ? (
+            <label className="field">
+              <span>{t("Format")}</span>
+              <select
+                value={s.task.format}
+                data-field="format"
+                onChange={(e) => s.task.kind === "backup" && setTask({ ...s.task, format: e.target.value as BackupFormat })}
+              >
+                <option value="custom">{t("Archive for pg_restore (.dump)")}</option>
+                <option value="plain">{t("SQL statements (.sql)")}</option>
+              </select>
+            </label>
+          ) : (
+            <p className="muted small">{t("Written as a SQL dump of the schema, which Run SQL file runs again.")}</p>
+          )}
           <label className="field">
-            <span>{t("Format")}</span>
-            <select
-              value={s.task.format}
-              data-field="format"
-              onChange={(e) => s.task.kind === "backup" && setTask({ ...s.task, format: e.target.value as BackupFormat })}
-            >
-              <option value="custom">{t("Archive for pg_restore (.dump)")}</option>
-              <option value="plain">{t("SQL statements (.sql)")}</option>
-            </select>
-          </label>
-          <label className="field">
-            <span>{t("Only the schema")}</span>
+            <span>{t(connection.driver === "postgres" ? "Only the schema" : "Schema")}</span>
             <input
               value={s.task.schema ?? ""}
-              placeholder={t("The whole database")}
+              placeholder={t(connection.driver === "postgres" ? "The whole database" : "The connection's own")}
               data-field="schema"
               onChange={(e) => s.task.kind === "backup" && setTask({ ...s.task, schema: e.target.value || null })}
             />

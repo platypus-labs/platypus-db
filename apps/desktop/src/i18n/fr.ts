@@ -1993,6 +1993,8 @@ const fr: Record<string, string> = {
   "Dump": "Exporter",
   "Run SQL file…": "Exécuter un fichier SQL…",
   "Dump to SQL file…": "Exporter dans un fichier SQL…",
+  "Written as a SQL dump of the schema, which Run SQL file runs again.": "Écrit comme un dump SQL du schéma, qu'Exécuter un fichier SQL rejoue.",
+  "The connection's own": "Celui de la connexion",
 };
 
 export default fr;

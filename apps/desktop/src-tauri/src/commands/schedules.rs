@@ -9,7 +9,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
-use platypus_core::{Connection, ExecOptions, ExecResult};
+use platypus_core::{Connection, DriverKind, ExecOptions, ExecResult};
+use platypus_transfer::dump::{DumpFile, dump};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::oneshot;
@@ -108,20 +109,26 @@ async fn execute(
             Ok((format!("{rows} rows written"), Some(file)))
         }
         Task::Backup { format, schema } => {
-            let extension = match format {
-                BackupFormat::Custom => "dump",
-                BackupFormat::Plain => "sql",
+            let driver = saved.config.driver;
+            let extension = if driver == DriverKind::Postgres && *format == BackupFormat::Custom {
+                "dump"
+            } else {
+                "sql"
             };
             let file = output(schedule, started, extension)?;
-            let request = BackupRequest {
-                path: file.clone(),
-                format: *format,
-                schema: schema.clone(),
-                structure_only: false,
+            let message = if matches!(driver, DriverKind::Postgres | DriverKind::MySql) {
+                let request = BackupRequest {
+                    path: file.clone(),
+                    format: *format,
+                    schema: schema.clone(),
+                    structure_only: false,
+                };
+                format!("{} written", size(run_backup(&saved, &request).await?))
+            } else {
+                dump_schema(state, &saved, &label, schema.as_deref(), &file).await?
             };
-            let bytes = run_backup(&saved, &request).await?;
             prune(schedule, &file, extension);
-            Ok((format!("{} written", size(bytes)), Some(file)))
+            Ok((message, Some(file)))
         }
     }
 }
@@ -143,6 +150,53 @@ async fn run_backup(saved: &SavedConfig, request: &BackupRequest) -> Result<u64,
         BackupEvent::Finished { bytes, .. } => Ok(bytes),
         BackupEvent::Failed { message, .. } => Err(message),
         BackupEvent::Progress { .. } => Err("the backup did not end".to_owned()),
+    }
+}
+
+/// The SQL dump of a schema (`schema`, or the connection's own), for the databases without
+/// a backup tool of their own: its DDL and its rows, which run again with Run SQL file.
+async fn dump_schema(
+    state: &AppState,
+    saved: &SavedConfig,
+    label: &str,
+    schema: Option<&str>,
+    file: &Path,
+) -> Result<String, String> {
+    let raw: Arc<dyn Connection> =
+        Arc::from(connect(&saved.config).await.map_err(|e| e.to_string())?);
+    let conn = Logged::wrap(raw, &state.query_log, label);
+    let dialect =
+        platypus_sql::Dialect::of_server(saved.config.driver, &conn.server_info().product);
+    let schema = if let Some(schema) = schema {
+        schema.to_owned()
+    } else {
+        let schemas = conn.schemas().await.map_err(|e| e.to_string())?;
+        schemas
+            .iter()
+            .find(|s| s.current)
+            .or_else(|| schemas.iter().find(|s| !s.system))
+            .map(|s| s.name.clone())
+            .ok_or("the database has no schema to back up")?
+    };
+    let mut out = DumpFile::create(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    match dump((&*conn, dialect, &schema), &mut out, (true, None), |_| true).await {
+        Ok(dumped) => {
+            out.finish()
+                .map_err(|e| format!("{}: {e}", file.display()))?;
+            let left = if dumped.skipped.is_empty() {
+                String::new()
+            } else {
+                format!("; left out: {}", dumped.skipped.join("; "))
+            };
+            Ok(format!(
+                "{} tables and {} rows of {schema} written{left}",
+                dumped.tables, dumped.rows
+            ))
+        }
+        Err(e) => {
+            out.discard();
+            Err(e.to_string())
+        }
     }
 }
 
@@ -474,5 +528,20 @@ mod tests {
         let csv = std::fs::read_to_string(&file).unwrap();
         assert!(csv.starts_with("id,v"), "{csv}");
         assert!(csv.contains("1,11") && csv.contains("2,0"), "{csv}");
+
+        // SQLite has no backup tool of its own: the backup is the SQL dump of its schema.
+        s.task = Task::Backup {
+            format: BackupFormat::Custom,
+            schema: None,
+        };
+        let (message, file) = execute(&state, &s, Utc::now()).await.unwrap();
+        assert_eq!(message, "1 tables and 2 rows of main written");
+        let file = file.unwrap();
+        assert_eq!(file.extension().and_then(|e| e.to_str()), Some("sql"));
+        let sql = std::fs::read_to_string(&file).unwrap();
+        assert!(
+            sql.contains("CREATE TABLE") && sql.contains("INSERT INTO"),
+            "{sql}"
+        );
     }
 }

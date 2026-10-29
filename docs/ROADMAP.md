@@ -573,7 +573,7 @@ avanzamento per tabella o per byte, clausole `DEFINER` tolte da un restore MySQL
 pianificati (`scheduler/` e `commands/schedules.rs`: script, export e backup con ora, fuso
 orario IANA, cartella, copie tenute e nuovi tentativi; `schedules.json` nella cartella dei
 dati; girano ad app aperta, un orario perso si recupera all'avvio; il backup pianificato
-degli altri driver aspetta il dump SQL del gruppo H). `docker/compose.yml`
+degli altri driver, MongoDB escluso, è il dump SQL dello schema del gruppo H). `docker/compose.yml`
 precarica `pg_stat_statements` e accende `performance_schema` in MariaDB. Prima: session manager e
 lock manager. Due capacità opzionali del trait
 `Connection` (`platypus-core/src/admin.rs`): `server_sessions` (`server_sessions`,
