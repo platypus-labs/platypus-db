@@ -1,7 +1,7 @@
 // The screenshot tour as tabs: one window at a time; the arrows and Home/End move between them.
 // Without this script every screenshot shows, one under the other.
 (function () {
-  var list = document.querySelector(".gallery [role=tablist]");
+  var list = document.querySelector(".tour [role=tablist]");
   if (!list) return;
   var tabs = Array.prototype.slice.call(list.querySelectorAll("[role=tab]"));
 
@@ -34,7 +34,7 @@
   });
 
   // A column beside the shots on wide screens, a row above them on narrow ones (style.css).
-  var narrow = window.matchMedia("(max-width: 960px)");
+  var narrow = window.matchMedia("(max-width: 1000px)");
   function orient() {
     list.setAttribute("aria-orientation", narrow.matches ? "horizontal" : "vertical");
   }
