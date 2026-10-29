@@ -17,15 +17,20 @@ pub struct TokenColMetaData<'a> {
     pub columns: Vec<MetaDataColumn<'a>>,
 }
 
+/// A column of a result, as the server describes it.
 #[derive(Debug, Clone)]
 pub struct MetaDataColumn<'a> {
+    /// Its type and flags.
     pub base: BaseMetaDataColumn,
+    /// Its name.
     pub col_name: Cow<'a, str>,
 }
 
 impl<'a> Display for MetaDataColumn<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} ", self.col_name)?;
+        // PlatypusDB: the name quoted, and the lengths and scales `INSERT BULK` needs to
+        // declare the column as the server described it.
+        write!(f, "[{}] ", self.col_name.replace(']', "]]"))?;
 
         match &self.base.ty {
             TypeInfo::FixedLen(fixed) => match fixed {
@@ -48,12 +53,13 @@ impl<'a> Display for MetaDataColumn<'a> {
                 #[cfg(feature = "tds73")]
                 VarLenType::Daten => write!(f, "date")?,
                 #[cfg(feature = "tds73")]
-                VarLenType::Timen => write!(f, "time")?,
+                VarLenType::Timen => write!(f, "time({})", ctx.len())?,
                 #[cfg(feature = "tds73")]
                 VarLenType::Datetime2 => write!(f, "datetime2({})", ctx.len())?,
+                VarLenType::Datetimen if ctx.len() == 4 => write!(f, "smalldatetime")?,
                 VarLenType::Datetimen => write!(f, "datetime")?,
                 #[cfg(feature = "tds73")]
-                VarLenType::DatetimeOffsetn => write!(f, "datetimeoffset")?,
+                VarLenType::DatetimeOffsetn => write!(f, "datetimeoffset({})", ctx.len())?,
                 VarLenType::BigVarBin => {
                     if ctx.len() <= 8000 {
                         write!(f, "varbinary({})", ctx.len())?
@@ -70,14 +76,15 @@ impl<'a> Display for MetaDataColumn<'a> {
                 }
                 VarLenType::BigBinary => write!(f, "binary({})", ctx.len())?,
                 VarLenType::BigChar => write!(f, "char({})", ctx.len())?,
+                // The lengths of national types are in bytes, two per character.
                 VarLenType::NVarchar => {
-                    if ctx.len() <= 4000 {
-                        write!(f, "nvarchar({})", ctx.len())?
+                    if ctx.len() <= 8000 {
+                        write!(f, "nvarchar({})", ctx.len() / 2)?
                     } else {
                         write!(f, "nvarchar(max)")?
                     }
                 }
-                VarLenType::NChar => write!(f, "nchar({})", ctx.len())?,
+                VarLenType::NChar => write!(f, "nchar({})", ctx.len() / 2)?,
                 VarLenType::Text => write!(f, "text")?,
                 VarLenType::Image => write!(f, "image")?,
                 VarLenType::NText => write!(f, "ntext")?,
@@ -112,9 +119,12 @@ impl<'a> Display for MetaDataColumn<'a> {
     }
 }
 
+/// The type and flags of a column.
 #[derive(Debug, Clone)]
 pub struct BaseMetaDataColumn {
+    /// Whether it is nullable, an identity, ...
     pub flags: BitFlags<ColumnFlag>,
+    /// Its type.
     pub ty: TypeInfo,
 }
 
