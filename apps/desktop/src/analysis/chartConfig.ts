@@ -96,7 +96,7 @@ export function savedCharts(v: unknown): SavedChart[] {
   });
 }
 
-function parseConfig(v: unknown): ChartConfig | null {
+export function parseConfig(v: unknown): ChartConfig | null {
   if (!v || typeof v !== "object") return null;
   const { kind, x, y, aggregate } = v as Record<string, unknown>;
   const names = Array.isArray(y) && y.every((n) => typeof n === "string");
