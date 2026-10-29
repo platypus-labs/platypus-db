@@ -99,7 +99,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | D — Editor SQL | ✅ completato |
 | E — Explain e performance | ✅ completato |
 | F — Connettività e credenziali | 🔒 Delfa · group-f-p3 · 2026-10-29 |
-| G — Nuovi driver | 🔒 Delfa · group-g-old-versions · 2026-10-28 |
+| G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
 | H — Import, export e trasferimento | ✅ fatto (P1; P2 e P3 in parte) |
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
 | J — Amministrazione del server | ✅ fatto (P2 in parte) |
