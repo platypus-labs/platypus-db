@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PlatypusDB · desktop SQL client</title>
-  <meta name="description" content="PlatypusDB is a desktop SQL client for developers, DBAs and analysts who work with several databases in a day. Windows, macOS and Linux.">
-  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="PlatypusDB is a fast, open source desktop SQL client for developers, DBAs and analysts who work with several databases in a day. Windows, macOS and Linux.">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0b0d10" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#111416" media="(prefers-color-scheme: dark)">
   <link rel="icon" type="image/png" href="img/icon.png">
   <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
@@ -17,383 +17,460 @@
   <a class="skip" href="#main">Skip to content</a>
 
   <header class="topbar">
-    <a class="topbar-home" href="#top" aria-label="PlatypusDB, top of the page">
-      <img src="img/icon.png" alt="" width="24" height="24">
-      <span>PlatypusDB</span>
-    </a>
-    <nav class="topbar-nav" aria-label="Sections">
-      <a href="#features">Features</a>
-      <a href="#screenshots">Screenshots</a>
-      <a href="#databases">Databases</a>
-      <a href="#docs">Docs</a>
-    </nav>
-    <a class="button primary topbar-download" href="#download">Download</a>
+    <div class="topbar-inner">
+      <a class="brand" href="#top" aria-label="PlatypusDB, top of the page">
+        <img src="img/icon.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="topbar-nav" aria-label="Sections">
+        <a href="#features">Features</a>
+        <a href="#databases">Databases</a>
+        <a href="#agents">Agents</a>
+        <a href="#compare">Compare</a>
+        <a href="#docs">Docs</a>
+      </nav>
+      <div class="topbar-actions">
+        <a class="button ghost small" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg>
+          <span>GitHub</span>
+        </a>
+        <a class="button primary small" href="#download">Download</a>
+      </div>
+    </div>
   </header>
 
   <main id="main">
+    <!-- Hero -->
     <section class="hero" id="top" aria-labelledby="hero-title">
-      <h1 id="hero-title" class="wordmark">
-        <picture>
-          <source srcset="img/wordmark-dark.png" media="(prefers-color-scheme: dark)">
-          <img src="img/wordmark-light.png" alt="PlatypusDB" width="1232" height="242">
-        </picture>
-      </h1>
-      <p class="pitch">A desktop SQL client for developers, DBAs and analysts who work with several databases in a day.</p>
-      <p class="lead">One small app runs queries, browses and edits data, designs tables, explains slow statements and documents schemas, and keeps production connections clearly apart from the others.</p>
-      <div class="actions">
-        <a class="button primary" href="#download">Download</a>
-        <a class="button" href="https://github.com/PaoloCisly/platypus-db#readme">Read the README</a>
+      <div class="hero-glow" aria-hidden="true"></div>
+      <div class="wrap hero-text">
+        <a class="pill" href="https://github.com/PaoloCisly/platypus-db/releases">
+          <span class="pill-tag">New</span>
+          <span>0.2 is out: data editor, query plans and schema docs</span>
+          <span aria-hidden="true">→</span>
+        </a>
+        <h1 id="hero-title">A fast SQL client<br> <span class="gradient">for every database.</span></h1>
+        <p class="lead">PlatypusDB is a small, fast desktop client for developers, DBAs and analysts who work with several databases in a day. Query, browse and edit data, tune slow statements, document schemas, and keep production clearly apart.</p>
+        <div class="actions">
+          <a class="button primary large" href="#download">Download for free</a>
+          <a class="button ghost large" href="https://github.com/PaoloCisly/platypus-db">
+            <svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg>
+            <span>Star on GitHub</span>
+          </a>
+        </div>
+        <p class="platforms-line">Windows · macOS · Linux &nbsp;·&nbsp; Open source, AGPL-3.0 &nbsp;·&nbsp; No account</p>
       </div>
-      <dl class="facts">
-        <div><dt>Runs on</dt><dd>Windows, macOS, Linux</dd></div>
-        <div><dt>Built with</dt><dd>Rust core, Tauri 2 + React</dd></div>
-        <div><dt>Start to interactive window</dt><dd>430–500 ms</dd></div>
+
+      <figure class="wrap showcase reveal">
+        <div class="window">
+          <div class="window-bar" aria-hidden="true"><i></i><i></i><i></i><span>PlatypusDB — demo.orders</span></div>
+          <picture>
+            <source srcset="img/screenshots/hero.gif" media="(prefers-reduced-motion: no-preference)">
+            <img src="img/screenshots/data-viewer.png" width="1600" height="960"
+                 alt="The PlatypusDB window: the navigator on the left, a table opened in the result grid and sorted from its header.">
+          </picture>
+        </div>
+        <figcaption>A million rows opened from the navigator, scrolled and sorted from the header.</figcaption>
+      </figure>
+
+      <dl class="wrap stats reveal">
+        <div><dt>Start to window</dt><dd>&lt; 0.5<small>s</small></dd></div>
+        <div><dt>Memory at rest</dt><dd>~130<small>MB</small></dd></div>
+        <div><dt>Linux download</dt><dd>19.5<small>MiB</small></dd></div>
+        <div><dt>Scrolling 1M rows</dt><dd>178<small>fps</small></dd></div>
       </dl>
     </section>
 
-    <figure class="shot shot-main">
-      <div class="frame">
-        <picture>
-          <source srcset="img/screenshots/hero.gif" media="(prefers-reduced-motion: no-preference)">
-          <img src="img/screenshots/data-viewer.png" width="1600" height="960"
-               alt="The PlatypusDB window: the navigator on the left, a table opened in the result grid and sorted from its header.">
-        </picture>
-      </div>
-      <figcaption>A table opened from the navigator and sorted from its header: a million rows in the animation.</figcaption>
-    </figure>
-
-    <section class="section" id="features" aria-labelledby="features-title">
-      <h2 id="features-title">At a glance</h2>
-      <dl class="glance">
-        <div>
-          <dt>Browse data</dt>
-          <dd>A canvas grid that reads rows a page at a time. A click on a header sorts on the server and writes the <code>ORDER BY</code> in the editor; quick filters, a value panel for JSON, XML and images, foreign keys shown by the name of the row they point to.</dd>
-        </div>
-        <div>
-          <dt>Edit data safely</dt>
-          <dd>Change cells in place, preview the SQL, save all or nothing, and get an undo script for every save.</dd>
-        </div>
-        <div>
-          <dt>Write SQL</dt>
-          <dd>Completion of the tables, columns and aliases in scope and of JOINs from the foreign keys, a formatter, parameters, snippets, a linter, a split editor and saved scripts.</dd>
-        </div>
-        <div>
-          <dt>Know the schema</dt>
-          <dd>Object details, local notes and tags on tables and columns (<code>#pii</code> in the navigator's filter), the database's own comments, and documentation as Markdown or a single HTML file with an ER diagram.</dd>
-        </div>
-        <div>
-          <dt>Design and tune</dt>
-          <dd>A table editor that shows its <code>ALTER TABLE</code> first, a visual query builder, query plans with a heatmap and index suggestions, and a query manager with the time of every statement.</dd>
-        </div>
-        <div>
-          <dt>Move data around</dt>
-          <dd>Import and export CSV, JSON, Parquet, Excel and more, copy tables and whole schemas between any two databases, generate fake rows.</dd>
-        </div>
-        <div>
-          <dt>Production-aware</dt>
-          <dd>Connection types with the color of the window frame, confirmations before risky statements, SSH tunnels, keychain or encrypted passwords.</dd>
-        </div>
-        <div>
-          <dt>Organized</dt>
-          <dd>Projects in a rail, tabs that pin and group, a command palette, Settings in tabs with a search, dark and light themes, English and Italian.</dd>
-        </div>
-        <div>
-          <dt>Agent-ready</dt>
-          <dd>MCP clients can use your saved connections, with the access you give each one.</dd>
-        </div>
-      </dl>
-
-      <h2 class="sub">In more detail</h2>
-      <div class="details">
-        <section aria-labelledby="d-connections">
-          <h3 id="d-connections">Connections</h3>
-          <ul>
-            <li>A new connection starts from a grid of database logos with a search on top. Paste a <code>postgres://</code>, <code>mysql://</code>, <code>sqlserver://</code>, <code>clickhouse://</code>, <code>libsql://</code> or <code>mongodb://</code> URL to fill the form.</li>
-            <li>Import connections from DBeaver, DataGrip, pgAdmin and <code>pg_service.conf</code>, with their folders.</li>
-            <li>TLS with libpq <code>sslmode</code> semantics and client certificates; SSH tunnels with a password, a key or the SSH agent, optionally through a jump host.</li>
-            <li>Passwords from the system keychain, asked every time, read from <code>.pgpass</code> or printed by a shell command. A master password can keep the saved ones in an encrypted file (Argon2id and AES-256-GCM).</li>
-          </ul>
-        </section>
-
-        <section aria-labelledby="d-editor">
-          <h3 id="d-editor">SQL editor</h3>
-          <ul>
-            <li>Run the statement under the cursor (<kbd>Ctrl+Enter</kbd>) or the whole script (<kbd>Alt+X</kbd>); errors are pointed out in the text.</li>
-            <li>Completion offers the columns of the tables the statement reads, even when FROM comes later. <code>JOIN</code> offers the related tables with alias and condition from the foreign keys.</li>
-            <li>Formatter (<kbd>Ctrl+Shift+F</kbd>), parameters (<code>:id</code>, <code>?</code>) and variables (<code>${name}</code>), snippets, query history and <code>.sql</code> files.</li>
-            <li>A linter marks unknown columns, joins without a condition and <code>SELECT *</code> on production.</li>
-            <li>Split editor (<kbd>Ctrl+Shift+D</kbd>) and saved scripts per project, with folders.</li>
-          </ul>
-        </section>
-
-        <section aria-labelledby="d-results">
-          <h3 id="d-results">Results and the data viewer</h3>
-          <ul>
-            <li>The grid is drawn on a canvas and reads rows a page at a time; queries can be cancelled.</li>
-            <li>A click on a column header writes the <code>ORDER BY</code> in the editor and runs it again; quick filters on the focused value go in the editor's <code>WHERE</code>.</li>
-            <li>Copy with headers or as CSV, JSON, Markdown, HTML, SQL <code>INSERT</code> or an <code>IN</code> list.</li>
-            <li>Value panel (<kbd>F7</kbd>): long text, JSON and XML formatted, hex and images from binary columns.</li>
-            <li>Foreign keys open the row they point to; a map panel draws PostGIS, MySQL and WKT geometries.</li>
-          </ul>
-        </section>
-
-        <section aria-labelledby="d-data-editor">
-          <h3 id="d-data-editor">Data editor</h3>
-          <ul>
-            <li>Change cells in place (double-click, <kbd>F2</kbd> or just type), set NULL or the default, add, duplicate and delete rows. Changes stay highlighted until you save.</li>
-            <li>Preview the SQL and save it all or nothing. Every save leaves an undo script that puts the rows back.</li>
-            <li>Paste cells from a spreadsheet or CSV over the grid or as new rows.</li>
-          </ul>
-        </section>
-
-        <section aria-labelledby="d-schema">
-          <h3 id="d-schema">Notes, comments and schema docs</h3>
-          <ul>
-            <li>Notes and tags on tables, views and columns, kept on your computer and never written to the database.</li>
-            <li>The database's own comments show beside the notes, and edit with the statement shown first.</li>
-            <li>Export a schema's documentation as Markdown or a single HTML file that works offline, with an ER diagram.</li>
-          </ul>
-        </section>
-
-        <section aria-labelledby="d-tune">
-          <h3 id="d-tune">Design and tune</h3>
-          <ul>
-            <li>Table editor for columns, indexes, foreign keys, UNIQUE and CHECK constraints; saving shows the <code>CREATE TABLE</code> or <code>ALTER TABLE</code> script first.</li>
-            <li>Visual query builder: drag tables onto a canvas and they join on their foreign keys.</li>
-            <li>Query plans (<kbd>Ctrl+Shift+E</kbd>) as a tree. Explain analyze runs the statement for actual rows and times, then rolls back what it changed; a heatmap tints each step by its share of the time.</li>
-            <li>Query manager (<kbd>Ctrl+Shift+M</kbd>): every statement the app sent, with connection, duration, rows and outcome, and a trace split into network, server and fetch.</li>
-          </ul>
-        </section>
-
-        <section aria-labelledby="d-transfer">
-          <h3 id="d-transfer">Import, export and transfer</h3>
-          <ul>
-            <li>Export to CSV, JSON, NDJSON, Parquet, Excel, SQL <code>INSERT</code>, Markdown, HTML or XML, streamed to the file, optionally compressed and uploaded to an S3, GCS, R2 or MinIO bucket.</li>
-            <li>Import CSV, TSV, JSON, NDJSON, Parquet and Excel into a table, with a preview and a mapping of columns.</li>
-            <li>Copy a table or a whole schema to another database, PostgreSQL to MySQL, SQL Server to SQLite and every other pair.</li>
-            <li>Fake rows for a table; drop a CSV, JSON, Parquet or Excel file on the window to query it with SQL.</li>
-          </ul>
-        </section>
-
-        <section aria-labelledby="d-safety">
-          <h3 id="d-safety">Transactions and safety</h3>
-          <ul>
-            <li>Connection types with their color on the window frame:
-              <span class="env env-dev">development</span>, <span class="env env-test">test</span> and <span class="env env-prod">production</span>. Production opens in manual commit.</li>
-            <li>An <code>UPDATE</code> or <code>DELETE</code> without <code>WHERE</code>, or a <code>TRUNCATE</code>, asks first and says about how many rows it changes.</li>
-            <li>On production connections every change is listed and confirmed before it runs.</li>
-            <li>An open transaction shows how long it has been open and warns after a while.</li>
-          </ul>
-        </section>
-
-        <section aria-labelledby="d-workspace">
-          <h3 id="d-workspace">Workspace</h3>
-          <ul>
-            <li>Projects in a rail on the left, each with only its connections, tabs and recent queries.</li>
-            <li>Command palette (<kbd>Ctrl+K</kbd>): actions, connections, tables and recent queries.</li>
-            <li>Tabs that pin and group under their connection; <kbd>Ctrl+Shift+T</kbd> reopens the last closed one.</li>
-            <li>Platypus Dark and Light and other themes, your own colors, interface size and corner radius; English or Italian. Every shortcut can be changed.</li>
-          </ul>
-        </section>
-      </div>
-    </section>
-
-    <section class="section" id="screenshots" aria-labelledby="screenshots-title">
-      <h2 id="screenshots-title">Screenshots</h2>
-      <div class="gallery">
-        <div class="tabs" role="tablist" aria-label="Screenshots" hidden>
-          <button type="button" role="tab" id="tab-connections" aria-controls="shot-connections">Connections</button>
-          <button type="button" role="tab" id="tab-autocomplete" aria-controls="shot-autocomplete">Completion</button>
-          <button type="button" role="tab" id="tab-data-editor" aria-controls="shot-data-editor">Data editor</button>
-          <button type="button" role="tab" id="tab-catalog" aria-controls="shot-catalog">Notes and tags</button>
-          <button type="button" role="tab" id="tab-schema-docs" aria-controls="shot-schema-docs">Schema docs</button>
-          <button type="button" role="tab" id="tab-table-editor" aria-controls="shot-table-editor">Table editor</button>
-          <button type="button" role="tab" id="tab-query-builder" aria-controls="shot-query-builder">Query builder</button>
-          <button type="button" role="tab" id="tab-explain" aria-controls="shot-explain">Query plan</button>
-          <button type="button" role="tab" id="tab-query-manager" aria-controls="shot-query-manager">Query manager</button>
-          <button type="button" role="tab" id="tab-palette" aria-controls="shot-palette">Command palette</button>
-          <button type="button" role="tab" id="tab-light-theme" aria-controls="shot-light-theme">Light theme</button>
-          <button type="button" role="tab" id="tab-settings" aria-controls="shot-settings">Settings</button>
-        </div>
-
-        <figure class="shot panel" id="shot-connections" role="tabpanel" aria-labelledby="tab-connections">
-          <div class="frame"><img src="img/screenshots/connections.png" width="1600" height="960" loading="lazy" alt="The new connection dialog: a grid of database logos with a search field on top."></div>
-          <figcaption>Choosing the database for a new connection.</figcaption>
-        </figure>
-        <figure class="shot panel" id="shot-autocomplete" role="tabpanel" aria-labelledby="tab-autocomplete">
-          <div class="frame"><picture><source srcset="img/screenshots/editor.gif" media="(prefers-reduced-motion: no-preference)"><img src="img/screenshots/autocomplete.png" width="1600" height="960" loading="lazy" alt="The SQL editor completing a JOIN from the foreign keys, with the alias and ON condition; in the animation the query then runs and its result is drawn as a chart."></picture></div>
-          <figcaption>JOIN completion from the foreign keys.</figcaption>
-        </figure>
-        <figure class="shot panel" id="shot-data-editor" role="tabpanel" aria-labelledby="tab-data-editor">
-          <div class="frame"><picture><source srcset="img/screenshots/data-editor.gif" media="(prefers-reduced-motion: no-preference)"><img src="img/screenshots/data-editor.png" width="1600" height="960" loading="lazy" alt="The result grid with edited cells and a new row highlighted, the SQL previewed before saving."></picture></div>
-          <figcaption>Pending changes in the data editor.</figcaption>
-        </figure>
-        <figure class="shot panel" id="shot-catalog" role="tabpanel" aria-labelledby="tab-catalog">
-          <div class="frame"><img src="img/screenshots/catalog.png" width="1600" height="960" loading="lazy" alt="The object tab of a table with its database comment, a local note and tags, and the same for each column."></div>
-          <figcaption>The comments, notes and tags of a table and its columns.</figcaption>
-        </figure>
-        <figure class="shot panel" id="shot-schema-docs" role="tabpanel" aria-labelledby="tab-schema-docs">
-          <div class="frame frame-tall"><img src="img/screenshots/schema-docs.png" width="1280" height="1080" loading="lazy" alt="The exported HTML documentation of a schema: its tables with their comments, notes and tags, and an ER diagram of the foreign keys between them."></div>
-          <figcaption>The exported HTML documentation with its ER diagram.</figcaption>
-        </figure>
-        <figure class="shot panel" id="shot-table-editor" role="tabpanel" aria-labelledby="tab-table-editor">
-          <div class="frame"><img src="img/screenshots/table-editor.png" width="1600" height="960" loading="lazy" alt="The table editor with the columns of a table, their types, NOT NULL, defaults and primary key."></div>
-          <figcaption>Designing a table.</figcaption>
-        </figure>
-        <figure class="shot panel" id="shot-query-builder" role="tabpanel" aria-labelledby="tab-query-builder">
-          <div class="frame"><img src="img/screenshots/query-builder.png" width="1600" height="960" loading="lazy" alt="The visual query builder with two tables on a canvas, joined on their foreign key, and the generated SELECT."></div>
-          <figcaption>Two tables joined on their foreign key.</figcaption>
-        </figure>
-        <figure class="shot panel" id="shot-explain" role="tabpanel" aria-labelledby="tab-explain">
-          <div class="frame"><picture><source srcset="img/screenshots/explain.gif" media="(prefers-reduced-motion: no-preference)"><img src="img/screenshots/explain.png" width="1600" height="960" loading="lazy" alt="An explain analyze plan as a tree, each step tinted by its share of the time, with an index suggestion."></picture></div>
-          <figcaption>Explain analyze with the heatmap and an index suggestion.</figcaption>
-        </figure>
-        <figure class="shot panel" id="shot-query-manager" role="tabpanel" aria-labelledby="tab-query-manager">
-          <div class="frame"><img src="img/screenshots/query-manager.png" width="1600" height="960" loading="lazy" alt="The query manager listing the statements sent, with the trace of one split into network, server and fetch time."></div>
-          <figcaption>The query manager with the trace of a statement.</figcaption>
-        </figure>
-        <figure class="shot panel" id="shot-palette" role="tabpanel" aria-labelledby="tab-palette">
-          <div class="frame"><img src="img/screenshots/palette.png" width="1600" height="960" loading="lazy" alt="The command palette open over the window, listing the tables and recent queries that match the word orders."></div>
-          <figcaption>The command palette.</figcaption>
-        </figure>
-        <figure class="shot panel" id="shot-light-theme" role="tabpanel" aria-labelledby="tab-light-theme">
-          <div class="frame"><img src="img/screenshots/light-theme.png" width="1600" height="960" loading="lazy" alt="The window in the Platypus Light theme, with a query grouping revenue by city and its results."></div>
-          <figcaption>Platypus Light.</figcaption>
-        </figure>
-        <figure class="shot panel" id="shot-settings" role="tabpanel" aria-labelledby="tab-settings">
-          <div class="frame"><img src="img/screenshots/settings.png" width="1600" height="960" loading="lazy" alt="The Settings dialog on its Appearance section, with the other sections listed on the left, a search field and the theme swatches."></div>
-          <figcaption>Settings, one section per tab.</figcaption>
-        </figure>
-      </div>
-    </section>
-
+    <!-- Databases -->
     <section class="section" id="databases" aria-labelledby="databases-title">
-      <h2 id="databases-title">Databases</h2>
-      <p class="intro">PostgreSQL, MySQL, MariaDB, SQL Server (and Azure SQL), Oracle, ClickHouse, SQLite, DuckDB, libSQL/Turso and MongoDB; the servers that speak the PostgreSQL protocol; Snowflake, BigQuery, Databricks and Trino through ADBC; and on Windows IBM Db2 and any ODBC data source.</p>
-      <div class="grid-wrap" role="region" aria-labelledby="databases-title" tabindex="0">
-        <table class="grid">
-          <thead>
-            <tr>
-              <th scope="col">database <span class="type" aria-hidden="true">TEXT</span></th>
-              <th scope="col">connects_through <span class="type" aria-hidden="true">TEXT</span></th>
-              <th scope="col">notes <span class="type" aria-hidden="true">TEXT</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr><td>PostgreSQL</td><td>native protocol</td><td>Several databases per connection, partitions, PostGIS, arrays and composite types</td></tr>
-            <tr><td>MySQL, MariaDB</td><td>native protocol</td><td class="null">NULL</td></tr>
-            <tr><td>SQL Server, Azure SQL</td><td>TDS</td><td><code>TOP (n)</code>, <code>[names]</code>, several result sets</td></tr>
-            <tr><td>Oracle</td><td>Oracle Instant Client, downloaded on first use</td><td>PL/SQL blocks, real cancel, navigator, DDL</td></tr>
-            <tr><td>ClickHouse</td><td>HTTP interface, Arrow results</td><td>Browsed, queried and designed; no data editing in the grid</td></tr>
-            <tr><td>SQLite</td><td>embedded</td><td class="null">NULL</td></tr>
-            <tr><td>DuckDB</td><td>embedded, Arrow results</td><td>Also opens CSV, JSON, Parquet and Excel files as databases</td></tr>
-            <tr><td>libSQL / Turso</td><td>Hrana over HTTP</td><td>Token in the password or in <code>authToken</code></td></tr>
-            <tr><td>MongoDB</td><td>official driver</td><td>mongosh syntax; no transactions, explain or data editing</td></tr>
-            <tr><td>CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB</td><td>PostgreSQL driver</td><td>Profiles with their default port, user, database and SSL</td></tr>
-            <tr><td>Snowflake, BigQuery, Databricks, Trino</td><td>ADBC driver, downloaded on first use</td><td>Queries, results, navigator and completion; no data editing, explain or manual commit yet</td></tr>
-            <tr><td>Any database with an ADBC driver</td><td>the ADBC driver library you choose</td><td>Its URI and options as the driver documents them</td></tr>
-            <tr><td>IBM Db2</td><td>IBM's ODBC driver, installed on first use</td><td>Windows</td></tr>
-            <tr><td>Any ODBC driver or DSN</td><td>the system's ODBC driver manager</td><td>Windows</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="note">Drivers downloaded on first use are checked against their SHA-256 and kept with the app's data; <em>Settings › Drivers</em> lists and removes them.</p>
-    </section>
-
-    <section class="section split" id="agents" aria-labelledby="agents-title">
-      <div>
-        <h2 id="agents-title">Agents and the CLI</h2>
-        <p>MCP clients use your saved connections through <code>platypus-mcp</code>, an MCP server they start themselves; the app need not be open.</p>
-        <ul>
-          <li>Each connection gives agents no access, read only (the default) or read and write; production and read-only connections are never more than read only.</li>
-          <li>Passwords stay in the keychain, and no answer shows a host, a user or a secret.</li>
-          <li>Agents' queries are in the history with the agent's name.</li>
+      <div class="wrap">
+        <header class="section-head center">
+          <p class="eyebrow teal">Databases</p>
+          <h2 id="databases-title">One app for every database you touch</h2>
+          <p>Native drivers in Rust, plus ADBC and ODBC for the rest. Drivers that are large are downloaded on first use and checked against their SHA-256.</p>
+        </header>
+        <ul class="logos" aria-label="Supported databases">
+          <li style="--c:#4169E1"><svg aria-hidden="true"><use href="img/databases.svg#postgresql"/></svg>PostgreSQL</li>
+          <li style="--c:#4479A1"><svg aria-hidden="true"><use href="img/databases.svg#mysql"/></svg>MySQL</li>
+          <li style="--c:#c0765a"><svg aria-hidden="true"><use href="img/databases.svg#mariadb"/></svg>MariaDB</li>
+          <li style="--c:#cc2927"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>SQL Server</li>
+          <li style="--c:#c74634"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>Oracle</li>
+          <li style="--c:#FFCC01"><svg aria-hidden="true"><use href="img/databases.svg#clickhouse"/></svg>ClickHouse</li>
+          <li style="--c:#3d8fc6"><svg aria-hidden="true"><use href="img/databases.svg#sqlite"/></svg>SQLite</li>
+          <li style="--c:#FFF000"><svg aria-hidden="true"><use href="img/databases.svg#duckdb"/></svg>DuckDB</li>
+          <li style="--c:#4FF8D2"><svg aria-hidden="true"><use href="img/databases.svg#turso"/></svg>Turso / libSQL</li>
+          <li style="--c:#47A248"><svg aria-hidden="true"><use href="img/databases.svg#mongodb"/></svg>MongoDB</li>
+          <li style="--c:#29B5E8"><svg aria-hidden="true"><use href="img/databases.svg#snowflake"/></svg>Snowflake</li>
+          <li style="--c:#669DF6"><svg aria-hidden="true"><use href="img/databases.svg#bigquery"/></svg>BigQuery</li>
+          <li style="--c:#FF3621"><svg aria-hidden="true"><use href="img/databases.svg#databricks"/></svg>Databricks</li>
+          <li style="--c:#DD00A1"><svg aria-hidden="true"><use href="img/databases.svg#trino"/></svg>Trino</li>
+          <li style="--c:#8f6bff"><svg aria-hidden="true"><use href="img/databases.svg#cockroachdb"/></svg>CockroachDB</li>
+          <li style="--c:#ff5f3b"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>YugabyteDB</li>
+          <li style="--c:#FDB515"><svg aria-hidden="true"><use href="img/databases.svg#timescale"/></svg>TimescaleDB</li>
+          <li style="--c:#3FCF8E"><svg aria-hidden="true"><use href="img/databases.svg#supabase"/></svg>Supabase</li>
+          <li style="--c:#34D59A"><svg aria-hidden="true"><use href="img/databases.svg#neon"/></svg>Neon</li>
+          <li style="--c:#0f62fe"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>IBM Db2</li>
+          <li style="--c:#e8e8e8"><svg aria-hidden="true"><use href="img/databases.svg#arrow"/></svg>ADBC drivers</li>
+          <li style="--c:#a0a8ae"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>ODBC sources</li>
         </ul>
-        <p>Agents without MCP use the <code>platypus</code> CLI, which follows the same access and prints one JSON document.</p>
+        <details class="more">
+          <summary>How each database connects</summary>
+          <div class="table-wrap" role="region" aria-label="How each database connects" tabindex="0">
+            <table class="grid">
+              <thead>
+                <tr><th scope="col">database</th><th scope="col">connects through</th><th scope="col">notes</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>PostgreSQL</td><td>native protocol</td><td>Several databases per connection, partitions, PostGIS, arrays and composite types</td></tr>
+                <tr><td>MySQL, MariaDB</td><td>native protocol</td><td class="null">NULL</td></tr>
+                <tr><td>SQL Server, Azure SQL</td><td>TDS</td><td><code>TOP (n)</code>, <code>[names]</code>, several result sets</td></tr>
+                <tr><td>Oracle</td><td>Oracle Instant Client, downloaded on first use</td><td>PL/SQL blocks, real cancel, navigator, DDL</td></tr>
+                <tr><td>ClickHouse</td><td>HTTP interface, Arrow results</td><td>Browsed, queried and designed; no data editing in the grid</td></tr>
+                <tr><td>SQLite</td><td>embedded</td><td class="null">NULL</td></tr>
+                <tr><td>DuckDB</td><td>embedded, Arrow results</td><td>Also opens CSV, JSON, Parquet and Excel files as databases</td></tr>
+                <tr><td>libSQL / Turso</td><td>Hrana over HTTP</td><td>Token in the password or in <code>authToken</code></td></tr>
+                <tr><td>MongoDB</td><td>official driver</td><td>mongosh syntax; no transactions, explain or data editing</td></tr>
+                <tr><td>CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB</td><td>PostgreSQL driver</td><td>Profiles with their default port, user, database and SSL</td></tr>
+                <tr><td>Snowflake, BigQuery, Databricks, Trino</td><td>ADBC driver, downloaded on first use</td><td>Queries, results, navigator and completion; no data editing, explain or manual commit yet</td></tr>
+                <tr><td>Any database with an ADBC driver</td><td>the ADBC driver library you choose</td><td>Its URI and options as the driver documents them</td></tr>
+                <tr><td>IBM Db2</td><td>IBM's ODBC driver, installed on first use</td><td>Windows</td></tr>
+                <tr><td>Any ODBC driver or DSN</td><td>the system's ODBC driver manager</td><td>Windows</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
       </div>
-      <pre class="code" tabindex="0" aria-label="CLI example"><code><span class="c"># list the saved connections</span>
-platypus connections
+    </section>
+
+    <!-- Features, alternating -->
+    <section class="section" id="features" aria-labelledby="features-title">
+      <div class="wrap">
+        <header class="section-head center">
+          <p class="eyebrow orange">Features</p>
+          <h2 id="features-title">Everything you do with a database, without the weight</h2>
+          <p>Built in Rust on the system's web view: no JVM, no bundled browser. The grid is drawn on a canvas and reads rows a page at a time, so a million rows scroll like ten.</p>
+        </header>
+
+        <article class="feature reveal">
+          <div class="feature-text">
+            <p class="eyebrow blue">SQL editor</p>
+            <h3>Completion that knows your schema</h3>
+            <p>Columns of the tables the statement reads, even before FROM is written. <code>JOIN</code> offers the related tables with alias and condition from the foreign keys.</p>
+            <ul class="checks">
+              <li>Statement under the cursor with <kbd>Ctrl+Enter</kbd>, the whole script with <kbd>Alt+X</kbd></li>
+              <li>Formatter, parameters, variables, snippets and a linter</li>
+              <li>Split editor and saved scripts per project</li>
+              <li>Results drawn as charts, or queried again with SQL</li>
+            </ul>
+          </div>
+          <div class="feature-media window">
+            <picture>
+              <source srcset="img/screenshots/editor.gif" media="(prefers-reduced-motion: no-preference)">
+              <img src="img/screenshots/autocomplete.png" width="1600" height="960" loading="lazy" alt="The SQL editor completing a JOIN from the foreign keys, with the alias and ON condition; in the animation the query then runs and its result is drawn as a chart.">
+            </picture>
+          </div>
+        </article>
+
+        <article class="feature flip reveal">
+          <div class="feature-text">
+            <p class="eyebrow teal">Data editor</p>
+            <h3>Edit in place, save all or nothing</h3>
+            <p>Change cells, add, duplicate and delete rows. Changes stay highlighted until you save, the SQL is shown first, and every save leaves an undo script.</p>
+            <ul class="checks">
+              <li>Paste from a spreadsheet over the grid or as new rows</li>
+              <li>Value panel for JSON, XML, hex and images</li>
+              <li>Foreign keys open the row they point to</li>
+              <li>A click on a header writes the <code>ORDER BY</code> in the editor</li>
+            </ul>
+          </div>
+          <div class="feature-media window">
+            <picture>
+              <source srcset="img/screenshots/data-editor.gif" media="(prefers-reduced-motion: no-preference)">
+              <img src="img/screenshots/data-editor.png" width="1600" height="960" loading="lazy" alt="The result grid with edited cells and a new row highlighted, the SQL previewed before saving.">
+            </picture>
+          </div>
+        </article>
+
+        <article class="feature reveal">
+          <div class="feature-text">
+            <p class="eyebrow purple">Explain and performance</p>
+            <h3>See why a query is slow</h3>
+            <p>Query plans as a tree, a graph or a table. Explain analyze runs the statement for real rows and times, then rolls back what it changed; a heatmap tints each step by its share of the time.</p>
+            <ul class="checks">
+              <li>Index suggestions for full scans of large tables</li>
+              <li>Compare a plan with the previous run</li>
+              <li>Query manager: every statement with its time, split into network, server and fetch</li>
+            </ul>
+          </div>
+          <div class="feature-media window">
+            <picture>
+              <source srcset="img/screenshots/explain.gif" media="(prefers-reduced-motion: no-preference)">
+              <img src="img/screenshots/explain.png" width="1600" height="960" loading="lazy" alt="An explain analyze plan as a tree, each step tinted by its share of the time, with an index suggestion.">
+            </picture>
+          </div>
+        </article>
+
+        <article class="feature flip reveal">
+          <div class="feature-text">
+            <p class="eyebrow red">Production-aware</p>
+            <h3>Production looks like production</h3>
+            <p>Each connection has a type with its color on the window frame:
+              <span class="env env-dev">development</span> <span class="env env-test">test</span> <span class="env env-prod">production</span>.
+              Production opens in manual commit, and every change is listed and confirmed before it runs.</p>
+            <ul class="checks">
+              <li><code>UPDATE</code> or <code>DELETE</code> without <code>WHERE</code> asks first, with the rows it would change</li>
+              <li>SSH tunnels, TLS with client certificates</li>
+              <li>Passwords in the system keychain or an encrypted file</li>
+            </ul>
+          </div>
+          <div class="feature-media window">
+            <img src="img/screenshots/connections.png" width="1600" height="960" loading="lazy" alt="The new connection dialog: a grid of database logos with a search field on top.">
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Bento -->
+    <section class="section tight" aria-labelledby="more-title">
+      <div class="wrap">
+        <header class="section-head center">
+          <p class="eyebrow blue">And much more</p>
+          <h2 id="more-title">The rest of the toolbox</h2>
+        </header>
+        <ul class="bento">
+          <li class="card corners">
+            <span class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h13l-3-3M20 17H7l3 3"/></svg></span>
+            <h3>Move data around</h3>
+            <p>Import and export CSV, JSON, Parquet, Excel and more, streamed to disk or to S3. Copy tables and whole schemas between any two databases.</p>
+          </li>
+          <li class="card corners">
+            <span class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M9.5 9.5v10"/></svg></span>
+            <h3>Design tables</h3>
+            <p>A table editor that shows its <code>ALTER TABLE</code> first, and a visual query builder that joins on the foreign keys.</p>
+          </li>
+          <li class="card corners">
+            <span class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 4 7 20M17 4l-2 16M4.5 9h16M3.5 15h16"/></svg></span>
+            <h3>Know the schema</h3>
+            <p>Notes and tags on tables and columns, the database's comments, and docs as Markdown or one HTML file with an ER diagram.</p>
+          </li>
+          <li class="card corners">
+            <span class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 9V6.5A2.5 2.5 0 1 0 6.5 9H9Zm0 0h6m-6 0v6m6-6V6.5A2.5 2.5 0 1 1 17.5 9H15Zm0 0v6m0 0h-6m6 0v2.5a2.5 2.5 0 1 0 2.5-2.5H15Zm-6 0v2.5A2.5 2.5 0 1 1 6.5 15H9Z"/></svg></span>
+            <h3>Keyboard first</h3>
+            <p>A command palette for actions, tables and recent queries. Every shortcut can be changed.</p>
+          </li>
+          <li class="card corners">
+            <span class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M8.5 4.5v15M3.5 9h5"/></svg></span>
+            <h3>Projects and tabs</h3>
+            <p>Projects in a rail, each with its connections and tabs. Tabs pin, group and reopen.</p>
+          </li>
+          <li class="card corners">
+            <span class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17Z" fill="currentColor" stroke="none"/></svg></span>
+            <h3>Yours to theme</h3>
+            <p>Platypus Dark and Light and other themes, your own colors, sizes and corners. English and Italian.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Agents -->
+    <section class="section" id="agents" aria-labelledby="agents-title">
+      <div class="wrap split">
+        <div>
+          <p class="eyebrow purple">Agents and the CLI</p>
+          <h2 id="agents-title">Your connections, ready for AI agents</h2>
+          <p>Claude, Cursor and every MCP client can use your saved connections through <code>platypus-db --mcp</code>, the same app started as an MCP server. The window need not be open.</p>
+          <ul class="checks">
+            <li>No access, read only (the default) or read and write, per connection</li>
+            <li>Production and read-only connections are never more than read only</li>
+            <li>Passwords stay in the keychain; no answer shows a host, a user or a secret</li>
+            <li>Agents' queries are in the history with the agent's name</li>
+          </ul>
+        </div>
+        <div class="terminal" role="region" aria-label="CLI example" tabindex="0">
+          <div class="window-bar" aria-hidden="true"><i></i><i></i><i></i><span>terminal</span></div>
+          <pre><code><span class="c"># list the saved connections</span>
+<span class="p">$</span> platypus connections
 <span class="c"># tables of a schema, then a query</span>
-platypus --connection <span class="s">"Local PG"</span> objects --schema demo
-platypus --connection <span class="s">"Local PG"</span> query \
-  <span class="s">"select * from demo.orders"</span> --max-rows <span class="n">50</span></code></pre>
+<span class="p">$</span> platypus --connection <span class="s">"Local PG"</span> objects --schema demo
+<span class="p">$</span> platypus --connection <span class="s">"Local PG"</span> query \
+    <span class="s">"select * from demo.orders"</span> --max-rows <span class="n">50</span></code></pre>
+        </div>
+      </div>
     </section>
 
-    <section class="section" id="performance" aria-labelledby="performance-title">
-      <h2 id="performance-title">Performance</h2>
-      <div class="grid-wrap" role="region" aria-labelledby="performance-title" tabindex="0">
-        <table class="grid perf">
-          <thead>
-            <tr>
-              <th scope="col">measure</th>
-              <th scope="col">platypusdb 0.1.0</th>
-              <th scope="col">target</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr><td>Start to interactive window</td><td class="num">430–500 ms</td><td class="num">&lt; 500 ms</td></tr>
-            <tr><td>Memory at rest, 1 connection</td><td class="num">about 130 MB</td><td class="num">&lt; 150 MB</td></tr>
-            <tr><td>Scrolling 1M rows</td><td class="num">178 fps</td><td class="num">60 fps</td></tr>
-            <tr><td>5M rows to Parquet</td><td class="num">3.2 s, 31 MB peak</td><td class="num">streaming</td></tr>
-            <tr><td>Installer</td><td class="num">5.4 MB</td><td class="num">&lt; 20 MB</td></tr>
-          </tbody>
-        </table>
+    <!-- Screenshots -->
+    <section class="section" id="screenshots" aria-labelledby="screenshots-title">
+      <div class="wrap">
+        <header class="section-head center">
+          <p class="eyebrow teal">Tour</p>
+          <h2 id="screenshots-title">Take a look around</h2>
+        </header>
+        <div class="gallery">
+          <div class="tabs" role="tablist" aria-label="Screenshots" hidden>
+            <button type="button" role="tab" id="tab-catalog" aria-controls="shot-catalog">Notes and tags</button>
+            <button type="button" role="tab" id="tab-schema-docs" aria-controls="shot-schema-docs">Schema docs</button>
+            <button type="button" role="tab" id="tab-table-editor" aria-controls="shot-table-editor">Table editor</button>
+            <button type="button" role="tab" id="tab-query-builder" aria-controls="shot-query-builder">Query builder</button>
+            <button type="button" role="tab" id="tab-query-manager" aria-controls="shot-query-manager">Query manager</button>
+            <button type="button" role="tab" id="tab-chart" aria-controls="shot-chart">Charts</button>
+            <button type="button" role="tab" id="tab-palette" aria-controls="shot-palette">Command palette</button>
+            <button type="button" role="tab" id="tab-light-theme" aria-controls="shot-light-theme">Light theme</button>
+            <button type="button" role="tab" id="tab-settings" aria-controls="shot-settings">Settings</button>
+          </div>
+          <div class="panels window">
+            <figure class="panel" id="shot-catalog" role="tabpanel" aria-labelledby="tab-catalog">
+              <img src="img/screenshots/catalog.png" width="1600" height="960" loading="lazy" alt="The object tab of a table with its database comment, a local note and tags, and the same for each column.">
+              <figcaption>Comments, local notes and tags on a table and its columns.</figcaption>
+            </figure>
+            <figure class="panel" id="shot-schema-docs" role="tabpanel" aria-labelledby="tab-schema-docs">
+              <img src="img/screenshots/schema-docs.png" width="1280" height="1080" loading="lazy" alt="The exported HTML documentation of a schema: its tables with their comments, notes and tags, and an ER diagram of the foreign keys between them.">
+              <figcaption>A schema's documentation as one HTML file, with an ER diagram.</figcaption>
+            </figure>
+            <figure class="panel" id="shot-table-editor" role="tabpanel" aria-labelledby="tab-table-editor">
+              <img src="img/screenshots/table-editor.png" width="1600" height="960" loading="lazy" alt="The table editor with the columns of a table, their types, NOT NULL, defaults and primary key.">
+              <figcaption>Columns, keys and constraints; the script comes first.</figcaption>
+            </figure>
+            <figure class="panel" id="shot-query-builder" role="tabpanel" aria-labelledby="tab-query-builder">
+              <img src="img/screenshots/query-builder.png" width="1600" height="960" loading="lazy" alt="The visual query builder with two tables on a canvas, joined on their foreign key, and the generated SELECT.">
+              <figcaption>Two tables joined on their foreign key.</figcaption>
+            </figure>
+            <figure class="panel" id="shot-query-manager" role="tabpanel" aria-labelledby="tab-query-manager">
+              <img src="img/screenshots/query-manager.png" width="1600" height="960" loading="lazy" alt="The query manager listing the statements sent, with the trace of one split into network, server and fetch time.">
+              <figcaption>Every statement the app sent, with its timing.</figcaption>
+            </figure>
+            <figure class="panel" id="shot-chart" role="tabpanel" aria-labelledby="tab-chart">
+              <img src="img/screenshots/chart.png" width="1600" height="960" loading="lazy" alt="Revenue by city from a query, drawn as a bar chart, with the chart type, axes and export on the left.">
+              <figcaption>A result drawn as a chart, exported as PNG or SVG.</figcaption>
+            </figure>
+            <figure class="panel" id="shot-palette" role="tabpanel" aria-labelledby="tab-palette">
+              <img src="img/screenshots/palette.png" width="1600" height="960" loading="lazy" alt="The command palette open over the window, listing the tables and recent queries that match the word orders.">
+              <figcaption>Actions, connections, tables and recent queries in one place.</figcaption>
+            </figure>
+            <figure class="panel" id="shot-light-theme" role="tabpanel" aria-labelledby="tab-light-theme">
+              <img src="img/screenshots/light-theme.png" width="1600" height="960" loading="lazy" alt="The window in the Platypus Light theme, with a query grouping revenue by city and its results.">
+              <figcaption>Platypus Light.</figcaption>
+            </figure>
+            <figure class="panel" id="shot-settings" role="tabpanel" aria-labelledby="tab-settings">
+              <img src="img/screenshots/settings.png" width="1600" height="960" loading="lazy" alt="The Settings dialog on its Appearance section, with the other sections listed on the left, a search field and the theme swatches.">
+              <figcaption>Settings in sections, with a search.</figcaption>
+            </figure>
+          </div>
+        </div>
       </div>
-      <p class="note">Windows 11, Ryzen 7 9700X; details and method in <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">BENCHMARKS.md</a>.</p>
-
-      <h2 class="sub" id="compare-title">Next to other clients</h2>
-      <div class="grid-wrap" role="region" aria-labelledby="compare-title" tabindex="0">
-        <table class="grid perf">
-          <thead>
-            <tr>
-              <th scope="col"></th>
-              <th scope="col">platypusdb</th>
-              <th scope="col">dbeaver ce</th>
-              <th scope="col">datagrip</th>
-              <th scope="col">tableplus</th>
-              <th scope="col">beekeeper studio</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr><td>Runtime</td><td>Rust, the system's web view</td><td>Java, JRE bundled</td><td>Java, JetBrains Runtime bundled</td><td>Native (GTK on Linux)</td><td>Electron</td></tr>
-            <tr><td>Linux download</td><td class="num">19.5 MiB</td><td class="num">122 MiB</td><td class="num">1,047 MiB</td><td class="num">60 MiB</td><td class="num">346 MiB</td></tr>
-            <tr><td>On disk</td><td class="num">46 MiB</td><td class="num">206 MiB</td><td class="num">not measured</td><td class="num">180 MiB</td><td class="num">1,105 MiB</td></tr>
-            <tr><td>License</td><td>AGPL-3.0</td><td>Apache 2.0</td><td>Proprietary</td><td>Proprietary</td><td>GPLv3</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="note">Official Linux downloads of PlatypusDB 0.2.0, DBeaver CE 26.2.3, DataGrip 2026.2.6, TablePlus 2.2.0 and Beekeeper Studio 6.2.0, measured on 29 October 2026. Start and memory side by side are still to be measured.</p>
     </section>
 
+    <!-- Compare -->
+    <section class="section" id="compare" aria-labelledby="compare-title">
+      <div class="wrap">
+        <header class="section-head center">
+          <p class="eyebrow orange">Compare</p>
+          <h2 id="compare-title">A fraction of the size</h2>
+          <p>Official Linux downloads, measured on 29 October 2026.</p>
+        </header>
+        <div class="bars card corners" role="img" aria-label="Linux download size: PlatypusDB 19.5 MiB, TablePlus 60 MiB, DBeaver CE 122 MiB, Beekeeper Studio 346 MiB, DataGrip 1,047 MiB.">
+          <div class="bar me" style="--w:1.9%"><span class="bar-name">PlatypusDB</span><span class="bar-track"><span class="bar-fill"></span></span><span class="bar-num">19.5 MiB</span></div>
+          <div class="bar" style="--w:5.7%"><span class="bar-name">TablePlus</span><span class="bar-track"><span class="bar-fill"></span></span><span class="bar-num">60 MiB</span></div>
+          <div class="bar" style="--w:11.7%"><span class="bar-name">DBeaver CE</span><span class="bar-track"><span class="bar-fill"></span></span><span class="bar-num">122 MiB</span></div>
+          <div class="bar" style="--w:33%"><span class="bar-name">Beekeeper Studio</span><span class="bar-track"><span class="bar-fill"></span></span><span class="bar-num">346 MiB</span></div>
+          <div class="bar" style="--w:100%"><span class="bar-name">DataGrip</span><span class="bar-track"><span class="bar-fill"></span></span><span class="bar-num">1,047 MiB</span></div>
+        </div>
+
+        <div class="table-wrap compare-table" role="region" aria-label="PlatypusDB next to other clients" tabindex="0">
+          <table class="grid">
+            <thead>
+              <tr>
+                <th scope="col"><span class="sr">Measure</span></th>
+                <th scope="col" class="me">PlatypusDB</th>
+                <th scope="col">DBeaver CE</th>
+                <th scope="col">DataGrip</th>
+                <th scope="col">TablePlus</th>
+                <th scope="col">Beekeeper Studio</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">Runtime</th><td class="me">Rust, the system's web view</td><td>Java, JRE bundled</td><td>Java, JetBrains Runtime bundled</td><td>Native (GTK on Linux)</td><td>Electron</td></tr>
+              <tr><th scope="row">Linux download</th><td class="me num">19.5 MiB</td><td class="num">122 MiB</td><td class="num">1,047 MiB</td><td class="num">60 MiB</td><td class="num">346 MiB</td></tr>
+              <tr><th scope="row">On disk</th><td class="me num">46 MiB</td><td class="num">206 MiB</td><td class="num muted">not measured</td><td class="num">180 MiB</td><td class="num">1,105 MiB</td></tr>
+              <tr><th scope="row">License</th><td class="me">AGPL-3.0</td><td>Apache 2.0</td><td>Proprietary</td><td>Proprietary</td><td>GPLv3</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note center">PlatypusDB 0.2.0, DBeaver CE 26.2.3, DataGrip 2026.2.6, TablePlus 2.2.0, Beekeeper Studio 6.2.0. Start and memory side by side are still to be measured; method in <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">BENCHMARKS.md</a>.</p>
+
+        <ul class="perf">
+          <li class="card corners"><span class="perf-num">430–500<small>ms</small></span><span class="perf-label">Start to interactive window</span><span class="perf-target">target &lt; 500 ms</span></li>
+          <li class="card corners"><span class="perf-num">~130<small>MB</small></span><span class="perf-label">Memory at rest, 1 connection</span><span class="perf-target">target &lt; 150 MB</span></li>
+          <li class="card corners"><span class="perf-num">178<small>fps</small></span><span class="perf-label">Scrolling a million rows</span><span class="perf-target">target 60 fps</span></li>
+          <li class="card corners"><span class="perf-num">3.2<small>s</small></span><span class="perf-label">5M rows to Parquet, 31 MB peak</span><span class="perf-target">streamed</span></li>
+        </ul>
+        <p class="note center">Windows 11, Ryzen 7 9700X.</p>
+      </div>
+    </section>
+
+    <!-- Download -->
     <section class="section" id="download" aria-labelledby="download-title">
-      <h2 id="download-title">Download</h2>
-      <p>Download the installer for your system from the releases page. The app updates itself.</p>
-      <ul class="platforms">
-        <li><span class="os">Windows</span><span class="files"><code>.exe</code> <code>.msi</code></span></li>
-        <li><span class="os">macOS</span><span class="files"><code>.dmg</code></span></li>
-        <li><span class="os">Linux</span><span class="files"><code>.AppImage</code> <code>.deb</code> <code>.rpm</code></span></li>
-      </ul>
-      <a class="button primary" href="https://github.com/PaoloCisly/platypus-db/releases">Go to the releases page</a>
-    </section>
-
-    <section class="section" id="docs" aria-labelledby="docs-title">
-      <h2 id="docs-title">Docs</h2>
-      <ul class="links">
-        <li><a href="https://github.com/PaoloCisly/platypus-db#readme">README</a><span>The overview, in English and Italian.</span></li>
-        <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md">Features</a><span>Every feature, area by area. Also <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/SHORTCUTS.md">shortcuts</a> and <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/AGENTS.md">agents and the CLI</a>.</span></li>
-        <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a><span>How the performance figures are measured.</span></li>
-        <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a><span>How features plug in: actions, tab kinds, settings, driver capabilities.</span></li>
-        <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a><span>What comes next.</span></li>
-        <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a><span>How releases are made.</span></li>
-        <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a><span>The repository on GitHub.</span></li>
-      </ul>
+      <div class="wrap">
+        <div class="cta corners">
+          <div class="cta-glow" aria-hidden="true"></div>
+          <img src="img/icon.png" alt="" width="56" height="56">
+          <h2 id="download-title">Free and open source.<br> No trial, no account.</h2>
+          <p>Download the installer for your system. The app updates itself.</p>
+          <ul class="platforms">
+            <li><span class="os">Windows</span><span class="files"><code>.exe</code> <code>.msi</code></span></li>
+            <li><span class="os">macOS</span><span class="files"><code>.dmg</code></span></li>
+            <li><span class="os">Linux</span><span class="files"><code>.AppImage</code> <code>.deb</code> <code>.rpm</code></span></li>
+          </ul>
+          <div class="actions">
+            <a class="button primary large" href="https://github.com/PaoloCisly/platypus-db/releases">Go to the releases page</a>
+            <a class="button ghost large" href="https://github.com/PaoloCisly/platypus-db">View the source</a>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
 
-  <footer class="footer">
-    <span>PlatypusDB</span>
-    <span>Inter and JetBrains Mono under the <a href="fonts/OFL-Inter.txt">SIL Open Font License</a>.</span>
+  <footer class="footer" id="docs">
+    <div class="wrap footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="#top"><img src="img/icon.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db#readme">README</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md">Features</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/SHORTCUTS.md">Shortcuts</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/AGENTS.md">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="wrap footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
   </footer>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
 
   <script src="site.js" defer></script>
 </body>
