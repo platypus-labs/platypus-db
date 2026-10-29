@@ -19,6 +19,8 @@ import { asksPassword, connectionColor, isProduction } from "./connections";
 import { sessionSettingsChanged } from "./connectionEdit";
 import { Navigator } from "./components/Navigator";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { AgentContextDialog } from "./agents/AgentContextDialog";
+import { followActiveTab } from "./agents/context";
 import { AgentWriteDialog } from "./agents/AgentWriteDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { CrashBanner } from "./diagnostics/Diagnostics";
@@ -902,6 +904,9 @@ export function App() {
   const shell = useRef(shellState);
   shell.current = shellState;
 
+  // Agents the user lets see their work read the active tab.
+  useEffect(() => followActiveTab(activeTab), [activeTab]);
+
   // The active tab stays in view when tabs overflow the bar.
   useEffect(() => {
     tabBar.current?.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -1227,6 +1232,7 @@ export function App() {
       )}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       <AgentWriteDialog />
+      <AgentContextDialog />
       {paletteOpen && (
         <CommandPalette
           connections={connectionsOf(project, connections ?? [])}

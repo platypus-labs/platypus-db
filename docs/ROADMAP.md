@@ -90,6 +90,10 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 | Problema | Trovato |
 |---|---|
 | Scenari E2E delle P3 dei gruppi I e M scritti in un container Linux e mai eseguiti: `erd-fullscreen-refresh-sqlite`, `erd-edit-sqlite`, `schema-changelog-sqlite`, `schema-objects-sqlite`, `schema-objects-postgres`, `schema-migrations-sqlite`, `schema-data-compare-sqlite`, `schema-history-sqlite`, `analysis-pivot-sqlite`, `analysis-across-sqlite`, `analysis-saved-results-sqlite`, `analysis-dashboard-sqlite`, `analysis-table-profile-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | 2026-10-30, chiusura dei gruppi I e M |
+| Su Linux fallisce `platypus-desktop` `commands::cli::tests::cancelling_kills_the_client` (con `sort`), in un container cloud: renderlo indipendente da tempi e piattaforma, o limitarlo a Windows con `cfg` | gruppo N, 2026-10-29 |
+| Diagramma ER, "Disposizione automatica" senza senso su uno schema vero (decine di tabelle, poche tabelle "hub" come utenti e studi riferite da tutte): `erd/layout.ts` mette le tabelle in colonne per profondità delle chiavi esterne e ordina ogni colonna una volta sola, senza ridurre gli incroci, senza raggruppare le tabelle collegate e con linee dritte che attraversano tutto. Rifarla: gruppi connessi separati (un blocco per insieme di tabelle collegate), layout a livelli vero (più passate su e giù col baricentro per ridurre gli incroci, hub al centro del loro gruppo), linee instradate che non passano sopra le tabelle; test unitari che contano gli incroci su schemi di esempio e scenario E2E con screenshot su uno schema di 50+ tabelle | utente, 2026-10-29 |
+| "Genera il DDL" su molte tabelle (`objects/actions.ts`, `object.generate_ddl`) ci mette molto e non mostra niente: chiama `objectDdl` una tabella alla volta e apre il tab solo alla fine, senza avanzamento ("12 di 80") né annullamento. Mostrare l'avanzamento con Annulla, aprire il tab subito e riempirlo man mano, e sul backend leggere il DDL di più oggetti con meno query (il dump in SQL di `platypus-transfer` scrive già il DDL di molti oggetti insieme); misurare prima e dopo su uno schema di centinaia di tabelle | utente, 2026-10-29 |
+| Tab oggetto di una tabella (`objects/ObjectTab.tsx`): ci sono "Apri i dati" e "Modifica il DDL nell'editor", ma nessun pulsante porta all'editor grafico della tabella (colonne, indici, chiavi, vincoli), che si apre solo dal menu del navigator ("Modifica tabella…", F4): aggiungere "Modifica tabella" accanto agli altri, e dal tab dei dati un modo per passare alla struttura e all'editor | utente, 2026-10-29 |
 
 ### Lock dei gruppi
 
@@ -115,7 +119,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | K — Shell ed ergonomia | ✅ completato |
 | L — Sicurezza operativa | ✅ completato |
 | M — Analisi dei dati | 🔒 Delfa · group-m-analysis-p3 · 2026-10-30 |
-| N — Accesso per agenti (MCP) | 🔒 Delfa · group-n-mcp-p3 · 2026-10-29 |
+| N — Accesso per agenti (MCP) | ✅ fatto (P1, P2; P3 in parte) |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
 | Q — Documentazione e catalogo dei dati | ✅ fatto (P2) |
@@ -938,7 +942,8 @@ scritti ma non ancora eseguiti (runner Windows).
 
 ### Gruppo N — Accesso per agenti esterni (MCP)
 
-**Stato: P1 e P2 completate** (restano i P3). Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
+**Stato: P1 e P2 completate, P3 quasi** (resta il mascheramento delle colonne sensibili del
+gruppo Q nei tool su script e cronologia, che aspetta quelle colonne). Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
 il binario `platypus-mcp`, server MCP su stdio con `rmcp`: legge il profilo dell'app (o
 `PLATYPUS_DATA_DIR`) e apre le connessioni come l'app (profili di rete, tunnel SSH, password
 da keychain, comando o `.pgpass`); con la master password i segreti restano bloccati e la
@@ -980,6 +985,25 @@ senza risposta o app chiusa = rifiutata. Una query che scrive tramite una funzio
 dalla transazione di sola lettura dove il database la rifiuta, e al rifiuto chiede. Gli E2E danno a ogni scenario una porta libera e
 `confirm_writes = false` se lo scenario non li imposta.
 
+P3: lo schema come risorse MCP (`platypus-mcp/src/resource.rs`): una risorsa per connessione
+(`platypus://<connessione>`, i suoi schemi) e i template `platypus://<c>/<schema>` (oggetti, fino
+a 2000) e `platypus://<c>/<schema>/<tabella>` (come `describe_table`), nomi percent-encoded, ogni
+lettura nel registro come `read_resource`. Tool di sola lettura `list_scripts`, `read_script`
+(256 KB) e `search_history` (50, fino a 500): la lettura degli script è passata in
+`platypus-store/src/scripts.rs`, usata anche dall'app; gli script legati a una connessione senza
+accesso per gli agenti e la sua cronologia non si vedono, gli errori passano dal `Redactor`. Il
+mascheramento delle colonne sensibili del gruppo Q non c'è ancora: i punti dove andrà sono
+segnati nel codice. `get_user_context` chiede all'app aperta (`/v1/context`, coda in comune con
+le conferme delle scritture) la scheda attiva: un dialog mostra cosa verrebbe condiviso (testo,
+selezione, risultato, dimensioni) con Rifiuta, Condividi una volta, Condividi per questa
+sessione (ricordato nella pagina, per sessione del server); il server taglia testo e selezione a
+64 KB e il risultato a 100 righe e 32 KB, e rifiuta il contenuto di una scheda su una
+connessione senza accesso per gli agenti (dopo il consenso, perché l'app rivela la connessione
+solo allora). Plugin pronti: `plugins/platypus-db` (server MCP, `PLATYPUS_DB` per il percorso
+dell'app, e una skill con le istruzioni d'uso) nel marketplace `.claude-plugin/marketplace.json`
+della repository, e `plugins/codex` con la voce di `config.toml` e le stesse istruzioni come
+`AGENTS.md`. E2E `agent-context` (non provato: gli E2E girano solo su Windows).
+
 PlatypusDB non integra un proprio assistente AI. Diventa invece uno strumento che gli agenti già
 in uso (Claude Code, Codex, Cursor, altri client MCP) possono collegare: usano le connessioni
 salvate, leggono lo schema ed eseguono query con i permessi decisi dall'utente. Le credenziali
@@ -1007,11 +1031,11 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | ✅ **Configurazione degli agenti in un clic**: la pagina "Agents" scrive la voce del server nei file di Claude Desktop, Cursor, Windsurf e Codex (o lancia `claude mcp add`) e mostra in quali client è già presente | P2 | N |
 | ✅ **Registro delle chiamate degli agenti**: ogni chiamata a un tool (non solo le query), con agente, connessione, argomenti, durata ed esito, raggruppata per sessione, con filtro ed export CSV | P2 | N |
 | ✅ Tool `propose_sql`: apre la query proposta dall'agente in un tab dell'editor, da rivedere ed eseguire a mano | P2 | N |
-| Contesto dell'utente su consenso: testo dell'editor, selezione, risultato corrente della griglia | P3 | N |
-| Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
-| Plugin pronti: plugin per Claude Code e configurazione per Codex con le istruzioni d'uso (quando usare quale tool, limiti) | P3 | N |
+| ✅ Contesto dell'utente su consenso: testo dell'editor, selezione, risultato corrente della griglia | P3 | N |
+| ✅ Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
+| ✅ Plugin pronti: plugin per Claude Code e configurazione per Codex con le istruzioni d'uso (quando usare quale tool, limiti) | P3 | N |
 | ✅ **Tab Agenti come pannello di integrazione**: sotto-schede Setup, Attività e Sicurezza; in Setup l'elenco dei client (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, Antigravity, …) con il percorso del loro file di configurazione e un pulsante **Installa** che scrive la voce del server (con backup del file e conferma), accanto la configurazione da copiare a mano per il client scelto; Attività mostra le chiamate degli agenti, Sicurezza i permessi per connessione | P2 | N |
-| 🆕 Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate | P3 | N |
+| 🆕 Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate (fatti i tool `list_scripts`, `read_script`, `search_history`; manca il mascheramento, che aspetta le colonne sensibili del gruppo Q) | P3 | N |
 
 ---
 
@@ -1152,6 +1176,7 @@ generata.
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | 🆕 **Inventario visivo**: una scheda per schermata e dialog con screenshot (chiaro/scuro, it/en) e i problemi trovati | P1 | N |
+| 🆕 **Tutto a portata di mano e comprensibile**: ogni pagina studiata perché l'utente capisca da sola cosa può fare lì; le azioni principali visibili sulla pagina stessa (pulsanti, intestazioni, stati vuoti con l'azione utile), non solo nei menu contestuali o nelle scorciatoie; dalla pagina di un oggetto si arriva a tutto ciò che lo riguarda (dati, struttura, editor grafico, DDL, diagramma). Esempio: l'editor grafico della tabella oggi si apre solo dal menu del navigator o con F4 | P1 | N |
 | 🆕 **Design token unici**: spaziature, raggi, ombre, dimensioni dei font e dei controlli da una scala sola; via i valori scritti a mano nei singoli componenti | P1 | N |
 | 🆕 Dialog, menu, tooltip, notifiche e pannelli con la stessa struttura (titolo, corpo, pulsanti, focus, Esc/Invio) | P1 | N |
 | 🆕 Stati vuoti, di caricamento e di errore uguali in tutta l'app, con testo e azione utile | P1 | N |
@@ -1176,6 +1201,12 @@ Verificare che tutto funzioni su tutti i database e i sistemi, come lo usa una p
 lasciare ogni controllo come test automatico che resti nel tempo. Si lavora come nella campagna
 di test di ottobre 2026: un tester per area con l'app compilata, uno scenario E2E per ogni bug,
 poi le correzioni e un secondo giro con occhi nuovi; un agente o una persona alla volta.
+
+**Non in una sessione cloud.** Il collaudo finale (e in generale i test finali prima di un
+rilascio) è meglio non farlo in una sessione di un agente in cloud: lì gli E2E non girano (solo
+Windows, WebView2), non c'è GPU né macOS, i download dei driver e degli altri client sono
+bloccati dalla rete del container, e il disco è un'allowance fissa che i database di test
+riempiono. Va fatto su macchine vere: Windows, poi macOS e un desktop Linux.
 
 **Area:** `apps/desktop/e2e/`, `crates/platypus-conformance/`, `docs/BENCHMARKS.md`; le correzioni
 nei file delle aree toccate, in commit piccoli e separati
