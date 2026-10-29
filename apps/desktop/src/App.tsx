@@ -58,6 +58,7 @@ import { stepZoom } from "./theme";
 import { logError, track } from "./shell/activity";
 import { openActivity } from "./shell/ActivityDialog";
 import { LockScreen, useIdleLock } from "./guards/AppLock";
+import { PanelResizer, useStoredSize } from "./shell/PanelResizer";
 
 declare module "./actions" {
   interface ActionScopes {
@@ -126,6 +127,9 @@ export function App() {
   };
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  /** The left half of a split editor's share of the room, per mille. */
+  const [splitShare, setSplitShare] = useStoredSize("layout.split_share", 500);
+  const panes = useRef<HTMLDivElement>(null);
   /** The app waits behind the master password. */
   const [locked, setLocked] = useState(false);
   /** Closed tabs as they would be saved, newest last, for Ctrl+Shift+T. */
@@ -1046,7 +1050,21 @@ export function App() {
             {toast}
           </div>
         )}
-        <div className={`panes${split ? " split" : ""}`} hidden={visibleTabs.length === 0}>
+        <div className={`panes${split ? " split" : ""}`} hidden={visibleTabs.length === 0} ref={panes}>
+          {split && (
+            <PanelResizer
+              storeKey="layout.split_share"
+              size={splitShare}
+              fallback={500}
+              min={200}
+              max={() => 800}
+              direction="column"
+              scale={() => (panes.current?.clientWidth ?? 1000) / 1000}
+              onResize={setSplitShare}
+              label={t("Resize the split editor")}
+              className="split-resizer"
+            />
+          )}
           {tabs.map((t) => {
             const connection = connectionById(t.connectionId);
             const Component = tabKind(t.kind)?.component as ComponentType<TabProps<TabModel>> | undefined;
@@ -1060,7 +1078,8 @@ export function App() {
                   key={t.key}
                   className={`pane${split && t.key === activeTab ? " focused" : ""}${pane === 1 ? " right" : ""}`}
                   hidden={pane < 0}
-                  style={{ order: pane }}
+                  // The left half takes its share of the room (per mille), the right the rest.
+                  style={{ order: pane * 2, flexGrow: split ? (pane === 0 ? splitShare : 1000 - splitShare) : 1 }}
                   onMouseDownCapture={activate}
                   onFocusCapture={activate}
                 >
