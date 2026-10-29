@@ -2030,7 +2030,6 @@ const fr: Record<string, string> = {
   "Open restore script": "Ouvrir le script de restauration",
   "Snapshots before changes…": "Instantanés avant modifications…",
   "Open the statements that put back the rows it changed": "Ouvrir les instructions qui remettent les lignes modifiées",
-  "Restore…": "Restaurer…",
   "Locking needs a master password: set one in Settings › Master password.": "Le verrouillage demande un mot de passe principal : définissez-le dans Paramètres › Mot de passe principal.",
   "Lock PlatypusDB": "Verrouiller PlatypusDB",
   "Lock the app after this many idle minutes": "Verrouiller l'app après ce nombre de minutes d'inactivité",

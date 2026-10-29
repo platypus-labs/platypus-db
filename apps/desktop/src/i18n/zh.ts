@@ -2030,7 +2030,6 @@ const zh: Record<string, string> = {
   "Open restore script": "打开恢复脚本",
   "Snapshots before changes…": "变更前快照…",
   "Open the statements that put back the rows it changed": "打开恢复被修改行的语句",
-  "Restore…": "恢复…",
   "Locking needs a master password: set one in Settings › Master password.": "锁定需要主密码：请在“设置 › 主密码”中设置。",
   "Lock PlatypusDB": "锁定 PlatypusDB",
   "Lock the app after this many idle minutes": "空闲多少分钟后锁定应用",

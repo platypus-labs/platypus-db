@@ -2030,7 +2030,6 @@ const es: Record<string, string> = {
   "Open restore script": "Abrir script de restauración",
   "Snapshots before changes…": "Instantáneas antes de cambios…",
   "Open the statements that put back the rows it changed": "Abrir las sentencias que restauran las filas que cambió",
-  "Restore…": "Restaurar…",
   "Locking needs a master password: set one in Settings › Master password.": "Bloquear requiere una contraseña maestra: defínela en Ajustes › Contraseña maestra.",
   "Lock PlatypusDB": "Bloquear PlatypusDB",
   "Lock the app after this many idle minutes": "Bloquear la app tras estos minutos de inactividad",
