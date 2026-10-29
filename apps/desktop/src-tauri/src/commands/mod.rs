@@ -23,6 +23,7 @@ pub mod health;
 pub mod history;
 pub mod meta;
 pub mod objects;
+pub mod profiles;
 pub mod projects;
 pub mod query;
 pub mod querylog;

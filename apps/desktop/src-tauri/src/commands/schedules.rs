@@ -2,7 +2,7 @@
 //! tasks whose time has come, and runs each on a connection of its own, with the saved
 //! password (a task cannot ask for one). A script runs its statements one at a time; an
 //! export and a backup write a file named by the time of the run into the task's folder,
-//! where the newest `keep` stay.
+//! where the newest `keep` stay; a profile runs as `commands::profiles` runs it.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -18,9 +18,11 @@ use uuid::Uuid;
 
 use super::backup::{BackupEvent, BackupFormat, BackupRequest, backup};
 use super::connections::{SavedConfig, saved_config};
-use super::{AppState, connect, read_only_error, sql};
+use super::profiles::start as start_profile;
+use super::{AppState, connect, lock, read_only_error, sql};
 use crate::error::{CommandError, CommandResult};
-use crate::export::Export;
+use crate::export::ExportEvent;
+use crate::profiles::{ProfileTask, Profiles};
 use crate::querylog::Logged;
 use crate::scheduler::plan::{Run, Schedule, Task, surplus};
 use crate::scheduler::{ScheduleView, Scheduler};
@@ -52,7 +54,13 @@ async fn run(app: AppHandle, schedule: Schedule, attempt: u32, manual: bool) {
     }
     let _ = app.emit(CHANGED, ());
     let started = Utc::now();
-    let outcome = execute(&app.state::<AppState>(), &schedule, started).await;
+    let outcome = execute(
+        &app.state::<AppState>(),
+        &app.state::<Profiles>(),
+        &schedule,
+        started,
+    )
+    .await;
     let (ok, message, file) = match outcome {
         Ok((message, file)) => (true, message, file),
         Err(message) => (false, message, None),
@@ -75,24 +83,17 @@ async fn run(app: AppHandle, schedule: Schedule, attempt: u32, manual: bool) {
 /// What the task did, and the file it wrote; or why it failed.
 async fn execute(
     state: &AppState,
+    profiles: &Profiles,
     schedule: &Schedule,
     started: chrono::DateTime<Utc>,
 ) -> Result<(String, Option<PathBuf>), String> {
-    let saved = saved_config(
-        state,
-        schedule.connection_id,
-        None,
-        schedule.database.clone(),
-    )
-    .await
-    .map_err(|e| e.message().to_owned())?;
-    if saved.none_saved {
-        return Err(
-            "the password of the connection is not saved: a scheduled task needs a saved \
-             password, a password command or .pgpass"
-                .to_owned(),
-        );
+    // A profile opens the connections it names, and checks each.
+    if let Task::Profile { profile_id } = &schedule.task {
+        return run_profile(state, profiles, schedule, *profile_id, started).await;
     }
+    let saved = unattended(state, schedule.connection_id, schedule.database.clone())
+        .await
+        .map_err(|e| e.message().to_owned())?;
     let label = format!("{} · {}", saved.label, schedule.name);
     if saved.restrictions.no_export && !matches!(schedule.task, Task::Script { .. }) {
         return Err(format!("{} does not let its data be exported", saved.label));
@@ -133,7 +134,119 @@ async fn execute(
             prune(schedule, &file, extension);
             Ok((message, Some(file)))
         }
+        Task::Profile { .. } => unreachable!("run before"),
     }
+}
+
+/// The saved connection `connection_id`, on `database` when given, for a run nobody
+/// attends: it needs a saved password, a password command or `.pgpass`.
+pub(crate) async fn unattended(
+    state: &AppState,
+    connection_id: Uuid,
+    database: Option<String>,
+) -> CommandResult<SavedConfig> {
+    let saved = saved_config(state, connection_id, None, database).await?;
+    if saved.none_saved {
+        return Err(CommandError::new(
+            "auth",
+            "the password of the connection is not saved: a scheduled task needs a saved \
+             password, a password command or .pgpass",
+        ));
+    }
+    Ok(saved)
+}
+
+/// Runs the profile `profile_id` for `schedule`: an export goes to the task's folder when it
+/// has one, named by the time of the run, and the newest `keep` files stay.
+async fn run_profile(
+    state: &AppState,
+    profiles: &Profiles,
+    schedule: &Schedule,
+    profile_id: Uuid,
+    started: chrono::DateTime<Utc>,
+) -> Result<(String, Option<PathBuf>), String> {
+    let profile = profiles.restored(profile_id, state)?;
+    let output = profile.task.scheduled_output(schedule, started)?;
+    if let Some(output) = &output {
+        // A file goes into a folder made if missing; the files of tables into a folder of theirs.
+        let folder = if matches!(profile.task, ProfileTask::ExportTables { .. }) {
+            Some(output.as_path())
+        } else {
+            output.parent()
+        };
+        if let Some(folder) = folder {
+            std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        }
+    }
+    let (rows, warnings) = finished(state, |events| {
+        start_profile(state, &profile, output.clone(), events)
+    })
+    .await?;
+    if let Some(output) = &output
+        && let Ok(Some(extension)) = profile.task.scheduled_extension()
+    {
+        prune(schedule, output, &extension);
+    }
+    let verb = if profile.task.own_output().is_some() {
+        "written"
+    } else {
+        "moved"
+    };
+    let left = if warnings.is_empty() {
+        String::new()
+    } else {
+        format!("; left out: {}", warnings.join("; "))
+    };
+    let file = output.or_else(|| profile.task.own_output().map(Path::to_owned));
+    Ok((format!("{rows} rows {verb}{left}"), file))
+}
+
+/// Waits for the job `start` begins to end: the rows it moved and what it left out, or why
+/// it failed. Nothing cancels it, nor listens to its progress.
+pub(crate) async fn finished<F>(
+    state: &AppState,
+    start: impl FnOnce(Channel<ExportEvent>) -> F,
+) -> Result<(u64, Vec<String>), String>
+where
+    F: Future<Output = CommandResult<u64>>,
+{
+    let (done, ended) = oneshot::channel::<Result<(u64, Vec<String>), String>>();
+    let done = std::sync::Mutex::new(Some(done));
+    let events = Channel::new(move |body| {
+        if let tauri::ipc::InvokeResponseBody::Json(json) = body
+            && let Ok(event) = serde_json::from_str::<serde_json::Value>(&json)
+        {
+            let outcome = match event["type"].as_str() {
+                Some("done") => Some(Ok((
+                    event["rows"].as_u64().unwrap_or(0),
+                    event["warnings"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|w| w.as_str().map(str::to_owned))
+                        .collect(),
+                ))),
+                Some("failed") => Some(Err(event["error"]["message"]
+                    .as_str()
+                    .unwrap_or("the job failed")
+                    .to_owned())),
+                Some("cancelled") => Some(Err("the job was cancelled".to_owned())),
+                _ => None,
+            };
+            if let Some(outcome) = outcome
+                && let Some(done) = done.lock().ok().and_then(|mut d| d.take())
+            {
+                let _ = done.send(outcome);
+            }
+        }
+        Ok(())
+    });
+    let id = start(events).await.map_err(|e| e.message().to_owned())?;
+    let outcome = ended
+        .await
+        .unwrap_or_else(|_| Err("the job ended without saying how".to_owned()));
+    lock(&state.exports).remove(&id);
+    outcome
 }
 
 /// Backs up the database as `request` asks; returns the size of the file.
@@ -238,14 +351,19 @@ fn output(
     Ok(file)
 }
 
-/// Deletes the task's files beyond the newest `keep`, `written` never among them.
+/// Deletes the task's files (or folders of files) beyond the newest `keep`, `written` never
+/// among them.
 fn prune(schedule: &Schedule, written: &Path, extension: &str) {
     let Some(folder) = written.parent() else {
         return;
     };
     for old in surplus(schedule, folder, extension) {
         if old != written {
-            let _ = std::fs::remove_file(old);
+            let _ = if old.is_dir() {
+                std::fs::remove_dir_all(old)
+            } else {
+                std::fs::remove_file(old)
+            };
         }
     }
 }
@@ -295,44 +413,21 @@ async fn export(
     file: &Path,
     format: platypus_transfer::Format,
 ) -> Result<u64, String> {
-    let (done, ended) = oneshot::channel::<Result<u64, String>>();
-    let done = std::sync::Mutex::new(Some(done));
-    let events = Channel::new(move |body| {
-        if let tauri::ipc::InvokeResponseBody::Json(json) = body
-            && let Ok(event) = serde_json::from_str::<serde_json::Value>(&json)
-        {
-            let outcome = match event["type"].as_str() {
-                Some("done") => Some(Ok(event["rows"].as_u64().unwrap_or(0))),
-                Some("failed") => Some(Err(event["error"]["message"]
-                    .as_str()
-                    .unwrap_or("the export failed")
-                    .to_owned())),
-                Some("cancelled") => Some(Err("the export was cancelled".to_owned())),
-                _ => None,
-            };
-            if let Some(outcome) = outcome
-                && let Some(done) = done.lock().ok().and_then(|mut d| d.take())
-            {
-                let _ = done.send(outcome);
-            }
-        }
-        Ok(())
-    });
     let options = platypus_transfer::ExportOptions {
         format,
         driver: Some(saved.config.driver),
         ..platypus_transfer::ExportOptions::default()
     };
-    let _job = Export::start(
-        (saved.config, label, Arc::clone(&state.query_log)),
-        sql.to_owned(),
-        file.to_owned(),
-        options,
-        events,
-    );
-    ended
-        .await
-        .unwrap_or_else(|_| Err("the export ended without saying how".to_owned()))
+    let (rows, _) = finished(state, |events| async {
+        Ok(super::export::start_query(
+            state,
+            (saved.config, label),
+            (sql.to_owned(), file.to_owned(), options),
+            events,
+        ))
+    })
+    .await?;
+    Ok(rows)
 }
 
 #[tauri::command]
@@ -345,8 +440,14 @@ pub fn list_schedules(scheduler: State<'_, Scheduler>) -> Vec<ScheduleView> {
 pub fn save_schedule(
     app: AppHandle,
     scheduler: State<'_, Scheduler>,
-    schedule: Schedule,
+    profiles: State<'_, Profiles>,
+    mut schedule: Schedule,
 ) -> CommandResult<Vec<ScheduleView>> {
+    if let Task::Profile { profile_id } = schedule.task {
+        profiles
+            .follow(&mut schedule, profile_id)
+            .map_err(|e| CommandError::new("invalid", e))?;
+    }
     scheduler
         .put(schedule, Utc::now())
         .map_err(|e| CommandError::new("invalid", e))?;
@@ -490,6 +591,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = dir.path().join("tasks.db");
         let (state, connection) = sqlite_state(dir.path(), &db);
+        let profiles = Profiles::open(None);
         let saved = saved_config(&state, connection, None, None).await.unwrap();
         let conn = connect(&saved.config).await.unwrap();
         for sql in [
@@ -508,14 +610,16 @@ mod tests {
         .unwrap();
         let mut s = schedule(Task::Script { path: script }, None);
         s.connection_id = connection;
-        let (message, file) = execute(&state, &s, Utc::now()).await.unwrap();
+        let (message, file) = execute(&state, &profiles, &s, Utc::now()).await.unwrap();
         assert_eq!(message, "2 statements run, 3 rows changed");
         assert_eq!(file, None);
 
         let broken = dir.path().join("broken.sql");
         std::fs::write(&broken, "SELECT 1;\nUPDATE nothing SET v = 1;").unwrap();
         s.task = Task::Script { path: broken };
-        let error = execute(&state, &s, Utc::now()).await.unwrap_err();
+        let error = execute(&state, &profiles, &s, Utc::now())
+            .await
+            .unwrap_err();
         assert!(error.starts_with("statement 2: "), "{error}");
 
         let folder = dir.path().join("out");
@@ -524,7 +628,7 @@ mod tests {
             format: ExportFormat::Csv,
         };
         s.folder = Some(folder.clone());
-        let (message, file) = execute(&state, &s, Utc::now()).await.unwrap();
+        let (message, file) = execute(&state, &profiles, &s, Utc::now()).await.unwrap();
         assert_eq!(message, "2 rows written");
         let file = file.unwrap();
         assert_eq!(file.parent(), Some(folder.as_path()));
@@ -537,7 +641,7 @@ mod tests {
             format: BackupFormat::Custom,
             schema: None,
         };
-        let (message, file) = execute(&state, &s, Utc::now()).await.unwrap();
+        let (message, file) = execute(&state, &profiles, &s, Utc::now()).await.unwrap();
         assert_eq!(message, "1 tables and 2 rows of main written");
         let file = file.unwrap();
         assert_eq!(file.extension().and_then(|e| e.to_str()), Some("sql"));
@@ -546,5 +650,112 @@ mod tests {
             sql.contains("CREATE TABLE") && sql.contains("INSERT INTO"),
             "{sql}"
         );
+    }
+
+    /// A scheduled profile runs for real on a SQLite file: its export goes into the task's
+    /// folder, and a copy creates a table from another.
+    #[tokio::test]
+    async fn runs_profiles_on_sqlite() {
+        use crate::profiles::{ProfileTask, TransferProfile};
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("profiles.db");
+        let (state, connection) = sqlite_state(dir.path(), &db);
+        let saved = saved_config(&state, connection, None, None).await.unwrap();
+        let conn = connect(&saved.config).await.unwrap();
+        for sql in [
+            "CREATE TABLE t (id INTEGER PRIMARY KEY, v INTEGER)",
+            "INSERT INTO t (v) VALUES (5), (6), (7)",
+        ] {
+            conn.execute(sql, &ExecOptions::default()).await.unwrap();
+        }
+        drop(conn);
+
+        let profiles = Profiles::open(None);
+        let save = |name: &str, task| {
+            profiles
+                .put(
+                    TransferProfile {
+                        id: Uuid::new_v4(),
+                        name: name.to_owned(),
+                        task,
+                    },
+                    |_| true,
+                    &state,
+                )
+                .unwrap()
+        };
+        let export = save(
+            "Export t",
+            ProfileTask::ExportQuery {
+                connection_id: connection,
+                database: None,
+                sql: "SELECT id, v FROM t ORDER BY id".to_owned(),
+                path: dir.path().join("own.csv"),
+                options: serde_json::Value::Null,
+            },
+        );
+        let folder = dir.path().join("scheduled");
+        let mut s = schedule(
+            Task::Profile {
+                profile_id: export.id,
+            },
+            Some(folder.clone()),
+        );
+        profiles.follow(&mut s, export.id).unwrap();
+        let (message, file) = execute(&state, &profiles, &s, Utc::now()).await.unwrap();
+        assert_eq!(message, "3 rows written");
+        let file = file.unwrap();
+        assert_eq!(file.parent(), Some(folder.as_path()));
+        assert!(std::fs::read_to_string(&file).unwrap().contains("3,7"));
+        assert!(!dir.path().join("own.csv").exists(), "the folder wins");
+        // Without a folder the profile writes where it says.
+        s.folder = None;
+        let (_, file) = execute(&state, &profiles, &s, Utc::now()).await.unwrap();
+        assert_eq!(file, Some(dir.path().join("own.csv")));
+
+        // Another profile copies the table into a new one.
+        let import = save(
+            "Copy t",
+            ProfileTask::TransferTable {
+                source_connection_id: connection,
+                source_database: None,
+                target_connection_id: connection,
+                target_database: None,
+                plan: serde_json::json!({
+                    "source_table": "t",
+                    "table": "copy",
+                    "create": true,
+                    "columns": [
+                        { "source": "id", "target": "id", "data_type": "INTEGER" },
+                        { "source": "v", "target": "v", "data_type": "INTEGER" }
+                    ]
+                }),
+            },
+        );
+        s.task = Task::Profile {
+            profile_id: import.id,
+        };
+        let (message, file) = execute(&state, &profiles, &s, Utc::now()).await.unwrap();
+        assert_eq!(message, "3 rows moved");
+        assert_eq!(file, None);
+        let conn = connect(&saved.config).await.unwrap();
+        let ExecResult::Rows(rows) = conn
+            .execute("SELECT SUM(v) FROM copy", &ExecOptions::default())
+            .await
+            .unwrap()
+        else {
+            panic!("rows");
+        };
+        let batches: Vec<_> = futures::TryStreamExt::try_collect(rows).await.unwrap();
+        assert_eq!(batches[0].num_rows(), 1);
+
+        // A profile that is gone fails the run with a message.
+        s.task = Task::Profile {
+            profile_id: Uuid::new_v4(),
+        };
+        let error = execute(&state, &profiles, &s, Utc::now())
+            .await
+            .unwrap_err();
+        assert!(error.contains("gone"), "{error}");
     }
 }
