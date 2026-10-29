@@ -76,9 +76,12 @@ export default async function (page, { dir }) {
   assert.equal(await page.eval(`${source}.value`), "aws");
   assert.equal(await page.eval(`${reference}.value`), "prod/db");
 
-  // A hand-written command stays a shell command.
+  // "Shell command" keeps the manager's command, to edit by hand, and stays chosen.
   await pick(page, "command");
   await page.waitFor(`${command} !== null`);
+  assert.ok((await page.eval(`${command}.value`)).startsWith('aws secretsmanager get-secret-value --secret-id "prod/db"'));
+  await page.sleep(200);
+  assert.equal(await page.eval(`${source}.value`), "command", "the list stays on Shell command");
 
   // A JSON secret without a password field: the test says so before connecting.
   await page.eval(fill(command, 'echo {"username":"ada"}'));

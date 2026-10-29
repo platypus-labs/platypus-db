@@ -50,9 +50,15 @@ export function TestConnectionsDialog({ scope, connections, onClose }: Props) {
     if (!closed.current) setRunning(false);
   }
 
+  /** The run started: StrictMode mounts the dialog twice in development, which would test
+   *  each connection twice. */
+  const started = useRef(false);
   useEffect(() => {
     closed.current = false;
-    void run();
+    if (!started.current) {
+      started.current = true;
+      void run();
+    }
     return () => void (closed.current = true);
   }, []);
 

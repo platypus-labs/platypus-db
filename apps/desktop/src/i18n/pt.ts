@@ -1834,7 +1834,7 @@ const pt: Record<string, string> = {
   "Runs {command}: its CLI must be installed and signed in.": "Executa {command}: a CLI precisa estar instalada e com sessão iniciada.",
   "Command before connecting": "Comando antes de conectar",
   "Command after disconnecting": "Comando após desconectar",
-  "Run by the system's shell, e.g. to bring a VPN up: each session waits for the first to end, a minute at most, and fails with it; the second runs when the session closes.": "Executados pelo shell do sistema, por exemplo para ativar uma VPN: cada sessão espera o primeiro terminar, no máximo um minuto, e falha se ele falhar; o segundo roda quando a sessão fecha.",
+  "Run by the system's shell, e.g. to bring a VPN up. The first runs before the first session that needs it, which waits for its end, a minute at most, and fails with it; the second runs when the last such session closes.": "Executados pelo shell do sistema, por exemplo para ativar uma VPN. O primeiro roda antes da primeira sessão que precisa dele, que espera ele terminar, no máximo um minuto, e falha se ele falhar; o segundo roda quando a última dessas sessões fecha.",
   "Proxy": "Proxy",
   "SOCKS5 or HTTP, before the SSH server when there is one: {socks} or {http}. A password can come from {env}.": "SOCKS5 ou HTTP, antes do servidor SSH quando houver: {socks} ou {http}. A senha pode vir de {env}.",
 };

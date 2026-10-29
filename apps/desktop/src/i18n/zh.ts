@@ -1834,7 +1834,7 @@ const zh: Record<string, string> = {
   "Runs {command}: its CLI must be installed and signed in.": "运行 {command}：需已安装其 CLI 并登录。",
   "Command before connecting": "连接前运行的命令",
   "Command after disconnecting": "断开后运行的命令",
-  "Run by the system's shell, e.g. to bring a VPN up: each session waits for the first to end, a minute at most, and fails with it; the second runs when the session closes.": "由系统 shell 运行，例如启动 VPN：每个会话会等待第一个命令结束（最多一分钟），它失败则会话失败；第二个命令在会话关闭时运行。",
+  "Run by the system's shell, e.g. to bring a VPN up. The first runs before the first session that needs it, which waits for its end, a minute at most, and fails with it; the second runs when the last such session closes.": "由系统 shell 运行，例如启动 VPN。第一个命令在需要它的第一个会话之前运行，该会话等待其结束（最多一分钟），它失败则会话失败；第二个命令在最后一个此类会话关闭时运行。",
   "Proxy": "代理",
   "SOCKS5 or HTTP, before the SSH server when there is one: {socks} or {http}. A password can come from {env}.": "SOCKS5 或 HTTP，有 SSH 服务器时位于其之前：{socks} 或 {http}。密码可以来自 {env}。",
 };

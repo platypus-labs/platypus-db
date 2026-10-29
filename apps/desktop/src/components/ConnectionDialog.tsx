@@ -119,6 +119,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const [conn, setConn] = useState(initial);
   const [inProjects, setInProjects] = useState(() => new Set(memberOf));
   const [password, setPassword] = useState("");
+  /** "Shell command" was chosen in the password's list. */
+  const [handWritten, setHandWritten] = useState(false);
   /** SSH passwords and passphrases typed, by `secret_id`. */
   const [sshTyped, setSshTyped] = useState<Record<string, string>>({});
   const [page, setPage] = useState<Page>("general");
@@ -173,7 +175,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     else delete options[key];
     set("options", options);
   };
-  const source = passwordSource(conn);
+  // "Shell command" chosen over a manager keeps its command, to edit by hand: it would be
+  // recognized as the manager's again.
+  const source = handWritten && conn.password_command != null ? "command" : passwordSource(conn);
   const manager = managerById(source);
   const profile = profiles.find((p) => p.id === conn.network_profile) ?? null;
   const server = !isEmbedded(conn.driver);
@@ -743,7 +747,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     <span>{t("{secret} from", { secret })}</span>
                     <select
                       value={source}
-                      onChange={(e) => setConn((c) => withPasswordSource(c, e.target.value as PasswordSource))}
+                      onChange={(e) => {
+                        const chosen = e.target.value as PasswordSource;
+                        setHandWritten(chosen === "command");
+                        setConn((c) => withPasswordSource(c, chosen));
+                      }}
                       data-field="password_source"
                     >
                       <option value="keychain">{t("Saved in the keychain")}</option>
@@ -957,7 +965,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                 </label>
               </div>
               <p className="muted small">
-                {t("Run by the system's shell, e.g. to bring a VPN up: each session waits for the first to end, a minute at most, and fails with it; the second runs when the session closes.")}
+                {t("Run by the system's shell, e.g. to bring a VPN up. The first runs before the first session that needs it, which waits for its end, a minute at most, and fails with it; the second runs when the last such session closes.")}
               </p>
             </div>
           )}
