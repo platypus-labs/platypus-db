@@ -1,0 +1,182 @@
+//! Windows beside the main one: a tab moved to a window of its own (`tab-<n>`), and the quick
+//! query window (`quick`) the tray icon opens. Each loads the same app, which shows a single
+//! tab when its window is not `main`; a moved tab waits here until its window takes it.
+
+// Tauri hands commands their arguments by value.
+#![allow(clippy::needless_pass_by_value)]
+
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use tauri::menu::{Menu, MenuEvent, MenuItem};
+use tauri::tray::{TrayIcon, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Manager, State, WebviewWindowBuilder};
+
+use crate::error::{CommandError, CommandResult};
+
+/// The tabs waiting for their window, by its label, as the web view saved them (JSON).
+#[derive(Default)]
+pub struct Detached {
+    tabs: Mutex<HashMap<String, String>>,
+    next: AtomicU64,
+}
+
+const TRAY: &str = "main";
+pub const QUICK: &str = "quick";
+
+/// The main window's settings, for another window of the app: the same browser arguments and
+/// data folder (WebView2 shares one environment), with `label`, `title` and `size`.
+pub fn window_config(app: &AppHandle, label: &str) -> Option<tauri::utils::config::WindowConfig> {
+    let mut config = app.config().app.windows.first().cloned()?;
+    label.clone_into(&mut config.label);
+    if let Some(port) = std::env::var("PLATYPUS_DEVTOOLS_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+    {
+        let args = config.additional_browser_args.unwrap_or_default();
+        config.additional_browser_args = Some(format!("{args} --remote-debugging-port={port}"));
+    }
+    Some(config)
+}
+
+/// Opens another window of the app, with the system's title bar.
+fn open(
+    app: &AppHandle,
+    label: &str,
+    title: &str,
+    (width, height): (f64, f64),
+    on_top: bool,
+) -> CommandResult<()> {
+    let failed = |e: tauri::Error| CommandError::new("window", e.to_string());
+    let Some(mut config) = window_config(app, label) else {
+        return Err(CommandError::new("window", "no window is configured"));
+    };
+    title.clone_into(&mut config.title);
+    config.width = width;
+    config.height = height;
+    config.min_width = Some(480.0);
+    config.min_height = Some(320.0);
+    config.decorations = true;
+    config.always_on_top = on_top;
+    let mut window = WebviewWindowBuilder::from_config(app, &config).map_err(failed)?;
+    if std::env::var_os("PLATYPUS_DATA_DIR").is_none()
+        && let Some(dir) = platypus_mcp::profile::portable_dir()
+    {
+        window = window.data_directory(dir.join("webview"));
+    }
+    window.build().map_err(failed)?;
+    Ok(())
+}
+
+/// Opens a window for `tab` (saved by the web view as JSON), titled `title`; its label.
+#[tauri::command]
+pub fn open_tab_window(
+    app: AppHandle,
+    detached: State<'_, Detached>,
+    tab: String,
+    title: String,
+) -> CommandResult<String> {
+    let label = format!("tab-{}", detached.next.fetch_add(1, Ordering::Relaxed) + 1);
+    lock(&detached.tabs).insert(label.clone(), tab);
+    if let Err(e) = open(&app, &label, &title, (960.0, 680.0), false) {
+        lock(&detached.tabs).remove(&label);
+        return Err(e);
+    }
+    Ok(label)
+}
+
+/// The tab that waits for the window `label`, once.
+#[tauri::command]
+pub fn take_window_tab(detached: State<'_, Detached>, label: String) -> Option<String> {
+    lock(&detached.tabs).remove(&label)
+}
+
+/// Shows the quick query window, opening it if it is not open.
+pub fn open_quick(app: &AppHandle, title: &str) -> CommandResult<()> {
+    if let Some(window) = app.get_webview_window(QUICK) {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        return Ok(());
+    }
+    open(app, QUICK, title, (760.0, 480.0), true)
+}
+
+#[tauri::command]
+pub fn open_quick_window(app: AppHandle, title: String) -> CommandResult<()> {
+    open_quick(&app, &title)
+}
+
+/// Shows the tray icon with the menu `labels` (quick query, show, quit, then the quick
+/// window's title), or with `None` removes it. A system without a tray (Linux without
+/// `AppIndicator`) is an error, not a crash.
+#[tauri::command]
+pub fn set_tray(app: AppHandle, labels: Option<[String; 4]>) -> CommandResult<()> {
+    let Some(labels) = labels else {
+        let _ = app.remove_tray_by_id(TRAY);
+        return Ok(());
+    };
+    let _ = app.remove_tray_by_id(TRAY);
+    let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tray(&app, &labels)));
+    match built {
+        Ok(result) => result
+            .map(|_| ())
+            .map_err(|e| CommandError::new("tray", e.to_string())),
+        Err(_) => Err(CommandError::new(
+            "tray",
+            "this system has no tray for the icon",
+        )),
+    }
+}
+
+/// `labels`: the menu's quick query, show and quit, then the quick window's title.
+fn tray(app: &AppHandle, labels: &[String; 4]) -> tauri::Result<TrayIcon> {
+    let quick = MenuItem::with_id(app, "quick", &labels[0], true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", &labels[1], true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", &labels[2], true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&quick, &show, &quit])?;
+    let title = labels[3].clone();
+    let mut builder = TrayIconBuilder::with_id(TRAY)
+        .tooltip("PlatypusDB")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(
+            move |app: &AppHandle, event: MenuEvent| match event.id().as_ref() {
+                "quick" => {
+                    let _ = open_quick(app, &title);
+                }
+                "show" => show_main(app),
+                "quit" => app.exit(0),
+                _ => {}
+            },
+        );
+    let quick_title = labels[3].clone();
+    builder = builder.on_tray_icon_event(move |icon, event| {
+        // A click on the icon opens the quick query; the menu has the rest.
+        if let TrayIconEvent::Click {
+            button: tauri::tray::MouseButton::Left,
+            button_state: tauri::tray::MouseButtonState::Up,
+            ..
+        } = event
+        {
+            let _ = open_quick(icon.app_handle(), &quick_title);
+        }
+    });
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+    builder.build(app)
+}
+
+fn show_main(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
