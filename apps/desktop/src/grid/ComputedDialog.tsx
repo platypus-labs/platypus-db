@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ColumnInfo } from "../api";
 import { t } from "../i18n";
-import { type ComputedColumn, compile, ExpressionError } from "./computed";
+import { type ComputedColumn, compile, ExpressionError, FUNCTION_NAMES } from "./computed";
 
 interface Props {
   /** The result's columns, which expressions can use. */
@@ -27,8 +27,6 @@ function problem(e: unknown): string {
       return e.near ? t("The expression is not valid near: {text}", { text: e.near }) : t("The expression is incomplete.");
   }
 }
-
-const FUNCTIONS = "upper, lower, trim, length, substr, replace, abs, round, floor, ceil, coalesce, nullif, concat, if";
 
 /** Adds, changes and removes a grid's computed columns: a name and an expression on the row. */
 export function ComputedDialog({ columns, computed, saved, onChange, onClose }: Props) {
@@ -118,7 +116,7 @@ export function ComputedDialog({ columns, computed, saved, onChange, onClose }: 
           </label>
         </div>
         <p className={`small ${error ? "error-text" : "muted"}`} data-field="problem">
-          {error ?? t("Columns by name, quoted with \"…\" when they have spaces; + - * / %, || to join text, comparisons, AND, OR, NOT; functions: {list}.", { list: FUNCTIONS })}
+          {error ?? t("Columns by name, quoted with \"…\" when they have spaces; + - * / %, || to join text, comparisons, AND, OR, NOT; functions: {list}.", { list: FUNCTION_NAMES.join(", ") })}
         </p>
         <div className="actions">
           {editing !== null && (

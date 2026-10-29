@@ -41,6 +41,11 @@ type Token =
   | { kind: "op"; value: string; text: string }
   | { kind: "end"; text: string };
 
+/** A number literal, shared by the tokenizer and by the reading of a cell's text as a number. */
+const NUMBER = String.raw`(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?`;
+const NUMBER_TOKEN = new RegExp(`^${NUMBER}`);
+const NUMBER_TEXT = new RegExp(`^[+-]?${NUMBER}$`);
+
 const OPERATORS = ["<>", "!=", "<=", ">=", "||", "+", "-", "*", "/", "%", "=", "<", ">", "(", ")", ","];
 
 function tokenize(source: string): Token[] {
@@ -53,7 +58,7 @@ function tokenize(source: string): Token[] {
       continue;
     }
     const rest = source.slice(i);
-    const number = /^(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?/.exec(rest);
+    const number = NUMBER_TOKEN.exec(rest);
     if (number) {
       tokens.push({ kind: "number", value: Number(number[0]), text: number[0] });
       i += number[0].length;
@@ -105,8 +110,7 @@ function toNumber(v: Value): number | null {
   if (typeof v === "boolean") return v ? 1 : 0;
   if (v === null) return null;
   const text = v.trim();
-  if (text === "" || !/^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/.test(text)) return null;
-  return Number(text);
+  return NUMBER_TEXT.test(text) ? Number(text) : null;
 }
 
 function toText(v: Value): string | null {
@@ -161,7 +165,7 @@ const all =
 const strict = (args: Node[], f: (values: Value[]) => Value): Node =>
   all(args, (values) => (values.includes(null) ? null : f(values)));
 
-const numeric = (f: (...n: number[]) => number) => (values: Value[]) => {
+const numeric = (f: (...n: number[]) => Value) => (values: Value[]) => {
   const numbers = values.map(toNumber);
   return numbers.includes(null) ? null : f(...(numbers as number[]));
 };
@@ -173,6 +177,34 @@ interface FunctionDef {
 }
 
 const fn = (min: number, max: number, build: (args: Node[]) => Node): FunctionDef => ({ min, max, build });
+
+/** Division by zero, and any other operation without a number, gives NULL, as in most
+ *  databases' lenient modes. */
+const orNull = (n: number) => (Number.isNaN(n) ? null : n);
+
+type Arithmetic = Record<string, (a: number, b: number) => Value>;
+
+const ADDITIVE: Arithmetic = {
+  "+": (a, b) => a + b,
+  "-": (a, b) => a - b,
+};
+
+const MULTIPLICATIVE: Arithmetic = {
+  "*": (a, b) => orNull(a * b),
+  "/": (a, b) => (b === 0 ? null : orNull(a / b)),
+  "%": (a, b) => (b === 0 ? null : orNull(a % b)),
+};
+
+/** The comparison operators, from the result of `compare`. */
+const COMPARISONS: Record<string, (c: number) => boolean> = {
+  "=": (c) => c === 0,
+  "<>": (c) => c !== 0,
+  "!=": (c) => c !== 0,
+  "<": (c) => c < 0,
+  "<=": (c) => c <= 0,
+  ">": (c) => c > 0,
+  ">=": (c) => c >= 0,
+};
 
 /** The functions, by lower-case name. */
 const FUNCTIONS: Record<string, FunctionDef> = {
@@ -219,6 +251,9 @@ const FUNCTIONS: Record<string, FunctionDef> = {
     return toBool(c) ? yes!(cell) : no!(cell);
   }),
 };
+
+/** The names of the functions, for the user. */
+export const FUNCTION_NAMES = Object.keys(FUNCTIONS);
 
 /** Recursive descent over the tokens, from the loosest operator to the tightest. */
 class Parser {
@@ -269,36 +304,27 @@ class Parser {
   }
 
   private or(): Node {
-    let left = this.and();
-    while (this.isWord("or")) {
-      this.at++;
-      const l = left;
-      const r = this.and();
-      left = (cell) => {
-        const a = l(cell);
-        const b = r(cell);
-        if (a === undefined || b === undefined) return undefined;
-        const x = toBool(a);
-        const y = toBool(b);
-        return x === true || y === true ? true : x === null || y === null ? null : false;
-      };
-    }
-    return left;
+    return this.logical("or", true, () => this.and());
   }
 
   private and(): Node {
-    let left = this.not();
-    while (this.isWord("and")) {
+    return this.logical("and", false, () => this.not());
+  }
+
+  /** OR and AND: `decisive` on either side decides; else NULL on either side gives NULL. */
+  private logical(word: string, decisive: boolean, operand: () => Node): Node {
+    let left = operand();
+    while (this.isWord(word)) {
       this.at++;
       const l = left;
-      const r = this.not();
+      const r = operand();
       left = (cell) => {
         const a = l(cell);
         const b = r(cell);
         if (a === undefined || b === undefined) return undefined;
         const x = toBool(a);
         const y = toBool(b);
-        return x === false || y === false ? false : x === null || y === null ? null : true;
+        return x === decisive || y === decisive ? decisive : x === null || y === null ? null : !decisive;
       };
     }
     return left;
@@ -319,19 +345,10 @@ class Parser {
   private comparison(): Node {
     const left = this.concat();
     const t = this.peek();
-    if (t.kind === "op" && ["=", "<>", "!=", "<", "<=", ">", ">="].includes(t.value)) {
+    const ok = t.kind === "op" ? COMPARISONS[t.value] : undefined;
+    if (ok) {
       this.at++;
       const right = this.concat();
-      const test: Record<string, (c: number) => boolean> = {
-        "=": (c) => c === 0,
-        "<>": (c) => c !== 0,
-        "!=": (c) => c !== 0,
-        "<": (c) => c < 0,
-        "<=": (c) => c <= 0,
-        ">": (c) => c > 0,
-        ">=": (c) => c >= 0,
-      };
-      const ok = test[t.value]!;
       return all([left, right], ([a, b]) => {
         const c = compare(a!, b!);
         return c === null ? null : ok(c);
@@ -359,35 +376,22 @@ class Parser {
   }
 
   private additive(): Node {
-    let left = this.multiplicative();
-    for (;;) {
-      if (this.isOp("+")) {
-        this.at++;
-        left = strict([left, this.multiplicative()], numeric((a, b) => a + b));
-      } else if (this.isOp("-")) {
-        this.at++;
-        left = strict([left, this.multiplicative()], numeric((a, b) => a - b));
-      } else return left;
-    }
+    return this.arithmetic(ADDITIVE, () => this.multiplicative());
   }
 
   private multiplicative(): Node {
-    let left = this.unary();
+    return this.arithmetic(MULTIPLICATIVE, () => this.unary());
+  }
+
+  /** A left-associative chain of the operators in `ops`. */
+  private arithmetic(ops: Arithmetic, operand: () => Node): Node {
+    let left = operand();
     for (;;) {
       const t = this.peek();
-      if (t.kind !== "op" || !["*", "/", "%"].includes(t.value)) return left;
+      const op = t.kind === "op" ? ops[t.value] : undefined;
+      if (!op) return left;
       this.at++;
-      const right = this.unary();
-      left = strict(
-        [left, right],
-        numeric((a, b) => (t.value === "*" ? a * b : b === 0 ? NaN : t.value === "/" ? a / b : a % b)),
-      );
-      // Division by zero gives NULL, as in most databases' lenient modes.
-      const computed = left;
-      left = (cell) => {
-        const v = computed(cell);
-        return typeof v === "number" && Number.isNaN(v) ? null : v;
-      };
+      left = strict([left, operand()], numeric(op));
     }
   }
 
@@ -452,7 +456,8 @@ class Parser {
 export function compile(expression: string, columns: ColumnInfo[]): Evaluate {
   const column = (name: string, quoted: boolean) => {
     const exact = columns.findIndex((c) => c.name === name);
-    if (exact >= 0 || quoted) return exact >= 0 ? exact : undefined;
+    if (exact >= 0) return exact;
+    if (quoted) return undefined;
     const folded = columns.flatMap((c, i) => (c.name.toLowerCase() === name.toLowerCase() ? [i] : []));
     return folded.length === 1 ? folded[0] : undefined;
   };
