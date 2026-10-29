@@ -5661,6 +5661,7 @@ dependencies = [
  "platypus-driver-oracle",
  "platypus-driver-pg",
  "platypus-driver-redis",
+ "platypus-driver-search",
  "platypus-driver-sqlite",
  "platypus-drivers",
  "platypus-mcp",
