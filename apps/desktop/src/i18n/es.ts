@@ -1832,6 +1832,9 @@ const es: Record<string, string> = {
   "Secret in {manager}": "Secreto en {manager}",
   "Quotes, $, ` and % are left out: the command runs in the system's shell.": "Las comillas, $, ` y % se omiten: el comando se ejecuta en el shell del sistema.",
   "Runs {command}: its CLI must be installed and signed in.": "Ejecuta {command}: su CLI debe estar instalada y con la sesión iniciada.",
+  "Command before connecting": "Comando antes de conectar",
+  "Command after disconnecting": "Comando después de desconectar",
+  "Run by the system's shell, e.g. to bring a VPN up: each session waits for the first to end, a minute at most, and fails with it; the second runs when the session closes.": "Los ejecuta el shell del sistema, por ejemplo para activar una VPN: cada sesión espera a que termine el primero, un minuto como máximo, y falla si falla; el segundo se ejecuta al cerrarse la sesión.",
 };
 
 export default es;

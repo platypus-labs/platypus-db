@@ -1832,6 +1832,9 @@ const zh: Record<string, string> = {
   "Secret in {manager}": "{manager} 中的密钥",
   "Quotes, $, ` and % are left out: the command runs in the system's shell.": "引号、$、` 和 % 会被去掉：命令在系统 shell 中运行。",
   "Runs {command}: its CLI must be installed and signed in.": "运行 {command}：需已安装其 CLI 并登录。",
+  "Command before connecting": "连接前运行的命令",
+  "Command after disconnecting": "断开后运行的命令",
+  "Run by the system's shell, e.g. to bring a VPN up: each session waits for the first to end, a minute at most, and fails with it; the second runs when the session closes.": "由系统 shell 运行，例如启动 VPN：每个会话会等待第一个命令结束（最多一分钟），它失败则会话失败；第二个命令在会话关闭时运行。",
 };
 
 export default zh;

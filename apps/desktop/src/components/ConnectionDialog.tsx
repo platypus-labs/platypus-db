@@ -88,6 +88,8 @@ const FILES: Record<"sqlite" | "duckdb", { name: string; extensions: string[]; e
   },
 };
 
+const WINDOWS = navigator.userAgent.includes("Windows");
+
 const EMPTY_INIT: SavedInit = { schema: null, time_zone: null, statements: "" };
 
 function passwordSource(c: SavedConnection): PasswordSource {
@@ -906,6 +908,31 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   saved={savedSsh}
                 />
               )}
+              <div className="field-grid">
+                <label className="field">
+                  <span>{t("Command before connecting")}</span>
+                  <input
+                    value={conn.options?.before_connect ?? ""}
+                    onChange={(e) => setOption("before_connect", e.target.value)}
+                    placeholder={WINDOWS ? 'rasdial "Office VPN"' : "nmcli connection up office-vpn"}
+                    spellCheck={false}
+                    data-field="before_connect"
+                  />
+                </label>
+                <label className="field">
+                  <span>{t("Command after disconnecting")}</span>
+                  <input
+                    value={conn.options?.after_disconnect ?? ""}
+                    onChange={(e) => setOption("after_disconnect", e.target.value)}
+                    placeholder={WINDOWS ? 'rasdial "Office VPN" /disconnect' : "nmcli connection down office-vpn"}
+                    spellCheck={false}
+                    data-field="after_disconnect"
+                  />
+                </label>
+              </div>
+              <p className="muted small">
+                {t("Run by the system's shell, e.g. to bring a VPN up: each session waits for the first to end, a minute at most, and fails with it; the second runs when the session closes.")}
+              </p>
             </div>
           )}
 

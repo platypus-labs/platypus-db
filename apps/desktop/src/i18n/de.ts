@@ -1832,6 +1832,9 @@ const de: Record<string, string> = {
   "Secret in {manager}": "Geheimnis in {manager}",
   "Quotes, $, ` and % are left out: the command runs in the system's shell.": "Anführungszeichen, $, ` und % werden weggelassen: Der Befehl läuft in der Shell des Systems.",
   "Runs {command}: its CLI must be installed and signed in.": "Führt {command} aus: Die CLI muss installiert und angemeldet sein.",
+  "Command before connecting": "Befehl vor dem Verbinden",
+  "Command after disconnecting": "Befehl nach dem Trennen",
+  "Run by the system's shell, e.g. to bring a VPN up: each session waits for the first to end, a minute at most, and fails with it; the second runs when the session closes.": "Von der Shell des Systems ausgeführt, etwa um ein VPN zu starten: Jede Sitzung wartet auf das Ende des ersten, höchstens eine Minute, und schlägt mit ihm fehl; der zweite läuft, wenn die Sitzung endet.",
 };
 
 export default de;
