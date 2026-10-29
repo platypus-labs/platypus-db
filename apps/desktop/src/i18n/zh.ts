@@ -1820,6 +1820,7 @@ const zh: Record<string, string> = {
   "Only part of the rows of {names}: the memory limit stopped the reading.": "{names} 只有部分行：读取因内存限制而停止。",
   "(memory limit)": "（内存限制）",
   "Change every row on {name}?": "修改 {name} 上的每一行？",
+  "{name}: {product} {version} is older than {minimum}, the oldest version tested: some features may not work.": "{name}：{product} {version} 早于 {minimum}（经过测试的最早版本），部分功能可能无法使用。",
 };
 
 export default zh;

@@ -1820,6 +1820,7 @@ const es: Record<string, string> = {
   "Only part of the rows of {names}: the memory limit stopped the reading.": "Solo una parte de las filas de {names}: el límite de memoria detuvo la lectura.",
   "(memory limit)": "(límite de memoria)",
   "Change every row on {name}?": "¿Modificar todas las filas en {name}?",
+  "{name}: {product} {version} is older than {minimum}, the oldest version tested: some features may not work.": "{name}: {product} {version} es anterior a {minimum}, la versión más antigua probada: algunas funciones podrían no funcionar.",
 };
 
 export default es;
