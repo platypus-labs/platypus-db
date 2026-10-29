@@ -630,6 +630,81 @@ async fn mssql_import_into_money_falls_back_to_openjson() {
     run(conn, "DROP TABLE qa_fixdrv_money").await;
 }
 
+/// Text the bulk copy does not read (`01/02/2024`, which SQL Server reads month first)
+/// goes to SQL Server in an `OPENJSON` insert, and an existing `date` column takes the date
+/// of a date and time, as an `INSERT` does.
+#[tokio::test]
+async fn mssql_import_leaves_text_it_cannot_read_to_the_server() {
+    let Some(conn) = connect(&MssqlDriver, MSSQL).await else {
+        return;
+    };
+    let conn = &*conn;
+    run(conn, "DROP TABLE IF EXISTS qa_fixdrv_dates").await;
+    run(
+        conn,
+        "CREATE TABLE qa_fixdrv_dates (id int, d datetime2(0), day date)",
+    )
+    .await;
+    platypus_driver_duckdb::testing::load();
+    let dir = tempfile::tempdir().unwrap();
+    let source = file_connection(
+        &DuckDbDriver,
+        DriverKind::DuckDb,
+        &dir.path().join("src.duckdb"),
+    )
+    .await;
+    run(
+        &*source,
+        "CREATE TABLE src AS SELECT * FROM (VALUES \
+         (1, '2024-03-01 10:00:00', TIMESTAMP '2024-03-01 10:00:00'), \
+         (2, '01/02/2024 10:00', TIMESTAMP '2024-12-31 23:59:59')) t(id, d, day)",
+    )
+    .await;
+    let plan = ImportPlan {
+        source_table: "src".to_owned(),
+        source_schema: None,
+        schema: None,
+        table: "qa_fixdrv_dates".to_owned(),
+        create: false,
+        mode: ImportMode::Append,
+        keys: Vec::new(),
+        primary_key: Vec::new(),
+        identity: None,
+        constraints: Vec::new(),
+        columns: ["id", "d", "day"]
+            .map(|c| ImportColumn {
+                source: c.to_owned(),
+                target: c.to_owned(),
+                data_type: None,
+                not_null: false,
+                default: None,
+            })
+            .to_vec(),
+    };
+    let written = import(
+        (&*source, Dialect::DuckDb),
+        (conn, Dialect::SqlServer),
+        &plan,
+        |_| true,
+    )
+    .await
+    .unwrap();
+    assert_eq!(written, 2);
+    assert_eq!(
+        texts(
+            conn,
+            "SELECT CONVERT(varchar(19), d, 120), CONVERT(varchar(10), day, 23) \
+             FROM qa_fixdrv_dates ORDER BY id"
+        )
+        .await,
+        [
+            row(&["2024-03-01 10:00:00", "2024-03-01"]),
+            row(&["2024-01-02 10:00:00", "2024-12-31"])
+        ]
+    );
+    run(conn, "DROP TABLE qa_fixdrv_dates").await;
+}
+
 #[tokio::test]
 async fn sqlite_later_rows_of_other_types_keep_their_values() {
     let dir = tempfile::tempdir().unwrap();

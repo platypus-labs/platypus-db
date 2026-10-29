@@ -531,13 +531,15 @@ righe, tranne l'upsert; gli altri database restano con INSERT a blocchi. In
 manual commit il caricamento sta sotto il savepoint dell'istruzione. P3: SQL Server con la bulk copy di
 TDS (`INSERT BULK` con `KEEP_NULLS, CHECK_CONSTRAINTS, FIRE_TRIGGERS`, i valori dell'identity
 tenuti): il driver converte il testo nel tipo di ogni colonna, letto con `SELECT TOP 0`, prima
-di iniziare, e una tabella con `money`, `xml`, `text`, `image` o tipi CLR risponde
-`Unsupported`, così l'import ripiega su `OPENJSON` per il resto delle righe. Il `tiberius`
+di iniziare. Una tabella con `money`, `xml`, `text`, `image` o tipi CLR risponde `Unsupported`:
+l'import lo sa da un caricamento vuoto prima delle righe e scrive con `OPENJSON` (o INSERT sotto
+il livello di compatibilità 130). Un valore che la conversione non legge (`01/02/2024`) rimanda
+il blocco a `OPENJSON`, dove decide SQL Server. Il `tiberius`
 vendorizzato ha `bulk_columns`/`bulk_insert_columns` e le correzioni ai metadati di `date`,
 `nvarchar`, `time`, `datetimeoffset` e `smalldatetime`. DuckDB con l'appender
 (`appender_with_columns`, nella transazione della sessione o in una propria, così una riga
-fallita non lascia niente); i `TIMESTAMPTZ` si convertono in UTC nel driver, perché il cast
-dell'appender perde l'offset. Conformance: `bulk_loads_rows` su tutti, e in `value_fidelity`
+fallita non lascia niente, e un nome senza schema segue il `search_path`); i `TIMESTAMPTZ` si
+convertono in UTC nel driver, perché il cast dell'appender perde l'offset. Conformance: `bulk_loads_rows` su tutti, e in `value_fidelity`
 ogni tipo di SQL Server confrontato con un `INSERT` dello stesso testo. Su un server locale (Docker,
 stesso host) la bulk copy va come `OPENJSON`: un milione di righe in circa 9 s in tutti e due i
 casi; il guadagno atteso è sul lavoro del server (niente JSON da leggere), da misurare su un
