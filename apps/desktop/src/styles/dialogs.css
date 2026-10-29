@@ -1382,3 +1382,85 @@ label.multi-run-row:hover {
     animation: none;
   }
 }
+
+/* The transaction log: a block per transaction, its edge colored by how it ended. */
+
+.tx-log-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 55vh;
+  overflow: auto;
+}
+
+.tx-log-group {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.tx-log-group.commit {
+  border-left-color: var(--ok);
+}
+
+.tx-log-group.rollback {
+  border-left-color: var(--error);
+}
+
+.tx-log-group.open {
+  border-left-color: var(--warn);
+}
+
+.tx-log-group header {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.tx-log-end {
+  color: var(--fg-muted);
+}
+
+.tx-log-group.open .tx-log-end {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.tx-log-group ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tx-log-group li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 2px 0;
+}
+
+.tx-log-time {
+  flex: none;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tx-log-group code {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  word-break: break-word;
+}
+
+.tx-log-group li.failed code {
+  color: var(--error);
+}
+
+.tx-log-failed {
+  flex: none;
+  color: var(--error);
+  font-weight: 600;
+}

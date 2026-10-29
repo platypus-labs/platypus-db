@@ -1872,6 +1872,15 @@ const pt: Record<string, string> = {
   "{name} changes its rows only by SQL: nothing is written there.": "{name} muda suas linhas só por SQL: nada é escrito lá.",
   "{name} changes its rows only by SQL: nothing is imported there.": "{name} muda suas linhas só por SQL: nada é importado lá.",
   "{name} (rows by SQL only)": "{name} (linhas só por SQL)",
+  "Transaction log": "Registro de transações",
+  "Log": "Registro",
+  "Rolled back at {time}": "Revertida às {time}",
+  "Committed at {time}": "Confirmada às {time}",
+  "{n} statement run in this tab's session, newest first.": "{n} instrução executada na sessão desta aba, a mais recente primeiro.",
+  "{n} statements run in this tab's session, newest first.": "{n} instruções executadas na sessão desta aba, as mais recentes primeiro.",
+  "Nothing has run in this tab's session yet.": "Nada foi executado na sessão desta aba ainda.",
+  "Transaction from {time}": "Transação desde {time}",
+  "Committed on its own": "Confirmada sozinha",
 };
 
 export default pt;

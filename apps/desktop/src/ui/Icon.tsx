@@ -46,6 +46,7 @@ import {
   Puzzle,
   RefreshCw,
   RotateCcw,
+  ScrollText,
   Save,
   Search,
   Settings,
@@ -128,6 +129,7 @@ const ICONS = {
   sidebar: PanelLeft,
   "sidebar-close": PanelLeftClose,
   lock: Lock,
+  "tx-log": ScrollText,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

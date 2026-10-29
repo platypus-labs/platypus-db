@@ -1872,6 +1872,15 @@ const zh: Record<string, string> = {
   "{name} changes its rows only by SQL: nothing is written there.": "{name} 只能通过 SQL 修改行：不会写入任何内容。",
   "{name} changes its rows only by SQL: nothing is imported there.": "{name} 只能通过 SQL 修改行：不会导入任何内容。",
   "{name} (rows by SQL only)": "{name}（仅限 SQL 修改行）",
+  "Transaction log": "事务日志",
+  "Log": "日志",
+  "Rolled back at {time}": "{time} 已回滚",
+  "Committed at {time}": "{time} 已提交",
+  "{n} statement run in this tab's session, newest first.": "此标签页会话中运行的 {n} 条语句，最新的在前。",
+  "{n} statements run in this tab's session, newest first.": "此标签页会话中运行的 {n} 条语句，最新的在前。",
+  "Nothing has run in this tab's session yet.": "此标签页的会话中尚未运行任何内容。",
+  "Transaction from {time}": "事务开始于 {time}",
+  "Committed on its own": "单独提交",
 };
 
 export default zh;
