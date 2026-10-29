@@ -11,11 +11,11 @@ import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
 
-const NAME = "Shop dev";
-const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
-const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ?? '')`;
-const editorText = `[...${visibleTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n')`;
-const grid = `${visibleTab}.querySelector('.grid-scroll')`;
+export const NAME = "Shop dev";
+export const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
+export const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ?? '')`;
+export const editorText = `[...${visibleTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n')`;
+export const grid = `${visibleTab}.querySelector('.grid-scroll')`;
 const cancel = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')`;
 export const treeRow = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
@@ -109,13 +109,13 @@ export async function navigatorMenu(page, label, title) {
 
 /** Runs `action` and waits for the end of the run it starts: Cancel disabled again and a new
  *  status, emptied first as the old one may read the same. */
-async function afterRun(page, action) {
+export async function afterRun(page, action) {
   await page.eval(`(() => { const s = ${visibleTab}?.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
   await action();
   await page.waitFor(`${cancel}?.disabled === true && ${status} !== '' && !${status}.includes('Executing')`, 15_000);
 }
 
-async function openTable(page, name) {
+export async function openTable(page, name) {
   await page.eval(`${treeRow(name)}.id = 'e2e-table'`);
   await page.clickSel("#e2e-table", { clickCount: 2 });
   await page.eval(`document.getElementById('e2e-table')?.removeAttribute('id')`);
@@ -124,7 +124,7 @@ async function openTable(page, name) {
 }
 
 /** Replaces the focused cell's value with `text`; Enter saves it and moves down. */
-async function editCell(page, text) {
+export async function editCell(page, text) {
   await page.key("F2", "F2", 113);
   await page.waitFor(`document.querySelector('.cell-editor') !== null`);
   await page.key("a", "KeyA", 65, CTRL);
@@ -134,7 +134,7 @@ async function editCell(page, text) {
   await page.key("ArrowUp", "ArrowUp", 38);
 }
 
-async function setEditor(page, sql) {
+export async function setEditor(page, sql) {
   await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
   await page.key("a", "KeyA", 65, CTRL);
   await page.type(sql);
@@ -193,7 +193,7 @@ export async function openProject(page, n, name) {
   await page.waitFor(`document.querySelector('.navigator-project')?.textContent === ${JSON.stringify(name)}`);
 }
 
-async function closeTab(page) {
+export async function closeTab(page) {
   await page.key("w", "KeyW", 87, CTRL);
   await page.sleep(300);
 }
