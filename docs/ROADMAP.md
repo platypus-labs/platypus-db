@@ -118,7 +118,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | K — Shell ed ergonomia | ✅ completato |
 | L — Sicurezza operativa | ✅ completato |
 | M — Analisi dei dati | 🔒 Delfa · group-m-analysis-p3 · 2026-10-30 |
-| N — Accesso per agenti (MCP) | 🔒 Delfa · group-n-mcp-p3 · 2026-10-29 |
+| N — Accesso per agenti (MCP) | ✅ fatto (P1, P2; P3 in parte) |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
 | Q — Documentazione e catalogo dei dati | ✅ fatto (P2) |
