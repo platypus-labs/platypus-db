@@ -116,6 +116,9 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
     if driver == DriverKind::Redis {
         return analyze_redis(&sql, &map, cursor);
     }
+    if driver == DriverKind::Elasticsearch {
+        return analyze_search(&sql, &map, cursor);
+    }
     let dialect = Dialect::from(driver);
     let statements = platypus_sql::split(&sql, dialect);
     let at = platypus_sql::statement_at(&sql, dialect, map.to_byte(cursor));
@@ -201,6 +204,9 @@ pub(crate) fn only_reads(sql: &str, driver: DriverKind) -> bool {
         return command::split(sql).iter().all(|range| {
             command::parse(&sql[range.clone()]).is_ok_and(|c| c.kind() == command::Kind::Query)
         });
+    }
+    if driver == DriverKind::Elasticsearch {
+        return platypus_driver_search::command::only_reads(sql);
     }
     let dialect = Dialect::from(driver);
     platypus_sql::split(sql, dialect)
@@ -302,9 +308,58 @@ fn analyze_redis(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
     }
 }
 
-/// Whether the editor's text is SQL: not mongosh nor Redis commands.
+/// [`analyze_sql`] for Elasticsearch: console requests and SQL statements, which have no
+/// parameters.
+fn analyze_search(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
+    use platypus_driver_search::command::{self, Kind};
+    let statements = command::split(src);
+    let at = command::statement_at(src, map.to_byte(cursor));
+    SqlAnalysis {
+        at_cursor: at.and_then(|at| statements.iter().position(|s| *s == at)),
+        batches: Vec::new(),
+        statements: statements
+            .iter()
+            .map(|range| {
+                let parsed = command::parse(&src[range.clone()]);
+                let kind = parsed.as_ref().map_or(Kind::Other, command::Command::kind);
+                // A `_delete_by_query` with no query, or the deletion of every index, asks
+                // as a `DELETE` without `WHERE` does.
+                let unfiltered = parsed
+                    .ok()
+                    .and_then(|c| c.unfiltered())
+                    .map(|u| UnfilteredTable {
+                        schema: None,
+                        name: u.index,
+                        verb: u.verb,
+                        limited: false,
+                    })
+                    .into_iter()
+                    .collect();
+                StatementSpan {
+                    start: map.to_utf16(range.start),
+                    end: map.to_utf16(range.end),
+                    read_only: kind == Kind::Query,
+                    kind: match kind {
+                        Kind::Query => "query",
+                        Kind::Dml => "dml",
+                        // Changes to indices and to the server ask on production as DDL.
+                        Kind::Ddl | Kind::Other => "ddl",
+                    },
+                    unfiltered,
+                    parameters: Vec::new(),
+                }
+            })
+            .collect(),
+    }
+}
+
+/// Whether the editor's text is SQL: not mongosh, Redis or Elasticsearch requests (which
+/// take SQL among them, but not as the linter and the formatter read it).
 const fn speaks_sql(driver: DriverKind) -> bool {
-    !matches!(driver, DriverKind::Mongo | DriverKind::Redis)
+    !matches!(
+        driver,
+        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch
+    )
 }
 
 /// A problem the linter found by itself; offsets in UTF-16 units of the whole text.
@@ -468,6 +523,15 @@ pub fn query_source(sql: String, driver: DriverKind) -> Option<QuerySource> {
             items: vec![SourceItem::All],
         });
     }
+    if driver == DriverKind::Elasticsearch {
+        // The search `BROWSE` writes: the documents of one index, whose changes the grid saves.
+        let name = platypus_driver_search::command::source_index(sql.trim())?;
+        return Some(QuerySource {
+            schema: None,
+            name,
+            items: vec![SourceItem::All],
+        });
+    }
     if driver == DriverKind::Mongo {
         return None;
     }
@@ -594,6 +658,62 @@ mod tests {
     }
 
     #[test]
+    fn analyzes_search_requests() {
+        let src = "GET /orders/_search
+{\"size\":1}
+
+POST /orders/_delete_by_query
+
+SELECT * FROM orders
+
+DELETE /orders"
+            .to_owned();
+        let a = analyze_sql(src.clone(), DriverKind::Elasticsearch, 0);
+        let kinds: Vec<_> = a.statements.iter().map(|s| (s.kind, s.read_only)).collect();
+        assert_eq!(
+            kinds,
+            [
+                ("query", true),
+                ("dml", false),
+                ("query", true),
+                ("ddl", false)
+            ]
+        );
+        let every: Vec<_> = a
+            .statements
+            .iter()
+            .flat_map(|s| s.unfiltered.iter().map(|t| (t.verb, t.name.as_str())))
+            .collect();
+        assert_eq!(every, [("DELETE BY QUERY", "orders")]);
+        assert_eq!(a.at_cursor, Some(0));
+        assert!(only_reads(
+            "GET /a/_search
+SELECT 1",
+            DriverKind::Elasticsearch
+        ));
+        assert!(!only_reads(
+            "GET /a/_search
+DELETE /a",
+            DriverKind::Elasticsearch
+        ));
+        let source = query_source(
+            "GET /orders/_search
+{\"query\":{\"match_all\":{}}}"
+                .to_owned(),
+            DriverKind::Elasticsearch,
+        )
+        .unwrap();
+        assert_eq!(source.name, "orders");
+        assert!(query_source("SELECT 1".to_owned(), DriverKind::Elasticsearch).is_none());
+        assert!(sql_count_query("SELECT 1".to_owned(), DriverKind::Elasticsearch).is_none());
+        assert!(
+            lint_sql("SELECT * FROM t".to_owned(), DriverKind::Elasticsearch)
+                .issues
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn splits_mongosh_scripts() {
         let src = "db.a.find()\ndb.b.deleteMany({})\nshow dbs".to_owned();
         let a = analyze_sql(src.clone(), DriverKind::Mongo, src.len());
@@ -615,7 +735,7 @@ mod tests {
 fn rewritable(sql: &str, driver: DriverKind) -> bool {
     match driver {
         DriverKind::Mongo => true,
-        DriverKind::Redis => false,
+        DriverKind::Redis | DriverKind::Elasticsearch => false,
         _ => platypus_sql::analyze(sql, Dialect::from(driver)).kind == StatementKind::Query,
     }
 }

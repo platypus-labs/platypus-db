@@ -21,7 +21,7 @@ use std::ops::Range;
 
 use serde::de::IgnoredAny;
 
-pub use crate::kind::{Kind, sql_kind};
+pub use crate::kind::{Kind, Unfiltered, sql_kind};
 
 /// The body of a request.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -299,9 +299,16 @@ pub fn statement_at(src: &str, at: usize) -> Option<Range<usize>> {
 /// The statement that opens an index in the data viewer: all its documents.
 #[must_use]
 pub fn browse(index: &str) -> String {
+    browse_limited(index, None)
+}
+
+/// [`browse`] that reads `limit` documents at most.
+#[must_use]
+pub fn browse_limited(index: &str, limit: Option<u64>) -> String {
+    let size = limit.map(|n| format!("\"size\":{n},")).unwrap_or_default();
     format!(
         "GET /{}/_search
-{{\"query\":{{\"match_all\":{{}}}}}}",
+{{{size}\"query\":{{\"match_all\":{{}}}}}}",
         crate::meta::segment(index)
     )
 }

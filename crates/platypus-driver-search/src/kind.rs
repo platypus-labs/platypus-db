@@ -142,6 +142,74 @@ impl Request {
     }
 }
 
+/// A request that changes every document of the indices it names, or every index.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unfiltered {
+    /// `DELETE BY QUERY`, `UPDATE BY QUERY` or `DELETE INDEX`.
+    pub verb: &'static str,
+    /// The index expression it names.
+    pub index: String,
+}
+
+impl Command {
+    /// What the statement changes without a filter, for the confirmation before it runs.
+    #[must_use]
+    pub fn unfiltered(&self) -> Option<Unfiltered> {
+        match self {
+            Self::Request(request) => request.unfiltered(),
+            Self::Sql(_) => None,
+        }
+    }
+}
+
+impl Request {
+    /// A `_delete_by_query` or `_update_by_query` with no query (or a `match_all` one), or a
+    /// `DELETE` of every index (`_all`, `*`): the counterparts of a `DELETE` without `WHERE`.
+    #[must_use]
+    pub fn unfiltered(&self) -> Option<Unfiltered> {
+        let parts: Vec<&str> = self.path.split('/').filter(|s| !s.is_empty()).collect();
+        let (verb, index) = match (self.method.as_str(), parts.as_slice()) {
+            ("POST", [index, api]) if api.eq_ignore_ascii_case("_delete_by_query") => {
+                ("DELETE BY QUERY", index)
+            }
+            ("POST", [index, api]) if api.eq_ignore_ascii_case("_update_by_query") => {
+                ("UPDATE BY QUERY", index)
+            }
+            ("DELETE", [index]) if matches!(*index, "_all" | "*") => ("DELETE INDEX", index),
+            _ => return None,
+        };
+        if verb != "DELETE INDEX" && self.filters() {
+            return None;
+        }
+        Some(Unfiltered {
+            verb,
+            index: (*index).to_owned(),
+        })
+    }
+
+    /// Whether the request narrows the documents it reaches, by `q` or by a query that is
+    /// not `match_all`.
+    fn filters(&self) -> bool {
+        if self
+            .param("q")
+            .is_some_and(|q| !matches!(q, "" | "*" | "*:*"))
+        {
+            return true;
+        }
+        let Body::Json(text) = &self.body else {
+            return false;
+        };
+        let Ok(body) = serde_json::from_str::<Value>(text) else {
+            return false;
+        };
+        body.get("query").is_some_and(|query| {
+            !query
+                .as_object()
+                .is_some_and(|q| q.is_empty() || (q.len() == 1 && q.contains_key("match_all")))
+        })
+    }
+}
+
 /// The SQL endpoint (`_sql`, `_plugins/_sql`), which `rest` follows: its helpers read, and a
 /// statement is what its body says.
 fn sql_endpoint(rest: &[&str], body: &Body) -> Kind {
@@ -205,6 +273,48 @@ mod tests {
 
     fn kind(text: &str) -> Kind {
         parse(text).unwrap().kind()
+    }
+
+    fn unfiltered(text: &str) -> Option<(&'static str, String)> {
+        parse(text).unwrap().unfiltered().map(|u| (u.verb, u.index))
+    }
+
+    #[test]
+    fn changes_without_a_filter_are_found() {
+        let every = |verb, index: &str| Some((verb, index.to_owned()));
+        assert_eq!(
+            unfiltered("POST /orders/_delete_by_query"),
+            every("DELETE BY QUERY", "orders")
+        );
+        assert_eq!(
+            unfiltered(
+                "POST /orders/_delete_by_query
+{\"query\":{\"match_all\":{}}}"
+            ),
+            every("DELETE BY QUERY", "orders")
+        );
+        assert_eq!(
+            unfiltered(
+                "POST /o*/_update_by_query?q=*
+{\"script\":\"x\"}"
+            ),
+            every("UPDATE BY QUERY", "o*")
+        );
+        assert_eq!(unfiltered("DELETE /_all"), every("DELETE INDEX", "_all"));
+        assert_eq!(unfiltered("DELETE /*"), every("DELETE INDEX", "*"));
+        for filtered in [
+            "POST /o/_delete_by_query
+{\"query\":{\"term\":{\"a\":1}}}",
+            "POST /o/_delete_by_query?q=a:1",
+            "POST /o/_update_by_query
+{\"query\":{\"match_none\":{}}}",
+            "DELETE /orders",
+            "DELETE /orders/_doc/1",
+            "POST /orders/_search",
+            "SELECT 1",
+        ] {
+            assert_eq!(unfiltered(filtered), None, "{filtered}");
+        }
     }
 
     #[test]
