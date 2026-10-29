@@ -1,7 +1,11 @@
 //! Network paths to database servers. An SSH tunnel listens on a local port and forwards
 //! every connection to the database through the SSH server (`ssh -L`), optionally reached
-//! through a jump host (`ssh -J`). [`connect`] opens the tunnel, then the driver's
-//! connection through it, and keeps the tunnel alive as long as the connection.
+//! through a jump host (`ssh -J`). [`connect`] runs the connection's command before
+//! connecting (see [`hooks`]), opens the tunnel, then the driver's connection through it,
+//! and keeps the tunnel alive as long as the connection; its command after disconnecting
+//! runs when the connection goes.
+
+pub mod hooks;
 
 use std::fmt;
 use std::net::SocketAddr;
@@ -313,7 +317,8 @@ impl Drop for Tunnel {
 }
 
 /// Opens `driver`'s connection for `config`, through its SSH tunnel when it has one; see
-/// [`Tunnel::open`] for `known_hosts`.
+/// [`Tunnel::open`] for `known_hosts`. The command before connecting runs first, and the
+/// one after disconnecting when the connection goes, or at once when it could not be made.
 pub async fn connect<F, Fut>(
     config: &ConnectionConfig,
     known_hosts: Option<&Path>,
@@ -323,8 +328,40 @@ where
     F: FnOnce(ConnectionConfig) -> Fut,
     Fut: Future<Output = Result<Box<dyn Connection>>>,
 {
+    let mut config = config.clone();
+    let (before, after) = hooks::take(&mut config);
+    if let Some(command) = &before {
+        hooks::before(command).await?;
+    }
+    let connected = connect_direct(config, known_hosts, driver).await;
+    match connected {
+        Ok((inner, tunnel)) if tunnel.is_some() || after.is_some() => Ok(Box::new(Held {
+            inner,
+            tunnel,
+            after,
+        })),
+        Ok((inner, _)) => Ok(inner),
+        Err(e) => {
+            if let Some(command) = &after {
+                hooks::after(command);
+            }
+            Err(e)
+        }
+    }
+}
+
+/// The driver's connection, through the SSH tunnel when there is one.
+async fn connect_direct<F, Fut>(
+    config: ConnectionConfig,
+    known_hosts: Option<&Path>,
+    driver: F,
+) -> Result<(Box<dyn Connection>, Option<Tunnel>)>
+where
+    F: FnOnce(ConnectionConfig) -> Fut,
+    Fut: Future<Output = Result<Box<dyn Connection>>>,
+{
     let Some(ssh) = &config.ssh else {
-        return driver(config.clone()).await;
+        return Ok((driver(config).await?, None));
     };
     let port = config
         .port
@@ -334,19 +371,34 @@ where
     let mut direct = config.clone();
     direct.ssh = None;
     direct.connect_addr = Some(tunnel.local_addr());
-    let inner = driver(direct).await?;
-    Ok(Box::new(Tunneled { inner, tunnel }))
+    Ok((driver(direct).await?, Some(tunnel)))
 }
 
-/// A connection through an SSH tunnel, which lives as long as it.
+/// A connection with what lives as long as it: its SSH tunnel, and its command after
+/// disconnecting, run when it goes.
 #[derive(Debug)]
-struct Tunneled {
+struct Held {
     inner: Box<dyn Connection>,
-    tunnel: Tunnel,
+    tunnel: Option<Tunnel>,
+    after: Option<String>,
+}
+
+impl Held {
+    fn tunnel_closed(&self) -> bool {
+        self.tunnel.as_ref().is_some_and(Tunnel::is_closed)
+    }
+}
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        if let Some(command) = &self.after {
+            hooks::after(command);
+        }
+    }
 }
 
 #[async_trait]
-impl Connection for Tunneled {
+impl Connection for Held {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
         self.inner.execute(sql, options).await
     }
@@ -364,11 +416,11 @@ impl Connection for Tunneled {
     }
 
     fn is_closed(&self) -> bool {
-        self.inner.is_closed() || self.tunnel.is_closed()
+        self.inner.is_closed() || self.tunnel_closed()
     }
 
     async fn check_alive(&self) -> bool {
-        !self.tunnel.is_closed() && self.inner.check_alive().await
+        !self.tunnel_closed() && self.inner.check_alive().await
     }
 
     fn take_messages(&self) -> Vec<String> {
