@@ -39,13 +39,15 @@ async function openBody(page, connection, row) {
   await page.waitFor(`${treeRow(connection)} !== undefined`);
   const expanded = await page.eval(`${treeRow(connection)}.closest('[role=treeitem]')?.getAttribute('aria-expanded') === 'true'`);
   if (!expanded) await page.eval(`${treeRow(connection)}.querySelector(".twisty").click()`);
-  await page.waitFor(`[...document.querySelectorAll('.tree-row')].filter(r => r.querySelector('.tree-label')?.textContent === 'docs').length > 0`);
-  // The `docs` row under this connection: the first one after its row.
-  await page.eval(`(() => {
+  // The `docs` row under this connection: the first one after its row. Wait for that one,
+  // not any `docs`: the other connection's is already there when opening the second.
+  const docs = `(() => {
     const rows = [...document.querySelectorAll('.tree-row')];
     const at = rows.indexOf(${treeRow(connection)});
-    rows.slice(at + 1).find(r => r.querySelector('.tree-label')?.textContent === 'docs').id = 'e2e-docs';
-  })()`);
+    return at < 0 ? undefined : rows.slice(at + 1).find(r => r.querySelector('.tree-label')?.textContent === 'docs');
+  })()`;
+  await page.waitFor(`${docs} !== undefined`, 15_000);
+  await page.eval(`${docs}.id = 'e2e-docs'`);
   await page.clickSel("#e2e-docs", { clickCount: 2 });
   await page.eval(`document.getElementById('e2e-docs').removeAttribute('id')`);
   await page.waitFor(`${status} === '3 rows'`, 15_000);
