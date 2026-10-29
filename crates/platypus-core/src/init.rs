@@ -49,6 +49,14 @@ impl SessionInit {
                     ));
                 }
                 DriverKind::Mongo => out.push(format!("use {schema}")),
+                // Schemas are the numbered databases, `db0`, `db1`…
+                DriverKind::Redis => {
+                    let n = schema.strip_prefix("db").unwrap_or(schema);
+                    if n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit()) {
+                        return Err(Error::Config(format!("invalid Redis database `{schema}`")));
+                    }
+                    out.push(format!("SELECT {n}"));
+                }
                 DriverKind::Oracle => out.push(format!(
                     "ALTER SESSION SET CURRENT_SCHEMA = {}",
                     quote(schema, '"')
@@ -90,8 +98,11 @@ impl SessionInit {
                         "SQL Server has no session time zone".to_owned(),
                     ));
                 }
-                DriverKind::Mongo => {
-                    return Err(Error::Config("MongoDB has no session time zone".to_owned()));
+                DriverKind::Mongo | DriverKind::Redis => {
+                    return Err(Error::Config(format!(
+                        "{} has no session time zone",
+                        driver.name()
+                    )));
                 }
                 DriverKind::Trino | DriverKind::Databricks => {
                     out.push(format!("SET TIME ZONE '{zone}'"));

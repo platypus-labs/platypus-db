@@ -39,6 +39,8 @@ impl ConnectionConfig {
             DriverKind::Sqlite => "sqlite",
             DriverKind::DuckDb => "duckdb",
             DriverKind::Mongo => return Some(self.mongo_url()),
+            DriverKind::Redis if self.redis_tls() => "rediss",
+            DriverKind::Redis => "redis",
             _ => return None,
         };
         if self.driver.is_embedded() {
@@ -52,7 +54,12 @@ impl ConnectionConfig {
             url.push_str(&encode(&self.database));
         }
         let mut params = Vec::new();
-        if self.ssl_mode != Self::url_ssl_mode(self.driver) {
+        // `rediss://` says TLS, verified unless told otherwise.
+        let implied = match scheme {
+            "rediss" => SslMode::VerifyFull,
+            _ => Self::url_ssl_mode(self.driver),
+        };
+        if self.ssl_mode != implied {
             params.push(format!("sslmode={}", self.ssl_mode.as_str()));
         }
         for (key, path) in [
@@ -76,6 +83,13 @@ impl ConnectionConfig {
             let _ = write!(url, "?{}", params.join("&"));
         }
         Some(url)
+    }
+
+    /// Whether a Redis connection goes over TLS: Redis does not negotiate it, so `prefer`
+    /// is plaintext.
+    #[must_use]
+    pub const fn redis_tls(&self) -> bool {
+        !matches!(self.ssl_mode, SslMode::Disable | SslMode::Prefer)
     }
 
     /// `user@host:port`, the host in brackets when it is an IPv6 address, its zone's `%`
@@ -245,6 +259,20 @@ mod tests {
         assert_eq!(
             round_trip("sqlite://C:/data/x.db"),
             "sqlite:///C:/data/x.db"
+        );
+    }
+
+    #[test]
+    fn redis_urls_round_trip() {
+        assert_eq!(round_trip("redis://h:6380/2"), "redis://h:6380/2");
+        assert_eq!(round_trip("rediss://u:p@h/0"), "rediss://u@h:6379/0");
+        assert_eq!(
+            round_trip("rediss://h/1?sslmode=require"),
+            "rediss://h:6379/1?sslmode=require"
+        );
+        assert_eq!(
+            round_trip("redis://h/0?sslmode=require"),
+            "rediss://h:6379/0?sslmode=require"
         );
     }
 

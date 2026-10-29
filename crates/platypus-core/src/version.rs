@@ -63,6 +63,8 @@ pub fn minimum_version(product: &str) -> Option<ServerVersion> {
         // 14.0 is SQL Server 2017.
         "SQL Server" => ServerVersion::new(14, 0, 0),
         "MongoDB" => ServerVersion::new(5, 0, 0),
+        // `SCAN … TYPE`, ACL users and RESP3.
+        "Redis" => ServerVersion::new(6, 0, 0),
         _ => return None,
     })
 }
