@@ -1,4 +1,5 @@
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { formatBytes } from "../format";
 import {
   api,
   type Capabilities,
@@ -66,17 +67,6 @@ const viewSetting = defineSetting({
 const SIMPLE_KINDS = new Set<ObjectKind>(["table", "view", "materialized_view"]);
 
 const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
-
-function formatBytes(bytes: number): string {
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return `${unit === 0 ? value : value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
-}
 
 /** `~1.2K`: the row count the statistics say, compact, for the end of the row. */
 function rowCount(object: ObjectMeta): string | undefined {
