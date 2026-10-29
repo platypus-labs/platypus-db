@@ -118,6 +118,10 @@ pub struct ContextResult {
     pub rows: Vec<Vec<Option<String>>>,
     /// The result has more rows than these, or they were cut to fit.
     pub truncated: bool,
+    /// How many rows the whole result has, when the app knows (it does not while the rows
+    /// are still being fetched).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_rows: Option<usize>,
 }
 
 /// What the user shared. Each part the user did not share, or the tab lacks, is `None`.

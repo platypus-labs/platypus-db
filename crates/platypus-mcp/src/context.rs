@@ -87,7 +87,10 @@ fn limited(mut context: UserContext, parts: &[ContextPart]) -> SharedContext {
 /// `result` cut to [`CONTEXT_ROWS`] rows and [`CONTEXT_RESULT_BYTES`] bytes, with a note for
 /// what the cut took.
 fn limit_result(result: &mut ContextResult, notes: &mut Vec<String>) {
-    let total = result.rows.len();
+    let sent = result.rows.len();
+    // The app's count of the whole result, when it has one, else what it sent.
+    let known_total = result.total_rows.map(|t| t.max(sent));
+    let total = known_total.unwrap_or(sent);
     let mut left =
         CONTEXT_RESULT_BYTES.saturating_sub(result.columns.iter().map(String::len).sum());
     let (mut kept, mut cells_cut) = (Vec::new(), false);
@@ -112,8 +115,13 @@ fn limit_result(result: &mut ContextResult, notes: &mut Vec<String>) {
     }
     if kept.len() < total {
         result.truncated = true;
+        let of = if known_total.is_some() {
+            format!("of its {total} rows")
+        } else {
+            "of the rows shared".to_owned()
+        };
         notes.push(format!(
-            "the result was cut to {} of its {total} rows (at most {CONTEXT_ROWS} rows and {CONTEXT_RESULT_BYTES} bytes)",
+            "the result was cut to {} {of} (at most {CONTEXT_ROWS} rows and {CONTEXT_RESULT_BYTES} bytes)",
             kept.len()
         ));
     }
@@ -203,6 +211,7 @@ mod tests {
                 columns: vec!["n".to_owned()],
                 rows: (0..rows).map(|i| vec![Some(i.to_string())]).collect(),
                 truncated: false,
+                total_rows: None,
             }),
             ..UserContext::default()
         }
@@ -227,7 +236,37 @@ mod tests {
         let result = shared.context.result.unwrap();
         assert_eq!(result.rows.len(), CONTEXT_ROWS);
         assert!(result.truncated);
-        assert!(shared.notes.iter().any(|n| n.contains("250 rows")));
+        // The app did not say how many rows the result has: only what was shared is known.
+        assert!(
+            shared
+                .notes
+                .iter()
+                .any(|n| n.contains("cut to 100 of the rows shared")),
+            "{:?}",
+            shared.notes
+        );
+
+        // The app sent its first 100 of 150: the note carries the real size.
+        let mut sent = context("x", 100);
+        let known = sent.result.as_mut().unwrap();
+        known.total_rows = Some(150);
+        known.truncated = true;
+        let shared = limited(sent, &ContextPart::ALL);
+        assert!(
+            shared
+                .notes
+                .iter()
+                .any(|n| n.contains("cut to 100 of its 150 rows")),
+            "{:?}",
+            shared.notes
+        );
+        // All rows sent and counted: nothing was cut.
+        let mut whole = context("x", 5);
+        whole.result.as_mut().unwrap().total_rows = Some(5);
+        assert_eq!(
+            limited(whole, &ContextPart::ALL).notes,
+            Vec::<String>::new()
+        );
 
         let mut wide = context("x", 0);
         let big = || vec![Some("y".repeat(CONTEXT_CELL_BYTES))];

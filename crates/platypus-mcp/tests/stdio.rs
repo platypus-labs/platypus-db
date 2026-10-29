@@ -524,10 +524,11 @@ fn shares_what_the_user_works_on_only_with_consent() {
     let (closed, error) = client.call("get_user_context", &json!({}));
     assert!(error && closed.contains("not open"), "{closed}");
 
-    let rows: Vec<String> = (0..150).map(|i| format!("[\"{i}\",null]")).collect();
+    // As the page sends it: the first 100 rows of a result of 150.
+    let rows: Vec<String> = (0..100).map(|i| format!("[\"{i}\",null]")).collect();
     let shared = Box::leak(
         format!(
-            r#"{{"answer":"once","context":{{"connection":"App db","connection_id":"00000000-0000-4000-8000-000000000001","tab":"Orders","editor":"SELECT 1","selection":"1","result":{{"columns":["n","m"],"rows":[{}],"truncated":false}}}}}}"#,
+            r#"{{"answer":"once","context":{{"connection":"App db","connection_id":"00000000-0000-4000-8000-000000000001","tab":"Orders","editor":"SELECT 1","selection":"1","result":{{"columns":["n","m"],"rows":[{}],"truncated":true,"total_rows":150}}}}}}"#,
             rows.join(",")
         )
         .into_boxed_str(),
@@ -556,7 +557,10 @@ fn shares_what_the_user_works_on_only_with_consent() {
     assert_eq!(context["result"]["truncated"], true);
     assert_eq!(context["result"]["rows"][1], json!(["1", null]));
     assert!(
-        context["notes"][0].as_str().unwrap().contains("150 rows"),
+        context["notes"][0]
+            .as_str()
+            .unwrap()
+            .contains("cut to 100 of its 150 rows"),
         "{text}"
     );
 
@@ -916,6 +920,7 @@ fn resource_reads_are_logged(dir: &Path) {
 /// Connections that share a name get their id in the resource uri; one name stays a name.
 #[test]
 fn resources_of_connections_with_the_same_name_use_the_id() {
+    use std::fmt::Write as _;
     let dir = tempfile::tempdir().unwrap();
     profile(dir.path());
     sqlite(
@@ -924,11 +929,13 @@ fn resources_of_connections_with_the_same_name_use_the_id() {
     );
     let toml = dir.path().join("connections.toml");
     let mut text = std::fs::read_to_string(&toml).unwrap();
-    text.push_str(&format!(
+    write!(
+        text,
         "\n[[connections]]\nid = \"00000000-0000-4000-8000-000000000005\"\nname = \"Scratch\"\n\
          driver = \"sqlite\"\ndatabase = '{}'\n",
         dir.path().join("dup.db").display()
-    ));
+    )
+    .unwrap();
     std::fs::write(&toml, text).unwrap();
     let mut client = initialized(dir.path());
 
