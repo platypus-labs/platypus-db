@@ -119,6 +119,37 @@ function withPasswordSource(c: SavedConnection, source: PasswordSource): SavedCo
   };
 }
 
+/** A text field for `conn`'s option `name`. */
+function OptionField({
+  conn,
+  setOption,
+  name,
+  label,
+  placeholder,
+  required = false,
+}: {
+  conn: SavedConnection;
+  setOption: (key: string, value: string) => void;
+  name: string;
+  label: string;
+  placeholder: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input
+        required={required}
+        value={conn.options?.[name] ?? ""}
+        onChange={(e) => setOption(name, e.target.value)}
+        placeholder={placeholder}
+        spellCheck={false}
+        data-field={name}
+      />
+    </label>
+  );
+}
+
 /** The port a cloud's CLI forwards to the server: `kubectl port-forward` or an AWS SSM
  *  session, run by `platypus-net` on a free local port while the connection is open. */
 function PortForwardFields({
@@ -132,18 +163,8 @@ function PortForwardFields({
   setOption: (key: string, value: string) => void;
 }) {
   const option = (key: string) => conn.options?.[key] ?? "";
-  const field = (key: string, label: string, placeholder: string, required = false) => (
-    <label className="field">
-      <span>{label}</span>
-      <input
-        required={required}
-        value={option(key)}
-        onChange={(e) => setOption(key, e.target.value)}
-        placeholder={placeholder}
-        spellCheck={false}
-        data-field={key}
-      />
-    </label>
+  const field = (name: string, label: string, placeholder: string, required = false) => (
+    <OptionField conn={conn} setOption={setOption} name={name} label={label} placeholder={placeholder} required={required} />
   );
   const kind = option("forward");
   const alongside = kind && (tunnel || option("proxy"));
@@ -850,26 +871,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   {signIn ? (
                     signIn.id === "aws_iam" && (
                       <>
-                        <label className="field">
-                          <span>{t("AWS region")}</span>
-                          <input
-                            value={conn.options?.aws_region ?? ""}
-                            onChange={(e) => setOption("aws_region", e.target.value)}
-                            placeholder={t("The profile's")}
-                            spellCheck={false}
-                            data-field="aws_region"
-                          />
-                        </label>
-                        <label className="field">
-                          <span>{t("AWS profile")}</span>
-                          <input
-                            value={conn.options?.aws_profile ?? ""}
-                            onChange={(e) => setOption("aws_profile", e.target.value)}
-                            placeholder="default"
-                            spellCheck={false}
-                            data-field="aws_profile"
-                          />
-                        </label>
+                        <OptionField conn={conn} setOption={setOption} name="aws_region" label={t("AWS region")} placeholder={t("The profile's")} />
+                        <OptionField conn={conn} setOption={setOption} name="aws_profile" label={t("AWS profile")} placeholder="default" />
                       </>
                     )
                   ) : manager ? (

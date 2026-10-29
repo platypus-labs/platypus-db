@@ -92,7 +92,11 @@ async fn connect(config: &ConnectionConfig) -> platypus_core::Result<Box<dyn Con
 }
 
 async fn answers(conn: &dyn Connection) {
-    match conn.execute("SELECT 1", &ExecOptions::default()).await.unwrap() {
+    match conn
+        .execute("SELECT 1", &ExecOptions::default())
+        .await
+        .unwrap()
+    {
         ExecResult::Rows { .. } => {}
         other => panic!("SELECT 1 gave {other:?}"),
     }
@@ -131,8 +135,12 @@ async fn signs_in_with_the_token(dir: &Path, mut config: ConnectionConfig) {
 }
 
 async fn reaches_through_the_forward(mut config: ConnectionConfig) {
-    config.options.insert(FORWARD.to_owned(), "kubernetes".to_owned());
-    config.options.insert(K8S_TARGET.to_owned(), "svc/db".to_owned());
+    config
+        .options
+        .insert(FORWARD.to_owned(), "kubernetes".to_owned());
+    config
+        .options
+        .insert(K8S_TARGET.to_owned(), "svc/db".to_owned());
     let conn = connect(&config).await.unwrap();
     answers(conn.as_ref()).await;
     drop(conn);

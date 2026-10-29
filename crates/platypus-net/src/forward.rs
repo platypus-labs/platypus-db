@@ -7,8 +7,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::time::{Duration, Instant};
 
 use platypus_core::{
-    AWS_PROFILE, AWS_REGION, ConnectionConfig, Error, FORWARD, K8S_CONTEXT, K8S_NAMESPACE,
-    K8S_TARGET, Result, SSM_TARGET,
+    ConnectionConfig, Error, FORWARD, K8S_CONTEXT, K8S_NAMESPACE, K8S_TARGET, Result, SSM_TARGET,
 };
 use tokio::task::JoinHandle;
 
@@ -26,13 +25,7 @@ pub(crate) fn command(
     let Some(kind) = config.options.get(FORWARD).filter(|k| !k.is_empty()) else {
         return Ok(None);
     };
-    let option = |key: &str| {
-        config
-            .options
-            .get(key)
-            .map(|v| v.trim())
-            .filter(|v| !v.is_empty())
-    };
+    let option = |key: &str| cli::option(config, key);
     let port = config
         .port
         .or(config.driver.default_port())
@@ -70,12 +63,7 @@ pub(crate) fn command(
                     config.host
                 ),
             ]);
-            if let Some(region) = option(AWS_REGION) {
-                push(&["--region", region]);
-            }
-            if let Some(profile) = option(AWS_PROFILE) {
-                push(&["--profile", profile]);
-            }
+            args.extend(cli::aws_flags(config));
             "aws"
         }
         other => return Err(Error::Config(format!("unknown port forward `{other}`"))),
@@ -144,7 +132,7 @@ pub(crate) async fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use platypus_core::DriverKind;
+    use platypus_core::{AWS_PROFILE, DriverKind};
 
     fn config(options: &[(&str, &str)]) -> ConnectionConfig {
         let mut config = ConnectionConfig::new(DriverKind::Postgres);

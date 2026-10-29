@@ -5,9 +5,7 @@
 
 use std::time::Duration;
 
-use platypus_core::{
-    AWS_PROFILE, AWS_REGION, Auth, ConnectionConfig, DriverKind, Error, Result, Secret,
-};
+use platypus_core::{Auth, ConnectionConfig, DriverKind, Error, Result, Secret};
 
 use crate::cli;
 
@@ -17,13 +15,6 @@ const TOKEN_TIMEOUT: Duration = Duration::from_secs(120);
 /// The CLI and its arguments that print `config`'s token, `None` when its password is not a
 /// token.
 pub(crate) fn command(config: &ConnectionConfig) -> Result<Option<(&'static str, Vec<String>)>> {
-    let option = |key: &str| {
-        config
-            .options
-            .get(key)
-            .map(|v| v.trim())
-            .filter(|v| !v.is_empty())
-    };
     let args = |items: &[&str]| items.iter().map(|&s| s.to_owned()).collect::<Vec<_>>();
     Ok(Some(match config.auth()? {
         Auth::Password | Auth::Windows => return Ok(None),
@@ -44,11 +35,7 @@ pub(crate) fn command(config: &ConnectionConfig) -> Result<Option<(&'static str,
                 "--username",
                 &config.user,
             ]);
-            for (flag, key) in [("--region", AWS_REGION), ("--profile", AWS_PROFILE)] {
-                if let Some(value) = option(key) {
-                    args.extend([flag.to_owned(), value.to_owned()]);
-                }
-            }
+            args.extend(cli::aws_flags(config));
             ("aws", args)
         }
         Auth::GcpIam => ("gcloud", args(&["sql", "generate-login-token"])),
@@ -84,14 +71,14 @@ pub(crate) async fn fetch(config: &ConnectionConfig) -> Result<Option<Secret>> {
     let printed = cli::output(program, &args, TOKEN_TIMEOUT).await?;
     match printed.lines().map(str::trim).find(|l| !l.is_empty()) {
         Some(token) => Ok(Some(Secret::new(token))),
-        None => Err(Error::Connect(format!("{program}: printed no token"))),
+        None => Err(cli::failed(program, "printed no token")),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use platypus_core::AUTH;
+    use platypus_core::{AUTH, AWS_REGION};
 
     fn config(driver: DriverKind, auth: &str) -> ConnectionConfig {
         let mut config = ConnectionConfig::new(driver);

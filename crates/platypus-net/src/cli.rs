@@ -5,7 +5,7 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use platypus_core::{Error, Result};
+use platypus_core::{AWS_PROFILE, AWS_REGION, ConnectionConfig, Error, Result};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::task::JoinHandle;
 
@@ -38,6 +38,24 @@ pub(crate) fn not_started(program: &str, e: &std::io::Error) -> Error {
     } else {
         failed(program, e)
     }
+}
+
+/// `config`'s option `key`, trimmed, or `None` when it is not set.
+pub(crate) fn option<'a>(config: &'a ConnectionConfig, key: &str) -> Option<&'a str> {
+    config
+        .options
+        .get(key)
+        .map(|v| v.trim())
+        .filter(|v| !v.is_empty())
+}
+
+/// The `aws` flags of `config`'s region and profile, for those set.
+pub(crate) fn aws_flags(config: &ConnectionConfig) -> Vec<String> {
+    [("--region", AWS_REGION), ("--profile", AWS_PROFILE)]
+        .into_iter()
+        .filter_map(|(flag, key)| Some([flag.to_owned(), option(config, key)?.to_owned()]))
+        .flatten()
+        .collect()
 }
 
 /// What a command writes on stderr, read apart from its wait and to the end: a process it
