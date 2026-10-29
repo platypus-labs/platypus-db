@@ -484,11 +484,7 @@ async fn save_redis(state: &AppState, job: &Job, changes: &Changes) -> CommandRe
     }
     Ok(Saved {
         statements: commands.len(),
-        undo: script.undo.join(
-            "
-",
-        ) + "
-",
+        undo: script.undo.join("\n") + "\n",
     })
 }
 

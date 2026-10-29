@@ -1,9 +1,9 @@
 // Regression guard: Test connection from the form's URL mode reaches every Docker database
 // that has one (docker/compose.yml): MySQL and MariaDB (`mariadb://`), ClickHouse (its own
-// scheme and `http://`), MongoDB with authSource, Redis with a password and a database, libSQL over `http://` with its `authToken`,
-// SQL Server through a JDBC URL with encrypt/trustServerCertificate, and the PostgreSQL wire
-// variants (TimescaleDB, CockroachDB, YugabyteDB tiles). Each printed URL, read back, gives
-// the same connection.
+// scheme and `http://`), MongoDB with authSource, Redis with a password and a database,
+// libSQL over `http://` with its `authToken`, SQL Server through a JDBC URL with
+// encrypt/trustServerCertificate, and the PostgreSQL wire variants (TimescaleDB, CockroachDB,
+// YugabyteDB tiles). Each printed URL, read back, gives the same connection.
 import assert from "node:assert/strict";
 import { needsPort, seedSqlite, testConnection } from "../conn-helpers.mjs";
 import { LIBSQL_TOKEN } from "../qa-dbs.mjs";

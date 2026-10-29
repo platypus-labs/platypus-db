@@ -172,8 +172,14 @@ fn redis_cli_args(config: &ConnectionConfig, host: &str, port: Option<u16>) -> V
         if !matches!(config.ssl_mode, SslMode::VerifyCa | SslMode::VerifyFull) {
             args.push("--insecure".to_owned());
         }
-        if let Some(cert) = &config.ssl_root_cert {
-            args.extend(["--cacert".to_owned(), cert.display().to_string()]);
+        for (flag, path) in [
+            ("--cacert", &config.ssl_root_cert),
+            ("--cert", &config.ssl_client_cert),
+            ("--key", &config.ssl_client_key),
+        ] {
+            if let Some(path) = path {
+                args.extend([flag.to_owned(), path.display().to_string()]);
+            }
         }
     }
     args
@@ -488,5 +494,11 @@ mod tests {
         );
         assert_eq!(env, [("REDISCLI_AUTH", "s3cret".to_owned())]);
         assert!(!args.iter().any(|a| a.contains("s3cret")));
+        // A client certificate goes to redis-cli as it goes to the driver.
+        let mut config = config;
+        config.ssl_client_cert = Some("c.pem".into());
+        config.ssl_client_key = Some("k.pem".into());
+        let (args, _) = invocation(&config, "h", None);
+        assert!(args.ends_with(&["--tls", "--cert", "c.pem", "--key", "k.pem"].map(String::from)));
     }
 }

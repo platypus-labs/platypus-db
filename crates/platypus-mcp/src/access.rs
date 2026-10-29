@@ -506,7 +506,9 @@ pub fn check_redis<'a>(
     match (access, parsed.kind()) {
         (AgentAccess::ReadOnly, Kind::Query) if !session => Ok(statement),
         (AgentAccess::ReadOnly, kind) => Err(AgentError::Denied(format!(
-            "`{connection}` is read-only for agents: only commands that change nothing may run,              and this one {}. The user can allow agents to write in PlatypusDB's connection              settings (Agent access), except on production and read-only connections",
+            "`{connection}` is read-only for agents: only commands that change nothing may run, \
+             and this one {}. The user can allow agents to write in PlatypusDB's connection \
+             settings (Agent access), except on production and read-only connections",
             match kind {
                 Kind::Dml => "changes keys",
                 Kind::Ddl => "empties databases",
@@ -519,7 +521,8 @@ pub fn check_redis<'a>(
             parsed.name()
         ))),
         (_, Kind::Ddl) if unfiltered == UnfilteredRule::Refuse => Err(AgentError::Denied(format!(
-            "{} deletes every key: PlatypusDB's Safety settings ask before such changes, and              agents cannot answer",
+            "{} deletes every key: PlatypusDB's Safety settings ask before such changes, and \
+             agents cannot answer",
             parsed.name()
         ))),
         _ => Ok(statement),
@@ -563,17 +566,13 @@ mod tests {
         let ro = |sql| check_redis(sql, AgentAccess::ReadOnly, UnfilteredRule::Refuse, "r");
         assert_eq!(ro(" GET a ").unwrap(), "GET a");
         assert_eq!(ro("BROWSE db1.hash").unwrap(), "BROWSE db1.hash");
-        assert!(denied(ro("SET a 1")).contains("changes keys"));
+        assert!(denied(ro("SET a 1")).contains("may run, and this one changes keys. The"));
         assert!(denied(ro("FLUSHDB")).contains("empties"));
         assert!(denied(ro("SELECT 2")).contains("session"));
-        assert!(matches!(
-            ro("GET a
-GET b"),
-            Err(AgentError::Invalid(_))
-        ));
+        assert!(matches!(ro("GET a\nGET b"), Err(AgentError::Invalid(_))));
         let rw = |sql| check_redis(sql, AgentAccess::ReadWrite, UnfilteredRule::Refuse, "r");
         assert!(rw("SET a 1").is_ok());
-        assert!(denied(rw("FLUSHALL")).contains("every key"));
+        assert!(denied(rw("FLUSHALL")).contains("changes, and agents cannot"));
         assert!(matches!(rw("SELECT 1"), Err(AgentError::Invalid(_))));
         assert!(changes("DEL a", DriverKind::Redis));
         assert!(!changes("HGETALL h", DriverKind::Redis));
