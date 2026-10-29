@@ -6080,6 +6080,7 @@ dependencies = [
  "platypus-core",
  "platypus-sql",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

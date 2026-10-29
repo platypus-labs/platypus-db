@@ -8,6 +8,7 @@ mod create;
 mod ddl;
 mod lint;
 mod model;
+mod objects;
 
 use std::fmt::Write;
 
@@ -21,6 +22,7 @@ pub use compare::compare;
 pub use ddl::script;
 pub use lint::{Finding, LintKind, lint};
 pub use model::{SchemaTable, load_designs, read_tables, tables_of};
+pub use objects::{Event, ObjectForm, Param, Timing, create_object};
 
 /// A table as the editor shows it. Each part keeps its name in the database (`original`) so
 /// the script can tell a renamed or changed part from a new one.
