@@ -1278,7 +1278,7 @@ function tabIcon(t: TabModel): IconName {
   if (t.kind === "object") return "object";
   if (t.kind === "builder") return "builder";
   if (t.kind === "table-editor") return "edit";
-  if (t.kind === "erd") return "schema";
+  if (t.kind === "erd" || t.kind === "schema-history") return "schema";
   return "tableRef" in t && t.tableRef ? "table" : "sql";
 }
 

@@ -151,7 +151,13 @@ for the UI.
 through it. A new dialect adds its branch to `Ddl::table_comment` and `Ddl::comments`
 (`crates/platypus-schema/src/ddl.rs`); a database without comments returns `None` from
 `table_comment` and goes in `NO_COMMENTS` in `apps/desktop/src/objects/ObjectTab.tsx`, which
-keeps its comment fields read-only.
+keeps its comment fields read-only. The forms for views, functions, triggers and sequences
+go through `platypus_schema::create_object` (`crates/platypus-schema/src/objects.rs`): a new
+dialect adds its branch to each object kind there, or returns the error the dialog shows, and
+its driver goes in the `CREATABLE` list of `apps/desktop/src/schema/actions.ts`. A new
+migration tool for *Migration status…* adds a `Tool` to
+`crates/platypus-schema/src/migrations.rs`: how its files are found and how its history table
+is read.
 
 ### Drivers without SQL (MongoDB, Redis)
 

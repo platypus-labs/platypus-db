@@ -76,3 +76,15 @@ export function autoLayout(boxes: Box[], origin: Point = { x: 20, y: 20 }): Reco
   }
   return at;
 }
+
+/** Where every box goes when the user has placed some (`fixed`): those stay where they are,
+ *  the others are laid out with `autoLayout` below the lowest placed one, so a new table
+ *  never lands on a placed table. With none placed, the whole diagram is laid out. */
+export function placeTables(boxes: Box[], fixed: Record<string, Point>): Record<string, Point> {
+  const placed = boxes.filter((b) => fixed[b.name]);
+  if (placed.length === 0) return autoLayout(boxes);
+  const bottom = Math.max(...placed.map((b) => fixed[b.name]!.y + b.height));
+  const rest = boxes.filter((b) => !fixed[b.name]);
+  const at = rest.length ? autoLayout(rest, { x: 20, y: bottom + GAP_Y }) : {};
+  return { ...at, ...Object.fromEntries(placed.map((b) => [b.name, fixed[b.name]!])) };
+}

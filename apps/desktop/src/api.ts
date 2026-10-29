@@ -339,10 +339,68 @@ export type ScheduleTask =
   | { kind: "script"; path: string }
   | { kind: "export"; sql: string; format: ScheduleExportFormat }
   | { kind: "backup"; format: BackupFormat; schema?: string | null }
-  | { kind: "profile"; profile_id: string };
+  | { kind: "profile"; profile_id: string }
+  | { kind: "snapshot"; schema: string };
 
 /** How often a task runs; days of the week are 1 (Monday) to 7. */
 export type ScheduleRepeat = { every: "hour" } | { every: "day" } | { every: "week"; days: number[] } | { every: "month"; day: number };
+
+/** A snapshot of a schema's structure in the schema history, without its tables; see `SnapshotMeta`. */
+export interface SchemaSnapshot {
+  id: number;
+  connection_id: string;
+  database: string | null;
+  schema: string;
+  driver: string;
+  /** UTC, RFC 3339. */
+  taken_at: string;
+  label: string | null;
+  how: "manual" | "scheduled";
+  tables: number;
+  hash: string;
+}
+
+/** What `takeSchemaSnapshot` did: `unchanged` when the schema is as in the latest snapshot, which is returned. */
+export interface SnapshotTaken {
+  unchanged: boolean;
+  snapshot: SchemaSnapshot;
+}
+
+export type SchemaChangeKind =
+  | "table_added"
+  | "table_dropped"
+  | "column_added"
+  | "column_dropped"
+  | "column_type_changed"
+  | "column_nullability_changed"
+  | "column_default_changed"
+  | "column_changed"
+  | "index_added"
+  | "index_dropped"
+  | "foreign_key_added"
+  | "foreign_key_dropped"
+  | "constraint_added"
+  | "constraint_dropped"
+  | "comment_changed";
+
+/** One change to a table; `item` is the column, index, key or constraint it is about. */
+export interface SchemaChange {
+  table: string;
+  kind: SchemaChangeKind;
+  item: string | null;
+  from: string | null;
+  to: string | null;
+}
+
+/** What a snapshot is compared with: another snapshot, or the schema now through a session. */
+export type SnapshotDiffTarget = { kind: "snapshot"; id: number } | { kind: "live"; session_id: number };
+
+/** The changes from one state of a schema to another and the script that makes them. */
+export interface SchemaDiff {
+  changes: SchemaChange[];
+  sql: string;
+  warnings: string[];
+}
 
 /** A scheduled task; see `scheduler::plan::Schedule`. */
 export interface Schedule {
@@ -728,6 +786,45 @@ export type ObjectKind =
   | "synonym"
   | "package";
 
+/** A table of one side of a data comparison. */
+export interface TableRef {
+  schema: string;
+  name: string;
+}
+
+export interface CompareOptions {
+  /** A condition both tables are read with. */
+  filter: string | null;
+  /** Whether the rows only in the target are deleted. */
+  delete_missing: boolean;
+}
+
+export interface CellChange {
+  column: string;
+  source: string | null;
+  target: string | null;
+}
+
+export interface RowChange {
+  change: "added" | "removed" | "changed";
+  key: (string | null)[];
+  cells: CellChange[];
+}
+
+/** The differences between two tables and the script that makes the target like the source. */
+export interface DataDiff {
+  key: string[];
+  columns: string[];
+  same: number;
+  added: number;
+  removed: number;
+  changed: number;
+  /** The first differences only (200); the counts and the statements cover them all. */
+  samples: RowChange[];
+  statements: string[];
+  warnings: string[];
+}
+
 export interface ObjectMeta {
   name: string;
   kind: ObjectKind;
@@ -848,6 +945,40 @@ export interface DialectSupport {
 
 /** A table as the table editor edits it. Each part keeps its name in the database in
  *  `original` (`null` for a new part), so a rename is not taken for a new part. */
+/** What the object creation dialog collects (`platypus_schema::ObjectForm`). */
+export type ObjectForm =
+  | { kind: "view"; name: string; query: string; replace: boolean; materialized: boolean }
+  | {
+      kind: "sequence";
+      name: string;
+      start: number | null;
+      increment: number | null;
+      min: number | null;
+      max: number | null;
+      cycle: boolean;
+      cache: number | null;
+    }
+  | {
+      kind: "function";
+      name: string;
+      params: { name: string; data_type: string; mode: string | null }[];
+      returns: string;
+      language: string | null;
+      body: string;
+      replace: boolean;
+    }
+  | {
+      kind: "trigger";
+      name: string;
+      table: string;
+      timing: "before" | "after" | "instead_of";
+      events: ("insert" | "update" | "delete")[];
+      for_each_row: boolean;
+      when: string | null;
+      body: string;
+      replace: boolean;
+    };
+
 export interface TableDesign {
   name: string;
   columns: ColumnDesign[];
@@ -910,6 +1041,9 @@ export interface ConstraintDesign {
   check: string;
 }
 
+/** The migration tool whose file `schemaChangelog` writes. */
+export type ChangelogFormat = "flyway" | "liquibase";
+
 /** The statements that change a table, sent back as is to run them. */
 export interface TableScript {
   before: string[];
@@ -935,6 +1069,29 @@ export type LintKind =
   | "redundant_index"
   | "foreign_key_type_mismatch"
   | "unreadable";
+
+export type MigrationTool = "flyway" | "liquibase" | "prisma" | "alembic" | "rails";
+export type MigrationState = "applied" | "pending" | "divergent" | "failed" | "missing";
+
+/** A migration as the project folder and the database's history table say it is. */
+export interface MigrationEntry {
+  tool: MigrationTool;
+  /** The version, revision, name or changeset id; "R" for a Flyway repeatable migration. */
+  id: string;
+  description: string;
+  /** Relative to the chosen folder; null when the database has it and the folder does not. */
+  file: string | null;
+  status: MigrationState;
+  applied_at: string | null;
+  detail: string | null;
+}
+
+export interface MigrationToolStatus {
+  tool: MigrationTool;
+  /** The history table's name in the database; null when it does not exist. */
+  history_table: string | null;
+  migrations: MigrationEntry[];
+}
 
 /** What the schema linter found; `fix` is the statement that fixes it, to review first. */
 export interface LintFinding {
@@ -1993,15 +2150,41 @@ export const api = {
   /** The script from `original` to `design`, or creating `design` when `original` is null. */
   tableScript: (driver: DriverKind, schema: string, original: TableDesign | null, design: TableDesign) =>
     invoke<{ script: TableScript; sql: string }>("table_script", { driver, schema, original, design }),
+  /** The statements that create the object `form` describes; fails with `invalid_form` and a message when the database cannot. */
+  objectFormSql: (driver: DriverKind, schema: string, form: ObjectForm) =>
+    invoke<string[]>("object_form_sql", { driver, schema, form }),
   applyTableScript: (sessionId: number, script: TableScript) =>
     invoke<void>("apply_table_script", { sessionId, script }),
   /** The tables of `schema` with their details: those in `tables`, or all when null. */
   schemaTables: (sessionId: number, schema: string, tables: string[] | null) =>
     invoke<SchemaTable[]>("schema_tables", { sessionId, schema, tables }),
   lintSchema: (sessionId: number, schema: string) => invoke<LintFinding[]>("lint_schema", { sessionId, schema }),
+  /** The migrations of the project in `folder` against the history tables of `schema`. */
+  migrationStatus: (sessionId: number, schema: string, folder: string) =>
+    invoke<MigrationToolStatus[]>("migration_status", { sessionId, schema, folder }),
   /** The script that makes the target schema like the source one. */
   compareSchemas: (sourceSession: number, sourceSchema: string, targetSession: number, targetSchema: string) =>
     invoke<{ script: TableScript; sql: string }>("compare_schemas", { sourceSession, sourceSchema, targetSession, targetSchema }),
+  /** The script for the edits made on an ER diagram: the tables created or changed, and those dropped. */
+  erdScript: (sessionId: number, schema: string, designs: TableDesign[], dropped: string[]) =>
+    invoke<{ script: TableScript; sql: string }>("erd_script", { sessionId, schema, designs, dropped }),
+  /** The rows that differ between two tables with the same key, and the statements that make the target like the source. */
+  compareTableData: (sourceSession: number, source: TableRef, targetSession: number, target: TableRef, options: CompareOptions) =>
+    invoke<DataDiff>("compare_table_data", { sourceSession, source, targetSession, target, options }),
+  /** Takes a snapshot of the schema's structure; nothing is stored if it is the same as the latest. */
+  takeSchemaSnapshot: (sessionId: number, connectionId: string, database: string | null, schema: string, label: string | null) =>
+    invoke<SnapshotTaken>("take_schema_snapshot", { sessionId, connectionId, database, schema, label }),
+  /** The snapshots of a schema, newest first. */
+  listSchemaSnapshots: (connectionId: string, database: string | null, schema: string) =>
+    invoke<SchemaSnapshot[]>("list_schema_snapshots", { connectionId, database, schema }),
+  deleteSchemaSnapshot: (id: number) => invoke<void>("delete_schema_snapshot", { id }),
+  /** The changes from snapshot `fromId` to another snapshot or to the schema now, with the script for them. */
+  diffSchemaSnapshots: (fromId: number, to: SnapshotDiffTarget) => invoke<SchemaDiff>("diff_schema_snapshots", { fromId, to }),
+  /** A comparison script as the text of a Flyway migration or a Liquibase changelog. */
+  schemaChangelog: (driver: DriverKind, script: TableScript, format: ChangelogFormat, description: string, author: string, id: string) =>
+    invoke<string>("schema_changelog", { driver, script, format, description, author, id }),
+  /** The name of a Flyway versioned migration. */
+  flywayFileName: (version: string, description: string) => invoke<string>("flyway_file_name", { version, description }),
   /** The UPDATE, INSERT and DELETE statements that saving `changes` would run. */
   previewChanges: (jobId: number, changes: TableChanges) =>
     invoke<string[]>("preview_changes", { jobId, changes }),

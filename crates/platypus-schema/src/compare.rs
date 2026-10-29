@@ -72,6 +72,37 @@ pub fn compare(
     Ok(out)
 }
 
+/// The script for the edits made on an ER diagram: `designs` are the wanted designs of the
+/// tables created or changed (replacing the table of the same name in `current`, or added to
+/// it), and `dropped` the tables to drop. Everything else stays as it is.
+pub fn edited_script(
+    dialect: Dialect,
+    schema: &str,
+    current: &[TableDesign],
+    designs: &[TableDesign],
+    dropped: &[String],
+) -> Result<Script, String> {
+    let mut wanted: Vec<TableDesign> = current
+        .iter()
+        .filter(|t| !dropped.contains(&t.name))
+        .map(|t| find(designs, &t.name).unwrap_or(t).clone())
+        .collect();
+    for design in designs {
+        if find(current, &design.name).is_none() && !dropped.contains(&design.name) {
+            wanted.push(design.clone());
+        }
+    }
+    // A dropped table takes the keys that reference it with it, also those of tables left
+    // unedited: they are dropped before it is.
+    for t in &mut wanted {
+        t.foreign_keys.retain(|f| {
+            let here = f.ref_schema.is_empty() || f.ref_schema == schema;
+            !(here && dropped.contains(&f.ref_table))
+        });
+    }
+    compare(dialect, schema, schema, &wanted, current)
+}
+
 /// Whether `dialect` adds and drops foreign keys with `ALTER TABLE`: SQLite and DuckDB
 /// create a table again to change its keys, which they keep inline.
 fn keys_in_place(dialect: Dialect) -> bool {
@@ -193,8 +224,13 @@ fn matched(
 ) -> TableDesign {
     let system = |name: &str| system_named(dialect, name);
     let mut t = wanted.clone();
+    // A part keeps the name it had in `old` (an edit on the ER diagram renames it in place);
+    // a design read from another schema has its own names there, matched by name.
     for c in &mut t.columns {
-        let before = old.and_then(|o| o.columns.iter().find(|o| o.name == c.name));
+        let before = old.and_then(|o| {
+            by_original(&o.columns, c.original.as_deref(), |p| &p.name)
+                .or_else(|| o.columns.iter().find(|o| o.name == c.name))
+        });
         c.original = before.and_then(|o| o.original.clone());
         if dialect == Dialect::Postgres {
             sequences.extend(pg_sequence_default(
@@ -207,7 +243,10 @@ fn matched(
         }
     }
     for i in &mut t.indexes {
-        let before = old.and_then(|o| o.indexes.iter().find(|o| o.name == i.name));
+        let before = old.and_then(|o| {
+            by_original(&o.indexes, i.original.as_deref(), |p| &p.name)
+                .or_else(|| o.indexes.iter().find(|o| o.name == i.name))
+        });
         i.original = before.and_then(|o| o.original.clone());
     }
     for f in &mut t.foreign_keys {
@@ -249,6 +288,16 @@ fn matched(
     }
     t.primary_key_name = old.and_then(|o| o.primary_key_name.clone());
     t
+}
+
+/// The part of `parts` named `original`, if any.
+fn by_original<'a, T>(
+    parts: &'a [T],
+    original: Option<&str>,
+    name: impl Fn(&T) -> &String,
+) -> Option<&'a T> {
+    let original = original?;
+    parts.iter().find(|p| name(p) == original)
 }
 
 /// PostgreSQL's `nextval('schema.sequence'::regclass)` default of `column` of `table`, made
@@ -903,5 +952,136 @@ mod tests {
         let s = nextval("nextval('t_id_seq'::regclass)").unwrap();
         assert_eq!((s.schema, s.name.as_str()), (None, "t_id_seq"));
         assert!(nextval("now()").is_none());
+    }
+
+    /// A column as the ER diagram adds one: with no `original`.
+    fn new_column(name: &str, data_type: &str) -> ColumnDesign {
+        ColumnDesign {
+            original: None,
+            ..column(name, data_type)
+        }
+    }
+
+    #[test]
+    fn a_new_table_with_a_key_to_another_new_table_comes_after_it() {
+        let current = [table("old", vec![column("id", "integer")], &[], "public")];
+        // `child` is listed first, yet it references `parent`.
+        let designs = [
+            table(
+                "child",
+                vec![
+                    new_column("id", "integer"),
+                    new_column("parent_id", "integer"),
+                ],
+                &["parent"],
+                "public",
+            ),
+            table("parent", vec![new_column("id", "integer")], &[], "public"),
+        ];
+        let s = edited_script(Dialect::Postgres, "public", &current, &designs, &[]).unwrap();
+        assert_eq!(s.statements.len(), 2, "{:?}", s.statements);
+        assert!(s.statements[0].starts_with("CREATE TABLE public.parent"));
+        assert!(s.statements[1].starts_with("CREATE TABLE public.child"));
+        assert!(s.statements[1].contains("REFERENCES public.parent"));
+    }
+
+    #[test]
+    fn a_column_added_to_an_existing_table_is_an_alter() {
+        let current = [table("a", vec![column("id", "integer")], &[], "public")];
+        let designs = [table(
+            "a",
+            vec![column("id", "integer"), new_column("note", "text")],
+            &[],
+            "public",
+        )];
+        let s = edited_script(Dialect::Postgres, "public", &current, &designs, &[]).unwrap();
+        assert_eq!(
+            s.statements,
+            ["ALTER TABLE public.a ADD COLUMN note text"],
+            "{:?}",
+            s.statements
+        );
+    }
+
+    #[test]
+    fn a_dropped_table_nothing_references_is_dropped_alone() {
+        let current = [
+            table("a", vec![column("id", "integer")], &[], "public"),
+            table("b", vec![column("id", "integer")], &[], "public"),
+        ];
+        let s = edited_script(
+            Dialect::Postgres,
+            "public",
+            &current,
+            &[],
+            &["b".to_owned()],
+        )
+        .unwrap();
+        assert_eq!(s.statements, ["DROP TABLE public.b"]);
+        assert_eq!(s.warnings.len(), 1);
+    }
+
+    #[test]
+    fn a_key_added_between_existing_tables_is_an_alter() {
+        let current = [
+            table(
+                "a",
+                vec![column("id", "integer"), column("b_id", "integer")],
+                &[],
+                "public",
+            ),
+            table("b", vec![column("id", "integer")], &[], "public"),
+        ];
+        let mut design = current[0].clone();
+        design.foreign_keys = table("a", vec![], &["b"], "public").foreign_keys;
+        let s = edited_script(Dialect::Postgres, "public", &current, &[design], &[]).unwrap();
+        assert_eq!(s.statements.len(), 1, "{:?}", s.statements);
+        assert!(s.statements[0].starts_with("ALTER TABLE public.a ADD CONSTRAINT a_b"));
+        assert!(s.statements[0].contains("REFERENCES public.b"));
+    }
+
+    #[test]
+    fn a_column_renamed_on_the_diagram_is_renamed_not_dropped() {
+        let current = [table("a", vec![column("mail", "text")], &[], "public")];
+        let mut design = current[0].clone();
+        design.columns[0].name = "email".to_owned();
+        let s = edited_script(Dialect::Postgres, "public", &current, &[design], &[]).unwrap();
+        assert_eq!(
+            s.statements,
+            ["ALTER TABLE public.a RENAME COLUMN mail TO email"],
+            "{:?}",
+            s.statements
+        );
+    }
+
+    #[test]
+    fn a_dropped_table_takes_the_keys_of_unedited_tables_with_it() {
+        let current = [
+            table(
+                "orders",
+                vec![column("id", "integer"), column("customers_id", "integer")],
+                &["customers"],
+                "public",
+            ),
+            table("customers", vec![column("id", "integer")], &[], "public"),
+        ];
+        let s = edited_script(
+            Dialect::Postgres,
+            "public",
+            &current,
+            &[],
+            &["customers".to_owned()],
+        )
+        .unwrap();
+        assert_eq!(s.statements.len(), 2, "{:?}", s.statements);
+        assert!(s.statements[0].starts_with("ALTER TABLE public.orders DROP CONSTRAINT"));
+        assert_eq!(s.statements[1], "DROP TABLE public.customers");
+    }
+
+    #[test]
+    fn no_edits_need_nothing() {
+        let current = [table("a", vec![column("id", "integer")], &[], "public")];
+        let s = edited_script(Dialect::Sqlite, "main", &current, &[], &[]).unwrap();
+        assert_eq!(s.statements, Vec::<String>::new());
     }
 }

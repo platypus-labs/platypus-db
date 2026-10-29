@@ -30,6 +30,7 @@ pub mod querylog;
 pub mod sample;
 pub mod schedules;
 pub mod schema;
+pub mod schema_history;
 pub mod scripts;
 pub mod search;
 pub mod settings;
@@ -61,7 +62,8 @@ use platypus_driver_pg::PgDriver;
 use platypus_driver_redis::RedisDriver;
 use platypus_driver_sqlite::SqliteDriver;
 use platypus_store::{
-    CatalogStore, ConnectionStore, HistoryStore, ImportedSecrets, SettingsStore, VaultSecrets,
+    CatalogStore, ConnectionStore, HistoryStore, ImportedSecrets, SchemaHistoryStore,
+    SettingsStore, VaultSecrets,
 };
 use serde::Serialize;
 use uuid::Uuid;
@@ -83,6 +85,9 @@ pub struct AppState {
     history: Arc<Mutex<Result<HistoryStore, String>>>,
     /// Notes and tags on tables and columns; `Err` when `catalog.db` cannot be opened.
     catalog: Mutex<Result<CatalogStore, String>>,
+    /// Snapshots of schemas, for the schema history; `Err` when `schema-history.db` cannot be
+    /// opened.
+    schema_history: Mutex<Result<SchemaHistoryStore, String>>,
     settings: Mutex<Result<SettingsStore, String>>,
     /// The folder of the saved scripts, see `scripts`.
     scripts: Result<PathBuf, String>,
@@ -164,6 +169,7 @@ impl AppState {
         vault_path: Result<PathBuf, String>,
         history: Result<HistoryStore, String>,
         catalog: Result<CatalogStore, String>,
+        schema_history: Result<SchemaHistoryStore, String>,
         settings: Result<SettingsStore, String>,
         scripts: Result<PathBuf, String>,
     ) -> Self {
@@ -173,6 +179,7 @@ impl AppState {
             vault_path,
             history: Arc::new(Mutex::new(history)),
             catalog: Mutex::new(catalog),
+            schema_history: Mutex::new(schema_history),
             settings: Mutex::new(settings),
             scripts,
             sessions: Mutex::new(HashMap::new()),
@@ -210,8 +217,20 @@ impl AppState {
         }
     }
 
-    /// Drops the notes of connections that are no longer saved, e.g. when removing them failed
-    /// earlier. Does nothing when the connections file could not be read.
+    /// Runs `f` on the schema history; fails with `catalog` when `schema-history.db` could not
+    /// be opened, so the history is unavailable while the rest of the app keeps working.
+    pub(crate) fn with_schema_history<T>(
+        &self,
+        f: impl FnOnce(&mut SchemaHistoryStore) -> Result<T, platypus_store::StoreError>,
+    ) -> CommandResult<T> {
+        match &mut *lock(&self.schema_history) {
+            Ok(history) => f(history).map_err(Into::into),
+            Err(e) => Err(CommandError::new("catalog", e.clone())),
+        }
+    }
+
+    /// Drops the notes and schema snapshots of connections that are no longer saved, e.g. when
+    /// removing them failed earlier. Does nothing when the connections file could not be read.
     pub fn prune_catalog(&self) {
         let Ok(store) = &*lock(&self.store) else {
             return;
@@ -220,12 +239,18 @@ impl AppState {
         if let Ok(catalog) = &mut *lock(&self.catalog) {
             let _ = catalog.retain_connections(&ids);
         }
+        if let Ok(history) = &mut *lock(&self.schema_history) {
+            let _ = history.retain_connections(&ids);
+        }
     }
 
     /// Drops the notes of a connection that was just deleted; what this misses is pruned by
     /// `prune_catalog` at the next start.
     fn forget_catalog(&self, id: Uuid) {
         catalog::forget_connection(&mut lock(&self.catalog), id);
+        if let Ok(history) = &mut *lock(&self.schema_history) {
+            let _ = history.remove_connection(id);
+        }
     }
 
     fn with_store<T>(
@@ -513,6 +538,7 @@ impl AppState {
             Err(none.to_owned()),
             Err(none.to_owned()),
             Err(none.to_owned()),
+            Err(none.to_owned()),
         )
     }
 }
@@ -545,6 +571,7 @@ mod tests {
             Err("no vault".to_owned()),
             Err("no history".to_owned()),
             Err("no catalog".to_owned()),
+            Err("no schema history".to_owned()),
             Err("no settings".to_owned()),
             Err("no scripts".to_owned()),
         );
