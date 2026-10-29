@@ -110,7 +110,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | E — Explain e performance | ✅ completato |
 | F — Connettività e credenziali | ✅ fatto (P1, P2; P3 in parte) |
 | G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
-| H — Import, export e trasferimento | ✅ fatto (P1, P2; P3 in parte) |
+| H — Import, export e trasferimento | ✅ completato |
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
 | J — Amministrazione del server | ✅ fatto (P2) |
 | K — Shell ed ergonomia | ✅ completato |
@@ -999,7 +999,9 @@ sezione Performance del sito); il piano di pubblicazione è in RELEASING.md. Il 
 l'ornitorinco con i database intorno, una finestra dell'app disegnata in HTML dove una query si
 scrive da sola, il tour con le GIF, una griglia di funzionalità, i loghi dei database, le
 prestazioni e il confronto. Restano la verifica su un desktop Linux con GPU, il test reale
-dell'auto-update, la firma Windows, avvio e memoria di DBeaver accanto ai nostri e la distribuzione;
+dell'auto-update, la firma Windows, avvio e memoria di DBeaver accanto ai nostri (li misura
+`scripts/bench.py other`; dal container cloud i download degli altri client sono bloccati) e la
+distribuzione;
 la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Program).
 
 | Attività | Prio |
