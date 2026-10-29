@@ -114,10 +114,17 @@ export default async function (page, { dir }) {
   assert.match(files[0], /^Nightly-\d{8}-\d{6}\.csv$/);
   assert.equal(readFileSync(join(folder, files[0]), "utf8").replaceAll("\r\n", "\n"), "id,v\n1,10\n2,20\n3,30\n");
   assert.equal(existsSync(own), false, "the profile's own file is not written by a task with a folder");
-  // A second later: another stamp, and with one file kept the first goes.
+  // A second later: another stamp, and with one file kept the first goes. The last run reads
+  // the same to the minute: the new file in the folder says the run ended.
   const first = files[0];
   await page.sleep(1100);
-  await runNow(page, "Nightly");
+  await page.eval(`${button(row("Nightly"), "Run now")}.click()`);
+  const replaced = () => {
+    const now = readdirSync(folder);
+    return now.length === 1 && now[0] !== first;
+  };
+  for (let i = 0; i < 300 && !replaced(); i++) await page.sleep(100);
+  await page.waitFor(`!${row("Nightly")}.querySelector('[data-field="next"] .admin-badge.running')`, 30_000);
   files = readdirSync(folder);
   assert.equal(files.length, 1, `one kept: ${files}`);
   assert.notEqual(files[0], first);
