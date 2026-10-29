@@ -12,7 +12,7 @@
 | [BENCHMARKS.md](BENCHMARKS.md) | Startup, memory, scrolling and export measurements, with the method |
 | [MVP_PLAN.md](MVP_PLAN.md) | The plan and scope of the first release, 0.1.0 (Italian) |
 | [brand/](brand/) | Logos and wordmarks for light and dark backgrounds |
-| [screenshots/](screenshots/) | The README's screenshots, made by the end-to-end `readme` scenarios |
+| [screenshots/](screenshots/) | The README's screenshots and GIFs, made by the end-to-end `readme` and `gifs` scenarios |
 
 At the root of the repository: [README](../README.md) (overview, also [in Italian](../README.it.md)),
 [CONTRIBUTING](../CONTRIBUTING.md), [CHANGELOG](../CHANGELOG.md), [SECURITY](../SECURITY.md),

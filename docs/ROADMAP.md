@@ -931,7 +931,11 @@ MB), benchmark con soglie (`scripts/bench.py`, job `bench` della CI) e pulizia d
 (`scripts/clean-target.mjs`). Dal 29 ottobre 2026: confronto delle dimensioni dei download
 Linux con DBeaver CE e Beekeeper Studio (BENCHMARKS.md, "Side by side", e README); avvio e
 memoria degli altri client non ancora misurati, perché nel container di test non si possono
-eseguire. Restano la verifica su macOS e su un desktop Linux con GPU, il test reale
+eseguire. Sempre il 29 ottobre: README corto in inglese e in italiano (`README.it.md`), con il
+dettaglio spostato in `docs/` (FEATURES, AGENTS, SHORTCUTS, DEVELOPMENT), e quattro GIF (un
+milione di righe, editor, modifica dei dati, explain) registrate dalla build di release con gli
+scenari E2E `gifs-*` (`e2e/gif.mjs`: fotogrammi dalla pagina, codificati con `gifenc`). Il sito
+non ha ancora le GIF. Restano la verifica su macOS e su un desktop Linux con GPU, il test reale
 dell'auto-update, la firma, avvio e memoria di DBeaver accanto ai nostri e la distribuzione.
 
 | Attività | Prio |
@@ -951,7 +955,7 @@ dell'auto-update, la firma, avvio e memoria di DBeaver accanto ai nostri e la di
 | ✅ 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
 | ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
 | 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire | P2 |
-| 🆕 **Video o GIF di 20-30 secondi** in cima al README e al sito: avvio, scroll di milioni di righe, explain con la heatmap | P2 |
+| ✅ 🆕 **Video o GIF di 20-30 secondi** in cima al README e al sito: avvio, scroll di milioni di righe, explain con la heatmap (fatto nel README; il sito ancora no) | P2 |
 | 🆕 **Confronto con DBeaver, DataGrip, TablePlus e Beekeeper Studio** nel README e nel sito (dimensione, avvio, memoria, licenza, MCP), con i numeri di `BENCHMARKS.md` aggiornati | P2 |
 | 🆕 Lancio quando il repository diventa pubblico: Show HN, r/programming, r/rust, r/PostgreSQL, Product Hunt | P3 |
 

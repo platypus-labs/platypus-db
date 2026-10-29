@@ -27,7 +27,7 @@ produzione ben distinte dalle altre. Un core in Rust con interfaccia Tauri 2 + R
 installer di circa 5 MB, una finestra pronta in meno di mezzo secondo e una griglia che scorre
 milioni di righe.
 
-![Il visualizzatore di dati ordinato dall'intestazione, con il pannello del valore](docs/screenshots/data-viewer.png)
+![Un milione di righe aperte dal navigator, scorse e ordinate dall'intestazione](docs/screenshots/hero.gif)
 
 ## Perché PlatypusDB
 
@@ -85,10 +85,12 @@ database in [docs/FEATURES.md](docs/FEATURES.md#databases) (in inglese).
 
 ## Funzionalità
 
-| | |
+| Scrivere SQL | Modificare i dati in sicurezza |
 |---|---|
-| ![Completamento dei JOIN dalle chiavi esterne](docs/screenshots/autocomplete.png) | ![Explain analyze con la heatmap](docs/screenshots/explain.png) |
-| ![Modifiche in sospeso nell'editor dei dati](docs/screenshots/data-editor.png) | ![Un risultato come grafico a barre](docs/screenshots/chart.png) |
+| ![Un JOIN completato dalla chiave esterna, eseguito e disegnato come grafico](docs/screenshots/editor.gif) | ![Celle modificate e una riga aggiunta, l'SQL in anteprima, poi il salvataggio](docs/screenshots/data-editor.gif) |
+| **Trovare i passi lenti** | **Sfogliare i dati** |
+| ![Explain analyze con la heatmap e un indice suggerito](docs/screenshots/explain.gif) | ![Il visualizzatore di dati ordinato dall'intestazione, con il pannello del valore](docs/screenshots/data-viewer.png) |
+| **Progettare tabelle** | **Trovare tutto** |
 | ![Progettazione di una tabella](docs/screenshots/table-editor.png) | ![La palette dei comandi](docs/screenshots/palette.png) |
 
 - **Connessioni**: tunnel SSH, proxy, port forward di Kubernetes e AWS, accesso cloud (AWS,

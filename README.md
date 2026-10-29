@@ -26,7 +26,7 @@ explains slow statements and documents schemas, and keeps production connections
 from the others. A Rust core with a Tauri 2 + React interface: an installer of about 5 MB, a
 window ready in under half a second, and a results grid that scrolls through millions of rows.
 
-![The data viewer sorted from its header, with the value panel](docs/screenshots/data-viewer.png)
+![A million rows opened from the navigator, scrolled and sorted from the header](docs/screenshots/hero.gif)
 
 ## Why PlatypusDB
 
@@ -78,10 +78,12 @@ The versions are the oldest the conformance suite runs on. More on each database
 
 ## Features
 
-| | |
+| Write SQL | Edit data safely |
 |---|---|
-| ![JOIN completion from the foreign keys](docs/screenshots/autocomplete.png) | ![Explain analyze with the heatmap](docs/screenshots/explain.png) |
-| ![Pending changes in the data editor](docs/screenshots/data-editor.png) | ![A result as a bar chart](docs/screenshots/chart.png) |
+| ![A JOIN completed from the foreign key, run and drawn as a chart](docs/screenshots/editor.gif) | ![Cells changed and a row added, the SQL previewed, then saved](docs/screenshots/data-editor.gif) |
+| **Find slow steps** | **Browse the data** |
+| ![Explain analyze with the heatmap and an index suggestion](docs/screenshots/explain.gif) | ![The data viewer sorted from its header, with the value panel](docs/screenshots/data-viewer.png) |
+| **Design tables** | **Find anything** |
 | ![Designing a table](docs/screenshots/table-editor.png) | ![The command palette](docs/screenshots/palette.png) |
 
 - **Connections**: SSH tunnels, proxies, Kubernetes and AWS port forwards, cloud sign-in
