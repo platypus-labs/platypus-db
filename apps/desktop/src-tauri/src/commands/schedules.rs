@@ -237,7 +237,7 @@ async fn export(
         if let tauri::ipc::InvokeResponseBody::Json(json) = body
             && let Ok(event) = serde_json::from_str::<serde_json::Value>(&json)
         {
-            let outcome = match event["kind"].as_str() {
+            let outcome = match event["type"].as_str() {
                 Some("done") => Some(Ok(event["rows"].as_u64().unwrap_or(0))),
                 Some("failed") => Some(Err(event["error"]["message"]
                     .as_str()
@@ -394,5 +394,78 @@ mod tests {
             None,
         );
         assert!(output(&without, Utc::now(), "csv").is_err());
+    }
+
+    /// A state whose store holds one SQLite connection on `db`; returns its id.
+    fn sqlite_state(dir: &Path, db: &Path) -> (AppState, Uuid) {
+        use platypus_store::{ConnectionStore, MemorySecrets, PasswordUpdate, SavedConnection};
+        let mut store = ConnectionStore::open(
+            dir.join("connections.toml"),
+            Arc::new(MemorySecrets::default()),
+        )
+        .unwrap();
+        let mut saved = SavedConnection::new("Scheduled", platypus_core::DriverKind::Sqlite);
+        saved.database = db.display().to_string();
+        let id = saved.id;
+        store.save(saved, PasswordUpdate::Keep).unwrap();
+        let state = AppState::new(
+            (Ok(store), None),
+            Err("no vault".to_owned()),
+            Err("no history".to_owned()),
+            Err("no catalog".to_owned()),
+            Err("no settings".to_owned()),
+            Err("no scripts".to_owned()),
+        );
+        (state, id)
+    }
+
+    /// The tasks run for real on a SQLite file: a script changes its rows, one that fails
+    /// names the statement, and an export writes a CSV file into its folder.
+    #[tokio::test]
+    async fn runs_scripts_and_exports_on_sqlite() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("tasks.db");
+        let (state, connection) = sqlite_state(dir.path(), &db);
+        let saved = saved_config(&state, connection, None, None).await.unwrap();
+        let conn = connect(&saved.config).await.unwrap();
+        for sql in [
+            "CREATE TABLE t (id INTEGER PRIMARY KEY, v INTEGER)",
+            "INSERT INTO t (v) VALUES (1), (2)",
+        ] {
+            conn.execute(sql, &ExecOptions::default()).await.unwrap();
+        }
+        drop(conn);
+
+        let script = dir.path().join("bump.sql");
+        std::fs::write(
+            &script,
+            "UPDATE t SET v = v + 10;\nUPDATE t SET v = 0 WHERE id = 2;\n",
+        )
+        .unwrap();
+        let mut s = schedule(Task::Script { path: script }, None);
+        s.connection_id = connection;
+        let (message, file) = execute(&state, &s, Utc::now()).await.unwrap();
+        assert_eq!(message, "2 statements run, 3 rows changed");
+        assert_eq!(file, None);
+
+        let broken = dir.path().join("broken.sql");
+        std::fs::write(&broken, "SELECT 1;\nUPDATE nothing SET v = 1;").unwrap();
+        s.task = Task::Script { path: broken };
+        let error = execute(&state, &s, Utc::now()).await.unwrap_err();
+        assert!(error.starts_with("statement 2: "), "{error}");
+
+        let folder = dir.path().join("out");
+        s.task = Task::Export {
+            sql: "SELECT id, v FROM t ORDER BY id".to_owned(),
+            format: ExportFormat::Csv,
+        };
+        s.folder = Some(folder.clone());
+        let (message, file) = execute(&state, &s, Utc::now()).await.unwrap();
+        assert_eq!(message, "2 rows written");
+        let file = file.unwrap();
+        assert_eq!(file.parent(), Some(folder.as_path()));
+        let csv = std::fs::read_to_string(&file).unwrap();
+        assert!(csv.starts_with("id,v"), "{csv}");
+        assert!(csv.contains("1,11") && csv.contains("2,0"), "{csv}");
     }
 }
