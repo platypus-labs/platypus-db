@@ -67,8 +67,11 @@ npm run tauri dev
 # core crates; the conformance suite (crates/platypus-conformance) runs the same scenarios on
 # every driver. Server databases that are down are skipped; set PLATYPUS_TEST_PG_URL,
 # PLATYPUS_TEST_MYSQL_URL, PLATYPUS_TEST_MARIADB_URL, PLATYPUS_TEST_MSSQL_URL,
-# PLATYPUS_TEST_CLICKHOUSE_URL, PLATYPUS_TEST_LIBSQL_URL, PLATYPUS_TEST_MONGO or PLATYPUS_TEST_REDIS to make them
-# mandatory
+# PLATYPUS_TEST_CLICKHOUSE_URL, PLATYPUS_TEST_LIBSQL_URL, PLATYPUS_TEST_MONGO, PLATYPUS_TEST_REDIS or
+# PLATYPUS_TEST_SEARCH to make them mandatory. Elasticsearch and OpenSearch are in the `search` profile
+# (a JVM each, 512 MB of heap): `docker compose -f docker/compose.yml up -d --wait elasticsearch`
+# (default URL elasticsearch://elastic:platypus@localhost:59200); PLATYPUS_TEST_SEARCH=opensearch://localhost:59201
+# runs the same tests on the `opensearch` service
 cargo test --workspace --exclude platypus-desktop
 
 # CLI: table (first 200 rows), csv, ndjson, json or parquet (json and parquet need -o); Ctrl+C or --timeout cancel server-side

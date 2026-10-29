@@ -32,6 +32,7 @@ pub struct Hit {
     source: Option<Ordered>,
     fields: Option<Ordered>,
     pub sort: Option<Box<RawValue>>,
+    found: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]
@@ -179,7 +180,10 @@ fn tables(probe: Probe, size: usize) -> Result<Vec<Table>> {
             tables.push(hit_table(hits, size)?);
         }
     } else if let Some(docs) = probe.docs {
-        let found = docs.into_iter().filter(|d| d.id.is_some()).collect();
+        let found = docs
+            .into_iter()
+            .filter(|d| d.id.is_some() && d.found != Some(false))
+            .collect();
         tables.push(hit_table(found, size)?);
     } else if let Some(items) = probe.items {
         tables.push(item_table(&items, size)?);
@@ -202,6 +206,7 @@ fn tables(probe: Probe, size: usize) -> Result<Vec<Table>> {
             source: probe.source,
             fields: probe.fields,
             sort: None,
+            found: None,
         };
         tables.push(hit_table(vec![hit], size)?);
     }

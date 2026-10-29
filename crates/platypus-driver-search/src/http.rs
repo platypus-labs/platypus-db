@@ -141,12 +141,20 @@ impl Http {
         sql: Option<&str>,
     ) -> Result<Reply> {
         let reply = self.send(method, target, payload).await?;
-        if (200..300).contains(&reply.status) {
+        if (200..300).contains(&reply.status) || not_found_result(&reply) {
             Ok(reply)
         } else {
             Err(from_reply(reply.status, &reply.body, sql))
         }
     }
+}
+
+/// Deleting a document that is not there is answered with a 404 and its result, not an
+/// error.
+fn not_found_result(reply: &Reply) -> bool {
+    reply.status == 404
+        && serde_json::from_str::<serde_json::Value>(&reply.body)
+            .is_ok_and(|v| v.get("result").and_then(serde_json::Value::as_str) == Some("not_found"))
 }
 
 #[cfg(test)]
