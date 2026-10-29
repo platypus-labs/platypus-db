@@ -30,8 +30,8 @@ window ready in under half a second, and a results grid that scrolls through mil
 
 ## Why PlatypusDB
 
-- **Light.** About 20 MB to download on Linux against 122 MB for DBeaver and 346 MB for
-  Beekeeper Studio; a window in under 500 ms and about 130 MB of memory with one connection.
+- **Light.** About 20 MB to download on Linux against 122 MB for DBeaver, 346 MB for
+  Beekeeper Studio and about 1 GB for DataGrip; a window in under 500 ms and about 130 MB of memory with one connection.
 - **Safe with production.** Connection types color the window frame, risky statements ask
   first, production opens in manual commit, and every save of edited rows leaves an undo script.
 - **Many databases, one app.** PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, ClickHouse,
@@ -137,15 +137,15 @@ Tools, limits, the HTTP bridge and the `platypus` CLI: [docs/AGENTS.md](docs/AGE
 | 5M rows to Parquet | 3.2 s, 31 MB peak | streaming |
 | Installer | 5.4 MB | < 20 MB |
 
-| | PlatypusDB | DBeaver CE | Beekeeper Studio |
-|---|---|---|---|
-| Runtime | Rust and the system's web view | Java, JRE bundled | Electron |
-| Linux download | 19.5 MiB | 122 MiB | 346 MiB |
-| On disk | 46 MiB | 206 MiB | 1,105 MiB |
-| License | AGPL-3.0 | Apache 2.0 | GPLv3 |
+| | PlatypusDB | DBeaver CE | DataGrip | TablePlus | Beekeeper Studio |
+|---|---|---|---|---|---|
+| Runtime | Rust and the system's web view | Java, JRE bundled | Java, JetBrains Runtime bundled | Native (GTK on Linux) | Electron |
+| Linux download | 19.5 MiB | 122 MiB | 1,047 MiB | 60 MiB | 346 MiB |
+| On disk | 46 MiB | 206 MiB | not measured | 180 MiB | 1,105 MiB |
+| License | AGPL-3.0 | Apache 2.0 | Proprietary | Proprietary | GPLv3 |
 
 Windows 11, Ryzen 7 9700X. Sizes of the official Linux downloads of PlatypusDB 0.2.0, DBeaver CE
-26.2.3 and Beekeeper Studio 6.2.0; start and memory side by side are still to be measured.
+26.2.3, DataGrip 2026.2.6, TablePlus 2.2.0 and Beekeeper Studio 6.2.0; start and memory side by side are still to be measured.
 Method, scale tests and the first Linux numbers in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Development

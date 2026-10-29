@@ -935,7 +935,13 @@ eseguire. Sempre il 29 ottobre: README corto in inglese e in italiano (`README.i
 dettaglio spostato in `docs/` (FEATURES, AGENTS, SHORTCUTS, DEVELOPMENT), e quattro GIF (un
 milione di righe, editor, modifica dei dati, explain) registrate dalla build di release con gli
 scenari E2E `gifs-*` (`e2e/gif.mjs`: fotogrammi dalla pagina, codificati con `gifenc`). Il sito
-non ha ancora le GIF. Restano la verifica su macOS e su un desktop Linux con GPU, il test reale
+non aveva ancora le GIF. Dal 29 ottobre anche: le GIF nel sito (in cima e nelle schede di
+Screenshots, con la PNG al loro posto per chi ha chiesto meno animazioni), DataGrip 2026.2.6 e
+TablePlus 2.2.0 nel confronto delle dimensioni (BENCHMARKS.md, README e una tabella nella
+sezione Performance del sito); il piano di pubblicazione è in RELEASING.md. Il sito (`site/`) è stato ridisegnato: solo scuro,
+l'ornitorinco con i database intorno, una finestra dell'app disegnata in HTML dove una query si
+scrive da sola, il tour con le GIF, una griglia di funzionalità, i loghi dei database, le
+prestazioni e il confronto. Restano la verifica su macOS e su un desktop Linux con GPU, il test reale
 dell'auto-update, la firma, avvio e memoria di DBeaver accanto ai nostri e la distribuzione.
 
 | Attività | Prio |
@@ -945,7 +951,7 @@ dell'auto-update, la firma, avvio e memoria di DBeaver accanto ai nostri e la di
 | Test reale dell'auto-update da una release pubblicata alla successiva | P1 |
 | Firma del codice Windows (Authenticode), per l'avviso di SmartScreen: certificato **Certum Open Source Code Signing** (~30-60 €/anno, anche per singoli nell'UE, chiave su smart card o cloud SimplySign, firma con `bundle.windows.signCommand` di Tauri); alternative SignPath Foundation (gratis per l'open source, firma in CI) o Azure Trusted Signing (verificare se disponibile in Italia). La reputazione di SmartScreen cresce con i download anche con la firma. Piano in [RELEASING.md](RELEASING.md) | P2 |
 | Firma e notarizzazione macOS (Apple Developer Program, 99 $/anno) | P2 |
-| 🆕 **Piano di pubblicazione** di ogni versione, anche senza CI: build Windows in locale, release bozza con `latest.json`, macOS e Linux aggiunti dal workflow quando ci sono i minuti; passi in [RELEASING.md](RELEASING.md) | P1 |
+| ✅ 🆕 **Piano di pubblicazione** di ogni versione, anche senza CI: build Windows in locale, release bozza con `latest.json`, macOS e Linux aggiunti dal workflow quando ci sono i minuti; passi in [RELEASING.md](RELEASING.md) | P1 |
 | Benchmark affiancato con DBeaver, aggiornando `BENCHMARKS.md` | P2 |
 | ✅ Benchmark in CI con soglie (avvio, memoria, decode) per bloccare le regressioni | P2 |
 | ✅ Crash report opt-in e log su file con rotazione | P2 |
@@ -958,7 +964,7 @@ dell'auto-update, la firma, avvio e memoria di DBeaver accanto ai nostri e la di
 | ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
 | 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire | P2 |
 | ✅ 🆕 **Video o GIF di 20-30 secondi** in cima al README: avvio, scroll di milioni di righe, explain con la heatmap | P2 |
-| 🆕 Le stesse GIF nel sito (`site/`) | P2 |
+| ✅ 🆕 Le stesse GIF nel sito (`site/`) | P2 |
 | 🆕 **Confronto con DBeaver, DataGrip, TablePlus e Beekeeper Studio** nel README e nel sito (dimensione, avvio, memoria, licenza, MCP), con i numeri di `BENCHMARKS.md` aggiornati | P2 |
 | 🆕 Lancio quando il repository diventa pubblico: Show HN, r/programming, r/rust, r/PostgreSQL, Product Hunt | P3 |
 

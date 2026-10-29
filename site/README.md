@@ -1,14 +1,17 @@
 # PlatypusDB site
 
 A static, single-page presentation of PlatypusDB: plain HTML and CSS with one small script for
-the screenshot tabs. No build step, nothing loaded from other sites.
+the tour tabs and the fade-in of a few blocks. No build step, nothing loaded from other
+sites.
 
 ```
 index.html      the page
-style.css       styles; colors from apps/desktop/src/theme.ts (Platypus Light and Dark)
-site.js         screenshot tabs (without it every screenshot shows, one under the other)
+style.css       styles; dark only, colors from apps/desktop/src/theme.ts (Platypus Dark)
+site.js         tour as tabs (without it every screenshot shows, one under the other)
 fonts/          Inter and JetBrains Mono, copied from apps/desktop/src/assets/fonts
-img/            logo, icon and the screenshots from docs/screenshots
+img/            icon, the platypus (mark.png, from docs/brand/logo-only-1024.png), database
+                logos (databases.svg, from simple-icons as in the app's DriverPicker) and
+                the screenshots and GIFs from docs/screenshots that the page shows
 .nojekyll       tells GitHub Pages to serve the folder as it is
 ```
 
@@ -21,11 +24,14 @@ serve the folder instead, for example:
 python -m http.server -d site 8000   # then http://localhost:8000
 ```
 
-The page follows the system's light or dark mode.
+The page is dark only. The window at the top is drawn in HTML and CSS: its query types itself
+and the result appears, all in CSS animations. The GIFs show only when the system does not ask
+for less motion; otherwise the PNG of the same screen shows, and the query is
+already typed.
 
 ## Update
 
-The text follows the README and [docs/FEATURES.md](../docs/FEATURES.md), the source of truth for features. When the screenshots in
+The text follows the README and [docs/FEATURES.md](../docs/FEATURES.md), the source of truth for features. When the screenshots or GIFs in
 `docs/screenshots/` change, copy them into `img/screenshots/` again.
 
 ## Publish on GitHub Pages

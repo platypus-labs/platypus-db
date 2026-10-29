@@ -105,14 +105,19 @@ Sizes of the Linux downloads, measured on 29 October 2026 from the official rele
 The start and the memory of the other clients have not been measured yet: running them was
 not possible in the test container, so they are left blank rather than guessed.
 
-| | PlatypusDB 0.2.0 | DBeaver CE 26.2.3 | Beekeeper Studio 6.2.0 |
-|---|---|---|---|
-| Runtime | Rust, the system's web view | Java (Eclipse RCP), JRE bundled | Electron (Chromium and Node bundled) |
-| Download | 19.5 MiB (`.deb`) | 122 MiB (`.tar.gz`) | 346 MiB (`.AppImage`) |
-| On disk | 46 MiB (+ WebKitGTK, shared with the system) | 206 MiB, of which the JRE 106 MiB | 1,105 MiB |
-| Start to interactive window | 1.4 s (Xvfb, no GPU) | not measured | not measured |
-| Memory at rest, 1 connection | 310 MB private (Xvfb, no GPU) | not measured; heap up to 1 GB (`-Xmx1024m` in `dbeaver.ini`) | not measured |
-| License | AGPL-3.0 | Apache 2.0 | GPLv3 (Community Edition) |
+| | PlatypusDB 0.2.0 | DBeaver CE 26.2.3 | DataGrip 2026.2.6 | TablePlus 2.2.0 | Beekeeper Studio 6.2.0 |
+|---|---|---|---|---|---|
+| Runtime | Rust, the system's web view | Java (Eclipse RCP), JRE bundled | Java (IntelliJ platform), JetBrains Runtime bundled | Native, GTK 3 | Electron (Chromium and Node bundled) |
+| Download | 19.5 MiB (`.deb`) | 122 MiB (`.tar.gz`) | 1,047 MiB (`.tar.gz`) | 60 MiB (`.deb`) | 346 MiB (`.AppImage`) |
+| On disk | 46 MiB (+ WebKitGTK, shared with the system) | 206 MiB, of which the JRE 106 MiB | not measured | 180 MiB (`Installed-Size` of the `.deb`, + GTK libraries) | 1,105 MiB |
+| Start to interactive window | 1.4 s (Xvfb, no GPU) | not measured | not measured | not measured | not measured |
+| Memory at rest, 1 connection | 310 MB private (Xvfb, no GPU) | not measured; heap up to 1 GB (`-Xmx1024m` in `dbeaver.ini`) | not measured | not measured | not measured |
+| License | AGPL-3.0 | Apache 2.0 | Proprietary | Proprietary | GPLv3 (Community Edition) |
+
+DataGrip's size is the one JetBrains' release service gives for the Linux archive
+(`data.services.jetbrains.com/products/releases?code=DG`); TablePlus's are the `Size` and
+`Installed-Size` of its Debian package (`deb.tableplus.com`, Ubuntu 24 repository). Both on
+29 October 2026.
 
 PlatypusDB's numbers are the Linux ones above (software rendering, no GPU); on Windows it
 starts in under 0.5 s and keeps about 130 MB. The plan's reference values for DBeaver (5–15 s

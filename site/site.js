@@ -1,7 +1,7 @@
-// The screenshot gallery as tabs: one window at a time; the arrows and Home/End move between them.
+// The screenshot tour as tabs: one window at a time; the arrows and Home/End move between them.
 // Without this script every screenshot shows, one under the other.
 (function () {
-  var list = document.querySelector(".gallery [role=tablist]");
+  var list = document.querySelector(".tour [role=tablist]");
   if (!list) return;
   var tabs = Array.prototype.slice.call(list.querySelectorAll("[role=tab]"));
 
@@ -34,7 +34,7 @@
   });
 
   // A column beside the shots on wide screens, a row above them on narrow ones (style.css).
-  var narrow = window.matchMedia("(max-width: 860px)");
+  var narrow = window.matchMedia("(max-width: 1000px)");
   function orient() {
     list.setAttribute("aria-orientation", narrow.matches ? "horizontal" : "vertical");
   }
@@ -43,4 +43,21 @@
 
   list.hidden = false;
   select(0, false);
+})();
+
+// Blocks marked `reveal` fade in the first time they come into view.
+(function () {
+  var blocks = document.querySelectorAll(".reveal");
+  if (!("IntersectionObserver" in window)) {
+    blocks.forEach(function (b) { b.classList.add("seen"); });
+    return;
+  }
+  var watcher = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      e.target.classList.add("seen");
+      watcher.unobserve(e.target);
+    });
+  }, { rootMargin: "0px 0px -10% 0px" });
+  blocks.forEach(function (b) { watcher.observe(b); });
 })();
