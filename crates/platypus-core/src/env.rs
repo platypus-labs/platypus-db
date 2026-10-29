@@ -235,7 +235,7 @@ impl ConnectionConfig {
             expand_path(path, vars)?;
         }
         for (key, value) in &mut self.options {
-            if key != ENV_FILE {
+            if ![ENV_FILE, crate::BEFORE_CONNECT, crate::AFTER_DISCONNECT].contains(&key.as_str()) {
                 expand_text(value, vars)?;
             }
         }
@@ -410,6 +410,10 @@ mod tests {
         config
             .options
             .insert(ENV_FILE.into(), "${env:not_expanded}".into());
+        // The shell's own variables, which the shell replaces.
+        config
+            .options
+            .insert(crate::BEFORE_CONNECT.into(), "vpn up \"${VPN}\"".into());
         config.ssh = Some(SshConfig {
             host: "${env:BASTION}".to_owned(),
             port: 22,
@@ -431,6 +435,7 @@ mod tests {
         assert_eq!(config.password.unwrap().expose(), "pw");
         assert_eq!(config.options["warehouse"], "wh1");
         assert_eq!(config.options[ENV_FILE], "${env:not_expanded}");
+        assert_eq!(config.options[crate::BEFORE_CONNECT], "vpn up \"${VPN}\"");
         let ssh = config.ssh.unwrap();
         assert_eq!(ssh.host, "b.example");
         assert!(matches!(ssh.auth, SshAuth::Password(p) if p.expose() == "spw"));

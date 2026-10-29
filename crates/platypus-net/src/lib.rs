@@ -1,7 +1,14 @@
 //! Network paths to database servers. An SSH tunnel listens on a local port and forwards
 //! every connection to the database through the SSH server (`ssh -L`), optionally reached
-//! through a jump host (`ssh -J`). [`connect`] opens the tunnel, then the driver's
-//! connection through it, and keeps the tunnel alive as long as the connection.
+//! through a jump host (`ssh -J`), and the first SSH server, or the database server when
+//! there is no tunnel, may be reached through a SOCKS5 or HTTP proxy (see [`proxy`]).
+//! [`connect`] runs the connection's command before
+//! connecting (see [`hooks`]), opens the tunnel, then the driver's connection through it,
+//! and keeps the tunnel alive as long as the connection; its command after disconnecting
+//! runs when the connection goes.
+
+pub mod hooks;
+pub mod proxy;
 
 use std::fmt;
 use std::net::SocketAddr;
@@ -17,7 +24,9 @@ use platypus_core::{
 };
 use russh::client::{self, AuthResult, Handle};
 use russh::keys::{self, PrivateKeyWithHashAlg, PublicKeyOrCertificate};
-use tokio::net::TcpListener;
+
+pub use proxy::Proxy;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 
 fn ssh_error(server: &SshConfig, e: impl fmt::Display) -> Error {
@@ -163,9 +172,13 @@ fn client_config() -> Arc<client::Config> {
     })
 }
 
-/// Logs in to `server`, through its jump host if it has one. Jump hosts stay open as long
-/// as the sessions they carry.
-async fn open_session(server: &SshConfig, known_hosts: &Path) -> Result<(Session, Vec<Session>)> {
+/// Logs in to `server`, through its jump host if it has one, and the first of them through
+/// `proxy`. Jump hosts stay open as long as the sessions they carry.
+async fn open_session(
+    server: &SshConfig,
+    known_hosts: &Path,
+    proxy: Option<&Proxy>,
+) -> Result<(Session, Vec<Session>)> {
     let handler = KnownHosts {
         host: server.host.clone(),
         port: server.port,
@@ -173,11 +186,23 @@ async fn open_session(server: &SshConfig, known_hosts: &Path) -> Result<(Session
     };
     let (mut session, mut jumps) = match &server.jump {
         None => {
-            let connecting = client::connect(
-                client_config(),
-                (server.host.as_str(), server.port),
-                handler,
-            );
+            let connecting = async {
+                let session = match proxy {
+                    None => {
+                        client::connect(
+                            client_config(),
+                            (server.host.as_str(), server.port),
+                            handler,
+                        )
+                        .await
+                    }
+                    Some(proxy) => {
+                        let stream = proxy.dial(&server.host, server.port).await?;
+                        client::connect_stream(client_config(), stream, handler).await
+                    }
+                };
+                session.map_err(|e| ssh_error(server, e))
+            };
             // An address that drops packets would wait for the system's TCP timeout.
             let session = tokio::time::timeout(SSH_CONNECT_TIMEOUT, connecting)
                 .await
@@ -186,12 +211,11 @@ async fn open_session(server: &SshConfig, known_hosts: &Path) -> Result<(Session
                         server,
                         format!("no answer within {} s", SSH_CONNECT_TIMEOUT.as_secs()),
                     )
-                })?
-                .map_err(|e| ssh_error(server, e))?;
+                })??;
             (session, Vec::new())
         }
         Some(jump) => {
-            let (via, mut chain) = Box::pin(open_session(jump, known_hosts)).await?;
+            let (via, mut chain) = Box::pin(open_session(jump, known_hosts, proxy)).await?;
             let channel = via
                 .channel_open_direct_tcpip(
                     server.host.clone(),
@@ -218,11 +242,32 @@ async fn open_session(server: &SshConfig, known_hosts: &Path) -> Result<(Session
     Ok((session, jumps))
 }
 
-/// A local port forwarded to a host and port seen from the SSH server. Closing it (dropping)
-/// stops listening and ends the SSH sessions.
+/// Listens on a free local port and hands each connection to `forward`, until the returned
+/// task is aborted. `what` names the path in errors.
+async fn listen<F, Fut>(what: &str, forward: F) -> Result<(SocketAddr, JoinHandle<()>)>
+where
+    F: Fn(TcpStream, SocketAddr) -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    let listener = TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .map_err(|e| Error::Connect(format!("cannot open a local port for the {what}: {e}")))?;
+    let local = listener
+        .local_addr()
+        .map_err(|e| Error::Connect(format!("{what}: {e}")))?;
+    let accept = tokio::spawn(async move {
+        while let Ok((socket, peer)) = listener.accept().await {
+            tokio::spawn(forward(socket, peer));
+        }
+    });
+    Ok((local, accept))
+}
+
+/// A local port forwarded to a host and port seen from the SSH server, or reached through a
+/// proxy. Closing it (dropping) stops listening and ends the SSH sessions.
 pub struct Tunnel {
     local: SocketAddr,
-    session: Arc<Session>,
+    session: Option<Arc<Session>>,
     accept: JoinHandle<()>,
     _jumps: Vec<Session>,
 }
@@ -251,47 +296,103 @@ impl Tunnel {
         port: u16,
         known_hosts: Option<&Path>,
     ) -> Result<Self> {
+        Self::open_via(server, host, port, known_hosts, None).await
+    }
+
+    /// As [`Tunnel::open`], with the first SSH server reached through `proxy`.
+    pub async fn open_via(
+        server: &SshConfig,
+        host: &str,
+        port: u16,
+        known_hosts: Option<&Path>,
+        proxy: Option<&Proxy>,
+    ) -> Result<Self> {
         let path = match known_hosts {
             Some(path) => path.to_owned(),
             None => default_known_hosts()?,
         };
-        let (session, jumps) = open_session(server, &path).await?;
+        let (session, jumps) = open_session(server, &path, proxy).await?;
         let session = Arc::new(session);
-        let listener = TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| {
-            Error::Connect(format!("cannot open a local port for the SSH tunnel: {e}"))
-        })?;
-        let local = listener
-            .local_addr()
-            .map_err(|e| Error::Connect(format!("SSH tunnel: {e}")))?;
         let forward = Arc::clone(&session);
         let target = host.to_owned();
-        let accept = tokio::spawn(async move {
-            while let Ok((mut socket, peer)) = listener.accept().await {
-                let session = Arc::clone(&forward);
-                let target = target.clone();
-                tokio::spawn(async move {
-                    let Ok(channel) = session
-                        .channel_open_direct_tcpip(
-                            target,
-                            u32::from(port),
-                            peer.ip().to_string(),
-                            u32::from(peer.port()),
-                        )
-                        .await
-                    else {
-                        return;
-                    };
-                    let mut stream = channel.into_stream();
-                    let _ = tokio::io::copy_bidirectional(&mut socket, &mut stream).await;
-                });
+        let (local, accept) = listen("SSH tunnel", move |mut socket, peer| {
+            let session = Arc::clone(&forward);
+            let target = target.clone();
+            async move {
+                let Ok(channel) = session
+                    .channel_open_direct_tcpip(
+                        target,
+                        u32::from(port),
+                        peer.ip().to_string(),
+                        u32::from(peer.port()),
+                    )
+                    .await
+                else {
+                    return;
+                };
+                let mut stream = channel.into_stream();
+                let _ = tokio::io::copy_bidirectional(&mut socket, &mut stream).await;
             }
-        });
+        })
+        .await?;
         Ok(Self {
             local,
-            session,
+            session: Some(session),
             accept,
             _jumps: jumps,
         })
+    }
+
+    /// A local port forwarded to `host:port` through `proxy`. The proxy is tried here, so
+    /// that a wrong address or login is said at once rather than as a lost connection, and
+    /// the stream it gives carries the first connection to the port.
+    pub async fn through_proxy(proxy: &Proxy, host: &str, port: u16) -> Result<Self> {
+        let checked = Arc::new(std::sync::Mutex::new(Some(proxy.dial(host, port).await?)));
+        let proxy = proxy.clone();
+        let target = host.to_owned();
+        let (local, accept) = listen("proxy", move |mut socket, _| {
+            let ready = checked
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take();
+            let proxy = proxy.clone();
+            let target = target.clone();
+            async move {
+                let stream = match ready {
+                    Some(stream) => Ok(stream),
+                    None => proxy.dial(&target, port).await,
+                };
+                if let Ok(mut stream) = stream {
+                    let _ = tokio::io::copy_bidirectional(&mut socket, &mut stream).await;
+                }
+            }
+        })
+        .await?;
+        Ok(Self {
+            local,
+            session: None,
+            accept,
+            _jumps: Vec::new(),
+        })
+    }
+
+    /// The path to `config`'s server, if it needs one: its SSH tunnel, its proxy, or both.
+    pub async fn of(config: &ConnectionConfig, known_hosts: Option<&Path>) -> Result<Option<Self>> {
+        let proxy = Proxy::of(config)?;
+        let port = || {
+            config
+                .port
+                .or(config.driver.default_port())
+                .ok_or_else(|| Error::Config("a tunnel or proxy needs a server port".to_owned()))
+        };
+        let tunnel = match (&config.ssh, &proxy) {
+            (Some(ssh), proxy) => {
+                Self::open_via(ssh, &config.host, port()?, known_hosts, proxy.as_ref()).await?
+            }
+            (None, Some(proxy)) => Self::through_proxy(proxy, &config.host, port()?).await?,
+            (None, None) => return Ok(None),
+        };
+        Ok(Some(tunnel))
     }
 
     /// The local address that leads to the target.
@@ -302,7 +403,7 @@ impl Tunnel {
 
     #[must_use]
     pub fn is_closed(&self) -> bool {
-        self.session.is_closed() || self.accept.is_finished()
+        self.session.as_ref().is_some_and(|s| s.is_closed()) || self.accept.is_finished()
     }
 }
 
@@ -312,8 +413,9 @@ impl Drop for Tunnel {
     }
 }
 
-/// Opens `driver`'s connection for `config`, through its SSH tunnel when it has one; see
-/// [`Tunnel::open`] for `known_hosts`.
+/// Opens `driver`'s connection for `config`, through its SSH tunnel or proxy when it has one; see
+/// [`Tunnel::open`] for `known_hosts`. The command before connecting runs first, and the
+/// one after disconnecting when the connection goes, or at once when it could not be made.
 pub async fn connect<F, Fut>(
     config: &ConnectionConfig,
     known_hosts: Option<&Path>,
@@ -323,30 +425,61 @@ where
     F: FnOnce(ConnectionConfig) -> Fut,
     Fut: Future<Output = Result<Box<dyn Connection>>>,
 {
-    let Some(ssh) = &config.ssh else {
-        return driver(config.clone()).await;
-    };
-    let port = config
-        .port
-        .or(config.driver.default_port())
-        .ok_or_else(|| Error::Config("an SSH tunnel needs a server port".to_owned()))?;
-    let tunnel = Tunnel::open(ssh, &config.host, port, known_hosts).await?;
-    let mut direct = config.clone();
-    direct.ssh = None;
-    direct.connect_addr = Some(tunnel.local_addr());
-    let inner = driver(direct).await?;
-    Ok(Box::new(Tunneled { inner, tunnel }))
+    let mut config = config.clone();
+    // Read before the commands run: a wrong proxy is said without running them.
+    Proxy::of(&config)?;
+    // On a failure below, the use goes, and the command after runs if it was the last.
+    let hooks = hooks::acquire(&mut config).await?;
+    let (inner, tunnel) = connect_direct(config, known_hosts, driver).await?;
+    if tunnel.is_none() && hooks.is_none() {
+        return Ok(inner);
+    }
+    Ok(Box::new(Held {
+        inner,
+        tunnel,
+        _hooks: hooks,
+    }))
 }
 
-/// A connection through an SSH tunnel, which lives as long as it.
+/// The driver's connection, through the SSH tunnel or proxy when there is one.
+async fn connect_direct<F, Fut>(
+    mut config: ConnectionConfig,
+    known_hosts: Option<&Path>,
+    driver: F,
+) -> Result<(Box<dyn Connection>, Option<Tunnel>)>
+where
+    F: FnOnce(ConnectionConfig) -> Fut,
+    Fut: Future<Output = Result<Box<dyn Connection>>>,
+{
+    let tunnel = Tunnel::of(&config, known_hosts).await?;
+    // The driver never sees the path.
+    config.options.remove(proxy::PROXY);
+    let Some(tunnel) = tunnel else {
+        return Ok((driver(config).await?, None));
+    };
+    config.ssh = None;
+    config.connect_addr = Some(tunnel.local_addr());
+    Ok((driver(config).await?, Some(tunnel)))
+}
+
+/// A connection with what lives as long as it: its SSH tunnel or proxy, and its use of its
+/// commands, whose command after disconnecting runs when the last use goes. Dropped in this
+/// order: the connection closes before the command after runs.
 #[derive(Debug)]
-struct Tunneled {
+struct Held {
     inner: Box<dyn Connection>,
-    tunnel: Tunnel,
+    tunnel: Option<Tunnel>,
+    _hooks: Option<hooks::Use>,
+}
+
+impl Held {
+    fn tunnel_closed(&self) -> bool {
+        self.tunnel.as_ref().is_some_and(Tunnel::is_closed)
+    }
 }
 
 #[async_trait]
-impl Connection for Tunneled {
+impl Connection for Held {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
         self.inner.execute(sql, options).await
     }
@@ -364,11 +497,11 @@ impl Connection for Tunneled {
     }
 
     fn is_closed(&self) -> bool {
-        self.inner.is_closed() || self.tunnel.is_closed()
+        self.inner.is_closed() || self.tunnel_closed()
     }
 
     async fn check_alive(&self) -> bool {
-        !self.tunnel.is_closed() && self.inner.check_alive().await
+        !self.tunnel_closed() && self.inner.check_alive().await
     }
 
     fn take_messages(&self) -> Vec<String> {

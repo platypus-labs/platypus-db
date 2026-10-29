@@ -234,11 +234,8 @@ async fn run(
 ) -> CommandResult<CliOutput> {
     let config = state.session(session_id)?.config;
     let program = program(config.driver)?;
-    // The tunnel stays open while the client runs.
-    let tunnel = match (&config.ssh, config.port.or(config.driver.default_port())) {
-        (Some(ssh), Some(port)) => Some(Tunnel::open(ssh, &config.host, port, None).await?),
-        _ => None,
-    };
+    // The tunnel or proxy stays open while the client runs.
+    let tunnel = Tunnel::of(&config, None).await?;
     let (host, port) = match &tunnel {
         Some(t) => ("127.0.0.1".to_owned(), Some(t.local_addr().port())),
         None => (config.host.clone(), config.port),
