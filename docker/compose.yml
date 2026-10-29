@@ -185,7 +185,8 @@ services:
   mysql-5.7:
     image: mysql:5.7
     profiles: [versions]
-    command: --log-bin-trust-function-creators=1
+    # 64M as from 8.0 (5.7 allows 4M): the scale tests read cells of tens of megabytes.
+    command: --log-bin-trust-function-creators=1 --max-allowed-packet=64M
     environment: &mysql-env
       MYSQL_USER: platypus
       MYSQL_PASSWORD: platypus
@@ -214,6 +215,8 @@ services:
   mariadb-10.6:
     image: mariadb:10.6
     profiles: [versions]
+    # 64M as from 10.6's successors (10.6 allows 16M), for the scale tests' large cells.
+    command: --max-allowed-packet=64M
     environment:
       MARIADB_USER: platypus
       MARIADB_PASSWORD: platypus
