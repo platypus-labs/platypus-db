@@ -9,3 +9,9 @@ export function formatBytes(bytes: number): string {
   }
   return `${unit === 0 ? value : value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
 }
+
+/** `name-2026-10-29.ext`, without the characters file systems refuse in a name. */
+export function datedFileName(name: string, ext: string, today = new Date()): string {
+  const day = today.toISOString().slice(0, 10);
+  return `${name.replace(/[<>:"/\\|?*\s]+/g, "_") || "backup"}-${day}.${ext}`;
+}

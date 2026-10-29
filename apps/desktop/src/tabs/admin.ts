@@ -1,5 +1,5 @@
 import { AdminTab } from "../admin/AdminTab";
-import "../admin/maintenanceActions";
+import "../admin/actions";
 import { registerTabKind } from "./registry";
 import { t } from "../i18n";
 

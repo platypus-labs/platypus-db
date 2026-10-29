@@ -245,6 +245,20 @@ export interface ObjectStatistics {
   unique: boolean;
 }
 
+/** A backup's or restore's progress and outcome; see `commands::backup::BackupEvent`. */
+export type BackupEvent =
+  | { kind: "progress"; step: string; done: number; total: number | null; bytes: boolean }
+  | { kind: "finished"; bytes: number; elapsed_ms: number; output: string }
+  | { kind: "failed"; message: string; output: string };
+
+export interface BackupRequest {
+  path: string;
+  /** PostgreSQL's custom archive or SQL; MySQL writes SQL either way. */
+  format: "custom" | "plain";
+  schema?: string | null;
+  structure_only: boolean;
+}
+
 /** The upkeep of a table; see `platypus_core::Maintenance`. */
 export type Maintenance = "vacuum" | "analyze" | "reindex" | "optimize" | "check";
 
@@ -1678,6 +1692,18 @@ export const api = {
   runCli: (sessionId: number, runId: number, script: string) =>
     invoke<CliOutput>("run_cli", { sessionId, runId, script }),
   cancelCli: (runId: number) => invoke<void>("cancel_cli", { runId }),
+  /** Backs the session's database up with `pg_dump` or `mysqldump`; `cancelCli(runId)` stops it. */
+  backupDatabase: (sessionId: number, runId: number, request: BackupRequest, onEvent: (e: BackupEvent) => void) => {
+    const channel = new Channel<BackupEvent>();
+    channel.onmessage = onEvent;
+    return invoke<void>("backup_database", { sessionId, runId, request, onEvent: channel });
+  },
+  /** Restores a backup into the session's database; `cancelCli(runId)` stops it. */
+  restoreDatabase: (sessionId: number, runId: number, request: { path: string; clean: boolean }, onEvent: (e: BackupEvent) => void) => {
+    const channel = new Channel<BackupEvent>();
+    channel.onmessage = onEvent;
+    return invoke<void>("restore_database", { sessionId, runId, request, onEvent: channel });
+  },
   /** `connectionIds` limits the entries to those connections, e.g. a project's. */
   searchHistory: (query: {
     connectionIds?: string[];

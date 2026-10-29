@@ -355,3 +355,17 @@
 .admin-table th.num {
   white-space: nowrap;
 }
+
+/* Backup and restore: the progress in the theme's accent, the tool's output folded. */
+.backup-dialog progress {
+  accent-color: var(--accent);
+}
+
+.backup-output summary {
+  cursor: pointer;
+}
+
+.backup-output pre {
+  margin-top: 6px;
+  max-height: 220px;
+}
