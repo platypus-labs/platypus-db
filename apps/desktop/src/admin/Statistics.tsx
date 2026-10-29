@@ -16,7 +16,7 @@ import {
   shownObjects,
   sortQueries,
   tableOf,
-} from "./statistics";
+} from "./statisticsOrder";
 
 const ORDERS: [QueryOrder, string][] = [
   ["total", msg("Total time")],
