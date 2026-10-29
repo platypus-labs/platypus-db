@@ -817,8 +817,11 @@ test di scala (`tests/scale.rs` nella conformance e lo scenario E2E `scale-sqlit
 tabelle, un milione di righe, celle da 32 MB; il navigator ora disegna solo le righe in vista
 e il driver SQL Server legge i valori `max` e i pacchetti in blocco, da 10,5 s a 0,8 s per 48
 MB), benchmark con soglie (`scripts/bench.py`, job `bench` della CI) e pulizia di `target`
-(`scripts/clean-target.mjs`). Restano la verifica su macOS e su un desktop Linux con GPU, il
-test reale dell'auto-update, la firma, il confronto con DBeaver e la distribuzione.
+(`scripts/clean-target.mjs`). Dal 29 ottobre 2026: confronto delle dimensioni dei download
+Linux con DBeaver CE e Beekeeper Studio (BENCHMARKS.md, "Side by side", e README); avvio e
+memoria degli altri client non ancora misurati, perché nel container di test non si possono
+eseguire. Restano la verifica su macOS e su un desktop Linux con GPU, il test reale
+dell'auto-update, la firma, avvio e memoria di DBeaver accanto ai nostri e la distribuzione.
 
 | Attività | Prio |
 |---|---|
