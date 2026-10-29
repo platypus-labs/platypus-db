@@ -4,6 +4,7 @@ import { isNoSql } from "../api";
 import { workbench } from "../workbench";
 import { CompareDialog } from "./CompareDialog";
 import { LintDialog } from "./LintDialog";
+import { MigrationsDialog } from "./MigrationsDialog";
 
 registerAction({
   id: "schema.lint",
@@ -25,4 +26,15 @@ registerAction({
   when: ({ connection }) => !isNoSql(connection.driver),
   run: ({ connection, database, schema }) =>
     workbench().openDialog((close) => createElement(CompareDialog, { connection, database, schema: schema.name, onClose: close })),
+});
+
+registerAction({
+  id: "schema.migrations",
+  scope: "navigator.schema",
+  title: "Migration status…",
+  group: "open",
+  order: 38,
+  when: ({ connection }) => !isNoSql(connection.driver),
+  run: ({ connection, database, schema }) =>
+    workbench().openDialog((close) => createElement(MigrationsDialog, { connection, database, schema: schema.name, onClose: close })),
 });

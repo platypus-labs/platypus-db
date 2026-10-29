@@ -935,6 +935,29 @@ export type LintKind =
   | "foreign_key_type_mismatch"
   | "unreadable";
 
+export type MigrationTool = "flyway" | "liquibase" | "prisma" | "alembic" | "rails";
+export type MigrationState = "applied" | "pending" | "divergent" | "failed" | "missing";
+
+/** A migration as the project folder and the database's history table say it is. */
+export interface MigrationEntry {
+  tool: MigrationTool;
+  /** The version, revision, name or changeset id; "R" for a Flyway repeatable migration. */
+  id: string;
+  description: string;
+  /** Relative to the chosen folder; null when the database has it and the folder does not. */
+  file: string | null;
+  status: MigrationState;
+  applied_at: string | null;
+  detail: string | null;
+}
+
+export interface MigrationToolStatus {
+  tool: MigrationTool;
+  /** The history table's name in the database; null when it does not exist. */
+  history_table: string | null;
+  migrations: MigrationEntry[];
+}
+
 /** What the schema linter found; `fix` is the statement that fixes it, to review first. */
 export interface LintFinding {
   kind: LintKind;
@@ -1994,6 +2017,9 @@ export const api = {
   schemaTables: (sessionId: number, schema: string, tables: string[] | null) =>
     invoke<SchemaTable[]>("schema_tables", { sessionId, schema, tables }),
   lintSchema: (sessionId: number, schema: string) => invoke<LintFinding[]>("lint_schema", { sessionId, schema }),
+  /** The migrations of the project in `folder` against the history tables of `schema`. */
+  migrationStatus: (sessionId: number, schema: string, folder: string) =>
+    invoke<MigrationToolStatus[]>("migration_status", { sessionId, schema, folder }),
   /** The script that makes the target schema like the source one. */
   compareSchemas: (sourceSession: number, sourceSchema: string, targetSession: number, targetSchema: string) =>
     invoke<{ script: TableScript; sql: string }>("compare_schemas", { sourceSession, sourceSchema, targetSession, targetSchema }),
