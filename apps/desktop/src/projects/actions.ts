@@ -6,6 +6,7 @@ import { api, type Project, type ProjectFolder } from "../api";
 import { askName } from "../ui/NameDialog";
 import { workbench } from "../workbench";
 import { PROJECT_COLORS } from "./ProjectDialog";
+import { testConnections } from "../components/TestConnectionsDialog";
 import { railOrder } from "./state";
 import { t, msg } from "../i18n";
 
@@ -91,6 +92,21 @@ registerAction({
   title: "Color…",
   order: 11,
   run: (project) => workbench().editProject(project),
+});
+
+registerAction({
+  id: "app.test_connections",
+  scope: "global",
+  title: "Test the connections of the project",
+  run: () => testConnections(workbench().activeProject()),
+});
+
+registerAction({
+  id: "project.test_connections",
+  scope: "project",
+  title: "Test connections",
+  order: 12,
+  run: (project) => testConnections(project),
 });
 
 registerAction({

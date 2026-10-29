@@ -1820,6 +1820,15 @@ const zh: Record<string, string> = {
   "Only part of the rows of {names}: the memory limit stopped the reading.": "{names} 只有部分行：读取因内存限制而停止。",
   "(memory limit)": "（内存限制）",
   "Change every row on {name}?": "修改 {name} 上的每一行？",
+  "Test connections": "测试连接",
+  "Test the connections of the project": "测试项目的连接",
+  "Test the connections of {project}": "测试 {project} 的连接",
+  "No connections to test.": "没有要测试的连接。",
+  "Connected: {n}": "已连接：{n}",
+  "Failed: {n}": "失败：{n}",
+  "Not tried: {n}": "未尝试：{n}",
+  "Test again": "重新测试",
+  "Asks for its password: not tried": "需要输入密码：未尝试",
 };
 
 export default zh;

@@ -1820,6 +1820,15 @@ const fr: Record<string, string> = {
   "Only part of the rows of {names}: the memory limit stopped the reading.": "Seulement une partie des lignes de {names} : la limite de mémoire a arrêté la lecture.",
   "(memory limit)": "(limite de mémoire)",
   "Change every row on {name}?": "Modifier toutes les lignes sur {name} ?",
+  "Test connections": "Tester les connexions",
+  "Test the connections of the project": "Tester les connexions du projet",
+  "Test the connections of {project}": "Test des connexions de {project}",
+  "No connections to test.": "Aucune connexion à tester.",
+  "Connected: {n}": "Connectées : {n}",
+  "Failed: {n}": "Échouées : {n}",
+  "Not tried: {n}": "Non essayées : {n}",
+  "Test again": "Tester à nouveau",
+  "Asks for its password: not tried": "Demande son mot de passe : non essayée",
 };
 
 export default fr;
