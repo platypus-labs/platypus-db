@@ -102,7 +102,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
 | H — Import, export e trasferimento | ✅ fatto (P1, P2; P3 in parte) |
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
-| J — Amministrazione del server | 🔒 Delfa · group-j-admin · 2026-10-29 |
+| J — Amministrazione del server | ✅ fatto (P2) |
 | K — Shell ed ergonomia | 🔒 Delfa · group-k-shell · 2026-10-29 |
 | L — Sicurezza operativa | ✅ completato |
 | M — Analisi dei dati | ✅ fatto (P2 in parte) |
