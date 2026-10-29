@@ -68,82 +68,108 @@ fn program(driver: DriverKind) -> CommandResult<&'static str> {
     }
 }
 
-/// The client's arguments and environment for `config`, reached at `host:port`.
-fn invocation(
+/// Arguments and environment of a command-line tool.
+pub(super) type Invocation = (Vec<String>, Vec<(&'static str, String)>);
+
+/// What the PostgreSQL tools (`psql`, `pg_dump`, `pg_restore`) need to reach `config`'s
+/// database at `host:port`: the password and TLS go in the environment.
+pub(super) fn pg_connection(
     config: &ConnectionConfig,
     host: &str,
     port: Option<u16>,
-) -> (Vec<String>, Vec<(&'static str, String)>) {
+) -> Invocation {
+    let mut args: Vec<String> = [
+        "-h",
+        host,
+        "-U",
+        config.user.as_str(),
+        "-d",
+        config.database.as_str(),
+    ]
+    .map(str::to_owned)
+    .into();
+    if let Some(port) = port {
+        args.extend(["-p".to_owned(), port.to_string()]);
+    }
+    let mode = match config.ssl_mode {
+        SslMode::Disable => "disable",
+        SslMode::Prefer => "prefer",
+        SslMode::Require => "require",
+        SslMode::VerifyCa => "verify-ca",
+        SslMode::VerifyFull => "verify-full",
+    };
+    let mut env = vec![
+        ("PGSSLMODE", mode.to_owned()),
+        ("PGCLIENTENCODING", "UTF8".to_owned()),
+    ];
+    if let Some(cert) = &config.ssl_root_cert {
+        env.push(("PGSSLROOTCERT", cert.display().to_string()));
+    }
+    env.extend(
+        config
+            .password
+            .as_ref()
+            .map(|p| ("PGPASSWORD", p.expose().to_owned())),
+    );
+    (args, env)
+}
+
+/// What the MySQL tools (`mysql`, `mysqldump`) need to reach `config`'s server at
+/// `host:port`, the database left out: each takes it at its own place.
+pub(super) fn mysql_connection(
+    config: &ConnectionConfig,
+    host: &str,
+    port: Option<u16>,
+) -> Invocation {
+    let mut args: Vec<String> = ["-h", host, "-u", config.user.as_str()]
+        .map(str::to_owned)
+        .into();
+    if let Some(port) = port {
+        args.push(format!("--port={port}"));
+    }
+    // The default needs no option: the MariaDB client, often installed as `mysql`,
+    // does not know `--ssl-mode`.
+    let mode = match config.ssl_mode {
+        SslMode::Disable => Some("DISABLED"),
+        SslMode::Prefer => None,
+        SslMode::Require => Some("REQUIRED"),
+        SslMode::VerifyCa => Some("VERIFY_CA"),
+        SslMode::VerifyFull => Some("VERIFY_IDENTITY"),
+    };
+    args.extend(mode.map(|m| format!("--ssl-mode={m}")));
+    if let Some(cert) = &config.ssl_root_cert {
+        args.push(format!("--ssl-ca={}", cert.display()));
+    }
+    let env = config
+        .password
+        .as_ref()
+        .map(|p| ("MYSQL_PWD", p.expose().to_owned()))
+        .into_iter()
+        .collect();
+    (args, env)
+}
+
+/// The client's arguments and environment for `config`, reached at `host:port`.
+fn invocation(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Invocation {
     let mut args: Vec<String> = Vec::new();
     let mut env = Vec::new();
     let password = config.password.as_ref().map(|p| p.expose().to_owned());
     match config.driver {
         DriverKind::Postgres => {
             // No prompts (stdin is the script), stop at the first error, no ~/.psqlrc.
-            args.extend(
-                [
-                    "-X",
-                    "-w",
-                    "-v",
-                    "ON_ERROR_STOP=1",
-                    "-h",
-                    host,
-                    "-U",
-                    config.user.as_str(),
-                    "-d",
-                    config.database.as_str(),
-                ]
-                .map(str::to_owned),
-            );
-            if let Some(port) = port {
-                args.extend(["-p".to_owned(), port.to_string()]);
-            }
-            let mode = match config.ssl_mode {
-                SslMode::Disable => "disable",
-                SslMode::Prefer => "prefer",
-                SslMode::Require => "require",
-                SslMode::VerifyCa => "verify-ca",
-                SslMode::VerifyFull => "verify-full",
-            };
-            env.push(("PGSSLMODE", mode.to_owned()));
-            env.push(("PGCLIENTENCODING", "UTF8".to_owned()));
-            if let Some(cert) = &config.ssl_root_cert {
-                env.push(("PGSSLROOTCERT", cert.display().to_string()));
-            }
-            env.extend(password.map(|p| ("PGPASSWORD", p)));
+            args.extend(["-X", "-w", "-v", "ON_ERROR_STOP=1"].map(str::to_owned));
+            let (connection, pg_env) = pg_connection(config, host, port);
+            args.extend(connection);
+            env = pg_env;
         }
         DriverKind::MySql => {
-            args.extend(
-                [
-                    "--table",
-                    "--default-character-set=utf8mb4",
-                    "-h",
-                    host,
-                    "-u",
-                    config.user.as_str(),
-                ]
-                .map(str::to_owned),
-            );
-            if let Some(port) = port {
-                args.push(format!("--port={port}"));
-            }
-            // The default needs no option: the MariaDB client, often installed as `mysql`,
-            // does not know `--ssl-mode`.
-            let mode = match config.ssl_mode {
-                SslMode::Disable => Some("DISABLED"),
-                SslMode::Prefer => None,
-                SslMode::Require => Some("REQUIRED"),
-                SslMode::VerifyCa => Some("VERIFY_CA"),
-                SslMode::VerifyFull => Some("VERIFY_IDENTITY"),
-            };
-            args.extend(mode.map(|m| format!("--ssl-mode={m}")));
-            if let Some(cert) = &config.ssl_root_cert {
-                args.push(format!("--ssl-ca={}", cert.display()));
-            }
+            args.extend(["--table", "--default-character-set=utf8mb4"].map(str::to_owned));
+            let (connection, mysql_env) = mysql_connection(config, host, port);
+            args.extend(connection);
             if !config.database.is_empty() {
                 args.push(config.database.clone());
             }
-            env.extend(password.map(|p| ("MYSQL_PWD", p)));
+            env = mysql_env;
         }
         DriverKind::Sqlite | DriverKind::DuckDb | DriverKind::Libsql => {
             args.extend(
@@ -192,9 +218,34 @@ fn sqlcmd_args(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Vec<
     args
 }
 
+/// The tunnel or proxy of `config`, opened when it has one, and the host and port that reach
+/// its server: the tunnel's local end, or the server itself.
+pub(super) async fn reach(
+    config: &ConnectionConfig,
+) -> CommandResult<(Option<Tunnel>, String, Option<u16>)> {
+    let tunnel = Tunnel::of(config, None).await?;
+    let (host, port) = match &tunnel {
+        Some(t) => ("127.0.0.1".to_owned(), Some(t.local_addr().port())),
+        None => (config.host.clone(), config.port),
+    };
+    Ok((tunnel, host, port))
+}
+
+/// The error of a client that could not start.
+pub(super) fn not_started(program: &str, e: &std::io::Error) -> CommandError {
+    CommandError::new(
+        "cli",
+        if e.kind() == std::io::ErrorKind::NotFound {
+            format!("{program} was not found: install the client and put it on the PATH")
+        } else {
+            format!("cannot start {program}: {e}")
+        },
+    )
+}
+
 /// Waits for the client to end, or (`None`) for `cancel`: the client is then killed, as
 /// dropping its wait drops the child, spawned with `kill_on_drop`.
-async fn wait_or_cancel(
+pub(super) async fn wait_or_cancel(
     child: Child,
     cancel: oneshot::Receiver<()>,
 ) -> Option<std::io::Result<Output>> {
@@ -222,7 +273,7 @@ pub async fn run_cli(
     out
 }
 
-fn stopped(program: &str) -> CommandError {
+pub(super) fn stopped(program: &str) -> CommandError {
     CommandError::new("cancelled", format!("{program} was stopped"))
 }
 
@@ -235,11 +286,7 @@ async fn run(
     let config = state.session(session_id)?.config;
     let program = program(config.driver)?;
     // The tunnel or proxy stays open while the client runs.
-    let tunnel = Tunnel::of(&config, None).await?;
-    let (host, port) = match &tunnel {
-        Some(t) => ("127.0.0.1".to_owned(), Some(t.local_addr().port())),
-        None => (config.host.clone(), config.port),
-    };
+    let (tunnel, host, port) = reach(&config).await?;
     if cancel.try_recv().is_ok() {
         return Err(stopped(program));
     }
@@ -255,16 +302,7 @@ async fn run(
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashes up.
     let started = Instant::now();
-    let mut child = command.spawn().map_err(|e| {
-        CommandError::new(
-            "cli",
-            if e.kind() == std::io::ErrorKind::NotFound {
-                format!("{program} was not found: install the client and put it on the PATH")
-            } else {
-                format!("cannot start {program}: {e}")
-            },
-        )
-    })?;
+    let mut child = command.spawn().map_err(|e| not_started(program, &e))?;
     if let Some(mut stdin) = child.stdin.take() {
         // Written alongside the reads, so a client that prints a lot cannot block the script;
         // one that exits early closes its input, and its output says why.
