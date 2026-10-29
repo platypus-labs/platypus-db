@@ -7,7 +7,10 @@ use std::time::{Duration, Instant, SystemTime};
 use crate::agent::locked;
 use crate::link::CLOSED;
 use crate::resource::{self, Target};
-use crate::{Agent, AgentError, ExplainArgs, ProposeArgs, QueryArgs, SampleArgs, origin_name};
+use crate::{
+    Agent, AgentError, ExplainArgs, HistoryArgs, ListScriptsArgs, ProposeArgs, QueryArgs,
+    ReadScriptArgs, SampleArgs, origin_name,
+};
 use platypus_store::{HistoryStatus, NewAgentCall};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -33,7 +36,9 @@ agent access set by the user: read_only connections run only statements that cha
 inside a read-only transaction; read_write connections also accept changes, which commit at \
 once. Production connections are always read-only. Passwords never reach you. While the \
 PlatypusDB app is open, list_open_sessions shows what the user has open there, and changes may \
-wait for the user to allow them in the app. Connections, schemas and tables are also MCP \
+wait for the user to allow them in the app. list_scripts and read_script \
+show the scripts the user saved, search_history the statements run before, to learn how the user \
+queries the data. Connections, schemas and tables are also MCP \
 resources (platypus://<connection>/<schema>/<table>), for clients that attach them as context.";
 
 const JSON: &str = "application/json";
@@ -429,6 +434,57 @@ impl PlatypusServer {
             .await
             .map(|r| r.render(format));
         self.answer(call, result).await
+    }
+
+    #[tool(
+        description = "Lists the SQL scripts the user saved in PlatypusDB: path (relative to \
+        the project, with `/`), whether it is a folder, and the name of the connection a script \
+        opens on, if it is linked to one. project is the project's name as the app shows it; \
+        left out, the scripts of All connections. Scripts linked to a connection agents may not \
+        use are not listed. Read-only: use read_script for a script's text."
+    )]
+    async fn list_scripts(
+        &self,
+        Parameters(args): Parameters<ListScriptsArgs>,
+        peer: Peer<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("list_scripts", &peer, &args);
+        let result = self.agent.list_scripts(&args);
+        self.answer(call, json_text(result)).await
+    }
+
+    #[tool(
+        description = "Returns the text of a script the user saved in PlatypusDB, by the path \
+        list_scripts shows, with the connection it is linked to. At most 256 KiB: a longer \
+        script is cut, and the answer says so (truncated). A script linked to a connection \
+        agents may not use is refused. Read-only: nothing is run or changed."
+    )]
+    async fn read_script(
+        &self,
+        Parameters(args): Parameters<ReadScriptArgs>,
+        peer: Peer<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("read_script", &peer, &args);
+        let result = self.agent.read_script(&args);
+        self.answer(call, json_text(result)).await
+    }
+
+    #[tool(
+        description = "Searches the history of statements run in PlatypusDB, newest first, on \
+        the connections agents may use: connection, sql, started_at (UTC, RFC 3339), \
+        duration_ms, rows, status (ok, error or cancelled), error and origin (`app` for what \
+        the user ran, else the agent's name). connection limits it to one connection, text to \
+        statements containing it (ignoring case), origin to `app` or `agent`. 50 entries by \
+        default, up to 500 with limit. Use it to see how the user queries the data."
+    )]
+    async fn search_history(
+        &self,
+        Parameters(args): Parameters<HistoryArgs>,
+        peer: Peer<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("search_history", &peer, &args);
+        let result = self.agent.search_history(&args);
+        self.answer(call, json_text(result)).await
     }
 
     #[tool(

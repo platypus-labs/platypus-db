@@ -517,8 +517,12 @@ impl Agent {
             .collect())
     }
 
+    pub(crate) const fn profile(&self) -> &Profile {
+        &self.profile
+    }
+
     /// The connection named `name` (or with that id), if agents may use it.
-    fn find(&self, name: &str) -> Result<(ConnectionStore, SavedConnection)> {
+    pub(crate) fn find(&self, name: &str) -> Result<(ConnectionStore, SavedConnection)> {
         let store = self.profile.connections()?;
         let visible = || {
             store

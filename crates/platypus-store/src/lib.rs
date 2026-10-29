@@ -22,7 +22,7 @@ mod vault;
 
 pub use agent_calls::{
     AGENT_CALLS_LIMIT, AgentCall, AgentCallQuery, AgentCallStore, AgentProposal, AgentSession,
-    NewAgentCall, PROPOSAL_LIFETIME, agent_calls_csv,
+    NewAgentCall, PROPOSAL_LIFETIME, agent_calls_csv, rfc3339,
 };
 pub use auth::{
     command_password, external_password, external_password_quiet, pgpass_password, pgpass_path,

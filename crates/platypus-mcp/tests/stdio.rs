@@ -236,6 +236,9 @@ fn lists_tools_and_connections_without_secrets(client: &mut Client) {
         "explain",
         "propose_sql",
         "list_open_sessions",
+        "list_scripts",
+        "read_script",
+        "search_history",
     ] {
         assert!(names.contains(&tool), "{tool} missing from {names:?}");
     }
@@ -842,4 +845,265 @@ fn resource_reads_are_logged(dir: &Path) {
     assert_eq!(calls[4].1.as_deref(), Some("Hidden"));
     assert_eq!(calls[4].3, "error");
     assert_eq!(calls[5].3, "error");
+}
+
+const SALES: &str = "00000000-0000-4000-8000-0000000000a1";
+
+/// The saved scripts of the profile: All connections has scripts on every kind of
+/// connection, and the project Sales one on the production connection.
+fn scripts(dir: &Path) {
+    use std::fmt::Write as _;
+    let toml = dir.join("connections.toml");
+    let mut text = std::fs::read_to_string(&toml).unwrap();
+    write!(
+        text,
+        "\n[[projects]]\nid = \"{SALES}\"\nname = \"Sales\"\ncolor = \"#d08f20\"\n"
+    )
+    .unwrap();
+    std::fs::write(&toml, text).unwrap();
+    let id = |n: u32| format!("00000000-0000-4000-8000-00000000000{n}");
+    let all = dir.join("scripts/all");
+    for (rel, text) in [
+        ("top.sql", "SELECT * FROM t"),
+        ("plain.sql", "SELECT 1"),
+        ("hidden.sql", "SELECT 'hidden'"),
+        ("gone.sql", "SELECT 'deleted connection'"),
+        ("reports/monthly.sql", "SELECT count(*) FROM t"),
+        ("private/secret.sql", "SELECT 'secret'"),
+        ("notes.txt", "not a script"),
+        (".draft.sql", "SELECT 'draft'"),
+    ] {
+        let path = all.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    // Past the cap of 256 KiB, with a two-byte letter on the boundary.
+    std::fs::write(all.join("big.sql"), "é".repeat(140_000)).unwrap();
+    let links = json!({
+        "top.sql": id(1),
+        "hidden.sql": id(3),
+        "gone.sql": "00000000-0000-4000-8000-0000000000ff",
+        "reports/monthly.sql": id(2),
+        "private/secret.sql": id(3),
+    });
+    std::fs::write(all.join(".links.json"), links.to_string()).unwrap();
+    let sales = dir.join("scripts").join(SALES);
+    std::fs::create_dir_all(&sales).unwrap();
+    std::fs::write(sales.join("pipeline.sql"), "SELECT 'pipeline'").unwrap();
+    std::fs::write(
+        sales.join(".links.json"),
+        json!({ "pipeline.sql": id(4) }).to_string(),
+    )
+    .unwrap();
+}
+
+fn entries(list: &str) -> Vec<(String, bool, Option<String>)> {
+    let list: Value = serde_json::from_str(list).unwrap();
+    list.as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["path"].as_str().unwrap().to_owned(),
+                e["folder"].as_bool().unwrap(),
+                e["connection"].as_str().map(str::to_owned),
+            )
+        })
+        .collect()
+}
+
+fn lists_and_reads_saved_scripts(client: &mut Client) {
+    let some = |name: &str| Some(name.to_owned());
+    let (list, error) = client.call("list_scripts", &json!({}));
+    assert!(!error, "{list}");
+    // Scripts of an access-off or deleted connection are gone, with the folder they emptied.
+    assert_eq!(
+        entries(&list),
+        [
+            ("reports".to_owned(), true, None),
+            ("reports/monthly.sql".to_owned(), false, some("Scratch")),
+            ("big.sql".to_owned(), false, None),
+            ("plain.sql".to_owned(), false, None),
+            ("top.sql".to_owned(), false, some("App db")),
+        ]
+    );
+    for hidden in ["hidden", "gone", "private", "secret", "notes", "draft"] {
+        assert!(!list.contains(hidden), "{hidden} in {list}");
+    }
+
+    let (list, error) = client.call("list_scripts", &json!({ "project": "sales" }));
+    assert!(!error, "{list}");
+    assert_eq!(
+        entries(&list),
+        [("pipeline.sql".to_owned(), false, some("Remote PG"))]
+    );
+    let (unknown, error) = client.call("list_scripts", &json!({ "project": "Nope" }));
+    assert!(error && unknown.contains("`Sales`"), "{unknown}");
+
+    let (read, error) = client.call("read_script", &json!({ "path": "reports/monthly.sql" }));
+    assert!(!error, "{read}");
+    let read: Value = serde_json::from_str(&read).unwrap();
+    assert_eq!(read["text"], "SELECT count(*) FROM t");
+    assert_eq!(read["connection"], "Scratch");
+    assert_eq!(read["truncated"], false);
+    let (read, _) = client.call(
+        "read_script",
+        &json!({ "path": "pipeline.sql", "project": "Sales" }),
+    );
+    assert!(read.contains("SELECT 'pipeline'"), "{read}");
+
+    let (big, error) = client.call("read_script", &json!({ "path": "big.sql" }));
+    assert!(!error);
+    let big: Value = serde_json::from_str(&big).unwrap();
+    assert_eq!(big["truncated"], true);
+    assert_eq!(big["text"].as_str().unwrap().len(), 262_144);
+    assert!(big["note"].as_str().unwrap().contains("cut"), "{big}");
+
+    // Refused: the hidden and the deleted connections' scripts, paths that leave the
+    // folder, the links file, a file that is no script and one that is not there.
+    for path in [
+        "hidden.sql",
+        "gone.sql",
+        "private/secret.sql",
+        "../all/top.sql",
+        "reports/../top.sql",
+        "/etc/passwd",
+        ".links.json",
+        ".draft.sql",
+        "notes.txt",
+        "missing.sql",
+    ] {
+        let (refused, error) = client.call("read_script", &json!({ "path": path }));
+        assert!(error, "{path}: {refused}");
+        assert!(!refused.contains("hidden'"), "{path}: {refused}");
+    }
+    let (other, error) = client.call(
+        "read_script",
+        &json!({ "path": "top.sql", "project": "Sales" }),
+    );
+    assert!(
+        error,
+        "a script of All connections is not in Sales: {other}"
+    );
+}
+
+fn searches_the_history(dir: &Path, client: &mut Client) {
+    use platypus_store::{HistoryStatus, HistoryStore, NewHistoryEntry};
+    let history = HistoryStore::open(&dir.join("history.db")).unwrap();
+    let id =
+        |n: u32| uuid::Uuid::parse_str(&format!("00000000-0000-4000-8000-00000000000{n}")).unwrap();
+    let mut when = std::time::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    let mut add = |connection: u32, sql: &str, origin: Option<&str>, error: Option<&str>| {
+        when += Duration::from_secs(60);
+        history
+            .record(&NewHistoryEntry {
+                connection_id: id(connection),
+                sql: sql.to_owned(),
+                started_at: when,
+                duration: Duration::from_millis(12),
+                rows: error.is_none().then_some(2),
+                status: if error.is_none() {
+                    HistoryStatus::Ok
+                } else {
+                    HistoryStatus::Error
+                },
+                error: error.map(str::to_owned),
+                origin: origin.map(str::to_owned),
+            })
+            .unwrap();
+    };
+    add(1, "SELECT * FROM t", None, None);
+    add(3, "SELECT 'from the hidden one'", None, None);
+    add(1, "SELECT name FROM t", Some("claude-code"), None);
+    add(2, "UPDATE t SET name = 'x'", None, None);
+    add(
+        4,
+        "SELECT 1 FROM sales",
+        None,
+        Some("cannot open postgres://ada:s3cr@t@db/x"),
+    );
+    drop(history);
+
+    let search = |client: &mut Client, args: Value| -> Vec<Value> {
+        let (text, error) = client.call("search_history", &args);
+        assert!(!error, "{text}");
+        serde_json::from_str(&text).unwrap()
+    };
+    let sqls = |list: &[Value]| -> Vec<String> {
+        list.iter()
+            .map(|e| e["sql"].as_str().unwrap().to_owned())
+            .collect()
+    };
+
+    // Newest first, and nothing of the connection that is off.
+    let all = search(client, json!({}));
+    assert_eq!(
+        sqls(&all),
+        [
+            "SELECT 1 FROM sales",
+            "UPDATE t SET name = 'x'",
+            "SELECT name FROM t",
+            "SELECT * FROM t"
+        ]
+    );
+    let first = &all[0];
+    assert_eq!(first["connection"], "Remote PG");
+    assert_eq!(first["status"], "error");
+    assert_eq!(first["origin"], "app");
+    assert_eq!(first["duration_ms"], 12);
+    assert_eq!(first["started_at"], "2023-11-14T22:18:20.000Z");
+    assert_eq!(
+        first["error"], "cannot open postgres://ada:***@db/x",
+        "redacted"
+    );
+    assert_eq!(all[2]["origin"], "claude-code");
+    assert_eq!(all[2]["rows"], 2);
+
+    let app_db = search(client, json!({ "connection": "App db" }));
+    assert_eq!(sqls(&app_db), ["SELECT name FROM t", "SELECT * FROM t"]);
+    let by_agent = search(client, json!({ "origin": "agent" }));
+    assert_eq!(sqls(&by_agent), ["SELECT name FROM t"]);
+    let by_app = search(client, json!({ "origin": "app", "connection": "App db" }));
+    assert_eq!(sqls(&by_app), ["SELECT * FROM t"]);
+    let text = search(client, json!({ "text": "UPDATE" }));
+    assert_eq!(sqls(&text), ["UPDATE t SET name = 'x'"]);
+    assert_eq!(search(client, json!({ "limit": 2 })).len(), 2);
+
+    let (refused, error) = client.call("search_history", &json!({ "connection": "Hidden" }));
+    assert!(error, "{refused}");
+    assert!(!refused.contains("from the hidden one"));
+}
+
+#[test]
+fn reads_saved_scripts_and_the_history() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    scripts(dir.path());
+    let mut client = initialized(dir.path());
+    lists_and_reads_saved_scripts(&mut client);
+    searches_the_history(dir.path(), &mut client);
+    drop(client);
+
+    // Each call is in the call log with its arguments and outcome.
+    let log = rusqlite::Connection::open(dir.path().join("agent-calls.db")).unwrap();
+    let calls: Vec<(String, Option<String>, String, String)> = log
+        .prepare("SELECT tool, connection, arguments, status FROM calls ORDER BY id")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    let count = |tool: &str| calls.iter().filter(|c| c.0 == tool).count();
+    assert_eq!(count("list_scripts"), 3);
+    assert_eq!(count("read_script"), 14);
+    assert_eq!(count("search_history"), 7);
+    assert_eq!(
+        (calls[0].0.as_str(), calls[0].2.as_str()),
+        ("list_scripts", "{}")
+    );
+    assert_eq!(calls[2].3, "error", "unknown project");
+    assert_eq!(calls[3].2, r#"{"path":"reports/monthly.sql"}"#);
+    let last = calls.last().unwrap();
+    assert_eq!(last.1.as_deref(), Some("Hidden"));
+    assert_eq!(last.3, "error");
 }

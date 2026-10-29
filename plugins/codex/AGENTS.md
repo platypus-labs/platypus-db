@@ -38,6 +38,18 @@ Clients that read MCP resources can also read `platypus://<connection>`,
   `propose_sql`: it opens the SQL in a new editor tab of the app, for the user to review and
   run by hand. Never try to get around the access.
 
+## The user's scripts and history
+
+To learn how the user queries the data, read what they already wrote. All three tools are
+read-only and follow the connections' agent access: what belongs to a connection you may not
+use is left out.
+
+- `list_scripts` lists the saved scripts (`project` names a project; left out, All
+  connections) with the connection each one opens on; `read_script` returns one script's text
+  (cut at 256 KiB, and it says so).
+- `search_history` returns the statements run before, newest first (50 by default, up to 500),
+  filtered by `connection`, `text` and `origin` (`app` for the user, `agent` for agents).
+
 ## The open app
 
 While the app is open, `list_open_sessions` shows what the user has open (connection,
