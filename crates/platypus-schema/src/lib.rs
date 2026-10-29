@@ -8,6 +8,7 @@ mod compare;
 mod create;
 mod ddl;
 mod lint;
+mod migrations;
 mod model;
 mod objects;
 
@@ -23,6 +24,10 @@ pub use changelog::{ChangelogFormat, changelog, flyway_file_name};
 pub use compare::compare;
 pub use ddl::script;
 pub use lint::{Finding, LintKind, lint};
+pub use migrations::{
+    Applied, AppliedState, Found, Local, Migration, Status, Tool, ToolStatus, detect, evaluate,
+    flyway_checksum, prisma_checksum, status as migration_status,
+};
 pub use model::{SchemaTable, load_designs, read_tables, tables_of};
 pub use objects::{Event, ObjectForm, Param, Timing, create_object};
 

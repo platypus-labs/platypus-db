@@ -6,6 +6,7 @@ import { workbench } from "../workbench";
 import { CompareDialog } from "./CompareDialog";
 import { LintDialog } from "./LintDialog";
 import { type ObjectFormKind, ObjectFormDialog } from "./ObjectFormDialog";
+import { MigrationsDialog } from "./MigrationsDialog";
 
 registerAction({
   id: "schema.lint",
@@ -75,4 +76,15 @@ registerAction({
     object.kind === "table" && CREATABLE.includes(connection.driver) && !NO_TRIGGERS.includes(connection.driver) && !connection.read_only,
   run: ({ connection, database, schema, object }) =>
     openForm({ connection, database, schemaName: schema.name }, "trigger", object.name),
+});
+
+registerAction({
+  id: "schema.migrations",
+  scope: "navigator.schema",
+  title: "Migration status…",
+  group: "open",
+  order: 38,
+  when: ({ connection }) => !isNoSql(connection.driver),
+  run: ({ connection, database, schema }) =>
+    workbench().openDialog((close) => createElement(MigrationsDialog, { connection, database, schema: schema.name, onClose: close })),
 });
