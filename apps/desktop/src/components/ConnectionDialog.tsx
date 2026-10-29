@@ -31,7 +31,7 @@ import { DriverIcon, DriverPicker, driverName } from "./DriverPicker";
 import { NetworkFields, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 import { NetworkProfileDialog, newNetworkProfile } from "./NetworkProfileDialog";
 import { t, tNodes, msg } from "../i18n";
-import { type ManagerId, MANAGERS, managerOf } from "../credentialManagers";
+import { type ManagerId, MANAGERS, managerById, managerOf } from "../credentialManagers";
 import { suggestedPooler } from "./pooler";
 
 interface Props {
@@ -98,14 +98,17 @@ function passwordSource(c: SavedConnection): PasswordSource {
   return c.save_password ? "keychain" : "ask";
 }
 
+/** The reference of the secret in `c`'s password manager, empty without one. */
+const secretReference = (c: SavedConnection) => managerOf(c.password_command)?.reference ?? "";
+
 function withPasswordSource(c: SavedConnection, source: PasswordSource): SavedConnection {
-  const manager = MANAGERS.find((m) => m.id === source);
+  const manager = managerById(source);
   return {
     ...c,
     save_password: source === "keychain",
     pgpass: source === "pgpass",
     password_command: manager
-      ? manager.command(managerOf(c.password_command)?.reference ?? "")
+      ? manager.command(secretReference(c))
       : source === "command"
         ? (c.password_command ?? "")
         : null,
@@ -171,7 +174,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     set("options", options);
   };
   const source = passwordSource(conn);
-  const manager = MANAGERS.find((m) => m.id === source);
+  const manager = managerById(source);
   const profile = profiles.find((p) => p.id === conn.network_profile) ?? null;
   const server = !isEmbedded(conn.driver);
   const file = FILES[conn.driver === "duckdb" ? "duckdb" : "sqlite"];
@@ -759,7 +762,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       <span>{t("Secret in {manager}", { manager: manager.name })}</span>
                       <input
                         required
-                        value={managerOf(conn.password_command)?.reference ?? ""}
+                        value={secretReference(conn)}
                         onChange={(e) => set("password_command", manager.command(e.target.value))}
                         placeholder={manager.example}
                         title={t("Quotes, $, ` and % are left out: the command runs in the system's shell.")}

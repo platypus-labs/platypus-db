@@ -7,6 +7,7 @@
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::TryStreamExt;
 use platypus_core::{
@@ -144,7 +145,7 @@ async fn round_trip(tunnel: &Tunnel) {
 }
 
 /// A SOCKS5 proxy without login that counts the connections it carries; returns its URL.
-async fn socks5_proxy(carried: Arc<std::sync::atomic::AtomicUsize>) -> String {
+async fn socks5_proxy(carried: Arc<AtomicUsize>) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     tokio::spawn(async move {
@@ -177,7 +178,7 @@ async fn socks5_proxy(carried: Arc<std::sync::atomic::AtomicUsize>) -> String {
                     .write_all(&[5, 0, 0, 1, 0, 0, 0, 0, 0, 0])
                     .await
                     .unwrap();
-                carried.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                carried.fetch_add(1, Ordering::SeqCst);
                 let _ = tokio::io::copy_bidirectional(&mut socket, &mut target).await;
             });
         }
@@ -280,7 +281,7 @@ async fn reaches_the_ssh_server_through_a_proxy() {
     let target = echo_server().await;
     let jump = ssh_server(random_key(), any.clone()).await;
     let inner = ssh_server(random_key(), any).await;
-    let carried = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let carried = Arc::new(AtomicUsize::new(0));
     let proxy = platypus_net::Proxy::parse(&socks5_proxy(Arc::clone(&carried)).await).unwrap();
 
     let tunnel = Tunnel::open_via(
@@ -294,11 +295,7 @@ async fn reaches_the_ssh_server_through_a_proxy() {
     .unwrap();
     round_trip(&tunnel).await;
     round_trip(&tunnel).await;
-    assert_eq!(
-        carried.load(std::sync::atomic::Ordering::SeqCst),
-        1,
-        "one SSH session"
-    );
+    assert_eq!(carried.load(Ordering::SeqCst), 1, "one SSH session");
 
     // With a jump host, only the first hop goes through the proxy.
     let mut config = server(inner, password());
@@ -313,13 +310,13 @@ async fn reaches_the_ssh_server_through_a_proxy() {
     .await
     .unwrap();
     round_trip(&tunnel).await;
-    assert_eq!(carried.load(std::sync::atomic::Ordering::SeqCst), 2);
+    assert_eq!(carried.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
 async fn forwards_through_a_proxy_alone() {
     let target = echo_server().await;
-    let carried = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let carried = Arc::new(AtomicUsize::new(0));
     let mut config = ConnectionConfig::new(DriverKind::Postgres);
     config.host = "127.0.0.1".to_owned();
     config.port = Some(target);
@@ -331,7 +328,7 @@ async fn forwards_through_a_proxy_alone() {
     round_trip(&tunnel).await;
     round_trip(&tunnel).await;
     // The first was the check made on opening.
-    assert_eq!(carried.load(std::sync::atomic::Ordering::SeqCst), 3);
+    assert_eq!(carried.load(Ordering::SeqCst), 3);
 
     config.options.clear();
     assert!(
@@ -347,7 +344,7 @@ async fn connects_databases_through_the_tunnel() {
     let dir = tempfile::tempdir().unwrap();
     let known_hosts = dir.path().join("known_hosts");
     let port = ssh_server(random_key(), random_key().public_key().clone()).await;
-    let carried = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let carried = Arc::new(AtomicUsize::new(0));
     let proxy = socks5_proxy(Arc::clone(&carried)).await;
     for (env, through_proxy) in [
         ("PLATYPUS_TEST_PG_URL", false),
@@ -367,7 +364,7 @@ async fn connects_databases_through_the_tunnel() {
         } else {
             config.ssh = Some(server(port, password()));
         }
-        let before = carried.load(std::sync::atomic::Ordering::SeqCst);
+        let before = carried.load(Ordering::SeqCst);
         let conn = platypus_net::connect(&config, Some(&known_hosts), |c| async move {
             match c.driver {
                 DriverKind::Postgres => platypus_driver_pg::PgDriver.connect(&c).await,
@@ -394,10 +391,7 @@ async fn connects_databases_through_the_tunnel() {
         );
         assert!(!conn.is_closed(), "{env}");
         if through_proxy {
-            assert!(
-                carried.load(std::sync::atomic::Ordering::SeqCst) > before,
-                "{env}: proxied"
-            );
+            assert!(carried.load(Ordering::SeqCst) > before, "{env}: proxied");
         }
     }
 }

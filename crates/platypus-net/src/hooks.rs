@@ -24,16 +24,13 @@ pub(crate) fn take(config: &mut ConnectionConfig) -> (Option<String>, Option<Str
 }
 
 fn shell(command: &str) -> std::process::Command {
-    let mut shell = if cfg!(windows) {
-        let mut c = std::process::Command::new("cmd");
-        c.args(["/D", "/C"]);
-        c
+    let (program, flags): (&str, &[&str]) = if cfg!(windows) {
+        ("cmd", &["/D", "/C"])
     } else {
-        let mut c = std::process::Command::new("sh");
-        c.arg("-c");
-        c
+        ("sh", &["-c"])
     };
-    shell.arg(command).stdin(Stdio::null());
+    let mut shell = std::process::Command::new(program);
+    shell.args(flags).arg(command).stdin(Stdio::null());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt as _;
@@ -62,16 +59,14 @@ pub(crate) async fn before(command: &str) -> Result<()> {
         }
         text
     });
-    let status = match tokio::time::timeout(BEFORE_TIMEOUT, child.wait()).await {
-        Ok(status) => status.map_err(|e| failed(e.to_string()))?,
-        Err(_) => {
-            let _ = child.kill().await;
-            return Err(failed(format!(
-                "no end in {} seconds",
-                BEFORE_TIMEOUT.as_secs()
-            )));
-        }
+    let Ok(status) = tokio::time::timeout(BEFORE_TIMEOUT, child.wait()).await else {
+        let _ = child.kill().await;
+        return Err(failed(format!(
+            "no end in {} seconds",
+            BEFORE_TIMEOUT.as_secs()
+        )));
     };
+    let status = status.map_err(|e| failed(e.to_string()))?;
     if status.success() {
         reading.abort();
         return Ok(());
@@ -106,6 +101,16 @@ pub(crate) fn after(command: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Whether `file` appears within 5 s, written by a command that runs on its own.
+    #[cfg(unix)]
+    fn appears(file: &std::path::Path) -> bool {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !file.exists() && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        file.exists()
+    }
 
     #[tokio::test]
     async fn a_command_that_ends_well_lets_the_connection_go_on() {
@@ -198,11 +203,7 @@ mod tests {
             result.unwrap_err().to_string(),
             "connection failed: refused"
         );
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while !mark.exists() && std::time::Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        assert!(mark.exists(), "the command after ran");
+        assert!(appears(&mark), "the command after ran");
     }
 
     #[cfg(unix)]
@@ -211,10 +212,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mark = dir.path().join("down");
         after(&format!("touch '{}'", mark.display()));
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while !mark.exists() && std::time::Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        assert!(mark.exists());
+        assert!(appears(&mark));
     }
 }

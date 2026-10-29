@@ -146,10 +146,13 @@ impl Proxy {
     /// The SOCKS5 handshake (RFC 1928), with a user and password (RFC 1929) when it has one.
     async fn socks5(&self, stream: &mut TcpStream, host: &str, port: u16) -> Result<()> {
         let io = |e: std::io::Error| self.error(e);
-        let methods: &[u8] = if self.login.is_some() { &[0, 2] } else { &[0] };
-        let mut hello = vec![5, u8::try_from(methods.len()).unwrap_or(1)];
-        hello.extend_from_slice(methods);
-        stream.write_all(&hello).await.map_err(io)?;
+        // Version 5, then the methods offered: none, and user and password with a login.
+        let hello: &[u8] = if self.login.is_some() {
+            &[5, 2, 0, 2]
+        } else {
+            &[5, 1, 0]
+        };
+        stream.write_all(hello).await.map_err(io)?;
         let mut chosen = [0u8; 2];
         stream.read_exact(&mut chosen).await.map_err(io)?;
         if chosen[0] != 5 {
@@ -158,14 +161,10 @@ impl Proxy {
         match (chosen[1], &self.login) {
             (0, _) => {}
             (2, Some((user, password))) => {
-                let field = |text: &str| {
-                    u8::try_from(text.len())
-                        .map_err(|_| self.error("the user or password is over 255 bytes"))
-                };
-                let mut login = vec![1, field(user)?];
-                login.extend_from_slice(user.as_bytes());
-                login.push(field(password)?);
-                login.extend_from_slice(password.as_bytes());
+                let mut login = vec![1];
+                for text in [user, password] {
+                    self.push_short(&mut login, text, "the user or password")?;
+                }
                 stream.write_all(&login).await.map_err(io)?;
                 let mut status = [0u8; 2];
                 stream.read_exact(&mut status).await.map_err(io)?;
@@ -186,10 +185,8 @@ impl Proxy {
                 request.extend_from_slice(&ip.octets());
             }
             Err(_) => {
-                let len = u8::try_from(host.len())
-                    .map_err(|_| self.error("the server's name is over 255 bytes"))?;
-                request.extend_from_slice(&[3, len]);
-                request.extend_from_slice(host.as_bytes());
+                request.push(3);
+                self.push_short(&mut request, host, "the server's name")?;
             }
         }
         request.extend_from_slice(&port.to_be_bytes());
@@ -211,6 +208,16 @@ impl Proxy {
         };
         let mut skip = vec![0u8; bound + 2];
         stream.read_exact(&mut skip).await.map_err(io)?;
+        Ok(())
+    }
+
+    /// Appends `text` after its length in one byte, as SOCKS5 sends names; `what` names it
+    /// in the error when it is too long.
+    fn push_short(&self, buf: &mut Vec<u8>, text: &str, what: &str) -> Result<()> {
+        let len = u8::try_from(text.len())
+            .map_err(|_| self.error(format!("{what} is over 255 bytes")))?;
+        buf.push(len);
+        buf.extend_from_slice(text.as_bytes());
         Ok(())
     }
 

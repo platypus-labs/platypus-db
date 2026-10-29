@@ -370,19 +370,18 @@ impl Tunnel {
     /// The path to `config`'s server, if it needs one: its SSH tunnel, its proxy, or both.
     pub async fn of(config: &ConnectionConfig, known_hosts: Option<&Path>) -> Result<Option<Self>> {
         let proxy = Proxy::of(config)?;
-        if config.ssh.is_none() && proxy.is_none() {
-            return Ok(None);
-        }
-        let port = config
-            .port
-            .or(config.driver.default_port())
-            .ok_or_else(|| Error::Config("a tunnel or proxy needs a server port".to_owned()))?;
+        let port = || {
+            config
+                .port
+                .or(config.driver.default_port())
+                .ok_or_else(|| Error::Config("a tunnel or proxy needs a server port".to_owned()))
+        };
         let tunnel = match (&config.ssh, &proxy) {
             (Some(ssh), proxy) => {
-                Self::open_via(ssh, &config.host, port, known_hosts, proxy.as_ref()).await?
+                Self::open_via(ssh, &config.host, port()?, known_hosts, proxy.as_ref()).await?
             }
-            (None, Some(proxy)) => Self::through_proxy(proxy, &config.host, port).await?,
-            (None, None) => unreachable!("checked above"),
+            (None, Some(proxy)) => Self::through_proxy(proxy, &config.host, port()?).await?,
+            (None, None) => return Ok(None),
         };
         Ok(Some(tunnel))
     }
@@ -424,8 +423,7 @@ where
     if let Some(command) = &before {
         hooks::before(command).await?;
     }
-    let connected = connect_direct(config, known_hosts, driver).await;
-    match connected {
+    match connect_direct(config, known_hosts, driver).await {
         Ok((inner, tunnel)) if tunnel.is_some() || after.is_some() => Ok(Box::new(Held {
             inner,
             tunnel,

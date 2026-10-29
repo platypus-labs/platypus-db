@@ -28,7 +28,7 @@ const match = (pattern: RegExp) => (command: string) => pattern.exec(command.tri
 /** Vault's reference is the secret's path, with `#field` when the password is in another
  *  field than `password`. */
 const vaultCommand = (reference: string) => {
-  const [path = "", field = "password"] = reference.split("#");
+  const [path = "", field] = reference.split("#");
   return `vault kv get -field=${quoted(field || "password")} ${quoted(path)}`;
 };
 
@@ -67,6 +67,9 @@ export const MANAGERS: CredentialManager[] = [
     reference: match(/^aws secretsmanager get-secret-value --secret-id "([^"]*)" --query SecretString --output text$/),
   },
 ];
+
+/** The manager `id` names, `undefined` for another password source. */
+export const managerById = (id: string) => MANAGERS.find((m) => m.id === id);
 
 /** The manager whose command `command` is, with its reference; `null` for another command. */
 export function managerOf(command: string | null | undefined): { manager: CredentialManager; reference: string } | null {

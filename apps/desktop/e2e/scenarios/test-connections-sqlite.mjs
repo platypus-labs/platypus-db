@@ -9,8 +9,9 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 const rows = `[...document.querySelectorAll('.test-connections .multi-run-row')]`;
-const state = (name) => `${rows}.find(r => r.querySelector('.multi-run-name')?.textContent === ${JSON.stringify(name)})?.dataset.state`;
-const outcome = (name) => `${rows}.find(r => r.querySelector('.multi-run-name')?.textContent === ${JSON.stringify(name)})?.querySelector('.multi-run-outcome')?.textContent`;
+const row = (name) => `${rows}.find(r => r.querySelector('.multi-run-name')?.textContent === ${JSON.stringify(name)})`;
+const state = (name) => `${row(name)}?.dataset.state`;
+const outcome = (name) => `${row(name)}?.querySelector('.multi-run-outcome')?.textContent`;
 const summary = `(document.querySelector('.test-connections [data-field=summary]')?.textContent ?? '')`;
 const PROJECT = "00000000-0000-4000-8000-0000000f0100";
 
