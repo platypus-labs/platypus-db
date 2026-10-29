@@ -55,6 +55,10 @@ fn program(driver: DriverKind) -> CommandResult<&'static str> {
             "cli",
             "terminal mode is not available for MongoDB",
         )),
+        DriverKind::Elasticsearch => Err(CommandError::new(
+            "cli",
+            "terminal mode is not available for Elasticsearch",
+        )),
         DriverKind::Snowflake
         | DriverKind::BigQuery
         | DriverKind::Databricks
@@ -226,6 +230,7 @@ fn invocation(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Invoc
         // No client: `program` refuses them.
         DriverKind::ClickHouse
         | DriverKind::Mongo
+        | DriverKind::Elasticsearch
         | DriverKind::Snowflake
         | DriverKind::BigQuery
         | DriverKind::Databricks
