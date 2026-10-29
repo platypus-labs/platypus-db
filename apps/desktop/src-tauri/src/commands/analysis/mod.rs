@@ -6,6 +6,7 @@ pub mod chart;
 pub mod diff;
 pub mod sql;
 pub mod stats;
+pub mod table_profile;
 
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;

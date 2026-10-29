@@ -6012,7 +6012,9 @@ dependencies = [
  "duckdb",
  "platypus-core",
  "platypus-driver-duckdb",
+ "regex",
  "serde",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 
