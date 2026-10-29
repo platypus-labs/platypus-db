@@ -498,6 +498,15 @@ numbers after the largest `_id`, lists of words for arrays, small documents for 
   closed tab.
 - **Split editor** (`Ctrl+Shift+D`): two tabs side by side; a click in one makes it the active
   one.
+- **Panels you can size**: drag the bar between the editor and its results, the edge of the
+  side panels of a result, or the line between the halves of a split editor; the sizes stay for
+  the next start, and a double-click brings back the default.
+- **A tab in its own window** (right-click on the tab › *Open in a new window*), for a second
+  monitor: it runs there on a session of its own, and *Move to the main window* brings it back;
+  closing the window keeps it for `Ctrl+Shift+T`.
+- **Quick query**: the tray icon (Settings › Appearance; on Linux it needs AppIndicator), or
+  *Quick query…* in the palette, opens a small query window over the others, on the
+  connection used last.
 - **Drag a table or a column** from the navigator into the SQL editor: its name, or a `SELECT`
   in an empty editor or with `Shift` held.
 - **Activity log** (the pulse icon on top): the errors shown and the work done in the
