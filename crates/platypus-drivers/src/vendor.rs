@@ -447,15 +447,18 @@ async fn run_program(
 }
 
 /// The Windows error of a UAC prompt the user declined (`ERROR_CANCELLED`).
+#[cfg(windows)]
 const DECLINED: i32 = 1223;
 
 /// `s` as a PowerShell string literal.
+#[cfg(windows)]
 fn ps_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
 
 /// The PowerShell script that runs `program` as administrator from its folder, waits for
 /// it and exits with its code, or with [`DECLINED`] when the UAC prompt is declined.
+#[cfg(windows)]
 fn elevation_script(program: &Path, args: &[String]) -> String {
     let dir = program.parent().unwrap_or(program);
     let mut start = format!(
@@ -763,6 +766,8 @@ mod tests {
         assert_eq!(link_target(dir, Path::new("/d/ic/a"), "/etc/passwd"), None);
     }
 
+    // Windows paths: elsewhere `Path::parent` does not split them at `\`.
+    #[cfg(windows)]
     #[test]
     fn elevation_script_quotes_and_waits() {
         let script = elevation_script(

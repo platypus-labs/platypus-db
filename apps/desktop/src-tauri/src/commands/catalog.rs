@@ -465,6 +465,7 @@ mod tests {
             Err("no vault".to_owned()),
             Err("no history".to_owned()),
             catalog,
+            Err("no schema history".to_owned()),
             Err("no settings".to_owned()),
             Err("no scripts".to_owned()),
         )

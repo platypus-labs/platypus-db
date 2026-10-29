@@ -5,6 +5,20 @@
   gap: 6px 10px;
 }
 
+/* Over the whole window, not the system's full screen. Below the dialogs (z-index 10), which
+ * the diagram opens inside itself, so they stay above it. */
+.erd.erd-full {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  background: var(--bg);
+}
+
+/* The window's own buttons stay above the overlay: keep the header's out from under them. */
+.erd.erd-full .object-header {
+  padding-right: 170px;
+}
+
 .erd-canvas {
   position: relative;
   flex: 1;
@@ -20,6 +34,35 @@
 .erd-loading {
   position: absolute;
   margin: 14px;
+}
+
+/* The edit mode of the diagram: a bar with the pending changes, and handles on the column rows. */
+.erd-edit-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.erd-handle {
+  cursor: crosshair;
+}
+
+.erd-handle:hover {
+  stroke-width: 3;
+}
+
+.modal.design-dialog .object-body {
+  flex: none;
+  max-height: 50vh;
+  padding: 6px 0;
+}
+
+.modal.design-dialog .object-sections {
+  padding: 0;
 }
 
 .erd-table,
@@ -95,4 +138,121 @@
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 12px;
+}
+
+.modal.schema-migrations {
+  width: min(1040px, calc(100vw - 32px));
+}
+
+.migration-summary {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.migration-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  max-height: 50vh;
+}
+
+.migration-tools h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.migration-table {
+  width: 100%;
+}
+
+.migration-table tbody tr {
+  cursor: default;
+}
+
+.mig-status {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.mig-status.pending,
+.mig-status.divergent {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.mig-status.failed,
+.mig-status.missing {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+/* The schema history tab: the snapshots, and what changed between two of them. */
+.schema-history .history-label {
+  width: 180px;
+}
+
+.schema-history .history-notice {
+  margin: 8px 12px 0;
+}
+
+.history-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.history-list {
+  width: 100%;
+}
+
+.history-now td {
+  border-bottom: 1px solid var(--border);
+}
+
+.history-changes-head {
+  align-items: center;
+  gap: 10px;
+}
+
+.history-table h3 {
+  margin: 10px 0 4px;
+  font-size: 13px;
+}
+
+.history-table ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 12px;
+}
+
+.history-change {
+  padding: 2px 0;
+  font-size: 12px;
+}
+
+.history-change.table_added,
+.history-change.column_added,
+.history-change.index_added,
+.history-change.foreign_key_added,
+.history-change.constraint_added {
+  color: var(--ok, inherit);
+}
+
+.history-change.table_dropped,
+.history-change.column_dropped,
+.history-change.index_dropped,
+.history-change.foreign_key_dropped,
+.history-change.constraint_dropped {
+  color: var(--error);
 }

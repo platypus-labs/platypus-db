@@ -20,13 +20,14 @@ import { answerFor } from "../testAnswers";
 import { ask } from "../ui/ask";
 import { workbench } from "../workbench";
 import { createsTables, exportsFiles, profileConnections, profilesOf } from "../transfer/profiles";
-import { cleaned, newProfileSchedule, newSchedule, repeatOf, sortSchedules, taskKinds, taskOf, taskOnConnection, writesFiles } from "./schedules";
+import { cleaned, newProfileSchedule, newSchedule, newSnapshotSchedule, repeatOf, sortSchedules, taskKinds, taskOf, taskOnConnection, writesFiles } from "./schedules";
 
 const KINDS: Record<ScheduleTask["kind"], string> = {
   script: msg("Run a SQL script"),
   export: msg("Export a query"),
   backup: msg("Back up the database"),
   profile: msg("Run a transfer profile"),
+  snapshot: msg("Schema snapshot"),
 };
 
 const EVERY: [ScheduleRepeat["every"], string][] = [
@@ -76,9 +77,20 @@ function RunBadge({ ok, title, children }: { ok: boolean; title?: string; childr
 
 const when = (iso: string) => new Date(iso).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" });
 
-/** The tasks of every connection; with `connectionId`, a new task starts on it, and with
- *  `profileId` a new task that runs that transfer profile. */
-export function SchedulesDialog({ connectionId, profileId, onClose }: { connectionId?: string; profileId?: string; onClose: () => void }) {
+/** The tasks of every connection; with `connectionId`, a new task starts on it, with
+ *  `profileId` a new task that runs that transfer profile, and with `snapshot` (and
+ *  `connectionId`) a new task that takes snapshots of that schema. */
+export function SchedulesDialog({
+  connectionId,
+  profileId,
+  snapshot,
+  onClose,
+}: {
+  connectionId?: string;
+  profileId?: string;
+  snapshot?: { database: string | null; schema: string };
+  onClose: () => void;
+}) {
   const direct = !!connectionId || !!profileId;
   const [schedules, setSchedules] = useState<ScheduleView[] | null>(null);
   const [editing, setEditing] = useState<Schedule | null>(null);
@@ -91,7 +103,10 @@ export function SchedulesDialog({ connectionId, profileId, onClose }: { connecti
     const load = () => api.listSchedules().then(setSchedules, (e) => setError(toCommandError(e).message));
     void load();
     const off = listen("schedules-changed", () => void load());
-    if (connectionId) setEditing(newSchedule(connectionId, crypto.randomUUID()));
+    if (connectionId && snapshot) {
+      const name = t("Snapshots of {schema}", { schema: snapshot.schema });
+      setEditing(newSnapshotSchedule(connectionId, snapshot.database, snapshot.schema, name, crypto.randomUUID()));
+    } else if (connectionId) setEditing(newSchedule(connectionId, crypto.randomUUID()));
     if (profileId) {
       api.listTransferProfiles().then((all) => {
         const profile = all.find((p) => p.id === profileId);
@@ -472,6 +487,20 @@ function ScheduleForm({
             ))}
           </select>
         </label>
+      )}
+      {s.task.kind === "snapshot" && (
+        <>
+          <label className="field">
+            <span>{t("Schema")}</span>
+            <input
+              value={s.task.schema}
+              data-field="snapshot-schema"
+              spellCheck={false}
+              onChange={(e) => s.task.kind === "snapshot" && setTask({ ...s.task, schema: e.target.value })}
+            />
+          </label>
+          <p className="muted small">{t("Stores the structure of the schema for its history; nothing is stored when it has not changed since the last snapshot.")}</p>
+        </>
       )}
       {s.task.kind === "backup" && connection && connection.driver !== "mysql" && (
         <div className="field-grid">

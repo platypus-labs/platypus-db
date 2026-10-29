@@ -1585,3 +1585,30 @@ label.multi-run-row:hover {
 .agent-bridge-port input {
   width: 90px;
 }
+
+/* The create dialog for views, sequences, functions and triggers: tall forms scroll. */
+.modal.object-form {
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+
+.object-form textarea {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.object-params {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.object-params .row {
+  align-self: stretch;
+}
+
+.object-params .row > input {
+  flex: 1;
+  min-width: 0;
+}

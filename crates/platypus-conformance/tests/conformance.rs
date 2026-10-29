@@ -6587,3 +6587,104 @@ async fn qa3_schema_lint_and_checks_read_back() {
         run(&*conn, &format!("DROP TABLE {parent}")).await.unwrap();
     }
 }
+
+/// The data comparison of two tables finds the rows added, changed and removed, and its
+/// statements make the target like the source: compared again, nothing differs.
+#[tokio::test]
+async fn compares_table_data() {
+    use platypus_sql::Dialect;
+    use platypus_transfer::compare::{CompareOptions, TableRef, compare_data};
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let d = Dialect::from(b.config.driver);
+        match d {
+            Dialect::Postgres if b.name == "postgres" => {}
+            Dialect::MySql | Dialect::SqlServer | Dialect::DuckDb => {}
+            Dialect::Sqlite if b.name == "sqlite" => {}
+            _ => continue,
+        }
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let table = |name: &str| TableRef {
+            schema: b.schema.clone(),
+            name: name.to_owned(),
+        };
+        let (src, dst) = (table("conf_cmp_src"), table("conf_cmp_dst"));
+        let q = |t: &TableRef| d.qualified(Some(&t.schema), &t.name);
+        let text = if d == Dialect::SqlServer {
+            "nvarchar(50)"
+        } else {
+            "varchar(50)"
+        };
+        for t in [&src, &dst] {
+            let _ = run(conn, &format!("DROP TABLE {}", q(t))).await;
+            let sql = format!(
+                "CREATE TABLE {} (id int, part int, name {text}, amount decimal(10,2), day date, \
+                 PRIMARY KEY (id, part))",
+                q(t)
+            );
+            run(conn, &sql)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name));
+        }
+        for sql in [
+            format!(
+                "INSERT INTO {} VALUES (1, 1, 'it''s', 1.50, '2026-01-02'), (1, 2, NULL, -3.25, NULL), \
+                 (2, 1, 'new', 0, '2026-10-29')",
+                q(&src)
+            ),
+            format!(
+                "INSERT INTO {} VALUES (1, 1, 'it''s', 1.50, '2026-01-02'), (1, 2, 'old', -3.25, NULL), \
+                 (3, 1, 'gone', 7, '2020-02-29')",
+                q(&dst)
+            ),
+        ] {
+            run(conn, &sql)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name));
+        }
+        let options = CompareOptions {
+            filter: None,
+            delete_missing: true,
+        };
+        let diff = compare_data(conn, conn, d, (&src, &dst), &options)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(
+            (diff.same, diff.added, diff.changed, diff.removed),
+            (1, 1, 1, 1),
+            "{}: {:?}",
+            b.name,
+            diff.samples
+        );
+        assert_eq!(diff.key, ["id", "part"], "{}", b.name);
+        for sql in &diff.statements {
+            run(conn, sql)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name));
+        }
+        let again = compare_data(conn, conn, d, (&src, &dst), &options)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(
+            (again.same, again.statements.len()),
+            (3, 0),
+            "{}: {:?}",
+            b.name,
+            again.samples
+        );
+        // A filter narrows both tables.
+        let narrow = CompareOptions {
+            filter: Some("id = 1".to_owned()),
+            delete_missing: false,
+        };
+        let filtered = compare_data(conn, conn, d, (&src, &dst), &narrow)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(filtered.same, 2, "{}", b.name);
+        for t in [&src, &dst] {
+            let _ = run(conn, &format!("DROP TABLE {}", q(t))).await;
+        }
+    }
+}
