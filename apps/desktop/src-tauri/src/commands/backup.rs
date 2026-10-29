@@ -22,7 +22,7 @@ use super::{AppState, lock};
 use crate::error::{CommandError, CommandResult};
 
 /// How a PostgreSQL backup is written; MySQL's is always SQL.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BackupFormat {
     /// `pg_dump`'s compressed archive, restored with `pg_restore` (`.dump`).
@@ -473,24 +473,34 @@ pub async fn backup_database(
     let total = table_count(conn.as_ref(), &config, request.schema.as_deref()).await;
     let (stop, cancel) = oneshot::channel();
     lock(&state.clis).insert(run_id, stop);
-    let result = async {
-        let (tunnel, host, port) = reach(&config).await?;
-        let (program, invocation) = backup_invocation(&config, &host, port, &request)?;
-        let started = Instant::now();
-        let child = spawn(program, invocation, false)?;
-        let ended = finish(child, total, &on_event, cancel).await;
-        drop(tunnel);
-        let Some((status, output)) = ended else {
-            // A file cut short is no backup.
-            let _ = std::fs::remove_file(&request.path);
-            return Err(stopped(program));
-        };
-        let _ = on_event.send(outcome(program, status, output, &request.path, started));
-        Ok(())
-    }
-    .await;
+    let result = backup(&config, &request, total, &on_event, cancel).await;
     lock(&state.clis).remove(&run_id);
-    result
+    let _ = on_event.send(result?);
+    Ok(())
+}
+
+/// Backs up `config`'s database as `request` asks, sending its progress on `events` (`total`
+/// tables when known); returns how it ended, or an error when the tool could not start or
+/// `cancel` stopped it (the file cut short then removed).
+pub(crate) async fn backup(
+    config: &ConnectionConfig,
+    request: &BackupRequest,
+    total: Option<u64>,
+    events: &Channel<BackupEvent>,
+    cancel: oneshot::Receiver<()>,
+) -> CommandResult<BackupEvent> {
+    let (tunnel, host, port) = reach(config).await?;
+    let (program, invocation) = backup_invocation(config, &host, port, request)?;
+    let started = Instant::now();
+    let child = spawn(program, invocation, false)?;
+    let ended = finish(child, total, events, cancel).await;
+    drop(tunnel);
+    let Some((status, output)) = ended else {
+        // A file cut short is no backup.
+        let _ = std::fs::remove_file(&request.path);
+        return Err(stopped(program));
+    };
+    Ok(outcome(program, status, output, &request.path, started))
 }
 
 /// Restores `request.path` into the session's database: a `pg_dump` archive with

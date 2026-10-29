@@ -412,6 +412,7 @@ pub async fn open_session(
         label,
         none_saved,
         production,
+        ..
     } = saved_config(&state, connection_id, password, database).await?;
     let production = production && side != Some(true);
     // `auth`: the UI asks for the password (again), with the server's answer.
@@ -435,6 +436,8 @@ pub(crate) struct SavedConfig {
     pub none_saved: bool,
     /// A production connection.
     pub production: bool,
+    /// Nothing that may change data runs on it.
+    pub read_only: bool,
 }
 
 /// The settings of saved connection `connection_id`, on `database` when given, with
@@ -482,6 +485,7 @@ pub(crate) async fn saved_config(
         label,
         none_saved,
         production: saved.connection_type == Some(ConnectionType::Prod),
+        read_only: saved.read_only,
     })
 }
 

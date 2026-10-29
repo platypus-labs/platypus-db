@@ -9,6 +9,7 @@ mod export;
 mod formats;
 mod jobs;
 mod querylog;
+mod scheduler;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -157,6 +158,10 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     );
     state.prune_catalog();
     app.manage(state);
+    app.manage(scheduler::Scheduler::open(
+        dir(app, false).ok().map(|d| d.join("schedules.json")),
+    ));
+    commands::schedules::start(app.handle().clone());
     // Downloaded drivers live with the data; removals that Windows refused are finished.
     if let Ok(data) = dir(app, false) {
         applog::init(&data);
@@ -367,6 +372,11 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::admin::maintain_table,
         commands::backup::backup_database,
         commands::backup::restore_database,
+        commands::schedules::list_schedules,
+        commands::schedules::save_schedule,
+        commands::schedules::delete_schedule,
+        commands::schedules::run_schedule_now,
+        commands::schedules::time_zones,
         commands::querylog::query_log,
         commands::querylog::clear_query_log,
         commands::objects::object_ddl,
