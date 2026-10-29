@@ -213,7 +213,9 @@ impl Pager {
                 }
             }
         }
-        let hits = page.hits.and_then(|h| h.hits).unwrap_or_default();
+        let mut hits = page.hits.and_then(|h| h.hits).unwrap_or_default();
+        // A scroll goes on with the size it started with.
+        hits.truncate(size);
         self.after = hits
             .last()
             .and_then(|h| h.sort.as_ref())

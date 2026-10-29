@@ -264,7 +264,11 @@ async fn runs_sql_with_types_and_pages() {
     }
     // Aggregates, a statement ending with `;`, and a LIMIT.
     let count = cells(&run(conn, "SELECT COUNT(*) AS total FROM pdb_sql;").await);
-    assert_eq!(count[0][0].as_deref(), Some("250"));
+    // OpenSearch counts in doubles.
+    assert!(
+        matches!(count[0][0].as_deref(), Some("250" | "250.0")),
+        "{count:?}"
+    );
     let limited = run(conn, "SELECT n FROM pdb_sql ORDER BY n DESC LIMIT 3").await;
     assert_eq!(cells(&limited)[0][0].as_deref(), Some("250"));
     assert_eq!(rows(&limited), 3);
