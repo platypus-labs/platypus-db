@@ -1,5 +1,6 @@
 import { registerAction } from "../actions";
 import { isNoSql } from "../api";
+import { restoreEdits } from "../erd/edits";
 import { ErdTab, type ErdNote } from "../erd/ErdTab";
 import type { Point } from "../erd/layout";
 import { workbench } from "../workbench";
@@ -13,15 +14,16 @@ const isPoint = (v: unknown): v is Point =>
 registerTabKind({
   kind: "erd",
   component: ErdTab,
-  create: (init) => ({ schema: "", currentSchema: false, tables: null, positions: {}, notes: [], zoom: 1, ...init }),
+  create: (init) => ({ schema: "", currentSchema: false, tables: null, positions: {}, notes: [], zoom: 1, edits: null, ...init }),
   label: (tab) => tab.title ?? t("ER diagram of {schema}", { schema: tab.schema }),
-  persist: ({ schema, currentSchema, tables, positions, notes, zoom, title, database }) => ({
+  persist: ({ schema, currentSchema, tables, positions, notes, zoom, edits, title, database }) => ({
     schema,
     currentSchema,
     tables,
     positions,
     notes,
     zoom,
+    edits,
     title,
     database,
   }),
@@ -36,6 +38,7 @@ registerTabKind({
       ? saved.notes.filter((n): n is ErdNote => isPoint(n) && typeof (n as ErdNote).id === "number" && typeof (n as ErdNote).text === "string")
       : [],
     zoom: typeof saved.zoom === "number" ? saved.zoom : 1,
+    edits: restoreEdits(saved.edits),
     title: text(saved.title),
     database: text(saved.database),
   }),

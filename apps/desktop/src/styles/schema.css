@@ -36,6 +36,35 @@
   margin: 14px;
 }
 
+/* The edit mode of the diagram: a bar with the pending changes, and handles on the column rows. */
+.erd-edit-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.erd-handle {
+  cursor: crosshair;
+}
+
+.erd-handle:hover {
+  stroke-width: 3;
+}
+
+.modal.design-dialog .object-body {
+  flex: none;
+  max-height: 50vh;
+  padding: 6px 0;
+}
+
+.modal.design-dialog .object-sections {
+  padding: 0;
+}
+
 .erd-table,
 .erd-note {
   cursor: grab;
