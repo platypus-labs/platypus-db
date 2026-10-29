@@ -10,6 +10,7 @@ import { MetadataPanel } from "../panels/MetadataPanel";
 import { RecordView } from "../panels/RecordView";
 import { ValuePanel, type ValueTarget } from "../panels/ValuePanel";
 import { defineSetting, setSetting, useSetting } from "../settings";
+import { MASK, useMask } from "../guards/mask";
 import { workbench } from "../workbench";
 import { ColumnsDialog } from "./ColumnsDialog";
 import { FormattingDialog } from "./FormattingDialog";
@@ -87,6 +88,18 @@ function underlay(colors: Decorate | undefined, above: Decorate | undefined): De
   };
 }
 
+/** The values of `masked` columns drawn as dots, over every other decoration (an edit's text
+ *  too); `value` is a cell's loaded text. */
+function masking(below: Decorate | undefined, masked: boolean[], value: (row: number, col: number) => string | null | undefined): Decorate | undefined {
+  if (!masked.some(Boolean)) return below;
+  return (row, col) => {
+    const base = below?.(row, col);
+    if (!masked[col]) return base;
+    const text = base?.text !== undefined ? base.text : value(row, col);
+    return text ? { ...base, text: MASK } : base;
+  };
+}
+
 /** The table whose columns' notes the header shows. */
 export interface NotesScope {
   connectionId: string;
@@ -154,9 +167,16 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
     if (layoutKey) saveLayout(layoutKey, next);
   };
   const formatting = useFormatting(layoutKey, jobId, columns, rowCount, editor.topRows, cache, editor.edit?.pending);
+  // While the screen may be shared, the values of sensitive columns show as dots.
+  const mask = useMask();
+  const masked = useMemo(() => columns.map((c) => !!mask?.(c)), [columns, mask]);
+  const topRows = editor.topRows;
   const decorate = useMemo(
-    () => combine(underlay(formatting.decorate, editor.decorate), search.decorate),
-    [formatting.decorate, editor.decorate, search.decorate],
+    () =>
+      masking(combine(underlay(formatting.decorate, editor.decorate), search.decorate), masked, (row, col) =>
+        row < topRows ? "" : cache.get(row - topRows, col),
+      ),
+    [formatting.decorate, editor.decorate, search.decorate, masked, cache, topRows],
   );
 
   const dataRow = focused ? grid.current?.dataRow(focused.row) : null;

@@ -1,6 +1,7 @@
 /** Masking for screen sharing: while it is on, the values of the columns its rules name show
- *  as dots in the grid and the panels beside it. Only what is shown changes: copies, exports
- *  and edits keep the real values. */
+ *  as dots in the grid, the panels beside it and the column profile (in MongoDB documents,
+ *  the fields of those names). Only what is shown changes: copies, exports and edits keep the
+ *  real values; charts draw them as they are. */
 import { useMemo } from "react";
 import { registerAction } from "../actions";
 import { defineSetting, getSetting, setSetting, useSetting } from "../settings";

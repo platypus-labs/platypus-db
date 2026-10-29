@@ -12,7 +12,6 @@ import {
 import { dispatchKey } from "../actions";
 import { type ColumnInfo, type SavedConnection, toCommandError } from "../api";
 import { ContextMenu, type MenuState } from "../components/ContextMenu";
-import { MASK, useMask } from "../guards/mask";
 import { THEME_EVENT } from "../theme";
 import { workbench } from "../workbench";
 import { type ColumnLayout, EMPTY_LAYOUT, moveColumn, resolveLayout } from "./layout";
@@ -257,13 +256,9 @@ export function DataGrid({
   const frame = useRef(0);
   const shown = layout ?? EMPTY_LAYOUT;
   const resolved = useMemo(() => resolveLayout(columns, shown), [columns, shown]);
-  // While the screen is shared, the values of sensitive columns show as dots.
-  const mask = useMask();
-  const masked = useMemo(() => columns.map((c) => !!mask?.(c)), [columns, mask]);
   // Latest props for the imperative draw loop.
   const latest = {
     columns,
-    masked,
     rowCount,
     topRows,
     cache,
@@ -356,11 +351,6 @@ export function DataGrid({
     if (d?.text !== undefined) return d.text;
     const top = props.current.topRows;
     return row < top ? "" : props.current.cache.get(row - top, col);
-  };
-  /** The cell's text as drawn: dots in a masked column. */
-  const shownText = (row: number, col: number, d: CellDecoration | undefined) => {
-    const text = cellText(row, col, d);
-    return props.current.masked[col] && text ? MASK : text;
   };
 
   /** Maps the DOM scroll position to a logical one, for results taller than the browser allows. */
@@ -504,7 +494,7 @@ export function DataGrid({
       for (let r = firstRow; r <= lastRow; r++) {
         const y = rowY(r) + ROW_H / 2;
         const dec = decorations[r - firstRow];
-        const value = shownText(r, c, dec);
+        const value = cellText(r, c, dec);
         if (value === undefined) {
           ctx.fillStyle = t.border;
           ctx.fillRect(x + PAD, y - 2, Math.min(cw - PAD * 2, 40), 4);
@@ -698,7 +688,7 @@ export function DataGrid({
   useEffect(schedule, [schedule, decorate]);
 
   // Redraw on data, size, layout and theme changes.
-  useEffect(schedule, [schedule, version, rowCount, topRows, columns, sort, resolved, headerVersion, masked]);
+  useEffect(schedule, [schedule, version, rowCount, topRows, columns, sort, resolved, headerVersion]);
   useEffect(() => {
     const outer = outerRef.current;
     if (!outer) return;
@@ -825,7 +815,7 @@ export function DataGrid({
     let max = Math.max(measure(column.name, FONT_BOLD), measure(column.db_type, FONT_SMALL));
     for (let r = first; r < first + visible * 3; r++) {
       const d = props.current.decorate?.(r, col);
-      const v = shownText(r, col, d);
+      const v = cellText(r, col, d);
       if (v) max = Math.max(max, measure(v, FONT) + (d?.hint ? measure(d.hint, FONT) + PAD : 0));
     }
     widths.current[col] = Math.max(MIN_COL_W, Math.ceil(max) + PAD * 2);

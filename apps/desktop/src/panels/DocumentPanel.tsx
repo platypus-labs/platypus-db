@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type ColumnInfo, toCommandError } from "../api";
 import { t } from "../i18n";
+import { MASK, useMask } from "../guards/mask";
 import { JsonNumber, type JsonValue as Json, jsonNumber, parseJson, stringifyJson } from "../jsonText";
 
 /** An object of the document: not a leaf, not an array. */
@@ -73,8 +74,19 @@ function Leaf({ value }: { value: Json }) {
   return null;
 }
 
-function Node({ name, value, open, highlight }: { name: string; value: Json; open: boolean; highlight: boolean }) {
+/** Whether a field's value shows masked, by its name; `null` while masking is off. */
+type Hidden = ((name: string) => boolean) | null;
+
+function Node({ name, value, open, highlight, hidden }: { name: string; value: Json; open: boolean; highlight: boolean; hidden: Hidden }) {
   const label = <span className={`doc-key${highlight ? " doc-focused" : ""}`}>{name}</span>;
+  // A masked field shows dots in place of its value, nested fields included.
+  if (value !== null && hidden?.(name)) {
+    return (
+      <div className="doc-line">
+        {label}: <span className="doc-string">{MASK}</span>
+      </div>
+    );
+  }
   if (value === null || typeof value !== "object" || value instanceof JsonNumber) {
     return (
       <div className="doc-line">
@@ -98,7 +110,7 @@ function Node({ name, value, open, highlight }: { name: string; value: Json; ope
         {label} <span className="muted">{summary}</span>
       </summary>
       {entries.map(([k, v]) => (
-        <Node key={k} name={k} value={v} open={false} highlight={false} />
+        <Node key={k} name={k} value={v} open={false} highlight={false} hidden={hidden} />
       ))}
     </details>
   );
@@ -107,6 +119,8 @@ function Node({ name, value, open, highlight }: { name: string; value: Json; ope
 export function DocumentPanel({ jobId, columns, row, field, version, onClose }: Props) {
   const [values, setValues] = useState<(string | null)[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const mask = useMask();
+  const hidden: Hidden = mask && ((name) => mask({ name, db_type: "" }));
 
   useEffect(() => {
     setValues(null);
@@ -158,7 +172,7 @@ export function DocumentPanel({ jobId, columns, row, field, version, onClose }: 
       ) : (
         <div className="doc-tree">
           {Object.entries(doc).map(([k, v]) => (
-            <Node key={k} name={k} value={v} open={k === field} highlight={k === field} />
+            <Node key={k} name={k} value={v} open={k === field} highlight={k === field} hidden={hidden} />
           ))}
         </div>
       )}
