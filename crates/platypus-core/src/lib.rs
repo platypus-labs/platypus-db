@@ -16,6 +16,7 @@ mod init;
 mod metadata;
 pub mod special;
 mod transaction;
+mod version;
 
 pub use admin::{
     EndSession, ServerLock, ServerSession, query_locks, refuse_own_session, session_number,
@@ -46,6 +47,8 @@ pub use transaction::{
     TransactionState, TxControl, TxEffect, TxTracker, classify, leading_words,
     open_transaction_error,
 };
+
+pub use version::{ServerVersion, minimum_version};
 
 /// Re-exported so frontends use the same Arrow version as the drivers.
 pub use arrow_array;

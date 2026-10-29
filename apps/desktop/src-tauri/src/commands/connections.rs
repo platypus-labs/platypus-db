@@ -385,6 +385,9 @@ pub struct SessionInfo {
     server: ServerInfo,
     /// What the driver supports, so the UI can hide actions it would reject.
     capabilities: Capabilities,
+    /// The oldest version tested, when the server is older: the UI says some features may
+    /// not work.
+    minimum: Option<String>,
 }
 
 /// Opens a session for a saved connection. `password` overrides the stored one, `database`
@@ -464,6 +467,7 @@ async fn start_session(
         conn.set_autocommit(false).await?;
     }
     let server = conn.server_info().clone();
+    let minimum = server.below_minimum().map(|v| v.to_string());
     let capabilities = conn.capabilities();
     let session_id = state.next_id();
     lock(&state.sessions).insert(
@@ -474,6 +478,7 @@ async fn start_session(
         session_id,
         server,
         capabilities,
+        minimum,
     })
 }
 

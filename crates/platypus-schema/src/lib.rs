@@ -472,6 +472,22 @@ fn action(text: &str) -> Option<String> {
     Some(action.to_owned())
 }
 
+/// `CURRENT_TIMESTAMP` or `NOW()`, which MySQL takes without parentheses.
+fn is_now(default: &str) -> bool {
+    let upper = default.to_ascii_uppercase();
+    upper.starts_with("CURRENT_TIMESTAMP") || upper.starts_with("NOW(")
+}
+
+/// A temporal column's `CURRENT_TIMESTAMP` default: an expression, though MySQL 5.7 does not
+/// mark it `DEFAULT_GENERATED` as 8.0 does.
+fn current_time(default: &str, data_type: &str) -> bool {
+    let data_type = data_type.to_ascii_lowercase();
+    let temporal = ["datetime", "timestamp"]
+        .iter()
+        .any(|t| data_type.starts_with(t));
+    temporal && is_now(default)
+}
+
 /// MySQL prints a literal default without its quotes and keeps `auto_increment` apart from
 /// the type; both must be written back when a column is redefined. MariaDB quotes literals.
 async fn mysql_columns(
@@ -512,15 +528,8 @@ async fn mysql_columns(
             if mariadb {
                 // MariaDB writes no default of a nullable column as `NULL`.
                 (d != "NULL").then_some(d)
-            } else if generated {
-                let upper = d.to_ascii_uppercase();
-                Some(
-                    if upper.starts_with("CURRENT_TIMESTAMP") || upper.starts_with("NOW(") {
-                        d
-                    } else {
-                        format!("({d})")
-                    },
-                )
+            } else if generated || current_time(&d, &column.data_type) {
+                Some(if is_now(&d) { d } else { format!("({d})") })
             } else if d.parse::<f64>().is_ok() || is_bit_or_hex_literal(&d) {
                 Some(d)
             } else {
@@ -617,6 +626,18 @@ pub async fn apply(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_time_columns_current_timestamp_is_an_expression() {
+        assert!(current_time("CURRENT_TIMESTAMP", "datetime"));
+        assert!(current_time("current_timestamp(6)", "TIMESTAMP(6)"));
+        assert!(current_time("now()", "datetime"));
+        assert!(
+            !current_time("CURRENT_TIMESTAMP", "varchar(20)"),
+            "text, as written"
+        );
+        assert!(!current_time("2026-01-01 00:00:00", "datetime"));
+    }
 
     #[test]
     fn check_conditions_lose_their_keyword_and_outer_parentheses() {

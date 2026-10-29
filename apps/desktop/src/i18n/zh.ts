@@ -1837,6 +1837,7 @@ const zh: Record<string, string> = {
   "Run by the system's shell, e.g. to bring a VPN up. The first runs before the first session that needs it, which waits for its end, a minute at most, and fails with it; the second runs when the last such session closes.": "由系统 shell 运行，例如启动 VPN。第一个命令在需要它的第一个会话之前运行，该会话等待其结束（最多一分钟），它失败则会话失败；第二个命令在最后一个此类会话关闭时运行。",
   "Proxy": "代理",
   "SOCKS5 or HTTP, before the SSH server when there is one: {socks} or {http}. A password can come from {env}.": "SOCKS5 或 HTTP，有 SSH 服务器时位于其之前：{socks} 或 {http}。密码可以来自 {env}。",
+  "{name}: {product} {version} is older than {minimum}, the oldest version tested: some features may not work.": "{name}：{product} {version} 早于 {minimum}（经过测试的最早版本），部分功能可能无法使用。",
 };
 
 export default zh;

@@ -1837,6 +1837,7 @@ const de: Record<string, string> = {
   "Run by the system's shell, e.g. to bring a VPN up. The first runs before the first session that needs it, which waits for its end, a minute at most, and fails with it; the second runs when the last such session closes.": "Von der Shell des Systems ausgeführt, etwa um ein VPN zu starten. Der erste läuft vor der ersten Sitzung, die ihn braucht; sie wartet auf sein Ende, höchstens eine Minute, und schlägt mit ihm fehl. Der zweite läuft, wenn die letzte dieser Sitzungen endet.",
   "Proxy": "Proxy",
   "SOCKS5 or HTTP, before the SSH server when there is one: {socks} or {http}. A password can come from {env}.": "SOCKS5 oder HTTP, vor dem SSH-Server, falls es einen gibt: {socks} oder {http}. Das Passwort kann aus {env} kommen.",
+  "{name}: {product} {version} is older than {minimum}, the oldest version tested: some features may not work.": "{name}: {product} {version} ist älter als {minimum}, die älteste getestete Version: einige Funktionen könnten nicht funktionieren.",
 };
 
 export default de;

@@ -529,9 +529,9 @@ impl Migration<'_> {
         let c = self.target.quote_ident(&column.name);
         let sql = match self.target {
             Dialect::SqlServer => format!("ALTER TABLE {t} ADD DEFAULT {value} FOR {c}"),
-            // An expression default takes its parentheses, and a TEXT column only this way.
             Dialect::MySql => format!(
-                "ALTER TABLE {t} MODIFY {c} {data_type} DEFAULT ({value}){}",
+                "ALTER TABLE {t} MODIFY {c} {data_type} DEFAULT {}{}",
+                mysql_default(&value, data_type),
                 if column.nullable { "" } else { " NOT NULL" }
             ),
             Dialect::ClickHouse => format!("ALTER TABLE {t} MODIFY COLUMN {c} DEFAULT {value}"),
@@ -1179,9 +1179,60 @@ fn requalify(ddl: &str, dialect: Dialect, from: &str, to: &str) -> String {
     out
 }
 
+/// A default as MySQL takes it: an expression in parentheses (8.0.13+), and a TEXT, BLOB or
+/// JSON column's only this way; a literal or a time column's `CURRENT_TIMESTAMP` bare, as
+/// MySQL 5.7 takes them too. `value` comes from `portable_default`, without parentheses.
+fn mysql_default(value: &str, data_type: &str) -> String {
+    let lower = data_type.to_ascii_lowercase();
+    let large = ["text", "blob", "json"].iter().any(|t| lower.contains(t));
+    let literal = value.starts_with('\'')
+        || value.parse::<f64>().is_ok()
+        || value.eq_ignore_ascii_case("TRUE")
+        || value.eq_ignore_ascii_case("FALSE");
+    let time = lower.starts_with("datetime") || lower.starts_with("timestamp");
+    if time && value.eq_ignore_ascii_case("CURRENT_TIMESTAMP") {
+        // With the column's fraction digits: DATETIME(6) takes only CURRENT_TIMESTAMP(6).
+        let digits = lower
+            .split_once('(')
+            .and_then(|(_, rest)| rest.strip_suffix(')'))
+            .filter(|d| d.chars().all(|c| c.is_ascii_digit()) && *d != "0");
+        return digits.map_or_else(
+            || "CURRENT_TIMESTAMP".to_owned(),
+            |d| format!("CURRENT_TIMESTAMP({d})"),
+        );
+    }
+    if !large && literal {
+        value.to_owned()
+    } else {
+        format!("({value})")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mysql_defaults_take_parentheses_only_when_needed() {
+        assert_eq!(mysql_default("'new'", "varchar(20)"), "'new'");
+        assert_eq!(mysql_default("1.5", "decimal(10,2)"), "1.5");
+        assert_eq!(
+            mysql_default("CURRENT_TIMESTAMP", "datetime"),
+            "CURRENT_TIMESTAMP"
+        );
+        assert_eq!(mysql_default("'x'", "text"), "('x')");
+        assert_eq!(mysql_default("uuid()", "varchar(36)"), "(uuid())");
+        assert_eq!(
+            mysql_default("CURRENT_TIMESTAMP", "DATETIME(6)"),
+            "CURRENT_TIMESTAMP(6)"
+        );
+        assert_eq!(
+            mysql_default("CURRENT_TIMESTAMP", "date"),
+            "(CURRENT_TIMESTAMP)"
+        );
+        assert_eq!(mysql_default("FALSE", "tinyint(1)"), "FALSE");
+        assert_eq!(mysql_default("CURRENT_DATE", "date"), "(CURRENT_DATE)");
+    }
 
     #[test]
     fn foreign_keys_point_at_the_target_schema() {
