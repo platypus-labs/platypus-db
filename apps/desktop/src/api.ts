@@ -1651,6 +1651,45 @@ export interface OpenedResultDb {
   partial: ResultPartial | null;
 }
 
+// Analysis (group M): saved results
+/** A column of a saved result: the type the database named, else Arrow's. */
+export interface SavedResultColumn {
+  name: string;
+  data_type: string;
+}
+
+/** A result kept as a file, to open without its connection. */
+export interface SavedResult {
+  id: string;
+  name: string;
+  sql: string;
+  /** The connection's name and driver when it was saved. */
+  connection: string;
+  driver: string;
+  database: string | null;
+  /** UTC, ISO 8601. */
+  saved_at: string;
+  rows: number;
+  columns: SavedResultColumn[];
+  /** The result had more rows than were saved. */
+  partial: boolean;
+}
+
+/** What the page tells about a result it saves. */
+export interface SavedResultOrigin {
+  name: string;
+  sql: string;
+  connection: string;
+  driver: string;
+  database: string | null;
+}
+
+/** A saved result read into the temporary DuckDB connection that holds it as `result`. */
+export interface OpenedSavedResult {
+  connection: SavedConnection;
+  result: SavedResult;
+}
+
 // Analysis (group M): compare with the previous run
 /** A row of a diff: as it is now (a removed row as it was); a changed row has the columns that
  *  differ with their previous value. */
@@ -2301,6 +2340,17 @@ export const api = {
   reloadResultDb: (connectionId: string, tables: ResultTable[]) =>
     invoke<ResultPartial | null>("reload_result_db", { connectionId, tables }),
   closeResultDb: (connectionId: string) => invoke<void>("close_result_db", { connectionId }),
+
+  // Analysis (group M): saved results
+  /** Saves the rows result `jobId` has loaded as a Parquet file of the data folder. */
+  saveResult: (jobId: number, origin: SavedResultOrigin) => invoke<SavedResult>("save_result", { jobId, origin }),
+  /** The saved results, the latest first. */
+  listSavedResults: () => invoke<SavedResult[]>("list_saved_results"),
+  renameSavedResult: (id: string, name: string) => invoke<SavedResult>("rename_saved_result", { id, name }),
+  deleteSavedResult: (id: string) => invoke<void>("delete_saved_result", { id }),
+  /** Reads a saved result into an in-memory DuckDB; no connection to its database needed.
+   *  `name` is the temporary connection's. */
+  openSavedResult: (id: string, name: string) => invoke<OpenedSavedResult>("open_saved_result", { id, name }),
 
   // Analysis (group M): compare with the previous run
   /** Keeps the loaded rows of the result a run of the same statement replaces. */

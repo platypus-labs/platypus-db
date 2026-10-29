@@ -2337,6 +2337,20 @@ const zh: Record<string, string> = {
   "Every column needs a name.": "每一列都需要名称。",
   "Every column needs a type.": "每一列都需要类型。",
   "Two columns have the same name.": "有两列同名。",
+  // Group M: saved results
+  "Save result": "保存结果",
+  "Saved, but only the rows loaded: reading stopped before the end of the result.": "已保存，但只包含已加载的行：读取在结果结束前就停止了。",
+  "Saved result: {name}": "已保存的结果：{name}",
+  "Save result…": "保存结果…",
+  "Rename saved result": "重命名已保存的结果",
+  "Delete the saved result “{name}”? Its file is deleted too.": "删除已保存的结果“{name}”？其文件也会被删除。",
+  "Saved results": "已保存的结果",
+  "Hide saved results": "隐藏已保存的结果",
+  "Show saved results": "显示已保存的结果",
+  "Search saved results": "搜索已保存的结果",
+  "No saved results": "没有已保存的结果",
+  "No saved result matches": "没有匹配的已保存结果",
+  "Saved result of {connection} from {time}: {rows} rows. No connection is needed to read it.": "来自 {connection}、保存于 {time} 的结果：{rows} 行。读取它不需要连接。",
 };
 
 export default zh;

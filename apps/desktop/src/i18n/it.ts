@@ -2337,6 +2337,20 @@ const it: Record<string, string> = {
   "Every column needs a name.": "Ogni colonna ha bisogno di un nome.",
   "Every column needs a type.": "Ogni colonna ha bisogno di un tipo.",
   "Two columns have the same name.": "Due colonne hanno lo stesso nome.",
+  // Group M: saved results
+  "Save result": "Salva risultato",
+  "Saved, but only the rows loaded: reading stopped before the end of the result.": "Salvato, ma solo le righe caricate: la lettura si è fermata prima della fine del risultato.",
+  "Saved result: {name}": "Risultato salvato: {name}",
+  "Save result…": "Salva risultato…",
+  "Rename saved result": "Rinomina risultato salvato",
+  "Delete the saved result “{name}”? Its file is deleted too.": "Eliminare il risultato salvato “{name}”? Viene eliminato anche il suo file.",
+  "Saved results": "Risultati salvati",
+  "Hide saved results": "Nascondi i risultati salvati",
+  "Show saved results": "Mostra i risultati salvati",
+  "Search saved results": "Cerca nei risultati salvati",
+  "No saved results": "Nessun risultato salvato",
+  "No saved result matches": "Nessun risultato salvato corrisponde",
+  "Saved result of {connection} from {time}: {rows} rows. No connection is needed to read it.": "Risultato salvato di {connection} del {time}: {rows} righe. Per leggerlo non serve alcuna connessione.",
 };
 
 export default it;

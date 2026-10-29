@@ -14,6 +14,7 @@ import {
   type SqlAnalysis,
   type QueryEvent,
   type SavedConnection,
+  type SavedResult,
   type TableDetails,
   type TransactionState,
   isMongo,
@@ -40,6 +41,7 @@ import { viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { ResultSourceBar } from "../analysis/QueryWithSql";
+import { SavedResultBar } from "../analysis/SavedResults";
 import { useResultSql } from "../analysis/ResultSql";
 import { provideResults, resultsWithRows, type ResultSource } from "../analysis/resultHosts";
 import { basename } from "../workspace";
@@ -135,6 +137,9 @@ export interface QueryTabModel extends TabBase {
   /** "Query with SQL": where the tables of this tab came from. Not persisted: the temporary
    *  connection does not outlive the app. */
   resultSource?: ResultSource;
+  /** A saved result opened offline: its tables are the file's rows, not a result's. Not
+   *  persisted, like the temporary connection. */
+  savedResult?: SavedResult;
   /** Results as text, like a console, instead of the grid. */
   terminal?: boolean;
   /** Charts of the statements, each shown in place of the grid when chosen. */
@@ -319,8 +324,8 @@ export function QueryTab({
   /** The rows on screen: the shown result, or the output of its SQL field. */
   const view = resultSql.output ?? shown;
   // "Query with SQL" reads this tab's results with rows and which one is shown.
-  const resultsNow = useRef({ results, shown, active, focusSql: resultSql.focus });
-  resultsNow.current = { results, shown, active, focusSql: resultSql.focus };
+  const resultsNow = useRef({ results, shown, active, focusSql: resultSql.focus, database: tab.database });
+  resultsNow.current = { results, shown, active, focusSql: resultSql.focus, database: tab.database };
   useEffect(
     () =>
       provideResults({
@@ -330,6 +335,7 @@ export function QueryTab({
         results: () => resultsWithRows(resultsNow.current.results),
         activeJob: () => resultsNow.current.shown?.jobId ?? null,
         querySql: () => resultsNow.current.focusSql(),
+        database: () => resultsNow.current.database ?? null,
       }),
     [],
   );
@@ -1816,6 +1822,7 @@ export function QueryTab({
           className="splitter"
         />
         <div className="results">
+          {tab.savedResult && <SavedResultBar saved={tab.savedResult} />}
           {tab.resultSource && (
             <ResultSourceBar
               source={tab.resultSource}

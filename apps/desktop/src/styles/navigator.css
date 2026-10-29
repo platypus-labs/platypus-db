@@ -305,3 +305,25 @@
   background: var(--ok);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ok) 25%, transparent);
 }
+
+/* Saved results, under the scripts: the search field and the buttons of a row. */
+.saved-results-search {
+  margin: 2px 8px 4px;
+  min-width: 0;
+}
+
+.saved-result-row .tree-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-result-row > button.icon {
+  display: none;
+  flex: none;
+}
+
+.saved-result-row:hover > button.icon,
+.saved-result-row:focus-within > button.icon {
+  display: inline-flex;
+}

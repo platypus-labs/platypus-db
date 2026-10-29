@@ -43,6 +43,7 @@ import { registerAddToProject } from "./projects/actions";
 import { registerMoveToFolder } from "./projects/folders";
 import { withDriver } from "./drivers/DriverPopup";
 import { ScriptsPanel } from "./scripts/ScriptsPanel";
+import { SavedResultsPanel } from "./analysis/SavedResults";
 import { openScriptFile, scriptsChanged } from "./scripts/scripts";
 import { vimTakes } from "./editor/vim";
 import { ContextMenu, type MenuState } from "./components/ContextMenu";
@@ -1063,6 +1064,7 @@ export function App() {
           onError={setToast}
         />
         <ScriptsPanel project={project} connections={projectConnections} onError={setToast} />
+        <SavedResultsPanel onError={setToast} />
         <SidebarResizer width={sidebarWidth} onResize={setSidebarWidth} />
       </div>
       <main className="workspace">
