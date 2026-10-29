@@ -418,7 +418,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
       {label}
     </button>
   );
-  const networkSet = conn.network_profile || conn.ssh || conn.ssl_client_cert;
+  const networkSet =
+    conn.network_profile || conn.ssh || conn.ssl_client_cert || conn.options?.before_connect || conn.options?.after_disconnect;
   const initSet = !!(init.schema || init.time_zone || init.statements.trim());
 
   if (picking) {
