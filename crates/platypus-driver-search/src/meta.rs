@@ -435,10 +435,12 @@ mod tests {
             ("owner", "document"),
             ("late", "date"),
         ];
-        assert_eq!(
-            top_level_fields(&reply),
-            want.map(|(n, t)| (n.to_owned(), t.to_owned()))
-        );
+        // The order of a mapping's fields depends on how `serde_json` is built.
+        let mut found = top_level_fields(&reply);
+        found.sort();
+        let mut want = want.map(|(n, t)| (n.to_owned(), t.to_owned()));
+        want.sort();
+        assert_eq!(found, want);
     }
 
     #[test]
