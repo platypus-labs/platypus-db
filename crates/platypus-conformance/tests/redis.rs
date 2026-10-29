@@ -2,7 +2,7 @@
 //! info, capabilities, metadata (databases and the virtual table of each key type),
 //! `BROWSE`, editor commands and their errors, saving the grid's changes, cancel, ACL users
 //! and lost connections. Redis comes from `docker/compose.yml` (Redis Stack, with
-//! RedisJSON), or `PLATYPUS_TEST_REDIS`; without it the tests are skipped.
+//! `RedisJSON`), or `PLATYPUS_TEST_REDIS`; without it the tests are skipped.
 //!
 //! Each test works in a database of its own, which it empties first: they run in parallel.
 
@@ -273,7 +273,7 @@ async fn browses_every_type() {
     // Another database, by name, and an empty result.
     run(c, "SELECT 5").await;
     assert_eq!(rows_of(c, "BROWSE db4.set").await.len(), 2);
-    assert!(rows_of(c, "BROWSE set").await.is_empty());
+    assert_eq!(rows_of(c, "BROWSE set").await.len(), 0);
 }
 
 #[tokio::test]
@@ -296,7 +296,7 @@ async fn filters_limits_and_pages_big_keys() {
         rows_of(c, "BROWSE string MATCH 'k:0*' LIMIT 4").await.len(),
         4
     );
-    assert!(rows_of(c, "BROWSE string MATCH nothing*").await.is_empty());
+    assert_eq!(rows_of(c, "BROWSE string MATCH nothing*").await.len(), 0);
     let batches = run_paged(c, "BROWSE list", 1000).await;
     assert_eq!(
         batches
@@ -429,11 +429,9 @@ fn columns(kind: KeyType) -> Vec<String> {
         .collect()
 }
 
-#[tokio::test]
-async fn saves_grid_edits_and_undoes_them() {
-    let Some(conn) = connect(8).await else { return };
-    let c = &*conn;
-    seed(c).await;
+/// The string part of `saves_grid_edits_and_undoes_them`: a key renamed with a new value
+/// and TTL, a binary one changed, one deleted and one added, then the undo script run.
+async fn save_string_edits(c: &dyn Connection) {
     // The edits go to their database, whichever the session is in.
     run(c, "SELECT 0").await;
     let cols = columns(KeyType::String);
@@ -448,7 +446,7 @@ async fn saves_grid_edits_and_undoes_them() {
         .find(|r| r[0].as_deref() == Some(r#""bin:\xff""#))
         .unwrap()
         .clone();
-    let mut edits = Edits {
+    let edits = Edits {
         db: 8,
         kind: KeyType::String,
         columns: &cols,
@@ -466,7 +464,7 @@ async fn saves_grid_edits_and_undoes_them() {
                 set: vec![(1, Some(r#""\x01\x02""#.into()))],
             },
         ],
-        inserts: vec![vec![(0, Some("fresh".into())), (1, Some("".into()))]],
+        inserts: vec![vec![(0, Some("fresh".into())), (1, Some(String::new()))]],
         deletes: vec![
             rows.iter()
                 .find(|r| r[0].as_deref() == Some("temp"))
@@ -491,7 +489,7 @@ async fn saves_grid_edits_and_undoes_them() {
         .map(String::as_str)
         .filter(|l| !l.starts_with('#'))
         .collect();
-    assert!(conn.execute_all(&undo, &[]).await.error.is_none());
+    assert!(c.execute_all(&undo, &[]).await.error.is_none());
     let back = text(&rows_of(c, "BROWSE db8.string").await)
         .into_iter()
         .map(|r| r[0].to_owned())
@@ -501,11 +499,46 @@ async fn saves_grid_edits_and_undoes_them() {
         text(&rows_of(c, "SELECT 8\nGET greeting").await),
         [["hello"]]
     );
+}
+
+/// The JSON part of `saves_grid_edits_and_undoes_them`: a document replaced, then invalid
+/// JSON, which the server refuses.
+async fn save_json_edits(c: &dyn Connection) {
+    // JSON: a document replaced; invalid JSON is the server's error.
+    let cols = columns(KeyType::Json);
+    let rows = loaded(c, "BROWSE json").await;
+    let mut edits = Edits {
+        db: 8,
+        kind: KeyType::Json,
+        columns: &cols,
+        updates: vec![Update {
+            loaded: rows[0].clone(),
+            set: vec![(1, Some(r#"{"z":0}"#.into()))],
+        }],
+        inserts: Vec::new(),
+        deletes: Vec::new(),
+    };
+    save(c, &edits).await;
+    assert_eq!(text(&rows_of(c, "BROWSE json").await)[0][1], r#"{"z":0}"#);
+    edits.updates[0].set = vec![(1, Some("{not json".into()))];
+    let script = edit::script(&edits).unwrap();
+    let statements: Vec<&str> = script.commands.iter().map(String::as_str).collect();
+    let ran = c.execute_all(&statements, &[]).await;
+    assert!(ran.error.is_some());
+    assert_eq!(text(&rows_of(c, "BROWSE json").await)[0][1], r#"{"z":0}"#);
+}
+
+#[tokio::test]
+async fn saves_grid_edits_and_undoes_them() {
+    let Some(conn) = connect(8).await else { return };
+    let c = &*conn;
+    seed(c).await;
+    save_string_edits(c).await;
 
     // Hash: a field renamed, a value changed, a field deleted, one added.
     let cols = columns(KeyType::Hash);
     let rows = loaded(c, "BROWSE hash").await;
-    edits = Edits {
+    let mut edits = Edits {
         db: 8,
         kind: KeyType::Hash,
         columns: &cols,
@@ -586,28 +619,7 @@ async fn saves_grid_edits_and_undoes_them() {
         [["board", "alice", "10"], ["board", "robert", "3"]]
     );
 
-    // JSON: a document replaced; invalid JSON is the server's error.
-    let cols = columns(KeyType::Json);
-    let rows = loaded(c, "BROWSE json").await;
-    edits = Edits {
-        db: 8,
-        kind: KeyType::Json,
-        columns: &cols,
-        updates: vec![Update {
-            loaded: rows[0].clone(),
-            set: vec![(1, Some(r#"{"z":0}"#.into()))],
-        }],
-        inserts: Vec::new(),
-        deletes: Vec::new(),
-    };
-    save(c, &edits).await;
-    assert_eq!(text(&rows_of(c, "BROWSE json").await)[0][1], r#"{"z":0}"#);
-    edits.updates[0].set = vec![(1, Some("{not json".into()))];
-    let script = edit::script(&edits).unwrap();
-    let statements: Vec<&str> = script.commands.iter().map(String::as_str).collect();
-    let ran = conn.execute_all(&statements, &[]).await;
-    assert!(ran.error.is_some());
-    assert_eq!(text(&rows_of(c, "BROWSE json").await)[0][1], r#"{"z":0}"#);
+    save_json_edits(c).await;
 }
 
 #[tokio::test]

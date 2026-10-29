@@ -138,11 +138,8 @@ pub fn run(conn: MultiplexedConnection, browse: Browse, size: usize) -> ExecResu
 }
 
 async fn query(conn: &mut MultiplexedConnection, cmd: &Cmd) -> Result<Value> {
-    match cmd.query_async::<Value>(conn).await {
-        Ok(Value::ServerError(e)) => Err(crate::error::server(&e)),
-        Ok(v) => Ok(v),
-        Err(e) => Err(crate::error::map(&e)),
-    }
+    let reply = cmd.query_async::<Value>(conn).await;
+    crate::error::reply(reply.map_err(|e| crate::error::map(&e))?)
 }
 
 fn int(value: &Value) -> Option<i64> {

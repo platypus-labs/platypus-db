@@ -7,6 +7,13 @@
 
 use crate::command::{KeyType, cell_bytes, line};
 
+/// The editor line of a command: its name, then arguments as text or bytes.
+macro_rules! cmd {
+    ($name:literal $(, $arg:expr)* $(,)?) => {
+        line(&[$name.as_bytes() $(, AsRef::<[u8]>::as_ref(&$arg))*])
+    };
+}
+
 /// A loaded row changed: its values as loaded, and the new values of some columns (`None`
 /// for NULL).
 #[derive(Debug, Clone)]
@@ -104,8 +111,8 @@ fn score(text: Option<&str>) -> Result<String, String> {
 
 fn ttl_command(key: &[u8], ttl: Option<u64>) -> String {
     match ttl {
-        Some(n) => line(&[b"EXPIRE".as_slice(), key, n.to_string().as_bytes()]),
-        None => line(&[b"PERSIST".as_slice(), key]),
+        Some(n) => cmd!("EXPIRE", key, n.to_string().as_bytes()),
+        None => cmd!("PERSIST", key),
     }
 }
 
@@ -119,9 +126,10 @@ fn tombstone() -> String {
 
 /// The commands for `edits`.
 pub fn script(edits: &Edits<'_>) -> Result<Script, String> {
+    let select = cmd!("SELECT", edits.db.to_string());
     let mut out = Script {
-        commands: vec![line(&["SELECT", &edits.db.to_string()])],
-        undo: vec![line(&["SELECT", &edits.db.to_string()])],
+        commands: vec![select.clone()],
+        undo: vec![select],
     };
     let columns = edits.columns;
     // Deletes first, which frees hash fields and members for the renames that follow; on a
@@ -153,12 +161,8 @@ fn deletes(edits: &Edits<'_>, out: &mut Script) -> Result<(), String> {
             let row = Row::loaded(columns, loaded);
             let key = row.required("key")?;
             let index = row.get("index").flatten().unwrap_or_default();
-            out.commands.push(line(&[
-                b"LSET".as_slice(),
-                &key,
-                index.as_bytes(),
-                mark.as_bytes(),
-            ]));
+            out.commands
+                .push(cmd!("LSET", &key, index.as_bytes(), mark.as_bytes()));
             out.undo.push(format!(
                 "# The item {index} of {} was {}: put it back by hand",
                 line(&[&key]),
@@ -169,8 +173,7 @@ fn deletes(edits: &Edits<'_>, out: &mut Script) -> Result<(), String> {
             }
         }
         for key in keys {
-            out.commands
-                .push(line(&[b"LREM".as_slice(), &key, b"0", mark.as_bytes()]));
+            out.commands.push(cmd!("LREM", &key, "0", mark.as_bytes()));
         }
         return Ok(());
     }
@@ -180,12 +183,12 @@ fn deletes(edits: &Edits<'_>, out: &mut Script) -> Result<(), String> {
         let key = key.as_slice();
         match edits.kind {
             KeyType::String | KeyType::Json => {
-                out.commands.push(line(&[b"DEL".as_slice(), key]));
+                out.commands.push(cmd!("DEL", key));
                 let value = row.bytes("value").unwrap_or_default();
                 out.undo.push(if edits.kind == KeyType::Json {
-                    line(&[b"JSON.SET".as_slice(), key, b"$", &value])
+                    cmd!("JSON.SET", key, "$", &value)
                 } else {
-                    line(&[b"SET".as_slice(), key, &value])
+                    cmd!("SET", key, &value)
                 });
                 if let Some(n) = ttl(row.get("ttl").flatten())? {
                     out.undo.push(ttl_command(key, Some(n)));
@@ -194,25 +197,23 @@ fn deletes(edits: &Edits<'_>, out: &mut Script) -> Result<(), String> {
             KeyType::Hash => {
                 let field = row.required("field")?;
                 let value = row.bytes("value").unwrap_or_default();
-                out.commands.push(line(&[b"HDEL".as_slice(), key, &field]));
-                out.undo
-                    .push(line(&[b"HSET".as_slice(), key, &field, &value]));
+                out.commands.push(cmd!("HDEL", key, &field));
+                out.undo.push(cmd!("HSET", key, &field, &value));
             }
             KeyType::Set => {
                 let member = row.required("member")?;
-                out.commands.push(line(&[b"SREM".as_slice(), key, &member]));
-                out.undo.push(line(&[b"SADD".as_slice(), key, &member]));
+                out.commands.push(cmd!("SREM", key, &member));
+                out.undo.push(cmd!("SADD", key, &member));
             }
             KeyType::Zset => {
                 let member = row.required("member")?;
                 let score = score(row.get("score").flatten())?;
-                out.commands.push(line(&[b"ZREM".as_slice(), key, &member]));
-                out.undo
-                    .push(line(&[b"ZADD".as_slice(), key, score.as_bytes(), &member]));
+                out.commands.push(cmd!("ZREM", key, &member));
+                out.undo.push(cmd!("ZADD", key, score.as_bytes(), &member));
             }
             KeyType::Stream => {
                 let id = row.required("id")?;
-                out.commands.push(line(&[b"XDEL".as_slice(), key, &id]));
+                out.commands.push(cmd!("XDEL", key, &id));
                 out.undo.push(format!(
                     "# The entry {} of {} cannot be put back",
                     line(&[&id]),
@@ -237,15 +238,11 @@ fn update_value(
         let value = new.required("value")?;
         let old_value = old.bytes("value").unwrap_or_default();
         if kind == KeyType::Json {
-            out.commands
-                .push(line(&[b"JSON.SET".as_slice(), key, b"$", &value]));
-            out.undo
-                .push(line(&[b"JSON.SET".as_slice(), key, b"$", &old_value]));
+            out.commands.push(cmd!("JSON.SET", key, "$", &value));
+            out.undo.push(cmd!("JSON.SET", key, "$", &old_value));
         } else {
-            out.commands
-                .push(line(&[b"SET".as_slice(), key, &value, b"KEEPTTL"]));
-            out.undo
-                .push(line(&[b"SET".as_slice(), key, &old_value, b"KEEPTTL"]));
+            out.commands.push(cmd!("SET", key, &value, "KEEPTTL"));
+            out.undo.push(cmd!("SET", key, &old_value, "KEEPTTL"));
         }
     }
     if new.get("ttl").is_some() {
@@ -269,19 +266,15 @@ fn update_field(key: &[u8], old: &Row<'_>, new: &Row<'_>, out: &mut Script) -> R
     match new.get("field") {
         Some(Some(to)) if cell_bytes(to) != field => {
             let to = cell_bytes(to);
-            out.commands.push(line(&[b"HDEL".as_slice(), key, &field]));
-            out.commands
-                .push(line(&[b"HSET".as_slice(), key, &to, &value]));
-            out.undo.push(line(&[b"HDEL".as_slice(), key, &to]));
-            out.undo
-                .push(line(&[b"HSET".as_slice(), key, &field, &old_value]));
+            out.commands.push(cmd!("HDEL", key, &field));
+            out.commands.push(cmd!("HSET", key, &to, &value));
+            out.undo.push(cmd!("HDEL", key, &to));
+            out.undo.push(cmd!("HSET", key, &field, &old_value));
         }
         Some(None) => return Err("the field cannot be empty (NULL)".to_owned()),
         _ => {
-            out.commands
-                .push(line(&[b"HSET".as_slice(), key, &field, &value]));
-            out.undo
-                .push(line(&[b"HSET".as_slice(), key, &field, &old_value]));
+            out.commands.push(cmd!("HSET", key, &field, &value));
+            out.undo.push(cmd!("HSET", key, &field, &old_value));
         }
     }
     Ok(())
@@ -298,33 +291,19 @@ fn update_member(key: &[u8], old: &Row<'_>, new: &Row<'_>, out: &mut Script) -> 
     match new.get("member") {
         Some(Some(to)) if cell_bytes(to) != member => {
             let to = cell_bytes(to);
-            out.commands.push(line(&[b"ZREM".as_slice(), key, &member]));
+            out.commands.push(cmd!("ZREM", key, &member));
             out.commands
-                .push(line(&[b"ZADD".as_slice(), key, new_score.as_bytes(), &to]));
-            out.undo.push(line(&[b"ZREM".as_slice(), key, &to]));
-            out.undo.push(line(&[
-                b"ZADD".as_slice(),
-                key,
-                old_score.as_bytes(),
-                &member,
-            ]));
+                .push(cmd!("ZADD", key, new_score.as_bytes(), &to));
+            out.undo.push(cmd!("ZREM", key, &to));
+            out.undo
+                .push(cmd!("ZADD", key, old_score.as_bytes(), &member));
         }
         Some(None) => return Err("the member cannot be empty (NULL)".to_owned()),
         _ => {
-            out.commands.push(line(&[
-                b"ZADD".as_slice(),
-                key,
-                b"XX",
-                new_score.as_bytes(),
-                &member,
-            ]));
-            out.undo.push(line(&[
-                b"ZADD".as_slice(),
-                key,
-                b"XX",
-                old_score.as_bytes(),
-                &member,
-            ]));
+            out.commands
+                .push(cmd!("ZADD", key, "XX", new_score.as_bytes(), &member));
+            out.undo
+                .push(cmd!("ZADD", key, "XX", old_score.as_bytes(), &member));
         }
     }
     Ok(())
@@ -340,8 +319,7 @@ fn update(kind: KeyType, old: &Row<'_>, new: &Row<'_>, out: &mut Script) -> Resu
     let key = match (&renamed, kind) {
         (None, _) => old_key.clone(),
         (Some(to), KeyType::String | KeyType::Json) => {
-            out.commands
-                .push(line(&[b"RENAME".as_slice(), &old_key, to]));
+            out.commands.push(cmd!("RENAME", &old_key, to));
             to.clone()
         }
         (Some(_), _) => {
@@ -357,7 +335,7 @@ fn update(kind: KeyType, old: &Row<'_>, new: &Row<'_>, out: &mut Script) -> Resu
         KeyType::String | KeyType::Json => {
             update_value(kind, key, old, new, out)?;
             if renamed.is_some() {
-                out.undo.push(line(&[b"RENAME".as_slice(), key, &old_key]));
+                out.undo.push(cmd!("RENAME", key, &old_key));
             }
         }
         KeyType::Hash => update_field(key, old, new, out)?,
@@ -369,21 +347,17 @@ fn update(kind: KeyType, old: &Row<'_>, new: &Row<'_>, out: &mut Script) -> Resu
             let value = new.bytes("value").unwrap_or_default();
             let old_value = old.bytes("value").unwrap_or_default();
             out.commands
-                .push(line(&[b"LSET".as_slice(), key, index.as_bytes(), &value]));
-            out.undo.push(line(&[
-                b"LSET".as_slice(),
-                key,
-                index.as_bytes(),
-                &old_value,
-            ]));
+                .push(cmd!("LSET", key, index.as_bytes(), &value));
+            out.undo
+                .push(cmd!("LSET", key, index.as_bytes(), &old_value));
         }
         KeyType::Set => {
             let member = old.required("member")?;
             let to = new.required("member")?;
-            out.commands.push(line(&[b"SREM".as_slice(), key, &member]));
-            out.commands.push(line(&[b"SADD".as_slice(), key, &to]));
-            out.undo.push(line(&[b"SREM".as_slice(), key, &to]));
-            out.undo.push(line(&[b"SADD".as_slice(), key, &member]));
+            out.commands.push(cmd!("SREM", key, &member));
+            out.commands.push(cmd!("SADD", key, &to));
+            out.undo.push(cmd!("SREM", key, &to));
+            out.undo.push(cmd!("SADD", key, &member));
         }
         KeyType::Zset => update_member(key, old, new, out)?,
         KeyType::Stream => {
@@ -404,47 +378,38 @@ fn insert(kind: KeyType, row: &Row<'_>, out: &mut Script) -> Result<(), String> 
             let value = row.bytes("value").unwrap_or_default();
             // NX: a key that exists is not overwritten.
             if kind == KeyType::Json {
-                out.commands
-                    .push(line(&[b"JSON.SET".as_slice(), key, b"$", &value, b"NX"]));
+                out.commands.push(cmd!("JSON.SET", key, "$", &value, "NX"));
             } else {
-                out.commands
-                    .push(line(&[b"SET".as_slice(), key, &value, b"NX"]));
+                out.commands.push(cmd!("SET", key, &value, "NX"));
             }
             if let Some(n) = ttl(row.get("ttl").flatten())? {
                 out.commands.push(ttl_command(key, Some(n)));
             }
-            out.undo.push(line(&[b"DEL".as_slice(), key]));
+            out.undo.push(cmd!("DEL", key));
         }
         KeyType::Hash => {
             let field = row.required("field")?;
             let value = row.bytes("value").unwrap_or_default();
-            out.commands
-                .push(line(&[b"HSET".as_slice(), key, &field, &value]));
-            out.undo.push(line(&[b"HDEL".as_slice(), key, &field]));
+            out.commands.push(cmd!("HSET", key, &field, &value));
+            out.undo.push(cmd!("HDEL", key, &field));
         }
         KeyType::List => {
             // New items go at the end, whatever index they were given.
             let value = row.bytes("value").unwrap_or_default();
-            out.commands.push(line(&[b"RPUSH".as_slice(), key, &value]));
-            out.undo
-                .push(line(&[b"LREM".as_slice(), key, b"-1", &value]));
+            out.commands.push(cmd!("RPUSH", key, &value));
+            out.undo.push(cmd!("LREM", key, "-1", &value));
         }
         KeyType::Set => {
             let member = row.required("member")?;
-            out.commands.push(line(&[b"SADD".as_slice(), key, &member]));
-            out.undo.push(line(&[b"SREM".as_slice(), key, &member]));
+            out.commands.push(cmd!("SADD", key, &member));
+            out.undo.push(cmd!("SREM", key, &member));
         }
         KeyType::Zset => {
             let member = row.required("member")?;
             let score = score(row.get("score").flatten())?;
-            out.commands.push(line(&[
-                b"ZADD".as_slice(),
-                key,
-                b"NX",
-                score.as_bytes(),
-                &member,
-            ]));
-            out.undo.push(line(&[b"ZREM".as_slice(), key, &member]));
+            out.commands
+                .push(cmd!("ZADD", key, "NX", score.as_bytes(), &member));
+            out.undo.push(cmd!("ZREM", key, &member));
         }
         KeyType::Stream => {
             let fields = row.get("fields").flatten().unwrap_or("{}");

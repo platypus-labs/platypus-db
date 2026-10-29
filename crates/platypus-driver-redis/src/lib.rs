@@ -15,7 +15,7 @@ pub mod value;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use async_trait::async_trait;
 use platypus_core::{
@@ -127,6 +127,11 @@ async fn cancelled(rx: &mut watch::Receiver<u64>) {
     }
 }
 
+/// Locks `mutex`, even one a panic left poisoned: its data is never left half changed.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 fn raw(args: &[Vec<u8>]) -> Cmd {
     let mut cmd = Cmd::new();
     for arg in args {
@@ -152,10 +157,7 @@ impl RedisConnection {
             .query_async::<i64>(&mut conn)
             .await
         {
-            self.ids
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .push(id);
+            lock(&self.ids).push(id);
         }
         self.conns.lock().await.insert(db, conn);
     }
@@ -193,14 +195,9 @@ impl RedisConnection {
             reply = cmd.query_async::<Value>(&mut conn) => reply,
             () = cancelled(&mut rx) => return Err(Error::Cancelled),
         };
-        match reply {
-            Ok(Value::ServerError(e)) => Err(error::server(&e)),
-            Ok(value) => {
-                self.closed.store(false, Ordering::Relaxed);
-                Ok(value)
-            }
-            Err(e) => Err(self.failed(db, &e)),
-        }
+        let value = error::reply(reply.map_err(|e| self.failed(db, &e))?)?;
+        self.closed.store(false, Ordering::Relaxed);
+        Ok(value)
     }
 
     /// Sends `commands` to `db` as one `MULTI`/`EXEC`; the reply of each, errors included.
@@ -220,42 +217,29 @@ impl RedisConnection {
     }
 
     async fn run(&self, command: Command, options: &ExecOptions) -> Result<ExecResult> {
-        let queued = self
-            .queue
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .is_some();
+        let queued = lock(&self.queue).is_some();
         match command {
             Command::Multi if queued => {
                 Err(Error::Other("MULTI calls can not be nested".to_owned()))
             }
             Command::Multi => {
-                *self.queue.lock().unwrap_or_else(PoisonError::into_inner) = Some(Vec::new());
+                *lock(&self.queue) = Some(Vec::new());
                 text_result("OK")
             }
             Command::Discard | Command::Exec if !queued => {
                 Err(Error::Other(format!("{} without MULTI", command.name())))
             }
             Command::Discard => {
-                *self.queue.lock().unwrap_or_else(PoisonError::into_inner) = None;
+                *lock(&self.queue) = None;
                 text_result("OK")
             }
             Command::Exec => {
-                let commands = self
-                    .queue
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .take()
-                    .unwrap_or_default();
+                let commands = lock(&self.queue).take().unwrap_or_default();
                 let replies = self.transaction(self.current(), &commands).await?;
                 value::reply(Value::Array(replies), false, options.batch_size)
             }
             Command::Raw(args) if queued => {
-                self.queue
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .get_or_insert_with(Vec::new)
-                    .push(args);
+                lock(&self.queue).get_or_insert_with(Vec::new).push(args);
                 text_result("QUEUED")
             }
             Command::Select(_) | Command::Browse(_) if queued => Err(Error::Other(format!(
@@ -280,6 +264,32 @@ impl RedisConnection {
                 value::reply(reply, json, options.batch_size)
             }
         }
+    }
+
+    /// [`Connection::execute_all`]: the rows of each statement that ran go to `rows`.
+    async fn batch(&self, statements: &[&str], rows: &mut Vec<u64>) -> Result<()> {
+        let mut db = self.current();
+        let mut commands = Vec::new();
+        for (i, statement) in statements.iter().enumerate() {
+            match command::parse(statement).map_err(|e| error::parse(statement, &e))? {
+                Command::Select(n) if i == 0 => {
+                    db = n;
+                    rows.push(1);
+                }
+                Command::Raw(args) => commands.push(args),
+                other => {
+                    return Err(Error::Other(format!(
+                        "{} cannot run in a batch",
+                        other.name()
+                    )));
+                }
+            }
+        }
+        for reply in self.transaction(db, &commands).await? {
+            error::reply(reply)?;
+            rows.push(1);
+        }
+        Ok(())
     }
 
     /// The keys of `db` by type, when a scan of at most [`meta::COUNT_CAP`] keys sees them
@@ -350,11 +360,7 @@ impl Canceller for RedisCanceller {
         self.cancel.send_modify(|n| *n += 1);
         // A blocking command (`BLPOP`, `XREAD BLOCK`, `WAIT`) holds its connection on the
         // server: unblock it from another one.
-        let ids = self
-            .ids
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone();
+        let ids = lock(&self.ids).clone();
         if let Ok(mut conn) = self.opener.open(0).await {
             for id in ids {
                 let _ = redis::cmd("CLIENT")
@@ -390,51 +396,8 @@ impl Connection for RedisConnection {
     /// refuses stops the count there (those after it ran: `EXEC` does not roll back).
     async fn execute_all(&self, statements: &[&str], _expected: &[u64]) -> Executed {
         let mut rows = Vec::new();
-        let mut db = self.current();
-        let mut commands = Vec::new();
-        for (i, statement) in statements.iter().enumerate() {
-            match command::parse(statement) {
-                Ok(Command::Select(n)) if i == 0 => {
-                    db = n;
-                    rows.push(1);
-                }
-                Ok(Command::Raw(args)) => commands.push(args),
-                Ok(other) => {
-                    return Executed {
-                        rows,
-                        error: Some(Error::Other(format!(
-                            "{} cannot run in a batch",
-                            other.name()
-                        ))),
-                    };
-                }
-                Err(e) => {
-                    return Executed {
-                        rows,
-                        error: Some(error::parse(statement, &e)),
-                    };
-                }
-            }
-        }
-        let replies = match self.transaction(db, &commands).await {
-            Ok(replies) => replies,
-            Err(error) => {
-                return Executed {
-                    rows,
-                    error: Some(error),
-                };
-            }
-        };
-        for reply in replies {
-            if let Value::ServerError(e) = reply {
-                return Executed {
-                    rows,
-                    error: Some(error::server(&e)),
-                };
-            }
-            rows.push(1);
-        }
-        Executed { rows, error: None }
+        let error = self.batch(statements, &mut rows).await.err();
+        Executed { rows, error }
     }
 
     fn cancel_handle(&self) -> CancelHandle {

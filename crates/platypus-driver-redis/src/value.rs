@@ -94,10 +94,7 @@ const fn is_nested(value: &Value) -> bool {
 
 /// The reply to a command as rows; `json` when its strings are JSON text (`JSON.GET`).
 pub fn reply(value: Value, json: bool, size: usize) -> Result<ExecResult> {
-    let value = unwrap_attribute(value);
-    if let Value::ServerError(e) = value {
-        return Err(crate::error::server(&e));
-    }
+    let value = crate::error::reply(unwrap_attribute(value))?;
     let columns = match value {
         Value::Map(pairs) => {
             let (fields, values): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
