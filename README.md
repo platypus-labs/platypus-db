@@ -129,7 +129,7 @@ Tools, limits, the HTTP bridge and the `platypus` CLI: [docs/AGENTS.md](docs/AGE
 
 ## Performance
 
-| | PlatypusDB | Target |
+| | PlatypusDB 0.1.0 | Target |
 |---|---|---|
 | Start to interactive window | 430–500 ms | < 500 ms |
 | Memory at rest, 1 connection | about 130 MB | < 150 MB |

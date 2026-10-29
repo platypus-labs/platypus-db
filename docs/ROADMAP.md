@@ -955,7 +955,8 @@ dell'auto-update, la firma, avvio e memoria di DBeaver accanto ai nostri e la di
 | ✅ 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
 | ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
 | 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire | P2 |
-| ✅ 🆕 **Video o GIF di 20-30 secondi** in cima al README e al sito: avvio, scroll di milioni di righe, explain con la heatmap (fatto nel README; il sito ancora no) | P2 |
+| ✅ 🆕 **Video o GIF di 20-30 secondi** in cima al README: avvio, scroll di milioni di righe, explain con la heatmap | P2 |
+| 🆕 Le stesse GIF nel sito (`site/`) | P2 |
 | 🆕 **Confronto con DBeaver, DataGrip, TablePlus e Beekeeper Studio** nel README e nel sito (dimensione, avvio, memoria, licenza, MCP), con i numeri di `BENCHMARKS.md` aggiornati | P2 |
 | 🆕 Lancio quando il repository diventa pubblico: Show HN, r/programming, r/rust, r/PostgreSQL, Product Hunt | P3 |
 

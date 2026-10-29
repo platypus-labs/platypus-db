@@ -137,7 +137,7 @@ Strumenti, limiti, il bridge HTTP e la CLI `platypus`: [docs/AGENTS.md](docs/AGE
 
 ## Prestazioni
 
-| | PlatypusDB | Obiettivo |
+| | PlatypusDB 0.1.0 | Obiettivo |
 |---|---|---|
 | Dall'avvio alla finestra pronta | 430–500 ms | < 500 ms |
 | Memoria a riposo, 1 connessione | circa 130 MB | < 150 MB |

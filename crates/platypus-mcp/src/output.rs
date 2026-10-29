@@ -1,5 +1,5 @@
 //! A statement's result as agents read it: an aligned text table, or JSON whose shape is
-//! stable (documented in the README, under Agents). Both stay within the byte limit and say
+//! stable (documented in docs/AGENTS.md). Both stay within the byte limit and say
 //! when rows or values were left out.
 
 use std::fmt::Write as _;
