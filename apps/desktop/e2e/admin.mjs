@@ -1,7 +1,7 @@
 // Helpers of the Server activity scenarios (group J): the admin tab, its session rows and
 // details, and sessions of the dev databases run in the background from a shell in their
 // container.
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { DBS, assert, expand, treeMenu } from "./qa-grid.mjs";
 
 export const adminTab = `[...document.querySelectorAll('.admin-tab')].find(t => t.style.display !== 'none')`;
@@ -188,4 +188,61 @@ export async function statisticsFlow(page, { db, name, table, slow, path, operat
   }
   await page.eval(`document.querySelector('.maintenance-dialog button.primary').click()`);
   await page.waitFor(`document.querySelector('.maintenance-dialog') === null`);
+}
+
+/**
+ * Back up and Restore of `name`'s database (group J): Back up… writes `file` with the
+ * database's tool, counting the tables; a table dropped then comes back with Restore…, asked
+ * first; Cancel on the question changes nothing.
+ */
+export async function backupFlow(page, { db, name, file, table, count, dropTable }) {
+  const { answerSave } = await import("./qa-xfer.mjs");
+  const { existsSync, readFileSync } = await import("node:fs");
+  const dialog = `document.querySelector('.backup-dialog')`;
+  const result = `${dialog}?.querySelector('[data-field="result"]')`;
+  await expand(page, name, db);
+  await treeMenu(page, name, "Back up…");
+  await page.waitFor(`${dialog} !== null`);
+  assert.equal(await page.eval(`${dialog}.querySelector('button.primary').disabled`), true, "no file yet");
+  await answerSave(page, file);
+  await page.eval(`[...${dialog}.querySelectorAll('button')].find(b => b.textContent === 'Choose file…').click()`);
+  await page.waitFor(`${dialog}.querySelector('[data-field="path"]').value === ${JSON.stringify(file)}`);
+  await page.eval(`${dialog}.querySelector('button.primary').click()`);
+  await page.waitFor(`${result} != null`, 120_000);
+  assert.ok(await page.eval(`${result}.classList.contains('ok')`), await page.eval(`${result}.textContent`));
+  assert.match(await page.eval(`${result}.textContent`), /^Backup written: .+ in .+\.$/);
+  assert.ok(existsSync(file), "the backup file");
+  assert.ok(readFileSync(file).length > 0);
+  await page.eval(`[...${dialog}.querySelectorAll('button')].find(b => b.textContent === 'Close').click()`);
+  await page.waitFor(`${dialog} === null`);
+
+  // The table goes, and comes back from the backup.
+  dropTable();
+  assert.equal(count(), null, "dropped");
+  await treeMenu(page, name, "Restore…");
+  await page.waitFor(`${dialog}?.dataset.mode === 'restore'`);
+  await answerSave(page, file, "plugin:dialog|open");
+  await page.eval(`[...${dialog}.querySelectorAll('button')].find(b => b.textContent === 'Choose file…').click()`);
+  await page.waitFor(`${dialog}.querySelector('[data-field="path"]').value === ${JSON.stringify(file)}`);
+  // Asked first: Cancel leaves the database as it is.
+  await page.eval(`${dialog}.querySelector('button.primary').click()`);
+  await page.waitFor(`document.querySelector('.modal.confirm') !== null`);
+  assert.match(await page.eval(`document.querySelector('.modal.confirm p').textContent`), /Its statements change the database/);
+  await page.eval(`[...document.querySelectorAll('.modal.confirm button')].find(b => b.textContent === 'Cancel').click()`);
+  await page.waitFor(`document.querySelector('.modal.confirm') === null`);
+  assert.equal(count(), null, "not restored yet");
+  await page.eval(`${dialog}.querySelector('button.primary').click()`);
+  await confirmDanger(page);
+  await page.waitFor(`${result} != null`, 120_000);
+  assert.ok(await page.eval(`${result}.classList.contains('ok')`), await page.eval(`${result}.textContent`));
+  assert.ok(count() > 0, `${table} is back`);
+  await page.eval(`[...${dialog}.querySelectorAll('button')].find(b => b.textContent === 'Close').click()`);
+  await page.waitFor(`${dialog} === null`);
+}
+
+/** Whether `program` runs, and its major version (`pg_dump (PostgreSQL) 17.2` is 17). */
+export function toolVersion(program) {
+  const r = spawnSync(program, ["--version"], { encoding: "utf8" });
+  if (r.status !== 0) return null;
+  return Number(/(\d+)\./.exec(r.stdout)?.[1] ?? 0);
 }
