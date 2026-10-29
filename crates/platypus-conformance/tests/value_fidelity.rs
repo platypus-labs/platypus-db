@@ -8,7 +8,9 @@ use std::time::Duration;
 
 use arrow_schema::DataType;
 use futures::TryStreamExt;
-use platypus_core::{Connection, ConnectionConfig, Driver, DriverKind, ExecOptions, ExecResult};
+use platypus_core::{
+    BulkRows, Connection, ConnectionConfig, Driver, DriverKind, ExecOptions, ExecResult,
+};
 use platypus_driver_duckdb::DuckDbDriver;
 use platypus_driver_mongo::MongoDriver;
 use platypus_driver_mssql::MssqlDriver;
@@ -386,6 +388,246 @@ async fn mssql_money_and_times_are_exact_and_keys_save() {
         format!("UPDATE #qa_fixdrv_keys SET v = 2 WHERE k = '{k}' AND k2 = '{k2}' AND k3 = '{k3}'");
     assert_eq!(run(conn, &update).await, 1, "{update}");
     run(conn, "DROP TABLE #qa_fixdrv_keys").await;
+}
+
+/// The columns of the bulk copy tests: every type SQL Server's bulk copy writes.
+const MSSQL_BULK_COLUMNS: &[(&str, &str)] = &[
+    ("id", "int IDENTITY PRIMARY KEY"),
+    ("amount", "decimal(10, 2)"),
+    ("day", "date"),
+    ("at", "datetime2(3)"),
+    ("zoned", "datetimeoffset(0)"),
+    ("legacy", "datetime"),
+    ("small", "smalldatetime"),
+    ("clock", "time(3)"),
+    ("flag", "bit"),
+    ("g", "uniqueidentifier"),
+    ("code", "nchar(3)"),
+    ("name", "nvarchar(10)"),
+    ("ascii", "varchar(5)"),
+    ("tiny", "tinyint"),
+    ("big", "bigint"),
+    ("ratio", "real"),
+    ("wide", "float"),
+    ("raw", "varbinary(4)"),
+];
+
+/// Rows for [`MSSQL_BULK_COLUMNS`]: values to round or carry over, the limits of the types,
+/// and NULLs.
+fn mssql_bulk_rows() -> Vec<Vec<Option<String>>> {
+    let values = [
+        [
+            "10",
+            "-12.345",
+            "2024-02-29",
+            "2024-03-01 10:11:12.3456",
+            "2024-01-02 01:30:00+02:00",
+            "2024-03-01 23:59:59.999",
+            "2024-03-01 23:59:30",
+            "12:34:56.7891",
+            "true",
+            "6F9619FF-8B86-D011-B42D-00C04FC964FF",
+            "abc",
+            "ñandú 🦆",
+            "plain",
+            "255",
+            "-9223372036854775808",
+            "0.5",
+            "1e300",
+            "00ff10",
+        ],
+        [
+            "20",
+            "0.005",
+            "0001-01-01",
+            "9999-12-31T23:59:59.999",
+            "2024-01-02T03:04:05Z",
+            "1753-01-01 00:00:00.003",
+            "2079-06-06 23:59:00",
+            "00:00",
+            "0",
+            "00000000-0000-0000-0000-000000000000",
+            "",
+            "",
+            "",
+            "0",
+            "1",
+            "-1.25",
+            "0",
+            "",
+        ],
+    ];
+    let mut rows: Vec<Vec<Option<String>>> = values
+        .iter()
+        .map(|r| r.iter().map(|v| Some((*v).to_owned())).collect())
+        .collect();
+    // NULL in every column but the key.
+    rows.push(
+        std::iter::once(Some("30".to_owned()))
+            .chain(std::iter::repeat_n(None, 17))
+            .collect(),
+    );
+    rows
+}
+
+/// A bulk copy converts each text value as SQL Server's own `INSERT` of the same text does
+/// (rounding decimals, times and `datetime`'s 1/300 s, `datetimeoffset` kept as UTC plus
+/// its offset), keeps the identity values given, and writes nothing when a value does not
+/// convert.
+#[tokio::test]
+async fn mssql_bulk_copy_converts_as_insert_does() {
+    let Some(conn) = connect(&MssqlDriver, MSSQL).await else {
+        return;
+    };
+    let conn = &*conn;
+    let definition: Vec<String> = MSSQL_BULK_COLUMNS
+        .iter()
+        .map(|(name, ty)| format!("{name} {ty}"))
+        .collect();
+    for table in ["qa_fixdrv_bulk", "qa_fixdrv_insert"] {
+        run(conn, &format!("DROP TABLE IF EXISTS {table}")).await;
+        run(
+            conn,
+            &format!("CREATE TABLE {table} ({})", definition.join(", ")),
+        )
+        .await;
+    }
+    let rows = mssql_bulk_rows();
+    let columns: Vec<String> = MSSQL_BULK_COLUMNS
+        .iter()
+        .map(|(name, _)| (*name).to_owned())
+        .collect();
+    let hex: Vec<bool> = columns.iter().map(|c| c == "raw").collect();
+    let bulk = BulkRows {
+        table: "qa_fixdrv_bulk",
+        columns: &columns,
+        hex: &hex,
+        rows: &rows,
+    };
+    assert_eq!(conn.bulk_load(&bulk).await.unwrap(), 3);
+
+    // The same text through SQL Server's own conversion.
+    let literal = |(column, value): (&String, &Option<String>)| match value {
+        None => "NULL".to_owned(),
+        Some(v) if column == "raw" => format!("0x{v}"),
+        Some(v) => format!("N'{}'", v.replace('\'', "''")),
+    };
+    run(conn, "SET IDENTITY_INSERT qa_fixdrv_insert ON").await;
+    for row in &rows {
+        let values: Vec<String> = columns.iter().zip(row).map(literal).collect();
+        run(
+            conn,
+            &format!(
+                "INSERT INTO qa_fixdrv_insert ({}) VALUES ({})",
+                columns.join(", "),
+                values.join(", ")
+            ),
+        )
+        .await;
+    }
+    let read = |table: &str| format!("SELECT {} FROM {table} ORDER BY id", columns.join(", "));
+    let bulked = texts(conn, &read("qa_fixdrv_bulk")).await;
+    assert_eq!(bulked, texts(conn, &read("qa_fixdrv_insert")).await);
+    assert_eq!(bulked[0][0].as_deref(), Some("10"), "identity kept");
+    assert_eq!(bulked[0][1].as_deref(), Some("-12.35"));
+    assert_eq!(bulked[0][4].as_deref(), Some("2024-01-02 01:30:00 +02:00"));
+
+    // A value that does not convert fails the load before anything is sent.
+    let bad = vec![
+        std::iter::once(Some("40".to_owned()))
+            .chain(std::iter::once(Some("1.5".to_owned())))
+            .chain(std::iter::repeat_n(None, 11))
+            .chain(std::iter::once(Some("256".to_owned())))
+            .chain(std::iter::repeat_n(None, 5))
+            .collect::<Vec<_>>(),
+    ];
+    let failed = conn.bulk_load(&BulkRows { rows: &bad, ..bulk }).await;
+    assert!(failed.is_err_and(|e| e.to_string().contains("tiny")));
+    assert_eq!(
+        texts(conn, "SELECT COUNT(*) FROM qa_fixdrv_bulk").await,
+        [row(&["3"])]
+    );
+    for table in ["qa_fixdrv_bulk", "qa_fixdrv_insert"] {
+        run(conn, &format!("DROP TABLE {table}")).await;
+    }
+}
+
+/// A table with a column the bulk copy cannot write (`money`) refuses the bulk load as
+/// unsupported, and an import into it writes its rows with `OPENJSON` instead.
+#[tokio::test]
+async fn mssql_import_into_money_falls_back_to_openjson() {
+    let Some(conn) = connect(&MssqlDriver, MSSQL).await else {
+        return;
+    };
+    let conn = &*conn;
+    run(conn, "DROP TABLE IF EXISTS qa_fixdrv_money").await;
+    run(
+        conn,
+        "CREATE TABLE qa_fixdrv_money (id int PRIMARY KEY, price money)",
+    )
+    .await;
+    let columns = ["id".to_owned(), "price".to_owned()];
+    let refused = conn
+        .bulk_load(&BulkRows {
+            table: "qa_fixdrv_money",
+            columns: &columns,
+            hex: &[false, false],
+            rows: &[row(&["1", "2.5"])],
+        })
+        .await;
+    assert!(
+        matches!(refused, Err(platypus_core::Error::Unsupported(_))),
+        "{refused:?}"
+    );
+
+    platypus_driver_duckdb::testing::load();
+    let dir = tempfile::tempdir().unwrap();
+    let source = file_connection(
+        &DuckDbDriver,
+        DriverKind::DuckDb,
+        &dir.path().join("src.duckdb"),
+    )
+    .await;
+    run(
+        &*source,
+        "CREATE TABLE src AS SELECT i AS id, i * 1.25 AS price FROM range(1, 7001) t(i)",
+    )
+    .await;
+    let plan = ImportPlan {
+        source_table: "src".to_owned(),
+        source_schema: None,
+        schema: None,
+        table: "qa_fixdrv_money".to_owned(),
+        create: false,
+        mode: ImportMode::Append,
+        keys: Vec::new(),
+        primary_key: Vec::new(),
+        identity: None,
+        constraints: Vec::new(),
+        columns: ["id", "price"]
+            .map(|c| ImportColumn {
+                source: c.to_owned(),
+                target: c.to_owned(),
+                data_type: None,
+                not_null: false,
+                default: None,
+            })
+            .to_vec(),
+    };
+    let written = import(
+        (&*source, Dialect::DuckDb),
+        (conn, Dialect::SqlServer),
+        &plan,
+        |_| true,
+    )
+    .await
+    .unwrap();
+    assert_eq!(written, 7000);
+    assert_eq!(
+        texts(conn, "SELECT COUNT(*), SUM(price) FROM qa_fixdrv_money").await,
+        [row(&["7000", "30629375.0000"])]
+    );
+    run(conn, "DROP TABLE qa_fixdrv_money").await;
 }
 
 #[tokio::test]
