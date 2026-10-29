@@ -847,6 +847,40 @@ export interface DialectSupport {
 
 /** A table as the table editor edits it. Each part keeps its name in the database in
  *  `original` (`null` for a new part), so a rename is not taken for a new part. */
+/** What the object creation dialog collects (`platypus_schema::ObjectForm`). */
+export type ObjectForm =
+  | { kind: "view"; name: string; query: string; replace: boolean; materialized: boolean }
+  | {
+      kind: "sequence";
+      name: string;
+      start: number | null;
+      increment: number | null;
+      min: number | null;
+      max: number | null;
+      cycle: boolean;
+      cache: number | null;
+    }
+  | {
+      kind: "function";
+      name: string;
+      params: { name: string; data_type: string; mode: string | null }[];
+      returns: string;
+      language: string | null;
+      body: string;
+      replace: boolean;
+    }
+  | {
+      kind: "trigger";
+      name: string;
+      table: string;
+      timing: "before" | "after" | "instead_of";
+      events: ("insert" | "update" | "delete")[];
+      for_each_row: boolean;
+      when: string | null;
+      body: string;
+      replace: boolean;
+    };
+
 export interface TableDesign {
   name: string;
   columns: ColumnDesign[];
@@ -1988,6 +2022,9 @@ export const api = {
   /** The script from `original` to `design`, or creating `design` when `original` is null. */
   tableScript: (driver: DriverKind, schema: string, original: TableDesign | null, design: TableDesign) =>
     invoke<{ script: TableScript; sql: string }>("table_script", { driver, schema, original, design }),
+  /** The statements that create the object `form` describes; fails with `invalid_form` and a message when the database cannot. */
+  objectFormSql: (driver: DriverKind, schema: string, form: ObjectForm) =>
+    invoke<string[]>("object_form_sql", { driver, schema, form }),
   applyTableScript: (sessionId: number, script: TableScript) =>
     invoke<void>("apply_table_script", { sessionId, script }),
   /** The tables of `schema` with their details: those in `tables`, or all when null. */
