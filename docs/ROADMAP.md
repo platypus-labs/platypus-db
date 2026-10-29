@@ -875,7 +875,8 @@ SVG mostrato e il piano. Le P3 restano da fare.
 
 ### Gruppo N — Accesso per agenti esterni (MCP)
 
-**Stato: completato** (P1, P2 e P3). Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
+**Stato: P1 e P2 completate, P3 quasi** (resta il mascheramento delle colonne sensibili del
+gruppo Q nei tool su script e cronologia, che aspetta quelle colonne). Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
 il binario `platypus-mcp`, server MCP su stdio con `rmcp`: legge il profilo dell'app (o
 `PLATYPUS_DATA_DIR`) e apre le connessioni come l'app (profili di rete, tunnel SSH, password
 da keychain, comando o `.pgpass`); con la master password i segreti restano bloccati e la
@@ -967,7 +968,7 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | ✅ Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
 | ✅ Plugin pronti: plugin per Claude Code e configurazione per Codex con le istruzioni d'uso (quando usare quale tool, limiti) | P3 | N |
 | ✅ **Tab Agenti come pannello di integrazione**: sotto-schede Setup, Attività e Sicurezza; in Setup l'elenco dei client (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, Antigravity, …) con il percorso del loro file di configurazione e un pulsante **Installa** che scrive la voce del server (con backup del file e conferma), accanto la configurazione da copiare a mano per il client scelto; Attività mostra le chiamate degli agenti, Sicurezza i permessi per connessione | P2 | N |
-| ✅ 🆕 Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate | P3 | N |
+| 🆕 Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate (fatti i tool `list_scripts`, `read_script`, `search_history`; manca il mascheramento, che aspetta le colonne sensibili del gruppo Q) | P3 | N |
 
 ---
 
