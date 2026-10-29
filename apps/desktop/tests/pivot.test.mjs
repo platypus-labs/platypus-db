@@ -42,16 +42,16 @@ test("the aggregate's name does not clash with a row field", () => {
 
 test("totals add a row computed over all the rows, last whatever the sort", () => {
   const query = sql({ value: "amount", aggregate: "avg", totals: true, sort: "value_asc" });
-  assert.match(query, /^WITH src AS \(SELECT CAST\("region" AS VARCHAR\) AS "__k1", "amount" AS "__v" FROM result\),/);
-  assert.match(query, /rolled AS \(SELECT \* FROM src UNION ALL SELECT '__total__', "__v" FROM src\)/);
+  assert.match(query, /^WITH src AS \(SELECT CAST\("region" AS VARCHAR\) AS "__k1", "region" AS "__s1", "amount" AS "__v" FROM result\),/);
+  assert.match(query, /rolled AS \(SELECT \* FROM src UNION ALL SELECT '__total__', NULL, "__v" FROM src\)/);
   assert.match(query, /THEN 'Total' ELSE "__k1" END AS "region", avg\("__v"\) AS "avg_amount"/);
-  assert.match(query, /ORDER BY "__k1" IS NOT DISTINCT FROM '__total__', "avg_amount" ASC NULLS LAST$/);
+  assert.match(query, /GROUP BY "__k1", "__s1"\nORDER BY "__k1" IS NOT DISTINCT FROM '__total__', "avg_amount" ASC NULLS LAST$/);
 });
 
 test("with several row fields the totals label only the first", () => {
   const query = sql({ rows: ["region", "month"], totals: true });
   assert.match(query, /CASE WHEN "__k1" = '__total__' THEN 'Total' ELSE "__k1" END AS "region", CASE WHEN "__k2" = '__total__' THEN NULL ELSE "__k2" END AS "month"/);
-  assert.match(query, /SELECT '__total__', '__total__' FROM src\)/);
+  assert.match(query, /SELECT '__total__', '__total__', NULL, NULL FROM src\)/);
 });
 
 test("a column field makes a PIVOT, with NULL as a column of its own", () => {
@@ -70,12 +70,19 @@ test("a column field makes a PIVOT, with NULL as a column of its own", () => {
 
 test("pivot totals add a column and a row, each aggregated over its rows", () => {
   const query = sql({ column: "month", value: "amount", aggregate: "avg", totals: true, sort: "value_desc" });
-  assert.match(query, /UNION ALL SELECT "__k1", '__total__', "__v" FROM src/);
-  assert.match(query, /UNION ALL SELECT '__total__', "__c", "__v" FROM src/);
-  assert.match(query, /UNION ALL SELECT '__total__', '__total__', "__v" FROM src/);
-  assert.match(query, /\* EXCLUDE \("__k1", "__total__"\), "__total__" AS "Total"/);
-  assert.match(query, /FROM \(PIVOT rolled ON "__c" USING avg\("__v"\) GROUP BY "__k1"\)/);
+  assert.match(query, /UNION ALL SELECT "__k1", "__s1", '__total__', "__v" FROM src/);
+  assert.match(query, /UNION ALL SELECT '__total__', NULL, "__c", "__v" FROM src/);
+  assert.match(query, /UNION ALL SELECT '__total__', NULL, '__total__', "__v" FROM src/);
+  assert.match(query, /\* EXCLUDE \("__k1", "__s1", "__total__"\), "__total__" AS "Total"/);
+  assert.match(query, /FROM \(PIVOT rolled ON "__c" USING avg\("__v"\) GROUP BY "__k1", "__s1"\)/);
   assert.match(query, /ORDER BY "__k1" IS NOT DISTINCT FROM '__total__', "__total__" DESC NULLS LAST$/);
+});
+
+test("with totals the rows sort by the field's own type, not by its text", () => {
+  const query = sql({ rows: ["region", "month"], totals: true, sort: "keys_desc" });
+  assert.match(query, /"region" AS "__s1", "month" AS "__s2"/);
+  assert.match(query, /ORDER BY "__k1" IS NOT DISTINCT FROM '__total__', "__s1" DESC, "__s2" DESC$/);
+  assert.match(sql({ column: "month", totals: true }), /ORDER BY "__k1" IS NOT DISTINCT FROM '__total__', "__s1"$/);
 });
 
 test("identifiers and the total's label are quoted in the query", () => {

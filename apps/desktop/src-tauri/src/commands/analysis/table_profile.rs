@@ -5,7 +5,6 @@ use arrow_array::RecordBatch;
 use futures::{Stream, StreamExt};
 use platypus_core::{ExecOptions, ExecResult};
 use platypus_local::table_profile::{self as profiler, TableProfile};
-use platypus_sql::Dialect;
 use serde::Serialize;
 use tauri::State;
 
@@ -42,7 +41,7 @@ pub async fn table_profile(
     table: String,
     max_rows: Option<usize>,
 ) -> CommandResult<TableProfileReply> {
-    let dialect = Dialect::from(state.session(session_id)?.config.driver);
+    let dialect = state.dialect(session_id)?;
     let conn = state.live(session_id).await?;
     let qualified = dialect.qualified(Some(&schema), &table);
     let select = format!("SELECT * FROM {qualified}");

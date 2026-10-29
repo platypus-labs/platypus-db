@@ -3,14 +3,17 @@
 //! outliers, the length of text, and the shapes its values take (emails, dates, numbers stored
 //! as text...) with a few values that break the shape the column mostly has.
 
+use std::sync::Arc;
+
 use arrow_array::RecordBatch;
+use arrow_array::cast::AsArray;
 use arrow_cast::display::FormatOptions;
 use arrow_schema::{DataType, Field, Schema};
 use platypus_core::META_DB_TYPE;
 use serde::Serialize;
 
 use crate::LocalError;
-use crate::patterns::{self, PatternReport};
+use crate::patterns::{PatternCounter, PatternReport};
 use crate::stats::{self, ColumnProfile};
 use crate::values::{self, Kind};
 
@@ -135,7 +138,7 @@ fn column_report(
         report.numbers = summary(&mut numbers);
         report.outliers = report.numbers.as_ref().and_then(|s| outliers(&numbers, s));
     } else if kind == Kind::Text && is_string(field) {
-        text_details(&mut report, batches, column, options)?;
+        text_details(&mut report, batches, column)?;
     }
     Ok(report)
 }
@@ -235,38 +238,74 @@ pub fn outliers(sorted: &[f64], s: &NumberSummary) -> Option<Outliers> {
     })
 }
 
-/// Text: empty strings, lengths and the shapes of the values.
+/// Text: empty strings, lengths and the shapes of the values, read in one pass over the
+/// Arrow arrays so that no value is copied but the few the patterns keep.
 fn text_details(
     report: &mut ColumnReport,
     batches: &[RecordBatch],
     column: usize,
-    options: &FormatOptions<'_>,
 ) -> Result<(), LocalError> {
-    let mut all: Vec<String> = Vec::new();
+    let mut lengths = Lengths::default();
+    let mut counter = PatternCounter::default();
     for batch in batches {
-        all.extend(
-            values::column_texts(batch, column, options)?
-                .into_iter()
-                .flatten(),
-        );
+        let array = batch.column(column);
+        let plain = match array.data_type() {
+            DataType::Dictionary(_, value) => arrow_cast::cast(array, value)?,
+            _ => Arc::clone(array),
+        };
+        let mut see = |value: &str| {
+            lengths.add(value);
+            counter.add(value);
+        };
+        match plain.data_type() {
+            DataType::Utf8 => plain.as_string::<i32>().iter().flatten().for_each(&mut see),
+            DataType::LargeUtf8 => plain.as_string::<i64>().iter().flatten().for_each(&mut see),
+            _ => plain.as_string_view().iter().flatten().for_each(&mut see),
+        }
     }
-    report.empty = all.iter().filter(|v| v.is_empty()).count();
-    report.lengths = lengths(&all);
-    report.patterns = Some(patterns::report(all.iter().map(String::as_str)));
+    report.empty = lengths.empty;
+    report.lengths = lengths.summary();
+    report.patterns = Some(counter.finish());
     Ok(())
 }
 
-/// Shortest, average and longest of `texts`, in characters; `None` when there are none.
-fn lengths(texts: &[String]) -> Option<LengthSummary> {
-    let sizes: Vec<usize> = texts.iter().map(|t| t.chars().count()).collect();
-    let (min, max) = (sizes.iter().min()?, sizes.iter().max()?);
-    #[expect(clippy::cast_precision_loss, reason = "an average needs no exact sum")]
-    let avg = sizes.iter().sum::<usize>() as f64 / sizes.len() as f64;
-    Some(LengthSummary {
-        min: *min,
-        avg,
-        max: *max,
-    })
+/// Running shortest, longest and total length of the texts seen, in characters.
+#[derive(Default)]
+struct Lengths {
+    count: usize,
+    empty: usize,
+    min: usize,
+    max: usize,
+    sum: usize,
+}
+
+impl Lengths {
+    fn add(&mut self, text: &str) {
+        let size = text.chars().count();
+        self.min = if self.count == 0 {
+            size
+        } else {
+            self.min.min(size)
+        };
+        self.max = self.max.max(size);
+        self.sum += size;
+        self.count += 1;
+        self.empty += usize::from(size == 0);
+    }
+
+    /// Shortest, average and longest; `None` when there are no texts.
+    fn summary(&self) -> Option<LengthSummary> {
+        if self.count == 0 {
+            return None;
+        }
+        #[expect(clippy::cast_precision_loss, reason = "an average needs no exact sum")]
+        let avg = self.sum as f64 / self.count as f64;
+        Some(LengthSummary {
+            min: self.min,
+            avg,
+            max: self.max,
+        })
+    }
 }
 
 #[cfg(test)]

@@ -98,8 +98,6 @@ class Fields {
     }
   }
 
-  /** The copy of `tables`, made or loaded again when needed; `null` when the load was
-   *  cancelled or another run (or clear) came meanwhile. */
   /** The first value of `sql`, a query that returns one, run on the copy of `tables`; `null`
    *  when the load was cancelled or another run came meanwhile. A failure is shown in the
    *  field and gives `null`. */
@@ -113,7 +111,7 @@ class Fields {
       // The session runs one statement at a time: the output shown keeps the rows it has read.
       const shown = this.get(key).output;
       if (shown?.result.jobId != null) void api.stopFetch(shown.result.jobId);
-      const value = await firstValue(copy.copy.sessionId, sql);
+      const value = await api.queryValue(copy.copy.sessionId, sql);
       return this.tokens.get(key) === token ? value : undefined;
     } catch (e) {
       if (this.tokens.get(key) === token) this.fail(key, toCommandError(e).message);
@@ -128,6 +126,8 @@ class Fields {
     this.set(key, { busy: false, error });
   }
 
+  /** The copy of `tables`, made or loaded again when needed; `null` when the load was
+   *  cancelled or another run (or clear) came meanwhile. */
   private async copy(key: string, tables: ResultTable[], token: number): Promise<{ copy: Copy; reloaded: boolean } | null> {
     const had = this.copies.get(key);
     if (had && !staleCopy(had.tables, tables)) return { copy: had, reloaded: false };
@@ -242,29 +242,6 @@ class Fields {
 
   copyOf(key: string): Copy | null {
     return this.copies.get(key) ?? null;
-  }
-}
-
-/** The first value of the first row that `sql` returns on `sessionId`; `null` for none or NULL. */
-async function firstValue(sessionId: number, sql: string): Promise<string | null> {
-  let end!: (e: QueryEvent) => void;
-  const ended = new Promise<QueryEvent>((resolve) => (end = resolve));
-  const jobId = await api.runQuery(
-    sessionId,
-    sql,
-    null,
-    (e) => {
-      if (e.type === "finished" || e.type === "failed" || e.type === "affected") end(e);
-    },
-    false,
-  );
-  try {
-    const event = await ended;
-    if (event.type === "failed") throw event.error;
-    if (event.type === "affected") return null;
-    return (await api.fetchRows(jobId, 0, 1)).columns[0]?.[0] ?? null;
-  } finally {
-    void api.closeQuery(jobId);
   }
 }
 

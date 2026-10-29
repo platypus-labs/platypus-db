@@ -31,7 +31,8 @@ function Body({ widget, run, configuring, onChart }: Pick<Props, "widget" | "run
     );
   }
   if (widget.view === "value") {
-    if (run.at === null) return <p className="muted small dashboard-wait">{t("Executing…")}</p>;
+    // A refresh clears the value but keeps `at`: it must not read "No rows" while it runs.
+    if (run.at === null || run.running) return <p className="muted small dashboard-wait">{t("Executing…")}</p>;
     return run.value === null ? (
       <p className="muted dashboard-wait" data-field="value">
         {t("No rows")}

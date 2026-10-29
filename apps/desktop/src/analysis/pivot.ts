@@ -107,12 +107,18 @@ function aggregateName(settings: PivotSettings): string {
 
 const keyName = (i: number) => quote(`__k${i + 1}`);
 
+/** The row field kept in its own type beside its text `keyName`, so that the sort of 1..12 is
+ *  numeric and not "1, 10, 11, 12, 2"; it is NULL in the totals. */
+const sortName = (i: number) => quote(`__s${i + 1}`);
+
 /** The fields the source reads, the value last: with `totals` the row fields as text (the
- *  totals put a label among them) and the column field as `__c`. The value is always `__v`,
+ *  totals put a label among them) followed by the same fields as they are, for the sort, and
+ *  the column field as `__c`. The value is always `__v`,
  *  else it would be twice in the source when it is also a field. */
 function sourceSelect(settings: PivotSettings, totals: boolean): string[] {
   const { rows, column, value } = settings;
   const items = rows.map((r, i) => (totals ? `CAST(${quote(r)} AS VARCHAR) AS ${keyName(i)}` : quote(r)));
+  if (totals) items.push(...rows.map((r, i) => `${quote(r)} AS ${sortName(i)}`));
   if (column !== null) items.push(`${label(column)} AS ${totals ? quote("__c") : quote(column)}`);
   if (value !== null) items.push(`${quote(value)} AS ${quote("__v")}`);
   return items;
@@ -152,18 +158,19 @@ function grouping(settings: PivotSettings, totalLabel: string): string {
     ].join("\n");
   }
   const keys = settings.rows.map((_, i) => keyName(i));
+  const sorts = settings.rows.map((_, i) => sortName(i));
   const aggregate = `${aggregateExpr(settings, quote("__v"))} AS ${name}`;
   const select = sourceSelect(settings, true);
   // The totals row is the rows again under a label, so that every aggregate (average,
   // distinct count) is computed over all of them rather than from the groups.
-  const copies = [...keys.map(() => literal(TOTAL)), ...(settings.value === null ? [] : [quote("__v")])];
+  const copies = [...keys.map(() => literal(TOTAL)), ...sorts.map(() => "NULL"), ...(settings.value === null ? [] : [quote("__v")])];
   return [
     `WITH src AS (SELECT ${select.join(", ")} FROM result),`,
     `rolled AS (SELECT * FROM src UNION ALL SELECT ${copies.join(", ")} FROM src)`,
     `SELECT ${[...keyOutputs(settings, totalLabel), aggregate].join(", ")}`,
     "FROM rolled",
-    `GROUP BY ${keys.join(", ")}`,
-    orderBy(settings, keys, `${keys[0]!} IS NOT DISTINCT FROM ${literal(TOTAL)}`, name),
+    `GROUP BY ${[...keys, ...sorts].join(", ")}`,
+    orderBy(settings, sorts, `${keys[0]!} IS NOT DISTINCT FROM ${literal(TOTAL)}`, name),
   ].join("\n");
 }
 
@@ -172,14 +179,17 @@ function grouping(settings: PivotSettings, totalLabel: string): string {
 function pivotSources(settings: PivotSettings): string {
   const { rows, value } = settings;
   const keys = rows.map((_, i) => keyName(i));
+  const sorts = rows.map((_, i) => sortName(i));
   const v = value === null ? [] : [quote("__v")];
-  const list = (k: string[], c: string) => [...k, c, ...v].join(", ");
+  const list = (k: string[], s: string[], c: string) => [...k, ...s, c, ...v].join(", ");
   const total = literal(TOTAL);
+  const totalKeys = keys.map(() => total);
+  const noSorts = sorts.map(() => "NULL");
   return [
     "SELECT * FROM src",
-    `SELECT ${list(keys, total)} FROM src`,
-    `SELECT ${list(keys.map(() => total), quote("__c"))} FROM src`,
-    `SELECT ${list(keys.map(() => total), total)} FROM src`,
+    `SELECT ${list(keys, sorts, total)} FROM src`,
+    `SELECT ${list(totalKeys, noSorts, quote("__c"))} FROM src`,
+    `SELECT ${list(totalKeys, noSorts, total)} FROM src`,
   ].join("\nUNION ALL ");
 }
 
@@ -196,13 +206,14 @@ function pivot(settings: PivotSettings, totalLabel: string): string {
     ].join("\n");
   }
   const keys = settings.rows.map((_, i) => keyName(i));
+  const sorts = settings.rows.map((_, i) => sortName(i));
   const total = quote(TOTAL);
   return [
     `WITH src AS (SELECT ${sourceSelect(settings, true).join(", ")} FROM result),`,
     `rolled AS (${pivotSources(settings)})`,
-    `SELECT ${keyOutputs(settings, totalLabel).join(", ")}, * EXCLUDE (${[...keys, total].join(", ")}), ${total} AS ${quote(totalLabel)}`,
-    `FROM (PIVOT rolled ON "__c" USING ${agg} GROUP BY ${keys.join(", ")})`,
-    orderBy(settings, keys, `${keys[0]!} IS NOT DISTINCT FROM ${literal(TOTAL)}`, total),
+    `SELECT ${keyOutputs(settings, totalLabel).join(", ")}, * EXCLUDE (${[...keys, ...sorts, total].join(", ")}), ${total} AS ${quote(totalLabel)}`,
+    `FROM (PIVOT rolled ON "__c" USING ${agg} GROUP BY ${[...keys, ...sorts].join(", ")})`,
+    orderBy(settings, sorts, `${keys[0]!} IS NOT DISTINCT FROM ${literal(TOTAL)}`, total),
   ].join("\n");
 }
 

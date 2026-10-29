@@ -150,7 +150,8 @@ export function DashboardTab({ tab, connection, active, onChange }: TabProps<Das
     try {
       if (tab.name !== name) {
         const saved = (await api.listDashboards(project)).map((d) => d.name);
-        const taken = saved.includes(name);
+        // File systems may ignore case, so "Sales" and "sales" are one file; only the dashboard's own name is free.
+        const taken = saved.some((n) => n.toLowerCase() === name.toLowerCase() && n !== tab.name);
         if (taken && !(await ask(t("A dashboard named {name} exists. Replace it?", { name }), { confirm: t("Replace"), danger: true }))) return;
         // Saved under another name before: the file follows its new name.
         if (!taken && tab.name !== null && saved.includes(tab.name)) await api.renameDashboard(project, tab.name, name);

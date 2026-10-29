@@ -2,6 +2,7 @@
  * "Query across databases": the pure part. The names of the DuckDB tables the sources become,
  * what is wrong with them, and the text the new tab starts with. The unit tests import it.
  */
+import { quoteIdent } from "../sqlIdent.ts";
 
 /** Where a table comes from, kept with the tab for "Reload sources". */
 export interface AcrossSourceRef {
@@ -91,6 +92,6 @@ export function connectionTitle(names: readonly string[]): string {
 export function initialSql(tables: readonly AcrossLoaded[]): string {
   const lines = tables.map((t) => `--   ${t.name}(${t.columns.join(", ")})`);
   const first = tables[0]?.name ?? "";
-  const quoted = /^[a-z_][a-z0-9_]*$/.test(first) ? first : `"${first.replace(/"/g, '""')}"`;
+  const quoted = quoteIdent(first, "duckdb");
   return `-- Tables, loaded from other databases:\n${lines.join("\n")}\nSELECT * FROM ${quoted} LIMIT 100`;
 }

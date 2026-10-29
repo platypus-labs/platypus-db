@@ -33,5 +33,7 @@ test("the first text lists the tables and queries the first", () => {
   assert.equal(sql.split("\n").at(-1), "SELECT * FROM pg_orders LIMIT 100");
   assert.ok(sql.includes("--   pg_orders(id, customer)"));
   assert.ok(initialSql([{ name: "My Customers", columns: [], rows: 0, cut: false }]).endsWith('"My Customers" LIMIT 100'));
+  // Reserved words are quoted too.
+  assert.ok(initialSql([{ name: "order", columns: [], rows: 0, cut: false }]).endsWith('"order" LIMIT 100'));
   assert.equal(connectionTitle(["pg_orders", "my_customers"]), "Across: pg_orders, my_customers");
 });

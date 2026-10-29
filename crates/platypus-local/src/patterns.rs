@@ -113,6 +113,12 @@ impl Pattern {
             return false;
         };
         let matched = found.iter().any(|r| r.is_match(value));
+        if self == Pattern::Integer {
+            // `+393331234567` is an E.164 phone number (a `+` and 8 to 15 digits), not a
+            // signed integer; `Phone` takes it, as `fits` is tried in order.
+            let digits = value.strip_prefix('+').map_or(0, str::len);
+            return matched && !(value.starts_with('+') && (8..=15).contains(&digits));
+        }
         if self == Pattern::Phone {
             // A `+`, a space or a bracket tells a phone number from a plain integer or a
             // malformed date; seven digits at least. `555-123-4567` is the one dashed shape.
@@ -165,93 +171,140 @@ pub struct PatternReport {
 /// Counts what the values of `texts` look like; empty ones are skipped.
 #[must_use]
 pub fn report<'a>(texts: impl Iterator<Item = &'a str>) -> PatternReport {
-    let mut checked = 0;
-    let mut formats: HashMap<Pattern, usize> = HashMap::new();
-    let mut spaces = 0;
-    let mut kinds: Vec<(&str, Option<Pattern>)> = Vec::new();
-    // The lowercase form of each value and the ways it was written.
-    let mut cases: HashMap<String, HashMap<&str, usize>> = HashMap::new();
-    for value in texts.filter(|v| !v.is_empty()) {
-        checked += 1;
-        let format = classify(value);
-        if let Some(f) = format {
-            *formats.entry(f).or_default() += 1;
-        }
-        if value.trim_matches([' ', '\t']).len() != value.len() {
-            spaces += 1;
-        }
-        *cases
-            .entry(value.to_lowercase())
-            .or_default()
-            .entry(value)
-            .or_default() += 1;
-        kinds.push((value, format));
+    let mut counter = PatternCounter::default();
+    for value in texts {
+        counter.add(value);
     }
-    let mixed: usize = cases
-        .values()
-        .filter(|ways| ways.len() > 1)
-        .flat_map(HashMap::values)
-        .sum();
-    let mut out = PatternReport {
-        checked,
-        ..PatternReport::default()
-    };
-    if checked == 0 {
-        return out;
-    }
-    #[expect(clippy::cast_precision_loss, reason = "a share needs no exact count")]
-    let share = |count: usize| count as f64 / checked as f64;
-    out.shares = FORMATS
-        .into_iter()
-        .filter_map(|pattern| {
-            let count = formats.get(&pattern).copied()?;
-            (share(count) >= SHARE_MIN).then(|| PatternShare {
-                pattern,
-                count,
-                share: share(count),
-            })
-        })
-        .collect();
-    out.shares.sort_by(|a, b| {
-        b.count
-            .cmp(&a.count)
-            .then_with(|| a.pattern.rank().cmp(&b.pattern.rank()))
-    });
-    out.dominant = out
-        .shares
-        .first()
-        .filter(|s| s.share >= DOMINANT_MIN)
-        .map(|s| s.pattern);
-    for (pattern, count) in [(Pattern::Spaces, spaces), (Pattern::MixedCase, mixed)] {
-        if count > 0 {
-            out.shares.push(PatternShare {
-                pattern,
-                count,
-                share: share(count),
-            });
-        }
-    }
-    if let Some(dominant) = out.dominant {
-        let top = formats.get(&dominant).copied().unwrap_or(0);
-        if share(top) >= MOSTLY_MIN && top < checked {
-            out.exceptions = distinct_misfits(&kinds, dominant);
-        }
-    }
-    out
+    counter.finish()
 }
 
-/// The first [`EXCEPTIONS`] different values that are not in format `dominant`.
-fn distinct_misfits(kinds: &[(&str, Option<Pattern>)], dominant: Pattern) -> Vec<String> {
-    let mut found: Vec<String> = Vec::new();
-    for (value, format) in kinds {
-        if *format != Some(dominant) && !found.iter().any(|f| f == value) {
-            found.push((*value).to_owned());
-            if found.len() == EXCEPTIONS {
-                break;
+/// [`report`] fed one value at a time, so that a column is never held in memory whole: it keeps
+/// counts, the distinct spellings of each value (for the mixed case) and a few misfits.
+#[derive(Debug, Default)]
+pub struct PatternCounter {
+    checked: usize,
+    formats: HashMap<Pattern, usize>,
+    spaces: usize,
+    /// The lowercase form of each value: how many times it came, the first way it was written
+    /// and whether any other way was seen.
+    cases: HashMap<String, Case>,
+    /// For each format, the first distinct values that are not in it: the exceptions, should it
+    /// turn out to be the dominant one.
+    misfits: HashMap<Pattern, Vec<String>>,
+}
+
+/// The spellings of one value, ignoring case.
+#[derive(Debug)]
+struct Case {
+    count: usize,
+    first: String,
+    varied: bool,
+}
+
+impl PatternCounter {
+    /// Looks at one value; an empty one is skipped.
+    pub fn add(&mut self, value: &str) {
+        if value.is_empty() {
+            return;
+        }
+        self.checked += 1;
+        let format = classify(value);
+        if let Some(f) = format {
+            *self.formats.entry(f).or_default() += 1;
+        }
+        if value.trim_matches([' ', '\t']).len() != value.len() {
+            self.spaces += 1;
+        }
+        self.add_case(value);
+        for dominant in FORMATS {
+            let found = self.misfits.entry(dominant).or_default();
+            if found.len() < EXCEPTIONS
+                && format != Some(dominant)
+                && !found.iter().any(|f| f == value)
+            {
+                found.push(value.to_owned());
             }
         }
     }
-    found
+
+    /// Counts `value` under its lowercase form.
+    fn add_case(&mut self, value: &str) {
+        let lower = value.to_lowercase();
+        match self.cases.get_mut(&lower) {
+            Some(case) => {
+                case.count += 1;
+                case.varied |= case.first != value;
+            }
+            None => {
+                self.cases.insert(
+                    lower,
+                    Case {
+                        count: 1,
+                        first: value.to_owned(),
+                        varied: false,
+                    },
+                );
+            }
+        }
+    }
+
+    /// The report of the values seen.
+    #[must_use]
+    pub fn finish(self) -> PatternReport {
+        let checked = self.checked;
+        let mixed: usize = self
+            .cases
+            .values()
+            .filter(|c| c.varied)
+            .map(|c| c.count)
+            .sum();
+        let mut out = PatternReport {
+            checked,
+            ..PatternReport::default()
+        };
+        if checked == 0 {
+            return out;
+        }
+        #[expect(clippy::cast_precision_loss, reason = "a share needs no exact count")]
+        let share = |count: usize| count as f64 / checked as f64;
+        out.shares = FORMATS
+            .into_iter()
+            .filter_map(|pattern| {
+                let count = self.formats.get(&pattern).copied()?;
+                (share(count) >= SHARE_MIN).then(|| PatternShare {
+                    pattern,
+                    count,
+                    share: share(count),
+                })
+            })
+            .collect();
+        out.shares.sort_by(|a, b| {
+            b.count
+                .cmp(&a.count)
+                .then_with(|| a.pattern.rank().cmp(&b.pattern.rank()))
+        });
+        out.dominant = out
+            .shares
+            .first()
+            .filter(|s| s.share >= DOMINANT_MIN)
+            .map(|s| s.pattern);
+        for (pattern, count) in [(Pattern::Spaces, self.spaces), (Pattern::MixedCase, mixed)] {
+            if count > 0 {
+                out.shares.push(PatternShare {
+                    pattern,
+                    count,
+                    share: share(count),
+                });
+            }
+        }
+        if let Some(dominant) = out.dominant {
+            let top = self.formats.get(&dominant).copied().unwrap_or(0);
+            if share(top) >= MOSTLY_MIN && top < checked {
+                out.exceptions = self.misfits.get(&dominant).cloned().unwrap_or_default();
+            }
+        }
+        out
+    }
 }
 
 #[cfg(test)]
@@ -284,6 +337,11 @@ mod tests {
             ("2024/03/31", Some(Pattern::DateLike)),
             ("42", Some(Pattern::Integer)),
             ("-7", Some(Pattern::Integer)),
+            ("+7", Some(Pattern::Integer)),
+            ("+1234567", Some(Pattern::Integer)),
+            ("+393331234567", Some(Pattern::Phone)),
+            ("+12345678", Some(Pattern::Phone)),
+            ("+1234567890123456", Some(Pattern::Integer)),
             ("3.14", Some(Pattern::Decimal)),
             ("3,14", Some(Pattern::Decimal)),
             ("1,234.56", Some(Pattern::Decimal)),
