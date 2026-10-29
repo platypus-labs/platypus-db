@@ -1,5 +1,6 @@
-//! Scheduled tasks: what runs (a script, an export, a backup), on which connection, when,
-//! and where its files go. Pure: the times are computed here, the runs in `super`.
+//! Scheduled tasks: what runs (a script, an export, a backup, a saved profile), on which
+//! connection, when, and where its files go. Pure: the times are computed here, the runs in
+//! `super`.
 
 use std::path::{Path, PathBuf};
 
@@ -25,6 +26,11 @@ pub enum Task {
         #[serde(default)]
         schema: Option<String>,
     },
+    /// Runs a saved transfer profile (an export, an import, a copy, a migration). The
+    /// task's `connection_id` and `database` are the profile's first connection and
+    /// database: `save_schedule` sets them, so that what reads a task's connection keeps
+    /// working; the run itself opens the connections the profile names.
+    Profile { profile_id: Uuid },
 }
 
 /// The formats of a scheduled export.
@@ -82,7 +88,8 @@ pub struct Schedule {
     /// An IANA name (`Europe/Rome`), or empty for the system's.
     #[serde(default)]
     pub timezone: String,
-    /// Where an export or a backup writes its files.
+    /// Where an export or a backup writes its files; a profile's export writes there too,
+    /// or where the profile says without it.
     #[serde(default)]
     pub folder: Option<PathBuf>,
     /// The files of the task kept in its folder, the newest; 0 keeps all.

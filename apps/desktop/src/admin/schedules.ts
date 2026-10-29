@@ -1,21 +1,23 @@
 // What the scheduled tasks dialog works out: a new task's defaults, which tasks a connection
 // can run, and the order of the list. Types only from the app: the unit tests load this
 // module without it.
-import type { DriverKind, Schedule, ScheduleRepeat, ScheduleTask, ScheduleView } from "../api";
+import type { DriverKind, Schedule, ScheduleRepeat, ScheduleTask, ScheduleView, TransferProfile } from "../api";
 
 /** Whether the database's own tools back it up and restore it (`commands::backup`). */
 export const backsUp = (driver: DriverKind) => driver === "postgres" || driver === "mysql";
 
 /** The tasks a connection's database can run: a backup with the database's own tools, or
- *  else as the SQL dump of a schema, which MongoDB and Redis have not. */
+ *  else as the SQL dump of a schema, which MongoDB and Redis have not. A saved transfer
+ *  profile runs on any of them: it opens the connections it names. */
 export function taskKinds(driver: DriverKind): ScheduleTask["kind"][] {
-  return driver === "mongo" || driver === "redis" ? ["script", "export"] : ["script", "export", "backup"];
+  return driver === "mongo" || driver === "redis" ? ["script", "export", "profile"] : ["script", "export", "backup", "profile"];
 }
 
 /** A task's own fields for `kind`, as a new one starts. */
 export function taskOf(kind: ScheduleTask["kind"], driver: DriverKind): ScheduleTask {
   if (kind === "script") return { kind, path: "" };
   if (kind === "export") return { kind, sql: "", format: "csv" };
+  if (kind === "profile") return { kind, profile_id: "" };
   return { kind, format: driver === "postgres" ? "custom" : "plain", schema: null };
 }
 
@@ -44,6 +46,13 @@ export function newSchedule(connectionId: string, id: string): Schedule {
     retries: 0,
     retry_minutes: 5,
   };
+}
+
+/** A new task that runs `profile`, on `connectionId`, the first connection of the profile,
+ *  which the task follows. */
+export function newProfileSchedule(profile: TransferProfile, connectionId: string, id: string): Schedule {
+  const schedule = newSchedule(connectionId, id);
+  return { ...schedule, name: profile.name, task: { kind: "profile", profile_id: profile.id } };
 }
 
 /** `repeat` for a new choice of `every`, keeping what it had. */

@@ -337,7 +337,8 @@ export type ScheduleExportFormat = "csv" | "json" | "parquet" | "xlsx";
 export type ScheduleTask =
   | { kind: "script"; path: string }
   | { kind: "export"; sql: string; format: ScheduleExportFormat }
-  | { kind: "backup"; format: BackupFormat; schema?: string | null };
+  | { kind: "backup"; format: BackupFormat; schema?: string | null }
+  | { kind: "profile"; profile_id: string };
 
 /** How often a task runs; days of the week are 1 (Monday) to 7. */
 export type ScheduleRepeat = { every: "hour" } | { every: "day" } | { every: "week"; days: number[] } | { every: "month"; day: number };
@@ -1197,6 +1198,47 @@ export interface ImportPlan {
   primary_key?: string[];
 }
 
+/** What a saved transfer profile does, with the choices of the dialog it was saved from; see
+ *  `profiles::ProfileTask`. */
+export type ProfileTask =
+  | { kind: "export_query"; connection_id: string; database: string | null; sql: string; path: string; options: ExportOptions }
+  | {
+      kind: "export_tables";
+      connection_id: string;
+      database: string | null;
+      tables: { schema: string | null; name: string }[];
+      dir: string;
+      options: ExportOptions;
+    }
+  | { kind: "import_file"; connection_id: string; database: string | null; path: string; plan: ImportPlan; options: FileOptions }
+  | {
+      kind: "transfer_table";
+      source_connection_id: string;
+      source_database: string | null;
+      target_connection_id: string;
+      target_database: string | null;
+      plan: ImportPlan;
+    }
+  | {
+      kind: "migrate";
+      source_connection_id: string;
+      source_database: string | null;
+      target_connection_id: string;
+      target_database: string | null;
+      source_schema: string;
+      target_schema: string;
+      /** The tables to copy; `null` is the whole schema, read when the profile runs. */
+      tables: string[] | null;
+      objects: boolean;
+    };
+
+/** A named transfer that runs again by hand or from a scheduled task. */
+export interface TransferProfile {
+  id: string;
+  name: string;
+  task: ProfileTask;
+}
+
 /** A set of connections worked on together; a connection can be in several. */
 export interface Project {
   id: string;
@@ -1861,6 +1903,17 @@ export const api = {
     const channel = new Channel<BackupEvent>();
     channel.onmessage = onEvent;
     return invoke<void>("restore_database", { sessionId, runId, request, onEvent: channel });
+  },
+  listTransferProfiles: () => invoke<TransferProfile[]>("list_transfer_profiles"),
+  /** Saves a profile, new or changed (by id); returns it without the secret key of its bucket. */
+  saveTransferProfile: (profile: TransferProfile) => invoke<TransferProfile>("save_transfer_profile", { profile }),
+  /** Refused while a scheduled task runs the profile; returns the profiles left. */
+  deleteTransferProfile: (id: string) => invoke<TransferProfile[]>("delete_transfer_profile", { id }),
+  /** Runs a profile as its dialog would; cancelled with `cancelExport`. */
+  runTransferProfile: (id: string, onEvent: (e: ExportEvent) => void) => {
+    const channel = new Channel<ExportEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("run_transfer_profile", { id, onEvent: channel });
   },
   listSchedules: () => invoke<ScheduleView[]>("list_schedules"),
   /** Saves a task, new or changed; returns them all. */

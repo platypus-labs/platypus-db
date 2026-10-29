@@ -11,6 +11,7 @@ import {
   type ScheduleRepeat,
   type ScheduleTask,
   type ScheduleView,
+  type TransferProfile,
   keepsDataIn,
   toCommandError,
 } from "../api";
@@ -18,12 +19,14 @@ import { locale, msg, t } from "../i18n";
 import { answerFor } from "../testAnswers";
 import { ask } from "../ui/ask";
 import { workbench } from "../workbench";
-import { cleaned, newSchedule, repeatOf, sortSchedules, taskKinds, taskOf, taskOnConnection, writesFiles } from "./schedules";
+import { createsTables, exportsFiles, profileConnections, profilesOf } from "../transfer/profiles";
+import { cleaned, newProfileSchedule, newSchedule, repeatOf, sortSchedules, taskKinds, taskOf, taskOnConnection, writesFiles } from "./schedules";
 
 const KINDS: Record<ScheduleTask["kind"], string> = {
   script: msg("Run a SQL script"),
   export: msg("Export a query"),
   backup: msg("Back up the database"),
+  profile: msg("Run a transfer profile"),
 };
 
 const EVERY: [ScheduleRepeat["every"], string][] = [
@@ -73,8 +76,10 @@ function RunBadge({ ok, title, children }: { ok: boolean; title?: string; childr
 
 const when = (iso: string) => new Date(iso).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" });
 
-/** The tasks of every connection; with `connectionId`, a new task starts on it. */
-export function SchedulesDialog({ connectionId, onClose }: { connectionId?: string; onClose: () => void }) {
+/** The tasks of every connection; with `connectionId`, a new task starts on it, and with
+ *  `profileId` a new task that runs that transfer profile. */
+export function SchedulesDialog({ connectionId, profileId, onClose }: { connectionId?: string; profileId?: string; onClose: () => void }) {
+  const direct = !!connectionId || !!profileId;
   const [schedules, setSchedules] = useState<ScheduleView[] | null>(null);
   const [editing, setEditing] = useState<Schedule | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +92,13 @@ export function SchedulesDialog({ connectionId, onClose }: { connectionId?: stri
     void load();
     const off = listen("schedules-changed", () => void load());
     if (connectionId) setEditing(newSchedule(connectionId, crypto.randomUUID()));
+    if (profileId) {
+      api.listTransferProfiles().then((all) => {
+        const profile = all.find((p) => p.id === profileId);
+        if (profile && createsTables(profile.task)) setError(t("{name} creates its tables: it can run only once; save a profile that fills the existing table to schedule it", { name: profile.name }));
+        else if (profile) setEditing(newProfileSchedule(profile, profileConnections(profile.task)[0] ?? "", crypto.randomUUID()));
+      }, (e) => setError(toCommandError(e).message));
+    }
     return () => void off.then((unlisten) => unlisten());
   }, []);
 
@@ -107,7 +119,7 @@ export function SchedulesDialog({ connectionId, onClose }: { connectionId?: stri
     }
   }
 
-  const close = () => (editing && !connectionId ? setEditing(null) : onClose());
+  const close = () => (editing && !direct ? setEditing(null) : onClose());
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal schedules-dialog" role="dialog" onKeyDown={(e) => e.key === "Escape" && close()}>
@@ -116,7 +128,7 @@ export function SchedulesDialog({ connectionId, onClose }: { connectionId?: stri
             initial={editing}
             onSaved={(all) => {
               setSchedules(all);
-              if (connectionId) onClose();
+              if (direct) onClose();
               else setEditing(null);
             }}
             onCancel={close}
@@ -286,16 +298,22 @@ function ScheduleForm({
   const [zones, setZones] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [profiles, setProfiles] = useState<TransferProfile[]>([]);
   const connections = workbench().connections();
   const connection = connections.find((c) => c.id === s.connection_id);
   // A connection that keeps its data in runs scripts only.
-  const kinds = !connection ? (["script"] as const) : keepsDataIn(connection) ? (["script"] as const) : taskKinds(connection.driver);
+  const own: ScheduleTask["kind"][] = !connection || keepsDataIn(connection) ? ["script"] : taskKinds(connection.driver);
+  // A profile opens the connections it names, whatever this one is.
+  const kinds = own.includes("profile") ? own : [...own, "profile" as const];
+  const task = s.task;
+  const profile = task.kind === "profile" ? profiles.find((p) => p.id === task.profile_id) : undefined;
   const set = (patch: Partial<Schedule>) => setS((old) => ({ ...old, ...patch }));
   const setTask = (task: ScheduleTask) => set({ task });
   const days = useMemo(weekdays, []);
 
   useEffect(() => {
     api.timeZones().then(setZones, () => setZones([]));
+    api.listTransferProfiles().then((all) => setProfiles(profilesOf(all).filter((p) => !createsTables(p.task))), () => setProfiles([]));
   }, []);
 
   async function choose(what: "script" | "folder") {
@@ -307,6 +325,18 @@ function ScheduleForm({
     if (typeof path !== "string") return;
     if (what === "folder") set({ folder: path });
     else if (s.task.kind === "script") setTask({ ...s.task, path });
+  }
+
+  /** Runs `picked`; the task follows its first connection, and a profile that writes no file
+   *  has no folder. */
+  function pickProfile(picked: TransferProfile) {
+    set({
+      task: { kind: "profile", profile_id: picked.id },
+      connection_id: profileConnections(picked.task)[0] ?? s.connection_id,
+      database: null,
+      folder: exportsFiles(picked.task) ? s.folder : null,
+      name: s.name || picked.name,
+    });
   }
 
   async function save() {
@@ -340,6 +370,8 @@ function ScheduleForm({
           <select
             value={s.connection_id}
             data-field="connection"
+            disabled={s.task.kind === "profile"}
+            title={s.task.kind === "profile" ? t("The connection of the profile") : undefined}
             onChange={(e) => {
               const next = connections.find((c) => c.id === e.target.value);
               set({
@@ -361,7 +393,12 @@ function ScheduleForm({
         <select
           value={s.task.kind}
           data-field="kind"
-          onChange={(e) => setTask(taskOf(e.target.value as ScheduleTask["kind"], connection?.driver ?? "sqlite"))}
+          onChange={(e) => {
+            const kind = e.target.value as ScheduleTask["kind"];
+            const first = kind === "profile" ? profiles[0] : undefined;
+            if (first) pickProfile(first);
+            else setTask(taskOf(kind, connection?.driver ?? "sqlite"));
+          }}
         >
           {kinds.map((k) => (
             <option key={k} value={k}>
@@ -415,6 +452,26 @@ function ScheduleForm({
             </select>
           </label>
         </div>
+      )}
+      {s.task.kind === "profile" && (
+        <label className="field">
+          <span>{t("Transfer profile")}</span>
+          <select
+            value={s.task.profile_id}
+            data-field="profile"
+            onChange={(e) => {
+              const picked = profiles.find((p) => p.id === e.target.value);
+              if (picked) pickProfile(picked);
+            }}
+          >
+            {profile === undefined && <option value="">{profiles.length === 0 ? t("No profiles saved yet") : ""}</option>}
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
       )}
       {s.task.kind === "backup" && connection && connection.driver !== "mysql" && (
         <div className="field-grid">
@@ -514,7 +571,7 @@ function ScheduleForm({
           />
         </label>
       )}
-      {writesFiles(s.task) && (
+      {writesFiles(s.task) && (s.task.kind !== "profile" || (profile && exportsFiles(profile.task))) && (
         <div className="field-grid">
           <div className="field">
             <span>{t("Folder")}</span>
@@ -522,6 +579,7 @@ function ScheduleForm({
               <input
                 value={s.folder ?? ""}
                 data-field="folder"
+                placeholder={s.task.kind === "profile" ? t("Where the profile says") : undefined}
                 spellCheck={false}
                 onChange={(e) => set({ folder: e.target.value })}
               />

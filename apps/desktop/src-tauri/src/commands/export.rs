@@ -5,9 +5,10 @@ use std::sync::Arc;
 
 use std::collections::HashSet;
 
+use platypus_core::ConnectionConfig;
 use platypus_transfer::ExportOptions;
 use platypus_transfer::import::select_all;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 use tauri::ipc::Channel;
 
@@ -28,11 +29,27 @@ pub fn export_query(
 ) -> CommandResult<u64> {
     state.exportable(session_id)?;
     let session = state.session(session_id)?;
-    let connection = (session.config, session.label, Arc::clone(&state.query_log));
+    Ok(start_query(
+        &state,
+        (session.config, session.label),
+        (sql, path, options),
+        on_event,
+    ))
+}
+
+/// Starts the export of `sql` to `path` on a new connection of `config`; returns the id
+/// `cancel_export` takes. The caller has checked what the connection allows.
+pub(crate) fn start_query(
+    state: &AppState,
+    (config, label): (ConnectionConfig, String),
+    (sql, path, options): (String, PathBuf, ExportOptions),
+    on_event: Channel<ExportEvent>,
+) -> u64 {
+    let connection = (config, label, Arc::clone(&state.query_log));
     let export = Export::start(connection, sql, path, options, on_event);
     let id = state.next_id();
     lock(&state.exports).insert(id, export);
-    Ok(id)
+    id
 }
 
 #[tauri::command]
@@ -63,11 +80,11 @@ pub async fn export_rows(
     .map_err(Into::into)
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableRef {
     /// `None` for the session's current schema.
-    schema: Option<String>,
-    name: String,
+    pub schema: Option<String>,
+    pub name: String,
 }
 
 /// `name` as a file name: the characters Windows refuses become `_`.
@@ -111,7 +128,23 @@ pub fn export_tables(
 ) -> CommandResult<u64> {
     state.exportable(session_id)?;
     let session = state.session(session_id)?;
-    let driver = session.config.driver;
+    Ok(start_tables(
+        &state,
+        (session.config, session.label),
+        (tables, dir, options),
+        on_event,
+    ))
+}
+
+/// Starts the export of `tables` into `dir` on a new connection of `config`; returns the id
+/// `cancel_export` takes. The caller has checked what the connection allows.
+pub(crate) fn start_tables(
+    state: &AppState,
+    (config, label): (ConnectionConfig, String),
+    (tables, dir, options): (Vec<TableRef>, PathBuf, ExportOptions),
+    on_event: Channel<ExportEvent>,
+) -> u64 {
+    let driver = config.driver;
     let mut taken = HashSet::new();
     let files = tables
         .into_iter()
@@ -126,18 +159,18 @@ pub fn export_tables(
             // One signed URL names one file.
             let options = ExportOptions {
                 table: t.name,
-                driver: Some(session.config.driver),
+                driver: Some(driver),
                 upload_url: None,
                 ..options.clone()
             };
             (sql, path, options)
         })
         .collect();
-    let connection = (session.config, session.label, Arc::clone(&state.query_log));
+    let connection = (config, label, Arc::clone(&state.query_log));
     let export = Export::start_many(connection, files, on_event);
     let id = state.next_id();
     lock(&state.exports).insert(id, export);
-    Ok(id)
+    id
 }
 
 #[cfg(test)]

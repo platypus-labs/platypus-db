@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use futures::TryStreamExt;
-use platypus_core::{Connection, ConnectionConfig, DriverKind, ExecOptions, ExecResult};
+use platypus_core::{
+    Connection, ConnectionConfig, DriverKind, ExecOptions, ExecResult, ObjectKind,
+};
 use platypus_driver_duckdb::files::{BAD_LINES, ReadOptions, is_data_file};
 use platypus_sql::Dialect;
 use platypus_transfer::dump::{DumpFile, dump};
@@ -41,13 +43,13 @@ pub struct PreviewColumn {
 }
 
 /// How a delimited file is read, as chosen in the import dialog.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FileOptions {
     /// Its encoding's label; none tells it from the bytes.
-    encoding: Option<String>,
+    pub encoding: Option<String>,
     /// Lines with another number of values are left out.
-    skip_bad_lines: bool,
+    pub skip_bad_lines: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -212,11 +214,29 @@ pub fn import_file(
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
     state.editable(session_id)?;
+    let session = state.session(session_id)?;
+    Ok(start_file(
+        &state,
+        (session.config, session.label),
+        (path, options.unwrap_or_default(), plan),
+        on_event,
+    ))
+}
+
+/// Starts the import of the file at `path` into the database of `target` (its settings and
+/// its name in the query log); returns the id `cancel_export` takes. The caller has checked
+/// what the target allows.
+pub(crate) fn start_file(
+    state: &AppState,
+    target: (ConnectionConfig, String),
+    (path, options, plan): (PathBuf, FileOptions, ImportPlan),
+    on_event: Channel<ExportEvent>,
+) -> u64 {
     let source = async move {
-        let file = open_file(&path, &options.unwrap_or_default()).await?;
+        let file = open_file(&path, &options).await?;
         Ok((file, DriverKind::DuckDb))
     };
-    start(&state, session_id, source, plan, on_event)
+    start(state, target, source, plan, on_event)
 }
 
 /// Copies a table of the source session's database into the target session's, streaming on
@@ -231,23 +251,43 @@ pub fn transfer_table(
 ) -> CommandResult<u64> {
     state.exportable(source_session_id)?;
     state.editable(target_session_id)?;
-    let config = state.session(source_session_id)?.config;
-    let source = async move { Ok((super::connect(&config).await?, config.driver)) };
-    start(&state, target_session_id, source, plan, on_event)
+    let source = state.session(source_session_id)?.config;
+    let target = state.session(target_session_id)?;
+    Ok(start_copy(
+        &state,
+        source,
+        (target.config, target.label),
+        plan,
+        on_event,
+    ))
+}
+
+/// Starts the copy of a table of the database `source` opens into that of `target`; returns
+/// the id `cancel_export` takes. The caller has checked what the two allow.
+pub(crate) fn start_copy(
+    state: &AppState,
+    source: ConnectionConfig,
+    target: (ConnectionConfig, String),
+    plan: ImportPlan,
+    on_event: Channel<ExportEvent>,
+) -> u64 {
+    let driver = source.driver;
+    let source = async move { Ok((super::connect(&source).await?, driver)) };
+    start(state, target, source, plan, on_event)
 }
 
 /// Runs the import of `plan` from the connection `source` opens into a new connection of
-/// the target session.
+/// the target.
 fn start(
     state: &AppState,
-    target_session_id: u64,
+    target: (ConnectionConfig, String),
     source: impl Future<Output = CommandResult<(Box<dyn Connection>, DriverKind)>> + Send + 'static,
     plan: ImportPlan,
     on_event: Channel<ExportEvent>,
-) -> CommandResult<u64> {
-    spawn_job(
+) -> u64 {
+    spawn_on(
         state,
-        target_session_id,
+        target,
         on_event,
         move |job, target, dialect| async move {
             let (source, driver) = source.await?;
@@ -287,15 +327,46 @@ pub fn migrate_tables(
 ) -> CommandResult<u64> {
     state.exportable(source_session_id)?;
     state.editable(target_session_id)?;
-    let source = state.session(source_session_id)?;
-    spawn_job(
+    let source = state.session(source_session_id)?.config;
+    let target = state.session(target_session_id)?;
+    Ok(start_migrate(
         &state,
-        target_session_id,
+        source,
+        (target.config, target.label),
+        (source_schema, target_schema, Some(tables), objects),
+        on_event,
+    ))
+}
+
+/// Starts the migration of `tables` of `source_schema` in the database `source` opens to
+/// `target_schema` in that of `target` (`None`: every table of the schema, read when it
+/// runs, so those added later come too); returns the id `cancel_export` takes. The caller has
+/// checked what the two allow.
+pub(crate) fn start_migrate(
+    state: &AppState,
+    source: ConnectionConfig,
+    target: (ConnectionConfig, String),
+    (source_schema, target_schema, tables, objects): (String, String, Option<Vec<String>>, bool),
+    on_event: Channel<ExportEvent>,
+) -> u64 {
+    spawn_on(
+        state,
+        target,
         on_event,
         move |job, to, dialect| async move {
-            let from = super::connect(&source.config).await?;
+            let from = super::connect(&source).await?;
+            let tables = match tables {
+                Some(tables) => tables,
+                None => from
+                    .objects(&source_schema)
+                    .await?
+                    .into_iter()
+                    .filter(|o| o.kind == ObjectKind::Table)
+                    .map(|o| o.name)
+                    .collect(),
+            };
             let done = migrate(
-                (&*from, Dialect::from(source.config.driver), &source_schema),
+                (&*from, Dialect::from(source.driver), &source_schema),
                 (&*to, dialect, &target_schema),
                 &tables,
                 objects,
@@ -376,19 +447,33 @@ where
     F: Future<Output = CommandResult<u64>> + Send + 'static,
 {
     let session = state.session(session_id)?;
+    Ok(spawn_on(
+        state,
+        (session.config, session.label),
+        on_event,
+        work,
+    ))
+}
+
+/// [`spawn_reading_job`] on a new connection of `config`, named `label` in the query log.
+fn spawn_on<F>(
+    state: &AppState,
+    (config, label): (ConnectionConfig, String),
+    on_event: Channel<ExportEvent>,
+    work: impl FnOnce(Arc<Export>, Arc<dyn Connection>, Dialect) -> F + Send + 'static,
+) -> u64
+where
+    F: Future<Output = CommandResult<u64>> + Send + 'static,
+{
     let log = Arc::clone(&state.query_log);
     let job = Export::spawn(on_event, true, move |job| async move {
-        let target = Logged::wrap(
-            Arc::from(super::connect(&session.config).await?),
-            &log,
-            &session.label,
-        );
-        let dialect = Dialect::of_server(session.config.driver, &target.server_info().product);
+        let target = Logged::wrap(Arc::from(super::connect(&config).await?), &log, &label);
+        let dialect = Dialect::of_server(config.driver, &target.server_info().product);
         work(job, target, dialect).await
     });
     let id = state.next_id();
     lock(&state.exports).insert(id, job);
-    Ok(id)
+    id
 }
 
 /// Runs the SQL file at `path` (`.gz` and `.zst` too) in the session's database, on a

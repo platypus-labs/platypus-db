@@ -89,6 +89,8 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
+| E2E `qa-safe-readonly-import` e `qa-safe-readonly-generate-data` cercano "Paste CSV as a new table…" e "Generate data…" nel menu di una connessione read-only, che da `76d60b06` (azioni vietate nascoste) non li mostra più: gli scenari vanno aggiornati a controllare che manchino | gruppo H, 2026-10-29 |
+| E2E `schedules-sqlite`: dopo il task "Broken" (`UPDATE t SET v = 0 WHERE id = 1`, poi un'istruzione che fallisce) l'export si aspetta `1,12`, ma lo script schedulato esegue un'istruzione alla volta senza transazione e la prima resta: decidere se lo script va in una transazione (e annullato) o se correggere l'attesa | gruppo H, 2026-10-29 |
 
 ### Lock dei gruppi
 
@@ -478,7 +480,7 @@ ADBC. Conformance ODBC su SQL Server col driver `SQL Server` di Windows; Db2 sen
 **Area:** `platypus-transfer`, `apps/desktop/src/transfer/`, `commands/transfer.rs`
 **Dipende da:** 0.5
 
-**Stato: P1 e P2 completate, P3 in parte** (da fare: profili di trasferimento salvati, bulk
+**Stato: P1 e P2 completate, P3 in parte** (profili di trasferimento fatti; da fare: bulk
 copy di SQL Server e appender di DuckDB).
 
 **P1 completate.** I file (CSV, TSV, JSON, NDJSON, Parquet, XLSX) si leggono con una
@@ -538,6 +540,22 @@ numerazione e posizione delle sequenze, viste, routine (tra `DELIMITER` in MySQL
 Oracle) e trigger; scrive su `<file>.part` e lo rinomina alla fine. Conformance su PostgreSQL,
 MySQL, MariaDB, SQL Server, SQLite e DuckDB; E2E `sql-file-dump-sqlite`.
 
+**Profili di trasferimento (P3).** Export di una query o di tabelle, import di un file, copia di una
+tabella e migrazione di uno schema si salvano con le scelte del loro dialog ("Save as profile…",
+e "Save profile" sostituisce quello aperto) in `transfer-profiles.json` nella cartella dati
+(`apps/desktop/src-tauri/src/profiles.rs`, comandi e run in `commands/profiles.rs`). Il file tiene
+le opzioni come le manda il dialog e a ogni salvataggio controlla che si rileggano. Le chiavi
+segrete (chiave del bucket e URL firmato dell upload) non entrano nel file: stanno nello store
+delle password sotto un id derivato da quello del profilo, tornano al momento del run, si
+rimuovono col profilo e seguono le password quando si attiva o si toglie la master password. Una
+migrazione di uno schema intero si salva come "tutte le tabelle" (`tables: null`) e legge le tabelle
+al run; una selezione tiene l elenco. Il dialog **Transfer profiles…** (palette, e menu della
+connessione per i suoi) elenca i profili e li esegue, apre, programma, rinomina ed elimina; un
+profilo usato da un task non si elimina. Aprendo un profilo il dialog avvisa di tabelle e colonne
+che non ci sono più. Il task dello scheduler `Profile` esegue un profilo; un export va nella
+cartella del task, se ce l ha. E2E `profiles-export-sqlite`, `profiles-transfer-sqlite` e
+`profiles-schedule-sqlite`.
+
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | ✅ Import CSV, TSV, JSON, NDJSON, Parquet e XLSX in una tabella, con mappatura e anteprima | P1 | D |
@@ -552,7 +570,7 @@ MySQL, MariaDB, SQL Server, SQLite e DuckDB; E2E `sql-file-dump-sqlite`.
 | ✅ Incolla CSV dagli appunti per creare subito una tabella | P2 | N |
 | ✅ **Caricamento bulk nativo** per import e trasferimento: `COPY` in PostgreSQL, `LOAD DATA LOCAL` in MySQL; INSERT a blocchi come ripiego | P2 | D |
 | 🆕 Bulk copy (TDS) in SQL Server e appender in DuckDB al posto di `OPENJSON` e INSERT a blocchi | P3 | D |
-| 🆕 Profili di import, export e trasferimento salvati e riutilizzabili (anche dal task scheduler del gruppo J) | P3 | D |
+| ✅ Profili di import, export e trasferimento salvati e riutilizzabili (anche dal task scheduler del gruppo J) | P3 | D |
 | ✅ **Esegui file SQL** dal navigator (`.sql` o `.sql.gz`), con avanzamento, annullamento e una sola transazione dove il database annulla il DDL; **dump SQL** di uno schema o di un database in un solo file (DDL e dati), che si riapre con lo stesso comando | P2 | D |
 
 ---

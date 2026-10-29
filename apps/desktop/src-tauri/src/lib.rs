@@ -9,6 +9,7 @@ mod error;
 mod export;
 mod formats;
 mod jobs;
+mod profiles;
 mod querylog;
 mod scheduler;
 mod windows;
@@ -156,6 +157,11 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // After the log and the drivers' folder: a task due at the start may run at once.
     app.manage(scheduler::Scheduler::open(
         dir(app, false).ok().map(|d| d.join("schedules.json")),
+    ));
+    app.manage(profiles::Profiles::open(
+        dir(app, false)
+            .ok()
+            .map(|d| d.join("transfer-profiles.json")),
     ));
     commands::schedules::start(app.handle().clone());
     agent::start(app.handle(), dir(app, false).ok());
@@ -389,6 +395,10 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::schedules::delete_schedule,
         commands::schedules::run_schedule_now,
         commands::schedules::time_zones,
+        commands::profiles::list_transfer_profiles,
+        commands::profiles::save_transfer_profile,
+        commands::profiles::delete_transfer_profile,
+        commands::profiles::run_transfer_profile,
         commands::querylog::query_log,
         commands::querylog::clear_query_log,
         commands::objects::object_ddl,

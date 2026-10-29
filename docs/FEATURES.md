@@ -406,7 +406,7 @@ then run the SELECT or open it in the editor.
 - **Export** to CSV, JSON, NDJSON, Parquet, Excel, SQL `INSERT`, Markdown, HTML or XML,
   streamed straight to the file; several tables or a whole schema at once. Optional gzip or
   zstd compression, and upload to a signed URL or to an S3, GCS (HMAC keys), R2 or MinIO
-  bucket; the secret key is never saved.
+  bucket; the secret key is never saved (a saved profile keeps it in the password store).
 - **Import** CSV, TSV, JSON, NDJSON, Parquet and Excel into a table, with a preview and a
   mapping of columns, adding the rows, replacing them or updating those with the same key; or
   into a new table created with the types DuckDB infers. *Paste CSV as a new table…* imports
@@ -416,6 +416,14 @@ then run the SELECT or open it in the editor.
 - **Copy a schema** to another database: each table with its columns, keys and identity
   column, then its defaults, indexes, foreign keys and CHECK constraints; between databases of
   one kind the views, functions, procedures and triggers too.
+- **Transfer profiles**: an export, import, table copy or schema copy can be saved with all its
+  choices (*Save as profile…* in its dialog; *Save profile* replaces the one that was opened)
+  and run again from *Transfer profiles…* (command palette, or a connection's menu for its own),
+  which also opens a profile in its dialog, renames, deletes and schedules it. A bucket's secret
+  key and a signed upload URL are kept in the password store, never in the profile file. A
+  schema copy saved for a whole schema copies the tables it has when it runs. A profile used by
+  a scheduled task cannot be deleted; opening one tells you about tables and columns that are
+  gone.
 - **Fake data** for a table: names, emails, numbers, dates, enum values, foreign keys that
   point at existing rows, distinct values for unique columns.
 - **Data files as databases**: drop a CSV, JSON, Parquet or Excel file on the window to query

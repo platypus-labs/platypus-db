@@ -156,6 +156,32 @@ impl Scheduler {
         self.write(&saved)
     }
 
+    /// The name of a task that runs the profile `id`, if there is one.
+    pub fn using_profile(&self, id: Uuid) -> Option<String> {
+        lock(&self.saved)
+            .schedules
+            .iter()
+            .find(|s| matches!(s.task, plan::Task::Profile { profile_id } if profile_id == id))
+            .map(|s| s.name.clone())
+    }
+
+    /// Gives the tasks that run the profile `id` its first connection and database.
+    pub fn follow_profile(&self, id: Uuid, (connection_id, database): (Uuid, Option<String>)) {
+        let mut saved = lock(&self.saved);
+        let mut changed = false;
+        for s in &mut saved.schedules {
+            if matches!(s.task, plan::Task::Profile { profile_id } if profile_id == id)
+                && (s.connection_id, &s.database) != (connection_id, &database)
+            {
+                (s.connection_id, s.database) = (connection_id, database.clone());
+                changed = true;
+            }
+        }
+        if changed {
+            let _ = self.write(&saved);
+        }
+    }
+
     pub fn delete(&self, id: Uuid) -> Result<(), String> {
         let mut saved = lock(&self.saved);
         saved.schedules.retain(|s| s.id != id);
@@ -340,6 +366,26 @@ mod tests {
         scheduler.put(second, utc("2026-11-10T06:00:00Z")).unwrap();
         // Saving the same task again is no clash.
         scheduler.put(first, utc("2026-11-10T06:00:00Z")).unwrap();
+    }
+
+    #[test]
+    fn a_task_of_a_profile_is_found_and_follows_its_connection() {
+        let scheduler = Scheduler::open(None);
+        let profile = Uuid::new_v4();
+        let mut s = schedule(0);
+        s.task = Task::Profile {
+            profile_id: profile,
+        };
+        scheduler
+            .put(s.clone(), utc("2026-11-10T06:00:00Z"))
+            .unwrap();
+        assert_eq!(scheduler.using_profile(profile), Some("Refresh".to_owned()));
+        assert_eq!(scheduler.using_profile(Uuid::new_v4()), None);
+        let connection = Uuid::new_v4();
+        scheduler.follow_profile(profile, (connection, Some("sales".to_owned())));
+        let kept = scheduler.get(s.id).unwrap();
+        assert_eq!(kept.connection_id, connection);
+        assert_eq!(kept.database.as_deref(), Some("sales"));
     }
 
     #[test]
