@@ -82,6 +82,15 @@ Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i
 
 ## 2. Gruppi di lavoro
 
+### Correzioni aperte
+
+Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (vedi
+[CLAUDE.md](../CLAUDE.md)). Chi ne corregge uno toglie la sua riga.
+
+| Problema | Trovato |
+|---|---|
+| E2E `grid-text-json-sqlite` fallisce già all'apertura: con due connessioni SQLite il clic sul triangolo della prima (`E2E text json`) espande anche la seconda (`… plain`, resta "loading…") e la riga `docs` non si trova sotto la prima. Il navigator ora disegna solo le righe in vista (test di scala del gruppo P): forse le righe riusate tengono il click o lo stato di un'altra. Fallisce anche con l'eseguibile di `main` | 2026-10-29, gruppo B |
+
 ### Lock dei gruppi
 
 Chi lavora su un gruppo lo segna qui e pusha su `main` prima di scrivere codice. Formato:

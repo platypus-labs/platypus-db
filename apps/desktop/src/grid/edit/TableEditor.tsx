@@ -331,7 +331,8 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
   async function editCell(cell: Cell, typed?: string) {
     if (!editable || !keys) return;
     if (!writable(cell.col)) {
-      const column = columns[cell.col]?.name ?? "?";
+      // A computed column is the grid's, not the result's.
+      const column = (columns[cell.col] ?? grid.current?.columns()[cell.col])?.name ?? "?";
       setError(
         keys.columns[cell.col]
           ? t("{column} is filled in by the database: it cannot be edited", { column })
