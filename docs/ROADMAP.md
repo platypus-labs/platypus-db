@@ -89,8 +89,6 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
-| E2E `qa-safe-readonly-import` e `qa-safe-readonly-generate-data` cercano "Paste CSV as a new table…" e "Generate data…" nel menu di una connessione read-only, che da `76d60b06` (azioni vietate nascoste) non li mostra più: gli scenari vanno aggiornati a controllare che manchino | gruppo H, 2026-10-29 |
-| E2E `schedules-sqlite`: dopo il task "Broken" (`UPDATE t SET v = 0 WHERE id = 1`, poi un'istruzione che fallisce) l'export si aspetta `1,12`, ma lo script schedulato esegue un'istruzione alla volta senza transazione e la prima resta: decidere se lo script va in una transazione (e annullato) o se correggere l'attesa | gruppo H, 2026-10-29 |
 
 ### Lock dei gruppi
 
