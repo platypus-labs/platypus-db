@@ -1933,6 +1933,102 @@ async fn ddl_commits(
     let _ = run(conn, &format!("DROP TABLE {made}")).await;
 }
 
+/// A snapshot before an `UPDATE` or `DELETE` reads the rows it changes, and its statements put
+/// them back as they were: quotes, NULL and decimals included. Too many rows, or an `UPDATE`
+/// of a table without a key, make none.
+#[tokio::test]
+async fn snapshots_restore_changed_rows() {
+    use platypus_sql::Dialect;
+    use platypus_transfer::snapshot::{Taken, take};
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let d = Dialect::from(b.config.driver);
+        match d {
+            Dialect::Postgres if b.name == "postgres" => {}
+            Dialect::MySql | Dialect::SqlServer | Dialect::DuckDb => {}
+            Dialect::Sqlite if b.name == "sqlite" => {}
+            _ => continue,
+        }
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let t = d.qualified(Some(&b.schema), "conf_snap");
+        let k = d.qualified(Some(&b.schema), "conf_snap_nokey");
+        for table in [&t, &k] {
+            let _ = run(conn, &format!("DROP TABLE {table}")).await;
+        }
+        let text = if d == Dialect::SqlServer {
+            "nvarchar(50)"
+        } else {
+            "varchar(50)"
+        };
+        for sql in [
+            format!("CREATE TABLE {t} (id int PRIMARY KEY, name {text}, amount decimal(10,2))"),
+            format!("INSERT INTO {t} VALUES (1, 'it''s', 1.50), (2, NULL, -3.25), (3, 'c', 0)"),
+            format!("CREATE TABLE {k} (id int, name {text})"),
+        ] {
+            run(conn, &sql)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name));
+        }
+        let rows = format!("SELECT id, name, amount FROM {t} ORDER BY id");
+        for (verb, change) in [
+            (
+                "UPDATE",
+                format!("UPDATE {t} SET name = 'x', amount = 9 WHERE id <= 2"),
+            ),
+            ("DELETE", format!("DELETE FROM {t} WHERE id <> 3")),
+        ] {
+            snapshot_round_trip(&b, conn, d, (verb, &change), &rows).await;
+        }
+        assert_eq!(
+            take(conn, d, &format!("DELETE FROM {t}"), 2).await.unwrap(),
+            Taken::TooMany,
+            "{}",
+            b.name
+        );
+        assert_eq!(
+            take(conn, d, &format!("UPDATE {k} SET name = 'a'"), 10)
+                .await
+                .unwrap(),
+            Taken::NoKey,
+            "{}",
+            b.name
+        );
+        for table in [&t, &k] {
+            let _ = run(conn, &format!("DROP TABLE {table}")).await;
+        }
+    }
+}
+
+/// Takes a snapshot before `change` (two rows), runs it, then the snapshot's statements: the
+/// rows `rows` reads are as before.
+async fn snapshot_round_trip(
+    b: &Backend,
+    conn: &dyn platypus_core::Connection,
+    d: platypus_sql::Dialect,
+    (verb, change): (&str, &str),
+    rows: &str,
+) {
+    use platypus_transfer::snapshot::{Taken, take};
+
+    let before = format!("{:?}", collect(b, conn, rows).await);
+    let Ok(Taken::Snapshot(snapshot)) = take(conn, d, change, 100).await else {
+        panic!("{}: no snapshot of {change}", b.name)
+    };
+    assert_eq!((snapshot.verb, snapshot.rows), (verb, 2), "{}", b.name);
+    run(conn, change)
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+    for sql in &snapshot.restore {
+        run(conn, sql)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name));
+    }
+    let after = format!("{:?}", collect(b, conn, rows).await);
+    assert_eq!(after, before, "{}: {:?}", b.name, snapshot.restore);
+}
+
 /// A bulk load writes text exactly (quotes, tabs, line breaks, backslashes, empty text apart
 /// from NULL, bytes), in the session's transaction; refused rows fail it and leave the session
 /// usable. MySQL without `local_infile` refuses the load itself, as `Unsupported`.

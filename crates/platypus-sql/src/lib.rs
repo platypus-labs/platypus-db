@@ -17,6 +17,7 @@ mod lint;
 mod params;
 pub mod pg_literal;
 mod rewrite;
+pub mod snapshot;
 mod source;
 
 pub use analysis::{Analysis, StatementKind, TableName, Unfiltered, analyze};
