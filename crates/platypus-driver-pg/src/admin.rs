@@ -81,10 +81,10 @@ pub(crate) const MAINTENANCE: &[Maintenance] = &[
     Maintenance::Reindex,
 ];
 
-/// The schema of `pg_stat_statements` and whether its times are `*_exec_time` (version 1.8,
-/// PostgreSQL 13) rather than `*_time`.
+/// The schema of `pg_stat_statements` and whether its times are `*_exec_time` (version 1.8 of
+/// the extension, not of the server: one upgraded without `ALTER EXTENSION` keeps `*_time`).
 const STATEMENTS_EXTENSION: &str = "SELECT n.nspname, \
-     current_setting('server_version_num')::int >= 130000 \
+     string_to_array(e.extversion, '.')::int[] >= '{1,8}' \
      FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace \
      WHERE e.extname = 'pg_stat_statements'";
 
