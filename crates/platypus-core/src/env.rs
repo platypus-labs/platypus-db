@@ -443,9 +443,9 @@ mod tests {
 
     #[test]
     fn a_missing_env_file_is_an_error() {
-        let error = EnvVars::load(Some("/no/such/.env"))
-            .unwrap_err()
-            .to_string();
+        // Absolute on every system: `/no/such` is not on Windows.
+        let missing = std::env::temp_dir().join("platypus-no-such").join(".env");
+        let error = EnvVars::load(missing.to_str()).unwrap_err().to_string();
         assert!(error.contains("cannot read the .env file"), "{error}");
         assert!(EnvVars::load(Some("  ")).is_ok());
         let error = EnvVars::load(Some("project/.env")).unwrap_err().to_string();
