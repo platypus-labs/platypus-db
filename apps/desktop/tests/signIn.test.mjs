@@ -39,4 +39,6 @@ test("connections that sign in without a password are tested", () => {
   assert.equal(testable(base), false);
   assert.equal(testable({ ...base, options: { auth: "gcp_iam" } }), true);
   assert.equal(testable({ ...base, options: { auth: "password" } }), false);
+  assert.equal(testable({ ...base, options: { auth: "kerberos" } }), false);
+  for (const s of SIGN_INS) assert.equal(testable({ ...base, options: { auth: s.id } }), true, s.id);
 });

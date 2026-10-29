@@ -14,8 +14,9 @@ export type TestOutcome =
 /** Whether `c` connects without asking: a file, a saved password, one from a command or
  *  from `.pgpass`, a token or Windows' sign-in. The others ask each time, and are not tried. */
 export function testable(c: SavedConnection): boolean {
-  // A file (`isEmbedded` in api.ts) needs no password; `auth` is `signInOf` in signIn.ts.
-  const signsIn = !!c.options?.auth && c.options.auth !== "password";
+  // A file (`isEmbedded` in api.ts) needs no password. The ways of `SIGN_INS` in signIn.ts,
+  // which the tests could not load from here.
+  const signsIn = ["aws_iam", "gcp_iam", "entra_id", "windows"].includes(c.options?.auth ?? "");
   return c.driver === "sqlite" || c.driver === "duckdb" || c.save_password || !!c.password_command?.trim() || !!c.pgpass || signsIn;
 }
 

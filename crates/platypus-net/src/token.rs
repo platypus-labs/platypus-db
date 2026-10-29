@@ -146,6 +146,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_way_to_sign_in_must_fit_the_database() {
+        let mut windows_on_pg = config(DriverKind::Postgres, "windows");
+        let error = crate::sign_in(&mut windows_on_pg)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("Windows sign-in does not sign in to PostgreSQL"),
+            "{error}"
+        );
+        let mut aws_on_sql_server = config(DriverKind::SqlServer, "aws_iam");
+        assert!(crate::sign_in(&mut aws_on_sql_server).await.is_err());
+        let mut password = config(DriverKind::SqlServer, "");
+        crate::sign_in(&mut password).await.unwrap();
+        assert!(password.password.is_none());
+    }
+
+    #[tokio::test]
     async fn a_missing_cli_says_so() {
         let error = cli::output("platypus-no-such-cli", &[], TOKEN_TIMEOUT)
             .await

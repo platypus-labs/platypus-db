@@ -232,11 +232,14 @@ fn sqlcmd_args(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Vec<
 
 /// The tunnel, proxy or port forward of `config`, opened when it has one, and the host and
 /// port that reach its server: the tunnel's local end, or the server itself. A token the
-/// connection signs in with goes in `config` as its password.
+/// connection signs in with goes in `config` as its password; not SQL Server's, which
+/// `sqlcmd -G` gets for itself.
 pub(super) async fn reach(
     config: &mut ConnectionConfig,
 ) -> CommandResult<(Option<Tunnel>, String, Option<u16>)> {
-    platypus_net::sign_in(config).await?;
+    if config.driver != DriverKind::SqlServer {
+        platypus_net::sign_in(config).await?;
+    }
     let tunnel = Tunnel::of(config, None).await?;
     let (host, port) = match &tunnel {
         Some(t) => ("127.0.0.1".to_owned(), Some(t.local_addr().port())),

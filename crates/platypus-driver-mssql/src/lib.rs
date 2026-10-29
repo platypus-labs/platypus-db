@@ -934,4 +934,39 @@ mod tests {
         assert_eq!(explain.root.children.len(), 1);
         assert!(read_plan("SELECT 1").is_err());
     }
+
+    #[test]
+    fn signs_in_with_a_login_an_entra_id_token_or_windows() {
+        let mut config = ConnectionConfig::new(DriverKind::SqlServer);
+        config.user = "sa".to_owned();
+        config.password = Some(platypus_core::Secret::new("eyJ0"));
+        assert_eq!(
+            authentication(&config).unwrap(),
+            AuthMethod::sql_server("sa", "eyJ0")
+        );
+        config
+            .options
+            .insert(platypus_core::AUTH.to_owned(), "entra_id".to_owned());
+        assert_eq!(
+            authentication(&config).unwrap(),
+            AuthMethod::aad_token("eyJ0")
+        );
+        config
+            .options
+            .insert(platypus_core::AUTH.to_owned(), "windows".to_owned());
+        let windows = authentication(&config);
+        if cfg!(windows) {
+            assert!(windows.is_ok());
+        } else {
+            let error = windows.unwrap_err().to_string();
+            assert!(
+                error.contains("Windows authentication needs PlatypusDB on Windows"),
+                "{error}"
+            );
+        }
+        config
+            .options
+            .insert(platypus_core::AUTH.to_owned(), "kerberos".to_owned());
+        assert!(authentication(&config).is_err());
+    }
 }

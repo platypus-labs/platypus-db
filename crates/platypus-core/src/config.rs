@@ -350,6 +350,30 @@ impl Auth {
     pub const fn is_token(self) -> bool {
         matches!(self, Self::AwsIam | Self::GcpIam | Self::EntraId)
     }
+
+    /// Whether `driver`'s servers take this way to sign in.
+    #[must_use]
+    pub const fn fits(self, driver: DriverKind) -> bool {
+        let pg_or_mysql = matches!(driver, DriverKind::Postgres | DriverKind::MySql);
+        match self {
+            Self::Password => true,
+            Self::AwsIam | Self::GcpIam => pg_or_mysql,
+            Self::EntraId => pg_or_mysql || matches!(driver, DriverKind::SqlServer),
+            Self::Windows => matches!(driver, DriverKind::SqlServer),
+        }
+    }
+
+    /// Its name, for messages.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Password => "a password",
+            Self::AwsIam => "AWS IAM",
+            Self::GcpIam => "Google Cloud IAM",
+            Self::EntraId => "Microsoft Entra ID",
+            Self::Windows => "Windows sign-in",
+        }
+    }
 }
 
 impl ConnectionConfig {

@@ -464,6 +464,14 @@ where
 /// Puts in `config` the token its cloud's CLI makes when it signs in with one (IAM, Entra
 /// ID), as the password: for a client of the database's own, which [`connect`] does not open.
 pub async fn sign_in(config: &mut ConnectionConfig) -> Result<()> {
+    let auth = config.auth()?;
+    if !auth.fits(config.driver) {
+        return Err(Error::Config(format!(
+            "{} does not sign in to {}: choose another way in the connection's settings",
+            auth.name(),
+            config.driver.name()
+        )));
+    }
     if let Some(token) = token::fetch(config).await? {
         config.password = Some(token);
     }

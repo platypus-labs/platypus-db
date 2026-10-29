@@ -14,7 +14,7 @@ const STDERR_KEPT: usize = 64 * 1024;
 
 /// `program` with `args`, run directly (not by a shell), ended when dropped.
 pub(crate) fn command(program: &str, args: &[String]) -> tokio::process::Command {
-    let mut command = tokio::process::Command::new(program);
+    let mut command = tokio::process::Command::new(located(program));
     command
         .args(args)
         .stdin(Stdio::null())
@@ -24,6 +24,67 @@ pub(crate) fn command(program: &str, args: &[String]) -> tokio::process::Command
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashes up.
     command
+}
+
+/// Where `program` is. On Windows the CLIs of Azure and Google Cloud are `az.cmd` and
+/// `gcloud.cmd`, which a bare name does not find (it looks for `.exe` only); elsewhere the
+/// name is looked up on the `PATH` when it starts.
+fn located(program: &str) -> std::ffi::OsString {
+    #[cfg(windows)]
+    if let Some(path) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path) {
+            for extension in ["exe", "cmd", "bat"] {
+                let file = dir.join(program).with_extension(extension);
+                if file.is_file() {
+                    return file.into_os_string();
+                }
+            }
+        }
+    }
+    program.into()
+}
+
+/// A CLI that runs as long as a connection, with the processes it starts (`aws ssm` runs
+/// `session-manager-plugin`, which holds the forwarded port): dropped, they all end. On Unix
+/// it leads a process group of its own (see [`command`]'s callers), ended as a whole.
+pub(crate) struct Running {
+    child: tokio::process::Child,
+    id: Option<u32>,
+}
+
+impl Running {
+    pub(crate) fn new(child: tokio::process::Child) -> Self {
+        let id = child.id();
+        Self { child, id }
+    }
+
+    /// Waits for the CLI's end.
+    pub(crate) async fn wait(&mut self) {
+        let _ = self.child.wait().await;
+    }
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        let Some(id) = self.id else { return };
+        // The group outlives its leader while the plugin runs.
+        #[cfg(unix)]
+        let _ = std::process::Command::new("kill")
+            .args(["-KILL", "--", &format!("-{id}")])
+            .stderr(Stdio::null())
+            .status();
+        // Ended, its id may be another process's by now: its children are left.
+        #[cfg(windows)]
+        if matches!(self.child.try_wait(), Ok(None)) {
+            use std::os::windows::process::CommandExt as _;
+            let _ = std::process::Command::new("taskkill")
+                .args(["/T", "/F", "/PID", &id.to_string()])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .creation_flags(0x0800_0000)
+                .status();
+        }
+    }
 }
 
 /// The error of `program` failing: `message`, after its name.

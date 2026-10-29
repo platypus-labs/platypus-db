@@ -68,7 +68,10 @@ pub fn agent_blocker(effective: &SavedConnection, vault: bool) -> Option<AgentBl
     if effective.driver.is_embedded() {
         return None;
     }
-    if effective.password_command.is_none() && !effective.pgpass {
+    if effective.password_command.is_none()
+        && !effective.pgpass
+        && !effective.signs_in_without_password()
+    {
         if effective.asks_password() {
             return Some(AgentBlocker::AsksPassword);
         }
@@ -294,6 +297,11 @@ mod tests {
         pg.password_command = None;
         pg.save_password = false;
         assert_eq!(agent_blocker(&pg, false), Some(AgentBlocker::AsksPassword));
+        // A token from a cloud's CLI is made as it connects, vault or not.
+        pg.options
+            .insert(platypus_core::AUTH.to_owned(), "aws_iam".to_owned());
+        assert_eq!(agent_blocker(&pg, true), None);
+        pg.options.clear();
         pg.pgpass = true;
         assert_eq!(agent_blocker(&pg, true), None);
         pg.ssh = Some(SavedSsh {

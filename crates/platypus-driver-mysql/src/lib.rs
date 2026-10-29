@@ -163,9 +163,11 @@ impl MySqlConnection {
         let mut opts = opts(config, ssl_opts(config)?);
         let mut conn = match open(opts.clone(), timeout).await {
             // `prefer` falls back to plaintext when the server has no TLS, or only TLS this
-            // client refuses (MySQL 5.7's images offer old versions and ciphers).
+            // client refuses (MySQL 5.7's images offer old versions and ciphers); never with
+            // a token, which the server would read in clear text.
             Err(Error::Connect(message))
                 if config.ssl_mode == SslMode::Prefer
+                    && !config.auth().is_ok_and(Auth::is_token)
                     && (message.contains(&DriverError::NoClientSslFlagFromServer.to_string())
                         || tls_refused(&message)) =>
             {

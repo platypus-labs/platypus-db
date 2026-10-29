@@ -25,6 +25,7 @@ server = socket.socket()
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind(("127.0.0.1", local))
 server.listen()
+print(f"Forwarding from 127.0.0.1:{local} -> {remote}", flush=True)
 def pipe(a, b):
     try:
         while data := a.recv(65536):
@@ -92,14 +93,14 @@ async fn connect(config: &ConnectionConfig) -> platypus_core::Result<Box<dyn Con
 }
 
 async fn answers(conn: &dyn Connection) {
-    match conn
+    let result = conn
         .execute("SELECT 1", &ExecOptions::default())
         .await
-        .unwrap()
-    {
-        ExecResult::Rows { .. } => {}
-        other => panic!("SELECT 1 gave {other:?}"),
-    }
+        .unwrap();
+    assert!(
+        matches!(result, ExecResult::Rows { .. }),
+        "SELECT 1 gave {result:?}"
+    );
 }
 
 /// The server at `env`'s URL or `default`, with its password; `None` when it is not

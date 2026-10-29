@@ -4,11 +4,14 @@
 //! as the connection, and its end closes the connection.
 
 use std::net::{Ipv4Addr, SocketAddr};
-use std::time::{Duration, Instant};
+use std::process::Stdio;
+use std::time::Duration;
 
 use platypus_core::{
     ConnectionConfig, Error, FORWARD, K8S_CONTEXT, K8S_NAMESPACE, K8S_TARGET, Result, SSM_TARGET,
 };
+use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 use crate::cli;
@@ -91,46 +94,68 @@ pub(crate) async fn open(
     start(&program, &args, port).await.map(Some)
 }
 
-/// Runs `program` and waits until something listens on `port`: an end of the CLI before
-/// that, or no port open within the time allowed, is an error that quotes its stderr.
+/// What the CLIs print once they listen: `kubectl`'s "Forwarding from 127.0.0.1:…" and the
+/// Session Manager plugin's "Waiting for connections...". Read rather than tried: a test
+/// connection would reach the database, and use up a plugin that serves only one.
+const LISTENING: [&str; 2] = ["Forwarding from", "Waiting for connections"];
+
+/// Runs `program` and waits until it says it listens on `port`: an end of the CLI before
+/// that, or no such word within the time allowed, is an error that quotes its stderr.
 pub(crate) async fn start(
     program: &str,
     args: &[String],
     port: u16,
 ) -> Result<(SocketAddr, JoinHandle<()>)> {
-    let mut child = cli::command(program, args)
-        .spawn()
-        .map_err(|e| cli::not_started(program, &e))?;
+    let mut command = cli::command(program, args);
+    command.stdout(Stdio::piped());
+    // A group of its own, ended as a whole with the plugin it starts.
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = command.spawn().map_err(|e| cli::not_started(program, &e))?;
     let stderr = cli::Stderr::read(child.stderr.take());
-    let local = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
-    let deadline = Instant::now() + READY_TIMEOUT;
-    loop {
-        if let Some(status) = child.try_wait().map_err(|e| cli::failed(program, e))? {
-            return Err(cli::failed(program, stderr.explain(status).await));
-        }
-        if tokio::net::TcpStream::connect(local).await.is_ok() {
-            break;
-        }
-        if Instant::now() > deadline {
-            // Dropped, the CLI ends.
+    let mut listening = listening(child.stdout.take());
+    let mut running = cli::Running::new(child);
+    let ended = tokio::select! {
+        heard = &mut listening => heard.is_err(),
+        () = running.wait() => true,
+        () = tokio::time::sleep(READY_TIMEOUT) => {
             return Err(cli::failed(
                 program,
-                format!(
-                    "no forwarded port after {} seconds",
-                    READY_TIMEOUT.as_secs()
-                ),
+                format!("not forwarding after {} seconds", READY_TIMEOUT.as_secs()),
             ));
         }
-        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    if ended {
+        running.wait().await;
+        return Err(cli::failed(program, stderr.explain("ended").await));
     }
-    let running = tokio::spawn(async move {
-        let _ = child.wait().await;
+    let running = tokio::spawn(async move { running.wait().await });
+    Ok((SocketAddr::from((Ipv4Addr::LOCALHOST, port)), running))
+}
+
+/// Whether the CLI says it listens before its output ends; the output is read on to its end,
+/// so that the CLI never blocks on a full pipe (`kubectl` writes a line per connection).
+fn listening(stdout: Option<impl AsyncRead + Unpin + Send + 'static>) -> oneshot::Receiver<()> {
+    let (said, heard) = oneshot::channel();
+    tokio::spawn(async move {
+        let Some(stdout) = stdout else { return };
+        let mut said = Some(said);
+        let mut lines = BufReader::new(stdout).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            if LISTENING.iter().any(|w| line.contains(w))
+                && let Some(said) = said.take()
+            {
+                let _ = said.send(());
+            }
+        }
     });
-    Ok((local, running))
+    heard
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use super::*;
     use platypus_core::{AWS_PROFILE, DriverKind};
 
@@ -194,18 +219,20 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn the_forward_is_ready_when_its_port_listens_and_ends_with_its_run() {
+    async fn the_forward_is_ready_when_the_cli_says_so_and_ends_with_its_children() {
         let port = free_port().unwrap();
-        // A CLI that listens after a moment, as `kubectl` does once it reached the cluster.
+        // A CLI that starts the process holding the port, as `aws ssm` starts its plugin,
+        // and says so once it listens.
         let script = format!(
-            "sleep 0.3; exec python3 -c 'import socket,time; s=socket.socket(); s.bind((\"127.0.0.1\",{port})); s.listen(); time.sleep(60)'"
+            "python3 -c 'import socket,time; s=socket.socket(); s.bind((\"127.0.0.1\",{port})); s.listen(); print(\"Waiting for connections...\", flush=True); time.sleep(60)' & wait"
         );
         let (local, running) = start("sh", &["-c".to_owned(), script], port).await.unwrap();
         assert_eq!(local.port(), port);
+        assert!(tokio::net::TcpStream::connect(local).await.is_ok());
         assert!(!running.is_finished());
         running.abort();
         let _ = running.await;
-        // Aborted, the run killed the CLI: the port no longer listens.
+        // Aborted, the run ended the CLI and the process it started: the port is closed.
         let deadline = Instant::now() + Duration::from_secs(5);
         while tokio::net::TcpStream::connect(local).await.is_ok() && Instant::now() < deadline {
             tokio::time::sleep(Duration::from_millis(50)).await;
