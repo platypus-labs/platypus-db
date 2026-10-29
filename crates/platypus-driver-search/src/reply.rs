@@ -17,9 +17,8 @@ use platypus_core::{Error, ExecResult, Result};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
-use crate::command::{Body, Kind, Request};
+use crate::command::{Kind, Request};
 use crate::doc::{Doc, Ordered, Table, chain, raw_string};
-use crate::http::Payload;
 use crate::session::Shared;
 
 #[derive(Deserialize)]
@@ -131,11 +130,7 @@ pub async fn run(shared: &Arc<Shared>, request: &Request, size: usize) -> Result
         target.push(if request.query.is_empty() { '?' } else { '&' });
         target.push_str("format=json");
     }
-    let payload = match &request.body {
-        Body::None => Payload::None,
-        Body::Json(text) => Payload::Json(text),
-        Body::Ndjson(text) => Payload::Ndjson(text),
-    };
+    let payload = request.body.payload();
     if request.method == "HEAD" {
         let reply = shared.send("HEAD", &target, payload).await?;
         let exists = (200..300).contains(&reply.status);

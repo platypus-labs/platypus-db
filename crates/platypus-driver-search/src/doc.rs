@@ -120,6 +120,15 @@ impl Kind {
     }
 }
 
+/// Converts the cells of a column to an Arrow array, null cells staying null; the first
+/// cell `convert` refuses is the error.
+pub fn collect_cells<V, T, A: FromIterator<Option<T>>>(
+    cells: impl Iterator<Item = Option<V>>,
+    mut convert: impl FnMut(V) -> Result<T>,
+) -> Result<A> {
+    cells.map(|v| v.map(&mut convert).transpose()).collect()
+}
+
 /// The text of a cell: a string as it is, anything else as the JSON it was; `None` for null.
 fn text_of(raw: &RawValue) -> Option<String> {
     let text = raw.get();
@@ -296,30 +305,15 @@ impl Layout {
             ),
         };
         Ok(match kind {
-            Kind::Bool => Arc::new(
-                cells
-                    .map(|v| {
-                        v.map(|v| v.get().parse::<bool>().map_err(|_| bad(v.get())))
-                            .transpose()
-                    })
-                    .collect::<Result<BooleanArray>>()?,
-            ),
-            Kind::Int => Arc::new(
-                cells
-                    .map(|v| {
-                        v.map(|v| v.get().parse::<i64>().map_err(|_| bad(v.get())))
-                            .transpose()
-                    })
-                    .collect::<Result<Int64Array>>()?,
-            ),
-            Kind::Double => Arc::new(
-                cells
-                    .map(|v| {
-                        v.map(|v| v.get().parse::<f64>().map_err(|_| bad(v.get())))
-                            .transpose()
-                    })
-                    .collect::<Result<Float64Array>>()?,
-            ),
+            Kind::Bool => Arc::new(collect_cells::<_, _, BooleanArray>(cells, |v| {
+                v.get().parse::<bool>().map_err(|_| bad(v.get()))
+            })?),
+            Kind::Int => Arc::new(collect_cells::<_, _, Int64Array>(cells, |v| {
+                v.get().parse::<i64>().map_err(|_| bad(v.get()))
+            })?),
+            Kind::Double => Arc::new(collect_cells::<_, _, Float64Array>(cells, |v| {
+                v.get().parse::<f64>().map_err(|_| bad(v.get()))
+            })?),
             _ => Arc::new(
                 cells
                     .map(|v| v.and_then(|v| text_of(v)))

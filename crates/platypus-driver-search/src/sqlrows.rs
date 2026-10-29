@@ -16,6 +16,7 @@ use platypus_core::{Error, ExecOptions, ExecResult, META_DB_TYPE, RecordBatchStr
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::doc::collect_cells;
 use crate::http::Payload;
 use crate::session::{Flavor, Shared};
 
@@ -153,43 +154,23 @@ impl Columns {
             ),
         };
         Ok(match cell {
-            Cell::Int => Arc::new(
-                cells
-                    .map(|v| {
-                        v.map(|v| number(v, Value::as_i64, str::parse).ok_or_else(|| bad(v)))
-                            .transpose()
-                    })
-                    .collect::<Result<Int64Array>>()?,
-            ),
-            Cell::UInt => Arc::new(
-                cells
-                    .map(|v| {
-                        v.map(|v| number(v, Value::as_u64, str::parse).ok_or_else(|| bad(v)))
-                            .transpose()
-                    })
-                    .collect::<Result<UInt64Array>>()?,
-            ),
-            Cell::Float => Arc::new(
-                cells
-                    .map(|v| {
-                        v.map(|v| number(v, Value::as_f64, str::parse).ok_or_else(|| bad(v)))
-                            .transpose()
-                    })
-                    .collect::<Result<Float64Array>>()?,
-            ),
-            Cell::Bool => Arc::new(
-                cells
-                    .map(|v| v.map(|v| v.as_bool().ok_or_else(|| bad(v))).transpose())
-                    .collect::<Result<BooleanArray>>()?,
-            ),
+            Cell::Int => Arc::new(collect_cells::<_, _, Int64Array>(cells, |v| {
+                number(v, Value::as_i64, str::parse).ok_or_else(|| bad(v))
+            })?),
+            Cell::UInt => Arc::new(collect_cells::<_, _, UInt64Array>(cells, |v| {
+                number(v, Value::as_u64, str::parse).ok_or_else(|| bad(v))
+            })?),
+            Cell::Float => Arc::new(collect_cells::<_, _, Float64Array>(cells, |v| {
+                number(v, Value::as_f64, str::parse).ok_or_else(|| bad(v))
+            })?),
+            Cell::Bool => Arc::new(collect_cells::<_, _, BooleanArray>(cells, |v| {
+                v.as_bool().ok_or_else(|| bad(v))
+            })?),
             Cell::Time => Arc::new(
-                cells
-                    .map(|v| {
-                        v.map(|v| v.as_str().and_then(parse_micros).ok_or_else(|| bad(v)))
-                            .transpose()
-                    })
-                    .collect::<Result<TimestampMicrosecondArray>>()?
-                    .with_timezone(TIME_ZONE),
+                collect_cells::<_, _, TimestampMicrosecondArray>(cells, |v| {
+                    v.as_str().and_then(parse_micros).ok_or_else(|| bad(v))
+                })?
+                .with_timezone(TIME_ZONE),
             ),
             Cell::Text => Arc::new(
                 cells

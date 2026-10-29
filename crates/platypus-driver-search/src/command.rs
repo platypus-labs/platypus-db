@@ -21,6 +21,7 @@ use std::ops::Range;
 
 use serde::de::IgnoredAny;
 
+use crate::http::Payload;
 pub use crate::kind::{Kind, Unfiltered, sql_kind};
 
 /// The body of a request.
@@ -31,6 +32,18 @@ pub enum Body {
     Json(String),
     /// A JSON value per line, ending with a newline.
     Ndjson(String),
+}
+
+impl Body {
+    /// The body as the HTTP layer sends it.
+    #[must_use]
+    pub fn payload(&self) -> Payload<'_> {
+        match self {
+            Self::None => Payload::None,
+            Self::Json(text) => Payload::Json(text),
+            Self::Ndjson(text) => Payload::Ndjson(text),
+        }
+    }
 }
 
 /// A request to the REST API.

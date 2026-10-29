@@ -564,7 +564,9 @@ pub fn check_search<'a>(
     match (access, parsed.kind()) {
         (AgentAccess::ReadOnly, Kind::Query) => Ok(statement),
         (AgentAccess::ReadOnly, kind) => Err(AgentError::Denied(format!(
-            "`{connection}` is read-only for agents: only requests that change nothing may run,              and this one {}. The user can allow agents to write in PlatypusDB's connection              settings (Agent access), except on production and read-only connections",
+            "`{connection}` is read-only for agents: only requests that change nothing may run, \
+             and this one {}. The user can allow agents to write in PlatypusDB's connection \
+             settings (Agent access), except on production and read-only connections",
             match kind {
                 Kind::Dml => "changes documents",
                 Kind::Ddl => "changes indices, mappings or aliases",
@@ -574,7 +576,8 @@ pub fn check_search<'a>(
         _ => match parsed.unfiltered() {
             Some(every) if unfiltered == UnfilteredRule::Refuse => {
                 Err(AgentError::Denied(format!(
-                    "{} on `{}` changes every document or index it reaches: PlatypusDB's Safety                      settings ask before such changes, and agents cannot answer",
+                    "{} on `{}` changes every document or index it reaches: PlatypusDB's Safety \
+             settings ask before such changes, and agents cannot answer",
                     every.verb, every.index
                 )))
             }

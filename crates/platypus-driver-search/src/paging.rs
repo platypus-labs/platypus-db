@@ -22,7 +22,7 @@ use serde_json::{Map, Value, json};
 use crate::command::{Body, Request};
 use crate::doc::Layout;
 use crate::http::Payload;
-use crate::meta::top_level_fields;
+use crate::meta::{get, top_level_fields};
 use crate::reply::{Hit, Hits, hit_docs, lead, several_indices};
 use crate::session::{Flavor, Shared};
 
@@ -264,12 +264,10 @@ async fn mapped_fields(shared: &Shared, index: &str) -> Vec<(String, String)> {
         return Vec::new();
     }
     let target = format!("/{index}/_mapping?expand_wildcards=open");
-    match shared.call("GET", &target, Payload::None, None).await {
-        Ok(reply) => serde_json::from_str(&reply.body)
-            .map(|v: Value| top_level_fields(&v))
-            .unwrap_or_default(),
-        Err(_) => Vec::new(),
-    }
+    get(shared, &target)
+        .await
+        .map(|v| top_level_fields(&v))
+        .unwrap_or_default()
 }
 
 /// Runs the search and returns its first page; the others follow as the result is read.

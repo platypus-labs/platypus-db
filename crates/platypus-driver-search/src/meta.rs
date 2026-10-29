@@ -41,7 +41,7 @@ pub fn schemas(cluster: &str) -> Vec<SchemaMeta> {
     }]
 }
 
-async fn get(shared: &Shared, target: &str) -> Result<Value> {
+pub async fn get(shared: &Shared, target: &str) -> Result<Value> {
     let reply = shared.call("GET", target, Payload::None, None).await?;
     serde_json::from_str(&reply.body).map_err(|e| Error::Other(format!("unexpected reply: {e}")))
 }
