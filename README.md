@@ -300,6 +300,17 @@ and shows the ODBC drivers and data sources of the system.
 - **Compare with previous run**: when a statement runs again, its result can be compared with
   the previous one: rows added, removed and changed (matched by the table's key when it has
   one), with the old value of each changed cell.
+- **Notebooks**: *New notebook* in a connection's menu opens a tab of cells, text in Markdown
+  and SQL, run one at a time (Ctrl+Enter, Run) or all in order (*Run all*, which stops at the
+  first failure). Each SQL cell shows its result as a grid or a chart, and its plan with
+  *Plan*. The SQL cells are named `c1`, `c2`, … in their order: a cell *On the results of the
+  other cells* runs in an in-memory DuckDB where their loaded rows are tables of those names,
+  without running them again on the server. Parameters (`:name`, `?`, `${name}`) are shared by
+  the cells: a value missing shows a field above the cells. Changes go through the Safety
+  checks, and a read-only connection refuses them. *Save* writes a `.pnb` file (JSON), which
+  *Open notebook…* opens again on a connection; *Export HTML…* writes a standalone page with
+  the text, the SQL, up to 500 rows of each result, the charts, the plans and the parameters'
+  values. Notebooks stay with the workspace; their results run again.
 
 ![A result as a bar chart](docs/screenshots/chart.png)
 

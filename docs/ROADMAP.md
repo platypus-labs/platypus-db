@@ -753,7 +753,7 @@ E2E `restrictions-sqlite`, `transaction-log-sqlite`, `mask-sqlite`, `snapshot-sq
 
 ### Gruppo M — Analisi dei dati
 
-**Stato: P2 in parte** (da fare: notebook) (grafici dai risultati con export PNG e SVG e configurazione salvata
+**Stato: P2 completate** (grafici dai risultati con export PNG e SVG e configurazione salvata
 nel tab, statistiche della colonna al passaggio del mouse, SQL sui risultati con un DuckDB in
 memoria, diff con l'esecuzione precedente). Il calcolo è nel crate `platypus-local`, sulle
 righe Arrow del lavoro della query (`jobs.rs`); il grafico è un modulo SVG proprio
@@ -764,7 +764,16 @@ massimo) e 50 categorie (le altre in "Altro"); SQL sui risultati fino al limite 
 driver (`memory_database`), raggiunto da una connessione temporanea mai salvata; con più
 risultati la tabella `result` copia di nuovo il risultato scelto oltre a `rN`; diff con una
 copia per tab, abbinata per chiave solo quando la griglia può modificare il risultato, al
-massimo 10.000 righe mostrate; MongoDB senza SQL sui risultati né diff. Le P3 restano da fare.
+massimo 10.000 righe mostrate; MongoDB senza SQL sui risultati né diff. Notebook
+(`apps/desktop/src/notebook/`, tab `notebook`): celle Markdown (parser proprio in `html.ts`,
+reso come elementi React e, nell'export, come HTML con tutto il testo escapato; link non
+cliccabili nell'app) e SQL, nominate `c1`, `c2`… nell'ordine; una cella "sui risultati" gira sul
+DuckDB in memoria di "Query with SQL" (`open_result_db` / `reload_result_db` con le tabelle
+`cN` dei job delle altre celle, caricati per intero con `loadAll`), una per tab, rifatta quando
+cambiano i job. Parametri condivisi (`analyze_sql` + `substitute`), controlli di Sicurezza e
+connessioni read-only come nell'editor; sessione del tab in autocommit. File `.pnb` (JSON,
+`format: "platypus-notebook"`), export HTML con al massimo 500 righe per risultato, il grafico
+SVG mostrato e il piano. Le P3 restano da fare.
 
 **Area:** `apps/desktop/src/analysis/`, crate `platypus-local` (DuckDB in-process)
 **Dipende da:** 0.4; DuckDB del gruppo G
@@ -778,7 +787,7 @@ massimo 10.000 righe mostrate; MongoDB senza SQL sui risultati né diff. Le P3 r
 | ✅ Diff tra due result set (stessa query prima e dopo) | P2 | N |
 | Snapshot dei risultati salvati e consultabili offline | P3 | N |
 | Pivot dei risultati | P3 | N |
-| **Notebook**: celle SQL e Markdown, grafici e piano per cella, parametri comuni, export HTML. Una cella legge i risultati già caricati delle altre dal DuckDB dell'SQL sui risultati (`c1`, `c2`, …), senza rieseguirle sul server | P2 | N |
+| ✅ **Notebook**: celle SQL e Markdown, grafici e piano per cella, parametri comuni, export HTML. Una cella legge i risultati già caricati delle altre dal DuckDB dell'SQL sui risultati (`c1`, `c2`, …), senza rieseguirle sul server | P2 | N |
 | Dashboard personalizzate dalle query salvate | P3 | D+ |
 | 🆕 Profilo di una tabella intera: per colonna distribuzione, distinti, pattern (email, date, numeri come testo), outlier | P3 | N |
 
