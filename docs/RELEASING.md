@@ -79,7 +79,7 @@ the signatures (the contents of the `.sig` files) and the download URLs
 `notes` and `pub_date`. Then:
 
 ```bash
-gh release create vX.Y.Z --draft --verify-tag --title "PlatypusDB vX.Y.Z"   --notes "..." <the two installers, their .sig files and latest.json>
+gh release create vX.Y.Z --draft --verify-tag --title "PlatypusDB vX.Y.Z" --notes "..." <the two installers, their .sig files and latest.json>
 ```
 
 When the workflow later runs on the same tag, `tauri-action` finds the release by tag and
