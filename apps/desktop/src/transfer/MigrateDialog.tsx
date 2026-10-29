@@ -118,7 +118,8 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, ob
       target_database: null,
       source_schema: schema,
       target_schema: targetSchema,
-      tables,
+      // A whole schema is saved as such, so the tables added later are copied too.
+      tables: chosen === null ? null : tables,
       objects: whole,
     };
   }

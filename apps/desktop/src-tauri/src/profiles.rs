@@ -8,8 +8,9 @@
 //! What the dialog does not send (`ImportPlan`'s identity and constraints) is not in a plan
 //! the dialog sends either, so a saved plan runs as the dialog's would.
 //!
-//! The secret key of an export's bucket never reaches the file: it is kept under a key
-//! derived from the profile's id, in the store of the connections' passwords.
+//! The secrets of an export (the secret key of its bucket, the signed URL of its upload)
+//! never reach the file: each is kept under an id derived from the profile's id, in the store
+//! of the connections' passwords. The file keeps `KEPT_URL` where the URL was.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -82,7 +83,10 @@ pub enum ProfileTask {
         target_database: Option<String>,
         source_schema: String,
         target_schema: String,
-        tables: Vec<String>,
+        /// The tables to copy; `None` is the whole schema, read when the profile runs, so the
+        /// tables added later are copied too.
+        #[serde(default)]
+        tables: Option<Vec<String>>,
         /// The schema's views and routines too.
         #[serde(default)]
         objects: bool,
@@ -197,6 +201,34 @@ impl ProfileTask {
             .is_some_and(|o| bucket(o).is_some())
     }
 
+    /// The signed URL of the export, when it has one.
+    fn upload_url_mut(&mut self) -> Option<&mut Value> {
+        let url = self.export_options_mut()?.get_mut("upload_url")?;
+        url.as_str().is_some_and(|u| !u.is_empty()).then_some(url)
+    }
+
+    /// Whether the export also sends its file to a signed URL (kept apart or not).
+    fn has_url(&mut self) -> bool {
+        self.upload_url_mut().is_some()
+    }
+
+    /// Takes the signed URL out of the task, leaving `KEPT_URL` in its place. `None` when
+    /// there is none, or when it is `KEPT_URL` already (the page saves the profile again as
+    /// it opened it).
+    fn take_url(&mut self) -> Option<String> {
+        let url = self.upload_url_mut()?;
+        let text = url.as_str().filter(|u| *u != KEPT_URL)?.to_owned();
+        *url = Value::String(KEPT_URL.to_owned());
+        Some(text)
+    }
+
+    /// Puts the signed URL back, for a run.
+    fn put_url(&mut self, url: &str) {
+        if let Some(value) = self.upload_url_mut() {
+            *value = Value::String(url.to_owned());
+        }
+    }
+
     /// Takes the bucket's secret key out of the task.
     fn take_key(&mut self) -> Option<String> {
         let key = bucket(self.export_options_mut()?)?.remove("secret_key")?;
@@ -240,7 +272,7 @@ impl ProfileTask {
                 tables,
                 ..
             } => {
-                if tables.is_empty() {
+                if tables.as_ref().is_some_and(Vec::is_empty) {
                     return nothing("the tables to migrate");
                 }
                 if source_schema.trim().is_empty() || target_schema.trim().is_empty() {
@@ -312,9 +344,18 @@ pub trait KeyStore {
     fn set(&self, id: Uuid, key: Option<&Secret>) -> Result<(), String>;
 }
 
+/// What the file keeps in place of the signed URL of an upload; the page shows it, and a
+/// profile saved with it keeps the URL it has.
+pub const KEPT_URL: &str = "(saved apart)";
+
 /// The id a profile's bucket key is kept under.
 fn key_id(profile: Uuid) -> Uuid {
     Uuid::from_u128(profile.as_u128() ^ 0x6275_636b_6574_2d6b_6579_0000_0000_0000)
+}
+
+/// The id a profile's signed URL is kept under.
+fn url_id(profile: Uuid) -> Uuid {
+    Uuid::from_u128(profile.as_u128() ^ 0x7369_676e_6564_2d75_726c_0000_0000_0000)
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -389,7 +430,17 @@ impl Profiles {
             .cloned()
     }
 
-    /// The profile `id` ready to run: its bucket's secret key is back in it.
+    /// The ids the secrets of the profiles are kept under, for a store that moves them with
+    /// the connections' passwords. Ids with nothing behind them are harmless.
+    pub fn secret_ids(&self) -> Vec<Uuid> {
+        lock(&self.saved)
+            .profiles
+            .iter()
+            .flat_map(|p| [key_id(p.id), url_id(p.id)])
+            .collect()
+    }
+
+    /// The profile `id` ready to run: its bucket's secret key and signed URL are back in it.
     pub fn restored(&self, id: Uuid, keys: &dyn KeyStore) -> Result<TransferProfile, String> {
         let mut profile = self.get(id).ok_or("the profile is gone")?;
         if profile.task.has_bucket() {
@@ -397,6 +448,12 @@ impl Profiles {
                 "the secret key of the bucket is not saved: open the profile and enter it again",
             )?;
             profile.task.put_key(key.expose());
+        }
+        if profile.task.has_url() {
+            let url = keys
+                .get(url_id(id))?
+                .ok_or("the signed URL is not saved: open the profile and enter it again")?;
+            profile.task.put_url(url.expose());
         }
         Ok(profile)
     }
@@ -432,18 +489,33 @@ impl Profiles {
                 other.name
             ));
         }
-        let secret = key_id(profile.id);
-        let key = profile.task.take_key();
-        if profile.task.has_bucket() {
-            match key {
-                Some(key) => keys.set(secret, Some(&Secret::new(key)))?,
-                None if keys.get(secret)?.is_none() => {
-                    return Err("enter the secret key of the bucket".to_owned());
-                }
+        // Each secret is new (`Some`), kept as it is, or, without its option, removed. A
+        // missing one is refused before anything is stored.
+        let wanted = [
+            (
+                key_id(profile.id),
+                profile.task.take_key(),
+                profile.task.has_bucket(),
+                "enter the secret key of the bucket",
+            ),
+            (
+                url_id(profile.id),
+                profile.task.take_url(),
+                profile.task.has_url(),
+                "enter the signed URL",
+            ),
+        ];
+        for (id, new, used, problem) in &wanted {
+            if *used && new.is_none() && keys.get(*id)?.is_none() {
+                return Err((*problem).to_owned());
+            }
+        }
+        for (id, new, used, _) in wanted {
+            match new {
+                Some(secret) => keys.set(id, Some(&Secret::new(secret)))?,
+                None if !used => keys.set(id, None)?,
                 None => {}
             }
-        } else {
-            keys.set(secret, None)?;
         }
         match saved.profiles.iter_mut().find(|p| p.id == profile.id) {
             Some(old) => *old = profile.clone(),
@@ -453,11 +525,12 @@ impl Profiles {
         Ok(profile)
     }
 
-    /// Deletes the profile `id` and its secret key.
+    /// Deletes the profile `id` and its secrets.
     pub fn delete(&self, id: Uuid, keys: &dyn KeyStore) -> Result<(), String> {
         let mut saved = lock(&self.saved);
         saved.profiles.retain(|p| p.id != id);
         keys.set(key_id(id), None)?;
+        keys.set(url_id(id), None)?;
         self.write(&saved)
     }
 
@@ -587,7 +660,7 @@ mod tests {
                 target_database: Some("two".to_owned()),
                 source_schema: "public".to_owned(),
                 target_schema: "dbo".to_owned(),
-                tables: vec!["orders".to_owned()],
+                tables: Some(vec!["orders".to_owned()]),
                 objects: true,
             },
         ]
@@ -697,6 +770,153 @@ mod tests {
         profiles.delete(id, &keys).unwrap();
         assert!(profiles.get(id).is_none());
         assert_eq!(keys.get(key_id(id)).unwrap(), None);
+    }
+
+    fn with_url(url: &str) -> Value {
+        serde_json::json!({ "format": "csv", "upload_url": url })
+    }
+
+    fn url_of(profiles: &Profiles, id: Uuid) -> Value {
+        let ProfileTask::ExportQuery { options, .. } = profiles.get(id).unwrap().task else {
+            panic!("a query");
+        };
+        options["upload_url"].clone()
+    }
+
+    #[test]
+    fn the_signed_url_stays_out_of_the_file_and_comes_back_for_a_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("transfer-profiles.json");
+        let profiles = Profiles::open(Some(path.clone()));
+        let keys = Keys::default();
+        let signed = "https://b.s3.amazonaws.com/f.csv?X-Amz-Signature=abc123";
+        let p = profile("Signed", query(with_url(signed)));
+        let id = p.id;
+        let returned = profiles.put(p, everything, &keys).unwrap();
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            !text.contains("abc123") && !text.contains("amazonaws"),
+            "{text}"
+        );
+        assert!(text.contains(KEPT_URL), "{text}");
+        assert!(!format!("{returned:?}").contains("abc123"));
+        assert_eq!(url_of(&profiles, id), KEPT_URL);
+
+        let run = Profiles::open(Some(path)).restored(id, &keys).unwrap();
+        assert_eq!(
+            run.task
+                .export_options()
+                .unwrap()
+                .unwrap()
+                .upload_url
+                .as_deref(),
+            Some(signed)
+        );
+
+        // Saved again as the page has it, with the placeholder: the URL stays.
+        profiles.put(returned.clone(), everything, &keys).unwrap();
+        let run = profiles.restored(id, &keys).unwrap();
+        assert_eq!(
+            run.task
+                .export_options()
+                .unwrap()
+                .unwrap()
+                .upload_url
+                .as_deref(),
+            Some(signed)
+        );
+        // A new URL replaces it.
+        let mut again = returned.clone();
+        again.task.put_url("https://b.s3.amazonaws.com/g.csv?sig=2");
+        profiles.put(again, everything, &keys).unwrap();
+        let run = profiles.restored(id, &keys).unwrap();
+        assert_eq!(
+            run.task
+                .export_options()
+                .unwrap()
+                .unwrap()
+                .upload_url
+                .as_deref(),
+            Some("https://b.s3.amazonaws.com/g.csv?sig=2")
+        );
+        // The ids to move with the other secrets are the profile's.
+        assert!(profiles.secret_ids().contains(&url_id(id)));
+        assert!(keys.get(url_id(id)).unwrap().is_some());
+
+        // Without the URL the profile drops it; with the placeholder and no URL, it is told.
+        let mut plain = returned.clone();
+        let ProfileTask::ExportQuery { options, .. } = &mut plain.task else {
+            panic!("a query");
+        };
+        *options = Value::Null;
+        profiles.put(plain, everything, &keys).unwrap();
+        assert_eq!(keys.get(url_id(id)).unwrap(), None);
+        assert!(
+            profiles
+                .put(returned, everything, &keys)
+                .unwrap_err()
+                .contains("signed URL")
+        );
+
+        // Deleted, the URL goes too.
+        let mut back = profile("Back", query(with_url(signed)));
+        back.id = id;
+        profiles.put(back, everything, &keys).unwrap();
+        assert!(keys.get(url_id(id)).unwrap().is_some());
+        profiles.delete(id, &keys).unwrap();
+        assert_eq!(keys.get(url_id(id)).unwrap(), None);
+        assert_eq!(keys.get(key_id(id)).unwrap(), None);
+    }
+
+    #[test]
+    fn a_migration_of_a_whole_schema_keeps_no_table_list() {
+        let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
+        let migrate = |tables| ProfileTask::Migrate {
+            source_connection_id: a,
+            source_database: None,
+            target_connection_id: b,
+            target_database: None,
+            source_schema: "public".to_owned(),
+            target_schema: "dbo".to_owned(),
+            tables,
+            objects: true,
+        };
+        let profiles = Profiles::open(None);
+        let keys = Keys::default();
+        let whole = profiles
+            .put(profile("Whole", migrate(None)), everything, &keys)
+            .unwrap();
+        let some = profiles
+            .put(
+                profile("Some", migrate(Some(vec!["t".to_owned()]))),
+                everything,
+                &keys,
+            )
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(&whole.task).unwrap()["tables"],
+            Value::Null
+        );
+        assert_eq!(
+            serde_json::to_value(&some.task).unwrap()["tables"],
+            serde_json::json!(["t"])
+        );
+        // A file saved before tables could be left out reads as it was, and a missing list is the whole schema.
+        let read: ProfileTask = serde_json::from_value(serde_json::json!({
+            "kind": "migrate", "source_connection_id": a, "target_connection_id": b,
+            "source_schema": "s", "target_schema": "t"
+        }))
+        .unwrap();
+        assert!(matches!(read, ProfileTask::Migrate { tables: None, .. }));
+        // An empty selection is no migration.
+        let empty = profile("Empty", migrate(Some(Vec::new())));
+        assert!(
+            profiles
+                .put(empty, everything, &keys)
+                .unwrap_err()
+                .contains("tables")
+        );
     }
 
     #[test]

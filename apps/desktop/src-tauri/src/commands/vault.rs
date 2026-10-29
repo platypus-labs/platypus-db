@@ -9,6 +9,7 @@ use tauri::State;
 
 use super::{AppState, lock};
 use crate::error::{CommandError, CommandResult};
+use crate::profiles::Profiles;
 
 #[derive(Debug, Serialize)]
 pub struct VaultStatus {
@@ -73,10 +74,11 @@ pub fn lock_vault(state: State<'_, AppState>) -> CommandResult<VaultStatus> {
     Ok(status(&state))
 }
 
-/// Moves the saved passwords from the keychain into a new vault.
+/// Moves the saved passwords (and the profiles' secrets) from the keychain into a new vault.
 #[tauri::command]
 pub async fn enable_vault(
     state: State<'_, AppState>,
+    profiles: State<'_, Profiles>,
     password: String,
 ) -> CommandResult<VaultStatus> {
     if lock(&state.vault).is_some() {
@@ -93,7 +95,9 @@ pub async fn enable_vault(
         blocking(move || Ok(VaultSecrets::create(path, &password, HashMap::new())?)).await?,
     );
     // A vault file left behind would be read at the next start instead of the keychain.
-    if let Err(e) = state.with_store(|s| s.move_secrets(created.clone())) {
+    if let Err(e) =
+        state.with_store(|s| s.move_secrets_with(created.clone(), &profiles.secret_ids()))
+    {
         let _ = std::fs::remove_file(created.path());
         return Err(e);
     }
@@ -101,17 +105,20 @@ pub async fn enable_vault(
     Ok(status(&state))
 }
 
-/// Moves the saved passwords back to the keychain and deletes the vault.
+/// Moves the saved passwords (and the profiles' secrets) back to the keychain and deletes the vault.
 #[tauri::command]
 pub async fn disable_vault(
     state: State<'_, AppState>,
+    profiles: State<'_, Profiles>,
     password: String,
 ) -> CommandResult<VaultStatus> {
     let v = vault(&state)?;
     // The master password is asked again, even when unlocked.
     let target = Arc::clone(&v);
     blocking(move || confirm_password(&target, &password)).await?;
-    state.with_store(|s| s.move_secrets(Arc::new(KeyringSecrets::default())))?;
+    state.with_store(|s| {
+        s.move_secrets_with(Arc::new(KeyringSecrets::default()), &profiles.secret_ids())
+    })?;
     // The passwords are in the keychain now, whatever happens to the file.
     *lock(&state.vault) = None;
     // A file still there would be read at the next start: renamed when it cannot go.

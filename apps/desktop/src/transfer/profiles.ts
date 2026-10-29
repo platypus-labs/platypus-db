@@ -3,6 +3,10 @@
 // unit tests load this module without it.
 import type { ImportPlan, ProfileTask, TransferProfile } from "../api";
 
+/** What a saved profile shows where its upload's signed URL is: the URL itself is kept in the
+ *  secret store, and a profile saved with this keeps it. */
+export const KEPT_URL = "(saved apart)";
+
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 /** The connections a task uses, the first being where its data is read or written. */

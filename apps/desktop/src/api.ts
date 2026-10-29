@@ -1227,7 +1227,8 @@ export type ProfileTask =
       target_database: string | null;
       source_schema: string;
       target_schema: string;
-      tables: string[];
+      /** The tables to copy; `null` is the whole schema, read when the profile runs. */
+      tables: string[] | null;
       objects: boolean;
     };
 

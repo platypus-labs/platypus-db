@@ -2166,6 +2166,7 @@ const pt: Record<string, string> = {
   "Save as profile": "Guardar como perfil",
   "Save profile": "Guardar perfil",
   "Save as new profile…": "Guardar como novo perfil…",
+  "The signed URL is saved with the profile. Type a new one to export from here, or run the profile.": "O URL assinado está guardado com o perfil. Escreva um novo para exportar daqui, ou execute o perfil.",
   "Save as profile…": "Guardar como perfil…",
   "Export tables": "Exportar tabelas",
   "Import a file": "Importar um ficheiro",

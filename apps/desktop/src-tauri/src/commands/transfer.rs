@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use futures::TryStreamExt;
-use platypus_core::{Connection, ConnectionConfig, DriverKind, ExecOptions, ExecResult};
+use platypus_core::{
+    Connection, ConnectionConfig, DriverKind, ExecOptions, ExecResult, ObjectKind,
+};
 use platypus_driver_duckdb::files::{BAD_LINES, ReadOptions, is_data_file};
 use platypus_sql::Dialect;
 use platypus_transfer::dump::{DumpFile, dump};
@@ -331,19 +333,20 @@ pub fn migrate_tables(
         &state,
         source,
         (target.config, target.label),
-        (source_schema, target_schema, tables, objects),
+        (source_schema, target_schema, Some(tables), objects),
         on_event,
     ))
 }
 
 /// Starts the migration of `tables` of `source_schema` in the database `source` opens to
-/// `target_schema` in that of `target`; returns the id `cancel_export` takes. The caller has
+/// `target_schema` in that of `target` (`None`: every table of the schema, read when it
+/// runs, so those added later come too); returns the id `cancel_export` takes. The caller has
 /// checked what the two allow.
 pub(crate) fn start_migrate(
     state: &AppState,
     source: ConnectionConfig,
     target: (ConnectionConfig, String),
-    (source_schema, target_schema, tables, objects): (String, String, Vec<String>, bool),
+    (source_schema, target_schema, tables, objects): (String, String, Option<Vec<String>>, bool),
     on_event: Channel<ExportEvent>,
 ) -> u64 {
     spawn_on(
@@ -352,6 +355,16 @@ pub(crate) fn start_migrate(
         on_event,
         move |job, to, dialect| async move {
             let from = super::connect(&source).await?;
+            let tables = match tables {
+                Some(tables) => tables,
+                None => from
+                    .objects(&source_schema)
+                    .await?
+                    .into_iter()
+                    .filter(|o| o.kind == ObjectKind::Table)
+                    .map(|o| o.name)
+                    .collect(),
+            };
             let done = migrate(
                 (&*from, Dialect::from(source.driver), &source_schema),
                 (&*to, dialect, &target_schema),

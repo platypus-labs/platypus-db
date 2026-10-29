@@ -2,6 +2,7 @@ import { useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import type { Bucket, Compression, DriverKind, ExportFormat, ExportOptions, TransferProfile } from "../api";
 import { ProfileButtons } from "../transfer/ProfileSave";
+import { KEPT_URL } from "../transfer/profiles";
 import { fmt } from "./ResultPanel";
 import { t, msg } from "../i18n";
 
@@ -211,6 +212,8 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
     },
   );
   const [source, setSource] = useState<ExportSource>(complete && !queryOnly ? "loaded" : "query");
+  /** The profile keeps its signed URL apart: it runs from the profiles, not from here. */
+  const urlKept = options.upload_url === KEPT_URL;
   const format = FORMATS.find((f) => f.value === options.format)!;
 
   /** The file to write, asked as the dialog's own choices name it; `null` if none is chosen. */
@@ -224,6 +227,7 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (urlKept) return;
     const chosen = sentOptions(options);
     const path = await askPath(chosen);
     if (path) onExport(path, chosen, source);
@@ -261,6 +265,9 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
         )}
         {options.format === "csv" && <CsvOptions options={options} onChange={setOptions} />}
         <OutputOptions options={options} signedUrl onChange={setOptions} />
+        {urlKept && (
+          <div className="notice small">{t("The signed URL is saved with the profile. Type a new one to export from here, or run the profile.")}</div>
+        )}
         {!queryOnly && (
           <fieldset className="choices">
             <label className="check">
@@ -284,7 +291,7 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
           <button type="button" onClick={onClose}>
             {t("Cancel")}
           </button>
-          <button type="submit" className="primary">
+          <button type="submit" className="primary" disabled={urlKept}>
             {t("Export…")}
           </button>
         </div>

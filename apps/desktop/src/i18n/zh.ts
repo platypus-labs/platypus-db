@@ -2166,6 +2166,7 @@ const zh: Record<string, string> = {
   "Save as profile": "另存为配置",
   "Save profile": "保存配置",
   "Save as new profile…": "另存为新配置…",
+  "The signed URL is saved with the profile. Type a new one to export from here, or run the profile.": "签名 URL 已随配置文件保存。输入新的 URL 以从此处导出，或直接运行配置文件。",
   "Save as profile…": "另存为配置…",
   "Export tables": "导出表",
   "Import a file": "导入文件",

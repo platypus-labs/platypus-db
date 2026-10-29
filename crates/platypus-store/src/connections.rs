@@ -959,7 +959,14 @@ impl ConnectionStore {
 
     /// Moves every saved secret to `to` and uses it from now on; the old store keeps none.
     pub fn move_secrets(&mut self, to: Arc<dyn SecretStore>) -> Result<()> {
-        let ids = self.secret_ids();
+        self.move_secrets_with(to, &[])
+    }
+
+    /// [`Self::move_secrets`] with the secrets under `extra` ids too: the ones the app keeps
+    /// beside the connections' (an id with nothing saved is skipped).
+    pub fn move_secrets_with(&mut self, to: Arc<dyn SecretStore>, extra: &[Uuid]) -> Result<()> {
+        let mut ids = self.secret_ids();
+        ids.extend_from_slice(extra);
         for &id in &ids {
             if let Some(secret) = self.secrets.get(id)? {
                 to.set(id, &secret)?;
@@ -1376,6 +1383,21 @@ SET b = 2;"
             s.ssh_secret(ssh.secret_id).unwrap().unwrap().expose(),
             "ssh"
         );
+    }
+
+    #[test]
+    fn moves_the_extra_secrets_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, old) = store(dir.path());
+        let (kept, absent) = (Uuid::new_v4(), Uuid::new_v4());
+        s.set_ssh_secret(kept, Some(&Secret::new("extra"))).unwrap();
+
+        let new = Arc::new(MemorySecrets::default());
+        s.move_secrets_with(new.clone(), &[kept, absent]).unwrap();
+        assert_eq!(old.get(kept).unwrap(), None, "nothing is left behind");
+        assert_eq!(new.get(kept).unwrap().unwrap().expose(), "extra");
+        assert_eq!(new.get(absent).unwrap(), None);
+        assert_eq!(s.ssh_secret(kept).unwrap().unwrap().expose(), "extra");
     }
 
     #[test]
