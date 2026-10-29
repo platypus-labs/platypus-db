@@ -33,7 +33,7 @@ pub enum ScriptError {
     #[error("cannot read {path}: {message}")]
     Read { path: String, message: String },
     /// A statement failed: its number, its line in the file and its start.
-    #[error("statement {number} (line {line}) failed: {error}\n{sql}")]
+    #[error("Statement {number} (line {line}) failed: {error}\n{sql}")]
     Statement {
         number: u64,
         line: u64,

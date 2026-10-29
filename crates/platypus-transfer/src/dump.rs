@@ -451,6 +451,16 @@ impl DumpFile {
     }
 }
 
+impl std::fmt::Debug for DumpFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Plain(_) => "DumpFile::Plain",
+            Self::Gzip(_) => "DumpFile::Gzip",
+            Self::Zstd(_) => "DumpFile::Zstd",
+        })
+    }
+}
+
 impl Write for DumpFile {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         match self {

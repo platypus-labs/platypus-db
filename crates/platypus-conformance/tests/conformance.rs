@@ -1601,7 +1601,57 @@ async fn dumps_and_runs_sql_files() {
             );
         }
         clean().await;
+        failing_file(&b, conn, d, dir.path()).await;
     }
+}
+
+/// A file whose statement fails: its number and line are told; in one transaction what ran
+/// before is rolled back, without one it stays.
+async fn failing_file(
+    b: &Backend,
+    conn: &dyn platypus_core::Connection,
+    d: platypus_sql::Dialect,
+    dir: &std::path::Path,
+) {
+    use platypus_transfer::script::{ScriptError, run_file};
+
+    let extra = d.qualified(Some(&b.schema), "conf_script_extra");
+    let _ = run(conn, &format!("DROP TABLE {extra}")).await;
+    run(conn, &format!("CREATE TABLE {extra} (id int)"))
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+    let file = dir.join("failing.sql");
+    let missing = d.qualified(Some(&b.schema), "conf_script_missing");
+    std::fs::write(
+        &file,
+        format!("INSERT INTO {extra} VALUES (1);\n\nINSERT INTO {missing} VALUES (1);\n"),
+    )
+    .unwrap();
+    // Transact-SQL runs the two as one batch.
+    let at = if d == platypus_sql::Dialect::SqlServer {
+        (1, 1)
+    } else {
+        (2, 3)
+    };
+    let count = || async {
+        let rows = collect(b, conn, &format!("SELECT COUNT(*) FROM {extra}")).await;
+        cell(&rows[0], 0, 0)
+    };
+    for (transaction, kept) in [(true, "0"), (false, "1")] {
+        match run_file(conn, d, &file, transaction, |_| true).await {
+            Err(ScriptError::Statement { number, line, .. }) => {
+                assert_eq!((number, line), at, "{}", b.name);
+            }
+            other => panic!("{}: {other:?}", b.name),
+        }
+        assert_eq!(
+            count().await.as_deref(),
+            Some(kept),
+            "{} {transaction}",
+            b.name
+        );
+    }
+    let _ = run(conn, &format!("DROP TABLE {extra}")).await;
 }
 
 /// A bulk load writes text exactly (quotes, tabs, line breaks, backslashes, empty text apart
