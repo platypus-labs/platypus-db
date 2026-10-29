@@ -136,3 +136,24 @@ pub async fn compare_schemas(
         script,
     })
 }
+
+/// Which migrations of the project in `folder` (Flyway, Liquibase, Prisma, Alembic, Rails) are
+/// applied to the database, which are pending, and which differ from what was applied.
+#[tauri::command]
+pub async fn migration_status(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: String,
+    folder: String,
+) -> CommandResult<Vec<platypus_schema::ToolStatus>> {
+    let path = std::path::Path::new(&folder);
+    if !path.is_dir() {
+        return Err(CommandError::new(
+            "folder_not_found",
+            format!("The folder {folder} does not exist."),
+        ));
+    }
+    let dialect = Dialect::from(state.session(session_id)?.config.driver);
+    let conn = state.live(session_id).await?;
+    Ok(platypus_schema::migration_status(conn.as_ref(), dialect, &schema, path).await?)
+}
