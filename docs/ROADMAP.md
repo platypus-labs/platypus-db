@@ -430,7 +430,8 @@ scrive comandi, uno per riga, con le virgolette di `redis-cli`; `BROWSE [db<n>.]
 pezzi (`HSCAN`, `LRANGE`…) man mano che la griglia scorre. Tabelle virtuali per tipo (anche
 `stream`, e `json` con RedisJSON), con il numero di chiavi fino a 10.000. Le modifiche in griglia
 diventano comandi (`edit::script`) eseguiti in un solo `MULTI`/`EXEC`, con anteprima e script di
-annullamento; `MULTI` nell'editor accoda sul client. Valori non UTF-8 mostrati con escape e
+annullamento; una chiave, un campo o un membro nuovo o rinominato che esiste già ferma il
+salvataggio prima che parta (`guard`). `MULTI` nell'editor accoda sul client. Valori non UTF-8 mostrati con escape e
 riletti nelle modifiche. Conformance in `tests/redis.rs` (servizio `redis`, Redis Stack, tra quelli
 di default di `docker/compose.yml`). Niente explain né `SUBSCRIBE`/`MONITOR`.
 

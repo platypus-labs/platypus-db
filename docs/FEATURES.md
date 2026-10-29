@@ -460,11 +460,14 @@ chunk at a time as the grid scrolls: a row per value, `key, value, ttl` for stri
 the keys, `LIMIT n` caps the rows. Values that are not UTF-8 show quoted with escapes.
 
 The grid edits the rows: a value (`SET … KEEPTTL`, `HSET`, `LSET`, `JSON.SET`), a TTL
-(`EXPIRE`, `PERSIST` for NULL), a string key's name (`RENAME`), a hash field or a set or
-sorted set member (moved), a score; new rows add keys and items (`SET … NX`, `HSET`, `RPUSH`,
-`SADD`, `ZADD`, `XADD`), deleted rows remove them (list items by their index). The preview
-shows the commands, which run as one `MULTI`/`EXEC` (a command the server refuses does not
-undo the others), and Undo script puts the values back. Read-only connections run only the
+(`EXPIRE`, `PERSIST` for NULL), a string key's name (`RENAMENX`), a hash field or a set or
+sorted set member (moved), a score; new rows add keys and items (`SET … NX`, `HSETNX`, `RPUSH`,
+`SADD`, `ZADD NX`, `XADD`), deleted rows remove them (list items by their index). A new or
+renamed key, field or member that already exists stops the save before anything runs, unless
+the same save deletes it. The preview shows the commands, which run as one `MULTI`/`EXEC` (a
+command the server refuses does not undo the others), and Undo script puts the values back.
+`FLUSHDB` and `FLUSHALL` ask first as an `UPDATE` without `WHERE` does, and on production
+connections commands that change the server (`CONFIG SET`, `SHUTDOWN`) ask like DDL. Read-only connections run only the
 commands that read. `rediss://` URLs and SSL modes from `require` up use TLS; the user and
 password are the ACL's. Terminal mode runs `redis-cli` with the password in its environment.
 
