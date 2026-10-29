@@ -105,7 +105,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | J — Amministrazione del server | ✅ fatto (P2) |
 | K — Shell ed ergonomia | ✅ completato |
 | L — Sicurezza operativa | ✅ completato |
-| M — Analisi dei dati | ✅ fatto (P2 in parte) |
+| M — Analisi dei dati | 🔒 Delfa · group-m-notebook · 2026-10-29 |
 | N — Accesso per agenti (MCP) | ✅ fatto (P1, P2) |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
