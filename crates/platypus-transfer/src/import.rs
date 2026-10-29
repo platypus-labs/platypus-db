@@ -1012,7 +1012,8 @@ pub async fn import_rows(
             if chunked {
                 schema = batch.schema();
                 pending.extend(rows_text(&batch)?);
-                if pending.len() >= if native { NATIVE_ROWS } else { BULK_ROWS } {
+                let chunk = if native { NATIVE_ROWS } else { BULK_ROWS };
+                if pending.len() >= chunk {
                     flush(
                         plan,
                         (target, dialect),
