@@ -1925,6 +1925,8 @@ const zh: Record<string, string> = {
   "Show PlatypusDB": "显示 PlatypusDB",
   "Quit": "退出",
   "The tray icon could not be shown: {message}": "无法显示托盘图标：{message}",
+  "Close this window?": "关闭此窗口？",
+  "Its tab has an open transaction or changes not saved: closing rolls them back.": "其标签页有未结束的事务或未保存的更改：关闭将回滚它们。",
 };
 
 export default zh;

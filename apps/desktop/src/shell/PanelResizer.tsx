@@ -1,14 +1,20 @@
 /** Handles that resize a panel by dragging, the arrow keys, or a double-click back to the
  *  default, with the size kept in the settings file (`layout.*`) for the next start. */
-import { useState } from "react";
-import { getStored, setStored } from "../settings";
+import { useEffect, useState } from "react";
+import { getStored, onSettingsChanged, setStored } from "../settings";
 
-/** A size kept under `key`: the one saved, else `fallback`. */
+/** A size kept under `key`: the one saved, else `fallback`; one saved elsewhere (another tab's
+ *  editor) is followed. */
 export function useStoredSize(key: string, fallback: number): [number, (size: number) => void] {
-  const [size, setSize] = useState(() => {
+  const stored = () => {
     const saved = getStored(key);
     return typeof saved === "number" ? saved : fallback;
-  });
+  };
+  const [size, setSize] = useState(stored);
+  useEffect(() => {
+    const stop = onSettingsChanged(() => setSize(stored()));
+    return () => void stop();
+  }, [key, fallback]);
   return [size, setSize];
 }
 

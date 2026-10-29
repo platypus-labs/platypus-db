@@ -565,7 +565,7 @@
 }
 
 .map-panel {
-  width: 420px;
+  width: var(--side-panel-width, 420px);
 }
 
 .map-view {

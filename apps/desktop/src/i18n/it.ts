@@ -1925,6 +1925,8 @@ const it: Record<string, string> = {
   "Show PlatypusDB": "Mostra PlatypusDB",
   "Quit": "Esci",
   "The tray icon could not be shown: {message}": "Impossibile mostrare l'icona nell'area di notifica: {message}",
+  "Close this window?": "Chiudere questa finestra?",
+  "Its tab has an open transaction or changes not saved: closing rolls them back.": "Il suo tab ha una transazione aperta o modifiche non salvate: chiudendo si annullano.",
 };
 
 export default it;

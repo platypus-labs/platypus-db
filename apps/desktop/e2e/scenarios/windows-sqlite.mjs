@@ -65,7 +65,16 @@ export default async function (page, { dir, port }) {
   const before = await page.eval(`${visibleTab}.querySelector('.cm-editor').getBoundingClientRect().height`);
   await dragEditor(page, 80);
   await page.waitFor(`${visibleTab}.querySelector('.cm-editor').getBoundingClientRect().height > ${before + 40}`);
-  assert.match(readFileSync(join(dir, "settings.toml"), "utf8"), /editor_height = \d+/);
+  // Written after the drag ends, through the backend: waited for, not read at once.
+  const saved = () => {
+    try {
+      return /editor_height = \d+/.test(readFileSync(join(dir, "settings.toml"), "utf8"));
+    } catch {
+      return false;
+    }
+  };
+  for (let i = 0; i < 100 && !saved(); i++) await new Promise((r) => setTimeout(r, 100));
+  assert.ok(saved(), "the editor's height is in settings.toml");
 
   // Open in a new window: the tab leaves the main window and its text goes along.
   await typeSql(page, SQL);

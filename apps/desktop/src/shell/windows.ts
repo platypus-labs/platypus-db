@@ -18,12 +18,39 @@ export const WINDOW_EVENTS = {
   attach: "platypus://attach-tab",
   /** A window closed with this tab: kept to reopen, as a tab closed here. */
   closed: "platypus://window-tab-closed",
+  /** The user is at another window: the main one's idle lock waits. */
+  activity: "platypus://activity",
+  /** To every window: the app locked, or unlocked. */
+  locked: "platypus://locked",
+  unlocked: "platypus://unlocked",
 } as const;
+
+/** Where a window keeps its tab while it is open, by the window's label: a window that does
+ *  not close cleanly (the app quit from the tray, the main window gone) leaves it for the next
+ *  start. */
+export const WINDOW_TAB_KEY = "platypus.window.";
+
+/** The tabs windows left at the last run, taken: they open again in the main window. */
+export function takeLeftWindowTabs(): PersistedTab[] {
+  const left: PersistedTab[] = [];
+  try {
+    for (const key of Object.keys(localStorage).filter((k) => k.startsWith(WINDOW_TAB_KEY))) {
+      const text = localStorage.getItem(key);
+      localStorage.removeItem(key);
+      if (text) left.push(JSON.parse(text) as PersistedTab);
+    }
+  } catch {
+    // No storage, or a value that is not a tab: nothing to bring back.
+  }
+  return left;
+}
 
 export interface WindowEvents {
   openTab: (request: { kind: TabKindName; connectionId: string; init?: Record<string, unknown> }) => void;
   attach: (saved: PersistedTab) => void;
   closed: (saved: PersistedTab) => void;
+  /** Another window was unlocked with the master password. */
+  unlocked: () => void;
 }
 
 /** Listens, in the main window, to what the other windows send. */
@@ -35,6 +62,7 @@ export function useWindowEvents(handlers: WindowEvents) {
       listen<Parameters<WindowEvents["openTab"]>[0]>(WINDOW_EVENTS.openTab, (e) => latest.current.openTab(e.payload)),
       listen<PersistedTab>(WINDOW_EVENTS.attach, (e) => latest.current.attach(e.payload)),
       listen<PersistedTab>(WINDOW_EVENTS.closed, (e) => latest.current.closed(e.payload)),
+      listen(WINDOW_EVENTS.unlocked, () => latest.current.unlocked()),
     ];
     return () => stops.forEach((s) => void s.then((stop) => stop()));
   }, []);

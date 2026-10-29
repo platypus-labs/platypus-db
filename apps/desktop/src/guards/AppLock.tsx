@@ -2,6 +2,7 @@
  *  window hides behind the master password, which locks again, and the production sessions
  *  are closed. It needs a master password: without one there is nothing to lock with. */
 import { useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { api, toCommandError } from "../api";
 import { defineSetting, useSetting } from "../settings";
 import mark from "../assets/brand/platypus-mark.png";
@@ -32,12 +33,15 @@ export function useIdleLock(lock: () => void, locked: boolean) {
       last.current = Date.now();
     };
     for (const name of ACTIVITY) window.addEventListener(name, seen, { capture: true, passive: true });
+    // The user at another window of the app is not away either.
+    const elsewhere = listen("platypus://activity", seen);
     const timer = setInterval(() => {
       if (Date.now() - last.current >= minutes * 60_000) latest.current();
     }, 15_000);
     return () => {
       clearInterval(timer);
       for (const name of ACTIVITY) window.removeEventListener(name, seen, { capture: true });
+      void elsewhere.then((stop) => stop());
     };
   }, [minutes, locked]);
 }
