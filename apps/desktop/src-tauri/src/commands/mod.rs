@@ -11,6 +11,7 @@ pub mod backup;
 pub mod catalog;
 pub mod cli;
 pub mod connections;
+pub mod dashboards;
 pub mod data;
 pub mod diagnostics;
 pub mod drivers;

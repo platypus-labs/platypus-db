@@ -154,6 +154,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     );
     state.prune_catalog();
     app.manage(state);
+    app.manage(commands::dashboards::Dashboards(
+        dir(app, false).map(|d| d.join("dashboards")),
+    ));
     app.manage(windows::Detached::default());
     // Downloaded drivers live with the data; removals that Windows refused are finished.
     if let Ok(data) = dir(app, false) {
@@ -362,6 +365,11 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::sql::sql_add_condition,
         commands::sql::sql_order_clause,
         commands::sql::sql_filter_columns,
+        commands::dashboards::list_dashboards,
+        commands::dashboards::read_dashboard,
+        commands::dashboards::save_dashboard,
+        commands::dashboards::rename_dashboard,
+        commands::dashboards::delete_dashboard,
         commands::scripts::list_scripts,
         commands::scripts::create_script,
         commands::scripts::create_script_folder,
