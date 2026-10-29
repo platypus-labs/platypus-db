@@ -4,6 +4,7 @@ import { type DriverKind, isNoSql, type SavedConnection } from "../api";
 import { msg } from "../i18n";
 import { workbench } from "../workbench";
 import { CompareDialog } from "./CompareDialog";
+import { DataCompareDialog } from "./DataCompareDialog";
 import { LintDialog } from "./LintDialog";
 import { type ObjectFormKind, ObjectFormDialog } from "./ObjectFormDialog";
 import { MigrationsDialog } from "./MigrationsDialog";
@@ -87,4 +88,17 @@ registerAction({
   when: ({ connection }) => !isNoSql(connection.driver),
   run: ({ connection, database, schema }) =>
     workbench().openDialog((close) => createElement(MigrationsDialog, { connection, database, schema: schema.name, onClose: close })),
+});
+
+registerAction({
+  id: "schema.compare_data",
+  scope: "navigator.object",
+  title: "Compare data with…",
+  group: "open",
+  order: 38,
+  when: ({ connection, object }) => !isNoSql(connection.driver) && object.kind === "table",
+  run: ({ connection, database, schema, object }) =>
+    workbench().openDialog((close) =>
+      createElement(DataCompareDialog, { connection, database, schema: schema.name, table: object.name, onClose: close }),
+    ),
 });

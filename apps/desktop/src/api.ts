@@ -727,6 +727,45 @@ export type ObjectKind =
   | "synonym"
   | "package";
 
+/** A table of one side of a data comparison. */
+export interface TableRef {
+  schema: string;
+  name: string;
+}
+
+export interface CompareOptions {
+  /** A condition both tables are read with. */
+  filter: string | null;
+  /** Whether the rows only in the target are deleted. */
+  delete_missing: boolean;
+}
+
+export interface CellChange {
+  column: string;
+  source: string | null;
+  target: string | null;
+}
+
+export interface RowChange {
+  change: "added" | "removed" | "changed";
+  key: (string | null)[];
+  cells: CellChange[];
+}
+
+/** The differences between two tables and the script that makes the target like the source. */
+export interface DataDiff {
+  key: string[];
+  columns: string[];
+  same: number;
+  added: number;
+  removed: number;
+  changed: number;
+  /** The first differences only (200); the counts and the statements cover them all. */
+  samples: RowChange[];
+  statements: string[];
+  warnings: string[];
+}
+
 export interface ObjectMeta {
   name: string;
   kind: ObjectKind;
@@ -2063,6 +2102,9 @@ export const api = {
   /** The script that makes the target schema like the source one. */
   compareSchemas: (sourceSession: number, sourceSchema: string, targetSession: number, targetSchema: string) =>
     invoke<{ script: TableScript; sql: string }>("compare_schemas", { sourceSession, sourceSchema, targetSession, targetSchema }),
+  /** The rows that differ between two tables with the same key, and the statements that make the target like the source. */
+  compareTableData: (sourceSession: number, source: TableRef, targetSession: number, target: TableRef, options: CompareOptions) =>
+    invoke<DataDiff>("compare_table_data", { sourceSession, source, targetSession, target, options }),
   /** A comparison script as the text of a Flyway migration or a Liquibase changelog. */
   schemaChangelog: (driver: DriverKind, script: TableScript, format: ChangelogFormat, description: string, author: string, id: string) =>
     invoke<string>("schema_changelog", { driver, script, format, description, author, id }),

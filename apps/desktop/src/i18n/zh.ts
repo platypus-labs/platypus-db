@@ -2253,6 +2253,23 @@ const zh: Record<string, string> = {
   "marked as run": "已标记为已执行",
   "run again": "已重新执行",
   "checksum differs (database {database}, file {file})": "校验和不一致（数据库 {database}，文件 {file}）",
+  // Group I: data comparison
+  "Compare data with…": "与…比较数据",
+  "Compare the data of {table} with…": "将 {table} 的数据与…比较",
+  "Rows are matched by the key of {table}. The script makes the target table like it: rows inserted, updated and, if asked, deleted. It opens in the SQL editor of the target, to review before running.": "按 {table} 的键匹配行。脚本使目标表与之一致：插入、更新行，并按需删除行。脚本会在目标的 SQL 编辑器中打开，执行前请先检查。",
+  "Choose a table": "选择表",
+  "Filter (WHERE)": "筛选 (WHERE)",
+  "Delete rows missing from the source": "删除源中不存在的行",
+  "Same": "相同",
+  "Only in source → inserted": "仅在源中 → 插入",
+  "Changed → updated": "已更改 → 更新",
+  "Only in target → deleted": "仅在目标中 → 删除",
+  "Only in target → kept": "仅在目标中 → 保留",
+  "Only in source": "仅在源中",
+  "Changed": "已更改",
+  "Only in target": "仅在目标中",
+  "The tables have the same rows": "两个表的行相同",
+  "First {shown} of {total} differences": "前 {shown} 条差异，共 {total} 条",
 };
 
 export default zh;

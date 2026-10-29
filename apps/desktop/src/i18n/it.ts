@@ -2253,6 +2253,23 @@ const it: Record<string, string> = {
   "marked as run": "segnata come eseguita",
   "run again": "eseguita di nuovo",
   "checksum differs (database {database}, file {file})": "checksum diverso (database {database}, file {file})",
+  // Group I: data comparison
+  "Compare data with…": "Confronta i dati con…",
+  "Compare the data of {table} with…": "Confronta i dati di {table} con…",
+  "Rows are matched by the key of {table}. The script makes the target table like it: rows inserted, updated and, if asked, deleted. It opens in the SQL editor of the target, to review before running.": "Le righe si abbinano per la chiave di {table}. Lo script rende la tabella di destinazione uguale: righe inserite, aggiornate e, se richiesto, eliminate. Si apre nell'editor SQL della destinazione, da controllare prima di eseguirlo.",
+  "Choose a table": "Scegli una tabella",
+  "Filter (WHERE)": "Filtro (WHERE)",
+  "Delete rows missing from the source": "Elimina le righe che mancano nell'origine",
+  "Same": "Uguali",
+  "Only in source → inserted": "Solo nell'origine → inserite",
+  "Changed → updated": "Diverse → aggiornate",
+  "Only in target → deleted": "Solo nella destinazione → eliminate",
+  "Only in target → kept": "Solo nella destinazione → mantenute",
+  "Only in source": "Solo nell'origine",
+  "Changed": "Diversa",
+  "Only in target": "Solo nella destinazione",
+  "The tables have the same rows": "Le tabelle hanno le stesse righe",
+  "First {shown} of {total} differences": "Prime {shown} di {total} differenze",
 };
 
 export default it;
