@@ -19,6 +19,7 @@ import { asksPassword, connectionColor, isProduction } from "./connections";
 import { sessionSettingsChanged } from "./connectionEdit";
 import { Navigator } from "./components/Navigator";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { AgentWriteDialog } from "./agents/AgentWriteDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { CrashBanner } from "./diagnostics/Diagnostics";
 import { CommandPalette } from "./shell/CommandPalette";
@@ -1157,6 +1158,7 @@ export function App() {
         />
       )}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      <AgentWriteDialog />
       {paletteOpen && (
         <CommandPalette
           connections={connectionsOf(project, connections ?? [])}

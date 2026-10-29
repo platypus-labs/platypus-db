@@ -1,5 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { tableFromIPC } from "apache-arrow";
+import type { Verdict, WriteRequest } from "./agents/writes";
 
 export type DriverKind =
   | "postgres"
@@ -119,6 +120,23 @@ export interface AgentSetup {
   claude_command: string;
   /** The `[mcp_servers.platypus]` table of Codex's `config.toml`. */
   codex_config: string;
+}
+
+/** The bridge agents reach the open app through (Settings › Agents). */
+export interface BridgeStatus {
+  enabled: boolean;
+  port: number;
+  /** The MCP endpoint, while the bridge runs. */
+  url: string | null;
+  token: string;
+  /** Why it does not run, e.g. the port is taken. */
+  error: string | null;
+}
+
+/** An agent connected to the bridge. */
+export interface ConnectedAgent {
+  session: string;
+  agent: string;
 }
 
 /** Why agents cannot open a connection their access lets them use: it asks for its password
@@ -1462,6 +1480,14 @@ export const api = {
   saveDiagnostics: (path: string) => invoke<void>("save_diagnostics", { path }),
   agentSetup: () => invoke<AgentSetup>("agent_setup"),
   agentBlockers: () => invoke<Record<string, AgentBlocker>>("agent_blockers"),
+  agentBridge: () => invoke<BridgeStatus>("agent_bridge"),
+  /** Starts the bridge again after its settings changed. */
+  restartAgentBridge: () => invoke<BridgeStatus>("restart_agent_bridge"),
+  regenerateAgentToken: () => invoke<BridgeStatus>("regenerate_agent_token"),
+  /** Answers a change an agent asked for; `false` when it no longer waits. */
+  answerAgentWrite: (id: string, verdict: Verdict) => invoke<boolean>("answer_agent_write", { id, verdict }),
+  agentWritesWaiting: () => invoke<WriteRequest[]>("agent_writes_waiting"),
+  connectedAgents: () => invoke<ConnectedAgent[]>("connected_agents"),
   staleAgentRegistrations: () => invoke<StaleRegistration[]>("stale_agent_registrations"),
   agentClients: () => invoke<AgentClient[]>("agent_clients"),
   installAgentClient: (id: string) => invoke<InstalledClient>("install_agent_client", { id }),

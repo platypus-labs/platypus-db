@@ -10,6 +10,7 @@ import {
 import { isProduction } from "../connections";
 import { agentAccessLabel, effectiveAgentAccess } from "./access";
 import { AgentActivity } from "./AgentActivity";
+import { AgentBridge } from "./AgentBridge";
 import { AgentClients } from "./AgentClients";
 import { CopyBlock } from "./CopyBlock";
 import { t, tNodes } from "../i18n";
@@ -133,7 +134,7 @@ export function AgentsPanel() {
     <div className="agents-panel">
       <p className="muted small">
         {tNodes(
-          "Agents such as Claude Code, Codex or Cursor can use your saved connections through PlatypusDB's MCP server: the app itself, started with {mcp}. The agent starts it by itself, without a window: PlatypusDB does not need to be open. Agents read the schema and run queries with the access each connection gives them; passwords never reach them. Their queries are in the history, with the agent's name.",
+          "Agents such as Claude Code, Codex or Cursor can use your saved connections through PlatypusDB's MCP server: the app itself, started with {mcp}. The agent starts it by itself, without a window: PlatypusDB does not need to be open, unless agents must ask before their changes (Settings › Safety). Agents read the schema and run queries with the access each connection gives them; passwords never reach them. Their queries are in the history, with the agent's name.",
           { mcp: <code>--mcp</code> },
         )}
       </p>
@@ -161,6 +162,7 @@ export function AgentsPanel() {
         {stale.map((s) => (
           <StaleNotice key={`${s.agent}:${s.project ?? ""}:${s.name}`} stale={s} />
         ))}
+        <AgentBridge />
       </div>
       <div className="dialog-page" data-agents-panel="activity" hidden={page !== "activity"}>
         {page === "activity" && <AgentActivity />}

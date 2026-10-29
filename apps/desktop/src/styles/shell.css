@@ -170,6 +170,25 @@
   white-space: nowrap;
 }
 
+/* Shown while agents are connected to the open app. */
+.topbar-agents {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  max-width: 200px;
+  padding: 0 10px;
+  border-color: transparent;
+  border-radius: var(--radius-xl);
+  background: var(--ok-bg);
+  color: var(--ok);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .topbar-search {
   flex: 0 1 440px;
   min-width: 160px;
