@@ -31,8 +31,8 @@ milioni di righe.
 
 ## Perché PlatypusDB
 
-- **Leggero.** Circa 20 MB da scaricare su Linux, contro i 122 MB di DBeaver e i 346 MB di
-  Beekeeper Studio; una finestra in meno di 500 ms e circa 130 MB di memoria con una
+- **Leggero.** Circa 20 MB da scaricare su Linux, contro i 122 MB di DBeaver, i 346 MB di
+  Beekeeper Studio e circa 1 GB di DataGrip; una finestra in meno di 500 ms e circa 130 MB di memoria con una
   connessione.
 - **Sicuro in produzione.** Il tipo di connessione colora la cornice della finestra, le
   istruzioni rischiose chiedono conferma, la produzione si apre con il commit manuale e ogni
@@ -145,15 +145,15 @@ Strumenti, limiti, il bridge HTTP e la CLI `platypus`: [docs/AGENTS.md](docs/AGE
 | 5M di righe in Parquet | 3,2 s, picco di 31 MB | in streaming |
 | Installer | 5,4 MB | < 20 MB |
 
-| | PlatypusDB | DBeaver CE | Beekeeper Studio |
-|---|---|---|---|
-| Runtime | Rust e la web view del sistema | Java, JRE incluso | Electron |
-| Download per Linux | 19,5 MiB | 122 MiB | 346 MiB |
-| Su disco | 46 MiB | 206 MiB | 1.105 MiB |
-| Licenza | AGPL-3.0 | Apache 2.0 | GPLv3 |
+| | PlatypusDB | DBeaver CE | DataGrip | TablePlus | Beekeeper Studio |
+|---|---|---|---|---|---|
+| Runtime | Rust e la web view del sistema | Java, JRE incluso | Java, JetBrains Runtime incluso | Nativo (GTK su Linux) | Electron |
+| Download per Linux | 19,5 MiB | 122 MiB | 1.047 MiB | 60 MiB | 346 MiB |
+| Su disco | 46 MiB | 206 MiB | non misurato | 180 MiB | 1.105 MiB |
+| Licenza | AGPL-3.0 | Apache 2.0 | Proprietaria | Proprietaria | GPLv3 |
 
 Windows 11, Ryzen 7 9700X. Dimensioni dei download ufficiali per Linux di PlatypusDB 0.2.0,
-DBeaver CE 26.2.3 e Beekeeper Studio 6.2.0; avvio e memoria a confronto sono ancora da misurare.
+DBeaver CE 26.2.3, DataGrip 2026.2.6, TablePlus 2.2.0 e Beekeeper Studio 6.2.0; avvio e memoria a confronto sono ancora da misurare.
 Metodo, test di scala e i primi numeri su Linux in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Sviluppo

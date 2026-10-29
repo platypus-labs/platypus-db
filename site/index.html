@@ -53,10 +53,13 @@
 
     <figure class="shot shot-main">
       <div class="frame">
-        <img src="img/screenshots/data-viewer.png" width="1600" height="960"
-             alt="The PlatypusDB window: the navigator with a development connection on the left, a SELECT on the orders table in the SQL editor, the result grid sorted by id from its header, and the value panel showing one cell as formatted JSON.">
+        <picture>
+          <source srcset="img/screenshots/hero.gif" media="(prefers-reduced-motion: no-preference)">
+          <img src="img/screenshots/data-viewer.png" width="1600" height="960"
+               alt="The PlatypusDB window: the navigator on the left, a table opened in the result grid and sorted from its header.">
+        </picture>
       </div>
-      <figcaption>The data viewer sorted from its header, with the value panel.</figcaption>
+      <figcaption>A table opened from the navigator and sorted from its header: a million rows in the animation.</figcaption>
     </figure>
 
     <section class="section" id="features" aria-labelledby="features-title">
@@ -218,11 +221,11 @@
           <figcaption>Choosing the database for a new connection.</figcaption>
         </figure>
         <figure class="shot panel" id="shot-autocomplete" role="tabpanel" aria-labelledby="tab-autocomplete">
-          <div class="frame"><img src="img/screenshots/autocomplete.png" width="1600" height="960" loading="lazy" alt="The SQL editor offering the tables related by foreign key after JOIN, each with its alias and ON condition."></div>
+          <div class="frame"><picture><source srcset="img/screenshots/editor.gif" media="(prefers-reduced-motion: no-preference)"><img src="img/screenshots/autocomplete.png" width="1600" height="960" loading="lazy" alt="The SQL editor completing a JOIN from the foreign keys, with the alias and ON condition; in the animation the query then runs and its result is drawn as a chart."></picture></div>
           <figcaption>JOIN completion from the foreign keys.</figcaption>
         </figure>
         <figure class="shot panel" id="shot-data-editor" role="tabpanel" aria-labelledby="tab-data-editor">
-          <div class="frame"><img src="img/screenshots/data-editor.png" width="1600" height="960" loading="lazy" alt="The result grid with edited cells, a new row and a deleted row highlighted before saving."></div>
+          <div class="frame"><picture><source srcset="img/screenshots/data-editor.gif" media="(prefers-reduced-motion: no-preference)"><img src="img/screenshots/data-editor.png" width="1600" height="960" loading="lazy" alt="The result grid with edited cells and a new row highlighted, the SQL previewed before saving."></picture></div>
           <figcaption>Pending changes in the data editor.</figcaption>
         </figure>
         <figure class="shot panel" id="shot-catalog" role="tabpanel" aria-labelledby="tab-catalog">
@@ -242,7 +245,7 @@
           <figcaption>Two tables joined on their foreign key.</figcaption>
         </figure>
         <figure class="shot panel" id="shot-explain" role="tabpanel" aria-labelledby="tab-explain">
-          <div class="frame"><img src="img/screenshots/explain.png" width="1600" height="960" loading="lazy" alt="An explain analyze plan as a tree, each step tinted by its share of the time, with an index suggestion."></div>
+          <div class="frame"><picture><source srcset="img/screenshots/explain.gif" media="(prefers-reduced-motion: no-preference)"><img src="img/screenshots/explain.png" width="1600" height="960" loading="lazy" alt="An explain analyze plan as a tree, each step tinted by its share of the time, with an index suggestion."></picture></div>
           <figcaption>Explain analyze with the heatmap and an index suggestion.</figcaption>
         </figure>
         <figure class="shot panel" id="shot-query-manager" role="tabpanel" aria-labelledby="tab-query-manager">
@@ -337,6 +340,29 @@ platypus --connection <span class="s">"Local PG"</span> query \
         </table>
       </div>
       <p class="note">Windows 11, Ryzen 7 9700X; details and method in <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">BENCHMARKS.md</a>.</p>
+
+      <h2 class="sub" id="compare-title">Next to other clients</h2>
+      <div class="grid-wrap" role="region" aria-labelledby="compare-title" tabindex="0">
+        <table class="grid perf">
+          <thead>
+            <tr>
+              <th scope="col"></th>
+              <th scope="col">platypusdb</th>
+              <th scope="col">dbeaver ce</th>
+              <th scope="col">datagrip</th>
+              <th scope="col">tableplus</th>
+              <th scope="col">beekeeper studio</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Runtime</td><td>Rust, the system's web view</td><td>Java, JRE bundled</td><td>Java, JetBrains Runtime bundled</td><td>Native (GTK on Linux)</td><td>Electron</td></tr>
+            <tr><td>Linux download</td><td class="num">19.5 MiB</td><td class="num">122 MiB</td><td class="num">1,047 MiB</td><td class="num">60 MiB</td><td class="num">346 MiB</td></tr>
+            <tr><td>On disk</td><td class="num">46 MiB</td><td class="num">206 MiB</td><td class="num">not measured</td><td class="num">180 MiB</td><td class="num">1,105 MiB</td></tr>
+            <tr><td>License</td><td>AGPL-3.0</td><td>Apache 2.0</td><td>Proprietary</td><td>Proprietary</td><td>GPLv3</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">Official Linux downloads of PlatypusDB 0.2.0, DBeaver CE 26.2.3, DataGrip 2026.2.6, TablePlus 2.2.0 and Beekeeper Studio 6.2.0, measured on 29 October 2026. Start and memory side by side are still to be measured.</p>
     </section>
 
     <section class="section" id="download" aria-labelledby="download-title">
