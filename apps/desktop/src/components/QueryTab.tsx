@@ -2055,6 +2055,8 @@ export function QueryTab({
           loadedRows={rowsResult.rows}
           complete={rowsResult.status.kind === "rows" && rowsResult.status.finished && rowsResult.status.complete}
           transactionOpen={!!tx?.open}
+          // The SQL field's output runs on a copy of its own: it cannot be kept as a profile.
+          query={rowsResult === resultSql.output ? undefined : { connection_id: connection.id, database: tab.database ?? null, sql: rowsResult.sql }}
           onExport={(path, options, source) => void startExport(rowsResult, path, options, source)}
           onClose={() => setExportOpen(false)}
         />

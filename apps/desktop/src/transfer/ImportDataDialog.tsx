@@ -15,6 +15,7 @@ import {
   type SchemaMeta,
   toCommandError,
   takesNoRows,
+  type TransferProfile,
 } from "../api";
 import { GuardDialog } from "../guards/GuardDialog";
 import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
@@ -22,6 +23,8 @@ import { requestNavigatorRefresh } from "../navigatorEvents";
 import { omitsSchema } from "../sqlNames";
 import { workbench } from "../workbench";
 import { withDriver } from "../drivers/DriverPopup";
+import { ProfileButtons } from "./ProfileSave";
+import { changedKeys, mappingFor, missingColumns, type NewColumn, newColumnsFor } from "./profiles";
 import { t, plural, msg } from "../i18n";
 
 /** A table of a connection: where rows come from or go to. */
@@ -44,14 +47,9 @@ interface Props {
   path?: string;
   /** The name a new table starts with. */
   newTable?: string;
+  /** The profile the dialog was opened from: its choices fill the dialog again. */
+  profile?: TransferProfile;
   onClose: () => void;
-}
-
-/** A source column of a new table: whether it is copied, and its name and type there. */
-interface NewColumn {
-  include: boolean;
-  target: string;
-  type: string;
 }
 
 type Status =
@@ -82,36 +80,46 @@ const MODES: { value: ImportMode; label: string }[] = [
   { value: "upsert", label: msg("Update rows with the same key, add the others") },
 ];
 
+/** Whether `path` is a workbook, whose sheet is a table of its own. */
+const isWorkbook = (path: string) => /.(xlsx|xlsm|xls|ods)$/i.test(path.trim());
+
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 const failure = (e: unknown) => toCommandError(e).message;
 
 /** Copies rows into a table: from a CSV, TSV, JSON, NDJSON, Parquet or Excel file, or from a
  *  table of another database. The target is an existing table, each of its columns fed from
  *  a source column, or a new one created with the source types mapped to the target's. */
-export function ImportDataDialog({ target: start, source, path: initial, newTable: name, onClose }: Props) {
+export function ImportDataDialog({ target: start, source, path: initial, newTable: name, profile, onClose }: Props) {
   const transfer = source !== undefined;
+  const task = profile?.task;
+  const planned = task?.kind === "import_file" || task?.kind === "transfer_table" ? task.plan : null;
+  /** The profile's plan until the dialog has taken its columns and mode from it. */
+  const pending = useRef(planned);
+  /** What the profile names that is not there any more. */
+  const [notes, setNotes] = useState<string[]>([]);
+  const note = (text: string) => setNotes((all) => (all.includes(text) ? all : [...all, text]));
   const [target, setTarget] = useState(start);
   const [sid, setSid] = useState<number | null>(null);
   const [sourceSid, setSourceSid] = useState<number | null>(null);
   /** The target connection's schemas and the tables of the target schema, for a transfer. */
   const [schemas, setSchemas] = useState<SchemaMeta[]>([]);
   const [tables, setTables] = useState<string[]>([]);
-  const [path, setPath] = useState(initial ?? "");
+  const [path, setPath] = useState(initial ?? (task?.kind === "import_file" ? task.path : ""));
   /** The file the preview shows: an edited path is read again on Enter. */
   const [loaded, setLoaded] = useState<string | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
-  const [newTable, setNewTable] = useState(name ?? source?.table ?? "");
+  const [newTable, setNewTable] = useState(planned?.table ?? name ?? source?.table ?? "");
   const [newColumns, setNewColumns] = useState<NewColumn[]>([]);
   const [targets, setTargets] = useState<ColumnMeta[]>([]);
   /** For each target column, the source column that feeds it ("" for none). */
   const [mapping, setMapping] = useState<string[]>([]);
-  const [mode, setMode] = useState<ImportMode>("append");
+  const [mode, setMode] = useState<ImportMode>(planned?.mode ?? "append");
   const [status, setStatus] = useState<Status>({ state: "idle" });
   const [error, setError] = useState<string | null>(null);
   /** The file's lines do not all hold as many values: they can be left out. */
   const [badLines, setBadLines] = useState(false);
   /** How the file is read; `loaded` was read so. */
-  const [fileOptions, setFileOptions] = useState<FileOptions>(DEFAULT_FILE_OPTIONS);
+  const [fileOptions, setFileOptions] = useState<FileOptions>(task?.kind === "import_file" ? task.options : DEFAULT_FILE_OPTIONS);
   const fail = (e: unknown) => setError(failure(e));
   /** The confirmation a production connection asks before the import. */
   const [confirm, setConfirm] = useState<GuardRequest | null>(null);
@@ -141,7 +149,8 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
       .then(async (id) => {
         if (!live) return;
         setSid(id);
-        if (id === null || !transfer) return;
+        // A profile of the current schema does not name it.
+        if (id === null || !(transfer || !target.schema)) return;
         const found = await api.listSchemas(id);
         if (live) setSchemas(found);
       })
@@ -156,7 +165,15 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
     if (sid === null || !transfer || !target.schema) return;
     let live = true;
     api.listObjects(sid, target.schema).then(
-      (objects) => live && setTables(objects.filter((o) => o.kind === "table").map((o) => o.name)),
+      (objects) => {
+        if (!live) return;
+        const found = objects.filter((o) => o.kind === "table").map((o) => o.name);
+        setTables(found);
+        if (pending.current && !pending.current.create && !found.some((n) => same(n, pending.current!.table))) {
+          note(t("The table {table} no longer exists: the rows go to a new one.", { table: pending.current.table }));
+          pending.current = null;
+        }
+      },
       (e: unknown) => live && fail(e),
     );
     return () => {
@@ -182,19 +199,40 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
   useEffect(() => {
     if (sid === null) return;
     if (source && sourceSid !== null) void loadTable(sourceSid, sid);
-    else if (!source && path) void loadFile(path, null);
+    else if (!source && path) void loadFile(path, planned && isWorkbook(path) ? planned.source_table : null);
   }, [sid, sourceSid]);
 
   // Each target column takes the source column of the same name, ignoring case.
   useEffect(() => {
     if (!preview) return;
     const names = preview.columns.map((c) => c.name);
+    const saved = pending.current;
+    if (saved && !saved.create && targets.length > 0) {
+      pending.current = null;
+      const named = targets.map((c) => c.name);
+      setMapping(mappingFor(named, saved).map((from) => (names.includes(from) ? from : "")));
+      const gone = missingColumns(saved, names, named);
+      if (gone.sources.length + gone.targets.length > 0) {
+        note(t("No longer found, left out: {names}.", { names: [...gone.sources, ...gone.targets].join(", ") }));
+      }
+      const key = targets.filter((c) => c.primary_key).map((c) => c.name);
+      if (changedKeys(saved, key)) note(t("The primary key of the table is not the one of the profile: the rows are matched on the table's."));
+      return;
+    }
     setMapping(targets.map((t) => names.find((n) => same(n, t.name)) ?? ""));
   }, [preview, targets]);
 
   function show(p: ImportPreview) {
     setPreview(p);
-    setNewColumns(p.columns.map((c) => ({ include: true, target: c.name, type: c.target_type })));
+    const names = p.columns.map((c) => c.name);
+    const defaults = p.columns.map((c) => ({ include: true, target: c.name, type: c.target_type }));
+    const saved = pending.current;
+    if (saved?.create) {
+      pending.current = null;
+      setNewColumns(newColumnsFor(names, saved, defaults));
+      const gone = missingColumns(saved, names, null).sources;
+      if (gone.length > 0) note(t("No longer found, left out: {names}.", { names: gone.join(", ") }));
+    } else setNewColumns(defaults);
   }
 
   async function loadTable(from: number, to: number) {
@@ -223,7 +261,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
       if (token !== previewToken.current) return;
       show(p);
       setLoaded(file);
-      setNewTable(p.table);
+      setNewTable(pending.current?.table ?? p.table);
     } catch (e) {
       if (token !== previewToken.current) return;
       setPreview(null);
@@ -281,6 +319,20 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
     };
   }
 
+  async function build() {
+    if (!p) return null;
+    return source
+      ? {
+          kind: "transfer_table" as const,
+          source_connection_id: source.connection.id,
+          source_database: source.database,
+          target_connection_id: target.connection.id,
+          target_database: target.database,
+          plan: p,
+        }
+      : { kind: "import_file" as const, connection_id: target.connection.id, database: target.database, path: loaded!, plan: p, options: fileOptions };
+  }
+
   /** Runs the import, once confirmed on a production connection. */
   function request() {
     if (!preview) return;
@@ -328,7 +380,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
 
   // A new target connection starts in its current schema.
   useEffect(() => {
-    if (!transfer || target.schema || schemas.length === 0) return;
+    if (target.schema || schemas.length === 0) return;
     const current = schemas.find((s) => s.current) ?? schemas[0]!;
     setTarget((t) => ({ ...t, schema: current.name, currentSchema: omitsSchema(t.connection.driver, current.current) }));
   }, [schemas]);
@@ -460,6 +512,11 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
         {!error && fileOptions.skip_bad_lines && preview && (
           <div className="notice warn small">{t("The lines with another number of values are left out.")}</div>
         )}
+        {notes.map((text) => (
+          <div key={text} className="notice warn small">
+            {text}
+          </div>
+        ))}
         {takesNoRows(target.connection) && (
           <div className="notice warn small">
             {target.connection.read_only
@@ -570,6 +627,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
               {t(status.state === "done" ? "Close" : "Cancel")}
             </button>
           )}
+          <ProfileButtons profile={profile} build={build} disabled={!ready || running} />
           <button type="button" className="primary" disabled={!ready || running || status.state === "done" || takesNoRows(target.connection)} onClick={request}>
             {t(transfer ? "Copy" : "Import")}
           </button>

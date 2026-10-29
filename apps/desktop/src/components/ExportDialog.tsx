@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
-import type { Bucket, Compression, DriverKind, ExportFormat, ExportOptions } from "../api";
+import type { Bucket, Compression, DriverKind, ExportFormat, ExportOptions, TransferProfile } from "../api";
+import { ProfileButtons } from "../transfer/ProfileSave";
 import { fmt } from "./ResultPanel";
 import { t, msg } from "../i18n";
 
@@ -16,6 +17,12 @@ interface Props {
   complete: boolean;
   /** Uncommitted changes are invisible to the export's own connection. */
   transactionOpen: boolean;
+  /** The query to keep as a profile, when it can be: where it runs and its text. */
+  query?: { connection_id: string; database: string | null; sql: string };
+  /** The profile the dialog was opened from: its choices start the dialog. */
+  profile?: TransferProfile;
+  /** Only the query can be exported, not rows already loaded. */
+  queryOnly?: boolean;
   onExport: (path: string, options: ExportOptions, source: ExportSource) => void;
   onClose: () => void;
 }
@@ -192,32 +199,46 @@ export function CsvOptions(props: { options: ExportOptions; disabled?: boolean; 
   );
 }
 
-export function ExportDialog({ name, driver, loadedRows, complete, transactionOpen, onExport, onClose }: Props) {
-  const [options, setOptions] = useState<ExportOptions>({
-    format: "csv",
-    delimiter: ",",
-    header: true,
-    table: name,
-    driver,
-  });
-  const [source, setSource] = useState<ExportSource>(complete ? "loaded" : "query");
+export function ExportDialog({ name, driver, loadedRows, complete, transactionOpen, query, profile, queryOnly, onExport, onClose }: Props) {
+  const saved = profile?.task.kind === "export_query" ? profile.task : null;
+  const [options, setOptions] = useState<ExportOptions>(
+    saved?.options ?? {
+      format: "csv",
+      delimiter: ",",
+      header: true,
+      table: name,
+      driver,
+    },
+  );
+  const [source, setSource] = useState<ExportSource>(complete && !queryOnly ? "loaded" : "query");
   const format = FORMATS.find((f) => f.value === options.format)!;
+
+  /** The file to write, asked as the dialog's own choices name it; `null` if none is chosen. */
+  async function askPath(chosen: ExportOptions) {
+    const zipped = compressedExt(chosen.compression);
+    return save({
+      defaultPath: saved?.path ?? `${name}.${format.ext}${zipped ? `.${zipped}` : ""}`,
+      filters: [{ name: t(format.label), extensions: [zipped || format.ext] }],
+    });
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const chosen = sentOptions(options);
-    const zipped = compressedExt(chosen.compression);
-    const path = await save({
-      defaultPath: `${name}.${format.ext}${zipped ? `.${zipped}` : ""}`,
-      filters: [{ name: t(format.label), extensions: [zipped || format.ext] }],
-    });
+    const path = await askPath(chosen);
     if (path) onExport(path, chosen, source);
+  }
+
+  async function build() {
+    const chosen = sentOptions(options);
+    const path = await askPath(chosen);
+    return path && query ? { kind: "export_query" as const, ...query, path, options: chosen } : null;
   }
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form className="modal small" onSubmit={submit} onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>{t("Export result")}</h2>
+        <h2>{profile ? profile.name : t("Export result")}</h2>
         <label className="field">
           <span>{t("Format")}</span>
           <select
@@ -240,16 +261,18 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
         )}
         {options.format === "csv" && <CsvOptions options={options} onChange={setOptions} />}
         <OutputOptions options={options} signedUrl onChange={setOptions} />
-        <fieldset className="choices">
-          <label className="check">
-            <input type="radio" checked={source === "query"} onChange={() => setSource("query")} />
-            {t("All rows — run the query again and stream it to the file")}
-          </label>
-          <label className="check">
-            <input type="radio" checked={source === "loaded"} onChange={() => setSource("loaded")} />
-            {t(complete ? "Rows already loaded ({n}, the whole result)" : "Rows already loaded ({n})", { n: fmt.format(loadedRows) })}
-          </label>
-        </fieldset>
+        {!queryOnly && (
+          <fieldset className="choices">
+            <label className="check">
+              <input type="radio" checked={source === "query"} onChange={() => setSource("query")} />
+              {t("All rows — run the query again and stream it to the file")}
+            </label>
+            <label className="check">
+              <input type="radio" checked={source === "loaded"} onChange={() => setSource("loaded")} />
+              {t(complete ? "Rows already loaded ({n}, the whole result)" : "Rows already loaded ({n})", { n: fmt.format(loadedRows) })}
+            </label>
+          </fieldset>
+        )}
         {source === "query" && transactionOpen && (
           <div className="notice warn small">
             {t("The export uses its own connection: uncommitted changes in this tab are not included.")}
@@ -257,6 +280,7 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
         )}
         <div className="actions">
           <span className="spacer" />
+          {query && source === "query" && <ProfileButtons profile={profile} build={build} />}
           <button type="button" onClick={onClose}>
             {t("Cancel")}
           </button>

@@ -12,6 +12,7 @@ import { ExportTablesDialog } from "./ExportTablesDialog";
 import { GenerateDataDialog } from "./GenerateDataDialog";
 import { ImportDataDialog, type TableAt } from "./ImportDataDialog";
 import { MigrateDialog } from "./MigrateDialog";
+import { ProfilesDialog } from "./ProfilesDialog";
 import { DumpSqlDialog, RunSqlFileDialog } from "./SqlFileDialogs";
 
 const at = (connection: SavedConnection, database: string | null, schema: SchemaMeta, table: string | null): TableAt => ({
@@ -255,4 +256,23 @@ registerAction({
     (selection ?? [{ schema, object }]).every((s) => s.schema.name === schema.name && DUMPED.has(s.object.kind)),
   run: ({ connection, database, schema, object, selection }) =>
     openDump(connection, database, schema.name, (selection ?? [{ object }]).map((s) => s.object.name)),
+});
+
+const openProfiles = (connectionId?: string) =>
+  workbench().openDialog((close) => createElement(ProfilesDialog, { connectionId, onClose: close }));
+
+registerAction({
+  id: "app.transfer_profiles",
+  scope: "global",
+  title: "Transfer profiles…",
+  run: () => openProfiles(),
+});
+
+registerAction({
+  id: "connection.transfer_profiles",
+  scope: "navigator.connection",
+  title: "Transfer profiles…",
+  group: "open",
+  order: 29,
+  run: ({ connection }) => openProfiles(connection.id),
 });
