@@ -4239,6 +4239,19 @@ impl platypus_mcp::AppLink for AnsweringApp {
     }
 }
 
+/// A function that deletes every row of `table`, in `driver`'s SQL.
+fn purge_function(driver: &str, table: &str) -> String {
+    if driver == "postgres" {
+        format!(
+            "CREATE FUNCTION agent_purge() RETURNS int LANGUAGE plpgsql AS $$ BEGIN DELETE FROM {table}; RETURN 1; END $$"
+        )
+    } else {
+        format!(
+            "CREATE FUNCTION agent_purge() RETURNS INT MODIFIES SQL DATA BEGIN DELETE FROM {table}; RETURN 1; END"
+        )
+    }
+}
+
 /// Saves `b` in the profile at `dir` as the connection `Db`, read-write for agents.
 fn save_agent_connection(dir: &std::path::Path, b: &Backend, driver: &str) {
     let password = b.config.password.as_ref().map_or("", |p| p.expose());
@@ -4292,15 +4305,7 @@ async fn agents_ask_before_a_query_that_writes() {
         run(conn, &format!("INSERT INTO {table} VALUES (1), (2)"))
             .await
             .unwrap();
-        let function = if driver == "postgres" {
-            format!(
-                "CREATE FUNCTION agent_purge() RETURNS int LANGUAGE plpgsql AS $$ BEGIN DELETE FROM {table}; RETURN 1; END $$"
-            )
-        } else {
-            format!(
-                "CREATE FUNCTION agent_purge() RETURNS INT MODIFIES SQL DATA BEGIN DELETE FROM {table}; RETURN 1; END"
-            )
-        };
+        let function = purge_function(driver, table);
         // MySQL with binary logging wants SUPER or log_bin_trust_function_creators.
         if let Err(e) = run(conn, &function).await {
             eprintln!("skipping {}: cannot create the function: {e}", b.name);
