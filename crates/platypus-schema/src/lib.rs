@@ -22,7 +22,7 @@ use platypus_sql::Dialect;
 use serde::{Deserialize, Serialize};
 
 pub use changelog::{ChangelogFormat, changelog, flyway_file_name};
-pub use compare::compare;
+pub use compare::{compare, edited_script};
 pub use ddl::script;
 pub use diff::{ChangeKind, SchemaChange, summary};
 pub use lint::{Finding, LintKind, lint};

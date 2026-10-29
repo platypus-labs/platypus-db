@@ -2160,6 +2160,9 @@ export const api = {
   /** The script that makes the target schema like the source one. */
   compareSchemas: (sourceSession: number, sourceSchema: string, targetSession: number, targetSchema: string) =>
     invoke<{ script: TableScript; sql: string }>("compare_schemas", { sourceSession, sourceSchema, targetSession, targetSchema }),
+  /** The script for the edits made on an ER diagram: the tables created or changed, and those dropped. */
+  erdScript: (sessionId: number, schema: string, designs: TableDesign[], dropped: string[]) =>
+    invoke<{ script: TableScript; sql: string }>("erd_script", { sessionId, schema, designs, dropped }),
   /** The rows that differ between two tables with the same key, and the statements that make the target like the source. */
   compareTableData: (sourceSession: number, source: TableRef, targetSession: number, target: TableRef, options: CompareOptions) =>
     invoke<DataDiff>("compare_table_data", { sourceSession, source, targetSession, target, options }),
