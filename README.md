@@ -146,9 +146,10 @@ and shows the ODBC drivers and data sources of the system.
 - **Proxies**: a SOCKS5 or HTTP proxy (`socks5://user:password@host:1080`, `http://host:3128`)
   in front of the database, or of the SSH server when there is a tunnel. SOCKS5 resolves the
   server's name on the proxy.
-- **Commands around a connection**, e.g. to bring a VPN up and down: one before connecting,
-  which the connection waits for (a minute at most) and fails with, and one after it closes.
-  They run in the system's shell.
+- **Commands around a connection**, e.g. to bring a VPN up and down: one before the first
+  session that needs it, which waits for it (a minute at most) and fails with it, and one
+  after the last of those sessions closes. They run in the system's shell, whose `${VAR}`
+  they keep.
 - **Passwords** from the system keychain, asked every time, read from `.pgpass` or printed by a
   shell command. **Password managers**: pick 1Password, Bitwarden, HashiCorp Vault or AWS
   Secrets Manager and give the secret's reference; the app runs the manager's CLI, which must

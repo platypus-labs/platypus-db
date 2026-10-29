@@ -277,10 +277,11 @@ Proxy: opzione `proxy` della connessione, un URL `socks5://` o `http://` con log
 attraverso il proxy (`Tunnel::through_proxy`, provato una volta all'apertura); con il tunnel
 passa dal proxy il primo server SSH (`Tunnel::open_via`). `Tunnel::of` sceglie il percorso
 per l'app, il server MCP e i client CLI. Comandi su eventi: opzioni `before_connect` e
-`after_disconnect` (`platypus-net/src/hooks.rs`), eseguite da `cmd /C` o `sh -c`; la prima si
-aspetta per un minuto al massimo e il suo errore cita stderr, la seconda parte quando la
-connessione si chiude (o subito, se non si è aperta). Il driver non vede né il proxy né i
-comandi. Gestori di credenziali: `credentialManagers.ts` scrive il comando della CLI dal
+`after_disconnect` (`platypus-net/src/hooks.rs`), eseguite da `cmd /S /C` o `sh -c` e
+contate per coppia di comandi: la prima parte con la prima connessione che la usa, si aspetta
+per un minuto al massimo e il suo errore cita stderr; la seconda parte quando si chiude
+l'ultima (o subito, se nessuna si è aperta). I loro `${VAR}` restano alla shell. Il driver non
+vede né il proxy né i comandi. Gestori di credenziali: `credentialManagers.ts` scrive il comando della CLI dal
 riferimento del segreto (1Password `op read`, Bitwarden `bw get password`, Vault
 `vault kv get -field=…`, AWS `secretsmanager get-secret-value`) e lo salva come comando della
 password, riconosciuto alla riapertura; un comando che stampa JSON dà il campo `password`
