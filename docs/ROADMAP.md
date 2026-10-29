@@ -113,7 +113,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | J — Amministrazione del server | ✅ fatto (P2) |
 | K — Shell ed ergonomia | ✅ completato |
 | L — Sicurezza operativa | ✅ completato |
-| M — Analisi dei dati | ✅ fatto (P2) |
+| M — Analisi dei dati | 🔒 Delfa · group-m-analysis-p3 · 2026-10-30 |
 | N — Accesso per agenti (MCP) | 🔒 Delfa · group-n-mcp-p3 · 2026-10-29 |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
