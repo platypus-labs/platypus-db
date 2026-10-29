@@ -51,6 +51,7 @@ import {
 } from "../guards/guards";
 import { GuardDialog } from "../guards/GuardDialog";
 import { PendingDialog } from "../guards/PendingDialog";
+import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
 import { TransactionLogDialog } from "../guards/TransactionLogDialog";
 import { openRestore, snapshotBefore } from "../guards/SnapshotsDialog";
 import { emptyLog, noteEnd, noteStatement } from "../guards/txLog";
@@ -395,7 +396,8 @@ export function QueryTab({
   } | null>(null);
   const [terminalLog, setTerminalLog] = useState<TerminalBlock[]>([]);
   const [historyVersion, setHistoryVersion] = useState(0);
-  const [editorHeight, setEditorHeight] = useState(200);
+  // The editor's height, the same in every tab and kept for the next start.
+  const [editorHeight, setEditorHeight] = useStoredSize("layout.editor_height", 200);
   /** The session's schema after the tab changed it (`SET search_path`); `null` for the
    *  catalog's. */
   const [schemaShown, setSchemaShown] = useState<string | null>(null);
@@ -1441,20 +1443,6 @@ export function QueryTab({
     }
   }
 
-  function startResize(e: React.MouseEvent) {
-    e.preventDefault();
-    const startY = e.clientY;
-    const start = editorHeight;
-    const onMove = (ev: MouseEvent) =>
-      setEditorHeight(Math.max(60, Math.min(window.innerHeight - 200, start + ev.clientY - startY)));
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }
-
   function setUnsaved(dirty: boolean) {
     unsaved.current = dirty;
     if (dirty !== !!tab.unsaved) onChange({ unsaved: dirty });
@@ -1812,7 +1800,17 @@ export function QueryTab({
           onSave={() => void saveFile()}
           onOpen={() => void openFile()}
         />
-        <div className="splitter" onMouseDown={startResize} />
+        <PanelResizer
+          storeKey="layout.editor_height"
+          size={editorHeight}
+          fallback={200}
+          min={60}
+          max={() => window.innerHeight - 200}
+          direction="row"
+          onResize={setEditorHeight}
+          label={t("Resize the editor")}
+          className="splitter"
+        />
         <div className="results">
           {tab.resultSource && (
             <ResultSourceBar

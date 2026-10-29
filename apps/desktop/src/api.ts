@@ -1471,6 +1471,14 @@ export const api = {
   clearAgentCalls: () => invoke<void>("clear_agent_calls"),
   takeAgentProposals: () => invoke<AgentProposal[]>("take_agent_proposals"),
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
+  /** Opens a window for a tab (as `persistTab` saves it); the window's label. */
+  openTabWindow: (tab: string, title: string) => invoke<string>("open_tab_window", { tab, title }),
+  /** The tab that waits for the window `label`, once. */
+  takeWindowTab: (label: string) => invoke<string | null>("take_window_tab", { label }),
+  openQuickWindow: (title: string) => invoke<void>("open_quick_window", { title }),
+  /** Shows the tray icon with its menu (quick query, show, quit, then the quick window's
+   *  title); `null` removes it. */
+  setTray: (labels: [string, string, string, string] | null) => invoke<void>("set_tray", { labels }),
   /** Builds the sample SQLite database if needed, with its connection (in `project` too)
    *  and its scripts. */
   openSampleDatabase: (project: string | null) => invoke<SampleDatabase>("open_sample_database", { project }),

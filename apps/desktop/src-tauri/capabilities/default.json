@@ -1,7 +1,27 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions for the main window",
-  "windows": ["main"],
-  "permissions": ["core:default", "dialog:default", "updater:default", "process:allow-restart", "notification:default", "core:webview:allow-set-webview-zoom", "core:window:allow-set-title", "core:window:allow-set-decorations", "core:window:allow-minimize", "core:window:allow-toggle-maximize", "core:window:allow-internal-toggle-maximize", "core:window:allow-is-maximized", "core:window:allow-close", "core:window:allow-destroy", "core:window:allow-start-dragging"]
+  "description": "Permissions for the app's windows: the main one, tabs moved to a window, the quick query",
+  "windows": [
+    "main",
+    "tab-*",
+    "quick"
+  ],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "updater:default",
+    "process:allow-restart",
+    "notification:default",
+    "core:webview:allow-set-webview-zoom",
+    "core:window:allow-set-title",
+    "core:window:allow-set-decorations",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-internal-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:window:allow-start-dragging"
+  ]
 }
