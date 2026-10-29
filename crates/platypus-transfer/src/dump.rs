@@ -411,6 +411,64 @@ fn write_error(e: std::io::Error) -> ImportError {
     ImportError::Plan(format!("cannot write the dump: {e}"))
 }
 
+/// The file a dump goes to, compressed as its extension says (`.gz`, `.zst`).
+pub enum DumpFile {
+    Plain(std::io::BufWriter<std::fs::File>),
+    Gzip(flate2::write::GzEncoder<std::io::BufWriter<std::fs::File>>),
+    Zstd(zstd::Encoder<'static, std::io::BufWriter<std::fs::File>>),
+}
+
+impl DumpFile {
+    /// Creates the file at `path`.
+    ///
+    /// # Errors
+    /// When it cannot be created.
+    pub fn create(path: &std::path::Path) -> std::io::Result<Self> {
+        let out = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(path)?);
+        let name = path.to_string_lossy().to_ascii_lowercase();
+        Ok(if name.ends_with(".gz") {
+            Self::Gzip(flate2::write::GzEncoder::new(
+                out,
+                flate2::Compression::default(),
+            ))
+        } else if name.ends_with(".zst") {
+            Self::Zstd(zstd::Encoder::new(out, 3)?)
+        } else {
+            Self::Plain(out)
+        })
+    }
+
+    /// Writes what is left, and a compressed file's trailer.
+    ///
+    /// # Errors
+    /// When writing fails.
+    pub fn finish(self) -> std::io::Result<()> {
+        match self {
+            Self::Plain(mut out) => out.flush(),
+            Self::Gzip(gz) => gz.finish()?.flush(),
+            Self::Zstd(zst) => zst.finish()?.flush(),
+        }
+    }
+}
+
+impl Write for DumpFile {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Plain(out) => out.write(buf),
+            Self::Gzip(out) => out.write(buf),
+            Self::Zstd(out) => out.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self {
+            Self::Plain(out) => out.flush(),
+            Self::Gzip(out) => out.flush(),
+            Self::Zstd(out) => out.flush(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
