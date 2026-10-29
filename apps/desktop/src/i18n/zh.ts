@@ -2337,6 +2337,19 @@ const zh: Record<string, string> = {
   "Every column needs a name.": "每一列都需要名称。",
   "Every column needs a type.": "每一列都需要类型。",
   "Two columns have the same name.": "有两列同名。",
+  // Group M: query across databases
+  "The connection {name} no longer exists.": "连接 {name} 已不存在。",
+  "Query across databases": "跨数据库查询",
+  "Across databases": "跨数据库",
+  "Copies the tables into an in-memory DuckDB, up to the memory limit, and opens a SQL editor on it: a query there can join tables of different databases. The tables are copies; the databases are not changed.": "将这些表复制到内存中的 DuckDB（不超过内存上限），并在其上打开 SQL 编辑器：一条查询即可连接不同数据库的表。这些表是副本，不会改动原数据库。",
+  "every row": "所有行",
+  "Name in DuckDB": "DuckDB 中的名称",
+  "Another table has this name.": "已有另一个表使用此名称。",
+  "Copies of tables of other databases: {tables}": "其他数据库表的副本：{tables}",
+  "Partial: the memory limit stopped the reading of {tables}.": "部分数据：内存上限中止了对 {tables} 的读取。",
+  "Reload sources": "重新加载数据源",
+  "Query across databases…": "跨数据库查询…",
+  "No SQL connection to read tables from": "没有可读取表的 SQL 连接",
 };
 
 export default zh;

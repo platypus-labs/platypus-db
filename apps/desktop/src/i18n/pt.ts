@@ -2337,6 +2337,19 @@ const pt: Record<string, string> = {
   "Every column needs a name.": "Cada coluna precisa de um nome.",
   "Every column needs a type.": "Cada coluna precisa de um tipo.",
   "Two columns have the same name.": "Duas colunas têm o mesmo nome.",
+  // Group M: query across databases
+  "The connection {name} no longer exists.": "A conexão {name} já não existe.",
+  "Query across databases": "Consultar várias bases de dados",
+  "Across databases": "Várias bases de dados",
+  "Copies the tables into an in-memory DuckDB, up to the memory limit, and opens a SQL editor on it: a query there can join tables of different databases. The tables are copies; the databases are not changed.": "Copia as tabelas para um DuckDB em memória, até ao limite de memória, e abre nele um editor SQL: uma consulta pode juntar tabelas de bases de dados diferentes. As tabelas são cópias; as bases de dados não mudam.",
+  "every row": "todas as linhas",
+  "Name in DuckDB": "Nome no DuckDB",
+  "Another table has this name.": "Outra tabela tem este nome.",
+  "Copies of tables of other databases: {tables}": "Cópias de tabelas de outras bases de dados: {tables}",
+  "Partial: the memory limit stopped the reading of {tables}.": "Parcial: o limite de memória parou a leitura de {tables}.",
+  "Reload sources": "Recarregar origens",
+  "Query across databases…": "Consultar várias bases de dados…",
+  "No SQL connection to read tables from": "Nenhuma conexão SQL de onde ler tabelas",
 };
 
 export default pt;

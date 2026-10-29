@@ -40,6 +40,8 @@ import { viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { ResultSourceBar } from "../analysis/QueryWithSql";
+import { AcrossBar } from "../analysis/CrossQueryDialog";
+import type { AcrossOrigin } from "../analysis/acrossModel";
 import { useResultSql } from "../analysis/ResultSql";
 import { provideResults, resultsWithRows, type ResultSource } from "../analysis/resultHosts";
 import { basename } from "../workspace";
@@ -135,6 +137,9 @@ export interface QueryTabModel extends TabBase {
   /** "Query with SQL": where the tables of this tab came from. Not persisted: the temporary
    *  connection does not outlive the app. */
   resultSource?: ResultSource;
+  /** "Query across databases": the tables copied into this tab's temporary connection.
+   *  Not persisted, like `resultSource`. */
+  across?: AcrossOrigin;
   /** Results as text, like a console, instead of the grid. */
   terminal?: boolean;
   /** Charts of the statements, each shown in place of the grid when chosen. */
@@ -1138,7 +1143,7 @@ export function QueryTab({
     runAppend: () => void run("append"),
     // Not on a temporary connection ("Query with SQL"), nor MongoDB's and Redis's scripts.
     runOnConnections:
-      tab.resultSource || isNoSql(connection.driver) || !workbench().connections().some((c) => c.id === connection.id)
+      tab.resultSource || tab.across || isNoSql(connection.driver) || !workbench().connections().some((c) => c.id === connection.id)
         ? undefined
         : () => {
             const { from, to } = editor.current!.getSelection();
@@ -1816,6 +1821,19 @@ export function QueryTab({
           className="splitter"
         />
         <div className="results">
+          {tab.across && (
+            <AcrossBar
+              origin={tab.across}
+              connection={connection}
+              onReloaded={(across) => {
+                onChange({ across });
+                onNeedCatalog(true);
+                // The last statements run again on the new rows, if they only read.
+                const again = memory.current.lastReads();
+                if (again) void run("statement", false, again);
+              }}
+            />
+          )}
           {tab.resultSource && (
             <ResultSourceBar
               source={tab.resultSource}
