@@ -930,19 +930,29 @@ pub async fn import(
     import_rows(rows, target, plan, progress).await
 }
 
-/// Writes `pending` rows with the database's own loading, else in an `OPENJSON` insert.
+/// Writes `pending` rows with the database's own loading while `native`, else in an
+/// `OPENJSON` insert. A load the database refuses for this table (SQL Server's bulk copy
+/// into a `money` column) writes nothing: with `json`, these rows and the next go in
+/// `OPENJSON` inserts, and `native` turns off.
 async fn flush(
     plan: &ImportPlan,
     (target, dialect): (&dyn Connection, Dialect),
-    native: bool,
+    (native, json): (&mut bool, bool),
     schema: &Schema,
     pending: &[Vec<Option<String>>],
 ) -> Result<(), ImportError> {
-    if native {
-        plan.load((target, dialect), schema, pending).await?;
-    } else {
-        exec(target, &plan.bulk_insert(dialect, schema, pending)?).await?;
+    if *native {
+        match plan.load((target, dialect), schema, pending).await {
+            Err(ImportError::Database(platypus_core::Error::Unsupported(_))) if json => {
+                *native = false;
+            }
+            loaded => {
+                loaded?;
+                return Ok(());
+            }
+        }
     }
+    exec(target, &plan.bulk_insert(dialect, schema, pending)?).await?;
     Ok(())
 }
 
@@ -991,10 +1001,10 @@ pub async fn import_rows(
         let mut schema = rows.schema();
         // The database's own bulk loading where it has it and allows it.
         let batched = plan.mode() != ImportMode::Upsert;
-        let native = batched && target.capabilities().bulk_load;
+        let mut native = batched && target.capabilities().bulk_load;
+        let json = batched && bulk(target, dialect).await;
         // Rows go in chunks: natively, or each chunk in one `OPENJSON` insert.
-        let chunked = native || (batched && bulk(target, dialect).await);
-        let chunk = if native { NATIVE_ROWS } else { BULK_ROWS };
+        let chunked = native || json;
         let mut pending: Vec<Vec<Option<String>>> = Vec::new();
         let mut written = 0;
         while let Some(batch) = rows.next().await {
@@ -1002,8 +1012,15 @@ pub async fn import_rows(
             if chunked {
                 schema = batch.schema();
                 pending.extend(rows_text(&batch)?);
-                if pending.len() >= chunk {
-                    flush(plan, (target, dialect), native, &schema, &pending).await?;
+                if pending.len() >= if native { NATIVE_ROWS } else { BULK_ROWS } {
+                    flush(
+                        plan,
+                        (target, dialect),
+                        (&mut native, json),
+                        &schema,
+                        &pending,
+                    )
+                    .await?;
                     pending.clear();
                 }
             } else {
@@ -1017,7 +1034,14 @@ pub async fn import_rows(
             }
         }
         if !pending.is_empty() {
-            flush(plan, (target, dialect), native, &schema, &pending).await?;
+            flush(
+                plan,
+                (target, dialect),
+                (&mut native, json),
+                &schema,
+                &pending,
+            )
+            .await?;
         }
         if let Some(staging) = plan.staging(dialect) {
             exec(target, &format!("DROP TEMPORARY TABLE {staging}")).await?;
