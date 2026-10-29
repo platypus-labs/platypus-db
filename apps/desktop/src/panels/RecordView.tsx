@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type CellInput, type ColumnInfo, toCommandError } from "../api";
+import { shown as masked, useMask } from "../guards/mask";
 import { formatCount, t } from "../i18n";
 
 interface Props {
@@ -28,6 +29,7 @@ function pendingText(input: CellInput): string | null {
 /** One row of the grid, top to bottom, with the full values; moves through the rows. */
 export function RecordView({ jobId, columns, shown, row, rowCount, topRows, version, pending, onMove, onClose }: Props) {
   const [loaded, setLoaded] = useState<{ row: number; values: (string | null)[] | null } | null>(null);
+  const mask = useMask();
   const [error, setError] = useState<string | null>(null);
   const dataRow = row - topRows;
   // Another row's values never show under this row's number while it loads.
@@ -95,7 +97,7 @@ export function RecordView({ jobId, columns, shown, row, rowCount, topRows, vers
             const column = columns[c]!;
             // An edit not saved yet shows in place of the loaded value, as in the grid.
             const change = pending?.(row, c);
-            const value = change ? pendingText(change) : values?.[c];
+            const value = masked(change ? pendingText(change) : values?.[c], !!mask?.(column));
             return (
               <div key={c} className="record-field">
                 <div className="record-name" title={column.db_type}>

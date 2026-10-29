@@ -1881,6 +1881,16 @@ const fr: Record<string, string> = {
   "Nothing has run in this tab's session yet.": "Rien n'a encore été exécuté dans la session de cet onglet.",
   "Transaction from {time}": "Transaction depuis {time}",
   "Committed on its own": "Validée seule",
+  "Mask sensitive data (for screen sharing)": "Masquer les données sensibles (partage d'écran)",
+  "Values of the columns below show as dots. Copies and exports keep the real values.": "Les valeurs des colonnes ci-dessous s'affichent en points. Copies et exports gardent les vraies valeurs.",
+  "Columns to mask, by name": "Colonnes à masquer, par nom",
+  "Comma-separated; * is any characters, case is ignored.": "Séparées par des virgules ; * remplace n'importe quels caractères, sans tenir compte de la casse.",
+  "Columns to mask, by type": "Colonnes à masquer, par type",
+  "Comma-separated, e.g. inet, bytea; * is any characters.": "Séparées par des virgules, p. ex. inet, bytea ; * remplace n'importe quels caractères.",
+  "Mask sensitive data": "Masquer les données sensibles",
+  "{dots} Masked while the screen may be shared.": "{dots} Masqué tant que l'écran peut être partagé.",
+  "Sensitive data is masked: click to show it": "Les données sensibles sont masquées : cliquer pour les afficher",
+  "Masked": "Masqué",
 };
 
 export default fr;

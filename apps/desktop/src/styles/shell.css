@@ -154,6 +154,22 @@
   color: var(--fg-muted);
 }
 
+/* Shown while sensitive data is masked, so that the presenter knows. */
+.topbar-masked {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-color: transparent;
+  border-radius: var(--radius-xl);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .topbar-search {
   flex: 0 1 440px;
   min-width: 160px;

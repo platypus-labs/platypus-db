@@ -19,6 +19,7 @@ import {
   Download,
   Eraser,
   Eye,
+  EyeOff,
   FileCode,
   FilePlus,
   Folder,
@@ -130,6 +131,7 @@ const ICONS = {
   "sidebar-close": PanelLeftClose,
   lock: Lock,
   "tx-log": ScrollText,
+  masked: EyeOff,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

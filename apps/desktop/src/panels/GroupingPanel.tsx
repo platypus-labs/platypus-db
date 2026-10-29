@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type ColumnInfo, type GroupCounts, toCommandError } from "../api";
 import { formatCount, t, plural } from "../i18n";
+import { shown as masked, useMask } from "../guards/mask";
 
 interface Props {
   jobId: number;
@@ -17,6 +18,7 @@ export function GroupingPanel({ jobId, cols, columns, rows, onClose }: Props) {
   const [counts, setCounts] = useState<GroupCounts | null>(null);
   const [error, setError] = useState<string | null>(null);
   const key = cols.join(",");
+  const mask = useMask();
 
   useEffect(() => {
     let live = true;
@@ -64,7 +66,7 @@ export function GroupingPanel({ jobId, cols, columns, rows, onClose }: Props) {
                 <tr key={i}>
                   {g.values.map((v, j) => (
                     <td key={j} className={v === null ? "null" : undefined}>
-                      {v ?? "NULL"}
+                      {masked(v, !!columns[cols[j]!] && !!mask?.(columns[cols[j]!]!)) ?? "NULL"}
                     </td>
                   ))}
                   <td className="num">

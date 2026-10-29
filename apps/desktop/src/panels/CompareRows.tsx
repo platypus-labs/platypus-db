@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type ColumnInfo, toCommandError } from "../api";
 import { t } from "../i18n";
+import { shown as masked, useMask } from "../guards/mask";
 
 interface Props {
   jobId: number;
@@ -16,6 +17,7 @@ export function CompareRows({ jobId, columns, rows, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [onlyDifferent, setOnlyDifferent] = useState(false);
   const [a, b] = rows;
+  const mask = useMask();
 
   useEffect(() => {
     Promise.all([api.rowValues(jobId, a, 1), api.rowValues(jobId, b, 1)]).then(
@@ -25,9 +27,14 @@ export function CompareRows({ jobId, columns, rows, onClose }: Props) {
   }, [jobId, a, b]);
 
   const shown = values
-    ? columns.map((c, i) => ({ name: c.name, left: values[0][i] ?? null, right: values[1][i] ?? null }))
+    ? columns.map((c, i) => {
+        const [left, right] = [values[0][i] ?? null, values[1][i] ?? null];
+        // Masked values still say whether they differ, not what they are.
+        const hide = !!mask?.(c);
+        return { name: c.name, left: masked(left, hide), right: masked(right, hide), differs: left !== right };
+      })
     : [];
-  const differing = shown.filter((r) => r.left !== r.right).length;
+  const differing = shown.filter((r) => r.differs).length;
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -51,9 +58,9 @@ export function CompareRows({ jobId, columns, rows, onClose }: Props) {
                 </thead>
                 <tbody>
                   {shown
-                    .filter((r) => !onlyDifferent || r.left !== r.right)
+                    .filter((r) => !onlyDifferent || r.differs)
                     .map((r, i) => (
-                      <tr key={i} className={r.left !== r.right ? "differs" : undefined}>
+                      <tr key={i} className={r.differs ? "differs" : undefined}>
                         <th>{r.name}</th>
                         <td className={r.left === null ? "null" : undefined}>{r.left ?? "NULL"}</td>
                         <td className={r.right === null ? "null" : undefined}>{r.right ?? "NULL"}</td>

@@ -1881,6 +1881,16 @@ const zh: Record<string, string> = {
   "Nothing has run in this tab's session yet.": "此标签页的会话中尚未运行任何内容。",
   "Transaction from {time}": "事务开始于 {time}",
   "Committed on its own": "单独提交",
+  "Mask sensitive data (for screen sharing)": "遮蔽敏感数据（用于屏幕共享）",
+  "Values of the columns below show as dots. Copies and exports keep the real values.": "下列列的值显示为圆点。复制和导出保留真实值。",
+  "Columns to mask, by name": "按名称遮蔽的列",
+  "Comma-separated; * is any characters, case is ignored.": "以逗号分隔；* 表示任意字符，不区分大小写。",
+  "Columns to mask, by type": "按类型遮蔽的列",
+  "Comma-separated, e.g. inet, bytea; * is any characters.": "以逗号分隔，例如 inet, bytea；* 表示任意字符。",
+  "Mask sensitive data": "遮蔽敏感数据",
+  "{dots} Masked while the screen may be shared.": "{dots} 屏幕可能被共享时已遮蔽。",
+  "Sensitive data is masked: click to show it": "敏感数据已遮蔽：点击以显示",
+  "Masked": "已遮蔽",
 };
 
 export default zh;
