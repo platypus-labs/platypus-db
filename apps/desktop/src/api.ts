@@ -177,6 +177,8 @@ export interface Capabilities {
   metadata_search: boolean;
   server_sessions: boolean;
   cancel_server_queries: boolean;
+  /** The driver loads rows natively (PostgreSQL `COPY`, MySQL `LOAD DATA LOCAL`). */
+  bulk_load: boolean;
 }
 
 /** A session of the server; see `platypus_core::ServerSession`. */

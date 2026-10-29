@@ -612,67 +612,102 @@ fn write_error(e: &std::io::Error) -> ImportError {
     ImportError::Plan(format!("cannot write the dump: {e}"))
 }
 
-/// The file a dump goes to, compressed as its extension says (`.gz`, `.zst`).
-pub enum DumpFile {
+/// The file a dump goes to, compressed as its extension says (`.gz`, `.zst`). It is written
+/// next to it, as `<name>.part`, and takes the name when finished: a dump that fails or
+/// stops leaves the file it would have replaced as it was.
+#[derive(Debug)]
+pub struct DumpFile {
+    out: Encoder,
+    partial: std::path::PathBuf,
+    target: std::path::PathBuf,
+}
+
+enum Encoder {
     Plain(std::io::BufWriter<std::fs::File>),
     Gzip(flate2::write::GzEncoder<std::io::BufWriter<std::fs::File>>),
     Zstd(zstd::Encoder<'static, std::io::BufWriter<std::fs::File>>),
 }
 
 impl DumpFile {
-    /// Creates the file at `path`.
+    /// Starts the file for `path`.
     ///
     /// # Errors
     /// When it cannot be created.
     pub fn create(path: &std::path::Path) -> std::io::Result<Self> {
-        let out = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(path)?);
-        Ok(match Compression::of_path(path) {
-            Compression::Gzip => Self::Gzip(flate2::write::GzEncoder::new(
+        let mut partial = path.as_os_str().to_owned();
+        partial.push(".part");
+        let partial = std::path::PathBuf::from(partial);
+        let file = std::fs::File::create(&partial)?;
+        let out = std::io::BufWriter::with_capacity(1 << 20, file);
+        let out = match Compression::of_path(path) {
+            Compression::Gzip => Encoder::Gzip(flate2::write::GzEncoder::new(
                 out,
                 flate2::Compression::default(),
             )),
-            Compression::Zstd => Self::Zstd(zstd::Encoder::new(out, 3)?),
-            Compression::None => Self::Plain(out),
+            Compression::Zstd => match zstd::Encoder::new(out, 3) {
+                Ok(zst) => Encoder::Zstd(zst),
+                Err(e) => {
+                    let _ = std::fs::remove_file(&partial);
+                    return Err(e);
+                }
+            },
+            Compression::None => Encoder::Plain(out),
+        };
+        Ok(Self {
+            out,
+            partial,
+            target: path.to_owned(),
         })
     }
 
-    /// Writes what is left, and a compressed file's trailer.
+    /// Writes what is left and a compressed file's trailer, and gives the file its name.
     ///
     /// # Errors
-    /// When writing fails.
+    /// When writing or renaming fails; the partial file is removed.
     pub fn finish(self) -> std::io::Result<()> {
-        match self {
-            Self::Plain(mut out) => out.flush(),
-            Self::Gzip(gz) => gz.finish()?.flush(),
-            Self::Zstd(zst) => zst.finish()?.flush(),
+        let written = match self.out {
+            Encoder::Plain(mut out) => out.flush(),
+            Encoder::Gzip(gz) => gz.finish().and_then(|mut out| out.flush()),
+            Encoder::Zstd(zst) => zst.finish().and_then(|mut out| out.flush()),
+        };
+        let placed = written.and_then(|()| std::fs::rename(&self.partial, &self.target));
+        if placed.is_err() {
+            let _ = std::fs::remove_file(&self.partial);
         }
+        placed
+    }
+
+    /// Drops what was written, leaving any file at the path as it was.
+    pub fn discard(self) {
+        drop(self.out);
+        let _ = std::fs::remove_file(&self.partial);
     }
 }
 
-impl std::fmt::Debug for DumpFile {
+impl std::fmt::Debug for Encoder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::Plain(_) => "DumpFile::Plain",
-            Self::Gzip(_) => "DumpFile::Gzip",
-            Self::Zstd(_) => "DumpFile::Zstd",
+            Self::Plain(_) => "Plain",
+            Self::Gzip(_) => "Gzip",
+            Self::Zstd(_) => "Zstd",
         })
     }
 }
 
 impl Write for DumpFile {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        match self {
-            Self::Plain(out) => out.write(buf),
-            Self::Gzip(out) => out.write(buf),
-            Self::Zstd(out) => out.write(buf),
+        match &mut self.out {
+            Encoder::Plain(out) => out.write(buf),
+            Encoder::Gzip(out) => out.write(buf),
+            Encoder::Zstd(out) => out.write(buf),
         }
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        match self {
-            Self::Plain(out) => out.flush(),
-            Self::Gzip(out) => out.flush(),
-            Self::Zstd(out) => out.flush(),
+        match &mut self.out {
+            Encoder::Plain(out) => out.flush(),
+            Encoder::Gzip(out) => out.flush(),
+            Encoder::Zstd(out) => out.flush(),
         }
     }
 }
@@ -680,6 +715,28 @@ impl Write for DumpFile {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_dump_file_replaces_the_old_one_only_when_finished() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("d.sql.gz");
+        std::fs::write(&path, "old").unwrap();
+        let mut file = DumpFile::create(&path).unwrap();
+        file.write_all(b"SELECT 1;").unwrap();
+        file.discard();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "old");
+        let mut file = DumpFile::create(&path).unwrap();
+        file.write_all(b"SELECT 1;").unwrap();
+        file.finish().unwrap();
+        let mut text = String::new();
+        std::io::Read::read_to_string(
+            &mut flate2::read::GzDecoder::new(std::fs::File::open(&path).unwrap()),
+            &mut text,
+        )
+        .unwrap();
+        assert_eq!(text, "SELECT 1;");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
 
     #[test]
     fn foreign_keys_leave_the_create_table() {

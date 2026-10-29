@@ -169,15 +169,13 @@ async fn run_all(
 
 /// The delimiter the last MySQL `DELIMITER` line of `gap`, text between statements, sets.
 fn delimiter_in(gap: &str) -> Option<String> {
-    gap.lines()
-        .rev()
-        .find_map(|l| {
-            let mut words = l.split_whitespace();
-            let first = words.next()?;
-            first
-                .eq_ignore_ascii_case("delimiter")
-                .then(|| words.next().map(str::to_owned))?
-        })
+    gap.lines().rev().find_map(|l| {
+        let mut words = l.split_whitespace();
+        let first = words.next()?;
+        first
+            .eq_ignore_ascii_case("delimiter")
+            .then(|| words.next().map(str::to_owned))?
+    })
 }
 
 /// A statement, or a Transact-SQL batch run `repeat` times, by its range in the text.

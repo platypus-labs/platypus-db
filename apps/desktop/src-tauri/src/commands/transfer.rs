@@ -466,20 +466,16 @@ pub fn dump_sql(
                 },
             )
             .await;
-            let finished = out
-                .finish()
-                .map_err(|e| CommandError::new("export", e.to_string()));
-            // A failed or stopped dump leaves no half a file behind.
-            let dumped = match dumped
-                .map_err(import_error)
-                .and_then(|d| finished.map(|()| d))
-            {
+            // A failed or stopped dump leaves the file it would have replaced as it was.
+            let dumped = match dumped {
                 Ok(dumped) => dumped,
                 Err(e) => {
-                    let _ = std::fs::remove_file(&path);
-                    return Err(e);
+                    out.discard();
+                    return Err(import_error(e));
                 }
             };
+            out.finish()
+                .map_err(|e| CommandError::new("export", format!("{}: {e}", path.display())))?;
             for warning in dumped.skipped {
                 job.warn(warning);
             }

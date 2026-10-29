@@ -14,8 +14,8 @@ use arrow_cast::display::FormatOptions;
 use arrow_schema::{ArrowError, DataType, Field, Schema, TimeUnit};
 use futures::StreamExt;
 use platypus_core::{
-    BulkRows, Connection, DriverKind, Error, ExecOptions, ExecResult, META_DB_TYPE,
-    RecordBatchStream, special,
+    BulkRows, Connection, DriverKind, ExecOptions, ExecResult, META_DB_TYPE, RecordBatchStream,
+    special,
 };
 use platypus_sql::Dialect;
 use platypus_sql::dml::{Column, InvalidValue, ValueKind};
@@ -983,15 +983,9 @@ pub async fn import_rows(
             exec(target, &sql).await?;
         }
         let mut schema = rows.schema();
-        // The database's own bulk loading where it has it and allows it: an empty load tells.
+        // The database's own bulk loading where it has it and allows it.
         let batched = plan.mode() != ImportMode::Upsert;
-        let native = batched
-            && target.capabilities().bulk_load
-            && match plan.load((target, dialect), &schema, &[]).await {
-                Ok(_) => true,
-                Err(ImportError::Database(Error::Unsupported(_))) => false,
-                Err(e) => return Err(e),
-            };
+        let native = batched && target.capabilities().bulk_load;
         // Rows go in chunks: natively, or each chunk in one `OPENJSON` insert.
         let chunked = native || (batched && bulk(target, dialect).await);
         let chunk = if native { NATIVE_ROWS } else { BULK_ROWS };

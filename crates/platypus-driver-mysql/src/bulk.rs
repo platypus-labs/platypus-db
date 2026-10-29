@@ -44,6 +44,11 @@ pub async fn load(conn: &MySqlConnection, rows: &BulkRows<'_>) -> Result<u64> {
         Ok(futures::stream::iter([Ok::<_, std::io::Error>(data)]).boxed())
     });
     let ran = session.query_drop(&sql).await;
+    // A load refused before the server asked for the rows leaves them as the handler: in
+    // their place one that reads nothing, as with no handler.
+    session.set_infile_handler(async {
+        Err(std::io::Error::other("LOAD DATA LOCAL reads no file here").into())
+    });
     // In manual-commit mode the load opened the transaction, as a statement does.
     conn.tx.after(TxEffect::None, true);
     match ran {

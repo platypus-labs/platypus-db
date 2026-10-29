@@ -2109,6 +2109,25 @@ async fn capabilities_match_optional_methods() {
             "{}: server_locks vs capabilities.server_sessions: {locks:?}",
             b.name
         );
+        // No such table: a supported load fails, but not as unsupported.
+        let missing = platypus_sql::Dialect::from(b.config.driver)
+            .qualified(Some(&b.schema), "conf_no_such_bulk");
+        let columns = ["id".to_owned()];
+        let load = conn
+            .bulk_load(&platypus_core::BulkRows {
+                table: &missing,
+                columns: &columns,
+                hex: &[false],
+                rows: &[vec![Some("1".to_owned())]],
+            })
+            .await;
+        assert_eq!(
+            matches!(load, Err(Error::Unsupported(_))),
+            !caps.bulk_load,
+            "{}: bulk_load vs capabilities.bulk_load: {load:?}",
+            b.name
+        );
+
         // No session has id 0: a supported cancel fails, but not as unsupported.
         let cancel = conn.end_server_session("0", EndSession::Cancel).await;
         assert_eq!(

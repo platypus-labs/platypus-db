@@ -476,16 +476,22 @@ async fn bulk_loads_rows_with_copy() {
     };
     assert!(conn.bulk_load(&failing).await.is_err());
     conn.rollback().await.unwrap();
+    // Refused rows undo the load alone: what the transaction did before stays.
+    conn.execute("INSERT INTO pg_bulk (id) VALUES (3)", &options)
+        .await
+        .unwrap();
     let bad = vec![vec![Some("x".to_owned()), None, None, None]];
     assert!(
         conn.bulk_load(&platypus_core::BulkRows { rows: &bad, ..bulk })
             .await
             .is_err()
     );
-    conn.rollback().await.unwrap();
-    assert_eq!(
-        collect(&conn, "SELECT COUNT(*) FROM pg_bulk").await[0].num_rows(),
-        1
-    );
+    conn.commit().await.unwrap();
+    let ids = collect(
+        &conn,
+        "SELECT string_agg(id::text, ',' ORDER BY id) FROM pg_bulk",
+    )
+    .await;
+    assert_eq!(array_value_to_string(ids[0].column(0), 0).unwrap(), "1,2,3");
     conn.execute("DROP TABLE pg_bulk", &options).await.unwrap();
 }

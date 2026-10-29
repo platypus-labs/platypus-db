@@ -464,24 +464,51 @@ impl Connection for PgConnection {
             multiple_databases: true,
             server_sessions: self.has_server_admin(),
             cancel_server_queries: self.has_server_admin(),
-            bulk_load: true,
+            // CockroachDB's COPY has limits of its own in a transaction: rows go as INSERTs.
+            bulk_load: !is_cockroach(self),
         }
     }
 
     /// `COPY … FROM STDIN` in CSV, the rows sent in chunks, in the session's transaction (one
     /// opened in manual-commit mode, as a statement would).
+    /// `COPY … FROM STDIN`, in the session's transaction; in manual-commit mode under a
+    /// savepoint, as a statement, so that a refused load leaves the transaction usable.
     async fn bulk_load(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
-        use futures::SinkExt;
-
+        if !self.capabilities().bulk_load {
+            return Err(platypus_core::unsupported("bulk loading"));
+        }
         let _guard = self.busy.lock().await;
-        self.settle_savepoint(&[]).await?;
-        if self.tx.needs_begin(TxEffect::None) {
-            self.client
-                .batch_execute("BEGIN")
-                .await
-                .map_err(map_error)?;
+        let wrap = !self.tx.state().autocommit;
+        let begin = self.tx.needs_begin(TxEffect::None);
+        let mut prelude = Vec::new();
+        if begin {
+            prelude.push("BEGIN");
+        }
+        if wrap {
+            prelude.push(SAVEPOINT);
+        }
+        self.settle_savepoint(&prelude).await?;
+        if begin {
             self.tx.set_open(true);
         }
+        match self.copy_rows(rows).await {
+            Err(error) if wrap => Err(self.undo_statement(error).await),
+            Ok(loaded) => {
+                if wrap {
+                    self.savepoint.store(true, Ordering::Release);
+                }
+                Ok(loaded)
+            }
+            Err(error) => Err(error),
+        }
+    }
+}
+
+impl PgConnection {
+    /// Sends `rows` with `COPY`, a chunk at a time. Called with the session's lock held.
+    async fn copy_rows(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
+        use futures::SinkExt;
+
         let sql = format!(
             "COPY {} ({}) FROM STDIN WITH (FORMAT csv)",
             rows.table,
