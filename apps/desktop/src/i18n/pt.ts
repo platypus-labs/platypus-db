@@ -2337,6 +2337,26 @@ const pt: Record<string, string> = {
   "Every column needs a name.": "Cada coluna precisa de um nome.",
   "Every column needs a type.": "Cada coluna precisa de um tipo.",
   "Two columns have the same name.": "Duas colunas têm o mesmo nome.",
+
+// Group M: pivot
+  "Count distinct": "Contagem distinta",
+  "Row fields, ascending": "Campos de linha, crescente",
+  "Row fields, descending": "Campos de linha, decrescente",
+  "Largest value first": "Maior valor primeiro",
+  "Smallest value first": "Menor valor primeiro",
+  "Pivot": "Pivô",
+  "Pivot…": "Pivô…",
+  "Row fields": "Campos de linha",
+  "Column field": "Campo de coluna",
+  "(none)": "(nenhum)",
+  "(count the rows)": "(contar as linhas)",
+  "Totals": "Totais",
+  "Sort": "Ordenação",
+  "Total": "Total",
+  "Pivot the result": "Pivotar o resultado",
+  "Pivot the rows: fields down, a field across, an aggregate in the cells": "Pivotar as linhas: campos na vertical, um campo na horizontal, uma agregação nas células",
+  "Groups the loaded rows by the row fields, with the values of the column field across, and writes the query in the SQL field, where it can be edited.": "Agrupa as linhas carregadas pelos campos de linha, com os valores do campo de coluna na horizontal, e escreve a consulta no campo SQL, onde pode ser editada.",
+  "The column {column} has {n} distinct values, over the {max} columns a pivot can have: choose another column or filter the rows first.": "A coluna {column} tem {n} valores distintos, acima das {max} colunas que um pivô pode ter: escolha outra coluna ou filtre antes as linhas.",
 };
 
 export default pt;

@@ -2337,6 +2337,26 @@ const es: Record<string, string> = {
   "Every column needs a name.": "Cada columna necesita un nombre.",
   "Every column needs a type.": "Cada columna necesita un tipo.",
   "Two columns have the same name.": "Dos columnas tienen el mismo nombre.",
+
+// Group M: pivot
+  "Count distinct": "Recuento distinto",
+  "Row fields, ascending": "Campos de fila, ascendente",
+  "Row fields, descending": "Campos de fila, descendente",
+  "Largest value first": "Primero el valor mayor",
+  "Smallest value first": "Primero el valor menor",
+  "Pivot": "Pivote",
+  "Pivot…": "Pivote…",
+  "Row fields": "Campos de fila",
+  "Column field": "Campo de columna",
+  "(none)": "(ninguno)",
+  "(count the rows)": "(contar las filas)",
+  "Totals": "Totales",
+  "Sort": "Orden",
+  "Total": "Total",
+  "Pivot the result": "Pivotar el resultado",
+  "Pivot the rows: fields down, a field across, an aggregate in the cells": "Pivotar las filas: campos en vertical, un campo en horizontal, una agregación en las celdas",
+  "Groups the loaded rows by the row fields, with the values of the column field across, and writes the query in the SQL field, where it can be edited.": "Agrupa las filas cargadas por los campos de fila, con los valores del campo de columna en horizontal, y escribe la consulta en el campo SQL, donde se puede editar.",
+  "The column {column} has {n} distinct values, over the {max} columns a pivot can have: choose another column or filter the rows first.": "La columna {column} tiene {n} valores distintos, más de las {max} columnas que puede tener un pivote: elige otra columna o filtra antes las filas.",
 };
 
 export default es;

@@ -31,6 +31,8 @@ export interface ResultHost {
   activeJob(): number | null;
   /** Puts the focus in the SQL field of the result shown. */
   querySql(): void;
+  /** Opens the pivot form for the result shown. */
+  pivot(): void;
 }
 
 const hosts = new Set<ResultHost>();

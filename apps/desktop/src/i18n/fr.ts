@@ -2337,6 +2337,26 @@ const fr: Record<string, string> = {
   "Every column needs a name.": "Chaque colonne a besoin d'un nom.",
   "Every column needs a type.": "Chaque colonne a besoin d'un type.",
   "Two columns have the same name.": "Deux colonnes ont le même nom.",
+
+// Group M: pivot
+  "Count distinct": "Nombre distinct",
+  "Row fields, ascending": "Champs de ligne, croissant",
+  "Row fields, descending": "Champs de ligne, décroissant",
+  "Largest value first": "Plus grande valeur d'abord",
+  "Smallest value first": "Plus petite valeur d'abord",
+  "Pivot": "Pivot",
+  "Pivot…": "Pivot…",
+  "Row fields": "Champs de ligne",
+  "Column field": "Champ de colonne",
+  "(none)": "(aucun)",
+  "(count the rows)": "(compter les lignes)",
+  "Totals": "Totaux",
+  "Sort": "Tri",
+  "Total": "Total",
+  "Pivot the result": "Pivoter le résultat",
+  "Pivot the rows: fields down, a field across, an aggregate in the cells": "Pivoter les lignes : champs en vertical, un champ en horizontal, une agrégation dans les cellules",
+  "Groups the loaded rows by the row fields, with the values of the column field across, and writes the query in the SQL field, where it can be edited.": "Regroupe les lignes chargées par les champs de ligne, avec les valeurs du champ de colonne en horizontal, et écrit la requête dans le champ SQL, où elle peut être modifiée.",
+  "The column {column} has {n} distinct values, over the {max} columns a pivot can have: choose another column or filter the rows first.": "La colonne {column} a {n} valeurs distinctes, au-delà des {max} colonnes qu'un pivot peut avoir : choisissez une autre colonne ou filtrez d'abord les lignes.",
 };
 
 export default fr;

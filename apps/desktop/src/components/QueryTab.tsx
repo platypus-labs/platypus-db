@@ -319,8 +319,8 @@ export function QueryTab({
   /** The rows on screen: the shown result, or the output of its SQL field. */
   const view = resultSql.output ?? shown;
   // "Query with SQL" reads this tab's results with rows and which one is shown.
-  const resultsNow = useRef({ results, shown, active, focusSql: resultSql.focus });
-  resultsNow.current = { results, shown, active, focusSql: resultSql.focus };
+  const resultsNow = useRef({ results, shown, active, focusSql: resultSql.focus, pivot: resultSql.pivot });
+  resultsNow.current = { results, shown, active, focusSql: resultSql.focus, pivot: resultSql.pivot };
   useEffect(
     () =>
       provideResults({
@@ -330,6 +330,7 @@ export function QueryTab({
         results: () => resultsWithRows(resultsNow.current.results),
         activeJob: () => resultsNow.current.shown?.jobId ?? null,
         querySql: () => resultsNow.current.focusSql(),
+        pivot: () => resultsNow.current.pivot(),
       }),
     [],
   );

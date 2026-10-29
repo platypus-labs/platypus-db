@@ -169,3 +169,25 @@ registerAction({
   when: ({ source }) => source?.jobId != null && !isMongo(source.connection.driver) && hostOfJob(source.jobId) !== null,
   run: ({ source }) => (source?.jobId == null ? undefined : hostOfJob(source.jobId)?.querySql()),
 });
+
+registerAction({
+  id: "analysis.pivot",
+  scope: "global",
+  title: "Pivot the result",
+  disabled: () => {
+    const host = shownHost();
+    if (!host || host.results().length === 0) return msg("No result with rows in the tab shown");
+    return isMongo(host.connection.driver) ? msg("MongoDB results cannot be queried with SQL") : null;
+  },
+  run: () => shownHost()?.pivot(),
+});
+
+registerAction({
+  id: "grid.pivot",
+  scope: "grid",
+  title: "Pivot…",
+  group: "analysis",
+  order: 71,
+  when: ({ source }) => source?.jobId != null && !isMongo(source.connection.driver) && hostOfJob(source.jobId) !== null,
+  run: ({ source }) => (source?.jobId == null ? undefined : hostOfJob(source.jobId)?.pivot()),
+});

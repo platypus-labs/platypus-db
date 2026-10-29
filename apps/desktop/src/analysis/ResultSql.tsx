@@ -10,7 +10,10 @@ import { SqlEditor, type SqlEditorHandle } from "../editor/SqlEditor";
 import { SqlLine, type SqlLineHandle } from "../editor/SqlLine";
 import { msg, plural, t } from "../i18n";
 import { Icon } from "../ui/Icon";
+import { workbench } from "../workbench";
 import { loadAll, queryWithSql } from "./QueryWithSql";
+import { PivotDialog } from "./PivotDialog";
+import { MAX_PIVOT_COLUMNS, type PivotSettings, normalize, pivotCountSql, pivotSql } from "./pivot";
 import { hostOfJob, resultTables, resultsWithRows } from "./resultHosts";
 import { oneLine, resultCatalog, resultQuery, settled, staleCopy, withEvent } from "./sqlField";
 
@@ -97,6 +100,34 @@ class Fields {
 
   /** The copy of `tables`, made or loaded again when needed; `null` when the load was
    *  cancelled or another run (or clear) came meanwhile. */
+  /** The first value of `sql`, a query that returns one, run on the copy of `tables`; `null`
+   *  when the load was cancelled or another run came meanwhile. A failure is shown in the
+   *  field and gives `null`. */
+  async scalar(key: string, sql: string, tables: ResultTable[]): Promise<string | null | undefined> {
+    const token = ++this.token;
+    this.tokens.set(key, token);
+    this.set(key, { busy: true, error: null });
+    try {
+      const copy = await this.copy(key, tables, token);
+      if (copy === null) return undefined;
+      // The session runs one statement at a time: the output shown keeps the rows it has read.
+      const shown = this.get(key).output;
+      if (shown?.result.jobId != null) void api.stopFetch(shown.result.jobId);
+      const value = await firstValue(copy.copy.sessionId, sql);
+      return this.tokens.get(key) === token ? value : undefined;
+    } catch (e) {
+      if (this.tokens.get(key) === token) this.fail(key, toCommandError(e).message);
+      return undefined;
+    } finally {
+      if (this.tokens.get(key) === token) this.set(key, { busy: false });
+    }
+  }
+
+  /** Shows `error` in the field, whatever ran before. */
+  fail(key: string, error: string) {
+    this.set(key, { busy: false, error });
+  }
+
   private async copy(key: string, tables: ResultTable[], token: number): Promise<{ copy: Copy; reloaded: boolean } | null> {
     const had = this.copies.get(key);
     if (had && !staleCopy(had.tables, tables)) return { copy: had, reloaded: false };
@@ -214,6 +245,29 @@ class Fields {
   }
 }
 
+/** The first value of the first row that `sql` returns on `sessionId`; `null` for none or NULL. */
+async function firstValue(sessionId: number, sql: string): Promise<string | null> {
+  let end!: (e: QueryEvent) => void;
+  const ended = new Promise<QueryEvent>((resolve) => (end = resolve));
+  const jobId = await api.runQuery(
+    sessionId,
+    sql,
+    null,
+    (e) => {
+      if (e.type === "finished" || e.type === "failed" || e.type === "affected") end(e);
+    },
+    false,
+  );
+  try {
+    const event = await ended;
+    if (event.type === "failed") throw event.error;
+    if (event.type === "affected") return null;
+    return (await api.fetchRows(jobId, 0, 1)).columns[0]?.[0] ?? null;
+  } finally {
+    void api.closeQuery(jobId);
+  }
+}
+
 /** Closes the session on a copy, then the copy. */
 function free(copy: Copy) {
   void api
@@ -234,6 +288,8 @@ export interface ResultSqlView {
   bar: ReactNode;
   /** Puts the focus in the field. */
   focus(): void;
+  /** Opens the pivot form for the shown result. */
+  pivot(): void;
 }
 
 interface Options {
@@ -305,6 +361,51 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
     if (host) void queryWithSql(host, shown?.jobId ?? undefined, resultQuery(text, columnNames) ?? undefined);
   };
 
+  /** The pivot form's last settings, by statement, as the fields are kept. */
+  const pivots = useRef(new Map<string, PivotSettings>());
+  useEffect(() => {
+    for (const k of [...pivots.current.keys()]) if (!statements.includes(k)) pivots.current.delete(k);
+  }, [statementsKey]);
+  const columns = shown?.columns ?? null;
+  const pivot = () => {
+    if (key === null || !columns) return;
+    keepFocus.current = false;
+    workbench().openDialog((close) => (
+      <PivotDialog
+        columns={columns}
+        initial={pivots.current.get(key) ?? null}
+        onClose={close}
+        onRun={(settings) => {
+          close();
+          pivots.current.set(key, settings);
+          void runPivot(settings);
+        }}
+      />
+    ));
+  };
+  /** Fills the field with the pivot's query and runs it, after counting the pivot columns. */
+  const runPivot = async (settings: PivotSettings) => {
+    const ready = columns && normalize(settings, columns);
+    if (!ready || key === null || shown?.jobId == null) return;
+    const of = shown.jobId;
+    if (!output && !(await canLeave())) return;
+    if (ready.column !== null) {
+      const count = await fields.scalar(key, pivotCountSql(ready.column), tables);
+      if (count === undefined) return;
+      if (Number(count) > MAX_PIVOT_COLUMNS) {
+        return fields.fail(
+          key,
+          t("The column {column} has {n} distinct values, over the {max} columns a pivot can have: choose another column or filter the rows first.", {
+            column: ready.column,
+            n: count ?? "0",
+            max: String(MAX_PIVOT_COLUMNS),
+          }),
+        );
+      }
+    }
+    await fields.run(key, pivotSql(ready, t("Total")), tables, of, columnNames);
+  };
+
   const bar =
     key === null ? null : (
       <div
@@ -344,6 +445,9 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
         >
           <Icon name="expand" />
         </button>
+        <button type="button" className="result-pivot-open" onClick={pivot} title={t("Pivot the rows: fields down, a field across, an aggregate in the cells")}>
+          {t("Pivot…")}
+        </button>
         <FieldStatus state={state} output={output} />
         {expanded && (
           <SqlPopover
@@ -369,6 +473,7 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
     sessionId: copy?.sessionId ?? null,
     bar,
     focus: () => field.current?.focus(),
+    pivot,
   };
 }
 

@@ -2337,6 +2337,26 @@ const de: Record<string, string> = {
   "Every column needs a name.": "Jede Spalte braucht einen Namen.",
   "Every column needs a type.": "Jede Spalte braucht einen Typ.",
   "Two columns have the same name.": "Zwei Spalten haben denselben Namen.",
+
+// Group M: pivot
+  "Count distinct": "Eindeutige Anzahl",
+  "Row fields, ascending": "Zeilenfelder, aufsteigend",
+  "Row fields, descending": "Zeilenfelder, absteigend",
+  "Largest value first": "Größter Wert zuerst",
+  "Smallest value first": "Kleinster Wert zuerst",
+  "Pivot": "Pivot",
+  "Pivot…": "Pivot…",
+  "Row fields": "Zeilenfelder",
+  "Column field": "Spaltenfeld",
+  "(none)": "(keines)",
+  "(count the rows)": "(Zeilen zählen)",
+  "Totals": "Summen",
+  "Sort": "Sortierung",
+  "Total": "Gesamt",
+  "Pivot the result": "Ergebnis pivotieren",
+  "Pivot the rows: fields down, a field across, an aggregate in the cells": "Zeilen pivotieren: Felder untereinander, ein Feld nebeneinander, eine Aggregation in den Zellen",
+  "Groups the loaded rows by the row fields, with the values of the column field across, and writes the query in the SQL field, where it can be edited.": "Gruppiert die geladenen Zeilen nach den Zeilenfeldern, mit den Werten des Spaltenfelds nebeneinander, und schreibt die Abfrage ins SQL-Feld, wo sie bearbeitet werden kann.",
+  "The column {column} has {n} distinct values, over the {max} columns a pivot can have: choose another column or filter the rows first.": "Die Spalte {column} hat {n} verschiedene Werte, mehr als die {max} Spalten, die ein Pivot haben kann: Wähle eine andere Spalte oder filtere zuerst die Zeilen.",
 };
 
 export default de;

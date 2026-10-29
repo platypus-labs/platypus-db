@@ -2337,6 +2337,26 @@ const zh: Record<string, string> = {
   "Every column needs a name.": "每一列都需要名称。",
   "Every column needs a type.": "每一列都需要类型。",
   "Two columns have the same name.": "有两列同名。",
+
+// Group M: pivot
+  "Count distinct": "去重计数",
+  "Row fields, ascending": "行字段,升序",
+  "Row fields, descending": "行字段,降序",
+  "Largest value first": "最大值优先",
+  "Smallest value first": "最小值优先",
+  "Pivot": "数据透视",
+  "Pivot…": "数据透视…",
+  "Row fields": "行字段",
+  "Column field": "列字段",
+  "(none)": "(无)",
+  "(count the rows)": "(统计行数)",
+  "Totals": "合计",
+  "Sort": "排序",
+  "Total": "合计",
+  "Pivot the result": "透视结果",
+  "Pivot the rows: fields down, a field across, an aggregate in the cells": "透视行:字段纵向排列,一个字段横向排列,单元格中为聚合值",
+  "Groups the loaded rows by the row fields, with the values of the column field across, and writes the query in the SQL field, where it can be edited.": "按行字段对已加载的行分组,以列字段的各个值横向展开,并把查询写入 SQL 字段,可在其中编辑。",
+  "The column {column} has {n} distinct values, over the {max} columns a pivot can have: choose another column or filter the rows first.": "列 {column} 有 {n} 个不同的值,超过了透视表允许的 {max} 列:请选择其他列,或先筛选行。",
 };
 
 export default zh;
