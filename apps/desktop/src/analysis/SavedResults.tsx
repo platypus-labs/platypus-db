@@ -7,6 +7,7 @@ import { registerAction } from "../actions";
 import { api, type SavedResult, toCommandError } from "../api";
 import { fmt } from "../components/ResultPanel";
 import { locale, plural, t } from "../i18n";
+import { withDriver } from "../drivers/DriverPopup";
 import { Icon } from "../ui/Icon";
 import { ask } from "../ui/ask";
 import { askName } from "../ui/NameDialog";
@@ -46,7 +47,8 @@ export async function saveResult(host: ResultHost, jobId: number, sql: string) {
 /** Opens a saved result in a SQL tab on a temporary in-memory DuckDB. */
 export async function openSavedResult(saved: SavedResult) {
   try {
-    const opened = await api.openSavedResult(saved.id, t("Saved result: {name}", { name: saved.name }));
+    // DuckDB holds the rows: downloaded first if it is not yet.
+    const opened = await withDriver(() => api.openSavedResult(saved.id, t("Saved result: {name}", { name: saved.name })));
     workbench().openTemporaryTab(
       "query",
       opened.connection,
