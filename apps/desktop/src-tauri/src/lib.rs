@@ -158,16 +158,17 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     );
     state.prune_catalog();
     app.manage(state);
-    app.manage(scheduler::Scheduler::open(
-        dir(app, false).ok().map(|d| d.join("schedules.json")),
-    ));
-    commands::schedules::start(app.handle().clone());
     // Downloaded drivers live with the data; removals that Windows refused are finished.
     if let Ok(data) = dir(app, false) {
         applog::init(&data);
         platypus_drivers::set_data_dir(&data);
         platypus_drivers::purge_removed(&data);
     }
+    // After the log and the drivers' folder: a task due at the start may run at once.
+    app.manage(scheduler::Scheduler::open(
+        dir(app, false).ok().map(|d| d.join("schedules.json")),
+    ));
+    commands::schedules::start(app.handle().clone());
     open_main_window(app, system_title_bar)?;
     Ok(())
 }

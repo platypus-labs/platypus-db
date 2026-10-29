@@ -56,15 +56,25 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 impl Scheduler {
-    /// The tasks saved at `path`; none when it does not exist or cannot be read.
+    /// The tasks saved at `path`; none when it does not exist. One that cannot be read (written
+    /// by a newer version, edited by hand) is moved aside to `schedules.json.unreadable`
+    /// rather than written over.
     pub fn open(path: Option<PathBuf>) -> Self {
         let saved = path
             .as_ref()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|text| match serde_json::from_str(&text) {
+            .and_then(|p| Some((p, std::fs::read_to_string(p).ok()?)))
+            .and_then(|(p, text)| match serde_json::from_str(&text) {
                 Ok(saved) => Some(saved),
                 Err(e) => {
-                    crate::applog::write("WARN", &format!("schedules.json cannot be read: {e}"));
+                    let aside = p.with_extension("json.unreadable");
+                    let _ = std::fs::rename(p, &aside);
+                    crate::applog::write(
+                        "WARN",
+                        &format!(
+                            "schedules.json cannot be read ({e}): moved to {}",
+                            aside.display()
+                        ),
+                    );
                     None
                 }
             })
@@ -124,6 +134,18 @@ impl Scheduler {
             return Err(problem);
         }
         let mut saved = lock(&self.saved);
+        if schedule.folder.is_some()
+            && let Some(other) = saved.schedules.iter().find(|s| {
+                s.id != schedule.id
+                    && s.folder == schedule.folder
+                    && s.file_stem() == schedule.file_stem()
+            })
+        {
+            return Err(format!(
+                "{} writes files of the same name into the same folder: give one another name or folder",
+                other.name
+            ));
+        }
         let next = schedule.next_after(now).ok_or("the task would never run")?;
         saved.due.insert(schedule.id, next);
         saved.retry.remove(&schedule.id);
@@ -296,6 +318,45 @@ mod tests {
         assert_eq!(scheduler.list()[0].next, Some(utc("2026-11-11T07:00:00Z")));
         assert_eq!(scheduler.list()[0].runs.len(), 2);
         assert!(!scheduler.list()[0].runs[0].ok);
+    }
+
+    #[test]
+    fn two_tasks_do_not_share_their_files() {
+        let scheduler = Scheduler::open(None);
+        let mut first = schedule(0);
+        first.folder = Some(PathBuf::from("/out"));
+        scheduler
+            .put(first.clone(), utc("2026-11-10T06:00:00Z"))
+            .unwrap();
+        let mut second = schedule(0);
+        second.folder = first.folder.clone();
+        assert!(
+            scheduler
+                .put(second.clone(), utc("2026-11-10T06:00:00Z"))
+                .unwrap_err()
+                .contains("same folder")
+        );
+        second.folder = Some(PathBuf::from("/elsewhere"));
+        scheduler.put(second, utc("2026-11-10T06:00:00Z")).unwrap();
+        // Saving the same task again is no clash.
+        scheduler.put(first, utc("2026-11-10T06:00:00Z")).unwrap();
+    }
+
+    #[test]
+    fn an_unreadable_file_is_kept_aside() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("schedules.json");
+        std::fs::write(&path, "{ not json").unwrap();
+        let scheduler = Scheduler::open(Some(path.clone()));
+        assert_eq!(scheduler.list().len(), 0);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("schedules.json.unreadable")).unwrap(),
+            "{ not json"
+        );
+        scheduler
+            .put(schedule(0), utc("2026-11-10T06:00:00Z"))
+            .unwrap();
+        assert!(path.exists());
     }
 
     #[test]

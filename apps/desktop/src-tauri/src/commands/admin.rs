@@ -71,5 +71,10 @@ pub async fn maintain_table(
 ) -> CommandResult<Vec<String>> {
     state.writable(session_id)?;
     let conn = state.live(session_id).await?;
-    Ok(conn.maintain(&schema, &table, operation).await?)
+    // Outside a transaction: VACUUM refuses one, and the others would keep their locks (or
+    // commit what was pending, in MySQL) on a session in manual-commit mode.
+    super::one_off(&conn, async {
+        Ok(conn.maintain(&schema, &table, operation).await?)
+    })
+    .await
 }

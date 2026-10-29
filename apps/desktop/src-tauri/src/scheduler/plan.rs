@@ -261,6 +261,18 @@ fn last_day(day: NaiveDate) -> u32 {
         .map_or(28, |d| d.day())
 }
 
+/// Whether `text` is the time stamp of [`Schedule::file_at`], `20261029-070000`: the files
+/// of a task named like the start of another's are not its own.
+fn is_stamp(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    bytes.len() == 15
+        && bytes[8] == b'-'
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(i, c)| i == 8 || c.is_ascii_digit())
+}
+
 /// The files of `schedule` in `folder` beyond the newest `keep`, oldest first: their names
 /// end with a time stamp, so they sort by it.
 pub fn surplus(schedule: &Schedule, folder: &Path, extension: &str) -> Vec<PathBuf> {
@@ -276,11 +288,10 @@ pub fn surplus(schedule: &Schedule, folder: &Path, extension: &str) -> Vec<PathB
         .map(|e| e.path())
         .filter(|p| {
             p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-                n.starts_with(&stem)
+                n.len() >= stem.len() + suffix.len()
+                    && n.starts_with(&stem)
                     && n.ends_with(&suffix)
-                    && n[stem.len()..n.len() - suffix.len()]
-                        .chars()
-                        .all(|c| c.is_ascii_digit() || c == '-')
+                    && is_stamp(&n[stem.len()..n.len() - suffix.len()])
             })
         })
         .collect();
@@ -433,9 +444,14 @@ mod tests {
         for stamp in ["20261101-070000", "20261102-070000", "20261103-070000"] {
             std::fs::write(dir.path().join(format!("Nightly_backup-{stamp}.dump")), "x").unwrap();
         }
-        // Another task's file and one by hand stay.
+        // Another task's files, one named like the start of this one's, and one by hand stay.
         std::fs::write(dir.path().join("Nightly_backup-old copy.dump"), "x").unwrap();
         std::fs::write(dir.path().join("Other-20261101-070000.dump"), "x").unwrap();
+        std::fs::write(
+            dir.path().join("Nightly_backup-2-20261101-070000.dump"),
+            "x",
+        )
+        .unwrap();
         let surplus = surplus(&s, dir.path(), "dump");
         assert_eq!(
             surplus,

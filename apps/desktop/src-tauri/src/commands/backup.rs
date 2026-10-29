@@ -349,13 +349,18 @@ fn without_definer(line: &[u8]) -> Cow<'_, [u8]> {
 }
 
 /// Sends `path` to the client's input, a line at a time through `filter`, reporting the
-/// bytes read every so often.
+/// bytes read every so often. A file that cannot be read to its end says why on the
+/// returned receiver, and the input stays open: closed, the client would take the part it
+/// got for the whole file (`psql --single-transaction` would commit it).
 async fn send_file(
     child: &mut Child,
     path: PathBuf,
     filter: fn(&[u8]) -> Cow<'_, [u8]>,
     events: Channel<BackupEvent>,
-) -> CommandResult<tauri::async_runtime::JoinHandle<()>> {
+) -> CommandResult<(
+    tauri::async_runtime::JoinHandle<()>,
+    oneshot::Receiver<String>,
+)> {
     let file = tokio::fs::File::open(&path)
         .await
         .map_err(|e| CommandError::new("io", format!("{}: {e}", path.display())))?;
@@ -364,11 +369,21 @@ async fn send_file(
     let Some(mut stdin) = child.stdin.take() else {
         return Err(CommandError::new("cli", "the client has no input"));
     };
-    Ok(tauri::async_runtime::spawn(async move {
+    let (failed, read_failed) = oneshot::channel();
+    let sending = tauri::async_runtime::spawn(async move {
         let mut line = Vec::new();
         let mut sent = 0;
         let mut told = Instant::now();
-        while let Ok(n @ 1..) = file.read_until(b'\n', &mut line).await {
+        loop {
+            let n = match file.read_until(b'\n', &mut line).await {
+                Ok(0) => break,
+                Ok(n) => n,
+                Err(e) => {
+                    let _ = failed.send(format!("{}: {e}", path.display()));
+                    // Held open until the client is stopped.
+                    return std::future::pending::<()>().await;
+                }
+            };
             // A client that stops reading ended: its output says why.
             if stdin.write_all(&filter(&line)).await.is_err() {
                 break;
@@ -387,16 +402,19 @@ async fn send_file(
         }
         // Closing the input ends the client's script.
         drop(stdin);
-    }))
+    });
+    Ok((sending, read_failed))
 }
 
-/// Waits for the tool to end while its output is followed; `None` once cancelled.
+/// Waits for the tool to end while its output is followed, with its exit status (`None`
+/// when it could not be had, which is a failure); `None` once `stop` ends first, which kills
+/// the tool.
 async fn finish(
     mut child: Child,
     total: Option<u64>,
     events: &Channel<BackupEvent>,
-    cancel: oneshot::Receiver<()>,
-) -> Option<(std::process::ExitStatus, String)> {
+    stop: impl Future<Output = ()>,
+) -> Option<(Option<std::process::ExitStatus>, String)> {
     let run = async {
         let output = follow(&mut child, total, events).await;
         let status = child.wait().await;
@@ -404,10 +422,17 @@ async fn finish(
     };
     tokio::select! {
         (status, output) = run => match status {
-            Ok(status) => Some((status, output)),
-            Err(e) => Some((std::process::ExitStatus::default(), format!("{output}\n{e}"))),
+            Ok(status) => Some((Some(status), output)),
+            Err(e) => Some((None, format!("{output}\n{e}"))),
         },
-        _ = cancel => None,
+        () = stop => None,
+    }
+}
+
+/// Ends when the `cancel_cli` of the run asks, not when nothing can ask any more.
+async fn cancelled(cancel: oneshot::Receiver<()>) {
+    if cancel.await.is_err() {
+        std::future::pending::<()>().await;
     }
 }
 
@@ -415,12 +440,12 @@ async fn finish(
 /// its output.
 fn outcome(
     program: &str,
-    status: std::process::ExitStatus,
+    status: Option<std::process::ExitStatus>,
     output: String,
     file: &Path,
     started: Instant,
 ) -> BackupEvent {
-    if status.success() {
+    if status.is_some_and(|s| s.success()) {
         BackupEvent::Finished {
             bytes: std::fs::metadata(file).map_or(0, |m| m.len()),
             elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
@@ -433,7 +458,13 @@ fn outcome(
             .rev()
             .find(|l| l.to_lowercase().contains("error"))
             .or_else(|| output.lines().next_back())
-            .map_or_else(|| format!("{program} failed ({status})"), str::to_owned);
+            .map_or_else(
+                || match status {
+                    Some(status) => format!("{program} failed ({status})"),
+                    None => format!("{program} ended without saying how"),
+                },
+                str::to_owned,
+            );
         BackupEvent::Failed { message, output }
     }
 }
@@ -473,14 +504,19 @@ pub(crate) async fn backup(
     let (program, invocation) = backup_invocation(config, &host, port, request)?;
     let started = Instant::now();
     let child = spawn(program, invocation, false)?;
-    let ended = finish(child, total, events, cancel).await;
+    let ended = finish(child, total, events, cancelled(cancel)).await;
     drop(tunnel);
+    // A file cut short is no backup: where a scheduled task keeps its newest files, it
+    // would count as one.
     let Some((status, output)) = ended else {
-        // A file cut short is no backup.
         let _ = std::fs::remove_file(&request.path);
         return Err(stopped(program));
     };
-    Ok(outcome(program, status, output, &request.path, started))
+    let event = outcome(program, status, output, &request.path, started);
+    if matches!(event, BackupEvent::Failed { .. }) {
+        let _ = std::fs::remove_file(&request.path);
+    }
+    Ok(event)
 }
 
 /// Restores `request.path` into the session's database: a `pg_dump` archive with
@@ -501,7 +537,7 @@ pub async fn restore_database(
     let result = async {
         let (tunnel, host, port) = reach(&config).await?;
         let started = Instant::now();
-        let (program, child, total, sending) =
+        let (program, child, total, sending, read_failed) =
             match restore_invocation(&config, &host, port, &request).await? {
                 Restore::Reads(program, invocation) => {
                     // The archive's table of contents counts its tables.
@@ -514,23 +550,43 @@ pub async fn restore_database(
                         .filter(|o| o.status.success());
                     let total =
                         listing.map(|o| archive_tables(&String::from_utf8_lossy(&o.stdout)));
-                    (program, spawn(program, invocation, false)?, total, None)
+                    (program, spawn(program, invocation, false)?, total, None, None)
                 }
                 Restore::Input(program, invocation, filter) => {
                     let mut child = spawn(program, invocation, true)?;
-                    let sending =
+                    let (sending, read_failed) =
                         send_file(&mut child, request.path.clone(), filter, on_event.clone())
                             .await?;
-                    (program, child, None, Some(sending))
+                    (program, child, None, Some(sending), Some(read_failed))
                 }
             };
-        let ended = finish(child, total, &on_event, cancel).await;
+        // Stopped by Cancel, or by a file that cannot be read to its end.
+        let unread = std::sync::Mutex::new(None);
+        let stop = async {
+            let unreadable = async {
+                match read_failed {
+                    Some(failed) => match failed.await {
+                        Ok(why) => why,
+                        Err(_) => std::future::pending().await,
+                    },
+                    None => std::future::pending().await,
+                }
+            };
+            tokio::select! {
+                () = cancelled(cancel) => {}
+                why = unreadable => *unread.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(why),
+            }
+        };
+        let ended = finish(child, total, &on_event, stop).await;
         if let Some(sending) = sending {
             sending.abort();
         }
         drop(tunnel);
         let Some((status, output)) = ended else {
-            return Err(stopped(program));
+            return Err(match unread.into_inner().unwrap_or_else(std::sync::PoisonError::into_inner) {
+                Some(why) => CommandError::new("io", format!("the restore stopped: {why}")),
+                None => stopped(program),
+            });
         };
         let _ = on_event.send(outcome(program, status, output, &request.path, started));
         Ok(())
@@ -759,7 +815,9 @@ mod tests {
         let (_stop, cancel) = oneshot::channel();
         let started = Instant::now();
         let child = spawn(program, invocation, false).unwrap();
-        let (status, output) = finish(child, Some(1), &channel, cancel).await.unwrap();
+        let (status, output) = finish(child, Some(1), &channel, cancelled(cancel))
+            .await
+            .unwrap();
         let event = outcome(program, status, output, &file, started);
         assert!(
             matches!(event, BackupEvent::Finished { bytes, .. } if bytes > 0),
@@ -804,13 +862,15 @@ mod tests {
         };
         let (channel, events) = recorder();
         let mut child = spawn(program, invocation, true).unwrap();
-        let sending = send_file(&mut child, file.clone(), filter, channel.clone())
+        let (sending, _) = send_file(&mut child, file.clone(), filter, channel.clone())
             .await
             .unwrap();
         let (_stop, cancel) = oneshot::channel();
-        let (status, output) = finish(child, None, &channel, cancel).await.unwrap();
+        let (status, output) = finish(child, None, &channel, cancelled(cancel))
+            .await
+            .unwrap();
         sending.abort();
-        assert!(status.success(), "{output}");
+        assert!(status.is_some_and(|s| s.success()), "{output}");
         assert_eq!(
             mysql("SELECT group_concat(v ORDER BY v) FROM backup_test_v"),
             "one,two"
@@ -852,7 +912,9 @@ mod tests {
         let (_stop, cancel) = oneshot::channel();
         let started = Instant::now();
         let child = spawn(program, invocation, false).unwrap();
-        let (status, output) = finish(child, None, &channel, cancel).await.unwrap();
+        let (status, output) = finish(child, None, &channel, cancelled(cancel))
+            .await
+            .unwrap();
         match outcome(program, status, output, &file, started) {
             BackupEvent::Finished { .. } => assert!(is_archive(&file).await.unwrap()),
             BackupEvent::Failed { message, .. } => {

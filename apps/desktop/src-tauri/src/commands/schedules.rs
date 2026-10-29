@@ -98,6 +98,9 @@ async fn execute(
             .await
             .map(|m| (m, None)),
         Task::Export { sql, format } => {
+            if saved.read_only && !sql::only_reads(sql, saved.config.driver) {
+                return Err(read_only_error(&saved.label).message().to_owned());
+            }
             let format = format.transfer();
             let file = output(schedule, started, format.extension())?;
             let rows = export(state, saved, label, sql, &file, format).await?;
