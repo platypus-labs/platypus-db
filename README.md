@@ -676,6 +676,19 @@ shortcuts.
 Windows 11, Ryzen 7 9700X; details and method, the first Linux numbers and the scale tests
 (10,000 tables, a million rows, cells of tens of MB) in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
+### Compared with other clients
+
+| | PlatypusDB | DBeaver CE | Beekeeper Studio |
+|---|---|---|---|
+| Runtime | Rust and the system's web view | Java, JRE bundled | Electron |
+| Linux download | 19.5 MiB | 122 MiB | 346 MiB |
+| On disk | 46 MiB | 206 MiB | 1,105 MiB |
+| License | AGPL-3.0 | Apache 2.0 | GPLv3 |
+
+Sizes of the official Linux downloads of PlatypusDB 0.2.0, DBeaver CE 26.2.3 and Beekeeper
+Studio 6.2.0. Start and memory side by side are still to be measured; see
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md#side-by-side).
+
 ## Development
 
 What comes next is planned in [docs/ROADMAP.md](docs/ROADMAP.md), and the working rules are in

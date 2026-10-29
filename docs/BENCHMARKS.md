@@ -99,8 +99,22 @@ expanding the connection took 0.2 s instead of 3.7 s and selecting a row 0.07 s 
 0.5 s (Chromium, the app's frontend on a fake backend); completion lists the tables among
 10,000 in about 0.1 s.
 
-## DBeaver
+## Side by side
 
-DBeaver was not installed on the test machine, so it has not been measured side by side.
-The reference values in the plan (5–15 s start, 500 MB–1 GB at rest, ~120 MB installer)
-come from DBeaver's typical footprint as a JVM application and are indicative only.
+Sizes of the Linux downloads, measured on 29 October 2026 from the official release files.
+The start and the memory of the other clients have not been measured yet: running them was
+not possible in the test container, so they are left blank rather than guessed.
+
+| | PlatypusDB 0.2.0 | DBeaver CE 26.2.3 | Beekeeper Studio 6.2.0 |
+|---|---|---|---|
+| Runtime | Rust, the system's web view | Java (Eclipse RCP), JRE bundled | Electron (Chromium and Node bundled) |
+| Download | 19.5 MiB (`.deb`) | 122 MiB (`.tar.gz`) | 346 MiB (`.AppImage`) |
+| On disk | 46 MiB (+ WebKitGTK, shared with the system) | 206 MiB, of which the JRE 106 MiB | 1,105 MiB |
+| Start to interactive window | 1.4 s (Xvfb, no GPU) | not measured | not measured |
+| Memory at rest, 1 connection | 310 MB private (Xvfb, no GPU) | not measured; heap up to 1 GB (`-Xmx1024m` in `dbeaver.ini`) | not measured |
+| License | AGPL-3.0 | Apache 2.0 | GPLv3 (Community Edition) |
+
+PlatypusDB's numbers are the Linux ones above (software rendering, no GPU); on Windows it
+starts in under 0.5 s and keeps about 130 MB. The plan's reference values for DBeaver (5–15 s
+start, 500 MB–1 GB at rest) come from its typical footprint as a JVM application and are
+indicative only, until it is measured with `scripts/bench.py`'s method.
