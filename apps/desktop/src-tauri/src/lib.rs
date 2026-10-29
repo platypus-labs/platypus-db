@@ -1,5 +1,6 @@
 //! Tauri shell for PlatypusDB: exposes the core crates to the web UI as commands.
 
+mod agent;
 mod applog;
 mod commands;
 mod copy;
@@ -169,6 +170,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         dir(app, false).ok().map(|d| d.join("schedules.json")),
     ));
     commands::schedules::start(app.handle().clone());
+    agent::start(app.handle(), dir(app, false).ok());
     open_main_window(app, system_title_bar)?;
     Ok(())
 }
@@ -188,8 +190,13 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(setup)
         .invoke_handler(handlers())
-        .run(tauri::generate_context!())
-        .expect("error while running PlatypusDB");
+        .build(tauri::generate_context!())
+        .expect("error while running PlatypusDB")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                agent::stop(app);
+            }
+        });
 }
 
 /// Every command the web UI can call.
@@ -198,6 +205,12 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         commands::app_info,
         commands::agents::agent_setup,
+        agent::agent_bridge,
+        agent::restart_agent_bridge,
+        agent::regenerate_agent_token,
+        agent::answer_agent_write,
+        agent::agent_writes_waiting,
+        agent::connected_agents,
         commands::agents::agent_blockers,
         commands::agents::stale_agent_registrations,
         commands::agents::agent_calls,

@@ -34,7 +34,7 @@ pub use agent::{
 };
 pub use connect::{AgentBlocker, agent_blocker, connect};
 pub use error::{AgentError, Result};
-pub use link::{AppLink, BridgeFile, HttpLink, OpenSession, Verdict, WriteRequest};
+pub use link::{ANSWER_TIMEOUT, AppLink, BridgeFile, HttpLink, OpenSession, Verdict, WriteRequest};
 pub use output::{Format, QueryResult};
 pub use plan::PlanResult;
 pub use profile::Profile;

@@ -404,7 +404,7 @@ pub async fn open_session(
 ) -> CommandResult<SessionInfo> {
     // "Query with SQL" reaches its in-memory database through a connection that is not saved.
     if let Some((config, label)) = state.result_db_config(connection_id) {
-        return start_session(&state, connection_id, config, label, false).await;
+        return start_session(&state, connection_id, config, label, (false, false)).await;
     }
     let typed = password.is_some();
     let SavedConfig {
@@ -414,9 +414,10 @@ pub async fn open_session(
         production,
         ..
     } = saved_config(&state, connection_id, password, database).await?;
-    let production = production && side != Some(true);
+    let side = side == Some(true);
+    let production = production && !side;
     // `auth`: the UI asks for the password (again), with the server's answer.
-    start_session(&state, connection_id, config, label, production)
+    start_session(&state, connection_id, config, label, (production, side))
         .await
         .map_err(|e| {
             if (typed || none_saved) && login_refused(&e) {
@@ -499,7 +500,7 @@ async fn start_session(
     connection_id: Uuid,
     config: ConnectionConfig,
     label: String,
-    production: bool,
+    (production, side): (bool, bool),
 ) -> CommandResult<SessionInfo> {
     let raw: Arc<dyn Connection> = Arc::from(connect(&config).await?);
     let conn = Logged::wrap(Arc::clone(&raw), &state.query_log, &label);
@@ -510,10 +511,9 @@ async fn start_session(
     let minimum = server.below_minimum().map(|v| v.to_string());
     let capabilities = conn.capabilities();
     let session_id = state.next_id();
-    lock(&state.sessions).insert(
-        session_id,
-        Session::new(connection_id, raw, conn, config, label),
-    );
+    let mut session = Session::new(connection_id, raw, conn, config, label);
+    session.side = side;
+    lock(&state.sessions).insert(session_id, session);
     Ok(SessionInfo {
         session_id,
         server,

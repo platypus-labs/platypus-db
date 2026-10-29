@@ -27,6 +27,10 @@ async-trait.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 chrono-tz = "0.10"
 futures.workspace = true
+bytes.workspace = true
+http-body-util = "0.1"
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 platypus-core.workspace = true
 platypus-docs.workspace = true
 platypus-local.workspace = true
@@ -42,12 +46,13 @@ platypus-driver-mssql.workspace = true
 platypus-driver-mysql.workspace = true
 platypus-driver-pg.workspace = true
 platypus-driver-sqlite.workspace = true
-platypus-mcp.workspace = true
+platypus-mcp = { workspace = true, features = ["http"] }
 platypus-transfer.workspace = true
 platypus-net.workspace = true
 platypus-schema.workspace = true
 platypus-sql.workspace = true
 platypus-store.workspace = true
+rmcp = { version = "3.7", default-features = false, features = ["server", "transport-streamable-http-server"] }
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -56,7 +61,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
-tokio = { workspace = true, features = ["fs", "io-util", "process", "sync", "time"] }
+tokio = { workspace = true, features = ["fs", "io-util", "net", "process", "sync", "time"] }
+tower-service = "0.3"
 tokio-util.workspace = true
 toml_edit = "0.25"
 uuid.workspace = true

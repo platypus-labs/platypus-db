@@ -41,7 +41,7 @@ impl BridgeFile {
 pub struct OpenSession {
     /// The connection's name, as `list_connections` shows it.
     pub connection: String,
-    /// Another database of the server than the connection's own.
+    /// The database it works on, where the connection names one.
     pub database: Option<String>,
     /// What the session is for: `main` for the one the connection's editor tabs and
     /// navigator share, `side` for one a dialog opened.
