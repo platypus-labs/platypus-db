@@ -23,7 +23,7 @@ use futures::StreamExt;
 use mysql_async::prelude::Queryable;
 use mysql_async::{ClientIdentity, Conn, DriverError, Opts, OptsBuilder, Row, SslOpts, Value};
 use platypus_core::{
-    CancelHandle, Canceller, CatalogColumn, Connection, ConnectionConfig, DbError, Driver,
+    Auth, CancelHandle, Canceller, CatalogColumn, Connection, ConnectionConfig, DbError, Driver,
     DriverKind, Error, ExecOptions, ExecResult, ObjectMeta, RecordBatchStream, ReferencingKey,
     Result, SchemaMeta, ServerInfo, SslMode, TableDetails, TransactionState, TxTracker, classify,
 };
@@ -131,7 +131,10 @@ fn opts(config: &ConnectionConfig, ssl: Option<SslOpts>) -> Opts {
         // rows whose value changed: the data editor checks that each change hit one row.
         .client_found_rows(true)
         .init(vec![format!("SET time_zone = '{SESSION_TIME_ZONE}'")])
-        .ssl_opts(ssl);
+        .ssl_opts(ssl)
+        // IAM and Entra ID tokens go to the server as written (`mysql_clear_password`):
+        // RDS, Cloud SQL and Azure ask for it, over TLS.
+        .enable_cleartext_plugin(config.auth().is_ok_and(Auth::is_token));
     if let Some(name) = &config.application_name {
         builder = builder.connect_attribute("program_name", name.clone());
     }

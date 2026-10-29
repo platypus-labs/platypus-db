@@ -303,6 +303,55 @@ pub const POOLER: &str = "pooler";
 pub const BEFORE_CONNECT: &str = "before_connect";
 pub const AFTER_DISCONNECT: &str = "after_disconnect";
 
+/// The option that says how the user signs in when it is not with a password: see [`Auth`].
+pub const AUTH: &str = "auth";
+
+/// The options of a port forward made by a cloud's CLI (run by `platypus-net`): `forward`
+/// is `kubernetes` (`kubectl port-forward` to `k8s_target`, e.g. `svc/postgres`, in
+/// `k8s_namespace` of `k8s_context`) or `ssm` (an AWS SSM session through the EC2 instance
+/// `ssm_target` to the server's host). `aws_region` and `aws_profile` also serve IAM tokens.
+pub const FORWARD: &str = "forward";
+pub const K8S_TARGET: &str = "k8s_target";
+pub const K8S_NAMESPACE: &str = "k8s_namespace";
+pub const K8S_CONTEXT: &str = "k8s_context";
+pub const SSM_TARGET: &str = "ssm_target";
+pub const AWS_REGION: &str = "aws_region";
+pub const AWS_PROFILE: &str = "aws_profile";
+
+/// How the user signs in: with the password, or with what the option [`AUTH`] names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Auth {
+    Password,
+    /// A token from `aws rds generate-db-auth-token` (PostgreSQL and MySQL on RDS).
+    AwsIam,
+    /// A token from `gcloud sql generate-login-token` (PostgreSQL and MySQL on Cloud SQL).
+    GcpIam,
+    /// A Microsoft Entra ID token from `az account get-access-token`.
+    EntraId,
+    /// Windows' own sign-in (SSPI, Kerberos or NTLM), SQL Server on Windows only.
+    Windows,
+}
+
+impl Auth {
+    /// The way `value` of the option [`AUTH`] names; none or empty is the password.
+    pub fn from_option(value: Option<&str>) -> Result<Self> {
+        Ok(match value.map(str::trim).unwrap_or_default() {
+            "" | "password" => Self::Password,
+            "aws_iam" => Self::AwsIam,
+            "gcp_iam" => Self::GcpIam,
+            "entra_id" => Self::EntraId,
+            "windows" => Self::Windows,
+            other => return Err(Error::Config(format!("unknown authentication `{other}`"))),
+        })
+    }
+
+    /// Whether the password is a token a cloud's CLI makes at each connection.
+    #[must_use]
+    pub const fn is_token(self) -> bool {
+        matches!(self, Self::AwsIam | Self::GcpIam | Self::EntraId)
+    }
+}
+
 impl ConnectionConfig {
     #[must_use]
     pub fn new(driver: DriverKind) -> Self {
@@ -324,6 +373,11 @@ impl ConnectionConfig {
             init: SessionInit::default(),
             options: BTreeMap::new(),
         }
+    }
+
+    /// How the user signs in, from the option [`AUTH`].
+    pub fn auth(&self) -> Result<Auth> {
+        Auth::from_option(self.options.get(AUTH).map(String::as_str))
     }
 
     /// Parses a connection URL such as `postgres://user:pass@host:5432/db?sslmode=require`,

@@ -25,8 +25,9 @@ pub use admin::{
 };
 pub use capabilities::{Capabilities, ObjectRef, unsupported};
 pub use config::{
-    AFTER_DISCONNECT, BEFORE_CONNECT, Bridge, ConnectionConfig, DriverKind, JdbcUrl, POOLER,
-    ParseNote, ParsedConnection, Secret, SshAuth, SshConfig, SslMode,
+    AFTER_DISCONNECT, AUTH, AWS_PROFILE, AWS_REGION, Auth, BEFORE_CONNECT, Bridge,
+    ConnectionConfig, DriverKind, FORWARD, JdbcUrl, K8S_CONTEXT, K8S_NAMESPACE, K8S_TARGET, POOLER,
+    ParseNote, ParsedConnection, SSM_TARGET, Secret, SshAuth, SshConfig, SslMode,
 };
 pub use connection::{
     BulkRows, CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, Executed,

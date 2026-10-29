@@ -501,8 +501,9 @@ pub(crate) async fn backup(
     events: &Channel<BackupEvent>,
     cancel: oneshot::Receiver<()>,
 ) -> CommandResult<BackupEvent> {
-    let (tunnel, host, port) = reach(config).await?;
-    let (program, invocation) = backup_invocation(config, &host, port, request)?;
+    let mut config = config.clone();
+    let (tunnel, host, port) = reach(&mut config).await?;
+    let (program, invocation) = backup_invocation(&config, &host, port, request)?;
     let started = Instant::now();
     let child = spawn(program, invocation, false)?;
     let ended = finish(child, total, events, cancelled(cancel)).await;
@@ -532,11 +533,11 @@ pub async fn restore_database(
     on_event: Channel<BackupEvent>,
 ) -> CommandResult<()> {
     state.writable(session_id)?;
-    let config = state.session(session_id)?.config;
+    let mut config = state.session(session_id)?.config;
     let (stop, cancel) = oneshot::channel();
     lock(&state.clis).insert(run_id, stop);
     let result = async {
-        let (tunnel, host, port) = reach(&config).await?;
+        let (tunnel, host, port) = reach(&mut config).await?;
         let started = Instant::now();
         let (program, child, total, sending, read_failed) =
             match restore_invocation(&config, &host, port, &request).await? {

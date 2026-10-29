@@ -93,7 +93,8 @@ fn secret_error(name: &str, e: StoreError) -> AgentError {
 
 /// The connection's password, wherever it comes from.
 async fn password(store: &ConnectionStore, saved: &SavedConnection) -> Result<Option<Secret>> {
-    if saved.driver.is_embedded() {
+    // A token is made as it connects (`platypus-net`); Windows' sign-in needs none.
+    if saved.driver.is_embedded() || saved.signs_in_without_password() {
         return Ok(None);
     }
     if saved.password_command.is_some() || saved.pgpass {

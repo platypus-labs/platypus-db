@@ -3,7 +3,9 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use platypus_core::{ConnectionConfig, DriverKind, Secret, SshAuth, SshConfig, SslMode};
+use platypus_core::{
+    AUTH, Auth, ConnectionConfig, DriverKind, Secret, SshAuth, SshConfig, SslMode,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -500,6 +502,15 @@ impl SavedConnection {
             && !self.save_password
             && !self.pgpass
             && self.password_command.is_none()
+            && !self.signs_in_without_password()
+    }
+
+    /// Whether it signs in with a token from a cloud's CLI or with Windows' own sign-in: no
+    /// password is asked, saved or looked up.
+    #[must_use]
+    pub fn signs_in_without_password(&self) -> bool {
+        Auth::from_option(self.options.get(AUTH).map(String::as_str))
+            .is_ok_and(|auth| auth != Auth::Password)
     }
 }
 
@@ -1377,6 +1388,12 @@ SET b = 2;"
         c.pgpass = false;
         c.password_command = Some("x".to_owned());
         assert!(!c.asks_password());
+        c.password_command = None;
+        c.options.insert(AUTH.to_owned(), "aws_iam".to_owned());
+        assert!(!c.asks_password());
+        assert!(c.signs_in_without_password());
+        c.options.insert(AUTH.to_owned(), "password".to_owned());
+        assert!(c.asks_password());
     }
 
     #[test]
