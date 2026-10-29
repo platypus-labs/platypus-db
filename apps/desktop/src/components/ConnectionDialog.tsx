@@ -419,7 +419,12 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     </button>
   );
   const networkSet =
-    conn.network_profile || conn.ssh || conn.ssl_client_cert || conn.options?.before_connect || conn.options?.after_disconnect;
+    conn.network_profile ||
+    conn.ssh ||
+    conn.ssl_client_cert ||
+    conn.options?.proxy ||
+    conn.options?.before_connect ||
+    conn.options?.after_disconnect;
   const initSet = !!(init.schema || init.time_zone || init.statements.trim());
 
   if (picking) {
@@ -909,6 +914,23 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   saved={savedSsh}
                 />
               )}
+              <label className="field">
+                <span>{t("Proxy")}</span>
+                <input
+                  value={conn.options?.proxy ?? ""}
+                  onChange={(e) => setOption("proxy", e.target.value)}
+                  placeholder="socks5://proxy.example.com:1080"
+                  spellCheck={false}
+                  data-field="proxy"
+                />
+              </label>
+              <p className="muted small">
+                {tNodes("SOCKS5 or HTTP, before the SSH server when there is one: {socks} or {http}. A password can come from {env}.", {
+                  socks: <code>socks5://user:password@host:1080</code>,
+                  http: <code>http://host:3128</code>,
+                  env: <code>{"${env:PROXY_PASSWORD}"}</code>,
+                })}
+              </p>
               <div className="field-grid">
                 <label className="field">
                   <span>{t("Command before connecting")}</span>

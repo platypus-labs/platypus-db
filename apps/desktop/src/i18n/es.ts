@@ -1835,6 +1835,8 @@ const es: Record<string, string> = {
   "Command before connecting": "Comando antes de conectar",
   "Command after disconnecting": "Comando después de desconectar",
   "Run by the system's shell, e.g. to bring a VPN up: each session waits for the first to end, a minute at most, and fails with it; the second runs when the session closes.": "Los ejecuta el shell del sistema, por ejemplo para activar una VPN: cada sesión espera a que termine el primero, un minuto como máximo, y falla si falla; el segundo se ejecuta al cerrarse la sesión.",
+  "Proxy": "Proxy",
+  "SOCKS5 or HTTP, before the SSH server when there is one: {socks} or {http}. A password can come from {env}.": "SOCKS5 o HTTP, antes del servidor SSH si lo hay: {socks} o {http}. La contraseña puede venir de {env}.",
 };
 
 export default es;
