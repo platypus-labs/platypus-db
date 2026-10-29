@@ -7,6 +7,7 @@ import { ask } from "../ui/ask";
 import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
 import { NOW, type Pick, groupChanges, pair, stillThere, toggled } from "./history";
+import { commentHeader } from "./script";
 import { translateWarning } from "./warnings";
 
 /** The history of a schema's structure: the snapshots taken, by hand or by a scheduled task,
@@ -166,9 +167,11 @@ export function HistoryTab({ tab, connection, active, sideSession }: TabProps<Hi
   function openScript() {
     if (!diff || from === null || to === null) return;
     const state = (p: Pick) => (p === NOW ? t("Now") : when(snapshots?.find((s) => s.id === p)?.taken_at ?? ""));
-    const head = `-- ${t("Turns {schema} as of {from} into {to}", { schema: tab.schema, from: state(from), to: state(to) })}\n`;
-    const notes = diff.warnings.map((w) => `-- ${translateWarning(w)}\n`).join("");
-    workbench().openTab("query", connection.id, { sql: `${head}${notes}${diff.sql}`, database });
+    const head = commentHeader(
+      t("Turns {schema} as of {from} into {to}", { schema: tab.schema, from: state(from), to: state(to) }),
+      diff.warnings.map(translateWarning),
+    );
+    workbench().openTab("query", connection.id, { sql: `${head}${diff.sql}`, database });
   }
 
   const groups = groupChanges(diff?.changes ?? []);

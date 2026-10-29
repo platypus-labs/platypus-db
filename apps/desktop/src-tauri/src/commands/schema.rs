@@ -31,6 +31,33 @@ pub struct DesignScript {
     sql: String,
 }
 
+impl DesignScript {
+    /// `script` with its text in `dialect`.
+    fn new(dialect: Dialect, script: Script) -> Self {
+        Self {
+            sql: script.text(dialect),
+            script,
+        }
+    }
+}
+
+/// The dialect shared by two sessions, or `different_databases` with `message` when they are
+/// databases of different kinds: schemas and tables are compared only between the same kind.
+fn shared_dialect(
+    state: &AppState,
+    source_session: u64,
+    target_session: u64,
+    message: &str,
+) -> CommandResult<Dialect> {
+    let source = Dialect::from(state.session(source_session)?.config.driver);
+    let target = Dialect::from(state.session(target_session)?.config.driver);
+    if source == target {
+        Ok(target)
+    } else {
+        Err(CommandError::new("different_databases", message))
+    }
+}
+
 /// The script that turns `original` into `design` in `schema`, or creates `design` when
 /// there is no `original`.
 #[tauri::command]
@@ -43,10 +70,7 @@ pub fn table_script(
     let dialect = Dialect::from(driver);
     let script = platypus_schema::script(dialect, &schema, original.as_ref(), &design)
         .map_err(|e| CommandError::new("invalid_design", e))?;
-    Ok(DesignScript {
-        sql: script.text(dialect),
-        script,
-    })
+    Ok(DesignScript::new(dialect, script))
 }
 
 /// A script from [`compare_schemas`] as the text of a Flyway migration or a Liquibase changelog.
@@ -157,14 +181,12 @@ pub async fn compare_schemas(
     target_session: u64,
     target_schema: String,
 ) -> CommandResult<DesignScript> {
-    let source_dialect = Dialect::from(state.session(source_session)?.config.driver);
-    let dialect = Dialect::from(state.session(target_session)?.config.driver);
-    if source_dialect != dialect {
-        return Err(CommandError::new(
-            "different_databases",
-            "Schemas can be compared only between databases of the same kind.",
-        ));
-    }
+    let dialect = shared_dialect(
+        &state,
+        source_session,
+        target_session,
+        "Schemas can be compared only between databases of the same kind.",
+    )?;
     let source = state.live(source_session).await?;
     let target = state.live(target_session).await?;
     let wanted = platypus_schema::load_designs(source.as_ref(), dialect, &source_schema).await?;
@@ -172,10 +194,7 @@ pub async fn compare_schemas(
     let script =
         platypus_schema::compare(dialect, &target_schema, &source_schema, &wanted, &current)
             .map_err(|e| CommandError::new("invalid_design", e))?;
-    Ok(DesignScript {
-        sql: script.text(dialect),
-        script,
-    })
+    Ok(DesignScript::new(dialect, script))
 }
 
 /// The script for the edits made on an ER diagram of `schema`: the wanted design of each
@@ -193,10 +212,7 @@ pub async fn erd_script(
     let current = platypus_schema::load_designs(live.as_ref(), dialect, &schema).await?;
     let script = platypus_schema::edited_script(dialect, &schema, &current, &designs, &dropped)
         .map_err(|e| CommandError::new("invalid_design", e))?;
-    Ok(DesignScript {
-        sql: script.text(dialect),
-        script,
-    })
+    Ok(DesignScript::new(dialect, script))
 }
 
 /// Which migrations of the project in `folder` (Flyway, Liquibase, Prisma, Alembic, Rails) are
@@ -231,14 +247,12 @@ pub async fn compare_table_data(
     target: TableRef,
     options: CompareOptions,
 ) -> CommandResult<DataDiff> {
-    let source_dialect = Dialect::from(state.session(source_session)?.config.driver);
-    let dialect = Dialect::from(state.session(target_session)?.config.driver);
-    if source_dialect != dialect {
-        return Err(CommandError::new(
-            "different_databases",
-            "Tables can be compared only between databases of the same kind.",
-        ));
-    }
+    let dialect = shared_dialect(
+        &state,
+        source_session,
+        target_session,
+        "Tables can be compared only between databases of the same kind.",
+    )?;
     let from = state.live(source_session).await?;
     let to = state.live(target_session).await?;
     Ok(compare_data(

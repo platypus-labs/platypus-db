@@ -2,6 +2,7 @@ import { type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api, type TableDesign, type SchemaTable, toCommandError } from "../api";
 import { type ChartColors, useChartColors } from "../analysis/Chart";
 import { exportChart } from "../analysis/chartExport";
+import { commentHeader } from "../schema/script";
 import { translateWarning } from "../schema/warnings";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { ask } from "../ui/ask";
@@ -453,9 +454,8 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
       if (sid === null) return;
       const { script, sql } = await api.erdScript(sid, tab.schema, edits.designs, edits.dropped);
       if (script.statements.length === 0) return setMessage(t("The edits change nothing in the database."));
-      const notes = script.warnings.map((w) => `-- ${translateWarning(w)}\n`).join("");
-      const head = `-- ${t("Applies the edits of the ER diagram of {schema}", { schema: tab.schema })}\n`;
-      workbench().openTab("query", connection.id, { sql: `${head}${notes}${sql}`, database: tab.database });
+      const head = commentHeader(t("Applies the edits of the ER diagram of {schema}", { schema: tab.schema }), script.warnings.map(translateWarning));
+      workbench().openTab("query", connection.id, { sql: `${head}${sql}`, database: tab.database });
     } catch (e) {
       setMessage(toCommandError(e).message);
     } finally {

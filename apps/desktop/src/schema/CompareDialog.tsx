@@ -3,6 +3,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { api, type ChangelogFormat, type SavedConnection, type SchemaMeta, type TableScript, toCommandError } from "../api";
 import { workbench } from "../workbench";
 import { t } from "../i18n";
+import { commentHeader, compareTargets } from "./script";
 import { translateWarning } from "./warnings";
 
 interface Props {
@@ -22,10 +23,8 @@ const timestamp = () => new Date().toISOString().replace(/\.\d+Z$/, "").replace(
  *  connection, and opens on the target the script that makes it like this one: tables
  *  created, altered and dropped. The script is reviewed and run in the SQL editor. */
 export function CompareDialog({ connection, database, schema, onClose }: Props) {
-  const targets = workbench()
-    .connections()
-    .filter((c) => c.driver === connection.driver);
-  const [target, setTarget] = useState<SavedConnection>(targets.find((c) => c.id !== connection.id) ?? connection);
+  const { targets, initial } = compareTargets(connection);
+  const [target, setTarget] = useState<SavedConnection>(initial);
   const [schemas, setSchemas] = useState<SchemaMeta[]>([]);
   const [targetSchema, setTargetSchema] = useState("");
   const [busy, setBusy] = useState(false);
@@ -86,9 +85,11 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
         if (await writeChangelog(script, output)) onClose();
         return;
       }
-      const notes = script.warnings.map((w) => `-- ${translateWarning(w)}\n`).join("");
-      const head = `-- ${t("Makes {target} like {source}", { target: `${target.name} · ${targetSchema}`, source: `${connection.name} · ${schema}` })}\n`;
-      workbench().openTab("query", target.id, { sql: `${head}${notes}${sql}`, database: targetDatabase });
+      const head = commentHeader(
+        t("Makes {target} like {source}", { target: `${target.name} · ${targetSchema}`, source: `${connection.name} · ${schema}` }),
+        script.warnings.map(translateWarning),
+      );
+      workbench().openTab("query", target.id, { sql: `${head}${sql}`, database: targetDatabase });
       onClose();
     } catch (e) {
       setError(toCommandError(e).message);

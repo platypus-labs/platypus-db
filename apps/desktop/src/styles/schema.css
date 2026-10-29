@@ -190,6 +190,9 @@
 .mig-status.failed,
 .mig-status.missing {
   background: var(--error-bg);
+  color: var(--error);
+}
+
 /* The schema history tab: the snapshots, and what changed between two of them. */
 .schema-history .history-label {
   width: 180px;

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type DataDiff, type RowChange, type SavedConnection, type SchemaMeta, toCommandError } from "../api";
 import { workbench } from "../workbench";
 import { t } from "../i18n";
+import { commentHeader, compareTargets } from "./script";
 
 interface Props {
   connection: SavedConnection;
@@ -45,10 +46,8 @@ function Sample({ row }: { row: RowChange }) {
  *  this one: rows inserted, updated and, when asked, deleted. The script is reviewed and run
  *  in the SQL editor. */
 export function DataCompareDialog({ connection, database, schema, table, onClose }: Props) {
-  const targets = workbench()
-    .connections()
-    .filter((c) => c.driver === connection.driver);
-  const [target, setTarget] = useState<SavedConnection>(targets.find((c) => c.id !== connection.id) ?? connection);
+  const { targets, initial } = compareTargets(connection);
+  const [target, setTarget] = useState<SavedConnection>(initial);
   const [schemas, setSchemas] = useState<SchemaMeta[]>([]);
   const [targetSchema, setTargetSchema] = useState("");
   const [tables, setTables] = useState<string[]>([]);
@@ -130,10 +129,12 @@ export function DataCompareDialog({ connection, database, schema, table, onClose
   }
 
   function openScript(result: DataDiff) {
-    const notes = result.warnings.map((w) => `-- ${w}\n`).join("");
-    const head = `-- ${t("Makes {target} like {source}", { target: `${target.name} · ${targetSchema}.${targetTable}`, source: `${connection.name} · ${schema}.${table}` })}\n`;
+    const head = commentHeader(
+      t("Makes {target} like {source}", { target: `${target.name} · ${targetSchema}.${targetTable}`, source: `${connection.name} · ${schema}.${table}` }),
+      result.warnings,
+    );
     const sql = `${result.statements.join(";\n")};\n`;
-    workbench().openTab("query", target.id, { sql: `${head}${notes}${sql}`, database: targetDatabase });
+    workbench().openTab("query", target.id, { sql: `${head}${sql}`, database: targetDatabase });
     onClose();
   }
 
