@@ -723,3 +723,123 @@ fn an_unknown_argument_prints_the_usage_and_fails() {
     );
     assert_eq!(output.stdout, b"");
 }
+
+/// Connections, schemas and tables are MCP resources: listed without opening a database,
+/// read as the JSON the tools return, and logged like a tool call.
+#[test]
+fn serves_schemas_and_tables_as_resources() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    sqlite(
+        &dir.path().join("app.db"),
+        r#"CREATE TABLE "my table/x" (k INTEGER PRIMARY KEY, "odd col" TEXT);"#,
+    );
+    let mut client = initialized(dir.path());
+
+    let list = client.request("resources/list", &json!({}));
+    let resources = list["result"]["resources"].as_array().unwrap();
+    let listed: Vec<(&str, &str)> = resources
+        .iter()
+        .map(|r| (r["name"].as_str().unwrap(), r["uri"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            ("App db", "platypus://App%20db"),
+            ("Scratch", "platypus://Scratch"),
+            ("Remote PG", "platypus://Remote%20PG"),
+        ],
+        "the hidden connection is left out: {list}"
+    );
+    assert_eq!(resources[0]["mimeType"], "application/json");
+    assert!(
+        resources[0]["description"]
+            .as_str()
+            .unwrap()
+            .contains("sqlite"),
+        "{list}"
+    );
+
+    let templates = client.request("resources/templates/list", &json!({}));
+    let templates: Vec<&str> = templates["result"]["resourceTemplates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["uriTemplate"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        templates,
+        [
+            "platypus://{connection}/{schema}",
+            "platypus://{connection}/{schema}/{table}"
+        ]
+    );
+
+    let mut read = |uri: &str| {
+        let response = client.request("resources/read", &json!({ "uri": uri }));
+        match response["result"]["contents"][0].clone() {
+            Value::Null => Err(response["error"]["message"].as_str().unwrap().to_owned()),
+            content => {
+                assert_eq!(content["mimeType"], "application/json", "{response}");
+                assert_eq!(content["uri"], uri, "{response}");
+                Ok(content["text"].as_str().unwrap().to_owned())
+            }
+        }
+    };
+    let schemas = read("platypus://App%20db").unwrap();
+    assert!(schemas.contains(r#""name":"main""#), "{schemas}");
+    let objects = read("platypus://App%20db/main").unwrap();
+    assert!(objects.contains(r#""name":"t""#), "{objects}");
+    assert!(objects.contains("my table/x"), "{objects}");
+    let table: Value = serde_json::from_str(&read("platypus://App%20db/main/t").unwrap()).unwrap();
+    assert_eq!(table["columns"][0]["name"], "id");
+    assert_eq!(table["columns"][1]["name"], "name");
+    // A name that needs escapes round-trips.
+    let odd: Value =
+        serde_json::from_str(&read("platypus://App%20db/main/my%20table%2Fx").unwrap()).unwrap();
+    assert_eq!(odd["columns"][1]["name"], "odd col");
+
+    // A bad uri names the forms; an agent error is passed on as its text.
+    for bad in [
+        "file:///etc/passwd",
+        "platypus://App%20db/main/t/extra",
+        "platypus://",
+    ] {
+        let error = read(bad).unwrap_err();
+        assert!(error.contains("platypus://<connection>"), "{bad}: {error}");
+    }
+    let hidden = read("platypus://Hidden").unwrap_err();
+    assert!(hidden.contains("Hidden"), "{hidden}");
+    let missing = read("platypus://App%20db/main/nope").unwrap_err();
+    assert!(
+        missing.contains("no table or view `main.nope`"),
+        "{missing}"
+    );
+
+    drop(client);
+    resource_reads_are_logged(dir.path());
+}
+
+/// Each read of a resource is in the call log, as `read_resource` with its connection.
+fn resource_reads_are_logged(dir: &Path) {
+    let log = rusqlite::Connection::open(dir.join("agent-calls.db")).unwrap();
+    let calls: Vec<(String, Option<String>, String, String)> = log
+        .prepare("SELECT tool, connection, arguments, status FROM calls ORDER BY id")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    // Unparsable uris are refused before they count as a call.
+    assert_eq!(calls.len(), 6, "{calls:?}");
+    assert!(calls.iter().all(|c| c.0 == "read_resource"));
+    assert_eq!(calls[0].1.as_deref(), Some("App db"));
+    assert_eq!(
+        calls[0].2,
+        r#"{"uri":"platypus://App%20db","connection":"App db"}"#
+    );
+    assert_eq!(calls[0].3, "ok");
+    assert_eq!(calls[4].1.as_deref(), Some("Hidden"));
+    assert_eq!(calls[4].3, "error");
+    assert_eq!(calls[5].3, "error");
+}
