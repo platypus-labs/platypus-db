@@ -663,6 +663,12 @@ export interface ScriptList {
   entries: ScriptEntry[];
 }
 
+/** A saved dashboard file, by name; `modified` in milliseconds since the Unix epoch. */
+export interface DashboardEntry {
+  name: string;
+  modified: number;
+}
+
 export interface CliOutput {
   command: string;
   status: number | null;
@@ -2044,6 +2050,16 @@ export const api = {
   deleteScript: (project: string | null, path: string) => invoke<void>("delete_script", { project, path }),
   linkScript: (project: string | null, path: string, connection: string | null) =>
     invoke<void>("link_script", { project, path, connection }),
+  // Dashboards (group M): files in the data folder, per project
+  listDashboards: (project: string | null) => invoke<DashboardEntry[]>("list_dashboards", { project }),
+  /** The JSON text of a saved dashboard. */
+  readDashboard: (project: string | null, name: string) => invoke<string>("read_dashboard", { project, name }),
+  /** Saves `contents` (a JSON object) as the dashboard `name`, replacing it. */
+  saveDashboard: (project: string | null, name: string, contents: string) =>
+    invoke<void>("save_dashboard", { project, name, contents }),
+  renameDashboard: (project: string | null, from: string, to: string) =>
+    invoke<void>("rename_dashboard", { project, from, to }),
+  deleteDashboard: (project: string | null, name: string) => invoke<void>("delete_dashboard", { project, name }),
   /** Runs a script with `psql`, `mysql`, `sqlcmd` or `sqlite3` from the PATH, as the session;
    *  `cancelCli` with the same `runId` stops it. */
   runCli: (sessionId: number, runId: number, script: string) =>
