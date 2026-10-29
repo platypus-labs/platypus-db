@@ -874,7 +874,7 @@ SVG mostrato e il piano. Le P3 restano da fare.
 
 ### Gruppo N — Accesso per agenti esterni (MCP)
 
-**Stato: P1 e P2 completate** (restano i P3). Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
+**Stato: completato** (P1, P2 e P3). Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
 il binario `platypus-mcp`, server MCP su stdio con `rmcp`: legge il profilo dell'app (o
 `PLATYPUS_DATA_DIR`) e apre le connessioni come l'app (profili di rete, tunnel SSH, password
 da keychain, comando o `.pgpass`); con la master password i segreti restano bloccati e la
@@ -916,6 +916,25 @@ senza risposta o app chiusa = rifiutata. Una query che scrive tramite una funzio
 dalla transazione di sola lettura dove il database la rifiuta, e al rifiuto chiede. Gli E2E danno a ogni scenario una porta libera e
 `confirm_writes = false` se lo scenario non li imposta.
 
+P3: lo schema come risorse MCP (`platypus-mcp/src/resource.rs`): una risorsa per connessione
+(`platypus://<connessione>`, i suoi schemi) e i template `platypus://<c>/<schema>` (oggetti, fino
+a 2000) e `platypus://<c>/<schema>/<tabella>` (come `describe_table`), nomi percent-encoded, ogni
+lettura nel registro come `read_resource`. Tool di sola lettura `list_scripts`, `read_script`
+(256 KB) e `search_history` (50, fino a 500): la lettura degli script è passata in
+`platypus-store/src/scripts.rs`, usata anche dall'app; gli script legati a una connessione senza
+accesso per gli agenti e la sua cronologia non si vedono, gli errori passano dal `Redactor`. Il
+mascheramento delle colonne sensibili del gruppo Q non c'è ancora: i punti dove andrà sono
+segnati nel codice. `get_user_context` chiede all'app aperta (`/v1/context`, coda in comune con
+le conferme delle scritture) la scheda attiva: un dialog mostra cosa verrebbe condiviso (testo,
+selezione, risultato, dimensioni) con Rifiuta, Condividi una volta, Condividi per questa
+sessione (ricordato nella pagina, per sessione del server); il server taglia testo e selezione a
+64 KB e il risultato a 100 righe e 32 KB, e rifiuta il contenuto di una scheda su una
+connessione senza accesso per gli agenti (dopo il consenso, perché l'app rivela la connessione
+solo allora). Plugin pronti: `plugins/platypus-db` (server MCP, `PLATYPUS_DB` per il percorso
+dell'app, e una skill con le istruzioni d'uso) nel marketplace `.claude-plugin/marketplace.json`
+della repository, e `plugins/codex` con la voce di `config.toml` e le stesse istruzioni come
+`AGENTS.md`. E2E `agent-context` (non provato: gli E2E girano solo su Windows).
+
 PlatypusDB non integra un proprio assistente AI. Diventa invece uno strumento che gli agenti già
 in uso (Claude Code, Codex, Cursor, altri client MCP) possono collegare: usano le connessioni
 salvate, leggono lo schema ed eseguono query con i permessi decisi dall'utente. Le credenziali
@@ -943,11 +962,11 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | ✅ **Configurazione degli agenti in un clic**: la pagina "Agents" scrive la voce del server nei file di Claude Desktop, Cursor, Windsurf e Codex (o lancia `claude mcp add`) e mostra in quali client è già presente | P2 | N |
 | ✅ **Registro delle chiamate degli agenti**: ogni chiamata a un tool (non solo le query), con agente, connessione, argomenti, durata ed esito, raggruppata per sessione, con filtro ed export CSV | P2 | N |
 | ✅ Tool `propose_sql`: apre la query proposta dall'agente in un tab dell'editor, da rivedere ed eseguire a mano | P2 | N |
-| Contesto dell'utente su consenso: testo dell'editor, selezione, risultato corrente della griglia | P3 | N |
-| Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
-| Plugin pronti: plugin per Claude Code e configurazione per Codex con le istruzioni d'uso (quando usare quale tool, limiti) | P3 | N |
+| ✅ Contesto dell'utente su consenso: testo dell'editor, selezione, risultato corrente della griglia | P3 | N |
+| ✅ Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
+| ✅ Plugin pronti: plugin per Claude Code e configurazione per Codex con le istruzioni d'uso (quando usare quale tool, limiti) | P3 | N |
 | ✅ **Tab Agenti come pannello di integrazione**: sotto-schede Setup, Attività e Sicurezza; in Setup l'elenco dei client (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, Antigravity, …) con il percorso del loro file di configurazione e un pulsante **Installa** che scrive la voce del server (con backup del file e conferma), accanto la configurazione da copiare a mano per il client scelto; Attività mostra le chiamate degli agenti, Sicurezza i permessi per connessione | P2 | N |
-| 🆕 Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate | P3 | N |
+| ✅ 🆕 Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate | P3 | N |
 
 ---
 
