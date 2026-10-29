@@ -298,6 +298,11 @@ pub struct ConnectionConfig {
 /// mode: `transaction` (statements run unnamed: see the driver) or `session`.
 pub const POOLER: &str = "pooler";
 
+/// The options with the shell commands run before connecting and after the connection
+/// closes (run by `platypus-net`). Their `${VAR}` belong to the shell: they are not replaced.
+pub const BEFORE_CONNECT: &str = "before_connect";
+pub const AFTER_DISCONNECT: &str = "after_disconnect";
+
 impl ConnectionConfig {
     #[must_use]
     pub fn new(driver: DriverKind) -> Self {
