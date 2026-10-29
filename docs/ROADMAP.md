@@ -89,6 +89,7 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
+| "Genera il DDL" su molte tabelle (`objects/actions.ts`, `object.generate_ddl`) ci mette molto e non mostra niente: chiama `objectDdl` una tabella alla volta e apre il tab solo alla fine, senza avanzamento ("12 di 80") né annullamento. Mostrare l'avanzamento con Annulla, aprire il tab subito e riempirlo man mano, e sul backend leggere il DDL di più oggetti con meno query (il dump in SQL di `platypus-transfer` scrive già il DDL di molti oggetti insieme); misurare prima e dopo su uno schema di centinaia di tabelle | utente, 2026-10-29 |
 | Tab oggetto di una tabella (`objects/ObjectTab.tsx`): ci sono "Apri i dati" e "Modifica il DDL nell'editor", ma nessun pulsante porta all'editor grafico della tabella (colonne, indici, chiavi, vincoli), che si apre solo dal menu del navigator ("Modifica tabella…", F4): aggiungere "Modifica tabella" accanto agli altri, e dal tab dei dati un modo per passare alla struttura e all'editor | utente, 2026-10-29 |
 
 ### Lock dei gruppi
