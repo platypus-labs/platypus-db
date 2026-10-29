@@ -25,7 +25,7 @@ The page follows the system's light or dark mode.
 
 ## Update
 
-The text follows README.md, the source of truth for features. When the screenshots in
+The text follows the README and [docs/FEATURES.md](../docs/FEATURES.md), the source of truth for features. When the screenshots in
 `docs/screenshots/` change, copy them into `img/screenshots/` again.
 
 ## Publish on GitHub Pages

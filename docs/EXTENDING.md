@@ -329,8 +329,8 @@ development and the stdio tests; and the `platypus` CLI calls the same methods f
   waits 5 seconds at most for a lock meanwhile (`LOCK_TIMEOUT`), and effects outside the
   transaction are not undone. A new driver adds its case to those `Dialect` methods; the
   conformance test `agents_read_in_read_only_transactions` checks it.
-- `output.rs` renders a result as an aligned text table or the JSON documented in the README
-  ([Agents](../README.md#agents-mcp-and-the-cli)); the whole rendering stays within the byte limit, rows
+- `output.rs` renders a result as an aligned text table or the JSON documented in
+  [AGENTS.md](AGENTS.md); the whole rendering stays within the byte limit, rows
   dropped from the end until it fits. Change that JSON only by adding fields.
 - `redact.rs` masks the connection's password, SSH secrets, password command and the
   password of any URL in every error an agent reads. Tools never return the host, the user
@@ -342,7 +342,7 @@ development and the stdio tests; and the `platypus` CLI calls the same methods f
   with `agents.confirm_writes` on (the default), a statement `access::changes` sees as a
   change asks `confirm` before it runs, with the plan's estimate, and is refused without a
   link or a yes. A new client of the app (another process) speaks the bridge's routes,
-  documented in the README.
+  documented in [AGENTS.md](AGENTS.md).
 
 Every `run_query` is recorded in the query history with `origin`, the MCP client's name
 (`clientInfo.name`, trimmed to 64 characters, `agent` when empty) or `platypus-cli`; `HistoryQuery::origin` filters the app's entries

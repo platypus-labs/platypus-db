@@ -15,7 +15,7 @@ merged, and the style the code follows. By taking part you agree to the
 
 You need Rust stable (≥ 1.99) with `rustfmt` and `clippy`, Node.js ≥ 24 (see `.nvmrc`), the
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your system, and Docker
-for the dev databases. The [README](README.md#development) has the project layout, the
+for the dev databases. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) has the project layout, the
 commands to run the app and the CLI, the sample database and the dev databases.
 
 ```bash
@@ -125,7 +125,8 @@ steps above before merging, even when a change does not touch the UI or the driv
 2. **Verify** as above.
 3. **Review** the branch and fix what the review finds.
 4. **Document**: the group's "Stato" line in the roadmap, [docs/EXTENDING.md](docs/EXTENDING.md)
-   for a new extension point, the [README](README.md) for user-facing features, and the
+   for a new extension point, [docs/FEATURES.md](docs/FEATURES.md) for user-facing features (and the README in English and
+   Italian when the overview changes), and the
    [changelog](CHANGELOG.md).
 5. **Merge** into `main` (team members, no pull request):
 
